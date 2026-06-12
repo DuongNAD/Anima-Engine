@@ -1,0 +1,2 @@
+﻿    Checking anima-engine v0.1.0 (E:\Project\Anima-Engine\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.94s

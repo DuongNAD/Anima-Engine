@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default permissions for Anima-Engine","local":true,"windows":["main"],"permissions":["core:default","core:window:default","core:event:default"]}}

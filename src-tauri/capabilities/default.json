@@ -1,0 +1,11 @@
+{
+  "$schema": "../schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for Anima-Engine",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:event:default"
+  ]
+}

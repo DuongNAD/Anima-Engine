@@ -1,0 +1,4 @@
+[target.x86_64-pc-windows-msvc]
+rustflags = [
+    "-C", "link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+]

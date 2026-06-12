@@ -1,0 +1,36 @@
+[package]
+name = "anima-engine"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "anima_engine_lib"
+crate-type = ["lib"]
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["test"] }
+tauri-plugin-shell = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bevy_ecs = "0.13.0"
+glam = { version = "0.25", features = ["serde"] }
+rayon = "1.10.0"
+burn = { version = "0.13.2", features = ["std", "train"] }
+burn-ndarray = { version = "0.13.2" }
+burn-wgpu = { version = "0.13.2" }
+socket2 = "0.5"
+bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
+crossbeam-channel = "0.5"
+rand = "0.8"
+neo4rs = "0.7.0"
+uuid = { version = "1.0", features = ["v4", "serde"] }
+tokio = { version = "1.36", features = ["full"] }
+ureq = { version = "2.9", features = ["json"] }
+dotenvy = "0.15"
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+
+
+[build-dependencies]
+tauri-build = { version = "2.0.0" }

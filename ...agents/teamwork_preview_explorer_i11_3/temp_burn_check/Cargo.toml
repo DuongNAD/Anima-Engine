@@ -1,0 +1,9 @@
+[package]
+name = "temp_burn_check"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+burn = { version = "0.13.2", features = ["std", "train"] }
+burn-ndarray = { version = "0.13.2" }
+bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
