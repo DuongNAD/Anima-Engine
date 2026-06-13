@@ -195,3 +195,129 @@ Add automated verification tests:
 ### Interactive Telemetry & UI
 - [ ] Tauri frontend builds successfully (`npm run build`).
 - [ ] The React dashboard renders visual family tree relationships and logs chronological Meta-AI event warnings.
+
+## Follow-up — 2026-06-12T14:44:20Z
+
+Setup the Anima-Engine project workspace, install dependencies, run and verify the standard backend and frontend unit tests, and confirm that the development environment is fully prepared for optimization and coding.
+
+Working directory: E:/project/Anima-Engine
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Dependency Setup
+- Install NPM dependencies in the root directory.
+- Verify cargo/rust toolchain is ready.
+
+### R2. Backend Verification
+- Run the Rust backend test suite via `cargo test` in the `src-tauri` directory.
+- Ensure all tests pass successfully.
+
+### R3. Frontend Verification
+- Run the React/TypeScript unit tests via `npm run test:frontend` in the root (or `tests`) directory.
+- Ensure all frontend tests pass successfully.
+
+## Acceptance Criteria
+
+### Project Readiness
+- [ ] Frontend dependencies are fully installed (no missing imports/types).
+- [ ] Backend Rust workspace compiles and tests pass.
+- [ ] Frontend tests pass successfully.
+- [ ] Verification script or build runs without errors.
+
+## Follow-up — 2026-06-13T05:28:01Z
+
+Fix the React Three Fiber crash and ensure the rabbit procedural morphology renders correctly in the Anima-Engine simulation.
+
+Working directory: e:\project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Resolve Dependency Incompatibility
+Downgrade `@react-three/fiber` to version 8 (e.g. `^8.13.0`) in `package.json` to match the React 18 environment and run `npm install` to update the dependencies, resolving the `Cannot read properties of undefined (reading 'S')` crash.
+
+### R2. Fix Buffer Parsing in RabbitVisualizer
+Correct the binary buffer parsing in `playground/RabbitVisualizer.tsx`. The Tauri `invoke('get_test_rabbit_state')` command resolves to an `ArrayBuffer` directly. Change `new Float32Array(buffer.buffer)` to `new Float32Array(buffer)` to avoid reading from undefined.
+
+### R3. Verify InstancedMesh Initialization
+Ensure that `instancedMesh` in `playground/RabbitVisualizer.tsx` initializes correctly without throwing errors under React Three Fiber version 8.
+
+## Acceptance Criteria
+
+### Dependency and Compilation
+- [ ] `@react-three/fiber` package is downgraded to v8 (e.g., `^8.13.0` or matching version compatible with React 18).
+- [ ] No compilation or bundler errors occur during `npm run build`.
+
+### Runtime Visualization
+- [ ] IPC binary data is successfully fetched from the backend Tauri command `get_test_rabbit_state` and parsed into positions and scales of the rabbit parts.
+
+## Follow-up — 2026-06-13T06:06:10Z
+
+Redesign the rabbit visualizer in Anima-Engine to render a cute, lightweight, low-poly 3D rabbit model with distinct features instead of stretched spheres.
+
+Working directory: e:\project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Redesign Rabbit Geometry using Separate 3D Meshes
+Instead of using a single `instancedMesh` with generic stretched spheres, render separate `<mesh>` components for each of the 5 body parts (Body, Head, Left Ear, Right Ear, Hind Legs) so they are arranged properly in 3D space. Position them symmetrically on the Z-axis (e.g., ears and legs placed on left/right Z coordinates) to create a true 3D rabbit depth.
+
+### R2. Add Distinct Rabbit Details (Cute Cartoon Style)
+Make the model immediately recognizable as a rabbit by attaching details:
+- **Ears**: Add pink inner ear overlay meshes on top of the main ear meshes.
+- **Face**: Add two black spheres for eyes and a small pink sphere for the nose attached to the Head.
+- **Tail**: Add a fluffy white sphere at the back of the Body.
+Use distinct, soft colors (creamy white, grey, pink, and black) instead of plain grey.
+
+### R3. Maintain Lightweight Performance & UI Controls
+Keep the geometry counts low-poly (e.g., small segment values in `sphereGeometry` and simple shapes like `boxGeometry` or `capsuleGeometry`). Ensure all animations (hopping, breathing, limb movement) and control sliders (speed, rotation speed) are fully functional with the new 3D model.
+
+## Acceptance Criteria
+
+### Visualization and Aesthetics
+- [ ] The model renders as a cute, recognizable low-poly 3D rabbit with white/grey body parts, pink inner ears, black eyes, a pink nose, and a fluffy tail.
+- [ ] The rabbit has depth on the Z-axis (symmetrical ears and legs).
+- [ ] No compilation or runtime errors.
+
+### Performance
+- [ ] The rendering is extremely lightweight, using standard low-vertex Three.js geometries, and runs at 60 FPS in a normal web browser.
+- [ ] The control sliders (speed and rotation speed) successfully update the rabbit's animation and rotation in real-time.
+
+
+## Follow-up — 2026-06-13T16:09:45+07:00
+
+Redesign the 3D rabbit model in both the standalone sandbox and the React visualizer to match the sharp, faceted low-poly papercraft style with dark outlines.
+
+Working directory: e:\project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Implement Faceted Low-Poly Geometries
+Configure all rabbit part geometries (Body, Head, Ears, Legs, Tail, Mouth, Snout, Eyes, Nose, Blush) with extremely low segment counts (e.g., 4 to 8 segments) to create a sharp, blocky, and angular silhouette. Use `flatShading: true` on all materials to ensure lighting is faceted per face rather than smooth-shaded.
+
+### R2. Add Sharp Facet Outlines
+For every mesh part of the rabbit, generate and overlay a dark outline wireframe using `THREE.EdgesGeometry` and `THREE.LineSegments` (with a dark color like `#1e293b`). The outlines must align precisely with the sharp edges of the faceted geometries, matching the papercraft aesthetic in the reference image.
+
+### R3. Maintain Animations & Details
+Keep the hopping, breathing, chewing, and rotation animations fully functional. Retain the detailed elements (muzzle, pink nose, blush cheeks, and eyes), but adapt them to be low-poly, flat-shaded, and outlined to match the overall papercraft style.
+
+### R4. Verify Build and Unit Tests
+Ensure all unit tests continue to pass and the project compiles with no TypeScript compilation errors.
+
+## Acceptance Criteria
+
+### Visualization and Style
+- [ ] The rabbit renders in a faceted, low-poly papercraft style where each face is flat-shaded (no smooth gradients across vertices).
+- [ ] Clear dark outlines are visible on all sharp edges of the rabbit meshes.
+- [ ] The model remains animated (hopping and chewing) and interactive.
+- [ ] Muzzle, blush cheeks, eyes, and nose are rendered in faceted style with outlines.
+
+### Technical & Quality
+- [ ] No Javascript exceptions or console errors.
+- [ ] `npm run test:frontend` runs and passes successfully.
+- [ ] `npm run build` succeeds.
+
+

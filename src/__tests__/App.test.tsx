@@ -4,6 +4,11 @@ import { App } from "../App";
 import "@testing-library/jest-dom";
 import { emit } from "@tauri-apps/api/event";
 
+// Mock RabbitVisualizer to prevent React Three Fiber from loading/crashing under JSDOM
+vi.mock("../playground/RabbitVisualizer", () => ({
+  default: () => <div data-testid="rabbit-visualizer-mock">Mock Rabbit Visualizer</div>,
+}));
+
 // Giả lập @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockImplementation((command) => {

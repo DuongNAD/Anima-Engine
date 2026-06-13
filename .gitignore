@@ -37,3 +37,6 @@ pnpm-debug.log*
 .gemini/
 /tests/test-results/
 /tests/playwright-report/
+
+# Playground / Sandbox for temporary experiments
+/playground/

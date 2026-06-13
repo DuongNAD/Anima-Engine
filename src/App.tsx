@@ -1,7 +1,9 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
+
+const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 
 export interface SegmentState {
   agent_id: number;
@@ -223,6 +225,7 @@ export function App() {
   const [selectionBias, setSelectionBias] = useState<number>(1.5);
   const [gridResolution, setGridResolution] = useState<number>(50);
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
+  const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
 
   // Phase 3 states and refs
   const [pheromoneGrid, setPheromoneGrid] = useState<PheromoneGridState | null>(null);
@@ -650,9 +653,27 @@ export function App() {
 
   return (
     <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
-      <header style={{ marginBottom: "20px" }}>
-        <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
-        <p style={{ margin: "5px 0 0 0", color: "#4a5568" }}>Hệ thống giám sát thực thể đa liên kết (Multi-segment Agents)</p>
+      <header style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
+          <p style={{ margin: "5px 0 0 0", color: "#4a5568" }}>Hệ thống giám sát thực thể đa liên kết (Multi-segment Agents)</p>
+        </div>
+        <button
+          onClick={() => setShowRabbitTest(!showRabbitTest)}
+          style={{
+            padding: "10px 20px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            backgroundColor: showRabbitTest ? "#3182ce" : "#805ad5",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: "pointer",
+            transition: "background-color 0.2s",
+          }}
+        >
+          {showRabbitTest ? "⬅️ Trở về Simulation" : "🐰 Thử nghiệm Thỏ (Three.js)"}
+        </button>
       </header>
 
       {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
@@ -706,46 +727,54 @@ export function App() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
-        {/* Cột 1: Thông tin và Bảng Canvas */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-            <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
-            <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
-            <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
-            <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
-            <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
-          </div>
-
-          <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-            <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
-            <PixiViewport projection={projection} />
-          </div>
+      {showRabbitTest ? (
+        <div style={{ marginBottom: "20px" }}>
+          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Rabbit Visualizer...</div>}>
+            <RabbitVisualizer />
+          </Suspense>
         </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
+          {/* Cột 1: Thông tin và Bảng Canvas */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
+              <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
+              <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
+              <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
+              <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
+            </div>
 
-        {/* Cột 2: Cấu trúc phân cấp các Agent */}
-        <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", display: "flex", flexDirection: "column" }}>
-          <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
-          <p style={{ margin: "0 0 15px 0" }}>Số Agents hoạt động: {hierarchies.length}</p>
-          
-          <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
-            {hierarchies.length === 0 ? (
-              <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
-            ) : (
-              hierarchies.map((hierarchy) => (
-                <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
-                  <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
-                    Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
-                  </h3>
-                  <div style={{ paddingLeft: "5px" }}>
-                    <SegmentNodeViewer segment={hierarchy.root} level={0} />
+            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
+              <PixiViewport projection={projection} />
+            </div>
+          </div>
+
+          {/* Cột 2: Cấu trúc phân cấp các Agent */}
+          <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", display: "flex", flexDirection: "column" }}>
+            <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
+            <p style={{ margin: "0 0 15px 0" }}>Số Agents hoạt động: {hierarchies.length}</p>
+            
+            <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
+              {hierarchies.length === 0 ? (
+                <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
+              ) : (
+                hierarchies.map((hierarchy) => (
+                  <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
+                    <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
+                      Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
+                    </h3>
+                    <div style={{ paddingLeft: "5px" }}>
+                      <SegmentNodeViewer segment={hierarchy.root} level={0} />
+                    </div>
                   </div>
-                </div>
-              ))
-            )}
+                ))
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* MAP-Elites Archive Section */}
       <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", marginTop: "20px" }}>

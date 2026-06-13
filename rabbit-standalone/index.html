@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rabbit 3D Procedural Morphology Simulator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/"
+        }
+      }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- Glowing top decorative bar -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 shadow-[0_2px_20px_rgba(139,92,246,0.5)]"></div>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl w-full mx-auto px-4 py-6 flex-grow flex flex-col lg:flex-row gap-6 items-stretch">
+        
+        <!-- Left: Simulator Viewport (Lightweight WebGL Canvas) -->
+        <div class="flex-grow flex flex-col bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl relative">
+            <!-- Floating Header Info Overlay -->
+            <div class="absolute top-4 left-4 z-10 pointer-events-none bg-slate-950/80 backdrop-blur-md px-4 py-2.5 rounded-xl border border-slate-800/60 shadow-lg">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h1 class="text-sm font-semibold tracking-wide text-slate-200">RABBIT-3D VIEWPORT</h1>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-0.5">Procedural Mesh Segregation Sandbox</p>
+            </div>
+
+            <!-- OrbitControls Interaction Guide -->
+            <div class="absolute bottom-4 right-4 z-10 pointer-events-none bg-slate-950/60 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-slate-800/40 text-[10px] text-slate-400">
+                🖱️ Left Click + Drag to Rotate | Wheel to Zoom
+            </div>
+
+            <!-- WebGL Canvas -->
+            <div id="canvas-container" class="w-full flex-grow min-h-[400px] lg:min-h-0 bg-[#0c1020]"></div>
+        </div>
+
+        <!-- Right: Sophisticated Control Panel & Organ Metrics -->
+        <div class="w-full lg:w-96 flex flex-col gap-6 shrink-0">
+            <!-- App Header Card -->
+            <div class="bg-gradient-to-br from-slate-900 to-slate-950 p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="bg-purple-600/20 p-2 rounded-lg text-purple-400 text-2xl">🐰</div>
+                    <div>
+                        <h2 class="text-lg font-bold tracking-tight text-white">Anima Rabbit Demo</h2>
+                        <span class="text-xs text-purple-400 font-semibold uppercase tracking-wider">Low-Poly Prototype</span>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 leading-relaxed mt-1">
+                    An isolated, zero-dependency standalone morphology demo. Simulates a 10-part dynamic skeletal mesh running completely inside the browser.
+                </p>
+            </div>
+
+            <!-- Biological Interactive Controls -->
+            <div class="bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-5">
+                <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase">Interactive State Controls</h3>
+
+                <!-- Eating toggle -->
+                <div class="flex items-center justify-between p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/60 hover:border-emerald-500/30 transition-all group">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">Eating Behavior</span>
+                        <span class="text-[10px] text-slate-400">Triggers chewing loop & head tilt</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="eating-toggle" checked class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                </div>
+
+                <!-- Starving toggle -->
+                <div class="flex items-center justify-between p-3.5 bg-slate-950/60 rounded-xl border border-slate-800/60 hover:border-rose-500/30 transition-all group">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">Hunger State</span>
+                        <span class="text-[10px] text-slate-400">Turns eyes Red (starving) / Black</span>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="hunger-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-300 after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                    </label>
+                </div>
+
+                <!-- Hopping & Breath Speed slider -->
+                <div class="flex flex-col gap-2 p-3.5 bg-slate-950/40 rounded-xl border border-slate-800/40">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-medium text-slate-300">Hopping Leg Cycles</span>
+                        <span id="speed-val" class="font-semibold text-blue-400">1.3x</span>
+                    </div>
+                    <input type="range" id="speed-slider" min="0.2" max="3.0" step="0.1" value="1.3" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500">
+                </div>
+
+                <!-- Camera Rotation Slider -->
+                <div class="flex flex-col gap-2 p-3.5 bg-slate-950/40 rounded-xl border border-slate-800/40">
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="font-medium text-slate-300">3D Rotate Speed</span>
+                        <span id="rotate-val" class="font-semibold text-purple-400">0.3x</span>
+                    </div>
+                    <input type="range" id="rotate-slider" min="0.0" max="1.5" step="0.1" value="0.3" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500">
+                </div>
+            </div>
+
+            <!-- Organ & Geometry Metrics -->
+            <div class="bg-slate-900/80 backdrop-blur-md p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col gap-4">
+                <h3 class="text-xs font-semibold tracking-wider text-slate-400 uppercase">Anatomical Specs</h3>
+                
+                <div class="flex flex-col gap-3 text-xs">
+                    <!-- Body parts list -->
+                    <div class="flex items-center justify-between text-slate-300">
+                        <span>🏷️ Anatomy Structure:</span>
+                        <span class="text-white font-mono bg-slate-950 px-2 py-1 rounded">10 Core Parts</span>
+                    </div>
+                    <div class="flex items-center justify-between text-slate-300">
+                        <span>🦵 Leg System:</span>
+                        <span class="text-white font-mono bg-slate-950 px-2 py-1 rounded">4 Legs (2F / 2H)</span>
+                    </div>
+                    <div class="flex items-center justify-between text-slate-300">
+                        <span>👄 Chewing Organ:</span>
+                        <span class="text-white font-mono bg-slate-950 px-2 py-1 rounded">Mesh Jaw Linkage</span>
+                    </div>
+                    <hr class="border-slate-800">
+                    <div class="flex items-center justify-between text-slate-400 text-[10px] uppercase font-semibold">
+                        <span>Part Type</span>
+                        <span>Shape Geometry</span>
+                    </div>
+                    <div class="flex flex-col gap-2.5 max-h-48 overflow-y-auto pr-1">
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 0. Body:</span>
+                            <span class="text-slate-400">Sphere (24x24)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 1. Head:</span>
+                            <span class="text-slate-400">Sphere (24x24)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 2 & 3. Ears:</span>
+                            <span class="text-slate-400">Capsule (8x16)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 4 & 5. Front Legs:</span>
+                            <span class="text-slate-400">Capsule (8x12)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 6 & 7. Hind Legs:</span>
+                            <span class="text-slate-400">Sphere (16x16)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 8. Tail:</span>
+                            <span class="text-slate-400">Sphere (12x12)</span>
+                        </div>
+                        <div class="flex justify-between text-slate-300 text-[11px]">
+                            <span>⚪ 9. Mouth (Jaw):</span>
+                            <span class="text-slate-400">Box Primitive</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-950 border-t border-slate-900 py-4 px-6 text-center text-xs text-slate-500">
+        Standalone WebGL Morphology Renderer &bull; Built with Three.js
+    </footer>
+
+    <!-- Three.js Setup & Simulation Script -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // DOM Elements
+        const container = document.getElementById('canvas-container');
+        const eatingToggle = document.getElementById('eating-toggle');
+        const hungerToggle = document.getElementById('hunger-toggle');
+        const speedSlider = document.getElementById('speed-slider');
+        const speedVal = document.getElementById('speed-val');
+        const rotateSlider = document.getElementById('rotate-slider');
+        const rotateVal = document.getElementById('rotate-val');
+
+        // State variables
+        let isEating = eatingToggle.checked;
+        let isStarving = hungerToggle.checked;
+        let speed = parseFloat(speedSlider.value);
+        let rotateSpeed = parseFloat(rotateSlider.value);
+
+        // Listeners
+        eatingToggle.addEventListener('change', (e) => { isEating = e.target.checked; });
+        hungerToggle.addEventListener('change', (e) => { isStarving = e.target.checked; updateEyeColors(); });
+        speedSlider.addEventListener('input', (e) => { 
+            speed = parseFloat(e.target.value); 
+            speedVal.innerText = speed.toFixed(1) + 'x';
+        });
+        rotateSlider.addEventListener('input', (e) => {
+            rotateSpeed = parseFloat(e.target.value);
+            rotateVal.innerText = rotateSpeed.toFixed(1) + 'x';
+        });
+
+        // 3D Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color('#0c1020');
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(0, 1.5, 5);
+
+        // Renderer (Shadow-enabled)
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        // OrbitControls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 + 0.05; // Don't go below ground
+
+        // Studio Lighting Setup
+        const ambientLight = new THREE.AmbientLight('#1e1b4b', 0.8); // soft purple/indigo ambient
+        scene.add(ambientLight);
+
+        // Warm key light
+        const dirLight = new THREE.DirectionalLight('#fef08a', 1.6);
+        dirLight.position.set(4, 7, 3);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 15;
+        dirLight.shadow.camera.left = -2;
+        dirLight.shadow.camera.right = 2;
+        dirLight.shadow.camera.top = 2;
+        dirLight.shadow.camera.bottom = -2;
+        dirLight.shadow.bias = -0.002;
+        scene.add(dirLight);
+
+        // Cool fill light
+        const fillLight = new THREE.DirectionalLight('#38bdf8', 0.6);
+        fillLight.position.set(-4, 2, 2);
+        scene.add(fillLight);
+
+        // Rim light (pink/purple behind)
+        const rimLight = new THREE.SpotLight('#f472b6', 2.5);
+        rimLight.position.set(-3, 5, -4);
+        rimLight.angle = Math.PI / 4;
+        scene.add(rimLight);
+
+        // Showcase Pedestal (circular toy stand)
+        const pedestalGroup = new THREE.Group();
+        pedestalGroup.position.y = -0.52;
+        scene.add(pedestalGroup);
+
+        const pedestalGeom = new THREE.CylinderGeometry(1.6, 1.7, 0.16, 8);
+        const pedestalMat = new THREE.MeshStandardMaterial({
+            color: '#1e1b4b',
+            roughness: 0.3,
+            metalness: 0.7,
+            flatShading: true
+        });
+        const pedestal = new THREE.Mesh(pedestalGeom, pedestalMat);
+        pedestal.receiveShadow = true;
+        pedestalGroup.add(pedestal);
+
+        // Gold rim around the pedestal
+        const rimGeom = new THREE.CylinderGeometry(1.62, 1.62, 0.04, 8);
+        const rimMat = new THREE.MeshStandardMaterial({
+            color: '#fbbf24', // golden yellow
+            roughness: 0.1,
+            metalness: 0.9,
+            flatShading: true
+        });
+        const rim = new THREE.Mesh(rimGeom, rimMat);
+        rim.position.y = 0.08;
+        pedestalGroup.add(rim);
+
+        // Materials
+        const bodyMat = new THREE.MeshStandardMaterial({ color: '#fafaf9', roughness: 0.65, flatShading: true }); // soft warm white
+        const headMat = new THREE.MeshStandardMaterial({ color: '#f5f5f4', roughness: 0.65, flatShading: true });
+        const earMat = new THREE.MeshStandardMaterial({ color: '#f5f5f4', roughness: 0.65, flatShading: true });
+        const legMat = new THREE.MeshStandardMaterial({ color: '#e7e5e4', roughness: 0.6, flatShading: true });
+        const tailMat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.9, flatShading: true });
+        const mouthMat = new THREE.MeshStandardMaterial({ color: '#e7e5e4', roughness: 0.7, flatShading: true });
+        const eyeMat = new THREE.MeshStandardMaterial({ roughness: 0.1, metalness: 0.9, flatShading: true });
+        const noseMat = new THREE.MeshStandardMaterial({ color: '#fda4af', roughness: 0.4, flatShading: true }); // soft pink
+
+        // Update eye colors
+        function updateEyeColors() {
+            if (isStarving) {
+                eyeMat.color.set('#ef4444');
+            } else {
+                eyeMat.color.set('#0f172a'); // deep dark slate
+            }
+        }
+        updateEyeColors();
+
+        // Build Rabbit Hierarchy
+        const rabbitGroup = new THREE.Group();
+        rabbitGroup.position.set(0, -0.5, 0);
+        scene.add(rabbitGroup);
+
+        // 1. Body
+        const body = new THREE.Mesh(new THREE.SphereGeometry(1, 6, 5), bodyMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        rabbitGroup.add(body);
+
+        // 2. Head
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.62, 6, 5), headMat);
+        head.castShadow = true;
+        head.receiveShadow = true;
+        rabbitGroup.add(head);
+
+        // Snout/Muzzle (overlapping white spheres)
+        const muzzleMat = new THREE.MeshStandardMaterial({ color: '#f5f5f4', roughness: 0.7, flatShading: true });
+        const muzzleL = new THREE.Mesh(new THREE.SphereGeometry(0.12, 5, 4), muzzleMat);
+        muzzleL.position.set(0.5, -0.08, 0.08);
+        muzzleL.scale.set(1, 1, 0.8);
+        head.add(muzzleL);
+
+        const muzzleR = new THREE.Mesh(new THREE.SphereGeometry(0.12, 5, 4), muzzleMat);
+        muzzleR.position.set(0.5, -0.08, -0.08);
+        muzzleR.scale.set(1, 1, 0.8);
+        head.add(muzzleR);
+
+        // Eyes (Glossy, with white highlights/glints)
+        const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), eyeMat);
+        eyeL.position.set(0.35, 0.15, 0.35);
+        head.add(eyeL);
+
+        const eyeR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), eyeMat);
+        eyeR.position.set(0.35, 0.15, -0.35);
+        head.add(eyeR);
+
+        // Eye Glints
+        const glintMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+        
+        const glintL1 = new THREE.Mesh(new THREE.SphereGeometry(0.024, 5, 4), glintMat);
+        glintL1.position.set(0.045, 0.045, 0.045);
+        eyeL.add(glintL1);
+        const glintL2 = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 4), glintMat);
+        glintL2.position.set(0.07, -0.02, 0.02);
+        eyeL.add(glintL2);
+
+        const glintR1 = new THREE.Mesh(new THREE.SphereGeometry(0.024, 5, 4), glintMat);
+        glintR1.position.set(0.045, 0.045, -0.045);
+        eyeR.add(glintR1);
+        const glintR2 = new THREE.Mesh(new THREE.SphereGeometry(0.012, 5, 4), glintMat);
+        glintR2.position.set(0.07, -0.02, -0.02);
+        eyeR.add(glintR2);
+
+        // Cheek Blush (cute pink circles)
+        const blushMat = new THREE.MeshBasicMaterial({ color: '#fecdd3', transparent: true, opacity: 0.75 });
+        const blushL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), blushMat);
+        blushL.position.set(0.36, -0.12, 0.44);
+        blushL.scale.set(1, 1, 0.25);
+        head.add(blushL);
+
+        const blushR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), blushMat);
+        blushR.position.set(0.36, -0.12, -0.44);
+        blushR.scale.set(1, 1, 0.25);
+        head.add(blushR);
+
+        // Nose (attached to Head, positioned nicely above snout)
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.065, 5, 4), noseMat);
+        nose.position.set(0.58, -0.01, 0);
+        head.add(nose);
+
+        // 3 & 4. Ears with pink inner ear overlay
+        const earL = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.8, 4, 6), earMat);
+        earL.castShadow = true;
+        earL.receiveShadow = true;
+        rabbitGroup.add(earL);
+
+        const innerEarMat = new THREE.MeshStandardMaterial({ color: '#fda4af', roughness: 0.6, flatShading: true });
+        const innerEarL = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.6, 4, 6), innerEarMat);
+        innerEarL.position.set(0.05, 0.02, 0.03);
+        innerEarL.scale.set(1, 1, 0.5);
+        earL.add(innerEarL);
+
+        const earR = new THREE.Mesh(new THREE.CapsuleGeometry(0.14, 0.8, 4, 6), earMat);
+        earR.castShadow = true;
+        earR.receiveShadow = true;
+        rabbitGroup.add(earR);
+
+        const innerEarR = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.6, 4, 6), innerEarMat);
+        innerEarR.position.set(0.05, 0.02, -0.03);
+        innerEarR.scale.set(1, 1, 0.5);
+        earR.add(innerEarR);
+
+        // 5 & 6. Front Legs
+        const legFL = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.4, 4, 6), legMat);
+        legFL.castShadow = true;
+        legFL.receiveShadow = true;
+        rabbitGroup.add(legFL);
+
+        const legFR = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.4, 4, 6), legMat);
+        legFR.castShadow = true;
+        legFR.receiveShadow = true;
+        rabbitGroup.add(legFR);
+
+        // 7 & 8. Hind Legs
+        const legHL = new THREE.Mesh(new THREE.SphereGeometry(0.34, 6, 5), legMat);
+        legHL.castShadow = true;
+        legHL.receiveShadow = true;
+        rabbitGroup.add(legHL);
+
+        const legHR = new THREE.Mesh(new THREE.SphereGeometry(0.34, 6, 5), legMat);
+        legHR.castShadow = true;
+        legHR.receiveShadow = true;
+        rabbitGroup.add(legHR);
+
+        // 9. Fluffy Tail (Group of overlapping spheres)
+        const tail = new THREE.Group();
+        rabbitGroup.add(tail);
+
+        const tailCenter = new THREE.Mesh(new THREE.SphereGeometry(0.16, 5, 4), tailMat);
+        tailCenter.castShadow = true;
+        tail.add(tailCenter);
+
+        const tailL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), tailMat);
+        tailL.position.set(-0.06, -0.04, 0.07);
+        tailL.castShadow = true;
+        tail.add(tailL);
+
+        const tailR = new THREE.Mesh(new THREE.SphereGeometry(0.09, 5, 4), tailMat);
+        tailR.position.set(-0.06, -0.04, -0.07);
+        tailR.castShadow = true;
+        tail.add(tailR);
+
+        const tailTop = new THREE.Mesh(new THREE.SphereGeometry(0.10, 5, 4), tailMat);
+        tailTop.position.set(0.01, 0.07, 0);
+        tailTop.castShadow = true;
+        tail.add(tailTop);
+
+        // 10. Mouth (Jaw)
+        const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.26, 1, 1, 1), mouthMat);
+        mouth.castShadow = true;
+        rabbitGroup.add(mouth);
+
+        // Outline Generator - Traverse rabbitGroup to bind outlines
+        rabbitGroup.traverse((node) => {
+            if (node.isMesh) {
+                const edges = new THREE.EdgesGeometry(node.geometry);
+                const lineMat = new THREE.LineBasicMaterial({
+                    color: 0x1e293b,
+                    polygonOffset: true,
+                    polygonOffsetFactor: -1,
+                    polygonOffsetUnits: -1
+                });
+                const outline = new THREE.LineSegments(edges, lineMat);
+                node.add(outline);
+            }
+        });
+
+        // Clock for animations
+        const clock = new THREE.Clock();
+
+        // Animation Loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const t = time * speed;
+
+            // 1. Hopping leg cycles & Breathing
+            const hopY = Math.max(0, Math.sin(t * 3.5)) * 0.4;
+            const legSwing = Math.sin(t * 7);
+            const chewing = isEating ? Math.abs(Math.sin(time * 18)) * 0.12 : 0;
+            const breath = Math.sin(t * 2.0) * 0.03;
+
+            // 3D Rotate entire group based on controls
+            if (rotateSpeed > 0) {
+                rabbitGroup.rotation.y = time * rotateSpeed * 0.5;
+            } else {
+                rabbitGroup.rotation.y = 0;
+            }
+
+            // Apply procedural formulas
+
+            // Thân mình
+            body.position.set(0, 0.7 + hopY, 0);
+            body.scale.set(1.5 + breath, 1.0 + breath, 1.0);
+
+            // Đầu & Các giác quan
+            head.position.set(1.1, 1.2 + hopY - (isEating ? 0.15 : 0), 0);
+            head.rotation.set(0, 0, isEating ? -0.2 : 0.05);
+
+            // Tai
+            earL.position.set(0.9, 1.8 + hopY, 0.25);
+            earL.rotation.set(-0.1, 0, -0.2 - hopY * 0.2);
+
+            earR.position.set(0.9, 1.8 + hopY, -0.25);
+            earR.rotation.set(0.1, 0, -0.2 - hopY * 0.2);
+
+            // Chân trước: di chuyển nhịp nhàng theo hopY và legSwing để không bị lơ lửng hay lún vào thân
+            legFL.position.set(0.6 + legSwing * 0.15, 0.3 + hopY * 0.7 + Math.max(0, legSwing) * 0.1, 0.3);
+            legFL.rotation.set(0, 0, legSwing * 0.3 - hopY * 0.4);
+
+            legFR.position.set(0.6 - legSwing * 0.15, 0.3 + hopY * 0.7 + Math.max(0, -legSwing) * 0.1, -0.3);
+            legFR.rotation.set(0, 0, -legSwing * 0.3 - hopY * 0.4);
+
+            // Chân sau: co gập và duỗi tự nhiên theo pha nhảy hopY
+            legHL.position.set(-0.5 - hopY * 0.1, 0.35 + hopY * 0.5, 0.4);
+            legHL.rotation.set(0, 0, -hopY * 0.5 + legSwing * 0.1);
+
+            legHR.position.set(-0.5 - hopY * 0.1, 0.35 + hopY * 0.5, -0.4);
+            legHR.rotation.set(0, 0, -hopY * 0.5 - legSwing * 0.1);
+
+            // Đuôi
+            tail.position.set(-1.3, 0.9 + hopY, 0);
+
+            // Hàm dưới (Miệng)
+            mouth.position.set(1.4, 0.95 + hopY - chewing, 0);
+            mouth.rotation.set(0, 0, (isEating ? -0.2 : 0) - chewing);
+
+            // Controls update
+            controls.update();
+
+            // Render
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resizing
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+    </script>
+</body>
+</html>
