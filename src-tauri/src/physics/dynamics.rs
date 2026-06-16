@@ -79,13 +79,47 @@ pub fn integrate_physics_system(
         &mut Position,
         &mut Velocity,
         Option<&ParentAgent>,
+        Option<&mut crate::core::ecs::InertiaComponent>,
+        Option<&mut crate::core::ecs::CognitiveState>,
     )>,
     agent_query: Query<&crate::ai::hrrl::HomeostaticState>,
     prey_query: Query<&Prey>,
     time_step: Res<TimeStep>,
+    segment_query: Query<(Entity, &ParentAgent, &Segment)>,
+    mut oscillator_query: Query<&mut CpgOscillator>,
+    mut child_buf: Local<Vec<(u32, Entity)>>,
 ) {
     let dt = time_step.0;
-    for (entity, mut body, mut pos, mut vel, parent_agent) in query.iter_mut() {
+    for (entity, mut body, mut pos, mut vel, parent_agent, mut opt_inertia, mut opt_cog) in query.iter_mut() {
+        if let Some(ref mut inertia) = opt_inertia {
+            // Apply forces towards target_velocity if desired
+            if inertia.target_velocity.length_squared() > 1e-6 {
+                let force_to_target = (inertia.target_velocity - body.velocity) * body.mass * 2.0;
+                body.force += force_to_target;
+            }
+
+            // Timeout check
+            if let Some(ref mut cog_state) = opt_cog {
+                if let crate::core::ecs::CognitiveState::PendingInference(_) = **cog_state {
+                    inertia.ticks_pending += 1;
+                    if inertia.ticks_pending > 5 {
+                        **cog_state = crate::core::ecs::CognitiveState::Ready;
+                        inertia.ticks_pending = 0;
+                        inertia.cpg_parameters = [1.0, 0.0, 1.0, 0.0];
+
+                        // Reset actions to CPG baseline on oscillators
+                        crate::core::agent_systems::apply_inertia_to_oscillators(
+                            entity,
+                            &inertia.cpg_parameters,
+                            &segment_query,
+                            &mut oscillator_query,
+                            &mut child_buf,
+                        );
+                    }
+                }
+            }
+        }
+
         let is_depleted = if let Some(parent) = parent_agent {
             if let Ok(homeo) = agent_query.get(parent.0) {
                 homeo.energy <= 0.0

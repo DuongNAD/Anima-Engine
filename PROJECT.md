@@ -74,6 +74,17 @@ Anima-Engine is a real-time, GPU-accelerated Artificial Life (ALife) and Evoluti
 | I32 | E2E Verification & Integration | Integrate components, compile backend/frontend, pass Phase 5 E2E tests | I28, I29, I30, I31, T11 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 | I33 | Adversarial Coverage Hardening | Tier 5 white-box coverage hardening for Phase 5 features | I32 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 
+### Phase 6: Persistent 2D Ecological Sandbox & God's Eye View Renderer
+| # | Name | Scope | Dependencies | Status | Agent ID |
+|---|------|-------|-------------|--------|----------|
+| T12 | E2E Setup & Infrastructure (Phase 6) | Define & implement test harness, E2E integration tests for persistence, environmental elements, and PixiJS view | None | DONE | c6f696dd-e7c8-45d2-98bd-e53c7153b079 |
+| T13 | Full Tier Coverage (Phase 6) | Write Tier 1-4 tests verifying save/load, lake drinking, tree eating, PixiJS entities, camera controls | T12 | IN_PROGRESS | ecc413d1-b8cf-4b8e-9e9c-662fcee59c0f |
+| I34 | Persistent Ecological World State | Implement save and load systems, storage mechanisms (JSON/SQLite), and Bevy ECS setup | None | PLANNED | |
+| I35 | Bevy ECS Environmental Elements | Lakes, Trees, growth, seed drop, hydration and energy transfer, overlap systems | None | PLANNED | |
+| I36 | PixiJS God's Eye View Renderer | Frontend React updates, asset drawing (lakes, trees, agents, sensors), pan/zoom controls | None | PLANNED | |
+| I37 | E2E Verification & Integration | Integration of all systems, passing Tier 1-4 tests, zero allocation loop checks | I34, I35, I36, T13 | PLANNED | |
+| I38 | Adversarial Coverage Hardening | White-box coverage analysis and verification (Tier 5) | I37 | PLANNED | |
+
 ## Interface Contracts
 ### Tauri Commands
 - `get_simulation_status` -> `SimulationStatus`
@@ -85,6 +96,9 @@ Anima-Engine is a real-time, GPU-accelerated Artificial Life (ALife) and Evoluti
 - `get_active_raycasts` -> `Vec<RaycastTelemetry>`
 - `get_lineage_graph` -> `LineageGraphState`
 - `get_chronicle_history` -> `Vec<ChronicleEvent>`
+- `save_simulation_state(file_path: String) -> bool`
+- `load_simulation_state(file_path: String) -> bool`
+- `get_environmental_elements() -> EnvironmentalState`
 
 ### Tauri Events
 - `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)

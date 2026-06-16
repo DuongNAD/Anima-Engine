@@ -1,6 +1,6 @@
-# Anima-Engine E2E Testing Infrastructure (Phase 2 & Phase 3)
+# Anima-Engine E2E Testing Infrastructure (Phase 2, Phase 3, Phase 4, Phase 5 & Phase 6)
 
-This document describes the design, feature inventory, testing methodology, and coverage goals for the End-to-End (E2E) testing infrastructure implemented for **Anima-Engine Phase 2 (Neural Control & Evolution)** and **Phase 3 (Socialization & Emergent Behaviors)**.
+This document describes the design, feature inventory, testing methodology, and coverage goals for the End-to-End (E2E) testing infrastructure implemented for **Anima-Engine Phase 2 (Neural Control & Evolution)**, **Phase 3 (Socialization & Emergent Behaviors)**, **Phase 4 (Distributed Universe, Meta-AI & Neo4j)**, **Phase 5 (Architecture Optimization, GPU Acceleration, High-Performance Frontend & Gemini Web Integration)**, and **Phase 6 (Persistent 2D Ecological Sandbox & God's Eye View Renderer)**.
 
 ---
 
@@ -62,6 +62,9 @@ The testing suite covers the following features and requirements for Phase 2 and
 | **F22** | Distributed Socket Migration | WebSocket migration serialization & deserialization between local ports | Rust integration tests (`migration_tests.rs`) |
 | **F23** | Lineage Graph UI | SVG tree rendering of family tree lineages on the React dashboard | Frontend Vitest & Playwright E2E tests |
 | **F24** | Meta-AI Chronicle UI | Notification warnings and historical timeline of Gemini events | Frontend Vitest & Playwright E2E tests |
+| **F25** | State Persistence | Save/load simulation state including agents and environment to JSON/file | Rust integration tests & E2E verification |
+| **F26** | Bevy ECS Environment Overlaps | Prey eating food/fruit from trees, drinking water from lakes with metabolic updates | Rust integration tests & collision checks |
+| **F27** | PixiJS God's Eye View & Camera controls | React pan/zoom wrapper, rendering blue lakes, green trees, head directions, sensor beams | Frontend Vitest & Playwright E2E tests |
 
 ---
 
@@ -74,6 +77,7 @@ The testing suite covers the following features and requirements for Phase 2 and
 - **Lineage Graph & Mother Nature commands**: Verifies that frontend components successfully invoke `get_lineage_graph` and `get_chronicle_history` on mount and process returned JSON structures.
 - **Tauri event listeners (Phase 4)**: Verifies that custom event emitters (`chronicle-event`, `migration-event`) trigger state updates, react alerts, and timeline log additions.
 - **Distributed migration socket transmission**: Verifies local port setup, WebSocket connection, and correct serialized payload delivery under standard network conditions.
+- **Phase 6 State & View operations**: Verifying serialization/deserialization, environment initialization, drinking/eating collision-replenishment, panning/zooming.
 
 ### Tier 2 - Boundary & Corner Cases
 - **Empty / Default states**: Verifies frontend behavior when no pheromones are present or no raycasts are active.
@@ -82,16 +86,19 @@ The testing suite covers the following features and requirements for Phase 2 and
 - **Neo4j Offline Fallback**: Verifies backend behavior when Neo4j is offline or credentials in `.env` are invalid. The system must switch to in-memory fallback without crashing.
 - **Mock LLM Fallback**: Verifies that the Mother Nature environment engine falls back to generating random, valid offline events (e.g. Drought, Temperature Spike, Predator Wave) every $N$ ticks when the Gemini API is unreachable or no API key is set.
 - **Migration socket failure boundaries**: Asserts that when the target migration port is closed, offline, or dropped mid-stream, the agent is not lost, or the server handles socket errors gracefully.
+- **Phase 6 edge cases**: Missing/corrupt saves, zero-agent saves, zoom/pan bounds, boundary overlaps.
 
 ### Tier 3 - Cross-Feature Combinations
 - **Canvas Rendering overlays**: Asserts that `canvas.getContext('2d')` drawing methods (`beginPath`, `arc`, `moveTo`, `lineTo`, `fill`, `stroke`) are invoked dynamically with correct color styles, geometries (triangles for predators, circles for prey), and lines (representing active raycast paths) when simulation updates occur.
 - **Grid state sync**: Verifies interaction between interactive settings panel, grid updates, and backend telemetry values.
 - **SVG Lineage Graph Tree Layout**: Verifies the calculation and rendering of parent-child node relationships, ensuring dynamic drawing of nodes and path strokes in the React hierarchy component.
 - **Gemini environmental triggers**: Asserts the interaction between environmental state updates and Bevy simulation parameters, confirming that a Temperature Spike increases metabolic decay or a Drought lowers maximum food count in Bevy systems.
+- **Phase 6 system persistence & integration**: Persistence of entities across restarts, neural net direction to lake/tree and save.
 
 ### Tier 4 - Real-World Application Scenarios
 - **Headless E2E Simulation**: Playwright tests launch the frontend on `http://localhost:5173`, asserting that the canvas rendering canvas and the Phase 3 panel (with sections: Pheromone Heatmap, Sensor Beams, Combat Event Log) are visible and dynamically structured. Includes graceful skip fallback.
 - **Headless E2E Simulation (Phase 4)**: Playwright tests launch the frontend on `http://localhost:5173`, asserting that the SVG lineage graph tree renders nodes correctly and the Mother Nature timeline alert panel lists historical events dynamically with the correct visual banners.
+- **Phase 6 Headless E2E rendering**: Playwright E2E rendering of lakes, trees, animal direction lines, camera panning and zoom drag.
 
 ---
 
@@ -106,3 +113,8 @@ For **Phase 4**, coverage targets:
 - **Fallback Integrity**: 100% verification that both Neo4j persistence and Gemini LLM integration degrade gracefully to in-memory history mapping and mock events under connection failure/offline states.
 - **Zero-Data-Loss Migration**: Ensure agent genotypes, physiological states, positions, and velocities are completely preserved when serialized/deserialized across local sockets.
 - **UI Dynamic Rendering**: Ensure the React SVG lineage tree adjusts its nodes dynamically based on active generation queries, and timeline alerts correctly display active warnings without UI blocking.
+
+For **Phase 6**, coverage targets:
+- **Persistence Integrity**: 100% verification of serialization/deserialization correctness, ensuring full environment and agent states can be saved to and loaded from disk without loss of precision.
+- **Environmental ECS Simulation**: Ensure correct overlap detection, metabolic resource transfer (water/energy), and regeneration loops for trees and lakes are active and robust.
+- **God's Eye Rendering & Controls**: Confirm that lakes, trees, and agents (including head direction and sensor beams) are correctly drawn, and React/PixiJS pan/zoom controls respond dynamically within designated bounds.

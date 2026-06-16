@@ -67,7 +67,10 @@ export interface SegmentState {
   joint_axis_z: number;
   energy: number;
   agent_type?: 'predator' | 'prey';
+  hydration?: number;
+  head_direction?: [number, number, number];
 }
+
 
 export interface AgentHierarchy {
   agent_id: number;
@@ -400,6 +403,66 @@ export const mockMigrationPayload: MigrationPayload = {
   status: "Success",
   timestamp: Date.now(),
 };
+
+// --- Phase 6 Interfaces ---
+export interface EnvironmentalElement {
+  type: 'lake' | 'tree' | string;
+  x: number;
+  y: number;
+  radius: number;
+  resources: number;
+}
+
+export interface EnvironmentalState {
+  elements: EnvironmentalElement[];
+}
+
+export interface HeadDirectionTelemetry {
+  agent_id: number;
+  direction: [number, number, number];
+}
+
+export interface SimulationTickPayload {
+  segments: SegmentState[];
+  environmental_state: EnvironmentalState;
+  head_directions: HeadDirectionTelemetry[];
+}
+
+// --- Phase 6 Mock Data ---
+export const mockEnvironmentalState: EnvironmentalState = {
+  elements: [
+    {
+      type: 'lake',
+      x: 50,
+      y: 50,
+      radius: 30,
+      resources: 100
+    },
+    {
+      type: 'tree',
+      x: -50,
+      y: -50,
+      radius: 10,
+      resources: 50
+    }
+  ]
+};
+
+export const mockSimulationTickPayload: SimulationTickPayload = {
+  segments: mockSegmentStates.map(seg => ({
+    ...seg,
+    hydration: 75.0,
+    head_direction: [1.0, 0.0, 0.0] as [number, number, number]
+  })),
+  environmental_state: mockEnvironmentalState,
+  head_directions: [
+    {
+      agent_id: 1,
+      direction: [1.0, 0.0, 0.0]
+    }
+  ]
+};
+
 
 
 
