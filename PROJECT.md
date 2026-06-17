@@ -74,6 +74,20 @@ Anima-Engine is a real-time, GPU-accelerated Artificial Life (ALife) and Evoluti
 | I32 | E2E Verification & Integration | Integrate components, compile backend/frontend, pass Phase 5 E2E tests | I28, I29, I30, I31, T11 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 | I33 | Adversarial Coverage Hardening | Tier 5 white-box coverage hardening for Phase 5 features | I32 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 
+### Phase 6: Photorealistic Landscape Showcase
+| # | Name | Scope | Dependencies | Status | Agent ID |
+|---|------|-------|-------------|--------|----------|
+| T12 | Test Suite & Harness Setup (Phase 6) | Setup Vitest E2E test suite & harness covering feature, boundary, pairwise, and application scenarios for landscape components | None | DONE | ee0b2e77-dcec-45fd-b889-570a358c00f6 |
+| I34 | Procedural Heightmap & Hydrology | Layered noise-based 500x500 terrain generation with Level-of-Detail (LOD), biome classification, and river/lake/waterfall systems | None | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I35 | Custom Terrain & Water Shaders | Custom shaders for terrain biome blending and animated water with reflection, wave displacement, and transparency/depth coloring | I34 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I36 | Instanced Vegetation with Wind Sway | GPU-instanced rendering of multiple tree species and ground cover with dynamic wind sway animation | I34 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I37 | Day-Night Cycle & Atmospheric sky | Dynamic skybox, procedural/billboard cloud rendering, and a complete day-night cycle with moving shadows | None | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I38 | Weather Transitions & Effects | Dynamic weather rendering (rain splashes, snow accumulation, mist/fog) with smooth transitions | I37 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I39 | Positional Web Audio & Cameras | Web Audio API integration for 3D positional ambiance and Orbit/Fly camera modes with terrain collision | I34 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I40 | Dashboard Controls & App Integration | React UI dashboard for weather/time/camera controls, integrated seamlessly into the Vite + React frontend | I38, I39 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I41 | E2E Verification & Audit Hardening | Integrate components, compile frontend, pass 93 Vitest E2E test cases, and perform audit hardening | I35, I36, I40, T12 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
+| I42 | Custom GLSL Water Shader Upgrade | Upgrade water bodies to custom ShaderMaterial with depth blending, shoreline foam, Day/Night lighting, and CPU optimization | I41 | DONE | c62e8336-a13e-4dd5-b541-68894ef08c8d |
+
 ## Interface Contracts
 ### Tauri Commands
 - `get_simulation_status` -> `SimulationStatus`

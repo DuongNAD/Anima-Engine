@@ -12,6 +12,7 @@
     "test:frontend": "vitest run --config vitest.config.ts --root tests"
   },
   "dependencies": {
+    "@playwright/test": "^1.61.0",
     "@react-three/fiber": "^8.13.0",
     "@tauri-apps/api": "^2.0.0",
     "@types/three": "^0.184.1",

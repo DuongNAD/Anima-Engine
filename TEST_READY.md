@@ -1,33 +1,26 @@
-# E2E Test Suite Ready - Phase 5
+# E2E Test Suite Ready
 
 ## Test Runner
-- **Backend Tests**:
-  - Command: `cd src-tauri && cargo test`
-  - Expected: all tests pass with exit code 0
-- **Frontend Tests**:
-  - Command: `cd tests && npm run test:frontend`
-  - Expected: all tests pass with exit code 0
-- **E2E Tests**:
-  - Command: `cd tests && npm run test:e2e`
-  - Expected: all tests pass or skip gracefully with exit code 0
-- **Production Build**:
-  - Command: `npm run build`
-  - Expected: project builds successfully
+- Command: `npm run test:frontend`
+- Expected: all tests pass with exit code 0
 
 ## Coverage Summary
 | Tier | Count | Description |
 |------|------:|-------------|
-| 1. Feature Coverage | 20 | Verify modular backend compile, WGPU model execution, crossbeam channel startup, PixiJS mounting, and Gemini client wrappers. |
-| 2. Boundary & Corner | 8 | Verify ndarray fallback under WGPU initialization failures, empty world zero-heap ECS ticks, empty telemetry UI loads, and offline LLM fallbacks. |
-| 3. Cross-Feature | 8 | Verify CPG controllers under CPU fallback, channel shutdown message drains, and canvas renderer predator/prey overlays. |
-| 4. Real-World Application | 8 | Verify rapid toggling of simulation engine (25+ times) under load, and chronicle timeline deltas warning alerts. |
-| **Total** | **44** | |
+| 1. Feature Coverage | 40 | 5 tests per feature for all 8 features |
+| 2. Boundary & Corner | 40 | 5 tests per feature (min/max limits, invalid bounds) |
+| 3. Cross-Feature | 8 | Pairwise combinations of feature interactions |
+| 4. Real-World Application | 5 | Realistic application use-case scenario workloads |
+| **Total** | **93** | |
 
 ## Feature Checklist
 | Feature | Tier 1 | Tier 2 | Tier 3 | Tier 4 |
 |---------|:------:|:------:|:------:|:------:|
-| Codebase Modularity & Zero-Heap ECS | 5 | 5 | ✓ | ✓ |
-| Burn GPU Acceleration & CPU Fallback | 5 | 5 | ✓ | ✓ |
-| Crossbeam Channel Reset Lifecycle | 5 | 5 | ✓ | ✓ |
-| PixiJS Frontend Canvas Renderer | 5 | 5 | ✓ | ✓ |
-| Gemini Web-Session API Wrapping & Logs | 5 | 5 | ✓ | ✓ |
+| F1: Procedural Terrain | 5/5 | 5/5 | ✓ | ✓ |
+| F2: Advanced Water Rendering | 5/5 | 5/5 | ✓ | ✓ |
+| F3: Rich Vegetation | 5/5 | 5/5 | ✓ | ✓ |
+| F4: Atmospheric Sky & Lighting | 5/5 | 5/5 | ✓ | ✓ |
+| F5: Weather Effects | 5/5 | 5/5 | ✓ | ✓ |
+| F6: Environmental Audio | 5/5 | 5/5 | ✓ | ✓ |
+| F7: Camera Controls | 5/5 | 5/5 | ✓ | ✓ |
+| F8: Technical/App Integration | 5/5 | 5/5 | ✓ | ✓ |

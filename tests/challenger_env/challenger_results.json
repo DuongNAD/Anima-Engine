@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-06-17T14:40:59.321Z",
+  "testPassed": true,
+  "consoleErrorsCount": 0,
+  "consoleErrors": [],
+  "lakeLevelCheckPassed": true,
+  "lakeLevelViolations": [],
+  "peakProximityCheckPassed": true,
+  "proximityViolations": [],
+  "lakes": [
+    {
+      "x": 79,
+      "y": 14,
+      "waterY": 13.95290470123291,
+      "r": 10,
+      "spillX": 69,
+      "spillY": 10
+    },
+    {
+      "x": 33,
+      "y": 85,
+      "waterY": 16.144134521484375,
+      "r": 9,
+      "spillX": 30,
+      "spillY": 95
+    },
+    {
+      "x": 95,
+      "y": 89,
+      "waterY": 24.523324966430664,
+      "r": 9,
+      "spillX": 86,
+      "spillY": 93
+    },
+    {
+      "x": 137,
+      "y": 35,
+      "waterY": 18.56395721435547,
+      "r": 8,
+      "spillX": 146,
+      "spillY": 34
+    },
+    {
+      "x": 127,
+      "y": 91,
+      "waterY": 21.908056259155273,
+      "r": 9,
+      "spillX": 128,
+      "spillY": 81
+    }
+  ],
+  "waterBodiesCount": 5
+}

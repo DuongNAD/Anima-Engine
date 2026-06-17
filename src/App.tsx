@@ -4,6 +4,8 @@ import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
+const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
+
 
 export interface SegmentState {
   agent_id: number;
@@ -226,6 +228,8 @@ export function App() {
   const [gridResolution, setGridResolution] = useState<number>(50);
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
   const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
+  const [showLandscape, setShowLandscape] = useState<boolean>(false);
+
 
   // Phase 3 states and refs
   const [pheromoneGrid, setPheromoneGrid] = useState<PheromoneGridState | null>(null);
@@ -658,22 +662,47 @@ export function App() {
           <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
           <p style={{ margin: "5px 0 0 0", color: "#4a5568" }}>Hệ thống giám sát thực thể đa liên kết (Multi-segment Agents)</p>
         </div>
-        <button
-          onClick={() => setShowRabbitTest(!showRabbitTest)}
-          style={{
-            padding: "10px 20px",
-            fontSize: "14px",
-            fontWeight: "bold",
-            backgroundColor: showRabbitTest ? "#3182ce" : "#805ad5",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            transition: "background-color 0.2s",
-          }}
-        >
-          {showRabbitTest ? "⬅️ Trở về Simulation" : "🐰 Thử nghiệm Thỏ (Three.js)"}
-        </button>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <button
+            onClick={() => {
+              setShowRabbitTest(!showRabbitTest);
+              if (showLandscape) setShowLandscape(false);
+            }}
+            style={{
+              padding: "10px 20px",
+              fontSize: "14px",
+              fontWeight: "bold",
+              backgroundColor: showRabbitTest ? "#3182ce" : "#805ad5",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              transition: "background-color 0.2s",
+            }}
+          >
+            {showRabbitTest ? "⬅️ Trở về Simulation" : "🐰 Thử nghiệm Thỏ (Three.js)"}
+          </button>
+          <button
+            onClick={() => {
+              setShowLandscape(!showLandscape);
+              if (showRabbitTest) setShowRabbitTest(false);
+            }}
+            style={{
+              padding: "10px 20px",
+              fontSize: "14px",
+              fontWeight: "bold",
+              backgroundColor: showLandscape ? "#3182ce" : "#38a169",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: "pointer",
+              transition: "background-color 0.2s",
+              marginLeft: "10px"
+            }}
+          >
+            {showLandscape ? "⬅️ Trở về Simulation" : "🏞️ Landscape Showcase"}
+          </button>
+        </div>
       </header>
 
       {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
@@ -731,6 +760,12 @@ export function App() {
         <div style={{ marginBottom: "20px" }}>
           <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Rabbit Visualizer...</div>}>
             <RabbitVisualizer />
+          </Suspense>
+        </div>
+      ) : showLandscape ? (
+        <div style={{ marginBottom: "20px" }}>
+          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Landscape Showcase...</div>}>
+            <LandscapeShowcase />
           </Suspense>
         </div>
       ) : (

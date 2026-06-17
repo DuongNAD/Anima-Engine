@@ -1,5 +1,6 @@
 import { vi, beforeEach } from 'vitest';
 import { mockIPC } from '@tauri-apps/api/mocks';
+import * as THREE from 'three';
 import {
   mockSimulationStatus as originalStatus,
   mockEvolutionSettings as originalEvolutionSettings,
@@ -47,6 +48,67 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (th
   }
   return null;
 }) as any;
+
+// Mock OrbitControls update method on HTMLElement to support JSDOM testing
+(HTMLElement.prototype as any).update = vi.fn();
+
+// Mock BufferGeometry methods and attributes on HTMLElement to support React Three Fiber under JSDOM
+(HTMLElement.prototype as any).setIndex = vi.fn().mockImplementation(function (this: any, index: any) {
+  this._capturedIndex = index;
+  return this;
+});
+
+(HTMLElement.prototype as any).computeVertexNormals = vi.fn();
+
+// Capture custom attributes set on elements (like BufferAttributes on bufferGeometry)
+Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
+  get() {
+    if (!this.__capturedAttributes) {
+      this.__capturedAttributes = new Map();
+    }
+    return this.__capturedAttributes;
+  },
+  configurable: true,
+});
+
+const originalSetAttribute = HTMLElement.prototype.setAttribute;
+HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
+  this: any,
+  name: string,
+  value: any
+) {
+  if (value instanceof THREE.BufferAttribute) {
+    this._capturedAttributes.set(name, value);
+  } else {
+    originalSetAttribute.call(this, name, value);
+  }
+});
+
+// Mock geometry getter (used by particle systems/points)
+Object.defineProperty(HTMLElement.prototype, 'geometry', {
+  get() {
+    if (!this._mockGeometry) {
+      this._mockGeometry = {
+        getAttribute: vi.fn().mockImplementation((name: string) => {
+          if (name === 'position') {
+            if (!this._mockPositionAttr) {
+              this._mockPositionAttr = {
+                array: new Float32Array(1000 * 3),
+                needsUpdate: false,
+              };
+            }
+            return this._mockPositionAttr;
+          }
+          return null;
+        }),
+      };
+    }
+    return this._mockGeometry;
+  },
+  configurable: true,
+});
+
+
 
 // Global event bus listeners for testing IPC events
 const listeners = new Map<string, Array<(event: any) => void>>();
