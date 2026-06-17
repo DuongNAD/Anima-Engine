@@ -9,6 +9,43 @@ vi.mock("../playground/RabbitVisualizer", () => ({
   default: () => <div data-testid="rabbit-visualizer-mock">Mock Rabbit Visualizer</div>,
 }));
 
+// Mock pixi.js
+const mockGraphicsMethods = {
+  clear: vi.fn().mockReturnThis(),
+  beginFill: vi.fn().mockReturnThis(),
+  drawCircle: vi.fn().mockReturnThis(),
+  drawPolygon: vi.fn().mockReturnThis(),
+  endFill: vi.fn().mockReturnThis(),
+  lineStyle: vi.fn().mockReturnThis(),
+  moveTo: vi.fn().mockReturnThis(),
+  lineTo: vi.fn().mockReturnThis(),
+  drawRect: vi.fn().mockReturnThis(),
+};
+
+vi.mock("pixi.js", () => {
+  return {
+    Application: vi.fn().mockImplementation(() => ({
+      init: vi.fn().mockResolvedValue(undefined),
+      canvas: document.createElement('canvas'),
+      stage: {
+        addChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+      renderer: {},
+      ticker: {
+        add: vi.fn(),
+        remove: vi.fn(),
+      },
+      destroy: vi.fn(),
+    })),
+    Graphics: vi.fn().mockImplementation(() => mockGraphicsMethods),
+    Container: vi.fn().mockImplementation(() => ({
+      addChild: vi.fn(),
+      removeChild: vi.fn(),
+    })),
+  };
+});
+
 // Giả lập @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockImplementation((command) => {
@@ -112,15 +149,11 @@ describe("Anima-Engine Frontend IPC Integration", () => {
     await waitFor(() => {
       expect(container.querySelector("canvas")).toBeInTheDocument();
     });
-    const canvas = container.querySelector("canvas") as HTMLCanvasElement;
 
     // Extra tick to let the async listen register
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-
-    const ctx = canvas.getContext("2d");
-    expect(ctx).toBeDefined();
 
     // Trigger simulation-tick event
     await act(async () => {
@@ -171,12 +204,12 @@ describe("Anima-Engine Frontend IPC Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    // Verify canvas APIs were invoked
-    expect(ctx?.clearRect).toHaveBeenCalled();
-    expect(ctx?.beginPath).toHaveBeenCalled();
-    expect(ctx?.arc).toHaveBeenCalled();
-    expect(ctx?.moveTo).toHaveBeenCalled();
-    expect(ctx?.lineTo).toHaveBeenCalled();
-    expect(ctx?.fill).toHaveBeenCalled();
+    // Verify canvas APIs were invoked via PIXI mock
+    expect(mockGraphicsMethods.clear).toHaveBeenCalled();
+    expect(mockGraphicsMethods.beginFill).toHaveBeenCalled();
+    expect(mockGraphicsMethods.drawCircle).toHaveBeenCalled();
+    expect(mockGraphicsMethods.drawPolygon).toHaveBeenCalled();
+    expect(mockGraphicsMethods.moveTo).toHaveBeenCalled();
+    expect(mockGraphicsMethods.lineTo).toHaveBeenCalled();
   });
 });

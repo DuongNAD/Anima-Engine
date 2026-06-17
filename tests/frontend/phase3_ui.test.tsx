@@ -13,6 +13,43 @@ import {
   CombatEvent
 } from '../mocks/mock_ipc_payloads';
 
+// Mock pixi.js
+const mockGraphicsMethods = {
+  clear: vi.fn().mockReturnThis(),
+  beginFill: vi.fn().mockReturnThis(),
+  drawCircle: vi.fn().mockReturnThis(),
+  drawPolygon: vi.fn().mockReturnThis(),
+  endFill: vi.fn().mockReturnThis(),
+  lineStyle: vi.fn().mockReturnThis(),
+  moveTo: vi.fn().mockReturnThis(),
+  lineTo: vi.fn().mockReturnThis(),
+  drawRect: vi.fn().mockReturnThis(),
+};
+
+vi.mock('pixi.js', () => {
+  return {
+    Application: vi.fn().mockImplementation(() => ({
+      init: vi.fn().mockResolvedValue(undefined),
+      canvas: document.createElement('canvas'),
+      stage: {
+        addChild: vi.fn(),
+        removeChild: vi.fn(),
+      },
+      renderer: {},
+      ticker: {
+        add: vi.fn(),
+        remove: vi.fn(),
+      },
+      destroy: vi.fn(),
+    })),
+    Graphics: vi.fn().mockImplementation(() => mockGraphicsMethods),
+    Container: vi.fn().mockImplementation(() => ({
+      addChild: vi.fn(),
+      removeChild: vi.fn(),
+    })),
+  };
+});
+
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
   return {
@@ -148,6 +185,11 @@ describe('Phase 3 Front-end UI & Canvas Rendering', () => {
   it('should invoke canvas drawing methods for pheromone heatmap, sensor beams, and predator/prey geometries', async () => {
     render(<App />);
 
+    // Wait for async initPixi to complete and register event listeners
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
     // Seed canvas segments data via simulation-tick to trigger agent rendering
     await act(async () => {
       await emit('simulation-tick', mockSegmentStates);
@@ -158,16 +200,14 @@ describe('Phase 3 Front-end UI & Canvas Rendering', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
-    // Verify pheromone drawing calls (which calls fill or arc)
-    expect(mockCtx.beginPath).toHaveBeenCalled();
-    expect(mockCtx.fill).toHaveBeenCalled();
+    // Verify pheromone drawing calls (which calls drawRect)
+    expect(mockGraphicsMethods.drawRect).toHaveBeenCalled();
 
-    // Verify sensor beam drawing (which uses moveTo/lineTo/stroke)
-    expect(mockCtx.moveTo).toHaveBeenCalled();
-    expect(mockCtx.lineTo).toHaveBeenCalled();
-    expect(mockCtx.stroke).toHaveBeenCalled();
+    // Verify sensor beam drawing (which uses moveTo/lineTo)
+    expect(mockGraphicsMethods.moveTo).toHaveBeenCalled();
+    expect(mockGraphicsMethods.lineTo).toHaveBeenCalled();
 
-    // Verify predator drawing (which closes path)
-    expect(mockCtx.closePath).toHaveBeenCalled();
+    // Verify predator drawing (which uses drawPolygon)
+    expect(mockGraphicsMethods.drawPolygon).toHaveBeenCalled();
   });
 });

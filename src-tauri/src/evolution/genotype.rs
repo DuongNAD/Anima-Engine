@@ -50,7 +50,7 @@ pub fn decode_genotype(
     use crate::ai::hrrl::{HomeostaticState, LastTransitionState};
     use crate::core::ecs::{
         Agent, ChildrenLinks, JointAxis, ParentAgent, ParentLink, Position, Rotation, Segment,
-        SegmentJointForce, Velocity,
+        SegmentJointForce, Velocity, CognitiveState, InertiaComponent, SensoryBufferComponent,
     };
     use crate::physics::dynamics::{JointConstraint, RigidBody};
     use crate::physics::SpatialCollider;
@@ -105,6 +105,9 @@ pub fn decode_genotype(
             },
             ChildrenLinks(Vec::new()),
             SpatialCollider { radius: root_node.radius },
+            CognitiveState::default(),
+            InertiaComponent::default(),
+            SensoryBufferComponent::default(),
         ))
         .id();
 

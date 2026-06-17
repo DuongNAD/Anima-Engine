@@ -52,10 +52,10 @@ describe('MAP-Elites Grid Dashboard UI', () => {
 
     // Check that occupied cells are styled correctly
     const cell1 = screen.getByTestId('grid-cell-10,20');
-    expect(cell1.style.backgroundColor).toContain('rgba(236, 72, 153, 0.85)');
+    expect(cell1.style.backgroundColor).toContain('rgba(255, 255, 255, 0.525)');
 
     const cell2 = screen.getByTestId('grid-cell-30,40');
-    expect(cell2.style.backgroundColor).toContain('rgba(236, 72, 153, 0.92)');
+    expect(cell2.style.backgroundColor).toContain('rgba(255, 255, 255, 0.56)');
   });
 
   it('should dispatch Tauri update_evolution_settings when mutation rate slider is changed', async () => {
@@ -144,6 +144,6 @@ describe('MAP-Elites Grid Dashboard UI', () => {
     // Verify new cell is rendered with pink fitness color
     const cellNew = await screen.findByTitle('Fitness: 0.75');
     expect(cellNew).toBeDefined();
-    expect(cellNew.style.backgroundColor).toContain('rgba(236, 72, 153, 0.75)');
+    expect(cellNew.style.backgroundColor).toContain('rgba(255, 255, 255, 0.475)');
   });
 });

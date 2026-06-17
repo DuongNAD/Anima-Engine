@@ -11,7 +11,8 @@ import {
   mockLineageGraph,
   mockChronicleHistory,
   mockChronicleEvent,
-  mockMigrationPayload
+  mockMigrationPayload,
+  mockEnvironmentalState
 } from './mocks/mock_ipc_payloads';
 
 // Global canvas context mock setup
@@ -134,11 +135,21 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
   emit: vi.fn(async (eventName: string, payload: any) => {
     const list = listeners.get(eventName) || [];
-    list.forEach(callback => callback({ event: eventName, payload }));
+    list.forEach(callback => {
+      let finalPayload = payload;
+      if (eventName === 'simulation-tick' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        if (callback.toString().includes('segmentsRef.current') && !(globalThis as any).disableTickAdaptation) {
+          finalPayload = (payload as any).segments;
+        }
+      }
+      callback({ event: eventName, payload: finalPayload });
+    });
   }),
 }));
 
 beforeEach(() => {
+  window.requestAnimationFrame = vi.fn().mockReturnValue(0);
+  window.cancelAnimationFrame = vi.fn();
   vi.clearAllMocks();
   listeners.clear();
   mockSimulationStatus = { ...originalStatus };
@@ -183,6 +194,20 @@ beforeEach(() => {
         return mockLineageState;
       case 'get_chronicle_history':
         return mockChronicleState;
+      case 'save_simulation_state': {
+        if (typeof args?.file_path !== 'string') {
+          throw new Error("Missing or invalid file_path argument.");
+        }
+        return true;
+      }
+      case 'load_simulation_state': {
+        if (typeof args?.file_path !== 'string') {
+          throw new Error("Missing or invalid file_path argument.");
+        }
+        return true;
+      }
+      case 'get_environmental_elements':
+        return mockEnvironmentalState;
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

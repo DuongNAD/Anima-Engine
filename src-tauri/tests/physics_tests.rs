@@ -384,3 +384,122 @@ fn test_spatial_grid_zero_allocation() {
 
     assert_eq!(allocs, 0, "Raycast should perform 0 heap allocations, but made {}", allocs);
 }
+
+#[test]
+fn test_decoupled_systems_zero_allocation() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+
+    // Insert necessary resources
+    let bounds = MapBounds {
+        min: Vec3::new(-100.0, 0.0, -100.0),
+        max: Vec3::new(100.0, 10.0, 100.0),
+    };
+    world.insert_resource(bounds);
+    world.insert_resource(TimeStep(0.01));
+
+    let grid = SpatialHashGrid::new_prepopulated(10.0, &bounds);
+    world.insert_resource(grid);
+
+    // Create and insert InferenceChannels
+    let (req_tx, req_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceRequestBatch>();
+    let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceRequestBatch>();
+    let (res_tx, res_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceResponseBatch>();
+    let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceResponseBatch>();
+
+    // Pre-populate pools
+    for _ in 0..8 {
+        let req_batch = anima_engine_lib::core::agent_systems::InferenceRequestBatch {
+            requests: Vec::with_capacity(32),
+        };
+        let res_batch = anima_engine_lib::core::agent_systems::InferenceResponseBatch {
+            responses: Vec::with_capacity(32),
+        };
+        let _ = recycle_req_tx.send(req_batch);
+        let _ = recycle_res_tx.send(res_batch);
+    }
+
+    let channels = anima_engine_lib::core::agent_systems::InferenceChannels {
+        req_tx,
+        recycle_req_rx,
+        res_rx,
+        recycle_res_tx,
+    };
+    world.insert_resource(channels);
+
+    // Spawn agent entity
+    let agent = world.spawn((
+        anima_engine_lib::core::ecs::Agent,
+        Position(Vec3::ZERO),
+        Rotation(Quat::IDENTITY),
+        Velocity(Vec3::ZERO),
+        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
+        anima_engine_lib::ai::hrrl::HomeostaticState {
+            energy: 100.0,
+            energy_target: 100.0,
+            hydration: 100.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+        },
+        anima_engine_lib::core::ecs::CognitiveState::default(),
+        anima_engine_lib::core::ecs::InertiaComponent::default(),
+        anima_engine_lib::core::ecs::SensoryBufferComponent::default(),
+    )).id();
+
+    // Insert ParentAgent to identify itself
+    world.entity_mut(agent).insert(anima_engine_lib::core::ecs::ParentAgent(agent));
+
+    let mut schedule = Schedule::default();
+    schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+    schedule.add_systems((
+        anima_engine_lib::core::agent_systems::sensory_system,
+        anima_engine_lib::core::agent_systems::action_resolution_system,
+        integrate_physics_system,
+    ));
+
+    // Warm-up
+    for _ in 0..10 {
+        schedule.run(&mut world);
+        // Process requests and send mock responses
+        if let Ok(req_batch) = req_rx.try_recv() {
+            if let Some(req) = req_batch.requests.first() {
+                if let Ok(mut res_batch) = recycle_res_rx.try_recv() {
+                    res_batch.responses.clear();
+                    res_batch.responses.push(anima_engine_lib::core::agent_systems::AgentInferenceResponse {
+                        entity: req.entity,
+                        actions: [1.2, 0.5, 1.2, 0.5],
+                        request_id: req.request_id,
+                    });
+                    let _ = res_tx.send(res_batch);
+                }
+            }
+            let _ = recycle_req_tx.send(req_batch);
+        }
+    }
+
+    // Start tracking allocations
+    ALLOCATOR.start_tracking();
+    
+    schedule.run(&mut world);
+    
+    // Process requests
+    if let Ok(req_batch) = req_rx.try_recv() {
+        if let Some(req) = req_batch.requests.first() {
+            if let Ok(mut res_batch) = recycle_res_rx.try_recv() {
+                res_batch.responses.clear();
+                res_batch.responses.push(anima_engine_lib::core::agent_systems::AgentInferenceResponse {
+                    entity: req.entity,
+                    actions: [1.2, 0.5, 1.2, 0.5],
+                    request_id: req.request_id,
+                });
+                let _ = res_tx.send(res_batch);
+            }
+        }
+        let _ = recycle_req_tx.send(req_batch);
+    }
+
+    let allocs = ALLOCATOR.stop_tracking();
+    assert_eq!(allocs, 0, "Decoupled hot path loop should perform 0 heap allocations, but made {}", allocs);
+}

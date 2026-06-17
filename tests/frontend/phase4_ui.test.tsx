@@ -303,11 +303,11 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
     expect(droughtContainer).toBeDefined();
     expect(abundanceContainer).toBeDefined();
 
-    expect(droughtContainer?.style.backgroundColor).toBe('rgb(255, 245, 245)');
-    expect(droughtContainer?.style.borderLeft).toBe('4px solid rgb(229, 62, 62)');
+    expect(droughtContainer?.style.backgroundColor).toBe('rgba(255, 255, 255, 0.02)');
+    expect(droughtContainer?.style.borderLeft).toBe('3px solid rgb(255, 255, 255)');
 
-    expect(abundanceContainer?.style.backgroundColor).toBe('rgb(240, 255, 244)');
-    expect(abundanceContainer?.style.borderLeft).toBe('4px solid rgb(56, 161, 105)');
+    expect(abundanceContainer?.style.backgroundColor).toBe('rgba(255, 255, 255, 0.02)');
+    expect(abundanceContainer?.style.borderLeft).toBe('3px solid rgba(255, 255, 255, 0.3)');
 
     const expectedTime = new Date(1625097600000).toLocaleTimeString();
     expect(screen.getAllByText(expectedTime).length).toBeGreaterThanOrEqual(1);

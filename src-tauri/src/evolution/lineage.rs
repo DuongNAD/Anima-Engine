@@ -187,6 +187,15 @@ impl FallbackLineageTracker {
             *g = None;
         }
     }
+
+    pub fn load_state(&self, nodes: Vec<LineageNode>, relations: Vec<LineageRelation>) {
+        if let Ok(mut mem_nodes) = self.in_memory.nodes.write() {
+            *mem_nodes = nodes;
+        }
+        if let Ok(mut mem_relations) = self.in_memory.relations.write() {
+            *mem_relations = relations;
+        }
+    }
 }
 
 impl LineageTracker for FallbackLineageTracker {
