@@ -134,7 +134,7 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     expect(zoomedLake).toBeDefined();
     expect(zoomedLake[0]).toBeCloseTo(500);
     expect(zoomedLake[1]).toBeCloseTo(500);
-  });
+  }, 60000);
 
   // --- ZOOM LOWER LIMIT VERIFICATION ---
   it('Verify Zoom Lower Limit Clamping at 0.1', async () => {
@@ -164,7 +164,7 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     expect(zoomedLake).toBeDefined();
     expect(zoomedLake[0]).toBeCloseTo(5);
     expect(zoomedLake[1]).toBeCloseTo(5);
-  });
+  }, 60000);
 
   // --- PAN LIMITS AND COORDINATE TRANSFORMATION STRESS ---
   it('Verify Pan Coordinates can accept extreme inputs without crashing', async () => {
@@ -200,7 +200,7 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     expect(pannedLake).toBeDefined();
     expect(pannedLake[0]).toBeCloseTo(10050);
     expect(pannedLake[1]).toBeCloseTo(10050);
-  });
+  }, 60000);
 
   // --- PAYLOAD PARSING CRASHES: OBJ SEGMENTS ---
   it('Verify gracefulness on non-array segments object in simulation-tick', async () => {

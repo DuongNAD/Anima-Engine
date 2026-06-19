@@ -38,8 +38,16 @@ vi.mock('@react-three/fiber', async () => {
   };
 });
 
+vi.mock('../../playground/RabbitVisualizer', () => {
+  return {
+    default: () => <div data-testid="mock-rabbit-visualizer">Mock Rabbit Visualizer</div>,
+  };
+});
+
 // Mock Web Audio API
 class MockAudioContext {
+  sampleRate = 44100;
+  currentTime = 0;
   createGain() {
     return {
       gain: { value: 1, setValueAtTime: vi.fn() },
@@ -53,6 +61,39 @@ class MockAudioContext {
       positionY: { value: 0, setValueAtTime: vi.fn() },
       positionZ: { value: 0, setValueAtTime: vi.fn() },
       connect: vi.fn(),
+    };
+  }
+  createBuffer(channels: number, length: number, sampleRate: number) {
+    return {
+      numberOfChannels: channels,
+      length: length,
+      sampleRate: sampleRate,
+      getChannelData: vi.fn().mockReturnValue(new Float32Array(length)),
+    };
+  }
+  createBufferSource() {
+    return {
+      buffer: null,
+      loop: false,
+      connect: vi.fn().mockReturnThis(),
+      start: vi.fn(),
+      stop: vi.fn(),
+    };
+  }
+  createBiquadFilter() {
+    return {
+      type: 'lowpass',
+      frequency: { value: 440, setValueAtTime: vi.fn() },
+      connect: vi.fn().mockReturnThis(),
+    };
+  }
+  createOscillator() {
+    return {
+      type: 'sine',
+      frequency: { value: 440, setValueAtTime: vi.fn() },
+      connect: vi.fn().mockReturnThis(),
+      start: vi.fn(),
+      stop: vi.fn(),
     };
   }
   destination = {};

@@ -47,7 +47,7 @@
 <script>
 "use strict";
 const GW=200,GH=200,TOT=GW*GH,CS=2.5,HW=GW*CS/2,HH=GH*CS/2;
-let camMode='orbit',weather='clear',timeSpeed=1,timeOfDay=12,vol=.3;
+let camMode='orbit',weather='clear',timeSpeed=1,timeOfDay=10,vol=.3;
 
 const container=document.getElementById('canvas-container');
 const scene=new THREE.Scene();
@@ -63,7 +63,7 @@ container.appendChild(renderer.domElement);
 const hemiLight=new THREE.HemisphereLight(0xffffff,0x555566,.6);scene.add(hemiLight);
 const sunLight=new THREE.DirectionalLight(0xfff5b6,1);sunLight.castShadow=true;
 const sds=280;sunLight.shadow.camera.left=-sds;sunLight.shadow.camera.right=sds;sunLight.shadow.camera.top=sds;sunLight.shadow.camera.bottom=-sds;
-sunLight.shadow.camera.far=1200;sunLight.shadow.bias=-.0004;sunLight.shadow.mapSize.set(2048,2048);scene.add(sunLight);
+sunLight.shadow.camera.far=800;sunLight.shadow.bias=-.0004;sunLight.shadow.mapSize.set(2048,2048);scene.add(sunLight);
 scene.add(new THREE.AmbientLight(0x334466,.15));
 const sunBall=new THREE.Mesh(new THREE.SphereGeometry(12,16,16),new THREE.MeshBasicMaterial({color:0xffffcc}));scene.add(sunBall);
 const moonBall=new THREE.Mesh(new THREE.SphereGeometry(8,12,12),new THREE.MeshBasicMaterial({color:0xeeeeff}));scene.add(moonBall);
@@ -110,11 +110,6 @@ const lakeWaterMat=new THREE.MeshPhongMaterial({
 const pondWaterMat=new THREE.MeshPhongMaterial({
     color:0x2da0b0, transparent:true, opacity:0.6,
     shininess:70, specular:new THREE.Color(0x449988),
-    side:THREE.DoubleSide
-});
-const fallWaterMat=new THREE.MeshPhongMaterial({
-    color:0xdcffff, transparent:true, opacity:0.85,
-    shininess:120, specular:new THREE.Color(0xffffff),
     side:THREE.DoubleSide
 });
 
@@ -176,368 +171,123 @@ function gaussSmooth(arr,n){const tmp=new Float32Array(TOT);for(let p=0;p<n;p++)
 function generateMap(){
     try{
     console.time('GenMap');
-    // PASS 1: Elevation with mountain ridges
+    // PASS 1: Elevation
     for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){
         const i=y*GW+x,nx=x/GW-.5,nz=y/GH-.5;
         let e=noiseEl.noise2D(nx*2.5,nz*2.5)+.5*noiseEl.noise2D(nx*5,nz*5)+.25*noiseEl.noise2D(nx*10,nz*10)+.1*noiseEl.noise2D(nx*20,nz*20);
-        e=(e/1.85+1)/2;
-        // Softer edge falloff → bigger island
-        const dist=Math.sqrt(nx*nx+nz*nz);
-        e*=Math.max(0,1-Math.pow(dist*1.8,1.8));
-        // Mountain ridge layer — creates dramatic peaks in inner areas
-        const ridge=Math.abs(noiseEl.noise2D(nx*3+5,nz*3+5));
-        const ridgeBoost=Math.pow(ridge,1.2)*Math.max(0,1-dist*3); // stronger near center
-        e+=ridgeBoost*0.4;
-        // Regional variation
+        e=(e/1.85+1)/2;e*=Math.max(0,1-Math.pow(Math.sqrt(nx*nx+nz*nz)*2.2,1.6));
         const rg=noiseEl.noise2D(nx*1.5+7,nz*1.5+3);
-        let factor = 1.0;
-        if (rg < -0.2) {
-          const t = Math.min(1.0, Math.max(0.0, (-0.2 - rg) / 0.2));
-          factor = 1.0 - t * 0.5;
-        } else if (rg > 0.2) {
-          const t = Math.min(1.0, Math.max(0.0, (rg - 0.2) / 0.2));
-          factor = 1.0 + t * 0.5;
-        }
-        e *= factor;
-        terrElev[i]=Math.pow(Math.max(0,e),1.15)*180; // dramatically tall!
-        temperature[i]=noiseTp.noise2D(nx*2,nz*2)*.4+(nx+nz+1)*.5-terrElev[i]*.005;
+        if(rg<-.2)e*=.5;else if(rg>.3)e=Math.pow(e,1.05)*1.15;
+        terrElev[i]=Math.pow(Math.max(0,e),1.1)*95; // taller terrain
+        temperature[i]=noiseTp.noise2D(nx*2,nz*2)*.4+(nx+nz+1)*.5-terrElev[i]*.006;
         let m=noiseMo.noise2D(nx*3,nz*3)+.5*noiseMo.noise2D(nx*6,nz*6);m/=1.5;if(terrElev[i]<12)m+=.3;
         moisture[i]=m;isRiver[i]=0;
     }
-    gaussSmooth(terrElev,1); // minimal smoothing
+    gaussSmooth(terrElev,1); // minimal smoothing to preserve mountains
     console.log('Pass1 done');
 
-    // PASS 2: Valley detection & Lake placement
-    const valleys = [];
-    for (let y = 12; y < GH - 12; y++) {
-        for (let x = 12; x < GW - 12; x++) {
-            const i = y * GW + x;
-            const el = terrElev[i];
-            if (el < 12 || el > 30) continue;
-            let isMin = true;
-            for (let dy = -4; dy <= 4; dy++) {
-                for (let dx = -4; dx <= 4; dx++) {
-                    if (dx === 0 && dy === 0) continue;
-                    const nx = x + dx;
-                    const ny = y + dy;
-                    if (nx < 0 || nx >= GW || ny < 0 || ny >= GH) continue;
-                    if (terrElev[ny * GW + nx] < el) {
-                        isMin = false;
-                        break;
-                    }
-                }
-                if (!isMin) break;
-            }
-            if (isMin) valleys.push({ x, y, el });
-        }
+    // PASS 2: Peaks → Lakes (as physical water planes)
+    const peaks=[];
+    for(let y=12;y<GH-12;y+=3)for(let x=12;x<GW-12;x+=3){
+        const i=y*GW+x;if(terrElev[i]<30)continue;
+        let pk=true;
+        for(let dy=-4;dy<=4&&pk;dy++)for(let dx=-4;dx<=4&&pk;dx++){if(!dy&&!dx)continue;const ny=y+dy,nx2=x+dx;if(ny<0||ny>=GH||nx2<0||nx2>=GW)continue;if(terrElev[ny*GW+nx2]>terrElev[i])pk=false;}
+        if(pk)peaks.push({x,y,el:terrElev[i]});
     }
-    valleys.sort((a, b) => a.el - b.el);
+    peaks.sort((a,b)=>b.el-a.el);
+    const topPeaks=peaks.slice(0,Math.min(5,peaks.length));
+    console.log('Peaks:',topPeaks.length);
 
-    const selectedValleys = [];
-    for (const v of valleys) {
-        if (selectedValleys.length >= 5) break;
-        let farEnough = true;
-        for (const sv of selectedValleys) {
-            const dx = v.x - sv.x;
-            const dy = v.y - sv.y;
-            if (Math.sqrt(dx * dx + dy * dy) < 25) {
-                farEnough = false;
-                break;
+    const lakes=[];
+    for(const pk of topPeaks){
+        const lx=Math.max(14,Math.min(GW-14,pk.x+Math.round(noiseLk.noise2D(pk.x*.1,pk.y*.1)*3)));
+        const ly=Math.max(14,Math.min(GH-14,pk.y+Math.round(noiseLk.noise2D(pk.y*.1,pk.x*.1)*3)));
+        const lr=7+Math.floor(Math.abs(noiseLk.noise2D(pk.x*.05,pk.y*.05))*5);
+        // Water surface is at 85% of peak height
+        const waterY=pk.el*.85;
+        // Gently lower terrain around lake to create basin
+        for(let dy=-lr-4;dy<=lr+4;dy++)for(let dx=-lr-4;dx<=lr+4;dx++){
+            const cx=lx+dx,cy=ly+dy;if(cx<0||cx>=GW||cy<0||cy>=GH)continue;
+            const ci=cy*GW+cx,d=Math.sqrt(dx*dx+dy*dy);
+            if(d<=lr){
+                terrElev[ci]=Math.min(terrElev[ci],waterY-1.5); // lake bed below water
+            }else if(d<=lr+4){
+                const t2=(d-lr)/4;
+                terrElev[ci]=Math.min(terrElev[ci], waterY-1.5+(terrElev[ci]-(waterY-1.5))*Math.pow(t2,.5));
             }
         }
-        if (farEnough) {
-            selectedValleys.push(v);
-        }
-    }
-    console.log('Detected valleys:', selectedValleys.length);
-
-    const lakes = [];
-    for (const val of selectedValleys) {
-        const lx = Math.max(14, Math.min(GW - 14, val.x));
-        const ly = Math.max(14, Math.min(GH - 14, val.y));
-        const lr = 7 + Math.floor(Math.abs(noiseLk.noise2D(lx * 0.05, ly * 0.05)) * 5);
-
-        // Spillway detection: Find the lowest boundary point (spillX, spillY) in the ring of radius lr + 1 around the center.
-        let minBoundaryEl = Infinity;
-        let spillX = lx + lr + 1; // fallback
-        let spillY = ly;          // fallback
-        for (let dy = -Math.ceil(lr + 1.5); dy <= Math.ceil(lr + 1.5); dy++) {
-            for (let dx = -Math.ceil(lr + 1.5); dx <= Math.ceil(lr + 1.5); dx++) {
-                const cx = lx + dx;
-                const cy = ly + dy;
-                if (cx < 0 || cx >= GW || cy < 0 || cy >= GH) continue;
-                const d = Math.sqrt(dx * dx + dy * dy);
-                if (Math.abs(d - (lr + 1)) <= 0.5) {
-                    const el = terrElev[cy * GW + cx];
-                    if (el < minBoundaryEl) {
-                        minBoundaryEl = el;
-                        spillX = cx;
-                        spillY = cy;
-                    }
-                }
-            }
-        }
-
-        // Water level: waterY = Math.max(val.el + 1.5, minBoundaryEl - 0.5)
-        const waterY = Math.max(val.el + 1.5, minBoundaryEl - 0.5);
-
-        // Discard lakes if waterY <= 10.0
-        if (waterY <= 10.0) {
-            console.log(`Discarded lake candidate at (${lx},${ly}) with waterY=${waterY.toFixed(1)}`);
-            continue;
-        }
-
-        // 4-Tier Terrain Adjustment
-        for (let dy = -lr - 5; dy <= lr + 5; dy++) {
-            for (let dx = -lr - 5; dx <= lr + 5; dx++) {
-                const cx = lx + dx;
-                const cy = ly + dy;
-                if (cx < 0 || cx >= GW || cy < 0 || cy >= GH) continue;
-                const ci = cy * GW + cx;
-                const d = Math.sqrt(dx * dx + dy * dy);
-                if (d <= lr + 5) {
-                    const origElev = terrElev[ci];
-                    if (d <= lr - 1) {
-                        terrElev[ci] = waterY - 1.5;
-                    } else if (d <= lr) {
-                        const t = d - (lr - 1);
-                        terrElev[ci] = (waterY - 1.5) * (1 - t) + (waterY + 0.5) * t;
-                    } else if (d <= lr + 1) {
-                        terrElev[ci] = Math.max(origElev, waterY + 0.5);
-                    } else { // lr + 1 < d <= lr + 5
-                        const t = (d - (lr + 1)) / 4;
-                        const startVal = Math.max(origElev, waterY + 0.5);
-                        terrElev[ci] = (1 - t) * startVal + t * origElev;
-                    }
-                }
-            }
-        }
-
-        // Create physical water plane using THREE.CircleGeometry(lr * CS, 32)
-        const worldX = lx * CS - HW, worldZ = ly * CS - HH;
-        const waterGeo2 = new THREE.CircleGeometry(lr * CS, 32);
-        const waterMesh2 = new THREE.Mesh(waterGeo2, lakeWaterMat);
-        waterMesh2.rotation.x = -Math.PI / 2;
+        // Create physical water plane (PlaneGeometry — same as ocean, proven to work!)
+        const worldX=lx*CS-HW, worldZ=ly*CS-HH, size=lr*CS*2;
+        const waterGeo2=new THREE.PlaneGeometry(size,size); // PlaneGeometry like ocean
+        const waterMesh2=new THREE.Mesh(waterGeo2, lakeWaterMat);
+        waterMesh2.rotation.x=-Math.PI/2;
         waterMesh2.position.set(worldX, waterY, worldZ);
         scene.add(waterMesh2);
-        waterBodies.push({ mesh: waterMesh2, baseY: waterY, type: 'lake' });
-        lakes.push({ x: lx, y: ly, waterY, r: lr, spillX, spillY });
-        console.log(`Lake at (${lx},${ly}) r=${lr} y=${waterY.toFixed(1)} spillway=(${spillX},${spillY})`);
+        waterBodies.push({mesh:waterMesh2, baseY:waterY, type:'lake'});
+        lakes.push({x:lx,y:ly,waterY,r:lr});
+        console.log(`Lake at (${lx},${ly}) r=${lr} y=${waterY.toFixed(1)}`);
     }
 
-    // PASS 3: Ponds (physical meshes in local valleys)
+    // PASS 3: Ponds (terrain coloring — no separate meshes to avoid render crashes)
     let pondN=0;
-    for(let y=10;y<GH-10;y+=8)for(let x=10;x<GW-10;x+=8){
+    for(let y=8;y<GH-8;y+=7)for(let x=8;x<GW-8;x+=7){
+        const pn=noisePd.noise2D(x*.05,y*.05);
         const i=y*GW+x;
-        const el=terrElev[i];
-        if(el<10||el>35)continue;
-        // Valley check: center must be lower than 6 of 8 neighbors
-        let lowerCount=0;
-        for(let dy=-3;dy<=3;dy+=3)for(let dx=-3;dx<=3;dx+=3){
-            if(!dx&&!dy)continue;
-            const ni=(y+dy)*GW+(x+dx);
-            if(ni>=0&&ni<GW*GH&&terrElev[ni]>el+1)lowerCount++;
-        }
-        if(lowerCount<5)continue; // not a valley
-        const pr=2+Math.floor(Math.random()*3);
-        const waterY = el + 0.5;
-        for(let dy=-pr-2;dy<=pr+2;dy++)for(let dx=-pr-2;dx<=pr+2;dx++){
-            const cx=x+dx,cy=y+dy;if(cx<0||cx>=GW||cy<0||cy>=GH)continue;
-            const ci=cy*GW+cx,d=Math.sqrt(dx*dx+dy*dy);
-            if(d<=pr&&isRiver[ci]===0){
-                terrElev[ci]=Math.min(terrElev[ci], waterY-1.5);
-                isRiver[ci]=3; // pond
+        if(pn>.4&&terrElev[i]>10&&terrElev[i]<38){
+            const pr=3+Math.floor((pn-.35)*6);
+            for(let dy=-pr-2;dy<=pr+2;dy++)for(let dx=-pr-2;dx<=pr+2;dx++){
+                const cx=x+dx,cy=y+dy;if(cx<0||cx>=GW||cy<0||cy>=GH)continue;
+                const ci=cy*GW+cx,d=Math.sqrt(dx*dx+dy*dy);
+                if(d<=pr&&isRiver[ci]===0){
+                    terrElev[ci]=Math.max(5.5,terrElev[ci]-1);
+                    isRiver[ci]=3; // pond flag
+                }
             }
+            pondN++;
         }
-        const worldX = x * CS - HW, worldZ = y * CS - HH;
-        const waterGeo = new THREE.CircleGeometry(pr * CS, 16);
-        const waterMesh = new THREE.Mesh(waterGeo, pondWaterMat);
-        waterMesh.rotation.x = -Math.PI / 2;
-        waterMesh.position.set(worldX, waterY, worldZ);
-        scene.add(waterMesh);
-        waterBodies.push({ mesh: waterMesh, baseY: waterY, type: 'pond' });
-        pondN++;
     }
     console.log('Ponds:',pondN);
 
-    // PASS 4: Rivers from lakes, and Streams from mountains (physical meshes)
-    const waterSources = [];
+    // PASS 4: Rivers from lakes downhill (terrain coloring + carved channel)
     for(const lk of lakes){
-        if(lk.spillX>3 && lk.spillX<GW-3 && lk.spillY>3 && lk.spillY<GH-3) {
-            waterSources.push({x: lk.spillX, y: lk.spillY, rWidth: 3, type: 'river', lakeId: lk});
-        }
-    }
-    const streamStarts = [];
-    for(let y=15; y<GH-15; y+=8) {
-        for(let x=15; x<GW-15; x+=8) {
-            const i=y*GW+x;
-            if(terrElev[i] > 45 && moisture[i] > 0.4 && isRiver[i] === 0) {
-                streamStarts.push({x, y});
-            }
-        }
-    }
-    streamStarts.sort(() => Math.random() - 0.5);
-    for(let i=0; i<Math.min(15, streamStarts.length); i++) {
-        waterSources.push({x: streamStarts[i].x, y: streamStarts[i].y, rWidth: 1.2, type: 'stream', lakeId: null});
-    }
-
-    const tracedRivers = [];
-    for(const ws of waterSources){
-        let cx = ws.x, cy = ws.y;
-        const visited = new Set();
-        const path = [];
-        
+        let cx=lk.x,cy=lk.y+lk.r+1;
+        if(cy>=GH-3)cy=lk.y-lk.r-1;
+        if(cy<3)continue;
         for(let s=0;s<400;s++){
             if(cx<3||cx>=GW-3||cy<3||cy>=GH-3)break;
             const ci=cy*GW+cx,ce=terrElev[ci];
             if(ce<=6)break;
-            
-            // If stream hits existing river/lake, merge and stop
-            if(ws.type === 'stream' && isRiver[ci] > 0 && s > 5) break; 
-            
-            visited.add(ci);
-            path.push({x: cx, y: cy});
-            
             let bx=cx,by=cy,be=ce;
-            for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-                if(!dx&&!dy)continue;
-                const nx2=cx+dx,ny2=cy+dy;
-                if(nx2<0||nx2>=GW||ny2<0||ny2>=GH)continue;
-                const nIdx = ny2 * GW + nx2;
-                if(visited.has(nIdx))continue;
-                
-                // Ignore neighbors that lie within the source lake radius
-                if(ws.lakeId) {
-                    const distToLake = Math.sqrt((nx2 - ws.lakeId.x)*(nx2 - ws.lakeId.x) + (ny2 - ws.lakeId.y)*(ny2 - ws.lakeId.y));
-                    if(distToLake <= ws.lakeId.r) continue;
-                }
-                
-                if(terrElev[nIdx]<be){
-                    be=terrElev[nIdx];
-                    bx=nx2;
-                    by=ny2;
-                }
-            }
-            if(bx===cx&&by===cy){
-                bx=Math.max(3,Math.min(GW-4,cx+(cx<GW/2?-1:1)));
-                by=Math.max(3,Math.min(GH-4,cy+(cy<GH/2?-1:1)));
-                terrElev[by*GW+bx]=ce-.5;
-            }
-            
-            const rw = ws.rWidth;
-            const cRw = Math.ceil(rw);
-            for(let dy=-cRw;dy<=cRw;dy++)for(let dx=-cRw;dx<=cRw;dx++){
+            for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){if(!dx&&!dy)continue;const nx2=cx+dx,ny2=cy+dy;if(nx2<0||nx2>=GW||ny2<0||ny2>=GH)continue;if(terrElev[ny2*GW+nx2]<be){be=terrElev[ny2*GW+nx2];bx=nx2;by=ny2;}}
+            if(bx===cx&&by===cy){bx=Math.max(3,Math.min(GW-4,cx+(cx<GW/2?-1:1)));by=Math.max(3,Math.min(GH-4,cy+(cy<GH/2?-1:1)));terrElev[by*GW+bx]=ce-.5;}
+            const drop=ce-be;
+            const rw=ce>42?3:ce>25?5:6;
+            for(let dy=-rw;dy<=rw;dy++)for(let dx=-rw;dx<=rw;dx++){
                 const rx=cx+dx,ry=cy+dy;if(rx<0||rx>=GW||ry<0||ry>=GH)continue;
                 const ri=ry*GW+rx,d=Math.sqrt(dx*dx+dy*dy);
                 if(d<=rw&&isRiver[ri]===0){
                     const profile=1-Math.pow(d/rw,2);
-                    terrElev[ri]=Math.max(5.5,terrElev[ri]-profile*(ws.type==='stream'?0.8:1.5));
-                    if(d<=rw*.7) isRiver[ri]=1;
+                    terrElev[ri]=Math.max(5.5,terrElev[ri]-profile*2);
+                    if(d<=rw*.7) isRiver[ri]=(drop>2)?2:1;
                 }
             }
             cx=bx;cy=by;
         }
-        if(path.length > 0){
-            tracedRivers.push({
-                type: ws.type,
-                rWidth: ws.rWidth,
-                path: path
-            });
-        }
     }
-
-    // No secondary noise streams — only lake-spawned rivers for realistic water placement
-    gaussSmooth(terrElev,1); // minimal smoothing
-    // Re-apply 4-tier terrain adjustment for each lake to preserve shoreline against river smoothing
+    // Secondary noise streams
+    for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){
+        const i=y*GW+x;if(isRiver[i])continue;
+        const nx=x/GW-.5,nz=y/GH-.5;
+        const wx=noiseRv.noise2D(nx*2.5,nz*2.5)*.2,wz=noiseRv.noise2D(nx*2.5+5.3,nz*2.5+2.1)*.2;
+        const rn=Math.abs(noiseRv.noise2D(nx*1.5+wx,nz*1.5+wz));
+        if(rn<.012&&terrElev[i]>8&&terrElev[i]<38){isRiver[i]=1;terrElev[i]=Math.max(5.5,terrElev[i]-1.5);}
+    }
+    gaussSmooth(terrElev,2); // smooth river edges but preserve mountains
+    // Re-flatten lake beds
     for(const lk of lakes){
-        const lr = lk.r;
-        const waterY = lk.waterY;
-        for(let dy=-lr-5;dy<=lr+5;dy++)for(let dx=-lr-5;dx<=lr+5;dx++){
+        for(let dy=-lk.r;dy<=lk.r;dy++)for(let dx=-lk.r;dx<=lk.r;dx++){
             const cx=lk.x+dx,cy=lk.y+dy;if(cx<0||cx>=GW||cy<0||cy>=GH)continue;
-            const ci=cy*GW+cx;
-            const d=Math.sqrt(dx*dx+dy*dy);
-            if(d<=lr+5){
-                const origElev = terrElev[ci];
-                if(d<=lr-1){
-                    terrElev[ci]=waterY-1.5;
-                }else if(d<=lr){
-                    const t=d-(lr-1);
-                    terrElev[ci]=(waterY-1.5)*(1-t)+(waterY+0.5)*t;
-                }else if(d<=lr+1){
-                    terrElev[ci]=Math.max(origElev,waterY+0.5);
-                }else{ // lr+1 < d <= lr+5
-                    const t=(d-(lr+1))/4;
-                    const startVal=Math.max(origElev,waterY+0.5);
-                    terrElev[ci]=(1-t)*startVal+t*origElev;
-                }
-            }
-        }
-    }
-
-    // Build Ribbon Mesh for the River/Stream and Waterfalls after terrain finalization
-    for(const tr of tracedRivers){
-        const riverPts = [];
-        for(const pt of tr.path){
-            const idx = pt.y * GW + pt.x;
-            riverPts.push(new THREE.Vector3(pt.x * CS - HW, terrElev[idx], pt.y * CS - HH));
-        }
-
-        if(riverPts.length > 2){
-            const isWaterfallSegment = [];
-            for(let i=0; i<riverPts.length-1; i++){
-                const drop = riverPts[i].y - riverPts[i+1].y;
-                isWaterfallSegment.push(drop > 10.0);
-            }
-
-            // Smooth riverPts after evaluating waterfalls
-            for(let i=1; i<riverPts.length-1; i++) riverPts[i].y = (riverPts[i-1].y + riverPts[i].y + riverPts[i+1].y)/3;
-            for(let i=1; i<riverPts.length-1; i++) riverPts[i].y = (riverPts[i-1].y + riverPts[i].y + riverPts[i+1].y)/3;
-            
-            const vertsRiver = []; const indicesRiver = [];
-            const vertsFall = [];  const indicesFall = [];
-            let iRiver = 0, iFall = 0;
-            
-            const rWidth = tr.rWidth;
-            for(let i=0; i<riverPts.length-1; i++){
-                const p = riverPts[i], pNext = riverPts[i+1];
-                let t = new THREE.Vector3().subVectors(pNext, p).normalize();
-                
-                const up = new THREE.Vector3(0,1,0);
-                const right = new THREE.Vector3().crossVectors(t, up).normalize();
-                
-                const p1 = p.clone().add(right.clone().multiplyScalar(rWidth));
-                const p2 = p.clone().add(right.clone().multiplyScalar(-rWidth));
-                p1.y += 0.5; p2.y += 0.5;
-                
-                const p3 = pNext.clone().add(right.clone().multiplyScalar(rWidth));
-                const p4 = pNext.clone().add(right.clone().multiplyScalar(-rWidth));
-                p3.y += 0.5; p4.y += 0.5;
-                
-                const isWaterfall = isWaterfallSegment[i];
-                if(isWaterfall) {
-                    const bIdx = iFall * 4;
-                    vertsFall.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, p3.x, p3.y, p3.z, p4.x, p4.y, p4.z);
-                    indicesFall.push(bIdx, bIdx+1, bIdx+2, bIdx+1, bIdx+3, bIdx+2);
-                    iFall++;
-                } else {
-                    const bIdx = iRiver * 4;
-                    vertsRiver.push(p1.x, p1.y, p1.z, p2.x, p2.y, p2.z, p3.x, p3.y, p3.z, p4.x, p4.y, p4.z);
-                    indicesRiver.push(bIdx, bIdx+1, bIdx+2, bIdx+1, bIdx+3, bIdx+2);
-                    iRiver++;
-                }
-            }
-            if(vertsRiver.length > 0){
-                const geoR = new THREE.BufferGeometry();
-                geoR.setAttribute('position', new THREE.Float32BufferAttribute(vertsRiver, 3));
-                geoR.setIndex(indicesRiver); geoR.computeVertexNormals();
-                scene.add(new THREE.Mesh(geoR, lakeWaterMat));
-            }
-            if(vertsFall.length > 0){
-                const geoF = new THREE.BufferGeometry();
-                geoF.setAttribute('position', new THREE.Float32BufferAttribute(vertsFall, 3));
-                geoF.setIndex(indicesFall); geoF.computeVertexNormals();
-                scene.add(new THREE.Mesh(geoF, fallWaterMat));
-            }
+            if(Math.sqrt(dx*dx+dy*dy)<=lk.r) terrElev[cy*GW+cx]=lk.waterY-1.5;
         }
     }
     console.log('Rivers done, water bodies:',waterBodies.length);
@@ -552,31 +302,18 @@ function generateMap(){
         for(const lk of lakes){const dx2=x-lk.x,dy2=y-lk.y;if(Math.sqrt(dx2*dx2+dy2*dy2)<lk.r+2){nearWater=true;break;}}
         if(nearWater)continue;
         const sl=Math.max(Math.abs(el-terrElev[i+1]),Math.abs(el-terrElev[i-1]),Math.abs(el-terrElev[i-GW]),Math.abs(el-terrElev[i+GW]));
-        if(sl>6)continue; // steeper slopes OK for tall mountains
+        if(sl>4)continue;
         const px=(x*CS-HW)+(Math.random()-.5)*CS,pz=(y*CS-HH)+(Math.random()-.5)*CS,r=Math.random(),sc=.6+Math.random()*.8;
-        const gx = (px + HW) / CS;
-        const gy = (pz + HH) / CS;
-        const x0 = Math.floor(gx);
-        const y0 = Math.floor(gy);
-        const x1 = Math.min(GW - 1, x0 + 1);
-        const y1 = Math.min(GH - 1, y0 + 1);
-        const tx = gx - x0;
-        const ty = gy - y0;
-        const h00 = terrElev[y0 * GW + x0];
-        const h10 = terrElev[y0 * GW + x1];
-        const h01 = terrElev[y1 * GW + x0];
-        const h11 = terrElev[y1 * GW + x1];
-        const interpolatedEl = h00 * (1 - tx) * (1 - ty) + h10 * tx * (1 - ty) + h01 * (1 - tx) * ty + h11 * tx * ty;
         dm.rotation.set(0,0,0); // CRITICAL: reset rotation to prevent leak from rocks to trees
-        if(tmp>.5&&mst<-.3){if(r<.03&&cCa<MX.CACT){dm.position.set(px,interpolatedEl+1.2*sc,pz);dm.scale.set(sc*.7,sc,sc*.7);dm.rotation.y=r*6;dm.updateMatrix();cactM.setMatrixAt(cCa++,dm.matrix);}else if(r<.05&&cR<MX.ROCK){dm.position.set(px,interpolatedEl-.3*sc,pz);dm.scale.set(sc,sc*.6,sc);dm.rotation.set(r*3,r*3,r*3);dm.updateMatrix();rockM.setMatrixAt(cR++,dm.matrix);}}
-        else if(tmp>.5&&mst<.1){if(r<.015&&cO<MX.OAK){dm.position.set(px,interpolatedEl+1.5*sc,pz);dm.scale.set(sc*1.3,sc*.8,sc*1.3);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,interpolatedEl+3*sc,pz);dm.scale.set(sc*1.5,sc*.5,sc*1.5);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}}
-        else if(tmp>.5){if((el>=50||mst>.5)&&r<.2&&cJ<MX.JG){dm.position.set(px,interpolatedEl+2*sc,pz);dm.scale.set(sc,sc*1.2,sc);dm.rotation.y=r*6;dm.updateMatrix();jgT.setMatrixAt(cJ,dm.matrix);dm.position.set(px,interpolatedEl+5*sc,pz);dm.scale.set(sc*1.3,sc,sc*1.3);dm.updateMatrix();jgL.setMatrixAt(cJ++,dm.matrix);}else if(r<.06&&cPm<MX.PALM){dm.position.set(px,interpolatedEl+2.5*sc,pz);dm.scale.set(sc*.8,sc,sc*.8);dm.rotation.y=r*6;dm.updateMatrix();palmT.setMatrixAt(cPm,dm.matrix);dm.position.set(px,interpolatedEl+5*sc,pz);dm.scale.set(sc,sc*.6,sc);dm.updateMatrix();palmL.setMatrixAt(cPm++,dm.matrix);}}
-        else if(tmp<=.1&&mst>.3&&el<50){if(r<.12&&cBr<MX.BR){dm.position.set(px,interpolatedEl+1.5*sc,pz);dm.scale.set(sc*.7,sc,sc*.7);dm.rotation.y=r*6;dm.updateMatrix();brT.setMatrixAt(cBr,dm.matrix);dm.position.set(px,interpolatedEl+3.2*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();brL.setMatrixAt(cBr++,dm.matrix);}}
-        else if(el>=55&&el<85){if(r<.16&&cP<MX.PINE){dm.position.set(px,interpolatedEl+sc,pz);dm.scale.set(sc,sc,sc);dm.updateMatrix();pnT.setMatrixAt(cP,dm.matrix);dm.position.set(px,interpolatedEl+2.2*sc,pz);dm.updateMatrix();pnL1.setMatrixAt(cP,dm.matrix);dm.position.set(px,interpolatedEl+3.4*sc,pz);dm.updateMatrix();pnL2.setMatrixAt(cP,dm.matrix);dm.position.set(px,interpolatedEl+4.5*sc,pz);dm.updateMatrix();pnL3.setMatrixAt(cP,dm.matrix);cP++;}}
-        else if(tmp>.1&&mst>.4&&el>30&&el<55){if(r<.15&&cFl<MX.FL){dm.position.set(px,interpolatedEl+.3,pz);dm.scale.set(.4+Math.random()*.4,.4+Math.random()*.4,.4+Math.random()*.4);dm.updateMatrix();flwM.setMatrixAt(cFl++,dm.matrix);}}
-        else if(el>=50&&el<70&&tmp>.1){if(r<.18&&cO<MX.OAK){dm.position.set(px,interpolatedEl+1.2*sc,pz);dm.scale.set(sc,sc,sc);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,interpolatedEl+3*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}}
-        else if(el>=9&&el<50){if(r<.04&&cO<MX.OAK){dm.position.set(px,interpolatedEl+1.2*sc,pz);dm.scale.set(sc,sc,sc);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,interpolatedEl+3*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}else if(r<.07&&cB<MX.BUSH){dm.position.set(px,interpolatedEl,pz);dm.scale.set(sc,sc*.5,sc);dm.updateMatrix();bushM.setMatrixAt(cB++,dm.matrix);}}
-        if(el>=70&&r<.05&&cR<MX.ROCK){dm.position.set(px,interpolatedEl-.3*sc,pz);dm.scale.set(sc*2,sc*1.5,sc*2);dm.rotation.set(r*3,r*3,r*3);dm.updateMatrix();rockM.setMatrixAt(cR++,dm.matrix);}
+        if(tmp>.5&&mst<-.3){if(r<.03&&cCa<MX.CACT){dm.position.set(px,el+1.2*sc,pz);dm.scale.set(sc*.7,sc,sc*.7);dm.rotation.y=r*6;dm.updateMatrix();cactM.setMatrixAt(cCa++,dm.matrix);}else if(r<.05&&cR<MX.ROCK){dm.position.set(px,el-.3*sc,pz);dm.scale.set(sc,sc*.6,sc);dm.rotation.set(r*3,r*3,r*3);dm.updateMatrix();rockM.setMatrixAt(cR++,dm.matrix);}}
+        else if(tmp>.5&&mst<.1){if(r<.015&&cO<MX.OAK){dm.position.set(px,el+1.5*sc,pz);dm.scale.set(sc*1.3,sc*.8,sc*1.3);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,el+3*sc,pz);dm.scale.set(sc*1.5,sc*.5,sc*1.5);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}}
+        else if(tmp>.5){if((el>=42||mst>.5)&&r<.2&&cJ<MX.JG){dm.position.set(px,el+2*sc,pz);dm.scale.set(sc,sc*1.2,sc);dm.rotation.y=r*6;dm.updateMatrix();jgT.setMatrixAt(cJ,dm.matrix);dm.position.set(px,el+5*sc,pz);dm.scale.set(sc*1.3,sc,sc*1.3);dm.updateMatrix();jgL.setMatrixAt(cJ++,dm.matrix);}else if(r<.06&&cPm<MX.PALM){dm.position.set(px,el+2.5*sc,pz);dm.scale.set(sc*.8,sc,sc*.8);dm.rotation.y=r*6;dm.updateMatrix();palmT.setMatrixAt(cPm,dm.matrix);dm.position.set(px,el+5*sc,pz);dm.scale.set(sc,sc*.6,sc);dm.updateMatrix();palmL.setMatrixAt(cPm++,dm.matrix);}}
+        else if(tmp<=.1&&mst>.3&&el<42){if(r<.12&&cBr<MX.BR){dm.position.set(px,el+1.5*sc,pz);dm.scale.set(sc*.7,sc,sc*.7);dm.rotation.y=r*6;dm.updateMatrix();brT.setMatrixAt(cBr,dm.matrix);dm.position.set(px,el+3.2*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();brL.setMatrixAt(cBr++,dm.matrix);}}
+        else if(el>=42&&el<55){if(r<.16&&cP<MX.PINE){dm.position.set(px,el+sc,pz);dm.scale.set(sc,sc,sc);dm.updateMatrix();pnT.setMatrixAt(cP,dm.matrix);dm.position.set(px,el+2.2*sc,pz);dm.updateMatrix();pnL1.setMatrixAt(cP,dm.matrix);dm.position.set(px,el+3.4*sc,pz);dm.updateMatrix();pnL2.setMatrixAt(cP,dm.matrix);dm.position.set(px,el+4.5*sc,pz);dm.updateMatrix();pnL3.setMatrixAt(cP,dm.matrix);cP++;}}
+        else if(tmp>.1&&mst>.4&&el>30&&el<42){if(r<.15&&cFl<MX.FL){dm.position.set(px,el+.3,pz);dm.scale.set(.4+Math.random()*.4,.4+Math.random()*.4,.4+Math.random()*.4);dm.updateMatrix();flwM.setMatrixAt(cFl++,dm.matrix);}}
+        else if(el>=42&&el<55&&tmp>.1){if(r<.18&&cO<MX.OAK){dm.position.set(px,el+1.2*sc,pz);dm.scale.set(sc,sc,sc);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,el+3*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}}
+        else if(el>=9&&el<42){if(r<.04&&cO<MX.OAK){dm.position.set(px,el+1.2*sc,pz);dm.scale.set(sc,sc,sc);dm.rotation.y=r*6;dm.updateMatrix();oakT.setMatrixAt(cO,dm.matrix);dm.position.set(px,el+3*sc,pz);dm.scale.set(sc,sc*.8,sc);dm.updateMatrix();oakL.setMatrixAt(cO++,dm.matrix);}else if(r<.07&&cB<MX.BUSH){dm.position.set(px,el,pz);dm.scale.set(sc,sc*.5,sc);dm.updateMatrix();bushM.setMatrixAt(cB++,dm.matrix);}}
+        if(el>=55&&r<.04&&cR<MX.ROCK){dm.position.set(px,el-.3*sc,pz);dm.scale.set(sc*2,sc*1.5,sc*2);dm.rotation.set(r*3,r*3,r*3);dm.updateMatrix();rockM.setMatrixAt(cR++,dm.matrix);}
     }
     oakT.count=oakL.count=cO;pnT.count=pnL1.count=pnL2.count=pnL3.count=cP;bushM.count=cB;rockM.count=cR;
     palmT.count=palmL.count=cPm;cactM.count=cCa;jgT.count=jgL.count=cJ;brT.count=brL.count=cBr;flwM.count=cFl;
@@ -596,16 +333,17 @@ function generateMap(){
 // BIOME COLOR
 function getBiomeColor(el,tmp,mst,riv){
     const c=new THREE.Color();
-    let m = mst;
-    if(riv) m += 0.4; // make riverbeds look like darker, wetter dirt/grass instead of painted blue
+    if(riv===1){c.setHex(0x2294a8);return c;} // river
+    if(riv===2){c.setHex(0x88ddee);return c;} // waterfall
+    if(riv===3){c.setHex(0x1a7a90);return c;} // pond
     if(el<=6){c.setHex(0x0a3b66);return c;} // ocean bed
-    if(el<9){c.setHex(0xf0dca0);return c;} // beach
-    if(el>=100){c.setHex(0xfffafa);return c;} // snow cap
-    if(el>=85){c.setHex(0x888583);return c;} // bare rock
-    if(el>=70){c.setHex(m>.2?0x4b6b58:0x6b6966);return c;} // alpine
-    if(tmp>.5){if(m<-.3)c.setHex(0xd4a84a);else if(m<.1)c.setHex(0xc8b050);else if(el>=42)c.setHex(0x2b7a20);else if(m>.5)c.setHex(0x1a5510);else c.setHex(0x5cb85c);return c;}
-    if(tmp>.1){if(m<-.2)c.setHex(0xb5a65c);else if(el>=42)c.setHex(m>.4?0x1a4410:0x2d5e1e);else if(m>.4&&el>30)c.setHex(0x7eba55);else c.setHex(0x6aa84f);return c;}
-    if(m<-.2)c.setHex(0x8a9a7a);else if(el>=42)c.setHex(0x4b6b58);else if(m>.3)c.setHex(0x5a9040);else c.setHex(0x88b860);return c;
+    if(el<9){c.setHex(0xf0dca0);return c;}
+    if(el>=75){c.setHex(0xfffafa);return c;}
+    if(el>=65){c.setHex(0x888583);return c;}
+    if(el>=55){c.setHex(mst>.2?0x4b6b58:0x6b6966);return c;}
+    if(tmp>.5){if(mst<-.3)c.setHex(0xd4a84a);else if(mst<.1)c.setHex(0xc8b050);else if(el>=42)c.setHex(0x2b7a20);else if(mst>.5)c.setHex(0x1a5510);else c.setHex(0x5cb85c);return c;}
+    if(tmp>.1){if(mst<-.2)c.setHex(0xb5a65c);else if(el>=42)c.setHex(mst>.4?0x1a4410:0x2d5e1e);else if(mst>.4&&el>30)c.setHex(0x7eba55);else c.setHex(0x6aa84f);return c;}
+    if(mst<-.2)c.setHex(0x8a9a7a);else if(el>=42)c.setHex(0x4b6b58);else if(mst>.3)c.setHex(0x5a9040);else c.setHex(0x88b860);return c;
 }
 
 // ================================================================

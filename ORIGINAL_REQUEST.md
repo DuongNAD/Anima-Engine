@@ -1223,3 +1223,38 @@ The custom shader must react correctly to the existing dynamic Day/Night cycle (
 - [ ] The water's brightness and color correctly shift during the Day/Night cycle transition.
 - [ ] The application continues to render smoothly without crashing (FPS > 30).
 
+## Follow-up — 2026-06-18T03:06:50Z
+
+Expand the procedural landscape map of the Anima Engine to 1000x1000 scale, integrate diverse new ecological environments (Desert, Jungle, Volcanic, Glacier), and enhance details while maintaining performance.
+
+Working directory: E:/project/Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Scale Up Map to 1000x1000
+- Expand the procedural terrain generation grid size from 500x500 to 1000x1000.
+- Scale the water plane (water-mesh) and seabed base (seabed-mesh) proportionally to fit the 1000x1000 map.
+- Optimize Level of Detail (LOD) thresholds and step sizes in `Terrain.tsx` to handle the larger grid size smoothly.
+
+### R2. Diverse Ecological Environments (Biomes)
+- Implement at least 4 new/expanded ecological environments:
+  - **Desert / Sand dunes**: Arid, sand-colored dunes, low moisture, unique desert vegetation (e.g., cactus or desert shrubs).
+  - **Dense Jungle / Rainforest**: Highly humid, rich green broadleaf trees, high moisture, dense vegetation placement.
+  - **Glacier / Snowy valleys**: High-elevation snow fields/valleys, white/ice colors, frosted vegetation.
+  - **Volcano / Lava fields**: Basalt/dark rock terrain, crimson/lava flows or volcanic color accents, minimal/burnt vegetation.
+- Ensure smooth color blending between different biomes on the terrain grid.
+
+### R3. Enhanced Ecological Details & Performance
+- Add specific flora/details for each new biome (e.g., custom trees/plants in `Vegetation.tsx` or particles).
+- Ensure all new vegetation types use instanced rendering (`THREE.InstancedMesh`) to keep rendering performance optimized on the high-performance GPU.
+- Ensure the user interface controls (weather, time of day, camera modes) still function correctly across the new map scale.
+
+## Acceptance Criteria
+
+### Verification
+- [ ] The landscape showcase renders correctly in the browser without WebGL context loss or crashes.
+- [ ] The map is verified to be 1000x1000 in scale with distinct Desert, Jungle, Glacier, and Volcanic environments visible.
+- [ ] All 235 frontend tests in `npm run test:frontend` pass successfully.
+
+

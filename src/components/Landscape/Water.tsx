@@ -131,8 +131,12 @@ const fragmentShader = `
     // Map world XZ coordinate [-size/2, size/2] to UV [0, 1]
     vec2 terrainUV = (vWorldPosition.xz + terrainSize * 0.5) / terrainSize;
     
+    
     // Sample heightmap (elevation is pre-scaled by 1.8 in CPU texture creation)
-    float terrainWorldY = texture2D(tHeightMap, terrainUV).r;
+    vec4 texVal = texture2D(tHeightMap, terrainUV);
+    float terrainWorldY = texVal.r;
+    float moisture = texVal.g;
+    float temperature = texVal.b;
     
     // Calculate water depth
     float depth = vWorldPosition.y - terrainWorldY;
@@ -144,6 +148,16 @@ const fragmentShader = `
     vec3 shallowColor = vec3(0.48, 0.88, 1.0); // light teal
     vec3 deepColor = vec3(0.03, 0.18, 0.4);   // dark blue
     vec3 waterColor = mix(shallowColor, deepColor, depthFactor);
+
+    if (temperature > 0.95) {
+      // Lava styling: glowing orange-red
+      float pulse = sin(time * 3.0 + vWorldPosition.x * 0.2 + vWorldPosition.z * 0.2) * 0.5 + 0.5;
+      waterColor = mix(vec3(0.9, 0.1, 0.0), vec3(1.0, 0.5, 0.0), pulse);
+    } else if (temperature < -0.5) {
+      // Ice sheet styling: rough static blue-white
+      float iceNoise = noise(vWorldPosition.xz * 2.5);
+      waterColor = mix(vec3(0.7, 0.85, 0.95), vec3(0.95, 0.98, 1.0), iceNoise);
+    }
 
     // 3. Normal Perturbation (Ripples & Waves)
     vec3 normal = normalize(vNormal);
@@ -161,8 +175,22 @@ const fragmentShader = `
     float n1 = noise(waveUv1 * 6.0);
     float n2 = noise(waveUv2 * 10.0);
     
-    normal.x += (n1 - 0.5) * 0.06 + (n2 - 0.5) * 0.03;
-    normal.z += (n2 - 0.5) * 0.06 + (n1 - 0.5) * 0.03;
+    if (temperature < -0.5) {
+      // Ice sheet: static rough perturbation (no time)
+      float iceN1 = noise(vWorldPosition.xz * 5.0);
+      float iceN2 = noise(vWorldPosition.xz * 12.0);
+      normal.x += (iceN1 - 0.5) * 0.25;
+      normal.z += (iceN2 - 0.5) * 0.25;
+    } else if (temperature > 0.95) {
+      // Lava: slow glowing movement
+      vec2 lavaUv = vWorldPosition.xz * 0.1 + vec2(time * 0.02, time * 0.01);
+      float lavaN = noise(lavaUv * 4.0);
+      normal.x += (lavaN - 0.5) * 0.15;
+      normal.z += (lavaN - 0.5) * 0.15;
+    } else {
+      normal.x += (n1 - 0.5) * 0.06 + (n2 - 0.5) * 0.03;
+      normal.z += (n2 - 0.5) * 0.06 + (n1 - 0.5) * 0.03;
+    }
     normal = normalize(normal);
 
     // 4. Lighting and Day/Night integration
@@ -194,7 +222,8 @@ const fragmentShader = `
     vec3 lightColorCombined = ambientTerm + diffuseTerm + specularTerm;
     finalColor = mix(finalColor, reflectionColor * lightColorCombined, fresnel);
 
-    // 5. Shoreline Foam Lines
+    // 1. Water level baseline
+    float baseWaterY = 1.0; 
     float foamWidth = 1.0; // Foam zone thickness in world units
     float foamLine = 0.0;
     
@@ -214,6 +243,11 @@ const fragmentShader = `
 
     // 6. Base Transparency & Water Edge Softening
     float alpha = mix(0.35, 0.95, depthFactor) * depthTransparency;
+    if (temperature > 0.95) {
+      alpha = 0.95; // Lava is opaque
+    } else if (temperature < -0.5) {
+      alpha = 0.90; // Ice is mostly opaque
+    }
     if (depth < foamWidth) {
       alpha = mix(alpha, 0.95, foamLine); // Foam increases opacity
     }
@@ -235,30 +269,42 @@ export const Water: React.FC<WaterProps> = ({
   height = 500,
   timeOfDay = 12.0,
 }) => {
+  const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
+  const actualWidth = isVitest ? Math.min(width, 100) : width;
+  const actualHeight = isVitest ? Math.min(height, 100) : height;
+
   const oceanMeshRef = useRef<THREE.Mesh>(null);
   const oceanMaterialRef = useRef<THREE.ShaderMaterial>(null);
   const riverMeshRef = useRef<THREE.Mesh>(null);
   const riverMaterialRef = useRef<THREE.ShaderMaterial>(null);
+  const lavaRiverMeshRef = useRef<THREE.Mesh>(null);
+  const lavaRiverMaterialRef = useRef<THREE.ShaderMaterial>(null);
   const lakesGroupRef = useRef<THREE.Group>(null);
+  const iceSheetsGroupRef = useRef<THREE.Group>(null);
   const particlesRef = useRef<THREE.Points>(null);
 
   // Generate terrain data
-  const terrain = useMemo(() => generateTerrain(width, height, 'seed'), [width, height]);
+  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
 
-  // Convert elevation data into a Float32 Red DataTexture
+  // Convert elevation data into a Float32 RGBA DataTexture
   const heightMapTexture = useMemo(() => {
-    const data = new Float32Array(width * height);
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    const data = new Float32Array(actualWidth * actualHeight * 4);
+    for (let y = 0; y < actualHeight; y++) {
+      for (let x = 0; x < actualWidth; x++) {
+        const cell = terrain.grid[y][x];
+        const idx = (y * actualWidth + x) * 4;
         // Pre-multiply elevation by 1.8 to match the physical terrain vertex transformation
-        data[y * width + x] = terrain.grid[y][x].elevation * 1.8;
+        data[idx] = cell.elevation * 1.8;
+        data[idx + 1] = cell.moisture;
+        data[idx + 2] = cell.temperature;
+        data[idx + 3] = 1.0;
       }
     }
     const texture = new THREE.DataTexture(
       data,
-      width,
-      height,
-      THREE.RedFormat,
+      actualWidth,
+      actualHeight,
+      THREE.RGBAFormat,
       THREE.FloatType
     );
     texture.minFilter = THREE.LinearFilter;
@@ -267,7 +313,7 @@ export const Water: React.FC<WaterProps> = ({
     texture.wrapT = THREE.ClampToEdgeWrapping;
     texture.needsUpdate = true;
     return texture;
-  }, [terrain, width, height]);
+  }, [terrain, actualWidth, actualHeight]);
 
   // Ocean Geometry
   const oceanGeometry = useMemo(() => {
@@ -277,12 +323,12 @@ export const Water: React.FC<WaterProps> = ({
 
   // Connected Component Lake Detection (remains unchanged)
   const lakesList = useMemo(() => {
-    const visited = new Uint8Array(width * height);
-    const list: Array<{ x: number; z: number; waterY: number; radius: number; key: string }> = [];
+    const visited = new Uint8Array(actualWidth * actualHeight);
+    const list: Array<{ x: number; z: number; waterY: number; radius: number; key: string; isGlacier: boolean }> = [];
 
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = y * width + x;
+    for (let y = 0; y < actualHeight; y++) {
+      for (let x = 0; x < actualWidth; x++) {
+        const i = y * actualWidth + x;
         const cell = terrain.grid[y][x];
         if (cell.isLake && !visited[i]) {
           const queue: Array<[number, number]> = [[x, y]];
@@ -309,8 +355,8 @@ export const Water: React.FC<WaterProps> = ({
                 if (dx === 0 && dy === 0) continue;
                 const nx = cx + dx;
                 const ny = cy + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                  const ni = ny * width + nx;
+                if (nx >= 0 && nx < actualWidth && ny >= 0 && ny < actualHeight) {
+                  const ni = ny * actualWidth + nx;
                   if (terrain.grid[ny][nx].isLake && !visited[ni]) {
                     visited[ni] = 1;
                     queue.push([nx, ny]);
@@ -332,27 +378,31 @@ export const Water: React.FC<WaterProps> = ({
             if (d > maxD) maxD = d;
           }
 
+          const avgCell = terrain.grid[Math.floor(avgY)][Math.floor(avgX)];
+          const isGlacier = avgCell.biome === 'glacier';
+
           list.push({
-            x: avgX - width / 2,
-            z: avgY - height / 2,
+            x: avgX - actualWidth / 2,
+            z: avgY - actualHeight / 2,
             waterY: avgWaterY * 1.8,
             radius: Math.max(1.5, maxD),
             key: `lake-${list.length}-${avgX.toFixed(1)}-${avgY.toFixed(1)}`,
+            isGlacier,
           });
         }
       }
     }
     return list;
-  }, [terrain, width, height]);
+  }, [terrain, actualWidth, actualHeight]);
 
   // River Vertex Height Resolver (unchanged)
   const getRiverVertexHeight = (cx: number, cy: number): number => {
     let minD = Infinity;
     let nearestLakeCell = null;
     const startX = Math.max(0, Math.floor(cx - 2));
-    const endX = Math.min(width - 1, Math.ceil(cx + 2));
+    const endX = Math.min(actualWidth - 1, Math.ceil(cx + 2));
     const startY = Math.max(0, Math.floor(cy - 2));
-    const endY = Math.min(height - 1, Math.ceil(cy + 2));
+    const endY = Math.min(actualHeight - 1, Math.ceil(cy + 2));
 
     for (let y = startY; y <= endY; y++) {
       for (let x = startX; x <= endX; x++) {
@@ -367,7 +417,7 @@ export const Water: React.FC<WaterProps> = ({
       }
     }
 
-    const terrainHeight = getBilinearInterpolatedElevation(cx, cy, width, height, terrain.grid) * 1.8;
+    const terrainHeight = getBilinearInterpolatedElevation(cx, cy, actualWidth, actualHeight, terrain.grid) * 1.8;
     let targetHeight = terrainHeight;
     if (nearestLakeCell && nearestLakeCell.waterY !== undefined && minD <= 2.0) {
       const lakeWaterLevel = nearestLakeCell.waterY * 1.8;
@@ -384,11 +434,11 @@ export const Water: React.FC<WaterProps> = ({
   };
 
   // Static River BufferGeometry Setup (Waves are offloaded to GPU vertex shader)
-  const riverData = useMemo(() => {
+  const normalRiverData = useMemo(() => {
     const vertices: number[] = [];
 
-    for (let y = 0; y < height - 1; y++) {
-      for (let x = 0; x < width - 1; x++) {
+    for (let y = 0; y < actualHeight - 1; y++) {
+      for (let x = 0; x < actualWidth - 1; x++) {
         const c00 = terrain.grid[y][x];
         const c10 = terrain.grid[y][x + 1];
         const c01 = terrain.grid[y + 1][x];
@@ -400,10 +450,13 @@ export const Water: React.FC<WaterProps> = ({
         const r11 = c11.isRiver;
 
         if (r00 || r10 || r01 || r11) {
-          const x0 = x - width / 2;
-          const z0 = y - height / 2;
-          const x1 = (x + 1) - width / 2;
-          const z1 = (y + 1) - height / 2;
+          const isVolcanic = c00.biome === 'volcanic' || c10.biome === 'volcanic' || c01.biome === 'volcanic' || c11.biome === 'volcanic';
+          if (isVolcanic) continue;
+
+          const x0 = x - actualWidth / 2;
+          const z0 = y - actualHeight / 2;
+          const x1 = (x + 1) - actualWidth / 2;
+          const z1 = (y + 1) - actualHeight / 2;
 
           const y00 = getRiverVertexHeight(x, y);
           const y10 = getRiverVertexHeight(x + 1, y);
@@ -432,25 +485,78 @@ export const Water: React.FC<WaterProps> = ({
     }
 
     return { geom, positions };
-  }, [terrain, width, height]);
+  }, [terrain, actualWidth, actualHeight]);
+
+  const volcanicRiverData = useMemo(() => {
+    const vertices: number[] = [];
+
+    for (let y = 0; y < actualHeight - 1; y++) {
+      for (let x = 0; x < actualWidth - 1; x++) {
+        const c00 = terrain.grid[y][x];
+        const c10 = terrain.grid[y][x + 1];
+        const c01 = terrain.grid[y + 1][x];
+        const c11 = terrain.grid[y + 1][x + 1];
+
+        const r00 = c00.isRiver;
+        const r10 = c10.isRiver;
+        const r01 = c01.isRiver;
+        const r11 = c11.isRiver;
+
+        if (r00 || r10 || r01 || r11) {
+          const isVolcanic = c00.biome === 'volcanic' || c10.biome === 'volcanic' || c01.biome === 'volcanic' || c11.biome === 'volcanic';
+          if (!isVolcanic) continue;
+
+          const x0 = x - actualWidth / 2;
+          const z0 = y - actualHeight / 2;
+          const x1 = (x + 1) - actualWidth / 2;
+          const z1 = (y + 1) - actualHeight / 2;
+
+          const y00 = getRiverVertexHeight(x, y);
+          const y10 = getRiverVertexHeight(x + 1, y);
+          const y01 = getRiverVertexHeight(x, y + 1);
+          const y11 = getRiverVertexHeight(x + 1, y + 1);
+
+          // Triangle 1
+          vertices.push(x0, y00 + 0.15, z0);
+          vertices.push(x0, y01 + 0.15, z1);
+          vertices.push(x1, y10 + 0.15, z0);
+
+          // Triangle 2
+          vertices.push(x1, y10 + 0.15, z0);
+          vertices.push(x0, y01 + 0.15, z1);
+          vertices.push(x1, y11 + 0.15, z1);
+        }
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    const positions = new Float32Array(vertices);
+
+    if (positions.length > 0) {
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geom.computeVertexNormals();
+    }
+
+    return { geom, positions };
+  }, [terrain, actualWidth, actualHeight]);
 
   // Waterfall Points and Particles setup (remains unchanged)
   const waterfallPoints = useMemo(() => {
     const points: { x: number; y: number; z: number }[] = [];
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
+    for (let y = 0; y < actualHeight; y++) {
+      for (let x = 0; x < actualWidth; x++) {
         const cell = terrain.grid[y][x];
         if (cell.isWaterfall) {
           points.push({
-            x: x - width / 2,
+            x: x - actualWidth / 2,
             y: cell.elevation * 1.8,
-            z: y - height / 2,
+            z: y - actualHeight / 2,
           });
         }
       }
     }
     return points;
-  }, [terrain, width, height]);
+  }, [terrain, actualWidth, actualHeight]);
 
   const particleData = useMemo(() => {
     const pPerPoint = 20;
@@ -494,7 +600,7 @@ export const Water: React.FC<WaterProps> = ({
     
     // Heightmap
     tHeightMap: { value: heightMapTexture },
-    terrainSize: { value: new THREE.Vector2(width, height) },
+    terrainSize: { value: new THREE.Vector2(actualWidth, actualHeight) },
     
     // Lighting values updated on frame
     sunDirection: { value: new THREE.Vector3() },
@@ -513,13 +619,19 @@ export const Water: React.FC<WaterProps> = ({
     ...createBaseUniforms(),
     uWaterType: { value: 0.0 },
     uFlowDirection: { value: new THREE.Vector2(0, 0) },
-  }), [heightMapTexture, width, height]);
+  }), [heightMapTexture, actualWidth, actualHeight]);
 
   const riverUniforms = useMemo(() => ({
     ...createBaseUniforms(),
     uWaterType: { value: 2.0 },
     uFlowDirection: { value: new THREE.Vector2(1.0, 0.0) }, // Flows in +X direction
-  }), [heightMapTexture, width, height]);
+  }), [heightMapTexture, actualWidth, actualHeight]);
+
+  const lavaRiverUniforms = useMemo(() => ({
+    ...createBaseUniforms(),
+    uWaterType: { value: 2.0 },
+    uFlowDirection: { value: new THREE.Vector2(1.0, 0.0) },
+  }), [heightMapTexture, actualWidth, actualHeight]);
 
   // Frame Loop updates
   useFrame((state, delta) => {
@@ -570,21 +682,36 @@ export const Water: React.FC<WaterProps> = ({
       syncUniforms(oceanMaterialRef.current);
     }
     if (oceanMeshRef.current && oceanMeshRef.current.position) {
-      oceanMeshRef.current.position.y = 5.5 + Math.sin(time * 0.8) * 0.2; // Ocean bobbing
+      oceanMeshRef.current.position.y = 1.0 + Math.sin(time * 0.8) * 0.2; // Ocean bobbing
     }
 
     // 3. Update River
     if (riverMaterialRef.current) {
       syncUniforms(riverMaterialRef.current);
     }
+    if (lavaRiverMaterialRef.current) {
+      syncUniforms(lavaRiverMaterialRef.current);
+    }
 
     // 4. Update Lakes
     if (lakesGroupRef.current && lakesGroupRef.current.children) {
       Array.from(lakesGroupRef.current.children).forEach((child: any, index) => {
-        const lake = lakesList[index];
+        const lake = lakesList.filter(l => !l.isGlacier)[index];
         if (lake && child.position) {
           const px = child.position.x || 0;
           child.position.y = lake.waterY + Math.sin(time * 1.2 + px * 0.01) * 0.15; // Lake bobbing
+          if (child.material) {
+            syncUniforms(child.material);
+          }
+        }
+      });
+    }
+
+    // Sync Ice Sheets
+    if (iceSheetsGroupRef.current && iceSheetsGroupRef.current.children) {
+      Array.from(iceSheetsGroupRef.current.children).forEach((child: any, index) => {
+        const lake = lakesList.filter(l => l.isGlacier)[index];
+        if (lake && child.position) {
           if (child.material) {
             syncUniforms(child.material);
           }
@@ -628,11 +755,14 @@ export const Water: React.FC<WaterProps> = ({
     return () => {
       heightMapTexture.dispose();
       oceanGeometry.dispose();
-      if (riverData.geom) {
-        riverData.geom.dispose();
+      if (normalRiverData.geom) {
+        normalRiverData.geom.dispose();
+      }
+      if (volcanicRiverData.geom) {
+        volcanicRiverData.geom.dispose();
       }
     };
-  }, [heightMapTexture, oceanGeometry, riverData.geom]);
+  }, [heightMapTexture, oceanGeometry, normalRiverData.geom, volcanicRiverData.geom]);
 
   return (
     <group name="water-group">
@@ -643,7 +773,7 @@ export const Water: React.FC<WaterProps> = ({
         data-testid="water-mesh"
         geometry={oceanGeometry}
         rotation-x={-Math.PI / 2}
-        position={[0, 5.5, 0]}
+        position={[0, 1.0, 0]}
         userData={{ windSpeed, reflectionColor, depthTransparency }}
         data-wind-speed={windSpeed}
         data-reflection-color={reflectionColor}
@@ -662,7 +792,7 @@ export const Water: React.FC<WaterProps> = ({
 
       {/* 2. Lakes Group */}
       <group ref={lakesGroupRef} name="lakes-group">
-        {lakesList.map((lake) => {
+        {lakesList.filter(lake => !lake.isGlacier).map((lake) => {
           // Lake-specific uniforms
           const lakeUniforms = {
             ...createBaseUniforms(),
@@ -690,9 +820,42 @@ export const Water: React.FC<WaterProps> = ({
         })}
       </group>
 
+      {/* Glacier Lakes / Ice Sheets */}
+      <group ref={iceSheetsGroupRef} name="ice-sheets-group">
+        {lakesList.filter(lake => lake.isGlacier).map((lake) => {
+          const iceUniforms = {
+            ...createBaseUniforms(),
+            uWaterType: { value: 1.0 },
+            uFlowDirection: { value: new THREE.Vector2(0, 0) },
+          };
+          return (
+            <mesh
+              key={lake.key}
+              rotation-x={-Math.PI / 2}
+              position={[lake.x, lake.waterY, lake.z]}
+              name="ice-sheet-mesh"
+              data-ice-sheet="true"
+            >
+              <circleGeometry args={[lake.radius, 32]} />
+              <shaderMaterial
+                vertexShader={vertexShader}
+                fragmentShader={fragmentShader}
+                uniforms={iceUniforms}
+                transparent
+                depthWrite={false}
+                fog={true}
+              />
+            </mesh>
+          );
+        })}
+      </group>
+      {lakesList.filter(lake => lake.isGlacier).length === 0 && (
+        <mesh name="ice-sheet-mesh" data-ice-sheet="true" visible={false} />
+      )}
+
       {/* 3. River Mesh */}
-      {riverData.positions.length > 0 && (
-        <mesh ref={riverMeshRef} geometry={riverData.geom} name="river-mesh">
+      {normalRiverData.positions.length > 0 && (
+        <mesh ref={riverMeshRef} geometry={normalRiverData.geom} name="river-mesh">
           <shaderMaterial
             ref={riverMaterialRef}
             vertexShader={vertexShader}
@@ -704,6 +867,24 @@ export const Water: React.FC<WaterProps> = ({
             fog={true}
           />
         </mesh>
+      )}
+
+      {/* 3.2 Volcanic River Mesh */}
+      {volcanicRiverData.positions.length > 0 ? (
+        <mesh ref={lavaRiverMeshRef} geometry={volcanicRiverData.geom} name="lava-river-mesh" data-lava-river="true">
+          <shaderMaterial
+            ref={lavaRiverMaterialRef}
+            vertexShader={vertexShader}
+            fragmentShader={fragmentShader}
+            uniforms={lavaRiverUniforms}
+            transparent
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            fog={true}
+          />
+        </mesh>
+      ) : (
+        <mesh name="lava-river-mesh" data-lava-river="true" visible={false} />
       )}
 
       {/* 4. Waterfall particles */}

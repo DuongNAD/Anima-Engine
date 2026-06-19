@@ -172,7 +172,7 @@ describe('Vegetation Component Tests', () => {
       } else if (name === 'vegetation-instanced-mesh-birch-leaves') {
         expectedZ += 3.2 * s;
       } else if (name === 'vegetation-instanced-mesh-flowers') {
-        expectedZ += 0.3;
+        expectedZ += 0.3 * s;
       }
 
       // Height (y) must match the terrain height plus offset

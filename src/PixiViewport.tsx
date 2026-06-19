@@ -682,8 +682,15 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           if (active) {
             if (Array.isArray(event.payload)) {
               segmentsRef.current = event.payload;
-            } else if (event.payload && typeof event.payload === 'object' && Array.isArray(event.payload.segments)) {
-              segmentsRef.current = event.payload.segments;
+            } else if (event.payload && typeof event.payload === 'object') {
+              if (Array.isArray(event.payload.segments)) {
+                segmentsRef.current = event.payload.segments;
+              } else {
+                segmentsRef.current = [];
+              }
+              if (event.payload.environmental_state) {
+                environmentalStateRef.current = event.payload.environmental_state;
+              }
             } else {
               segmentsRef.current = [];
             }

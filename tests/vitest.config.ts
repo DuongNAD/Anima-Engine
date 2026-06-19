@@ -18,6 +18,7 @@ export default defineConfig({
       'react': path.resolve(__dirname, '../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../node_modules/react-dom'),
       '@tauri-apps/api': path.resolve(__dirname, '../node_modules/@tauri-apps/api'),
+      'three': path.resolve(__dirname, '../node_modules/three'),
     },
   },
 });

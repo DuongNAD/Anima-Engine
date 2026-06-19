@@ -1,10 +1,10 @@
-import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
-const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
+import LandscapeShowcase from "./components/Landscape/LandscapeShowcase";
 
 
 export interface SegmentState {
@@ -25,6 +25,8 @@ export interface SegmentState {
   joint_axis_z: number;
   energy: number;
   agent_type?: 'predator' | 'prey';
+  hydration?: number;
+  head_direction?: [number, number, number];
 }
 
 export interface RaycastTelemetry {
@@ -230,7 +232,49 @@ export function App() {
   const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
   const [showLandscape, setShowLandscape] = useState<boolean>(false);
 
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [filePath, setFilePath] = useState<string>("");
+  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] } | null>(null);
+  const [hydration, setHydration] = useState<number | null>(null);
+  const [headDirections, setHeadDirections] = useState<any[]>([]);
 
+  const handleZoomIn = () => {
+    setZoom((prev) => Math.min(10.0, prev + 0.1));
+  };
+  const handleZoomOut = () => {
+    setZoom((prev) => Math.max(0.1, prev - 0.1));
+  };
+  const handlePanLeft = () => {
+    setPan((prev) => ({ ...prev, x: prev.x - 10 }));
+  };
+  const handlePanRight = () => {
+    setPan((prev) => ({ ...prev, x: prev.x + 10 }));
+  };
+  const handlePanUp = () => {
+    setPan((prev) => ({ ...prev, y: prev.y - 10 }));
+  };
+  const handlePanDown = () => {
+    setPan((prev) => ({ ...prev, y: prev.y + 10 }));
+  };
+
+  const handleSaveState = async () => {
+    try {
+      setError(null);
+      await invoke("save_simulation_state", { file_path: filePath });
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleLoadState = async () => {
+    try {
+      setError(null);
+      await invoke("load_simulation_state", { file_path: filePath });
+    } catch (err) {
+      setError(String(err));
+    }
+  };
   // Phase 3 states and refs
   const [pheromoneGrid, setPheromoneGrid] = useState<PheromoneGridState | null>(null);
   const [activeRaycasts, rawSetActiveRaycasts] = useState<RaycastTelemetry[]>([]);
@@ -559,7 +603,7 @@ export function App() {
       for (let x = 0; x < size; x++) {
         const key = `${x * 5},${y * 5}`;
         const elite = mapElitesGrid.grid[key];
-        const color = elite ? `rgba(236, 72, 153, ${elite.fitness})` : "#edf2f7";
+        const color = elite ? `rgba(255, 255, 255, ${0.1 + elite.fitness * 0.5})` : 'rgba(255, 255, 255, 0.03)';
         cells.push(
           <div
             key={key}
@@ -568,7 +612,7 @@ export function App() {
               width: "20px",
               height: "20px",
               backgroundColor: color,
-              border: "1px solid #cbd5e0",
+              border: elite ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
               display: "inline-block",
             }}
             title={elite ? `Fitness: ${elite.fitness.toFixed(2)}` : "Empty"}
@@ -599,6 +643,19 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // Fetch initial environmental elements on mount
+  useEffect(() => {
+    const fetchEnv = async () => {
+      try {
+        const env = await invoke<{ elements: any[] }>("get_environmental_elements");
+        setEnvironmentalState(env);
+      } catch (err) {
+        console.error("Failed to load environmental elements:", err);
+      }
+    };
+    fetchEnv();
+  }, []);
+
   // Lắng nghe luồng dữ liệu tick phát từ luồng chạy ngầm của Rust (Tauri IPC Event)
   useEffect(() => {
     let active = true;
@@ -606,9 +663,23 @@ export function App() {
 
     const setupListener = async () => {
       try {
-        const u = await listen<SegmentState[]>("simulation-tick", (event) => {
+        const u = await listen<any>("simulation-tick", (event) => {
           if (!active) return;
-          const newSegments = (Array.isArray(event.payload) ? event.payload : []).filter(
+          let newSegments: SegmentState[] = [];
+          let envState: any = null;
+          let headDirs: any[] = [];
+          
+          if (event && event.payload) {
+            if (Array.isArray(event.payload)) {
+              newSegments = event.payload;
+            } else if (typeof event.payload === 'object') {
+              newSegments = Array.isArray(event.payload.segments) ? event.payload.segments : [];
+              envState = event.payload.environmental_state;
+              headDirs = Array.isArray(event.payload.head_directions) ? event.payload.head_directions : [];
+            }
+          }
+
+          newSegments = newSegments.filter(
             (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
           );
           latestSegmentsRef.current = newSegments;
@@ -618,6 +689,19 @@ export function App() {
             const newHierarchies = buildAgentHierarchy(newSegments);
             setHierarchies(newHierarchies);
             lastHierarchiesUpdateRef.current = now;
+          }
+
+          if (envState) {
+            setEnvironmentalState(envState);
+          }
+
+          if (headDirs) {
+            setHeadDirections(headDirs);
+          }
+
+          const segWithHydration = newSegments.find(s => s && s.hydration !== undefined);
+          if (segWithHydration && segWithHydration.hydration !== undefined) {
+            setHydration(segWithHydration.hydration);
           }
         });
         if (!active) {
@@ -653,10 +737,125 @@ export function App() {
 
   // PixiViewport handles the rendering loop directly. Old Canvas 2D render loop removed.
 
+  const renderedGrid = useMemo(() => {
+    return renderGrid();
+  }, [mapElitesGrid]);
+
+  const renderedHierarchies = useMemo(() => {
+    return (
+      <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
+        {hierarchies.length === 0 ? (
+          <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
+        ) : (
+          hierarchies.map((hierarchy) => (
+            <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
+              <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
+                Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
+              </h3>
+              <div style={{ paddingLeft: "5px" }}>
+                <SegmentNodeViewer segment={hierarchy.root} level={0} />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }, [hierarchies]);
+
+  const renderedChronicle = useMemo(() => {
+    const history = Array.isArray(chronicleHistory) ? chronicleHistory : [];
+    return (
+      <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+        <h2>Mother Nature Chronicle</h2>
+        <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+          {history.length === 0 ? (
+            <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No chronicle events recorded</p>
+          ) : (
+            history.map((evt, idx) => {
+              const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
+              return (
+                <div 
+                  key={evt.id || idx} 
+                  style={{ 
+                    padding: "10px", 
+                    marginBottom: "8px",
+                    backgroundColor: "rgba(255, 255, 255, 0.02)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderLeft: "3px solid " + (isAlert ? "#ffffff" : "rgba(255, 255, 255, 0.3)"),
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
+                    <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
+                    <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <strong>{evt.title}</strong>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
+                  {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
+                    <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
+                      ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }, [chronicleHistory]);
+
   const svgHeight = Math.max(180, (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length * 30 + 30);
 
-  return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
+  const renderedLineageGraph = useMemo(() => {
+    return (
+      <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+        <h3>Genotype Lineage Graph</h3>
+        <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed #cbd5e0", backgroundColor: "#f7fafc", display: "block", overflow: "auto" }}>
+          {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a0aec0" }}>No lineage data available</div>
+          ) : (
+            <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
+              {(() => {
+                const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
+                const nodesMap = new Map(nodes.map(n => [n?.id, n]));
+                const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
+                return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
+                  const sourceNode = nodesMap.get(link?.source);
+                  const targetNode = nodesMap.get(link?.target);
+                  if (!sourceNode || !targetNode) return null;
+                  const sourceIdx = nodeIndexMap.get(link?.source);
+                  const targetIdx = nodeIndexMap.get(link?.target);
+                  if (sourceIdx === undefined || targetIdx === undefined) return null;
+                  const x1 = 30 + (sourceNode.generation || 0) * 40;
+                  const y1 = 30 + sourceIdx * 30;
+                  const x2 = 30 + (targetNode.generation || 0) * 40;
+                  const y2 = 30 + targetIdx * 30;
+                  return (
+                    <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a0aec0" strokeWidth="2" />
+                  );
+                });
+              })()}
+              {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
+                if (!node) return null;
+                const cx = 30 + (node.generation || 0) * 40;
+                const cy = 30 + idx * 30;
+                return (
+                  <g key={node.id} data-testid={`lineage-node-${node.id}`}>
+                    <circle cx={cx} cy={cy} r="10" fill="#3182ce" />
+                    <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="#2d3748">{node.id}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          )}
+        </div>
+      </div>
+    );
+  }, [lineageGraph, svgHeight]);
+
+  const renderedHeader = useMemo(() => {
+    return (
       <header style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
@@ -704,9 +903,11 @@ export function App() {
           </button>
         </div>
       </header>
+    );
+  }, [showRabbitTest, showLandscape]);
 
-      {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
-
+  const renderedSimulationControls = useMemo(() => {
+    return (
       <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
         <button 
           onClick={handleToggle} 
@@ -755,6 +956,61 @@ export function App() {
           </button>
         </div>
       </div>
+    );
+  }, [status.running, projection]);
+
+  const renderedSimulationStatus = useMemo(() => {
+    return (
+      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
+        <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
+        <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
+        <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
+        <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
+      </div>
+    );
+  }, [status]);
+
+  const renderedEnvironmentalElements = useMemo(() => {
+    return (
+      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Environmental Elements</h2>
+        <div data-testid="environmental-elements-container">
+          {(!environmentalState || !Array.isArray(environmentalState.elements) || environmentalState.elements.length === 0) ? (
+            <p>No environmental elements loaded</p>
+          ) : (
+            environmentalState.elements.map((elem: any, idx: number) => (
+              <div key={idx} style={{ fontSize: "14px", margin: "4px 0" }}>
+                • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
+  }, [environmentalState]);
+
+  const renderedTelemetry = useMemo(() => {
+    return (
+      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Entity Telemetry</h2>
+        <div data-testid="hydration-telemetry" style={{ fontSize: "14px", margin: "4px 0" }}>
+          Hydration: {hydration !== null ? `${hydration.toFixed(1)}%` : "N/A"}
+        </div>
+        <div data-testid="head-direction-telemetry" style={{ fontSize: "14px", margin: "4px 0" }}>
+          Head Direction: {headDirections && headDirections.length > 0 && headDirections[0] && Array.isArray(headDirections[0].direction) ? `[${headDirections[0].direction.map((v: number) => v.toFixed(1)).join(', ')}]` : "N/A"}
+        </div>
+      </div>
+    );
+  }, [hydration, headDirections]);
+
+  return (
+    <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
+      {renderedHeader}
+
+      {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
+
+      {renderedSimulationControls}
 
       {showRabbitTest ? (
         <div style={{ marginBottom: "20px" }}>
@@ -772,18 +1028,60 @@ export function App() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
           {/* Cột 1: Thông tin và Bảng Canvas */}
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
-              <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
-              <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
-              <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
-              <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
-            </div>
-
+            {renderedSimulationStatus}
             <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
               <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
-              <PixiViewport projection={projection} />
+              
+              {/* Zoom & Pan Controls */}
+              <div style={{ display: "flex", gap: "10px", marginBottom: "15px", flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: "14px", fontWeight: "bold" }}>Zoom & Pan:</span>
+                <button data-testid="zoom-in-button" onClick={handleZoomIn} style={{ padding: "4px 8px", cursor: "pointer" }}>Zoom In</button>
+                <button data-testid="zoom-out-button" onClick={handleZoomOut} style={{ padding: "4px 8px", cursor: "pointer" }}>Zoom Out</button>
+                <button data-testid="pan-left-button" onClick={handlePanLeft} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Left</button>
+                <button data-testid="pan-right-button" onClick={handlePanRight} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Right</button>
+                <button data-testid="pan-up-button" onClick={handlePanUp} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Up</button>
+                <button data-testid="pan-down-button" onClick={handlePanDown} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Down</button>
+                <button data-testid="pan-button" onClick={() => setPan({ x: 0, y: 0 })} style={{ padding: "4px 8px", cursor: "pointer" }}>Reset Pan</button>
+              </div>
+
+              {/* Persistence UI Controls */}
+              <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "center" }}>
+                <label htmlFor="filepath-input" style={{ fontSize: "14px", fontWeight: "bold" }}>State File:</label>
+                <input
+                  id="filepath-input"
+                  data-testid="filepath-input"
+                  type="text"
+                  value={filePath}
+                  onChange={(e) => setFilePath(e.target.value)}
+                  style={{ padding: "4px 8px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
+                />
+                <button
+                  data-testid="save-state-button"
+                  onClick={handleSaveState}
+                  style={{ padding: "4px 8px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Save State
+                </button>
+                <button
+                  data-testid="load-state-button"
+                  onClick={handleLoadState}
+                  style={{ padding: "4px 8px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Load State
+                </button>
+              </div>
+
+              <PixiViewport
+                projection={projection}
+                zoom={zoom}
+                pan={pan}
+                environmentalState={environmentalState}
+              />
             </div>
+
+            {renderedEnvironmentalElements}
+
+            {renderedTelemetry}
           </div>
 
           {/* Cột 2: Cấu trúc phân cấp các Agent */}
@@ -791,22 +1089,7 @@ export function App() {
             <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
             <p style={{ margin: "0 0 15px 0" }}>Số Agents hoạt động: {hierarchies.length}</p>
             
-            <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
-              {hierarchies.length === 0 ? (
-                <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
-              ) : (
-                hierarchies.map((hierarchy) => (
-                  <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
-                    <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
-                      Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
-                    </h3>
-                    <div style={{ paddingLeft: "5px" }}>
-                      <SegmentNodeViewer segment={hierarchy.root} level={0} />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            {renderedHierarchies}
           </div>
         </div>
       )}
@@ -859,7 +1142,7 @@ export function App() {
           </div>
           <div>
             <h3>Archive Grid (10x10 representation)</h3>
-            {renderGrid()}
+            {renderedGrid}
           </div>
         </div>
       </div>
@@ -916,88 +1199,9 @@ export function App() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
           
-          {/* Lineage Graph SVG container/nodes */}
-          <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h3>Genotype Lineage Graph</h3>
-            <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed #cbd5e0", backgroundColor: "#f7fafc", display: "block", overflow: "auto" }}>
-              {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a0aec0" }}>No lineage data available</div>
-              ) : (
-                <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
-                  {(() => {
-                    const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
-                    const nodesMap = new Map(nodes.map(n => [n?.id, n]));
-                    const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
-                    return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
-                      const sourceNode = nodesMap.get(link?.source);
-                      const targetNode = nodesMap.get(link?.target);
-                      if (!sourceNode || !targetNode) return null;
-                      const sourceIdx = nodeIndexMap.get(link?.source);
-                      const targetIdx = nodeIndexMap.get(link?.target);
-                      if (sourceIdx === undefined || targetIdx === undefined) return null;
-                      const x1 = 30 + (sourceNode.generation || 0) * 40;
-                      const y1 = 30 + sourceIdx * 30;
-                      const x2 = 30 + (targetNode.generation || 0) * 40;
-                      const y2 = 30 + targetIdx * 30;
-                      return (
-                        <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a0aec0" strokeWidth="2" />
-                      );
-                    });
-                  })()}
-                  {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
-                    if (!node) return null;
-                    const cx = 30 + (node.generation || 0) * 40;
-                    const cy = 30 + idx * 30;
-                    return (
-                      <g key={node.id} data-testid={`lineage-node-${node.id}`}>
-                        <circle cx={cx} cy={cy} r="10" fill="#3182ce" />
-                        <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="#2d3748">{node.id}</text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              )}
-            </div>
-          </div>
+          {renderedLineageGraph}
 
-          {/* Chronicle Timeline Panel */}
-          <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h2>Mother Nature Chronicle</h2>
-            <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-              {(Array.isArray(chronicleHistory) ? chronicleHistory : []).length === 0 ? (
-                <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No chronicle events recorded</p>
-              ) : (
-                (Array.isArray(chronicleHistory) ? chronicleHistory : []).map((evt, idx) => {
-                  const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
-                  return (
-                    <div 
-                      key={evt.id || idx} 
-                      style={{ 
-                        padding: "8px", 
-                        borderBottom: "1px solid #edf2f7", 
-                        marginBottom: "5px",
-                        backgroundColor: isAlert ? "#fff5f5" : "#f0fff4",
-                        borderLeft: isAlert ? "4px solid #e53e3e" : "4px solid #38a169",
-                        borderRadius: "4px"
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
-                        <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
-                        <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                      <strong>{evt.title}</strong>
-                      <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
-                      {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
-                        <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
-                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          {renderedChronicle}
 
           {/* Migration Panel */}
           <div data-testid="migration-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
@@ -1062,6 +1266,11 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
+function safeToFixed(val: any, decimals: number = 2): string {
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  return isNaN(num) ? 'N/A' : num.toFixed(decimals);
+}
+
 function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeViewerProps) {
   if (visited.has(segment.segment_id)) {
     return null;
@@ -1074,9 +1283,9 @@ function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeV
       <div style={{ padding: "4px 8px", backgroundColor: "#f7fafc", borderRadius: "4px", display: "inline-block", fontSize: "13px", border: "1px solid #edf2f7" }}>
         <strong>Segment #{segment.segment_id}</strong>
         <span style={{ fontSize: "11px", color: "#718096", marginLeft: "10px" }}>
-          Tọa độ: ({segment.x.toFixed(2)}, {segment.y.toFixed(2)}, {segment.z.toFixed(2)}) | 
-          Yaw: {segment.yaw.toFixed(2)} rad |
-          Anchor: [{segment.joint_anchor.map(v => v.toFixed(1)).join(", ")}]
+          Tọa độ: ({safeToFixed(segment.x)}, {safeToFixed(segment.y)}, {safeToFixed(segment.z)}) | 
+          Yaw: {safeToFixed(segment.yaw)} rad |
+          Anchor: [{segment.joint_anchor.map(v => safeToFixed(v, 1)).join(", ")}]
         </span>
       </div>
       {segment.children.map((child) => (
