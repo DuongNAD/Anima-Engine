@@ -40,3 +40,9 @@ pnpm-debug.log*
 
 # Playground / Sandbox for temporary experiments
 /playground/
+
+# Additional scratch / large prototypes (added during /init cleanup)
+$.agents/
+/test-results/
+map-prototype/
+.claude/settings.local.json

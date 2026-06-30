@@ -125,6 +125,6 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
     expect(mockGraphicsMethods.lineTo).toHaveBeenCalledWith(250, 300);
 
     // Check pheromone grid heatmap tile rendering (drawn as rectangle via drawRect)
-    expect(mockGraphicsMethods.drawRect).toHaveBeenCalledWith(250, 0, 250, 175);
+    expect(mockGraphicsMethods.drawRect).toHaveBeenCalledWith(250, 50, 125, 125);
   });
 });

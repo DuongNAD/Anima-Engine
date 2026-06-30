@@ -46,6 +46,7 @@ pub struct SimulationEngine {
     pub save_request_rx: crossbeam_channel::Receiver<std::sync::mpsc::Sender<SavedSimulationState>>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
+    pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
 }
 
 impl Default for SimulationEngine {
@@ -91,6 +92,7 @@ impl SimulationEngine {
             save_request_rx,
             pending_load_state,
             environmental_state: Arc::new(RwLock::new(crate::core::ecs::EnvironmentalState::default())),
+            terrain_map: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -403,6 +405,7 @@ impl SimulationEngine {
         let lineage_tracker_sim_save = Arc::clone(&self.lineage_tracker);
         let evolution_settings_clone_save = Arc::clone(&evolution_settings);
         let map_elites_grid_clone_save = Arc::clone(&map_elites_grid);
+        let terrain_map_clone = Arc::clone(&self.terrain_map);
 
         let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
         let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
@@ -414,6 +417,14 @@ impl SimulationEngine {
             
             let loaded_bounds = state_to_load.as_ref().map(|s| s.map_bounds).unwrap_or_else(MapBounds::default);
             world.insert_resource(loaded_bounds);
+
+            if let Some(terrain_map) = world.get_resource::<crate::core::terrain::TerrainMap>() {
+                let state = crate::commands::environment::TerrainMapState::from_resource(terrain_map, &loaded_bounds);
+                if let Ok(mut lock) = terrain_map_clone.write() {
+                    *lock = Some(state);
+                }
+            }
+
             world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(10.0, &loaded_bounds));
             
             let loaded_pheromone = state_to_load.as_ref().map(|s| {
@@ -680,28 +691,98 @@ impl SimulationEngine {
                     }
                 }
 
-                world.spawn((
-                    Lake {
-                        current_water: 500.0,
-                        max_water: 500.0,
-                        replenishment_rate: 5.0,
-                    },
-                    Position(glam::Vec3::new(50.0, 0.0, 50.0)),
-                    crate::physics::SpatialCollider { radius: 30.0 },
-                ));
+                let env_settings = world.get_resource::<EnvironmentalSpawnSettings>().cloned().unwrap_or_default();
+                let terrain_map = world.get_resource::<crate::core::terrain::TerrainMap>().cloned();
+                let bounds = world.get_resource::<MapBounds>().cloned().unwrap_or_default();
 
-                world.spawn((
-                    Tree {
-                        current_fruit: 100.0,
-                        max_fruit: 100.0,
-                        fruit_growth_rate: 2.0,
-                        time_since_last_drop: 0.0,
-                        seed_drop_cooldown: 15.0,
-                        seed_spread_radius: 20.0,
-                    },
-                    Position(glam::Vec3::new(-50.0, 0.0, -50.0)),
-                    crate::physics::SpatialCollider { radius: 10.0 },
-                ));
+                let mut lake_candidates = Vec::new();
+                let mut tree_candidates = Vec::new();
+
+                if let Some(ref tm) = terrain_map {
+                    for row in 0..tm.height {
+                        for col in 0..tm.width {
+                            let idx = row * tm.width + col;
+                            let biome = tm.biomes[idx];
+                            let elevation = tm.elevations[idx];
+
+                            let px = bounds.min.x + ((col as f32 + 0.5) / tm.width as f32) * (bounds.max.x - bounds.min.x);
+                            let pz = bounds.min.z + ((row as f32 + 0.5) / tm.height as f32) * (bounds.max.z - bounds.min.z);
+                            let pos = glam::Vec3::new(px, 0.0, pz);
+
+                            if (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4 {
+                                lake_candidates.push(pos);
+                            }
+                            if biome == 5 || biome == 6 || biome == 7 {
+                                tree_candidates.push(pos);
+                            }
+                        }
+                    }
+                }
+
+                use rand::seq::SliceRandom;
+                let mut rng = rand::thread_rng();
+
+                // Spawn Lakes
+                if !lake_candidates.is_empty() {
+                    lake_candidates.shuffle(&mut rng);
+                    let num_lakes_to_spawn = 5.min(lake_candidates.len());
+                    for i in 0..num_lakes_to_spawn {
+                        let pos = lake_candidates[i];
+                        world.spawn((
+                            Lake {
+                                current_water: env_settings.default_lake_water,
+                                max_water: env_settings.default_lake_water,
+                                replenishment_rate: env_settings.default_lake_replenish,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 10.0 },
+                        ));
+                    }
+                } else {
+                    world.spawn((
+                        Lake {
+                            current_water: env_settings.default_lake_water,
+                            max_water: env_settings.default_lake_water,
+                            replenishment_rate: env_settings.default_lake_replenish,
+                        },
+                        Position(glam::Vec3::new(50.0, 0.0, 50.0)),
+                        crate::physics::SpatialCollider { radius: 30.0 },
+                    ));
+                }
+
+                // Spawn Trees
+                if !tree_candidates.is_empty() {
+                    tree_candidates.shuffle(&mut rng);
+                    let num_trees_to_spawn = env_settings.max_tree_count.min(tree_candidates.len());
+                    for i in 0..num_trees_to_spawn {
+                        let pos = tree_candidates[i];
+                        world.spawn((
+                            Tree {
+                                current_fruit: env_settings.default_tree_fruit,
+                                max_fruit: env_settings.default_tree_fruit,
+                                fruit_growth_rate: env_settings.default_tree_growth,
+                                time_since_last_drop: 0.0,
+                                seed_drop_cooldown: env_settings.default_seed_cooldown,
+                                seed_spread_radius: env_settings.default_seed_spread,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 2.0 },
+                        ));
+                    }
+                } else {
+                    world.spawn((
+                        Tree {
+                            current_fruit: env_settings.default_tree_fruit,
+                            max_fruit: env_settings.default_tree_fruit,
+                            fruit_growth_rate: env_settings.default_tree_growth,
+                            time_since_last_drop: 0.0,
+                            seed_drop_cooldown: env_settings.default_seed_cooldown,
+                            seed_spread_radius: env_settings.default_seed_spread,
+                        },
+                        Position(glam::Vec3::new(-50.0, 0.0, -50.0)),
+                        crate::physics::SpatialCollider { radius: 10.0 },
+                    ));
+                }
             }
 
             let mut schedule = Schedule::default();

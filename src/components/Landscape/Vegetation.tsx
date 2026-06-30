@@ -79,7 +79,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
   const allPlacements = useMemo(() => generateFloraPlacements(width, height), [width, height]);
 
   // Apply density factor and max capacity to main placements
-  let placements = useMemo(() => {
+  const placements = useMemo(() => {
     let list = allPlacements.filter((_, idx) => {
       return (idx / (allPlacements.length || 1)) < densityFactor;
     });

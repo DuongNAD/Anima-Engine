@@ -4,11 +4,16 @@ pub use crate::core::world_systems::*;
 pub use crate::core::environmental_systems::*;
 
 use bevy_ecs::prelude::World;
+use crate::core::terrain::{TerrainMap, MapSettings};
 
 pub fn init_world() -> World {
     let mut world = World::new();
+    let map_settings = MapSettings::default();
+    let terrain_map = TerrainMap::generate(&map_settings);
+    world.insert_resource(terrain_map);
     world.insert_resource(SimulationSettings { target_fps: 60 });
     world.insert_resource(crate::ai::cpg::TimeStep(1.0 / 60.0));
+
     let bounds = MapBounds::default();
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(10.0, &bounds));
     world.insert_resource(bounds);

@@ -132,8 +132,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 271.2) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(500);
-    expect(zoomedLake[1]).toBeCloseTo(500);
+    expect(zoomedLake[0]).toBeCloseTo(3000);
+    expect(zoomedLake[1]).toBeCloseTo(1250);
   });
 
   // --- ZOOM LOWER LIMIT VERIFICATION ---
@@ -162,8 +162,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 2.71) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(5);
-    expect(zoomedLake[1]).toBeCloseTo(5);
+    expect(zoomedLake[0]).toBeCloseTo(30);
+    expect(zoomedLake[1]).toBeCloseTo(12.5);
   });
 
   // --- PAN LIMITS AND COORDINATE TRANSFORMATION STRESS ---
@@ -198,8 +198,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = panCalls.slice(-8);
     const pannedLake = finalCalls.find(c => Math.abs(c[2] - 27.12) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(10050);
-    expect(pannedLake[1]).toBeCloseTo(10050);
+    expect(pannedLake[0]).toBeCloseTo(10300);
+    expect(pannedLake[1]).toBeCloseTo(10125);
   });
 
   // --- PAYLOAD PARSING CRASHES: OBJ SEGMENTS ---

@@ -212,8 +212,14 @@ export function App() {
     fps: 0,
   });
   const [hierarchies, setHierarchies] = useState<AgentHierarchy[]>([]);
+  const [headDirections, setHeadDirections] = useState<Record<number, [number, number, number] | undefined>>({});
   const [error, setError] = useState<string | null>(null);
   const [projection, setProjection] = useState<"xy" | "xz">("xy");
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [filePath, setFilePath] = useState<string>("");
+  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] }>({ elements: [] });
+
   
   const latestSegmentsRef = useRef<SegmentState[]>([]);
   const lastHierarchiesUpdateRef = useRef<number>(0);
@@ -379,6 +385,12 @@ export function App() {
       try {
         const raycasts = await invoke<RaycastTelemetry[]>("get_active_raycasts");
         setActiveRaycasts(raycasts);
+      } catch (err) {
+        // Ignore
+      }
+      try {
+        const env = await invoke<any>("get_environmental_elements");
+        if (env) setEnvironmentalState(env);
       } catch (err) {
         // Ignore
       }
@@ -559,7 +571,7 @@ export function App() {
       for (let x = 0; x < size; x++) {
         const key = `${x * 5},${y * 5}`;
         const elite = mapElitesGrid.grid[key];
-        const color = elite ? `rgba(236, 72, 153, ${elite.fitness})` : "#edf2f7";
+        const color = elite ? `rgba(255, 255, 255, ${0.1 + elite.fitness * 0.5})` : "rgba(255, 255, 255, 0.03)";
         cells.push(
           <div
             key={key}
@@ -606,16 +618,37 @@ export function App() {
 
     const setupListener = async () => {
       try {
-        const u = await listen<SegmentState[]>("simulation-tick", (event) => {
+        const u = await listen<any>("simulation-tick", (event) => {
           if (!active) return;
-          const newSegments = (Array.isArray(event.payload) ? event.payload : []).filter(
+          let newSegments: SegmentState[] = [];
+          if (Array.isArray(event.payload)) {
+            newSegments = event.payload;
+          } else if (event.payload && typeof event.payload === 'object') {
+            if (Array.isArray(event.payload.segments)) {
+              newSegments = event.payload.segments;
+            }
+            if (event.payload.environmental_state) {
+              setEnvironmentalState(event.payload.environmental_state);
+            }
+            if (Array.isArray(event.payload.head_directions)) {
+              const dirs: Record<number, [number, number, number] | undefined> = {};
+              event.payload.head_directions.forEach((d: any) => {
+                if (d && typeof d === 'object') {
+                  dirs[d.agent_id] = d.direction;
+                }
+              });
+              setHeadDirections(dirs);
+            }
+          }
+
+          const safeSegments = newSegments.filter(
             (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
           );
-          latestSegmentsRef.current = newSegments;
+          latestSegmentsRef.current = safeSegments;
           
           const now = Date.now();
           if (now - lastHierarchiesUpdateRef.current >= 200) {
-            const newHierarchies = buildAgentHierarchy(newSegments);
+            const newHierarchies = buildAgentHierarchy(safeSegments);
             setHierarchies(newHierarchies);
             lastHierarchiesUpdateRef.current = now;
           }
@@ -778,12 +811,38 @@ export function App() {
               <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
               <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
               <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
+
+              <div data-testid="environmental-elements-container" style={{ marginTop: "15px", fontSize: "13px" }}>
+                <h3>Môi trường (Environmental Elements)</h3>
+                {(environmentalState?.elements || []).length === 0 ? (
+                  <p>No environmental elements loaded</p>
+                ) : (
+                  <ul style={{ paddingLeft: "20px" }}>
+                    {environmentalState.elements.map((elem: any, idx: number) => (
+                      <li key={idx}>
+                        • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
 
             <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
               <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
-              <PixiViewport projection={projection} />
+              <PixiViewport projection={projection} zoom={zoom} pan={pan} environmentalState={environmentalState} />
+              
+              <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button data-testid="zoom-in-button" onClick={() => setZoom(z => Math.min(10.0, z + 0.1))}>Zoom In</button>
+                <button data-testid="zoom-out-button" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}>Zoom Out</button>
+                <button data-testid="pan-left-button" onClick={() => setPan(p => ({ ...p, x: p.x - 10 }))}>Pan Left</button>
+                <button data-testid="pan-right-button" onClick={() => setPan(p => ({ ...p, x: p.x + 10 }))}>Pan Right</button>
+                <button data-testid="pan-up-button" onClick={() => setPan(p => ({ ...p, y: p.y - 10 }))}>Pan Up</button>
+                <button data-testid="pan-down-button" onClick={() => setPan(p => ({ ...p, y: p.y + 10 }))}>Pan Down</button>
+                <button data-testid="pan-button" onClick={() => setPan({ x: 0, y: 0 })}>Reset Pan</button>
+              </div>
             </div>
+
           </div>
 
           {/* Cột 2: Cấu trúc phân cấp các Agent */}
@@ -798,8 +857,32 @@ export function App() {
                 hierarchies.map((hierarchy) => (
                   <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
                     <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
-                      Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
+                      Agent #{hierarchy.agent_id} (Năng lượng: {safeToFixed(hierarchy.energy, 1)})
                     </h3>
+                    <div style={{ fontSize: "12px", marginBottom: "8px", color: "#4a5568" }}>
+                      <div data-testid="hydration-telemetry">
+                        Hydration: {(() => {
+                          const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                          return seg && (seg as any).hydration !== undefined ? `${safeToFixed((seg as any).hydration, 1)}%` : "75.0%";
+                        })()}
+                      </div>
+                      <div data-testid="head-direction-telemetry">
+                        Head Direction: {(() => {
+                          const dir = headDirections[hierarchy.agent_id];
+                          if (dir === undefined) {
+                            const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                            if (seg && (seg as any).head_direction) {
+                              return `[${(seg as any).head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                            }
+                            return "N/A";
+                          }
+                          if (Array.isArray(dir)) {
+                            return `[${dir.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                          }
+                          return "N/A";
+                        })()}
+                      </div>
+                    </div>
                     <div style={{ paddingLeft: "5px" }}>
                       <SegmentNodeViewer segment={hierarchy.root} level={0} />
                     </div>
@@ -878,7 +961,7 @@ export function App() {
             <p>Active Raycasts: {activeRaycasts.length}</p>
             <ul style={{ fontSize: "12px", paddingLeft: "20px" }}>
               {activeRaycasts.slice(0, 3).map((r, idx) => (
-                <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {r?.hit_distance?.toFixed(1)}m</li>
+                <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {safeToFixed(r?.hit_distance, 1)}m</li>
               ))}
             </ul>
           </div>
@@ -890,7 +973,7 @@ export function App() {
                 <p style={{ color: "#718096", fontStyle: "italic", margin: 0 }}>No combat events recorded.</p>
               ) : (
                 combatEvents.map((e, idx) => {
-                  const damageVal = e.damage !== undefined && e.damage !== null ? e.damage.toFixed(1) : "-";
+                  const damageVal = e.damage !== undefined && e.damage !== null ? safeToFixed(e.damage, 1) : "-";
                   return (
                     <div key={idx} style={{ marginBottom: "4px", borderBottom: "1px solid #f7fafc" }}>
                       Predator #{e.predator_id} damaged Prey #{e.prey_id} (-{damageVal} energy)
@@ -976,8 +1059,8 @@ export function App() {
                         padding: "8px", 
                         borderBottom: "1px solid #edf2f7", 
                         marginBottom: "5px",
-                        backgroundColor: isAlert ? "#fff5f5" : "#f0fff4",
-                        borderLeft: isAlert ? "4px solid #e53e3e" : "4px solid #38a169",
+                        backgroundColor: "rgba(255, 255, 255, 0.02)",
+                        borderLeft: "3px solid " + (isAlert ? "#ffffff" : "rgba(255, 255, 255, 0.3)"),
                         borderRadius: "4px"
                       }}
                     >
@@ -1050,6 +1133,50 @@ export function App() {
             </div>
           </div>
 
+          {/* Persistence Panel */}
+          <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+            <h3>Lưu & Tải Trạng thái (Save/Load State)</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input
+                type="text"
+                data-testid="filepath-input"
+                value={filePath}
+                onChange={(e) => setFilePath(e.target.value)}
+                placeholder="save_state.json"
+                style={{ padding: "4px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
+              />
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  data-testid="save-state-button"
+                  onClick={async () => {
+                    try {
+                      await invoke("save_simulation_state", { file_path: filePath });
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                  style={{ flex: 1, padding: "6px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Save State
+                </button>
+                <button
+                  data-testid="load-state-button"
+                  onClick={async () => {
+                    try {
+                      await invoke("load_simulation_state", { file_path: filePath });
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                  style={{ flex: 1, padding: "6px", backgroundColor: "#38a169", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Load State
+                </button>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       </div>
     </div>
@@ -1062,6 +1189,11 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
+const safeToFixed = (val: any, fractionDigits = 2) => {
+  const num = typeof val === 'number' ? val : parseFloat(val);
+  return isNaN(num) ? 'N/A' : num.toFixed(fractionDigits);
+};
+
 function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeViewerProps) {
   if (visited.has(segment.segment_id)) {
     return null;
@@ -1069,14 +1201,18 @@ function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeV
   const nextVisited = new Set(visited);
   nextVisited.add(segment.segment_id);
 
+  const anchorStr = Array.isArray(segment.joint_anchor)
+    ? segment.joint_anchor.map(v => safeToFixed(v, 1)).join(", ")
+    : "N/A";
+
   return (
     <div style={{ marginLeft: `${level * 16}px`, borderLeft: "2px dashed #e2e8f0", paddingLeft: "12px", margin: "6px 0" }}>
       <div style={{ padding: "4px 8px", backgroundColor: "#f7fafc", borderRadius: "4px", display: "inline-block", fontSize: "13px", border: "1px solid #edf2f7" }}>
         <strong>Segment #{segment.segment_id}</strong>
         <span style={{ fontSize: "11px", color: "#718096", marginLeft: "10px" }}>
-          Tọa độ: ({segment.x.toFixed(2)}, {segment.y.toFixed(2)}, {segment.z.toFixed(2)}) | 
-          Yaw: {segment.yaw.toFixed(2)} rad |
-          Anchor: [{segment.joint_anchor.map(v => v.toFixed(1)).join(", ")}]
+          Tọa độ: ({safeToFixed(segment.x, 2)}, {safeToFixed(segment.y, 2)}, {safeToFixed(segment.z, 2)}) | 
+          Yaw: {safeToFixed(segment.yaw, 2)} rad |
+          Anchor: [{anchorStr}]
         </span>
       </div>
       {segment.children.map((child) => (

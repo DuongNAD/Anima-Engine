@@ -15,6 +15,12 @@ vi.mock('@react-three/fiber', async () => {
     useFrame: (cb: any) => {
       frameCallbacks.push(cb);
     },
+    useThree: () => ({
+      scene: { fog: null, add: vi.fn(), remove: vi.fn() },
+      camera: { position: { set: vi.fn() }, lookAt: vi.fn() },
+      gl: { setSize: vi.fn(), domElement: document.createElement('canvas') },
+    }),
+    extend: vi.fn(),
   };
 });
 

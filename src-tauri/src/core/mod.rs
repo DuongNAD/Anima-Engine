@@ -9,5 +9,7 @@ pub mod simulation_lifecycle;
 pub mod simulation_state;
 pub mod simulation_loop;
 pub mod engine;
+pub mod terrain;
 
 pub use engine::SegmentState;
+

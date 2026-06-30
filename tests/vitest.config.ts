@@ -18,6 +18,8 @@ export default defineConfig({
       'react': path.resolve(__dirname, '../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../node_modules/react-dom'),
       '@tauri-apps/api': path.resolve(__dirname, '../node_modules/@tauri-apps/api'),
+      // Only the R3F reconciler is mocked under jsdom; real three runs headless.
+      '@react-three/fiber': path.resolve(__dirname, './mocks/react-three-fiber-mock.tsx'),
     },
   },
 });

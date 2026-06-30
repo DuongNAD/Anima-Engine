@@ -2,6 +2,41 @@ use tauri::State;
 use crate::AppState;
 use crate::core::simulation_lifecycle::ChronicleEvent;
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct TerrainMapState {
+    pub width: usize,
+    pub height: usize,
+    pub biomes: Vec<u8>,
+    pub elevations: Vec<f32>,
+    pub moistures: Vec<f32>,
+    pub bounds: crate::core::resources::MapBounds,
+    pub pois: Vec<(usize, usize)>,
+}
+
+impl TerrainMapState {
+    pub fn from_resource(
+        terrain_map: &crate::core::terrain::TerrainMap,
+        bounds: &crate::core::resources::MapBounds,
+    ) -> Self {
+        Self {
+            width: terrain_map.width,
+            height: terrain_map.height,
+            biomes: terrain_map.biomes.clone(),
+            elevations: terrain_map.elevations.clone(),
+            moistures: terrain_map.moistures.clone(),
+            bounds: *bounds,
+            pois: terrain_map.pois.clone(),
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_terrain_map(state: State<'_, AppState>) -> Result<TerrainMapState, String> {
+    let shared = state.engine.terrain_map.read().unwrap_or_else(|e| e.into_inner());
+    shared.clone().ok_or_else(|| "Terrain map not initialized".to_string())
+}
+
+
 #[tauri::command]
 pub fn get_pheromone_grid(state: State<'_, AppState>) -> Result<crate::ai::pheromone::PheromoneGridState, String> {
     let shared = state.engine.pheromone_grid_state.read().unwrap_or_else(|e| e.into_inner());

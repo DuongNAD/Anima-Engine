@@ -1,7 +1,10 @@
 import React, { useMemo, useRef, useLayoutEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, extend } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, generateTerrainData, getBiomeColor } from './utils/terrainGenerator';
+
+// Register THREE.LOD with R3F so <lod> JSX element works
+extend({ Lod: THREE.LOD });
 
 declare global {
   namespace JSX {
@@ -138,7 +141,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
   useLayoutEffect(() => {
     if (lodRef.current && typeof (lodRef.current as any).addLevel === 'function' && meshRef0.current && meshRef1.current && meshRef2.current) {
       // Clear levels to support clean re-mounting/updates
-      (lodRef.current as any).levels = [];
+      while ((lodRef.current as any).levels && (lodRef.current as any).levels.length > 0) { (lodRef.current as any).levels.pop(); }
       
       // Setup LOD thresholds
       (lodRef.current as any).addLevel(meshRef0.current, 0);      // High detail close up

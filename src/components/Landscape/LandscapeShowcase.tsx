@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
 import { LandscapeControlsOverlay } from './LandscapeControlsOverlay';
 import Terrain from './Terrain';
 import Water from './Water';
@@ -96,7 +97,7 @@ export const LandscapeShowcase: React.FC = () => {
 
       <Minimap gridWidth={64} gridHeight={64} />
 
-      <Canvas camera={{ position: [0, 25, 45], fov: 60 }} style={{ width: '100%', height: '100%' }}>
+      <Canvas camera={{ position: [0, 25, 45], fov: 60 }} style={{ width: '100%', height: '100%' }} onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.005); }}>
         <Sky speed={speed} timeOfDay={timeOfDay} />
         <Terrain width={64} height={64} wetnessRatio={wetnessRatio} />
         <Water width={64} height={64} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} />

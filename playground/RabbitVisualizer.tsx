@@ -319,7 +319,7 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
     }, [hungerState]);
 
     // Animation loop
-    useFrame((state) => {
+    useFrame((state: any) => {
         const time = state.clock.getElapsedTime();
 
         // Rotate the entire group mesh subtly

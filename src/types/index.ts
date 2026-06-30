@@ -155,3 +155,17 @@ export interface LineageLink {
   target: string;
 }
 
+export interface TerrainMapState {
+  width: number;
+  height: number;
+  biomes: number[];
+  elevations?: number[];
+  moistures?: number[];
+  bounds: {
+    min: { x: number; y: number; z: number };
+    max: { x: number; y: number; z: number };
+  };
+  pois: [number, number][];
+}
+
+

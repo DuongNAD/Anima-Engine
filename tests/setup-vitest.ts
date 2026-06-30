@@ -208,6 +208,15 @@ beforeEach(() => {
       }
       case 'get_environmental_elements':
         return mockEnvironmentalState;
+      case 'get_terrain_map':
+        return {
+          width: 128,
+          height: 128,
+          elevations: new Array(128 * 128).fill(0.5),
+          moistures: new Array(128 * 128).fill(0.5),
+          biomes: new Array(128 * 128).fill(4), // Grassland = 4
+          flows: new Array(128 * 128).fill(0.0),
+        };
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

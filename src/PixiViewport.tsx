@@ -2,6 +2,170 @@ import React, { useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { TerrainMapState } from './types';
+
+const BIOME_COLORS: { [key: number]: number } = {
+  0: 0x0a1450, // DeepOcean
+  1: 0x235091, // Ocean
+  2: 0xdcd38c, // Beach
+  3: 0x3787d7, // River
+  4: 0x8cbe64, // Grassland
+  5: 0x41874b, // TemperateForest
+  6: 0x2d5f50, // BorealForest
+  7: 0x0f552d, // Rainforest
+  8: 0xd7af69, // Desert
+  9: 0x787d82, // MountainRock
+  10: 0xf0f0f5, // Snow
+};
+
+function generateTerrainCanvas(terrainMap: TerrainMapState): HTMLCanvasElement {
+  const { width, height, biomes, elevations } = terrainMap;
+
+  // 1. Create a small canvas of size width x height
+  const canvasSmall = document.createElement('canvas');
+  canvasSmall.width = width;
+  canvasSmall.height = height;
+  const ctxSmall = canvasSmall.getContext('2d');
+
+  if (!ctxSmall || typeof ctxSmall.createImageData !== 'function' || typeof ctxSmall.putImageData !== 'function') {
+    return canvasSmall;
+  }
+
+  // 2. Calls createImageData(width, height) and fills it with biome colors.
+  const imgDataSmall = ctxSmall.createImageData(width, height);
+  for (let i = 0; i < biomes.length; i++) {
+    const biome = biomes[i];
+    const color = BIOME_COLORS[biome] !== undefined ? BIOME_COLORS[biome] : 0x000000;
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    const idx = i * 4;
+    imgDataSmall.data[idx] = r;
+    imgDataSmall.data[idx + 1] = g;
+    imgDataSmall.data[idx + 2] = b;
+    imgDataSmall.data[idx + 3] = 255;
+  }
+  ctxSmall.putImageData(imgDataSmall, 0, 0);
+
+  // 3. Creates a larger canvas canvasLarge of size Math.max(512, width) x Math.max(512, height).
+  const targetWidth = Math.max(512, width);
+  const targetHeight = Math.max(512, height);
+  const canvasLarge = document.createElement('canvas');
+  canvasLarge.width = targetWidth;
+  canvasLarge.height = targetHeight;
+  const ctxLarge = canvasLarge.getContext('2d');
+
+  if (!ctxLarge) {
+    return canvasSmall;
+  }
+
+  // Guard against missing canvas API methods (like drawImage, createImageData or getImageData) in testing spies by returning canvasSmall gracefully.
+  if (typeof ctxLarge.drawImage !== 'function' || typeof ctxLarge.createImageData !== 'function' || typeof ctxLarge.getImageData !== 'function') {
+    return canvasSmall;
+  }
+
+  // 4. Draws canvasSmall onto canvasLarge scaled up with image smoothing enabled (providing bilinear smooth blending).
+  ctxLarge.imageSmoothingEnabled = true;
+  ctxLarge.drawImage(canvasSmall, 0, 0, targetWidth, targetHeight);
+
+  // 5. Checks if elevations array is present. If so, computes gradients (dzdx, dzdy) on the low-res elevations array,
+  // interpolates them bilinearly for each high-res pixel, and applies 3D hillshading 1.0 - (slopeX + slopeY) * 1.5 clamped to [0.4, 1.6].
+  let imgDataLarge: ImageData;
+  try {
+    imgDataLarge = ctxLarge.getImageData(0, 0, targetWidth, targetHeight);
+  } catch (e) {
+    return canvasSmall;
+  }
+
+  if (elevations && elevations.length === width * height) {
+    const dzdx = new Float32Array(width * height);
+    const dzdy = new Float32Array(width * height);
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const idx = r * width + c;
+        let slopeX = 0;
+        let slopeY = 0;
+
+        if (width > 1) {
+          if (c === 0) {
+            slopeX = elevations[r * width + 1] - elevations[r * width];
+          } else if (c === width - 1) {
+            slopeX = elevations[r * width + width - 1] - elevations[r * width + width - 2];
+          } else {
+            slopeX = (elevations[r * width + c + 1] - elevations[r * width + c - 1]) / 2.0;
+          }
+        }
+
+        if (height > 1) {
+          if (r === 0) {
+            slopeY = elevations[width + c] - elevations[c];
+          } else if (r === height - 1) {
+            slopeY = elevations[(height - 1) * width + c] - elevations[(height - 2) * width + c];
+          } else {
+            slopeY = (elevations[(r + 1) * width + c] - elevations[(r - 1) * width + c]) / 2.0;
+          }
+        }
+
+        dzdx[idx] = slopeX;
+        dzdy[idx] = slopeY;
+      }
+    }
+
+    const scaleX = (width - 1) / (targetWidth - 1 || 1);
+    const scaleY = (height - 1) / (targetHeight - 1 || 1);
+
+    for (let y = 0; y < targetHeight; y++) {
+      const lr = y * scaleY;
+      const r0 = Math.floor(lr);
+      const r1 = Math.min(height - 1, r0 + 1);
+      const tr = lr - r0;
+
+      for (let x = 0; x < targetWidth; x++) {
+        const lc = x * scaleX;
+        const c0 = Math.floor(lc);
+        const c1 = Math.min(width - 1, c0 + 1);
+        const tc = lc - c0;
+
+        const g00_x = dzdx[r0 * width + c0];
+        const g10_x = dzdx[r0 * width + c1];
+        const g01_x = dzdx[r1 * width + c0];
+        const g11_x = dzdx[r1 * width + c1];
+        const slopeX = g00_x * (1 - tc) * (1 - tr) +
+                       g10_x * tc * (1 - tr) +
+                       g01_x * (1 - tc) * tr +
+                       g11_x * tc * tr;
+
+        const g00_y = dzdy[r0 * width + c0];
+        const g10_y = dzdy[r0 * width + c1];
+        const g01_y = dzdy[r1 * width + c0];
+        const g11_y = dzdy[r1 * width + c1];
+        const slopeY = g00_y * (1 - tc) * (1 - tr) +
+                       g10_y * tc * (1 - tr) +
+                       g01_y * (1 - tc) * tr +
+                       g11_y * tc * tr;
+
+        const hillshading = Math.max(0.4, Math.min(1.6, 1.0 - (slopeX + slopeY) * 1.5));
+
+        const largeIdx = (y * targetWidth + x) * 4;
+        imgDataLarge.data[largeIdx] = Math.max(0, Math.min(255, imgDataLarge.data[largeIdx] * hillshading));
+        imgDataLarge.data[largeIdx + 1] = Math.max(0, Math.min(255, imgDataLarge.data[largeIdx + 1] * hillshading));
+        imgDataLarge.data[largeIdx + 2] = Math.max(0, Math.min(255, imgDataLarge.data[largeIdx + 2] * hillshading));
+      }
+    }
+  }
+
+  // 6. Applies random grain noise (Math.random() - 0.5) * 12 to R, G, B channels of canvasLarge.
+  for (let i = 0; i < imgDataLarge.data.length; i += 4) {
+    const noise = (Math.random() - 0.5) * 12;
+    imgDataLarge.data[i] = Math.max(0, Math.min(255, imgDataLarge.data[i] + noise));
+    imgDataLarge.data[i + 1] = Math.max(0, Math.min(255, imgDataLarge.data[i + 1] + noise));
+    imgDataLarge.data[i + 2] = Math.max(0, Math.min(255, imgDataLarge.data[i + 2] + noise));
+  }
+
+  ctxLarge.putImageData(imgDataLarge, 0, 0);
+  return canvasLarge;
+}
+
 
 export interface PixiViewportProps {
   projection?: 'xy' | 'xz';
@@ -47,7 +211,9 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<PIXI.Application | null>(null);
   const graphicsRef = useRef<PIXI.Graphics | null>(null);
-  const bgTilingSpriteRef = useRef<any>(null);
+  const bgSpriteRef = useRef<PIXI.Sprite | null>(null);
+  const terrainMapRef = useRef<TerrainMapState | null>(null);
+
 
   const segmentsRef = useRef<any[]>([]);
   const raycastsRef = useRef<any[]>([]);
@@ -90,16 +256,13 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     const environmentalState = propEnvironmentalState !== undefined ? propEnvironmentalState : environmentalStateRef.current;
     const proj = projectionRef.current;
 
-    let currentScale = 1.0;
     let minX = -100, maxX = 100;
     let minY = -100, maxY = 100;
     let scale = 1.0;
     let midX = 0;
     let midY = 0;
-    let hasSegments = false;
 
     if (Array.isArray(segments) && segments.length > 0) {
-      hasSegments = true;
       let sMinX = Infinity, sMaxX = -Infinity;
       let sMinY = Infinity, sMaxY = -Infinity;
 
@@ -125,20 +288,42 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       const drawHeight = 350 - padding * 2;
 
       scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
-      currentScale = scale;
       midX = (minX + maxX) / 2;
       midY = (minY + maxY) / 2;
+    } else if (terrainMapRef.current && terrainMapRef.current.bounds && terrainMapRef.current.bounds.min && terrainMapRef.current.bounds.max) {
+      const bounds = terrainMapRef.current.bounds;
+      minX = bounds.min.x;
+      maxX = bounds.max.x;
+      minY = proj === 'xy' ? bounds.min.y : bounds.min.z;
+      maxY = proj === 'xy' ? bounds.max.y : bounds.max.z;
+
+      const rangeX = maxX - minX || 1;
+      const rangeY = maxY - minY || 1;
+      const padding = 50;
+      const drawWidth = 500 - padding * 2;
+      const drawHeight = 350 - padding * 2;
+
+      scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
+      midX = (minX + maxX) / 2;
+      midY = (minY + maxY) / 2;
+    } else {
+      minX = -100;
+      maxX = 100;
+      minY = -100;
+      maxY = 100;
+      scale = 1.0;
+      midX = 0;
+      midY = 0;
     }
 
+    const currentScale = scale;
+
     const getCoordsNoPan = (x: number, y: number): [number, number] => {
-      if (hasSegments) {
-        const centerX = 500 / 2;
-        const centerY = 350 / 2;
-        const cx = centerX + (x - midX) * scale;
-        const cy = centerY - (y - midY) * scale;
-        return [cx, cy];
-      }
-      return [x, y];
+      const centerX = 500 / 2;
+      const centerY = 350 / 2;
+      const cx = centerX + (x - midX) * scale;
+      const cy = centerY - (y - midY) * scale;
+      return [cx, cy];
     };
 
     const getCoords = (x: number, y: number): [number, number] => {
@@ -149,59 +334,96 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     const screenToWorld = (sx: number, sy: number): [number, number] => {
       const cx = (sx - panRef.current.x) / zoomRef.current;
       const cy = (sy - panRef.current.y) / zoomRef.current;
-      if (hasSegments) {
-        const centerX = 500 / 2;
-        const centerY = 350 / 2;
-        const wx = midX + (cx - centerX) / scale;
-        const wy = midY - (cy - centerY) / scale;
-        return [wx, wy];
-      }
-      return [cx, cy];
+      const centerX = 500 / 2;
+      const centerY = 350 / 2;
+      const wx = midX + (cx - centerX) / scale;
+      const wy = midY - (cy - centerY) / scale;
+      return [wx, wy];
     };
 
-    // Draw Terrain Background Grid taking pan & zoom into account
-    if (bgTilingSpriteRef.current) {
-      bgTilingSpriteRef.current.tileScale.set(zoomRef.current);
-      bgTilingSpriteRef.current.tilePosition.set(panRef.current.x, panRef.current.y);
+    // Draw Terrain Background Sprite or HUD background fallback
+    const terrainMap = terrainMapRef.current;
+    if (terrainMap && terrainMap.bounds && terrainMap.bounds.min && terrainMap.bounds.max && bgSpriteRef.current) {
+      const bounds = terrainMap.bounds;
+      const tMinX = bounds.min.x;
+      const tMaxX = bounds.max.x;
+      const tMinY = proj === 'xy' ? bounds.min.y : bounds.min.z;
+      const tMaxY = proj === 'xy' ? bounds.max.y : bounds.max.z;
+
+      const [leftX, topY] = getCoords(tMinX, tMaxY);
+      const [rightX, bottomY] = getCoords(tMaxX, tMinY);
+
+      bgSpriteRef.current.position.set(leftX, topY);
+      bgSpriteRef.current.width = rightX - leftX;
+      bgSpriteRef.current.height = bottomY - topY;
     } else {
       beginFill(graphics, 0x09090b, 1.0); // Soft dark HUD background fallback
       graphics.drawRect(0, 0, 500, 350);
       endFill(graphics);
     }
 
-    const gridSize = 40;
-    const startX = Math.floor((-panRef.current.x) / (gridSize * zoomRef.current)) * gridSize;
-    const endX = startX + (500 / zoomRef.current) + gridSize * 2;
-    const gridAlpha = Math.max(0.1, Math.min(0.3, 0.2 / zoomRef.current));
-    lineStyle(graphics, 0.5, 0xffffff, gridAlpha);
-    for (let gx = startX; gx <= endX; gx += gridSize) {
-      const screenX = gx * zoomRef.current + panRef.current.x;
-      graphics.moveTo(screenX, 0);
-      graphics.lineTo(screenX, 350);
+    // 0. Draw the Grid Over the Map (A-P, 1-16 style)
+    const gridSizeX = (maxX - minX) / 16;
+    const gridSizeY = (maxY - minY) / 16;
+    const gridAlpha = Math.max(0.2, Math.min(0.5, 0.4 / zoomRef.current));
+    lineStyle(graphics, 1.5, 0xffffff, gridAlpha);
+    for (let i = 0; i <= 16; i++) {
+      // Vertical lines
+      const vx = minX + i * gridSizeX;
+      const [screenVX1, screenVY1] = getCoords(vx, maxY);
+      const [screenVX2, screenVY2] = getCoords(vx, minY);
+      graphics.moveTo(screenVX1, screenVY1);
+      graphics.lineTo(screenVX2, screenVY2);
+      
+      // Horizontal lines
+      const hy = minY + i * gridSizeY;
+      const [screenHX1, screenHY1] = getCoords(minX, hy);
+      const [screenHX2, screenHY2] = getCoords(maxX, hy);
+      graphics.moveTo(screenHX1, screenHY1);
+      graphics.lineTo(screenHX2, screenHY2);
     }
-    const startY = Math.floor((-panRef.current.y) / (gridSize * zoomRef.current)) * gridSize;
-    const endY = startY + (350 / zoomRef.current) + gridSize * 2;
-    for (let gy = startY; gy <= endY; gy += gridSize) {
-      const screenY = gy * zoomRef.current + panRef.current.y;
-      graphics.moveTo(0, screenY);
-      graphics.lineTo(500, screenY);
+
+    // 0.5. Draw POI markers on top of the background
+    if (terrainMap && Array.isArray(terrainMap.pois)) {
+      terrainMap.pois.forEach((poi: any) => {
+        // Assume poi is [px, py] coordinate on the 1024x1024 map. 
+        // We need to map [0, 1024] to [minX, maxX]
+        const px = poi[0];
+        const py = poi[1];
+        const wx = minX + (px / (terrainMap.width || 1024)) * (maxX - minX);
+        const wy = maxY - (py / (terrainMap.height || 1024)) * (maxY - minY); // invert Y
+        const [cx, cy] = getCoords(wx, wy);
+
+        // Draw a nice blue icon with a white border
+        beginFill(graphics, 0xffffff, 1.0); // white border
+        graphics.drawCircle(cx, cy, 5 * zoomRef.current);
+        endFill(graphics);
+        
+        beginFill(graphics, 0x1d9bf0, 1.0); // blue center
+        graphics.drawCircle(cx, cy, 3.5 * zoomRef.current);
+        endFill(graphics);
+      });
     }
 
     // 1. Draw Pheromone Grid heatmap
     if (pheromoneGrid && pheromoneGrid.grid) {
       const { grid, width, height } = pheromoneGrid;
       if (width > 0 && height > 0 && Array.isArray(grid)) {
-        const cellW = 500 / width;
-        const cellH = 350 / height;
+        const cellWorldW = (maxX - minX) / width;
+        const cellWorldH = (maxY - minY) / height;
         grid.forEach((val: number, idx: number) => {
           if (val > 0) {
             const x = idx % width;
             const y = Math.floor(idx / width);
             beginFill(graphics, 0xffffff, val * 0.45);
-            const rx = x * cellW * zoomRef.current + panRef.current.x;
-            const ry = y * cellH * zoomRef.current + panRef.current.y;
-            const rw = cellW * zoomRef.current;
-            const rh = cellH * zoomRef.current;
+            const wx1 = minX + x * cellWorldW;
+            const wy1 = maxY - y * cellWorldH;
+            const wx2 = minX + (x + 1) * cellWorldW;
+            const wy2 = maxY - (y + 1) * cellWorldH;
+            const [rx, ry] = getCoords(wx1, wy1);
+            const [rx2, ry2] = getCoords(wx2, wy2);
+            const rw = rx2 - rx;
+            const rh = ry2 - ry;
             graphics.drawRect(rx, ry, rw, rh);
             endFill(graphics);
           }
@@ -461,66 +683,6 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
       appRef.current = app;
 
-      // Create procedural tile texture
-      let hasTexture = false;
-      let hasTilingSprite = false;
-      try {
-        if ((PIXI as any).Texture !== undefined) {
-          hasTexture = true;
-        }
-      } catch (e) {}
-      try {
-        if ((PIXI as any).TilingSprite !== undefined) {
-          hasTilingSprite = true;
-        }
-      } catch (e) {}
-
-      if (hasTexture && hasTilingSprite) {
-        const tileCanvas = document.createElement('canvas');
-        tileCanvas.width = 64;
-        tileCanvas.height = 64;
-        const ctx = tileCanvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#121212'; // dark grayscale base
-          ctx.fillRect(0, 0, 64, 64);
-          
-          ctx.strokeStyle = '#1c1c1c'; // Highlight bevels (top-left)
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(0, 64);
-          ctx.lineTo(0, 0);
-          ctx.lineTo(64, 0);
-          ctx.stroke();
-
-          ctx.strokeStyle = '#080808'; // Shadow borders (bottom-right)
-          ctx.beginPath();
-          ctx.moveTo(64, 0);
-          ctx.lineTo(64, 64);
-          ctx.lineTo(0, 64);
-          ctx.stroke();
-
-          ctx.strokeStyle = '#0f0f0f'; // Draw sub-tile bricks / seams
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.moveTo(0, 32);
-          ctx.lineTo(64, 32);
-          ctx.moveTo(32, 0);
-          ctx.lineTo(32, 32);
-          ctx.moveTo(16, 32);
-          ctx.lineTo(16, 64);
-          ctx.stroke();
-        }
-
-        const tileTexture = (PIXI as any).Texture.from(tileCanvas);
-        const bgTilingSprite = new (PIXI as any).TilingSprite({
-          texture: tileTexture,
-          width: 500,
-          height: 350
-        });
-        bgTilingSpriteRef.current = bgTilingSprite;
-        app.stage.addChild(bgTilingSprite);
-      }
-
       const graphics = new PIXI.Graphics();
       graphicsRef.current = graphics;
       app.stage.addChild(graphics);
@@ -629,19 +791,30 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
       const getCoordsNoPan = (x: number, y: number): [number, number] => {
         const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
+        let minX = -100, maxX = 100;
+        let minY = -100, maxY = 100;
+        let scale = 1.0;
+        let midX = 0;
+        let midY = 0;
+
         if (Array.isArray(segments) && segments.length > 0) {
-          let minX = Infinity, maxX = -Infinity;
-          let minY = Infinity, maxY = -Infinity;
+          let sMinX = Infinity, sMaxX = -Infinity;
+          let sMinY = Infinity, sMaxY = -Infinity;
 
           segments.forEach((s) => {
             if (!s) return;
             const xVal = s.x;
             const yVal = projectionRef.current === 'xy' ? s.y : s.z;
-            if (xVal < minX) minX = xVal;
-            if (xVal > maxX) maxX = xVal;
-            if (yVal < minY) minY = yVal;
-            if (yVal > maxY) maxY = yVal;
+            if (xVal < sMinX) sMinX = xVal;
+            if (xVal > sMaxX) sMaxX = xVal;
+            if (yVal < sMinY) sMinY = yVal;
+            if (yVal > sMaxY) sMaxY = yVal;
           });
+
+          minX = sMinX;
+          maxX = sMaxX;
+          minY = sMinY;
+          maxY = sMaxY;
 
           const rangeX = maxX - minX || 1;
           const rangeY = maxY - minY || 1;
@@ -649,17 +822,40 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           const drawWidth = 500 - padding * 2;
           const drawHeight = 350 - padding * 2;
 
-          const scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
-          const centerX = 500 / 2;
-          const centerY = 350 / 2;
-          const midX = (minX + maxX) / 2;
-          const midY = (minY + maxY) / 2;
+          scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
+          midX = (minX + maxX) / 2;
+          midY = (minY + maxY) / 2;
+        } else if (terrainMapRef.current && terrainMapRef.current.bounds && terrainMapRef.current.bounds.min && terrainMapRef.current.bounds.max) {
+          const bounds = terrainMapRef.current.bounds;
+          minX = bounds.min.x;
+          maxX = bounds.max.x;
+          minY = projectionRef.current === 'xy' ? bounds.min.y : bounds.min.z;
+          maxY = projectionRef.current === 'xy' ? bounds.max.y : bounds.max.z;
 
-          const cx = centerX + (x - midX) * scale;
-          const cy = centerY - (y - midY) * scale;
-          return [cx, cy];
+          const rangeX = maxX - minX || 1;
+          const rangeY = maxY - minY || 1;
+          const padding = 50;
+          const drawWidth = 500 - padding * 2;
+          const drawHeight = 350 - padding * 2;
+
+          scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
+          midX = (minX + maxX) / 2;
+          midY = (minY + maxY) / 2;
+        } else {
+          minX = -100;
+          maxX = 100;
+          minY = -100;
+          maxY = 100;
+          scale = 1.0;
+          midX = 0;
+          midY = 0;
         }
-        return [x, y];
+
+        const centerX = 500 / 2;
+        const centerY = 350 / 2;
+        const cx = centerX + (x - midX) * scale;
+        const cy = centerY - (y - midY) * scale;
+        return [cx, cy];
       };
 
       try {
@@ -720,6 +916,67 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         animationFrameId = requestAnimationFrame(tick);
       };
       tick();
+
+      // Load the terrain background asynchronously AFTER graphics, listeners, and the
+      // first draw are in place. Terrain loading may retry for seconds (or fail when
+      // PIXI.Texture is unavailable, e.g. under test), so it must never block rendering.
+      void (async () => {
+        let loaded = false;
+        for (let retries = 0; active && retries < 20; retries++) {
+          try {
+            const terrainMap = await invoke<TerrainMapState>('get_terrain_map');
+            if (terrainMap && terrainMap.biomes) {
+              terrainMapRef.current = terrainMap;
+              const canvas = generateTerrainCanvas(terrainMap);
+              const texture = PIXI.Texture.from(canvas);
+              const bgSprite = new PIXI.Sprite(texture);
+              bgSpriteRef.current = bgSprite;
+              if (typeof app.stage.addChildAt === 'function') {
+                app.stage.addChildAt(bgSprite, 0);
+              } else {
+                app.stage.addChild(bgSprite);
+              }
+              loaded = true;
+              break; // Stop retrying if successful
+            }
+          } catch (err) {
+            // Backend may not be ready yet (or Texture unavailable) — wait and retry.
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        if (!loaded && active) {
+          // Programmatic fallback instead of loading static base_map.png
+          const fallbackMap: TerrainMapState = {
+            width: 512,
+            height: 512,
+            biomes: new Array(512 * 512).fill(4), // Grassland (index 4)
+            elevations: new Array(512 * 512).fill(0), // Flat terrain
+            bounds: { min: { x: -100, y: -100, z: -100 }, max: { x: 100, y: 100, z: 100 } },
+            pois: [],
+          };
+          try {
+            const canvas = generateTerrainCanvas(fallbackMap);
+            const texture = PIXI.Texture.from(canvas);
+            const bgSprite = new PIXI.Sprite(texture);
+            bgSpriteRef.current = bgSprite;
+            terrainMapRef.current = fallbackMap;
+            if (typeof app.stage.addChildAt === 'function') {
+              app.stage.addChildAt(bgSprite, 0);
+            } else {
+              app.stage.addChild(bgSprite);
+            }
+          } catch (err: any) {
+            if (err && err.message && err.message.includes('No "Texture" export')) {
+              // Suppress Vitest mock warning
+            } else {
+              console.error('Failed to initialize fallback terrain map texture:', err);
+            }
+          }
+        }
+
+        if (active) draw();
+      })();
     };
 
     initPixi();
