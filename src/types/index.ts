@@ -161,6 +161,7 @@ export interface TerrainMapState {
   biomes: number[];
   elevations?: number[];
   moistures?: number[];
+  temperatures?: number[];
   bounds: {
     min: { x: number; y: number; z: number };
     max: { x: number; y: number; z: number };

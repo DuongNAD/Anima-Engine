@@ -1,14 +1,14 @@
+use crate::core::resources::MapBounds;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use noise::{NoiseFn, Perlin};
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
-use crate::core::resources::MapBounds;
-use std::sync::OnceLock;
-use std::path::{Path, PathBuf};
 use std::fs::File;
 use std::io::BufReader;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct MapConfig {
@@ -119,9 +119,86 @@ pub struct TerrainMap {
     pub height: usize,
     pub elevations: Vec<f32>,
     pub moistures: Vec<f32>,
+    /// Per-cell temperature in [0, 1] derived from latitude + altitude lapse rate.
+    pub temperatures: Vec<f32>,
     pub biomes: Vec<u8>,
     pub flows: Vec<f32>,
     pub pois: Vec<(usize, usize)>,
+}
+
+/// Fractal Brownian motion (summed octaves of Perlin). Returns a value in [-1, 1].
+#[inline]
+fn fbm(noise: &Perlin, x: f64, y: f64, octaves: usize, lacunarity: f64, gain: f64) -> f64 {
+    let mut value = 0.0;
+    let mut amplitude = 1.0;
+    let mut frequency = 1.0;
+    let mut max_value = 0.0;
+    for _ in 0..octaves {
+        value += noise.get([x * frequency, y * frequency]) * amplitude;
+        max_value += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+    if max_value > 0.0 {
+        value / max_value
+    } else {
+        0.0
+    }
+}
+
+/// Ridged multifractal noise (sharp mountain ridges). Returns a value in [0, 1].
+#[inline]
+fn ridged(noise: &Perlin, x: f64, y: f64, octaves: usize, lacunarity: f64, gain: f64) -> f64 {
+    let mut value = 0.0;
+    let mut amplitude = 0.5;
+    let mut frequency = 1.0;
+    let mut max_value = 0.0;
+    for _ in 0..octaves {
+        let n = 1.0 - noise.get([x * frequency, y * frequency]).abs();
+        let n = n * n; // sharpen the ridges
+        value += n * amplitude;
+        max_value += amplitude;
+        amplitude *= gain;
+        frequency *= lacunarity;
+    }
+    if max_value > 0.0 {
+        value / max_value
+    } else {
+        0.0
+    }
+}
+
+/// Hermite smoothstep in [0, 1].
+#[inline]
+fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    if (edge1 - edge0).abs() < f64::EPSILON {
+        return if x < edge0 { 0.0 } else { 1.0 };
+    }
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Whittaker biome classification from temperature (cold→hot) and moisture (dry→wet),
+/// mapped onto the engine's 11 `BiomeType` variants. Used for land cells that are not
+/// ocean / beach / river / high mountain (those are handled separately by elevation).
+#[inline]
+fn whittaker_biome(temperature: f32, moisture: f32) -> BiomeType {
+    let heat = ((temperature * 6.0) as usize).min(5); // 0=coldest .. 5=hottest
+    let wet = ((moisture * 4.0) as usize).min(3); // 0=dryest .. 3=wettest
+    match (wet, heat) {
+        // Coldest column → ice, colder column → tundra (mapped to boreal forest).
+        (_, 0) => BiomeType::Snow,
+        (_, 1) => BiomeType::BorealForest,
+        // Dry rows.
+        (0, 2) => BiomeType::Grassland,
+        (0, _) => BiomeType::Desert,
+        (1, 2) | (1, 3) => BiomeType::TemperateForest, // woodland
+        (1, _) => BiomeType::Grassland,                // savanna
+        // Wet / wetter rows.
+        (_, 2) => BiomeType::BorealForest,
+        (_, 3) => BiomeType::TemperateForest, // seasonal forest
+        (_, _) => BiomeType::Rainforest,
+    }
 }
 
 impl TerrainMap {
@@ -135,8 +212,12 @@ impl TerrainMap {
 
         let elevation_perlin = Perlin::new(settings.seed);
         let moisture_perlin = Perlin::new(settings.seed.wrapping_add(100));
+        let warp_perlin = Perlin::new(settings.seed ^ 0x9E37_79B9);
+        let mountain_perlin = Perlin::new(settings.seed.wrapping_add(200));
+        let temperature_perlin = Perlin::new(settings.seed.wrapping_add(300));
 
-        // Parallel fBm generation for raw elevation
+        // Parallel generation for raw elevation: domain-warped continental fBm with
+        // ridged-multifractal mountains blended in at altitude, shaped by an island falloff.
         let mut raw_elevations: Vec<f32> = (0..width * height)
             .into_par_iter()
             .map(|idx| {
@@ -146,19 +227,42 @@ impl TerrainMap {
                 let x = (col as f64) / (width as f64) * config.noise_scale;
                 let y = (row as f64) / (height as f64) * config.noise_scale;
 
-                let mut value = 0.0;
-                let mut amplitude = 1.0;
-                let mut frequency = 1.0;
-                let mut max_value = 0.0;
+                // Domain warp: bend sample coordinates to break grid symmetry and
+                // produce meandering coastlines / valleys.
+                let wx = warp_perlin.get([x * 0.5 + 5.2, y * 0.5 + 1.3]);
+                let wy = warp_perlin.get([x * 0.5 + 9.7, y * 0.5 + 4.1]);
+                let warp = 0.6;
+                let sx = x + wx * warp;
+                let sy = y + wy * warp;
 
-                for _ in 0..settings.octaves {
-                    value += elevation_perlin.get([x * frequency, y * frequency]) * amplitude;
-                    max_value += amplitude;
-                    amplitude *= settings.gain;
-                    frequency *= settings.lacunarity;
-                }
+                // Continental base in [0, 1].
+                let base = (fbm(
+                    &elevation_perlin,
+                    sx,
+                    sy,
+                    settings.octaves,
+                    settings.lacunarity,
+                    settings.gain,
+                ) as f32
+                    + 1.0)
+                    / 2.0;
 
-                let elevation_val = ((value / max_value) as f32 + 1.0) / 2.0;
+                // Ridged mountains, only emerging over the continental interior.
+                let ridge = ridged(
+                    &mountain_perlin,
+                    sx,
+                    sy,
+                    settings.octaves,
+                    settings.lacunarity,
+                    settings.gain,
+                ) as f32;
+                let mountain_mask = smoothstep(0.45, 0.80, base as f64) as f32;
+                let mut elevation_val = base * 0.85 + ridge * mountain_mask * 0.5;
+
+                // Gentle curve emphasising lowlands over peaks.
+                elevation_val = elevation_val.max(0.0).powf(1.15);
+
+                // Island falloff (finite landmass).
                 let dx = (col as f32 / width as f32) * 2.0 - 1.0;
                 let dy = (row as f32 / height as f32) * 2.0 - 1.0;
                 let dist = (dx * dx + dy * dy).sqrt().min(1.0);
@@ -168,9 +272,10 @@ impl TerrainMap {
             .collect();
 
         // Normalize elevations to [0.0, 1.0]
-        let (min_el, max_el) = raw_elevations.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(min_val, max_val), &val| {
-            (min_val.min(val), max_val.max(val))
-        });
+        let (min_el, max_el) = raw_elevations.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min_val, max_val), &val| (min_val.min(val), max_val.max(val)),
+        );
         let el_range = max_el - min_el;
         if el_range > 0.0 {
             raw_elevations.par_iter_mut().for_each(|el| {
@@ -216,7 +321,10 @@ impl TerrainMap {
                 let h01 = elevations[(ipy + 1) * width + ipx];
                 let h11 = elevations[(ipy + 1) * width + ipx + 1];
 
-                let h = h00 * (1.0 - tx) * (1.0 - ty) + h10 * tx * (1.0 - ty) + h01 * (1.0 - tx) * ty + h11 * tx * ty;
+                let h = h00 * (1.0 - tx) * (1.0 - ty)
+                    + h10 * tx * (1.0 - ty)
+                    + h01 * (1.0 - tx) * ty
+                    + h11 * tx * ty;
                 let grad_x = (h10 - h00) * (1.0 - ty) + (h11 - h01) * ty;
                 let grad_y = (h01 - h00) * (1.0 - tx) + (h11 - h10) * tx;
 
@@ -242,7 +350,11 @@ impl TerrainMap {
                 let new_px = px + dir_x;
                 let new_py = py + dir_y;
 
-                if new_px < 0.0 || new_px >= (width - 1) as f32 || new_py < 0.0 || new_py >= (height - 1) as f32 {
+                if new_px < 0.0
+                    || new_px >= (width - 1) as f32
+                    || new_py < 0.0
+                    || new_py >= (height - 1) as f32
+                {
                     break;
                 }
 
@@ -255,7 +367,10 @@ impl TerrainMap {
                 let nh10 = elevations[new_ipy * width + new_ipx + 1];
                 let nh01 = elevations[(new_ipy + 1) * width + new_ipx];
                 let nh11 = elevations[(new_ipy + 1) * width + new_ipx + 1];
-                let new_h = nh00 * (1.0 - new_tx) * (1.0 - new_ty) + nh10 * new_tx * (1.0 - new_ty) + nh01 * (1.0 - new_tx) * new_ty + nh11 * new_tx * new_ty;
+                let new_h = nh00 * (1.0 - new_tx) * (1.0 - new_ty)
+                    + nh10 * new_tx * (1.0 - new_ty)
+                    + nh01 * (1.0 - new_tx) * new_ty
+                    + nh11 * new_tx * new_ty;
 
                 let delta_h = new_h - h;
 
@@ -297,9 +412,10 @@ impl TerrainMap {
         }
 
         // Re-normalize elevations to [0.0, 1.0] after erosion
-        let (min_el, max_el) = elevations.iter().fold((f32::INFINITY, f32::NEG_INFINITY), |(min_val, max_val), &val| {
-            (min_val.min(val), max_val.max(val))
-        });
+        let (min_el, max_el) = elevations.iter().fold(
+            (f32::INFINITY, f32::NEG_INFINITY),
+            |(min_val, max_val), &val| (min_val.min(val), max_val.max(val)),
+        );
         let el_range = max_el - min_el;
         if el_range > 0.0 {
             elevations.par_iter_mut().for_each(|el| {
@@ -310,9 +426,32 @@ impl TerrainMap {
         let max_flow = flows.iter().fold(0.0f32, |max_val, &val| max_val.max(val));
         let norm_max_flow = if max_flow == 0.0 { 1.0 } else { max_flow };
 
-        // Parallel fBm generation for moisture
+        // Temperature field: hot at the equator (map centre along Z), cold at the poles,
+        // cooled further by altitude (lapse rate), with mild local noise.
+        // Sequential (not rayon): keeps the per-generate allocation count independent of
+        // erosion so the zero-alloc hot-path assertion stays stable; these passes are cheap.
+        let temperatures: Vec<f32> = (0..width * height)
+            .map(|idx| {
+                let col = idx % width;
+                let row = idx / width;
+
+                let lat = row as f32 / (height as f32 - 1.0).max(1.0); // 0=north .. 1=south
+                let lat_temp = 1.0 - (2.0 * (lat - 0.5)).abs(); // 1 at equator, 0 at poles
+
+                let altitude_above_sea = (elevations[idx] - sea_val).max(0.0);
+                let lapse = altitude_above_sea * 1.1;
+
+                let nx = (col as f64) / (width as f64) * config.noise_scale;
+                let ny = (row as f64) / (height as f64) * config.noise_scale;
+                let local = (fbm(&temperature_perlin, nx, ny, 3, 2.0, 0.5) as f32) * 0.08;
+
+                (lat_temp - lapse + local).clamp(0.0, 1.0)
+            })
+            .collect();
+
+        // Moisture field: domain-warped fBm boosted by river flow + sea proximity, and
+        // dried by rain shadow behind upwind mountains (prevailing wind from the west).
         let moistures: Vec<f32> = (0..width * height)
-            .into_par_iter()
             .map(|idx| {
                 let col = idx % width;
                 let row = idx / width;
@@ -320,32 +459,48 @@ impl TerrainMap {
                 let x = (col as f64) / (width as f64) * config.noise_scale;
                 let y = (row as f64) / (height as f64) * config.noise_scale;
 
-                let mut value = 0.0;
-                let mut amplitude = 1.0;
-                let mut frequency = 1.0;
-                let mut max_value = 0.0;
+                let base_moisture = (fbm(
+                    &moisture_perlin,
+                    x,
+                    y,
+                    settings.octaves,
+                    settings.lacunarity,
+                    settings.gain,
+                ) as f32
+                    + 1.0)
+                    / 2.0;
 
-                for _ in 0..settings.octaves {
-                    value += moisture_perlin.get([x * frequency, y * frequency]) * amplitude;
-                    max_value += amplitude;
-                    amplitude *= settings.gain;
-                    frequency *= settings.lacunarity;
+                let elevation = elevations[idx];
+                let flow_effect = (flows[idx] / norm_max_flow) * 0.4;
+
+                // Wetter near / below the sea.
+                let sea_proximity =
+                    smoothstep((sea_val + 0.18) as f64, sea_val as f64, elevation as f64) as f32
+                        * 0.2;
+
+                // Rain shadow: scan up to 8 cells upwind (west) for a higher barrier.
+                let mut barrier = 0.0f32;
+                for k in 1..=8usize {
+                    if col >= k {
+                        let e = elevations[row * width + (col - k)];
+                        if e > barrier {
+                            barrier = e;
+                        }
+                    }
                 }
+                let rain_shadow = (barrier - elevation - 0.1).max(0.0) * 1.1;
 
-                let base_moisture = ((value / max_value) as f32 + 1.0) / 2.0;
-                let flow_ratio = flows[idx] / norm_max_flow;
-                let flow_effect = flow_ratio * 0.4;
-
-                (base_moisture + flow_effect).clamp(0.0, 1.0)
+                (base_moisture + flow_effect + sea_proximity - rain_shadow).clamp(0.0, 1.0)
             })
             .collect();
 
-        // Biome determination
+        // Biome determination: ocean / beach / river / high mountain by elevation & flow,
+        // otherwise a Whittaker classification from temperature x moisture.
         let biomes: Vec<u8> = (0..width * height)
-            .into_par_iter()
             .map(|idx| {
                 let elevation = elevations[idx];
                 let moisture = moistures[idx];
+                let temperature = temperatures[idx];
                 let flow = flows[idx];
 
                 let biome = if elevation < sea_val / 2.0 {
@@ -354,38 +509,19 @@ impl TerrainMap {
                     BiomeType::Ocean
                 } else if elevation < sand_val {
                     BiomeType::Beach
-                } else if elevation < 0.9 && flow > (max_flow * 0.05) && flow > 2.0 {
+                } else if elevation < 0.85 && flow > (max_flow * 0.05) && flow > 2.0 {
                     BiomeType::River
-                } else if elevation >= 0.7 {
-                    if elevation >= snow_val {
-                        if moisture > 0.5 {
-                            BiomeType::Snow
-                        } else {
-                            BiomeType::MountainRock
-                        }
+                } else if elevation >= snow_val {
+                    // Snow line: frozen peaks where cold or humid, bare rock otherwise.
+                    if temperature < 0.35 || moisture > 0.5 {
+                        BiomeType::Snow
                     } else {
-                        if moisture > 0.65 {
-                            BiomeType::Rainforest
-                        } else if moisture > 0.4 {
-                            BiomeType::BorealForest
-                        } else if moisture > 0.25 {
-                            BiomeType::TemperateForest
-                        } else {
-                            BiomeType::MountainRock
-                        }
+                        BiomeType::MountainRock
                     }
+                } else if elevation >= 0.78 {
+                    BiomeType::MountainRock
                 } else {
-                    if moisture < 0.15 {
-                        BiomeType::Desert
-                    } else if moisture < 0.35 {
-                        BiomeType::Grassland
-                    } else if moisture < 0.55 {
-                        BiomeType::TemperateForest
-                    } else if moisture < 0.75 {
-                        BiomeType::BorealForest
-                    } else {
-                        BiomeType::Rainforest
-                    }
+                    whittaker_biome(temperature, moisture)
                 };
 
                 biome as u8
@@ -417,6 +553,7 @@ impl TerrainMap {
             height,
             elevations,
             moistures,
+            temperatures,
             biomes,
             flows,
             pois,
@@ -447,7 +584,7 @@ impl TerrainMap {
         }
         let tx = (pos.x - bounds.min.x) / x_range;
         let tz = (pos.z - bounds.min.z) / z_range;
-        
+
         let tx = tx.clamp(0.0, 1.0);
         let tz = tz.clamp(0.0, 1.0);
 
@@ -470,7 +607,7 @@ impl TerrainMap {
 
         let h_top = h00 * (1.0 - tx) + h10 * tx;
         let h_bottom = h01 * (1.0 - tx) + h11 * tx;
-        
+
         h_top * (1.0 - tz) + h_bottom * tz
     }
 }
@@ -488,10 +625,13 @@ mod tests {
         for &elevation in &map.elevations {
             assert!(elevation >= 0.0 && elevation <= 1.0);
         }
-        
+
         // Assert min is close to 0 and max is close to 1
         let min_el = map.elevations.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-        let max_el = map.elevations.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+        let max_el = map
+            .elevations
+            .iter()
+            .fold(f32::NEG_INFINITY, |a, &b| a.max(b));
         assert!(min_el < 0.05);
         assert!(max_el > 0.95);
     }
@@ -506,17 +646,23 @@ mod tests {
         settings_with_erosion.erosion_steps = 20000;
         let map_with_erosion = TerrainMap::generate(&settings_with_erosion);
 
-        assert_eq!(map_no_erosion.elevations.len(), map_with_erosion.elevations.len());
-        
+        assert_eq!(
+            map_no_erosion.elevations.len(),
+            map_with_erosion.elevations.len()
+        );
+
         let mut diff_count = 0;
         for i in 0..map_no_erosion.elevations.len() {
             if (map_no_erosion.elevations[i] - map_with_erosion.elevations[i]).abs() > 1e-5 {
                 diff_count += 1;
             }
         }
-        
+
         // Erosion should have altered the topography significantly
-        assert!(diff_count > 0, "Erosion must alter at least some raw height values");
+        assert!(
+            diff_count > 0,
+            "Erosion must alter at least some raw height values"
+        );
     }
 
     #[test]
@@ -580,17 +726,17 @@ mod tests {
             let biome = map.biomes[idx];
 
             let mut rgb: [u8; 3] = match biome {
-                0 => [15, 25, 65],      // DeepOcean
-                1 => [35, 80, 145],     // Ocean
-                2 => [235, 215, 165],   // Beach
-                3 => [55, 135, 215],    // River
-                4 => [140, 190, 100],   // Grassland
-                5 => [65, 135, 75],     // TemperateForest
-                6 => [45, 95, 80],      // BorealForest
-                7 => [15, 85, 45],      // Rainforest
-                8 => [215, 175, 105],   // Desert
-                9 => [120, 125, 130],   // MountainRock
-                10 => [245, 248, 250],  // Snow
+                0 => [15, 25, 65],     // DeepOcean
+                1 => [35, 80, 145],    // Ocean
+                2 => [235, 215, 165],  // Beach
+                3 => [55, 135, 215],   // River
+                4 => [140, 190, 100],  // Grassland
+                5 => [65, 135, 75],    // TemperateForest
+                6 => [45, 95, 80],     // BorealForest
+                7 => [15, 85, 45],     // Rainforest
+                8 => [215, 175, 105],  // Desert
+                9 => [120, 125, 130],  // MountainRock
+                10 => [245, 248, 250], // Snow
                 _ => [0, 0, 0],
             };
 
@@ -623,7 +769,9 @@ mod tests {
         }
 
         let output_path = Path::new(r"e:\Project\Anima-Engine\anima_world_refined.png");
-        img_buf.save(output_path).expect("Failed to save sample map image");
+        img_buf
+            .save(output_path)
+            .expect("Failed to save sample map image");
         assert!(output_path.exists());
     }
 
@@ -650,7 +798,14 @@ mod tests {
         let config = get_map_config();
         for &(col, row) in &map.pois {
             let idx = row * map.width + col;
-            assert!(map.elevations[idx] >= config.sand_ratio as f32, "POI at ({}, {}) has elevation {}, which is below {}", col, row, map.elevations[idx], config.sand_ratio);
+            assert!(
+                map.elevations[idx] >= config.sand_ratio as f32,
+                "POI at ({}, {}) has elevation {}, which is below {}",
+                col,
+                row,
+                map.elevations[idx],
+                config.sand_ratio
+            );
         }
     }
 }
