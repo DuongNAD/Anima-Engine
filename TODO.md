@@ -6,7 +6,7 @@
 
 # 🌍 [ĐANG LÀM] World Terrain Overhaul — Lục địa khổng lồ + Biome + Cache
 
-**Cập nhật:** 2026-06-30. **Trạng thái:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi. **CHƯA COMMIT.**
+**Cập nhật:** 2026-07-01. **Trạng thái:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi. Các bước 1→5 **ĐÃ COMMIT**; bản nâng cấp "to/rộng/nhiều biome" ở mục 🚀 bên dưới.
 
 ## Bối cảnh
 Đập đi xây lại phần sinh + render địa hình cho `landscape.html`: lục địa khổng lồ (data 1024²), noise sắc nét (ridged + domain warp), biome Whittaker (nhiệt×ẩm), và cache nhị phân để load tức thì từ lần 2.
@@ -60,8 +60,37 @@ File mới `src/components/Landscape/WorldWater.tsx` thay `ocean plane` phẳng 
 - **Refactor:** `sunDirectionForTime()` chuyển sang `utils/skyParams.ts` (dùng chung sky+water, tránh warning fast-refresh).
 - **Verify:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint **0 lỗi** (429 warning cũ, không phát sinh mới).
 
-## Bước còn lại (5)
-- [ ] **Bước 5:** (tùy chọn) Hydraulic erosion → thung lũng/lòng sông sâu hơn; mặt nước hồ ở bồn trũng (lake basins).
+## ✅ BƯỚC 5 — Hydraulic erosion + hồ nước — XONG (2026-07-01)
+Thay đổi ở tầng generation (`worldGen.ts`) + render (`WorldWater.tsx`, `WorldMinimap.tsx`). **Bump `WORLD_GEN_VERSION` 1→2** (cache cũ tự invalidate); worker transfer thêm `water.buffer`.
+- **Erosion (droplet):** `hydraulicErosion()` chạy Pass 1b (sau elevation, TRƯỚC flow+biome nên sông/biome bám lòng đã khắc). Mô phỏng hạt mưa cuốn/lắng phù sa (inertia/capacity/erode/deposit/evaporate/gravity, 30 bước/hạt), phân bổ trên 4 góc bilinear. Deterministic (rng riêng seed từ baseSeed). Số hạt scale theo diện tích: `min(120k, n*0.06)`. Clamp [0,1] sau khi khắc.
+- **Hồ (priority-flood, Barnes et al.):** `computeLakes()` Pass 4b — flood từ biển/rìa map vào trong bằng min-heap (typed-array), nâng mỗi cell tới ngưỡng tràn (sill). Nơi mặt filled > đất thật → hồ; lưu `water: Float32Array` (cao độ mặt nước, 0 nếu không có hồ). `LAKE_MIN_DEPTH=0.006` lọc vũng nông (speckle từ erosion). Cây không mọc trên ô hồ.
+- **Render:** `WorldWater` thêm mesh `world-lakes` — quads phẳng tại `water*heightUnits`, shader `uWaterType=2` (dùng nhánh depth-color + foam như đại dương, khác nhánh river). `WorldMinimap` tint ô hồ sang xanh nước.
+- **Verify:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi. Smoke `generateWorld(256²)`: 115ms, elev∈[0,1], 735 ô hồ, 0 NaN. (1024² ước tính ~1.5–2.5s off-thread, cache sau lần đầu.)
+- **Tinh chỉnh:** độ mạnh khắc → `erosionDroplets` / các hằng trong `hydraulicErosion`; ngưỡng hồ → `LAKE_MIN_DEPTH`; màu hồ → `lakeUniforms` (`uShallow`/`uDeep`); tắt hẳn → opts `erosion:false` / `lakes:false`.
+
+> 🎉 **World Terrain Overhaul HOÀN TẤT các bước 1→5.** Còn tùy chọn tương lai: thermal erosion, hồ có sông nối (inlet/outlet), phản chiếu mặt nước (reflection probe).
+
+---
+
+# 🚀 NÂNG CẤP MAP — To hơn, Rộng hơn, Nhiều môi trường nhất (2026-07-01)
+
+Mục tiêu người dùng: "map to, rộng, nhiều môi trường nhất". **Bump `WORLD_GEN_VERSION` 2→3** (cache tự sinh lại).
+
+## To hơn (data) & Rộng hơn (world-space)
+- `WORLD_SIZE` **1024 → 2048** (~4M cell, gấp 4× chi tiết). Sinh 1 lần off-thread **~5s @2048²** rồi cache; RAM thường trú ~90MB.
+- `RENDER_SIZE` **400 → 1000** (rộng gấp 2.5×), `HEIGHT_RATIO` 0.13→0.14, `MESH_RES` 256→**384** (mesh chi tiết hơn).
+- Camera: `near=2`, `far=RENDER_SIZE*11` (phải > dome `worldScale*6.5`); orbit `min=RENDER_SIZE*0.06`, `max=RENDER_SIZE*3.2` (< dome để camera luôn trong vòm trời). Sky/fog/dome tự scale theo `worldScale=RENDER_SIZE`. `maxFlora` 60k→**90k**.
+
+## Nhiều môi trường (biome) — 14 → **22**
+Thêm 8 biome: **Lake, Mangrove, Chaparral, Steppe, Alpine, Badlands, Glacier, Bog** (enum + `BIOME_RGB` + flora + legend minimap đủ 22 mục).
+- `classify()` viết lại theo **dải elevation × Whittaker (nhiệt×ẩm)**: bờ nóng-ẩm→Mangrove; đỉnh→Glacier/Snow/Rock; dải alpine→Alpine/Rock; trũng ẩm→Bog(lạnh)/Swamp(ấm); nóng: Desert→Badlands→Savanna→Chaparral→Jungle; ấm/ôn: Steppe→Grassland→Shrubland/Forest; lạnh: Tundra/Taiga.
+- **Tinh chỉnh khí hậu để mọi biome xuất hiện thật:** nhiệt độ trải rộng hơn (`lat*0.78 + tNoise*0.22 - lapse`), bay hơi `(temp-0.5)*0.5`, ẩm nền `mBase*0.95` → dải ẩm rộng đủ chứa cả Desert (khô kiệt) lẫn Jungle (sũng nước).
+- Ô hồ được recolor `Biome.Lake`; minimap tint xanh; cây không mọc trên hồ.
+
+## Verify (đo thật bằng smoke test tạm, đã xoá)
+- **@2048² (độ phân giải thật): present = 22/22 biome**, 5.0s, 49.3k ô hồ, 0 NaN. Phân bố lành mạnh (Grassland/Shrubland/Forest/Taiga/Chaparral nhiều; Desert/Steppe/Tundra/Glacier hiếm nhưng có).
+- @512²: 22/22, 0.36s. `npm run build` ✅ · `npm run test:frontend` ✅ 237/237 · lint 0 lỗi.
+- **Tinh chỉnh nhanh:** kích thước data → `WORLD_SIZE`; độ rộng → `RENDER_SIZE`; ngưỡng biome → `classify()`; độ khô sa mạc → hệ số `evaporation` + ngưỡng `Desert/Badlands`; tắt biome nước → opts `lakes:false`.
 
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
