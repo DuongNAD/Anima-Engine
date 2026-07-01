@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 4;
+export const WORLD_GEN_VERSION = 5;
 
 export enum Biome {
   Ocean = 0,
@@ -40,28 +40,28 @@ export const BIOME_COUNT = 22;
 
 /** RGB (0..255) per biome — single source of truth for colouring the world & minimap. */
 export const BIOME_RGB: ReadonlyArray<readonly [number, number, number]> = [
-  [28, 62, 122], // Ocean
-  [222, 206, 156], // Beach
-  [214, 184, 108], // Desert
-  [190, 182, 96], // Savanna
-  [120, 178, 86], // Grassland
-  [150, 168, 96], // Shrubland
-  [46, 128, 58], // Forest
-  [22, 96, 44], // Jungle
-  [54, 104, 82], // Taiga
-  [158, 168, 150], // Tundra
-  [74, 96, 70], // Swamp
-  [128, 124, 120], // Rock
-  [242, 246, 250], // Snow
-  [60, 130, 180], // River
-  [40, 120, 170], // Lake
-  [58, 110, 74], // Mangrove
-  [170, 158, 96], // Chaparral
-  [176, 178, 118], // Steppe
-  [120, 158, 120], // Alpine
-  [168, 110, 78], // Badlands
-  [214, 232, 240], // Glacier
-  [80, 92, 78], // Bog
+  [26, 60, 120], // Ocean
+  [234, 216, 162], // Beach — bright sand
+  [230, 196, 104], // Desert — saturated yellow sand
+  [200, 190, 96], // Savanna — dry gold-green
+  [132, 196, 92], // Grassland — fresh light green
+  [150, 170, 92], // Shrubland — olive
+  [40, 124, 50], // Forest — vivid green
+  [20, 98, 40], // Jungle — deep lush green
+  [50, 104, 80], // Taiga — dark blue-green
+  [166, 176, 154], // Tundra — pale grey-green
+  [66, 90, 54], // Swamp — dark green with mud
+  [134, 128, 120], // Rock — grey
+  [248, 251, 255], // Snow — pure white
+  [58, 132, 188], // River
+  [42, 118, 176], // Lake
+  [60, 106, 68], // Mangrove — muddy green
+  [178, 158, 92], // Chaparral — olive-tan
+  [190, 186, 120], // Steppe — pale tan-green
+  [122, 162, 116], // Alpine — muted meadow green
+  [176, 104, 66], // Badlands — red-brown
+  [220, 238, 248], // Glacier — icy white-blue
+  [72, 82, 58], // Bog — dark olive-brown
 ];
 
 /** A distinct lake: one flat water plane is rendered per basin (cell-space bbox + level). */
@@ -83,6 +83,8 @@ export interface World {
   moisture: Float32Array; // [0, 1]
   temperature: Float32Array; // [0, 1] (cold -> hot)
   flow: Float32Array; // river flow accumulation (normalized 0..1)
+  /** Terrain steepness in [0, 1] (~tan of the world-space slope angle, clamped). */
+  slope: Float32Array;
   /** Inland still-water (lake) surface elevation, normalized; 0 where there is no lake. */
   water: Float32Array;
   /** Land closeness to any water (ocean/lake): ~1 at the shoreline, fading to 0 inland. */
@@ -168,10 +170,46 @@ function smoothstep(e0: number, e1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Per-cell terrain steepness in [0, 1], from the elevation gradient. Scaled so ~1 corresponds
+ * to a ~45deg world-space slope (independent of map size, using the nominal render height
+ * ratio), so downstream thresholds read as real slope angles.
+ *
+ * The gradient is measured over a wider stencil (`step` cells) rather than adjacent cells, so
+ * it captures the BROAD mountainside slope the render mesh actually shows — not the fine
+ * per-cell roughness that hydraulic erosion adds (which would flag almost everything "steep").
+ */
+function computeSlope(elev: Float32Array, size: number): Float32Array {
+  const n = size * size;
+  const slope = new Float32Array(n);
+  const step = Math.max(2, Math.round(size / 200)); // broad mountainside slope, not erosion noise
+  const ref = 0.06 * (size - 1); // maps the gradient into a well-spread [0, 1] steepness
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const xl = Math.max(0, x - step);
+      const xr = Math.min(size - 1, x + step);
+      const yu = Math.max(0, y - step);
+      const yd = Math.min(size - 1, y + step);
+      const dx = (elev[y * size + xr] - elev[y * size + xl]) / (xr - xl || 1);
+      const dy = (elev[yd * size + x] - elev[yu * size + x]) / (yd - yu || 1);
+      slope[i] = Math.min(1, Math.sqrt(dx * dx + dy * dy) * ref);
+    }
+  }
+  return slope;
+}
+
 // ---- Whittaker biome classification --------------------------------------------------
 
-function classify(elev: number, temp: number, moist: number, flow: number, seaLevel: number): Biome {
-  const beach = seaLevel + 0.015;
+function classify(
+  elev: number,
+  temp: number,
+  moist: number,
+  flow: number,
+  slope: number,
+  seaLevel: number,
+): Biome {
+  const beach = seaLevel + 0.022; // a slightly wider sandy coastal band
   if (elev < seaLevel) return Biome.Ocean;
 
   // Coast: hot, wet, low shores grow mangroves; otherwise a sandy beach.
@@ -197,6 +235,10 @@ function classify(elev: number, temp: number, moist: number, flow: number, seaLe
     if (moist > 0.38) return Biome.Alpine;
     return Biome.Rock;
   }
+
+  // The steepest mid-elevation faces are bare rock (cliffs), regardless of climate — trees
+  // can't cling to them. This carves rocky mountainsides out of the otherwise-green land.
+  if (slope > 0.85) return Biome.Rock;
 
   // --- Low, wet, flat depressions: bog (cold) or swamp (warm) ---
   const lowland = smoothstep(seaLevel + 0.14, seaLevel + 0.02, elev); // 1 near the coast lowlands
@@ -770,9 +812,12 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     }
   }
 
-  // ---- Pass 4: biome classification ----
+  // ---- Pass 3b: terrain slope (steepness) ----
+  const slope = computeSlope(elevation, size);
+
+  // ---- Pass 4: biome classification (height x moisture x temperature x slope) ----
   for (let i = 0; i < n; i++) {
-    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], seaLevel);
+    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], seaLevel);
   }
 
   // ---- Pass 4b: lake basins (standing water in depressions) ----
@@ -801,10 +846,13 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       if (fX.length >= maxFlora) break;
       const i = y * size + x;
       if (water[i] > 0) continue; // no trees standing in a lake
+      if (slope[i] > 0.78) continue; // nothing grows on steep cliffs
       const b = biome[i] as Biome;
       const ft = floraForBiome(b);
       if (ft === -1) continue;
-      if (rng() > floraDensity(b)) continue;
+      // Denser where it's wetter, sparser where arid (a lush forest vs a dry plain).
+      const density = floraDensity(b) * (0.5 + moisture[i]);
+      if (rng() > density) continue;
       // World coordinates centred on origin (1 cell = 1 unit).
       const wx = x - size / 2 + (rng() - 0.5) * stride;
       const wz = y - size / 2 + (rng() - 0.5) * stride;
@@ -823,6 +871,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     moisture,
     temperature,
     flow,
+    slope,
     water,
     shore,
     lakeBasins,

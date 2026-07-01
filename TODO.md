@@ -103,6 +103,20 @@ Sửa triệt để 3 lỗi hiển thị. **Bump `WORLD_GEN_VERSION` 3→4** (ca
 3. **Đá bay** — nguyên nhân: flora lấy Y từ elevation full-res 2048² nhưng terrain render ở mesh 384 → lệch trên núi. Fix: `sampleMeshHeight()` lấy đúng cao độ **mặt mesh** (bilinear trên lưới mesh), và seat mỗi geometry bằng `boundingBox.min.y` để đáy chạm đất. Đá/cây bám sát mặt đất tuyệt đối.
 - **Verify:** `npm run build` ✅ · `npm run test:frontend` ✅ 237/237 · lint 0 lỗi. Smoke @1024²: 95 bồn hồ, shore band 120k ô, mesh-snap khớp tuyệt đối (sai số <1e-5), 0 NaN. @2048² bồn hồ ≤280 planes.
 
+---
+
+# 🌱 NÂNG CẤP BIOME — Slope map + màu tương phản + foliage theo hệ sinh thái (2026-07-01)
+
+Địa hình trước đây "đơn điệu" vì thiếu **độ dốc (slope)** (núi vẫn xanh cây như đồng bằng) và màu biome hơi nhạt. **Bump `WORLD_GEN_VERSION` 4→5.**
+- **Slope map (`computeSlope`)** — signal thứ 3 (ngoài height+moisture): gradient elevation đo trên stencil rộng (`step≈size/200`) để phản ánh sườn núi lớn, không phải nhiễu erosion; chuẩn hoá về [0,1]. Lưu `slope: Float32Array`.
+- **Bãi cát**: dải Beach rộng hơn (`seaLevel+0.022`) + viền cát `shore` — màu cát, **không cây**.
+- **Biome theo Height×Moisture×Temp×Slope**: giữ 22 biome (Desert khô/thấp, Swamp ẩm/thấp, Forest·Jungle ẩm/trung, Grassland·Steppe trung, Snow/Glacier cực cao). **Thêm vách đá**: `slope>0.85` → `Rock` (chỉ ~3% đất — sườn dốc nhất), phần đất thoải giữ nguyên biome xanh. Thung lũng = vùng thoải+ẩm (flow tụ) → Forest/Swamp.
+- **Màu tương phản hơn** (`BIOME_RGB`): sa mạc vàng đậm, rừng xanh tươi, cỏ xanh sáng, tuyết trắng tinh, badlands nâu đỏ…
+- **Foliage theo hệ sinh thái**: `floraForBiome` + `floraDensity` theo biome; **mật độ ×(0.5+moisture)** (rừng ẩm dày, đồng khô thưa); **không cây trên slope>0.78** (vách đá) và trên nước/bãi cát.
+- **Render**: `WorldTerrain` trộn **màu đá xám theo slope** (`smoothstep(0.55,1.0)`) → sườn dốc lộ đá, phá thế xanh đơn điệu; giữ blend cát + sông.
+- **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: 22/22 biome, slope>0.85 = 3.2% đất (không phải cả bản đồ hoá đá), 0 cây trên vách dốc, 0 NaN.
+- **Tinh chỉnh:** độ nhạy slope → hệ số `0.06` + `step` trong `computeSlope`; ngưỡng vách đá → `slope>0.85` trong `classify`; độ đậm tint đá → `smoothstep` trong WorldTerrain; mật độ cây → `floraDensity` × `(0.5+moisture)`.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.

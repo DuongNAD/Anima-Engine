@@ -85,6 +85,7 @@ function isWorldRenderable(w: World): boolean {
   return (
     w.elevation?.length === n &&
     w.flow?.length === n &&
+    w.slope?.length === n &&
     w.water?.length === n &&
     w.shore?.length === n &&
     w.biome?.length === n &&

@@ -69,6 +69,7 @@ function isValid(w: World | undefined, size: number): w is World {
     w.moisture?.length === n &&
     w.temperature?.length === n &&
     w.flow?.length === n &&
+    w.slope?.length === n &&
     w.water?.length === n &&
     w.shore?.length === n &&
     w.biome?.length === n &&

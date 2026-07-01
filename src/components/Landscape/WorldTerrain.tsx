@@ -21,9 +21,10 @@ function sampleBiome(world: World, u: number, v: number): number {
   return biome[y * size + x];
 }
 
-// Colours blended into the terrain (0..1) for water features baked into the mesh itself.
+// Colours blended into the terrain (0..1) for features baked into the mesh itself.
 const RIVER_RGB = [0.16, 0.42, 0.62]; // river/stream water blended by flow
 const SAND_RGB = [0.72, 0.66, 0.5]; // damp sand along shorelines
+const ROCK_RGB = [0.5, 0.48, 0.45]; // exposed rock on steep faces
 
 function smoothstep(e0: number, e1: number, x: number): number {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
@@ -47,7 +48,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     const positions = new Float32Array(verts * 3);
     const colors = new Float32Array(verts * 3);
     const heightUnits = renderSize * heightRatio;
-    const { size, flow, shore, seaLevel } = world;
+    const { size, flow, shore, slope, seaLevel } = world;
 
     for (let gy = 0; gy <= res; gy++) {
       for (let gx = 0; gx <= res; gx++) {
@@ -80,7 +81,16 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
           b += (SAND_RGB[2] - b) * t;
         }
 
-        // River water tint blended on top.
+        // Cliff shading: steep faces expose bare rock, breaking up the greenery on mountains.
+        const sl = e >= seaLevel ? sampleField(slope, size, u, v) : 0;
+        if (sl > 0) {
+          const t = smoothstep(0.55, 1.0, sl) * 0.7;
+          r += (ROCK_RGB[0] - r) * t;
+          g += (ROCK_RGB[1] - g) * t;
+          b += (ROCK_RGB[2] - b) * t;
+        }
+
+        // River water tint blended on top (rivers sit in flat valley bottoms).
         if (riverAmt > 0) {
           const t = riverAmt * 0.85;
           r += (RIVER_RGB[0] - r) * t;
