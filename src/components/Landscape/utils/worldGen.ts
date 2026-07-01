@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 3;
+export const WORLD_GEN_VERSION = 4;
 
 export enum Biome {
   Ocean = 0,
@@ -64,6 +64,16 @@ export const BIOME_RGB: ReadonlyArray<readonly [number, number, number]> = [
   [80, 92, 78], // Bog
 ];
 
+/** A distinct lake: one flat water plane is rendered per basin (cell-space bbox + level). */
+export interface LakeBasin {
+  /** Normalized water-surface elevation (constant across the basin). */
+  level: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
 export interface World {
   size: number;
   seed: number;
@@ -75,6 +85,10 @@ export interface World {
   flow: Float32Array; // river flow accumulation (normalized 0..1)
   /** Inland still-water (lake) surface elevation, normalized; 0 where there is no lake. */
   water: Float32Array;
+  /** Land closeness to any water (ocean/lake): ~1 at the shoreline, fading to 0 inland. */
+  shore: Float32Array;
+  /** Distinct lake basins, each rendered as a single water plane. */
+  lakeBasins: LakeBasin[];
   biome: Uint8Array; // Biome enum per cell
   /** Flora instances as SoA (world coordinates centred on origin). */
   floraX: Float32Array;
@@ -385,10 +399,17 @@ function hydraulicErosion(h: Float32Array, size: number, rng: () => number, drop
 /**
  * Priority-Flood (Barnes et al.): flood the terrain inward from the ocean / map edge, raising
  * each cell to the highest sill it must cross to reach an outlet. Where the resulting filled
- * surface sits above the real ground, that depression holds standing water — a lake. Returns
- * the water-surface elevation per cell (0 where there is no lake).
+ * surface sits above the real ground, that depression holds standing water — a lake.
+ *
+ * The flooded cells are then grouped into connected basins (so each real lake is rendered as
+ * ONE plane, not a grid of little quads). Tiny pits are dropped and only the largest basins
+ * are kept, to bound draw calls. Returns the per-cell water surface (0 = dry) and the basins.
  */
-function computeLakes(elev: Float32Array, size: number, seaLevel: number): Float32Array {
+function computeLakes(
+  elev: Float32Array,
+  size: number,
+  seaLevel: number,
+): { water: Float32Array; basins: LakeBasin[] } {
   const n = size * size;
   const filled = new Float32Array(n);
   const closed = new Uint8Array(n);
@@ -471,12 +492,114 @@ function computeLakes(elev: Float32Array, size: number, seaLevel: number): Float
     }
   }
 
+  // Candidate lake cells: land depressions the flood raised above the real ground.
   const LAKE_MIN_DEPTH = 0.006; // ignore shallow pits (mostly erosion speckle)
+  const MIN_LAKE_CELLS = 16; // drop ponds smaller than this (avoids speckle -> planes)
+  const MAX_LAKES = 280; // cap rendered planes; keep the largest basins
+  const isLakeCell = (i: number) => elev[i] >= seaLevel && filled[i] - elev[i] > LAKE_MIN_DEPTH;
+
+  // Label connected basins (8-connectivity) with an explicit stack (no recursion on 4M cells).
+  const comp = new Int32Array(n).fill(-1);
+  const stack: number[] = [];
+  const basinsAll: Array<{ level: number; minX: number; maxX: number; minY: number; maxY: number; count: number }> = [];
+  for (let s = 0; s < n; s++) {
+    if (comp[s] >= 0 || !isLakeCell(s)) continue;
+    const id = basinsAll.length;
+    let minX = size, maxX = 0, minY = size, maxY = 0, count = 0, level = 0;
+    stack.length = 0;
+    stack.push(s);
+    comp[s] = id;
+    while (stack.length > 0) {
+      const c = stack.pop() as number;
+      const cx = c % size;
+      const cy = (c / size) | 0;
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cy < minY) minY = cy;
+      if (cy > maxY) maxY = cy;
+      if (filled[c] > level) level = filled[c]; // spill level (constant across a basin)
+      count++;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+          const ni = ny * size + nx;
+          if (comp[ni] < 0 && isLakeCell(ni)) {
+            comp[ni] = id;
+            stack.push(ni);
+          }
+        }
+      }
+    }
+    basinsAll.push({ level, minX, maxX, minY, maxY, count });
+  }
+
+  // Keep the largest qualifying basins only.
+  const keptIdx = basinsAll
+    .map((b, id) => ({ id, count: b.count }))
+    .filter((b) => b.count >= MIN_LAKE_CELLS)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, MAX_LAKES)
+    .map((b) => b.id);
+  const kept = new Uint8Array(basinsAll.length);
+  keptIdx.forEach((id) => (kept[id] = 1));
+
   const water = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    if (elev[i] >= seaLevel && filled[i] - elev[i] > LAKE_MIN_DEPTH) water[i] = filled[i];
+    const ci = comp[i];
+    if (ci >= 0 && kept[ci]) water[i] = basinsAll[ci].level;
   }
-  return water;
+  const basins: LakeBasin[] = keptIdx.map((id) => {
+    const b = basinsAll[id];
+    return { level: b.level, minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY };
+  });
+  return { water, basins };
+}
+
+/**
+ * Distance-limited flood from every water cell (ocean or lake) so land near the water reads as
+ * damp sand. Returns per-cell closeness in [0, 1]: ~1 right at the shoreline, fading to 0 a few
+ * cells inland; water cells themselves are 0.
+ */
+function computeShore(elev: Float32Array, water: Float32Array, size: number, seaLevel: number): Float32Array {
+  const n = size * size;
+  const D = 8; // shore band width in cells
+  const dist = new Uint8Array(n).fill(255);
+  const queue = new Int32Array(n);
+  let qh = 0;
+  let qt = 0;
+  for (let i = 0; i < n; i++) {
+    if (elev[i] < seaLevel || water[i] > 0) {
+      dist[i] = 0;
+      queue[qt++] = i;
+    }
+  }
+  while (qh < qt) {
+    const c = queue[qh++];
+    const d = dist[c];
+    if (d >= D) continue;
+    const cx = c % size;
+    const cy = (c / size) | 0;
+    for (let k = 0; k < 4; k++) {
+      const nx = cx + (k === 0 ? -1 : k === 1 ? 1 : 0);
+      const ny = cy + (k === 2 ? -1 : k === 3 ? 1 : 0);
+      if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+      const ni = ny * size + nx;
+      if (dist[ni] > d + 1) {
+        dist[ni] = d + 1;
+        queue[qt++] = ni;
+      }
+    }
+  }
+  const shore = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (elev[i] < seaLevel || water[i] > 0) continue; // water is not sand
+    const d = dist[i];
+    if (d >= 1 && d <= D) shore[i] = (D - d + 1) / D;
+  }
+  return shore;
 }
 
 export interface WorldGenOptions {
@@ -653,11 +776,16 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
 
   // ---- Pass 4b: lake basins (standing water in depressions) ----
-  const water = useLakes ? computeLakes(elevation, size, seaLevel) : new Float32Array(n);
+  const { water, basins: lakeBasins } = useLakes
+    ? computeLakes(elevation, size, seaLevel)
+    : { water: new Float32Array(n), basins: [] as LakeBasin[] };
   // Recolour flooded cells as Lake so the terrain mesh + minimap read as water.
   if (useLakes) {
     for (let i = 0; i < n; i++) if (water[i] > 0) biome[i] = Biome.Lake;
   }
+
+  // ---- Pass 4c: shoreline band (damp sand around oceans & lakes) ----
+  const shore = computeShore(elevation, water, size, seaLevel);
 
   // ---- Pass 5: flora placement (SoA, density by biome, capped) ----
   const rng = mulberry32(baseSeed + 99173);
@@ -696,6 +824,8 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     temperature,
     flow,
     water,
+    shore,
+    lakeBasins,
     biome,
     floraX: new Float32Array(fX),
     floraZ: new Float32Array(fZ),
