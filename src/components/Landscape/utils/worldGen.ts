@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 6;
+export const WORLD_GEN_VERSION = 7;
 
 export enum Biome {
   Ocean = 0,
@@ -209,14 +209,15 @@ function classify(
   slope: number,
   seaLevel: number,
 ): Biome {
-  const beach = seaLevel + 0.022; // a slightly wider sandy coastal band
+  // A clear sandy beach strip hugs the shoreline: any land just above the water line, up to
+  // seaLevel + BEACH_WIDTH, is sand — kept smooth with no vegetation (see flora placement).
+  const BEACH_WIDTH = 0.05;
+  const beach = seaLevel + BEACH_WIDTH;
   if (elev < seaLevel) return Biome.Ocean;
+  if (elev < beach) return Biome.Beach;
 
-  // Coast: hot, wet, low shores grow mangroves; otherwise a sandy beach.
-  if (elev < beach) {
-    if (temp > 0.66 && moist > 0.6) return Biome.Mangrove;
-    return Biome.Beach;
-  }
+  // Mangroves fringe hot, very wet coasts just INLAND of the sandy beach (not on it).
+  if (elev < beach + 0.04 && temp > 0.66 && moist > 0.62) return Biome.Mangrove;
 
   // Rivers cut across land where flow accumulates and the slope isn't a peak.
   if (flow > 0.55 && elev < 0.8) return Biome.River;

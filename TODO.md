@@ -126,6 +126,17 @@ Terrain 3D bị "xám/trắng nhợt nhạt loang lổ", không khớp minimap; 
 2. **Luật trồng cây chặt** (`worldGen` flora pass): chỉ mọc khi `elevation > seaLevel` **và** `water==0` **và** `slope ≤ 0.78` **và** `shore ≤ 0.8` (không sát mép nước) **và** biome hợp lệ. `floraForBiome` giờ trả `-1` cho Ocean/Beach/River/Lake/Snow/Glacier/**Rock/Badlands** (bỏ đá/boulder trên núi trọc). Validate lại **ô sau khi jitter** để cây không lệch ra nước. Mật độ vẫn ×(0.5+moisture).
 - **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: flora=67.6k, **0 cây dưới nước / trên bãi/tuyết/đá / dưới mực nước / vách dốc**.
 
+---
+
+# 🏖 BÃI BIỂN — dải cát ven bờ (2026-07-01)
+
+Biome `Beach` đã có nhưng dải quá hẹp (`seaLevel+0.022`) nên gần như không thấy. **Bump `WORLD_GEN_VERSION` 6→7.**
+- **Nới dải cát**: đất có `elevation ∈ [seaLevel, seaLevel + 0.05)` → luôn là `Biome.Beach` (màu cát `#EAD8A2`). `WorldTerrain` tô thẳng `BIOME_RGB[Beach]` nên bãi cát **khớp giữa minimap và 3D**.
+- **Không cây/đá trên cát**: `floraForBiome(Beach) = -1` + gate `shore≤0.8` + validate ô jitter → bãi cát nhẵn hoàn toàn.
+- Mangrove lùi vào **trong** bãi cát (`elev < beach+0.04 && hot && very-wet`) để không đè lên dải cát.
+- **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: 97.6k ô cát, **97.6% dải ven bờ là Beach**, **0 flora trên cát**.
+- **Tinh chỉnh:** độ rộng bãi → `BEACH_WIDTH` trong `classify`; màu cát → `BIOME_RGB[Beach]`.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.
