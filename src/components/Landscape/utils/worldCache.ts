@@ -57,7 +57,24 @@ function idbSet(key: string, value: World): Promise<void> {
 }
 
 function isValid(w: World | undefined, size: number): w is World {
-  return !!w && w.version === WORLD_GEN_VERSION && w.size === size && w.elevation?.length === size * size;
+  const n = size * size;
+  // Check EVERY field the renderer relies on — not just the version — so a cache written by an
+  // intermediate/partial build (e.g. hot-reloaded mid-refactor under the same version number)
+  // is rejected and regenerated instead of crashing the scene with a missing array/field.
+  return (
+    !!w &&
+    w.version === WORLD_GEN_VERSION &&
+    w.size === size &&
+    w.elevation?.length === n &&
+    w.moisture?.length === n &&
+    w.temperature?.length === n &&
+    w.flow?.length === n &&
+    w.water?.length === n &&
+    w.shore?.length === n &&
+    w.biome?.length === n &&
+    Array.isArray(w.lakeBasins) &&
+    typeof w.seaLevel === 'number'
+  );
 }
 
 /** Synchronous: memoized generate (for environments without IndexedDB, e.g. tests). */
@@ -79,6 +96,7 @@ export function getMemoizedWorld(seed: string | number, opts: WorldGenOptions = 
  * synchronous generation if Workers are unavailable or the worker errors.
  */
 function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promise<World> {
+  const size = opts.size ?? 1024;
   return new Promise((resolve) => {
     if (typeof Worker === 'undefined') {
       resolve(generateWorld(seed, opts));
@@ -106,7 +124,9 @@ function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promi
       if (settled) return;
       settled = true;
       worker.terminate();
-      resolve(e.data);
+      // Guard against a worker built from stale/partial code: regenerate synchronously if the
+      // payload is missing any field the renderer needs.
+      resolve(isValid(e.data, size) ? e.data : generateWorld(seed, opts));
     };
     worker.onerror = finishSync;
     try {

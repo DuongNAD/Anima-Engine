@@ -79,6 +79,19 @@ const MESH_RES = 384;
 
 const WEATHERS: WeatherKind[] = ['clear', 'rain', 'snow', 'fog'];
 
+/** True only when a loaded world has every field the scene reads (guards against partial data). */
+function isWorldRenderable(w: World): boolean {
+  const n = w.size * w.size;
+  return (
+    w.elevation?.length === n &&
+    w.flow?.length === n &&
+    w.water?.length === n &&
+    w.shore?.length === n &&
+    w.biome?.length === n &&
+    Array.isArray(w.lakeBasins)
+  );
+}
+
 /** Precipitation intensity (0..1) for each weather kind. */
 function precipFor(weather: WeatherKind): number {
   if (weather === 'rain') return 0.85;
@@ -131,7 +144,7 @@ export const WorldShowcase: React.FC = () => {
     return () => clearInterval(id);
   }, []);
 
-  if (!world) {
+  if (!world || !isWorldRenderable(world)) {
     return (
       <div
         data-testid="world-showcase"

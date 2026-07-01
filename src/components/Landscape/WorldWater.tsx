@@ -183,7 +183,8 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   // One plane per lake basin, sized to its cell-space bounding box (+ a small margin). The
   // shader hides the parts over land, so a single bbox plane cleanly fills the whole basin.
   const lakePlanes = useMemo(() => {
-    const { size, lakeBasins } = world;
+    const { size } = world;
+    const lakeBasins = world.lakeBasins ?? []; // tolerate an older/partial world
     const margin = (renderSize / (size - 1)) * 2;
     const toWorld = (g: number) => (g / (size - 1) - 0.5) * renderSize;
     return lakeBasins.map((b) => {

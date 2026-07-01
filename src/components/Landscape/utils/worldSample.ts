@@ -6,7 +6,10 @@ import type { World } from './worldGen';
 // ---------------------------------------------------------------------------------------
 
 /** Bilinear sample of any per-cell field at normalized (u, v) in [0, 1]. */
-export function sampleField(arr: Float32Array, size: number, u: number, v: number): number {
+export function sampleField(arr: Float32Array | undefined, size: number, u: number, v: number): number {
+  // Guard: a missing or wrong-sized field (e.g. an older/partial world) samples as 0 instead
+  // of throwing on an out-of-range / undefined index.
+  if (!arr || arr.length < size * size) return 0;
   const fx = Math.min(size - 1, Math.max(0, u * (size - 1)));
   const fy = Math.min(size - 1, Math.max(0, v * (size - 1)));
   const x0 = Math.floor(fx);
