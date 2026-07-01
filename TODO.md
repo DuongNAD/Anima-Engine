@@ -159,6 +159,17 @@ Làm đúng 3 nguyên lý vật lý của coastline. **Bump `WORLD_GEN_VERSION` 
 - **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: bãi khô 98k + **đáy cát nông 87k** + vách đá ven biển 110k, **0 ô cát dốc**, **0 flora trên cát**, 0 NaN.
 - **Tinh chỉnh:** độ sâu thềm nông → `SHELF_BAND`; bề rộng đáy cát → `SHALLOW`; sắc turquoise/độ trong → `uShallow`/`alpha` trong WorldWater.
 
+---
+
+# 🗺 ĐẠI TU TERRAIN — Bản đồ sạch: lục địa lớn, đồng bằng phẳng, biome theo tầng cao (2026-07-02)
+
+Terrain trước bị "lốm đốm như bùn" + cát phủ khắp đảo. Đại tu theo 3 nguyên lý. **Bump `WORLD_GEN_VERSION` 9→10.** (Ánh sáng scene cũng đã hạ ở commit trước để màu không cháy trắng.)
+1. **Noise (cấu trúc hình học)**: hạ base `FREQ 2.4→1.35` (lục địa/đại dương lớn), giảm gain fBm `0.5→0.42` + **bỏ lớp roughness `*6`** (hết vụn), `pow(e) 1.25→1.7` (đồng bằng phẳng rộng), **giảm erosion** `droplets n*0.06→n*0.02` (bớt nhấp nhô). Bỏ hẳn `Pass 1c` coastal flattening (thủ phạm tạo cát tràn).
+2. **Đồng bộ minimap**: cả minimap và 3D **đã dùng chung `BIOME_RGB[biome]`** — chỉ cần phân loại biome sạch là khớp. Không còn tô 2 kiểu.
+3. **Biome theo tầng độ cao (strict)**: `< seaLevel` Ocean → `+0.02` **cát mỏng** (gate thêm bằng **khoảng cách tới biển `coast`** để không tràn ra đồng bằng phẳng; dốc→Rock cliff) → tới `ROCK_LEVEL=0.66` là **phần xanh chủ đạo** (Grassland/Forest/Jungle/Taiga/Tundra/Swamp theo khí hậu) → `0.66–0.86` **Rock** → `>0.86` **Snow**. Bỏ các biome tông vàng (Desert/Savanna/Steppe/Chaparral/Badlands…) khỏi đất thường để hết "sandy".
+- **Verify (smoke @1024²):** **green 75%** (chủ đạo) · **beach 5%** (mỏng) · rock 14% · snow 3% · **rough 5.4e-4** (mượt, hết lốm đốm) · 0 NaN. Build ✅ · 237/237 ✅ · lint 0 lỗi. Screenshot in-browser: đảo xanh mướt + bãi cát mảnh + núi tuyết, **khớp minimap**.
+- **Tinh chỉnh:** kích thước lục địa → `FREQ`; độ phẳng đồng bằng → số mũ `pow`; ngưỡng tầng → `ROCK_LEVEL`/`SNOW_LEVEL`; độ mỏng bãi → `BEACH_TOP` + ngưỡng `coast>0.65`.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.

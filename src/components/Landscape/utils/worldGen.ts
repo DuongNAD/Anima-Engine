@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 9;
+export const WORLD_GEN_VERSION = 10;
 
 export enum Biome {
   Ocean = 0,
@@ -199,7 +199,22 @@ function computeSlope(elev: Float32Array, size: number): Float32Array {
   return slope;
 }
 
-// ---- Whittaker biome classification --------------------------------------------------
+// ---- Height-band biome classification ------------------------------------------------
+//
+// A strict, map-like elevation scheme (normalized 0..1) is the backbone, so the world reads
+// as clean bands rather than a blotchy mud:
+//   below seaLevel .................. Ocean
+//   seaLevel .. +0.02 (very thin) ... Beach (sand) — or Rock where the coast is a cliff
+//   +0.02 .. ROCK_LEVEL (the bulk) .. green land (grass/forest/etc. by climate)
+//   ROCK_LEVEL .. SNOW_LEVEL ......... Rock
+//   above SNOW_LEVEL ................. Snow
+// Moisture/temperature only vary WHICH green the bulk is, never the band structure.
+
+const BEACH_TOP = 0.02; // sand strip height above the water line (very thin)
+const ROCK_LEVEL = 0.66; // green below here, bare rock above
+const SNOW_LEVEL = 0.86; // snow caps
+const COAST_CLIFF_SLOPE = 0.45; // a steep shore is a rock cliff, not a beach
+const INLAND_CLIFF_SLOPE = 0.8; // very steep green-band faces expose rock
 
 function classify(
   elev: number,
@@ -207,77 +222,35 @@ function classify(
   moist: number,
   flow: number,
   slope: number,
+  coast: number,
   seaLevel: number,
 ): Biome {
-  // Coastline by SLOPE, not just height. The coastal shelf spans from just below the water
-  // (a sandy shallow sea floor) up to a little above it (the dry beach). Anywhere on that
-  // shelf that is gentle becomes sand; anywhere steep becomes bare rock — a cliff, whether it
-  // rises above the water or plunges below it. Sand can't cling to a steep face.
-  //   - The sandy sea floor, seen through the transparent water, glows turquoise in the
-  //     shallows and deepens to blue where the floor drops away to Ocean.
-  const BEACH_WIDTH = 0.06; // dry sand above the water line
-  const SHALLOW = 0.06; // sandy sea floor just below the water line
-  const BEACH_MAX_SLOPE = 0.3; // steeper than this and the coast is a cliff, not a beach
-  const beach = seaLevel + BEACH_WIDTH;
-  if (elev < seaLevel - SHALLOW) return Biome.Ocean; // deep sea floor
-  if (elev < beach) return slope > BEACH_MAX_SLOPE ? Biome.Rock : Biome.Beach;
+  if (elev < seaLevel) return Biome.Ocean;
 
-  // Mangroves fringe hot, very wet, gentle coasts just INLAND of the sandy beach (not on it).
-  if (elev < beach + 0.04 && slope < BEACH_MAX_SLOPE && temp > 0.66 && moist > 0.62) return Biome.Mangrove;
-
-  // Rivers cut across land where flow accumulates and the slope isn't a peak.
-  if (flow > 0.55 && elev < 0.8) return Biome.River;
-
-  // --- High-elevation bands ---
-  if (elev > 0.92) {
-    // Summits: ice caps where cold or moist, bare snow otherwise.
-    return temp < 0.35 || moist > 0.5 ? Biome.Glacier : Biome.Snow;
-  }
-  if (elev > 0.82) {
-    return temp < 0.45 ? Biome.Snow : Biome.Rock;
-  }
-  if (elev > 0.7) {
-    // Alpine band: bare rock where cold/dry, grassy meadows on moist slopes.
-    if (temp < 0.38) return Biome.Rock;
-    if (moist > 0.38) return Biome.Alpine;
-    return Biome.Rock;
+  // Thin sandy beach: the narrow strip of low, gentle land right at the OCEAN'S edge. Gating by
+  // distance-to-water (coast), not just height, keeps it a thin ribbon even where the plains
+  // are dead flat — otherwise a flat lowland would read as sand for miles. Steep shore = cliff.
+  if (coast > 0.65 && elev < seaLevel + BEACH_TOP) {
+    return slope > COAST_CLIFF_SLOPE ? Biome.Rock : Biome.Beach;
   }
 
-  // The steepest mid-elevation faces are bare rock (cliffs), regardless of climate — trees
-  // can't cling to them. This carves rocky mountainsides out of the otherwise-green land.
-  if (slope > 0.85) return Biome.Rock;
+  // Snow caps and the bare rock band below them (height-based).
+  if (elev > SNOW_LEVEL) return Biome.Snow;
+  if (elev > ROCK_LEVEL) return Biome.Rock;
 
-  // --- Low, wet, flat depressions: bog (cold) or swamp (warm) ---
-  const lowland = smoothstep(seaLevel + 0.14, seaLevel + 0.02, elev); // 1 near the coast lowlands
-  if (lowland > 0.5 && flow > 0.12 && moist > 0.6) {
-    return temp < 0.4 ? Biome.Bog : Biome.Swamp;
-  }
+  // Rivers thread the green lowlands.
+  if (flow > 0.6 && elev < ROCK_LEVEL) return Biome.River;
 
-  // --- Whittaker temperature x moisture matrix for the bulk of the land ---
-  if (temp >= 0.66) {
-    // Hot: dry sand -> eroded badlands -> savanna -> scrub -> rainforest.
-    if (moist < 0.24) return Biome.Desert;
-    if (moist < 0.34) return Biome.Badlands;
-    if (moist < 0.46) return Biome.Savanna;
-    if (moist < 0.58) return Biome.Chaparral;
-    return Biome.Jungle;
-  }
-  if (temp >= 0.48) {
-    // Warm
-    if (moist < 0.24) return Biome.Steppe;
-    if (moist < 0.45) return Biome.Grassland;
-    if (moist < 0.66) return Biome.Shrubland;
-    return Biome.Forest;
-  }
-  if (temp >= 0.34) {
-    // Temperate / cool
-    if (moist < 0.3) return Biome.Steppe;
-    if (moist < 0.55) return Biome.Grassland;
-    return Biome.Forest;
-  }
-  // Cold belt.
-  if (moist < 0.4) return Biome.Tundra;
-  return Biome.Taiga;
+  // Steep faces within the green band are exposed rock (cliffs).
+  if (slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
+
+  // --- The green bulk of the continent: which green depends on climate ---
+  if (temp < 0.32) return moist < 0.45 ? Biome.Tundra : Biome.Taiga; // cold belt
+  // Wet, flat lowland near the coast becomes marshy swamp.
+  if (elev < seaLevel + 0.08 && moist > 0.72 && flow > 0.2) return Biome.Swamp;
+  if (temp > 0.62 && moist > 0.72) return Biome.Jungle; // hot & very wet rainforest
+  if (moist > 0.45) return Biome.Forest; // temperate woodland
+  return Biome.Grassland; // open plains
 }
 
 function floraForBiome(b: Biome): FloraType | -1 {
@@ -695,7 +668,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   const falloffRadius = shape === 'island' ? 1.7 : 1.45;
 
   // ---- Pass 1: elevation (domain-warped fBm + ridged mountains + falloff) ----
-  const FREQ = 2.4; // base feature frequency across the map (lower = larger landmasses)
+  const FREQ = 1.35; // low base frequency -> large continents & oceans, broad flat plains
   let minE = Infinity;
   let maxE = -Infinity;
   for (let y = 0; y < size; y++) {
@@ -711,20 +684,17 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const sx = nx * FREQ + wx * 0.35;
       const sy = ny * FREQ + wy * 0.35;
 
-      // Continental base: 8 octaves of fBm, biased upward so it reads as one big landmass
-      // rather than scattered islands.
-      const base = Math.min(1, (fbm(elevNoise, sx, sy, 8, 2.0, 0.5) + 1) / 2 + 0.12); // [0, 1]
+      // Continental base: 8 octaves of fBm with a gentle gain so the high-frequency octaves
+      // stay small — big smooth landmasses instead of a blotchy, spongy surface.
+      const base = Math.min(1, (fbm(elevNoise, sx, sy, 8, 2.0, 0.42) + 1) / 2 + 0.12); // [0, 1]
 
       // Ridged mountains, emerging only over the higher continental interior.
-      const ridge = ridged(ridgeNoise, sx * 1.4, sy * 1.4, 6, 2.0, 0.55);
-      const mountainMask = smoothstep(0.5, 0.85, base);
-      let e = base * 0.8 + ridge * mountainMask * 0.55;
+      const ridge = ridged(ridgeNoise, sx * 1.5, sy * 1.5, 5, 2.0, 0.5);
+      const mountainMask = smoothstep(0.58, 0.9, base);
+      let e = base * 0.85 + ridge * mountainMask * 0.5;
 
-      // Fine roughness for a less "clay" surface.
-      e += fbm(elevNoise, sx * 6, sy * 6, 3, 2.0, 0.5) * 0.04;
-
-      // Elevation curve: flatten lowlands (plains) and steepen highlands.
-      e = Math.pow(Math.max(0, e), 1.25);
+      // Elevation curve: strongly flatten the lowlands into broad plains, keep peaks sharp.
+      e = Math.pow(Math.max(0, e), 1.7);
 
       // Continental falloff (island / continent edge).
       const d = Math.min(1, Math.sqrt(nx * nx + ny * ny) / falloffRadius);
@@ -744,34 +714,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // Runs before flow & biomes so both follow the eroded relief. Deterministic per seed.
   if (useErosion) {
     const erosionRng = mulberry32((baseSeed ^ 0x51ed270b) >>> 0);
-    const droplets = opts.erosionDroplets ?? Math.min(120000, Math.floor(n * 0.06));
+    // Light erosion: enough to carve river valleys, not so much that it roughens the plains.
+    const droplets = opts.erosionDroplets ?? Math.min(60000, Math.floor(n * 0.02));
     hydraulicErosion(elevation, size, erosionRng, droplets);
     // Erosion nudges a few cells outside [0, 1]; clamp so downstream thresholds stay valid.
     for (let i = 0; i < n; i++) elevation[i] = elevation[i] < 0 ? 0 : elevation[i] > 1 ? 1 : elevation[i];
-  }
-
-  // ---- Pass 1c: coastal terracing (a flat shelf on BOTH sides of the waterline) ----
-  // Perlin noise otherwise plunges straight into the sea. Here the band around the water line
-  // is eased toward a low-gain ramp and blended back to the real terrain away from the coast,
-  // so the shore rises very gradually from a flat beach and continues as a shallow underwater
-  // shelf. Flattening the geometry first is what gives the beach physical room to spread wide;
-  // steep headlands still rise fast enough to remain cliffs.
-  const COAST_BAND = 0.14; // above-water beach ramp height
-  const SHELF_BAND = 0.09; // below-water shallow shelf depth
-  const COAST_GAIN = 0.35; // near-shore slope as a fraction of the original (lower = flatter)
-  for (let i = 0; i < n; i++) {
-    const e = elevation[i];
-    if (e > seaLevel && e < seaLevel + COAST_BAND) {
-      const t = (e - seaLevel) / COAST_BAND; // 0 at the water, 1 at the band top
-      const w = smoothstep(0, 1, t); // blend back to the real terrain toward the top
-      const flat = seaLevel + COAST_GAIN * (e - seaLevel); // gentle low-gain ramp above water
-      elevation[i] = flat * (1 - w) + e * w;
-    } else if (e < seaLevel && e > seaLevel - SHELF_BAND) {
-      const t = (seaLevel - e) / SHELF_BAND; // 0 at the water, 1 at the shelf bottom
-      const w = smoothstep(0, 1, t);
-      const flat = seaLevel - COAST_GAIN * (seaLevel - e); // gentle shallow shelf below water
-      elevation[i] = flat * (1 - w) + e * w;
-    }
   }
 
   // ---- Pass 2: D8 flow accumulation (rivers) — no fluid sim, just graph flow ----
@@ -844,9 +791,13 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // ---- Pass 3b: terrain slope (steepness) ----
   const slope = computeSlope(elevation, size);
 
-  // ---- Pass 4: biome classification (height x moisture x temperature x slope) ----
+  // ---- Pass 3c: distance to the OCEAN (closeness 0..1) — keeps the beach a thin ribbon ----
+  // Empty water arg => sources are ocean cells only (lakes get their own biome later).
+  const coast = computeShore(elevation, new Float32Array(0), size, seaLevel);
+
+  // ---- Pass 4: biome classification (height bands x climate x slope x coast) ----
   for (let i = 0; i < n; i++) {
-    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], seaLevel);
+    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], coast[i], seaLevel);
   }
 
   // ---- Pass 4b: lake basins (standing water in depressions) ----
