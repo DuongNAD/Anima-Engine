@@ -102,7 +102,9 @@ const fragmentShader = /* glsl */ `
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
     color = mix(color, uShallow * 1.1 + 0.05, clamp(fres, 0.0, 0.6));
 
-    float alpha = mix(0.55, 0.92, depthN) * uOpacity;
+    // More transparent in the shallows (the sandy sea floor shows through as turquoise),
+    // opaque over deep water.
+    float alpha = mix(0.4, 0.92, depthN) * uOpacity;
 
     // Shoreline foam where the water is very shallow.
     float foamBand = 1.0 - smoothstep(0.0, uSeaY * 0.12 + 0.001, depth);
@@ -160,7 +162,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   });
 
   const oceanUniforms = useMemo(
-    () => makeUniforms('#3fcfe0', '#06203f', 0.88, 1.0),
+    // Turquoise shallows -> deep blue. Shallow water is transparent so the sandy sea floor
+    // tints it turquoise near the shore (see WorldTerrain's Beach-coloured coastal shelf).
+    () => makeUniforms('#48ddca', '#05203f', 0.9, 1.0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [heightTex, renderSize, seaY],
   );

@@ -148,6 +148,17 @@ Lỗi: cát dính lên vách đá dốc, bãi hẹp/dốc. **Bump `WORLD_GEN_VER
 - **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: beach=92k (rộng), **maxBeachSlope=0.30 (cát không bao giờ dốc)**, coastalRock=59k (vách đá ven biển), **0 flora trên cát**, 0 NaN, elevation∈[0,1].
 - **Tinh chỉnh:** độ rộng/thoải bãi → `COAST_BAND`/`COAST_GAIN` (Pass 1c); ngưỡng cát↔vách → `BEACH_MAX_SLOPE` trong `classify`.
 
+---
+
+# 🌊 BỜ BIỂN VẬT LÝ v3 — Thềm 2 bên mực nước + đáy cát nông (turquoise) (2026-07-01)
+
+Làm đúng 3 nguyên lý vật lý của coastline. **Bump `WORLD_GEN_VERSION` 8→9.**
+1. **Thềm lục địa đối xứng (Pass 1c)**: terrace giờ làm phẳng **CẢ hai bên** mực nước — ramp thoải phía trên (`COAST_BAND=0.14`) **và thềm nông phía dưới** (`SHELF_BAND=0.09`), blend về địa hình thật bằng `smoothstep`. Bờ dâng từ từ từ mặt nước và **lài dần xuống đáy nông**, tạo chỗ cho bãi rộng.
+2. **Cát theo độ dốc (`classify`)**: ô thuộc thềm ven bờ `[seaLevel−SHALLOW, seaLevel+BEACH_WIDTH]` → **Beach nếu `slope ≤ 0.3`**, **Rock nếu dốc** (vách đá — dù nhô lên hay đâm xuống nước). Cát không dính trên vách.
+3. **Đáy cát nước nông**: ô vừa chìm dưới nước `[seaLevel−0.06, seaLevel)` mà thoải → **Beach (đáy cát)**. Qua Water Shader trong suốt → **ánh xanh ngọc lam (turquoise)** ở nông rồi chuyển **xanh thẫm** ở sâu. Shader: nông trong hơn (`alpha=mix(0.4,0.92,depthN)`) + màu nông turquoise `#48DDCA` → đáy cát hắt lên.
+- **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: bãi khô 98k + **đáy cát nông 87k** + vách đá ven biển 110k, **0 ô cát dốc**, **0 flora trên cát**, 0 NaN.
+- **Tinh chỉnh:** độ sâu thềm nông → `SHELF_BAND`; bề rộng đáy cát → `SHALLOW`; sắc turquoise/độ trong → `uShallow`/`alpha` trong WorldWater.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.
