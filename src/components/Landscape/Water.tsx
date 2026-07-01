@@ -1,8 +1,19 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { generateTerrain, getBilinearInterpolatedElevation } from './utils/terrainGenerator';
+import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { testAttrs } from './testAttrs';
 import { getSkyParams } from './utils/skyParams'; // Assumes the refactored shared utility path
+
+// The water-surface constants below (sea level ~5.5, river blend band) were originally
+// tuned for the legacy 1.8 terrain height scale. Convert them to the current scale so the
+// ocean sits at the shoreline instead of flooding the (now much flatter) island.
+const HEIGHT_CONV = TERRAIN_HEIGHT_SCALE / 1.8;
+const SEA_LEVEL_Y = 5.5 * HEIGHT_CONV; // ocean surface height
+const RIVER_FLOOR_Y = 5.5 * HEIGHT_CONV; // minimum river / lake water surface
+const RIVER_BLEND_TOP = 12.0 * HEIGHT_CONV; // blend rivers toward terrain above this
+const RIVER_BLEND_RANGE = 6.5 * HEIGHT_CONV;
 
 interface WaterProps {
   windSpeed?: number;
@@ -11,6 +22,8 @@ interface WaterProps {
   width?: number;
   height?: number;
   timeOfDay?: number; // Added to sync day/night lighting
+  /** Shared, pre-generated (and cached) terrain. Falls back to generating when omitted. */
+  terrain?: TerrainData;
 }
 
 // Custom GLSL Vertex Shader
@@ -234,6 +247,7 @@ export const Water: React.FC<WaterProps> = ({
   width = 500,
   height = 500,
   timeOfDay = 12.0,
+  terrain: propTerrain,
 }) => {
   const oceanMeshRef = useRef<THREE.Mesh>(null);
   const oceanMaterialRef = useRef<THREE.ShaderMaterial>(null);
@@ -242,8 +256,11 @@ export const Water: React.FC<WaterProps> = ({
   const lakesGroupRef = useRef<THREE.Group>(null);
   const particlesRef = useRef<THREE.Points>(null);
 
-  // Generate terrain data
-  const terrain = useMemo(() => generateTerrain(width, height, 'seed'), [width, height]);
+  // Use the shared terrain when provided (generated once + cached); otherwise generate locally.
+  const terrain = useMemo(
+    () => propTerrain ?? generateTerrain(width, height, 'seed'),
+    [propTerrain, width, height],
+  );
 
   // Convert elevation data into a Float32 Red DataTexture
   const heightMapTexture = useMemo(() => {
@@ -251,7 +268,7 @@ export const Water: React.FC<WaterProps> = ({
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         // Pre-multiply elevation by 1.8 to match the physical terrain vertex transformation
-        data[y * width + x] = terrain.grid[y][x].elevation * 1.8;
+        data[y * width + x] = terrain.grid[y][x].elevation * TERRAIN_HEIGHT_SCALE;
       }
     }
     const texture = new THREE.DataTexture(
@@ -335,7 +352,7 @@ export const Water: React.FC<WaterProps> = ({
           list.push({
             x: avgX - width / 2,
             z: avgY - height / 2,
-            waterY: avgWaterY * 1.8,
+            waterY: avgWaterY * TERRAIN_HEIGHT_SCALE,
             radius: Math.max(1.5, maxD),
             key: `lake-${list.length}-${avgX.toFixed(1)}-${avgY.toFixed(1)}`,
           });
@@ -367,17 +384,17 @@ export const Water: React.FC<WaterProps> = ({
       }
     }
 
-    const terrainHeight = getBilinearInterpolatedElevation(cx, cy, width, height, terrain.grid) * 1.8;
+    const terrainHeight = getBilinearInterpolatedElevation(cx, cy, width, height, terrain.grid) * TERRAIN_HEIGHT_SCALE;
     let targetHeight = terrainHeight;
     if (nearestLakeCell && nearestLakeCell.waterY !== undefined && minD <= 2.0) {
-      const lakeWaterLevel = nearestLakeCell.waterY * 1.8;
+      const lakeWaterLevel = nearestLakeCell.waterY * TERRAIN_HEIGHT_SCALE;
       const t = Math.min(1.0, minD / 2.0);
       targetHeight = lakeWaterLevel * (1 - t) + terrainHeight * t;
     }
 
-    if (targetHeight < 12.0) {
-      const t = Math.min(1.0, Math.max(0.0, (targetHeight - 5.5) / 6.5));
-      targetHeight = 5.5 * (1 - t) + targetHeight * t;
+    if (targetHeight < RIVER_BLEND_TOP) {
+      const t = Math.min(1.0, Math.max(0.0, (targetHeight - RIVER_FLOOR_Y) / RIVER_BLEND_RANGE));
+      targetHeight = RIVER_FLOOR_Y * (1 - t) + targetHeight * t;
     }
 
     return targetHeight;
@@ -443,7 +460,7 @@ export const Water: React.FC<WaterProps> = ({
         if (cell.isWaterfall) {
           points.push({
             x: x - width / 2,
-            y: cell.elevation * 1.8,
+            y: cell.elevation * TERRAIN_HEIGHT_SCALE,
             z: y - height / 2,
           });
         }
@@ -640,14 +657,16 @@ export const Water: React.FC<WaterProps> = ({
       <mesh
         ref={oceanMeshRef}
         name="water-mesh"
-        data-testid="water-mesh"
         geometry={oceanGeometry}
         rotation-x={-Math.PI / 2}
-        position={[0, 5.5, 0]}
+        position={[0, SEA_LEVEL_Y, 0]}
         userData={{ windSpeed, reflectionColor, depthTransparency }}
-        data-wind-speed={windSpeed}
-        data-reflection-color={reflectionColor}
-        data-depth-transparency={depthTransparency}
+        {...testAttrs({
+          'data-testid': 'water-mesh',
+          'data-wind-speed': windSpeed,
+          'data-reflection-color': reflectionColor,
+          'data-depth-transparency': depthTransparency,
+        })}
       >
         <shaderMaterial
           ref={oceanMaterialRef}
@@ -656,7 +675,7 @@ export const Water: React.FC<WaterProps> = ({
           uniforms={oceanUniforms}
           transparent
           depthWrite={false}
-          fog={true}
+          fog={false}
         />
       </mesh>
 
@@ -683,7 +702,7 @@ export const Water: React.FC<WaterProps> = ({
                 uniforms={lakeUniforms}
                 transparent
                 depthWrite={false}
-                fog={true}
+                fog={false}
               />
             </mesh>
           );
@@ -701,7 +720,7 @@ export const Water: React.FC<WaterProps> = ({
             transparent
             depthWrite={false}
             side={THREE.DoubleSide}
-            fog={true}
+            fog={false}
           />
         </mesh>
       )}

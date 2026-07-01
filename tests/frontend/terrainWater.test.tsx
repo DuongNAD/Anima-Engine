@@ -4,7 +4,7 @@ import { render, act, screen } from '@testing-library/react';
 import * as THREE from 'three';
 import Terrain from '../../src/components/Landscape/Terrain';
 import Water from '../../src/components/Landscape/Water';
-import { generateTerrain } from '../../src/components/Landscape/utils/terrainGenerator';
+import { generateTerrain, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
 
 let originalSetAttribute: any;
 let frameCallbacks: Array<(state: any, delta: number) => void> = [];
@@ -189,7 +189,7 @@ describe('Terrain and Water Component Tests', () => {
       // Let's verify coordinates for (x=0, y=0) which is index 0
       const terrainData = generateTerrain(width, height, 'seed');
       const cell0 = terrainData.grid[0][0];
-      const expectedZ0 = cell0.elevation * 1.8;
+      const expectedZ0 = cell0.elevation * TERRAIN_HEIGHT_SCALE;
 
       expect(positions[1]).toBeCloseTo(expectedZ0, 4);
 
@@ -198,7 +198,7 @@ describe('Terrain and Water Component Tests', () => {
       const gy = 5;
       const cellIndex = gy * width + gx;
       const cell = terrainData.grid[gy][gx];
-      const expectedZ = cell.elevation * 1.8;
+      const expectedZ = cell.elevation * TERRAIN_HEIGHT_SCALE;
 
       expect(positions[cellIndex * 3 + 1]).toBeCloseTo(expectedZ, 4);
     });

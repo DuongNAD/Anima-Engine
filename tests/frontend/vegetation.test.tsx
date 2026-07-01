@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import { Vegetation } from '../../src/components/Landscape/Vegetation';
-import { generateTerrain, getBilinearInterpolatedElevation } from '../../src/components/Landscape/utils/terrainGenerator';
+import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
 
 // Mock react-three-fiber Canvas and useFrame
 let frameCallbacks: Array<(state: any, delta: number) => void> = [];
@@ -138,7 +138,7 @@ describe('Vegetation Component Tests', () => {
 
       const px = position.x + width / 2;
       const py = position.z + height / 2;
-      let expectedZ = getBilinearInterpolatedElevation(px, py, width, height, terrainData.grid) * 1.8;
+      let expectedZ = getBilinearInterpolatedElevation(px, py, width, height, terrainData.grid) * TERRAIN_HEIGHT_SCALE;
 
       const name = element ? element.getAttribute('name') : '';
       if (name === 'vegetation-instanced-mesh-oak') {

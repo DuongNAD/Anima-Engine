@@ -11,7 +11,13 @@ import PositionalAudio from './PositionalAudio';
 import CameraControls from './CameraControls';
 import Minimap from './Minimap';
 import { audioManager } from './utils/audioManager';
-import { generateTerrainData } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { getMemoizedTerrain, loadOrGenerateTerrain, heightDataFromTerrain } from './utils/terrainCache';
+
+// World footprint (cells). Larger = bigger, more varied world; generation is cached so the
+// heavy cost is paid only on the first ever run for a given size/seed.
+const WORLD_SIZE = 160;
+const WORLD_SEED = 'seed';
 
 export const LandscapeShowcase: React.FC = () => {
   const [weather, setWeather] = useState<'clear' | 'rain' | 'snow' | 'fog'>('clear');
@@ -20,6 +26,24 @@ export const LandscapeShowcase: React.FC = () => {
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<'orbit' | 'fly' | 'cinematic' | 'map'>('orbit');
   const [timeOfDay, setTimeOfDay] = useState<number>(12.0);
+
+  // Load the world ONCE (shared by every component). With IndexedDB available we read the
+  // cached world from a previous session (skipping heavy generation); without it (e.g. tests)
+  // we generate synchronously so the scene is present on first render.
+  const [terrain, setTerrain] = useState<TerrainData | null>(() =>
+    typeof indexedDB === 'undefined' ? getMemoizedTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED) : null,
+  );
+  useEffect(() => {
+    if (terrain) return;
+    let alive = true;
+    loadOrGenerateTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED).then((t) => {
+      if (alive) setTerrain(t);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     audioManager.initialize();
@@ -50,7 +74,10 @@ export const LandscapeShowcase: React.FC = () => {
     audioManager.updateEnvironment(weather, speed, volume);
   }, [weather, speed, volume]);
 
-  const heightMap = useMemo(() => generateTerrainData(64, 64), []);
+  const heightMap = useMemo(
+    () => (terrain ? heightDataFromTerrain(terrain) : new Float32Array(0)),
+    [terrain],
+  );
 
   let windSpeed = 1.0;
   let precipitationRate = 0.0;
@@ -79,6 +106,26 @@ export const LandscapeShowcase: React.FC = () => {
     waterTransparency = 0.7;
   }
 
+  if (!terrain) {
+    return (
+      <div
+        data-testid="landscape-showcase"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0a0a0a',
+          color: '#9aa',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        Generating world…
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }} data-testid="landscape-showcase">
       <LandscapeControlsOverlay
@@ -95,17 +142,17 @@ export const LandscapeShowcase: React.FC = () => {
         timeOfDay={timeOfDay}
       />
 
-      <Minimap gridWidth={64} gridHeight={64} />
+      <Minimap gridWidth={WORLD_SIZE} gridHeight={WORLD_SIZE} />
 
-      <Canvas camera={{ position: [0, 25, 45], fov: 60 }} style={{ width: '100%', height: '100%' }} onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.005); }}>
+      <Canvas camera={{ position: [0, WORLD_SIZE * 0.42, WORLD_SIZE * 0.72], fov: 60 }} style={{ width: '100%', height: '100%' }} onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.0035); }}>
         <Sky speed={speed} timeOfDay={timeOfDay} />
-        <Terrain width={64} height={64} wetnessRatio={wetnessRatio} />
-        <Water width={64} height={64} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} />
-        <Vegetation width={64} height={64} windSpeed={windSpeed} densityFactor={1.0} />
+        <Terrain width={WORLD_SIZE} height={WORLD_SIZE} wetnessRatio={wetnessRatio} terrain={terrain} />
+        <Water width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} terrain={terrain} />
+        <Vegetation width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} densityFactor={1.0} terrain={terrain} />
         <Weather weather={weather} precipitationRate={precipitationRate} />
         <PositionalAudio id="ambient-forest" position={[0, 2, 0]} volume={volume} isMuted={isMuted} />
         <PositionalAudio id="waterfall" position={[10, 1, 10]} volume={volume} isMuted={isMuted} />
-        <CameraControls cameraMode={cameraMode} terrainHeightMap={heightMap} gridWidth={64} gridHeight={64} />
+        <CameraControls cameraMode={cameraMode} terrainHeightMap={heightMap} gridWidth={WORLD_SIZE} gridHeight={WORLD_SIZE} />
       </Canvas>
     </div>
   );

@@ -123,13 +123,34 @@ export function fbm(
   return total / maxValue;
 }
 
-export type BiomeType = 'ocean' | 'beach' | 'grassland' | 'forest' | 'taiga' | 'alpine rock' | 'snow peaks';
+/**
+ * Vertical scale applied when turning the generator's elevation values (~[0, 100]) into
+ * world-space Y on the landscape grid. The grid footprint is ~64 units wide, so this is
+ * kept small to keep peaks proportional to the map (≈0.3× the width) instead of spiking
+ * far above it. Terrain, Water and Vegetation MUST all use this same constant so the
+ * terrain mesh, water surface and props stay vertically aligned.
+ */
+export const TERRAIN_HEIGHT_SCALE = 0.3;
+
+export type BiomeType =
+  | 'ocean'
+  | 'beach'
+  | 'desert'
+  | 'savanna'
+  | 'grassland'
+  | 'forest'
+  | 'jungle'
+  | 'taiga'
+  | 'tundra'
+  | 'alpine rock'
+  | 'snow peaks';
 
 export interface TerrainCell {
   x: number;
   y: number;
-  elevation: number; // 0 to 100
-  moisture: number;  // 0 to 100
+  elevation: number;   // 0 to 100
+  moisture: number;    // 0 to 100
+  temperature?: number; // 0 (cold) to 1 (hot)
   biome: BiomeType;
   isRiver: boolean | number;
   isLake: boolean;
@@ -167,21 +188,33 @@ export function getBilinearInterpolatedElevation(px: number, py: number, width: 
 }
 
 /**
- * Determines the biome based on elevation and moisture thresholds.
+ * Whittaker-style biome classification from elevation (0..100), moisture (0..100) and a
+ * normalized temperature (0 = cold .. 1 = hot). Temperature defaults to temperate so old
+ * two-argument callers keep working.
  */
-export function determineBiome(elevation: number, moisture: number): BiomeType {
-  if (elevation < 3.0) {
-    return 'ocean';
-  }
-  if (elevation < 5.0) {
-    return 'beach';
-  }
-  if (elevation >= 80) {
-    return 'snow peaks';
-  }
+export function determineBiome(elevation: number, moisture: number, temperature: number = 0.5): BiomeType {
+  if (elevation < 3.0) return 'ocean';
+  if (elevation < 5.0) return 'beach';
+  if (elevation >= 80) return 'snow peaks';
+
+  // High terrain: cold rock / snow caps, montane taiga only where mild & humid.
   if (elevation >= 60) {
+    if (temperature < 0.4) return 'alpine rock';
     return moisture >= 50 ? 'taiga' : 'alpine rock';
   }
+
+  // Lowland & midland — temperature x moisture matrix.
+  if (temperature >= 0.66) {
+    // Hot belt.
+    if (moisture < 30) return 'desert';
+    if (moisture < 58) return 'savanna';
+    return 'jungle';
+  }
+  if (temperature < 0.4) {
+    // Cold belt.
+    return moisture < 40 ? 'tundra' : 'taiga';
+  }
+  // Temperate belt (default): preserved original behaviour.
   return moisture >= 45 ? 'forest' : 'grassland';
 }
 
@@ -636,13 +669,16 @@ export function generateTerrain(
       const i = y * width + x;
       const rawEl = terrElev[i] / 1.8;
       const rawMoist = Math.max(0, Math.min(100, (moisture[i] + 0.8) * 55));
+      // Normalize temperature (~[-1.8, 1.9]) to [0, 1] for the Whittaker classifier.
+      const temp01 = Math.max(0, Math.min(1, (temperature[i] + 1.0) / 2.5));
 
       row.push({
         x,
         y,
         elevation: rawEl,
         moisture: rawMoist,
-        biome: determineBiome(rawEl, rawMoist),
+        temperature: temp01,
+        biome: determineBiome(rawEl, rawMoist, temp01),
         isRiver: isRiver[i] > 0 ? isRiver[i] : false,
         isLake: cellIsLake[i] === 1,
         isWaterfall: isRiver[i] === 2,
@@ -748,18 +784,26 @@ export function generateTerrainData(width: number, height: number): Float32Array
   return data;
 }
 
-export function getBiomeColor(elevation: number, moisture: number): { r: number; g: number; b: number } {
-  const biome = determineBiome(elevation, moisture);
+/** RGB (0..1) for each biome. Single source of truth for terrain colouring. */
+export function biomeColor(biome: BiomeType): { r: number; g: number; b: number } {
   switch (biome) {
-    case 'ocean': return { r: 0.1, g: 0.3, b: 0.8 };
-    case 'beach': return { r: 0.9, g: 0.8, b: 0.6 };
-    case 'snow peaks': return { r: 0.95, g: 0.95, b: 0.95 };
-    case 'taiga': return { r: 0.1, g: 0.4, b: 0.3 };
-    case 'alpine rock': return { r: 0.5, g: 0.5, b: 0.5 };
-    case 'forest': return { r: 0.2, g: 0.6, b: 0.2 };
-    case 'grassland': return { r: 0.4, g: 0.7, b: 0.3 };
-    default: return { r: 0.4, g: 0.7, b: 0.3 };
+    case 'ocean': return { r: 0.10, g: 0.30, b: 0.80 };
+    case 'beach': return { r: 0.90, g: 0.82, b: 0.60 };
+    case 'desert': return { r: 0.85, g: 0.74, b: 0.45 };
+    case 'savanna': return { r: 0.74, g: 0.72, b: 0.36 };
+    case 'grassland': return { r: 0.45, g: 0.70, b: 0.32 };
+    case 'forest': return { r: 0.18, g: 0.55, b: 0.22 };
+    case 'jungle': return { r: 0.08, g: 0.42, b: 0.18 };
+    case 'taiga': return { r: 0.16, g: 0.42, b: 0.34 };
+    case 'tundra': return { r: 0.62, g: 0.66, b: 0.60 };
+    case 'alpine rock': return { r: 0.50, g: 0.50, b: 0.52 };
+    case 'snow peaks': return { r: 0.95, g: 0.96, b: 0.97 };
+    default: return { r: 0.45, g: 0.70, b: 0.32 };
   }
+}
+
+export function getBiomeColor(elevation: number, moisture: number, temperature: number = 0.5): { r: number; g: number; b: number } {
+  return biomeColor(determineBiome(elevation, moisture, temperature));
 }
 
 export function generateFloraPlacements(width: number, height: number): { x: number; y: number; type: string; scale: number }[] {

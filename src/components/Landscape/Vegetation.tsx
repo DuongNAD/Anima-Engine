@@ -1,7 +1,14 @@
 import React, { useMemo, useRef, useLayoutEffect, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { generateFloraPlacements, generateTerrain, mulberry32, getBilinearInterpolatedElevation } from './utils/terrainGenerator';
+import { generateTerrain, mulberry32, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { testAttrs } from './testAttrs';
+
+// Tree/rock geometries were authored for the legacy tall terrain; shrink their instances so
+// they read as trees (not mountain-sized) on the current, much flatter terrain. Grass keeps
+// its own (already small) scale.
+const TREE_SCALE = 0.35;
 
 interface VegetationProps {
   width?: number;
@@ -11,6 +18,8 @@ interface VegetationProps {
   windDirection?: number; // Prop required by Milestone 4
   densityFactor?: number;
   maxCapacity?: number;
+  /** Shared, pre-generated (and cached) terrain. Falls back to generating when omitted. */
+  terrain?: TerrainData;
 }
 
 // Helper to merge two buffer geometries with distinct vertex colors
@@ -71,12 +80,17 @@ export const Vegetation: React.FC<VegetationProps> = ({
   windDirection,
   densityFactor = 1.0,
   maxCapacity = 1000,
+  terrain: propTerrain,
 }) => {
   // Use windDirection if defined, fallback to windAngle
   const currentWindDirection = windDirection !== undefined ? windDirection : windAngle;
 
-  const terrain = useMemo(() => generateTerrain(width, height, 'seed'), [width, height]);
-  const allPlacements = useMemo(() => generateFloraPlacements(width, height), [width, height]);
+  // Use the shared terrain when provided (generated once + cached); otherwise generate locally.
+  const terrain = useMemo(
+    () => propTerrain ?? generateTerrain(width, height, 'seed'),
+    [propTerrain, width, height],
+  );
+  const allPlacements = useMemo(() => terrain.flora, [terrain]);
 
   // Apply density factor and max capacity to main placements
   const placements = useMemo(() => {
@@ -450,7 +464,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         const cell = terrain.grid[gy]?.[gx];
         const x = gx - width / 2;
         const z = gy - height / 2;
-        const y = cell ? cell.elevation * 1.8 : 0;
+        const y = cell ? cell.elevation * TERRAIN_HEIGHT_SCALE : 0;
         const fallbackYOffset = ref === flowersRef ? 0.3 : 0;
 
         dummy.position.set(x, y + fallbackYOffset, z);
@@ -464,10 +478,13 @@ export const Vegetation: React.FC<VegetationProps> = ({
         placementsArray.forEach((p, idx) => {
           const x = p.x - width / 2;
           const z = p.y - height / 2;
-          const y = getBilinearInterpolatedElevation(p.x, p.y, width, height, terrain.grid) * 1.8;
+          const y = getBilinearInterpolatedElevation(p.x, p.y, width, height, terrain.grid) * TERRAIN_HEIGHT_SCALE;
 
-          dummy.position.set(x, y + yOffset * p.scale, z);
-          dummy.scale.set(p.scale, p.scale, p.scale);
+          // Grass keeps its native scale; trees/rocks are shrunk to terrain-appropriate size.
+          const s = p.scale * (ref === grassRef ? 1 : TREE_SCALE);
+
+          dummy.position.set(x, y + yOffset * s, z);
+          dummy.scale.set(s, s, s);
           dummy.rotation.set(0, 0, 0);
 
           const rotSeed = p.x * seedOffset + p.y * (seedOffset + 1.23);
@@ -540,9 +557,11 @@ export const Vegetation: React.FC<VegetationProps> = ({
         density: filteredPlacements.length + grassPlacements.length,
         speciesCounts,
       }}
-      data-wind-speed={windSpeed}
-      data-wind-angle={currentWindDirection}
-      data-density={filteredPlacements.length + grassPlacements.length}
+      {...testAttrs({
+        'data-wind-speed': windSpeed,
+        'data-wind-angle': currentWindDirection,
+        'data-density': filteredPlacements.length + grassPlacements.length,
+      })}
     >
       <instancedMesh
         ref={oakTRef}

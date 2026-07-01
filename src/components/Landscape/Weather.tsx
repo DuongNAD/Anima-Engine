@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { testAttrs } from './testAttrs';
 
 interface WeatherProps {
   weather: 'clear' | 'rain' | 'snow' | 'fog';
@@ -168,10 +169,12 @@ export const Weather: React.FC<WeatherProps> = ({
     <group
       name="weather-group"
       userData={{ weather, precipitationRate, particleCount: totalParticleCount, fogDensity: currentFogDensity }}
-      data-weather={weather}
-      data-precipitation-rate={precipitationRate}
-      data-particle-count={totalParticleCount}
-      data-fog-density={currentFogDensity}
+      {...testAttrs({
+        'data-weather': weather,
+        'data-precipitation-rate': precipitationRate,
+        'data-particle-count': totalParticleCount,
+        'data-fog-density': currentFogDensity,
+      })}
     >
 
       {/* Rain Points system */}

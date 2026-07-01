@@ -1,7 +1,9 @@
 import React, { useMemo, useRef, useLayoutEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import * as THREE from 'three';
-import { generateTerrain, generateTerrainData, getBiomeColor } from './utils/terrainGenerator';
+import { generateTerrain, biomeColor, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { testAttrs } from './testAttrs';
 
 // Register THREE.LOD with R3F so <lod> JSX element works
 extend({ Lod: THREE.LOD });
@@ -18,31 +20,16 @@ interface TerrainProps {
   width?: number;
   height?: number;
   wetnessRatio?: number;
+  /** Shared, pre-generated (and cached) terrain. Falls back to generating when omitted. */
+  terrain?: TerrainData;
 }
 
-function getBlendedBiomeColor(elevation: number, moisture: number): { r: number; g: number; b: number } {
-  let r = 0, g = 0, b = 0;
-  let count = 0;
-  // Sample a small 3x3 grid around the coordinate to smooth boundaries
-  const steps = [-2, 0, 2];
-  for (const de of steps) {
-    for (const dm of steps) {
-      const sampleE = Math.max(0, Math.min(100, elevation + de));
-      const sampleM = Math.max(0, Math.min(100, moisture + dm));
-      const col = getBiomeColor(sampleE, sampleM);
-      r += col.r;
-      g += col.g;
-      b += col.b;
-      count++;
-    }
-  }
-  return { r: r / count, g: g / count, b: b / count };
-}
-
-export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0 }) => {
-  // Generate the basic terrain data
-  const terrain = useMemo(() => generateTerrain(width, height, 'seed'), [width, height]);
-  const terrainData = useMemo(() => generateTerrainData(width, height), [width, height]);
+export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0, terrain: propTerrain }) => {
+  // Use the shared terrain when provided (generated once + cached); otherwise generate locally.
+  const terrain = useMemo(
+    () => propTerrain ?? generateTerrain(width, height, 'seed'),
+    [propTerrain, width, height],
+  );
 
   const lodRef = useRef<THREE.LOD>(null);
   const meshRef0 = useRef<THREE.Mesh>(null);
@@ -71,7 +58,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
 
         const posX = gx - width / 2;
         const posY = gy - height / 2;
-        const posZ = cell.elevation * 1.8; // Elevation deformation
+        const posZ = cell.elevation * TERRAIN_HEIGHT_SCALE; // Elevation deformation
 
         const i = yIndex * w + xIndex;
         positions[i * 3] = posX;
@@ -86,7 +73,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
         } else if (cell.isRiver === 3) {
           color = { r: 0x1a / 255, g: 0x7a / 255, b: 0x90 / 255 };
         } else {
-          color = getBlendedBiomeColor(cell.elevation, cell.moisture);
+          color = biomeColor(cell.biome);
         }
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
@@ -101,8 +88,10 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
         const c = (yIndex + 1) * w + xIndex;
         const d = (yIndex + 1) * w + (xIndex + 1);
 
-        indices.push(a, b, c);
-        indices.push(b, d, c);
+        // CCW winding when viewed from above so computeVertexNormals() yields +Y normals
+        // (otherwise the flat top is back-face culled and the terrain looks transparent).
+        indices.push(a, c, b);
+        indices.push(b, c, d);
       }
     }
 
@@ -173,7 +162,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
             const x = gx;
             const y = gy;
             const wave = Math.sin(x * 0.15 + time * 1.5) * Math.cos(y * 0.15 + time) * 0.3;
-            pos[i * 3 + 1] = (cell.elevation * 1.8) + wave;
+            pos[i * 3 + 1] = (cell.elevation * TERRAIN_HEIGHT_SCALE) + wave;
             needsUpdate = true;
           }
         }
@@ -195,8 +184,8 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
       <mesh
         ref={meshRef0}
         name="terrain-mesh"
-        userData={{ wetnessRatio, gridLength: terrainData.length }}
-        data-wetness-ratio={wetnessRatio}
+        userData={{ wetnessRatio, gridLength: width * height }}
+        {...testAttrs({ 'data-wetness-ratio': wetnessRatio })}
       >
         <bufferGeometry ref={geomRef0} />
         <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} />

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { generateTerrain, TerrainCell } from './utils/terrainGenerator';
+import type { TerrainCell } from './utils/terrainGenerator';
+import { getMemoizedTerrain } from './utils/terrainCache';
 
 interface MinimapProps {
   gridWidth?: number;
@@ -12,9 +13,9 @@ export const Minimap: React.FC<MinimapProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Generate the exact same terrain cells to render the minimap
+  // Reuse the shared, cached terrain (generated once) so the minimap matches the 3D world.
   const terrain = useMemo(() => {
-    return generateTerrain(gridWidth, gridHeight, 'seed');
+    return getMemoizedTerrain(gridWidth, gridHeight, 'seed');
   }, [gridWidth, gridHeight]);
 
   const getMinimapCellColor = (cell: TerrainCell) => {
