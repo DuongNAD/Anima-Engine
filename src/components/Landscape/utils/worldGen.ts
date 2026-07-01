@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 1;
+export const WORLD_GEN_VERSION = 3;
 
 export enum Biome {
   Ocean = 0,
@@ -25,9 +25,18 @@ export enum Biome {
   Rock = 11,
   Snow = 12,
   River = 13,
+  // --- Expanded environments (v3) ---
+  Lake = 14,
+  Mangrove = 15,
+  Chaparral = 16,
+  Steppe = 17,
+  Alpine = 18, // alpine meadow
+  Badlands = 19,
+  Glacier = 20,
+  Bog = 21,
 }
 
-export const BIOME_COUNT = 14;
+export const BIOME_COUNT = 22;
 
 /** RGB (0..255) per biome — single source of truth for colouring the world & minimap. */
 export const BIOME_RGB: ReadonlyArray<readonly [number, number, number]> = [
@@ -45,6 +54,14 @@ export const BIOME_RGB: ReadonlyArray<readonly [number, number, number]> = [
   [128, 124, 120], // Rock
   [242, 246, 250], // Snow
   [60, 130, 180], // River
+  [40, 120, 170], // Lake
+  [58, 110, 74], // Mangrove
+  [170, 158, 96], // Chaparral
+  [176, 178, 118], // Steppe
+  [120, 158, 120], // Alpine
+  [168, 110, 78], // Badlands
+  [214, 232, 240], // Glacier
+  [80, 92, 78], // Bog
 ];
 
 export interface World {
@@ -56,6 +73,8 @@ export interface World {
   moisture: Float32Array; // [0, 1]
   temperature: Float32Array; // [0, 1] (cold -> hot)
   flow: Float32Array; // river flow accumulation (normalized 0..1)
+  /** Inland still-water (lake) surface elevation, normalized; 0 where there is no lake. */
+  water: Float32Array;
   biome: Uint8Array; // Biome enum per cell
   /** Flora instances as SoA (world coordinates centred on origin). */
   floraX: Float32Array;
@@ -140,28 +159,57 @@ function smoothstep(e0: number, e1: number, x: number): number {
 function classify(elev: number, temp: number, moist: number, flow: number, seaLevel: number): Biome {
   const beach = seaLevel + 0.015;
   if (elev < seaLevel) return Biome.Ocean;
-  if (elev < beach) return Biome.Beach;
+
+  // Coast: hot, wet, low shores grow mangroves; otherwise a sandy beach.
+  if (elev < beach) {
+    if (temp > 0.66 && moist > 0.6) return Biome.Mangrove;
+    return Biome.Beach;
+  }
 
   // Rivers cut across land where flow accumulates and the slope isn't a peak.
-  if (flow > 0.55 && elev < 0.78) return Biome.River;
+  if (flow > 0.55 && elev < 0.8) return Biome.River;
 
-  // High terrain: snow caps over bare alpine rock.
-  if (elev > 0.86) return temp < 0.45 || moist > 0.4 ? Biome.Snow : Biome.Rock;
-  if (elev > 0.72) return Biome.Rock;
+  // --- High-elevation bands ---
+  if (elev > 0.92) {
+    // Summits: ice caps where cold or moist, bare snow otherwise.
+    return temp < 0.35 || moist > 0.5 ? Biome.Glacier : Biome.Snow;
+  }
+  if (elev > 0.82) {
+    return temp < 0.45 ? Biome.Snow : Biome.Rock;
+  }
+  if (elev > 0.7) {
+    // Alpine band: bare rock where cold/dry, grassy meadows on moist slopes.
+    if (temp < 0.38) return Biome.Rock;
+    if (moist > 0.38) return Biome.Alpine;
+    return Biome.Rock;
+  }
 
-  // Low, wet, warm, flat depressions become swamp/marsh.
-  const lowland = smoothstep(seaLevel + 0.12, seaLevel + 0.02, elev); // 1 near the coast lowlands
-  if (lowland > 0.5 && moist > 0.62 && temp > 0.4 && flow > 0.12) return Biome.Swamp;
+  // --- Low, wet, flat depressions: bog (cold) or swamp (warm) ---
+  const lowland = smoothstep(seaLevel + 0.14, seaLevel + 0.02, elev); // 1 near the coast lowlands
+  if (lowland > 0.5 && flow > 0.12 && moist > 0.6) {
+    return temp < 0.4 ? Biome.Bog : Biome.Swamp;
+  }
 
-  // Whittaker temperature x moisture matrix for the bulk of the land.
+  // --- Whittaker temperature x moisture matrix for the bulk of the land ---
   if (temp >= 0.66) {
-    if (moist < 0.28) return Biome.Desert;
-    if (moist < 0.55) return Biome.Savanna;
+    // Hot: dry sand -> eroded badlands -> savanna -> scrub -> rainforest.
+    if (moist < 0.24) return Biome.Desert;
+    if (moist < 0.34) return Biome.Badlands;
+    if (moist < 0.46) return Biome.Savanna;
+    if (moist < 0.58) return Biome.Chaparral;
     return Biome.Jungle;
   }
-  if (temp >= 0.4) {
-    if (moist < 0.3) return Biome.Grassland;
-    if (moist < 0.55) return Biome.Shrubland;
+  if (temp >= 0.48) {
+    // Warm
+    if (moist < 0.24) return Biome.Steppe;
+    if (moist < 0.45) return Biome.Grassland;
+    if (moist < 0.66) return Biome.Shrubland;
+    return Biome.Forest;
+  }
+  if (temp >= 0.34) {
+    // Temperate / cool
+    if (moist < 0.3) return Biome.Steppe;
+    if (moist < 0.55) return Biome.Grassland;
     return Biome.Forest;
   }
   // Cold belt.
@@ -173,21 +221,27 @@ function floraForBiome(b: Biome): FloraType | -1 {
   switch (b) {
     case Biome.Taiga:
     case Biome.Tundra:
+    case Biome.Alpine:
       return FloraType.Pine;
     case Biome.Forest:
     case Biome.Grassland:
     case Biome.Shrubland:
+    case Biome.Chaparral:
+    case Biome.Steppe:
       return FloraType.Round;
     case Biome.Jungle:
     case Biome.Swamp:
+    case Biome.Mangrove:
+    case Biome.Bog:
       return FloraType.Jungle;
     case Biome.Desert:
     case Biome.Savanna:
       return FloraType.Cactus;
     case Biome.Rock:
+    case Biome.Badlands:
       return FloraType.Rock;
     default:
-      return -1; // ocean / beach / river / snow: no flora
+      return -1; // ocean / beach / river / lake / snow / glacier: no flora
   }
 }
 
@@ -214,9 +268,215 @@ function floraDensity(b: Biome): number {
       return 0.012;
     case Biome.Rock:
       return 0.02;
+    case Biome.Mangrove:
+      return 0.35;
+    case Biome.Bog:
+      return 0.2;
+    case Biome.Alpine:
+      return 0.12;
+    case Biome.Chaparral:
+      return 0.12;
+    case Biome.Steppe:
+      return 0.04;
+    case Biome.Badlands:
+      return 0.02;
     default:
       return 0;
   }
+}
+
+// ---- Hydraulic erosion (droplet simulation) ------------------------------------------
+
+/**
+ * Particle-based hydraulic erosion: rain droplets pick up sediment on steep descents and drop
+ * it in flats, carving valleys / riverbeds and depositing plains. Mutates `h` in place; each
+ * droplet erodes/deposits across the four bilinear corners of its cell. Deterministic given
+ * the supplied RNG. See github.com/SebLague/Hydraulic-Erosion for the canonical formulation.
+ */
+function hydraulicErosion(h: Float32Array, size: number, rng: () => number, droplets: number): void {
+  const inertia = 0.05;
+  const capacityFactor = 4;
+  const minCapacity = 0.01;
+  const erodeRate = 0.3;
+  const depositRate = 0.3;
+  const evaporate = 0.02;
+  const gravity = 4;
+  const maxLifetime = 30;
+  const maxIdx = size - 1;
+
+  for (let d = 0; d < droplets; d++) {
+    let posX = rng() * maxIdx;
+    let posY = rng() * maxIdx;
+    let dirX = 0;
+    let dirY = 0;
+    let speed = 1;
+    let water = 1;
+    let sediment = 0;
+
+    for (let life = 0; life < maxLifetime; life++) {
+      const nodeX = posX | 0;
+      const nodeY = posY | 0;
+      const fx = posX - nodeX;
+      const fy = posY - nodeY;
+      const i = nodeY * size + nodeX;
+
+      const hNW = h[i];
+      const hNE = h[i + 1];
+      const hSW = h[i + size];
+      const hSE = h[i + size + 1];
+
+      const gradX = (hNE - hNW) * (1 - fy) + (hSE - hSW) * fy;
+      const gradY = (hSW - hNW) * (1 - fx) + (hSE - hNE) * fx;
+      const oldHeight = hNW * (1 - fx) * (1 - fy) + hNE * fx * (1 - fy) + hSW * (1 - fx) * fy + hSE * fx * fy;
+
+      dirX = dirX * inertia - gradX * (1 - inertia);
+      dirY = dirY * inertia - gradY * (1 - inertia);
+      const len = Math.hypot(dirX, dirY);
+      if (len !== 0) {
+        dirX /= len;
+        dirY /= len;
+      }
+      posX += dirX;
+      posY += dirY;
+
+      if ((dirX === 0 && dirY === 0) || posX < 0 || posX >= maxIdx || posY < 0 || posY >= maxIdx) break;
+
+      const nnX = posX | 0;
+      const nnY = posY | 0;
+      const nfx = posX - nnX;
+      const nfy = posY - nnY;
+      const ni = nnY * size + nnX;
+      const newHeight =
+        h[ni] * (1 - nfx) * (1 - nfy) +
+        h[ni + 1] * nfx * (1 - nfy) +
+        h[ni + size] * (1 - nfx) * nfy +
+        h[ni + size + 1] * nfx * nfy;
+      const deltaHeight = newHeight - oldHeight;
+
+      const capacity = Math.max(-deltaHeight * speed * water * capacityFactor, minCapacity);
+
+      if (sediment > capacity || deltaHeight > 0) {
+        // Deposit: fill uphill steps fully, otherwise shed the excess above capacity.
+        const drop = deltaHeight > 0 ? Math.min(deltaHeight, sediment) : (sediment - capacity) * depositRate;
+        sediment -= drop;
+        h[i] += drop * (1 - fx) * (1 - fy);
+        h[i + 1] += drop * fx * (1 - fy);
+        h[i + size] += drop * (1 - fx) * fy;
+        h[i + size + 1] += drop * fx * fy;
+      } else {
+        // Erode: take up to the remaining capacity, but never more than the local drop.
+        const grab = Math.min((capacity - sediment) * erodeRate, -deltaHeight);
+        h[i] -= grab * (1 - fx) * (1 - fy);
+        h[i + 1] -= grab * fx * (1 - fy);
+        h[i + size] -= grab * (1 - fx) * fy;
+        h[i + size + 1] -= grab * fx * fy;
+        sediment += grab;
+      }
+
+      speed = Math.sqrt(Math.max(0, speed * speed + deltaHeight * gravity));
+      water *= 1 - evaporate;
+      if (water < 0.001) break;
+    }
+  }
+}
+
+// ---- Lake basins (priority-flood depression filling) ---------------------------------
+
+/**
+ * Priority-Flood (Barnes et al.): flood the terrain inward from the ocean / map edge, raising
+ * each cell to the highest sill it must cross to reach an outlet. Where the resulting filled
+ * surface sits above the real ground, that depression holds standing water — a lake. Returns
+ * the water-surface elevation per cell (0 where there is no lake).
+ */
+function computeLakes(elev: Float32Array, size: number, seaLevel: number): Float32Array {
+  const n = size * size;
+  const filled = new Float32Array(n);
+  const closed = new Uint8Array(n);
+  // Binary min-heap keyed by fill level.
+  const heapLvl = new Float32Array(n);
+  const heapIdx = new Uint32Array(n);
+  let heapN = 0;
+
+  const push = (lvl: number, idx: number) => {
+    let c = heapN++;
+    heapLvl[c] = lvl;
+    heapIdx[c] = idx;
+    while (c > 0) {
+      const p = (c - 1) >> 1;
+      if (heapLvl[p] <= heapLvl[c]) break;
+      const tl = heapLvl[p];
+      heapLvl[p] = heapLvl[c];
+      heapLvl[c] = tl;
+      const ti = heapIdx[p];
+      heapIdx[p] = heapIdx[c];
+      heapIdx[c] = ti;
+      c = p;
+    }
+  };
+  const pop = (): number => {
+    const top = heapIdx[0];
+    heapN--;
+    if (heapN > 0) {
+      heapLvl[0] = heapLvl[heapN];
+      heapIdx[0] = heapIdx[heapN];
+      let c = 0;
+      for (;;) {
+        const l = 2 * c + 1;
+        const r = l + 1;
+        let m = c;
+        if (l < heapN && heapLvl[l] < heapLvl[m]) m = l;
+        if (r < heapN && heapLvl[r] < heapLvl[m]) m = r;
+        if (m === c) break;
+        const tl = heapLvl[m];
+        heapLvl[m] = heapLvl[c];
+        heapLvl[c] = tl;
+        const ti = heapIdx[m];
+        heapIdx[m] = heapIdx[c];
+        heapIdx[c] = ti;
+        c = m;
+      }
+    }
+    return top;
+  };
+
+  // Outlets: every border cell and every ocean cell drains freely at its own height.
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      if (x === 0 || y === 0 || x === size - 1 || y === size - 1 || elev[i] < seaLevel) {
+        filled[i] = elev[i];
+        closed[i] = 1;
+        push(elev[i], i);
+      }
+    }
+  }
+
+  while (heapN > 0) {
+    const c = pop();
+    const level = filled[c];
+    const cx = c % size;
+    const cy = (c / size) | 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        const ni = ny * size + nx;
+        if (closed[ni]) continue;
+        closed[ni] = 1;
+        filled[ni] = elev[ni] > level ? elev[ni] : level;
+        push(filled[ni], ni);
+      }
+    }
+  }
+
+  const LAKE_MIN_DEPTH = 0.006; // ignore shallow pits (mostly erosion speckle)
+  const water = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    if (elev[i] >= seaLevel && filled[i] - elev[i] > LAKE_MIN_DEPTH) water[i] = filled[i];
+  }
+  return water;
 }
 
 export interface WorldGenOptions {
@@ -225,6 +485,12 @@ export interface WorldGenOptions {
   shape?: 'island' | 'continent';
   /** Upper bound on flora instances (keeps GPU instancing bounded on huge maps). */
   maxFlora?: number;
+  /** Run droplet hydraulic erosion after base elevation (default true). */
+  erosion?: boolean;
+  /** Override the erosion droplet count (default scales with map area). */
+  erosionDroplets?: number;
+  /** Fill depressions with lake water (default true). */
+  lakes?: boolean;
 }
 
 /**
@@ -234,7 +500,9 @@ export interface WorldGenOptions {
 export function generateWorld(seed: string | number, opts: WorldGenOptions = {}): World {
   const size = opts.size ?? 1024;
   const shape = opts.shape ?? 'continent';
-  const maxFlora = opts.maxFlora ?? 60000;
+  const maxFlora = opts.maxFlora ?? 90000;
+  const useErosion = opts.erosion ?? true;
+  const useLakes = opts.lakes ?? true;
   const n = size * size;
   const baseSeed = hashSeed(seed);
 
@@ -302,6 +570,16 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   const range = maxE - minE || 1;
   for (let i = 0; i < n; i++) elevation[i] = (elevation[i] - minE) / range;
 
+  // ---- Pass 1b: hydraulic erosion (carves valleys / riverbeds) ----
+  // Runs before flow & biomes so both follow the eroded relief. Deterministic per seed.
+  if (useErosion) {
+    const erosionRng = mulberry32((baseSeed ^ 0x51ed270b) >>> 0);
+    const droplets = opts.erosionDroplets ?? Math.min(120000, Math.floor(n * 0.06));
+    hydraulicErosion(elevation, size, erosionRng, droplets);
+    // Erosion nudges a few cells outside [0, 1]; clamp so downstream thresholds stay valid.
+    for (let i = 0; i < n; i++) elevation[i] = elevation[i] < 0 ? 0 : elevation[i] > 1 ? 1 : elevation[i];
+  }
+
   // ---- Pass 2: D8 flow accumulation (rivers) — no fluid sim, just graph flow ----
   // Sort cells by elevation (high -> low) and push unit rain downslope to the lowest neighbour.
   const order = new Uint32Array(n);
@@ -350,9 +628,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const e = elevation[i];
 
       const lat = 1 - Math.abs(ny); // 1 at equator (map centre row), 0 at poles
-      const lapse = Math.max(0, e - seaLevel) * 1.1;
+      const lapse = Math.max(0, e - seaLevel) * 1.0;
+      // A bit more regional noise weight spreads hot/cold belts wider across the map (not just
+      // a narrow central band), so hot-dry and hot-wet biomes appear in more places.
       const tNoise = (fbm(tempNoise, nx * 2.5, ny * 2.5, 3, 2.0, 0.5) + 1) / 2;
-      temperature[i] = Math.max(0, Math.min(1, lat * 0.85 + tNoise * 0.15 - lapse));
+      temperature[i] = Math.max(0, Math.min(1, lat * 0.78 + tNoise * 0.22 - lapse));
 
       // Two-scale moisture: large dry/wet belts (low freq) + local variation (higher freq).
       const mBelt = (fbm(moistNoise, nx * 1.3, ny * 1.3, 3, 2.0, 0.5) + 1) / 2;
@@ -361,14 +641,22 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const seaProx = smoothstep(seaLevel + 0.14, seaLevel, e) * 0.18; // wetter near the coast
       const flowWet = flow[i] * 0.25;
       // Hot regions lose moisture to evaporation -> arid deserts / dry plains form there.
-      const evaporation = Math.max(0, temperature[i] - 0.55) * 0.45;
-      moisture[i] = Math.max(0, Math.min(1, mBase * 0.75 + seaProx + flowWet - evaporation));
+      // A wider moisture base lets hot cells span from parched (desert) to soaked (jungle).
+      const evaporation = Math.max(0, temperature[i] - 0.5) * 0.5;
+      moisture[i] = Math.max(0, Math.min(1, mBase * 0.95 + seaProx + flowWet - evaporation));
     }
   }
 
   // ---- Pass 4: biome classification ----
   for (let i = 0; i < n; i++) {
     biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], seaLevel);
+  }
+
+  // ---- Pass 4b: lake basins (standing water in depressions) ----
+  const water = useLakes ? computeLakes(elevation, size, seaLevel) : new Float32Array(n);
+  // Recolour flooded cells as Lake so the terrain mesh + minimap read as water.
+  if (useLakes) {
+    for (let i = 0; i < n; i++) if (water[i] > 0) biome[i] = Biome.Lake;
   }
 
   // ---- Pass 5: flora placement (SoA, density by biome, capped) ----
@@ -384,6 +672,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     for (let x = 0; x < size; x += stride) {
       if (fX.length >= maxFlora) break;
       const i = y * size + x;
+      if (water[i] > 0) continue; // no trees standing in a lake
       const b = biome[i] as Biome;
       const ft = floraForBiome(b);
       if (ft === -1) continue;
@@ -406,6 +695,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     moisture,
     temperature,
     flow,
+    water,
     biome,
     floraX: new Float32Array(fX),
     floraZ: new Float32Array(fZ),
