@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 7;
+export const WORLD_GEN_VERSION = 8;
 
 export enum Biome {
   Ocean = 0,
@@ -209,15 +209,18 @@ function classify(
   slope: number,
   seaLevel: number,
 ): Biome {
-  // A clear sandy beach strip hugs the shoreline: any land just above the water line, up to
-  // seaLevel + BEACH_WIDTH, is sand — kept smooth with no vegetation (see flora placement).
-  const BEACH_WIDTH = 0.05;
+  // Sandy beach strip hugs the shoreline, but ONLY where the land is gentle — sand cannot
+  // cling to a steep face, so cliffs plunging into the sea are bare rock instead. Beaches are
+  // kept smooth (no vegetation, see flora placement); the coastal flattening pass gives them
+  // room to spread wide.
+  const BEACH_WIDTH = 0.06;
+  const BEACH_MAX_SLOPE = 0.3; // above this the coast is a cliff, not a beach
   const beach = seaLevel + BEACH_WIDTH;
   if (elev < seaLevel) return Biome.Ocean;
-  if (elev < beach) return Biome.Beach;
+  if (elev < beach) return slope > BEACH_MAX_SLOPE ? Biome.Rock : Biome.Beach;
 
-  // Mangroves fringe hot, very wet coasts just INLAND of the sandy beach (not on it).
-  if (elev < beach + 0.04 && temp > 0.66 && moist > 0.62) return Biome.Mangrove;
+  // Mangroves fringe hot, very wet, gentle coasts just INLAND of the sandy beach (not on it).
+  if (elev < beach + 0.04 && slope < BEACH_MAX_SLOPE && temp > 0.66 && moist > 0.62) return Biome.Mangrove;
 
   // Rivers cut across land where flow accumulates and the slope isn't a peak.
   if (flow > 0.55 && elev < 0.8) return Biome.River;
@@ -742,6 +745,23 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     hydraulicErosion(elevation, size, erosionRng, droplets);
     // Erosion nudges a few cells outside [0, 1]; clamp so downstream thresholds stay valid.
     for (let i = 0; i < n; i++) elevation[i] = elevation[i] < 0 ? 0 : elevation[i] > 1 ? 1 : elevation[i];
+  }
+
+  // ---- Pass 1c: coastal flattening (wide, gentle beaches) ----
+  // Ease the elevation of the band just above the water line down toward a low-gain ramp so the
+  // shore rises very gradually from the sea (flat near the water, blending back to the real
+  // terrain higher up). This both flattens the beach and — because more cells now fall inside
+  // the beach elevation band — widens it. Steep headlands still rise fast enough to stay cliffs.
+  const COAST_BAND = 0.14; // elevation band above sea affected by the flattening
+  const COAST_GAIN = 0.35; // near-shore slope as a fraction of the original (lower = flatter)
+  for (let i = 0; i < n; i++) {
+    const e = elevation[i];
+    if (e > seaLevel && e < seaLevel + COAST_BAND) {
+      const t = (e - seaLevel) / COAST_BAND; // 0 at the water, 1 at the band top
+      const w = smoothstep(0, 1, t); // blend back to the real terrain toward the top
+      const flat = seaLevel + COAST_GAIN * (e - seaLevel); // gentle low-gain ramp near shore
+      elevation[i] = flat * (1 - w) + e * w;
+    }
   }
 
   // ---- Pass 2: D8 flow accumulation (rivers) — no fluid sim, just graph flow ----

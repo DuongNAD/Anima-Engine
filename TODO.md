@@ -137,6 +137,17 @@ Biome `Beach` đã có nhưng dải quá hẹp (`seaLevel+0.022`) nên gần nh�
 - **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: 97.6k ô cát, **97.6% dải ven bờ là Beach**, **0 flora trên cát**.
 - **Tinh chỉnh:** độ rộng bãi → `BEACH_WIDTH` trong `classify`; màu cát → `BIOME_RGB[Beach]`.
 
+---
+
+# 🏝 BÃI BIỂN v2 — Làm phẳng ven bờ + Beach theo độ dốc (2026-07-01)
+
+Lỗi: cát dính lên vách đá dốc, bãi hẹp/dốc. **Bump `WORLD_GEN_VERSION` 7→8.**
+1. **Làm phẳng ven biển (Pass 1c, heightmap)**: ô có `elevation ∈ [seaLevel, seaLevel+0.14]` được kéo về **ramp thoải** (`flat = seaLevel + 0.35·(e−seaLevel)`) rồi blend ngược về địa hình thật ở trên bằng `smoothstep` → bờ dâng rất từ từ từ mặt nước. Nhiều ô rơi vào dải cát hơn → **bãi rộng & thoai thoải**; mũi đất dốc vẫn dâng nhanh nên vẫn là vách đá.
+2. **Beach theo slope (`classify`)**: ô ven biển **CHỈ** là `Beach` khi `slope ≤ 0.3` (bằng phẳng); nếu dốc (vách đá đâm xuống biển) → `Rock`. Mangrove cũng chỉ mọc ở bờ thoải.
+- **Frontend không đổi**: `WorldTerrain` vẫn tô `BIOME_RGB[biome]` → cát/vách đá do biome quyết định (theo slope) tự hiện đúng và **khớp minimap** (không lặp tint gây xám).
+- **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: beach=92k (rộng), **maxBeachSlope=0.30 (cát không bao giờ dốc)**, coastalRock=59k (vách đá ven biển), **0 flora trên cát**, 0 NaN, elevation∈[0,1].
+- **Tinh chỉnh:** độ rộng/thoải bãi → `COAST_BAND`/`COAST_GAIN` (Pass 1c); ngưỡng cát↔vách → `BEACH_MAX_SLOPE` trong `classify`.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.
