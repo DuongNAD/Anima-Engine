@@ -1,4 +1,81 @@
-# Danh sách công việc chưa hoàn thiện & Kế hoạch tiếp theo (TODO)
+# Danh sách công việc & Kế hoạch tiếp theo (TODO)
+
+> ⬇️ Mục đang làm: **World Terrain Overhaul** (ở ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
+
+---
+
+# 🌍 [ĐANG LÀM] World Terrain Overhaul — Lục địa khổng lồ + Biome + Cache
+
+**Cập nhật:** 2026-06-30. **Trạng thái:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi. **CHƯA COMMIT.**
+
+## Bối cảnh
+Đập đi xây lại phần sinh + render địa hình cho `landscape.html`: lục địa khổng lồ (data 1024²), noise sắc nét (ridged + domain warp), biome Whittaker (nhiệt×ẩm), và cache nhị phân để load tức thì từ lần 2.
+
+## Kiến trúc (đã chạy thật)
+- **Dữ liệu SoA TypedArrays** (KHÔNG còn `TerrainCell[][]`): `World` gồm `elevation/moisture/temperature/flow: Float32Array`, `biome: Uint8Array`, flora SoA. ~17MB @1024².
+- **Cache nhị phân**: IndexedDB structured-clone (binary, không JSON) → lần 2 đọc thẳng buffer vào RAM, bỏ qua thuật toán. Key có `WORLD_GEN_VERSION` để invalidate.
+- **Tách data-resolution khỏi mesh-resolution**: data 1024² nhưng mesh render ~256 segment sample heightmap → chi tiết cao, không cần 1M vertex.
+
+## Các file chính (đều mới, dưới `src/components/Landscape/`)
+| File | Vai trò |
+|---|---|
+| `utils/worldGen.ts` | Bộ sinh SoA: fBm 8-octave + ridged + domain warp + D8 flow (sông) + temperature(vĩ độ+lapse) + moisture(2 tầng + bốc hơi) + Whittaker 14 biome + flora SoA. Sinh 1024² ~1s, deterministic. |
+| `utils/worldCache.ts` | memo + IndexedDB binary + `loadOrGenerateWorld()` / `getMemoizedWorld()` / `clearWorldCache()`. |
+| `utils/worldGen.worker.ts` | **(Bước 1 vừa xong)** Web Worker sinh map off-thread, transfer zero-copy buffer về. |
+| `WorldTerrain.tsx` | Mesh biome-color, displaced, winding CCW (normal +Y). Props: `renderSize`(400), `heightRatio`(0.13), `meshResolution`(256). |
+| `WorldVegetation.tsx` | Cây instanced từ flora SoA (thông/tán tròn/jungle/xương rồng/đá theo biome). |
+| `WorldShowcase.tsx` | Canvas + async-load world (cache) + terrain + vegetation + ocean plane + OrbitControls + fog/light. Hằng: `WORLD_SIZE=1024`, `RENDER_SIZE=400`, `HEIGHT_RATIO=0.13`, `MESH_RES=256`. |
+| `src/landscape.tsx` | Đã trỏ entry `landscape.html` → `WorldShowcase` (component cũ `LandscapeShowcase` vẫn còn cho test). |
+
+## ✅ Đã hoàn thành
+- [x] Bộ sinh SoA huge-scale + noise sắc nét + Whittaker 14 biome (verify @1024²: ~1s, 0 NaN, đủ biome).
+- [x] Cache nhị phân IndexedDB (versioned).
+- [x] Render 3D: WorldTerrain (mesh-decoupled) + WorldVegetation (instanced) + ocean + orbit + fog.
+- [x] Wire vào `landscape.html`.
+- [x] **BƯỚC 1 — Web Worker**: sinh 1024² off-thread, **không treo UI**; có fallback sync (test/SSR). Vite bundle thành chunk riêng (`worldGen.worker-*.js`). Verify: render giống hệt, build+test xanh.
+
+## ✅ BƯỚC 2 — Nước đẹp hơn (Water shader) — XONG (2026-07-01)
+File mới `src/components/Landscape/WorldWater.tsx` thay `ocean plane` phẳng cũ trong `WorldShowcase.tsx`.
+- [x] **Custom GLSL ShaderMaterial** cho mặt biển: sóng swell động theo time (vertex displace), màu theo **độ sâu** (sample heightmap `DataTexture` Float32 → đáy: nông teal `#3fcfe0`, sâu xanh đậm `#06203f`).
+- [x] **Bọt bờ biển (foam)**: dải trắng fbm-noise nơi `depth → 0`, fade mềm đúng waterline (không còn cạnh plane cứng).
+- [x] **Sông**: quads cho cell `Biome.River` (từ `world.flow`), nâng nhẹ trên terrain, ripple chảy nhanh. (Hồ tách riêng — xem Bước 5.)
+- [x] Fresnel sky-tint + sun specular (uniform `uSunDir` = hướng tới mặt trời, khớp directional light scene).
+- [x] `fog={false}` trên cả 2 ShaderMaterial (tránh crash `refreshFogUniforms`).
+- **Verify:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi. Heightmap tex 1024² Float32 ~4MB GPU.
+- **Tinh chỉnh:** màu nông/sâu → `uShallow`/`uDeep`; độ trong → `uOpacity`; biên độ sóng → `uWaveAmp`; bề rộng ribbon sông → `half` trong `riverGeom`.
+
+## ✅ BƯỚC 3 — Bầu trời + ngày/đêm + thời tiết — XONG (2026-07-01)
+2 file mới + wire vào `WorldShowcase.tsx`. Scale lớn cho world mới (terrain ±200, camera tới 1200, far 4000) — KHÔNG dùng lại Sky/Weather cũ vì chúng tuned cho world ~±100 (FogExp2 0.005 sẽ trắng xoá map 400).
+- `WorldSky.tsx`: dome BackSide R≈2600 (`fog={false}` để giữ gradient trời), mặt trời/mặt trăng quỹ đạo R≈1800 + directional light (shadow), hemisphere + ambient theo `getSkyParams(timeOfDay)`, sao (700), mây trôi (8 cụm, scale ×4). Tự set `scene.background` theo skyColor mỗi frame. Export `sunDirectionForTime(t)` → dùng chung cho water specular.
+- `WorldWeather.tsx`: mưa/tuyết (particle box ±RENDER_SIZE) + **linear `THREE.Fog`** near/far theo `worldScale` (clear: 800→3200; rain/snow/fog dày dần), màu fog đổi theo weather + ngày/đêm, ease mượt khi chuyển. Sở hữu `scene.fog`.
+- `WorldShowcase`: state `timeOfDay`/`speed`/`weather`, đồng hồ ngày/đêm auto (`setInterval`, pause khi speed=0), HUD nhỏ (clock + play/pause + speed 0.5/1/2/4× + 4 nút weather), truyền `sunDir` động vào `WorldWater` (specular bám mặt trời, cập nhật mỗi frame trong useFrame). Bật `shadows` trên Canvas. Bỏ ambient/directional/fog tĩnh cũ.
+- **Verify:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint 0 lỗi.
+- **Tinh chỉnh:** tốc độ ngày/đêm → bước `0.05*speed` trong interval; độ dày fog → `fogProfile()` trong WorldWeather; bán kính dome/sao → hằng trong WorldSky.
+
+## ✅ BƯỚC 4 — Minimap + HUD đầy đủ — XONG (2026-07-01)
+1 file mới + nâng cấp HUD + cầu nối camera↔overlay trong `WorldShowcase.tsx`.
+- `WorldMinimap.tsx`: bản đồ top-down vẽ `world.biome` qua `BIOME_RGB` + hillshade nhẹ theo elevation (pre-render 192² ImageData 1 lần/world). Marker mục tiêu (đỏ) + mũi tên hướng nhìn, cập nhật qua rAF (không re-render React mỗi frame). **Click để teleport** camera. Toggle **legend** 10 biome. Export type `CameraView`.
+- **Cầu nối camera↔HTML overlay:** không dùng `window.activeCamera` global như Minimap cũ — thay bằng `viewRef` (mutable ref) mà `OrbitCam` ghi vào mỗi frame trong `useFrame` (targetX/Z, camX/Z); minimap & HUD đọc ref. `teleportRef` chứa lệnh teleport đang chờ → OrbitCam dời cả `controls.target` lẫn camera (giữ nguyên góc nhìn).
+- **HUD nâng cấp:** đồng hồ + **phase** (🌙/🌅/☀/🌇), Play/Pause, speed 0.5–4×, 4 nút weather, **toạ độ 📍 x/z** (đọc từ viewRef qua interval 300ms, không re-render mỗi frame), nút **⟲ Reset** view (teleport về gốc).
+- **Refactor:** `sunDirectionForTime()` chuyển sang `utils/skyParams.ts` (dùng chung sky+water, tránh warning fast-refresh).
+- **Verify:** `npm run build` ✅, `npm run test:frontend` ✅ 237/237, lint **0 lỗi** (429 warning cũ, không phát sinh mới).
+
+## Bước còn lại (5)
+- [ ] **Bước 5:** (tùy chọn) Hydraulic erosion → thung lũng/lòng sông sâu hơn; mặt nước hồ ở bồn trũng (lake basins).
+
+## Cách chạy / kiểm tra nhanh
+- Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
+- Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.
+- Tinh chỉnh: núi cao/thấp → `HEIGHT_RATIO`; to/nhỏ → `RENDER_SIZE`; chi tiết mesh → `MESH_RES`; nhiều desert hơn → ngưỡng trong `classify()` của `worldGen.ts`.
+- Ảnh preview tĩnh (biome+hillshade) đã sinh: `world_preview.png` ở thư mục gốc.
+
+## Lưu ý
+- **Chưa commit** toàn bộ (world system + các fix landscape trước đó). Cân nhắc gom commit logic.
+- `landscape.html` giờ hiển thị World mới; `LandscapeShowcase` (cũ) vẫn được 237 test dùng — **đừng xóa**.
+
+---
+
+# 🐰 [LƯU TRỮ] Mô hình Thỏ 3D Papercraft (task cũ)
 
 Hệ thống vừa bị khởi động lại (restart) do tài nguyên máy yếu khi chạy toàn bộ dự án Bevy/Tauri. Dưới đây là tình trạng hiện tại và các công việc cần làm tiếp theo để tối ưu hóa và hoàn thiện mô hình Thỏ 3D theo phong cách Papercraft (gấp giấy có góc cạnh và viền đen).
 
