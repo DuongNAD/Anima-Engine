@@ -118,8 +118,9 @@ const sharedFragment = /* glsl */ `
 
     float alpha = mix(0.55, 0.92, depthN) * uOpacity;
 
-    if (uWaterType < 0.5) {
-      // Shoreline foam: noisy white band where the water is very shallow.
+    bool isRiver = abs(uWaterType - 1.0) < 0.5;
+    if (!isRiver) {
+      // Ocean & lakes: shoreline foam (noisy white band where the water is very shallow).
       float foamBand = 1.0 - smoothstep(0.0, uSeaY * 0.12 + 0.001, depth);
       if (foamBand > 0.0) {
         float f = fbm(vWorldPos.xz * 0.6 + vec2(0.0, uTime * 0.6));
@@ -127,7 +128,7 @@ const sharedFragment = /* glsl */ `
         color = mix(color, vec3(1.0), foam);
         alpha = mix(alpha, 0.95, foam);
       }
-      // Fade out exactly at the waterline so the plane edge isn't a hard line.
+      // Fade out exactly at the waterline so the surface edge isn't a hard line.
       alpha *= smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
     } else {
       // Rivers stay bright and fairly opaque regardless of (tiny) depth.
@@ -147,6 +148,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
 }) => {
   const oceanMat = useRef<THREE.ShaderMaterial>(null);
   const riverMat = useRef<THREE.ShaderMaterial>(null);
+  const lakeMat = useRef<THREE.ShaderMaterial>(null);
 
   const heightUnits = renderSize * heightRatio;
   const seaY = world.seaLevel * heightUnits;
@@ -181,6 +183,36 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         const cz = worldXZ(y);
         const cy = elevation[y * size + x] * heightUnits + lift;
         // Two CCW (viewed from above) triangles per cell quad.
+        verts.push(
+          cx - half, cy, cz - half,
+          cx - half, cy, cz + half,
+          cx + half, cy, cz - half,
+          cx + half, cy, cz - half,
+          cx - half, cy, cz + half,
+          cx + half, cy, cz + half,
+        );
+      }
+    }
+    if (verts.length === 0) return null;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+    return geom;
+  }, [world, renderSize, heightUnits]);
+
+  // Lake geometry: flat quads at each basin's still-water surface (world.water).
+  const lakeGeom = useMemo(() => {
+    const { size, water } = world;
+    const cell = renderSize / (size - 1);
+    const half = cell * 0.9;
+    const verts: number[] = [];
+    const worldXZ = (g: number) => (g / (size - 1) - 0.5) * renderSize;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const w = water[y * size + x];
+        if (w <= 0) continue;
+        const cx = worldXZ(x);
+        const cz = worldXZ(y);
+        const cy = w * heightUnits; // water surface (already above the eroded floor)
         verts.push(
           cx - half, cy, cz - half,
           cx - half, cy, cz + half,
@@ -233,6 +265,24 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     [heightTex, renderSize, seaY],
   );
 
+  const lakeUniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uWaterType: { value: 2.0 },
+      uWaveAmp: { value: 0.6 },
+      uHeightMap: { value: heightTex },
+      uTerrainSize: { value: renderSize },
+      uSeaY: { value: seaY },
+      uSunDir: { value: new THREE.Vector3(...sunDir) },
+      uSunColor: { value: new THREE.Color('#fff4d6') },
+      uShallow: { value: new THREE.Color('#57c7e8') },
+      uDeep: { value: new THREE.Color('#134a76') },
+      uOpacity: { value: 0.86 },
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [heightTex, renderSize, seaY],
+  );
+
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
     if (oceanMat.current) {
@@ -243,14 +293,19 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       riverMat.current.uniforms.uTime.value = t;
       riverMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
     }
+    if (lakeMat.current) {
+      lakeMat.current.uniforms.uTime.value = t;
+      lakeMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
+    }
   });
 
   useEffect(() => {
     return () => {
       heightTex.dispose();
       riverGeom?.dispose();
+      lakeGeom?.dispose();
     };
-  }, [heightTex, riverGeom]);
+  }, [heightTex, riverGeom, lakeGeom]);
 
   return (
     <group name="world-water">
@@ -267,6 +322,21 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
           fog={false}
         />
       </mesh>
+
+      {/* Inland lakes (filled depressions / basins). */}
+      {lakeGeom && (
+        <mesh geometry={lakeGeom} name="world-lakes">
+          <shaderMaterial
+            ref={lakeMat}
+            vertexShader={sharedVertex}
+            fragmentShader={sharedFragment}
+            uniforms={lakeUniforms}
+            transparent
+            depthWrite={false}
+            fog={false}
+          />
+        </mesh>
+      )}
 
       {/* Inland rivers (flow / River biome). */}
       {riverGeom && (

@@ -33,15 +33,27 @@ const MAP_SIZE = 192;
 
 const LEGEND: Array<{ label: string; biome: Biome }> = [
   { label: 'Ocean', biome: Biome.Ocean },
+  { label: 'Lake', biome: Biome.Lake },
+  { label: 'River', biome: Biome.River },
   { label: 'Beach', biome: Biome.Beach },
+  { label: 'Mangrove', biome: Biome.Mangrove },
   { label: 'Desert', biome: Biome.Desert },
+  { label: 'Badlands', biome: Biome.Badlands },
+  { label: 'Savanna', biome: Biome.Savanna },
+  { label: 'Chaparral', biome: Biome.Chaparral },
+  { label: 'Steppe', biome: Biome.Steppe },
   { label: 'Grass', biome: Biome.Grassland },
+  { label: 'Shrub', biome: Biome.Shrubland },
   { label: 'Forest', biome: Biome.Forest },
   { label: 'Jungle', biome: Biome.Jungle },
+  { label: 'Swamp', biome: Biome.Swamp },
+  { label: 'Bog', biome: Biome.Bog },
   { label: 'Taiga', biome: Biome.Taiga },
+  { label: 'Tundra', biome: Biome.Tundra },
+  { label: 'Alpine', biome: Biome.Alpine },
   { label: 'Rock', biome: Biome.Rock },
   { label: 'Snow', biome: Biome.Snow },
-  { label: 'River', biome: Biome.River },
+  { label: 'Glacier', biome: Biome.Glacier },
 ];
 
 export const WorldMinimap: React.FC<WorldMinimapProps> = ({
@@ -56,22 +68,33 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
 
   // Pre-render the biome map (with a light elevation hillshade for relief) once per world.
   const biomeImage = useMemo(() => {
-    const { size: n, biome, elevation, seaLevel } = world;
+    const { size: n, biome, elevation, water, seaLevel } = world;
     const data = new Uint8ClampedArray(size * size * 4);
     for (let my = 0; my < size; my++) {
       for (let mx = 0; mx < size; mx++) {
         const gx = Math.min(n - 1, Math.floor((mx / size) * n));
         const gy = Math.min(n - 1, Math.floor((my / size) * n));
         const idx = gy * n + gx;
-        const [r, g, b] = BIOME_RGB[biome[idx]] ?? [0, 0, 0];
+        let [r, g, b] = BIOME_RGB[biome[idx]] ?? [0, 0, 0];
 
         // Cheap hillshade: brighten with elevation on land, flat under the sea.
         const e = elevation[idx];
         const shade = e < seaLevel ? 1.0 : 0.72 + 0.5 * (e - seaLevel);
+        r *= shade;
+        g *= shade;
+        b *= shade;
+
+        // Lakes: tint standing-water cells towards a lake blue.
+        if (water[idx] > 0) {
+          r = r * 0.25 + 40 * 0.75;
+          g = g * 0.25 + 120 * 0.75;
+          b = b * 0.25 + 170 * 0.75;
+        }
+
         const pi = (my * size + mx) * 4;
-        data[pi] = Math.min(255, r * shade);
-        data[pi + 1] = Math.min(255, g * shade);
-        data[pi + 2] = Math.min(255, b * shade);
+        data[pi] = Math.min(255, r);
+        data[pi + 1] = Math.min(255, g);
+        data[pi + 2] = Math.min(255, b);
         data[pi + 3] = 255;
       }
     }

@@ -60,21 +60,22 @@ const OrbitCam: React.FC<{
       enableDamping
       dampingFactor={0.08}
       maxPolarAngle={Math.PI / 2.05}
-      minDistance={40}
-      maxDistance={1200}
+      minDistance={RENDER_SIZE * 0.06}
+      maxDistance={RENDER_SIZE * 3.2}
     />
   );
 };
 
 // Data resolution of the world (cells). Rendering is decoupled from this (see RENDER_SIZE).
-const WORLD_SIZE = 1024;
+// 2048^2 = ~4M cells: a huge, detailed continent generated once (off-thread) and cached.
+const WORLD_SIZE = 2048;
 const WORLD_SEED = 'seed';
 const WORLD_SHAPE: 'island' | 'continent' = 'continent';
 
 // World-space extent the terrain is drawn at (independent of WORLD_SIZE).
-const RENDER_SIZE = 400;
-const HEIGHT_RATIO = 0.13;
-const MESH_RES = 256;
+const RENDER_SIZE = 1000;
+const HEIGHT_RATIO = 0.14;
+const MESH_RES = 384;
 
 const WEATHERS: WeatherKind[] = ['clear', 'rain', 'snow', 'fog'];
 
@@ -145,7 +146,7 @@ export const WorldShowcase: React.FC = () => {
           fontFamily: 'sans-serif',
         }}
       >
-        Generating world… (first run only)
+        Generating a huge 2048² world… (first run only — cached afterwards)
       </div>
     );
   }
@@ -156,7 +157,12 @@ export const WorldShowcase: React.FC = () => {
     <div data-testid="world-showcase" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
         shadows
-        camera={{ position: [0, RENDER_SIZE * 0.55, RENDER_SIZE * 0.85], far: 4000, fov: 55 }}
+        camera={{
+          position: [0, RENDER_SIZE * 0.5, RENDER_SIZE * 0.8],
+          near: 2,
+          far: RENDER_SIZE * 11, // must exceed the sky dome (worldScale * 6.5)
+          fov: 55,
+        }}
         style={{ width: '100%', height: '100%' }}
         onCreated={(state) => {
           state.scene.background = new THREE.Color('#9fd0e8');
