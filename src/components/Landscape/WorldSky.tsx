@@ -130,7 +130,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         name="world-sun-light"
         position={sunPosition}
         color={params.sunColor}
-        intensity={params.sunIntensity}
+        intensity={params.sunIntensity * 0.8}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -150,13 +150,16 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         />
       )}
 
+      {/* Ambient + hemisphere are kept low so the summed irradiance stays near 1.0 — otherwise
+          the light biome colours (sand, rock, snow) blow out to white and stop matching the
+          minimap. The sun provides most of the directional shading. */}
       <hemisphereLight
         name="world-hemi-light"
         color={params.hemiSkyColor}
         groundColor={params.hemiGroundColor}
-        intensity={params.hemiIntensity}
+        intensity={params.hemiIntensity * 0.35}
       />
-      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={params.ambientIntensity} />
+      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={params.ambientIntensity * 0.4} />
 
       {showMoon && (
         <mesh name="world-moon-mesh" position={moonPosition}>
