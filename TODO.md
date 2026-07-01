@@ -92,6 +92,17 @@ Thêm 8 biome: **Lake, Mangrove, Chaparral, Steppe, Alpine, Badlands, Glacier, B
 - @512²: 22/22, 0.36s. `npm run build` ✅ · `npm run test:frontend` ✅ 237/237 · lint 0 lỗi.
 - **Tinh chỉnh nhanh:** kích thước data → `WORLD_SIZE`; độ rộng → `RENDER_SIZE`; ngưỡng biome → `classify()`; độ khô sa mạc → hệ số `evaporation` + ngưỡng `Desert/Badlands`; tắt biome nước → opts `lakes:false`.
 
+---
+
+# 🛠 FIX RENDER — Sông/Hồ/Đá bay (2026-07-01)
+
+Sửa triệt để 3 lỗi hiển thị. **Bump `WORLD_GEN_VERSION` 3→4** (cache sinh lại). File mới `utils/worldSample.ts` (sampler dùng chung).
+
+1. **Sông/suối** — BỎ hoàn toàn quad rời rạc trong `WorldWater`. Giờ **bake vào vertex color của terrain** (`WorldTerrain`): sample `flow` bilinear → trộn màu nước xanh liên tục theo dòng chảy + **khoét rãnh nông** (`e -= riverAmt*0.02`) để sông nằm trong lòng. Hòa vào địa hình, không còn hình vuông đứt đoạn.
+2. **Hồ nước** — thay vì ghép nhiều ô vuông: `computeLakes()` giờ gom **connected-component** thành từng bồn (lọc bồn nhỏ, giữ ≤280 bồn lớn nhất), trả về `lakeBasins[{level,bbox}]`. `WorldWater` sinh **MỘT plane/bồn** phủ bbox tại `level`; shader fade alpha→0 nơi cạn nên plane chỉ hiện trên phần chìm (không tràn ra đất). Thêm **viền cát**: `computeShore()` (BFS khoảng cách tới nước) → `WorldTerrain` trộn màu cát ẩm sát mép nước (biển + hồ).
+3. **Đá bay** — nguyên nhân: flora lấy Y từ elevation full-res 2048² nhưng terrain render ở mesh 384 → lệch trên núi. Fix: `sampleMeshHeight()` lấy đúng cao độ **mặt mesh** (bilinear trên lưới mesh), và seat mỗi geometry bằng `boundingBox.min.y` để đáy chạm đất. Đá/cây bám sát mặt đất tuyệt đối.
+- **Verify:** `npm run build` ✅ · `npm run test:frontend` ✅ 237/237 · lint 0 lỗi. Smoke @1024²: 95 bồn hồ, shore band 120k ô, mesh-snap khớp tuyệt đối (sai số <1e-5), 0 NaN. @2048² bồn hồ ≤280 planes.
+
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
 - Sinh thế giới mới: gọi `clearWorldCache()` hoặc bump `WORLD_GEN_VERSION` trong `worldGen.ts`.
