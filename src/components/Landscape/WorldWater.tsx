@@ -2,23 +2,24 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
-import { Biome } from './utils/worldGen';
 
 // ---------------------------------------------------------------------------------------
-// WorldWater — custom-shader ocean + flowing inland rivers for the huge SoA world.
+// WorldWater — the ocean and inland lakes for the huge SoA world.
 //
-// The terrain (see WorldTerrain.tsx) maps a normalized cell coordinate u,v in [0,1] to world
-// space as  X = (u-0.5)*renderSize ,  Z = (v-0.5)*renderSize ,  Y = elevation * heightUnits
-// where heightUnits = renderSize * heightRatio. This component reuses that exact mapping so
-// the water lines up with the land:
-//   - Ocean: one large plane at seaY whose fragment shader samples a heightmap texture to
-//     get the sea-floor depth, colouring shallow water bright teal and deep water dark blue,
-//     and drawing shoreline foam where depth -> 0.
-//   - Rivers: thin quads emitted for River-biome cells, sitting just above the terrain with
-//     fast scrolling ripples.
+// Rivers/streams are NOT rendered here: they are baked into the terrain mesh's vertex colours
+// (see WorldTerrain), so they read as a continuous ribbon following the ground instead of a
+// trail of floating quads.
 //
-// IMPORTANT: ShaderMaterials use `fog={false}` — three's fog uniforms are only injected for
-// built-in materials and a custom shader referencing them crashes in refreshFogUniforms.
+// Water surfaces are flat, horizontal planes (rotated -90deg about X, so local +z is up). The
+// fragment shader samples a heightmap texture to get the terrain depth under each fragment,
+// grades the colour shallow->deep, draws shoreline foam, and — crucially — fades alpha to 0
+// where the plane sits over dry land. That last part lets each lake be ONE bounding-box plane:
+// it only shows where the terrain is actually below the water level.
+//
+// - Ocean: one big plane at sea level.
+// - Lakes: one plane per basin (World.lakeBasins), each sized to its cell-space bounding box.
+//
+// ShaderMaterials use fog={false} — three only injects fog uniforms for built-in materials.
 // ---------------------------------------------------------------------------------------
 
 export interface WorldWaterProps {
@@ -29,25 +30,17 @@ export interface WorldWaterProps {
   sunDir?: [number, number, number];
 }
 
-const sharedVertex = /* glsl */ `
+const vertexShader = /* glsl */ `
   uniform float uTime;
-  uniform float uWaterType;   // 0 = ocean, 1 = river
   uniform float uWaveAmp;
-
   varying vec3 vWorldPos;
 
   void main() {
+    // Plane is rotated -90deg about X, so local +z is world-up: displace z for gentle swell.
     vec3 p = position;
-
-    if (uWaterType < 0.5) {
-      // Ocean: two crossing slow swells. Plane is rotated -90deg about X, so local +z is up.
-      float w = sin(position.x * 0.03 + uTime * 0.6) * 0.6
-              + cos(position.y * 0.025 + uTime * 0.45) * 0.6;
-      p.z += w * uWaveAmp;
-    } else {
-      // River quads are already in world orientation (local +y is up): tiny chop.
-      p.y += sin(position.x * 0.6 + position.z * 0.6 + uTime * 2.2) * 0.05 * uWaveAmp;
-    }
+    float w = sin(position.x * 0.03 + uTime * 0.6) * 0.6
+            + cos(position.y * 0.025 + uTime * 0.45) * 0.6;
+    p.z += w * uWaveAmp;
 
     vec4 world = modelMatrix * vec4(p, 1.0);
     vWorldPos = world.xyz;
@@ -55,11 +48,10 @@ const sharedVertex = /* glsl */ `
   }
 `;
 
-const sharedFragment = /* glsl */ `
+const fragmentShader = /* glsl */ `
   precision highp float;
 
   uniform float uTime;
-  uniform float uWaterType;
   uniform sampler2D uHeightMap;
   uniform float uTerrainSize;   // world-space extent of the terrain (= renderSize)
   uniform float uSeaY;
@@ -71,9 +63,7 @@ const sharedFragment = /* glsl */ `
 
   varying vec3 vWorldPos;
 
-  float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-  }
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
   float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
@@ -88,53 +78,43 @@ const sharedFragment = /* glsl */ `
   }
 
   void main() {
-    // Terrain world-Y under this water fragment (heightmap stores world height directly).
+    // Terrain world-Y under this fragment (heightmap stores world height directly).
     vec2 uv = (vWorldPos.xz + uTerrainSize * 0.5) / uTerrainSize;
     float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r;
     float depth = max(vWorldPos.y - floorY, 0.0);
 
-    // Depth-graded colour: bright shallows -> dark deeps.
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
     vec3 color = mix(uShallow, uDeep, depthN);
 
-    // Animated micro-normal from two scrolling noise fields -> sparkle + specular.
+    // Animated micro-normal for sparkle + specular.
     vec2 sw = vWorldPos.xz * 0.25;
     float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
     float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
     vec3 normal = normalize(vec3((n1 - 0.5) * 0.6, 1.0, (n2 - 0.5) * 0.6));
 
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
-    vec3 sunDir = normalize(uSunDir);               // direction TO the sun
+    vec3 sunDir = normalize(uSunDir);
     vec3 halfDir = normalize(sunDir + viewDir);
     float spec = pow(max(dot(normal, halfDir), 0.0), 80.0);
     float diff = clamp(dot(normal, sunDir) * 0.5 + 0.6, 0.0, 1.0);
+    color = color * diff + uSunColor * spec * 1.4;
 
-    color *= diff;
-    color += uSunColor * spec * 1.4;
-
-    // Fresnel sky tint towards grazing angles.
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
     color = mix(color, uShallow * 1.1 + 0.05, clamp(fres, 0.0, 0.6));
 
     float alpha = mix(0.55, 0.92, depthN) * uOpacity;
 
-    bool isRiver = abs(uWaterType - 1.0) < 0.5;
-    if (!isRiver) {
-      // Ocean & lakes: shoreline foam (noisy white band where the water is very shallow).
-      float foamBand = 1.0 - smoothstep(0.0, uSeaY * 0.12 + 0.001, depth);
-      if (foamBand > 0.0) {
-        float f = fbm(vWorldPos.xz * 0.6 + vec2(0.0, uTime * 0.6));
-        float foam = smoothstep(0.45, 0.9, f) * foamBand;
-        color = mix(color, vec3(1.0), foam);
-        alpha = mix(alpha, 0.95, foam);
-      }
-      // Fade out exactly at the waterline so the surface edge isn't a hard line.
-      alpha *= smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
-    } else {
-      // Rivers stay bright and fairly opaque regardless of (tiny) depth.
-      color = mix(color, uShallow, 0.4);
-      alpha = uOpacity;
+    // Shoreline foam where the water is very shallow.
+    float foamBand = 1.0 - smoothstep(0.0, uSeaY * 0.12 + 0.001, depth);
+    if (foamBand > 0.0) {
+      float f = fbm(vWorldPos.xz * 0.6 + vec2(0.0, uTime * 0.6));
+      float foam = smoothstep(0.45, 0.9, f) * foamBand;
+      color = mix(color, vec3(1.0), foam);
+      alpha = mix(alpha, 0.95, foam);
     }
+
+    // Fade to 0 exactly at the waterline -> the plane only shows over submerged ground.
+    alpha *= smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -147,14 +127,12 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   sunDir = [1, 1.5, 0.6],
 }) => {
   const oceanMat = useRef<THREE.ShaderMaterial>(null);
-  const riverMat = useRef<THREE.ShaderMaterial>(null);
-  const lakeMat = useRef<THREE.ShaderMaterial>(null);
 
   const heightUnits = renderSize * heightRatio;
   const seaY = world.seaLevel * heightUnits;
 
-  // Heightmap as a Float32 red texture storing the terrain's WORLD height per cell, so the
-  // shader can read sea-floor depth directly. Row order matches WorldTerrain's u,v sampling.
+  // Heightmap: Float32 red texture storing the terrain's WORLD height per cell, so the shader
+  // reads depth = waterY - terrainY directly.
   const heightTex = useMemo(() => {
     const { size, elevation } = world;
     const data = new Float32Array(size * size);
@@ -168,120 +146,58 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world, heightUnits]);
 
-  // River geometry: quads for River-biome cells, lifted just above the terrain.
-  const riverGeom = useMemo(() => {
-    const { size, biome, elevation } = world;
-    const cell = renderSize / (size - 1);
-    const half = cell * 0.85; // slight overlap so ribbons read as continuous
-    const lift = heightUnits * 0.01 + 0.05;
-    const verts: number[] = [];
-    const worldXZ = (g: number) => (g / (size - 1) - 0.5) * renderSize;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        if (biome[y * size + x] !== Biome.River) continue;
-        const cx = worldXZ(x);
-        const cz = worldXZ(y);
-        const cy = elevation[y * size + x] * heightUnits + lift;
-        // Two CCW (viewed from above) triangles per cell quad.
-        verts.push(
-          cx - half, cy, cz - half,
-          cx - half, cy, cz + half,
-          cx + half, cy, cz - half,
-          cx + half, cy, cz - half,
-          cx - half, cy, cz + half,
-          cx + half, cy, cz + half,
-        );
-      }
-    }
-    if (verts.length === 0) return null;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-    return geom;
-  }, [world, renderSize, heightUnits]);
-
-  // Lake geometry: flat quads at each basin's still-water surface (world.water).
-  const lakeGeom = useMemo(() => {
-    const { size, water } = world;
-    const cell = renderSize / (size - 1);
-    const half = cell * 0.9;
-    const verts: number[] = [];
-    const worldXZ = (g: number) => (g / (size - 1) - 0.5) * renderSize;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const w = water[y * size + x];
-        if (w <= 0) continue;
-        const cx = worldXZ(x);
-        const cz = worldXZ(y);
-        const cy = w * heightUnits; // water surface (already above the eroded floor)
-        verts.push(
-          cx - half, cy, cz - half,
-          cx - half, cy, cz + half,
-          cx + half, cy, cz - half,
-          cx + half, cy, cz - half,
-          cx - half, cy, cz + half,
-          cx + half, cy, cz + half,
-        );
-      }
-    }
-    if (verts.length === 0) return null;
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
-    return geom;
-  }, [world, renderSize, heightUnits]);
+  const makeUniforms = (shallow: string, deep: string, opacity: number, waveAmp: number) => ({
+    uTime: { value: 0 },
+    uWaveAmp: { value: waveAmp },
+    uHeightMap: { value: heightTex },
+    uTerrainSize: { value: renderSize },
+    uSeaY: { value: seaY },
+    uSunDir: { value: new THREE.Vector3(...sunDir) },
+    uSunColor: { value: new THREE.Color('#fff4d6') },
+    uShallow: { value: new THREE.Color(shallow) },
+    uDeep: { value: new THREE.Color(deep) },
+    uOpacity: { value: opacity },
+  });
 
   const oceanUniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uWaterType: { value: 0.0 },
-      uWaveAmp: { value: 1.0 },
-      uHeightMap: { value: heightTex },
-      uTerrainSize: { value: renderSize },
-      uSeaY: { value: seaY },
-      uSunDir: { value: new THREE.Vector3(...sunDir) },
-      uSunColor: { value: new THREE.Color('#fff4d6') },
-      uShallow: { value: new THREE.Color('#3fcfe0') },
-      uDeep: { value: new THREE.Color('#06203f') },
-      uOpacity: { value: 0.88 },
-    }),
+    () => makeUniforms('#3fcfe0', '#06203f', 0.88, 1.0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [heightTex, renderSize, seaY],
   );
 
-  const riverUniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uWaterType: { value: 1.0 },
-      uWaveAmp: { value: 1.0 },
-      uHeightMap: { value: heightTex },
-      uTerrainSize: { value: renderSize },
-      uSeaY: { value: seaY },
-      uSunDir: { value: new THREE.Vector3(...sunDir) },
-      uSunColor: { value: new THREE.Color('#fff4d6') },
-      uShallow: { value: new THREE.Color('#5fd0ff') },
-      uDeep: { value: new THREE.Color('#1f6aa0') },
-      uOpacity: { value: 0.85 },
-    }),
+  // One shared material for every lake plane (uniforms updated once per frame).
+  const lakeMaterial = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        uniforms: makeUniforms('#57c7e8', '#134a76', 0.86, 0.4),
+        transparent: true,
+        depthWrite: false,
+        fog: false,
+      }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [heightTex, renderSize, seaY],
   );
 
-  const lakeUniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uWaterType: { value: 2.0 },
-      uWaveAmp: { value: 0.6 },
-      uHeightMap: { value: heightTex },
-      uTerrainSize: { value: renderSize },
-      uSeaY: { value: seaY },
-      uSunDir: { value: new THREE.Vector3(...sunDir) },
-      uSunColor: { value: new THREE.Color('#fff4d6') },
-      uShallow: { value: new THREE.Color('#57c7e8') },
-      uDeep: { value: new THREE.Color('#134a76') },
-      uOpacity: { value: 0.86 },
-    }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [heightTex, renderSize, seaY],
-  );
+  // One plane per lake basin, sized to its cell-space bounding box (+ a small margin). The
+  // shader hides the parts over land, so a single bbox plane cleanly fills the whole basin.
+  const lakePlanes = useMemo(() => {
+    const { size, lakeBasins } = world;
+    const margin = (renderSize / (size - 1)) * 2;
+    const toWorld = (g: number) => (g / (size - 1) - 0.5) * renderSize;
+    return lakeBasins.map((b) => {
+      const x0 = toWorld(b.minX) - margin;
+      const x1 = toWorld(b.maxX) + margin;
+      const z0 = toWorld(b.minY) - margin;
+      const z1 = toWorld(b.maxY) + margin;
+      const w = Math.max(0.001, x1 - x0);
+      const h = Math.max(0.001, z1 - z0);
+      const seg = Math.max(1, Math.min(24, Math.round(Math.max(w, h) / 12)));
+      const geom = new THREE.PlaneGeometry(w, h, seg, seg);
+      return { geom, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: b.level * heightUnits };
+    });
+  }, [world, renderSize, heightUnits]);
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
@@ -289,33 +205,27 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       oceanMat.current.uniforms.uTime.value = t;
       oceanMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
     }
-    if (riverMat.current) {
-      riverMat.current.uniforms.uTime.value = t;
-      riverMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
-    }
-    if (lakeMat.current) {
-      lakeMat.current.uniforms.uTime.value = t;
-      lakeMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
-    }
+    lakeMaterial.uniforms.uTime.value = t;
+    lakeMaterial.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
   });
 
   useEffect(() => {
     return () => {
       heightTex.dispose();
-      riverGeom?.dispose();
-      lakeGeom?.dispose();
+      lakeMaterial.dispose();
+      lakePlanes.forEach((p) => p.geom.dispose());
     };
-  }, [heightTex, riverGeom, lakeGeom]);
+  }, [heightTex, lakeMaterial, lakePlanes]);
 
   return (
     <group name="world-water">
-      {/* Ocean plane, subdivided enough for visible swell. */}
+      {/* Ocean plane at sea level. */}
       <mesh rotation-x={-Math.PI / 2} position={[0, seaY, 0]} name="world-ocean">
         <planeGeometry args={[renderSize * 2.2, renderSize * 2.2, 96, 96]} />
         <shaderMaterial
           ref={oceanMat}
-          vertexShader={sharedVertex}
-          fragmentShader={sharedFragment}
+          vertexShader={vertexShader}
+          fragmentShader={fragmentShader}
           uniforms={oceanUniforms}
           transparent
           depthWrite={false}
@@ -323,36 +233,17 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         />
       </mesh>
 
-      {/* Inland lakes (filled depressions / basins). */}
-      {lakeGeom && (
-        <mesh geometry={lakeGeom} name="world-lakes">
-          <shaderMaterial
-            ref={lakeMat}
-            vertexShader={sharedVertex}
-            fragmentShader={sharedFragment}
-            uniforms={lakeUniforms}
-            transparent
-            depthWrite={false}
-            fog={false}
-          />
-        </mesh>
-      )}
-
-      {/* Inland rivers (flow / River biome). */}
-      {riverGeom && (
-        <mesh geometry={riverGeom} name="world-rivers">
-          <shaderMaterial
-            ref={riverMat}
-            vertexShader={sharedVertex}
-            fragmentShader={sharedFragment}
-            uniforms={riverUniforms}
-            transparent
-            depthWrite={false}
-            side={THREE.DoubleSide}
-            fog={false}
-          />
-        </mesh>
-      )}
+      {/* One plane per lake basin. */}
+      {lakePlanes.map((p, i) => (
+        <mesh
+          key={i}
+          geometry={p.geom}
+          material={lakeMaterial}
+          rotation-x={-Math.PI / 2}
+          position={[p.cx, p.y, p.cz]}
+          name="world-lake"
+        />
+      ))}
     </group>
   );
 };

@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { BIOME_RGB } from './utils/worldGen';
+import { sampleElevation, sampleField } from './utils/worldSample';
 
 export interface WorldTerrainProps {
   world: World;
@@ -13,31 +14,20 @@ export interface WorldTerrainProps {
   meshResolution?: number;
 }
 
-/** Bilinear elevation sample at normalized (u, v) in [0, 1]. */
-function sampleElevation(world: World, u: number, v: number): number {
-  const { size, elevation } = world;
-  const fx = Math.min(size - 1, Math.max(0, u * (size - 1)));
-  const fy = Math.min(size - 1, Math.max(0, v * (size - 1)));
-  const x0 = Math.floor(fx);
-  const y0 = Math.floor(fy);
-  const x1 = Math.min(size - 1, x0 + 1);
-  const y1 = Math.min(size - 1, y0 + 1);
-  const tx = fx - x0;
-  const ty = fy - y0;
-  const e00 = elevation[y0 * size + x0];
-  const e10 = elevation[y0 * size + x1];
-  const e01 = elevation[y1 * size + x0];
-  const e11 = elevation[y1 * size + x1];
-  return (
-    e00 * (1 - tx) * (1 - ty) + e10 * tx * (1 - ty) + e01 * (1 - tx) * ty + e11 * tx * ty
-  );
-}
-
 function sampleBiome(world: World, u: number, v: number): number {
   const { size, biome } = world;
   const x = Math.min(size - 1, Math.max(0, Math.round(u * (size - 1))));
   const y = Math.min(size - 1, Math.max(0, Math.round(v * (size - 1))));
   return biome[y * size + x];
+}
+
+// Colours blended into the terrain (0..1) for water features baked into the mesh itself.
+const RIVER_RGB = [0.16, 0.42, 0.62]; // river/stream water blended by flow
+const SAND_RGB = [0.72, 0.66, 0.5]; // damp sand along shorelines
+
+function smoothstep(e0: number, e1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
 }
 
 /**
@@ -57,6 +47,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     const positions = new Float32Array(verts * 3);
     const colors = new Float32Array(verts * 3);
     const heightUnits = renderSize * heightRatio;
+    const { size, flow, shore, seaLevel } = world;
 
     for (let gy = 0; gy <= res; gy++) {
       for (let gx = 0; gx <= res; gx++) {
@@ -65,14 +56,41 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         const e = sampleElevation(world, u, v);
         const i = gy * (res + 1) + gx;
 
+        // River amount: smooth blue where flow accumulates on land (baked into the mesh, so
+        // streams read as a continuous ribbon following the ground — no floating quads).
+        const f = sampleField(flow, size, u, v);
+        const riverAmt = e >= seaLevel ? smoothstep(0.5, 0.82, f) : 0;
+
         positions[i * 3] = (u - 0.5) * renderSize; // X
-        positions[i * 3 + 1] = e * heightUnits; // Y (up)
+        // Carve a shallow groove along strong flow so the river sits in a channel.
+        positions[i * 3 + 1] = (e - riverAmt * 0.02) * heightUnits; // Y (up)
         positions[i * 3 + 2] = (v - 0.5) * renderSize; // Z
 
-        const [r, g, b] = BIOME_RGB[sampleBiome(world, u, v)];
-        colors[i * 3] = r / 255;
-        colors[i * 3 + 1] = g / 255;
-        colors[i * 3 + 2] = b / 255;
+        const [br, bg, bb] = BIOME_RGB[sampleBiome(world, u, v)];
+        let r = br / 255;
+        let g = bg / 255;
+        let b = bb / 255;
+
+        // Damp-sand shoreline: blend towards sand near oceans & lakes.
+        const sh = e >= seaLevel ? sampleField(shore, size, u, v) : 0;
+        if (sh > 0) {
+          const t = Math.min(1, sh) * 0.85;
+          r += (SAND_RGB[0] - r) * t;
+          g += (SAND_RGB[1] - g) * t;
+          b += (SAND_RGB[2] - b) * t;
+        }
+
+        // River water tint blended on top.
+        if (riverAmt > 0) {
+          const t = riverAmt * 0.85;
+          r += (RIVER_RGB[0] - r) * t;
+          g += (RIVER_RGB[1] - g) * t;
+          b += (RIVER_RGB[2] - b) * t;
+        }
+
+        colors[i * 3] = r;
+        colors[i * 3 + 1] = g;
+        colors[i * 3 + 2] = b;
       }
     }
 

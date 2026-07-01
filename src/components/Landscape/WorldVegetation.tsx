@@ -2,30 +2,16 @@ import React, { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
+import { sampleMeshHeight } from './utils/worldSample';
 
 export interface WorldVegetationProps {
   world: World;
   renderSize?: number;
   heightRatio?: number;
+  /** Mesh resolution the terrain is rendered at — flora snaps to THAT surface, not the data. */
+  meshResolution?: number;
   /** Base size (world units) of a flora instance before its per-instance scale. */
   baseSize?: number;
-}
-
-function sampleElevation(world: World, u: number, v: number): number {
-  const { size, elevation } = world;
-  const fx = Math.min(size - 1, Math.max(0, u * (size - 1)));
-  const fy = Math.min(size - 1, Math.max(0, v * (size - 1)));
-  const x0 = Math.floor(fx);
-  const y0 = Math.floor(fy);
-  const x1 = Math.min(size - 1, x0 + 1);
-  const y1 = Math.min(size - 1, y0 + 1);
-  const tx = fx - x0;
-  const ty = fy - y0;
-  const e00 = elevation[y0 * size + x0];
-  const e10 = elevation[y0 * size + x1];
-  const e01 = elevation[y1 * size + x0];
-  const e11 = elevation[y1 * size + x1];
-  return e00 * (1 - tx) * (1 - ty) + e10 * tx * (1 - ty) + e01 * (1 - tx) * ty + e11 * tx * ty;
 }
 
 // One low-poly geometry + colour per flora type.
@@ -44,8 +30,9 @@ const TypedInstances: React.FC<{
   geometry: THREE.BufferGeometry;
   renderSize: number;
   heightRatio: number;
+  meshResolution: number;
   baseSize: number;
-}> = ({ world, type, color, geometry, renderSize, heightRatio, baseSize }) => {
+}> = ({ world, type, color, geometry, renderSize, heightRatio, meshResolution, baseSize }) => {
   const ref = useRef<THREE.InstancedMesh>(null);
 
   // Indices of flora of this type.
@@ -56,6 +43,12 @@ const TypedInstances: React.FC<{
     }
     return out;
   }, [world, type]);
+
+  // Vertical offset so the geometry's lowest point sits exactly on the ground (unit scale).
+  const groundLift = useMemo(() => {
+    geometry.computeBoundingBox();
+    return geometry.boundingBox ? -geometry.boundingBox.min.y : 0;
+  }, [geometry]);
 
   useLayoutEffect(() => {
     const inst = ref.current;
@@ -69,16 +62,17 @@ const TypedInstances: React.FC<{
       const v = (world.floraZ[i] + size / 2) / size;
       const x = (u - 0.5) * renderSize;
       const z = (v - 0.5) * renderSize;
-      const y = sampleElevation(world, u, v) * heightUnits;
+      // Snap to the RENDER MESH surface (coarser than the data) so nothing floats/sinks.
+      const y = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
       const s = world.floraScale[i] * baseSize;
-      dummy.position.set(x, y + s * 0.5, z);
+      dummy.position.set(x, y + groundLift * s, z);
       dummy.scale.set(s, s, s);
       dummy.rotation.set(0, (world.floraX[i] * 0.7 + world.floraZ[i] * 0.3) % (Math.PI * 2), 0);
       dummy.updateMatrix();
       if (typeof inst.setMatrixAt === 'function') inst.setMatrixAt(k, dummy.matrix);
     }
     if (inst.instanceMatrix) inst.instanceMatrix.needsUpdate = true;
-  }, [indices, world, renderSize, heightRatio, baseSize]);
+  }, [indices, world, renderSize, heightRatio, meshResolution, baseSize, groundLift]);
 
   if (indices.length === 0) return null;
   return (
@@ -93,6 +87,7 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   world,
   renderSize = 400,
   heightRatio = 0.13,
+  meshResolution = 256,
   baseSize = 1.4,
 }) => {
   const geoms = useMemo(() => TYPE_DEFS.map((d) => ({ ...d, geometry: d.make() })), []);
@@ -107,6 +102,7 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
           geometry={d.geometry}
           renderSize={renderSize}
           heightRatio={heightRatio}
+          meshResolution={meshResolution}
           baseSize={baseSize}
         />
       ))}

@@ -184,7 +184,12 @@ export const WorldShowcase: React.FC = () => {
           meshResolution={MESH_RES}
         />
 
-        <WorldVegetation world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        <WorldVegetation
+          world={world}
+          renderSize={RENDER_SIZE}
+          heightRatio={HEIGHT_RATIO}
+          meshResolution={MESH_RES}
+        />
 
         {/* Shader-based ocean (depth colour + swell + foam) and flowing rivers. */}
         <WorldWater
