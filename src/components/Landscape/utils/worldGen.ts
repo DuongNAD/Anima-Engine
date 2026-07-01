@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 5;
+export const WORLD_GEN_VERSION = 6;
 
 export enum Biome {
   Ocean = 0,
@@ -293,11 +293,9 @@ function floraForBiome(b: Biome): FloraType | -1 {
     case Biome.Desert:
     case Biome.Savanna:
       return FloraType.Cactus;
-    case Biome.Rock:
-    case Biome.Badlands:
-      return FloraType.Rock;
     default:
-      return -1; // ocean / beach / river / lake / snow / glacier: no flora
+      // ocean / beach / river / lake / snow / glacier / rock / badlands: nothing grows.
+      return -1;
   }
 }
 
@@ -845,9 +843,13 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     for (let x = 0; x < size; x += stride) {
       if (fX.length >= maxFlora) break;
       const i = y * size + x;
-      if (water[i] > 0) continue; // no trees standing in a lake
-      if (slope[i] > 0.78) continue; // nothing grows on steep cliffs
+      // Hard exclusions — only vegetated dry land, clear of water, cliffs and the waterline:
+      if (elevation[i] <= seaLevel) continue; // must be above sea level
+      if (water[i] > 0) continue; // never in a lake
+      if (slope[i] > 0.78) continue; // never on steep cliffs
+      if (shore[i] > 0.8) continue; // never right at the water's edge / on the beach
       const b = biome[i] as Biome;
+      // floraForBiome already excludes ocean / beach / river / lake / snow / glacier / rock.
       const ft = floraForBiome(b);
       if (ft === -1) continue;
       // Denser where it's wetter, sparser where arid (a lush forest vs a dry plain).
@@ -856,6 +858,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       // World coordinates centred on origin (1 cell = 1 unit).
       const wx = x - size / 2 + (rng() - 0.5) * stride;
       const wz = y - size / 2 + (rng() - 0.5) * stride;
+      // Re-check the jittered landing cell so nothing drifts onto water/sea.
+      const jx = Math.min(size - 1, Math.max(0, Math.round(wx + size / 2)));
+      const jz = Math.min(size - 1, Math.max(0, Math.round(wz + size / 2)));
+      const ji = jz * size + jx;
+      if (water[ji] > 0 || elevation[ji] <= seaLevel) continue;
       fX.push(wx);
       fZ.push(wz);
       fS.push(0.6 + rng() * 0.8);

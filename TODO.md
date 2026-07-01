@@ -115,7 +115,16 @@ Sửa triệt để 3 lỗi hiển thị. **Bump `WORLD_GEN_VERSION` 3→4** (ca
 - **Foliage theo hệ sinh thái**: `floraForBiome` + `floraDensity` theo biome; **mật độ ×(0.5+moisture)** (rừng ẩm dày, đồng khô thưa); **không cây trên slope>0.78** (vách đá) và trên nước/bãi cát.
 - **Render**: `WorldTerrain` trộn **màu đá xám theo slope** (`smoothstep(0.55,1.0)`) → sườn dốc lộ đá, phá thế xanh đơn điệu; giữ blend cát + sông.
 - **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: 22/22 biome, slope>0.85 = 3.2% đất (không phải cả bản đồ hoá đá), 0 cây trên vách dốc, 0 NaN.
-- **Tinh chỉnh:** độ nhạy slope → hệ số `0.06` + `step` trong `computeSlope`; ngưỡng vách đá → `slope>0.85` trong `classify`; độ đậm tint đá → `smoothstep` trong WorldTerrain; mật độ cây → `floraDensity` × `(0.5+moisture)`.
+- **Tinh chỉnh:** độ nhạy slope → hệ số `0.06` + `step` trong `computeSlope`; ngưỡng vách đá → `slope>0.85` trong `classify`; mật độ cây → `floraDensity` × `(0.5+moisture)`.
+
+---
+
+# 🎨 FIX 3D vs MINIMAP — Màu terrain & luật trồng cây (2026-07-01)
+
+Terrain 3D bị "xám/trắng nhợt nhạt loang lổ", không khớp minimap; cây mọc dưới nước/ven hồ/trên đá. **Bump `WORLD_GEN_VERSION` 5→6.**
+1. **Màu 3D = màu minimap.** Nguyên nhân: `WorldTerrain` chồng 3 lớp tint (cát theo `shore`, đá xám theo `slope`, nước theo `flow`) lên màu biome → ở map 2048² bờ biển/hồ rất dài nên tint cát+đá phủ phần lớn đất, thành xám nhạt loang lổ. **Fix:** bỏ hết tint chồng, màu vertex = `BIOME_RGB[biome]` **thuần** — đúng bảng màu minimap dùng (sông/bãi cát/hồ vốn đã là biome River/Beach/Lake nên vẫn hiện). Đổ bóng địa hình do ánh sáng scene lo, không tint vào màu.
+2. **Luật trồng cây chặt** (`worldGen` flora pass): chỉ mọc khi `elevation > seaLevel` **và** `water==0` **và** `slope ≤ 0.78` **và** `shore ≤ 0.8` (không sát mép nước) **và** biome hợp lệ. `floraForBiome` giờ trả `-1` cho Ocean/Beach/River/Lake/Snow/Glacier/**Rock/Badlands** (bỏ đá/boulder trên núi trọc). Validate lại **ô sau khi jitter** để cây không lệch ra nước. Mật độ vẫn ×(0.5+moisture).
+- **Verify:** build ✅ · 237/237 ✅ · lint 0 lỗi. Smoke @1024²: flora=67.6k, **0 cây dưới nước / trên bãi/tuyết/đá / dưới mực nước / vách dốc**.
 
 ## Cách chạy / kiểm tra nhanh
 - Dev: `npm run dev` → mở `http://localhost:5173/landscape.html` (lần đầu sinh ~1s off-thread, sau đó cache → tức thì).
