@@ -4,7 +4,20 @@
 
 ---
 
-# 🐦 [MỚI NHẤT] v15 — Vân đất cận cảnh + thác chảy động + quầng trăng + chim (2026-07-03)
+# 💧 [MỚI NHẤT] v16 — FIX nước xuyên sườn dốc + rừng dày hơn + 450 thác (2026-07-03)
+
+Bug user báo: mesh nước "lồi ra thành mảng tam giác/chữ nhật sắc cạnh" cắt xuyên terrain ở sườn dốc. **Bump `WORLD_GEN_VERSION` 15→16... (thực tế 14→15** trong code — flora/thác đổi).
+
+- **Nguyên nhân clipping**: hồ/ao render bằng quad phủ **bbox** bồn ở cao độ mặt tràn; địa hình **dưới mực nước nhưng NGOÀI lòng bồn** (sườn dốc xuôi) vẫn có depth>0 → depth-fade không giấu được → mảng nước lơ lửng bị terrain cắt thành hình sắc cạnh. Ao-trên-sườn từ v13 (carve pits) nhân lỗi lên.
+- **Fix**: **`uLakeMask`** — texture R8 full-res từ trường `water[]` (1 = cell ngập thật), bilinear cho mép mềm; shader hồ nhân `alpha *= smoothstep(0.2, 0.55, mask)` (chỉ khi `uMaskOn=1`; ocean giữ nguyên). Nước bám đúng lòng bồn tuyệt đối, không phụ thuộc subdivision.
+- **Rừng/thực vật dày hơn**: `maxFlora` 90k→130k, density tăng toàn bộ biome có cây (Forest 0.4→0.5, Jungle 0.55→0.62, Taiga→0.52, Grassland→0.22, Mangrove→0.4, Bog→0.3, Steppe→0.12…) → **73.4k instance** @2048² (+20%).
+- **Nhiều thác hơn**: `MIN_DROP` 0.012→0.009 (base 1024), `MAX_FALLS` 320→**450** (đạt cap), khoảng cách tối thiểu 4→3 cell.
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · smoke: 450 thác, flora 73.4k, hồ 27, 0 NaN · screenshot aerial vùng sông-ao trên sườn: **hết mảng nước sắc cạnh**, thấy hoa dại + chim + thác trong khe. 0 lỗi console.
+- **Tinh chỉnh:** mép mask → cặp `0.2/0.55` trong shader; mật độ rừng → `floraDensity`; số thác → `MIN_DROP`/`MAX_FALLS`.
+
+---
+
+# 🐦 v15 — Vân đất cận cảnh + thác chảy động + quầng trăng + chim (2026-07-03)
 
 Yêu cầu: "đẹp và chân thực hơn nữa". **KHÔNG bump WORLD_GEN_VERSION** (chỉ render-side — cache người dùng còn nguyên).
 

@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 14;
+export const WORLD_GEN_VERSION = 15;
 
 export enum Biome {
   Ocean = 0,
@@ -364,35 +364,35 @@ function pickFlora(b: Biome, r: number): FloraType | -1 {
 function floraDensity(b: Biome): number {
   switch (b) {
     case Biome.Jungle:
-      return 0.55;
+      return 0.62;
     case Biome.Forest:
-      return 0.4;
+      return 0.5;
     case Biome.Taiga:
-      return 0.45;
+      return 0.52;
     case Biome.Swamp:
-      return 0.3;
+      return 0.36;
     case Biome.Shrubland:
-      return 0.18;
+      return 0.24;
     case Biome.Grassland:
-      return 0.16;
+      return 0.22;
     case Biome.Savanna:
-      return 0.07;
+      return 0.08;
     case Biome.Tundra:
-      return 0.07;
+      return 0.08;
     case Biome.Desert:
-      return 0.02;
+      return 0.022;
     case Biome.Rock:
       return 0.015;
     case Biome.Mangrove:
-      return 0.35;
+      return 0.4;
     case Biome.Bog:
-      return 0.25;
+      return 0.3;
     case Biome.Alpine:
-      return 0.14;
+      return 0.16;
     case Biome.Chaparral:
-      return 0.14;
+      return 0.16;
     case Biome.Steppe:
-      return 0.1;
+      return 0.12;
     case Biome.Badlands:
       return 0.015;
     default:
@@ -724,7 +724,7 @@ export interface WorldGenOptions {
 export function generateWorld(seed: string | number, opts: WorldGenOptions = {}): World {
   const size = opts.size ?? 1024;
   const shape = opts.shape ?? 'continent';
-  const maxFlora = opts.maxFlora ?? 90000;
+  const maxFlora = opts.maxFlora ?? 130000;
   const useErosion = opts.erosion ?? true;
   const useLakes = opts.lakes ?? true;
   const n = size * size;
@@ -1115,8 +1115,8 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   {
     // Per-CELL drop threshold: halving the cell size halves each step's drop, so scale by
     // resolution to keep the same physical cliff height qualifying at any WORLD_SIZE.
-    const MIN_DROP = 0.012 * (1024 / size);
-    const MAX_FALLS = 320;
+    const MIN_DROP = 0.009 * (1024 / size);
+    const MAX_FALLS = 450;
     const cand: Array<{ x: number; z: number; e: number; d: number; yaw: number }> = [];
     for (let y = 1; y < size - 1; y++) {
       for (let x = 1; x < size - 1; x++) {
@@ -1155,7 +1155,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       for (let k = 0; k < takenX.length; k++) {
         const ddx = takenX[k] - c.x;
         const ddz = takenZ[k] - c.z;
-        if (ddx * ddx + ddz * ddz < 16) {
+        if (ddx * ddx + ddz * ddz < 9) {
           crowded = true;
           break;
         }

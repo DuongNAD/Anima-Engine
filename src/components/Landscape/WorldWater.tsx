@@ -72,6 +72,13 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
+  // Lake-basin mask (only sampled when uMaskOn=1, i.e. for the merged lake mesh). A basin's
+  // bbox quad hangs over any DOWNHILL terrain that sits below the spill level but OUTSIDE
+  // the basin — depth alone can't hide it (depth > 0 there), which used to leave sharp
+  // floating water shards knifing through every slope. The mask pins water to actual
+  // flooded cells.
+  uniform sampler2D uLakeMask;
+  uniform float uMaskOn;
 
   varying vec3 vWorldPos;
 
@@ -145,6 +152,11 @@ const fragmentShader = /* glsl */ `
     // Fade to 0 exactly at the waterline -> the plane only shows over submerged ground.
     alpha *= smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
 
+    // Lakes only: clip to the actual flooded basin cells (see uniform comment).
+    if (uMaskOn > 0.5) {
+      alpha *= smoothstep(0.2, 0.55, texture2D(uLakeMask, clamp(uv, 0.0, 1.0)).r);
+    }
+
     // Manual fog, identical curve to the scene's linear fog: the far ocean melts into the
     // same haze as the terrain (and turns opaque, so the plane's rim can never show).
     float fogF = smoothstep(uFogNear, uFogFar, camDist);
@@ -181,7 +193,22 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world, heightUnits]);
 
-  const makeUniforms = (shallow: string, deep: string, opacity: number, waveAmp: number) => ({
+  // Per-cell lake mask (1 where standing water fills the cell), soft-edged by the GPU's
+  // bilinear filter so basin shorelines stay smooth.
+  const lakeMaskTex = useMemo(() => {
+    const { size, water } = world;
+    const data = new Uint8Array(size * size);
+    for (let i = 0; i < data.length; i++) data[i] = water[i] > 0 ? 255 : 0;
+    const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }, [world]);
+
+  const makeUniforms = (shallow: string, deep: string, opacity: number, waveAmp: number, maskOn = 0) => ({
     uTime: { value: 0 },
     uWaveAmp: { value: waveAmp },
     uHeightMap: { value: heightTex },
@@ -195,6 +222,8 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     uFogColor: { value: new THREE.Color('#cfe4f2') },
     uFogNear: { value: renderSize * 0.8 },
     uFogFar: { value: renderSize * 3.2 },
+    uLakeMask: { value: lakeMaskTex },
+    uMaskOn: { value: maskOn },
   });
 
   const oceanUniforms = useMemo(
@@ -211,7 +240,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       new THREE.ShaderMaterial({
         vertexShader,
         fragmentShader,
-        uniforms: makeUniforms('#57c7e8', '#134a76', 0.86, 0.4),
+        uniforms: makeUniforms('#57c7e8', '#134a76', 0.86, 0.4, 1),
         transparent: true,
         depthWrite: false,
         fog: false,
@@ -275,11 +304,12 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   useEffect(() => {
     return () => {
       heightTex.dispose();
+      lakeMaskTex.dispose();
       lakeMaterial.dispose();
       lakesGeom?.dispose();
       iceGeom?.dispose();
     };
-  }, [heightTex, lakeMaterial, lakesGeom, iceGeom]);
+  }, [heightTex, lakeMaskTex, lakeMaterial, lakesGeom, iceGeom]);
 
   return (
     <group name="world-water">
