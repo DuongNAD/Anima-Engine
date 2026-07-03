@@ -34,19 +34,25 @@ pub fn fruit_growth_system(
 pub fn resource_field_regrowth_system(
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    season: Option<ResMut<crate::core::ecology::SeasonClock>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let Some(mut field) = field else {
         return;
     };
-    // Global fertility of 1.0 (a seasonal driver could animate this over time).
+    // Seasonal fertility: summer boosts regrowth, winter suppresses it (defaults to 1.0 if no
+    // season clock is present).
+    let fertility = match season {
+        Some(mut clock) => clock.tick(time_step.0),
+        None => 1.0,
+    };
     match biomass {
         Some(mut pool) => {
-            let consumed = field.step_regrowth_gated(time_step.0, 1.0, pool.detritus);
+            let consumed = field.step_regrowth_gated(time_step.0, fertility, pool.detritus);
             pool.detritus -= consumed;
             pool.plants = field.total_biomass();
         }
-        None => field.step_regrowth(time_step.0, 1.0),
+        None => field.step_regrowth(time_step.0, fertility),
     }
 }
 

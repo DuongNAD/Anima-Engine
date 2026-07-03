@@ -36,6 +36,7 @@ pub fn init_world() -> World {
         plants: starting_plants,
         animals: 0.0,
     });
+    world.insert_resource(crate::core::ecology::SeasonClock::default());
     world.insert_resource(terrain_map);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
         10.0, &bounds,

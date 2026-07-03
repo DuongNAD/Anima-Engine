@@ -174,6 +174,45 @@ pub fn ecological_descriptors(body_mass: f32, foraging_range: f32) -> [f32; 2] {
     ]
 }
 
+// ---- Seasonal fertility driver --------------------------------------------------------
+
+/// Amplitude of the seasonal fertility swing around the mean of 1.0.
+pub const SEASON_AMPLITUDE: f32 = 0.5;
+
+/// Global fertility multiplier as a slow sine over the season phase (radians): summer boosts
+/// plant regrowth, winter suppresses it. The resulting boom-and-bust in the resource field is
+/// exactly the kind of periodic disturbance that keeps predator-prey cycles going and (at
+/// intermediate frequency) sustains diversity. Clamped at 0 so deep winter can pause growth.
+#[inline]
+pub fn seasonal_fertility(phase: f32) -> f32 {
+    (1.0 + SEASON_AMPLITUDE * phase.sin()).max(0.0)
+}
+
+/// A slowly-advancing season phase (radians). One field, advanced by `rate·dt` each tick.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct SeasonClock {
+    pub phase: f32,
+    pub rate: f32,
+}
+
+impl Default for SeasonClock {
+    fn default() -> Self {
+        // ~one full year every 100 seconds of sim time at 60 FPS.
+        Self {
+            phase: 0.0,
+            rate: std::f32::consts::TAU / 100.0,
+        }
+    }
+}
+
+impl SeasonClock {
+    /// Advance the phase and return the current fertility multiplier.
+    pub fn tick(&mut self, dt: f32) -> f32 {
+        self.phase = (self.phase + self.rate * dt) % std::f32::consts::TAU;
+        seasonal_fertility(self.phase)
+    }
+}
+
 // ---- Biodiversity diagnostics ---------------------------------------------------------
 
 /// Shannon–Wiener index `H = −Σ pᵢ ln pᵢ` over species abundances. Higher = more diverse.
@@ -483,6 +522,28 @@ mod tests {
         assert!(
             biome_carrying_capacity(BiomeType::Desert)
                 > biome_carrying_capacity(BiomeType::MountainRock) - 1.0
+        );
+    }
+
+    #[test]
+    fn seasonal_fertility_oscillates_around_one() {
+        assert!((seasonal_fertility(0.0) - 1.0).abs() < 1e-6);
+        let summer = seasonal_fertility(std::f32::consts::FRAC_PI_2);
+        let winter = seasonal_fertility(3.0 * std::f32::consts::FRAC_PI_2);
+        assert!(summer > 1.0 && winter < 1.0 && winter >= 0.0);
+        // A full clock cycle returns to the start; the mean stays ~1.0.
+        let mut clock = SeasonClock {
+            phase: 0.0,
+            rate: 0.1,
+        };
+        let mut sum = 0.0f32;
+        let steps = 1000;
+        for _ in 0..steps {
+            sum += clock.tick(1.0);
+        }
+        assert!(
+            (sum / steps as f32 - 1.0).abs() < 0.05,
+            "mean fertility off"
         );
     }
 

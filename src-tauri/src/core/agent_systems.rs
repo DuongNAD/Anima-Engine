@@ -231,6 +231,8 @@ pub fn apply_staggered_evolution_system(
     parent_agent_query: Query<(Entity, &ParentAgent)>,
     position_query: Query<&Position>,
     predator_query: Query<&Predator>,
+    homeo_query: Query<&HomeostaticState>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
 ) {
     // Collect all spawn instructions
     while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) =
@@ -260,6 +262,14 @@ pub fn apply_staggered_evolution_system(
         } else {
             AgentClass::Prey
         };
+
+        // Corpse decomposition: the dying agent's remaining reserve energy returns to the
+        // closed detritus pool instead of vanishing at despawn — the death half of the energy
+        // cycle (plants → animals → detritus → plants). Conserved: the census stops counting
+        // this agent's reserve next tick, and that same energy now sits in detritus.
+        if let (Ok(homeo), Some(pool)) = (homeo_query.get(old_entity), biomass.as_mut()) {
+            pool.detritus += homeo.energy.max(0.0) as f64;
+        }
 
         // Despawn old segments
         for (seg_entity, parent) in parent_agent_query.iter() {

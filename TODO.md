@@ -4,7 +4,19 @@
 
 ---
 
-# 🧭 [MỚI NHẤT] BACKEND E7 — MAP-Elites descriptor SINH THÁI + tăng trưởng cây theo NPP (2026-07-03)
+# ❄️ [MỚI NHẤT] BACKEND E8 — Xác phân huỷ (corpse→detritus) + Mùa vụ (seasonal fertility) (2026-07-03)
+
+Tiếp Phase 7 (E8). Hoàn tất nửa "chết" của vòng khép kín + động lực mùa vụ.
+
+- **Corpse → detritus** (nửa chết của vòng): trong `apply_staggered_evolution_system`, khi 1 agent bị thay thế/despawn, **năng lượng dự trữ còn lại của nó trả về pool detritus** thay vì biến mất. Bảo toàn: census ngừng đếm reserve của agent đó ở tick sau, đúng lượng năng lượng ấy giờ nằm ở detritus. Vòng plants→animals→detritus→plants giờ đóng cả 2 chiều (chuyển hoá + săn + **chết**).
+- **Mùa vụ (`SeasonClock` + `seasonal_fertility`)**: fertility = `1 + 0.5·sin(phase)` (hè tăng, đông giảm, clamp≥0), 1 vòng ~100s sim. `resource_field_regrowth_system` nhân regrowth theo fertility → sinh khối thực vật **bùng-tàn theo mùa** = nhiễu động chu kỳ giúp duy trì chu kỳ predator-prey (đúng khuyến nghị tài liệu). Insert `SeasonClock::default()` trong `init_world`.
+- **Verify:** `cargo build` ✅ · lib **25/25** (ecology 25) ✅ · environmental/evolution_robustness/map_elites/combat/persistence đều pass · `cargo clippy` 0 cảnh báo.
+- **Còn lại (E9)**: expose EcosystemBiomass/Shannon/Simpson/connectance qua IPC (dashboard sống); metric Red-Queen & character displacement tường minh; nghiên cứu intermediate-disturbance.
+- **Tinh chỉnh:** `SEASON_AMPLITUDE` + `rate` (chu kỳ mùa) trong ecology.rs; corpse flux = reserve energy (đơn giản, bảo toàn — nếu muốn tính cả sinh khối cơ thể thì cần kế toán chi phí sinh sản).
+
+---
+
+# 🧭 BACKEND E7 — MAP-Elites descriptor SINH THÁI + tăng trưởng cây theo NPP (2026-07-03)
 
 Tiếp Phase 7 (E7). Đưa **niche sinh thái** vào tầng tiến hoá quality-diversity.
 
