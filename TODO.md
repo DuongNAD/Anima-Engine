@@ -4,7 +4,21 @@
 
 ---
 
-# 📊 [MỚI NHẤT] E9 — Dashboard hệ sinh thái SỐNG (IPC + panel frontend) (2026-07-03)
+# 📈 [MỚI NHẤT] E10 — Biểu đồ thời gian: chu kỳ quần thể + dòng năng lượng (2026-07-03)
+
+Tiếp Phase 7 (E10). Thêm time-series vào `EcosystemPanel` — làm E1–E9 "sống dậy" bằng mắt.
+
+- **Sparkline SVG inline** (không thêm thư viện — CSP/deps sạch): panel giữ lịch sử cuộn ~60 mẫu (1 phút @1Hz), vẽ **2 biểu đồ riêng, MỘT trục mỗi cái** (không dual-axis): (1) **con mồi vs săn mồi** theo thời gian — thấy rõ chu kỳ Lotka-Volterra (săn mồi trễ pha), (2) **3 ngăn sinh khối** (thực vật/động vật/mùn) theo thời gian — dòng năng lượng + dao động mùa.
+- **Theo skill dataviz** (đã nạp trước khi viết chart): màu theo THỰC THỂ cố định; **validate bằng `validate_palette.js`** (không đoán) — biomass green/orange/purple ΔE 29.1, population blue/red ΔE 69.7, **tất cả PASS** CVD+contrast trên nền trắng; đường 2px, baseline mờ, end-dot đánh dấu giá trị mới nhất, **legend luôn có** + nhãn (định danh không chỉ bằng màu), chữ dùng ink token (không mặc màu series); gap 2px giữa các mảng thanh xếp chồng.
+- **Nhìn tận mắt** (bước 7 của skill): render preview HTML với dữ liệu dao động thật + screenshot — chu kỳ predator-prey đọc rõ, không đè nhãn/tràn.
+- **Test**: `EcosystemPanel.test.tsx` +1 (3 test) — assert 2 sparkline xuất hiện sau khi tích lũy ≥2 mẫu.
+- **Verify:** `npm run build` ✅ · src Vitest **10/10** · test:frontend 237/237 · lint 0 lỗi. Backend không đổi.
+- **Còn lại (E11)**: metric Red-Queen/character-displacement; connectance & food-chain length; thí nghiệm intermediate-disturbance.
+- **Tinh chỉnh:** `HISTORY` (số mẫu); màu `PREY_COLOR`/`PREDATOR_COLOR` + `COMPARTMENTS` (đã validate — đổi thì chạy lại validator).
+
+---
+
+# 📊 E9 — Dashboard hệ sinh thái SỐNG (IPC + panel frontend) (2026-07-03)
 
 Tiếp Phase 7 (E9). Đưa hệ sinh thái ra màn hình — chạm IPC + frontend lần đầu, theo pattern polling sẵn có (như `get_terrain_map`), KHÔNG đổi event contract.
 

@@ -24,4 +24,16 @@ describe('EcosystemPanel', () => {
     expect(screen.getByTestId('ecosystem-populations')).toHaveTextContent('3');
     expect(screen.getByTestId('ecosystem-diversity')).toHaveTextContent('0.50 / 0.40');
   });
+
+  it('accumulates history and renders the time-series sparklines', async () => {
+    render(<EcosystemPanel pollMs={30} />);
+    // Sparklines appear once at least two samples have been polled.
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('ecosystem-spark-population')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+    expect(screen.getByTestId('ecosystem-spark-biomass')).toBeInTheDocument();
+  });
 });
