@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::time::Duration;
-use std::thread;
-use anima_engine_lib::core::engine::SimulationEngine;
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::engine::SimulationEngine;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn test_engine_websocket_address_reuse() {
@@ -38,7 +38,11 @@ fn test_engine_websocket_address_reuse() {
         );
 
         // Assert it is running
-        assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be running on iteration {}", i);
+        assert!(
+            engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be running on iteration {}",
+            i
+        );
 
         // Sleep briefly to let the websocket server bind and start listening
         thread::sleep(Duration::from_millis(100));
@@ -47,12 +51,20 @@ fn test_engine_websocket_address_reuse() {
         engine.stop();
 
         // Assert it is stopped
-        assert!(!engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be stopped on iteration {}", i);
+        assert!(
+            !engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be stopped on iteration {}",
+            i
+        );
 
         // Verify that the threads Option is cleared and joined
         {
             let threads_lock = engine.threads.lock().unwrap();
-            assert!(threads_lock.is_none(), "Threads should be joined and None on iteration {}", i);
+            assert!(
+                threads_lock.is_none(),
+                "Threads should be joined and None on iteration {}",
+                i
+            );
         }
     }
 }

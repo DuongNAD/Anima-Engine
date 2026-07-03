@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
-use anima_engine_lib::core::simulation_lifecycle::{SimulationEngine, SavedSimulationState};
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::simulation_lifecycle::{SavedSimulationState, SimulationEngine};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 #[test]
 fn test_saved_simulation_state_serialization() {
@@ -31,7 +31,7 @@ fn test_saved_simulation_state_serialization() {
                 position: glam::Vec3::new(1.0, 0.0, 2.0),
                 energy_value: 30.0,
                 hydration_value: 20.0,
-            }
+            },
         ],
         agents: vec![],
         evolution_settings: EvolutionSettings {

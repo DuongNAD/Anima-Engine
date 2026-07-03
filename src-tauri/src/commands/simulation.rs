@@ -1,7 +1,7 @@
-use tauri::State;
-use std::sync::Arc;
+use crate::core::simulation_lifecycle::{SavedSimulationState, SimulationStatus};
 use crate::AppState;
-use crate::core::simulation_lifecycle::{SimulationStatus, SavedSimulationState};
+use std::sync::Arc;
+use tauri::State;
 
 #[tauri::command]
 pub fn get_simulation_status(state: State<'_, AppState>) -> Result<SimulationStatus, String> {
@@ -39,16 +39,18 @@ pub fn save_simulation_state(
     }
 
     let (tx, rx) = std::sync::mpsc::channel::<SavedSimulationState>();
-    engine.save_request_tx.send(tx)
+    engine
+        .save_request_tx
+        .send(tx)
         .map_err(|e| format!("Failed to send save request: {}", e))?;
 
-    let saved_state = rx.recv_timeout(std::time::Duration::from_secs(5))
+    let saved_state = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
         .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())?;
 
     let json_str = serde_json::to_string_pretty(&saved_state)
         .map_err(|e| format!("Serialization error: {}", e))?;
-    std::fs::write(&file_path, json_str)
-        .map_err(|e| format!("File writing error: {}", e))?;
+    std::fs::write(&file_path, json_str).map_err(|e| format!("File writing error: {}", e))?;
 
     Ok(true)
 }
@@ -59,8 +61,8 @@ pub fn load_simulation_state(
     app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
-    let json_str = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("File read error: {}", e))?;
+    let json_str =
+        std::fs::read_to_string(&file_path).map_err(|e| format!("File read error: {}", e))?;
     let loaded_state = serde_json::from_str::<SavedSimulationState>(&json_str)
         .map_err(|e| format!("Parsing error: {}", e))?;
 
@@ -74,7 +76,7 @@ pub fn load_simulation_state(
     *state.map_elites_grid.lock().unwrap() = loaded_state.map_elites_grid.clone();
 
     *engine.pending_load_state.lock().unwrap() = Some(loaded_state);
-    
+
     engine.start(
         Some(app_handle),
         Arc::clone(&state.evolution_settings),
@@ -213,7 +215,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 4. Front-Left Leg (part_type: 4.0)
-    let (fl_leg_x, fl_leg_y, fl_leg_z) = local_to_world(0.8 + (t * 4.0 + std::f32::consts::PI).sin() * 0.15, -0.8 - hop_height * 0.35, 0.5);
+    let (fl_leg_x, fl_leg_y, fl_leg_z) = local_to_world(
+        0.8 + (t * 4.0 + std::f32::consts::PI).sin() * 0.15,
+        -0.8 - hop_height * 0.35,
+        0.5,
+    );
     parts.push(AdvancedRabbitPart {
         x: fl_leg_x,
         y: fl_leg_y,
@@ -231,7 +237,8 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 5. Front-Right Leg (part_type: 5.0)
-    let (fr_leg_x, fr_leg_y, fr_leg_z) = local_to_world(0.8 + (t * 4.0).sin() * 0.15, -0.8 - hop_height * 0.35, -0.5);
+    let (fr_leg_x, fr_leg_y, fr_leg_z) =
+        local_to_world(0.8 + (t * 4.0).sin() * 0.15, -0.8 - hop_height * 0.35, -0.5);
     parts.push(AdvancedRabbitPart {
         x: fr_leg_x,
         y: fr_leg_y,
@@ -249,7 +256,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 6. Hind-Left Leg (part_type: 6.0)
-    let (hl_leg_x, hl_leg_y, hl_leg_z) = local_to_world(-1.2 - hop_height * 0.1 + (t * 4.0).sin() * 0.1, -0.6 - hop_height * 0.4, 0.6);
+    let (hl_leg_x, hl_leg_y, hl_leg_z) = local_to_world(
+        -1.2 - hop_height * 0.1 + (t * 4.0).sin() * 0.1,
+        -0.6 - hop_height * 0.4,
+        0.6,
+    );
     parts.push(AdvancedRabbitPart {
         x: hl_leg_x,
         y: hl_leg_y,
@@ -267,7 +278,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 7. Hind-Right Leg (part_type: 7.0)
-    let (hr_leg_x, hr_leg_y, hr_leg_z) = local_to_world(-1.2 - hop_height * 0.1 + (t * 4.0 + std::f32::consts::PI).sin() * 0.1, -0.6 - hop_height * 0.4, -0.6);
+    let (hr_leg_x, hr_leg_y, hr_leg_z) = local_to_world(
+        -1.2 - hop_height * 0.1 + (t * 4.0 + std::f32::consts::PI).sin() * 0.1,
+        -0.6 - hop_height * 0.4,
+        -0.6,
+    );
     parts.push(AdvancedRabbitPart {
         x: hr_leg_x,
         y: hr_leg_y,
@@ -304,7 +319,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 9. Mouth (part_type: 9.0)
-    let chewing_offset = if is_eating { (t * 15.0).sin() * 0.08 } else { 0.0 };
+    let chewing_offset = if is_eating {
+        (t * 15.0).sin() * 0.08
+    } else {
+        0.0
+    };
     let (mouth_x, mouth_y, mouth_z) = local_to_world(2.3, -0.4 + chewing_offset, 0.0);
     parts.push(AdvancedRabbitPart {
         x: mouth_x,

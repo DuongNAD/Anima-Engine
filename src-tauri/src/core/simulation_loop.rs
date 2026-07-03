@@ -5,23 +5,27 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use burn::backend::Autodiff;
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, Data, Shape};
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::module::AutodiffModule;
+use burn::optim::{AdamConfig, GradientsParams, Optimizer};
+use burn::tensor::backend::Backend;
+use burn::tensor::{Data, Shape, Tensor};
 
-use tauri::Emitter;
-use crate::evolution::lineage::LineageTracker;
-use crate::core::resources::EvolutionQueue;
-use crate::core::ecs::*;
-use crate::core::agent_systems::*;
-use crate::core::networking_systems::*;
-use crate::core::simulation_state::*;
 use crate::ai::cpg::update_cpg_system;
-use crate::ai::model::{BrainModel, BrainInferenceBuffer, hrrl_learning_system, ActorCriticModel};
 use crate::ai::hrrl::{Transition, TransitionSender};
-use crate::evolution::genotype::{decode_genotype, MorphologyGenotype, MorphologyNode, MorphologyEdge};
-use crate::physics::{resolve_joints_system, integrate_physics_system, JointConstraint, rebuild_spatial_grid_system};
+use crate::ai::model::{hrrl_learning_system, ActorCriticModel, BrainInferenceBuffer, BrainModel};
+use crate::core::agent_systems::*;
+use crate::core::ecs::*;
+use crate::core::networking_systems::*;
+use crate::core::resources::EvolutionQueue;
+use crate::core::simulation_state::*;
+use crate::evolution::genotype::{
+    decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
+};
+use crate::evolution::lineage::LineageTracker;
+use crate::physics::{
+    integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
+};
+use tauri::Emitter;
 
 pub enum ModelUpdate {
     NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
@@ -57,12 +61,16 @@ impl Default for SimulationEngine {
 
 impl SimulationEngine {
     pub fn new() -> Self {
-        let uri = std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
+        let uri =
+            std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
         let user = std::env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".to_string());
         let pass = std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| "password".to_string());
-        let lineage_tracker = Arc::new(crate::evolution::lineage::FallbackLineageTracker::new(&uri, &user, &pass));
+        let lineage_tracker = Arc::new(crate::evolution::lineage::FallbackLineageTracker::new(
+            &uri, &user, &pass,
+        ));
         let sharding_config = Arc::new(RwLock::new(crate::core::ecs::ShardingConfig::default()));
-        let (manual_migration_trigger, manual_migration_receiver) = crossbeam_channel::unbounded::<u16>();
+        let (manual_migration_trigger, manual_migration_receiver) =
+            crossbeam_channel::unbounded::<u16>();
         let (save_request_tx, save_request_rx) = crossbeam_channel::unbounded();
         let pending_load_state = Arc::new(Mutex::new(None));
 
@@ -91,7 +99,9 @@ impl SimulationEngine {
             save_request_tx,
             save_request_rx,
             pending_load_state,
-            environmental_state: Arc::new(RwLock::new(crate::core::ecs::EnvironmentalState::default())),
+            environmental_state: Arc::new(RwLock::new(
+                crate::core::ecs::EnvironmentalState::default(),
+            )),
             terrain_map: Arc::new(RwLock::new(None)),
         }
     }
@@ -152,7 +162,7 @@ impl SimulationEngine {
                     model_tx_clone,
                     old_model_rx_clone,
                     device,
-                    |m| ModelUpdate::Wgpu(m),
+                    ModelUpdate::Wgpu,
                 );
             })
         } else {
@@ -168,14 +178,22 @@ impl SimulationEngine {
                     model_tx_clone,
                     old_model_rx_clone,
                     device,
-                    |m| ModelUpdate::NdArray(m),
+                    ModelUpdate::NdArray,
                 );
             })
         };
 
         let (stats_tx, stats_rx) = crossbeam_channel::bounded::<Vec<AgentEpochStats>>(128);
-        let (spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>(128);
-        let (env_tx, env_rx) = crossbeam_channel::bounded::<crate::evolution::meta_ai::EnvironmentalEvent>(32);
+        let (spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(
+            Entity,
+            MorphologyGenotype,
+            glam::Vec3,
+            String,
+            u32,
+            Vec<String>,
+        )>(128);
+        let (env_tx, env_rx) =
+            crossbeam_channel::bounded::<crate::evolution::meta_ai::EnvironmentalEvent>(32);
 
         let running_clone_evo = Arc::clone(&self.running);
         let evolution_running_clone = Arc::clone(&evolution_running);
@@ -190,16 +208,19 @@ impl SimulationEngine {
                 let settings = evolution_settings_clone.lock().unwrap();
                 settings.grid_resolution
             };
-            let mut archive = crate::evolution::map_elites::MapElitesArchive::new(1.0 / (initial_resolution as f32));
+            let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
+                1.0 / (initial_resolution as f32),
+            );
             let mut node_id_counter = 3u32;
-            let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> = match std::env::var("GEMINI_SESSION_TOKEN") {
-                Ok(token) if !token.trim().is_empty() => {
-                    Box::new(crate::evolution::meta_ai::GeminiWebSessionClient::new(&token))
-                }
-                _ => {
-                    Box::new(crate::evolution::meta_ai::GeminiMetaAiClient::new(Duration::from_secs(5)))
-                }
-            };
+            let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
+                match std::env::var("GEMINI_SESSION_TOKEN") {
+                    Ok(token) if !token.trim().is_empty() => Box::new(
+                        crate::evolution::meta_ai::GeminiWebSessionClient::new(&token),
+                    ),
+                    _ => Box::new(crate::evolution::meta_ai::GeminiMetaAiClient::new(
+                        Duration::from_secs(5),
+                    )),
+                };
             let mut meta_ai_history = Vec::new();
             let mut meta_ai_epoch = 0u32;
 
@@ -285,7 +306,11 @@ impl SimulationEngine {
                     let mut grid_updated = false;
                     let (selection_bias, mutation_rate, grid_res) = {
                         let settings = evolution_settings_clone.lock().unwrap();
-                        (settings.selection_bias, settings.mutation_rate, settings.grid_resolution)
+                        (
+                            settings.selection_bias,
+                            settings.mutation_rate,
+                            settings.grid_resolution,
+                        )
                     };
 
                     let target_res = 1.0 / (grid_res as f32);
@@ -313,10 +338,17 @@ impl SimulationEngine {
                             grid_state.grid.clear();
                             for (coords, elite) in archive.grid.iter() {
                                 let key = format!("{},{}", coords.0, coords.1);
-                                grid_state.grid.insert(key, crate::commands::EliteIndividualState {
-                                    fitness: elite.fitness as f64,
-                                    features: elite.features.iter().map(|&f| f as f64).collect(),
-                                });
+                                grid_state.grid.insert(
+                                    key,
+                                    crate::commands::EliteIndividualState {
+                                        fitness: elite.fitness as f64,
+                                        features: elite
+                                            .features
+                                            .iter()
+                                            .map(|&f| f as f64)
+                                            .collect(),
+                                    },
+                                );
                             }
                         }
 
@@ -333,35 +365,39 @@ impl SimulationEngine {
                         let parent_a = archive.select_parent(selection_bias);
                         let parent_b = archive.select_parent(selection_bias);
 
-                        let (mut offspring, parent_ids, max_parent_gen, relation_type) = if let Some(elite_a) = parent_a {
-                            if let Some(elite_b) = parent_b {
-                                let child = crate::evolution::crossover::crossover_genotypes(
-                                    &elite_a.genotype,
-                                    &elite_b.genotype,
-                                    &mut node_id_counter,
-                                );
-                                (
-                                    child,
-                                    vec![elite_a.lineage_id.clone(), elite_b.lineage_id.clone()],
-                                    elite_a.generation.max(elite_b.generation),
-                                    crate::evolution::lineage::RelationType::Crossover,
-                                )
+                        let (mut offspring, parent_ids, max_parent_gen, relation_type) =
+                            if let Some(elite_a) = parent_a {
+                                if let Some(elite_b) = parent_b {
+                                    let child = crate::evolution::crossover::crossover_genotypes(
+                                        &elite_a.genotype,
+                                        &elite_b.genotype,
+                                        &mut node_id_counter,
+                                    );
+                                    (
+                                        child,
+                                        vec![
+                                            elite_a.lineage_id.clone(),
+                                            elite_b.lineage_id.clone(),
+                                        ],
+                                        elite_a.generation.max(elite_b.generation),
+                                        crate::evolution::lineage::RelationType::Crossover,
+                                    )
+                                } else {
+                                    (
+                                        elite_a.genotype.clone(),
+                                        vec![elite_a.lineage_id.clone()],
+                                        elite_a.generation,
+                                        crate::evolution::lineage::RelationType::Clone,
+                                    )
+                                }
                             } else {
                                 (
-                                    elite_a.genotype.clone(),
-                                    vec![elite_a.lineage_id.clone()],
-                                    elite_a.generation,
+                                    stats.genotype.clone(),
+                                    vec![stats.lineage_id.clone()],
+                                    stats.generation,
                                     crate::evolution::lineage::RelationType::Clone,
                                 )
-                            }
-                        } else {
-                            (
-                                stats.genotype.clone(),
-                                vec![stats.lineage_id.clone()],
-                                stats.generation,
-                                crate::evolution::lineage::RelationType::Clone,
-                            )
-                        };
+                            };
 
                         let mut final_rel_type = relation_type;
                         if mutation_rate > 0.0 {
@@ -386,7 +422,14 @@ impl SimulationEngine {
                             final_rel_type,
                         );
 
-                        let _ = spawn_tx.send((stats.entity, offspring, stats.position, offspring_id, offspring_generation, parent_ids));
+                        let _ = spawn_tx.send((
+                            stats.entity,
+                            offspring,
+                            stats.position,
+                            offspring_id,
+                            offspring_generation,
+                            parent_ids,
+                        ));
                     }
                 }
             }
@@ -407,43 +450,57 @@ impl SimulationEngine {
         let map_elites_grid_clone_save = Arc::clone(&map_elites_grid);
         let terrain_map_clone = Arc::clone(&self.terrain_map);
 
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
-        let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
+        let (inbound_tx, inbound_rx) =
+            crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
+        let (outbound_tx, outbound_rx) =
+            crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
 
         let sim_handle = thread::spawn(move || {
             let state_to_load = pending_load_state_clone.lock().unwrap().take();
-            
+
             let mut world = init_world();
-            
-            let loaded_bounds = state_to_load.as_ref().map(|s| s.map_bounds).unwrap_or_else(MapBounds::default);
+
+            let loaded_bounds = state_to_load
+                .as_ref()
+                .map(|s| s.map_bounds)
+                .unwrap_or_default();
             world.insert_resource(loaded_bounds);
 
             if let Some(terrain_map) = world.get_resource::<crate::core::terrain::TerrainMap>() {
-                let state = crate::commands::environment::TerrainMapState::from_resource(terrain_map, &loaded_bounds);
+                let state = crate::commands::environment::TerrainMapState::from_resource(
+                    terrain_map,
+                    &loaded_bounds,
+                );
                 if let Ok(mut lock) = terrain_map_clone.write() {
                     *lock = Some(state);
                 }
             }
 
-            world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(10.0, &loaded_bounds));
-            
-            let loaded_pheromone = state_to_load.as_ref().map(|s| {
-                crate::ai::pheromone::PheromoneGrid {
+            world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
+                10.0,
+                &loaded_bounds,
+            ));
+
+            let loaded_pheromone = state_to_load
+                .as_ref()
+                .map(|s| crate::ai::pheromone::PheromoneGrid {
                     values: s.pheromone_grid.values.clone(),
                     scratch: vec![0.0; crate::ai::pheromone::CELL_COUNT],
                     diffusion_rate: s.pheromone_grid.diffusion_rate,
                     decay_rate: s.pheromone_grid.decay_rate,
-                }
-            }).unwrap_or_default();
+                })
+                .unwrap_or_default();
             world.insert_resource(loaded_pheromone);
 
             world.insert_resource(BrainModel::new(15, 64, 4));
             world.insert_resource(BrainInferenceBuffer::default());
 
             let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
-            let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
+            let (recycle_req_tx, recycle_req_rx) =
+                crossbeam_channel::unbounded::<InferenceRequestBatch>();
             let (res_tx, res_rx) = crossbeam_channel::unbounded::<InferenceResponseBatch>();
-            let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded::<InferenceResponseBatch>();
+            let (recycle_res_tx, recycle_res_rx) =
+                crossbeam_channel::unbounded::<InferenceResponseBatch>();
 
             // Pre-populate recycle pools to ensure zero heap allocations in the hot path
             for _ in 0..16 {
@@ -477,11 +534,17 @@ impl SimulationEngine {
                     // Check for model update
                     if let Ok(new_model) = model_rx_inference.try_recv() {
                         match (new_model, &mut brain_model.backend) {
-                            (ModelUpdate::NdArray(new_m), crate::ai::model::BrainModelBackend::NdArray(ref mut old_m, _)) => {
+                            (
+                                ModelUpdate::NdArray(new_m),
+                                crate::ai::model::BrainModelBackend::NdArray(ref mut old_m, _),
+                            ) => {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
                             }
-                            (ModelUpdate::Wgpu(new_m), crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _)) => {
+                            (
+                                ModelUpdate::Wgpu(new_m),
+                                crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _),
+                            ) => {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
                             }
@@ -508,14 +571,30 @@ impl SimulationEngine {
                             // Run forward pass
                             let outputs_vec = match &brain_model.backend {
                                 crate::ai::model::BrainModelBackend::NdArray(model, device) => {
-                                    let data = burn::tensor::Data::new(inputs.clone(), burn::tensor::Shape::new([batch_size, 15]));
-                                    let input_tensor = burn::tensor::Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
+                                    let data = burn::tensor::Data::new(
+                                        inputs.clone(),
+                                        burn::tensor::Shape::new([batch_size, 15]),
+                                    );
+                                    let input_tensor = burn::tensor::Tensor::<
+                                        burn_ndarray::NdArray<f32>,
+                                        2,
+                                    >::from_data(
+                                        data, device
+                                    );
                                     let (actor_out, _) = model.forward(input_tensor);
                                     actor_out.into_data().value
                                 }
                                 crate::ai::model::BrainModelBackend::Wgpu(model, device) => {
-                                    let data = burn::tensor::Data::new(inputs.clone(), burn::tensor::Shape::new([batch_size, 15]));
-                                    let input_tensor = burn::tensor::Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(data, device);
+                                    let data = burn::tensor::Data::new(
+                                        inputs.clone(),
+                                        burn::tensor::Shape::new([batch_size, 15]),
+                                    );
+                                    let input_tensor = burn::tensor::Tensor::<
+                                        burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>,
+                                        2,
+                                    >::from_data(
+                                        data, device
+                                    );
                                     let (actor_out, _) = model.forward(input_tensor);
                                     actor_out.into_data().value
                                 }
@@ -523,9 +602,9 @@ impl SimulationEngine {
 
                             for (agent_idx, req) in req_batch.requests.iter().enumerate() {
                                 let mut actions = [0.0f32; 4];
-                                for k in 0..4 {
+                                for (k, action) in actions.iter_mut().enumerate() {
                                     if let Some(&val) = outputs_vec.get(agent_idx * 4 + k) {
-                                        actions[k] = val;
+                                        *action = val;
                                     }
                                 }
                                 res_batch.responses.push(AgentInferenceResponse {
@@ -542,18 +621,21 @@ impl SimulationEngine {
                     }
                 }
             });
-            
-            let loaded_food_settings = state_to_load.as_ref().map(|s| s.food_spawn_settings).unwrap_or_else(FoodSpawnSettings::default);
+
+            let loaded_food_settings = state_to_load
+                .as_ref()
+                .map(|s| s.food_spawn_settings)
+                .unwrap_or_default();
             world.insert_resource(loaded_food_settings);
             world.insert_resource(EnvironmentalSpawnSettings::default());
-            
+
             world.insert_resource(TransitionSender(trans_tx));
 
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
             world.insert_resource(BevyEvolutionRunning(evolution_running));
             world.insert_resource(BevyMapElitesGrid(map_elites_grid));
             world.insert_resource(BevyAppHandle(app_handle_clone));
-            
+
             let initial_resolution = {
                 let settings_lock = evolution_settings_clone_save.lock().unwrap();
                 settings_lock.grid_resolution
@@ -564,9 +646,11 @@ impl SimulationEngine {
                 grid_resolution: initial_resolution,
             });
             world.insert_resource(BevyMapElitesArchive {
-                archive: crate::evolution::map_elites::MapElitesArchive::new(1.0 / (initial_resolution as f32)),
+                archive: crate::evolution::map_elites::MapElitesArchive::new(
+                    1.0 / (initial_resolution as f32),
+                ),
             });
-            
+
             let mut next_node_id = 3;
             if let Some(ref state) = state_to_load {
                 for agent in &state.agents {
@@ -582,29 +666,39 @@ impl SimulationEngine {
             world.insert_resource(EvolutionSender(stats_tx));
             world.insert_resource(EvolutionReceiver(spawn_rx));
             world.insert_resource(EnvironmentalEventReceiver(env_rx));
-            
-            let loaded_epoch = state_to_load.as_ref().map(|s| s.epoch_manager).unwrap_or(EpochManager {
-                ticks_per_epoch: 1000,
-                current_epoch_ticks: 0,
-                current_epoch: 0,
-            });
+
+            let loaded_epoch =
+                state_to_load
+                    .as_ref()
+                    .map(|s| s.epoch_manager)
+                    .unwrap_or(EpochManager {
+                        ticks_per_epoch: 1000,
+                        current_epoch_ticks: 0,
+                        current_epoch: 0,
+                    });
             world.insert_resource(loaded_epoch);
             world.insert_resource(EvolutionQueue::default());
 
             world.insert_resource(crate::core::ecs::InboundMigrationReceiver(inbound_rx));
             world.insert_resource(crate::core::ecs::OutboundMigrationSender(outbound_tx));
             world.insert_resource(crate::core::ecs::ShardingResource(sharding_config_sim));
-            world.insert_resource(crate::core::ecs::BevyMigrationTrigger(manual_migration_receiver_clone));
+            world.insert_resource(crate::core::ecs::BevyMigrationTrigger(
+                manual_migration_receiver_clone,
+            ));
 
-            let loaded_env = state_to_load.as_ref().map(|s| ActiveEnvironmentEvent(s.active_environment_event)).unwrap_or_default();
+            let loaded_env = state_to_load
+                .as_ref()
+                .map(|s| ActiveEnvironmentEvent(s.active_environment_event))
+                .unwrap_or_default();
             world.insert_resource(loaded_env);
 
             if let Some(ref state) = state_to_load {
-                lineage_tracker_sim.load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
+                lineage_tracker_sim
+                    .load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
                 if let Ok(mut history) = chronicle_history_clone_save.write() {
                     *history = state.chronicle_history.clone();
                 }
-                
+
                 for agent in &state.agents {
                     spawn_serialized_agent(&mut world, agent);
                 }
@@ -627,7 +721,9 @@ impl SimulationEngine {
                             replenishment_rate: lake.replenishment_rate,
                         },
                         Position(lake.position),
-                        crate::physics::SpatialCollider { radius: lake.radius },
+                        crate::physics::SpatialCollider {
+                            radius: lake.radius,
+                        },
                     ));
                 }
                 for tree in &state.trees {
@@ -641,15 +737,32 @@ impl SimulationEngine {
                             seed_spread_radius: tree.seed_spread_radius,
                         },
                         Position(tree.position),
-                        crate::physics::SpatialCollider { radius: tree.radius },
+                        crate::physics::SpatialCollider {
+                            radius: tree.radius,
+                        },
                     ));
                 }
             } else {
                 let mut genotype = MorphologyGenotype::new();
-                genotype.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
-                genotype.add_node(MorphologyNode { id: 1, length: 1.0, radius: 0.2, mass: 1.0 });
-                genotype.add_node(MorphologyNode { id: 2, length: 1.0, radius: 0.2, mass: 0.8 });
-                
+                genotype.add_node(MorphologyNode {
+                    id: 0,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 1.5,
+                });
+                genotype.add_node(MorphologyNode {
+                    id: 1,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 1.0,
+                });
+                genotype.add_node(MorphologyNode {
+                    id: 2,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 0.8,
+                });
+
                 genotype.add_edge(MorphologyEdge {
                     source_node: 0,
                     target_node: 1,
@@ -666,7 +779,8 @@ impl SimulationEngine {
                 for i in 0..10 {
                     let initial_pos = glam::Vec3::new(i as f32 * 5.0, 0.0, 0.0);
                     let initial_rot = glam::Quat::IDENTITY;
-                    let agent_entity = decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
+                    let agent_entity =
+                        decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
                     let lineage_id = uuid::Uuid::new_v4().to_string();
                     let _ = lineage_tracker_sim.add_root(lineage_id.clone(), genotype.clone());
 
@@ -691,9 +805,17 @@ impl SimulationEngine {
                     }
                 }
 
-                let env_settings = world.get_resource::<EnvironmentalSpawnSettings>().cloned().unwrap_or_default();
-                let terrain_map = world.get_resource::<crate::core::terrain::TerrainMap>().cloned();
-                let bounds = world.get_resource::<MapBounds>().cloned().unwrap_or_default();
+                let env_settings = world
+                    .get_resource::<EnvironmentalSpawnSettings>()
+                    .cloned()
+                    .unwrap_or_default();
+                let terrain_map = world
+                    .get_resource::<crate::core::terrain::TerrainMap>()
+                    .cloned();
+                let bounds = world
+                    .get_resource::<MapBounds>()
+                    .cloned()
+                    .unwrap_or_default();
 
                 let mut lake_candidates = Vec::new();
                 let mut tree_candidates = Vec::new();
@@ -705,8 +827,12 @@ impl SimulationEngine {
                             let biome = tm.biomes[idx];
                             let elevation = tm.elevations[idx];
 
-                            let px = bounds.min.x + ((col as f32 + 0.5) / tm.width as f32) * (bounds.max.x - bounds.min.x);
-                            let pz = bounds.min.z + ((row as f32 + 0.5) / tm.height as f32) * (bounds.max.z - bounds.min.z);
+                            let px = bounds.min.x
+                                + ((col as f32 + 0.5) / tm.width as f32)
+                                    * (bounds.max.x - bounds.min.x);
+                            let pz = bounds.min.z
+                                + ((row as f32 + 0.5) / tm.height as f32)
+                                    * (bounds.max.z - bounds.min.z);
                             let pos = glam::Vec3::new(px, 0.0, pz);
 
                             if (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4 {
@@ -726,8 +852,7 @@ impl SimulationEngine {
                 if !lake_candidates.is_empty() {
                     lake_candidates.shuffle(&mut rng);
                     let num_lakes_to_spawn = 5.min(lake_candidates.len());
-                    for i in 0..num_lakes_to_spawn {
-                        let pos = lake_candidates[i];
+                    for &pos in lake_candidates.iter().take(num_lakes_to_spawn) {
                         world.spawn((
                             Lake {
                                 current_water: env_settings.default_lake_water,
@@ -754,8 +879,7 @@ impl SimulationEngine {
                 if !tree_candidates.is_empty() {
                     tree_candidates.shuffle(&mut rng);
                     let num_trees_to_spawn = env_settings.max_tree_count.min(tree_candidates.len());
-                    for i in 0..num_trees_to_spawn {
-                        let pos = tree_candidates[i];
+                    for &pos in tree_candidates.iter().take(num_trees_to_spawn) {
                         world.spawn((
                             Tree {
                                 current_fruit: env_settings.default_tree_fruit,
@@ -795,9 +919,12 @@ impl SimulationEngine {
                 update_cpg_system.after(action_resolution_system),
                 resolve_joints_system.after(update_cpg_system),
                 integrate_physics_system.after(resolve_joints_system),
-                crate::ai::pheromone::agent_release_pheromone_system.after(integrate_physics_system),
-                crate::ai::pheromone::update_pheromone_grid_system.after(crate::ai::pheromone::agent_release_pheromone_system),
-                crate::ai::pheromone::agent_read_pheromone_system.after(crate::ai::pheromone::update_pheromone_grid_system),
+                crate::ai::pheromone::agent_release_pheromone_system
+                    .after(integrate_physics_system),
+                crate::ai::pheromone::update_pheromone_grid_system
+                    .after(crate::ai::pheromone::agent_release_pheromone_system),
+                crate::ai::pheromone::agent_read_pheromone_system
+                    .after(crate::ai::pheromone::update_pheromone_grid_system),
             ));
             schedule.add_systems((
                 update_agent_evaluation_system.after(integrate_physics_system),
@@ -838,11 +965,12 @@ impl SimulationEngine {
 
             let mut state_buffer = Vec::with_capacity(1000);
             let mut state_raycast_buffer = Vec::with_capacity(1000);
-            let mut local_env_state = crate::core::ecs::EnvironmentalState { elements: Vec::with_capacity(64) };
+            let mut local_env_state = crate::core::ecs::EnvironmentalState {
+                elements: Vec::with_capacity(64),
+            };
 
             while running_clone.load(Ordering::SeqCst) {
                 let start_time = Instant::now();
-
 
                 schedule.run(&mut world);
                 tick_count += 1;
@@ -861,23 +989,33 @@ impl SimulationEngine {
 
                 state_buffer.clear();
 
-                for (entity, segment, pos, rot, parent_agent, joint_constraint, joint_axis) in query_state.iter(&world) {
+                for (entity, segment, pos, rot, parent_agent, joint_constraint, joint_axis) in
+                    query_state.iter(&world)
+                {
                     let (yaw, pitch, roll) = rot.0.to_euler(glam::EulerRot::YXZ);
-                    
-                    let parent_segment_id = world.get::<ParentLink>(entity)
+
+                    let parent_segment_id = world
+                        .get::<ParentLink>(entity)
                         .and_then(|parent_link| world.get::<Segment>(parent_link.0))
                         .map(|parent_segment| parent_segment.id);
 
-                    let (energy, hydration) = if let Some(homeo) = world.get::<crate::ai::hrrl::HomeostaticState>(parent_agent.0) {
+                    let (energy, hydration) = if let Some(homeo) =
+                        world.get::<crate::ai::hrrl::HomeostaticState>(parent_agent.0)
+                    {
                         (homeo.energy, homeo.hydration)
                     } else {
                         (0.0, 0.0)
                     };
 
-                    let head_rot = world.get::<Rotation>(parent_agent.0).map(|r| r.0).unwrap_or(glam::Quat::IDENTITY);
+                    let head_rot = world
+                        .get::<Rotation>(parent_agent.0)
+                        .map(|r| r.0)
+                        .unwrap_or(glam::Quat::IDENTITY);
                     let head_direction = (head_rot * glam::Vec3::Z).to_array();
 
-                    let joint_anchor = joint_constraint.map(|jc| jc.anchor_offset).unwrap_or(glam::Vec3::ZERO);
+                    let joint_anchor = joint_constraint
+                        .map(|jc| jc.anchor_offset)
+                        .unwrap_or(glam::Vec3::ZERO);
                     let j_axis = joint_axis.map(|ja| ja.0).unwrap_or(glam::Vec3::ZERO);
 
                     let agent_type = if world.get::<Predator>(parent_agent.0).is_some() {
@@ -919,51 +1057,74 @@ impl SimulationEngine {
                 }
 
                 if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
-                    let mut grid_state = pheromone_grid_state_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut grid_state = pheromone_grid_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     grid_state.grid.copy_from_slice(&grid.values);
                 }
 
                 state_raycast_buffer.clear();
-                if let Some(raycasts_res) = world.get_resource::<crate::core::ecs::ActiveRaycasts>() {
+                if let Some(raycasts_res) = world.get_resource::<crate::core::ecs::ActiveRaycasts>()
+                {
                     state_raycast_buffer.extend_from_slice(&raycasts_res.raycasts);
                 }
                 {
-                    let mut shared = active_raycasts_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut shared = active_raycasts_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut *shared, &mut state_raycast_buffer);
                 }
 
-                if let Some(mut combat_res) = world.get_resource_mut::<crate::core::ecs::CombatEvents>() {
+                if let Some(mut combat_res) =
+                    world.get_resource_mut::<crate::core::ecs::CombatEvents>()
+                {
                     if !combat_res.events.is_empty() {
-                        let mut shared = combat_events_clone.write().unwrap_or_else(|e| e.into_inner());
+                        let mut shared = combat_events_clone
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner());
                         shared.extend(combat_res.events.drain(..));
                     }
                 }
 
                 {
                     local_env_state.elements.clear();
-                    let mut lake_query = world.query::<(&Position, &crate::physics::SpatialCollider, &crate::core::ecs::Lake)>();
+                    let mut lake_query = world.query::<(
+                        &Position,
+                        &crate::physics::SpatialCollider,
+                        &crate::core::ecs::Lake,
+                    )>();
                     for (pos, collider, lake) in lake_query.iter(&world) {
-                        local_env_state.elements.push(crate::core::ecs::EnvironmentalElement {
-                            element_type: "lake".to_string(),
-                            x: pos.0.x,
-                            y: pos.0.z,
-                            radius: collider.radius,
-                            resources: lake.current_water,
-                        });
+                        local_env_state
+                            .elements
+                            .push(crate::core::ecs::EnvironmentalElement {
+                                element_type: "lake".to_string(),
+                                x: pos.0.x,
+                                y: pos.0.z,
+                                radius: collider.radius,
+                                resources: lake.current_water,
+                            });
                     }
 
-                    let mut tree_query = world.query::<(&Position, &crate::physics::SpatialCollider, &crate::core::ecs::Tree)>();
+                    let mut tree_query = world.query::<(
+                        &Position,
+                        &crate::physics::SpatialCollider,
+                        &crate::core::ecs::Tree,
+                    )>();
                     for (pos, collider, tree) in tree_query.iter(&world) {
-                        local_env_state.elements.push(crate::core::ecs::EnvironmentalElement {
-                            element_type: "tree".to_string(),
-                            x: pos.0.x,
-                            y: pos.0.z,
-                            radius: collider.radius,
-                            resources: tree.current_fruit,
-                        });
+                        local_env_state
+                            .elements
+                            .push(crate::core::ecs::EnvironmentalElement {
+                                element_type: "tree".to_string(),
+                                x: pos.0.x,
+                                y: pos.0.z,
+                                radius: collider.radius,
+                                resources: tree.current_fruit,
+                            });
                     }
 
-                    let mut shared = environmental_state_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut shared = environmental_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut shared.elements, &mut local_env_state.elements);
                 }
 
@@ -1042,7 +1203,9 @@ impl SimulationEngine {
                     let _ = handle.emit("simulation-tick", &tick_payload);
 
                     {
-                        let shared = pheromone_grid_state_emit.read().unwrap_or_else(|e| e.into_inner());
+                        let shared = pheromone_grid_state_emit
+                            .read()
+                            .unwrap_or_else(|e| e.into_inner());
                         local_pheromone_emit.grid.copy_from_slice(&shared.grid);
                         local_pheromone_emit.width = shared.width;
                         local_pheromone_emit.height = shared.height;
@@ -1051,14 +1214,18 @@ impl SimulationEngine {
 
                     local_raycast_emit.clear();
                     {
-                        let shared = active_raycasts_emit.read().unwrap_or_else(|e| e.into_inner());
+                        let shared = active_raycasts_emit
+                            .read()
+                            .unwrap_or_else(|e| e.into_inner());
                         local_raycast_emit.extend_from_slice(&shared);
                     }
                     let _ = handle.emit("raycast-update", &local_raycast_emit);
 
                     local_combat_emit.clear();
                     {
-                        let mut shared = combat_events_emit.write().unwrap_or_else(|e| e.into_inner());
+                        let mut shared = combat_events_emit
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner());
                         std::mem::swap(&mut *shared, &mut local_combat_emit);
                     }
                     for event in &local_combat_emit {
@@ -1077,22 +1244,39 @@ impl SimulationEngine {
                 .enable_all()
                 .build()
                 .unwrap();
-            
+
             rt.block_on(async {
                 let local_port = {
                     let config = sharding_config_clone.read().unwrap();
                     config.local_port
                 };
 
-                let server_fut = run_websocket_server(local_port, inbound_tx_clone, running_clone_net.clone(), app_handle_net);
-                let client_fut = run_websocket_client(outbound_rx, inbound_tx, running_clone_net, app_handle, local_port);
+                let server_fut = run_websocket_server(
+                    local_port,
+                    inbound_tx_clone,
+                    running_clone_net.clone(),
+                    app_handle_net,
+                );
+                let client_fut = run_websocket_client(
+                    outbound_rx,
+                    inbound_tx,
+                    running_clone_net,
+                    app_handle,
+                    local_port,
+                );
 
                 let _ = tokio::join!(server_fut, client_fut);
             });
         });
 
         let mut threads_lock = self.threads.lock().unwrap_or_else(|e| e.into_inner());
-        *threads_lock = Some(vec![sim_handle, emit_handle, evo_handle, net_handle, learn_handle]);
+        *threads_lock = Some(vec![
+            sim_handle,
+            emit_handle,
+            evo_handle,
+            net_handle,
+            learn_handle,
+        ]);
     }
 
     pub fn stop(&self) {
@@ -1129,12 +1313,18 @@ fn run_training_loop<B>(
 ) where
     B: Backend<FloatElem = f32> + 'static,
     B::Device: Clone + Send + Sync + 'static,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device> + burn::tensor::backend::AutodiffBackend<Device = B::Device, FloatElem = f32, IntElem = B::IntElem> + 'static,
-    ActorCriticModel<Autodiff<B>>: AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
+    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>
+        + burn::tensor::backend::AutodiffBackend<
+            Device = B::Device,
+            FloatElem = f32,
+            IntElem = B::IntElem,
+        > + 'static,
+    ActorCriticModel<Autodiff<B>>:
+        AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
 {
     let mut train_model = ActorCriticModel::<Autodiff<B>>::new(15, 64, 4, &device);
     let mut optim = AdamConfig::new().init();
-    
+
     let mut batch = Vec::new();
     while running.load(Ordering::SeqCst) {
         match trans_rx.recv_timeout(Duration::from_millis(10)) {
@@ -1174,7 +1364,7 @@ fn run_training_loop<B>(
 
                     let target = rewards_tensor + critic_out_next.detach() * 0.99;
                     let td_error = target - critic_out.clone();
-                    
+
                     let critic_diff = td_error.clone();
                     let loss_critic = (critic_diff.clone() * critic_diff).mean();
 

@@ -1,7 +1,7 @@
 mod common;
 
-use std::sync::{Arc, Mutex};
 use bevy_ecs::prelude::*;
+use std::sync::{Arc, Mutex};
 
 // Verify modular submodules compile cleanly
 #[allow(unused_imports)]
@@ -11,25 +11,24 @@ use anima_engine_lib::core::networking_systems;
 #[allow(unused_imports)]
 use anima_engine_lib::core::simulation_lifecycle;
 
-use anima_engine_lib::core::ecs::{
-    init_world, FoodSpawnSettings,
-    OutboundMigrationSender, InboundMigrationReceiver, ShardingResource, ShardingConfig,
-    BevyMigrationTrigger,
-};
-use anima_engine_lib::ai::model::{BrainModel, BrainInferenceBuffer, brain_inference_system};
 use anima_engine_lib::ai::cpg::update_cpg_system;
-use anima_engine_lib::physics::{resolve_joints_system, integrate_physics_system};
 use anima_engine_lib::ai::hrrl::{Transition, TransitionSender};
+use anima_engine_lib::ai::model::{brain_inference_system, BrainInferenceBuffer, BrainModel};
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
-use anima_engine_lib::core::simulation_lifecycle::{
-    BevyEvolutionSettings, BevyEvolutionRunning, BevyMapElitesGrid, BevyAppHandle,
-    ActiveEvolutionSettings, BevyMapElitesArchive, NextNodeId, EnvironmentalEventReceiver,
-    EvolutionSender, EvolutionReceiver, EvolutionQueue,
-    sync_evolution_settings_system,
+use anima_engine_lib::core::ecs::{
+    init_world, BevyMigrationTrigger, FoodSpawnSettings, InboundMigrationReceiver,
+    OutboundMigrationSender, ShardingConfig, ShardingResource,
 };
+use anima_engine_lib::core::simulation_lifecycle::{
+    sync_evolution_settings_system, ActiveEvolutionSettings, BevyAppHandle, BevyEvolutionRunning,
+    BevyEvolutionSettings, BevyMapElitesArchive, BevyMapElitesGrid, EnvironmentalEventReceiver,
+    EvolutionQueue, EvolutionReceiver, EvolutionSender, NextNodeId,
+};
+use anima_engine_lib::physics::{integrate_physics_system, resolve_joints_system};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -101,14 +100,19 @@ fn test_modularity_zero_allocations_in_tick_loop() {
     schedule.add_systems((
         sync_evolution_settings_system,
         anima_engine_lib::core::simulation_lifecycle::receive_environmental_events_system,
-        anima_engine_lib::core::ecs::apply_environmental_effects_system.after(anima_engine_lib::core::simulation_lifecycle::receive_environmental_events_system),
+        anima_engine_lib::core::ecs::apply_environmental_effects_system.after(
+            anima_engine_lib::core::simulation_lifecycle::receive_environmental_events_system,
+        ),
         brain_inference_system,
         update_cpg_system.after(brain_inference_system),
         resolve_joints_system.after(update_cpg_system),
         integrate_physics_system.after(resolve_joints_system),
-        anima_engine_lib::ai::pheromone::agent_release_pheromone_system.after(integrate_physics_system),
-        anima_engine_lib::ai::pheromone::update_pheromone_grid_system.after(anima_engine_lib::ai::pheromone::agent_release_pheromone_system),
-        anima_engine_lib::ai::pheromone::agent_read_pheromone_system.after(anima_engine_lib::ai::pheromone::update_pheromone_grid_system),
+        anima_engine_lib::ai::pheromone::agent_release_pheromone_system
+            .after(integrate_physics_system),
+        anima_engine_lib::ai::pheromone::update_pheromone_grid_system
+            .after(anima_engine_lib::ai::pheromone::agent_release_pheromone_system),
+        anima_engine_lib::ai::pheromone::agent_read_pheromone_system
+            .after(anima_engine_lib::ai::pheromone::update_pheromone_grid_system),
     ));
 
     // Warm-up to cache Bevy archetype maps and query states
@@ -128,5 +132,9 @@ fn test_modularity_zero_allocations_in_tick_loop() {
     let allocations = ALLOCATOR.stop_tracking();
 
     // Assert zero heap allocations on the hot path
-    assert_eq!(allocations, 0, "Expected 0 allocations on hot path, but recorded {}", allocations);
+    assert_eq!(
+        allocations, 0,
+        "Expected 0 allocations on hot path, but recorded {}",
+        allocations
+    );
 }

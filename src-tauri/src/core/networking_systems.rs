@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use futures_util::{SinkExt, StreamExt};
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
-use tokio_tungstenite::accept_async;
-use futures_util::{StreamExt, SinkExt};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
 use tauri::Emitter;
-use socket2::{Socket, Domain, Type, Protocol};
+use tokio_tungstenite::accept_async;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct MigrationPayload {
@@ -13,7 +13,7 @@ pub struct MigrationPayload {
     pub direction: String, // "incoming" | "outgoing"
     pub source_port: u16,
     pub target_port: u16,
-    pub status: String,    // "Success" | "Failed"
+    pub status: String, // "Success" | "Failed"
     pub timestamp: u64,
 }
 
@@ -33,7 +33,7 @@ pub async fn run_websocket_server<R: tauri::Runtime>(
         return Ok(());
     }
     let addr = format!("127.0.0.1:{}", port);
-    
+
     // Configure socket2 with SO_REUSEADDR before binding
     let socket = match Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)) {
         Ok(s) => s,
@@ -156,11 +156,21 @@ pub async fn run_websocket_client<R: tauri::Runtime>(
                     Err("Target connection refused (simulate closed port)".to_string())
                 } else {
                     let url = format!("ws://127.0.0.1:{}", target_port);
-                    match tokio::time::timeout(Duration::from_millis(500), tokio_tungstenite::connect_async(&url)).await {
+                    match tokio::time::timeout(
+                        Duration::from_millis(500),
+                        tokio_tungstenite::connect_async(&url),
+                    )
+                    .await
+                    {
                         Ok(Ok((mut ws_stream, _))) => {
                             let serialized = serde_json::to_string(&data).unwrap();
                             let msg = tokio_tungstenite::tungstenite::Message::Text(serialized);
-                            let send_res = match tokio::time::timeout(Duration::from_millis(500), ws_stream.send(msg)).await {
+                            let send_res = match tokio::time::timeout(
+                                Duration::from_millis(500),
+                                ws_stream.send(msg),
+                            )
+                            .await
+                            {
                                 Ok(Ok(())) => Ok(()),
                                 Ok(Err(e)) => Err(e.to_string()),
                                 Err(_) => Err("Send timeout".to_string()),
@@ -202,7 +212,10 @@ pub async fn run_websocket_client<R: tauri::Runtime>(
                             source_port: local_port,
                             target_port,
                             status: "Failed".to_string(),
-                            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64,
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as u64,
                         };
                         let _ = handle.emit("migration-event", &payload);
                     }

@@ -1,5 +1,5 @@
-use anima_engine_lib::core::terrain::{TerrainMap, MapSettings, BiomeType};
 use anima_engine_lib::core::resources::MapBounds;
+use anima_engine_lib::core::terrain::{MapSettings, TerrainMap};
 use glam::Vec3;
 
 #[test]
@@ -25,20 +25,20 @@ fn test_terrain_extreme_parameters() {
         min: Vec3::new(-100.0, 0.0, -100.0),
         max: Vec3::new(100.0, 10.0, 100.0),
     };
-    
+
     // Corners and center
     let el_center = map.get_elevation_at_pos(Vec3::new(0.0, 0.0, 0.0), &bounds);
-    assert!(el_center >= 0.0 && el_center <= 1.0);
+    assert!((0.0..=1.0).contains(&el_center));
 
     let el_min = map.get_elevation_at_pos(Vec3::new(-100.0, 0.0, -100.0), &bounds);
-    assert!(el_min >= 0.0 && el_min <= 1.0);
+    assert!((0.0..=1.0).contains(&el_min));
 
     let el_max = map.get_elevation_at_pos(Vec3::new(100.0, 0.0, 100.0), &bounds);
-    assert!(el_max >= 0.0 && el_max <= 1.0);
+    assert!((0.0..=1.0).contains(&el_max));
 
     // Out of bounds pos should clamp to bounds edge
     let el_out = map.get_elevation_at_pos(Vec3::new(-200.0, 0.0, 500.0), &bounds);
-    assert!(el_out >= 0.0 && el_out <= 1.0);
+    assert!((0.0..=1.0).contains(&el_out));
 
     // 4. Test invalid/zero bounds for get_elevation_at_pos
     let zero_bounds = MapBounds {

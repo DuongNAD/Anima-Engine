@@ -1,10 +1,11 @@
 mod common;
 
+use anima_engine_lib::core::terrain::{MapSettings, TerrainMap};
 use std::sync::Mutex;
-use anima_engine_lib::core::terrain::{TerrainMap, MapSettings};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -54,9 +55,15 @@ fn test_terrain_elevation_strictly_bounded() {
                 ..Default::default()
             };
             let map = TerrainMap::generate(&settings);
-            
+
             for &el in &map.elevations {
-                assert!(el >= 0.0 && el <= 1.0, "Elevation {} out of bounds [0, 1] for seed {} and erosion {}", el, seed, erosion_steps);
+                assert!(
+                    (0.0..=1.0).contains(&el),
+                    "Elevation {} out of bounds [0, 1] for seed {} and erosion {}",
+                    el,
+                    seed,
+                    erosion_steps
+                );
             }
         }
     }
@@ -92,12 +99,27 @@ fn test_terrain_reproducibility() {
     let map_a2 = TerrainMap::generate(&settings_a2);
     let map_b = TerrainMap::generate(&settings_b);
 
-    assert_eq!(map_a1.elevations, map_a2.elevations, "Elevations with same seed must match");
-    assert_eq!(map_a1.moistures, map_a2.moistures, "Moistures with same seed must match");
-    assert_eq!(map_a1.biomes, map_a2.biomes, "Biomes with same seed must match");
-    assert_eq!(map_a1.flows, map_a2.flows, "Flows with same seed must match");
+    assert_eq!(
+        map_a1.elevations, map_a2.elevations,
+        "Elevations with same seed must match"
+    );
+    assert_eq!(
+        map_a1.moistures, map_a2.moistures,
+        "Moistures with same seed must match"
+    );
+    assert_eq!(
+        map_a1.biomes, map_a2.biomes,
+        "Biomes with same seed must match"
+    );
+    assert_eq!(
+        map_a1.flows, map_a2.flows,
+        "Flows with same seed must match"
+    );
 
-    assert_ne!(map_a1.elevations, map_b.elevations, "Elevations with different seeds should differ");
+    assert_ne!(
+        map_a1.elevations, map_b.elevations,
+        "Elevations with different seeds should differ"
+    );
 }
 
 #[test]

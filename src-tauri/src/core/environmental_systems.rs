@@ -1,6 +1,6 @@
-use bevy_ecs::prelude::*;
 use crate::core::components::*;
 use crate::core::resources::*;
+use bevy_ecs::prelude::*;
 
 pub fn fruit_growth_system(
     mut tree_query: Query<&mut Tree>,
@@ -18,7 +18,8 @@ pub fn lake_replenishment_system(
 ) {
     let dt = time_step.0;
     for mut lake in lake_query.iter_mut() {
-        lake.current_water = (lake.current_water + lake.replenishment_rate * dt).min(lake.max_water);
+        lake.current_water =
+            (lake.current_water + lake.replenishment_rate * dt).min(lake.max_water);
     }
 }
 
@@ -65,7 +66,15 @@ pub fn seed_dropping_system(
 }
 
 pub fn detect_environmental_collisions_system(
-    mut agent_query: Query<(Entity, &Position, &mut crate::ai::hrrl::HomeostaticState, Option<&Prey>), With<Agent>>,
+    mut agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &mut crate::ai::hrrl::HomeostaticState,
+            Option<&Prey>,
+        ),
+        With<Agent>,
+    >,
     segment_query: Query<(&Position, &ParentAgent)>,
     mut lake_query: Query<(&Position, &crate::physics::SpatialCollider, &mut Lake)>,
     mut tree_query: Query<(&Position, &crate::physics::SpatialCollider, &mut Tree)>,

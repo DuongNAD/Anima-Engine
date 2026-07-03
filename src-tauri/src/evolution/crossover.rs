@@ -2,7 +2,10 @@ use crate::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyN
 use crate::evolution::mutation::is_valid_genotype;
 use rand::seq::SliceRandom;
 
-fn get_subtree(genotype: &MorphologyGenotype, root_id: u32) -> (Vec<MorphologyNode>, Vec<MorphologyEdge>) {
+fn get_subtree(
+    genotype: &MorphologyGenotype,
+    root_id: u32,
+) -> (Vec<MorphologyNode>, Vec<MorphologyEdge>) {
     let mut subtree_nodes = Vec::new();
     let mut subtree_edges = Vec::new();
     let mut queue = vec![root_id];
@@ -46,13 +49,17 @@ pub fn crossover_genotypes(
     for edge in &child.edges {
         incoming.insert(edge.target_node);
     }
-    let roots: Vec<u32> = child.nodes.iter()
+    let roots: Vec<u32> = child
+        .nodes
+        .iter()
         .map(|n| n.id)
         .filter(|id| !incoming.contains(id))
         .collect();
 
     let root_id = roots.first().cloned().unwrap_or_else(|| child.nodes[0].id);
-    let non_roots: Vec<u32> = child.nodes.iter()
+    let non_roots: Vec<u32> = child
+        .nodes
+        .iter()
         .map(|n| n.id)
         .filter(|&id| id != root_id)
         .collect();
@@ -83,7 +90,9 @@ pub fn crossover_genotypes(
             }
 
             let w_new = map[&w_node.id];
-            let (anchor, axis) = if let Some(parent_b_edge) = parent_b.edges.iter().find(|e| e.target_node == w_node.id) {
+            let (anchor, axis) = if let Some(parent_b_edge) =
+                parent_b.edges.iter().find(|e| e.target_node == w_node.id)
+            {
                 (parent_b_edge.joint_anchor, parent_b_edge.joint_axis)
             } else {
                 let parent_len = child.nodes[0].length;
@@ -103,16 +112,19 @@ pub fn crossover_genotypes(
             if let Some(incoming_edge_idx) = child.edges.iter().position(|e| e.target_node == v) {
                 let mut incoming_edge = child.edges.remove(incoming_edge_idx);
                 let (v_sub_nodes, _v_sub_edges) = get_subtree(&child, v);
-                let v_sub_ids: std::collections::HashSet<u32> = v_sub_nodes.iter().map(|n| n.id).collect();
+                let v_sub_ids: std::collections::HashSet<u32> =
+                    v_sub_nodes.iter().map(|n| n.id).collect();
 
                 // Remove the subtree rooted at v from child
                 child.nodes.retain(|n| !v_sub_ids.contains(&n.id));
-                child.edges.retain(|e| !v_sub_ids.contains(&e.source_node) && !v_sub_ids.contains(&e.target_node));
+                child.edges.retain(|e| {
+                    !v_sub_ids.contains(&e.source_node) && !v_sub_ids.contains(&e.target_node)
+                });
 
                 // Select a random node w from Parent B
                 if let Some(w_node) = parent_b.nodes.choose(&mut rng) {
                     let (w_sub_nodes, w_sub_edges) = get_subtree(parent_b, w_node.id);
-                    
+
                     // Graft the subtree rooted at w from parent_b into child
                     let mut map = std::collections::HashMap::new();
                     for node in &w_sub_nodes {

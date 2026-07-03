@@ -1,12 +1,12 @@
-use burn::nn::{Linear, LinearConfig};
-use burn::module::Module;
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, Data, Shape};
 use bevy_ecs::prelude::*;
+use burn::module::Module;
+use burn::nn::{Linear, LinearConfig};
+use burn::tensor::backend::Backend;
+use burn::tensor::{Data, Shape, Tensor};
 
-use crate::core::ecs::{Position, Rotation, ParentAgent, Segment, Food, Predator, Prey};
-use crate::ai::hrrl::HomeostaticState;
 use crate::ai::cpg::CpgOscillator;
+use crate::ai::hrrl::HomeostaticState;
+use crate::core::ecs::{Food, ParentAgent, Position, Predator, Prey, Rotation, Segment};
 
 pub type DefaultBackend = burn_ndarray::NdArray<f32>;
 
@@ -48,8 +48,14 @@ impl<B: Backend> ActorCriticModel<B> {
 }
 
 pub enum BrainModelBackend {
-    NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>, burn_ndarray::NdArrayDevice),
-    Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>, burn_wgpu::WgpuDevice),
+    NdArray(
+        ActorCriticModel<burn_ndarray::NdArray<f32>>,
+        burn_ndarray::NdArrayDevice,
+    ),
+    Wgpu(
+        ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>,
+        burn_wgpu::WgpuDevice,
+    ),
 }
 
 pub struct BrainModel {
@@ -72,7 +78,10 @@ impl BrainModel {
         if use_gpu {
             let wgpu_res = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
-                let model = ActorCriticModel::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>::new(input_dim, hidden_dim, action_dim, &device);
+                let model =
+                    ActorCriticModel::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>::new(
+                        input_dim, hidden_dim, action_dim, &device,
+                    );
                 (model, device)
             });
 
@@ -91,7 +100,9 @@ impl BrainModel {
         }
 
         let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::new(input_dim, hidden_dim, action_dim, &device);
+        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::new(
+            input_dim, hidden_dim, action_dim, &device,
+        );
         Self {
             backend: BrainModelBackend::NdArray(model, device),
             input_dim,
@@ -115,14 +126,17 @@ pub struct BrainInferenceBuffer {
 pub fn brain_inference_system(
     brain_model: Res<BrainModel>,
     mut brain_buf: ResMut<BrainInferenceBuffer>,
-    agent_query: Query<(
-        Entity,
-        &Position,
-        &Rotation,
-        &HomeostaticState,
-        Option<&Predator>,
-        Option<&crate::ai::pheromone::OlfactorySensors>,
-    ), With<crate::core::ecs::Agent>>,
+    agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &Rotation,
+            &HomeostaticState,
+            Option<&Predator>,
+            Option<&crate::ai::pheromone::OlfactorySensors>,
+        ),
+        With<crate::core::ecs::Agent>,
+    >,
     food_query: Query<&Position, With<Food>>,
     prey_query: Query<(&Position, &HomeostaticState), (With<crate::core::ecs::Agent>, With<Prey>)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
@@ -200,7 +214,7 @@ pub fn brain_inference_system(
                 origin: agent_pos.0,
                 direction,
             };
-            
+
             if let Some(hit) = grid.raycast(&ray, 10.0, map_bounds, &collider_query) {
                 // Ignore self-collisions (own body segments)
                 let root_agent_id = if let Ok(parent) = parent_agent_query.get(hit.entity) {
@@ -228,13 +242,15 @@ pub fn brain_inference_system(
         }
 
         if let Some(ref mut raycasts_res) = active_raycasts {
-            raycasts_res.raycasts.push(crate::core::ecs::RaycastTelemetry {
-                origin: agent_pos.0.to_array(),
-                direction: direction.to_array(),
-                hit_distance,
-                hit_entity_type: hit_type,
-                agent_id: entity.index(),
-            });
+            raycasts_res
+                .raycasts
+                .push(crate::core::ecs::RaycastTelemetry {
+                    origin: agent_pos.0.to_array(),
+                    direction: direction.to_array(),
+                    hit_distance,
+                    hit_entity_type: hit_type,
+                    agent_id: entity.index(),
+                });
         }
 
         // 2. Olfactory Readings
@@ -300,7 +316,10 @@ pub fn brain_inference_system(
         }
         BrainModelBackend::Wgpu(model, device) => {
             let data = Data::new(inputs, Shape::new([batch_size, 15]));
-            let input_tensor = Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(data, device);
+            let input_tensor =
+                Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(
+                    data, device,
+                );
             let (actor_out, _) = model.forward(input_tensor);
             actor_out.into_data().value
         }
@@ -336,7 +355,7 @@ pub fn brain_inference_system(
             if let Ok(mut osc) = oscillator_query.get_mut(seg_entity) {
                 let freq_idx = agent_idx * 4 + seg_idx * 2;
                 let amp_idx = agent_idx * 4 + seg_idx * 2 + 1;
-                
+
                 if let Some(&freq_raw) = outputs_vec.get(freq_idx) {
                     osc.frequency = 0.1 + freq_raw * 2.9;
                 }
@@ -402,7 +421,9 @@ pub fn hrrl_learning_system(
     }
 
     let mut agent_query = agent_set.p1();
-    for (entity, agent_pos, rotation, mut homeo, mut last, opt_predator, opt_sensors) in agent_query.iter_mut() {
+    for (entity, agent_pos, rotation, mut homeo, mut last, opt_predator, opt_sensors) in
+        agent_query.iter_mut()
+    {
         let is_predator = opt_predator.is_some();
         let target_pos = if is_predator {
             // Predator: target nearest active Prey agent from the pre-collected stack buffer

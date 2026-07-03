@@ -1,7 +1,7 @@
-use bevy_ecs::prelude::*;
-use glam::Vec3;
 use crate::core::components::*;
 use crate::core::resources::*;
+use bevy_ecs::prelude::*;
+use glam::Vec3;
 
 pub fn apply_environmental_effects_system(
     active_event: Res<ActiveEnvironmentEvent>,
@@ -62,8 +62,19 @@ pub fn energy_decay_system(
 }
 
 pub fn metabolic_decay_system(
-    mut agent_query: Query<(Entity, &mut crate::ai::hrrl::HomeostaticState, Option<&mut FeatureTracker>, Option<&Velocity>, Option<&Predator>)>,
-    segment_query: Query<(&ParentAgent, &crate::physics::dynamics::RigidBody, &Velocity, Option<&SegmentJointForce>)>,
+    mut agent_query: Query<(
+        Entity,
+        &mut crate::ai::hrrl::HomeostaticState,
+        Option<&mut FeatureTracker>,
+        Option<&Velocity>,
+        Option<&Predator>,
+    )>,
+    segment_query: Query<(
+        &ParentAgent,
+        &crate::physics::dynamics::RigidBody,
+        &Velocity,
+        Option<&SegmentJointForce>,
+    )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let dt = time_step.0;
@@ -144,7 +155,10 @@ pub fn spawn_food_system(
 
 pub fn detect_food_collisions_system(
     mut commands: Commands,
-    mut agent_query: Query<(Entity, &Position, &mut crate::ai::hrrl::HomeostaticState), With<Agent>>,
+    mut agent_query: Query<
+        (Entity, &Position, &mut crate::ai::hrrl::HomeostaticState),
+        With<Agent>,
+    >,
     segment_query: Query<(&Position, &ParentAgent)>,
     food_query: Query<(Entity, &Position, &Food)>,
 ) {
@@ -167,7 +181,8 @@ pub fn detect_food_collisions_system(
             if centroid.distance(food_pos.0) < 1.5 {
                 commands.entity(food_entity).despawn();
                 homeo.energy = (homeo.energy + food.energy_value).min(homeo.energy_target);
-                homeo.hydration = (homeo.hydration + food.hydration_value).min(homeo.hydration_target);
+                homeo.hydration =
+                    (homeo.hydration + food.hydration_value).min(homeo.hydration_target);
                 break;
             }
         }
@@ -175,8 +190,14 @@ pub fn detect_food_collisions_system(
 }
 
 pub fn combat_system(
-    mut predator_query: Query<(Entity, &Position, &mut crate::ai::hrrl::HomeostaticState), (With<Agent>, With<Predator>)>,
-    mut prey_query: Query<(Entity, &Position, &mut crate::ai::hrrl::HomeostaticState), (With<Agent>, With<Prey>, Without<Predator>)>,
+    mut predator_query: Query<
+        (Entity, &Position, &mut crate::ai::hrrl::HomeostaticState),
+        (With<Agent>, With<Predator>),
+    >,
+    mut prey_query: Query<
+        (Entity, &Position, &mut crate::ai::hrrl::HomeostaticState),
+        (With<Agent>, With<Prey>, Without<Predator>),
+    >,
     segment_query: Query<(&Position, &ParentAgent)>,
     mut combat_events: Option<ResMut<CombatEvents>>,
 ) {
@@ -186,17 +207,29 @@ pub fn combat_system(
         events_res.prey_centroids.clear();
 
         for (entity, pos, _) in predator_query.iter() {
-            events_res.predator_centroids.push((entity, pos.0, Vec3::ZERO, 0));
+            events_res
+                .predator_centroids
+                .push((entity, pos.0, Vec3::ZERO, 0));
         }
         for (entity, pos, _) in prey_query.iter() {
-            events_res.prey_centroids.push((entity, pos.0, Vec3::ZERO, 0));
+            events_res
+                .prey_centroids
+                .push((entity, pos.0, Vec3::ZERO, 0));
         }
 
         for (seg_pos, parent_agent) in segment_query.iter() {
-            if let Some(entry) = events_res.predator_centroids.iter_mut().find(|e| e.0 == parent_agent.0) {
+            if let Some(entry) = events_res
+                .predator_centroids
+                .iter_mut()
+                .find(|e| e.0 == parent_agent.0)
+            {
                 entry.2 += seg_pos.0;
                 entry.3 += 1;
-            } else if let Some(entry) = events_res.prey_centroids.iter_mut().find(|e| e.0 == parent_agent.0) {
+            } else if let Some(entry) = events_res
+                .prey_centroids
+                .iter_mut()
+                .find(|e| e.0 == parent_agent.0)
+            {
                 entry.2 += seg_pos.0;
                 entry.3 += 1;
             }
@@ -217,7 +250,7 @@ pub fn combat_system(
             let (pred_entity, pred_centroid, _, _) = events_res.predator_centroids[i];
             for j in 0..events_res.prey_centroids.len() {
                 let (prey_entity, prey_centroid, _, _) = events_res.prey_centroids[j];
-                
+
                 if pred_centroid.distance(prey_centroid) < 1.5 {
                     if let Ok((_, _, mut prey_homeo)) = prey_query.get_mut(prey_entity) {
                         if prey_homeo.energy <= 0.0 {
@@ -228,16 +261,17 @@ pub fn combat_system(
                             if needed > 0.0 {
                                 let transfer = needed.min(prey_homeo.energy);
                                 prey_homeo.energy = (prey_homeo.energy - transfer).max(0.0);
-                                pred_homeo.energy = (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
-                                if transfer > 0.0 {
-                                    if events_res.events.len() < events_res.events.capacity() {
-                                        events_res.events.push(CombatEvent {
-                                            predator_id: pred_entity.index(),
-                                            prey_id: prey_entity.index(),
-                                            damage: transfer,
-                                            energy_transferred: transfer,
-                                        });
-                                    }
+                                pred_homeo.energy =
+                                    (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
+                                if transfer > 0.0
+                                    && events_res.events.len() < events_res.events.capacity()
+                                {
+                                    events_res.events.push(CombatEvent {
+                                        predator_id: pred_entity.index(),
+                                        prey_id: prey_entity.index(),
+                                        damage: transfer,
+                                        energy_transferred: transfer,
+                                    });
                                 }
                             }
                         }
@@ -285,7 +319,8 @@ pub fn combat_system(
                     if needed > 0.0 {
                         let transfer = needed.min(prey_homeo.energy);
                         prey_homeo.energy = (prey_homeo.energy - transfer).max(0.0);
-                        pred_homeo.energy = (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
+                        pred_homeo.energy =
+                            (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
                     }
                     break;
                 }
@@ -296,20 +331,23 @@ pub fn combat_system(
 
 pub fn check_migration_boundaries_system(
     mut commands: Commands,
-    agent_query: Query<(
-        Entity,
-        &Position,
-        &Velocity,
-        &crate::ai::hrrl::HomeostaticState,
-        &crate::core::agent_systems::AgentGenotype,
-        &crate::core::agent_systems::AgentLineageId,
-        &crate::core::agent_systems::AgentGeneration,
-        Option<&AgentParentLineageIds>,
-        Option<&Predator>,
-        Option<&crate::core::agent_systems::AgentEvaluation>,
-        Option<&FeatureTracker>,
-        Option<&crate::ai::hrrl::LastTransitionState>,
-    ), With<Agent>>,
+    agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &Velocity,
+            &crate::ai::hrrl::HomeostaticState,
+            &crate::core::agent_systems::AgentGenotype,
+            &crate::core::agent_systems::AgentLineageId,
+            &crate::core::agent_systems::AgentGeneration,
+            Option<&AgentParentLineageIds>,
+            Option<&Predator>,
+            Option<&crate::core::agent_systems::AgentEvaluation>,
+            Option<&FeatureTracker>,
+            Option<&crate::ai::hrrl::LastTransitionState>,
+        ),
+        With<Agent>,
+    >,
     children_query: Query<&ChildrenLinks>,
     bounds: Res<MapBounds>,
     sharding: Res<ShardingResource>,
@@ -329,7 +367,21 @@ pub fn check_migration_boundaries_system(
     let x_max = bounds.max.x;
     let x_range = x_max - x_min;
 
-    for (entity, pos, vel, homeo, genotype, lineage_id, generation, opt_parents, opt_predator, opt_eval, opt_tracker, opt_last_transition) in agent_query.iter() {
+    for (
+        entity,
+        pos,
+        vel,
+        homeo,
+        genotype,
+        lineage_id,
+        generation,
+        opt_parents,
+        opt_predator,
+        opt_eval,
+        opt_tracker,
+        opt_last_transition,
+    ) in agent_query.iter()
+    {
         let x = pos.0.x;
         let mut target_port = None;
         let mut target_x = pos.0.x;
@@ -401,20 +453,23 @@ pub fn check_migration_boundaries_system(
 pub fn manual_migration_system(
     mut commands: Commands,
     trigger: Option<Res<BevyMigrationTrigger>>,
-    agent_query: Query<(
-        Entity,
-        &Position,
-        &Velocity,
-        &crate::ai::hrrl::HomeostaticState,
-        &crate::core::agent_systems::AgentGenotype,
-        &crate::core::agent_systems::AgentLineageId,
-        &crate::core::agent_systems::AgentGeneration,
-        Option<&AgentParentLineageIds>,
-        Option<&Predator>,
-        Option<&crate::core::agent_systems::AgentEvaluation>,
-        Option<&FeatureTracker>,
-        Option<&crate::ai::hrrl::LastTransitionState>,
-    ), With<Agent>>,
+    agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &Velocity,
+            &crate::ai::hrrl::HomeostaticState,
+            &crate::core::agent_systems::AgentGenotype,
+            &crate::core::agent_systems::AgentLineageId,
+            &crate::core::agent_systems::AgentGeneration,
+            Option<&AgentParentLineageIds>,
+            Option<&Predator>,
+            Option<&crate::core::agent_systems::AgentEvaluation>,
+            Option<&FeatureTracker>,
+            Option<&crate::ai::hrrl::LastTransitionState>,
+        ),
+        With<Agent>,
+    >,
     children_query: Query<&ChildrenLinks>,
     bounds: Res<MapBounds>,
     sharding: Res<ShardingResource>,
@@ -436,7 +491,21 @@ pub fn manual_migration_system(
     while let Ok(target_port) = trigger.0.try_recv() {
         use rand::seq::IteratorRandom;
         let mut rng = rand::thread_rng();
-        if let Some((entity, pos, vel, homeo, genotype, lineage_id, generation, opt_parents, opt_predator, opt_eval, opt_tracker, opt_last_transition)) = agent_query.iter().choose(&mut rng) {
+        if let Some((
+            entity,
+            pos,
+            vel,
+            homeo,
+            genotype,
+            lineage_id,
+            generation,
+            opt_parents,
+            opt_predator,
+            opt_eval,
+            opt_tracker,
+            opt_last_transition,
+        )) = agent_query.iter().choose(&mut rng)
+        {
             let x_min = bounds.min.x;
             let x_max = bounds.max.x;
 
@@ -495,9 +564,11 @@ pub struct SpawnMigrationCommand {
 
 impl bevy_ecs::system::Command for SpawnMigrationCommand {
     fn apply(self, world: &mut World) {
-        use crate::physics::dynamics::RigidBody;
+        use crate::core::agent_systems::{
+            AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId,
+        };
         use crate::evolution::genotype::decode_genotype;
-        use crate::core::agent_systems::{AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration};
+        use crate::physics::dynamics::RigidBody;
 
         let initial_pos = self.data.position;
         let initial_rot = glam::Quat::IDENTITY;
@@ -546,14 +617,14 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
         while stack_len > 0 {
             stack_len -= 1;
             let current = stack[stack_len];
-            
+
             if let Some(mut vel) = world.get_mut::<Velocity>(current) {
                 vel.0 = velocity;
             }
             if let Some(mut body) = world.get_mut::<RigidBody>(current) {
                 body.velocity = velocity;
             }
-            
+
             if let Some(children) = world.get::<ChildrenLinks>(current) {
                 for &child in &children.0 {
                     if stack_len < 64 {

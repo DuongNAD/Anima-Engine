@@ -1,31 +1,17 @@
 mod common;
 
-use std::sync::{Arc, RwLock, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use std::net::TcpListener;
-use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::net::TcpListener;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    AgentMigrationData, ShardingConfig, OutboundMigration, InboundMigrationReceiver,
-    OutboundMigrationSender, ShardingResource, check_migration_boundaries_system,
-    process_inbound_migrations_system, AgentParentLineageIds, FeatureTracker, Velocity,
-    Position, Rotation, ParentAgent, Segment, Prey, AgentClass, Agent,
-    MapBounds, ChildrenLinks
-};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
-use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::core::engine::{
-    AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration,
-    run_websocket_server, run_websocket_client
-};
-use anima_engine_lib::evolution::lineage::{
-    FallbackLineageTracker, LineageTracker, RelationType
-};
-use anima_engine_lib::evolution::meta_ai::{
-    GeminiMetaAiClient, MockMetaAiClient, MetaAiClient, EnvironmentalEvent
-};
+use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
+use anima_engine_lib::core::engine::{run_websocket_client, run_websocket_server};
+use anima_engine_lib::evolution::genotype::MorphologyGenotype;
+use anima_engine_lib::evolution::lineage::FallbackLineageTracker;
+use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, GeminiMetaAiClient, MetaAiClient};
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -45,12 +31,8 @@ async fn test_adversarial_port_binding_failure() {
     // It should log/eprint an error and return without crashing or panicking.
     let running_clone = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
-            port,
-            inbound_tx,
-            running_clone,
-            None,
-        ).await;
+        run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
+            .await;
     });
 
     // Wait a brief period and ensure the server handle completes/exits immediately
@@ -85,12 +67,8 @@ async fn test_adversarial_silent_client_shutdown() {
 
     let running_clone = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
-            port,
-            inbound_tx,
-            running_clone,
-            None,
-        ).await;
+        run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
+            .await;
     });
 
     // Give server time to bind
@@ -105,7 +83,10 @@ async fn test_adversarial_silent_client_shutdown() {
 
     // Verify that the server stops promptly and the task joins.
     let join_result = tokio::time::timeout(Duration::from_secs(2), server_handle).await;
-    assert!(join_result.is_ok(), "Server hung with a silent client connected when shut down");
+    assert!(
+        join_result.is_ok(),
+        "Server hung with a silent client connected when shut down"
+    );
 }
 
 /// 3. Test stale connection cache recovery: Ensure that the client recovers
@@ -129,12 +110,8 @@ async fn test_adversarial_stale_connection_cache() {
     // Start Server 1
     let sr1 = Arc::clone(&server_running_1);
     let server_handle_1 = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
-            port,
-            server_inbound_tx_1,
-            sr1,
-            None,
-        ).await;
+        run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_1, sr1, None)
+            .await;
     });
 
     // Start Client
@@ -146,7 +123,8 @@ async fn test_adversarial_stale_connection_cache() {
             cr,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -176,12 +154,14 @@ async fn test_adversarial_stale_connection_cache() {
     };
 
     // Send first migration (should succeed and establish cached connection)
-    outbound_tx.send(OutboundMigration {
-        target_port: port,
-        data: agent.clone(),
-        bounds_min_x: -100.0,
-        bounds_max_x: 100.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: port,
+            data: agent.clone(),
+            bounds_min_x: -100.0,
+            bounds_max_x: 100.0,
+        })
+        .unwrap();
 
     let received_1 = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -190,7 +170,9 @@ async fn test_adversarial_stale_connection_cache() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("First migration failed to deliver");
+    })
+    .await
+    .expect("First migration failed to deliver");
     assert_eq!(received_1.lineage_id, "stale-cache-agent-1");
 
     // Force Server 1 to exit
@@ -204,12 +186,8 @@ async fn test_adversarial_stale_connection_cache() {
     let server_running_2 = Arc::new(AtomicBool::new(true));
     let sr2 = Arc::clone(&server_running_2);
     let server_handle_2 = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
-            port,
-            server_inbound_tx_2,
-            sr2,
-            None,
-        ).await;
+        run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_2, sr2, None)
+            .await;
     });
 
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -221,12 +199,14 @@ async fn test_adversarial_stale_connection_cache() {
 
     // Send second migration (client cache still holds stale Server 1 connection)
     println!("Sending second migration (agent 2) targeting port {}", port);
-    outbound_tx.send(OutboundMigration {
-        target_port: port,
-        data: agent2.clone(),
-        bounds_min_x: -100.0,
-        bounds_max_x: 100.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: port,
+            data: agent2.clone(),
+            bounds_min_x: -100.0,
+            bounds_max_x: 100.0,
+        })
+        .unwrap();
 
     // Sleep to allow OS TCP stack to process the send and receive a TCP RST from the closed port
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -238,12 +218,14 @@ async fn test_adversarial_stale_connection_cache() {
         lineage_id: "stale-cache-agent-3".to_string(),
         ..agent.clone()
     };
-    outbound_tx.send(OutboundMigration {
-        target_port: port,
-        data: agent3.clone(),
-        bounds_min_x: -100.0,
-        bounds_max_x: 100.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: port,
+            data: agent3.clone(),
+            bounds_min_x: -100.0,
+            bounds_max_x: 100.0,
+        })
+        .unwrap();
 
     // Verify if any bounce back is received.
     println!("Waiting for bounce backs...");
@@ -266,10 +248,16 @@ async fn test_adversarial_stale_connection_cache() {
 
     // Assertions for corrected robust behavior:
     // 1. Agent 2 was NOT lost and was successfully received by Server 2.
-    assert!(received_by_server2.contains(&"stale-cache-agent-2".to_string()), "Agent 2 must be received by Server 2");
+    assert!(
+        received_by_server2.contains(&"stale-cache-agent-2".to_string()),
+        "Agent 2 must be received by Server 2"
+    );
 
     // 2. Agent 3 was NOT lost and was successfully received by Server 2.
-    assert!(received_by_server2.contains(&"stale-cache-agent-3".to_string()), "Agent 3 must be received by Server 2");
+    assert!(
+        received_by_server2.contains(&"stale-cache-agent-3".to_string()),
+        "Agent 3 must be received by Server 2"
+    );
 
     // Cleanup
     server_running_2.store(false, Ordering::SeqCst);
@@ -289,12 +277,20 @@ fn test_adversarial_lineage_tracker_connection_timeout() {
 
     let start = std::time::Instant::now();
     // Constructor will attempt to connect, and ping, but it must timeout and report offline
-    let tracker = FallbackLineageTracker::new(&format!("bolt://127.0.0.1:{}", port), "neo4j", "password");
+    let tracker =
+        FallbackLineageTracker::new(&format!("bolt://127.0.0.1:{}", port), "neo4j", "password");
     let dur = start.elapsed();
 
-    assert!(!tracker.is_online(), "Tracker must report offline for unresponsive host");
+    assert!(
+        !tracker.is_online(),
+        "Tracker must report offline for unresponsive host"
+    );
     // Connect timeout is 500ms, ping timeout is 500ms, total under 1.5 seconds.
-    assert!(dur < Duration::from_millis(1500), "Constructor blocked for too long: {:?}", dur);
+    assert!(
+        dur < Duration::from_millis(1500),
+        "Constructor blocked for too long: {:?}",
+        dur
+    );
 }
 
 /// 5. Test Gemini client offline fallback when API key is set but server is unreachable or rate limited.
@@ -316,9 +312,13 @@ fn test_adversarial_gemini_client_offline_fallback() {
 
     // Assert it falls back to the mock event (ResourceDrought for epoch 1)
     assert_eq!(event, EnvironmentalEvent::ResourceDrought);
-    
+
     // Assert it did not block excessively (less than 1500ms)
-    assert!(duration < Duration::from_millis(1500), "Gemini client blocked for too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(1500),
+        "Gemini client blocked for too long: {:?}",
+        duration
+    );
 
     // Clean up environment variable
     std::env::remove_var("GEMINI_API_KEY");

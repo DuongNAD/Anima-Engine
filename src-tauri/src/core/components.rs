@@ -1,6 +1,6 @@
+use crate::evolution::genotype::MorphologyGenotype;
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
-use crate::evolution::genotype::MorphologyGenotype;
 
 #[derive(Component, Clone, Debug)]
 pub struct Agent;
@@ -172,17 +172,14 @@ pub struct ShardingConfig {
     pub right_target_port: Option<u16>,
 }
 
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default,
+)]
 pub enum CognitiveState {
+    #[default]
     Ready,
     PendingInference(u64),
     Cooldown,
-}
-
-impl Default for CognitiveState {
-    fn default() -> Self {
-        Self::Ready
-    }
 }
 
 #[derive(Component, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -218,4 +215,3 @@ impl Default for SensoryBufferComponent {
         }
     }
 }
-

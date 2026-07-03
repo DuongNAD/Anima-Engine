@@ -1,23 +1,27 @@
 mod common;
 
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
-use std::time::Duration;
-use std::thread;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    Agent, Prey, Position, ParentAgent, Lake, Tree, EnvironmentalSpawnSettings, MapBounds,
-    fruit_growth_system, lake_replenishment_system, seed_dropping_system, detect_environmental_collisions_system,
-};
-use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::ai::cpg::TimeStep;
-use anima_engine_lib::core::simulation_lifecycle::{SimulationEngine, SavedSimulationState, SerializedPheromoneGrid};
+use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::ecs::{
+    detect_environmental_collisions_system, fruit_growth_system, lake_replenishment_system,
+    seed_dropping_system, Agent, EnvironmentalSpawnSettings, Lake, MapBounds, ParentAgent,
+    Position, Prey, Tree,
+};
+use anima_engine_lib::core::simulation_lifecycle::{
+    SavedSimulationState, SerializedPheromoneGrid, SimulationEngine,
+};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -29,20 +33,24 @@ fn test_fruit_growth_and_lake_replenishment() {
     world.insert_resource(TimeStep(1.0));
 
     // Spawn a tree and a lake
-    let tree_entity = world.spawn(Tree {
-        current_fruit: 10.0,
-        max_fruit: 100.0,
-        fruit_growth_rate: 2.0,
-        time_since_last_drop: 0.0,
-        seed_drop_cooldown: 15.0,
-        seed_spread_radius: 20.0,
-    }).id();
+    let tree_entity = world
+        .spawn(Tree {
+            current_fruit: 10.0,
+            max_fruit: 100.0,
+            fruit_growth_rate: 2.0,
+            time_since_last_drop: 0.0,
+            seed_drop_cooldown: 15.0,
+            seed_spread_radius: 20.0,
+        })
+        .id();
 
-    let lake_entity = world.spawn(Lake {
-        current_water: 50.0,
-        max_water: 100.0,
-        replenishment_rate: 5.0,
-    }).id();
+    let lake_entity = world
+        .spawn(Lake {
+            current_water: 50.0,
+            max_water: 100.0,
+            replenishment_rate: 5.0,
+        })
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems((fruit_growth_system, lake_replenishment_system));
@@ -136,51 +144,59 @@ fn test_eating_and_drinking() {
     world.insert_resource(TimeStep(1.0));
 
     // Spawn a Lake at (0, 0, 0)
-    let lake_entity = world.spawn((
-        Lake {
-            current_water: 100.0,
-            max_water: 100.0,
-            replenishment_rate: 1.0,
-        },
-        Position(Vec3::new(0.0, 0.0, 0.0)),
-        anima_engine_lib::physics::SpatialCollider { radius: 10.0 },
-    )).id();
+    let lake_entity = world
+        .spawn((
+            Lake {
+                current_water: 100.0,
+                max_water: 100.0,
+                replenishment_rate: 1.0,
+            },
+            Position(Vec3::new(0.0, 0.0, 0.0)),
+            anima_engine_lib::physics::SpatialCollider { radius: 10.0 },
+        ))
+        .id();
 
     // Spawn a Tree at (20, 0, 0)
-    let tree_entity = world.spawn((
-        Tree {
-            current_fruit: 100.0,
-            max_fruit: 100.0,
-            fruit_growth_rate: 1.0,
-            time_since_last_drop: 0.0,
-            seed_drop_cooldown: 10.0,
-            seed_spread_radius: 10.0,
-        },
-        Position(Vec3::new(20.0, 0.0, 0.0)),
-        anima_engine_lib::physics::SpatialCollider { radius: 10.0 },
-    )).id();
+    let tree_entity = world
+        .spawn((
+            Tree {
+                current_fruit: 100.0,
+                max_fruit: 100.0,
+                fruit_growth_rate: 1.0,
+                time_since_last_drop: 0.0,
+                seed_drop_cooldown: 10.0,
+                seed_spread_radius: 10.0,
+            },
+            Position(Vec3::new(20.0, 0.0, 0.0)),
+            anima_engine_lib::physics::SpatialCollider { radius: 10.0 },
+        ))
+        .id();
 
     // Spawn an agent at (0, 0, 0) (overlapping lake, far from tree)
-    let agent_entity = world.spawn((
-        Agent,
-        Prey,
-        Position(Vec3::new(0.0, 0.0, 0.0)),
-        HomeostaticState {
-            energy: 50.0,
-            energy_target: 100.0,
-            hydration: 50.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-    )).id();
+    let agent_entity = world
+        .spawn((
+            Agent,
+            Prey,
+            Position(Vec3::new(0.0, 0.0, 0.0)),
+            HomeostaticState {
+                energy: 50.0,
+                energy_target: 100.0,
+                hydration: 50.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+        ))
+        .id();
 
     // Spawn agent's segment
-    let segment_entity = world.spawn((
-        Position(Vec3::new(0.0, 0.0, 0.0)),
-        ParentAgent(agent_entity),
-    )).id();
+    let segment_entity = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 0.0)),
+            ParentAgent(agent_entity),
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems(detect_environmental_collisions_system);
@@ -246,20 +262,22 @@ fn test_environmental_collisions_zero_allocations() {
     ));
 
     // Spawn Prey agent near the tree & lake
-    let agent_entity = world.spawn((
-        Agent,
-        Prey,
-        Position(Vec3::new(1.0, 0.0, 0.0)),
-        HomeostaticState {
-            energy: 50.0,
-            energy_target: 100.0,
-            hydration: 50.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-    )).id();
+    let agent_entity = world
+        .spawn((
+            Agent,
+            Prey,
+            Position(Vec3::new(1.0, 0.0, 0.0)),
+            HomeostaticState {
+                energy: 50.0,
+                energy_target: 100.0,
+                hydration: 50.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+        ))
+        .id();
 
     world.spawn((
         Position(Vec3::new(1.0, 0.0, 0.0)),
@@ -308,16 +326,18 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
     // Spawn a simulation with 10,000 tree entities
     let mut trees = Vec::with_capacity(10000);
     for i in 0..10000 {
-        trees.push(anima_engine_lib::core::simulation_lifecycle::SerializedTree {
-            position: glam::Vec3::new((i % 100) as f32 * 2.0, 0.0, (i / 100) as f32 * 2.0),
-            radius: 1.5,
-            current_fruit: 50.0,
-            max_fruit: 100.0,
-            fruit_growth_rate: 2.0,
-            time_since_last_drop: 0.0,
-            seed_drop_cooldown: 15.0,
-            seed_spread_radius: 20.0,
-        });
+        trees.push(
+            anima_engine_lib::core::simulation_lifecycle::SerializedTree {
+                position: glam::Vec3::new((i % 100) as f32 * 2.0, 0.0, (i / 100) as f32 * 2.0),
+                radius: 1.5,
+                current_fruit: 50.0,
+                max_fruit: 100.0,
+                fruit_growth_rate: 2.0,
+                time_since_last_drop: 0.0,
+                seed_drop_cooldown: 15.0,
+                seed_spread_radius: 20.0,
+            },
+        );
     }
 
     let state = SavedSimulationState {
@@ -363,7 +383,7 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
     *engine.pending_load_state.lock().unwrap() = Some(state);
 
     let start_time = std::time::Instant::now();
-    
+
     // Start engine (spawns simulation loop thread and others)
     engine.start::<tauri::test::MockRuntime>(
         None,
@@ -391,7 +411,10 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
 
     // Verify threads joined successfully (Option is taken and set to None)
     let threads_lock = engine.threads.lock().unwrap();
-    assert!(threads_lock.is_none(), "Threads should be joined and cleared, leaving no thread leaks");
+    assert!(
+        threads_lock.is_none(),
+        "Threads should be joined and cleared, leaving no thread leaks"
+    );
 }
 
 #[test]
@@ -432,20 +455,22 @@ fn test_environmental_collisions_zero_allocations_heavy_load() {
 
     // Spawn 100 Agents, each with 5 segments
     for a in 0..100 {
-        let agent_entity = world.spawn((
-            Agent,
-            Prey,
-            Position(Vec3::new(a as f32 * 10.0 + 1.0, 0.0, 0.0)),
-            HomeostaticState {
-                energy: 50.0,
-                energy_target: 100.0,
-                hydration: 50.0,
-                hydration_target: 100.0,
-                temperature: 37.0,
-                temp_target: 37.0,
-                previous_deviation: 0.0,
-            },
-        )).id();
+        let agent_entity = world
+            .spawn((
+                Agent,
+                Prey,
+                Position(Vec3::new(a as f32 * 10.0 + 1.0, 0.0, 0.0)),
+                HomeostaticState {
+                    energy: 50.0,
+                    energy_target: 100.0,
+                    hydration: 50.0,
+                    hydration_target: 100.0,
+                    temperature: 37.0,
+                    temp_target: 37.0,
+                    previous_deviation: 0.0,
+                },
+            ))
+            .id();
 
         for s in 0..5 {
             world.spawn((

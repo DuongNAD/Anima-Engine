@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -85,14 +85,14 @@ impl MetaAiClient for GeminiMetaAiClient {
             }]
         });
 
-        let response = ureq::post(&url)
-            .timeout(self.timeout)
-            .send_json(body);
+        let response = ureq::post(&url).timeout(self.timeout).send_json(body);
 
         match response {
             Ok(res) => {
                 if let Ok(json) = res.into_json::<serde_json::Value>() {
-                    if let Some(text) = json["candidates"][0]["content"]["parts"][0]["text"].as_str() {
+                    if let Some(text) =
+                        json["candidates"][0]["content"]["parts"][0]["text"].as_str()
+                    {
                         let cleaned = text.trim().to_lowercase();
                         if cleaned.contains("drought") || cleaned.contains("resource") {
                             EnvironmentalEvent::ResourceDrought
@@ -112,9 +112,7 @@ impl MetaAiClient for GeminiMetaAiClient {
                     MockMetaAiClient.generate_event(epoch, history)
                 }
             }
-            Err(_) => {
-                MockMetaAiClient.generate_event(epoch, history)
-            }
+            Err(_) => MockMetaAiClient.generate_event(epoch, history),
         }
     }
 }
@@ -178,7 +176,9 @@ impl GeminiWebSessionClient {
 
     pub fn log_event_to_timeline(
         &self,
-        chronicle_history: &std::sync::Arc<std::sync::RwLock<Vec<crate::core::engine::ChronicleEvent>>>,
+        chronicle_history: &std::sync::Arc<
+            std::sync::RwLock<Vec<crate::core::engine::ChronicleEvent>>,
+        >,
         event_type: &str,
         title: &str,
         description: &str,
@@ -237,5 +237,3 @@ impl MetaAiClient for GeminiWebSessionClient {
         }
     }
 }
-
-

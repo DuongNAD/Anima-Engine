@@ -1,10 +1,10 @@
-use anima_engine_lib::core::terrain::{TerrainMap, MapSettings};
+use anima_engine_lib::core::terrain::{MapSettings, TerrainMap};
 
 #[test]
 fn test_heightmap_range_strict() {
     let seeds = [0, 42, 1337, 99999];
     let sizes = [64, 128, 256];
-    
+
     for &seed in &seeds {
         for &size in &sizes {
             let settings = MapSettings {
@@ -16,16 +16,33 @@ fn test_heightmap_range_strict() {
                 gain: 0.5,
                 erosion_steps: 2000,
             };
-            
+
             let map = TerrainMap::generate(&settings);
-            
+
             assert!(!map.elevations.is_empty());
             assert_eq!(map.elevations.len(), size * size);
-            
+
             for &el in &map.elevations {
-                assert!(el >= 0.0, "Elevation was less than 0.0: {} for seed {} size {}", el, seed, size);
-                assert!(el <= 1.0, "Elevation was greater than 1.0: {} for seed {} size {}", el, seed, size);
-                assert!(!el.is_nan(), "Elevation was NaN for seed {} size {}", seed, size);
+                assert!(
+                    el >= 0.0,
+                    "Elevation was less than 0.0: {} for seed {} size {}",
+                    el,
+                    seed,
+                    size
+                );
+                assert!(
+                    el <= 1.0,
+                    "Elevation was greater than 1.0: {} for seed {} size {}",
+                    el,
+                    seed,
+                    size
+                );
+                assert!(
+                    !el.is_nan(),
+                    "Elevation was NaN for seed {} size {}",
+                    seed,
+                    size
+                );
             }
         }
     }
@@ -42,7 +59,7 @@ fn test_seed_reproducibility() {
         gain: 0.5,
         erosion_steps: 1000,
     };
-    
+
     let settings_2 = MapSettings {
         width: 128,
         height: 128,

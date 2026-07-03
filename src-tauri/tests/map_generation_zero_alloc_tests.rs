@@ -1,11 +1,12 @@
 mod common;
 
-use std::sync::Mutex;
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use std::sync::Mutex;
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -17,19 +18,19 @@ fn test_erosion_hotpath_zero_heap_allocations() {
     let height = 128;
     let seed = 1337;
     let erosion_steps = 2000;
-    
+
     let mut elevations = vec![0.5f32; width * height];
     let mut flows = vec![0.0f32; width * height];
     let mut rng = StdRng::seed_from_u64(seed as u64);
-    
+
     // Warm up the RNG and allocations
     for _ in 0..10 {
         let _px: f32 = rng.gen_range(0.0..=(width - 2) as f32);
     }
-    
+
     // Start tracking allocations
     ALLOCATOR.start_tracking();
-    
+
     // Exact droplet erosion loop from terrain.rs
     for _ in 0..erosion_steps {
         let mut px: f32 = rng.gen_range(0.0..=(width - 2) as f32);
@@ -48,7 +49,8 @@ fn test_erosion_hotpath_zero_heap_allocations() {
         let gravity = 4.0f32;
         let evaporation_rate = 0.05f32;
 
-        for _ in 0..30 { // MAX_DROPLET_LIFETIME
+        for _ in 0..30 {
+            // MAX_DROPLET_LIFETIME
             let ipx = px.floor() as usize;
             let ipy = py.floor() as usize;
             if ipx >= width - 1 || ipy >= height - 1 {
@@ -63,7 +65,10 @@ fn test_erosion_hotpath_zero_heap_allocations() {
             let h01 = elevations[(ipy + 1) * width + ipx];
             let h11 = elevations[(ipy + 1) * width + ipx + 1];
 
-            let h = h00 * (1.0 - tx) * (1.0 - ty) + h10 * tx * (1.0 - ty) + h01 * (1.0 - tx) * ty + h11 * tx * ty;
+            let h = h00 * (1.0 - tx) * (1.0 - ty)
+                + h10 * tx * (1.0 - ty)
+                + h01 * (1.0 - tx) * ty
+                + h11 * tx * ty;
             let grad_x = (h10 - h00) * (1.0 - ty) + (h11 - h01) * ty;
             let grad_y = (h01 - h00) * (1.0 - tx) + (h11 - h10) * tx;
 
@@ -89,7 +94,11 @@ fn test_erosion_hotpath_zero_heap_allocations() {
             let new_px = px + dir_x;
             let new_py = py + dir_y;
 
-            if new_px < 0.0 || new_px >= (width - 1) as f32 || new_py < 0.0 || new_py >= (height - 1) as f32 {
+            if new_px < 0.0
+                || new_px >= (width - 1) as f32
+                || new_py < 0.0
+                || new_py >= (height - 1) as f32
+            {
                 break;
             }
 
@@ -102,7 +111,10 @@ fn test_erosion_hotpath_zero_heap_allocations() {
             let nh10 = elevations[new_ipy * width + new_ipx + 1];
             let nh01 = elevations[(new_ipy + 1) * width + new_ipx];
             let nh11 = elevations[(new_ipy + 1) * width + new_ipx + 1];
-            let new_h = nh00 * (1.0 - new_tx) * (1.0 - new_ty) + nh10 * new_tx * (1.0 - new_ty) + nh01 * (1.0 - new_tx) * new_ty + nh11 * new_tx * new_ty;
+            let new_h = nh00 * (1.0 - new_tx) * (1.0 - new_ty)
+                + nh10 * new_tx * (1.0 - new_ty)
+                + nh01 * (1.0 - new_tx) * new_ty
+                + nh11 * new_tx * new_ty;
 
             let delta_h = new_h - h;
 
@@ -142,7 +154,11 @@ fn test_erosion_hotpath_zero_heap_allocations() {
             py = new_py;
         }
     }
-    
+
     let alloc_count = ALLOCATOR.stop_tracking();
-    assert_eq!(alloc_count, 0, "Hydraulic erosion hot path triggered {} heap allocations!", alloc_count);
+    assert_eq!(
+        alloc_count, 0,
+        "Hydraulic erosion hot path triggered {} heap allocations!",
+        alloc_count
+    );
 }

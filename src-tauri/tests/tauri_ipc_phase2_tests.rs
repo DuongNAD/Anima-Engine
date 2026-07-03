@@ -27,7 +27,7 @@ fn test_serialization_evolution_settings() {
         selection_bias: 1.5,
         grid_resolution: 50,
     };
-    
+
     // Check deserialization from valid JSON string
     let json_str = r#"{"mutation_rate":0.15,"selection_bias":1.5,"grid_resolution":50}"#;
     let deserialized: EvolutionSettings = serde_json::from_str(json_str).unwrap();
@@ -49,7 +49,7 @@ fn test_serialization_elite_individual_state() {
         fitness: 0.85,
         features: vec![0.2, 0.4],
     };
-    
+
     // Check deserialization from JSON
     let json_str = r#"{"fitness":0.85,"features":[0.2,0.4]}"#;
     let deserialized: EliteIndividualState = serde_json::from_str(json_str).unwrap();
@@ -89,10 +89,10 @@ fn test_serialization_map_elites_grid_state() {
     // Check serialization and round trip
     let serialized = serde_json::to_string(&grid_state).unwrap();
     let deserialized: MapElitesGridState = serde_json::from_str(&serialized).unwrap();
-    
+
     assert_eq!(deserialized.grid_resolution, 50);
     assert_eq!(deserialized.grid.len(), 2);
-    
+
     let ind1 = deserialized.grid.get("10,20").unwrap();
     assert_eq!(ind1.fitness, 0.85);
     assert_eq!(ind1.features, vec![0.2, 0.4]);

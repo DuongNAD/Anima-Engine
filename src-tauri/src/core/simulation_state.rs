@@ -1,9 +1,9 @@
 use bevy_ecs::prelude::*;
 
-use std::sync::{Arc, RwLock};
+use crate::core::agent_systems::{AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId};
 use crate::core::ecs::*;
-use crate::core::agent_systems::{AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration};
 use crate::evolution::lineage::LineageTracker;
+use std::sync::{Arc, RwLock};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct AgentState {
@@ -154,35 +154,55 @@ pub struct SavedSimulationState {
 }
 
 pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
-    use crate::core::ecs::{AgentClass, AgentParentLineageIds, Position, Rotation, Velocity, Segment, ParentAgent, Predator, Prey};
-    use crate::physics::dynamics::RigidBody;
     use crate::ai::cpg::CpgOscillator;
+    use crate::core::ecs::{
+        AgentClass, AgentParentLineageIds, ParentAgent, Position, Predator, Prey, Rotation,
+        Segment, Velocity,
+    };
     use crate::evolution::genotype::decode_genotype;
-    
-    let root_entity = decode_genotype(world, &agent.genotype, agent.root_position, agent.root_rotation);
+    use crate::physics::dynamics::RigidBody;
+
+    let root_entity = decode_genotype(
+        world,
+        &agent.genotype,
+        agent.root_position,
+        agent.root_rotation,
+    );
 
     world.entity_mut(root_entity).insert((
         AgentGenotype(agent.genotype.clone()),
         agent.evaluation.clone(),
-        agent.feature_tracker.clone(),
+        agent.feature_tracker,
         AgentLineageId(agent.lineage_id.clone()),
         AgentGeneration(agent.generation),
         AgentParentLineageIds(agent.parent_ids.clone()),
     ));
-    world.entity_mut(root_entity).insert(agent.last_transition_state.clone());
+    world
+        .entity_mut(root_entity)
+        .insert(agent.last_transition_state);
 
     match agent.class {
-        AgentClass::Predator => { world.entity_mut(root_entity).insert(Predator); }
-        AgentClass::Prey => { world.entity_mut(root_entity).insert(Prey); }
+        AgentClass::Predator => {
+            world.entity_mut(root_entity).insert(Predator);
+        }
+        AgentClass::Prey => {
+            world.entity_mut(root_entity).insert(Prey);
+        }
     }
 
     if let Some(mut homeo) = world.get_mut::<crate::ai::hrrl::HomeostaticState>(root_entity) {
         *homeo = agent.homeostatic_state.clone();
     }
 
-    if let Some(mut pos) = world.get_mut::<Position>(root_entity) { pos.0 = agent.root_position; }
-    if let Some(mut rot) = world.get_mut::<Rotation>(root_entity) { rot.0 = agent.root_rotation; }
-    if let Some(mut vel) = world.get_mut::<Velocity>(root_entity) { vel.0 = agent.root_velocity; }
+    if let Some(mut pos) = world.get_mut::<Position>(root_entity) {
+        pos.0 = agent.root_position;
+    }
+    if let Some(mut rot) = world.get_mut::<Rotation>(root_entity) {
+        rot.0 = agent.root_rotation;
+    }
+    if let Some(mut vel) = world.get_mut::<Velocity>(root_entity) {
+        vel.0 = agent.root_velocity;
+    }
     if let Some(mut body) = world.get_mut::<RigidBody>(root_entity) {
         body.velocity = agent.root_velocity;
         body.force = glam::Vec3::ZERO;
@@ -198,9 +218,15 @@ pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
 
     for (entity, segment_id) in segment_entities {
         if let Some(seg_state) = agent.segments.iter().find(|s| s.segment_id == segment_id) {
-            if let Some(mut pos) = world.get_mut::<Position>(entity) { pos.0 = seg_state.position; }
-            if let Some(mut rot) = world.get_mut::<Rotation>(entity) { rot.0 = seg_state.rotation; }
-            if let Some(mut vel) = world.get_mut::<Velocity>(entity) { vel.0 = seg_state.velocity; }
+            if let Some(mut pos) = world.get_mut::<Position>(entity) {
+                pos.0 = seg_state.position;
+            }
+            if let Some(mut rot) = world.get_mut::<Rotation>(entity) {
+                rot.0 = seg_state.rotation;
+            }
+            if let Some(mut vel) = world.get_mut::<Velocity>(entity) {
+                vel.0 = seg_state.velocity;
+            }
             if let Some(mut body) = world.get_mut::<RigidBody>(entity) {
                 body.velocity = seg_state.velocity;
                 body.force = glam::Vec3::ZERO;
@@ -225,26 +251,42 @@ pub fn serialize_world_state(
     evolution_settings: &Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>,
     map_elites_grid: &Arc<std::sync::Mutex<crate::commands::MapElitesGridState>>,
 ) -> SavedSimulationState {
-    use crate::core::ecs::{Food, AgentClass, ActiveEnvironmentEvent, FoodSpawnSettings, MapBounds, EpochManager, Predator, Velocity, AgentParentLineageIds, Segment, ParentAgent, Lake, Tree};
     use crate::ai::cpg::CpgOscillator;
-    let active_environment_event = world.get_resource::<ActiveEnvironmentEvent>().map(|e| e.0).unwrap_or(crate::evolution::meta_ai::EnvironmentalEvent::Stable);
-    let food_spawn_settings = world.get_resource::<FoodSpawnSettings>().cloned().unwrap_or_default();
-    let map_bounds = world.get_resource::<MapBounds>().cloned().unwrap_or_default();
-    let epoch_manager = world.get_resource::<EpochManager>().cloned().unwrap_or_default();
-
-    let pheromone_grid = if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
-        SerializedPheromoneGrid {
-            values: grid.values.clone(),
-            diffusion_rate: grid.diffusion_rate,
-            decay_rate: grid.decay_rate,
-        }
-    } else {
-        SerializedPheromoneGrid {
-            values: vec![0.0; crate::ai::pheromone::CELL_COUNT],
-            diffusion_rate: 0.1,
-            decay_rate: 0.05,
-        }
+    use crate::core::ecs::{
+        ActiveEnvironmentEvent, AgentClass, AgentParentLineageIds, EpochManager, Food,
+        FoodSpawnSettings, Lake, MapBounds, ParentAgent, Predator, Segment, Tree, Velocity,
     };
+    let active_environment_event = world
+        .get_resource::<ActiveEnvironmentEvent>()
+        .map(|e| e.0)
+        .unwrap_or(crate::evolution::meta_ai::EnvironmentalEvent::Stable);
+    let food_spawn_settings = world
+        .get_resource::<FoodSpawnSettings>()
+        .cloned()
+        .unwrap_or_default();
+    let map_bounds = world
+        .get_resource::<MapBounds>()
+        .cloned()
+        .unwrap_or_default();
+    let epoch_manager = world
+        .get_resource::<EpochManager>()
+        .cloned()
+        .unwrap_or_default();
+
+    let pheromone_grid =
+        if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
+            SerializedPheromoneGrid {
+                values: grid.values.clone(),
+                diffusion_rate: grid.diffusion_rate,
+                decay_rate: grid.decay_rate,
+            }
+        } else {
+            SerializedPheromoneGrid {
+                values: vec![0.0; crate::ai::pheromone::CELL_COUNT],
+                diffusion_rate: 0.1,
+                decay_rate: 0.05,
+            }
+        };
 
     let mut foods = Vec::new();
     let mut food_query = world.query::<(&Position, &Food)>();
@@ -274,17 +316,32 @@ pub fn serialize_world_state(
     )>();
 
     let mut collected_agents = Vec::new();
-    for (entity, pos, rot, vel, homeo, last_trans, genotype, eval, tracker, lineage_id, gen, parents, predator) in agent_query.iter(world) {
+    for (
+        entity,
+        pos,
+        rot,
+        vel,
+        homeo,
+        last_trans,
+        genotype,
+        eval,
+        tracker,
+        lineage_id,
+        gen,
+        parents,
+        predator,
+    ) in agent_query.iter(world)
+    {
         collected_agents.push((
             entity,
             pos.0,
             rot.0,
             vel.0,
             homeo.clone(),
-            last_trans.clone(),
+            *last_trans,
             genotype.0.clone(),
             eval.clone(),
-            tracker.clone(),
+            *tracker,
             lineage_id.0.clone(),
             gen.0,
             parents.0.clone(),
@@ -292,12 +349,41 @@ pub fn serialize_world_state(
         ));
     }
 
-    let mut segment_query = world.query::<(Entity, &Segment, &Position, &Rotation, &Velocity, &ParentAgent, Option<&CpgOscillator>)>();
-    for (entity, root_pos, root_rot, root_vel, homeo, last_trans, genotype, eval, tracker, lineage_id, gen, parents, is_predator) in collected_agents {
-        let class = if is_predator { AgentClass::Predator } else { AgentClass::Prey };
+    let mut segment_query = world.query::<(
+        Entity,
+        &Segment,
+        &Position,
+        &Rotation,
+        &Velocity,
+        &ParentAgent,
+        Option<&CpgOscillator>,
+    )>();
+    for (
+        entity,
+        root_pos,
+        root_rot,
+        root_vel,
+        homeo,
+        last_trans,
+        genotype,
+        eval,
+        tracker,
+        lineage_id,
+        gen,
+        parents,
+        is_predator,
+    ) in collected_agents
+    {
+        let class = if is_predator {
+            AgentClass::Predator
+        } else {
+            AgentClass::Prey
+        };
         let mut segments = Vec::new();
-        
-        for (seg_entity, segment, seg_pos, seg_rot, seg_vel, parent_agent, opt_osc) in segment_query.iter(world) {
+
+        for (seg_entity, segment, seg_pos, seg_rot, seg_vel, parent_agent, opt_osc) in
+            segment_query.iter(world)
+        {
             if parent_agent.0 == entity && seg_entity != entity {
                 segments.push(SerializedSegmentState {
                     segment_id: segment.id,

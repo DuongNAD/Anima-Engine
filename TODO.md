@@ -37,6 +37,13 @@ Pine (thông 2 tầng) · Round (tán kép) · Jungle (tầng tán) · Cactus (c
 
 ---
 
+# 🧹 BACKEND — clippy sạch (lib) + rustfmt toàn crate (2026-07-03)
+
+- `cargo clippy --fix` + sửa tay 4 `needless_range_loop` → **lib 0 warning**. `cargo fmt` chuẩn hóa toàn bộ crate (trước đây chỉ format từng file qua hook → diff lớn 1 lần, sạch về sau). Toàn bộ `cargo test` pass.
+- Còn lại (chỉ trong test binaries, không đụng semantics): `unused Result` ×8, `MutexGuard across await` ×5 (adversarial_challenger), `clamp-like` ×3, dead-code TrackingAllocator — sửa sau nếu muốn clippy --all-targets sạch 100%.
+
+---
+
 # 🌏 KHÍ HẬU THẬT v11 — Rain shadow + 22 biome vùng lớn + texture full-res (2026-07-03)
 
 Yêu cầu: "map chân thật, tối ưu, đẹp, nhiều môi trường nhất có thể". **Bump `WORLD_GEN_VERSION` 10→11** (cache tự sinh lại). Đã commit cùng ngày.

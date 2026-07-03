@@ -1,16 +1,11 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    AgentMigrationData, OutboundMigration, InboundMigrationReceiver,
-    OutboundMigrationSender, AgentClass, Prey
-};
-use anima_engine_lib::evolution::genotype::MorphologyGenotype;
-use anima_engine_lib::core::engine::{
-    run_websocket_server, run_websocket_client
-};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
+use anima_engine_lib::core::engine::{run_websocket_client, run_websocket_server};
+use anima_engine_lib::evolution::genotype::MorphologyGenotype;
 
 #[tokio::test]
 async fn test_high_throughput_websocket_transfers() {
@@ -28,7 +23,8 @@ async fn test_high_throughput_websocket_transfers() {
             server_inbound_tx,
             running_server,
             None,
-        ).await;
+        )
+        .await;
     });
 
     let running_client = Arc::clone(&running);
@@ -39,7 +35,8 @@ async fn test_high_throughput_websocket_transfers() {
             running_client,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Let the server start
@@ -105,12 +102,20 @@ async fn test_high_throughput_websocket_transfers() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await;
+    })
+    .await;
 
     running.store(false, Ordering::SeqCst);
     let _ = tokio::join!(server_handle, client_handle);
 
     let (received, ids) = received_count.expect("Timeout waiting for high-throughput migrations");
-    println!("Unique IDs received (first 10): {:?}", ids.iter().take(10).collect::<Vec<_>>());
-    assert_eq!(received, count, "Expected {} messages but received {}", count, received);
+    println!(
+        "Unique IDs received (first 10): {:?}",
+        ids.iter().take(10).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        received, count,
+        "Expected {} messages but received {}",
+        count, received
+    );
 }

@@ -1,17 +1,15 @@
-use bevy_ecs::prelude::*;
-use std::sync::Arc;
-use crate::core::ecs::{
-    Position, ParentAgent, SegmentJointForce,
-    EpochManager, FeatureTracker, AgentClass, Predator, Prey,
-    EvolutionQueue, EvolutionSender, EvolutionReceiver, AgentEpochStats,
-    Segment, Food, CognitiveState, InertiaComponent,
-    Rotation,
-};
+use crate::ai::cpg::CpgOscillator;
+use crate::ai::hrrl::HomeostaticState;
 use crate::core::ecs::ActiveEnvironmentEvent;
 use crate::core::ecs::Velocity;
-use crate::ai::hrrl::HomeostaticState;
-use crate::ai::cpg::CpgOscillator;
-use crate::evolution::genotype::{MorphologyGenotype, decode_genotype};
+use crate::core::ecs::{
+    AgentClass, AgentEpochStats, CognitiveState, EpochManager, EvolutionQueue, EvolutionReceiver,
+    EvolutionSender, FeatureTracker, Food, InertiaComponent, ParentAgent, Position, Predator, Prey,
+    Rotation, Segment, SegmentJointForce,
+};
+use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
+use bevy_ecs::prelude::*;
+use std::sync::Arc;
 
 #[derive(Resource)]
 pub struct BevyEvolutionSettings(pub Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>);
@@ -59,7 +57,9 @@ pub struct AgentEvaluation {
 pub struct NextNodeId(pub u32);
 
 #[derive(Resource)]
-pub struct EnvironmentalEventReceiver(pub crossbeam_channel::Receiver<crate::evolution::meta_ai::EnvironmentalEvent>);
+pub struct EnvironmentalEventReceiver(
+    pub crossbeam_channel::Receiver<crate::evolution::meta_ai::EnvironmentalEvent>,
+);
 
 pub fn receive_environmental_events_system(
     receiver: Res<EnvironmentalEventReceiver>,
@@ -122,7 +122,12 @@ pub fn sync_evolution_settings_system(
 
 pub fn update_agent_evaluation_system(
     mut agent_query: Query<(Entity, &Position, &mut AgentEvaluation, &HomeostaticState)>,
-    segment_query: Query<(&ParentAgent, &crate::physics::dynamics::RigidBody, &Velocity, Option<&SegmentJointForce>)>,
+    segment_query: Query<(
+        &ParentAgent,
+        &crate::physics::dynamics::RigidBody,
+        &Velocity,
+        Option<&SegmentJointForce>,
+    )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let dt = time_step.0;
@@ -157,7 +162,6 @@ pub fn update_agent_evaluation_system(
     }
 }
 
-
 pub fn check_epoch_completion_system(
     mut epoch_manager: ResMut<EpochManager>,
     evolution_sender: Res<EvolutionSender>,
@@ -183,7 +187,9 @@ pub fn check_epoch_completion_system(
         let mut rng = rand::thread_rng();
         use rand::Rng;
 
-        for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in agent_query.iter_mut() {
+        for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in
+            agent_query.iter_mut()
+        {
             let avg_speed = tracker.cumulative_distance / (tracker.tick_count as f32 * dt + 1e-6);
             let efficiency = tracker.cumulative_distance / (tracker.cumulative_energy_decay + 1e-6);
             let fitness = tracker.cumulative_distance + tracker.tick_count as f32;
@@ -222,13 +228,27 @@ pub fn apply_staggered_evolution_system(
     predator_query: Query<&Predator>,
 ) {
     // Collect all spawn instructions
-    while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) = evolution_receiver.0.try_recv() {
-        queue.pending_replacements.push((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids));
+    while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) =
+        evolution_receiver.0.try_recv()
+    {
+        queue.pending_replacements.push((
+            old_entity,
+            next_genotype,
+            initial_pos,
+            lineage_id,
+            generation,
+            parent_ids,
+        ));
     }
 
     // Pop at most 1 replacement from the EvolutionQueue per frame
-    if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) = queue.pending_replacements.pop() {
-        let spawn_pos = position_query.get(old_entity).map(|p| p.0).unwrap_or(default_pos);
+    if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) =
+        queue.pending_replacements.pop()
+    {
+        let spawn_pos = position_query
+            .get(old_entity)
+            .map(|p| p.0)
+            .unwrap_or(default_pos);
 
         let agent_class = if predator_query.get(old_entity).is_ok() {
             AgentClass::Predator
@@ -291,15 +311,18 @@ pub struct InferenceChannels {
 }
 
 pub fn sensory_system(
-    mut agent_query: Query<(
-        Entity,
-        &Position,
-        &Rotation,
-        &HomeostaticState,
-        Option<&Predator>,
-        Option<&crate::ai::pheromone::OlfactorySensors>,
-        &mut CognitiveState,
-    ), With<crate::core::ecs::Agent>>,
+    mut agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &Rotation,
+            &HomeostaticState,
+            Option<&Predator>,
+            Option<&crate::ai::pheromone::OlfactorySensors>,
+            &mut CognitiveState,
+        ),
+        With<crate::core::ecs::Agent>,
+    >,
     food_query: Query<&Position, With<Food>>,
     prey_query: Query<(&Position, &HomeostaticState), (With<crate::core::ecs::Agent>, With<Prey>)>,
     spatial_grid: Option<Res<crate::physics::SpatialHashGrid>>,
@@ -319,13 +342,18 @@ pub fn sensory_system(
     }
 
     let mut batch = local_batch.take().unwrap_or_else(|| {
-        channels.recycle_req_rx.try_recv().unwrap_or_else(|_| InferenceRequestBatch {
-            requests: Vec::with_capacity(128),
-        })
+        channels
+            .recycle_req_rx
+            .try_recv()
+            .unwrap_or_else(|_| InferenceRequestBatch {
+                requests: Vec::with_capacity(128),
+            })
     });
     batch.requests.clear();
 
-    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state) in agent_query.iter_mut() {
+    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state) in
+        agent_query.iter_mut()
+    {
         if !matches!(*cog_state, CognitiveState::Ready) {
             continue;
         }
@@ -375,7 +403,7 @@ pub fn sensory_system(
                 origin: agent_pos.0,
                 direction,
             };
-            
+
             if let Some(hit) = grid.raycast(&ray, 10.0, map_bounds, &collider_query) {
                 let root_agent_id = if let Ok(parent) = parent_agent_query.get(hit.entity) {
                     parent.0
@@ -402,13 +430,15 @@ pub fn sensory_system(
         }
 
         if let Some(ref mut raycasts_res) = active_raycasts {
-            raycasts_res.raycasts.push(crate::core::ecs::RaycastTelemetry {
-                origin: agent_pos.0.to_array(),
-                direction: direction.to_array(),
-                hit_distance,
-                hit_entity_type: hit_type,
-                agent_id: entity.index(),
-            });
+            raycasts_res
+                .raycasts
+                .push(crate::core::ecs::RaycastTelemetry {
+                    origin: agent_pos.0.to_array(),
+                    direction: direction.to_array(),
+                    hit_distance,
+                    hit_entity_type: hit_type,
+                    agent_id: entity.index(),
+                });
         }
 
         let (left_reading, right_reading) = if let Some(sensors) = opt_sensors {
@@ -496,7 +526,9 @@ pub fn action_resolution_system(
 ) {
     while let Ok(batch) = channels.res_rx.try_recv() {
         for response in &batch.responses {
-            if let Ok((_entity, mut cog_state, mut inertia, opt_last)) = agent_query.get_mut(response.entity) {
+            if let Ok((_entity, mut cog_state, mut inertia, opt_last)) =
+                agent_query.get_mut(response.entity)
+            {
                 if let CognitiveState::PendingInference(ticket_id) = *cog_state {
                     if ticket_id == response.request_id {
                         // Update InertiaComponent
@@ -527,4 +559,3 @@ pub fn action_resolution_system(
         let _ = channels.recycle_res_tx.send(batch);
     }
 }
-

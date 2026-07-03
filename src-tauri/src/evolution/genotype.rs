@@ -1,5 +1,5 @@
 use glam::Vec3;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MorphologyNode {
@@ -49,8 +49,8 @@ pub fn decode_genotype(
     use crate::ai::cpg::CpgOscillator;
     use crate::ai::hrrl::{HomeostaticState, LastTransitionState};
     use crate::core::ecs::{
-        Agent, ChildrenLinks, JointAxis, ParentAgent, ParentLink, Position, Rotation, Segment,
-        SegmentJointForce, Velocity, CognitiveState, InertiaComponent, SensoryBufferComponent,
+        Agent, ChildrenLinks, CognitiveState, InertiaComponent, JointAxis, ParentAgent, ParentLink,
+        Position, Rotation, Segment, SegmentJointForce, SensoryBufferComponent, Velocity,
     };
     use crate::physics::dynamics::{JointConstraint, RigidBody};
     use crate::physics::SpatialCollider;
@@ -104,7 +104,9 @@ pub fn decode_genotype(
                 has_last: false,
             },
             ChildrenLinks(Vec::new()),
-            SpatialCollider { radius: root_node.radius },
+            SpatialCollider {
+                radius: root_node.radius,
+            },
             CognitiveState::default(),
             InertiaComponent::default(),
             SensoryBufferComponent::default(),
@@ -112,10 +114,9 @@ pub fn decode_genotype(
         .id();
 
     // Attach ParentAgent(root_entity) and SegmentJointForce(0.0)
-    world.entity_mut(root_entity).insert((
-        ParentAgent(root_entity),
-        SegmentJointForce(0.0),
-    ));
+    world
+        .entity_mut(root_entity)
+        .insert((ParentAgent(root_entity), SegmentJointForce(0.0)));
 
     // BFS Queue holds: (current_node, parent_entity, parent_pos, parent_rot)
     let mut queue = VecDeque::new();
@@ -172,7 +173,9 @@ pub fn decode_genotype(
                         CpgOscillator::new(1.0, 0.5),
                         ParentAgent(root_entity),
                         SegmentJointForce(0.0),
-                        SpatialCollider { radius: child_node.radius },
+                        SpatialCollider {
+                            radius: child_node.radius,
+                        },
                     ))
                     .id();
 

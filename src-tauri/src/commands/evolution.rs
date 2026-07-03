@@ -1,6 +1,6 @@
-use tauri::State;
-use crate::AppState;
 use crate::evolution::lineage::LineageTracker;
+use crate::AppState;
+use tauri::State;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct EvolutionSettings {
@@ -44,9 +44,7 @@ pub struct LineageGraphPayload {
 }
 
 #[tauri::command]
-pub fn get_map_elites_grid(
-    state: State<'_, AppState>,
-) -> Result<MapElitesGridState, String> {
+pub fn get_map_elites_grid(state: State<'_, AppState>) -> Result<MapElitesGridState, String> {
     let grid = state.map_elites_grid.lock().unwrap();
     Ok(grid.clone())
 }
@@ -80,9 +78,7 @@ pub fn toggle_evolution(
 }
 
 #[tauri::command]
-pub fn get_lineage_graph(
-    state: State<'_, AppState>,
-) -> Result<LineageGraphPayload, String> {
+pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPayload, String> {
     let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
     let db_connected = state.engine.lineage_tracker.is_online();
 
@@ -98,7 +94,8 @@ pub fn get_lineage_graph(
 
     let mut parent_map = std::collections::HashMap::new();
     for rel in &relations {
-        parent_map.entry(rel.target_id.clone())
+        parent_map
+            .entry(rel.target_id.clone())
             .or_insert_with(Vec::new)
             .push((rel.source_id.clone(), rel.relation_type));
     }
@@ -107,7 +104,10 @@ pub fn get_lineage_graph(
 
     fn get_mutations_count(
         node_id: &str,
-        parent_map: &std::collections::HashMap<String, Vec<(String, crate::evolution::lineage::RelationType)>>,
+        parent_map: &std::collections::HashMap<
+            String,
+            Vec<(String, crate::evolution::lineage::RelationType)>,
+        >,
         memo: &mut std::collections::HashMap<String, u32>,
     ) -> u32 {
         if let Some(&val) = memo.get(node_id) {
@@ -133,12 +133,17 @@ pub fn get_lineage_graph(
     }
 
     for node in &nodes {
-        let parent_id = parent_map.get(&node.id)
+        let parent_id = parent_map
+            .get(&node.id)
             .and_then(|parents| parents.first())
             .map(|(p_id, _)| p_id.clone());
 
         let mutations_count = get_mutations_count(&node.id, &parent_map, &mut mutations_map);
-        let fitness = node.genotype.as_ref().map(|g| g.nodes.len() as f64).unwrap_or(0.0);
+        let fitness = node
+            .genotype
+            .as_ref()
+            .map(|g| g.nodes.len() as f64)
+            .unwrap_or(0.0);
 
         payload_nodes.push(LineageNodePayload {
             id: node.id.clone(),

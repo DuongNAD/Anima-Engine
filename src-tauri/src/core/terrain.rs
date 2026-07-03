@@ -532,8 +532,8 @@ impl TerrainMap {
         let mut pois = Vec::with_capacity(10);
         let mut poi_rng = StdRng::seed_from_u64(settings.seed as u64 + 100);
         let mut land_count = 0;
-        for idx in 0..width * height {
-            if elevations[idx] >= sand_val {
+        for (idx, &elevation) in elevations.iter().enumerate() {
+            if elevation >= sand_val {
                 let col = idx % width;
                 let row = idx / width;
                 land_count += 1;
@@ -568,7 +568,7 @@ impl TerrainMap {
         }
         let tx = (pos.x - bounds.min.x) / x_range;
         let tz = (pos.z - bounds.min.z) / z_range;
-        if tx < 0.0 || tx > 1.0 || tz < 0.0 || tz > 1.0 {
+        if !(0.0..=1.0).contains(&tx) || !(0.0..=1.0).contains(&tz) {
             return None;
         }
         let col = ((tx * self.width as f32) as usize).min(self.width - 1);
@@ -623,7 +623,7 @@ mod tests {
         let map = TerrainMap::generate(&settings);
         assert!(!map.elevations.is_empty());
         for &elevation in &map.elevations {
-            assert!(elevation >= 0.0 && elevation <= 1.0);
+            assert!((0.0..=1.0).contains(&elevation));
         }
 
         // Assert min is close to 0 and max is close to 1
@@ -755,14 +755,14 @@ mod tests {
             // Horizontal line
             for dx in -2..=2 {
                 let cx = px as isize + dx;
-                if cx >= 0 && cx < 1024 {
+                if (0..1024).contains(&cx) {
                     img_buf.put_pixel(cx as u32, py as u32, image::Rgb([0, 255, 0]));
                 }
             }
             // Vertical line
             for dy in -2..=2 {
                 let cy = py as isize + dy;
-                if cy >= 0 && cy < 1024 {
+                if (0..1024).contains(&cy) {
                     img_buf.put_pixel(px as u32, cy as u32, image::Rgb([0, 255, 0]));
                 }
             }

@@ -1,6 +1,6 @@
+use crate::core::ecs::{MapBounds, Position, Rotation};
 use bevy_ecs::prelude::*;
 use glam::Vec3;
-use crate::core::ecs::{Position, Rotation, MapBounds};
 
 pub const GRID_SIZE: usize = 128;
 pub const CELL_COUNT: usize = GRID_SIZE * GRID_SIZE; // 16384

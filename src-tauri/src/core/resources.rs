@@ -1,9 +1,11 @@
+use crate::core::components::{
+    AgentMigrationData, CombatEvent, OutboundMigration, RaycastTelemetry, ShardingConfig,
+};
+use crate::evolution::genotype::MorphologyGenotype;
+use crate::evolution::meta_ai::EnvironmentalEvent;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::sync::{Arc, RwLock};
-use crate::evolution::meta_ai::EnvironmentalEvent;
-use crate::evolution::genotype::MorphologyGenotype;
-use crate::core::components::{RaycastTelemetry, CombatEvent, ShardingConfig, AgentMigrationData, OutboundMigration};
 
 #[derive(Resource, Default)]
 pub struct ActiveRaycasts {
@@ -87,11 +89,27 @@ pub struct EvolutionSender(pub crossbeam_channel::Sender<Vec<AgentEpochStats>>);
 
 #[derive(Resource, Clone, Debug, Default)]
 pub struct EvolutionQueue {
-    pub pending_replacements: Vec<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>,
+    pub pending_replacements: Vec<(
+        Entity,
+        MorphologyGenotype,
+        glam::Vec3,
+        String,
+        u32,
+        Vec<String>,
+    )>,
 }
 
 #[derive(Resource)]
-pub struct EvolutionReceiver(pub crossbeam_channel::Receiver<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>);
+pub struct EvolutionReceiver(
+    pub  crossbeam_channel::Receiver<(
+        Entity,
+        MorphologyGenotype,
+        glam::Vec3,
+        String,
+        u32,
+        Vec<String>,
+    )>,
+);
 
 #[derive(Resource, Clone)]
 pub struct ShardingResource(pub Arc<RwLock<ShardingConfig>>);
