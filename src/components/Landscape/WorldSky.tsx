@@ -21,12 +21,17 @@ const SKY_FRAGMENT = /* glsl */ `
   uniform vec3 uSunDir;
   uniform vec3 uSunColor;
   uniform float uGlow;
+  uniform vec3 uMoonDir;
+  uniform float uMoonGlow;
   void main() {
     vec3 d = normalize(vDir);
     float h = clamp(d.y, 0.0, 1.0);
     vec3 col = mix(uHorizon, uZenith, pow(h, 0.62));
     float s = max(dot(d, normalize(uSunDir)), 0.0);
     col += uSunColor * (pow(s, 300.0) * 0.9 + pow(s, 10.0) * 0.16 * uGlow);
+    // Cold, tighter halo around the moon at night.
+    float m = max(dot(d, normalize(uMoonDir)), 0.0);
+    col += vec3(0.58, 0.66, 0.8) * (pow(m, 700.0) * 0.55 + pow(m, 26.0) * 0.05) * uMoonGlow;
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -72,6 +77,8 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       uSunDir: { value: new THREE.Vector3(0, 1, 0) },
       uSunColor: { value: new THREE.Color('#fff2cc') },
       uGlow: { value: 1 },
+      uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
+      uMoonGlow: { value: 0 },
     }),
     [],
   );
@@ -161,6 +168,8 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     skyUniforms.uSunDir.value.set(sunPosition[0], sunPosition[1], sunPosition[2]).normalize();
     skyUniforms.uSunColor.value.set(params.sunColor);
     skyUniforms.uGlow.value = params.sunIntensity;
+    skyUniforms.uMoonDir.value.set(moonPosition[0], moonPosition[1], moonPosition[2]).normalize();
+    skyUniforms.uMoonGlow.value = showMoon ? moonDirY : 0;
 
     if (cloudsRef.current) {
       const children = cloudsRef.current.children;

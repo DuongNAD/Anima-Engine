@@ -230,6 +230,58 @@ function buildRoughnessTexture(world: World): THREE.DataTexture {
 }
 
 /**
+ * Tileable two-octave value-noise detail tile (mean ~1.0). Multiplied over the terrain at
+ * high repeat in the shader, it gives the ground visible grain when the camera is close —
+ * the 2048^2 colour texture alone blurs into soft mush within a few metres. Because the
+ * noise is mean-centred, its mipmaps average back to 1.0, so the effect self-fades with
+ * distance for free.
+ */
+function buildDetailTexture(): THREE.DataTexture {
+  const N = 256;
+  const G = 32; // base lattice
+  const lat = new Float32Array((G + 1) * (G + 1));
+  let s = 421;
+  const rnd = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for (let i = 0; i < lat.length; i++) lat[i] = rnd();
+  const vnoise = (u: number, v: number) => {
+    const x = u * G;
+    const y = v * G;
+    const x0 = Math.floor(x) % G;
+    const y0 = Math.floor(y) % G;
+    const tx = x - Math.floor(x);
+    const ty = y - Math.floor(y);
+    const a = lat[y0 * (G + 1) + x0];
+    const b = lat[y0 * (G + 1) + x0 + 1];
+    const c = lat[(y0 + 1) * (G + 1) + x0];
+    const d = lat[(y0 + 1) * (G + 1) + x0 + 1];
+    return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty;
+  };
+  const data = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const u = x / N;
+      const v = y / N;
+      const n = vnoise(u, v) * 0.65 + vnoise((u * 3) % 1, (v * 3) % 1) * 0.35; // 2 octaves
+      const byte = 128 + (n - 0.5) * 56; // ±11% around mean
+      const o = (y * N + x) * 4;
+      data[o] = data[o + 1] = data[o + 2] = byte;
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
  * Renders the huge SoA world as a single height-displaced mesh. The mesh is built at
  * `meshResolution` (e.g. 384) while COLOUR comes from a full data-resolution texture and the
  * fine relief from a residual normal map — so a 2048^2 world reads at full detail without a
@@ -296,14 +348,35 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     [world, renderSize, heightRatio, meshResolution],
   );
   const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
+  const detailMap = useMemo(() => buildDetailTexture(), []);
+
+  // Inject the high-repeat detail multiply right after the base map sample. Standard
+  // onBeforeCompile patch: declare the extra uniforms at the top, extend map_fragment.
+  const onBeforeCompile = useMemo(
+    () => (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
+      shader.uniforms.uDetail = { value: detailMap };
+      shader.fragmentShader =
+        'uniform sampler2D uDetail;\n' +
+        shader.fragmentShader.replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+          {
+            float dtl = texture2D(uDetail, vMapUv * 220.0).r * 2.0;
+            diffuseColor.rgb *= mix(1.0, dtl, 0.34);
+          }`,
+        );
+    },
+    [detailMap],
+  );
 
   useEffect(() => {
     return () => {
       colorMap.dispose();
       normalMap.dispose();
       roughnessMap.dispose();
+      detailMap.dispose();
     };
-  }, [colorMap, normalMap, roughnessMap]);
+  }, [colorMap, normalMap, roughnessMap, detailMap]);
 
   return (
     <mesh geometry={geometry} name="world-terrain" receiveShadow>
@@ -314,6 +387,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         roughnessMap={roughnessMap}
         roughness={1.0}
         metalness={0.0}
+        onBeforeCompile={onBeforeCompile}
       />
     </mesh>
   );

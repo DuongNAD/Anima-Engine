@@ -6,6 +6,7 @@ import WorldVegetation from './WorldVegetation';
 import WorldWater from './WorldWater';
 import WorldWaterfalls from './WorldWaterfalls';
 import WorldCaves from './WorldCaves';
+import WorldBirds from './WorldBirds';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
@@ -206,6 +207,7 @@ export const WorldShowcase: React.FC = () => {
         />
         <WorldWaterfalls world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
         <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        <WorldBirds renderSize={RENDER_SIZE} />
 
         <WorldCameraRig
           mode={camMode}

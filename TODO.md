@@ -4,7 +4,20 @@
 
 ---
 
-# 🌅 [MỚI NHẤT] v14 — Trời gradient + AO địa hình + hồ băng + hoa dại + địa tầng (2026-07-03)
+# 🐦 [MỚI NHẤT] v15 — Vân đất cận cảnh + thác chảy động + quầng trăng + chim (2026-07-03)
+
+Yêu cầu: "đẹp và chân thực hơn nữa". **KHÔNG bump WORLD_GEN_VERSION** (chỉ render-side — cache người dùng còn nguyên).
+
+- **Micro-detail texture** (`WorldTerrain.buildDetailTexture` + `onBeforeCompile`): tile value-noise 256² (2 octave, mean-1.0) nhân vào diffuse sau `map_fragment` với repeat ×220, cường độ 0.34 → mặt đất có hạt/vân khi đi bộ (trước bị bilinear kéo mờ trong vài mét); mean-centred nên mipmap tự trung hòa về 1.0 = tự tắt theo khoảng cách, 0 chi phí tune. Lưu ý pattern: prepend `uniform sampler2D uDetail;` vào fragmentShader + replace include; uv dùng `vMapUv` (three ≥ r151).
+- **Thác chảy động** (`WorldWaterfalls`): curtain đổi sang ShaderMaterial — sọc sáng 2 tốc độ trượt xuống theo `uTime`, vỡ theo cột (hash), mép trái/phải fade mềm, chân thác trắng bọt hơn. **Bài học InstancedMesh + ShaderMaterial**: three TỰ define `USE_INSTANCING` + khai báo `instanceMatrix` — chỉ cần NHÂN nó trong transform, khai báo tay sẽ lỗi "redefinition".
+- **Quầng trăng** (`WorldSky` shader): uniforms `uMoonDir/uMoonGlow` — halo lạnh `pow(m,700)·0.55 + pow(m,26)·0.05`, glow = moonDirY khi trăng mọc. Đêm có vệt trăng lấp lánh trên nước (roughness map + spec).
+- **Chim** (`WorldBirds.tsx` mới): 18 con, silhouette 2 tam giác chữ V, 1 InstancedMesh + 1 draw call; bay vòng tròn (tham số deterministic per-index), nghiêng cánh theo chiều lượn, vỗ cánh bằng squash scale-Y; frustumCulled=false (matrix update mỗi frame ~20 phần tử — không đáng kể).
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · screenshot: đất có grain, đêm 00:21 vệt trăng trên biển, curtain compile sạch, 0 lỗi console.
+- **Tinh chỉnh:** độ đậm vân đất → `0.34` + repeat `220`; tốc độ sọc thác → `1.5/2.6`; độ sáng quầng trăng → hệ số `0.55/0.05`; số chim/độ cao → props `count` + hằng trong `flights`.
+
+---
+
+# 🌅 v14 — Trời gradient + AO địa hình + hồ băng + hoa dại + địa tầng (2026-07-03)
 
 Yêu cầu: "đẹp và chân thực hơn nữa, làm đầy đủ map/môi trường/địa hình". **Bump `WORLD_GEN_VERSION` 13→14** (flora mix đổi).
 

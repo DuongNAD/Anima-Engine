@@ -1,11 +1,13 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
 // (World.waterfall*). Two instanced meshes total: the curtains and the splash pools at
-// their feet, so even hundreds of falls cost two draw calls.
+// their feet, so even hundreds of falls cost two draw calls. The curtain shader scrolls
+// bright streaks downward so the water visibly FALLS instead of hanging as a static sheet.
 // ---------------------------------------------------------------------------------------
 
 export interface WorldWaterfallsProps {
@@ -14,20 +16,35 @@ export interface WorldWaterfallsProps {
   heightRatio?: number;
 }
 
-/** Vertical 1x1 plane, vertex-coloured white at the lip fading to pale blue at the base. */
-function makeCurtainGeometry(): THREE.BufferGeometry {
-  const geom = new THREE.PlaneGeometry(1, 1, 1, 3);
-  const pos = geom.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-  for (let i = 0; i < pos.count; i++) {
-    const t = pos.getY(i) + 0.5; // 0 at the base, 1 at the lip
-    colors[i * 3] = 0.78 + 0.22 * t;
-    colors[i * 3 + 1] = 0.88 + 0.12 * t;
-    colors[i * 3 + 2] = 0.94 + 0.06 * t;
+// ShaderMaterial on an InstancedMesh: three auto-defines USE_INSTANCING and declares the
+// instanceMatrix attribute for us — we only have to APPLY it in the vertex transform.
+const CURTAIN_VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
   }
-  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return geom;
-}
+`;
+const CURTAIN_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  uniform float uTime;
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+  void main() {
+    // Streaks race down the curtain (two speeds for parallax), broken up per-column.
+    float col = floor(vUv.x * 7.0);
+    float s1 = fract(vUv.y * 3.0 + uTime * 1.5 + hash(vec2(col, 1.0)));
+    float s2 = fract(vUv.y * 6.0 + uTime * 2.6 + hash(vec2(col, 7.0)) * 3.0);
+    float streak = smoothstep(0.55, 1.0, s1) * 0.5 + smoothstep(0.65, 1.0, s2) * 0.5;
+    // Paler + more transparent at the lip, frothy at the base.
+    float body = mix(0.72, 1.0, streak);
+    vec3 color = mix(vec3(0.62, 0.78, 0.88), vec3(1.0), body * (0.55 + 0.45 * (1.0 - vUv.y)));
+    // Soft side edges so the rectangle reads as a spray curtain, not a billboard.
+    float side = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
+    float alpha = (0.5 + 0.42 * streak) * side;
+    gl_FragColor = vec4(color, alpha);
+  }
+`;
 
 export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
   world,
@@ -40,8 +57,25 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
   const count = world.waterfallCount ?? 0;
   const heightUnits = renderSize * heightRatio;
 
-  const curtainGeom = useMemo(() => makeCurtainGeometry(), []);
+  const curtainGeom = useMemo(() => new THREE.PlaneGeometry(1, 1, 1, 1), []);
   const foamGeom = useMemo(() => new THREE.CircleGeometry(1, 10).rotateX(-Math.PI / 2), []);
+  const curtainMat = useMemo(
+    () =>
+      new THREE.ShaderMaterial({
+        vertexShader: CURTAIN_VERTEX,
+        fragmentShader: CURTAIN_FRAGMENT,
+        uniforms: { uTime: { value: 0 } },
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        fog: false,
+      }),
+    [],
+  );
+
+  useFrame((state) => {
+    curtainMat.uniforms.uTime.value = state.clock.getElapsedTime();
+  });
 
   useLayoutEffect(() => {
     const curtain = curtainRef.current;
@@ -82,15 +116,19 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     return () => {
       curtainGeom.dispose();
       foamGeom.dispose();
+      curtainMat.dispose();
     };
-  }, [curtainGeom, foamGeom]);
+  }, [curtainGeom, foamGeom, curtainMat]);
 
   if (count === 0) return null;
   return (
     <group name="world-waterfalls">
-      <instancedMesh ref={curtainRef} args={[curtainGeom, undefined as any, count]} name="waterfall-curtains">
-        <meshBasicMaterial vertexColors transparent opacity={0.85} side={THREE.DoubleSide} />
-      </instancedMesh>
+      <instancedMesh
+        ref={curtainRef}
+        args={[curtainGeom, undefined as any, count]}
+        material={curtainMat}
+        name="waterfall-curtains"
+      />
       <instancedMesh ref={foamRef} args={[foamGeom, undefined as any, count]} name="waterfall-foam">
         <meshBasicMaterial color="#ffffff" transparent opacity={0.45} depthWrite={false} />
       </instancedMesh>
