@@ -83,6 +83,33 @@ export const WorldFish: React.FC<WorldFishProps> = ({
         color: new THREE.Color(SCHOOL_COLORS[out.length % SCHOOL_COLORS.length]),
       });
     }
+    // FRESHWATER schools: one per sizeable unfrozen lake basin, circling under the surface.
+    const FRESH_COLORS = ['#c9cdd3', '#c8a25a', '#9fb08a'];
+    const { size, temperature, lakeBasins } = world;
+    let fresh = 0;
+    for (let bi = 0; bi < (lakeBasins?.length ?? 0) && fresh < 10; bi++) {
+      const b = lakeBasins[bi];
+      const w = b.maxX - b.minX;
+      const h = b.maxY - b.minY;
+      if (w * h < 90) continue; // ponds too small for a school
+      const ccx = Math.round((b.minX + b.maxX) / 2);
+      const ccy = Math.round((b.minY + b.maxY) / 2);
+      if ((temperature?.[ccy * size + ccx] ?? 0.5) < 0.19) continue; // frozen over
+      const u = ccx / (size - 1);
+      const v = ccy / (size - 1);
+      const surfaceY = b.level * heightUnits;
+      const bedY = sampleElevation(world, u, v) * heightUnits;
+      out.push({
+        cx: (u - 0.5) * renderSize,
+        cz: (v - 0.5) * renderSize,
+        y: Math.min(surfaceY - 0.8, bedY + Math.max(0.6, (surfaceY - bedY) * 0.5)),
+        r: Math.max(2.5, Math.min(7, (Math.min(w, h) * renderSize) / size / 3)),
+        speed: (0.3 + hash01(bi * 23) * 0.3) * (hash01(bi * 29) > 0.5 ? 1 : -1),
+        phase: hash01(bi * 31) * Math.PI * 2,
+        color: new THREE.Color(FRESH_COLORS[fresh % FRESH_COLORS.length]),
+      });
+      fresh++;
+    }
     return out;
   }, [world, renderSize, heightUnits, seaY, schools]);
 

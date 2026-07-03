@@ -4,7 +4,23 @@
 
 ---
 
-# 🐠 [MỚI NHẤT] v19 — HỆ SINH THÁI DƯỚI NƯỚC: san hô, kelp, cỏ biển, đàn cá (2026-07-03)
+# 🦌 [MỚI NHẤT] v20 — ĐỘNG VẬT: cá hồ, vịt, diệc, bướm, hươu, dê núi (2026-07-03)
+
+Yêu cầu: "thêm sinh vật trên cạn và dưới nước, đặc biệt ở sông suối ao hồ". **KHÔNG bump WORLD_GEN_VERSION** (render-side — cache giữ nguyên).
+
+- **Cá nước ngọt** (`WorldFish` mở rộng): mỗi bồn hồ ≥90 cell² chưa đóng băng nhận 1 đàn (tối đa 10 đàn hồ) — bơi vòng giữa tầng nước dưới mặt hồ, màu nước ngọt (bạc/nâu vàng/xám xanh). Đã thấy đàn cá lượn giữa hồ núi lớn trong screenshot.
+- **`WorldWildlife.tsx` mới** (5 instanced mesh, ~170 con): 
+  - **Vịt** (≤48): 2–4 con/bồn hồ ấm, nổi tại mực tràn +0.05, trôi vòng chậm r 1.2–2.8 + bob; đầu xanh két/thân nâu/mỏ vàng (vertex paint).
+  - **Diệc** (≤32): đứng bất động ở bờ hồ (`shore>0.85`) hoặc bờ sông (riverAmt láng giềng >150), đất thoải ấm; chân que + cổ nghiêng + mỏ vàng.
+  - **Bướm** (≤52): rập rờn quanh bờ nước + đồng hoa ấm (lissajous + flap scale-Y 11Hz), 4 màu (trắng/vàng cam/hồng/xanh), meshBasic 2 tam giác.
+  - **Hươu** (≤46): đàn 2–4 con trên Grassland/Shrubland/Savanna/Forest thoải (slope<0.25), geometry thân+4 chân+cổ+đầu, bob gặm cỏ nhẹ, castShadow.
+  - **Dê núi** (≤16): cùng geometry tint trắng, trên Alpine/Rock slope 0–0.6.
+- Placement deterministic (hash probe trên field world) — mỗi lần vào map thú vẫn ở đúng "lãnh thổ" cũ.
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · screenshot: đàn cá giữa hồ ✓, không lỗi console. (Mật độ là cap — chỉnh trong WorldWildlife nếu muốn nhiều/ít hơn.)
+
+---
+
+# 🐠 v19 — HỆ SINH THÁI DƯỚI NƯỚC: san hô, kelp, cỏ biển, đàn cá (2026-07-03)
 
 Yêu cầu: "làm cả hệ sinh thái dưới nước". **Bump `WORLD_GEN_VERSION` 17→18** (flora thêm loài thủy sinh).
 
