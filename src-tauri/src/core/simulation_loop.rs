@@ -943,9 +943,16 @@ impl SimulationEngine {
                 crate::core::ecs::manual_migration_system.after(integrate_physics_system),
                 fruit_growth_system.after(apply_environmental_effects_system),
                 lake_replenishment_system.after(apply_environmental_effects_system),
-                resource_field_regrowth_system.after(apply_environmental_effects_system),
                 seed_dropping_system.after(apply_environmental_effects_system),
                 detect_environmental_collisions_system.after(integrate_physics_system),
+            ));
+
+            // Ecosystem-dynamics systems (Phase 7) in their own tuple — Bevy caps a single
+            // add_systems tuple at 20, and `.after(...)` ordering resolves across calls.
+            schedule.add_systems((
+                herbivore_grazing_system.after(integrate_physics_system),
+                resource_field_regrowth_system.after(herbivore_grazing_system),
+                ecosystem_census_system.after(resource_field_regrowth_system),
             ));
 
             schedule.run(&mut world);

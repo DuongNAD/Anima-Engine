@@ -76,8 +76,12 @@ pub fn metabolic_decay_system(
         Option<&SegmentJointForce>,
     )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
 ) {
     let dt = time_step.0;
+    // Energy burned by metabolism this tick is recycled into the closed detritus pool
+    // (conservation) rather than vanishing.
+    let mut respired = 0.0f64;
 
     let k_velocity = 0.2;
     let k_force = 0.3;
@@ -121,7 +125,9 @@ pub fn metabolic_decay_system(
         homeo.temperature = (homeo.temperature + delta_temp).clamp(30.0, 45.0);
 
         let decay = total_cost * dt;
+        let before = homeo.energy;
         homeo.energy = (homeo.energy - decay).max(0.0);
+        respired += (before - homeo.energy) as f64; // actual energy removed (floored at 0)
 
         if let Some(mut tracker) = opt_tracker {
             let speed = velocity.map(|v| v.0.length()).unwrap_or(0.0);
@@ -129,6 +135,10 @@ pub fn metabolic_decay_system(
             tracker.cumulative_distance += speed * dt;
             tracker.tick_count += 1;
         }
+    }
+
+    if let Some(ref mut pool) = biomass {
+        pool.detritus += respired;
     }
 }
 

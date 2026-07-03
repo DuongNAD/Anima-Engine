@@ -4,7 +4,22 @@
 
 ---
 
-# 🧬 [MỚI NHẤT] BACKEND — Nền tảng Ecosystem Dynamics (MTE + Holling + Closed Energy + NPP) (2026-07-03)
+# 🌾 [MỚI NHẤT] BACKEND E6 — Grazing + vòng năng lượng KHÉP KÍN (2026-07-03)
+
+Tiếp Phase 7 (E6). Mắt xích còn thiếu: **thực vật → thú ăn cỏ → detritus → mọc lại**, khép kín và bảo toàn.
+
+- **`herbivore_grazing_system`** (mới): con mồi (herbivore) **gặm `ResourceField`** tại vị trí → tăng energy. Intake bão hoà (Type II) + trần bite/tick; ô bị gặm cạn cho ít → thú tự **tản đi** tìm ô chưa gặm (giving-up density = refuge không gian, đúng Huffaker).
+- **Regrowth GATED theo detritus** (`step_regrowth_gated`): thực vật CHỈ mọc bằng cách rút năng lượng tự do từ pool detritus (luật Bibites) → không thể mọc từ hư không, chống bùng nổ; phần tiêu thụ trừ khỏi detritus.
+- **Metabolism → detritus**: năng lượng hô hấp mất đi giờ quay về pool (không biến mất) → bảo toàn.
+- **`ecosystem_census_system`**: tổng energy thú sống → `EcosystemBiomass.animals` mỗi tick (cho dashboard + kiểm tra bảo toàn).
+- **Vòng bảo toàn**: plants →(graze)→ animals →(metabolism/predation)→ detritus →(gated regrowth)→ plants. Unit test `full_trophic_cycle_conserves_energy` mô phỏng 50 bước, tổng năng lượng **bất biến** (sai số <1e-6).
+- **Verify:** `cargo build` ✅ · ecology lib **20/20** ✅ · combat 6/6, zero-alloc 5/5, environmental, networking (chạy riêng) đều pass · `cargo clippy` lib 0 cảnh báo. Lưu ý Bevy: 1 tuple `add_systems` tối đa 20 phần tử → tách 3 system ecology ra lời gọi riêng (`.after()` vẫn resolve chéo). Exit 101 khi chạy `cargo test` toàn bộ là **flake tranh chấp port** (mỗi suite pass khi chạy riêng), không do thay đổi này.
+- **Còn lại (E7)**: NPP-couple tăng trưởng cây; corpse→detritus (xác phân huỷ); MAP-Elites descriptor sinh thái + Red-Queen.
+- **Tinh chỉnh:** `max_bite` (trần gặm) trong `herbivore_grazing_system`; `herbivore_intake`/`step_regrowth_gated` trong ecology.rs.
+
+---
+
+# 🧬 BACKEND — Nền tảng Ecosystem Dynamics (MTE + Holling + Closed Energy + NPP) (2026-07-03)
 
 Theo tài liệu "Ecology & Environment Design for the Anima Engine". Chuyển trọng tâm sang **backend Rust/Bevy** (map frontend đã ổn ở v21). Module mới `src-tauri/src/core/ecology.rs` — thuần hàm, **zero-alloc hot path**, 17 unit test. Chi tiết milestone Phase 7 (E1–E7) ở PROJECT.md.
 

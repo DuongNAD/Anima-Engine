@@ -122,6 +122,19 @@ pub fn holling_type3(prey: f32, attack: f32, handling: f32) -> f32 {
 /// that becomes predator energy. ~10% canonical; the remaining (1 − e) is recycled as detritus.
 pub const LINDEMAN_EFFICIENCY: f32 = 0.30;
 
+/// Herbivore grazing intake for one tick — a saturating (Type II) bite bounded by the standing
+/// plant resource, how hungry the animal is, and a maximum bite rate. Grazing a depleted cell
+/// yields little, which naturally disperses herbivores (giving-up density → moving refuges).
+#[inline]
+pub fn herbivore_intake(available: f32, hunger: f32, max_bite: f32) -> f32 {
+    if available <= 0.0 || hunger <= 0.0 || max_bite <= 0.0 {
+        return 0.0;
+    }
+    // Type II saturation on the standing resource, then clamp to hunger and the bite ceiling.
+    let saturating = holling_type2(available, 1.0, 1.0 / max_bite.max(1e-3));
+    saturating.min(available).min(hunger).min(max_bite)
+}
+
 /// Type III capture attack rate and handling time for one predator–prey contact.
 pub const CAPTURE_ATTACK: f32 = 0.02;
 pub const CAPTURE_HANDLING: f32 = 0.02;
@@ -241,6 +254,40 @@ impl ResourceField {
         for i in 0..self.r.len() {
             self.r[i] = logistic_regrowth(self.r[i], g, self.r_max[i]);
         }
+    }
+
+    /// Biomass-gated regrowth (the Bibites closed-system rule): plants can only grow by
+    /// drawing free energy from the detritus `budget`. Returns the biomass actually consumed
+    /// (which the caller subtracts from the detritus pool), so total energy is conserved —
+    /// plants cannot appear from nothing. Two in-place passes, allocation-free.
+    pub fn step_regrowth_gated(&mut self, dt: f32, fertility: f32, budget: f64) -> f64 {
+        let g = self.growth_rate * dt * fertility.max(0.0);
+        if g <= 0.0 || budget <= 0.0 {
+            return 0.0;
+        }
+        // Pass 1: total desired (positive) growth this step.
+        let mut desired = 0.0f64;
+        for i in 0..self.r.len() {
+            let delta = logistic_regrowth(self.r[i], g, self.r_max[i]) - self.r[i];
+            if delta > 0.0 {
+                desired += delta as f64;
+            }
+        }
+        if desired <= 0.0 {
+            return 0.0;
+        }
+        // Pass 2: apply, scaled down if the detritus budget can't cover the full demand.
+        let scale = (budget / desired).min(1.0) as f32;
+        let mut consumed = 0.0f64;
+        for i in 0..self.r.len() {
+            let delta = logistic_regrowth(self.r[i], g, self.r_max[i]) - self.r[i];
+            if delta > 0.0 {
+                let applied = delta * scale;
+                self.r[i] += applied;
+                consumed += applied as f64;
+            }
+        }
+        consumed
     }
 
     /// Cell index for a world (x, z), or None if outside the grid.
@@ -495,6 +542,73 @@ mod tests {
         let capped = predation_capture(1e6, 3.0);
         assert!(capped <= 3.0 / LINDEMAN_EFFICIENCY + 1e-3);
         assert_eq!(predation_capture(0.0, 100.0), 0.0);
+    }
+
+    #[test]
+    fn gated_regrowth_never_exceeds_detritus_budget() {
+        let biomes = [BiomeType::Rainforest as u8; 16];
+        let mut field = ResourceField::from_biomes(&biomes, 4, 4, 0.0, 0.0, 4.0, 4.0, 0.2);
+        for v in field.r.iter_mut() {
+            *v = 0.1; // heavily grazed → strong regrowth demand
+        }
+        // Starve it: a tiny budget caps how much can regrow this step.
+        let consumed = field.step_regrowth_gated(1.0, 1.0, 0.05);
+        assert!(
+            consumed <= 0.05 + 1e-6,
+            "consumed {consumed} exceeded budget"
+        );
+        assert!(consumed > 0.0);
+        // Zero budget → no growth at all (plants can't appear from nothing).
+        let before: f64 = field.total_biomass();
+        let c0 = field.step_regrowth_gated(1.0, 1.0, 0.0);
+        assert_eq!(c0, 0.0);
+        assert!((field.total_biomass() - before).abs() < 1e-6);
+    }
+
+    #[test]
+    fn herbivore_intake_saturates_and_disperses_on_depletion() {
+        // A rich cell gives a near-full bite; a nearly-empty cell gives almost nothing —
+        // the giving-up-density dispersal signal.
+        let rich = herbivore_intake(50.0, 100.0, 2.0);
+        let poor = herbivore_intake(0.1, 100.0, 2.0);
+        assert!(rich > poor * 5.0, "rich {rich} vs poor {poor}");
+        assert!(rich <= 2.0 + 1e-4); // never exceeds the bite ceiling
+        assert!(herbivore_intake(50.0, 0.5, 2.0) <= 0.5 + 1e-4); // clamped to hunger
+        assert_eq!(herbivore_intake(0.0, 100.0, 2.0), 0.0);
+    }
+
+    #[test]
+    fn full_trophic_cycle_conserves_energy() {
+        // Plants → herbivore (graze) → detritus (metabolism/predation) → plants (gated
+        // regrowth). Simulate every transfer on the pool and assert the total is invariant.
+        let biomes = [BiomeType::Grassland as u8; 4];
+        let mut field = ResourceField::from_biomes(&biomes, 2, 2, 0.0, 0.0, 2.0, 2.0, 0.15);
+        let mut pool = EcosystemBiomass {
+            detritus: 5.0,
+            plants: field.total_biomass(),
+            animals: 20.0,
+        };
+        let total0 = pool.total();
+        for _ in 0..50 {
+            // Herbivore grazes cell (0,0): plants → animals.
+            let bite = herbivore_intake(field.r[0], 100.0, 1.0);
+            let taken = field.graze(0.5, 0.5, bite);
+            pool.animals += taken as f64;
+            // Metabolism burns some animal energy → detritus.
+            let burned = 0.5f64.min(pool.animals);
+            pool.animals -= burned;
+            pool.detritus += burned;
+            // Plants regrow, gated by detritus.
+            let consumed = field.step_regrowth_gated(1.0, 1.0, pool.detritus);
+            pool.detritus -= consumed;
+            // Keep the plant compartment in sync with the field.
+            pool.plants = field.total_biomass();
+            assert!(
+                (pool.total() - total0).abs() < 1e-6,
+                "energy drifted to {}",
+                pool.total()
+            );
+        }
     }
 
     #[test]

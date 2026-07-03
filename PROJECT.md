@@ -97,8 +97,8 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 | E3 | Lindeman transfer + closed loop | Predators assimilate only ~30% of captured energy; the unassimilated remainder returns to a conserved `EcosystemBiomass` ledger (detritus/plants/animals) — energy conservation as the primary anti-collapse device | DONE |
 | E4 | NPP resource field | `ResourceField`: per-cell logistic regrowth `R+g·R(1−R/R_max)` with `R_max` from Whittaker biome NPP; SoA buffers, in-place `step_regrowth` (zero-alloc), `graze()`, world↔cell mapping; live `resource_field_regrowth_system` in the tick schedule, seeded from the terrain biomes in `init_world` | DONE |
 | E5 | Biodiversity diagnostics | Shannon (−Σpᵢln pᵢ) and Gini–Simpson (1−Σpᵢ²) indices as pure functions for dashboards/telemetry | DONE |
-| E6 | (Next) Grazing + spatial refuges | Herbivores consume `ResourceField` at their position; NPP-couple tree growth; low-productivity refuge cells + asymmetric dispersal (Huffaker) for predator-prey persistence | TODO |
-| E7 | (Next) MAP-Elites ecological descriptors | Body-mass / diet / foraging-range niche axes; Red-Queen coevolution; intermediate-disturbance diversity maintenance | TODO |
+| E6 | Grazing + closed energy loop | `herbivore_grazing_system`: prey graze `ResourceField` (Type II saturating intake → depleted cells disperse herbivores = giving-up-density refuge); biomass-GATED regrowth (`step_regrowth_gated`) so plants only grow by drawing detritus; metabolism routes respired energy → detritus; `ecosystem_census_system` tallies living-animal energy — the full plant→herbivore→detritus→plant cycle is conserved (unit-tested) | DONE |
+| E7 | (Next) MAP-Elites ecological descriptors | Body-mass / diet / foraging-range niche axes; Red-Queen coevolution; intermediate-disturbance diversity maintenance; NPP-couple tree fruiting; corpse→detritus decomposition | TODO |
 
 ## Interface Contracts
 ### Tauri Commands

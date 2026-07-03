@@ -12,20 +12,73 @@ pub fn fruit_growth_system(
     }
 }
 
-/// Advance the per-cell NPP resource field one logistic step and mirror the standing plant
-/// biomass into the closed ecosystem ledger. Both are `Option` so worlds built without the
-/// ecology resources (unit tests) simply skip it. Allocation-free (the field regrows in place).
+/// Advance the per-cell NPP resource field one logistic step. When the closed biomass ledger
+/// is present the regrowth is GATED by the detritus pool (Bibites rule: plants only grow by
+/// drawing free biomass, so energy is conserved and runaway growth is impossible); the
+/// consumed biomass is subtracted from detritus and the standing plant total mirrored back.
+/// Both resources are `Option` so unit-test worlds without them simply skip. Allocation-free.
 pub fn resource_field_regrowth_system(
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
-    if let Some(mut field) = field {
-        // Global fertility of 1.0 (a seasonal driver could animate this over time).
-        field.step_regrowth(time_step.0, 1.0);
-        if let Some(mut pool) = biomass {
+    let Some(mut field) = field else {
+        return;
+    };
+    // Global fertility of 1.0 (a seasonal driver could animate this over time).
+    match biomass {
+        Some(mut pool) => {
+            let consumed = field.step_regrowth_gated(time_step.0, 1.0, pool.detritus);
+            pool.detritus -= consumed;
             pool.plants = field.total_biomass();
         }
+        None => field.step_regrowth(time_step.0, 1.0),
+    }
+}
+
+/// Herbivores (prey) graze the standing plant resource at their position — the producer →
+/// primary-consumer trophic link that closes the bottom of the food web. Intake saturates
+/// (Type II) and a grazed-down cell yields little, so herbivores naturally disperse toward
+/// ungrazed patches (giving-up density → spatial refuges). Grazed energy leaves the field and
+/// enters the animal; the ecosystem census mirrors it into the `animals` compartment.
+pub fn herbivore_grazing_system(
+    mut prey_query: Query<
+        (&Position, &mut crate::ai::hrrl::HomeostaticState),
+        (With<Agent>, With<Prey>),
+    >,
+    field: Option<ResMut<crate::core::ecology::ResourceField>>,
+    time_step: Res<crate::ai::cpg::TimeStep>,
+) {
+    let Some(mut field) = field else {
+        return;
+    };
+    let max_bite = 8.0 * time_step.0; // per-tick grazing ceiling
+    for (pos, mut homeo) in prey_query.iter_mut() {
+        let hunger = (homeo.energy_target - homeo.energy).max(0.0);
+        if hunger <= 0.0 {
+            continue;
+        }
+        if let Some(i) = field.cell_index(pos.0.x, pos.0.z) {
+            let bite = crate::core::ecology::herbivore_intake(field.r[i], hunger, max_bite);
+            let taken = field.graze(pos.0.x, pos.0.z, bite);
+            homeo.energy = (homeo.energy + taken).min(homeo.energy_target);
+        }
+    }
+}
+
+/// Recompute the living-animal energy compartment of the closed ledger each tick (a simple
+/// census over agent reserves), so the dashboard can watch plants / detritus / animals trade
+/// energy and verify the system stays conserved. Allocation-free.
+pub fn ecosystem_census_system(
+    agent_query: Query<&crate::ai::hrrl::HomeostaticState, With<Agent>>,
+    biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+) {
+    if let Some(mut pool) = biomass {
+        let mut total = 0.0f64;
+        for homeo in agent_query.iter() {
+            total += homeo.energy.max(0.0) as f64;
+        }
+        pool.animals = total;
     }
 }
 
