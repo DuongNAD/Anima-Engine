@@ -88,6 +88,18 @@ Anima-Engine is a real-time, GPU-accelerated Artificial Life (ALife) and Evoluti
 | I41 | E2E Verification & Audit Hardening | Integrate components, compile frontend, pass 93 Vitest E2E test cases, and perform audit hardening | I35, I36, I40, T12 | DONE | 2d8652a3-d26c-4898-a2ee-7f7162969120 |
 | I42 | Custom GLSL Water Shader Upgrade | Upgrade water bodies to custom ShaderMaterial with depth blending, shoreline foam, Day/Night lighting, and CPU optimization | I41 | DONE | c62e8336-a13e-4dd5-b541-68894ef08c8d |
 
+### Phase 7: Ecosystem Dynamics (Metabolic Theory, Functional Responses, Closed Energy)
+Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1959; Lindeman 1942; Whittaker 1975; Rosenzweig 1971 paradox of enrichment). Backbone module `core/ecology.rs` (pure, unit-tested, zero-alloc on the hot path).
+| # | Name | Scope | Status |
+|---|------|-------|--------|
+| E1 | Metabolic Theory of Ecology | `metabolic_rate = i0·M^¾·e^(−E/kT)` (Kleiber + Arrhenius, E=0.65 eV animals / 0.30 eV producers); replaces the linear mass term in `metabolic_decay_system` so metabolism scales sub-linearly with body mass and speeds with warmth (Q10≈2.4) | DONE |
+| E2 | Holling functional responses | Type II/III + `predation_capture()`; combat uses Type III so a healthy prey is not zeroed in one strike and rare/weak prey are spared (rarity refuge → anti prey-extinction) | DONE |
+| E3 | Lindeman transfer + closed loop | Predators assimilate only ~30% of captured energy; the unassimilated remainder returns to a conserved `EcosystemBiomass` ledger (detritus/plants/animals) — energy conservation as the primary anti-collapse device | DONE |
+| E4 | NPP resource field | `ResourceField`: per-cell logistic regrowth `R+g·R(1−R/R_max)` with `R_max` from Whittaker biome NPP; SoA buffers, in-place `step_regrowth` (zero-alloc), `graze()`, world↔cell mapping; live `resource_field_regrowth_system` in the tick schedule, seeded from the terrain biomes in `init_world` | DONE |
+| E5 | Biodiversity diagnostics | Shannon (−Σpᵢln pᵢ) and Gini–Simpson (1−Σpᵢ²) indices as pure functions for dashboards/telemetry | DONE |
+| E6 | (Next) Grazing + spatial refuges | Herbivores consume `ResourceField` at their position; NPP-couple tree growth; low-productivity refuge cells + asymmetric dispersal (Huffaker) for predator-prey persistence | TODO |
+| E7 | (Next) MAP-Elites ecological descriptors | Body-mass / diet / foraging-range niche axes; Red-Queen coevolution; intermediate-disturbance diversity maintenance | TODO |
+
 ## Interface Contracts
 ### Tauri Commands
 - `get_simulation_status` -> `SimulationStatus`

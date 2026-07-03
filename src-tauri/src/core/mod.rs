@@ -1,5 +1,6 @@
 pub mod agent_systems;
 pub mod components;
+pub mod ecology;
 pub mod ecs;
 pub mod engine;
 pub mod environmental_systems;

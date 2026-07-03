@@ -12,6 +12,23 @@ pub fn fruit_growth_system(
     }
 }
 
+/// Advance the per-cell NPP resource field one logistic step and mirror the standing plant
+/// biomass into the closed ecosystem ledger. Both are `Option` so worlds built without the
+/// ecology resources (unit tests) simply skip it. Allocation-free (the field regrows in place).
+pub fn resource_field_regrowth_system(
+    field: Option<ResMut<crate::core::ecology::ResourceField>>,
+    biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    time_step: Res<crate::ai::cpg::TimeStep>,
+) {
+    if let Some(mut field) = field {
+        // Global fertility of 1.0 (a seasonal driver could animate this over time).
+        field.step_regrowth(time_step.0, 1.0);
+        if let Some(mut pool) = biomass {
+            pool.plants = field.total_biomass();
+        }
+    }
+}
+
 pub fn lake_replenishment_system(
     mut lake_query: Query<&mut Lake>,
     time_step: Res<crate::ai::cpg::TimeStep>,

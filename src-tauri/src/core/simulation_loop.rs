@@ -943,6 +943,7 @@ impl SimulationEngine {
                 crate::core::ecs::manual_migration_system.after(integrate_physics_system),
                 fruit_growth_system.after(apply_environmental_effects_system),
                 lake_replenishment_system.after(apply_environmental_effects_system),
+                resource_field_regrowth_system.after(apply_environmental_effects_system),
                 seed_dropping_system.after(apply_environmental_effects_system),
                 detect_environmental_collisions_system.after(integrate_physics_system),
             ));

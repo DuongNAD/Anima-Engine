@@ -205,10 +205,31 @@ fn test_predator_prey_collision_and_combat() {
     let pred_homeo = world.get::<HomeostaticState>(predator).unwrap();
     let prey_homeo = world.get::<HomeostaticState>(prey).unwrap();
 
-    // Predator needs 50 energy. Prey has 30 energy.
-    // So 30 energy is transferred. Predator becomes 80. Prey becomes 0.
-    assert_eq!(pred_homeo.energy, 80.0);
-    assert_eq!(prey_homeo.energy, 0.0);
+    // Ecological predation (Holling Type III capture + Lindeman assimilation), NOT a 100%
+    // linear drain: the predator gains SOME energy but far less than the old full transfer,
+    // the prey loses a real bite yet survives the single contact (Type III spares it from
+    // instant death), and the predator's gain is strictly less than the prey's loss because
+    // only ~30% of captured energy assimilates.
+    let gained = pred_homeo.energy - 50.0;
+    let lost = 30.0 - prey_homeo.energy;
+    assert!(
+        gained > 0.0 && pred_homeo.energy < 80.0,
+        "predator energy {}",
+        pred_homeo.energy
+    );
+    assert!(
+        prey_homeo.energy > 0.0 && lost > 0.0,
+        "prey energy {}",
+        prey_homeo.energy
+    );
+    assert!(
+        gained < lost,
+        "assimilation should lose energy: gained {gained}, lost {lost}"
+    );
+    assert!(
+        (gained - lost * 0.30).abs() < 1e-3,
+        "gained {gained} should be 30% of lost {lost}"
+    );
 }
 
 #[test]

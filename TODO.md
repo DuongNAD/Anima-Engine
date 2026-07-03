@@ -4,7 +4,20 @@
 
 ---
 
-# 🎮 [MỚI NHẤT] v21 — Theo báo cáo AI/Controller: habitat check, shoal tản đàn, slope limit, collider cây (2026-07-03)
+# 🧬 [MỚI NHẤT] BACKEND — Nền tảng Ecosystem Dynamics (MTE + Holling + Closed Energy + NPP) (2026-07-03)
+
+Theo tài liệu "Ecology & Environment Design for the Anima Engine". Chuyển trọng tâm sang **backend Rust/Bevy** (map frontend đã ổn ở v21). Module mới `src-tauri/src/core/ecology.rs` — thuần hàm, **zero-alloc hot path**, 17 unit test. Chi tiết milestone Phase 7 (E1–E7) ở PROJECT.md.
+
+- **MTE (Metabolic Theory of Ecology)**: `metabolic_rate = i0·M^0.75·e^(−E/kT)` (Kleiber + Arrhenius chuẩn hoá về 1.0 tại 20°C). Thay số hạng khối lượng TUYẾN TÍNH cũ trong `metabolic_decay_system`: con lớn tốn ít năng lượng/gram hơn (mass-specific ∝ M^−¼), ấm → chuyển hoá nhanh (Q10≈2.4). E=0.65 eV (động vật)/0.30 (thực vật). Tách maintenance (MTE) vs activity (locomotion tuyến tính).
+- **Holling Type III + Lindeman + closed loop** trong `combat_system`: `predation_capture()` — con mồi khoẻ KHÔNG bị hút cạn 1 đòn, con mồi hiếm/yếu gần như không bị đụng (rarity refuge chống tuyệt chủng). Predator hấp thụ ~30% (Lindeman), phần dư → `EcosystemBiomass.detritus` (bảo toàn năng lượng). **ĐỔI test** `test_predator_prey_collision_and_combat` (cũ assert 100% transfer = Type I mà tài liệu bảo SAI) → property-based.
+- **NPP resource field** (`ResourceField`): logistic `R+g·R(1−R/R_max)`, `R_max` theo NPP biome Whittaker (rainforest 2200→desert 90→rock 50). SoA, `step_regrowth` in-place (zero-alloc), `graze()`, map world↔cell. Sinh từ `TerrainMap.biomes` trong `init_world`; system sống `resource_field_regrowth_system` trong tick schedule. Ledger `EcosystemBiomass{detritus,plants,animals}` bảo toàn tổng năng lượng.
+- **Chỉ số đa dạng**: `shannon_index`/`simpson_index` (thuần hàm).
+- **Verify:** `cargo build` ✅ · `cargo test` ✅ (ecology 17/17; combat/adversarial/zero-alloc pass) · `cargo clippy` lib 0 cảnh báo · frontend build ✅. Test networking (bind port thật) đôi khi flake — chạy lại xanh, KHÔNG do thay đổi này.
+- **Tinh chỉnh:** hằng trong `ecology.rs` (`METABOLIC_NORM`/`E_ANIMAL_EV`/`LINDEMAN_EFFICIENCY`/`CAPTURE_ATTACK`/`NPP_TO_CAPACITY` — giữ carrying capacity vừa phải tránh paradox of enrichment); `growth_rate` trong `init_world`.
+
+---
+
+# 🎮 v21 — Theo báo cáo AI/Controller: habitat check, shoal tản đàn, slope limit, collider cây (2026-07-03)
 
 User gửi báo cáo lỗi hệ sinh vật + walking sim. KHÔNG bump version (render/logic-side). Đã xử lý:
 

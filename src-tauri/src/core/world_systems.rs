@@ -79,26 +79,31 @@ pub fn metabolic_decay_system(
 ) {
     let dt = time_step.0;
 
-    let k_mass = 0.05;
     let k_velocity = 0.2;
     let k_force = 0.3;
 
     for (agent_entity, mut homeo, opt_tracker, velocity, opt_predator) in agent_query.iter_mut() {
+        // Split the cost into (1) MAINTENANCE — governed by the Metabolic Theory of Ecology,
+        // I = i0·M^(3/4)·e^(−E/kT), so bigger bodies cost less per gram and warmth speeds the
+        // burn — and (2) ACTIVITY — the linear locomotion cost of moving mass and firing
+        // joints. Predators carry a higher baseline (hunting is costly).
         let k_base = if opt_predator.is_some() { 0.2 } else { 0.1 };
-        let mut total_cost = k_base;
+        let mut body_mass = 0.0f32;
+        let mut activity_cost = 0.0f32;
         for (parent, body, vel, joint_force) in segment_query.iter() {
             if parent.0 == agent_entity {
-                let segment_mass = body.mass;
+                body_mass += body.mass;
                 let segment_speed = vel.0.length();
                 let force_output = joint_force.map(|jf| jf.0).unwrap_or(0.0);
-
-                let segment_cost = (k_mass * segment_mass)
-                    + (k_velocity * segment_speed)
-                    + (k_force * force_output);
-
-                total_cost += segment_cost;
+                activity_cost += (k_velocity * segment_speed) + (k_force * force_output);
             }
         }
+        let maintenance = crate::core::ecology::metabolic_rate(
+            body_mass,
+            homeo.temperature,
+            crate::core::ecology::E_ANIMAL_EV,
+        );
+        let total_cost = k_base + maintenance + activity_cost;
 
         let sweat_rate = if homeo.temperature > homeo.temp_target {
             0.5 * (homeo.temperature - homeo.temp_target)
@@ -200,6 +205,7 @@ pub fn combat_system(
     >,
     segment_query: Query<(&Position, &ParentAgent)>,
     mut combat_events: Option<ResMut<CombatEvents>>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
 ) {
     if let Some(ref mut events_res) = combat_events {
         events_res.events.clear();
@@ -259,18 +265,30 @@ pub fn combat_system(
                         if let Ok((_, _, mut pred_homeo)) = predator_query.get_mut(pred_entity) {
                             let needed = (pred_homeo.energy_target - pred_homeo.energy).max(0.0);
                             if needed > 0.0 {
-                                let transfer = needed.min(prey_homeo.energy);
-                                prey_homeo.energy = (prey_homeo.energy - transfer).max(0.0);
+                                // Holling Type III capture + Lindeman assimilation: the predator
+                                // gains only a fraction of what it strips from the prey; the rest
+                                // (and rare-prey encounters barely register) returns to the closed
+                                // biomass pool as detritus — total energy conserved.
+                                let captured = crate::core::ecology::predation_capture(
+                                    prey_homeo.energy,
+                                    needed,
+                                );
+                                let assimilated =
+                                    captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
+                                prey_homeo.energy = (prey_homeo.energy - captured).max(0.0);
                                 pred_homeo.energy =
-                                    (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
-                                if transfer > 0.0
+                                    (pred_homeo.energy + assimilated).min(pred_homeo.energy_target);
+                                if let Some(ref mut pool) = biomass {
+                                    pool.detritus += (captured - assimilated) as f64;
+                                }
+                                if captured > 0.0
                                     && events_res.events.len() < events_res.events.capacity()
                                 {
                                     events_res.events.push(CombatEvent {
                                         predator_id: pred_entity.index(),
                                         prey_id: prey_entity.index(),
-                                        damage: transfer,
-                                        energy_transferred: transfer,
+                                        damage: captured,
+                                        energy_transferred: assimilated,
                                     });
                                 }
                             }
@@ -317,10 +335,15 @@ pub fn combat_system(
                 if pred_centroid.distance(prey_centroid) < 1.5 {
                     let needed = (pred_homeo.energy_target - pred_homeo.energy).max(0.0);
                     if needed > 0.0 {
-                        let transfer = needed.min(prey_homeo.energy);
-                        prey_homeo.energy = (prey_homeo.energy - transfer).max(0.0);
+                        let captured =
+                            crate::core::ecology::predation_capture(prey_homeo.energy, needed);
+                        let assimilated = captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
+                        prey_homeo.energy = (prey_homeo.energy - captured).max(0.0);
                         pred_homeo.energy =
-                            (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
+                            (pred_homeo.energy + assimilated).min(pred_homeo.energy_target);
+                        if let Some(ref mut pool) = biomass {
+                            pool.detritus += (captured - assimilated) as f64;
+                        }
                     }
                     break;
                 }
