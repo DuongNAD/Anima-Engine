@@ -89,6 +89,23 @@ function buildColorTexture(world: World): THREE.DataTexture {
         b = 241;
       }
 
+      // Sunlit sandy shelf: the shallow seabed grades from bright sand at the waterline down
+      // into ocean blue. Through the transparent shallows this is what makes tropical water
+      // glow turquoise — and it's the stage the coral reefs sit on.
+      if (bio === Biome.Ocean) {
+        const depth = (world.seaLevel ?? 0.38) - elevation[i];
+        if (depth < 0.06) {
+          const sandT = (1 - depth / 0.06) * 0.85;
+          const warm = temperature?.[i] ?? 0.5;
+          const sr = 202 + warm * 28;
+          const sg = 194 + warm * 16;
+          const sb = 152 + warm * 6;
+          r = r * (1 - sandT) + sr * sandT;
+          g = g * (1 - sandT) + sg * sandT;
+          b = b * (1 - sandT) + sb * sandT;
+        }
+      }
+
       // Rivers & streams: the generator's ribbon mask (widens downstream, soft-feathered
       // banks). The gradient tint gives smooth tapering threads instead of jagged 1-cell
       // zigzags, and the centre darkens a touch so big rivers read deeper.

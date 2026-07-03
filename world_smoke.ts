@@ -82,7 +82,7 @@ console.log(`lakeBasins=${world.lakeBasins.length} flora=${world.floraCount} wat
 
 // flora type histogram
 {
-  const tnames = ['Pine', 'Round', 'Jungle', 'Cactus', 'Rock', 'Acacia', 'Palm', 'DeadTree', 'Bush', 'Reed', 'Tuft'];
+  const tnames = ['Pine', 'Round', 'Jungle', 'Cactus', 'Rock', 'Acacia', 'Palm', 'DeadTree', 'Bush', 'Reed', 'Tuft', 'Coral', 'Kelp', 'Seagrass'];
   const th = new Array(tnames.length).fill(0);
   for (let i = 0; i < world.floraCount; i++) th[world.floraType[i]]++;
   console.log('flora mix: ' + th.map((c, k) => `${tnames[k]}=${c}`).join(' '));

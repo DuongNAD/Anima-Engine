@@ -134,9 +134,9 @@ const fragmentShader = /* glsl */ `
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
     color = mix(color, uFogColor, clamp(fres, 0.0, 0.55));
 
-    // More transparent in the shallows (the sandy sea floor shows through as turquoise),
-    // opaque over deep water.
-    float alpha = mix(0.4, 0.92, depthN) * uOpacity;
+    // More transparent in the shallows (the sandy sea floor, seagrass and coral show
+    // through as turquoise), opaque over deep water.
+    float alpha = mix(0.32, 0.92, depthN) * uOpacity;
 
     // Shoreline foam where the water is very shallow. The band is an ABSOLUTE depth (world
     // units), not a fraction of the sea depth: metres-deep mountain lakes would otherwise

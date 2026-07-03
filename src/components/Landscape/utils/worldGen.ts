@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 17;
+export const WORLD_GEN_VERSION = 18;
 
 export enum Biome {
   Ocean = 0,
@@ -129,6 +129,10 @@ export enum FloraType {
   Bush = 8, // low shrub: shrubland, chaparral, steppe
   Reed = 9, // wetland reeds: swamp, bog
   Tuft = 10, // grass tuft: grassland, steppe, alpine meadow
+  // --- Aquatic (placed on the SHALLOW SEABED, seen through the transparent water) ---
+  Coral = 11, // tropical reef heads: pink/orange/purple via instance tint
+  Kelp = 12, // temperate kelp stands: tall olive fronds
+  Seagrass = 13, // shallowest fringe meadows
 }
 
 // ---- Seeded helpers ------------------------------------------------------------------
@@ -1266,6 +1270,54 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       fZ.push(wz);
       fS.push(0.6 + rng() * 0.8);
       fT.push(ft);
+    }
+  }
+
+  // ---- Pass 5b: aquatic flora — the underwater ecosystem of the sunlit shelf ----
+  // Coral heads crowd the warm tropical shallows, kelp stands sway in the cooler temperate
+  // water, and seagrass meadows carpet the shallowest fringe. All sit ON the seabed mesh and
+  // are seen through the transparent shallow water.
+  {
+    const aquaRng = mulberry32((baseSeed + 445566) >>> 0);
+    const MAX_AQUA = 22000;
+    let placed = 0;
+    outer: for (let y = 0; y < size; y += stride) {
+      for (let x = 0; x < size; x += stride) {
+        if (placed >= MAX_AQUA) break outer;
+        const i = y * size + x;
+        const e = elevation[i];
+        if (e >= seaLevel) continue; // ocean floor only
+        if (water[i] > 0) continue;
+        const depth = seaLevel - e;
+        if (depth > 0.085) continue; // below the photic shelf: too dark to matter visually
+        const t = temperature[i];
+        let ft: FloraType | -1 = -1;
+        let dens = 0;
+        if (depth <= 0.018) {
+          if (t > 0.35) {
+            ft = FloraType.Seagrass;
+            dens = 0.16;
+          }
+        } else if (t > 0.6 && depth < 0.055) {
+          ft = FloraType.Coral;
+          dens = 0.24; // dense, patchy reef band
+        } else if (t > 0.28 && t <= 0.6) {
+          ft = FloraType.Kelp;
+          dens = 0.11;
+        }
+        if (ft === -1 || aquaRng() > dens) continue;
+        const wx = x - size / 2 + (aquaRng() - 0.5) * stride;
+        const wz = y - size / 2 + (aquaRng() - 0.5) * stride;
+        const jx = Math.min(size - 1, Math.max(0, Math.round(wx + size / 2)));
+        const jz = Math.min(size - 1, Math.max(0, Math.round(wz + size / 2)));
+        const ji = jz * size + jx;
+        if (elevation[ji] >= seaLevel || water[ji] > 0) continue; // stay submerged after jitter
+        fX.push(wx);
+        fZ.push(wz);
+        fS.push(0.6 + aquaRng() * 0.9);
+        fT.push(ft);
+        placed++;
+      }
     }
   }
 

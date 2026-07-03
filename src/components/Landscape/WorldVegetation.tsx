@@ -133,6 +133,28 @@ function makeGeometry(type: FloraType): THREE.BufferGeometry {
       parts.push(paint(new THREE.ConeGeometry(0.17, 0.38, 5).translate(0, 0.19, 0), '#d2dcaa'));
       break;
     }
+    case FloraType.Coral: {
+      // Branching head over a mound; PALE base — the per-instance tint paints the reef
+      // pink / orange / purple / red (see the tint logic in TypedInstances).
+      parts.push(paint(new THREE.SphereGeometry(0.28, 5, 4).translate(0, 0.16, 0), '#cfc4bb'));
+      parts.push(paint(new THREE.CylinderGeometry(0.05, 0.08, 0.6, 4).rotateZ(0.35).translate(0.12, 0.45, 0), '#d8cec6'));
+      parts.push(
+        paint(new THREE.CylinderGeometry(0.045, 0.07, 0.5, 4).rotateZ(-0.5).rotateY(1.1).translate(-0.12, 0.4, 0.06), '#d3c8bf'),
+      );
+      parts.push(paint(new THREE.CylinderGeometry(0.04, 0.06, 0.42, 4).rotateX(0.4).translate(0, 0.42, -0.12), '#dcd2c9'));
+      break;
+    }
+    case FloraType.Kelp: {
+      parts.push(paint(new THREE.ConeGeometry(0.09, 2.0, 4).translate(0, 1.0, 0), '#4a6b35'));
+      parts.push(paint(new THREE.ConeGeometry(0.07, 1.6, 4).rotateZ(0.14).translate(0.18, 0.8, 0.05), '#557a3c'));
+      parts.push(paint(new THREE.ConeGeometry(0.06, 1.3, 4).rotateZ(-0.16).translate(-0.15, 0.65, -0.04), '#42612f'));
+      break;
+    }
+    case FloraType.Seagrass: {
+      parts.push(paint(new THREE.ConeGeometry(0.1, 0.6, 4).translate(0, 0.3, 0), '#4f8a68'));
+      parts.push(paint(new THREE.ConeGeometry(0.08, 0.45, 4).rotateZ(0.2).translate(0.1, 0.22, 0.04), '#5c9a74'));
+      break;
+    }
     case FloraType.Rock:
     default: {
       parts.push(paint(new THREE.DodecahedronGeometry(0.6, 0), '#8a847e'));
@@ -156,6 +178,9 @@ const TYPES: FloraType[] = [
   FloraType.Bush,
   FloraType.Reed,
   FloraType.Tuft,
+  FloraType.Coral,
+  FloraType.Kelp,
+  FloraType.Seagrass,
 ];
 
 /** Tall types cast sun shadows; ground cover (bushes, reeds, tufts, boulders) skips the
@@ -243,6 +268,13 @@ const TypedInstances: React.FC<{
             const g = 0.5 + h2 * 0.18;
             tint.setRGB(g * 0.78, g * 1.05, g * 0.55); // grass green range
           }
+        } else if (type === FloraType.Coral) {
+          // Reef palette over the pale base: pink / orange / purple / red / cream heads.
+          if (h < 0.3) tint.setRGB(1.25, 0.55, 0.72);
+          else if (h < 0.55) tint.setRGB(1.3, 0.75, 0.4);
+          else if (h < 0.75) tint.setRGB(0.85, 0.55, 1.15);
+          else if (h < 0.9) tint.setRGB(1.3, 0.45, 0.45);
+          else tint.setRGB(1.1, 1.05, 0.88);
         } else {
           const lum = 0.82 + h * 0.36; // ±18% brightness
           const warm = 0.96 + h2 * 0.08; // slight hue drift

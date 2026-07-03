@@ -4,7 +4,21 @@
 
 ---
 
-# 🌊 [MỚI NHẤT] v18 — Sông chảy shimmer + sóng vỗ bờ + bóng mây trôi + núi răng cưa (2026-07-03)
+# 🐠 [MỚI NHẤT] v19 — HỆ SINH THÁI DƯỚI NƯỚC: san hô, kelp, cỏ biển, đàn cá (2026-07-03)
+
+Yêu cầu: "làm cả hệ sinh thái dưới nước". **Bump `WORLD_GEN_VERSION` 17→18** (flora thêm loài thủy sinh).
+
+- **3 loài thủy sinh mới** (FloraType 11–13, Pass 5b trong `worldGen`): **Coral** (thềm nhiệt đới t>0.6, độ sâu 0.018–0.055, dens 0.24 — mảng rạn patchy), **Kelp** (ôn đới t 0.28–0.6, cao 2 unit), **Seagrass** (dải nông nhất ≤0.018). Cap 22k; @2048²: Coral 10.3k · Kelp 8.3k · Seagrass 3.4k. Mọc trên đáy biển (mesh terrain dưới nước), nhìn xuyên qua nước nông trong suốt; KHÔNG castShadow.
+- **Màu san hô**: geometry base nhạt trung tính + instanceColor 5 tông (hồng/cam/tím/đỏ/kem) theo hash — như cơ chế hoa dại.
+- **Đàn cá** (`WorldFish.tsx` mới): 12 đàn × 20 con = 1 InstancedMesh (1 draw call); site dò deterministic trên thềm nắng (depth 0.02–0.07); bơi vòng giữa tầng nước (floor↔mặt), mỗi con lệch pha + bob dọc + vẫy đuôi (scale-x sin); mỗi đàn 1 màu (bạc/vàng/xanh/cam/ngọc/hồng); instanceColor set 1 lần (t<0.5s).
+- **Đáy nông = cát sáng** (bake): Ocean cell depth<0.06 blend về màu cát (ấm hơn ở vùng nóng) → nước ven bờ PHÁT màu ngọc lam, san hô nổi bật trên nền cát.
+- **Nước nông trong hơn**: alpha shallow 0.4→0.32.
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · smoke @2048²: 4.0s, flora tổng **117.7k**, 22/22 biome, 0 NaN · screenshot reef: rạn màu qua nước ngọc lam + đàn cá silhouette — 0 lỗi console.
+- **Tinh chỉnh:** dải san hô → gates depth/temp trong Pass 5b; mật độ → dens 0.24/0.11/0.16; số đàn cá → props `schools/fishPerSchool`; độ trong nước → alpha `0.32`; màu san hô → bảng tint trong WorldVegetation.
+
+---
+
+# 🌊 v18 — Sông chảy shimmer + sóng vỗ bờ + bóng mây trôi + núi răng cưa (2026-07-03)
 
 **Bump `WORLD_GEN_VERSION` 16→17** (ridge weight đổi → relief mới).
 
