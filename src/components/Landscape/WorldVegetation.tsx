@@ -128,7 +128,9 @@ function makeGeometry(type: FloraType): THREE.BufferGeometry {
       break;
     }
     case FloraType.Tuft: {
-      parts.push(paint(new THREE.ConeGeometry(0.17, 0.38, 5).translate(0, 0.19, 0), '#7fae4a'));
+      // Neutral pale base: the per-instance tint decides whether this tuft reads as grass
+      // (most) or as a wildflower (a scattered few) — see the tint logic in TypedInstances.
+      parts.push(paint(new THREE.ConeGeometry(0.17, 0.38, 5).translate(0, 0.19, 0), '#d2dcaa'));
       break;
     }
     case FloraType.Rock:
@@ -230,9 +232,22 @@ const TypedInstances: React.FC<{
       // so a forest reads as thousands of slightly different trees, not one repeated prop.
       if (typeof inst.setColorAt === 'function') {
         const h = hash01(world.floraX[i], world.floraZ[i]);
-        const lum = 0.82 + h * 0.36; // ±18% brightness
-        const warm = 0.96 + hash01(world.floraZ[i], world.floraX[i]) * 0.08; // slight hue drift
-        tint.setRGB(lum * warm, lum, lum * (2 - warm));
+        const h2 = hash01(world.floraZ[i], world.floraX[i]);
+        if (type === FloraType.Tuft) {
+          // Meadow mix over the pale neutral base: mostly grass greens, a scattering of
+          // pink / yellow / white wildflowers.
+          if (h < 0.055) tint.setRGB(1.05, 0.6, 0.78); // pink
+          else if (h < 0.1) tint.setRGB(1.12, 1.02, 0.42); // yellow
+          else if (h < 0.13) tint.setRGB(1.12, 1.1, 1.05); // white
+          else {
+            const g = 0.5 + h2 * 0.18;
+            tint.setRGB(g * 0.78, g * 1.05, g * 0.55); // grass green range
+          }
+        } else {
+          const lum = 0.82 + h * 0.36; // ±18% brightness
+          const warm = 0.96 + h2 * 0.08; // slight hue drift
+          tint.setRGB(lum * warm, lum, lum * (2 - warm));
+        }
         inst.setColorAt(k, tint);
       }
     }

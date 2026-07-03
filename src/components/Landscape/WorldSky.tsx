@@ -3,6 +3,34 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getSkyParams } from './utils/skyParams';
 
+// Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
+// A flat single-colour dome is the single biggest "this is a tech demo" tell — the gradient
+// alone makes every frame read as atmosphere.
+const SKY_VERTEX = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const SKY_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec3 vDir;
+  uniform vec3 uZenith;
+  uniform vec3 uHorizon;
+  uniform vec3 uSunDir;
+  uniform vec3 uSunColor;
+  uniform float uGlow;
+  void main() {
+    vec3 d = normalize(vDir);
+    float h = clamp(d.y, 0.0, 1.0);
+    vec3 col = mix(uHorizon, uZenith, pow(h, 0.62));
+    float s = max(dot(d, normalize(uSunDir)), 0.0);
+    col += uSunColor * (pow(s, 300.0) * 0.9 + pow(s, 10.0) * 0.16 * uGlow);
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
 // ---------------------------------------------------------------------------------------
 // WorldSky — day/night sky + lighting for the huge world (WorldShowcase).
 //
@@ -34,8 +62,19 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   worldScale = 400,
 }) => {
   const { scene } = useThree();
-  const domeRef = useRef<THREE.Mesh>(null);
   const cloudsRef = useRef<THREE.Group>(null);
+  const tmpColor = useMemo(() => new THREE.Color(), []);
+  const HAZE = useMemo(() => new THREE.Color('#eef6fb'), []);
+  const skyUniforms = useMemo(
+    () => ({
+      uZenith: { value: new THREE.Color('#3f7fd0') },
+      uHorizon: { value: new THREE.Color('#cfe6f2') },
+      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+      uSunColor: { value: new THREE.Color('#fff2cc') },
+      uGlow: { value: 1 },
+    }),
+    [],
+  );
 
   const DOME_R = worldScale * 6.5; // 2600 @400 — beyond camera maxDistance (1200)
   const ORBIT_R = worldScale * 4.5; // 1800
@@ -92,6 +131,12 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       { id: 6, position: [160, 85, -80], scale: [28, 6, 16], speed: 1.6 },
       { id: 7, position: [-300, 90, 180], scale: [44, 9, 26], speed: 1.1 },
       { id: 8, position: [260, 78, 140], scale: [32, 7, 20], speed: 1.4 },
+      { id: 9, position: [40, 68, 200], scale: [26, 6, 15], speed: 1.3 },
+      { id: 10, position: [-120, 82, 260], scale: [38, 9, 22], speed: 0.9 },
+      { id: 11, position: [220, 72, 60], scale: [22, 5, 13], speed: 1.7 },
+      { id: 12, position: [-260, 66, -180], scale: [30, 7, 17], speed: 1.2 },
+      { id: 13, position: [120, 88, -220], scale: [46, 10, 26], speed: 0.7 },
+      { id: 14, position: [-40, 76, -280], scale: [24, 6, 14], speed: 1.5 },
     ];
     // Modest cumulus puffs high above the terrain — NOT map-sized slabs: at worldScale 1000
     // a x4 multiplier made 400-unit blobs that smeared into streaks across the whole sky.
@@ -102,14 +147,21 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     }));
   }, [worldScale, CLOUD_Y]);
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     const safeDelta = Math.min(delta, 0.1);
     // Background follows the sky colour so night actually goes dark beyond the dome.
     scene.background = new THREE.Color(params.skyColor);
 
-    if (domeRef.current) {
-      domeRef.current.rotation.y = state.clock.getElapsedTime() * 0.004 * speed;
-    }
+    // Drive the gradient + halo from the day/night palette. The horizon pales toward haze
+    // by day but stays dark at night (scaled by the sky's own luminance).
+    tmpColor.set(params.skyColor);
+    const lum = (tmpColor.r + tmpColor.g + tmpColor.b) / 3;
+    skyUniforms.uZenith.value.copy(tmpColor).multiplyScalar(0.62);
+    skyUniforms.uHorizon.value.copy(tmpColor).lerp(HAZE, 0.15 + 0.4 * Math.min(1, lum * 2.2));
+    skyUniforms.uSunDir.value.set(sunPosition[0], sunPosition[1], sunPosition[2]).normalize();
+    skyUniforms.uSunColor.value.set(params.sunColor);
+    skyUniforms.uGlow.value = params.sunIntensity;
+
     if (cloudsRef.current) {
       const children = cloudsRef.current.children;
       for (let i = 0; i < children.length; i++) {
@@ -122,10 +174,16 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
 
   return (
     <group name="world-sky-group">
-      {/* Sky dome — fog disabled so it always shows the true sky gradient colour. */}
-      <mesh ref={domeRef} name="world-sky-dome">
+      {/* Sky dome — gradient shader (zenith -> horizon haze) with a soft sun halo. */}
+      <mesh name="world-sky-dome">
         <sphereGeometry args={[DOME_R, 32, 24]} />
-        <meshBasicMaterial color={params.skyColor} side={THREE.BackSide} fog={false} />
+        <shaderMaterial
+          vertexShader={SKY_VERTEX}
+          fragmentShader={SKY_FRAGMENT}
+          uniforms={skyUniforms}
+          side={THREE.BackSide}
+          fog={false}
+        />
       </mesh>
 
       <directionalLight

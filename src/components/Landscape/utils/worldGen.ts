@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 13;
+export const WORLD_GEN_VERSION = 14;
 
 export enum Biome {
   Ocean = 0,
@@ -323,11 +323,11 @@ function classify(
 function pickFlora(b: Biome, r: number): FloraType | -1 {
   switch (b) {
     case Biome.Taiga:
-      return r < 0.88 ? FloraType.Pine : FloraType.Bush;
+      return r < 0.86 ? FloraType.Pine : r < 0.95 ? FloraType.Bush : FloraType.Rock; // glacial erratics
     case Biome.Tundra:
-      return r < 0.55 ? FloraType.Bush : FloraType.Tuft; // treeless cold plain
+      return r < 0.52 ? FloraType.Bush : r < 0.92 ? FloraType.Tuft : FloraType.Rock;
     case Biome.Alpine:
-      return r < 0.6 ? FloraType.Tuft : FloraType.Pine; // meadow with dwarf conifers
+      return r < 0.55 ? FloraType.Tuft : r < 0.9 ? FloraType.Pine : FloraType.Rock; // scree blocks
     case Biome.Forest:
       return r < 0.78 ? FloraType.Round : FloraType.Bush;
     case Biome.Grassland:

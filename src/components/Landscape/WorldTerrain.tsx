@@ -29,14 +29,29 @@ function hash01(x: number, y: number): number {
  * up the dead-flat look of wide single-biome fields. Palette = BIOME_RGB, same as the minimap.
  */
 function buildColorTexture(world: World): THREE.DataTexture {
-  const { size, biome, riverAmt, shore } = world;
+  const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
   const data = new Uint8Array(size * size * 4);
   const RIVER_RGB = BIOME_RGB[Biome.River];
+  // Curvature AO ring radii (world-space constant regardless of data resolution).
+  const R1 = Math.max(2, Math.round(size / 680));
+  const R2 = Math.max(6, Math.round(size / 228));
   for (let y = 0; y < size; y++) {
+    const y1a = Math.max(0, y - R1) * size;
+    const y1b = Math.min(size - 1, y + R1) * size;
+    const y2a = Math.max(0, y - R2) * size;
+    const y2b = Math.min(size - 1, y + R2) * size;
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const bio = biome[i];
       let [r, g, b] = BIOME_RGB[bio] ?? [255, 0, 255];
+
+      // Frozen basins: the lakebed under (and peeking around) an ice sheet is pale ice,
+      // not liquid-lake navy — matches the opaque ice mesh WorldWater lays on top.
+      if ((water?.[i] ?? 0) > 0 && (temperature?.[i] ?? 0.5) < 0.19) {
+        r = 213;
+        g = 231;
+        b = 241;
+      }
 
       // Rivers & streams: the generator's ribbon mask (widens downstream, soft-feathered
       // banks). The gradient tint gives smooth tapering threads instead of jagged 1-cell
@@ -59,6 +74,37 @@ function buildColorTexture(world: World): THREE.DataTexture {
         r *= t;
         g *= t;
         b *= t;
+      }
+
+      // Sedimentary strata: faint horizontal banding across steep bare-rock faces, keyed to
+      // absolute elevation so the layers line up across a whole cliff wall.
+      const e = elevation[i];
+      if ((bio === Biome.Rock || bio === Biome.Badlands) && (slope?.[i] ?? 0) > 0.45) {
+        const band = Math.sin(e * 320.0) * (bio === Biome.Badlands ? 0.075 : 0.05);
+        r *= 1 + band;
+        g *= 1 + band;
+        b *= 1 + band;
+      }
+
+      // Curvature ambient occlusion, baked: ravines/gorges/basins shade, crests lift a touch.
+      // Sun-independent (like real sky occlusion), so it layers cleanly under the dynamic
+      // lighting and gives the relief its depth even at noon.
+      {
+        const xa1 = Math.max(0, x - R1);
+        const xb1 = Math.min(size - 1, x + R1);
+        const xa2 = Math.max(0, x - R2);
+        const xb2 = Math.min(size - 1, x + R2);
+        const ring1 = (elevation[y * size + xa1] + elevation[y * size + xb1] + elevation[y1a + x] + elevation[y1b + x]) * 0.25;
+        const ring2 = (elevation[y * size + xa2] + elevation[y * size + xb2] + elevation[y2a + x] + elevation[y2b + x]) * 0.25;
+        // Gentle: strong enough to seat ravines and river beds, not enough to dim whole
+        // lowland basins (a broad valley is open to the sky, not occluded).
+        let occ = Math.min(0.22, Math.max(0, ring1 - e) * 22 + Math.max(0, ring2 - e) * 10);
+        if (e < (world.seaLevel ?? 0.38)) occ *= 0.5; // keep the sunny turquoise shallows
+        const lift = Math.min(0.08, Math.max(0, e - ring2) * 8);
+        const shade = 1 - occ + lift;
+        r *= shade;
+        g *= shade;
+        b *= shade;
       }
 
       const f = 0.95 + hash01(x, y) * 0.09; // ±~4.5% brightness variation

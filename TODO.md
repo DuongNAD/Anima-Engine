@@ -4,7 +4,22 @@
 
 ---
 
-# 🏞 [MỚI NHẤT] v13 — Sông suối đẹp: ribbon uốn lượn + lòng sông khoét + nước bóng (2026-07-03)
+# 🌅 [MỚI NHẤT] v14 — Trời gradient + AO địa hình + hồ băng + hoa dại + địa tầng (2026-07-03)
+
+Yêu cầu: "đẹp và chân thực hơn nữa, làm đầy đủ map/môi trường/địa hình". **Bump `WORLD_GEN_VERSION` 13→14** (flora mix đổi).
+
+- **Bầu trời gradient + quầng mặt trời** (`WorldSky`): vòm đổi từ 1 màu phẳng sang ShaderMaterial — zenith sẫm (skyColor×0.62), chân trời nhạt dần về màu sương (scale theo độ sáng trời nên đêm không bị bạc), halo mềm quanh mặt trời (`pow(s,300)·0.9 + pow(s,10)·0.16·sunIntensity`). Bỏ animation xoay vòm (halo cần phương vị ổn định). Mây 8→14 cụm.
+- **AO độ cong bake vào color texture** (`WorldTerrain`): 2 vòng ring-sample (R≈3/9 cell @2048, world-space constant) — khe/hẻm/lòng chảo tối dần, đỉnh gờ sáng nhẹ; cap 0.22, dưới biển ×0.5 (giữ thềm turquoise nắng). Đủ mạnh để "đóng ghim" lòng sông/khe núi, không dìm cả bồn địa rộng.
+- **Vân địa tầng**: sọc ngang ±5% (Badlands ±7.5%) theo `sin(e·320)` trên mặt Rock/Badlands dốc >0.45 — vách đá có lớp trầm tích thẳng hàng toàn vách.
+- **Hồ đóng băng** (`WorldWater` + minimap + bake): bồn có nhiệt độ tâm <0.19 (cực hoặc núi cao nhờ lapse) → tấm băng đục `#d7e9f2` roughness 0.35 (mesh gộp riêng, +0.12 nổi trên mặt), lòng hồ bake màu băng nhạt (hết viền navy lộ mép), minimap tint trắng xanh. 3/27 bồn đóng băng ở seed hiện tại.
+- **Hoa dại** (`WorldVegetation`): Tuft đổi base sang trung tính nhạt; instanceColor quyết định — 87% cỏ xanh (dải sắc), 5.5% hồng, 4.5% vàng, 3% trắng → đồng cỏ thành thảm hoa rải rác.
+- **Đá tảng glacial erratic/scree**: pickFlora thêm Rock ~5-10% cho Taiga/Tundra/Alpine (1.5k tảng @2048²).
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · smoke 22/22, 3.76s · screenshot: trời gradient+halo, thung lũng sông có chiều sâu, hồ băng xám giữa lòng chảo tuyết, 0 lỗi console.
+- **Tinh chỉnh:** cường độ AO → hệ số `22/10` + cap `0.22`; ngưỡng đóng băng → `0.19` (WorldWater + Minimap + bake — giữ đồng bộ 3 nơi); tỷ lệ hoa → các mốc `0.055/0.1/0.13`; sọc địa tầng → `sin(e*320)`; màu trời → công thức zenith/horizon trong useFrame của WorldSky.
+
+---
+
+# 🏞 v13 — Sông suối đẹp: ribbon uốn lượn + lòng sông khoét + nước bóng (2026-07-03)
 
 Yêu cầu: "sông suối đang trông rất tệ; nhẹ nhưng vẫn đẹp". Gốc rễ cái xấu: kênh D8 **thẳng tắp theo chéo lưới, 1 cell, song song cách đều** trên sườn dốc → mạng sọc xanh cơ học. **Bump `WORLD_GEN_VERSION` 12→13.**
 

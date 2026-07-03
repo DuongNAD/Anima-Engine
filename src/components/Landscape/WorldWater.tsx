@@ -220,30 +220,40 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     [heightTex, renderSize, seaY],
   );
 
-  // Lakes & ponds: one bbox quad per basin at its spill level, ALL merged into a single
-  // geometry (one draw call for hundreds of water bodies). The fragment shader fades alpha
-  // to 0 over dry land, so each bbox quad only shows across its actual basin.
-  const lakesGeom = useMemo(() => {
-    const { size } = world;
+  // Lakes & ponds: one bbox quad per basin at its spill level, merged into (up to) TWO
+  // geometries — liquid water and FROZEN water. Cold-climate basins (polar fringe, high
+  // mountains via the lapse rate) render as opaque ice sheets instead of animated water.
+  // The liquid fragment shader fades alpha to 0 over dry land, so each bbox quad only
+  // shows across its actual basin; ice quads are shrunk slightly to hug their basin.
+  const { lakesGeom, iceGeom } = useMemo(() => {
+    const { size, temperature } = world;
     const lakeBasins = world.lakeBasins ?? []; // tolerate an older/partial world
-    if (lakeBasins.length === 0) return null;
+    if (lakeBasins.length === 0) return { lakesGeom: null, iceGeom: null };
     const margin = (renderSize / (size - 1)) * 2;
     const toWorld = (g: number) => (g / (size - 1) - 0.5) * renderSize;
-    const parts = lakeBasins.map((b) => {
-      const x0 = toWorld(b.minX) - margin;
-      const x1 = toWorld(b.maxX) + margin;
-      const z0 = toWorld(b.minY) - margin;
-      const z1 = toWorld(b.maxY) + margin;
+    const liquid: THREE.BufferGeometry[] = [];
+    const ice: THREE.BufferGeometry[] = [];
+    for (const b of lakeBasins) {
+      const cx = Math.round((b.minX + b.maxX) / 2);
+      const cy = Math.round((b.minY + b.maxY) / 2);
+      const frozen = (temperature?.[cy * size + cx] ?? 0.5) < 0.19;
+      const m = frozen ? margin * 0.25 : margin;
+      const x0 = toWorld(b.minX) - m;
+      const x1 = toWorld(b.maxX) + m;
+      const z0 = toWorld(b.minY) - m;
+      const z1 = toWorld(b.maxY) + m;
       const w = Math.max(0.001, x1 - x0);
       const h = Math.max(0.001, z1 - z0);
-      const seg = Math.max(1, Math.min(12, Math.round(Math.max(w, h) / 14)));
-      return new THREE.PlaneGeometry(w, h, seg, seg)
+      const seg = frozen ? 1 : Math.max(1, Math.min(12, Math.round(Math.max(w, h) / 14)));
+      const geom = new THREE.PlaneGeometry(w, h, seg, seg)
         .rotateX(-Math.PI / 2)
-        .translate((x0 + x1) / 2, b.level * heightUnits, (z0 + z1) / 2);
-    });
-    const merged = mergeGeometries(parts, false);
-    parts.forEach((p) => p.dispose());
-    return merged;
+        .translate((x0 + x1) / 2, b.level * heightUnits + (frozen ? 0.12 : 0), (z0 + z1) / 2);
+      (frozen ? ice : liquid).push(geom);
+    }
+    const mergedLiquid = liquid.length ? mergeGeometries(liquid, false) : null;
+    const mergedIce = ice.length ? mergeGeometries(ice, false) : null;
+    [...liquid, ...ice].forEach((p) => p.dispose());
+    return { lakesGeom: mergedLiquid, iceGeom: mergedIce };
   }, [world, renderSize, heightUnits]);
 
   useFrame((state) => {
@@ -267,8 +277,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       heightTex.dispose();
       lakeMaterial.dispose();
       lakesGeom?.dispose();
+      iceGeom?.dispose();
     };
-  }, [heightTex, lakeMaterial, lakesGeom]);
+  }, [heightTex, lakeMaterial, lakesGeom, iceGeom]);
 
   return (
     <group name="world-water">
@@ -289,8 +300,15 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         />
       </mesh>
 
-      {/* Every lake & pond in ONE merged mesh (a single draw call). */}
+      {/* Every liquid lake & pond in ONE merged mesh (a single draw call). */}
       {lakesGeom && <mesh geometry={lakesGeom} material={lakeMaterial} name="world-lakes" />}
+
+      {/* Frozen lakes: opaque pale ice sheets over cold-climate basins. */}
+      {iceGeom && (
+        <mesh geometry={iceGeom} name="world-lake-ice">
+          <meshStandardMaterial color="#d7e9f2" roughness={0.35} metalness={0} />
+        </mesh>
+      )}
     </group>
   );
 };

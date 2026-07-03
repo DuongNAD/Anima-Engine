@@ -68,7 +68,7 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
 
   // Pre-render the biome map (with a light elevation hillshade for relief) once per world.
   const biomeImage = useMemo(() => {
-    const { size: n, biome, elevation, water, seaLevel } = world;
+    const { size: n, biome, elevation, water, temperature, seaLevel } = world;
     const data = new Uint8ClampedArray(size * size * 4);
     for (let my = 0; my < size; my++) {
       for (let mx = 0; mx < size; mx++) {
@@ -84,11 +84,17 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
         g *= shade;
         b *= shade;
 
-        // Lakes: tint standing-water cells towards a lake blue.
+        // Lakes: tint standing-water cells towards lake blue — or pale ice when frozen.
         if (water[idx] > 0) {
-          r = r * 0.25 + 40 * 0.75;
-          g = g * 0.25 + 120 * 0.75;
-          b = b * 0.25 + 170 * 0.75;
+          if ((temperature?.[idx] ?? 0.5) < 0.19) {
+            r = r * 0.2 + 214 * 0.8;
+            g = g * 0.2 + 232 * 0.8;
+            b = b * 0.2 + 242 * 0.8;
+          } else {
+            r = r * 0.25 + 40 * 0.75;
+            g = g * 0.25 + 120 * 0.75;
+            b = b * 0.25 + 170 * 0.75;
+          }
         }
 
         const pi = (my * size + mx) * 4;
