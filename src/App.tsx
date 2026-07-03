@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
+import { EcosystemPanel } from "./components/EcosystemPanel";
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
@@ -842,6 +843,8 @@ export function App() {
                 <button data-testid="pan-button" onClick={() => setPan({ x: 0, y: 0 })}>Reset Pan</button>
               </div>
             </div>
+
+            <EcosystemPanel />
 
           </div>
 

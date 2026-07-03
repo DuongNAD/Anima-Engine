@@ -4,7 +4,19 @@
 
 ---
 
-# ❄️ [MỚI NHẤT] BACKEND E8 — Xác phân huỷ (corpse→detritus) + Mùa vụ (seasonal fertility) (2026-07-03)
+# 📊 [MỚI NHẤT] E9 — Dashboard hệ sinh thái SỐNG (IPC + panel frontend) (2026-07-03)
+
+Tiếp Phase 7 (E9). Đưa hệ sinh thái ra màn hình — chạm IPC + frontend lần đầu, theo pattern polling sẵn có (như `get_terrain_map`), KHÔNG đổi event contract.
+
+- **Backend**: DTO `EcosystemState{detritus, plants, animals, total, prey_count, predator_count, shannon, simpson}` + command `get_ecosystem_state` (đọc shared `Arc<RwLock<>>` như các command khác). Sim **publish mỗi tick** sau schedule: đọc `EcosystemBiomass` resource + đếm prey/predator (`query_filtered`) + Shannon/Simpson trên [prey, predator]. Thêm field `ecosystem_state` vào `SimulationEngine` (init + clone trước thread). Đăng ký command trong `generate_handler!`.
+- **Frontend**: `src/components/EcosystemPanel.tsx` — **tự poll** `get_ecosystem_state` mỗi 1s (guard null, nuốt lỗi khi sim chưa chạy), render **thanh sinh khối xếp chồng** (thực vật/động vật/mùn theo tỷ lệ tổng) + split con mồi/săn mồi + Shannon/Simpson. Match theme card trắng của simulation-view. Mount 1 dòng trong App.tsx sau card Canvas.
+- **Test**: `src/__tests__/EcosystemPanel.test.tsx` (2 test, mock `get_ecosystem_state` trong setup-vitest) — render, poll, assert 3 compartment + population + diversity. Bài học: matcher `toHaveTextContent` phải `import '@testing-library/jest-dom'` trong TỪNG test (không global).
+- **Verify:** `cargo build`/`clippy` 0 cảnh báo · lib 25/25 · tauri_ipc_tests 6/6 · `npm run build` ✅ · src Vitest **9/9** (thêm EcosystemPanel 2) · test:frontend **237/237** · lint 0 lỗi.
+- **Còn lại (E10)**: metric Red-Queen/character-displacement; connectance & độ dài chuỗi thức ăn; time-series history trong panel; nghiên cứu intermediate-disturbance.
+
+---
+
+# ❄️ BACKEND E8 — Xác phân huỷ (corpse→detritus) + Mùa vụ (seasonal fertility) (2026-07-03)
 
 Tiếp Phase 7 (E8). Hoàn tất nửa "chết" của vòng khép kín + động lực mùa vụ.
 

@@ -217,6 +217,17 @@ beforeEach(() => {
           biomes: new Array(128 * 128).fill(4), // Grassland = 4
           flows: new Array(128 * 128).fill(0.0),
         };
+      case 'get_ecosystem_state':
+        return {
+          detritus: 100,
+          plants: 500,
+          animals: 300,
+          total: 900,
+          prey_count: 12,
+          predator_count: 3,
+          shannon: 0.5,
+          simpson: 0.4,
+        };
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

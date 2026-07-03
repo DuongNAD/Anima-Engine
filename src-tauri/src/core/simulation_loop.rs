@@ -51,6 +51,7 @@ pub struct SimulationEngine {
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
+    pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
 }
 
 impl Default for SimulationEngine {
@@ -103,6 +104,9 @@ impl SimulationEngine {
                 crate::core::ecs::EnvironmentalState::default(),
             )),
             terrain_map: Arc::new(RwLock::new(None)),
+            ecosystem_state: Arc::new(RwLock::new(
+                crate::commands::environment::EcosystemState::default(),
+            )),
         }
     }
 
@@ -130,6 +134,7 @@ impl SimulationEngine {
         let active_raycasts_clone = Arc::clone(&self.active_raycasts);
         let combat_events_clone = Arc::clone(&self.combat_events);
         let environmental_state_clone = Arc::clone(&self.environmental_state);
+        let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
 
         let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
         let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
@@ -1140,6 +1145,39 @@ impl SimulationEngine {
                         .write()
                         .unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut shared.elements, &mut local_env_state.elements);
+                }
+
+                // Publish the live ecosystem snapshot: the conserved biomass ledger, the
+                // predator/prey split and the biodiversity indices over that split.
+                {
+                    let (detritus, plants, animals) = world
+                        .get_resource::<crate::core::ecology::EcosystemBiomass>()
+                        .map(|b| (b.detritus, b.plants, b.animals))
+                        .unwrap_or((0.0, 0.0, 0.0));
+                    let mut prey_count = 0u32;
+                    let mut predator_count = 0u32;
+                    let mut prey_q = world.query_filtered::<Entity, (
+                        With<crate::core::components::Agent>,
+                        With<crate::core::components::Prey>,
+                    )>();
+                    prey_count += prey_q.iter(&world).count() as u32;
+                    let mut pred_q = world.query_filtered::<Entity, (
+                        With<crate::core::components::Agent>,
+                        With<crate::core::components::Predator>,
+                    )>();
+                    predator_count += pred_q.iter(&world).count() as u32;
+                    let counts = [prey_count, predator_count];
+                    let mut shared = ecosystem_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    shared.detritus = detritus;
+                    shared.plants = plants;
+                    shared.animals = animals;
+                    shared.total = detritus + plants + animals;
+                    shared.prey_count = prey_count;
+                    shared.predator_count = predator_count;
+                    shared.shannon = crate::core::ecology::shannon_index(&counts);
+                    shared.simpson = crate::core::ecology::simpson_index(&counts);
                 }
 
                 let elapsed = start_time.elapsed();

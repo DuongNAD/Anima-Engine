@@ -100,7 +100,8 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 | E6 | Grazing + closed energy loop | `herbivore_grazing_system`: prey graze `ResourceField` (Type II saturating intake → depleted cells disperse herbivores = giving-up-density refuge); biomass-GATED regrowth (`step_regrowth_gated`) so plants only grow by drawing detritus; metabolism routes respired energy → detritus; `ecosystem_census_system` tallies living-animal energy — the full plant→herbivore→detritus→plant cycle is conserved (unit-tested) | DONE |
 | E7 | MAP-Elites ecological niche axes + NPP fruiting | Archive descriptors switched from locomotion (speed/efficiency) to ECOLOGICAL niche axes — body mass (`MorphologyGenotype::total_mass()`, the MTE master trait) × foraging range (distance roamed), normalized to [0,1] via `ecological_descriptors()`; so quality-diversity illuminates ecological diversity and predator/prey arms races spread the grid. `fruit_growth_system` now scales fruiting by local biome NPP (rainforest fruits fast, desert slow; trees without a position fall back to base rate) | DONE |
 | E8 | Corpse decomposition + seasonal fertility | Death half of the closed loop — a replaced agent's remaining reserve energy returns to the detritus pool (conserved) via `apply_staggered_evolution_system`; a `SeasonClock` drives a `seasonal_fertility()` sine (summer boosts regrowth, winter suppresses) so the resource field booms and busts on a yearly cycle, a periodic disturbance that sustains predator-prey cycles | DONE |
-| E9 | (Next) Live ecosystem dashboard + coevolution metrics | Expose EcosystemBiomass / Shannon-Simpson / connectance over IPC; explicit Red-Queen & character-displacement diagnostics; intermediate-disturbance diversity study | TODO |
+| E9 | Live ecosystem dashboard over IPC | `get_ecosystem_state` command + per-tick publish of the conserved `EcosystemState` (detritus/plants/animals/total, prey/predator counts, Shannon/Simpson); frontend `EcosystemPanel` polls it and renders the stacked biomass bar + population split + diversity indices (unit-tested) | DONE |
+| E10 | (Next) Coevolution metrics + IDH study | Explicit Red-Queen / character-displacement diagnostics; connectance & food-chain length; intermediate-disturbance diversity experiment; time-series history in the panel | TODO |
 
 ## Interface Contracts
 ### Tauri Commands
@@ -113,6 +114,7 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 - `get_active_raycasts` -> `Vec<RaycastTelemetry>`
 - `get_lineage_graph` -> `LineageGraphState`
 - `get_chronicle_history` -> `Vec<ChronicleEvent>`
+- `get_ecosystem_state` -> `EcosystemState` (closed-energy ledger: detritus/plants/animals/total, prey/predator counts, Shannon/Simpson) — published each tick, polled by the frontend `EcosystemPanel`
 
 ### Tauri Events
 - `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)

@@ -32,6 +32,31 @@ impl TerrainMapState {
     }
 }
 
+/// Live snapshot of the closed ecosystem for the dashboard: the three energy compartments of
+/// the conserved biomass ledger (which should sum ~constant), the population split, and the
+/// biodiversity indices. Published once per tick by the simulation thread.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct EcosystemState {
+    pub detritus: f64,
+    pub plants: f64,
+    pub animals: f64,
+    pub total: f64,
+    pub prey_count: u32,
+    pub predator_count: u32,
+    pub shannon: f32,
+    pub simpson: f32,
+}
+
+#[tauri::command]
+pub fn get_ecosystem_state(state: State<'_, AppState>) -> Result<EcosystemState, String> {
+    let shared = state
+        .engine
+        .ecosystem_state
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    Ok(shared.clone())
+}
+
 #[tauri::command]
 pub fn get_terrain_map(state: State<'_, AppState>) -> Result<TerrainMapState, String> {
     let shared = state

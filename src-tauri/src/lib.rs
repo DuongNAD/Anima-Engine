@@ -55,7 +55,8 @@ pub fn run() {
             commands::get_test_rabbit_state,
             commands::save_simulation_state,
             commands::load_simulation_state,
-            commands::get_terrain_map
+            commands::get_terrain_map,
+            commands::get_ecosystem_state
         ])
         .setup(|app| {
             use crate::core::simulation_lifecycle::SavedSimulationState;
