@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 11;
+export const WORLD_GEN_VERSION = 12;
 
 export enum Biome {
   Ocean = 0,
@@ -98,16 +98,35 @@ export interface World {
   floraScale: Float32Array;
   floraType: Uint8Array; // FloraType
   floraCount: number;
+  /** Waterfalls: steep drops along river channels (cell-centred world coords + top elevation). */
+  waterfallX: Float32Array;
+  waterfallZ: Float32Array;
+  waterfallTopE: Float32Array; // normalized elevation at the lip
+  waterfallDrop: Float32Array; // normalized height of the drop
+  waterfallYaw: Float32Array; // downhill direction (radians about +Y)
+  waterfallCount: number;
+  /** Cave mouths: dark openings set into steep rock faces. */
+  caveX: Float32Array;
+  caveZ: Float32Array;
+  caveE: Float32Array; // normalized floor elevation of the mouth
+  caveYaw: Float32Array; // downhill (outward-facing) direction
+  caveCount: number;
   /** Normalized sea level (elevation below this is ocean). */
   seaLevel: number;
 }
 
 export enum FloraType {
-  Pine = 0, // taiga / tundra edge
-  Round = 1, // forest / grassland
-  Jungle = 2, // jungle / swamp
-  Cactus = 3, // desert / savanna
-  Rock = 4, // bare / alpine
+  Pine = 0, // conifers: taiga, alpine edge
+  Round = 1, // broadleaf: forest, grassland accents
+  Jungle = 2, // layered tropical canopy: jungle, swamp
+  Cactus = 3, // desert
+  Rock = 4, // boulders on bare rock
+  Acacia = 5, // umbrella-canopy savanna tree
+  Palm = 6, // mangrove coasts, jungle fringe
+  DeadTree = 7, // bare snag: desert, badlands
+  Bush = 8, // low shrub: shrubland, chaparral, steppe
+  Reed = 9, // wetland reeds: swamp, bog
+  Tuft = 10, // grass tuft: grassland, steppe, alpine meadow
 }
 
 // ---- Seeded helpers ------------------------------------------------------------------
@@ -292,29 +311,47 @@ function classify(
   return Biome.Jungle; // rainforest
 }
 
-function floraForBiome(b: Biome): FloraType | -1 {
+/**
+ * Weighted flora mix per biome: every ecosystem gets its own blend of species instead of one
+ * repeated prop (a savanna is scattered umbrella acacias over grass; a swamp mixes canopy
+ * trees with reed beds). `r` is a uniform random draw in [0, 1).
+ */
+function pickFlora(b: Biome, r: number): FloraType | -1 {
   switch (b) {
     case Biome.Taiga:
+      return r < 0.88 ? FloraType.Pine : FloraType.Bush;
     case Biome.Tundra:
+      return r < 0.55 ? FloraType.Bush : FloraType.Tuft; // treeless cold plain
     case Biome.Alpine:
-      return FloraType.Pine;
+      return r < 0.6 ? FloraType.Tuft : FloraType.Pine; // meadow with dwarf conifers
     case Biome.Forest:
+      return r < 0.78 ? FloraType.Round : FloraType.Bush;
     case Biome.Grassland:
+      return r < 0.6 ? FloraType.Tuft : r < 0.9 ? FloraType.Bush : FloraType.Round;
     case Biome.Shrubland:
+      return r < 0.7 ? FloraType.Bush : FloraType.Round;
     case Biome.Chaparral:
+      return r < 0.8 ? FloraType.Bush : FloraType.DeadTree; // dry scrub
     case Biome.Steppe:
-      return FloraType.Round;
+      return r < 0.75 ? FloraType.Tuft : FloraType.Bush;
     case Biome.Jungle:
+      return r < 0.72 ? FloraType.Jungle : FloraType.Palm;
     case Biome.Swamp:
-    case Biome.Mangrove:
+      return r < 0.55 ? FloraType.Jungle : FloraType.Reed;
     case Biome.Bog:
-      return FloraType.Jungle;
-    case Biome.Savanna:
-      return FloraType.Round; // scattered acacia-like trees
+      return r < 0.55 ? FloraType.Reed : FloraType.Bush;
+    case Biome.Mangrove:
+      return r < 0.6 ? FloraType.Palm : FloraType.Jungle;
     case Biome.Desert:
-      return FloraType.Cactus;
+      return r < 0.6 ? FloraType.Cactus : FloraType.DeadTree;
+    case Biome.Savanna:
+      return r < 0.7 ? FloraType.Acacia : FloraType.Tuft;
+    case Biome.Badlands:
+      return FloraType.DeadTree;
+    case Biome.Rock:
+      return FloraType.Rock; // scattered boulders on the high bare band
     default:
-      // ocean / beach / river / lake / snow / glacier / rock / badlands: nothing grows.
+      // ocean / beach / river / lake / snow / glacier: nothing grows.
       return -1;
   }
 }
@@ -329,31 +366,31 @@ function floraDensity(b: Biome): number {
     case Biome.Taiga:
       return 0.45;
     case Biome.Swamp:
-      return 0.25;
+      return 0.3;
     case Biome.Shrubland:
       return 0.18;
     case Biome.Grassland:
-      return 0.08;
+      return 0.16;
     case Biome.Savanna:
-      return 0.05;
+      return 0.07;
     case Biome.Tundra:
-      return 0.06;
+      return 0.07;
     case Biome.Desert:
-      return 0.012;
-    case Biome.Rock:
       return 0.02;
+    case Biome.Rock:
+      return 0.015;
     case Biome.Mangrove:
       return 0.35;
     case Biome.Bog:
-      return 0.2;
+      return 0.25;
     case Biome.Alpine:
-      return 0.12;
+      return 0.14;
     case Biome.Chaparral:
-      return 0.12;
+      return 0.14;
     case Biome.Steppe:
-      return 0.04;
+      return 0.1;
     case Biome.Badlands:
-      return 0.02;
+      return 0.015;
     default:
       return 0;
   }
@@ -554,8 +591,8 @@ function computeLakes(
 
   // Candidate lake cells: land depressions the flood raised above the real ground.
   const LAKE_MIN_DEPTH = 0.006; // ignore shallow pits (mostly erosion speckle)
-  const MIN_LAKE_CELLS = 16; // drop ponds smaller than this (avoids speckle -> planes)
-  const MAX_LAKES = 280; // cap rendered planes; keep the largest basins
+  const MIN_LAKE_CELLS = 5; // small basins are kept as PONDS (rendering merges all basins
+  const MAX_LAKES = 520; //   into one mesh, so more basins no longer cost draw calls)
   const isLakeCell = (i: number) => elev[i] >= seaLevel && filled[i] - elev[i] > LAKE_MIN_DEPTH;
 
   // Label connected basins (8-connectivity) with an explicit stack (no recursion on 4M cells).
@@ -996,6 +1033,103 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // ---- Pass 4c: shoreline band (damp sand around oceans & lakes) ----
   const shore = computeShore(elevation, water, size, seaLevel);
 
+  // ---- Pass 4e: waterfalls — steep drops along river channels ----
+  // A river cell whose steepest descent exceeds MIN_DROP reads as a waterfall: keep the lip
+  // position, drop height and downhill bearing so the renderer can hang a foam curtain on the
+  // face. Falls are kept biggest-first with a spacing filter so one long cascade doesn't
+  // spawn a ladder of overlapping curtains.
+  const wfX: number[] = [];
+  const wfZ: number[] = [];
+  const wfTopE: number[] = [];
+  const wfDrop: number[] = [];
+  const wfYaw: number[] = [];
+  {
+    // Per-CELL drop threshold: halving the cell size halves each step's drop, so scale by
+    // resolution to keep the same physical cliff height qualifying at any WORLD_SIZE.
+    const MIN_DROP = 0.012 * (1024 / size);
+    const MAX_FALLS = 320;
+    const cand: Array<{ x: number; z: number; e: number; d: number; yaw: number }> = [];
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = y * size + x;
+        if (biome[i] !== Biome.River || water[i] > 0) continue;
+        let drop = 0;
+        let dirX = 0;
+        let dirY = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const d = elevation[i] - elevation[(y + dy) * size + (x + dx)];
+            if (d > drop) {
+              drop = d;
+              dirX = dx;
+              dirY = dy;
+            }
+          }
+        }
+        if (drop < MIN_DROP) continue;
+        cand.push({
+          x: x - size / 2 + dirX * 0.5,
+          z: y - size / 2 + dirY * 0.5,
+          e: elevation[i],
+          d: drop,
+          yaw: Math.atan2(dirY, dirX),
+        });
+      }
+    }
+    cand.sort((a, b) => b.d - a.d);
+    const takenX: number[] = [];
+    const takenZ: number[] = [];
+    for (const c of cand) {
+      if (wfX.length >= MAX_FALLS) break;
+      let crowded = false;
+      for (let k = 0; k < takenX.length; k++) {
+        const ddx = takenX[k] - c.x;
+        const ddz = takenZ[k] - c.z;
+        if (ddx * ddx + ddz * ddz < 16) {
+          crowded = true;
+          break;
+        }
+      }
+      if (crowded) continue;
+      takenX.push(c.x);
+      takenZ.push(c.z);
+      wfX.push(c.x);
+      wfZ.push(c.z);
+      wfTopE.push(c.e);
+      wfDrop.push(c.d);
+      wfYaw.push(c.yaw);
+    }
+  }
+
+  // ---- Pass 4f: cave mouths — dark openings set into steep bare-rock faces ----
+  const cvX: number[] = [];
+  const cvZ: number[] = [];
+  const cvE: number[] = [];
+  const cvYaw: number[] = [];
+  {
+    const caveRng = mulberry32((baseSeed ^ 0x7ac0beef) >>> 0);
+    const MAX_CAVES = 140;
+    outer: for (let y = 2; y < size - 2; y += 2) {
+      for (let x = 2; x < size - 2; x += 2) {
+        const i = y * size + x;
+        // Bare rock and eroded badlands host openings; needs a face to sink into.
+        if (biome[i] !== Biome.Rock && biome[i] !== Biome.Badlands) continue;
+        if (slope[i] < 0.35) continue;
+        if (elevation[i] < seaLevel + 0.02) continue;
+        if (caveRng() > 0.02) continue;
+        // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
+        const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
+        const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
+        cvX.push(x - size / 2);
+        cvZ.push(y - size / 2);
+        cvE.push(elevation[i]);
+        cvYaw.push(Math.atan2(-dEdz, -dEdx));
+        if (cvX.length >= MAX_CAVES) break outer;
+      }
+    }
+  }
+
   // ---- Pass 5: flora placement (SoA, density by biome, capped) ----
   const rng = mulberry32(baseSeed + 99173);
   const fX: number[] = [];
@@ -1015,12 +1149,12 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       if (slope[i] > 0.78) continue; // never on steep cliffs
       if (shore[i] > 0.8) continue; // never right at the water's edge / on the beach
       const b = biome[i] as Biome;
-      // floraForBiome already excludes ocean / beach / river / lake / snow / glacier / rock.
-      const ft = floraForBiome(b);
-      if (ft === -1) continue;
       // Denser where it's wetter, sparser where arid (a lush forest vs a dry plain).
       const density = floraDensity(b) * (0.5 + moisture[i]);
       if (rng() > density) continue;
+      // pickFlora returns -1 for ocean / beach / river / lake / snow / glacier.
+      const ft = pickFlora(b, rng());
+      if (ft === -1) continue;
       // World coordinates centred on origin (1 cell = 1 unit).
       const wx = x - size / 2 + (rng() - 0.5) * stride;
       const wz = y - size / 2 + (rng() - 0.5) * stride;
@@ -1054,6 +1188,17 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     floraScale: new Float32Array(fS),
     floraType: new Uint8Array(fT),
     floraCount: fX.length,
+    waterfallX: new Float32Array(wfX),
+    waterfallZ: new Float32Array(wfZ),
+    waterfallTopE: new Float32Array(wfTopE),
+    waterfallDrop: new Float32Array(wfDrop),
+    waterfallYaw: new Float32Array(wfYaw),
+    waterfallCount: wfX.length,
+    caveX: new Float32Array(cvX),
+    caveZ: new Float32Array(cvZ),
+    caveE: new Float32Array(cvE),
+    caveYaw: new Float32Array(cvYaw),
+    caveCount: cvX.length,
     seaLevel,
   };
 }

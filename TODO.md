@@ -4,7 +4,40 @@
 
 ---
 
-# 🌏 [MỚI NHẤT] KHÍ HẬU THẬT v11 — Rain shadow + 22 biome vùng lớn + texture full-res (2026-07-03)
+# 🎥 [MỚI NHẤT] v12 — Camera 5 chế độ + Thác/Suối/Ao/Hang + 11 loại thực vật + chế độ Nhẹ (2026-07-03)
+
+Yêu cầu: "cam có các góc nhìn khác, nhiều môi trường hơn (thác, suối, ao, hang động…), nhiều thực vật hơn, nhẹ CPU/GPU". **Bump `WORLD_GEN_VERSION` 11→12.**
+
+## Camera (`WorldCameraRig.tsx` — mới)
+- **5 chế độ** (nút HUD): 🌀 Quay (orbit cũ) · 🕊 **Bay** (WASD + E/Q lên/xuống, giữ chuột trái kéo để nhìn, Shift ×3.2) · 🚶 **Đi bộ** (góc nhìn người, WASD, dính mặt đất qua `sampleMeshHeight`, lội ở mép nước, vào mode là đứng NGAY tại điểm target/teleport) · 🗺 Trên cao (khóa xoay, pan+zoom) · 🎬 Cine (tự quay quanh điểm quan tâm).
+- Teleport minimap hoạt động ở MỌI chế độ; `viewRef` cập nhật từ rig cho minimap/HUD.
+
+## Môi trường nước & hang (`worldGen.ts` v12)
+- **Thác nước**: dò ô sông có drop/cell vượt ngưỡng (chuẩn hóa theo resolution) → SoA `waterfall*` (121 thác @2048²); render `WorldWaterfalls.tsx` = màn nước gradient trắng-xanh + vũng bọt chân thác, **2 draw call** cho toàn bộ.
+- **Suối**: nhánh flow 0.44–0.6 tint xanh nước mảnh vào color texture (brook→stream→river liền mạch).
+- **Ao**: `MIN_LAKE_CELLS` 16→5, `MAX_LAKES` 520; **toàn bộ hồ/ao gộp 1 mesh** (mergeGeometries — trước là 280 mesh/draw call). Shader nước chuyển sang **world-space swell** để phục vụ mesh gộp.
+- **Hang động**: `cave*` SoA — đĩa gần đen unlit áp vào vách `Rock/Badlands` slope>0.35 (100 hang @2048², 1 draw call, `WorldCaves.tsx`); trên núi đọc như hốc đá thật.
+
+## Thực vật 5 → 11 loại (`pickFlora` trộn theo biome)
+Pine (thông 2 tầng) · Round (tán kép) · Jungle (tầng tán) · Cactus (có nhánh) · Rock · **Acacia** (dù savanna) · **Palm** (5 tàu lá — mangrove/jungle) · **DeadTree** (khô — desert/badlands/chaparral) · **Bush** (bụi kép) · **Reed** (lau sậy — đầm/bog) · **Tuft** (cỏ — grassland/steppe/alpine/tundra). Mix @2048²: Pine 20.8k, Bush 14.6k, Round 10.5k, Tuft 8.2k, Jungle 5.1k, Reed 1.6k, Palm 1.5k… Tundra giờ KHÔNG còn cây (đúng thực tế). Chỉ cây cao castShadow.
+
+## Nhẹ CPU/GPU
+- Nút **GPU: Đẹp/Nhẹ** trên HUD — áp LIVE không remount context (`QualityApplier`: setDpr 1.5→1, `gl.shadowMap.enabled` + recompile material, cây bỏ shadow + giữ 1/2 instance). Bài học: remount `<Canvas key>` làm chết render loop (màn đen) — đừng remount, toggle runtime.
+- `dpr` mặc định cap [1, 1.5]; `powerPreference: high-performance`; hồ 280→1 draw call; ground-cover không đổ bóng.
+- **Rộng hơn**: `RENDER_SIZE` 1000→**1200**.
+- Cát ướt: dải beach sát mép nước tối đi 14% (swash zone) trong color bake.
+
+## Verify
+- Smoke @2048²: 4.1s · 22/22 biome · 121 thác · 100 hang · flora 63k/11 loại · 0 NaN. @1024²: 1.0s.
+- Playwright: default/walk/fly/cine/low đều sạch, **0 lỗi console**; walk đứng đúng điểm teleport nhìn ra hồ+rừng+suối; fly thấy thác trắng trên vách; Nhẹ render tức thì.
+- Build ✅ · test 7/7 & 237/237 ✅ · lint 0 lỗi (432 warning legacy-any, +3 từ pattern `args as any` có sẵn).
+
+## Tinh chỉnh nhanh
+- Ngưỡng thác → `MIN_DROP` (Pass 4e); số/kích thước hang → prob `0.02`/`slope>0.35` (Pass 4f) + scale trong WorldCaves; độ đậm suối → hệ số `0.55` trong buildColorTexture; mật độ từng loài → `floraDensity`/`pickFlora`; tốc độ bay/đi bộ → `base` trong WorldCameraRig; ngưỡng ao → `MIN_LAKE_CELLS`.
+
+---
+
+# 🌏 KHÍ HẬU THẬT v11 — Rain shadow + 22 biome vùng lớn + texture full-res (2026-07-03)
 
 Yêu cầu: "map chân thật, tối ưu, đẹp, nhiều môi trường nhất có thể". **Bump `WORLD_GEN_VERSION` 10→11** (cache tự sinh lại). Đã commit cùng ngày.
 

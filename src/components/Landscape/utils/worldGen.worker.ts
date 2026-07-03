@@ -22,6 +22,15 @@ ctx.onmessage = (e: MessageEvent<{ seed: string | number; opts: WorldGenOptions 
     world.floraZ.buffer,
     world.floraScale.buffer,
     world.floraType.buffer,
+    world.waterfallX.buffer,
+    world.waterfallZ.buffer,
+    world.waterfallTopE.buffer,
+    world.waterfallDrop.buffer,
+    world.waterfallYaw.buffer,
+    world.caveX.buffer,
+    world.caveZ.buffer,
+    world.caveE.buffer,
+    world.caveYaw.buffer,
   ];
   ctx.postMessage(world, transfer);
 };

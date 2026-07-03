@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './utils/worldGen';
 
 // ---------------------------------------------------------------------------------------
@@ -37,18 +38,17 @@ const vertexShader = /* glsl */ `
   varying vec3 vWorldPos;
 
   void main() {
-    // Plane is rotated -90deg about X, so local +z is world-up: displace z for gentle swell.
-    // The swell dies out with distance: far vertices are further apart than the wavelength,
-    // so displacing them just aliases into moire bands and a jagged horizon silhouette.
-    vec4 world0 = modelMatrix * vec4(position, 1.0);
+    // Swell is applied in WORLD space (always along +Y), so the same shader serves both the
+    // rotated ocean plane and the merged, pre-transformed lake mesh. It dies out with
+    // distance: far vertices are further apart than the wavelength, so displacing them just
+    // aliases into moire bands and a jagged horizon silhouette.
+    vec4 world = modelMatrix * vec4(position, 1.0);
     float fade = 1.0 - smoothstep(uTerrainSize * 0.5, uTerrainSize * 1.4,
-                                  distance(cameraPosition.xz, world0.xz));
-    vec3 p = position;
-    float w = sin(position.x * 0.03 + uTime * 0.6) * 0.6
-            + cos(position.y * 0.025 + uTime * 0.45) * 0.6;
-    p.z += w * uWaveAmp * fade;
+                                  distance(cameraPosition.xz, world.xz));
+    float w = sin(world.x * 0.03 + uTime * 0.6) * 0.6
+            + cos(world.z * 0.025 + uTime * 0.45) * 0.6;
+    world.y += w * uWaveAmp * fade;
 
-    vec4 world = modelMatrix * vec4(p, 1.0);
     vWorldPos = world.xyz;
     gl_Position = projectionMatrix * viewMatrix * world;
   }
@@ -220,24 +220,30 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     [heightTex, renderSize, seaY],
   );
 
-  // One plane per lake basin, sized to its cell-space bounding box (+ a small margin). The
-  // shader hides the parts over land, so a single bbox plane cleanly fills the whole basin.
-  const lakePlanes = useMemo(() => {
+  // Lakes & ponds: one bbox quad per basin at its spill level, ALL merged into a single
+  // geometry (one draw call for hundreds of water bodies). The fragment shader fades alpha
+  // to 0 over dry land, so each bbox quad only shows across its actual basin.
+  const lakesGeom = useMemo(() => {
     const { size } = world;
     const lakeBasins = world.lakeBasins ?? []; // tolerate an older/partial world
+    if (lakeBasins.length === 0) return null;
     const margin = (renderSize / (size - 1)) * 2;
     const toWorld = (g: number) => (g / (size - 1) - 0.5) * renderSize;
-    return lakeBasins.map((b) => {
+    const parts = lakeBasins.map((b) => {
       const x0 = toWorld(b.minX) - margin;
       const x1 = toWorld(b.maxX) + margin;
       const z0 = toWorld(b.minY) - margin;
       const z1 = toWorld(b.maxY) + margin;
       const w = Math.max(0.001, x1 - x0);
       const h = Math.max(0.001, z1 - z0);
-      const seg = Math.max(1, Math.min(24, Math.round(Math.max(w, h) / 12)));
-      const geom = new THREE.PlaneGeometry(w, h, seg, seg);
-      return { geom, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, y: b.level * heightUnits };
+      const seg = Math.max(1, Math.min(12, Math.round(Math.max(w, h) / 14)));
+      return new THREE.PlaneGeometry(w, h, seg, seg)
+        .rotateX(-Math.PI / 2)
+        .translate((x0 + x1) / 2, b.level * heightUnits, (z0 + z1) / 2);
     });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((p) => p.dispose());
+    return merged;
   }, [world, renderSize, heightUnits]);
 
   useFrame((state) => {
@@ -260,9 +266,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return () => {
       heightTex.dispose();
       lakeMaterial.dispose();
-      lakePlanes.forEach((p) => p.geom.dispose());
+      lakesGeom?.dispose();
     };
-  }, [heightTex, lakeMaterial, lakePlanes]);
+  }, [heightTex, lakeMaterial, lakesGeom]);
 
   return (
     <group name="world-water">
@@ -283,17 +289,8 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
         />
       </mesh>
 
-      {/* One plane per lake basin. */}
-      {lakePlanes.map((p, i) => (
-        <mesh
-          key={i}
-          geometry={p.geom}
-          material={lakeMaterial}
-          rotation-x={-Math.PI / 2}
-          position={[p.cx, p.y, p.cz]}
-          name="world-lake"
-        />
-      ))}
+      {/* Every lake & pond in ONE merged mesh (a single draw call). */}
+      {lakesGeom && <mesh geometry={lakesGeom} material={lakeMaterial} name="world-lakes" />}
     </group>
   );
 };

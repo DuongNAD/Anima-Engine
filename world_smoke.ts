@@ -67,7 +67,15 @@ for (let i = 0; i < n; i++) {
   if (e > maxE) maxE = e;
 }
 console.log(`elevation [${minE.toFixed(3)}, ${maxE.toFixed(3)}], NaN=${nan}`);
-console.log(`lakeBasins=${world.lakeBasins.length} flora=${world.floraCount}`);
+console.log(`lakeBasins=${world.lakeBasins.length} flora=${world.floraCount} waterfalls=${world.waterfallCount} caves=${world.caveCount}`);
+
+// flora type histogram
+{
+  const tnames = ['Pine', 'Round', 'Jungle', 'Cactus', 'Rock', 'Acacia', 'Palm', 'DeadTree', 'Bush', 'Reed', 'Tuft'];
+  const th = new Array(tnames.length).fill(0);
+  for (let i = 0; i < world.floraCount; i++) th[world.floraType[i]]++;
+  console.log('flora mix: ' + th.map((c, k) => `${tnames[k]}=${c}`).join(' '));
+}
 
 // ---- biome histogram ----
 const names = Object.keys(Biome).filter((k) => isNaN(Number(k)));

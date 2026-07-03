@@ -1,70 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, extend, useFrame, useThree } from '@react-three/fiber';
+import { Canvas, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import WorldTerrain from './WorldTerrain';
 import WorldVegetation from './WorldVegetation';
 import WorldWater from './WorldWater';
+import WorldWaterfalls from './WorldWaterfalls';
+import WorldCaves from './WorldCaves';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
+import WorldCameraRig, { type CameraMode } from './WorldCameraRig';
 import type { World } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { sunDirectionForTime } from './utils/skyParams';
-
-extend({ OrbitControls });
-
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      orbitControls: any;
-    }
-  }
-}
-
-const OrbitCam: React.FC<{
-  viewRef: React.MutableRefObject<CameraView>;
-  teleportRef: React.MutableRefObject<{ x: number; z: number } | null>;
-}> = ({ viewRef, teleportRef }) => {
-  const { camera, gl } = useThree();
-  const ref = useRef<any>(null);
-  useFrame(() => {
-    const controls = ref.current;
-    if (!controls) return;
-
-    // Apply a pending minimap teleport: shift both target and camera so the framing is kept.
-    const tp = teleportRef.current;
-    if (tp) {
-      const dx = tp.x - controls.target.x;
-      const dz = tp.z - controls.target.z;
-      controls.target.x += dx;
-      controls.target.z += dz;
-      camera.position.x += dx;
-      camera.position.z += dz;
-      teleportRef.current = null;
-    }
-
-    controls.update();
-
-    // Report the live camera state to the HTML overlay (minimap / HUD).
-    const v = viewRef.current;
-    v.targetX = controls.target.x;
-    v.targetZ = controls.target.z;
-    v.camX = camera.position.x;
-    v.camZ = camera.position.z;
-  });
-  return (
-    <orbitControls
-      ref={ref}
-      args={[camera, gl.domElement]}
-      enableDamping
-      dampingFactor={0.08}
-      maxPolarAngle={Math.PI / 2.05}
-      minDistance={RENDER_SIZE * 0.06}
-      maxDistance={RENDER_SIZE * 3.2}
-    />
-  );
-};
 
 // Data resolution of the world (cells). Rendering is decoupled from this (see RENDER_SIZE).
 // 2048^2 = ~4M cells: a huge, detailed continent generated once (off-thread) and cached.
@@ -73,9 +21,37 @@ const WORLD_SEED = 'seed';
 const WORLD_SHAPE: 'island' | 'continent' = 'continent';
 
 // World-space extent the terrain is drawn at (independent of WORLD_SIZE).
-const RENDER_SIZE = 1000;
+const RENDER_SIZE = 1200;
 const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
+
+type Quality = 'high' | 'low';
+
+const CAM_MODES: Array<{ key: CameraMode; label: string }> = [
+  { key: 'orbit', label: '🌀 Quay' },
+  { key: 'fly', label: '🕊 Bay' },
+  { key: 'walk', label: '🚶 Đi bộ' },
+  { key: 'top', label: '🗺 Trên cao' },
+  { key: 'cine', label: '🎬 Cine' },
+];
+
+/** Applies the quality preset LIVE (no GL-context remount): render scale + shadow pass. */
+const QualityApplier: React.FC<{ quality: Quality }> = ({ quality }) => {
+  const { gl, scene, setDpr } = useThree();
+  useEffect(() => {
+    setDpr(quality === 'high' ? Math.min(window.devicePixelRatio || 1, 1.5) : 1);
+    gl.shadowMap.enabled = quality === 'high';
+    // Shadow toggling only takes effect after materials recompile.
+    scene.traverse((o: THREE.Object3D) => {
+      const mesh = o as THREE.Mesh;
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (!mat) return;
+      if (Array.isArray(mat)) mat.forEach((m) => (m.needsUpdate = true));
+      else mat.needsUpdate = true;
+    });
+  }, [quality, gl, scene, setDpr]);
+  return null;
+};
 
 const WEATHERS: WeatherKind[] = ['clear', 'rain', 'snow', 'fog'];
 
@@ -111,6 +87,8 @@ export const WorldShowcase: React.FC = () => {
   const [timeOfDay, setTimeOfDay] = useState(11.0);
   const [speed, setSpeed] = useState(1.0); // 0 = paused
   const [weather, setWeather] = useState<WeatherKind>('clear');
+  const [camMode, setCamMode] = useState<CameraMode>('orbit');
+  const [quality, setQuality] = useState<Quality>('high');
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0 });
 
   // Camera <-> HTML-overlay bridge: OrbitCam writes here each frame; the minimap/HUD read it.
@@ -171,6 +149,8 @@ export const WorldShowcase: React.FC = () => {
     <div data-testid="world-showcase" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
         shadows
+        dpr={[1, 1.5]}
+        gl={{ powerPreference: 'high-performance' }}
         camera={{
           position: [0, RENDER_SIZE * 0.5, RENDER_SIZE * 0.8],
           near: 2,
@@ -184,6 +164,8 @@ export const WorldShowcase: React.FC = () => {
           (window as unknown as { __worldScene?: THREE.Scene }).__worldScene = state.scene;
         }}
       >
+        <QualityApplier quality={quality} />
+
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
         <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
         <WorldWeather
@@ -205,26 +187,42 @@ export const WorldShowcase: React.FC = () => {
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
+          quality={quality}
         />
 
-        {/* Shader-based ocean (depth colour + swell + foam) and flowing rivers. */}
+        {/* Shader-based ocean/lakes (depth colour + swell + foam), waterfall curtains on the
+            steep river drops, and cave mouths on the cliff faces. */}
         <WorldWater
           world={world}
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           sunDir={sunDir}
         />
+        <WorldWaterfalls world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
 
-        <OrbitCam viewRef={viewRef} teleportRef={teleportRef} />
+        <WorldCameraRig
+          mode={camMode}
+          world={world}
+          renderSize={RENDER_SIZE}
+          heightRatio={HEIGHT_RATIO}
+          meshResolution={MESH_RES}
+          viewRef={viewRef}
+          teleportRef={teleportRef}
+        />
       </Canvas>
 
       <WorldHud
         timeOfDay={timeOfDay}
         speed={speed}
         weather={weather}
+        camMode={camMode}
+        quality={quality}
         coords={camReadout}
         onSpeed={setSpeed}
         onWeather={setWeather}
+        onCamMode={setCamMode}
+        onQuality={setQuality}
         onReset={() => {
           teleportRef.current = { x: 0, z: 0 };
         }}
@@ -257,11 +255,15 @@ const WorldHud: React.FC<{
   timeOfDay: number;
   speed: number;
   weather: WeatherKind;
+  camMode: CameraMode;
+  quality: Quality;
   coords: { x: number; z: number };
   onSpeed: (s: number) => void;
   onWeather: (w: WeatherKind) => void;
+  onCamMode: (m: CameraMode) => void;
+  onQuality: (q: Quality) => void;
   onReset: () => void;
-}> = ({ timeOfDay, speed, weather, coords, onSpeed, onWeather, onReset }) => {
+}> = ({ timeOfDay, speed, weather, camMode, quality, coords, onSpeed, onWeather, onCamMode, onQuality, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -307,9 +309,24 @@ const WorldHud: React.FC<{
           </button>
         ))}
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        {CAM_MODES.map((m) => (
+          <button key={m.key} style={HUD_BTN(camMode === m.key)} onClick={() => onCamMode(m.key)}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {(camMode === 'fly' || camMode === 'walk') && (
+        <div style={{ opacity: 0.75, fontSize: 11 }}>
+          WASD di chuyển · giữ chuột trái kéo để nhìn · Shift tăng tốc{camMode === 'fly' ? ' · E/Q lên/xuống' : ''}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.85 }}>
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>📍 x {coords.x}, z {coords.z}</span>
         <button style={HUD_BTN(false)} onClick={onReset}>⟲ Reset</button>
+        <span style={{ opacity: 0.7 }}>GPU</span>
+        <button style={HUD_BTN(quality === 'high')} onClick={() => onQuality('high')}>Đẹp</button>
+        <button style={HUD_BTN(quality === 'low')} onClick={() => onQuality('low')}>Nhẹ</button>
       </div>
     </div>
   );

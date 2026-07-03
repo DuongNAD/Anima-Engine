@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
-import { BIOME_RGB } from './utils/worldGen';
+import { Biome, BIOME_RGB } from './utils/worldGen';
 import { sampleElevation, sampleMeshHeight } from './utils/worldSample';
 
 export interface WorldTerrainProps {
@@ -29,12 +29,33 @@ function hash01(x: number, y: number): number {
  * up the dead-flat look of wide single-biome fields. Palette = BIOME_RGB, same as the minimap.
  */
 function buildColorTexture(world: World): THREE.DataTexture {
-  const { size, biome } = world;
+  const { size, biome, flow, shore } = world;
   const data = new Uint8Array(size * size * 4);
+  const RIVER_RGB = BIOME_RGB[Biome.River];
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
-      const [r, g, b] = BIOME_RGB[biome[i]] ?? [255, 0, 255];
+      const bio = biome[i];
+      let [r, g, b] = BIOME_RGB[bio] ?? [255, 0, 255];
+
+      // Streams: sub-river flow channels painted as thin translucent water threads, so the
+      // hydrology reads brook -> stream -> river instead of jumping straight to rivers.
+      const fl = flow?.[i] ?? 0;
+      if (fl > 0.44 && fl < 0.6 && bio !== Biome.Ocean && bio !== Biome.River && bio !== Biome.Lake && bio !== Biome.Snow && bio !== Biome.Glacier && bio !== Biome.Beach) {
+        const t = ((fl - 0.44) / 0.16) * 0.55;
+        r = r * (1 - t) + RIVER_RGB[0] * t;
+        g = g * (1 - t) + RIVER_RGB[1] * t;
+        b = b * (1 - t) + RIVER_RGB[2] * t;
+      }
+
+      // Wet sand: darken the beach right at the waterline (the swash zone).
+      if (bio === Biome.Beach && (shore?.[i] ?? 0) > 0.72) {
+        const t = 1 - 0.14 * ((shore[i] - 0.72) / 0.28);
+        r *= t;
+        g *= t;
+        b *= t;
+      }
+
       const f = 0.95 + hash01(x, y) * 0.09; // ±~4.5% brightness variation
       const o = i * 4;
       data[o] = Math.min(255, r * f);
