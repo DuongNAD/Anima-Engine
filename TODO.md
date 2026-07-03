@@ -4,7 +4,21 @@
 
 ---
 
-# 🦌 [MỚI NHẤT] v20 — ĐỘNG VẬT: cá hồ, vịt, diệc, bướm, hươu, dê núi (2026-07-03)
+# 🎮 [MỚI NHẤT] v21 — Theo báo cáo AI/Controller: habitat check, shoal tản đàn, slope limit, collider cây (2026-07-03)
+
+User gửi báo cáo lỗi hệ sinh vật + walking sim. KHÔNG bump version (render/logic-side). Đã xử lý:
+
+- **"Bầy sinh vật khổng lồ trên mặt nước, đội hình vòng tròn"** = đàn cá: (1) site đàn biển giờ **giãn cách ≥40 unit** nhau; (2) cá kẹp sâu **≥1.5 unit dưới mặt** (hồ ≥1.2), không nổi lên mặt; (3) màu **lerp về xanh sẫm chìm** 30–35% + opacity 0.92→0.6 + nhỏ hơn → đọc là bóng cá dưới nước, không phải sprite đứng trên mặt; (4) **shoal thay carousel**: mỗi con tự thở bán kính (`sin(t·0.6)` ±16%) + lệch tốc độ góc ±15% → đàn tơi, đổi chỗ liên tục, không lồng nhau.
+- **Hươu lội hồ (bug thật)**: offset bầy ±4.5u từ anchor KHÔNG kiểm tra ô đáp → rơi vào hồ/sông. Fix: mỗi cá thể tự validate ô của mình (elev>sea, water=0, riverAmt=0, slope≤0.3) — chuẩn habitat như flora.
+- **Đi bộ "xuyên vỏ trái đất"**: thủ phạm là **camera near=2** — nhìn lên dốc, mặt đất trong 2 unit bị near-clip. Fix: near 2→**0.6** (ratio far/near 22k, depth 24-bit vẫn ổn + fog phủ xa).
+- **Max slope ~43°** khi đi bộ: bước di chuyển kiểm tra `Δground > step·0.95` → thử **trượt theo từng trục** (slide) rồi mới chặn — không leo được vách đứng nữa.
+- **Collider thân cây**: grid không gian 8-unit chứa mọi flora có thân (7 loại, build 1 lần/world) → mỗi bước walk query 9 ô, đẩy capsule ra khỏi bán kính thân `0.45+scale·0.25`. Đi xuyên gốc cây hết.
+- Ghi chú trung thực: sinh vật là ambient (đứng/lượn tại lãnh thổ), CHƯA có FSM wander/flee di chuyển tự do — nếu cần agent thật thì đó là hệ ECS backend (Bevy) của dự án, không phải lớp trang trí map.
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · screenshot hồ: cá = bóng mờ dưới nước, vịt nổi rời rạc, dê trên đá — 0 lỗi console.
+
+---
+
+# 🦌 v20 — ĐỘNG VẬT: cá hồ, vịt, diệc, bướm, hươu, dê núi (2026-07-03)
 
 Yêu cầu: "thêm sinh vật trên cạn và dưới nước, đặc biệt ở sông suối ao hồ". **KHÔNG bump WORLD_GEN_VERSION** (render-side — cache giữ nguyên).
 

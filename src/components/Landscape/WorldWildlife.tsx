@@ -220,6 +220,14 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
         const oz = (hash01(probe * 43 + d * 5) - 0.5) * 9;
         const wx = toWorld(gx) + ox;
         const wz = toWorld(gy) + oz;
+        // HABITAT CHECK on the member's own landing cell — the herd anchor being on grass
+        // does not mean an offset 4 units away is: without this, deer spread straight into
+        // the lake or the river channel and stand there half-drowned.
+        const mgx = Math.min(size - 1, Math.max(0, Math.round((wx / renderSize + 0.5) * (size - 1))));
+        const mgy = Math.min(size - 1, Math.max(0, Math.round((wz / renderSize + 0.5) * (size - 1))));
+        const mi = mgy * size + mgx;
+        if (elevation[mi] <= seaLevel || (water?.[mi] ?? 0) > 0 || (riverAmt?.[mi] ?? 0) > 0) continue;
+        if ((slope?.[mi] ?? 1) > 0.3) continue;
         const u = wx / renderSize + 0.5;
         const v = wz / renderSize + 0.5;
         deer.push({

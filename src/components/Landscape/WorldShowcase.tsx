@@ -162,7 +162,9 @@ export const WorldShowcase: React.FC = () => {
         gl={{ powerPreference: 'high-performance' }}
         camera={{
           position: [0, RENDER_SIZE * 0.5, RENDER_SIZE * 0.8],
-          near: 2,
+          // near must be SHORT for first-person walking: with near=2, looking up a steep
+          // slope clipped the ground inside 2 units and let the camera see under the world.
+          near: 0.6,
           far: RENDER_SIZE * 11, // must exceed the sky dome (worldScale * 6.5)
           fov: 55,
         }}

@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { extend, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from './utils/worldGen';
+import { FloraType } from './utils/worldGen';
 import { sampleMeshHeight } from './utils/worldSample';
 import type { CameraView } from './WorldMinimap';
 
@@ -75,6 +76,32 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     const lake = world.water[cz * size + cx];
     return Math.max(groundY, seaY, lake > 0 ? lake * heightUnits : 0);
   };
+
+  // Static tree colliders for walk mode: trunked flora bucketed into an 8-unit grid, so the
+  // player capsule can be pushed out of trunks with a 9-cell lookup instead of a 100k scan.
+  const treeGrid = useMemo(() => {
+    const TALL = new Set<number>([
+      FloraType.Pine,
+      FloraType.Round,
+      FloraType.Jungle,
+      FloraType.Cactus,
+      FloraType.Acacia,
+      FloraType.Palm,
+      FloraType.DeadTree,
+    ]);
+    const grid = new Map<number, number[]>();
+    const toWorld = renderSize / world.size;
+    for (let i = 0; i < world.floraCount; i++) {
+      if (!TALL.has(world.floraType[i])) continue;
+      const x = world.floraX[i] * toWorld;
+      const z = world.floraZ[i] * toWorld;
+      const key = Math.floor((x + renderSize) / 8) * 2048 + Math.floor((z + renderSize) / 8);
+      let arr = grid.get(key);
+      if (!arr) grid.set(key, (arr = []));
+      arr.push(i);
+    }
+    return grid;
+  }, [world, renderSize]);
 
   // Keyboard state (fly / walk). Codes, not chars, so layout doesn't matter.
   useEffect(() => {
@@ -233,13 +260,62 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     }
     const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-    if (keys.has('KeyW') || keys.has('ArrowUp')) camera.position.addScaledVector(forward, speed);
-    if (keys.has('KeyS') || keys.has('ArrowDown')) camera.position.addScaledVector(forward, -speed);
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) camera.position.addScaledVector(right, -speed);
-    if (keys.has('KeyD') || keys.has('ArrowRight')) camera.position.addScaledVector(right, speed);
+    const move = new THREE.Vector3();
+    if (keys.has('KeyW') || keys.has('ArrowUp')) move.addScaledVector(forward, speed);
+    if (keys.has('KeyS') || keys.has('ArrowDown')) move.addScaledVector(forward, -speed);
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) move.addScaledVector(right, -speed);
+    if (keys.has('KeyD') || keys.has('ArrowRight')) move.addScaledVector(right, speed);
+
     if (mode === 'fly') {
+      camera.position.add(move);
       if (keys.has('KeyE') || keys.has('Space')) camera.position.y += speed;
       if (keys.has('KeyQ')) camera.position.y -= speed;
+    } else {
+      // WALK: a real character step — max-slope limit with axis sliding, then trunk colliders.
+      const cx0 = camera.position.x;
+      const cz0 = camera.position.z;
+      let nx = cx0 + move.x;
+      let nz = cz0 + move.z;
+      const step = Math.hypot(move.x, move.z);
+      if (step > 1e-6) {
+        // Slopes steeper than ~43° can't be climbed: try sliding along one axis, else stop.
+        const MAXG = 0.95;
+        const g0 = surfaceY(cx0, cz0);
+        if (surfaceY(nx, nz) - g0 > step * MAXG) {
+          if (surfaceY(cx0 + move.x, cz0) - g0 <= Math.abs(move.x) * MAXG + 1e-4) nz = cz0;
+          else if (surfaceY(cx0, cz0 + move.z) - g0 <= Math.abs(move.z) * MAXG + 1e-4) nx = cx0;
+          else {
+            nx = cx0;
+            nz = cz0;
+          }
+        }
+        // Push the player capsule out of tree trunks (9 surrounding grid cells).
+        const toWorld = renderSize / world.size;
+        const gcx = Math.floor((nx + renderSize) / 8);
+        const gcz = Math.floor((nz + renderSize) / 8);
+        for (let dxc = -1; dxc <= 1; dxc++) {
+          for (let dzc = -1; dzc <= 1; dzc++) {
+            const arr = treeGrid.get((gcx + dxc) * 2048 + (gcz + dzc));
+            if (!arr) continue;
+            for (let k = 0; k < arr.length; k++) {
+              const ti = arr[k];
+              const tx = world.floraX[ti] * toWorld;
+              const tz = world.floraZ[ti] * toWorld;
+              const r = 0.45 + world.floraScale[ti] * 0.25;
+              const ddx = nx - tx;
+              const ddz = nz - tz;
+              const d2 = ddx * ddx + ddz * ddz;
+              if (d2 < r * r && d2 > 1e-6) {
+                const d = Math.sqrt(d2);
+                nx = tx + (ddx / d) * r;
+                nz = tz + (ddz / d) * r;
+              }
+            }
+          }
+        }
+      }
+      camera.position.x = nx;
+      camera.position.z = nz;
     }
 
     // Keep the camera over (or near) the map.

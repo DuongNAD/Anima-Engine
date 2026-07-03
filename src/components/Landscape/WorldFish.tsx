@@ -72,15 +72,31 @@ export const WorldFish: React.FC<WorldFishProps> = ({
       if (depth < 0.02 || depth > 0.07) continue; // sunlit shelf only
       const cx = (u - 0.5) * renderSize;
       const cz = (v - 0.5) * renderSize;
+      // Schools keep their distance from each other (no interlocking rings).
+      let crowded = false;
+      for (const o of out) {
+        const ddx = o.cx - cx;
+        const ddz = o.cz - cz;
+        if (ddx * ddx + ddz * ddz < 40 * 40) {
+          crowded = true;
+          break;
+        }
+      }
+      if (crowded) continue;
       const floorY = e * heightUnits;
       out.push({
         cx,
         cz,
-        y: floorY + (seaY - floorY) * (0.35 + hash01(probe * 7) * 0.35), // mid-water column
+        // Firmly UNDER the surface (≥1.5 below) and off the bed — submerged shadows, not
+        // sprites standing on the water.
+        y: Math.max(floorY + 0.5, Math.min(seaY - 1.5, floorY + (seaY - floorY) * (0.3 + hash01(probe * 7) * 0.3))),
         r: 4 + hash01(probe * 11) * 8,
         speed: (0.35 + hash01(probe * 13) * 0.4) * (hash01(probe * 17) > 0.5 ? 1 : -1),
         phase: hash01(probe * 19) * Math.PI * 2,
-        color: new THREE.Color(SCHOOL_COLORS[out.length % SCHOOL_COLORS.length]),
+        color: new THREE.Color(SCHOOL_COLORS[out.length % SCHOOL_COLORS.length]).lerp(
+          new THREE.Color('#16323e'),
+          0.35, // submerged tint: darker and blue-shifted under the water column
+        ),
       });
     }
     // FRESHWATER schools: one per sizeable unfrozen lake basin, circling under the surface.
@@ -102,11 +118,11 @@ export const WorldFish: React.FC<WorldFishProps> = ({
       out.push({
         cx: (u - 0.5) * renderSize,
         cz: (v - 0.5) * renderSize,
-        y: Math.min(surfaceY - 0.8, bedY + Math.max(0.6, (surfaceY - bedY) * 0.5)),
+        y: Math.min(surfaceY - 1.2, bedY + Math.max(0.6, (surfaceY - bedY) * 0.5)),
         r: Math.max(2.5, Math.min(7, (Math.min(w, h) * renderSize) / size / 3)),
         speed: (0.3 + hash01(bi * 23) * 0.3) * (hash01(bi * 29) > 0.5 ? 1 : -1),
         phase: hash01(bi * 31) * Math.PI * 2,
-        color: new THREE.Color(FRESH_COLORS[fresh % FRESH_COLORS.length]),
+        color: new THREE.Color(FRESH_COLORS[fresh % FRESH_COLORS.length]).lerp(new THREE.Color('#16323e'), 0.3),
       });
       fresh++;
     }
@@ -124,19 +140,22 @@ export const WorldFish: React.FC<WorldFishProps> = ({
     for (let s = 0; s < flights.length; s++) {
       const f = flights[s];
       for (let i = 0; i < fishPerSchool; i++) {
-        const off = (i / fishPerSchool) * Math.PI * 2 + hash01(s * 131 + i) * 0.5;
-        const rr = f.r * (0.75 + hash01(s * 57 + i) * 0.5);
-        const a = f.phase + t * f.speed + off;
+        const off = (i / fishPerSchool) * Math.PI * 2 + hash01(s * 131 + i) * 0.9;
+        // A loose SHOAL, not a carousel: every fish breathes its own radius and drifts its
+        // own angular speed, so members constantly trade places without overlapping.
+        const rr =
+          f.r * (0.7 + hash01(s * 57 + i) * 0.55) * (1 + 0.16 * Math.sin(t * 0.6 + i * 2.1 + f.phase));
+        const a = f.phase + t * f.speed * (1 + (hash01(s * 77 + i) - 0.5) * 0.3) + off;
         dummy.position.set(
           f.cx + Math.cos(a) * rr,
-          f.y + Math.sin(t * 1.3 + i * 1.7) * 0.5,
+          f.y + Math.sin(t * 1.3 + i * 1.7) * 0.4,
           f.cz + Math.sin(a) * rr,
         );
         // Face the swim direction (tangent of the circle).
         dummy.rotation.set(0, -a - (f.speed > 0 ? Math.PI / 2 : -Math.PI / 2), 0);
         // Tail-beat wobble.
-        const s0 = 0.9 + Math.sin(t * 9 + i * 2.3) * 0.12;
-        dummy.scale.set(s0, 0.9, 0.9);
+        const s0 = 0.75 + Math.sin(t * 9 + i * 2.3) * 0.1;
+        dummy.scale.set(s0, 0.75, 0.75);
         dummy.updateMatrix();
         inst.setMatrixAt(k, dummy.matrix);
         if (typeof inst.setColorAt === 'function' && t < 0.5) inst.setColorAt(k, f.color);
@@ -150,7 +169,7 @@ export const WorldFish: React.FC<WorldFishProps> = ({
   if (count === 0) return null;
   return (
     <instancedMesh ref={ref} args={[geom, undefined as any, count]} name="world-fish" frustumCulled={false}>
-      <meshBasicMaterial side={THREE.DoubleSide} transparent opacity={0.92} />
+      <meshBasicMaterial side={THREE.DoubleSide} transparent opacity={0.6} />
     </instancedMesh>
   );
 };
