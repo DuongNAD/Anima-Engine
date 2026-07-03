@@ -33,14 +33,20 @@ export interface WorldWaterProps {
 const vertexShader = /* glsl */ `
   uniform float uTime;
   uniform float uWaveAmp;
+  uniform float uTerrainSize;
   varying vec3 vWorldPos;
 
   void main() {
     // Plane is rotated -90deg about X, so local +z is world-up: displace z for gentle swell.
+    // The swell dies out with distance: far vertices are further apart than the wavelength,
+    // so displacing them just aliases into moire bands and a jagged horizon silhouette.
+    vec4 world0 = modelMatrix * vec4(position, 1.0);
+    float fade = 1.0 - smoothstep(uTerrainSize * 0.5, uTerrainSize * 1.4,
+                                  distance(cameraPosition.xz, world0.xz));
     vec3 p = position;
     float w = sin(position.x * 0.03 + uTime * 0.6) * 0.6
             + cos(position.y * 0.025 + uTime * 0.45) * 0.6;
-    p.z += w * uWaveAmp;
+    p.z += w * uWaveAmp * fade;
 
     vec4 world = modelMatrix * vec4(p, 1.0);
     vWorldPos = world.xyz;
@@ -60,6 +66,12 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uShallow;
   uniform vec3 uDeep;
   uniform float uOpacity;
+  // Manual fog, synced from scene.fog each frame. ShaderMaterials opt out of three's built-in
+  // fog, but the water MUST fade exactly like the fogged terrain or the horizon shows a hard
+  // seam of un-fogged, aliasing water.
+  uniform vec3 uFogColor;
+  uniform float uFogNear;
+  uniform float uFogFar;
 
   varying vec3 vWorldPos;
 
@@ -79,35 +91,50 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     // Terrain world-Y under this fragment (heightmap stores world height directly).
+    // OUTSIDE the heightmap's footprint the floor is abyssal ocean (0), NOT the clamped
+    // border texel: where land touches the map border, the clamp used to smear that land
+    // height out to infinity, zeroing the water depth -> alpha 0 -> a sky-coloured hole
+    // fanning across the horizon.
     vec2 uv = (vWorldPos.xz + uTerrainSize * 0.5) / uTerrainSize;
-    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r;
+    float inMap = step(abs(uv.x - 0.5), 0.5) * step(abs(uv.y - 0.5), 0.5);
+    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * inMap;
     float depth = max(vWorldPos.y - floorY, 0.0);
 
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
     vec3 color = mix(uShallow, uDeep, depthN);
 
+    // Micro-detail (waves / sparkle / foam) dies out with distance: far water is way past the
+    // noise's pixel frequency and would otherwise shimmer into ugly static at the horizon.
+    float camDist = distance(cameraPosition, vWorldPos);
+    float detail = 1.0 - smoothstep(uTerrainSize * 0.35, uTerrainSize * 1.3, camDist) * 0.85;
+
     // Animated micro-normal for sparkle + specular.
     vec2 sw = vWorldPos.xz * 0.25;
     float n1 = noise(sw + vec2(uTime * 0.20, uTime * 0.13));
     float n2 = noise(sw * 1.9 - vec2(uTime * 0.16, -uTime * 0.11));
-    vec3 normal = normalize(vec3((n1 - 0.5) * 0.6, 1.0, (n2 - 0.5) * 0.6));
+    vec3 normal = normalize(vec3((n1 - 0.5) * 0.6 * detail, 1.0, (n2 - 0.5) * 0.6 * detail));
 
     vec3 viewDir = normalize(cameraPosition - vWorldPos);
     vec3 sunDir = normalize(uSunDir);
     vec3 halfDir = normalize(sunDir + viewDir);
-    float spec = pow(max(dot(normal, halfDir), 0.0), 80.0);
+    // Specular glitter dies off hard with distance (detail^2): far water otherwise shows a
+    // banded, aliasing sun-column instead of a soft glitter path.
+    float spec = pow(max(dot(normal, halfDir), 0.0), 80.0) * detail * detail;
     float diff = clamp(dot(normal, sunDir) * 0.5 + 0.6, 0.0, 1.0);
     color = color * diff + uSunColor * spec * 1.4;
 
+    // Grazing angles reflect the SKY (its haze tint), not the turquoise shallows.
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
-    color = mix(color, uShallow * 1.1 + 0.05, clamp(fres, 0.0, 0.6));
+    color = mix(color, uFogColor, clamp(fres, 0.0, 0.55));
 
     // More transparent in the shallows (the sandy sea floor shows through as turquoise),
     // opaque over deep water.
     float alpha = mix(0.4, 0.92, depthN) * uOpacity;
 
-    // Shoreline foam where the water is very shallow.
-    float foamBand = 1.0 - smoothstep(0.0, uSeaY * 0.12 + 0.001, depth);
+    // Shoreline foam where the water is very shallow. The band is an ABSOLUTE depth (world
+    // units), not a fraction of the sea depth: metres-deep mountain lakes would otherwise
+    // sit entirely inside the band and froth over corner to corner.
+    float foamBand = (1.0 - smoothstep(0.0, 1.5, depth)) * detail;
     if (foamBand > 0.0) {
       float f = fbm(vWorldPos.xz * 0.6 + vec2(0.0, uTime * 0.6));
       float foam = smoothstep(0.45, 0.9, f) * foamBand;
@@ -117,6 +144,12 @@ const fragmentShader = /* glsl */ `
 
     // Fade to 0 exactly at the waterline -> the plane only shows over submerged ground.
     alpha *= smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
+
+    // Manual fog, identical curve to the scene's linear fog: the far ocean melts into the
+    // same haze as the terrain (and turns opaque, so the plane's rim can never show).
+    float fogF = smoothstep(uFogNear, uFogFar, camDist);
+    color = mix(color, uFogColor, fogF);
+    alpha = mix(alpha, 1.0, fogF * fogF);
 
     gl_FragColor = vec4(color, alpha);
   }
@@ -159,6 +192,9 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     uShallow: { value: new THREE.Color(shallow) },
     uDeep: { value: new THREE.Color(deep) },
     uOpacity: { value: opacity },
+    uFogColor: { value: new THREE.Color('#cfe4f2') },
+    uFogNear: { value: renderSize * 0.8 },
+    uFogFar: { value: renderSize * 3.2 },
   });
 
   const oceanUniforms = useMemo(
@@ -206,12 +242,18 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
-    if (oceanMat.current) {
-      oceanMat.current.uniforms.uTime.value = t;
-      oceanMat.current.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
+    const fog = state.scene.fog as THREE.Fog | null; // WorldWeather owns scene.fog (linear)
+    const mats = [oceanMat.current, lakeMaterial];
+    for (const mat of mats) {
+      if (!mat) continue;
+      mat.uniforms.uTime.value = t;
+      mat.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
+      if (fog && typeof fog.near === 'number') {
+        mat.uniforms.uFogColor.value.copy(fog.color);
+        mat.uniforms.uFogNear.value = fog.near;
+        mat.uniforms.uFogFar.value = fog.far;
+      }
     }
-    lakeMaterial.uniforms.uTime.value = t;
-    lakeMaterial.uniforms.uSunDir.value.set(sunDir[0], sunDir[1], sunDir[2]);
   });
 
   useEffect(() => {
@@ -224,9 +266,12 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
 
   return (
     <group name="world-water">
-      {/* Ocean plane at sea level. */}
-      <mesh rotation-x={-Math.PI / 2} position={[0, seaY, 0]} name="world-ocean">
-        <planeGeometry args={[renderSize * 2.2, renderSize * 2.2, 96, 96]} />
+      {/* Ocean plane at sea level. Its half-width must exceed the camera's max orbit offset
+          (renderSize*3.2) PLUS the far clip (renderSize*11), or the far-clip circle pokes past
+          the plane's rim and the sky dome shines through as a bright wedge on the horizon.
+          The shader has long since melted the water into the fog haze by that distance. */}
+      <mesh rotation-x={-Math.PI / 2} position={[0, seaY, 0]} name="world-ocean" frustumCulled={false}>
+        <planeGeometry args={[renderSize * 30, renderSize * 30, 128, 128]} />
         <shaderMaterial
           ref={oceanMat}
           vertexShader={vertexShader}

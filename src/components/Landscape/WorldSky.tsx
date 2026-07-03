@@ -93,10 +93,12 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       { id: 7, position: [-300, 90, 180], scale: [44, 9, 26], speed: 1.1 },
       { id: 8, position: [260, 78, 140], scale: [32, 7, 20], speed: 1.4 },
     ];
+    // Modest cumulus puffs high above the terrain — NOT map-sized slabs: at worldScale 1000
+    // a x4 multiplier made 400-unit blobs that smeared into streaks across the whole sky.
     return base.map((c) => ({
       ...c,
-      position: [c.position[0] * 3 * s, CLOUD_Y + c.position[1] * s, c.position[2] * 3 * s],
-      scale: [c.scale[0] * 4 * s, c.scale[1] * 3 * s, c.scale[2] * 4 * s],
+      position: [c.position[0] * 4.5 * s, CLOUD_Y * 1.35 + c.position[1] * s, c.position[2] * 4.5 * s],
+      scale: [c.scale[0] * 1.8 * s, c.scale[1] * 1.4 * s, c.scale[2] * 1.8 * s],
     }));
   }, [worldScale, CLOUD_Y]);
 
@@ -190,16 +192,28 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         </points>
       )}
 
+      {/* Puffy low-poly clouds: overlapping flat-shaded ellipsoids read as soft cumulus from
+          any angle (the old axis-aligned boxes looked like slabs at the horizon). */}
       <group ref={cloudsRef} name="world-clouds-group">
         {clouds.map((cloud) => (
           <group key={cloud.id} position={cloud.position}>
-            <mesh>
-              <boxGeometry args={cloud.scale} />
-              <meshStandardMaterial color="#ffffff" transparent opacity={0.6} roughness={0.95} fog={false} />
+            <mesh scale={[cloud.scale[0] * 0.55, cloud.scale[1] * 0.8, cloud.scale[2] * 0.6]}>
+              <sphereGeometry args={[1, 7, 6]} />
+              <meshStandardMaterial color="#ffffff" transparent opacity={0.5} roughness={1} fog={false} flatShading />
             </mesh>
-            <mesh position={[-cloud.scale[0] * 0.35, -cloud.scale[1] * 0.15, 0]}>
-              <boxGeometry args={[cloud.scale[0] * 0.55, cloud.scale[1] * 0.75, cloud.scale[2] * 0.75]} />
-              <meshStandardMaterial color="#f4f8ff" transparent opacity={0.5} roughness={0.95} fog={false} />
+            <mesh
+              position={[-cloud.scale[0] * 0.38, -cloud.scale[1] * 0.15, cloud.scale[2] * 0.12]}
+              scale={[cloud.scale[0] * 0.38, cloud.scale[1] * 0.55, cloud.scale[2] * 0.42]}
+            >
+              <sphereGeometry args={[1, 7, 6]} />
+              <meshStandardMaterial color="#f4f8ff" transparent opacity={0.42} roughness={1} fog={false} flatShading />
+            </mesh>
+            <mesh
+              position={[cloud.scale[0] * 0.36, -cloud.scale[1] * 0.1, -cloud.scale[2] * 0.1]}
+              scale={[cloud.scale[0] * 0.35, cloud.scale[1] * 0.5, cloud.scale[2] * 0.4]}
+            >
+              <sphereGeometry args={[1, 7, 6]} />
+              <meshStandardMaterial color="#f8fbff" transparent opacity={0.46} roughness={1} fog={false} flatShading />
             </mesh>
           </group>
         ))}

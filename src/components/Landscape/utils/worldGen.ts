@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 10;
+export const WORLD_GEN_VERSION = 11;
 
 export enum Biome {
   Ocean = 0,
@@ -199,22 +199,27 @@ function computeSlope(elev: Float32Array, size: number): Float32Array {
   return slope;
 }
 
-// ---- Height-band biome classification ------------------------------------------------
+// ---- Climate-band biome classification ------------------------------------------------
 //
-// A strict, map-like elevation scheme (normalized 0..1) is the backbone, so the world reads
-// as clean bands rather than a blotchy mud:
-//   below seaLevel .................. Ocean
-//   seaLevel .. +0.02 (very thin) ... Beach (sand) — or Rock where the coast is a cliff
-//   +0.02 .. ROCK_LEVEL (the bulk) .. green land (grass/forest/etc. by climate)
-//   ROCK_LEVEL .. SNOW_LEVEL ......... Rock
-//   above SNOW_LEVEL ................. Snow
-// Moisture/temperature only vary WHICH green the bulk is, never the band structure.
+// The backbone is still strict and map-like (no salt-and-pepper): oceans, a thin distance-
+// gated beach ribbon, and mountain caps. But the mountain lines are now drawn in LAPSED
+// temperature — latitude and altitude combined — instead of raw elevation, so the snow line
+// slides down towards the poles (polar ice caps at sea level) while equatorial peaks stay
+// green far higher, exactly like the real Earth. The vegetated bulk in between is a full
+// Whittaker matrix (temperature bands x moisture columns) fed by SMOOTH continental-scale
+// climate fields (see the rain-shadow pass), so every biome forms as a large coherent
+// region — a Sahara, an Amazon, a steppe belt — never as speckle.
 
 const BEACH_TOP = 0.02; // sand strip height above the water line (very thin)
-const ROCK_LEVEL = 0.66; // green below here, bare rock above
-const SNOW_LEVEL = 0.86; // snow caps
 const COAST_CLIFF_SLOPE = 0.45; // a steep shore is a rock cliff, not a beach
-const INLAND_CLIFF_SLOPE = 0.8; // very steep green-band faces expose rock
+const INLAND_CLIFF_SLOPE = 0.8; // very steep vegetated faces expose rock
+
+// Mountain zonation in lapsed temperature: cold is cold whether it comes from the poles or
+// from altitude, so one set of thresholds yields latitude-dependent snow/tree lines for free.
+const T_GLACIER = 0.045; // permanent thick ice (polar shelves, the very highest peaks)
+const T_SNOW = 0.125; // seasonal snow cap
+const T_ROCK = 0.19; // above the treeline: bare rock and talus
+const T_ALPINE = 0.26; // alpine meadow band just under the treeline
 
 function classify(
   elev: number,
@@ -227,30 +232,64 @@ function classify(
 ): Biome {
   if (elev < seaLevel) return Biome.Ocean;
 
-  // Thin sandy beach: the narrow strip of low, gentle land right at the OCEAN'S edge. Gating by
-  // distance-to-water (coast), not just height, keeps it a thin ribbon even where the plains
-  // are dead flat — otherwise a flat lowland would read as sand for miles. Steep shore = cliff.
+  // Thin coastal ribbon: the narrow strip of low, gentle land right at the OCEAN'S edge.
+  // Gating by distance-to-water (coast), not just height, keeps it a thin ribbon even where
+  // the plains are dead flat — otherwise a flat lowland would read as sand for miles.
   if (coast > 0.65 && elev < seaLevel + BEACH_TOP) {
-    return slope > COAST_CLIFF_SLOPE ? Biome.Rock : Biome.Beach;
+    if (slope > COAST_CLIFF_SLOPE) return Biome.Rock; // cliffed coast
+    // Hot, humid, calm shores silt up into mangrove forest instead of open sand.
+    if (temp > 0.62 && moist > 0.6 && slope < 0.18) return Biome.Mangrove;
+    return Biome.Beach;
   }
 
-  // Snow caps and the bare rock band below them (height-based).
-  if (elev > SNOW_LEVEL) return Biome.Snow;
-  if (elev > ROCK_LEVEL) return Biome.Rock;
+  // Mountain caps by lapsed temperature (+ a pure-height failsafe for the tallest peaks).
+  if (temp < T_GLACIER) return Biome.Glacier;
+  if (temp < T_SNOW || elev > 0.94) return Biome.Snow;
+  if (temp < T_ROCK || slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
 
-  // Rivers thread the green lowlands.
-  if (flow > 0.6 && elev < ROCK_LEVEL) return Biome.River;
+  // Rivers thread the vegetated land (they freeze over / vanish under the caps above).
+  if (flow > 0.6) return Biome.River;
 
-  // Steep faces within the green band are exposed rock (cliffs).
-  if (slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
+  // Alpine meadow: the high band just under the treeline.
+  if (temp < T_ALPINE && elev > seaLevel + 0.18 && moist > 0.25) return Biome.Alpine;
 
-  // --- The green bulk of the continent: which green depends on climate ---
-  if (temp < 0.32) return moist < 0.45 ? Biome.Tundra : Biome.Taiga; // cold belt
-  // Wet, flat lowland near the coast becomes marshy swamp.
-  if (elev < seaLevel + 0.08 && moist > 0.72 && flow > 0.2) return Biome.Swamp;
-  if (temp > 0.62 && moist > 0.72) return Biome.Jungle; // hot & very wet rainforest
-  if (moist > 0.45) return Biome.Forest; // temperate woodland
-  return Biome.Grassland; // open plains
+  // Wetlands: low, flat, waterlogged ground — peat bog when cold, swamp when warm.
+  if (elev < seaLevel + 0.075 && moist > 0.72 && slope < 0.22 && flow > 0.18) {
+    return temp < 0.32 ? Biome.Bog : Biome.Swamp;
+  }
+  if (temp < 0.3 && moist > 0.68 && slope < 0.15) return Biome.Bog; // upland peatland
+
+  // --- Whittaker matrix: temperature bands (cold -> hot) x moisture columns (dry -> wet) ---
+  if (temp < 0.24) return moist < 0.6 ? Biome.Tundra : Biome.Taiga; // polar fringe
+  if (temp < 0.42) {
+    // boreal
+    if (moist < 0.16) return Biome.Steppe;
+    if (moist < 0.3) return Biome.Shrubland; // forest-steppe ecotone
+    return Biome.Taiga;
+  }
+  if (temp < 0.6) {
+    // cool temperate
+    if (moist < 0.14) return Biome.Desert;
+    if (moist < 0.28) return Biome.Steppe;
+    if (moist < 0.42) return Biome.Grassland;
+    if (moist < 0.56) return Biome.Shrubland;
+    return Biome.Forest;
+  }
+  if (temp < 0.72) {
+    // warm temperate / subtropical — rugged dry country erodes into badlands
+    if (moist < 0.15) return slope > 0.24 ? Biome.Badlands : Biome.Desert;
+    if (moist < 0.24) return slope > 0.3 ? Biome.Badlands : Biome.Steppe;
+    if (moist < 0.38) return Biome.Chaparral; // Mediterranean scrub
+    if (moist < 0.52) return Biome.Grassland;
+    if (moist < 0.74) return Biome.Forest;
+    return Biome.Jungle;
+  }
+  // tropical
+  if (moist < 0.18) return slope > 0.24 ? Biome.Badlands : Biome.Desert;
+  if (moist < 0.38) return slope > 0.3 ? Biome.Badlands : Biome.Savanna;
+  if (moist < 0.52) return Biome.Shrubland; // dry tropical woodland
+  if (moist < 0.68) return Biome.Forest; // monsoon forest
+  return Biome.Jungle; // rainforest
 }
 
 function floraForBiome(b: Biome): FloraType | -1 {
@@ -270,8 +309,9 @@ function floraForBiome(b: Biome): FloraType | -1 {
     case Biome.Mangrove:
     case Biome.Bog:
       return FloraType.Jungle;
-    case Biome.Desert:
     case Biome.Savanna:
+      return FloraType.Round; // scattered acacia-like trees
+    case Biome.Desert:
       return FloraType.Cactus;
     default:
       // ocean / beach / river / lake / snow / glacier / rock / badlands: nothing grows.
@@ -661,14 +701,18 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   const flow = new Float32Array(n);
   const biome = new Uint8Array(n);
 
-  const seaLevel = 0.42;
+  // Fraction of the map that ends up as dry land. The sea level is chosen from the actual
+  // elevation histogram (below), so this target holds regardless of the noise parameters —
+  // a broad continent whose deep interior sits far enough from any coast for the
+  // rain-shadow sweep to dry it into steppe and true desert.
+  const LAND_FRACTION = 0.38;
 
   // Continental shaping: gentler falloff for a big continent, stronger for an island.
-  const falloffPow = shape === 'island' ? 2.4 : 3.0;
-  const falloffRadius = shape === 'island' ? 1.7 : 1.45;
+  const falloffPow = shape === 'island' ? 2.4 : 3.4;
+  const falloffRadius = shape === 'island' ? 1.7 : 1.55;
 
   // ---- Pass 1: elevation (domain-warped fBm + ridged mountains + falloff) ----
-  const FREQ = 1.35; // low base frequency -> large continents & oceans, broad flat plains
+  const FREQ = 0.95; // very low base frequency -> ONE huge cohesive continent, broad plains
   let minE = Infinity;
   let maxE = -Infinity;
   for (let y = 0; y < size; y++) {
@@ -721,17 +765,42 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     for (let i = 0; i < n; i++) elevation[i] = elevation[i] < 0 ? 0 : elevation[i] > 1 ? 1 : elevation[i];
   }
 
+  // Sea level = the (1 - LAND_FRACTION) elevation percentile of the FINAL (eroded) relief,
+  // from a 16-bit histogram, so the land/ocean split hits the design target for any seed or
+  // noise tuning.
+  let seaLevel: number;
+  {
+    const K = 65536;
+    const histo = new Uint32Array(K);
+    for (let i = 0; i < n; i++) histo[Math.min(K - 1, (elevation[i] * (K - 1)) | 0)]++;
+    const target = Math.floor(n * (1 - LAND_FRACTION));
+    let acc = 0;
+    let k = 0;
+    while (k < K - 1 && acc + histo[k] < target) acc += histo[k++];
+    seaLevel = k / (K - 1);
+  }
+
   // ---- Pass 2: D8 flow accumulation (rivers) — no fluid sim, just graph flow ----
   // Sort cells by elevation (high -> low) and push unit rain downslope to the lowest neighbour.
-  const order = new Uint32Array(n);
-  for (let i = 0; i < n; i++) order[i] = i;
-  // Float32 elevations: sort indices by elevation descending.
+  // A 16-bit counting sort keeps this O(n): a comparator sort over 4M boxed indices used to
+  // dominate the whole generation time at 2048^2.
   const elevArr = elevation;
-  const orderArr = Array.from(order);
-  orderArr.sort((a, b) => elevArr[b] - elevArr[a]);
+  const order = new Uint32Array(n);
+  {
+    const K = 65536;
+    const q = new Uint16Array(n);
+    const counts = new Uint32Array(K + 1);
+    for (let i = 0; i < n; i++) {
+      const v = Math.min(K - 1, (elevArr[i] * (K - 1)) | 0);
+      q[i] = v;
+      counts[v + 1]++;
+    }
+    for (let k = 0; k < K; k++) counts[k + 1] += counts[k];
+    for (let i = 0; i < n; i++) order[counts[q[i]]++] = i; // ascending elevation
+  }
   for (let i = 0; i < n; i++) flow[i] = 1; // each cell starts with one unit of rain
-  for (let k = 0; k < n; k++) {
-    const i = orderArr[k];
+  for (let k = n - 1; k >= 0; k--) {
+    const i = order[k]; // descending elevation
     if (elevArr[i] < seaLevel) continue; // ocean drains away
     const x = i % size;
     const y = (i / size) | 0;
@@ -760,7 +829,61 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
   if (maxF > 0) for (let i = 0; i < n; i++) flow[i] /= maxF;
 
-  // ---- Pass 3: temperature (latitude + lapse rate) & moisture (fBm + water + flow) ----
+  // ---- Pass 3: climate — temperature (latitude + altitude lapse) & moisture -------------
+  //
+  // Moisture is built like real weather instead of pure value-noise. Prevailing winds sweep
+  // humid ocean air across the land; rising terrain wrings the moisture out (orographic
+  // rain), so the far side of a mountain range sits in a RAIN SHADOW — that is where the
+  // deserts form, while windward coasts stay lush. The wind direction follows Earth-like
+  // bands: trade winds (east -> west) in the tropics, westerlies in the mid-latitudes,
+  // polar easterlies near the map's edges. Because the resulting field is smooth at
+  // continental scale, the Whittaker classifier produces LARGE coherent biome regions.
+
+  // Orographic sweep: humidity left in the air after crossing the terrain, per direction.
+  const humW = new Float32Array(n); // air blown eastward (+x): westerlies
+  const humE = new Float32Array(n); // air blown westward (-x): trades / polar easterlies
+  {
+    // Per-cell rates scale with resolution so the sweep depends on WORLD distance, not on
+    // how many cells happen to subdivide it (a 2048 map must not dry out twice as fast).
+    const rate = 1024 / size;
+    const RISE = 2.6; // per unit climb — resolution-independent already
+    const DRIZZLE = 0.01 * rate; // baseline rain-out over land
+    const LAND_ET = 0.0015 * rate; // faint evapotranspiration — deep interiors still dry out
+    const OCEAN_WET = 0.055 * rate; // open water re-saturates the air quickly
+    for (let y = 0; y < size; y++) {
+      let hum = 1;
+      let prev = seaLevel;
+      for (let x = 0; x < size; x++) {
+        const i = y * size + x;
+        const e = elevation[i];
+        if (e < seaLevel) {
+          hum = Math.min(1, hum + OCEAN_WET);
+          prev = seaLevel;
+          humW[i] = hum;
+          continue;
+        }
+        hum = Math.max(0, hum - hum * (DRIZZLE + Math.max(0, e - prev) * RISE) + LAND_ET * (1 - hum));
+        humW[i] = hum;
+        prev = e;
+      }
+      hum = 1;
+      prev = seaLevel;
+      for (let x = size - 1; x >= 0; x--) {
+        const i = y * size + x;
+        const e = elevation[i];
+        if (e < seaLevel) {
+          hum = Math.min(1, hum + OCEAN_WET);
+          prev = seaLevel;
+          humE[i] = hum;
+          continue;
+        }
+        hum = Math.max(0, hum - hum * (DRIZZLE + Math.max(0, e - prev) * RISE) + LAND_ET * (1 - hum));
+        humE[i] = hum;
+        prev = e;
+      }
+    }
+  }
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
@@ -769,22 +892,40 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const e = elevation[i];
 
       const lat = 1 - Math.abs(ny); // 1 at equator (map centre row), 0 at poles
-      const lapse = Math.max(0, e - seaLevel) * 1.0;
-      // A bit more regional noise weight spreads hot/cold belts wider across the map (not just
-      // a narrow central band), so hot-dry and hot-wet biomes appear in more places.
-      const tNoise = (fbm(tempNoise, nx * 2.5, ny * 2.5, 3, 2.0, 0.5) + 1) / 2;
-      temperature[i] = Math.max(0, Math.min(1, lat * 0.78 + tNoise * 0.22 - lapse));
+      // Altitude cooling steep enough that the very highest equatorial peaks still freeze
+      // (Kilimanjaro-style), while polar lowlands sit below the snow line on their own.
+      const lapse = Math.max(0, e - seaLevel) * 1.35;
+      const tNoise = (fbm(tempNoise, nx * 2.2, ny * 2.2, 3, 2.0, 0.5) + 1) / 2;
+      temperature[i] = Math.max(0, Math.min(1, lat * 0.82 + tNoise * 0.18 - lapse));
 
-      // Two-scale moisture: large dry/wet belts (low freq) + local variation (higher freq).
-      const mBelt = (fbm(moistNoise, nx * 1.3, ny * 1.3, 3, 2.0, 0.5) + 1) / 2;
-      const mLocal = (fbm(moistNoise, nx * 4.0, ny * 4.0, 4, 2.0, 0.5) + 1) / 2;
-      const mBase = mBelt * 0.6 + mLocal * 0.4;
-      const seaProx = smoothstep(seaLevel + 0.14, seaLevel, e) * 0.18; // wetter near the coast
-      const flowWet = flow[i] * 0.25;
-      // Hot regions lose moisture to evaporation -> arid deserts / dry plains form there.
-      // A wider moisture base lets hot cells span from parched (desert) to soaked (jungle).
-      const evaporation = Math.max(0, temperature[i] - 0.5) * 0.5;
-      moisture[i] = Math.max(0, Math.min(1, mBase * 0.95 + seaProx + flowWet - evaporation));
+      // Earth-like wind bands select which sweep feeds this latitude (smoothly blended).
+      const trades = smoothstep(0.62, 0.75, lat); // tropics: air arrives from the east
+      const polar = 1 - smoothstep(0.18, 0.3, lat); // polar fringe: easterlies again
+      const wEast = Math.min(1, trades + polar);
+      const hum = humE[i] * wEast + humW[i] * (1 - wEast);
+
+      // Low-frequency belts + a little local detail keep region borders organic.
+      const mBelt = (fbm(moistNoise, nx * 1.1, ny * 1.1, 3, 2.0, 0.5) + 1) / 2;
+      const mLocal = (fbm(moistNoise, nx * 5.0, ny * 5.0, 3, 2.0, 0.5) + 1) / 2;
+      const seaProx = smoothstep(seaLevel + 0.12, seaLevel, e) * 0.12; // maritime coasts
+      const flowWet = flow[i] * 0.15; // river corridors stay green
+      const evaporation = Math.max(0, temperature[i] - 0.55) * 0.22; // hot air dries the soil
+      // Hadley circulation: descending dry air parks a desert belt over the subtropics
+      // (Earth's Sahara / Arabian / Australian deserts), while the rising equatorial air
+      // (ITCZ) keeps the deep tropics rain-soaked. This guarantees a hot-arid belt and an
+      // equatorial rainforest belt on every seed, right where the real Earth grows them.
+      const dLat = lat - 0.62;
+      const hadleyDry = Math.exp(-(dLat * dLat) / 0.0162) * 0.16;
+      const itczWet = smoothstep(0.85, 1.0, lat) * 0.1;
+      // Rain shadow dominates; the noise belts only modulate it, so a leeward interior can
+      // dry all the way down into desert instead of being floored by the belt average.
+      moisture[i] = Math.max(
+        0,
+        Math.min(
+          1,
+          hum * 0.62 + mBelt * 0.22 + mLocal * 0.12 + seaProx + flowWet + itczWet - evaporation - hadleyDry,
+        ),
+      );
     }
   }
 
@@ -795,9 +936,52 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // Empty water arg => sources are ocean cells only (lakes get their own biome later).
   const coast = computeShore(elevation, new Float32Array(0), size, seaLevel);
 
-  // ---- Pass 4: biome classification (height bands x climate x slope x coast) ----
+  // ---- Pass 4: biome classification (climate bands x height x slope x coast) ----
   for (let i = 0; i < n; i++) {
     biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], coast[i], seaLevel);
+  }
+
+  // ---- Pass 4a: 3x3 majority filter over the vegetated land ----
+  // Where two climate fields sit right on a threshold, classification flickers cell-to-cell;
+  // one mode-filter pass absorbs those single-cell speckles into the surrounding region.
+  // Water, rivers, the beach ribbon, mangrove fringes and ice caps are legitimately thin
+  // features — they neither vote nor change.
+  {
+    const KEEP =
+      (1 << Biome.Ocean) |
+      (1 << Biome.River) |
+      (1 << Biome.Lake) |
+      (1 << Biome.Beach) |
+      (1 << Biome.Mangrove) |
+      (1 << Biome.Glacier) |
+      (1 << Biome.Snow);
+    const src = new Uint8Array(biome); // vote against the unfiltered snapshot
+    const counts = new Uint8Array(BIOME_COUNT);
+    const seen: number[] = [];
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = y * size + x;
+        const b = src[i];
+        if (KEEP & (1 << b)) continue;
+        seen.length = 0;
+        let best = b;
+        let bestCount = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const nb = src[i + dy * size + dx];
+            if (KEEP & (1 << nb)) continue; // thin features don't vote
+            if (counts[nb] === 0) seen.push(nb);
+            const c = ++counts[nb];
+            if (c > bestCount) {
+              bestCount = c;
+              best = nb;
+            }
+          }
+        }
+        for (let k = 0; k < seen.length; k++) counts[seen[k]] = 0;
+        if (best !== b && bestCount >= 5) biome[i] = best;
+      }
+    }
   }
 
   // ---- Pass 4b: lake basins (standing water in depressions) ----

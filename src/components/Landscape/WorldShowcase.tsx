@@ -180,6 +180,8 @@ export const WorldShowcase: React.FC = () => {
         style={{ width: '100%', height: '100%' }}
         onCreated={(state) => {
           state.scene.background = new THREE.Color('#9fd0e8');
+          // Debug/diagnostics hook (harmless in prod): lets tooling inspect the scene graph.
+          (window as unknown as { __worldScene?: THREE.Scene }).__worldScene = state.scene;
         }}
       >
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}

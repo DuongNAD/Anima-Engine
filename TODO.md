@@ -1,6 +1,36 @@
 # Danh sách công việc & Kế hoạch tiếp theo (TODO)
 
-> ⬇️ Mục đang làm: **World Terrain Overhaul** (ở ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
+> ⬇️ Mục đang làm: **World Terrain Overhaul** (mới nhất: Khí hậu thật v11 ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
+
+---
+
+# 🌏 [MỚI NHẤT] KHÍ HẬU THẬT v11 — Rain shadow + 22 biome vùng lớn + texture full-res (2026-07-03)
+
+Yêu cầu: "map chân thật, tối ưu, đẹp, nhiều môi trường nhất có thể". **Bump `WORLD_GEN_VERSION` 10→11** (cache tự sinh lại). Đã commit cùng ngày.
+
+## Generation (`worldGen.ts`)
+- **Khí hậu kiểu Trái Đất**: quét **bóng mưa (rain shadow)** 2 chiều gió + đai gió theo vĩ độ (mậu dịch đông→tây ở nhiệt đới, gió tây ôn đới, gió đông vùng cực); **đai khô Hadley** (~lat 0.62) bảo đảm sa mạc đúng chỗ trên mọi seed + **ITCZ** giữ rừng mưa xích đạo. Tốc độ khô/ẩm chuẩn hóa theo world-distance (không phụ thuộc resolution — 2048 không còn khô gấp đôi 1024).
+- **Đường tuyết/đá theo nhiệt độ ĐÃ TRỪ LAPSE** (vĩ độ + độ cao, lapse 1.35): băng vĩnh cửu ở cực sát mực biển, đỉnh núi xích đạo vẫn đóng tuyết. Ngưỡng `T_GLACIER/T_SNOW/T_ROCK/T_ALPINE` trong `classify`.
+- **Ma trận Whittaker đầy đủ → 22/22 biome hiện diện** thành VÙNG LỚN liền mạch (trường khí hậu mượt ở tầm lục địa); Badlands = khô + dốc; Mangrove bờ nóng-ẩm thoải; Bog (lạnh) / Swamp (ấm); Savanna đổi flora sang cây tán tròn (keo), chỉ Desert còn xương rồng.
+- **Lọc đa số 3×3** khử speckle phân loại (nước/sông/bãi/mangrove/băng không tham gia — chúng mỏng hợp lệ).
+- **seaLevel = phân vị histogram của elevation SAU erosion** → đất đúng `LAND_FRACTION` 38% với mọi seed; `FREQ` 1.35→0.95 → MỘT lục địa khổng lồ + đảo vệ tinh (hết quần đảo vụn).
+- **Tối ưu**: counting sort 16-bit cho flow pass (O(n), thay sort so sánh 4M index) → **2048²: ~3.8s** (v10 ~5.0s), 1024²: ~1.0s, 0 NaN.
+
+## Render
+- `WorldTerrain`: màu biome bake vào **DataTexture sRGB full-res** (2048² ~16MB GPU; mesh 384 chỉ lo hình khối) + jitter sáng ±4.5%/cell + mipmap + anisotropy 8 → biên giới biome/sông/bãi sắc nét ở mọi khoảng cách, GPU tự blend chuyển tiếp; **normal map PHẦN DƯ** (elevation full-res − mặt mesh bilinear) thêm chi tiết xói mòn/gờ núi mà không double-shading với normal đỉnh. Lưu ý: bake texture ~0.5–1s main-thread 1 lần khi load (tương lai: chuyển vào worker).
+- `WorldWater`: **fog thủ công đồng bộ `scene.fog` mỗi frame** (nước tan vào sương y như đất — hết vệt sáng/mép cứng chân trời); mọi chi tiết (sóng vertex, micro-normal, specular, foam) **tắt dần theo khoảng cách** (hết moiré + cột glitter aliasing); **fix lỗ thủng biên map**: ngoài footprint heightmap coi đáy = biển sâu (trước đây clamp UV lấy chiều cao ĐẤT ở hàng biên → depth 0 → alpha 0 → "quạt trời" xuyên biển tới vô cực); **foam theo độ sâu tuyệt đối 1.5 unit** (hết foam phủ kín hồ núi nông); Fresnel phản chiếu màu sương trời (không phải turquoise nông); plane biển ×30 renderSize + `frustumCulled=false` (mép vượt far-clip từ mọi vị trí orbit).
+- `WorldVegetation`: cây ghép **2 tông trong 1 geometry** (thân nâu + tán lá, `mergeGeometries` + vertex color — vẫn 1 InstancedMesh/loại), tán kép, thông 2 tầng, xương rồng có nhánh; **instanceColor** biến thể sáng ±18% + lệch tông/cây (rừng hết cảm giác "1 cây nhân bản"); `castShadow` (trừ đá).
+- `WorldSky`: mây = cụm ellipsoid dẹt low-poly (hết slab/cột — hệ số cũ ×4 tạo blob 400 unit chiếm nửa trời), cao hơn (~1080) + tản rộng ±1350.
+- `WorldShowcase`: hook chẩn đoán `window.__worldScene` (tooling bật/tắt object khi debug render).
+
+## Verify
+- Smoke node (esbuild bundle **`world_smoke.ts` ở root — GIỮ LẠI để tune tiếp**): 22/22 biome @1024² & @2048², 0 NaN, đất 38.0%, phân bố lành mạnh (Steppe 15% · Taiga 13% · Grassland 12.5% · Shrubland 11% · Glacier 10% · … · Desert 0.85% · Badlands 0.33% đất). Chạy: `npx esbuild world_smoke.ts --bundle --platform=node --format=cjs --outfile=<tmp>/s.cjs && node <tmp>/s.cjs` (env `SMOKE_SIZE`, `SMOKE_OUT`).
+- `world_preview.png` (root, tracked) đã tái sinh @2048² — đúng world app render (seed `seed`).
+- Screenshot Playwright headless (SwiftShader, flags `--enable-unsafe-swiftshader`) trên `landscape.html`: default + teleport-zoom sạch — hết quạt trời/moiré/foam hồ; cần Pause ngay khi world ready vì đồng hồ ngày/đêm chạy theo wall-time.
+- `npm run build` ✅ · `npm run test` 7/7 ✅ · `npm run test:frontend` 237/237 ✅ · lint 0 lỗi (429 warning cũ).
+
+## Tinh chỉnh nhanh
+- Tỷ lệ đất → `LAND_FRACTION`; độ lớn lục địa → `FREQ`; đai khô → biên độ `0.16`/tâm `0.62` của `hadleyDry`; cường độ bóng mưa → `RISE/DRIZZLE/LAND_ET/OCEAN_WET`; ngưỡng biome → ma trận trong `classify()`; đường tuyết → `T_*`; jitter màu đất → `0.95 + hash*0.09` trong `buildColorTexture`; độ sâu foam → hằng `1.5` trong WorldWater; kích thước/độ cao mây → hệ số trong `clouds` useMemo của WorldSky.
 
 ---
 
@@ -177,7 +207,7 @@ Terrain trước bị "lốm đốm như bùn" + cát phủ khắp đảo. Đạ
 - Ảnh preview tĩnh (biome+hillshade) đã sinh: `world_preview.png` ở thư mục gốc.
 
 ## Lưu ý
-- **Chưa commit** toàn bộ (world system + các fix landscape trước đó). Cân nhắc gom commit logic.
+- Các bước trên đã được commit (xem git log quanh 2026-07-01→03).
 - `landscape.html` giờ hiển thị World mới; `LandscapeShowcase` (cũ) vẫn được 237 test dùng — **đừng xóa**.
 
 ---
