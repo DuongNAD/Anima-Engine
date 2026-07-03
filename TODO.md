@@ -4,7 +4,19 @@
 
 ---
 
-# 🌾 [MỚI NHẤT] BACKEND E6 — Grazing + vòng năng lượng KHÉP KÍN (2026-07-03)
+# 🧭 [MỚI NHẤT] BACKEND E7 — MAP-Elites descriptor SINH THÁI + tăng trưởng cây theo NPP (2026-07-03)
+
+Tiếp Phase 7 (E7). Đưa **niche sinh thái** vào tầng tiến hoá quality-diversity.
+
+- **Descriptor MAP-Elites đổi từ vận động → sinh thái**: trước là `[speed, efficiency]`; giờ là **`[body_mass, foraging_range]`** chuẩn hoá [0,1] qua `ecological_descriptors()`. `body_mass` = `MorphologyGenotype::total_mass()` (tổng mass các node — **trait chủ đạo của MTE**, quyết định chuyển hoá/tuổi thọ/sinh sản); `foraging_range` = quãng đường đi trong epoch (độ rộng niche). → archive giờ **soi sáng đa dạng SINH THÁI** (con nhỏ đi xa vs con to ở yên, generalist vs specialist) thay vì một tối ưu vận động duy nhất; đua vũ trang predator/prey (Red Queen) trải rộng lưới thay vì hội tụ 1 điểm. Grid contract IPC giữ nguyên (vẫn Vec<f64> 2 trục).
+- **Tăng trưởng cây theo NPP**: `fruit_growth_system` scale tốc độ ra quả theo NPP biome tại vị trí cây (`0.3 + 0.7·r_max/rainforest_cap`) — rừng mưa ra quả nhanh, sa mạc/đá chậm. Dùng `Option<&Position>` + `Option<Res<ResourceField>>` → cây không có Position / world không field vẫn ra quả base rate (giữ test cũ `current_fruit == 12.0`).
+- **Verify:** `cargo build` ✅ · lib **24/24** (ecology 22) ✅ · map_elites 6/6, environmental 6/6, combat, zero-alloc, evolution_robustness đều pass · `cargo clippy` 0 cảnh báo.
+- **Còn lại (E8)**: corpse→detritus (nửa "chết" của vòng khép kín); metric Red-Queen / character displacement tường minh; intermediate-disturbance; seasonal fertility.
+- **Tinh chỉnh:** `MASS_REFERENCE`/`FORAGING_REFERENCE` trong ecology.rs (thang chuẩn hoá niche); hệ số `0.3/0.7` NPP trong fruit_growth_system.
+
+---
+
+# 🌾 BACKEND E6 — Grazing + vòng năng lượng KHÉP KÍN (2026-07-03)
 
 Tiếp Phase 7 (E6). Mắt xích còn thiếu: **thực vật → thú ăn cỏ → detritus → mọc lại**, khép kín và bảo toàn.
 

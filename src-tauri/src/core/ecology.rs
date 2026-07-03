@@ -154,6 +154,26 @@ pub fn predation_capture(prey_energy: f32, predator_deficit: f32) -> f32 {
         .min(predator_deficit / LINDEMAN_EFFICIENCY.max(1e-3))
 }
 
+// ---- Ecological niche descriptors (MAP-Elites behavior space) --------------------------
+
+/// Reference scales that normalize raw ecological traits into a comparable [0, 1] MAP-Elites
+/// behavior space, so a fixed grid resolution bins both axes sensibly.
+pub const MASS_REFERENCE: f32 = 20.0;
+pub const FORAGING_REFERENCE: f32 = 200.0;
+
+/// Two ecological niche axes for MAP-Elites (Hutchinson's hypervolume): body mass (the
+/// Metabolic-Theory master trait) and foraging range (distance roamed = niche breadth), each
+/// normalized to [0, 1]. Illuminating this space rewards ECOLOGICAL diversity — small roamers
+/// vs large homebodies, generalists vs specialists — instead of a single locomotion optimum,
+/// and lets predator/prey arms races (Red Queen) spread the archive rather than collapse it.
+#[inline]
+pub fn ecological_descriptors(body_mass: f32, foraging_range: f32) -> [f32; 2] {
+    [
+        (body_mass / MASS_REFERENCE).clamp(0.0, 1.0),
+        (foraging_range / FORAGING_REFERENCE).clamp(0.0, 1.0),
+    ]
+}
+
 // ---- Biodiversity diagnostics ---------------------------------------------------------
 
 /// Shannon–Wiener index `H = −Σ pᵢ ln pᵢ` over species abundances. Higher = more diverse.
@@ -463,6 +483,22 @@ mod tests {
         assert!(
             biome_carrying_capacity(BiomeType::Desert)
                 > biome_carrying_capacity(BiomeType::MountainRock) - 1.0
+        );
+    }
+
+    #[test]
+    fn ecological_descriptors_normalize_and_order() {
+        let [m, f] = ecological_descriptors(10.0, 100.0);
+        assert!((m - 0.5).abs() < 1e-6 && (f - 0.5).abs() < 1e-6);
+        // Heavier / wider-ranging organisms sit higher on each axis, clamped to 1.0.
+        let [m2, f2] = ecological_descriptors(1000.0, 1000.0);
+        assert_eq!([m2, f2], [1.0, 1.0]);
+        let [m0, f0] = ecological_descriptors(0.0, 0.0);
+        assert_eq!([m0, f0], [0.0, 0.0]);
+        // The two axes are independent (a heavy homebody differs from a light wanderer).
+        assert_ne!(
+            ecological_descriptors(18.0, 10.0),
+            ecological_descriptors(2.0, 180.0)
         );
     }
 

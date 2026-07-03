@@ -24,6 +24,13 @@ pub struct MorphologyGenotype {
 }
 
 impl MorphologyGenotype {
+    /// Total body mass = sum of every segment's mass. In the Metabolic Theory of Ecology this
+    /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
+    /// the most important ecological / life-history niche axis for the MAP-Elites archive.
+    pub fn total_mass(&self) -> f32 {
+        self.nodes.iter().map(|n| n.mass).sum()
+    }
+
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),

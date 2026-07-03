@@ -3,12 +3,26 @@ use crate::core::resources::*;
 use bevy_ecs::prelude::*;
 
 pub fn fruit_growth_system(
-    mut tree_query: Query<&mut Tree>,
+    mut tree_query: Query<(Option<&Position>, &mut Tree)>,
+    field: Option<Res<crate::core::ecology::ResourceField>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let dt = time_step.0;
-    for mut tree in tree_query.iter_mut() {
-        tree.current_fruit = (tree.current_fruit + tree.fruit_growth_rate * dt).min(tree.max_fruit);
+    let rainforest_cap =
+        crate::core::ecology::biome_carrying_capacity(crate::core::terrain::BiomeType::Rainforest);
+    for (opt_pos, mut tree) in tree_query.iter_mut() {
+        // Fruiting is limited by local net primary productivity: a tree in the rainforest bears
+        // fruit far faster than one clinging to desert or rock. Trees without a position (or
+        // worlds without the NPP field) fall back to the flat base rate.
+        let npp_factor = match (opt_pos, field.as_ref()) {
+            (Some(pos), Some(f)) => match f.cell_index(pos.0.x, pos.0.z) {
+                Some(i) => 0.3 + 0.7 * (f.r_max[i] / rainforest_cap).clamp(0.0, 1.0),
+                None => 1.0,
+            },
+            _ => 1.0,
+        };
+        tree.current_fruit =
+            (tree.current_fruit + tree.fruit_growth_rate * dt * npp_factor).min(tree.max_fruit);
     }
 }
 

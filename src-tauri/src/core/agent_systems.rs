@@ -193,6 +193,9 @@ pub fn check_epoch_completion_system(
             let avg_speed = tracker.cumulative_distance / (tracker.tick_count as f32 * dt + 1e-6);
             let efficiency = tracker.cumulative_distance / (tracker.cumulative_energy_decay + 1e-6);
             let fitness = tracker.cumulative_distance + tracker.tick_count as f32;
+            // Ecological niche descriptors: body mass (MTE master trait) + foraging range.
+            let body_mass = genotype.0.total_mass();
+            let foraging_range = tracker.cumulative_distance;
 
             let spawn_x = rng.gen_range(bounds.min.x..bounds.max.x);
             let spawn_z = rng.gen_range(bounds.min.z..bounds.max.z);
@@ -204,6 +207,8 @@ pub fn check_epoch_completion_system(
                 fitness,
                 speed: avg_speed,
                 efficiency,
+                body_mass,
+                foraging_range,
                 position: next_pos,
                 lineage_id: lineage_id.0.clone(),
                 generation: generation.0,

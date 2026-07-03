@@ -320,7 +320,13 @@ impl SimulationEngine {
                     }
 
                     for stats in &stats_batch {
-                        let features = vec![stats.speed, stats.efficiency];
+                        // MAP-Elites niche axes = ecological descriptors (body mass × foraging
+                        // range), normalized so the QD archive illuminates ecological diversity.
+                        let features = crate::core::ecology::ecological_descriptors(
+                            stats.body_mass,
+                            stats.foraging_range,
+                        )
+                        .to_vec();
                         let elite = crate::evolution::map_elites::EliteIndividual {
                             genotype: stats.genotype.clone(),
                             fitness: stats.fitness,

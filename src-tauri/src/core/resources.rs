@@ -79,6 +79,10 @@ pub struct AgentEpochStats {
     pub fitness: f32,
     pub speed: f32,
     pub efficiency: f32,
+    /// Total body mass (Metabolic-Theory master trait) — a MAP-Elites ecological niche axis.
+    pub body_mass: f32,
+    /// Distance roamed this epoch (foraging range / niche breadth) — the other niche axis.
+    pub foraging_range: f32,
     pub position: glam::Vec3,
     pub lineage_id: String,
     pub generation: u32,
