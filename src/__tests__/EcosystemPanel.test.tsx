@@ -25,6 +25,14 @@ describe('EcosystemPanel', () => {
     expect(screen.getByTestId('ecosystem-diversity')).toHaveTextContent('0.50 / 0.40');
   });
 
+  it('shows the coevolution diagnostics (guild masses, niche divergence, archive coverage)', async () => {
+    render(<EcosystemPanel pollMs={50} />);
+    await waitFor(() => {
+      expect(screen.getByTestId('ecosystem-masses')).toHaveTextContent('6.0 / 9.0');
+    });
+    expect(screen.getByTestId('ecosystem-coevolution')).toHaveTextContent('0.15 / 42');
+  });
+
   it('accumulates history and renders the time-series sparklines', async () => {
     render(<EcosystemPanel pollMs={30} />);
     // Sparklines appear once at least two samples have been polled.
@@ -35,5 +43,6 @@ describe('EcosystemPanel', () => {
       { timeout: 2000 },
     );
     expect(screen.getByTestId('ecosystem-spark-biomass')).toBeInTheDocument();
+    expect(screen.getByTestId('ecosystem-spark-divergence')).toBeInTheDocument();
   });
 });

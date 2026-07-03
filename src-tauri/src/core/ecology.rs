@@ -213,6 +213,15 @@ impl SeasonClock {
     }
 }
 
+/// Character-displacement / Red-Queen signal: how far apart two guilds (e.g. prey vs
+/// predators) sit on a shared trait axis, normalized to [0, 1] by the same reference the niche
+/// space uses. A rising value means the guilds are diverging morphologically — the coevolution
+/// arms race pushing them into separate niches instead of competing head-on.
+#[inline]
+pub fn niche_divergence(guild_a_mass: f32, guild_b_mass: f32) -> f32 {
+    ((guild_a_mass - guild_b_mass).abs() / MASS_REFERENCE).clamp(0.0, 1.0)
+}
+
 // ---- Biodiversity diagnostics ---------------------------------------------------------
 
 /// Shannon–Wiener index `H = −Σ pᵢ ln pᵢ` over species abundances. Higher = more diverse.
@@ -523,6 +532,19 @@ mod tests {
             biome_carrying_capacity(BiomeType::Desert)
                 > biome_carrying_capacity(BiomeType::MountainRock) - 1.0
         );
+    }
+
+    #[test]
+    fn niche_divergence_rises_as_guilds_separate() {
+        // Identical guild masses → no displacement.
+        assert!(niche_divergence(6.0, 6.0).abs() < 1e-6);
+        // Predators evolving heavier than prey → the axes separate.
+        let small = niche_divergence(6.0, 8.0);
+        let large = niche_divergence(4.0, 16.0);
+        assert!(large > small && small > 0.0);
+        // Symmetric and clamped.
+        assert_eq!(niche_divergence(4.0, 16.0), niche_divergence(16.0, 4.0));
+        assert_eq!(niche_divergence(0.0, 1000.0), 1.0);
     }
 
     #[test]

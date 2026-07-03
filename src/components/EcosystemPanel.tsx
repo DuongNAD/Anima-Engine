@@ -11,6 +11,10 @@ export interface EcosystemState {
   predator_count: number;
   shannon: number;
   simpson: number;
+  prey_mass: number;
+  predator_mass: number;
+  niche_divergence: number;
+  archive_coverage: number;
 }
 
 const COMPARTMENTS: Array<{ key: keyof EcosystemState; label: string; color: string }> = [
@@ -22,6 +26,7 @@ const COMPARTMENTS: Array<{ key: keyof EcosystemState; label: string; color: str
 // Population series colors (validated for CVD + contrast on the light card surface).
 const PREY_COLOR = '#3182ce';
 const PREDATOR_COLOR = '#e53e3e';
+const DIVERGENCE_COLOR = '#2c7a7b'; // teal — coevolution / arms-race trend (single series)
 
 const HISTORY = 60; // rolling window of samples (~1 minute at 1 Hz)
 
@@ -146,6 +151,9 @@ export const EcosystemPanel: React.FC<{ pollMs?: number }> = ({ pollMs = 1000 })
     color: c.color,
     values: history.map((h) => h[c.key] as number),
   }));
+  const divergenceSeries: Series[] = [
+    { label: 'Phân kỳ niche', color: DIVERGENCE_COLOR, values: history.map((h) => h.niche_divergence) },
+  ];
   const showTrends = history.length >= 2;
 
   return (
@@ -228,6 +236,18 @@ export const EcosystemPanel: React.FC<{ pollMs?: number }> = ({ pollMs = 1000 })
                 {state.shannon.toFixed(2)} / {state.simpson.toFixed(2)}
               </strong>
             </p>
+            <p style={{ margin: '4px 0 0 0', display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e2e8f0', paddingTop: '5px' }}>
+              <span>Khối lượng con mồi / săn mồi</span>
+              <strong data-testid="ecosystem-masses">
+                {state.prey_mass.toFixed(1)} / {state.predator_mass.toFixed(1)}
+              </strong>
+            </p>
+            <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Phân kỳ niche / Độ phủ archive</span>
+              <strong data-testid="ecosystem-coevolution">
+                {state.niche_divergence.toFixed(2)} / {state.archive_coverage} ô
+              </strong>
+            </p>
           </div>
 
           {/* Time-series: population cycles and energy-flow trends over a rolling window. */}
@@ -246,6 +266,13 @@ export const EcosystemPanel: React.FC<{ pollMs?: number }> = ({ pollMs = 1000 })
                 </div>
                 <Spark series={bioSeries} testid="ecosystem-spark-biomass" />
                 <Legend items={bioSeries.map((s) => ({ label: s.label, color: s.color }))} />
+              </div>
+              <div>
+                {/* Single series → the title names it, no legend box needed (dataviz rule). */}
+                <div style={{ fontSize: '12px', color: INK_MUTED, marginBottom: '2px' }}>
+                  Đồng tiến hoá: phân kỳ niche (đua vũ trang Red Queen)
+                </div>
+                <Spark series={divergenceSeries} testid="ecosystem-spark-divergence" />
               </div>
             </div>
           )}

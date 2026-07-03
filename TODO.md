@@ -4,7 +4,21 @@
 
 ---
 
-# 📈 [MỚI NHẤT] E10 — Biểu đồ thời gian: chu kỳ quần thể + dòng năng lượng (2026-07-03)
+# 🧬 [MỚI NHẤT] E11 — Metric đồng tiến hoá (Red Queen): phân kỳ niche + độ phủ archive (2026-07-03)
+
+Tiếp Phase 7 (E11). Đo bằng chứng đua vũ trang predator-prey + open-endedness.
+
+- **`niche_divergence(prey_mass, predator_mass)`** (ecology.rs, unit-test): khoảng cách chuẩn hoá giữa khối lượng cơ thể TB của con mồi vs săn mồi — **character displacement**: giá trị tăng = hai guild tách nhau về hình thái (đua vũ trang Red Queen) thay vì cạnh tranh trực diện.
+- **Độ phủ archive MAP-Elites** = số ô niche đã chiếm (`archive.grid.len()`) — **proxy open-ended evolution** (tài liệu: coverage tăng liên tục = tiến hoá mở).
+- **Backend**: publish block đọc thêm mean body mass mỗi guild (query `AgentGenotype` + `Prey`/`Predator`, `total_mass()`) + archive coverage từ `BevyMapElitesArchive` resource → mở rộng DTO `EcosystemState` (prey_mass, predator_mass, niche_divergence, archive_coverage).
+- **Frontend**: panel thêm 2 readout (khối lượng guild; phân kỳ/độ phủ) + **sparkline thứ 3 phân kỳ niche theo thời gian** (1 series → title tự đặt tên, không legend — đúng luật dataviz).
+- **Verify:** `cargo build`/`clippy` 0 cảnh báo · lib **26/26** (ecology) · tauri_ipc 6/6 · `npm run build` ✅ · src Vitest **11/11** (EcosystemPanel 4) · test:frontend 237/237 · lint 0 lỗi.
+- **🎉 Phase 7 (Ecosystem Dynamics) E1–E11 HOÀN TẤT.** Còn lại E12 tuỳ chọn: connectance/food-chain length + thí nghiệm intermediate-disturbance (harness nghiên cứu, nên chạy trên máy đích).
+- **Tinh chỉnh:** `MASS_REFERENCE` (thang phân kỳ) trong ecology.rs.
+
+---
+
+# 📈 E10 — Biểu đồ thời gian: chu kỳ quần thể + dòng năng lượng (2026-07-03)
 
 Tiếp Phase 7 (E10). Thêm time-series vào `EcosystemPanel` — làm E1–E9 "sống dậy" bằng mắt.
 

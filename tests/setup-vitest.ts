@@ -227,6 +227,10 @@ beforeEach(() => {
           predator_count: 3,
           shannon: 0.5,
           simpson: 0.4,
+          prey_mass: 6.0,
+          predator_mass: 9.0,
+          niche_divergence: 0.15,
+          archive_coverage: 42,
         };
       case 'plugin:event|listen':
         return 0;

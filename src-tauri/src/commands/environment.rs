@@ -45,6 +45,13 @@ pub struct EcosystemState {
     pub predator_count: u32,
     pub shannon: f32,
     pub simpson: f32,
+    /// Coevolution diagnostics: mean body mass of each guild, their normalized separation on
+    /// the trait axis (character displacement / Red-Queen), and MAP-Elites niche coverage
+    /// (occupied cells = a quality-diversity / open-endedness proxy).
+    pub prey_mass: f32,
+    pub predator_mass: f32,
+    pub niche_divergence: f32,
+    pub archive_coverage: u32,
 }
 
 #[tauri::command]

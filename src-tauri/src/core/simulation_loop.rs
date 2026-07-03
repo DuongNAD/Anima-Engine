@@ -1156,16 +1156,42 @@ impl SimulationEngine {
                         .unwrap_or((0.0, 0.0, 0.0));
                     let mut prey_count = 0u32;
                     let mut predator_count = 0u32;
-                    let mut prey_q = world.query_filtered::<Entity, (
-                        With<crate::core::components::Agent>,
-                        With<crate::core::components::Prey>,
-                    )>();
-                    prey_count += prey_q.iter(&world).count() as u32;
-                    let mut pred_q = world.query_filtered::<Entity, (
-                        With<crate::core::components::Agent>,
-                        With<crate::core::components::Predator>,
-                    )>();
-                    predator_count += pred_q.iter(&world).count() as u32;
+                    // Guild body masses feed the character-displacement / Red-Queen signal
+                    // (mean total body mass of prey vs predators).
+                    let mut prey_mass_sum = 0.0f32;
+                    let mut pred_mass_sum = 0.0f32;
+                    let mut prey_q = world
+                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
+                            With<crate::core::components::Agent>,
+                            With<crate::core::components::Prey>,
+                        )>();
+                    for g in prey_q.iter(&world) {
+                        prey_count += 1;
+                        prey_mass_sum += g.0.total_mass();
+                    }
+                    let mut pred_q = world
+                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
+                            With<crate::core::components::Agent>,
+                            With<crate::core::components::Predator>,
+                        )>();
+                    for g in pred_q.iter(&world) {
+                        predator_count += 1;
+                        pred_mass_sum += g.0.total_mass();
+                    }
+                    let prey_mass = if prey_count > 0 {
+                        prey_mass_sum / prey_count as f32
+                    } else {
+                        0.0
+                    };
+                    let predator_mass = if predator_count > 0 {
+                        pred_mass_sum / predator_count as f32
+                    } else {
+                        0.0
+                    };
+                    let archive_coverage = world
+                        .get_resource::<crate::core::agent_systems::BevyMapElitesArchive>()
+                        .map(|a| a.archive.grid.len() as u32)
+                        .unwrap_or(0);
                     let counts = [prey_count, predator_count];
                     let mut shared = ecosystem_state_clone
                         .write()
@@ -1178,6 +1204,11 @@ impl SimulationEngine {
                     shared.predator_count = predator_count;
                     shared.shannon = crate::core::ecology::shannon_index(&counts);
                     shared.simpson = crate::core::ecology::simpson_index(&counts);
+                    shared.prey_mass = prey_mass;
+                    shared.predator_mass = predator_mass;
+                    shared.niche_divergence =
+                        crate::core::ecology::niche_divergence(prey_mass, predator_mass);
+                    shared.archive_coverage = archive_coverage;
                 }
 
                 let elapsed = start_time.elapsed();
