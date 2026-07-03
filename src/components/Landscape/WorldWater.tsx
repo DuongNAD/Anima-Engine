@@ -140,8 +140,13 @@ const fragmentShader = /* glsl */ `
 
     // Shoreline foam where the water is very shallow. The band is an ABSOLUTE depth (world
     // units), not a fraction of the sea depth: metres-deep mountain lakes would otherwise
-    // sit entirely inside the band and froth over corner to corner.
-    float foamBand = (1.0 - smoothstep(0.0, 1.5, depth)) * detail;
+    // sit entirely inside the band and froth over corner to corner. The band BREATHES —
+    // its reach swells and recedes in slow pulses that travel along the coast, so the surf
+    // rolls instead of sitting as a painted stripe.
+    float surf = sin(uTime * 0.9 + (vWorldPos.x + vWorldPos.z) * 0.045)
+               + 0.5 * sin(uTime * 1.7 - (vWorldPos.x - vWorldPos.z) * 0.06);
+    float foamReach = 1.5 + surf * 0.55;
+    float foamBand = (1.0 - smoothstep(0.0, max(0.45, foamReach), depth)) * detail;
     if (foamBand > 0.0) {
       float f = fbm(vWorldPos.xz * 0.6 + vec2(0.0, uTime * 0.6));
       float foam = smoothstep(0.45, 0.9, f) * foamBand;

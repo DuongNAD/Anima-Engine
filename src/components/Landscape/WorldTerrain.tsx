@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { Biome, BIOME_RGB } from './utils/worldGen';
@@ -385,24 +386,54 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
   const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
   const detailMap = useMemo(() => buildDetailTexture(), []);
 
-  // Inject the high-repeat detail multiply right after the base map sample. Standard
-  // onBeforeCompile patch: declare the extra uniforms at the top, extend map_fragment.
+  // River-ribbon mask (feathered), so the shader knows where flowing water lies.
+  const riverMaskMap = useMemo(() => {
+    const { size, riverAmt } = world;
+    const data = new Uint8Array(size * size);
+    if (riverAmt) data.set(riverAmt);
+    const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.needsUpdate = true;
+    return tex;
+  }, [world]);
+
+  // Inject (1) the high-repeat detail multiply and (2) a two-layer counter-scrolling shimmer
+  // over the river ribbons, right after the base map sample. Standard onBeforeCompile patch;
+  // the shader ref lets useFrame drive uTime so the rivers visibly FLOW.
+  const shaderRef = useRef<{ uniforms: Record<string, { value: unknown }> } | null>(null);
   const onBeforeCompile = useMemo(
     () => (shader: { uniforms: Record<string, { value: unknown }>; fragmentShader: string }) => {
       shader.uniforms.uDetail = { value: detailMap };
+      shader.uniforms.uRiverMask = { value: riverMaskMap };
+      shader.uniforms.uTime = { value: 0 };
       shader.fragmentShader =
-        'uniform sampler2D uDetail;\n' +
+        'uniform sampler2D uDetail;\nuniform sampler2D uRiverMask;\nuniform float uTime;\n' +
         shader.fragmentShader.replace(
           '#include <map_fragment>',
           `#include <map_fragment>
           {
             float dtl = texture2D(uDetail, vMapUv * 220.0).r * 2.0;
             diffuseColor.rgb *= mix(1.0, dtl, 0.34);
+            float riv = texture2D(uRiverMask, vMapUv).r;
+            if (riv > 0.01) {
+              float flow1 = texture2D(uDetail, vMapUv * 260.0 + vec2(uTime * 0.025, uTime * 0.045)).r * 2.0;
+              float flow2 = texture2D(uDetail, vMapUv * 140.0 - vec2(uTime * 0.018, uTime * 0.03)).r * 2.0;
+              diffuseColor.rgb *= mix(1.0, flow1 * 0.55 + flow2 * 0.45, riv * 0.3);
+            }
           }`,
         );
+      shaderRef.current = shader;
     },
-    [detailMap],
+    [detailMap, riverMaskMap],
   );
+
+  useFrame((state) => {
+    const sh = shaderRef.current;
+    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = state.clock.getElapsedTime();
+  });
 
   useEffect(() => {
     return () => {
@@ -410,8 +441,9 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       normalMap.dispose();
       roughnessMap.dispose();
       detailMap.dispose();
+      riverMaskMap.dispose();
     };
-  }, [colorMap, normalMap, roughnessMap, detailMap]);
+  }, [colorMap, normalMap, roughnessMap, detailMap, riverMaskMap]);
 
   return (
     <mesh geometry={geometry} name="world-terrain" receiveShadow>

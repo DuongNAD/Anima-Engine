@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 16;
+export const WORLD_GEN_VERSION = 17;
 
 export enum Biome {
   Ocean = 0,
@@ -778,10 +778,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       // stay small — big smooth landmasses instead of a blotchy, spongy surface.
       const base = Math.min(1, (fbm(elevNoise, sx, sy, 8, 2.0, 0.42) + 1) / 2 + 0.12); // [0, 1]
 
-      // Ridged mountains, emerging only over the higher continental interior.
+      // Ridged mountains, emerging only over the higher continental interior. The heavier
+      // ridge weight gives real arêtes and serrated crests instead of smooth stacked cones.
       const ridge = ridged(ridgeNoise, sx * 1.5, sy * 1.5, 5, 2.0, 0.5);
       const mountainMask = smoothstep(0.58, 0.9, base);
-      let e = base * 0.85 + ridge * mountainMask * 0.5;
+      let e = base * 0.85 + ridge * mountainMask * 0.58;
 
       // Elevation curve: strongly flatten the lowlands into broad plains, keep peaks sharp.
       e = Math.pow(Math.max(0, e), 1.7);

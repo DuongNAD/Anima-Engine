@@ -264,7 +264,8 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
       <group ref={cloudsRef} name="world-clouds-group">
         {clouds.map((cloud) => (
           <group key={cloud.id} position={cloud.position}>
-            <mesh scale={[cloud.scale[0] * 0.55, cloud.scale[1] * 0.8, cloud.scale[2] * 0.6]}>
+            {/* The core puff casts a real shadow — drifting cloud shadows sweep the land. */}
+            <mesh castShadow scale={[cloud.scale[0] * 0.55, cloud.scale[1] * 0.8, cloud.scale[2] * 0.6]}>
               <sphereGeometry args={[1, 7, 6]} />
               <meshStandardMaterial color="#ffffff" transparent opacity={0.5} roughness={1} fog={false} flatShading />
             </mesh>

@@ -4,7 +4,20 @@
 
 ---
 
-# 🏔 [MỚI NHẤT] v17 — Theo báo cáo phân tích tự nhiên: snowline mềm, rừng ven sông, sông thon-nở (2026-07-03)
+# 🌊 [MỚI NHẤT] v18 — Sông chảy shimmer + sóng vỗ bờ + bóng mây trôi + núi răng cưa (2026-07-03)
+
+**Bump `WORLD_GEN_VERSION` 16→17** (ridge weight đổi → relief mới).
+
+- **Sông CHẢY thật** (`WorldTerrain` onBeforeCompile mở rộng): thêm `uRiverMask` (texture R8 từ `riverAmt`) + `uTime` (shaderRef cập nhật trong useFrame) — 2 lớp detail-noise trượt ngược chiều nhân vào diffuse trên mặt sông (`riv*0.3`) → nước lấp lánh trôi, kết hợp roughness glint.
+- **Sóng vỗ bờ thở nhịp** (`WorldWater` fragment): độ với của dải foam dao động `1.5 + surf*0.55` với `surf` = 2 sóng sin chạy dọc bờ (pha theo x+z và x−z) → mép biển phồng-xẹp lan từng đoạn như sóng cuộn; hồ dùng chung shader nên cũng có sóng nhẹ.
+- **Bóng mây trôi**: lõi mỗi cụm mây bật `castShadow` — bóng elip mềm quét qua đồng cỏ khi mây trôi (mây trong shadow camera ±0.7·worldScale). Nếu bóng quá gắt trên máy thật: tắt bằng cách bỏ `castShadow` trong WorldSky.
+- **Núi răng cưa hơn**: ridge weight `0.5→0.58` — sống núi arête sắc, đỉnh serrated (kéo theo +2 hồ băng do đỉnh cao lạnh hơn — logic tự nhất quán).
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · smoke @2048²: 3.97s, 22/22 biome, flora 95.7k, 450 thác, 50 hang, 28 hồ (5 đóng băng), 0 NaN · screenshot 0 lỗi console; snowline preview lởm chởm tự nhiên quanh khiên băng.
+- **Tinh chỉnh:** cường độ shimmer → `riv*0.3` + tốc độ scroll trong patch; biên độ sóng bờ → `0.55`; độ sắc núi → ridge `0.58`.
+
+---
+
+# 🏔 v17 — Theo báo cáo phân tích tự nhiên: snowline mềm, rừng ven sông, sông thon-nở (2026-07-03)
 
 User gửi báo cáo phân tích 4 nhóm lỗi so với tự nhiên (thủy văn/bờ nước/biome/địa mạo). **Bump `WORLD_GEN_VERSION` 16** (code: 15→16). Đã xử lý:
 
