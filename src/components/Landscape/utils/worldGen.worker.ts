@@ -16,6 +16,7 @@ ctx.onmessage = (e: MessageEvent<{ seed: string | number; opts: WorldGenOptions 
     world.flow.buffer,
     world.slope.buffer,
     world.water.buffer,
+    world.riverAmt.buffer,
     world.shore.buffer,
     world.biome.buffer,
     world.floraX.buffer,

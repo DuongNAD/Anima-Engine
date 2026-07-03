@@ -163,15 +163,24 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       const controls = controlsRef.current;
       if (!controls) return;
       if (tp) {
+        // Shift the whole rig, INCLUDING height: the orbit target must sit on the terrain
+        // surface at the destination, or zooming in dives the camera under a mountain.
         const dx = tp.x - controls.target.x;
         const dz = tp.z - controls.target.z;
+        const dy = surfaceY(tp.x, tp.z) + 2 - controls.target.y;
         controls.target.x += dx;
         controls.target.z += dz;
+        controls.target.y += dy;
         camera.position.x += dx;
         camera.position.z += dz;
+        camera.position.y += dy;
         teleportRef.current = null;
       }
       controls.update();
+      // Hard floor: the camera never sinks below the terrain (single-sided mesh -> the
+      // world would vanish into sky colour).
+      const minY = surfaceY(camera.position.x, camera.position.z) + 2;
+      if (camera.position.y < minY) camera.position.y = minY;
       v.targetX = controls.target.x;
       v.targetZ = controls.target.z;
       v.camX = camera.position.x;

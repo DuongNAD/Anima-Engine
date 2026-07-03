@@ -63,6 +63,7 @@ function isWorldRenderable(w: World): boolean {
     w.flow?.length === n &&
     w.slope?.length === n &&
     w.water?.length === n &&
+    w.riverAmt?.length === n &&
     w.shore?.length === n &&
     w.biome?.length === n &&
     Array.isArray(w.lakeBasins)
@@ -91,9 +92,14 @@ export const WorldShowcase: React.FC = () => {
   const [quality, setQuality] = useState<Quality>('high');
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0 });
 
-  // Camera <-> HTML-overlay bridge: OrbitCam writes here each frame; the minimap/HUD read it.
+  // Camera <-> HTML-overlay bridge: the rig writes here each frame; the minimap/HUD read it.
   const viewRef = useRef<CameraView>({ targetX: 0, targetZ: 0, camX: 0, camZ: 0 });
   const teleportRef = useRef<{ x: number; z: number } | null>(null);
+
+  // Diagnostics hook (like __worldScene): lets tooling inspect the generated world data.
+  useEffect(() => {
+    (window as unknown as { __world?: World | null }).__world = world;
+  }, [world]);
 
   useEffect(() => {
     if (world) return;

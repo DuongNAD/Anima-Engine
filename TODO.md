@@ -4,7 +4,31 @@
 
 ---
 
-# 🎥 [MỚI NHẤT] v12 — Camera 5 chế độ + Thác/Suối/Ao/Hang + 11 loại thực vật + chế độ Nhẹ (2026-07-03)
+# 🏞 [MỚI NHẤT] v13 — Sông suối đẹp: ribbon uốn lượn + lòng sông khoét + nước bóng (2026-07-03)
+
+Yêu cầu: "sông suối đang trông rất tệ; nhẹ nhưng vẫn đẹp". Gốc rễ cái xấu: kênh D8 **thẳng tắp theo chéo lưới, 1 cell, song song cách đều** trên sườn dốc → mạng sọc xanh cơ học. **Bump `WORLD_GEN_VERSION` 12→13.**
+
+## Generation (Pass 2b mới trong `worldGen.ts`)
+- **Ribbon sông** (`riverAmt: Uint8Array` — field mới): stamp đĩa theo cường độ flow dọc kênh → sông **rộng dần về hạ lưu** (ramp bậc hai: chỉ trunk mới rộng, nhánh mảnh), bờ feather mềm 1 cell. Ngưỡng `CORE_T=0.615` (= ngưỡng biome River mới) nằm **trên dải rãnh-sườn-đồi** của D8.
+- **Meander wiggle**: tâm stamp warp bằng noise mượt (`wig=1.6×widthScale`, freq 0.18) → mỗi kênh uốn lượn riêng, phá thế song song; kênh vẫn liền mạch vì cell kề offset gần như nhau.
+- **Gate sườn dốc**: mặt rất dốc chỉ giữ ribbon khi flow ≥ 0.68 (sông lớn xuyên hẻm vẫn còn, rãnh fall-line mỏng bị loại — hết hatch).
+- **Khoét lòng** −0.0035×amt vào heightmap TRƯỚC slope/biome/hồ → sông nằm trong bed thật, normal map tự đổ bóng bờ; giữ dưới `LAKE_MIN_DEPTH` để không thành hồ giả (lakeBasins 27 ✓).
+- Biome River tô lại theo ribbon core (≥140, chừa Ocean/Lake/Glacier/Snow); flora né `riverAmt>100`; validator/worker/isRenderable thêm field.
+
+## Render (`WorldTerrain.tsx`)
+- Màu nước bake theo `riverAmt` gradient (tâm sẫm hơn 10%), **chừa Glacier/Snow** (hết sọc xanh vắt qua băng). Bỏ hẳn stream-tint cũ theo flow (0.44–0.6) — thủ phạm mạng nhện.
+- **`roughnessMap` mới** (đọc kênh G): sông/hồ/ao 0.33, thềm ngập 0.5, cát ướt 0.7, đất 0.95 → **mặt nước bắt sáng lấp lánh theo mặt trời** (material roughness=1 × map).
+- **Nhẹ hơn**: normal map + roughness bake ở **size/2** (2048→1024) → GPU texture 32MB→**24MB** dù thêm map mới; bake nhanh ~4×.
+- Camera orbit: teleport nâng `target.y` theo mặt đất + **kẹp camera ≥ mặt đất+2** (hết chui gầm map thấy màu trời).
+
+## Verify
+- Smoke @2048²: 3.8s · ribbon 2.34% map (core 0.62%) · 27 hồ/ao · 181 thác · 22/22 biome · 0 NaN.
+- Screenshot: aerial sông = mạng phân nhánh ao→suối→sông uốn khúc tự nhiên; walk-mode đứng bờ suối thấy ribbon lượn xuống dốc; **0 lỗi console**. Build ✅ 7/7 & 237/237 ✅ lint 0 lỗi.
+- **Tinh chỉnh:** độ rộng sông → hệ số `1.8` trong `rad`; độ uốn → `wig`/freq `0.18`; ngưỡng bắt đầu → `CORE_T`; độ sâu lòng → `0.0035`; độ bóng nước → giá trị `84` trong `buildRoughnessTexture`.
+
+---
+
+# 🎥 v12 — Camera 5 chế độ + Thác/Suối/Ao/Hang + 11 loại thực vật + chế độ Nhẹ (2026-07-03)
 
 Yêu cầu: "cam có các góc nhìn khác, nhiều môi trường hơn (thác, suối, ao, hang động…), nhiều thực vật hơn, nhẹ CPU/GPU". **Bump `WORLD_GEN_VERSION` 11→12.**
 

@@ -29,7 +29,7 @@ function hash01(x: number, y: number): number {
  * up the dead-flat look of wide single-biome fields. Palette = BIOME_RGB, same as the minimap.
  */
 function buildColorTexture(world: World): THREE.DataTexture {
-  const { size, biome, flow, shore } = world;
+  const { size, biome, riverAmt, shore } = world;
   const data = new Uint8Array(size * size * 4);
   const RIVER_RGB = BIOME_RGB[Biome.River];
   for (let y = 0; y < size; y++) {
@@ -38,14 +38,19 @@ function buildColorTexture(world: World): THREE.DataTexture {
       const bio = biome[i];
       let [r, g, b] = BIOME_RGB[bio] ?? [255, 0, 255];
 
-      // Streams: sub-river flow channels painted as thin translucent water threads, so the
-      // hydrology reads brook -> stream -> river instead of jumping straight to rivers.
-      const fl = flow?.[i] ?? 0;
-      if (fl > 0.44 && fl < 0.6 && bio !== Biome.Ocean && bio !== Biome.River && bio !== Biome.Lake && bio !== Biome.Snow && bio !== Biome.Glacier && bio !== Biome.Beach) {
-        const t = ((fl - 0.44) / 0.16) * 0.55;
+      // Rivers & streams: the generator's ribbon mask (widens downstream, soft-feathered
+      // banks). The gradient tint gives smooth tapering threads instead of jagged 1-cell
+      // zigzags, and the centre darkens a touch so big rivers read deeper.
+      const amt = riverAmt?.[i] ?? 0;
+      if (amt > 0 && bio !== Biome.Ocean && bio !== Biome.Lake && bio !== Biome.Glacier && bio !== Biome.Snow) {
+        const t = Math.min(1, (amt / 255) * 1.08);
         r = r * (1 - t) + RIVER_RGB[0] * t;
         g = g * (1 - t) + RIVER_RGB[1] * t;
         b = b * (1 - t) + RIVER_RGB[2] * t;
+        const deep = 1 - 0.1 * t;
+        r *= deep;
+        g *= deep;
+        b *= deep;
       }
 
       // Wet sand: darken the beach right at the waterline (the swash zone).
@@ -89,49 +94,91 @@ function buildNormalTexture(
   heightRatio: number,
   meshResolution: number,
 ): THREE.DataTexture {
-  const { size } = world;
+  // Half the data resolution is plenty for a DETAIL map (it still carries ~2.7x more relief
+  // than the render mesh), quarters the GPU memory and makes the bake ~4x faster.
+  const res = Math.max(512, world.size >> 1);
   const heightUnits = renderSize * heightRatio;
-  const cellW = renderSize / (size - 1);
+  const cellW = renderSize / (res - 1);
 
-  // Residual world-space height per cell (full detail minus the mesh's bilinear surface).
-  const resid = new Float32Array(size * size);
-  const inv = 1 / (size - 1);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  // Residual world-space height (full detail minus the mesh's bilinear surface).
+  const resid = new Float32Array(res * res);
+  const inv = 1 / (res - 1);
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
       const u = x * inv;
       const v = y * inv;
-      resid[y * size + x] =
+      resid[y * res + x] =
         (sampleElevation(world, u, v) - sampleMeshHeight(world, u, v, meshResolution)) * heightUnits;
     }
   }
 
-  const data = new Uint8Array(size * size * 4);
-  for (let y = 0; y < size; y++) {
-    const y0 = Math.max(0, y - 1) * size;
-    const y1 = Math.min(size - 1, y + 1) * size;
-    for (let x = 0; x < size; x++) {
+  const data = new Uint8Array(res * res * 4);
+  for (let y = 0; y < res; y++) {
+    const y0 = Math.max(0, y - 1) * res;
+    const y1 = Math.min(res - 1, y + 1) * res;
+    for (let x = 0; x < res; x++) {
       const x0 = Math.max(0, x - 1);
-      const x1 = Math.min(size - 1, x + 1);
-      const dhdx = (resid[y * size + x1] - resid[y * size + x0]) / ((x1 - x0) * cellW || cellW);
-      const dhdz = (resid[y1 + x] - resid[y0 + x]) / (((y1 - y0) / size) * cellW || cellW);
+      const x1 = Math.min(res - 1, x + 1);
+      const dhdx = (resid[y * res + x1] - resid[y * res + x0]) / ((x1 - x0) * cellW || cellW);
+      const dhdz = (resid[y1 + x] - resid[y0 + x]) / (((y1 - y0) / res) * cellW || cellW);
       // Tangent space of a +Y-up heightfield with uv aligned to world XZ.
       const nx = -dhdx;
       const nz = -dhdz;
       const len = Math.sqrt(nx * nx + nz * nz + 1);
-      const o = (y * size + x) * 4;
+      const o = (y * res + x) * 4;
       data[o] = ((nx / len) * 0.5 + 0.5) * 255;
       data[o + 1] = ((nz / len) * 0.5 + 0.5) * 255;
       data[o + 2] = ((1 / len) * 0.5 + 0.5) * 255;
       data[o + 3] = 255;
     }
   }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.wrapS = THREE.ClampToEdgeWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.anisotropy = 8;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Roughness map (read from the GREEN channel): water is glossy, land is matte. This is what
+ * makes rivers and lakes catch the sun and glint as it moves — the single biggest "this is
+ * real water" cue — for the cost of one small texture.
+ */
+function buildRoughnessTexture(world: World): THREE.DataTexture {
+  const { size, biome, water, riverAmt, shore, elevation, seaLevel } = world;
+  const res = Math.max(512, size >> 1);
+  const scale = size / res;
+  const data = new Uint8Array(res * res * 4);
+  for (let y = 0; y < res; y++) {
+    for (let x = 0; x < res; x++) {
+      const i = Math.min(size - 1, Math.round(y * scale)) * size + Math.min(size - 1, Math.round(x * scale));
+      let rough = 242; // matte land (0.95)
+      const bio = biome[i];
+      if (bio === Biome.Lake || bio === Biome.River || (water?.[i] ?? 0) > 0) {
+        rough = 84; // open inland water (0.33)
+      } else if ((riverAmt?.[i] ?? 0) > 0 && bio !== Biome.Glacier && bio !== Biome.Snow) {
+        rough = 242 - ((riverAmt[i] / 255) * 158) | 0; // feathered banks blend matte->glossy
+      } else if (elevation[i] < seaLevel) {
+        rough = 128; // submerged shelf under the transparent shallows
+      } else if (bio === Biome.Beach && (shore?.[i] ?? 0) > 0.72) {
+        rough = 178; // wet swash-zone sand (0.7)
+      }
+      const o = (y * res + x) * 4;
+      data[o] = 255;
+      data[o + 1] = rough;
+      data[o + 2] = 255;
+      data[o + 3] = 255;
+    }
+  }
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
   return tex;
 }
@@ -202,13 +249,15 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
     () => buildNormalTexture(world, renderSize, heightRatio, meshResolution),
     [world, renderSize, heightRatio, meshResolution],
   );
+  const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
 
   useEffect(() => {
     return () => {
       colorMap.dispose();
       normalMap.dispose();
+      roughnessMap.dispose();
     };
-  }, [colorMap, normalMap]);
+  }, [colorMap, normalMap, roughnessMap]);
 
   return (
     <mesh geometry={geometry} name="world-terrain" receiveShadow>
@@ -216,7 +265,8 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
         map={colorMap}
         normalMap={normalMap}
         normalScale={new THREE.Vector2(1, 1)}
-        roughness={0.95}
+        roughnessMap={roughnessMap}
+        roughness={1.0}
         metalness={0.0}
       />
     </mesh>

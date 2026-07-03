@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 12;
+export const WORLD_GEN_VERSION = 13;
 
 export enum Biome {
   Ocean = 0,
@@ -87,6 +87,8 @@ export interface World {
   slope: Float32Array;
   /** Inland still-water (lake) surface elevation, normalized; 0 where there is no lake. */
   water: Float32Array;
+  /** River-ribbon strength per cell (0..255): 0 = dry, 255 = centre of a major river. */
+  riverAmt: Uint8Array;
   /** Land closeness to any water (ocean/lake): ~1 at the shoreline, fading to 0 inland. */
   shore: Float32Array;
   /** Distinct lake basins, each rendered as a single water plane. */
@@ -267,7 +269,9 @@ function classify(
   if (temp < T_ROCK || slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
 
   // Rivers thread the vegetated land (they freeze over / vanish under the caps above).
-  if (flow > 0.6) return Biome.River;
+  // 0.615 sits above the band of parallel hillslope rills D8 carves on smooth slopes —
+  // below it, "rivers" render as an ugly diagonal hatching across every mountainside.
+  if (flow > 0.615) return Biome.River;
 
   // Alpine meadow: the high band just under the treeline.
   if (temp < T_ALPINE && elev > seaLevel + 0.18 && moist > 0.25) return Biome.Alpine;
@@ -866,6 +870,63 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
   if (maxF > 0) for (let i = 0; i < n; i++) flow[i] /= maxF;
 
+  // ---- Pass 2b: river ribbons + channel carving ----
+  // Raw D8 channels are 1-cell zigzag chains — they render as jagged pixel threads. Stamping
+  // a flow-scaled disc along each channel turns them into smooth ribbons that WIDEN
+  // DOWNSTREAM and taper at the heads; a shallow carve then sinks each ribbon into a real
+  // bed, so rivers sit IN the terrain (and the residual normal map shades their banks).
+  const riverAmt = new Uint8Array(n);
+  {
+    const CORE_T = 0.615; // matches the River biome cut — above the hillslope-rill band
+    const widthScale = size / 1024; // same physical width at any data resolution
+    // Meander wiggle: D8 channels run dead straight along grid diagonals, and parallel
+    // channels on a uniform slope render as a mechanical hatching. Warping each stamp by a
+    // smooth noise field bends every channel into its own wavy course (neighbouring cells
+    // share almost the same offset, so a channel stays connected).
+    const wig = 1.6 * widthScale;
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = y * size + x;
+        const f = flow[i];
+        if (f < CORE_T || elevation[i] < seaLevel) continue;
+        // On very steep faces only substantial rivers keep their ribbon: thin fall-line
+        // channels there stack into a dense parallel striping across every mountainside.
+        const grad =
+          Math.abs(elevation[i + 1] - elevation[i - 1]) + Math.abs(elevation[i + size] - elevation[i - size]);
+        if (grad > 0.005 * (2048 / size) && f < 0.68) continue;
+        // Squared ramp: only the true trunk rivers get wide, tributaries stay thread-thin.
+        const s0 = smoothstep(CORE_T, 1.0, f);
+        const strength = s0 * s0;
+        const rad = 0.5 + strength * widthScale * 1.8;
+        const r = Math.ceil(rad);
+        const amt0 = 120 + 135 * strength;
+        const cx = x + Math.round(warpNoise.noise(x * 0.18 + 31.7, y * 0.18 + 77.1) * wig);
+        const cy = y + Math.round(warpNoise.noise(x * 0.18 + 90.2, y * 0.18 + 12.9) * wig);
+        for (let dy = -r; dy <= r; dy++) {
+          const yy = cy + dy;
+          if (yy < 0 || yy >= size) continue;
+          for (let dx = -r; dx <= r; dx++) {
+            const xx = cx + dx;
+            if (xx < 0 || xx >= size) continue;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            const edge = rad + 0.5 - d; // soft 1-cell feather at the bank
+            if (edge <= 0) continue;
+            const j = yy * size + xx;
+            const a = Math.round(amt0 * Math.min(1, edge));
+            if (a > riverAmt[j]) riverAmt[j] = a;
+          }
+        }
+      }
+    }
+    // Carve the beds (kept well under LAKE_MIN_DEPTH so channels don't read as lakes).
+    for (let i = 0; i < n; i++) {
+      if (riverAmt[i] === 0) continue;
+      const e = elevation[i];
+      if (e < seaLevel) continue;
+      elevation[i] = Math.max(seaLevel - 0.002, e - 0.0035 * (riverAmt[i] / 255));
+    }
+  }
+
   // ---- Pass 3: climate — temperature (latitude + altitude lapse) & moisture -------------
   //
   // Moisture is built like real weather instead of pure value-noise. Prevailing winds sweep
@@ -976,6 +1037,14 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // ---- Pass 4: biome classification (climate bands x height x slope x coast) ----
   for (let i = 0; i < n; i++) {
     biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], coast[i], seaLevel);
+  }
+  // The widened river ribbon becomes the River biome (so the minimap, colour bake and flora
+  // rules all see the same ribbon, not the raw 1-cell channel). Ice stays frozen over.
+  for (let i = 0; i < n; i++) {
+    if (riverAmt[i] < 140 || elevation[i] < seaLevel) continue;
+    const b = biome[i];
+    if (b === Biome.Glacier || b === Biome.Snow || b === Biome.Ocean || b === Biome.Lake) continue;
+    biome[i] = Biome.River;
   }
 
   // ---- Pass 4a: 3x3 majority filter over the vegetated land ----
@@ -1146,6 +1215,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       // Hard exclusions — only vegetated dry land, clear of water, cliffs and the waterline:
       if (elevation[i] <= seaLevel) continue; // must be above sea level
       if (water[i] > 0) continue; // never in a lake
+      if (riverAmt[i] > 100) continue; // never in a river ribbon
       if (slope[i] > 0.78) continue; // never on steep cliffs
       if (shore[i] > 0.8) continue; // never right at the water's edge / on the beach
       const b = biome[i] as Biome;
@@ -1162,7 +1232,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const jx = Math.min(size - 1, Math.max(0, Math.round(wx + size / 2)));
       const jz = Math.min(size - 1, Math.max(0, Math.round(wz + size / 2)));
       const ji = jz * size + jx;
-      if (water[ji] > 0 || elevation[ji] <= seaLevel) continue;
+      if (water[ji] > 0 || elevation[ji] <= seaLevel || riverAmt[ji] > 100) continue;
       fX.push(wx);
       fZ.push(wz);
       fS.push(0.6 + rng() * 0.8);
@@ -1180,6 +1250,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     flow,
     slope,
     water,
+    riverAmt,
     shore,
     lakeBasins,
     biome,

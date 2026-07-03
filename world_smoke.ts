@@ -69,6 +69,17 @@ for (let i = 0; i < n; i++) {
 console.log(`elevation [${minE.toFixed(3)}, ${maxE.toFixed(3)}], NaN=${nan}`);
 console.log(`lakeBasins=${world.lakeBasins.length} flora=${world.floraCount} waterfalls=${world.waterfallCount} caves=${world.caveCount}`);
 
+// river ribbon coverage
+{
+  let ribbon = 0;
+  let core = 0;
+  for (let i = 0; i < n; i++) {
+    if (world.riverAmt[i] > 0) ribbon++;
+    if (world.riverAmt[i] >= 140) core++;
+  }
+  console.log(`riverAmt: ribbon=${((ribbon / n) * 100).toFixed(2)}% map, core=${((core / n) * 100).toFixed(2)}% map`);
+}
+
 // flora type histogram
 {
   const tnames = ['Pine', 'Round', 'Jungle', 'Cactus', 'Rock', 'Acacia', 'Palm', 'DeadTree', 'Bush', 'Reed', 'Tuft'];
