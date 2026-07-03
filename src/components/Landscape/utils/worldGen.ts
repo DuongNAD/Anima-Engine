@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 15;
+export const WORLD_GEN_VERSION = 16;
 
 export enum Biome {
   Ocean = 0,
@@ -264,9 +264,14 @@ function classify(
   }
 
   // Mountain caps by lapsed temperature (+ a pure-height failsafe for the tallest peaks).
-  if (temp < T_GLACIER) return Biome.Glacier;
-  if (temp < T_SNOW || elev > 0.94) return Biome.Snow;
-  if (temp < T_ROCK || slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
+  // The lines are NOT ruler-straight contours: wet flanks push the snowline down (more
+  // precipitation), and steep faces shed their snow (need to be colder to stay white), so
+  // the caps ripple and bare-rock streaks break through on the sheer sides — like a real
+  // massif instead of dip-dyed cones.
+  const capJit = (moist - 0.45) * 0.06;
+  if (temp < T_GLACIER + capJit * 0.5) return Biome.Glacier;
+  if (temp < T_SNOW + capJit - slope * 0.05 || elev > 0.94) return Biome.Snow;
+  if (temp < T_ROCK + capJit * 0.7 + slope * 0.04 || slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
 
   // Rivers thread the vegetated land (they freeze over / vanish under the caps above).
   // 0.615 sits above the band of parallel hillslope rills D8 carves on smooth slopes —
@@ -274,7 +279,7 @@ function classify(
   if (flow > 0.615) return Biome.River;
 
   // Alpine meadow: the high band just under the treeline.
-  if (temp < T_ALPINE && elev > seaLevel + 0.18 && moist > 0.25) return Biome.Alpine;
+  if (temp < T_ALPINE + capJit * 0.5 && elev > seaLevel + 0.18 && moist > 0.25) return Biome.Alpine;
 
   // Wetlands: low, flat, waterlogged ground — peat bog when cold, swamp when warm.
   if (elev < seaLevel + 0.075 && moist > 0.72 && slope < 0.22 && flow > 0.18) {
@@ -799,8 +804,9 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // Runs before flow & biomes so both follow the eroded relief. Deterministic per seed.
   if (useErosion) {
     const erosionRng = mulberry32((baseSeed ^ 0x51ed270b) >>> 0);
-    // Light erosion: enough to carve river valleys, not so much that it roughens the plains.
-    const droplets = opts.erosionDroplets ?? Math.min(60000, Math.floor(n * 0.02));
+    // Enough erosion to cut real ravines and gullies into the mountainsides (the AO bake
+    // and residual normal map pick them up), while the low fBm gain keeps plains smooth.
+    const droplets = opts.erosionDroplets ?? Math.min(120000, Math.floor(n * 0.03));
     hydraulicErosion(elevation, size, erosionRng, droplets);
     // Erosion nudges a few cells outside [0, 1]; clamp so downstream thresholds stay valid.
     for (let i = 0; i < n; i++) elevation[i] = elevation[i] < 0 ? 0 : elevation[i] > 1 ? 1 : elevation[i];
@@ -885,21 +891,28 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     // share almost the same offset, so a channel stays connected).
     const wig = 1.6 * widthScale;
     for (let y = 1; y < size - 1; y++) {
+      const lat = 1 - Math.abs((y / (size - 1)) * 2 - 1);
       for (let x = 1; x < size - 1; x++) {
         const i = y * size + x;
         const f = flow[i];
         if (f < CORE_T || elevation[i] < seaLevel) continue;
+        // Frozen heights carry no liquid rivers: without this gate the ribbons still CARVE
+        // grooves under the snow caps, which show through the normal map as the parallel
+        // fall-line striping all over every snowy mountainside.
+        const tApprox = lat * 0.82 + 0.09 - Math.max(0, elevation[i] - seaLevel) * 1.35;
+        if (tApprox < 0.2) continue;
         // On very steep faces only substantial rivers keep their ribbon: thin fall-line
         // channels there stack into a dense parallel striping across every mountainside.
         const grad =
           Math.abs(elevation[i + 1] - elevation[i - 1]) + Math.abs(elevation[i + size] - elevation[i - size]);
-        if (grad > 0.005 * (2048 / size) && f < 0.68) continue;
-        // Squared ramp: only the true trunk rivers get wide, tributaries stay thread-thin.
+        if (grad > 0.004 * (2048 / size) && f < 0.72) continue;
+        // Squared ramp: only the true trunk rivers get wide — a thin thread at the spring,
+        // swelling with every confluence, a broad band by the time it reaches the plain.
         const s0 = smoothstep(CORE_T, 1.0, f);
         const strength = s0 * s0;
-        const rad = 0.5 + strength * widthScale * 1.8;
+        const rad = 0.4 + strength * widthScale * 2.6;
         const r = Math.ceil(rad);
-        const amt0 = 120 + 135 * strength;
+        const amt0 = 90 + 165 * strength;
         const cx = x + Math.round(warpNoise.noise(x * 0.18 + 31.7, y * 0.18 + 77.1) * wig);
         const cy = y + Math.round(warpNoise.noise(x * 0.18 + 90.2, y * 0.18 + 12.9) * wig);
         for (let dy = -r; dy <= r; dy++) {
@@ -1178,15 +1191,19 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   const cvYaw: number[] = [];
   {
     const caveRng = mulberry32((baseSeed ^ 0x7ac0beef) >>> 0);
-    const MAX_CAVES = 140;
+    const MAX_CAVES = 80;
     outer: for (let y = 2; y < size - 2; y += 2) {
+      const lat = 1 - Math.abs((y / (size - 1)) * 2 - 1);
       for (let x = 2; x < size - 2; x += 2) {
         const i = y * size + x;
-        // Bare rock and eroded badlands host openings; needs a face to sink into.
+        // Bare rock and eroded badlands host openings; needs a proper face to sink into.
+        // Sparse and NEVER up in the frozen band — dark mouths against snow-bright rock
+        // read as floating black-dot glitches from any distance.
         if (biome[i] !== Biome.Rock && biome[i] !== Biome.Badlands) continue;
-        if (slope[i] < 0.35) continue;
+        if (slope[i] < 0.45) continue;
         if (elevation[i] < seaLevel + 0.02) continue;
-        if (caveRng() > 0.02) continue;
+        if (lat * 0.82 + 0.09 - Math.max(0, elevation[i] - seaLevel) * 1.35 < 0.135) continue; // not on snow
+        if (caveRng() > 0.018) continue;
         // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
         const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
         const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
@@ -1219,12 +1236,23 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       if (slope[i] > 0.78) continue; // never on steep cliffs
       if (shore[i] > 0.8) continue; // never right at the water's edge / on the beach
       const b = biome[i] as Biome;
-      // Denser where it's wetter, sparser where arid (a lush forest vs a dry plain).
-      const density = floraDensity(b) * (0.5 + moisture[i]);
+      // Denser where it's wetter — and MUCH denser along water: shore[] rises toward lakes
+      // and the sea, flow[] rises toward river channels, so gallery forest crowds the banks
+      // and even deserts grow an oasis fringe along their wadis.
+      const waterBoost = 1 + shore[i] * 1.1 + Math.min(1, flow[i] * 1.6) * 0.9;
+      const density = floraDensity(b) * (0.5 + moisture[i]) * waterBoost;
       if (rng() > density) continue;
       // pickFlora returns -1 for ocean / beach / river / lake / snow / glacier.
-      const ft = pickFlora(b, rng());
+      let ft = pickFlora(b, rng());
       if (ft === -1) continue;
+      // Tall trees cannot root on steep faces — scrub takes over near cliffs and up at the
+      // wind-blasted treeline slopes.
+      if (
+        slope[i] > 0.55 &&
+        (ft === FloraType.Pine || ft === FloraType.Round || ft === FloraType.Jungle || ft === FloraType.Acacia || ft === FloraType.Palm)
+      ) {
+        ft = FloraType.Bush;
+      }
       // World coordinates centred on origin (1 cell = 1 unit).
       const wx = x - size / 2 + (rng() - 0.5) * stride;
       const wz = y - size / 2 + (rng() - 0.5) * stride;

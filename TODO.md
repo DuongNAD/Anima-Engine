@@ -4,7 +4,24 @@
 
 ---
 
-# 💧 [MỚI NHẤT] v16 — FIX nước xuyên sườn dốc + rừng dày hơn + 450 thác (2026-07-03)
+# 🏔 [MỚI NHẤT] v17 — Theo báo cáo phân tích tự nhiên: snowline mềm, rừng ven sông, sông thon-nở (2026-07-03)
+
+User gửi báo cáo phân tích 4 nhóm lỗi so với tự nhiên (thủy văn/bờ nước/biome/địa mạo). **Bump `WORLD_GEN_VERSION` 16** (code: 15→16). Đã xử lý:
+
+- **Đường song song trên núi tuyết** (thủy văn #1): thủ phạm là ribbon vẫn **khoét lòng dưới nắp tuyết** → rãnh song song lộ qua normal map/AO. Fix: gate `tApprox < 0.2` (ước lượng nhiệt lapse ngay tại Pass 2b) — vùng đóng băng không có sông lỏng, không khoét; siết gate sườn dốc (`grad>0.004 & f<0.72`).
+- **Sông thon–nở theo lưu lượng**: `rad = 0.4 + s²·widthScale·2.6`, `amt0 = 90+165s` — đầu nguồn chỉ mảnh, phình rõ sau mỗi hợp lưu (dendritic đúng nghĩa; mạng hợp lưu vốn là D8 nên cấu trúc rễ cây đã có, giờ nhìn thấy được).
+- **Snowline mềm** (biome #3): ngưỡng Glacier/Snow/Rock/Alpine trong `classify` nhận `capJit = (moist−0.45)·0.06` (sườn ẩm tuyết XUỐNG thấp — đúng khí tượng) và **tuyết trượt khỏi mặt dốc**: `T_SNOW − slope·0.05`, đá lộ thêm `T_ROCK + slope·0.04` → ranh giới nhấp nhô hòa quyện, vách dốc lộ sọc đá.
+- **Thực vật theo nước + treeline** (biome #3): `waterBoost = 1 + shore·1.1 + min(1,flow·1.6)·0.9` nhân vào density → **rừng hành lang ven sông/hồ, ốc đảo dọc wadi sa mạc** (flora 73k→**97k**); cây cao trên `slope>0.55` tự hạ thành bụi (đất không giữ được rễ).
+- **Ecotone blend** (biome #3): bake trộn màu 4 láng giềng ±2 cell khi khác biome (56/44) — nâu↔xanh chuyển tiếp mềm; nước/băng giữ mép sắc.
+- **Xói mòn** (địa mạo #4): droplets n·0.02→**n·0.03** (cap 120k) — khe rãnh thủy lực cắt sườn núi thật hơn.
+- **Chấm đen** (địa mạo #4) = cửa hang quá dày/to: prob 0.018, slope≥0.45, **cấm vùng tuyết** (tApprox<0.135), scale 1.5×1.1, ép sát vách hơn → 40 hang chất lượng thay vì 100 chấm.
+- **Thác hết ghim xuyên**: màn đẩy ra 1.0 unit khỏi vách, vũng bọt nhỏ (0.55/0.4) + nâng 0.3 + opacity 0.38.
+- **Verify:** build ✅ · 7/7 & 237/237 ✅ · lint 0 lỗi · smoke: flora 97k, 450 thác, 40 hang, 24 hồ, 22/22 biome, 3.9s, 0 NaN · screenshot: rừng bám dọc sông rõ, sông thon-nở, hết mảng nước/sọc song song. 0 lỗi console.
+- **Tinh chỉnh:** độ nhấp nhô snowline → `capJit`/hệ số slope; mật độ ven sông → `waterBoost`; blend ecotone → trọng số `0.56/0.11`; xói mòn → `n*0.03`.
+
+---
+
+# 💧 v16 — FIX nước xuyên sườn dốc + rừng dày hơn + 450 thác (2026-07-03)
 
 Bug user báo: mesh nước "lồi ra thành mảng tam giác/chữ nhật sắc cạnh" cắt xuyên terrain ở sườn dốc. **Bump `WORLD_GEN_VERSION` 15→16... (thực tế 14→15** trong code — flora/thác đổi).
 

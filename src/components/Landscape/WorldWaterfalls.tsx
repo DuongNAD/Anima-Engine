@@ -94,17 +94,18 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       const dirZ = Math.sin(yaw);
       const width = Math.min(4, 1.2 + dropY * 0.3);
 
-      // Curtain: hangs from the lip, pushed slightly proud of the rock face.
-      dummy.position.set(x + dirX * 0.7, topY - dropY / 2, z + dirZ * 0.7);
+      // Curtain: hangs from the lip, pushed proud of the rock face so the top edge doesn't
+      // knife back into the slope.
+      dummy.position.set(x + dirX * 1.0, topY - dropY / 2, z + dirZ * 1.0);
       dummy.rotation.set(0, Math.PI / 2 - yaw, 0);
       dummy.scale.set(width, dropY + 0.6, 1);
       dummy.updateMatrix();
       if (typeof curtain.setMatrixAt === 'function') curtain.setMatrixAt(i, dummy.matrix);
 
-      // Splash pool at the base.
-      dummy.position.set(x + dirX * (0.9 + width * 0.2), topY - dropY + 0.18, z + dirZ * (0.9 + width * 0.2));
+      // Splash pool at the base — small and lifted so it never Z-fights the riverbed.
+      dummy.position.set(x + dirX * (1.0 + width * 0.2), topY - dropY + 0.3, z + dirZ * (1.0 + width * 0.2));
       dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(width * 0.75, 1, width * 0.5);
+      dummy.scale.set(width * 0.55, 1, width * 0.4);
       dummy.updateMatrix();
       if (typeof foam.setMatrixAt === 'function') foam.setMatrixAt(i, dummy.matrix);
     }
@@ -130,7 +131,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
         name="waterfall-curtains"
       />
       <instancedMesh ref={foamRef} args={[foamGeom, undefined as any, count]} name="waterfall-foam">
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.45} depthWrite={false} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.38} depthWrite={false} />
       </instancedMesh>
     </group>
   );

@@ -45,6 +45,41 @@ function buildColorTexture(world: World): THREE.DataTexture {
       const bio = biome[i];
       let [r, g, b] = BIOME_RGB[bio] ?? [255, 0, 255];
 
+      // Ecotone blending: average in the biome colours a couple of cells away, so brown
+      // meets green through a soft transition band instead of a hard majority-filter edge.
+      // Water/river/ice keep crisp shorelines (their neighbours contribute the CELL'S own
+      // colour instead).
+      if (
+        x >= 2 &&
+        y >= 2 &&
+        x < size - 2 &&
+        y < size - 2 &&
+        bio !== Biome.Ocean &&
+        bio !== Biome.River &&
+        bio !== Biome.Lake &&
+        bio !== Biome.Glacier
+      ) {
+        const nIdx = [i - 2, i + 2, i - 2 * size, i + 2 * size];
+        let ar = 0;
+        let ag = 0;
+        let ab = 0;
+        let differs = false;
+        for (let k = 0; k < 4; k++) {
+          let nb = biome[nIdx[k]];
+          if (nb === Biome.Ocean || nb === Biome.River || nb === Biome.Lake) nb = bio;
+          if (nb !== bio) differs = true;
+          const c = BIOME_RGB[nb] ?? [r, g, b];
+          ar += c[0];
+          ag += c[1];
+          ab += c[2];
+        }
+        if (differs) {
+          r = r * 0.56 + ar * 0.11;
+          g = g * 0.56 + ag * 0.11;
+          b = b * 0.56 + ab * 0.11;
+        }
+      }
+
       // Frozen basins: the lakebed under (and peeking around) an ice sheet is pale ice,
       // not liquid-lake navy — matches the opaque ice mesh WorldWater lays on top.
       if ((water?.[i] ?? 0) > 0 && (temperature?.[i] ?? 0.5) < 0.19) {

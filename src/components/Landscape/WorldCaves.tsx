@@ -32,12 +32,12 @@ export const WorldCaves: React.FC<WorldCavesProps> = ({ world, renderSize = 400,
       const dirZ = Math.sin(yaw);
       // Proud of the face along the outward (downhill) bearing so it doesn't z-fight the mesh.
       dummy.position.set(
-        world.caveX[i] * toWorld + dirX * 0.5,
-        world.caveE[i] * heightUnits + 1.1,
-        world.caveZ[i] * toWorld + dirZ * 0.5,
+        world.caveX[i] * toWorld + dirX * 0.4,
+        world.caveE[i] * heightUnits + 0.9,
+        world.caveZ[i] * toWorld + dirZ * 0.4,
       );
       dummy.rotation.set(0, Math.PI / 2 - yaw, 0);
-      dummy.scale.set(1.8, 1.4, 1);
+      dummy.scale.set(1.5, 1.1, 1);
       dummy.updateMatrix();
       if (typeof inst.setMatrixAt === 'function') inst.setMatrixAt(i, dummy.matrix);
     }
