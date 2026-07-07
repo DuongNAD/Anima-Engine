@@ -19,6 +19,13 @@ export interface CameraView {
   /** Camera position in world XZ (for the heading arrow). */
   camX: number;
   camZ: number;
+  // --- Explorer telemetry (optional; written by the camera rig for the HUD) ---
+  /** Biome index under the camera (see Biome enum); undefined until the rig runs. */
+  biome?: number;
+  /** Smoothed frames-per-second. */
+  fps?: number;
+  /** True while the pointer is locked (first-person mouse-look active). */
+  locked?: boolean;
 }
 
 export interface WorldMinimapProps {

@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
-import { sampleMeshHeight } from './utils/worldSample';
+import { sampleMeshHeight, biomeAt } from './utils/worldSample';
 import type { CameraView } from './WorldMinimap';
 
 extend({ OrbitControls });
@@ -20,14 +20,16 @@ declare global {
 // ---------------------------------------------------------------------------------------
 // WorldCameraRig — five ways to see the world:
 //   orbit  classic inspect camera (drag to orbit, wheel to zoom, right-drag to pan)
-//   fly    free spectator: WASD + Q/E for down/up, hold left mouse and drag to look,
-//          Shift to sprint
-//   walk   first-person on foot: WASD, camera glued to the terrain surface (wades at the
-//          shore instead of sinking), drag to look, Shift to jog
+//   fly    free spectator: WASD + Q/E (or Space) for down/up, Shift to sprint
+//   walk   first-person on foot: WASD with real momentum, gravity + Space to jump, head-bob,
+//          camera glued to the terrain surface (wades at the shore instead of sinking)
 //   top    straight-down map view: pan + zoom only
 //   cine   hands-off cinematic: slow auto-orbit around the current point of interest
-// Minimap teleports work in every mode. The rig reports camera/target world XZ into
-// `viewRef` each frame for the minimap and the HUD readout.
+//
+// In fly/walk, clicking the viewport LOCKS the pointer for free first-person mouse-look
+// (Esc releases it); where pointer-lock is unavailable it falls back to click-drag look.
+// Minimap teleports work in every mode. The rig reports camera/target world XZ — plus the
+// biome underfoot, smoothed FPS and pointer-lock state — into `viewRef` for the HUD/minimap.
 // ---------------------------------------------------------------------------------------
 
 export type CameraMode = 'orbit' | 'fly' | 'walk' | 'top' | 'cine';
@@ -43,6 +45,19 @@ export interface WorldCameraRigProps {
 }
 
 const EYE = 2.1; // walking eye height (world units)
+const BASE_FOV = 55;
+const GRAVITY = 34; // world units / s^2
+const JUMP_V = 12.5; // jump take-off velocity (units/s) -> ~2.3u high, ~0.75s airtime
+const BOB_FREQ = 0.9; // head-bob cycles per world unit travelled
+const BOB_AMP = 0.13; // head-bob amplitude (world units)
+// Exponential-smoothing rates (per second) for velocity — frame-rate independent.
+const ACCEL_LAMBDA = 11; // spin-up while a direction is held
+const FRICTION_LAMBDA = 14; // spin-down when keys released (snappier stop)
+const AIR_LAMBDA = 2.5; // reduced air control while airborne (walk)
+// Keys we swallow the browser default for (Space/arrows scroll the page otherwise).
+const NAV_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+const clampPitch = (p: number) => Math.max(-1.35, Math.min(1.35, p));
 
 export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   mode,
@@ -57,8 +72,13 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   const controlsRef = useRef<any>(null);
 
   const keysRef = useRef<Set<string>>(new Set());
-  const lookRef = useRef({ yaw: 0, pitch: -0.4, dragging: false, lastX: 0, lastY: 0 });
+  const lookRef = useRef({ yaw: 0, pitch: -0.4, dragging: false, locked: false, lastX: 0, lastY: 0 });
   const cineRef = useRef({ angle: 0, tx: 0, tz: 0 });
+  // Horizontal velocity (units/s) for momentum-based fly/walk movement.
+  const velRef = useRef({ x: 0, z: 0 });
+  // Walk vertical physics: eye base height, vertical velocity, grounded flag, jump edge-detect
+  // and accumulated stride distance driving the head-bob.
+  const physRef = useRef({ baseY: 0, vy: 0, grounded: true, jumpHeld: false, bobDist: 0 });
 
   const heightUnits = renderSize * heightRatio;
   const seaY = world.seaLevel * heightUnits;
@@ -105,7 +125,10 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
 
   // Keyboard state (fly / walk). Codes, not chars, so layout doesn't matter.
   useEffect(() => {
-    const down = (e: KeyboardEvent) => keysRef.current.add(e.code);
+    const down = (e: KeyboardEvent) => {
+      keysRef.current.add(e.code);
+      if (NAV_KEYS.has(e.code)) e.preventDefault();
+    };
     const up = (e: KeyboardEvent) => keysRef.current.delete(e.code);
     const blur = () => keysRef.current.clear();
     window.addEventListener('keydown', down);
@@ -118,40 +141,60 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     };
   }, []);
 
-  // Drag-to-look (fly / walk).
+  // Look controls (fly / walk): pointer-lock first-person mouse-look, with click-drag fallback
+  // when lock is unavailable (headless/permission-denied).
   useEffect(() => {
     if (mode !== 'fly' && mode !== 'walk') return;
     const el = gl.domElement;
     const look = lookRef.current;
-    const downH = (e: PointerEvent) => {
+    const SENS_LOCK = 0.0022;
+
+    const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      // Prefer a true pointer lock; if it isn't available, remember the drag origin.
+      if (document.pointerLockElement !== el) el.requestPointerLock?.();
       look.dragging = true;
       look.lastX = e.clientX;
       look.lastY = e.clientY;
     };
-    const moveH = (e: PointerEvent) => {
-      if (!look.dragging) return;
-      look.yaw -= (e.clientX - look.lastX) * 0.0035;
-      look.pitch = Math.max(-1.35, Math.min(1.35, look.pitch - (e.clientY - look.lastY) * 0.0032));
-      look.lastX = e.clientX;
-      look.lastY = e.clientY;
+    const onMove = (e: PointerEvent) => {
+      if (look.locked) {
+        look.yaw -= (e.movementX || 0) * SENS_LOCK;
+        look.pitch = clampPitch(look.pitch - (e.movementY || 0) * SENS_LOCK);
+      } else if (look.dragging) {
+        look.yaw -= (e.clientX - look.lastX) * 0.0035;
+        look.pitch = clampPitch(look.pitch - (e.clientY - look.lastY) * 0.0032);
+        look.lastX = e.clientX;
+        look.lastY = e.clientY;
+      }
     };
-    const upH = () => {
+    const onUp = () => {
       look.dragging = false;
     };
-    el.addEventListener('pointerdown', downH);
-    window.addEventListener('pointermove', moveH);
-    window.addEventListener('pointerup', upH);
-    return () => {
-      el.removeEventListener('pointerdown', downH);
-      window.removeEventListener('pointermove', moveH);
-      window.removeEventListener('pointerup', upH);
+    const onLockChange = () => {
+      look.locked = document.pointerLockElement === el;
+      viewRef.current.locked = look.locked;
     };
-  }, [mode, gl]);
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    document.addEventListener('pointerlockchange', onLockChange);
+    return () => {
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointerlockchange', onLockChange);
+      look.locked = false;
+      viewRef.current.locked = false;
+      if (document.pointerLockElement === el) document.exitPointerLock?.();
+    };
+  }, [mode, gl, viewRef]);
 
   // Mode entry: seed the new controller from wherever the camera currently is.
   useEffect(() => {
     const look = lookRef.current;
+    velRef.current.x = 0;
+    velRef.current.z = 0;
     if (mode === 'fly' || mode === 'walk') {
       const dir = new THREE.Vector3();
       camera.getWorldDirection(dir);
@@ -163,7 +206,12 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
         const v = viewRef.current;
         camera.position.x = v.targetX;
         camera.position.z = v.targetZ;
-        camera.position.y = surfaceY(camera.position.x, camera.position.z) + EYE;
+        const gy = surfaceY(camera.position.x, camera.position.z) + EYE;
+        camera.position.y = gy;
+        physRef.current.baseY = gy;
+        physRef.current.vy = 0;
+        physRef.current.grounded = true;
+        physRef.current.bobDist = 0;
         look.pitch = Math.max(-0.35, look.pitch);
       }
       (document.activeElement as HTMLElement | null)?.blur?.();
@@ -176,6 +224,14 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       cineRef.current.tz = v.targetZ;
       cineRef.current.angle = Math.atan2(camera.position.z - v.targetZ, camera.position.x - v.targetX);
     }
+    // Non-explorer modes always use the base field of view.
+    if (mode !== 'fly' && mode !== 'walk') {
+      const cam = camera as THREE.PerspectiveCamera;
+      if (cam.isPerspectiveCamera && cam.fov !== BASE_FOV) {
+        cam.fov = BASE_FOV;
+        cam.updateProjectionMatrix();
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -185,6 +241,10 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     const keys = keysRef.current;
     const v = viewRef.current;
     const tp = teleportRef.current;
+
+    // Smoothed FPS readout (uses the raw frame delta, not the movement-clamped dt).
+    const rawFps = delta > 0 ? 1 / delta : 0;
+    v.fps = v.fps ? v.fps * 0.9 + rawFps * 0.1 : rawFps;
 
     if (mode === 'orbit' || mode === 'top') {
       const controls = controlsRef.current;
@@ -212,6 +272,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       v.targetZ = controls.target.z;
       v.camX = camera.position.x;
       v.camZ = camera.position.z;
+      v.biome = biomeAt(world, controls.target.x, controls.target.z, renderSize);
       return;
     }
 
@@ -235,23 +296,35 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       v.targetZ = cine.tz;
       v.camX = camera.position.x;
       v.camZ = camera.position.z;
+      v.biome = biomeAt(world, cine.tx, cine.tz, renderSize);
       return;
     }
 
     // fly / walk
+    const phys = physRef.current;
+    const vel = velRef.current;
     if (tp) {
       camera.position.x = tp.x;
       camera.position.z = tp.z;
-      if (mode === 'fly') camera.position.y = Math.max(camera.position.y, surfaceY(tp.x, tp.z) + 20);
+      if (mode === 'fly') {
+        camera.position.y = Math.max(camera.position.y, surfaceY(tp.x, tp.z) + 20);
+      } else {
+        const gy = surfaceY(tp.x, tp.z) + EYE;
+        camera.position.y = gy;
+        phys.baseY = gy;
+        phys.vy = 0;
+        phys.grounded = true;
+      }
+      vel.x = 0;
+      vel.z = 0;
       teleportRef.current = null;
     }
 
     camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
 
-    const sprint = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 3.2 : 1;
-    const base = mode === 'fly' ? renderSize * 0.1 : renderSize * 0.02;
-    const speed = base * sprint * dt;
+    const sprinting = keys.has('ShiftLeft') || keys.has('ShiftRight');
 
+    // Direction the player wants to go (screen-forward projected flat for walking).
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
     if (mode === 'walk') {
@@ -260,30 +333,48 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     }
     const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-    const move = new THREE.Vector3();
-    if (keys.has('KeyW') || keys.has('ArrowUp')) move.addScaledVector(forward, speed);
-    if (keys.has('KeyS') || keys.has('ArrowDown')) move.addScaledVector(forward, -speed);
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) move.addScaledVector(right, -speed);
-    if (keys.has('KeyD') || keys.has('ArrowRight')) move.addScaledVector(right, speed);
+    const wish = new THREE.Vector3();
+    if (keys.has('KeyW') || keys.has('ArrowUp')) wish.add(forward);
+    if (keys.has('KeyS') || keys.has('ArrowDown')) wish.sub(forward);
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) wish.sub(right);
+    if (keys.has('KeyD') || keys.has('ArrowRight')) wish.add(right);
+    const moving = wish.lengthSq() > 1e-9;
+    if (moving) wish.normalize();
+
+    // Top speed (units/s): same magnitudes as before, now reached via smoothed acceleration.
+    const maxSpeed =
+      mode === 'fly'
+        ? renderSize * 0.1 * (sprinting ? 3.2 : 1)
+        : renderSize * 0.02 * (sprinting ? 2.2 : 1);
+    const targetVx = moving ? wish.x * maxSpeed : 0;
+    const targetVz = moving ? wish.z * maxSpeed : 0;
+    const lambda =
+      mode === 'walk' && !phys.grounded ? AIR_LAMBDA : moving ? ACCEL_LAMBDA : FRICTION_LAMBDA;
+    const k = 1 - Math.exp(-lambda * dt);
+    vel.x += (targetVx - vel.x) * k;
+    vel.z += (targetVz - vel.z) * k;
 
     if (mode === 'fly') {
-      camera.position.add(move);
-      if (keys.has('KeyE') || keys.has('Space')) camera.position.y += speed;
-      if (keys.has('KeyQ')) camera.position.y -= speed;
+      camera.position.x += vel.x * dt;
+      camera.position.z += vel.z * dt;
+      let vy = 0;
+      if (keys.has('KeyE') || keys.has('Space')) vy += 1;
+      if (keys.has('KeyQ')) vy -= 1;
+      camera.position.y += vy * maxSpeed * dt;
     } else {
       // WALK: a real character step — max-slope limit with axis sliding, then trunk colliders.
       const cx0 = camera.position.x;
       const cz0 = camera.position.z;
-      let nx = cx0 + move.x;
-      let nz = cz0 + move.z;
-      const step = Math.hypot(move.x, move.z);
+      let nx = cx0 + vel.x * dt;
+      let nz = cz0 + vel.z * dt;
+      const step = Math.hypot(vel.x * dt, vel.z * dt);
       if (step > 1e-6) {
         // Slopes steeper than ~43° can't be climbed: try sliding along one axis, else stop.
         const MAXG = 0.95;
         const g0 = surfaceY(cx0, cz0);
         if (surfaceY(nx, nz) - g0 > step * MAXG) {
-          if (surfaceY(cx0 + move.x, cz0) - g0 <= Math.abs(move.x) * MAXG + 1e-4) nz = cz0;
-          else if (surfaceY(cx0, cz0 + move.z) - g0 <= Math.abs(move.z) * MAXG + 1e-4) nx = cx0;
+          if (surfaceY(cx0 + vel.x * dt, cz0) - g0 <= Math.abs(vel.x * dt) * MAXG + 1e-4) nz = cz0;
+          else if (surfaceY(cx0, cz0 + vel.z * dt) - g0 <= Math.abs(vel.z * dt) * MAXG + 1e-4) nx = cx0;
           else {
             nx = cx0;
             nz = cz0;
@@ -297,8 +388,8 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
           for (let dzc = -1; dzc <= 1; dzc++) {
             const arr = treeGrid.get((gcx + dxc) * 2048 + (gcz + dzc));
             if (!arr) continue;
-            for (let k = 0; k < arr.length; k++) {
-              const ti = arr[k];
+            for (let kk = 0; kk < arr.length; kk++) {
+              const ti = arr[kk];
               const tx = world.floraX[ti] * toWorld;
               const tz = world.floraZ[ti] * toWorld;
               const r = 0.45 + world.floraScale[ti] * 0.25;
@@ -314,6 +405,10 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
           }
         }
       }
+      // Reconcile velocity with what actually happened (a wall/slope zeroes that component,
+      // so momentum doesn't build up against it and the head-bob doesn't fake a stride).
+      vel.x = (nx - cx0) / dt;
+      vel.z = (nz - cz0) / dt;
       camera.position.x = nx;
       camera.position.z = nz;
     }
@@ -324,16 +419,51 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     camera.position.z = Math.max(-lim, Math.min(lim, camera.position.z));
 
     if (mode === 'walk') {
-      camera.position.y = surfaceY(camera.position.x, camera.position.z) + EYE;
+      // Gravity + jump on the eye BASE height; head-bob is a cosmetic offset on top so it
+      // never fights the grounded test.
+      const groundY = surfaceY(camera.position.x, camera.position.z) + EYE;
+      phys.vy -= GRAVITY * dt;
+      phys.baseY += phys.vy * dt;
+      if (phys.baseY <= groundY) {
+        phys.baseY = groundY;
+        phys.vy = 0;
+        if (keys.has('Space') && !phys.jumpHeld) {
+          phys.vy = JUMP_V;
+          phys.grounded = false;
+        } else {
+          phys.grounded = true;
+        }
+      } else {
+        phys.grounded = false;
+      }
+      phys.jumpHeld = keys.has('Space');
+
+      const actualSpeed = Math.hypot(vel.x, vel.z);
+      let bob = 0;
+      if (phys.grounded && actualSpeed > 0.5) {
+        phys.bobDist += actualSpeed * dt;
+        const f = Math.min(1, actualSpeed / (renderSize * 0.02));
+        bob = Math.sin(phys.bobDist * BOB_FREQ) * BOB_AMP * f;
+      }
+      camera.position.y = phys.baseY + bob;
     } else {
       const floor = surfaceY(camera.position.x, camera.position.z) + 1.2;
       camera.position.y = Math.max(floor, Math.min(renderSize * 2.5, camera.position.y));
+    }
+
+    // Sprint field-of-view kick — a small speed rush while actually moving fast.
+    const cam = camera as THREE.PerspectiveCamera;
+    if (cam.isPerspectiveCamera) {
+      const targetFov = BASE_FOV + (sprinting && moving ? 7 : 0);
+      cam.fov += (targetFov - cam.fov) * (1 - Math.exp(-6 * dt));
+      cam.updateProjectionMatrix();
     }
 
     v.camX = camera.position.x;
     v.camZ = camera.position.z;
     v.targetX = camera.position.x + forward.x * 60;
     v.targetZ = camera.position.z + forward.z * 60;
+    v.biome = biomeAt(world, camera.position.x, camera.position.z, renderSize);
   });
 
   if (mode !== 'orbit' && mode !== 'top') return null;

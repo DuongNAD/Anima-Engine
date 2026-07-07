@@ -64,6 +64,38 @@ export const BIOME_RGB: ReadonlyArray<readonly [number, number, number]> = [
   [72, 82, 58], // Bog — dark olive-brown
 ];
 
+/** Human-readable biome names (Vietnamese) for the explorer HUD "you are in…" banner. */
+export const BIOME_NAMES_VI: ReadonlyArray<string> = [
+  'Đại dương', // Ocean
+  'Bãi biển', // Beach
+  'Sa mạc', // Desert
+  'Xavan', // Savanna
+  'Đồng cỏ', // Grassland
+  'Vùng cây bụi', // Shrubland
+  'Rừng ôn đới', // Forest
+  'Rừng nhiệt đới', // Jungle
+  'Rừng taiga', // Taiga
+  'Đài nguyên', // Tundra
+  'Đầm lầy', // Swamp
+  'Núi đá', // Rock
+  'Đỉnh tuyết', // Snow
+  'Dòng sông', // River
+  'Hồ nước', // Lake
+  'Rừng ngập mặn', // Mangrove
+  'Rừng bụi khô', // Chaparral
+  'Thảo nguyên', // Steppe
+  'Đồng cỏ núi cao', // Alpine
+  'Đất cằn', // Badlands
+  'Sông băng', // Glacier
+  'Đầm than bùn', // Bog
+];
+
+/** One flavour emoji per biome, shown beside the location name. */
+export const BIOME_EMOJI: ReadonlyArray<string> = [
+  '🌊', '🏖', '🏜', '🦁', '🌾', '🌿', '🌲', '🌴', '🌲', '❄', '🐊', '⛰', '🏔', '🏞', '💧',
+  '🌴', '🍂', '🌾', '🏔', '🪨', '🧊', '🍄',
+];
+
 /** A distinct lake: one flat water plane is rendered per basin (cell-space bbox + level). */
 export interface LakeBasin {
   /** Normalized water-surface elevation (constant across the basin). */

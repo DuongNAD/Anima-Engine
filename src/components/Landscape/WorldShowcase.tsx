@@ -12,10 +12,14 @@ import WorldWildlife from './WorldWildlife';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
+import WorldCompass from './WorldCompass';
 import WorldCameraRig, { type CameraMode } from './WorldCameraRig';
 import type { World } from './utils/worldGen';
+import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
+import { findSpawn } from './utils/worldSample';
 import { sunDirectionForTime } from './utils/skyParams';
+import { audioManager } from './utils/audioManager';
 
 // Data resolution of the world (cells). Rendering is decoupled from this (see RENDER_SIZE).
 // 2048^2 = ~4M cells: a huge, detailed continent generated once (off-thread) and cached.
@@ -93,7 +97,8 @@ export const WorldShowcase: React.FC = () => {
   const [weather, setWeather] = useState<WeatherKind>('clear');
   const [camMode, setCamMode] = useState<CameraMode>('orbit');
   const [quality, setQuality] = useState<Quality>('high');
-  const [camReadout, setCamReadout] = useState({ x: 0, z: 0 });
+  const [muted, setMuted] = useState(false);
+  const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
 
   // Camera <-> HTML-overlay bridge: the rig writes here each frame; the minimap/HUD read it.
   const viewRef = useRef<CameraView>({ targetX: 0, targetZ: 0, camX: 0, camZ: 0 });
@@ -102,6 +107,18 @@ export const WorldShowcase: React.FC = () => {
   // Diagnostics hook (like __worldScene): lets tooling inspect the generated world data.
   useEffect(() => {
     (window as unknown as { __world?: World | null }).__world = world;
+  }, [world]);
+
+  // Open the world on a scenic patch of LAND rather than the origin (usually open ocean).
+  // Runs once the world is ready; the rig applies the teleport on its first frame.
+  const spawnedRef = useRef(false);
+  useEffect(() => {
+    if (!world || !isWorldRenderable(world) || spawnedRef.current) return;
+    spawnedRef.current = true;
+    const s = findSpawn(world, RENDER_SIZE);
+    viewRef.current.targetX = s.x;
+    viewRef.current.targetZ = s.z;
+    teleportRef.current = { x: s.x, z: s.z };
   }, [world]);
 
   useEffect(() => {
@@ -123,14 +140,51 @@ export const WorldShowcase: React.FC = () => {
     return () => clearInterval(id);
   }, [speed]);
 
-  // Throttled readout of the camera target for the HUD (avoids per-frame React re-renders).
+  // Throttled readout of the camera telemetry for the HUD (avoids per-frame React re-renders).
   useEffect(() => {
     const id = setInterval(() => {
       const v = viewRef.current;
-      setCamReadout({ x: Math.round(v.targetX), z: Math.round(v.targetZ) });
-    }, 300);
+      setCamReadout({
+        x: Math.round(v.camX),
+        z: Math.round(v.camZ),
+        biome: v.biome ?? 0,
+        fps: Math.round(v.fps ?? 0),
+        locked: v.locked ?? false,
+      });
+    }, 250);
     return () => clearInterval(id);
   }, []);
+
+  // Ambient wind bed. Browsers block audio until a user gesture, so we lazily start the
+  // synthesizer on the first click/keypress, then keep it in sync with the weather.
+  const audioStarted = useRef(false);
+  useEffect(() => {
+    const AMBIENT_VOL = 0.55;
+    const start = () => {
+      if (audioStarted.current) return;
+      audioStarted.current = true;
+      audioManager.initialize();
+      audioManager.updateEnvironment(weather, speed, AMBIENT_VOL);
+      if (muted) audioManager.mute();
+    };
+    window.addEventListener('pointerdown', start);
+    window.addEventListener('keydown', start);
+    return () => {
+      window.removeEventListener('pointerdown', start);
+      window.removeEventListener('keydown', start);
+    };
+  }, [weather, speed, muted]);
+
+  // Keep the wind bed reacting to weather/day-length once it's running.
+  useEffect(() => {
+    if (audioStarted.current) audioManager.updateEnvironment(weather, speed, 0.55);
+  }, [weather, speed]);
+
+  useEffect(() => {
+    if (!audioStarted.current) return;
+    if (muted) audioManager.mute();
+    else audioManager.unmute();
+  }, [muted]);
 
   if (!world || !isWorldRenderable(world)) {
     return (
@@ -231,6 +285,86 @@ export const WorldShowcase: React.FC = () => {
         />
       </Canvas>
 
+      {/* Compass heading ribbon (rAF-driven, no per-frame React re-render). */}
+      <WorldCompass viewRef={viewRef} />
+
+      {/* Location banner — the biome you're standing in / looking at. */}
+      <div
+        data-testid="biome-banner"
+        style={{
+          position: 'absolute',
+          top: 50,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 100,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          padding: '6px 16px',
+          borderRadius: 999,
+          background: 'rgba(2,6,23,0.5)',
+          backdropFilter: 'blur(6px)',
+          color: '#f1f5f9',
+          fontFamily: 'sans-serif',
+          fontSize: 14,
+          fontWeight: 600,
+          letterSpacing: 0.2,
+          userSelect: 'none',
+          pointerEvents: 'none',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.35)',
+        }}
+      >
+        <span style={{ fontSize: 17 }}>{BIOME_EMOJI[camReadout.biome] ?? '📍'}</span>
+        <span>{BIOME_NAMES_VI[camReadout.biome] ?? 'Vùng đất lạ'}</span>
+      </div>
+
+      {/* First-person reticle + click-to-explore prompt (walk / fly only). */}
+      {(camMode === 'walk' || camMode === 'fly') && (
+        <>
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'none',
+              zIndex: 90,
+            }}
+          >
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                background: 'rgba(255,255,255,0.9)',
+                boxShadow: '0 0 0 1.5px rgba(0,0,0,0.55)',
+              }}
+            />
+          </div>
+          {!camReadout.locked && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(50% + 30px)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 95,
+                padding: '6px 14px',
+                borderRadius: 8,
+                background: 'rgba(2,6,23,0.62)',
+                color: '#e2e8f0',
+                fontFamily: 'sans-serif',
+                fontSize: 12,
+                pointerEvents: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              🖱 Nhấp để khám phá · Esc để thả chuột
+            </div>
+          )}
+        </>
+      )}
+
       <WorldHud
         timeOfDay={timeOfDay}
         speed={speed}
@@ -238,10 +372,13 @@ export const WorldShowcase: React.FC = () => {
         camMode={camMode}
         quality={quality}
         coords={camReadout}
+        fps={camReadout.fps}
+        muted={muted}
         onSpeed={setSpeed}
         onWeather={setWeather}
         onCamMode={setCamMode}
         onQuality={setQuality}
+        onMute={() => setMuted((m) => !m)}
         onReset={() => {
           teleportRef.current = { x: 0, z: 0 };
         }}
@@ -277,12 +414,15 @@ const WorldHud: React.FC<{
   camMode: CameraMode;
   quality: Quality;
   coords: { x: number; z: number };
+  fps: number;
+  muted: boolean;
   onSpeed: (s: number) => void;
   onWeather: (w: WeatherKind) => void;
   onCamMode: (m: CameraMode) => void;
   onQuality: (q: Quality) => void;
+  onMute: () => void;
   onReset: () => void;
-}> = ({ timeOfDay, speed, weather, camMode, quality, coords, onSpeed, onWeather, onCamMode, onQuality, onReset }) => {
+}> = ({ timeOfDay, speed, weather, camMode, quality, coords, fps, muted, onSpeed, onWeather, onCamMode, onQuality, onMute, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -337,12 +477,25 @@ const WorldHud: React.FC<{
       </div>
       {(camMode === 'fly' || camMode === 'walk') && (
         <div style={{ opacity: 0.75, fontSize: 11 }}>
-          WASD di chuyển · giữ chuột trái kéo để nhìn · Shift tăng tốc{camMode === 'fly' ? ' · E/Q lên/xuống' : ''}
+          {camMode === 'walk'
+            ? 'WASD di chuyển · chuột nhìn quanh · Shift chạy · Space nhảy'
+            : 'WASD di chuyển · chuột nhìn quanh · Shift tăng tốc · E/Space lên · Q xuống'}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.85 }}>
         <span style={{ fontVariantNumeric: 'tabular-nums' }}>📍 x {coords.x}, z {coords.z}</span>
+        <span
+          title="Frames per second"
+          style={{ fontVariantNumeric: 'tabular-nums', color: fps >= 50 ? '#86efac' : fps >= 30 ? '#fde68a' : '#fca5a5' }}
+        >
+          {fps} FPS
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.85 }}>
         <button style={HUD_BTN(false)} onClick={onReset}>⟲ Reset</button>
+        <button style={HUD_BTN(!muted)} onClick={onMute} title="Âm thanh môi trường">
+          {muted ? '🔇' : '🔊'}
+        </button>
         <span style={{ opacity: 0.7 }}>GPU</span>
         <button style={HUD_BTN(quality === 'high')} onClick={() => onQuality('high')}>Đẹp</button>
         <button style={HUD_BTN(quality === 'low')} onClick={() => onQuality('low')}>Nhẹ</button>
