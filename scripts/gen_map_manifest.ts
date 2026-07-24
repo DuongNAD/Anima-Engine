@@ -15,10 +15,11 @@
 //   • pipeline         — placeholder: this project renders a 3D mesh, not an equirectangular
 //                        panorama, so these fields await a real capture pipeline (see _note)
 //
-// What is NOT asserted (needs scene-level data the worldgen does not carry): per-entity
-// colliders (so nothing is marked solid) and a calibrated air-temperature model (so flora
-// carry no temperatureC range — only biome/medium are gated). Wire those from the live
-// scene/export pipeline to light up the collision and temperature gates.
+// Collision + temperature gates are now lit up from real game data: the 7 trunked flora
+// types are marked solid with the ACTUAL walk-mode collider radius (WorldCameraRig treeGrid,
+// r = 0.45 + floraScale*0.25), and those tree species carry °C ranges calibrated to the
+// biomes they occupy. The only field still not backed by real data is pipeline.panorama —
+// this project renders a 3D mesh, not an equirectangular panorama.
 //
 // Build + run from the repo root (offline):
 //   npx esbuild scripts/gen_map_manifest.ts --bundle --platform=node --format=cjs \
@@ -81,15 +82,25 @@ interface FloraProfile {
   submerged?: boolean;
   allowedBiomes?: string[];
   allowedMedia: Medium[];
+  /** Tall trunked flora (Pine/Round/Jungle/Cactus/Acacia/Palm/DeadTree) are REAL solid
+   * colliders in walk mode — the WorldCameraRig `treeGrid` pushes the player capsule out of
+   * their trunks with radius r = 0.45 + floraScale*0.25. Ground cover and aquatic flora are
+   * not colliders, so they are left non-solid. */
+  solid?: boolean;
+  /** Real-world plausible air-temperature range (°C), set only for trunked trees and
+   * calibrated to contain the proxy °C of every biome the species is actually placed in
+   * (see the biome temps this exporter emits). Lets the temperature gate flag a tree that
+   * lands in a climate-incompatible biome without false-positiving on correct placements. */
+  temperatureC?: { min: number; max: number };
 }
 const FLORA: Partial<Record<FloraType, FloraProfile>> = {
-  [FloraType.Pine]: { species: 'conifer_pine', medium: 'land', allowedBiomes: ['taiga', 'alpine', 'forest'], allowedMedia: ['land'] },
-  [FloraType.Round]: { species: 'broadleaf_tree', medium: 'land', allowedBiomes: ['forest', 'grassland', 'shrubland'], allowedMedia: ['land'] },
-  [FloraType.Jungle]: { species: 'tropical_tree', medium: 'land', allowedBiomes: ['jungle', 'swamp', 'mangrove'], allowedMedia: ['land'] },
-  [FloraType.Cactus]: { species: 'cactus', medium: 'land', allowedBiomes: ['desert', 'badlands'], allowedMedia: ['land'] },
-  [FloraType.Acacia]: { species: 'acacia', medium: 'land', allowedBiomes: ['savanna', 'grassland'], allowedMedia: ['land'] },
-  [FloraType.Palm]: { species: 'palm', medium: 'land', allowedBiomes: ['mangrove', 'jungle', 'beach'], allowedMedia: ['land'] },
-  [FloraType.DeadTree]: { species: 'dead_tree', medium: 'land', allowedBiomes: ['chaparral', 'desert', 'badlands', 'savanna'], allowedMedia: ['land'] },
+  [FloraType.Pine]: { species: 'conifer_pine', medium: 'land', solid: true, allowedBiomes: ['taiga', 'alpine', 'forest'], allowedMedia: ['land'], temperatureC: { min: -35, max: 25 } },
+  [FloraType.Round]: { species: 'broadleaf_tree', medium: 'land', solid: true, allowedBiomes: ['forest', 'grassland', 'shrubland'], allowedMedia: ['land'], temperatureC: { min: -15, max: 35 } },
+  [FloraType.Jungle]: { species: 'tropical_tree', medium: 'land', solid: true, allowedBiomes: ['jungle', 'swamp', 'mangrove'], allowedMedia: ['land'], temperatureC: { min: 8, max: 45 } },
+  [FloraType.Cactus]: { species: 'cactus', medium: 'land', solid: true, allowedBiomes: ['desert', 'badlands'], allowedMedia: ['land'], temperatureC: { min: -10, max: 55 } },
+  [FloraType.Acacia]: { species: 'acacia', medium: 'land', solid: true, allowedBiomes: ['savanna', 'grassland'], allowedMedia: ['land'], temperatureC: { min: 0, max: 50 } },
+  [FloraType.Palm]: { species: 'palm', medium: 'land', solid: true, allowedBiomes: ['mangrove', 'jungle', 'beach'], allowedMedia: ['land'], temperatureC: { min: 8, max: 45 } },
+  [FloraType.DeadTree]: { species: 'dead_tree', medium: 'land', solid: true, allowedBiomes: ['chaparral', 'desert', 'badlands', 'savanna'], allowedMedia: ['land'], temperatureC: { min: -10, max: 50 } },
   [FloraType.Bush]: { species: 'shrub', medium: 'land', allowedMedia: ['land'] },
   [FloraType.Reed]: { species: 'reed', medium: 'land', allowedMedia: ['land', 'freshwater'] },
   [FloraType.Tuft]: { species: 'grass_tuft', medium: 'land', allowedMedia: ['land'] },
@@ -153,7 +164,16 @@ for (let k = 0; k < world.floraCount; k += floraStride) {
   if (prof) {
     e.species = prof.species;
     e.environment = { medium: prof.medium, submerged: prof.submerged ?? false };
-    e.ecology = { ...(prof.allowedBiomes ? { allowedBiomes: prof.allowedBiomes } : {}), allowedMedia: prof.allowedMedia };
+    e.ecology = {
+      ...(prof.allowedBiomes ? { allowedBiomes: prof.allowedBiomes } : {}),
+      allowedMedia: prof.allowedMedia,
+      ...(prof.temperatureC ? { temperatureC: prof.temperatureC } : {}),
+    };
+    if (prof.solid) {
+      // Real walk-mode trunk collider: WorldCameraRig treeGrid uses r = 0.45 + floraScale*0.25.
+      e.solid = true;
+      e.collider = { enabled: true, shape: 'cylinder', radius: r2(0.45 + world.floraScale[k] * 0.25) };
+    }
   }
   entities.push(e);
   if (++emitted >= MAX_FLORA_ENTITIES) break;
@@ -257,9 +277,11 @@ const manifest = {
     worldGenVersion: world.version,
     seaLevel: r2(seaLevel),
     tempMapping: '°C = -25 + norm*60 (documented climate proxy, not physically calibrated)',
+    asserted: [
+      'colliders — the 7 trunked flora types are solid with the real walk-mode collider radius (WorldCameraRig treeGrid: r=0.45+floraScale*0.25)',
+      'temperatureC — trunked-tree species carry °C ranges calibrated to contain the proxy °C of every biome they occupy',
+    ],
     notAsserted: [
-      'colliders — worldgen carries no scene collider data, so nothing is marked solid (collision gate awaits a scene export)',
-      'flora temperatureC range — no calibrated air-temp model yet (temperature gate not exercised)',
       'pipeline.panorama — this project renders a 3D mesh, not an equirectangular panorama (placeholder values below)',
     ],
     floraSampled: emitted,
