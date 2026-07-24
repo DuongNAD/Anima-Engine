@@ -39,6 +39,8 @@ pnpm-debug.log*
 # Agent Workspace Temp files
 .agents/
 .gemini/
+# Machine-specific Claude Code MCP config (absolute server paths; regenerate per machine)
+.mcp.json
 /tests/test-results/
 /tests/playwright-report/
 
