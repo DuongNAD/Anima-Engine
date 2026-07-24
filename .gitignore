@@ -8,6 +8,10 @@ src-tauri/target/
 src-tauri/target_test/
 src-tauri/target_*/
 
+# Generated map-vision manifest — regenerate with `npm run gen:manifest`
+# (source of truth is scripts/gen_map_manifest.ts, which is tracked)
+animal-map.manifest.json
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
