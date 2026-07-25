@@ -1090,7 +1090,7 @@ bindings regenerate byte-identical, so the new CI parity step is green.
 
 ### G2 — Platform convergence — 2026-07-25 (Claude Opus 5)
 
-**Status: two of three gates pass; the third is scoped but not started.** Gate #2 (a default build excludes the optional subsystems) and
+**Status: two of three gates pass; the third is under way.** Gate #2 (a default build excludes the optional subsystems) and
 gate #3 (declared RAM ceiling) are **done and verified in both feature configurations**. Gate #1
 (one law change alters both engines) is untouched — it needs the crate extraction and workspace
 split, which is genuinely multi-session. **Rung reached: Live integrated** for the build split and
@@ -1240,7 +1240,7 @@ it. It is now retained and joined after `running` goes false. Still open: a task
 cancellation tokens across the five long-lived threads, and `lineage.rs` blocking on an async Neo4j
 call — both design changes that belong with the crate split rather than ahead of it.
 
-#### Gate #1 — not started, and deliberately so
+#### Gate #1 — started (see the addendum at the end of this entry)
 
 Scoped but not begun. The extractable seed for `anima-domain` is identifiable: `causal` and
 `intervention` are mutually dependent and reference nothing else; `sim_clock` depends only on
@@ -1257,3 +1257,54 @@ For whoever picks it up: `tokio = { features = ["full"] }` is still unconditiona
 three subsystems needing it are behind features, narrowing it is the natural first move — it will
 surface how much of the tree assumes tokio is always present, which is exactly the information the
 split needs.
+
+#### G2 addendum 2 — `anima-domain` extracted, gate #1 under way
+
+`src-tauri` is now a Cargo workspace, and `anima-domain` exists with four modules:
+
+| Module | Was | Why it qualifies |
+|---|---|---|
+| `causal` | `core::causal` | provenance; references only serde |
+| `intervention` | `core::intervention` | transactions; references only `causal` |
+| `laws` | the time constants in `core::sim_rules` | `TICK_HZ` and friends are laws, not settings |
+| `sim_clock` | `core::sim_clock` | a schedule, and it needed only those constants |
+
+That is provenance + transactions + laws + a schedule — the left-hand column of the target shape in
+this document's program rules.
+
+**The selection rule was mechanical, not aesthetic: does the module depend on an engine?** Nothing
+here touches `bevy_ecs`, `tauri` or `burn`, and those are absent from the crate's manifest, so the
+boundary is enforced by the build. `cargo tree -p anima-domain` lists serde and its two proc-macro
+deps and nothing else. (Grepping that output for `bevy|tauri|burn` matches one line — the crate's
+own path, because it lives under `src-tauri`. Worth knowing before someone treats that as a leak.)
+
+`core::causal`, `core::intervention` and `core::sim_clock` became one-line re-export shims, and
+`core::sim_rules` re-exports the time constants instead of redeclaring them. So six modules and two
+test suites compile untouched, the units table stays one document, and this is a structural change
+rather than a breaking one.
+
+One lint surfaced by the move: `CausalLedger::record` takes eight arguments, which only fires now
+that the module is linted as its own crate. Kept, with the reasoning recorded at the definition —
+every argument is a distinct field of the provenance record and callers must supply all of them, so
+a struct would move the same eight values one line up while making a half-filled record easier to
+build.
+
+```text
+cargo clippy --all-targets --features desktop    -- -D warnings  rc=0
+cargo clippy --all-targets --no-default-features -- -D warnings  rc=0
+cargo fmt --check                                                rc=0
+cargo test --features desktop   586 passed, 0 failed, 4 ignored
+```
+
+**Gate #1 is still not satisfied, and it is worth being exact about the remaining distance.** The
+gate is "one law change, expressed once, observably alters both the headless runner and the live
+world". `WorldLawSet`, `ExperimentManifest`, `ExoticEnergyField` and the snapshot schema have not
+moved, and neither engine is yet an *adapter* over the crate — they still own their own paths. What
+changed is that there is now a crate for those types to move into, with engine dependencies kept out
+by the manifest rather than by intention, and the re-export pattern proven on four modules so the
+next batch is mechanical rather than exploratory.
+
+The blocker for the next batch is known: `sim_rules`'s coordinate helpers take `MapBounds`, and
+`WorldLawSet` reaches into `ecology`. Those two types (`MapBounds`, `EcosystemBiomass`) are what the
+domain crate needs to own before the law types can follow — and `EcosystemBiomass` is exactly the
+closed-energy ledger G1.1 built the transaction API around, so it is the natural next move.
