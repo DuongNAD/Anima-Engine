@@ -630,7 +630,11 @@ impl SimulationEngine {
             let old_model_tx_inference = old_model_tx;
 
             let inference_seed = run_seed;
-            thread::spawn(move || {
+            // Retained, not dropped. This worker was spawned and its JoinHandle thrown away, so a
+            // stopped simulation left an inference thread running until the process happened to
+            // exit — and a restart spawned a second one alongside it. It is joined at the end of
+            // this thread, below, once `running` is false and the batch channel has closed.
+            let inference_handle = thread::spawn(move || {
                 // The same seed the world's copy used. These are two separately-constructed models
                 // that are meant to be the same network until the training thread starts sending
                 // updates; with unseeded initialisation they never were.
@@ -1364,6 +1368,12 @@ impl SimulationEngine {
                 if elapsed < target_frame_duration {
                     thread::sleep(target_frame_duration - elapsed);
                 }
+            }
+
+            // The inference worker watches the same `running` flag, so it is already winding down;
+            // joining makes that ordering explicit instead of leaving it to process exit.
+            if let Err(e) = inference_handle.join() {
+                eprintln!("inference thread panicked: {e:?}");
             }
 
             let mut stat = status_clone.lock().unwrap_or_else(|e| e.into_inner());
