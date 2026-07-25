@@ -57,6 +57,16 @@ jobs:
         if: ${{ !cancelled() }}
         run: cargo clippy --all-targets -- -D warnings
 
+      # G1.4 parity gate. ts-rs writes src/types/generated/ during `cargo test`; if a Rust IPC
+      # struct changed without its TypeScript being regenerated, the working tree is dirty here and
+      # this fails. That is the check that would have caught `head_directions` being a map on one
+      # side and an array on the other.
+      - name: TypeScript IPC bindings match the Rust structs
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test --lib export_bindings
+          git diff --exit-code -- ../src/types/generated
+
       - name: cargo test
         if: ${{ !cancelled() }}
         # No GPU on the runner, so burn falls back to the ndarray CPU backend (ai/model.rs).

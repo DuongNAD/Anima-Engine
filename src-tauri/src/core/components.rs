@@ -17,6 +17,8 @@ pub enum AgentClass {
     Prey,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HitEntityType {
     Food,
@@ -26,6 +28,8 @@ pub enum HitEntityType {
     None,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct RaycastTelemetry {
     pub origin: [f32; 3],
@@ -35,6 +39,8 @@ pub struct RaycastTelemetry {
     pub agent_id: u32,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct CombatEvent {
     pub predator_id: u32,
@@ -43,6 +49,12 @@ pub struct CombatEvent {
     pub energy_transferred: f32,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+// ts-rs does not read serde's rename_all, so it is repeated here. If these two ever disagree the
+// generated TypeScript stops matching the wire format, which is the exact failure G1.4 exists to
+// prevent — keep them in step.
+#[ts(rename_all = "lowercase")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentType {
@@ -125,6 +137,8 @@ pub struct Tree {
     pub seed_spread_radius: f32,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct EnvironmentalElement {
     #[serde(rename = "type")]
@@ -135,6 +149,8 @@ pub struct EnvironmentalElement {
     pub resources: f32, // Maps to current water / current fruit
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct EnvironmentalState {
     pub elements: Vec<EnvironmentalElement>,

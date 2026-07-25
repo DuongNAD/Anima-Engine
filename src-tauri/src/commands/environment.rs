@@ -35,6 +35,8 @@ impl TerrainMapState {
 /// Live snapshot of the closed ecosystem for the dashboard: the three energy compartments of
 /// the conserved biomass ledger (which should sum ~constant), the population split, and the
 /// biodiversity indices. Published once per tick by the simulation thread.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct EcosystemState {
     pub detritus: f64,

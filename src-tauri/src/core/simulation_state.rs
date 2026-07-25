@@ -17,6 +17,8 @@ pub struct AgentState {
     pub energy: f32,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default)]
 pub struct SegmentState {
     pub agent_id: u32,
@@ -40,6 +42,8 @@ pub struct SegmentState {
     pub agent_type: Option<crate::core::ecs::AgentType>,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, Clone, Debug)]
 pub struct SimulationTickPayload {
     pub segments: Vec<SegmentState>,
@@ -47,18 +51,29 @@ pub struct SimulationTickPayload {
     pub head_directions: std::collections::HashMap<u32, [f32; 3]>,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct SimulationStatus {
     pub running: bool,
+    /// Crosses the Tauri bridge as a JSON number, not a bigint: serde_json emits `u64` as a bare
+    /// number and JS parses it into a `number`. ts-rs would map `u64` to `bigint`, which is what
+    /// the type would be if this were a `BigInt`-aware transport — it is not. Precision is
+    /// therefore bounded by 2^53, which a tick counter will not reach in any real run.
+    #[ts(type = "number")]
     pub tick_count: u64,
     pub avg_tick_time_ms: f64,
     pub fps: f64,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct ChronicleEvent {
     pub id: String,
     pub event_type: String, // "Drought" | "TemperatureSpike" | "PredatorWave" | "Abundance"
+    /// Milliseconds since the unix epoch, as a JSON number — see `SimulationStatus::tick_count`.
+    #[ts(type = "number")]
     pub timestamp: u64,
     pub title: String,
     pub description: String,

@@ -2,6 +2,8 @@ use crate::evolution::lineage::LineageTracker;
 use crate::AppState;
 use tauri::State;
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct EvolutionSettings {
     pub mutation_rate: f64,
@@ -9,12 +11,16 @@ pub struct EvolutionSettings {
     pub grid_resolution: u32,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct EliteIndividualState {
     pub fitness: f64,
     pub features: Vec<f64>,
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct MapElitesGridState {
     pub grid: std::collections::HashMap<String, EliteIndividualState>,

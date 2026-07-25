@@ -234,6 +234,8 @@ pub fn agent_read_pheromone_system(
     }
 }
 
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
 pub struct PheromoneGridState {
     pub grid: Vec<f32>,
