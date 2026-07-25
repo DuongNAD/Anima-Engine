@@ -76,17 +76,72 @@
 //! Energy is pooled either way, so individual variation in reserves does not survive: everyone comes
 //! back at the cohort mean. Exact in total, lossy per individual.
 //!
-//! ## Dormant cohorts are suspended, not simulated
+//! # Time passes where nobody is looking
 //!
-//! `WORLD_DESIGN.md` §7 calls for cohorts to run aggregate ecology while dormant — logistic growth,
-//! Holling grazing, density-dependent mortality. **This module does not do that yet.** A dormant
-//! cohort is frozen: its energy and count do not change until something re-hydrates it.
+//! [`dormant_cohort_ecology_system`] runs one tick of ecology for every cohort: metabolism, and
+//! grazing for the herbivores among them. Without it a dormant region would be a freezer and an
+//! observer's route through the world would decide which populations age.
 //!
-//! That is a real artifact and worth naming plainly: **time does not pass where nobody is looking.**
-//! It is deferred rather than rushed because the two halves fail differently. Conservation here is
-//! exact and provable; an aggregate ecology is a second model of the same system, and if it were
-//! landed in the same commit a drifting residual would have two suspects instead of one. The
-//! dynamics belong on a substrate whose conservation is already proven — which is what this is.
+//! The governing constraint is not "model the ecology well" — it is **do not become a second,
+//! different ecology**, because any divergence between the two models is the observer's attention
+//! leaking into the biology. Two consequences, both load-bearing:
+//!
+//! - **Metabolism is measured, not modelled.** A cohort burns the rate its members were *observed*
+//!   burning while they were live bodies, taken from `FeatureTracker`. A modelled maintenance-only
+//!   rate would have been the obvious thing to write and would have made sleeping cheaper than being
+//!   watched, so unobserved regions would quietly support larger populations.
+//! - **No mortality.** A live agent at zero energy is not despawned — `update_agent_evaluation_system`
+//!   simply stops counting it. So a starving cohort bottoms out at zero and keeps its members.
+//!   Density-dependent death would look like richer ecology and would in fact be the observer
+//!   choosing who dies.
+//!
+//! What is genuinely coarser, and one asymmetry that is genuinely still open:
+//!
+//! - A dormant herd is not resolved to a position inside its chunk, so it grazes the chunk's cells
+//!   in proportion to what each holds rather than choosing among them. The giving-up-density
+//!   dispersal that live herbivores show has no aggregate counterpart.
+//! - **There is no aggregate predation.** In the live world `combat_system` moves EU from prey to
+//!   predator and sheds the rest to detritus at the Lindeman efficiency, so a live food chain leaks
+//!   energy downward. A dormant cohort pools predator and prey reserves into one number, so that
+//!   transfer is a no-op and the Lindeman loss never happens — a chunk holding both classes
+//!   conserves energy slightly *better* asleep than awake. The direction is known and the magnitude
+//!   is bounded by the predation rate; it is left open rather than filled with an invented encounter
+//!   model, because a wrong encounter rate would be a worse observer-dependence than the one it fixed.
+//!   Cohorts of a single trophic class — the common case — are unaffected.
+//!
+//! ## The trap that aggregation sets
+//!
+//! Worth stating separately, because it ran perfectly, returned finite numbers and was wrong — the
+//! failure mode `ADR-0003`'s hard rules describe.
+//!
+//! The obvious way to aggregate grazing is to hand [`herbivore_intake`](crate::core::ecology::herbivore_intake)
+//! the chunk's **summed** standing resource and the cohort's summed appetite. It type-checks, it
+//! conserves energy exactly, and every conservation test passes. But Holling Type II saturates in
+//! the *density* it is given: a sum over sixty-odd cells sits far deeper into saturation than any
+//! single cell a live agent stands on, so a dormant herd feeds better than a watched one. Left in,
+//! unobserved regions would quietly support larger populations — the observer's attention as an
+//! ecological variable, arriving through arithmetic rather than through a design decision.
+//!
+//! The functional response is per capita, so it is applied per capita: each dormant individual
+//! grazes as though standing on an **average cell** of its chunk, and only then is it multiplied by
+//! the herbivore count. `sleeping_is_not_cheaper_than_being_watched` is what caught it, and is what
+//! holds it.
+//!
+//! # Not yet persisted — the one hard precondition
+//!
+//! [`SavedSimulationState`](crate::core::simulation_state::SavedSimulationState) is careful about
+//! closed energy: it carries the detritus/plants/animals scalars, every resource-field cell and the
+//! RNG's draw position, precisely so a save/load boundary neither creates nor destroys EU. It does
+//! **not** carry [`DormantCohorts`].
+//!
+//! So saving a run with anything asleep silently deletes that population and its energy: the dormant
+//! individuals are not in `agents`, their EU is in no scalar, and the reloaded world simply has less
+//! of it. Nothing detects this, because a fresh baseline locks on the first census after the load.
+//!
+//! **Therefore: do not enable dormancy on a run that saves, until the cohorts are in the snapshot
+//! envelope.** That is safe today only because nothing inserts the resource — the tier is off in
+//! every shipped path, and the UI focus that would switch it on does not exist yet. Whoever wires
+//! that focus up owns this line.
 //!
 //! # Default is off
 //!
@@ -166,15 +221,44 @@ impl ArchivedIndividual {
     }
 }
 
+/// What one individual contributes to, and takes back from, a cohort's pooled ecology.
+///
+/// Pooled rather than kept per individual — that is the whole point of the tier — so everything
+/// here is a quantity that sums meaningfully across a population.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct DormantVitals {
+    /// Reserve, in EU. The conserved quantity.
+    pub energy: f64,
+    /// Hydration. Not conserved, so it is pooled without ceremony.
+    pub hydration: f64,
+    /// The individual's satiation ceiling (`HomeostaticState::energy_target`). Summed, it is the
+    /// cohort's appetite: what it would eat up to if food allowed.
+    pub energy_cap: f64,
+    /// EU the individual was burning per tick when it went to sleep. See
+    /// [`Cohort::respire`] for why this is measured off the live run rather than modelled afresh.
+    pub burn_per_tick: f64,
+    /// Only herbivores graze, matching `herbivore_grazing_system`'s `With<Prey>` filter.
+    pub is_prey: bool,
+}
+
 /// The dormant population of one chunk.
+///
+/// Every field is a **sum** over members, not a mean, so absorbing and releasing an individual is
+/// an exact addition and subtraction rather than a re-derived average.
 #[derive(Clone, Debug, Default)]
 pub struct Cohort {
     /// How many dormant individuals the chunk holds.
     pub count: u32,
+    /// How many of them are herbivores.
+    pub prey_count: u32,
     /// Their total energy, in EU. Authoritative — this is animal energy that the census must see.
     pub energy: f64,
     /// Their total hydration. Not a conserved quantity, so it is pooled without ceremony.
     pub hydration: f64,
+    /// Sum of members' satiation ceilings. The cohort stops eating here.
+    pub energy_cap: f64,
+    /// Sum of members' per-tick metabolic burn, in EU/tick.
+    pub burn_rate: f64,
     /// How many individuals have been absorbed since the cohort last emptied. The reservoir
     /// sampler's denominator.
     seen: u64,
@@ -193,6 +277,41 @@ impl Cohort {
         } else {
             self.energy / self.count as f64
         }
+    }
+
+    /// Burn one tick of metabolism, returning the EU to hand to detritus.
+    ///
+    /// The rate is not modelled — it is the rate the members were **measured** burning while they
+    /// were still live bodies, summed. That is deliberate, and it is the single most important
+    /// choice in the aggregate model. A dormant animal is asleep to the renderer, not to its own
+    /// biology: if it were charged maintenance only, dormancy would be metabolically cheaper than
+    /// being watched, unobserved regions would quietly support larger populations, and the
+    /// observer's attention would be an ecological variable. Charging what they were actually
+    /// paying keeps the two models on the same footing.
+    ///
+    /// Floors at zero and **never kills**. `update_agent_evaluation_system` shows a live agent at
+    /// zero energy simply stops accumulating — it is not despawned — so a dormant one must not be
+    /// either. Adding starvation mortality here would be a dynamic the live world does not have,
+    /// which is the same observer-dependence in a different disguise.
+    pub fn respire(&mut self) -> f64 {
+        if self.count == 0 || self.burn_rate <= 0.0 || self.energy <= 0.0 {
+            return 0.0;
+        }
+        let burned = self.burn_rate.min(self.energy);
+        self.energy -= burned;
+        burned
+    }
+
+    /// How much this cohort's herbivores would eat this tick if the field could supply it.
+    ///
+    /// Appetite is the shortfall against the members' summed satiation ceilings, scaled to the
+    /// herbivore share — predators do not graze, exactly as in the live system.
+    pub fn grazing_appetite(&self) -> f64 {
+        if self.prey_count == 0 || self.count == 0 {
+            return 0.0;
+        }
+        let hunger = (self.energy_cap - self.energy).max(0.0);
+        hunger * self.prey_count as f64 / self.count as f64
     }
 
     /// Genomes currently archived.
@@ -228,6 +347,8 @@ pub struct DormantCohorts {
     dehydrated: u64,
     rehydrated: u64,
     genomes_dropped: u64,
+    /// EU grazed out of the field that no cohort had room for, awaiting transfer to detritus.
+    spilled: f64,
 }
 
 impl DormantCohorts {
@@ -251,6 +372,7 @@ impl DormantCohorts {
             dehydrated: 0,
             rehydrated: 0,
             genomes_dropped: 0,
+            spilled: 0.0,
         }
     }
 
@@ -350,8 +472,7 @@ impl DormantCohorts {
         &mut self,
         x: f32,
         z: f32,
-        energy: f64,
-        hydration: f64,
+        vitals: DormantVitals,
         individual: ArchivedIndividual,
     ) -> bool {
         let Some(idx) = self.chunk_index(x, z) else {
@@ -378,8 +499,13 @@ impl DormantCohorts {
 
         let chunk = &mut self.chunks[idx];
         chunk.count += 1;
-        chunk.energy += energy;
-        chunk.hydration += hydration;
+        if vitals.is_prey {
+            chunk.prey_count += 1;
+        }
+        chunk.energy += vitals.energy;
+        chunk.hydration += vitals.hydration;
+        chunk.energy_cap += vitals.energy_cap;
+        chunk.burn_rate += vitals.burn_per_tick;
         chunk.seen += 1;
 
         if chunk.archive.len() < cap {
@@ -401,7 +527,7 @@ impl DormantCohorts {
     /// **removed**, so a cohort at or below [`Self::archive_cap`] round-trips its genomes exactly;
     /// a larger one is sampled with replacement, and the individuals that come back are clones drawn
     /// from the survivors of the reservoir.
-    pub fn release(&mut self, index: usize) -> Option<(ArchivedIndividual, f64, f64)> {
+    pub fn release(&mut self, index: usize) -> Option<(ArchivedIndividual, DormantVitals)> {
         let pick = {
             let chunk = self.chunks.get(index)?;
             if chunk.count == 0 || chunk.archive.is_empty() {
@@ -423,11 +549,21 @@ impl DormantCohorts {
         // always, and on the tick where rounding puts `mean` a hair above `energy` it would hand
         // out EU the cohort did not have — a one-way creation, which is precisely the shape of the
         // drift `step_regrowth_gated_strided` was rewritten to kill. What is given is what is taken.
-        let share_energy = chunk.mean_energy().min(chunk.energy.max(0.0));
-        let share_hydration = if chunk.count == 0 {
-            0.0
-        } else {
-            (chunk.hydration / chunk.count as f64).min(chunk.hydration.max(0.0))
+        let n = chunk.count as f64;
+        let share = |total: f64| (total / n).min(total.max(0.0));
+        let vitals = DormantVitals {
+            energy: share(chunk.energy),
+            hydration: share(chunk.hydration),
+            energy_cap: share(chunk.energy_cap),
+            burn_per_tick: share(chunk.burn_rate),
+            // Whether *this* individual grazes is its own archived trait, not a share of the pool.
+            is_prey: matches!(
+                pick.map_or_else(
+                    || chunk.archive.first().map(|a| a.class),
+                    |i| chunk.archive.get(i).map(|a| a.class),
+                ),
+                Some(AgentClass::Prey)
+            ),
         };
 
         let individual = match pick {
@@ -436,16 +572,24 @@ impl DormantCohorts {
         };
 
         chunk.count -= 1;
-        chunk.energy -= share_energy;
-        chunk.hydration -= share_hydration;
+        if vitals.is_prey {
+            chunk.prey_count = chunk.prey_count.saturating_sub(1);
+        }
+        chunk.energy -= vitals.energy;
+        chunk.hydration -= vitals.hydration;
+        chunk.energy_cap -= vitals.energy_cap;
+        chunk.burn_rate -= vitals.burn_per_tick;
         if chunk.count == 0 {
             // Rounding can leave a sliver behind. Reset `seen` so the next dormancy episode starts a
             // fresh reservoir rather than inheriting a denominator that would starve it of samples.
             chunk.seen = 0;
+            chunk.prey_count = 0;
+            chunk.energy_cap = 0.0;
+            chunk.burn_rate = 0.0;
             chunk.archive.clear();
         }
         self.rehydrated += 1;
-        Some((individual, share_energy, share_hydration))
+        Some((individual, vitals))
     }
 
     /// Energy left in an emptied cohort, to be returned to detritus by the caller.
@@ -463,6 +607,148 @@ impl DormantCohorts {
             }
         }
         drained
+    }
+
+    /// Burn one tick of metabolism across every cohort. Returns the total EU to hand to detritus.
+    ///
+    /// Allocation-free: a scan over the pre-allocated chunk vector, arithmetic only.
+    pub fn respire_all(&mut self) -> f64 {
+        let mut respired = 0.0;
+        for chunk in self.chunks.iter_mut() {
+            respired += chunk.respire();
+        }
+        respired
+    }
+
+    /// Graze every cohort's herbivores against the resource field beneath their chunk.
+    ///
+    /// Returns the EU actually moved out of the field and into the cohorts, which the caller
+    /// subtracts from `plants` — the same contract `herbivore_grazing_system` honours, and for the
+    /// same reason: `plants` is carried incrementally, so whatever leaves the field has to be
+    /// reported rather than re-summed.
+    ///
+    /// Conservation is by measurement on both sides. The amount removed is read back from the
+    /// stored `f32` cells in `f64`, and exactly that is credited to the cohort — so the rounding in
+    /// `cell -= taken` cannot leak, which is the lesson `herbivore_grazing_system` already carries.
+    ///
+    /// Allocation-free: it walks the cells of occupied chunks in place.
+    pub fn graze_all(&mut self, field: &mut crate::core::ecology::ResourceField, dt: f32) -> f64 {
+        if dt <= 0.0 || field.width == 0 || field.height == 0 {
+            return 0.0;
+        }
+        let mut grazed_total = 0.0f64;
+        for i in 0..self.chunks.len() {
+            let appetite = self.chunks[i].grazing_appetite();
+            if appetite <= 0.0 {
+                continue;
+            }
+            let prey = self.chunks[i].prey_count as f64;
+            let Some((c0, c1, r0, r1)) = self.chunk_cells(i, field) else {
+                continue;
+            };
+
+            let mut standing = 0.0f64;
+            for r in r0..=r1 {
+                for c in c0..=c1 {
+                    standing += field.r[r * field.width + c].max(0.0) as f64;
+                }
+            }
+            if standing <= 0.0 {
+                continue;
+            }
+
+            // The functional response is applied **per capita, against the mean cell density**, and
+            // only then multiplied up. Feeding `herbivore_intake` the chunk's summed resource was
+            // the obvious way to write this and is wrong in a way that runs perfectly: Holling
+            // Type II saturates in the *density* it is given, so a sum over sixty-odd cells sits far
+            // deeper into saturation than any cell a live agent ever stands on, and a dormant herd
+            // eats better than a watched one. That is observer-dependent ecology, which is the one
+            // thing this whole tier is arranged against — and it is what
+            // `sleeping_is_not_cheaper_than_being_watched` caught.
+            //
+            // Each dormant individual therefore grazes as though standing on an average cell of its
+            // chunk, which reproduces the live per-agent response exactly when the field is uniform.
+            let cells = ((r1 - r0 + 1) * (c1 - c0 + 1)) as f64;
+            let mean_density = standing / cells;
+            let per_capita_bite = crate::core::ecology::herbivore_intake(
+                mean_density as f32,
+                (appetite / prey) as f32,
+                // The same ceiling `herbivore_grazing_system` gives one agent.
+                8.0 * dt,
+            ) as f64;
+            let bite = (per_capita_bite * prey).min(standing);
+            if bite <= 0.0 {
+                continue;
+            }
+
+            // Take it proportionally to what each cell holds, so a depleted cell is not driven
+            // negative and a rich one carries the load.
+            let fraction = (bite / standing).min(1.0) as f32;
+            let mut removed = 0.0f64;
+            for r in r0..=r1 {
+                for c in c0..=c1 {
+                    let idx = r * field.width + c;
+                    let before = field.r[idx];
+                    if before <= 0.0 {
+                        continue;
+                    }
+                    field.r[idx] = (before - before * fraction).max(0.0);
+                    removed += (before - field.r[idx]) as f64;
+                }
+            }
+            // Credit exactly what the field lost, and never past the cohort's satiation ceiling.
+            let headroom = (self.chunks[i].energy_cap - self.chunks[i].energy).max(0.0);
+            let landed = removed.min(headroom);
+            self.chunks[i].energy += landed;
+            grazed_total += removed;
+            // Anything the cohort could not hold has still left the field, so it becomes detritus
+            // rather than evaporating. Reported through the same return value the caller splits.
+            self.spilled += removed - landed;
+        }
+        grazed_total
+    }
+
+    /// EU that left the resource field but no cohort could hold, awaiting transfer to detritus.
+    ///
+    /// Taken rather than read, so it cannot be banked twice.
+    pub fn take_spilled(&mut self) -> f64 {
+        std::mem::take(&mut self.spilled)
+    }
+
+    /// Inclusive `(col0, col1, row0, row1)` of the resource-field cells under a chunk.
+    ///
+    /// Derived from the chunk's world rectangle through the field's own bounds rather than by
+    /// assuming the two grids divide evenly, so a resource field built over different extents still
+    /// maps correctly instead of silently grazing the wrong cells.
+    fn chunk_cells(
+        &self,
+        index: usize,
+        field: &crate::core::ecology::ResourceField,
+    ) -> Option<(usize, usize, usize, usize)> {
+        if field.max_x <= field.min_x || field.max_z <= field.min_z {
+            return None;
+        }
+        let row = index / self.grid;
+        let col = index % self.grid;
+        let w = (self.max_x - self.min_x) / self.grid as f32;
+        let h = (self.max_z - self.min_z) / self.grid as f32;
+        let x0 = self.min_x + col as f32 * w;
+        let z0 = self.min_z + row as f32 * h;
+
+        let to_col = |x: f32| {
+            let u = ((x - field.min_x) / (field.max_x - field.min_x)).clamp(0.0, 1.0);
+            ((u * field.width as f32) as usize).min(field.width - 1)
+        };
+        let to_row = |z: f32| {
+            let v = ((z - field.min_z) / (field.max_z - field.min_z)).clamp(0.0, 1.0);
+            ((v * field.height as f32) as usize).min(field.height - 1)
+        };
+        // Nudge inside the far edge so a chunk does not claim the first cell of its neighbour.
+        let c0 = to_col(x0);
+        let c1 = to_col(x0 + w - w * 1e-3).max(c0);
+        let r0 = to_row(z0);
+        let r1 = to_row(z0 + h - h * 1e-3).max(r0);
+        Some((c0, c1, r0, r1))
     }
 
     /// Chunk indices holding dormant individuals whose centre is within `radius` of `center`.
@@ -541,9 +827,38 @@ impl bevy_ecs::system::Command for DehydrateAgentCommand {
             .map(|g| g.0)
             .unwrap_or(0);
 
-        let (energy, hydration) = match world.get::<crate::ai::hrrl::HomeostaticState>(self.root) {
-            Some(h) => (h.energy.max(0.0) as f64, h.hydration.max(0.0) as f64),
-            None => (0.0, 0.0),
+        // The metabolic rate the cohort will burn on this individual's behalf is *measured*, not
+        // modelled: `FeatureTracker` accumulates `total_cost * dt` every tick, so the mean per tick
+        // is what the individual was actually paying — locomotion, cognition and all — up to the
+        // moment it fell asleep. See `Cohort::respire` for why a modelled maintenance-only rate
+        // would have made dormancy metabolically cheaper than being watched.
+        //
+        // `apply_staggered_evolution_system` resets the tracker at each epoch boundary, so this is
+        // the mean over the current epoch rather than the whole life — which is the more useful of
+        // the two, being closer to what the individual is doing now.
+        //
+        // An agent with no tracker history contributes nothing. Every live spawn path attaches one
+        // (genesis, `SpawnGenotypeCommand`, restore), so in practice this is the freshly-reset case,
+        // and it under-charges rather than over-charges: it cannot manufacture a metabolic cost the
+        // live world never levied.
+        let burn_per_tick = world
+            .get::<crate::core::components::FeatureTracker>(self.root)
+            .filter(|t| t.tick_count > 0)
+            .map(|t| (t.cumulative_energy_decay as f64 / t.tick_count as f64).max(0.0))
+            .unwrap_or(0.0);
+
+        let vitals = match world.get::<crate::ai::hrrl::HomeostaticState>(self.root) {
+            Some(h) => DormantVitals {
+                energy: h.energy.max(0.0) as f64,
+                hydration: h.hydration.max(0.0) as f64,
+                energy_cap: h.energy_target.max(0.0) as f64,
+                burn_per_tick,
+                is_prey: class == AgentClass::Prey,
+            },
+            None => DormantVitals {
+                is_prey: class == AgentClass::Prey,
+                ..Default::default()
+            },
         };
 
         let absorbed = world
@@ -552,8 +867,7 @@ impl bevy_ecs::system::Command for DehydrateAgentCommand {
                 cohorts.absorb(
                     pos.x,
                     pos.z,
-                    energy,
-                    hydration,
+                    vitals,
                     ArchivedIndividual {
                         morphology: genotype,
                         brain,
@@ -602,12 +916,12 @@ pub struct RehydrateCommand {
 
 impl bevy_ecs::system::Command for RehydrateCommand {
     fn apply(self, world: &mut World) {
-        let (center, individual, energy, hydration, orphaned) = {
+        let (center, individual, vitals, orphaned) = {
             let Some(mut cohorts) = world.get_resource_mut::<DormantCohorts>() else {
                 return;
             };
             let center = cohorts.chunk_center(self.chunk);
-            let Some((individual, energy, hydration)) = cohorts.release(self.chunk) else {
+            let Some((individual, vitals)) = cohorts.release(self.chunk) else {
                 return;
             };
             // A cohort that just emptied can be left holding a rounding sliver. It is EU, and the
@@ -615,8 +929,9 @@ impl bevy_ecs::system::Command for RehydrateCommand {
             // by a hair permanently — small, but a one-way ratchet, and invisible because the
             // residual would still look like noise. Drained at the one moment a cohort can empty.
             let orphaned = cohorts.drain_orphaned_energy();
-            (center, individual, energy, hydration, orphaned)
+            (center, individual, vitals, orphaned)
         };
+        let (energy, hydration) = (vitals.energy, vitals.hydration);
 
         let entity = crate::evolution::genotype::decode_genotype(
             world,
@@ -743,6 +1058,62 @@ pub fn dehydrate_cold_agents_system(
     }
 }
 
+/// Run one tick of ecology for the dormant cohorts: they burn metabolism, and their herbivores
+/// graze the resource field under their chunks.
+///
+/// This is the aggregate half of the tier — the second model of the same ecology — and it exists so
+/// that **time passes where nobody is looking**. Without it a dormant region is a freezer, and an
+/// observer's route through the world decides which populations age.
+///
+/// Two rules govern every line of it, and both are about *not* being a second ecology:
+///
+/// - **No dynamic the live world does not have.** A live agent at zero energy is not despawned
+///   (`update_agent_evaluation_system` merely stops counting it), so a dormant cohort does not
+///   starve to death either. Adding aggregate mortality would look like richer ecology and would in
+///   fact be the observer deciding who dies.
+/// - **The same rates, not similar ones.** Metabolism is what the members were measured burning
+///   while live; grazing uses `herbivore_intake` and the same `8.0 * dt` bite ceiling as
+///   `herbivore_grazing_system`, summed over the cohort's herbivores.
+///
+/// Ordered exactly where its live counterparts sit: after live grazing, before regrowth, so both
+/// consumers draw on the same standing field before it grows back. Inert without a
+/// [`DormantCohorts`] resource. Allocation-free.
+pub fn dormant_cohort_ecology_system(
+    cohorts: Option<ResMut<DormantCohorts>>,
+    field: Option<ResMut<crate::core::ecology::ResourceField>>,
+    biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    time_step: Res<crate::ai::cpg::TimeStep>,
+) {
+    let Some(mut cohorts) = cohorts else {
+        return;
+    };
+    if cohorts.total_dormant() == 0 {
+        return;
+    }
+
+    // Metabolism first, so a cohort's appetite this tick reflects what it has just burned — the
+    // same order the live schedule runs metabolic decay and grazing in.
+    let respired = cohorts.respire_all();
+
+    let grazed = match field {
+        Some(mut field) => cohorts.graze_all(&mut field, time_step.0),
+        None => 0.0,
+    };
+    let spilled = cohorts.take_spilled();
+
+    if let Some(mut pool) = biomass {
+        // Respired energy leaves the animals and becomes free detritus, exactly as
+        // `metabolic_decay_system` does for live bodies.
+        pool.detritus += respired;
+        // Grazing moves EU out of the standing field. `plants` is carried incrementally rather than
+        // re-summed each tick, so what left has to be reported here or the mirror drifts from the
+        // store it describes.
+        pool.plants -= grazed;
+        // Whatever left the field but no cohort had room for is not lost — it is detritus.
+        pool.detritus += spilled;
+    }
+}
+
 /// Bring dormant individuals back where the focus has returned.
 ///
 /// Wakes at most [`DormantCohorts::rehydrate_per_tick`] individuals per tick — see
@@ -797,6 +1168,18 @@ mod tests {
         DormantCohorts::new(42, -100.0, -100.0, 100.0, 100.0)
     }
 
+    /// A prey's vitals: `energy` and `hydration`, satiated at twice its reserve and burning nothing,
+    /// so the cohort arithmetic under test is not perturbed by metabolism it did not ask for.
+    fn vitals(energy: f64, hydration: f64) -> DormantVitals {
+        DormantVitals {
+            energy,
+            hydration,
+            energy_cap: energy * 2.0,
+            burn_per_tick: 0.0,
+            is_prey: true,
+        }
+    }
+
     fn individual(tag: u32) -> ArchivedIndividual {
         ArchivedIndividual {
             morphology: MorphologyGenotype::default(),
@@ -824,7 +1207,7 @@ mod tests {
         // The caller destroys the agent only if this returns true. Returning true for a position
         // with no chunk would delete an agent whose energy went nowhere.
         let mut c = cohorts();
-        assert!(!c.absorb(500.0, 0.0, 25.0, 10.0, individual(1)));
+        assert!(!c.absorb(500.0, 0.0, vitals(25.0, 10.0), individual(1)));
         assert_eq!(c.total_energy(), 0.0);
         assert_eq!(c.total_dormant(), 0);
     }
@@ -833,14 +1216,15 @@ mod tests {
     fn energy_survives_a_round_trip_exactly() {
         let mut c = cohorts();
         for i in 0..5 {
-            assert!(c.absorb(0.0, 0.0, 20.0, 5.0, individual(i)));
+            assert!(c.absorb(0.0, 0.0, vitals(20.0, 5.0), individual(i)));
         }
         assert_eq!(c.total_energy(), 100.0);
 
         let mut returned = 0.0;
         while c.total_dormant() > 0 {
             let idx = c.chunk_index(0.0, 0.0).unwrap();
-            let (_, e, _) = c.release(idx).unwrap();
+            let (_, v) = c.release(idx).unwrap();
+            let e = v.energy;
             returned += e;
         }
         returned += c.drain_orphaned_energy();
@@ -857,17 +1241,18 @@ mod tests {
         // survive is the sum.
         let mut c = cohorts();
         for (i, e) in [1.0, 50.0, 3.0, 7.5].into_iter().enumerate() {
-            assert!(c.absorb(0.0, 0.0, e, 1.0, individual(i as u32)));
+            assert!(c.absorb(0.0, 0.0, vitals(e, 1.0), individual(i as u32)));
         }
         let idx = c.chunk_index(0.0, 0.0).unwrap();
-        let (_, first, _) = c.release(idx).unwrap();
+        let (_, v) = c.release(idx).unwrap();
+        let first = v.energy;
         assert!(
             (first - 61.5 / 4.0).abs() < 1e-12,
             "released {first}, expected the mean"
         );
         let mut total = first;
         while c.total_dormant() > 0 {
-            total += c.release(idx).unwrap().1;
+            total += c.release(idx).unwrap().1.energy;
         }
         total += c.drain_orphaned_energy();
         assert!((total - 61.5).abs() < 1e-12, "total was {total}");
@@ -878,7 +1263,7 @@ mod tests {
         // The lossless regime: at or below the cap, dormancy loses nothing genetic.
         let mut c = cohorts();
         for i in 0..ARCHIVE_CAP as u32 {
-            assert!(c.absorb(0.0, 0.0, 10.0, 1.0, individual(i)));
+            assert!(c.absorb(0.0, 0.0, vitals(10.0, 1.0), individual(i)));
         }
         assert_eq!(c.genomes_dropped(), 0);
 
@@ -896,7 +1281,7 @@ mod tests {
         let mut c = cohorts();
         let n = ARCHIVE_CAP as u32 + 50;
         for i in 0..n {
-            assert!(c.absorb(0.0, 0.0, 10.0, 1.0, individual(i)));
+            assert!(c.absorb(0.0, 0.0, vitals(10.0, 1.0), individual(i)));
         }
         assert_eq!(
             c.genomes_dropped(),
@@ -920,7 +1305,7 @@ mod tests {
         // nothing biologically. Reservoir sampling must keep some early arrivals.
         let mut c = cohorts();
         for i in 0..500u32 {
-            assert!(c.absorb(0.0, 0.0, 1.0, 1.0, individual(i)));
+            assert!(c.absorb(0.0, 0.0, vitals(1.0, 1.0), individual(i)));
         }
         let chunk = c.cohort(c.chunk_index(0.0, 0.0).unwrap()).unwrap();
         let kept: Vec<u32> = chunk.archive.iter().map(|a| a.generation).collect();
@@ -936,7 +1321,7 @@ mod tests {
         let archive_of = |seed: u64| {
             let mut c = DormantCohorts::new(seed, -100.0, -100.0, 100.0, 100.0);
             for i in 0..200u32 {
-                c.absorb(0.0, 0.0, 1.0, 1.0, individual(i));
+                c.absorb(0.0, 0.0, vitals(1.0, 1.0), individual(i));
             }
             let idx = c.chunk_index(0.0, 0.0).unwrap();
             c.cohort(idx)
@@ -967,8 +1352,8 @@ mod tests {
     #[test]
     fn wakeable_finds_only_occupied_chunks_in_range() {
         let mut c = cohorts();
-        assert!(c.absorb(-90.0, -90.0, 10.0, 1.0, individual(1)));
-        assert!(c.absorb(90.0, 90.0, 10.0, 1.0, individual(2)));
+        assert!(c.absorb(-90.0, -90.0, vitals(10.0, 1.0), individual(1)));
+        assert!(c.absorb(90.0, 90.0, vitals(10.0, 1.0), individual(2)));
         let mut out = Vec::new();
 
         c.wakeable_into(Vec3::new(-90.0, 0.0, -90.0), 20.0, &mut out);
@@ -989,16 +1374,217 @@ mod tests {
         let mut c = cohorts();
         let idx = c.chunk_index(0.0, 0.0).unwrap();
         for i in 0..100u32 {
-            c.absorb(0.0, 0.0, 1.0, 1.0, individual(i));
+            c.absorb(0.0, 0.0, vitals(1.0, 1.0), individual(i));
         }
         while c.total_dormant() > 0 {
             c.release(idx).unwrap();
         }
         c.drain_orphaned_energy();
 
-        c.absorb(0.0, 0.0, 1.0, 1.0, individual(777));
+        c.absorb(0.0, 0.0, vitals(1.0, 1.0), individual(777));
         let chunk = c.cohort(idx).unwrap();
         assert_eq!(chunk.archived(), 1);
         assert_eq!(chunk.archive[0].generation, 777);
+    } // ---- Aggregate ecology ---------------------------------------------------------------
+
+    fn burning(energy: f64, burn: f64, is_prey: bool) -> DormantVitals {
+        DormantVitals {
+            energy,
+            hydration: 0.0,
+            energy_cap: energy * 2.0,
+            burn_per_tick: burn,
+            is_prey,
+        }
+    }
+
+    fn uniform_field(side: usize, per_cell: f32) -> crate::core::ecology::ResourceField {
+        let n = side * side;
+        crate::core::ecology::ResourceField {
+            width: side,
+            height: side,
+            min_x: -100.0,
+            min_z: -100.0,
+            max_x: 100.0,
+            max_z: 100.0,
+            r: vec![per_cell; n],
+            r_max: vec![per_cell; n],
+            growth_rate: 0.0,
+        }
+    }
+
+    #[test]
+    fn respiration_burns_the_measured_rate_and_hands_it_over_exactly() {
+        let mut c = cohorts();
+        c.absorb(0.0, 0.0, burning(100.0, 0.25, true), individual(1));
+        c.absorb(0.0, 0.0, burning(100.0, 0.75, true), individual(2));
+
+        // The cohort burns the SUM of what its members were measured burning while alive.
+        let burned = c.respire_all();
+        assert!((burned - 1.0).abs() < 1e-12, "burned {burned}");
+        assert!((c.total_energy() - 199.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_starving_cohort_bottoms_out_at_zero_and_keeps_its_members() {
+        // Matching the live world, where `update_agent_evaluation_system` stops counting an agent at
+        // zero energy but does not despawn it. Aggregate mortality would be a dynamic the live model
+        // does not have — the observer deciding who dies.
+        let mut c = cohorts();
+        c.absorb(0.0, 0.0, burning(1.0, 10.0, true), individual(1));
+
+        let first = c.respire_all();
+        assert!(
+            (first - 1.0).abs() < 1e-12,
+            "it can only burn what it holds"
+        );
+        assert_eq!(c.total_energy(), 0.0);
+        assert_eq!(c.total_dormant(), 1, "starvation must not kill");
+
+        assert_eq!(c.respire_all(), 0.0, "an empty pool burns nothing further");
+        assert_eq!(c.total_dormant(), 1);
+    }
+
+    #[test]
+    fn a_cohort_with_no_measured_burn_rate_costs_nothing() {
+        // A freshly spawned agent has no `FeatureTracker` history, so it contributes no rate. That
+        // under-charges rather than over-charges, which is the safe direction: it cannot manufacture
+        // a metabolic cost the live world never levied.
+        let mut c = cohorts();
+        c.absorb(0.0, 0.0, burning(50.0, 0.0, true), individual(1));
+        assert_eq!(c.respire_all(), 0.0);
+        assert_eq!(c.total_energy(), 50.0);
+    }
+
+    #[test]
+    fn only_herbivores_contribute_appetite() {
+        let mut c = cohorts();
+        let idx = c.chunk_index(0.0, 0.0).unwrap();
+        c.absorb(0.0, 0.0, burning(10.0, 0.0, false), individual(1));
+        c.absorb(0.0, 0.0, burning(10.0, 0.0, false), individual(2));
+        assert_eq!(
+            c.cohort(idx).unwrap().grazing_appetite(),
+            0.0,
+            "predators do not graze, matching herbivore_grazing_system's With<Prey> filter"
+        );
+
+        c.absorb(0.0, 0.0, burning(10.0, 0.0, true), individual(3));
+        // Hunger is (cap 60 - energy 30) = 30, scaled by the herbivore share of 1 in 3.
+        let appetite = c.cohort(idx).unwrap().grazing_appetite();
+        assert!((appetite - 10.0).abs() < 1e-12, "appetite was {appetite}");
+    }
+
+    #[test]
+    fn a_satiated_cohort_does_not_graze() {
+        let mut c = cohorts();
+        let idx = c.chunk_index(0.0, 0.0).unwrap();
+        c.absorb(
+            0.0,
+            0.0,
+            DormantVitals {
+                energy: 40.0,
+                hydration: 0.0,
+                energy_cap: 40.0,
+                burn_per_tick: 0.0,
+                is_prey: true,
+            },
+            individual(1),
+        );
+        assert_eq!(c.cohort(idx).unwrap().grazing_appetite(), 0.0);
+    }
+
+    #[test]
+    fn grazing_takes_from_the_field_exactly_what_the_cohort_gains() {
+        let mut c = cohorts();
+        c.absorb(0.0, 0.0, burning(10.0, 0.0, true), individual(1));
+        let mut field = uniform_field(64, 5.0);
+
+        let before_field = field.total_biomass();
+        let before_cohort = c.total_energy();
+        let grazed = c.graze_all(&mut field, 1.0 / 60.0);
+        let spilled = c.take_spilled();
+
+        assert!(grazed > 0.0, "a hungry cohort over a full field should eat");
+        let field_lost = before_field - field.total_biomass();
+        assert!(
+            (field_lost - grazed).abs() < 1e-9,
+            "the field lost {field_lost} but grazing reported {grazed}"
+        );
+        let cohort_gained = c.total_energy() - before_cohort;
+        assert!(
+            (cohort_gained + spilled - grazed).abs() < 1e-9,
+            "gained {cohort_gained} plus spilled {spilled} should equal grazed {grazed}"
+        );
+    }
+
+    #[test]
+    fn grazing_only_touches_the_cells_under_its_own_chunk() {
+        let mut c = cohorts();
+        // Put the herd in the far corner, well away from the origin.
+        c.absorb(-95.0, -95.0, burning(1.0, 0.0, true), individual(1));
+        let mut field = uniform_field(64, 5.0);
+        c.graze_all(&mut field, 1.0 / 60.0);
+
+        assert!(field.r[0] < 5.0, "the chunk's own cells should be grazed");
+        assert_eq!(
+            field.r[64 * 64 - 1],
+            5.0,
+            "a cohort must not graze the other side of the world"
+        );
+    }
+
+    #[test]
+    fn grazing_an_empty_field_takes_nothing_and_spills_nothing() {
+        let mut c = cohorts();
+        c.absorb(0.0, 0.0, burning(1.0, 0.0, true), individual(1));
+        let mut field = uniform_field(16, 0.0);
+        assert_eq!(c.graze_all(&mut field, 1.0 / 60.0), 0.0);
+        assert_eq!(c.take_spilled(), 0.0);
+        assert_eq!(c.total_energy(), 1.0);
+    }
+
+    #[test]
+    fn spilled_energy_is_banked_once_and_only_once() {
+        let mut c = cohorts();
+        assert_eq!(c.take_spilled(), 0.0);
+        c.spilled = 3.5;
+        assert_eq!(c.take_spilled(), 3.5);
+        assert_eq!(c.take_spilled(), 0.0, "banking it twice would create EU");
+    }
+
+    #[test]
+    fn releasing_hands_back_a_share_of_the_burn_rate_and_the_cap() {
+        // The pooled quantities have to leave with the individual, or a cohort that has been through
+        // a sleep/wake cycle would keep charging metabolism for members it no longer holds — a slow
+        // energy sink that would look exactly like ordinary attrition.
+        let mut c = cohorts();
+        let idx = c.chunk_index(0.0, 0.0).unwrap();
+        c.absorb(0.0, 0.0, burning(10.0, 0.5, true), individual(1));
+        c.absorb(0.0, 0.0, burning(10.0, 0.5, true), individual(2));
+
+        let (_, v) = c.release(idx).unwrap();
+        assert!((v.burn_per_tick - 0.5).abs() < 1e-12);
+        assert!((v.energy_cap - 20.0).abs() < 1e-12);
+        assert!(v.is_prey);
+
+        let chunk = c.cohort(idx).unwrap();
+        assert!(
+            (chunk.burn_rate - 0.5).abs() < 1e-12,
+            "the cohort keeps exactly one member's rate"
+        );
+        assert_eq!(chunk.prey_count, 1);
+    }
+
+    #[test]
+    fn an_emptied_cohort_carries_no_leftover_rate_into_its_next_episode() {
+        let mut c = cohorts();
+        let idx = c.chunk_index(0.0, 0.0).unwrap();
+        c.absorb(0.0, 0.0, burning(10.0, 0.5, true), individual(1));
+        c.release(idx).unwrap();
+
+        let chunk = c.cohort(idx).unwrap();
+        assert_eq!(chunk.burn_rate, 0.0);
+        assert_eq!(chunk.energy_cap, 0.0);
+        assert_eq!(chunk.prey_count, 0);
+        assert_eq!(c.respire_all(), 0.0, "an empty grid burns nothing");
     }
 }

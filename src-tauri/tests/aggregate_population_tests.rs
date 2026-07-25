@@ -19,15 +19,18 @@ use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::agent_systems::{AgentGenotype, AgentLineageId};
 use anima_engine_lib::core::aggregate_population::{
-    dehydrate_cold_agents_system, rehydrate_wakeable_chunks_system, DormancyWatch, DormantCohorts,
-    ARCHIVE_CAP,
+    dehydrate_cold_agents_system, dormant_cohort_ecology_system, rehydrate_wakeable_chunks_system,
+    DormancyWatch, DormantCohorts, ARCHIVE_CAP,
 };
 use anima_engine_lib::core::components::AgentBrain;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
-use anima_engine_lib::core::ecs::{init_world, Agent, MapBounds, Prey};
+use anima_engine_lib::core::ecs::{init_world, Agent, FeatureTracker, MapBounds, Prey};
 use anima_engine_lib::core::energy_ledger::closed_total_eu;
-use anima_engine_lib::core::environmental_systems::ecosystem_census_system;
+use anima_engine_lib::core::environmental_systems::{
+    ecosystem_census_system, herbivore_grazing_system, resource_field_regrowth_system,
+};
 use anima_engine_lib::core::simulation_lod::{LodBands, LodFocus};
+use anima_engine_lib::core::world_systems::metabolic_decay_system;
 use anima_engine_lib::evolution::brain_genotype::{BrainGenotype, EVOLVED_ARCH};
 use anima_engine_lib::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
@@ -134,6 +137,10 @@ fn build_spaced_world(n: usize, spawn: glam::Vec3, spacing: f32, brains: bool) -
             Prey,
             AgentGenotype(genotype.clone()),
             AgentLineageId(format!("lin-{i}")),
+            // Every live spawn path attaches one (genesis, `SpawnGenotypeCommand`, restore), and
+            // dormancy reads its per-tick metabolic burn off it. A fixture without one produces
+            // cohorts that never respire, which is not how a real agent goes to sleep.
+            FeatureTracker::default(),
         ));
         if brains {
             let brain = BrainGenotype::random(EVOLVED_ARCH, &mut rng).unwrap();
@@ -640,5 +647,268 @@ fn the_wake_budget_counts_individuals_not_chunks() {
         live_agents(&mut world),
         n,
         "a budget of 4/tick should have woken all 12 in three ticks"
+    );
+}
+// ---- Aggregate ecology: time passes where nobody is looking ------------------------------
+
+/// A schedule that also runs the dormant cohorts' own ecology, in the order the engine uses:
+/// dormant metabolism and grazing sit between live grazing and regrowth, so both consumers draw on
+/// the same standing field before it grows back.
+fn ecology_schedule() -> Schedule {
+    let mut schedule = Schedule::default();
+    schedule.add_systems(
+        (
+            metabolic_decay_system,
+            herbivore_grazing_system,
+            dehydrate_cold_agents_system,
+            rehydrate_wakeable_chunks_system,
+            dormant_cohort_ecology_system,
+            resource_field_regrowth_system,
+            ecosystem_census_system,
+        )
+            .chain(),
+    );
+    schedule
+}
+
+/// Strip every cell of the resource field, so nothing can graze.
+///
+/// `init_world` always builds a field from the terrain, so a test that wants a starving population
+/// has to empty it rather than simply not adding one.
+fn starve_the_field(world: &mut World) {
+    let mut field = world.resource_mut::<ResourceField>();
+    field.r.iter_mut().for_each(|c| *c = 0.0);
+    field.r_max.iter_mut().for_each(|c| *c = 0.0);
+    field.growth_rate = 0.0;
+}
+
+/// A world with a real resource field under it, so grazing has something to eat.
+fn with_field(world: &mut World) {
+    let bounds = *world.resource::<MapBounds>();
+    let side = 64;
+    world.insert_resource(ResourceField {
+        width: side,
+        height: side,
+        min_x: bounds.min.x,
+        min_z: bounds.min.z,
+        max_x: bounds.max.x,
+        max_z: bounds.max.z,
+        r: vec![4.0; side * side],
+        r_max: vec![4.0; side * side],
+        growth_rate: 0.0,
+    });
+}
+
+#[test]
+fn a_dormant_cohort_respires_into_detritus_and_conserves_the_total() {
+    let mut world = build_world(4, glam::Vec3::ZERO, false);
+    with_field(&mut world);
+    enable_dormancy(&mut world, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let mut schedule = ecology_schedule();
+    // Live ticks first, so `FeatureTracker` accumulates the burn rate dormancy will inherit.
+    run(&mut world, &mut schedule, 30);
+
+    let before = closed_total(&mut world);
+    let dormant_energy_before = world.resource::<DormantCohorts>().total_energy();
+    assert!(
+        dormant_energy_before > 0.0,
+        "the herd should be asleep by now"
+    );
+    let detritus_before = world.resource::<EcosystemBiomass>().detritus;
+
+    run(&mut world, &mut schedule, 60);
+
+    let dormant_after = world.resource::<DormantCohorts>().total_energy();
+    assert!(
+        dormant_after < dormant_energy_before,
+        "a dormant cohort must keep burning: {dormant_energy_before} to {dormant_after}"
+    );
+    assert!(
+        world.resource::<EcosystemBiomass>().detritus > detritus_before,
+        "what it burned has to arrive in detritus"
+    );
+    let after = closed_total(&mut world);
+    assert!(
+        (after - before).abs() < TOL,
+        "dormant metabolism moved closed EU by {}",
+        after - before
+    );
+}
+
+#[test]
+fn dormant_herbivores_graze_and_the_field_loses_exactly_what_they_gain() {
+    let mut world = build_world(4, glam::Vec3::ZERO, false);
+    with_field(&mut world);
+    enable_dormancy(&mut world, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let mut schedule = ecology_schedule();
+    run(&mut world, &mut schedule, 20);
+    assert_eq!(live_agents(&mut world), 0, "the herd should be asleep");
+
+    // Starve the cohort so it is definitely hungry, then let it eat.
+    let field_before = world.resource::<ResourceField>().total_biomass();
+    let before = closed_total(&mut world);
+    run(&mut world, &mut schedule, 120);
+
+    let field_after = world.resource::<ResourceField>().total_biomass();
+    assert!(
+        field_after < field_before,
+        "dormant herbivores should have grazed the field: {field_before} to {field_after}"
+    );
+    let after = closed_total(&mut world);
+    assert!(
+        (after - before).abs() < TOL,
+        "dormant grazing moved closed EU by {}",
+        after - before
+    );
+}
+
+#[test]
+fn the_plants_mirror_still_tracks_the_field_after_dormant_grazing() {
+    // `plants` is carried incrementally rather than re-summed each tick, so every consumer has to
+    // report what it took. A dormant grazer that ate without reporting would desynchronise the
+    // mirror from the store it describes, and the census would go on looking perfectly healthy.
+    let mut world = build_world(4, glam::Vec3::ZERO, false);
+    with_field(&mut world);
+    {
+        let standing = world.resource::<ResourceField>().total_biomass();
+        let mut pool = world.resource_mut::<EcosystemBiomass>();
+        pool.plants = standing;
+    }
+    enable_dormancy(&mut world, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let mut schedule = ecology_schedule();
+    run(&mut world, &mut schedule, 150);
+
+    let standing = world.resource::<ResourceField>().total_biomass();
+    let mirrored = world.resource::<EcosystemBiomass>().plants;
+    assert!(
+        (mirrored - standing).abs() < 1e-6,
+        "plants mirror says {mirrored}, the field holds {standing}"
+    );
+}
+
+#[test]
+fn a_starving_dormant_cohort_keeps_its_members() {
+    // The live world does not despawn an agent at zero energy, so neither may this one. Aggregate
+    // mortality would be the observer's route through the world deciding who dies.
+    let mut world = build_world(3, glam::Vec3::ZERO, false);
+    // Strip the field bare so there is nothing to graze and the cohort can only burn down.
+    // `init_world` always provides a resource field, so "no food" has to be arranged, not assumed.
+    starve_the_field(&mut world);
+    enable_dormancy(&mut world, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let mut schedule = ecology_schedule();
+    run(&mut world, &mut schedule, 30);
+    let before = closed_total(&mut world);
+    // Long enough to burn the whole reserve: three agents at ~0.026 EU/tick against 300 EU takes
+    // roughly 11,700 ticks, so this runs past the floor rather than up to it.
+    run(&mut world, &mut schedule, 15_000);
+
+    let cohorts = world.resource::<DormantCohorts>();
+    assert_eq!(
+        cohorts.total_dormant(),
+        3,
+        "starvation must not remove dormant individuals"
+    );
+    assert!(
+        cohorts.total_energy() < 1e-6,
+        "and they should have burned down to nothing: {}",
+        cohorts.total_energy()
+    );
+    let after = closed_total(&mut world);
+    assert!(
+        (after - before).abs() < TOL,
+        "burning down to zero moved closed EU by {}",
+        after - before
+    );
+}
+
+#[test]
+fn sleeping_is_not_cheaper_than_being_watched() {
+    // The artifact this whole design is arranged against. If a dormant cohort were charged a
+    // modelled maintenance-only rate, unobserved regions would quietly support larger populations
+    // and the observer's attention would become an ecological variable.
+    //
+    // Two identical worlds with the field stripped bare, so the only thing moving energy is
+    // metabolism — the quantity under comparison. One is watched throughout; the other is abandoned
+    // after the same warm-up. Their populations should burn energy at comparable rates.
+    let warmup = 60;
+    let compare = 240;
+
+    let mut watched = build_world(4, glam::Vec3::ZERO, false);
+    let mut sleeping = build_world(4, glam::Vec3::ZERO, false);
+    starve_the_field(&mut watched);
+    starve_the_field(&mut sleeping);
+    // Watched: dormancy enabled but the focus sits on the herd, so nothing ever sleeps.
+    enable_dormancy(&mut watched, 2, Some(glam::Vec3::ZERO));
+    watched.insert_resource(LodBands {
+        hot_radius: 500.0,
+        warm_radius: 600.0,
+        warm_interval: 1,
+    });
+    enable_dormancy(&mut sleeping, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let mut s1 = ecology_schedule();
+    let mut s2 = ecology_schedule();
+    run(&mut watched, &mut s1, warmup);
+    run(&mut sleeping, &mut s2, warmup);
+    assert_eq!(live_agents(&mut watched), 4, "the watched herd stays awake");
+    assert_eq!(live_agents(&mut sleeping), 0, "the other one sleeps");
+
+    let animal_energy = |w: &mut World| -> f64 {
+        let dormant = w
+            .get_resource::<DormantCohorts>()
+            .map_or(0.0, |c| c.total_energy());
+        let mut q = w.query_filtered::<&HomeostaticState, With<Agent>>();
+        let live: f64 = q.iter(w).map(|h| h.energy.max(0.0) as f64).sum();
+        live + dormant
+    };
+
+    let watched_start = animal_energy(&mut watched);
+    let sleeping_start = animal_energy(&mut sleeping);
+    run(&mut watched, &mut s1, compare);
+    run(&mut sleeping, &mut s2, compare);
+
+    let watched_burn = watched_start - animal_energy(&mut watched);
+    let sleeping_burn = sleeping_start - animal_energy(&mut sleeping);
+    assert!(
+        watched_burn > 0.0 && sleeping_burn > 0.0,
+        "both should have burned something: watched {watched_burn}, sleeping {sleeping_burn}"
+    );
+    // The aggregate rate is a lifetime mean rather than the instantaneous cost, so exact equality
+    // is not the claim. What must not happen is dormancy being *systematically* cheap.
+    let ratio = sleeping_burn / watched_burn;
+    assert!(
+        (0.5..=2.0).contains(&ratio),
+        "sleeping burned {sleeping_burn} against the watched herd's {watched_burn} (ratio {ratio:.3}) \
+         — dormancy has become a different metabolism"
+    );
+}
+
+#[test]
+fn the_ecology_step_is_inert_without_the_cohorts_resource() {
+    let mut world = build_world(3, glam::Vec3::ZERO, false);
+    with_field(&mut world);
+    world.insert_resource(LodBands {
+        hot_radius: 5.0,
+        warm_radius: 10.0,
+        warm_interval: 4,
+    });
+    world.insert_resource(LodFocus::at(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    let before = closed_total(&mut world);
+    let mut schedule = ecology_schedule();
+    run(&mut world, &mut schedule, 60);
+
+    assert_eq!(live_agents(&mut world), 3);
+    // Live metabolism still runs, so EU moves between compartments — but the total is untouched and
+    // nothing dormant exists to move it.
+    let after = closed_total(&mut world);
+    assert!(
+        (after - before).abs() < TOL,
+        "closed EU moved by {}",
+        after - before
     );
 }
