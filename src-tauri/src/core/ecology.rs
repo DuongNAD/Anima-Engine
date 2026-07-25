@@ -324,38 +324,88 @@ impl ResourceField {
         }
     }
 
-    /// Biomass-gated regrowth (the Bibites closed-system rule): plants can only grow by
-    /// drawing free energy from the detritus `budget`. Returns the biomass actually consumed
-    /// (which the caller subtracts from the detritus pool), so total energy is conserved —
-    /// plants cannot appear from nothing. Two in-place passes, allocation-free.
+    /// How many ticks it takes to sweep the whole resource field once.
+    ///
+    /// Raising the world to 256² quadrupled the cell count, and the regrowth path was costing four
+    /// full passes per tick (two inside the gated step, two more for the `total_biomass()` sandwich
+    /// that measured what actually grew). Measured at ~4.2 ms/tick — a quarter of a 60 FPS frame
+    /// budget for a background field.
+    ///
+    /// Striding turns that into two passes over a quarter of the cells, and the exact accounting
+    /// now happens inside the loop so the sandwich is gone entirely: 4·N cell-visits become 0.5·N.
+    /// The cost of resolution is paid back without giving the resolution up.
+    pub const REGROWTH_STRIDE: usize = 4;
+
+    /// Biomass-gated regrowth over every cell. See [`Self::step_regrowth_gated_strided`].
     pub fn step_regrowth_gated(&mut self, dt: f32, fertility: f32, budget: f64) -> f64 {
+        self.step_regrowth_gated_strided(dt, fertility, budget, 0, 1)
+    }
+
+    /// Biomass-gated regrowth (the Bibites closed-system rule): plants can only grow by drawing
+    /// free energy from the detritus `budget`. Returns the biomass **actually** added, which the
+    /// caller subtracts from detritus, so total energy is conserved — plants cannot appear from
+    /// nothing. Two in-place passes over the visited cells, allocation-free.
+    ///
+    /// ## Exact accounting, measured in the loop
+    ///
+    /// The returned figure is `new_cell - old_cell` read back from the stored `f32`, not the
+    /// `delta * scale` that was asked for. Those differ: `cell += applied` rounds, and over a long
+    /// run the difference is a one-way drift rather than noise — it showed up as a real EU sink in
+    /// the G1.1 conservation gate. Measuring inside the loop gets the same exactness a
+    /// `total_biomass()` sandwich around the call would, without the two extra full passes.
+    ///
+    /// ## Striding
+    ///
+    /// Only cells where `i % stride == phase` are visited, and the caller is expected to pass
+    /// `dt * stride` so each cell still advances at the same rate — it is simply updated once every
+    /// `stride` ticks instead of every tick. Regrowth is a slow logistic process, so one step of
+    /// `n·dt` and `n` steps of `dt` agree to first order; the error is `O((n·dt)²)` against a rate
+    /// of ~0.02/s, i.e. far below the conservation tolerance.
+    ///
+    /// One behavioural note: the detritus `budget` offered is the whole pool, and with a stride only
+    /// a fraction of the cells compete for it on any given tick. That changes which cells win when
+    /// detritus is scarce, but not how much is drawn in total — conservation is unaffected.
+    pub fn step_regrowth_gated_strided(
+        &mut self,
+        dt: f32,
+        fertility: f32,
+        budget: f64,
+        phase: usize,
+        stride: usize,
+    ) -> f64 {
+        let stride = stride.max(1);
+        let phase = if stride == 1 { 0 } else { phase % stride };
         let g = self.growth_rate * dt * fertility.max(0.0);
         if g <= 0.0 || budget <= 0.0 {
             return 0.0;
         }
-        // Pass 1: total desired (positive) growth this step.
+        // Pass 1: total desired (positive) growth this step, over the visited cells.
         let mut desired = 0.0f64;
-        for i in 0..self.r.len() {
+        let mut i = phase;
+        while i < self.r.len() {
             let delta = logistic_regrowth(self.r[i], g, self.r_max[i]) - self.r[i];
             if delta > 0.0 {
                 desired += delta as f64;
             }
+            i += stride;
         }
         if desired <= 0.0 {
             return 0.0;
         }
-        // Pass 2: apply, scaled down if the detritus budget can't cover the full demand.
+        // Pass 2: apply, scaled down if the detritus budget cannot cover the full demand.
         let scale = (budget / desired).min(1.0) as f32;
-        let mut consumed = 0.0f64;
-        for i in 0..self.r.len() {
+        let mut grown = 0.0f64;
+        let mut i = phase;
+        while i < self.r.len() {
             let delta = logistic_regrowth(self.r[i], g, self.r_max[i]) - self.r[i];
             if delta > 0.0 {
-                let applied = delta * scale;
-                self.r[i] += applied;
-                consumed += applied as f64;
+                let before = self.r[i];
+                self.r[i] += delta * scale;
+                grown += (self.r[i] - before) as f64;
             }
+            i += stride;
         }
-        consumed
+        grown
     }
 
     /// Cell index for a world (x, z), or None if outside the grid.

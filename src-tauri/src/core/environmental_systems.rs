@@ -37,29 +37,48 @@ pub fn resource_field_regrowth_system(
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     season: Option<ResMut<crate::core::ecology::SeasonClock>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut phase: Local<usize>,
 ) {
     let Some(mut field) = field else {
         return;
     };
     // Seasonal fertility: summer boosts regrowth, winter suppresses it (defaults to 1.0 if no
-    // season clock is present).
+    // season clock is present). The clock still advances every tick — only the *field* is strided,
+    // so the season runs at real time regardless of which cells are visited.
     let fertility = match season {
         Some(mut clock) => clock.tick(time_step.0),
         None => 1.0,
     };
+    let stride = crate::core::ecology::ResourceField::REGROWTH_STRIDE;
+    let this_phase = *phase;
+    *phase = (*phase + 1) % stride.max(1);
+
     match biomass {
         Some(mut pool) => {
-            // Debit detritus by what the field ACTUALLY grew, not by what regrowth intended to
-            // apply. `step_regrowth_gated` accumulates its return value from the `f32` deltas it
-            // asked for, but `cell += delta` rounds, so the two differ — and over a long run that
-            // difference is a one-way drift rather than noise. Measuring the field on both sides
-            // keeps plants and detritus exactly complementary.
-            let before = field.total_biomass();
-            let _intended = field.step_regrowth_gated(time_step.0, fertility, pool.detritus);
-            let after = field.total_biomass();
-            pool.detritus -= after - before;
-            pool.plants = after;
+            // A quarter of the cells each tick, each advanced by `stride * dt` so a cell still grows
+            // at the same rate — it is simply visited once per sweep instead of every tick.
+            //
+            // The returned figure is what the field ACTUALLY gained, measured cell by cell inside
+            // the loop from the stored `f32`. That is what previously required a `total_biomass()`
+            // call on each side of the step: `cell += delta` rounds, so the amount asked for and the
+            // amount stored differ, and over a long run that difference is a one-way drift rather
+            // than noise. Doing it in the loop is both exact and two full passes cheaper.
+            let grown = field.step_regrowth_gated_strided(
+                time_step.0 * stride as f32,
+                fertility,
+                pool.detritus,
+                this_phase,
+                stride,
+            );
+            // Plants and detritus stay exactly complementary: what one gains the other loses.
+            // `plants` is now carried incrementally rather than re-summed each tick — grazing
+            // subtracts its own exactly-measured removals. `plants_tracks_the_field_it_describes`
+            // pins the running total against `total_biomass()` so drift cannot creep in unseen.
+            pool.detritus -= grown;
+            pool.plants += grown;
         }
+        // No ledger to conserve against, so no striding either: the un-gated path is only used by
+        // harnesses that want the whole field advanced in one call.
         None => field.step_regrowth(time_step.0, fertility),
     }
 }
@@ -84,6 +103,7 @@ pub fn herbivore_grazing_system(
     let max_bite = 8.0 * time_step.0; // per-tick grazing ceiling
                                       // Rounding remainders across every grazing agent this tick, banked once at the end.
     let mut spill = 0.0f64;
+    let mut grazed = 0.0f64;
     for (pos, mut homeo) in prey_query.iter_mut() {
         let cap = homeo.energy_target;
         let hunger = (cap - homeo.energy).max(0.0);
@@ -105,10 +125,15 @@ pub fn herbivore_grazing_system(
             let landed =
                 crate::core::energy_ledger::credit_reserve(&mut homeo.energy, removed as f32, cap);
             spill += removed - landed;
+            grazed += removed;
         }
     }
-    if spill != 0.0 {
-        if let Some(ref mut pool) = biomass {
+    if let Some(ref mut pool) = biomass {
+        // `plants` is carried incrementally now that regrowth no longer re-sums the field every
+        // tick, so grazing has to report what it took. `removed` is already measured off the stored
+        // cell value, so this is the same exact figure the reserve was credited from.
+        pool.plants -= grazed;
+        if spill != 0.0 {
             pool.detritus += spill;
         }
     }
