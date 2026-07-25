@@ -27,6 +27,7 @@ pub mod simulation_loop;
 pub mod simulation_state;
 pub mod snapshot;
 pub mod terrain;
+pub mod training;
 pub mod world_artifact;
 pub mod world_systems;
 

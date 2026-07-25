@@ -15,9 +15,20 @@
 //! and clearing it keeps steady state at zero allocations, which `emit_zero_alloc_tests` pins.
 
 use crate::ai::pheromone::PheromoneGridState;
-use crate::core::components::EnvironmentalState;
+use crate::core::components::{CombatEvent, EnvironmentalState, RaycastTelemetry};
 use crate::core::simulation_state::{SegmentState, SimulationTickPayload};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::thread;
 use std::time::{Duration, Instant};
+use tauri::Emitter;
+
+/// How often the emit thread pushes a frame to the frontend. ~30 Hz; the simulation itself ticks at
+/// 60, and the webview cannot usefully repaint faster than this.
+pub const EMIT_INTERVAL: Duration = Duration::from_millis(33);
+
+/// Rate limit for `pheromone-update` specifically — see [`PheromoneEmitGate`] for why it needs one.
+pub const PHEROMONE_EMIT_INTERVAL: Duration = Duration::from_millis(100);
 
 /// Starting capacity for the reused per-frame buffers. Both grow if a run exceeds them and then stay
 /// grown; the point is that steady state allocates nothing, not that these are hard limits.
@@ -165,6 +176,96 @@ impl PheromoneEmitGate {
         self.last_emit_at = now;
         true
     }
+}
+
+/// The shared state the emit thread reads from. Grouped into a struct because the loop takes six
+/// handles and a positional argument list of six `Arc<RwLock<_>>` is one transposition away from
+/// publishing raycasts as combat events.
+pub struct EmitChannels {
+    pub running: Arc<AtomicBool>,
+    pub agent_states: Arc<RwLock<Vec<SegmentState>>>,
+    pub pheromone_grid: Arc<RwLock<PheromoneGridState>>,
+    pub active_raycasts: Arc<RwLock<Vec<RaycastTelemetry>>>,
+    pub combat_events: Arc<RwLock<Vec<CombatEvent>>>,
+    pub environmental_state: Arc<RwLock<EnvironmentalState>>,
+}
+
+/// Spawn the thread that publishes simulation state to the frontend over Tauri events.
+///
+/// `app_handle` is `None` in headless runs and in every test that constructs an engine without a
+/// Tauri app; the loop still runs and still observes `running`, it just has nowhere to send.
+pub fn spawn_emit_thread<R: tauri::Runtime>(
+    channels: EmitChannels,
+    app_handle: Option<tauri::AppHandle<R>>,
+) -> thread::JoinHandle<()> {
+    thread::spawn(move || {
+        let EmitChannels {
+            running,
+            agent_states,
+            pheromone_grid,
+            active_raycasts,
+            combat_events,
+            environmental_state,
+        } = channels;
+
+        // One payload, reused for the life of the thread — see `refresh_tick_payload`.
+        let mut tick_payload = new_tick_payload();
+        let mut local_pheromone = PheromoneGridState {
+            grid: vec![0.0; crate::ai::pheromone::CELL_COUNT],
+            width: crate::ai::pheromone::GRID_SIZE as u32,
+            height: crate::ai::pheromone::GRID_SIZE as u32,
+        };
+        let mut pheromone_gate = PheromoneEmitGate::new(
+            crate::ai::pheromone::CELL_COUNT,
+            PHEROMONE_EMIT_INTERVAL,
+            Instant::now(),
+        );
+        let mut local_raycasts = Vec::with_capacity(1000);
+        let mut local_combat = Vec::with_capacity(100);
+
+        while running.load(Ordering::SeqCst) {
+            thread::sleep(EMIT_INTERVAL);
+
+            let Some(ref handle) = app_handle else {
+                continue;
+            };
+
+            {
+                let states = agent_states.read().unwrap_or_else(|e| e.into_inner());
+                let env = environmental_state
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner());
+                refresh_tick_payload(&mut tick_payload, &states, &env);
+            }
+            let _ = handle.emit("simulation-tick", &tick_payload);
+
+            let should_emit_pheromone = {
+                let shared = pheromone_grid.read().unwrap_or_else(|e| e.into_inner());
+                pheromone_gate.poll(&shared, &mut local_pheromone, Instant::now())
+            };
+            if should_emit_pheromone {
+                let _ = handle.emit("pheromone-update", &local_pheromone);
+            }
+
+            local_raycasts.clear();
+            {
+                let shared = active_raycasts.read().unwrap_or_else(|e| e.into_inner());
+                local_raycasts.extend_from_slice(&shared);
+            }
+            let _ = handle.emit("raycast-update", &local_raycasts);
+
+            // Swapped out rather than copied: the sim thread appends to the shared Vec, and taking
+            // it wholesale leaves an empty buffer behind for the next tick to fill.
+            local_combat.clear();
+            {
+                let mut shared = combat_events.write().unwrap_or_else(|e| e.into_inner());
+                std::mem::swap(&mut *shared, &mut local_combat);
+            }
+            for event in &local_combat {
+                let _ = handle.emit("combat-event", event);
+            }
+        }
+    })
 }
 
 #[cfg(test)]

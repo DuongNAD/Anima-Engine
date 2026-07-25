@@ -18,7 +18,7 @@
 //!   which is the half that fails under an inverted objective.
 
 use anima_engine_lib::ai::model::ActorCriticModel;
-use anima_engine_lib::core::simulation_loop::{a2c_loss, DISCOUNT};
+use anima_engine_lib::core::training::{a2c_loss, DISCOUNT};
 use burn::backend::Autodiff;
 use burn::module::AutodiffModule;
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};

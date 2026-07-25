@@ -4,21 +4,19 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use burn::backend::Autodiff;
-use burn::module::AutodiffModule;
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Data, Shape, Tensor};
-
 use crate::ai::cpg::update_cpg_system;
 use crate::ai::hrrl::{Transition, TransitionSender};
-use crate::ai::model::{hrrl_learning_system, ActorCriticModel, BrainInferenceBuffer, BrainModel};
+use crate::ai::model::{hrrl_learning_system, BrainInferenceBuffer, BrainModel};
 use crate::core::agent_systems::*;
 use crate::core::ecs::*;
 #[allow(unused_imports)]
 use crate::core::networking_systems::*;
 use crate::core::resources::EvolutionQueue;
 use crate::core::simulation_state::*;
+// The shared learner — its objective, loop and backend threads — lives in `core::training`.
+#[cfg(feature = "ml-wgpu")]
+use crate::core::training::spawn_wgpu_learner;
+use crate::core::training::{spawn_ndarray_learner, ModelUpdate};
 use crate::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
@@ -27,65 +25,6 @@ use crate::physics::{
     integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
 };
 use tauri::Emitter;
-
-/// How often the emit thread pushes a frame to the frontend. ~30 Hz; the simulation itself ticks at
-/// 60, and the webview cannot usefully repaint faster than this.
-const EMIT_INTERVAL: Duration = Duration::from_millis(33);
-
-/// Rate limit for `pheromone-update` specifically. It carries a 128x128 f32 field, which Tauri puts
-/// on the wire as a JSON array of ~16k numbers — roughly two orders of magnitude more bytes than
-/// every other event in this loop combined, parsed on the webview's main thread. A diffusing scalar
-/// field does not read differently at 10 Hz than at 30, so it gets its own, slower clock.
-const PHEROMONE_EMIT_INTERVAL: Duration = Duration::from_millis(100);
-
-pub enum ModelUpdate {
-    NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
-    #[cfg(feature = "ml-wgpu")]
-    Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
-}
-
-/// The four handles a learner thread needs: the running flag, the transition receiver, the model
-/// sender and the old-model receiver.
-type LearnArgs = (
-    Arc<AtomicBool>,
-    crossbeam_channel::Receiver<Transition>,
-    crossbeam_channel::Sender<ModelUpdate>,
-    crossbeam_channel::Receiver<ModelUpdate>,
-);
-
-/// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
-/// `ml-wgpu` feature is off entirely.
-fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
-    thread::spawn(move || {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        run_training_loop::<burn_ndarray::NdArray<f32>>(
-            running,
-            trans_rx,
-            model_tx,
-            old_model_rx,
-            device,
-            ModelUpdate::NdArray,
-        );
-    })
-}
-
-/// GPU learner. Only exists with the `ml-wgpu` feature; the whole wgpu/naga/ash stack goes with it.
-#[cfg(feature = "ml-wgpu")]
-fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
-    thread::spawn(move || {
-        let device = burn_wgpu::WgpuDevice::default();
-        run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
-            running,
-            trans_rx,
-            model_tx,
-            old_model_rx,
-            device,
-            ModelUpdate::Wgpu,
-        );
-    })
-}
 
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
@@ -1447,85 +1386,17 @@ impl SimulationEngine {
             stat.running = false;
         });
 
-        let running_clone_emit = Arc::clone(&self.running);
-        let agent_states_clone_emit = Arc::clone(&self.agent_states);
-        let pheromone_grid_state_emit = Arc::clone(&self.pheromone_grid_state);
-        let active_raycasts_emit = Arc::clone(&self.active_raycasts);
-        let combat_events_emit = Arc::clone(&self.combat_events);
-        let environmental_state_clone_emit = Arc::clone(&self.environmental_state);
-
-        let emit_handle = thread::spawn(move || {
-            use crate::core::emit::{new_tick_payload, refresh_tick_payload, PheromoneEmitGate};
-
-            // One payload, reused for the life of the thread. It used to be rebuilt every frame: a
-            // pre-allocated segment buffer `.clone()`d into a fresh payload — allocating the very
-            // Vec the pre-allocation existed to avoid — plus the environmental state cloned twice
-            // over and a new un-hinted `HashMap` each time. See `core::emit` for the details and the
-            // tests that pin it.
-            let mut tick_payload = new_tick_payload();
-            let mut local_pheromone_emit = crate::ai::pheromone::PheromoneGridState {
-                grid: vec![0.0; crate::ai::pheromone::CELL_COUNT],
-                width: crate::ai::pheromone::GRID_SIZE as u32,
-                height: crate::ai::pheromone::GRID_SIZE as u32,
-            };
-            let mut pheromone_gate = PheromoneEmitGate::new(
-                crate::ai::pheromone::CELL_COUNT,
-                PHEROMONE_EMIT_INTERVAL,
-                Instant::now(),
-            );
-            let mut local_raycast_emit = Vec::with_capacity(1000);
-            let mut local_combat_emit = Vec::with_capacity(100);
-
-            while running_clone_emit.load(Ordering::SeqCst) {
-                thread::sleep(EMIT_INTERVAL);
-
-                if let Some(ref handle) = app_handle_emit {
-                    {
-                        let states = agent_states_clone_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        let env = environmental_state_clone_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        refresh_tick_payload(&mut tick_payload, &states, &env);
-                    }
-                    let _ = handle.emit("simulation-tick", &tick_payload);
-
-                    // The pheromone field is the most expensive event this loop can send by a wide
-                    // margin — 128x128 f32 becomes a JSON array of ~16k numbers. The gate rate-limits
-                    // it and drops it entirely when unchanged; see `core::emit::PheromoneEmitGate`.
-                    let should_emit_pheromone = {
-                        let shared = pheromone_grid_state_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        pheromone_gate.poll(&shared, &mut local_pheromone_emit, Instant::now())
-                    };
-                    if should_emit_pheromone {
-                        let _ = handle.emit("pheromone-update", &local_pheromone_emit);
-                    }
-
-                    local_raycast_emit.clear();
-                    {
-                        let shared = active_raycasts_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        local_raycast_emit.extend_from_slice(&shared);
-                    }
-                    let _ = handle.emit("raycast-update", &local_raycast_emit);
-
-                    local_combat_emit.clear();
-                    {
-                        let mut shared = combat_events_emit
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner());
-                        std::mem::swap(&mut *shared, &mut local_combat_emit);
-                    }
-                    for event in &local_combat_emit {
-                        let _ = handle.emit("combat-event", event);
-                    }
-                }
-            }
-        });
+        let emit_handle = crate::core::emit::spawn_emit_thread(
+            crate::core::emit::EmitChannels {
+                running: Arc::clone(&self.running),
+                agent_states: Arc::clone(&self.agent_states),
+                pheromone_grid: Arc::clone(&self.pheromone_grid_state),
+                active_raycasts: Arc::clone(&self.active_raycasts),
+                combat_events: Arc::clone(&self.combat_events),
+                environmental_state: Arc::clone(&self.environmental_state),
+            },
+            app_handle_emit,
+        );
 
         let running_clone_net = Arc::clone(&self.running);
         let sharding_config_clone = Arc::clone(&self.sharding_config);
@@ -1610,145 +1481,5 @@ impl SimulationEngine {
     pub fn get_status(&self) -> SimulationStatus {
         let stat = self.status.lock().unwrap_or_else(|e| e.into_inner());
         *stat
-    }
-}
-
-/// Discount applied to the bootstrapped next-state value in the shared learner's TD target.
-pub const DISCOUNT: f32 = 0.99;
-
-/// The A2C objective for the shared model: `L = mean((a − â)²·td) + ½·mean(td²)`.
-///
-/// ### The sign
-///
-/// The actor term is advantage-weighted behavioural cloning, and its coefficient is `+td`. With a
-/// positive advantage, minimising `td·(a − â)²` shrinks `(a − â)²` and so pulls the policy **toward**
-/// the action that turned out better than expected; with a negative advantage the coefficient flips
-/// and it pushes away. This matches [`crate::evolution::brain_genotype::learn_step`], which is the
-/// per-agent implementation of the same objective.
-///
-/// This loop used to compute `(a − â)²·(−td)`, which is that objective inverted: a positive
-/// advantage made the loss *decrease* as `(a − â)²` grew, so gradient descent drove the shared policy
-/// away from actions that turned out well and toward ones that turned out badly. The network still
-/// ran and still produced finite numbers, which is why it survived. ADR-0003 recorded the
-/// discrepancy and had `learn_step` deliberately implement the correct sign rather than reproduce
-/// the defect; this brings the shared learner into line, so there is now one objective rather than
-/// two that disagree.
-///
-/// Note the trajectory of an existing shared-model run changes as a result. That is the point — the
-/// old trajectory was descending the wrong gradient.
-///
-/// Extracted from the loop body so it can be tested at all: `run_training_loop` blocks on a channel
-/// forever and owns its optimiser, so nothing about the objective was reachable from a test.
-/// `a2c_loss_direction_tests` pairs a finite-difference gradient check with a behavioural assertion,
-/// because a gradient check alone passes just as happily for an inverted objective.
-pub fn a2c_loss<B>(
-    model: &ActorCriticModel<B>,
-    states: Tensor<B, 2>,
-    next_states: Tensor<B, 2>,
-    actions: Tensor<B, 2>,
-    rewards: Tensor<B, 2>,
-    discount: f32,
-) -> Tensor<B, 1>
-where
-    B: Backend<FloatElem = f32>,
-{
-    let (actor_out, critic_out) = model.forward(states);
-    let (_, critic_out_next) = model.forward(next_states);
-
-    let target = rewards + critic_out_next.detach() * discount;
-    let td_error = target - critic_out;
-
-    let critic_diff = td_error.clone();
-    let loss_critic = (critic_diff.clone() * critic_diff).mean();
-
-    let diff = actor_out - actions;
-    // `+td`, not `−td`. See the sign discussion above.
-    let loss_actor = ((diff.clone() * diff) * td_error.detach()).mean();
-
-    loss_actor + loss_critic * 0.5
-}
-
-fn run_training_loop<B>(
-    running: Arc<AtomicBool>,
-    trans_rx: crossbeam_channel::Receiver<Transition>,
-    model_tx: crossbeam_channel::Sender<ModelUpdate>,
-    old_model_rx: crossbeam_channel::Receiver<ModelUpdate>,
-    device: B::Device,
-    to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
-) where
-    B: Backend<FloatElem = f32> + 'static,
-    B::Device: Clone + Send + Sync + 'static,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>
-        + burn::tensor::backend::AutodiffBackend<
-            Device = B::Device,
-            FloatElem = f32,
-            IntElem = B::IntElem,
-        > + 'static,
-    ActorCriticModel<Autodiff<B>>:
-        AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
-{
-    let mut train_model = ActorCriticModel::<Autodiff<B>>::new(15, 64, 4, &device);
-    let mut optim = AdamConfig::new().init();
-
-    let mut batch = Vec::new();
-    while running.load(Ordering::SeqCst) {
-        match trans_rx.recv_timeout(Duration::from_millis(10)) {
-            Ok(transition) => {
-                batch.push(transition);
-                if batch.len() >= 32 {
-                    let mut states_vec = Vec::with_capacity(32 * 15);
-                    let mut next_states_vec = Vec::with_capacity(32 * 15);
-                    let mut actions_vec = Vec::with_capacity(32 * 4);
-                    let mut rewards_vec = Vec::with_capacity(32);
-                    for t in batch.iter() {
-                        states_vec.extend_from_slice(&t.state);
-                        next_states_vec.extend_from_slice(&t.next_state);
-                        actions_vec.extend_from_slice(&t.action);
-                        rewards_vec.push(t.reward);
-                    }
-
-                    let states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(states_vec, Shape::new([32, 15])),
-                        &device,
-                    );
-                    let next_states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(next_states_vec, Shape::new([32, 15])),
-                        &device,
-                    );
-                    let actions_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(actions_vec, Shape::new([32, 4])),
-                        &device,
-                    );
-                    let rewards_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(rewards_vec, Shape::new([32, 1])),
-                        &device,
-                    );
-
-                    let loss_total = a2c_loss(
-                        &train_model,
-                        states_tensor.clone(),
-                        next_states_tensor.clone(),
-                        actions_tensor,
-                        rewards_tensor,
-                        DISCOUNT,
-                    );
-
-                    let grads = loss_total.backward();
-                    let grads_params = GradientsParams::from_grads(grads, &train_model);
-                    train_model = optim.step(1e-3, train_model, grads_params);
-
-                    let eval_model = train_model.valid();
-                    let _ = model_tx.send(to_model_update(eval_model));
-                    batch.clear();
-                }
-            }
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                break;
-            }
-        }
-        while let Ok(old_model) = old_model_rx.try_recv() {
-            drop(old_model);
-        }
     }
 }

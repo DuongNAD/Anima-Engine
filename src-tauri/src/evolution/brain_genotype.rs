@@ -382,7 +382,7 @@ impl BrainGenotype {
 /// recorded the discrepancy as outstanding.
 ///
 /// That has since been fixed: the shared objective lives in
-/// [`crate::core::simulation_loop::a2c_loss`] and carries `+td`, so there is now one objective
+/// [`crate::core::training::a2c_loss`] and carries `+td`, so there is now one objective
 /// rather than two that disagree. Shared-model runs from before the fix followed a different
 /// trajectory, which was the point of fixing it.
 ///
