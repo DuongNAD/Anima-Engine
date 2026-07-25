@@ -4,6 +4,7 @@ pub mod components;
 pub mod dynamic_fields;
 pub mod ecology;
 pub mod ecs;
+pub mod energy_ledger;
 pub mod engine;
 pub mod environmental_systems;
 pub mod evolution_pathway;

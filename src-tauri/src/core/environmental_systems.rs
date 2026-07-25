@@ -1,4 +1,5 @@
 use crate::core::components::*;
+use crate::core::energy_ledger::{Compartment, EnergyEvent, EnergyLedger};
 use crate::core::resources::*;
 use bevy_ecs::prelude::*;
 
@@ -48,9 +49,16 @@ pub fn resource_field_regrowth_system(
     };
     match biomass {
         Some(mut pool) => {
-            let consumed = field.step_regrowth_gated(time_step.0, fertility, pool.detritus);
-            pool.detritus -= consumed;
-            pool.plants = field.total_biomass();
+            // Debit detritus by what the field ACTUALLY grew, not by what regrowth intended to
+            // apply. `step_regrowth_gated` accumulates its return value from the `f32` deltas it
+            // asked for, but `cell += delta` rounds, so the two differ — and over a long run that
+            // difference is a one-way drift rather than noise. Measuring the field on both sides
+            // keeps plants and detritus exactly complementary.
+            let before = field.total_biomass();
+            let _intended = field.step_regrowth_gated(time_step.0, fertility, pool.detritus);
+            let after = field.total_biomass();
+            pool.detritus -= after - before;
+            pool.plants = after;
         }
         None => field.step_regrowth(time_step.0, fertility),
     }
@@ -68,20 +76,40 @@ pub fn herbivore_grazing_system(
     >,
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
 ) {
     let Some(mut field) = field else {
         return;
     };
     let max_bite = 8.0 * time_step.0; // per-tick grazing ceiling
+                                      // Rounding remainders across every grazing agent this tick, banked once at the end.
+    let mut spill = 0.0f64;
     for (pos, mut homeo) in prey_query.iter_mut() {
-        let hunger = (homeo.energy_target - homeo.energy).max(0.0);
+        let cap = homeo.energy_target;
+        let hunger = (cap - homeo.energy).max(0.0);
         if hunger <= 0.0 {
             continue;
         }
         if let Some(i) = field.cell_index(pos.0.x, pos.0.z) {
             let bite = crate::core::ecology::herbivore_intake(field.r[i], hunger, max_bite);
-            let taken = field.graze(pos.0.x, pos.0.z, bite);
-            homeo.energy = (homeo.energy + taken).min(homeo.energy_target);
+            // Measure BOTH sides. Plants and animal reserves are both `f32`, so neither
+            // `cell -= taken` nor `reserve += taken` is exact, and "the cell lost what the animal
+            // gained" is false at ULP scale. Over a long run that difference is a trend, not
+            // noise — it showed up as a real ~0.3 EU sink in the G1.1 conservation gate. The
+            // amount the cell actually lost and the amount the reserve actually gained are both
+            // read back, and whatever grazing spilled between them becomes detritus rather than
+            // disappearing.
+            let cell_before = field.r[i] as f64;
+            let _ = field.graze(pos.0.x, pos.0.z, bite);
+            let removed = cell_before - field.r[i] as f64;
+            let landed =
+                crate::core::energy_ledger::credit_reserve(&mut homeo.energy, removed as f32, cap);
+            spill += removed - landed;
+        }
+    }
+    if spill != 0.0 {
+        if let Some(ref mut pool) = biomass {
+            pool.detritus += spill;
         }
     }
 }
@@ -92,6 +120,7 @@ pub fn herbivore_grazing_system(
 pub fn ecosystem_census_system(
     agent_query: Query<&crate::ai::hrrl::HomeostaticState, With<Agent>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    ledger: Option<ResMut<EnergyLedger>>,
 ) {
     if let Some(mut pool) = biomass {
         let mut total = 0.0f64;
@@ -99,6 +128,25 @@ pub fn ecosystem_census_system(
             total += homeo.energy.max(0.0) as f64;
         }
         pool.animals = total;
+        // The census is the moment all three authoritative stores are simultaneously current
+        // (grazing and regrowth have already run this tick), so it is where the closed-EU
+        // invariant is measured. Recording it here makes conservation a property you can read off
+        // a running world instead of one you can only compute at the end of a test.
+        if let Some(mut ledger) = ledger {
+            let closed = crate::core::energy_ledger::closed_total_eu(
+                pool.plants,
+                pool.animals,
+                pool.detritus,
+            );
+            // Invariant D06: the baseline is locked *after* genesis has initialised plants,
+            // animals and detritus. Locking it lazily on the first census — rather than at some
+            // chosen point inside the 1600-line engine setup — means the genesis path and the
+            // restore path both get a baseline that reflects a fully built world, and there is
+            // exactly one place that decides it. `lock_baseline` ignores repeat calls, so a
+            // reload cannot re-baseline away a leak that has already happened.
+            ledger.lock_baseline(closed);
+            ledger.observe(closed);
+        }
     }
 }
 
@@ -170,6 +218,8 @@ pub fn detect_environmental_collisions_system(
     mut lake_query: Query<(&Position, &crate::physics::SpatialCollider, &mut Lake)>,
     mut tree_query: Query<(&Position, &crate::physics::SpatialCollider, &mut Tree)>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    mut ledger: Option<ResMut<EnergyLedger>>,
 ) {
     let dt = time_step.0;
     let max_drinking_rate = 15.0; // units/sec
@@ -210,8 +260,30 @@ pub fn detect_environmental_collisions_system(
                 if centroid.distance(tree_pos.0) < collider.radius {
                     let amount = needed.min(tree.current_fruit).min(max_eating_rate * dt);
                     if amount > 0.0 {
-                        tree.current_fruit -= amount;
-                        homeo.energy = (homeo.energy + amount).min(homeo.energy_target);
+                        // Fruit is a *claim* on detritus, not a store of its own: `current_fruit`
+                        // says how much an animal is allowed to draw, and the ledger decides how
+                        // much the free pool can actually fund. Picking fruit that nothing paid
+                        // for is exactly the leak G1.1 exists to close, so the tree's counter is
+                        // debited by what the ledger granted rather than by what was asked for.
+                        let cap = homeo.energy_target;
+                        let taken = match (biomass.as_mut(), ledger.as_mut()) {
+                            (Some(pool), Some(ledger)) => ledger.transfer_into_reserve(
+                                pool,
+                                Compartment::Detritus,
+                                &mut homeo.energy,
+                                cap,
+                                amount,
+                                EnergyEvent::Fruiting,
+                            ) as f32,
+                            // A world with no closed ledger (the unit-test harnesses that build a
+                            // bare `World`) keeps the original behaviour instead of silently
+                            // refusing to feed.
+                            _ => {
+                                homeo.energy = (homeo.energy + amount).min(cap);
+                                amount
+                            }
+                        };
+                        tree.current_fruit -= taken;
                     }
                     break;
                 }
