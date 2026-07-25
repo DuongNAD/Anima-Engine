@@ -1365,3 +1365,56 @@ not a move.
 engine-free and the re-export pattern is now proven on five modules. Then split `MapBounds` /
 `EcosystemBiomass` into domain data + engine resource. Only after both can either engine honestly be
 called an adapter.
+
+#### G2 addendum 4 — the bevy seam, and the ledger moves
+
+`anima-domain` now holds **six** modules: `causal`, `energy`, `intervention`, `laws`, `sim_clock`,
+`units`.
+
+**The important change is the seam, not the module count.** Until this point anything carrying
+`#[derive(Resource)]` could not live in the domain crate *at all* — the orphan rule forbids
+`impl Resource for` a foreign type, so every ECS type was stuck engine-side by construction rather
+than by design. The domain crate now has an **optional `bevy` feature, off by default**: a consumer
+who wants only the laws gets plain data, and the live adapter enables it so domain types gain their
+`Resource` derive in place.
+
+That converts "Bevy resources cannot move" from a categorical blocker into ordinary work — which was
+one of the two things the previous addendum listed as standing between here and gate #1.
+
+Using it immediately: `EcosystemBiomass` and the whole `energy_ledger` moved into
+`anima-domain::energy`. That is the law G1.1 established — `plants + animals + detritus` invariant
+absent an explicit source or sink — together with the transaction API that is the only way EU moves.
+Both engines sharing one implementation of that is the difference between the conservation gate
+meaning one thing and meaning two.
+
+```text
+cargo clippy --all-targets --features desktop    -- -D warnings  rc=0
+cargo clippy --all-targets --no-default-features -- -D warnings  rc=0
+cargo fmt --check                                                rc=0
+cargo test --features desktop   580 passed, 0 failed, 4 ignored
+```
+
+#### Gate #1 — remaining work, in order
+
+Not met. But the remaining work is now a known sequence rather than an open question, and none of it
+is exploratory:
+
+1. **`WorldIdentity` → domain.** One real change needed: `from_terrain(&TerrainMap, …)` and
+   `to_terrain_map(…)` couple the identity law to the engine's map type. Change `from_terrain` to
+   take the slices it actually reads (elevations, biomes, dims) instead of `&TerrainMap`, and the
+   law stops knowing about the engine. Inherent impls on a foreign type are not allowed, so this has
+   to be a signature change rather than leaving the methods behind.
+2. **The AE cluster → domain, as one unit.** `experiment`, `exotic_energy`, `evolution_pathway`,
+   `reference_world`, `experiment_runner` — all five are already engine-free (0 `bevy_ecs`,
+   0 `tauri::`). They form a mutual `use` cycle (the same one that forced AE1–AE2.5 and AE3 into a
+   single commit back in G0), so they move together or not at all. ~15k lines, mechanical once
+   step 1 lands, because the re-export shim pattern is now proven on six modules.
+   This is what brings `WorldLawSet` and `ExoticEnergyLaw` across.
+3. **`MapBounds`** → domain, now trivial with the seam.
+4. **Snapshot schema** → domain.
+5. **Only then** can either engine honestly be called an adapter, which is what the gate's wording
+   ("one law change… alters both") actually demands.
+
+Steps 1–4 are a session's work. The estimate is not padded: step 2 is a large but mechanical move,
+and every prior step in this extraction has landed with both feature configurations clean and the
+full suite green, which is the cadence to hold.
