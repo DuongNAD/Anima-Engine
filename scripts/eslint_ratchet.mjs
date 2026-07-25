@@ -13,9 +13,10 @@
 import { ESLint } from 'eslint';
 import process from 'node:process';
 
-// Measured on chore/init-and-frontend-test-fixes, 2026-07-25, with 0 errors.
+// Measured on chore/audit-remediation, 2026-07-25, with 0 errors.
+// Was 444 before `src/hooks/useSimulation.ts` — dead code with no importer — was deleted.
 // Only ever lower this number.
-const DEFAULT_BASELINE = 444;
+const DEFAULT_BASELINE = 440;
 
 const parsed = Number.parseInt(process.env.ESLINT_WARNING_BASELINE ?? '', 10);
 const limit = Number.isFinite(parsed) ? parsed : DEFAULT_BASELINE;
