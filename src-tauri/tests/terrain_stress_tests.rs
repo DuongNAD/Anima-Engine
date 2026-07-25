@@ -7,10 +7,15 @@ fn test_terrain_extreme_parameters() {
     // 1. Test standard map generation
     let settings = MapSettings::default();
     let map = TerrainMap::generate(&settings);
-    assert_eq!(map.width, 128);
-    assert_eq!(map.height, 128);
-    assert_eq!(map.elevations.len(), 128 * 128);
-    assert_eq!(map.biomes.len(), 128 * 128);
+    // Assert against the settings rather than a hard-coded size. The default resolution is a
+    // configuration choice — it moved from 128² to 256² when the working map was matched to the
+    // artifact it loads — and a test pinned to the literal breaks on that change while telling you
+    // nothing about whether generation is correct. What matters is that the map generation produces
+    // is the map that was asked for.
+    assert_eq!(map.width, settings.width);
+    assert_eq!(map.height, settings.height);
+    assert_eq!(map.elevations.len(), settings.width * settings.height);
+    assert_eq!(map.biomes.len(), settings.width * settings.height);
 
     // 2. Test map generation with 0 erosion steps (should work and produce 0 flows)
     let settings_no_erosion = MapSettings {
