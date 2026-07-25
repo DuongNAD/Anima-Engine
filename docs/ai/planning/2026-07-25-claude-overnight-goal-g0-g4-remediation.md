@@ -1308,3 +1308,60 @@ The blocker for the next batch is known: `sim_rules`'s coordinate helpers take `
 `WorldLawSet` reaches into `ecology`. Those two types (`MapBounds`, `EcosystemBiomass`) are what the
 domain crate needs to own before the law types can follow — and `EcosystemBiomass` is exactly the
 closed-energy ledger G1.1 built the transaction API around, so it is the natural next move.
+
+#### G2 addendum 3 — units extracted, and gate #1 demonstrated for what has moved
+
+`anima-domain` now holds five modules: `causal`, `intervention`, `laws`, `sim_clock`, `units`.
+
+The unit vocabulary (`UnitId`, `EnergySourceId`, `EU_UNIT`, `MU_UNIT`) moved because units are the
+most fundamental law here. `SIMULATION_RULES.md` and the energy ledger contract both turn on one
+distinction — **MU is not EU** — and an exotic source claiming the EU unit would silently merge two
+budgets the experiment design keeps apart (ER04). A vocabulary each engine defined for itself is
+exactly the second source of truth G2 removes.
+
+**`tests/shared_domain_law_tests.rs` demonstrates the gate for the laws that have moved.** The gate
+reads "one law change, expressed once, observably alters both the headless runner and the live
+world", so:
+
+- `one_tick_rate_paces_both_the_live_clock_and_the_headless_scheduler` takes the **live** path
+  (`determinism::tick_timestamp_ms`, which G1.3 stamps the chronicle with) and the **headless** path
+  (`SimClock::fires`, which M2 paces experiment bands with), derives both from the single `TICK_HZ`
+  in `anima-domain`, and asserts they agree **with each other** — not merely that each is
+  self-consistent.
+- `the_engine_does_not_own_a_second_copy_of_the_time_laws` guards the specific failure this
+  codebase has already had: two subsystems each defining a constant, agreeing at first, drifting
+  later, with nothing to notice.
+
+These are written so that re-introducing a per-engine copy **fails** them. That is the durable part:
+the boundary is now defended by a test, not only by where files happen to sit.
+
+#### Gate #1 — where it actually stands
+
+**Not met.** Honest accounting of the distance:
+
+| Piece | State |
+|---|---|
+| Workspace + domain crate | done |
+| Provenance, transactions, time laws, schedule, units | moved, with re-export shims so nothing broke |
+| A shared law provably driving both engines | demonstrated for the time laws and the unit vocabulary |
+| `WorldLawSet`, `ExoticEnergyLaw` | **blocked** — see below |
+| Snapshot schema | not moved |
+| Headless runner / Bevy world as *adapters* | not done; both still own their own paths |
+
+The blocker for the law types is structural, not effort: `experiment.rs` has **zero** engine coupling
+(no `bevy_ecs`, no `tauri`) and would move cleanly on its own, but `WorldLawSet` holds an
+`Option<ExoticEnergyLaw>`, and `exotic_energy` ↔ `experiment` ↔ `evolution_pathway` ↔
+`reference_world` form a mutual `use` cycle — the same cycle recorded in the G0 entry, which is why
+AE1–AE2.5 and AE3 had to be one commit. Those four modules move together or not at all, which is
+roughly 15k lines and a session of its own.
+
+`MapBounds` and `EcosystemBiomass` are a second, different blocker: both are Bevy `Resource`s, so
+they cannot move into an engine-free crate without either splitting each into plain data plus an
+engine-side newtype, or letting `bevy_ecs` into the domain manifest — which would dissolve the
+boundary the manifest currently enforces. The first option is right; it is a deliberate refactor,
+not a move.
+
+**Recommended next step:** move the AE cycle as one unit into `anima-domain`, since it is already
+engine-free and the re-export pattern is now proven on five modules. Then split `MapBounds` /
+`EcosystemBiomass` into domain data + engine resource. Only after both can either engine honestly be
+called an adapter.
