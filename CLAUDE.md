@@ -37,12 +37,15 @@ There is no Makefile or CI. `tsc` strict mode runs on build; ESLint (frontend) a
 ## Required reading for creature spawn and morphology
 
 Before changing genotype, phenotype, genesis, birth, epoch replacement, save/load,
-migration, pigment, creature physics geometry, or live-agent rendering, read in order:
+migration, pigment, creature physics geometry, live-agent rendering, **agent brains**, or the
+**action space** (the pheromone / attack / feed gates), read in order:
 
 1. `docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md`
 2. `docs/decisions/ADR-0001-creature-development-lifecycle.md`
 3. `docs/explanation/CREATURE_MORPHOGENESIS.md`
 4. `docs/planning/CREATURE_MORPHOGENESIS_PLAN.md`
+5. `docs/decisions/ADR-0003-evolved-per-agent-brains.md` (accepted) — for anything touching
+   `BrainGenotype`, `AgentBrain`, `ActionGates`, `BrainPolicy`, inference or lifetime learning
 
 Hard rules:
 
@@ -57,6 +60,28 @@ Hard rules:
 - Use code symbols as anchors and re-read current files before implementation; line
   numbers in archived drafts are historical.
 - Files in `docs/archive/` are superseded and must not be used as implementation plans.
+
+Hard rules from ADR-0003 (brains and action space) — each one is a trap that produces code
+that runs, returns finite numbers and is silently wrong:
+
+- **No Lamarck.** `AgentBrain.learned` is runtime state and must never be written back into
+  `.genotype`. Reproduction copies the genome; what an individual learned dies with it.
+- **Restore and migration carry the brain they were given**, never roll a new one (D01). Only
+  genesis and evolutionary replacement create brains.
+- **The legacy path is the default and must stay reachable.** `AgentBrain` absent, `ActionGates`
+  absent-or-open, `ANIMA_EVOLVED_BRAINS` / `ANIMA_LIFETIME_LEARNING` unset and
+  `brain_metabolic_cost = 0.0` all mean "behave as before". A missing `ActionGates` reads as fully
+  **open**, never shut — the other default would silently stop an agent eating.
+- **Any new energy charge goes into `total_cost` in `metabolic_decay_system`**, never a separate
+  deduction. Only `total_cost` flows through `respired` into the detritus pool, so a separate
+  subtraction leaks EU while looking entirely reasonable.
+- **`BrainGenotype`'s weight layout is `w[out * fan_in + in]` — the transpose of Burn's
+  `[d_input, d_output]`.** Copy flat weights across without transposing and the network still runs.
+  Use `ActorCriticModel::from_flat_weights`, which transposes, and keep the EB-S02 parity gate green.
+- **The shared A2C actor loss in `run_training_loop` has a known inverted sign** (tracked as its own
+  task). Do not copy it into new code; `brain_genotype::learn_step` has the corrected form.
+- Numerical code needs **two** kinds of test: a gradient check against finite differences catches a
+  wrong derivative, but passes for a wrong objective too. Pair it with a behavioural assertion.
 
 ## Required reading for alternate world laws and evolution experiments
 

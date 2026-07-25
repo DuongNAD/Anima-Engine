@@ -43,7 +43,7 @@ flowchart TD
 | Tra cứu luật mô phỏng, biome, tọa độ, manifest | [Reference](reference/README.md) |
 | Sửa genotype, phenotype, spawn, save hoặc migration sinh vật | [Creature Development Contract](reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 | Tạo thế giới khác luật, nguồn “mana”, fork và so sánh tiến hóa | [Evolution Experiment Contract](reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
-| Sửa bộ não agent, gen não, hoặc không gian hành động | [ADR-0003](decisions/ADR-0003-evolved-per-agent-brains.md) *(proposed)* |
+| Sửa bộ não agent, gen não, hoặc không gian hành động | [ADR-0003](decisions/ADR-0003-evolved-per-agent-brains.md) |
 | Xem requirements/design/testing/task của feature đang phát triển | [AI lifecycle docs](ai/requirements/2026-07-24-feature-alternate-evolution-world-lab.md) |
 | Hiểu kiến trúc và nguyên nhân của quyết định | [Explanation](explanation/README.md) |
 | Xem việc cần làm và thứ tự phụ thuộc | [Planning](planning/README.md) |
