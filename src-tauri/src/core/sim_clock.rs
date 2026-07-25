@@ -63,7 +63,7 @@ impl SimClock {
 
     /// Whether a band of `period` fires on `tick` (`tick % period == 0`; a `0` period never fires).
     pub fn fires(tick: u64, period: u64) -> bool {
-        period != 0 && tick % period == 0
+        period != 0 && tick.is_multiple_of(period)
     }
 
     /// Whether a band of `period` fires on the current tick.
@@ -74,11 +74,7 @@ impl SimClock {
     /// How many times a band of `period` fires across the base ticks `1..=total` — the exact,
     /// closed-form count the S10 test checks a simulated run against.
     pub fn fire_count(total: u64, period: u64) -> u64 {
-        if period == 0 {
-            0
-        } else {
-            total / period
-        }
+        total.checked_div(period).unwrap_or(0)
     }
 
     /// Sim-seconds elapsed at the current tick.

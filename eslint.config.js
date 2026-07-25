@@ -43,6 +43,18 @@ export default tseslint.config(
     },
   },
   {
+    // .mjs is always an ES module, never CommonJS. Such a file may import a Node builtin
+    // whose name is also a global (`import process from 'node:process'`); that is the
+    // explicit form, not a redeclaration, so builtinGlobals is off for these files only.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+    },
+    rules: {
+      'no-redeclare': ['error', { builtinGlobals: false }],
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,

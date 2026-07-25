@@ -107,7 +107,7 @@ fn test_pheromone_grid_nan_propagation() {
 }
 
 /// 4. Test that rebuild_spatial_grid_system violates the zero-heap allocation requirement
-/// when more than 32 entities cluster in the same cell.
+///    when more than 32 entities cluster in the same cell.
 #[test]
 fn test_spatial_grid_rebuild_allocates_when_clustered() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

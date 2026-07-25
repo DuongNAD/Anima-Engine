@@ -64,23 +64,9 @@ pub fn apply_chronicle_event(event: &EnvironmentEvent, params: &mut SimParameter
     }
 
     // Boundary checks & clamping
-    if params.metabolic_decay_rate < 0.1 {
-        params.metabolic_decay_rate = 0.1;
-    } else if params.metabolic_decay_rate > 10.0 {
-        params.metabolic_decay_rate = 10.0;
-    }
-
-    if params.max_food_count < 10 {
-        params.max_food_count = 10;
-    } else if params.max_food_count > 1000 {
-        params.max_food_count = 1000;
-    }
-
-    if params.predator_spawn_rate < 0.1 {
-        params.predator_spawn_rate = 0.1;
-    } else if params.predator_spawn_rate > 5.0 {
-        params.predator_spawn_rate = 5.0;
-    }
+    params.metabolic_decay_rate = params.metabolic_decay_rate.clamp(0.1, 10.0);
+    params.max_food_count = params.max_food_count.clamp(10, 1000);
+    params.predator_spawn_rate = params.predator_spawn_rate.clamp(0.1, 5.0);
 }
 
 #[test]

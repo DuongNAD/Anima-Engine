@@ -1721,7 +1721,7 @@ mod tests {
             7,
             fork_tick,
             &[],
-            &[extra.clone()],
+            std::slice::from_ref(&extra),
         )
         .expect("fork ok");
 
@@ -1869,7 +1869,7 @@ mod tests {
             7,
             3000,
             &[],
-            &[extra.clone()],
+            std::slice::from_ref(&extra),
         )
         .expect("ok");
         let b = checkpoint_fork_with_exotic::<ReferenceEvolutionWorld>(
@@ -3016,9 +3016,14 @@ mod tests {
         let fork_tick = 3000u64;
         let extra = drought(42, fork_tick + 10);
 
-        let fork =
-            checkpoint_fork::<ReferenceEvolutionWorld>(&m, &reg, 7, fork_tick, &[extra.clone()])
-                .expect("fork ok");
+        let fork = checkpoint_fork::<ReferenceEvolutionWorld>(
+            &m,
+            &reg,
+            7,
+            fork_tick,
+            std::slice::from_ref(&extra),
+        )
+        .expect("fork ok");
 
         // Independently reconstruct the effective treatment manifest: base + appended extras.
         let mut effective = m.clone();
@@ -3077,9 +3082,14 @@ mod tests {
         let m = baseline_manifest(vec![7]);
         let fork_tick = 3000u64;
         let extra = drought(42, fork_tick + 10);
-        let fork =
-            checkpoint_fork::<ReferenceEvolutionWorld>(&m, &reg, 7, fork_tick, &[extra.clone()])
-                .expect("fork ok");
+        let fork = checkpoint_fork::<ReferenceEvolutionWorld>(
+            &m,
+            &reg,
+            7,
+            fork_tick,
+            std::slice::from_ref(&extra),
+        )
+        .expect("fork ok");
 
         // The report carries the FULL structured command, not a lossy "kind@start" string.
         assert_eq!(fork.treatment_extra, vec![extra.clone()]);

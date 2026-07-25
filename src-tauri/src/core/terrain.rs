@@ -698,12 +698,16 @@ mod tests {
 
     #[test]
     fn test_erosion_alters_topography() {
-        let mut settings_no_erosion = MapSettings::default();
-        settings_no_erosion.erosion_steps = 0;
+        let settings_no_erosion = MapSettings {
+            erosion_steps: 0,
+            ..Default::default()
+        };
         let map_no_erosion = TerrainMap::generate(&settings_no_erosion);
 
-        let mut settings_with_erosion = MapSettings::default();
-        settings_with_erosion.erosion_steps = 20000;
+        let settings_with_erosion = MapSettings {
+            erosion_steps: 20000,
+            ..Default::default()
+        };
         let map_with_erosion = TerrainMap::generate(&settings_with_erosion);
 
         assert_eq!(

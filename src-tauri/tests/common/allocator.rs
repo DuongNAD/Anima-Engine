@@ -1,3 +1,8 @@
+// This module is compiled into every integration-test binary that pulls in `common`, but only the
+// zero-allocation suites install the allocator. In the others nothing here is constructed, which is
+// expected rather than dead code worth removing.
+#![allow(dead_code)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

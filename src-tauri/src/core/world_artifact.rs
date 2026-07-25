@@ -768,7 +768,7 @@ mod tests {
             tm.biomes.iter().all(|&b| b <= 10),
             "all biomes in backend range"
         );
-        assert!(tm.biomes.iter().any(|&b| b == 1), "a real world has ocean");
+        assert!(tm.biomes.contains(&1), "a real world has ocean");
         assert!(
             tm.biomes.iter().any(|&b| b >= 4),
             "a real world has land biomes"

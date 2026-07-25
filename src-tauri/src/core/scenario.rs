@@ -406,7 +406,7 @@ pub fn run_scenario<M: SimModel>(scenario: &Scenario) -> ScenarioResult {
         let tick = clock.advance();
         let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
         model.step(&clock, &active, &mut ledger, &mut rng);
-        if scenario.sample_period != 0 && tick % scenario.sample_period == 0 {
+        if scenario.sample_period != 0 && tick.is_multiple_of(scenario.sample_period) {
             series.push(StateSample {
                 tick,
                 observables: model

@@ -552,7 +552,7 @@ mod tests {
         assert!((seasonal_fertility(0.0) - 1.0).abs() < 1e-6);
         let summer = seasonal_fertility(std::f32::consts::FRAC_PI_2);
         let winter = seasonal_fertility(3.0 * std::f32::consts::FRAC_PI_2);
-        assert!(summer > 1.0 && winter < 1.0 && winter >= 0.0);
+        assert!(summer > 1.0 && (0.0..1.0).contains(&winter));
         // A full clock cycle returns to the start; the mean stays ~1.0.
         let mut clock = SeasonClock {
             phase: 0.0,

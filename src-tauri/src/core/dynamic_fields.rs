@@ -177,8 +177,8 @@ impl DynamicFields {
         }
 
         let mut root_cover = vec![0.0f32; n];
-        for i in 0..n.min(map.biomes.len()) {
-            root_cover[i] = root_cover_for_biome(map.biomes[i]);
+        for (cover, &biome) in root_cover.iter_mut().zip(map.biomes.iter()) {
+            *cover = root_cover_for_biome(biome);
         }
 
         // Seed groundwater from terrain moisture (already normalized), surface water empty.
