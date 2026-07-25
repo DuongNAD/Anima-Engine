@@ -106,6 +106,64 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
                 world.entity_mut(entity).insert(Prey);
             }
         }
+
+        // Invariant D06: evolutionary replacement is NOT a birth, and its energy must come from
+        // the individual it replaces. `decode_genotype` hands every new body a flat starting
+        // reserve; before G1.1 that reserve came from nowhere while the replaced individual's own
+        // reserve had *also* just been returned to detritus by `apply_staggered_evolution_system`,
+        // so every epoch replacement created roughly one full reserve of EU out of thin air.
+        //
+        // The reserve is now withdrawn from detritus — exactly where the predecessor's energy
+        // went. A pool that cannot cover it means the replacement starts hungry and the shortfall
+        // is counted in `EnergyLedger::refused`, rather than the world quietly gaining energy.
+        // Worlds built without the closed ledger (bare unit-test harnesses) keep the flat grant.
+        if world.contains_resource::<crate::core::ecology::EcosystemBiomass>()
+            && world.contains_resource::<crate::core::energy_ledger::EnergyLedger>()
+        {
+            world.resource_scope(
+                |world, mut ledger: Mut<crate::core::energy_ledger::EnergyLedger>| {
+                    world.resource_scope(
+                        |world, mut pool: Mut<crate::core::ecology::EcosystemBiomass>| {
+                            if let Some(mut homeo) =
+                                world.get_mut::<crate::ai::hrrl::HomeostaticState>(entity)
+                            {
+                                let requested = homeo.energy;
+                                let cap = homeo.energy_target;
+                                homeo.energy = 0.0;
+                                ledger.transfer_into_reserve(
+                                    &mut pool,
+                                    crate::core::energy_ledger::Compartment::Detritus,
+                                    &mut homeo.energy,
+                                    cap,
+                                    requested,
+                                    crate::core::energy_ledger::EnergyEvent::Replacement,
+                                );
+                            }
+                        },
+                    );
+                },
+            );
+        }
+
+        // Evolutionary replacement creates a *new* individual, so it gets a new brain — unlike
+        // restore and migration, which carry one that already exists (invariant D01). The draw comes
+        // from `SimRng`, so the same run seed produces the same founding brains.
+        //
+        // Legacy note: this is `EvolutionaryReplacement`, not biological reproduction, so the brain
+        // is rolled fresh rather than inherited from the parents that MAP-Elites selected. Making it
+        // heritable across replacement is part of the birth work in M5, not of this ADR.
+        let policy = world
+            .get_resource::<crate::core::resources::BrainPolicy>()
+            .copied()
+            .unwrap_or_default();
+        if policy.evolved {
+            let brain = world
+                .get_resource_mut::<crate::core::resources::SimRng>()
+                .and_then(|mut rng| policy.new_brain(rng.rng()));
+            if let Some(brain) = brain {
+                world.entity_mut(entity).insert(brain);
+            }
+        }
     }
 }
 
@@ -299,13 +357,42 @@ pub struct AgentInferenceRequest {
     pub entity: Entity,
     pub sensory_input: [f32; 15],
     pub request_id: u64,
+    /// The agent's own brain, when it has one. Carried as an `Arc` clone — a refcount bump, not a
+    /// copy of the weight vector — so attaching it costs the tick path no allocation.
+    ///
+    /// `None` routes the agent through the shared [`crate::ai::model::BrainModel`] exactly as before.
+    pub brain: Option<std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>>,
 }
+
+/// Actions an inference produces.
+///
+/// Sized for the evolved architecture: `0..CPG_LEN` are the CPG parameters, the rest are the
+/// ecological gates (see [`crate::evolution::brain_genotype::action_index`]). A shared-model agent
+/// fills only the CPG slots and leaves the gates at their fully-open default, so widening this array
+/// does not change what a legacy agent does.
+pub const ACTION_SLOTS: usize = crate::evolution::brain_genotype::action_index::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct AgentInferenceResponse {
     pub entity: Entity,
-    pub actions: [f32; 4],
+    pub actions: [f32; ACTION_SLOTS],
     pub request_id: u64,
+}
+
+impl AgentInferenceResponse {
+    /// Actions for an agent whose brain produced nothing usable: no locomotion change and every gate
+    /// left open. Chosen so a failed inference degrades to "carry on as before", never to an agent
+    /// that silently stops eating.
+    pub fn open_gates_default() -> [f32; ACTION_SLOTS] {
+        let mut actions = [0.0f32; ACTION_SLOTS];
+        for slot in actions
+            .iter_mut()
+            .skip(crate::evolution::brain_genotype::action_index::CPG_LEN)
+        {
+            *slot = 1.0;
+        }
+        actions
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -336,6 +423,7 @@ pub fn sensory_system(
             Option<&Predator>,
             Option<&crate::ai::pheromone::OlfactorySensors>,
             &mut CognitiveState,
+            Option<&crate::core::components::AgentBrain>,
         ),
         With<crate::core::ecs::Agent>,
     >,
@@ -367,7 +455,7 @@ pub fn sensory_system(
     });
     batch.requests.clear();
 
-    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state) in
+    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state, opt_brain) in
         agent_query.iter_mut()
     {
         if !matches!(*cog_state, CognitiveState::Ready) {
@@ -490,6 +578,12 @@ pub fn sensory_system(
             entity,
             sensory_input: state_arr,
             request_id: ticket_id,
+            // An `Arc` clone: a refcount bump, no weight copy, so the request stays allocation-free.
+            //
+            // `live()` is the learned network when there is one, else the genome. Both sit behind
+            // the same `Arc`, so which branch it takes costs nothing here — the reason learning
+            // replaces the whole network on an interval instead of mutating weights every tick.
+            brain: opt_brain.map(|b| std::sync::Arc::clone(b.live())),
         });
     }
 
@@ -535,6 +629,7 @@ pub fn action_resolution_system(
         &mut CognitiveState,
         &mut InertiaComponent,
         Option<&mut crate::ai::hrrl::LastTransitionState>,
+        Option<&mut crate::core::components::ActionGates>,
     )>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
@@ -542,21 +637,36 @@ pub fn action_resolution_system(
 ) {
     while let Ok(batch) = channels.res_rx.try_recv() {
         for response in &batch.responses {
-            if let Ok((_entity, mut cog_state, mut inertia, opt_last)) =
+            if let Ok((_entity, mut cog_state, mut inertia, opt_last, opt_gates)) =
                 agent_query.get_mut(response.entity)
             {
                 if let CognitiveState::PendingInference(ticket_id) = *cog_state {
                     if ticket_id == response.request_id {
-                        // Update InertiaComponent
-                        inertia.cpg_parameters = response.actions;
+                        use crate::evolution::brain_genotype::action_index;
+
+                        // Outputs `0..CPG_LEN` steer locomotion, exactly as before.
+                        let mut cpg = [0.0f32; action_index::CPG_LEN];
+                        cpg.copy_from_slice(&response.actions[..action_index::CPG_LEN]);
+                        inertia.cpg_parameters = cpg;
                         inertia.ticks_pending = 0;
 
                         // Reset state to Ready
                         *cog_state = CognitiveState::Ready;
 
-                        // Save last transition state
+                        // The remaining outputs are the ecological gates. A shared-model agent gets
+                        // them filled with the fully-open default upstream, so this assignment is a
+                        // no-op for it — the legacy path keeps behaving as it did.
+                        if let Some(mut gates) = opt_gates {
+                            gates.pheromone_emit = response.actions[action_index::PHEROMONE_EMIT];
+                            gates.attack_intent = response.actions[action_index::ATTACK_INTENT];
+                            gates.feed_intent = response.actions[action_index::FEED_INTENT];
+                        }
+
+                        // Save last transition state. This feeds the shared model's A2C update,
+                        // which only ever knew about the CPG parameters, so it keeps its 4 slots
+                        // rather than growing to hold gates no gradient touches.
                         if let Some(mut last) = opt_last {
-                            last.action = response.actions;
+                            last.action = cpg;
                             last.has_last = true;
                         }
 

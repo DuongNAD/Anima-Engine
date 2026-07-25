@@ -534,7 +534,10 @@ impl SimulationEngine {
                 .unwrap_or_default();
             world.insert_resource(loaded_pheromone);
 
-            world.insert_resource(BrainModel::new(15, 64, 4));
+            // Seeded from the run, so the shared brain a legacy agent uses is the same network every
+            // time the same world is launched. `SimRng` is already in the world by now (`init_world`).
+            let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
+            world.insert_resource(BrainModel::new_seeded(15, 64, 4, run_seed));
             world.insert_resource(BrainInferenceBuffer::default());
 
             let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
@@ -568,9 +571,15 @@ impl SimulationEngine {
             let model_rx_inference = model_rx;
             let old_model_tx_inference = old_model_tx;
 
+            let inference_seed = run_seed;
             thread::spawn(move || {
-                let mut brain_model = BrainModel::new(15, 64, 4);
-                let mut inputs = Vec::with_capacity(2048);
+                // The same seed the world's copy used. These are two separately-constructed models
+                // that are meant to be the same network until the training thread starts sending
+                // updates; with unseeded initialisation they never were.
+                let mut brain_model = BrainModel::new_seeded(15, 64, 4, inference_seed);
+                // Allocated once and reused every batch: the worker runs on the tick path's critical
+                // chain, so per-batch allocation here would show up as frame jitter.
+                let mut inference_scratch = crate::ai::model::InferenceScratch::with_capacity(256);
 
                 while running_inference.load(Ordering::SeqCst) {
                     // Check for model update
@@ -604,57 +613,16 @@ impl SimulationEngine {
                             });
                             res_batch.responses.clear();
 
-                            let batch_size = req_batch.requests.len();
-                            inputs.clear();
-                            for req in &req_batch.requests {
-                                inputs.extend_from_slice(&req.sensory_input);
-                            }
-
-                            // Run forward pass
-                            let outputs_vec = match &brain_model.backend {
-                                crate::ai::model::BrainModelBackend::NdArray(model, device) => {
-                                    let data = burn::tensor::Data::new(
-                                        inputs.clone(),
-                                        burn::tensor::Shape::new([batch_size, 15]),
-                                    );
-                                    let input_tensor = burn::tensor::Tensor::<
-                                        burn_ndarray::NdArray<f32>,
-                                        2,
-                                    >::from_data(
-                                        data, device
-                                    );
-                                    let (actor_out, _) = model.forward(input_tensor);
-                                    actor_out.into_data().value
-                                }
-                                crate::ai::model::BrainModelBackend::Wgpu(model, device) => {
-                                    let data = burn::tensor::Data::new(
-                                        inputs.clone(),
-                                        burn::tensor::Shape::new([batch_size, 15]),
-                                    );
-                                    let input_tensor = burn::tensor::Tensor::<
-                                        burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>,
-                                        2,
-                                    >::from_data(
-                                        data, device
-                                    );
-                                    let (actor_out, _) = model.forward(input_tensor);
-                                    actor_out.into_data().value
-                                }
-                            };
-
-                            for (agent_idx, req) in req_batch.requests.iter().enumerate() {
-                                let mut actions = [0.0f32; 4];
-                                for (k, action) in actions.iter_mut().enumerate() {
-                                    if let Some(&val) = outputs_vec.get(agent_idx * 4 + k) {
-                                        *action = val;
-                                    }
-                                }
-                                res_batch.responses.push(AgentInferenceResponse {
-                                    entity: req.entity,
-                                    actions,
-                                    request_id: req.request_id,
-                                });
-                            }
+                            // Same function the tests drive synchronously — see
+                            // `ai::model::run_inference_batch`. Keeping the worker a thin shell
+                            // around it means the logic that decides every agent's action each tick
+                            // is reachable by a test instead of sealed inside a spawned closure.
+                            crate::ai::model::run_inference_batch(
+                                &brain_model,
+                                &req_batch.requests,
+                                &mut res_batch.responses,
+                                &mut inference_scratch,
+                            );
 
                             let _ = res_tx.send(res_batch);
                         }
@@ -744,6 +712,10 @@ impl SimulationEngine {
                 for agent in &state.agents {
                     spawn_serialized_agent(&mut world, agent);
                 }
+                // G1.1: the closed-energy compartments and the standing crop come back with the
+                // agents. Without this a load rebuilt detritus at zero and plants at full capacity,
+                // so every save/load boundary moved EU and whole-run conservation was unprovable.
+                crate::core::simulation_state::restore_energy_state(&mut world, state);
                 for food in &state.foods {
                     use crate::core::ecs::Food;
                     world.spawn((
@@ -844,6 +816,22 @@ impl SimulationEngine {
                         world.entity_mut(agent_entity).insert(Prey);
                     } else {
                         world.entity_mut(agent_entity).insert(Predator);
+                    }
+
+                    // Genesis creates individuals, so it develops brains (invariant D01). Off
+                    // unless `ANIMA_EVOLVED_BRAINS` is set, in which case each founder draws its
+                    // own weights from the run's stream — same seed, same founding population.
+                    let policy = world
+                        .get_resource::<crate::core::resources::BrainPolicy>()
+                        .copied()
+                        .unwrap_or_default();
+                    if policy.evolved {
+                        let brain = world
+                            .get_resource_mut::<crate::core::resources::SimRng>()
+                            .and_then(|mut rng| policy.new_brain(rng.rng()));
+                        if let Some(brain) = brain {
+                            world.entity_mut(agent_entity).insert(brain);
+                        }
                     }
                 }
 
@@ -987,6 +975,10 @@ impl SimulationEngine {
                 detect_food_collisions_system.after(integrate_physics_system),
                 combat_system.after(integrate_physics_system),
                 hrrl_learning_system.after(metabolic_decay_system),
+                // Runs after `hrrl_learning_system`, which is where `LastTransitionState` and the
+                // homeostatic deviation this reads are refreshed. Returns immediately unless both
+                // evolved brains and lifetime learning are switched on.
+                crate::ai::model::lifetime_learning_system.after(hrrl_learning_system),
                 check_epoch_completion_system.after(metabolic_decay_system),
                 apply_staggered_evolution_system.after(check_epoch_completion_system),
                 crate::core::ecs::manual_migration_system.after(integrate_physics_system),
