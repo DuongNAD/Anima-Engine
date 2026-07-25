@@ -178,7 +178,9 @@ async fn test_migration_tier1_ports_8080_to_8081() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             8091,
             server_inbound_tx,
             running_server,
@@ -399,7 +401,9 @@ async fn test_migration_tier4_parallel_workload() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,

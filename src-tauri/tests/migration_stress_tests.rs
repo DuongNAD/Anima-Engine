@@ -22,11 +22,14 @@ use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
-static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+// Held for the whole async test on purpose: these bind fixed ports and must not overlap.
+// `std::sync::Mutex` is the wrong tool for that — its guard is not `Send` across an await, which
+// clippy flags as `await_holding_lock`. Tokio.s mutex is built for exactly this.
+static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 async fn test_stress_high_throughput_websocket_transfers() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().await;
 
     let port = 8095;
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
@@ -37,7 +40,9 @@ async fn test_stress_high_throughput_websocket_transfers() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,
@@ -136,7 +141,7 @@ async fn test_stress_high_throughput_websocket_transfers() {
 
 #[tokio::test]
 async fn test_closed_port_bounce_back_custom_boundaries() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().await;
 
     let genotype = {
         let mut g = MorphologyGenotype::new();
@@ -258,7 +263,7 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
 
 #[test]
 fn test_migration_systems_zero_heap_allocations_on_hot_path() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.blocking_lock();
 
     let mut world = World::new();
 

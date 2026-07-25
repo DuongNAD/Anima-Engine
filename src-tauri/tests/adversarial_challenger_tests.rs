@@ -3,7 +3,7 @@ mod common;
 use glam::Vec3;
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
@@ -13,12 +13,15 @@ use anima_engine_lib::evolution::genotype::MorphologyGenotype;
 use anima_engine_lib::evolution::lineage::FallbackLineageTracker;
 use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, GeminiMetaAiClient, MetaAiClient};
 
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+// Held for the whole async test on purpose: these bind fixed ports and must not overlap.
+// `std::sync::Mutex` is the wrong tool for that — its guard is not `Send` across an await, which
+// clippy flags as `await_holding_lock`. Tokio.s mutex is built for exactly this.
+static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// 1. Test port binding failure: Ensure the server handles bind errors gracefully and exits cleanly.
 #[tokio::test]
 async fn test_adversarial_port_binding_failure() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_LOCK.lock().await;
 
     // Bind a standard TcpListener to reserve a port.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -31,8 +34,11 @@ async fn test_adversarial_port_binding_failure() {
     // It should log/eprint an error and return without crashing or panicking.
     let running_clone = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
-            .await;
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ =
+            run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
+                .await;
     });
 
     // Wait a brief period and ensure the server handle completes/exits immediately
@@ -55,7 +61,7 @@ async fn test_adversarial_port_binding_failure() {
 /// connecting to the server does not block the server from exiting when stopped.
 #[tokio::test]
 async fn test_adversarial_silent_client_shutdown() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_LOCK.lock().await;
 
     // Bind server on a random free port
     let server_listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -67,8 +73,11 @@ async fn test_adversarial_silent_client_shutdown() {
 
     let running_clone = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
-            .await;
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ =
+            run_websocket_server::<tauri::test::MockRuntime>(port, inbound_tx, running_clone, None)
+                .await;
     });
 
     // Give server time to bind
@@ -93,7 +102,7 @@ async fn test_adversarial_silent_client_shutdown() {
 /// from a broken connection cache if the target server restarts or drops.
 #[tokio::test]
 async fn test_adversarial_stale_connection_cache() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_LOCK.lock().await;
 
     // Use a random free port
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -110,8 +119,11 @@ async fn test_adversarial_stale_connection_cache() {
     // Start Server 1
     let sr1 = Arc::clone(&server_running_1);
     let server_handle_1 = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_1, sr1, None)
-            .await;
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ =
+            run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_1, sr1, None)
+                .await;
     });
 
     // Start Client
@@ -187,8 +199,11 @@ async fn test_adversarial_stale_connection_cache() {
     let server_running_2 = Arc::new(AtomicBool::new(true));
     let sr2 = Arc::clone(&server_running_2);
     let server_handle_2 = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_2, sr2, None)
-            .await;
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ =
+            run_websocket_server::<tauri::test::MockRuntime>(port, server_inbound_tx_2, sr2, None)
+                .await;
     });
 
     tokio::time::sleep(Duration::from_millis(150)).await;
@@ -267,10 +282,10 @@ async fn test_adversarial_stale_connection_cache() {
 }
 
 /// 4. Test FallbackLineageTracker online/offline connection timeouts:
-/// Ensure that attempting to connect to a silent server times out without blocking the constructor indefinitely.
+///    Ensure that attempting to connect to a silent server times out without blocking the constructor indefinitely.
 #[test]
 fn test_adversarial_lineage_tracker_connection_timeout() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_LOCK.blocking_lock();
 
     // Bind a TcpListener but do not accept connections (it will be silent/unresponsive)
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -297,7 +312,7 @@ fn test_adversarial_lineage_tracker_connection_timeout() {
 /// 5. Test Gemini client offline fallback when API key is set but server is unreachable or rate limited.
 #[test]
 fn test_adversarial_gemini_client_offline_fallback() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _lock = TEST_LOCK.blocking_lock();
 
     // Set a dummy API key to force the Gemini client to try HTTP requests.
     std::env::set_var("GEMINI_API_KEY", "dummy_key_for_adversarial_testing");

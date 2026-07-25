@@ -18,7 +18,9 @@ async fn test_high_throughput_websocket_transfers() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,
