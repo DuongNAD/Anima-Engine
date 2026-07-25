@@ -93,7 +93,18 @@ jobs:
         # No GPU on the runner, so burn falls back to the ndarray CPU backend (ai/model.rs).
         env:
           ANIMA_USE_GPU: "0"
-        run: cargo test --features desktop
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --features desktop 2>&1 | tee ../cargo-test-output.txt
+
+      # A test target that compiles but runs nothing exits 0, so `cargo test` alone cannot see it.
+      # Seven files here are gated behind `networking`/`ml-wgpu`; under a default build every one
+      # reports `running 0 tests` and passes. This asserts that does not happen for the feature set
+      # CI actually runs, so an accidental gate — or a file emptied by a bad merge — is loud.
+      - name: No test target ran zero tests
+        if: ${{ !cancelled() }}
+        run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
 
   frontend:
     name: Frontend
@@ -133,6 +144,27 @@ jobs:
       - name: npm run build
         if: ${{ !cancelled() }}
         run: npm run build
+
+      # The seven specs under tests/e2e existed but nothing ran them: there was no `test:e2e` script
+      # at the root, no step here, and their Playwright config started no dev server, so each spec
+      # hit its own `catch` and called `test.skip()`. They drive the UI through a page-level Tauri
+      # IPC stub, so a Rust release build is not needed — `webServer` + a warm-up navigation is.
+      - name: Install Playwright browsers
+        if: ${{ !cancelled() }}
+        run: npx playwright install --with-deps chromium
+        working-directory: tests
+
+      - name: npm run test:e2e (Playwright)
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/test-results/
+          retention-days: 7
 
       - name: Docs link check
         if: ${{ !cancelled() }}

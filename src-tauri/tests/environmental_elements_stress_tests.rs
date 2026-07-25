@@ -16,7 +16,8 @@ use anima_engine_lib::core::ecs::{
     MapBounds, ParentAgent, Position, Prey, Tree,
 };
 use anima_engine_lib::core::simulation_lifecycle::{
-    SavedSimulationState, SerializedLake, SerializedPheromoneGrid, SerializedTree, SimulationEngine,
+    SavedSimulationState, SerializedLake, SerializedPheromoneGrid, SerializedTree,
+    SimulationEngine, SimulationStatus,
 };
 use anima_engine_lib::evolution::meta_ai::EnvironmentalEvent;
 
@@ -25,6 +26,49 @@ static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Stops the engine on the way out of the scope, including when an assertion panics on the way.
+///
+/// `TrackingAllocator` above is a `#[global_allocator]`, so it counts every allocation in the
+/// process, not just the ones on the thread under test. An assertion that fires between `start()`
+/// and `stop()` unwinds past the `stop()`, leaving the simulation, emit, learner and networking
+/// threads running for the rest of the run — and the next test's zero-allocation measurement then
+/// attributes their allocations to its own hot path. That is how one failure here produced a second,
+/// unrelated-looking one reading "hot path should make 0 heap allocations, but made 130,946".
+///
+/// `TEST_LOCK` does not prevent it: the panicking test poisons the mutex, and the recovery path
+/// (`unwrap_or_else(|e| e.into_inner())`) hands the lock straight to the next test while the leaked
+/// threads are still live.
+struct EngineGuard<'a>(&'a SimulationEngine);
+
+impl Drop for EngineGuard<'_> {
+    fn drop(&mut self) {
+        self.0.stop();
+    }
+}
+
+/// Polls until the background thread publishes a running status that has ticked, or the timeout
+/// expires. Returns the last status seen either way, so the caller's assertions produce the message.
+///
+/// This replaced a flat `sleep(150ms)`, which was a bet on how long start-up takes rather than a
+/// check that it happens. Under `--features desktop` that bet loses: `ml-wgpu` probes for a wgpu
+/// adapter before the sim thread spawns, and enumerating adapters on a machine with a software or
+/// otherwise slow GPU costs more than the whole 150 ms window. CI never saw it, because its cargo
+/// test step sets `ANIMA_USE_GPU=0` and skips the probe entirely — so the failure only ever appeared
+/// on a developer machine running the documented command.
+fn wait_until_ticking(engine: &SimulationEngine, timeout: Duration) -> SimulationStatus {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let status = engine.get_status();
+        if status.running && status.tick_count > 0 {
+            return status;
+        }
+        if std::time::Instant::now() >= deadline {
+            return status;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
 
 #[test]
 fn test_10000_trees_spawning_and_lifecycle() {
@@ -121,22 +165,22 @@ fn test_10000_trees_spawning_and_lifecycle() {
             Arc::clone(&map_elites_grid),
         );
 
-        // Let the simulation run for a short duration
-        thread::sleep(Duration::from_millis(150));
+        {
+            // Guard scope: every assertion below runs with a stop() pending on unwind.
+            let _guard = EngineGuard(&engine);
 
-        let status = engine.get_status();
-        assert!(status.running, "Engine should be running");
-        assert!(status.tick_count > 0, "Simulation should have ticked");
+            let status = wait_until_ticking(&engine, Duration::from_secs(10));
+            assert!(status.running, "Engine should be running");
+            assert!(status.tick_count > 0, "Simulation should have ticked");
 
-        // Make sure average tick time is within reasonable limits (no massive slowdowns)
-        println!("Cycle {} status: {:?}", cycle, status);
-        assert!(
-            status.avg_tick_time_ms < 50.0,
-            "Average tick time should be under 50ms, got {}",
-            status.avg_tick_time_ms
-        );
-
-        engine.stop();
+            // Make sure average tick time is within reasonable limits (no massive slowdowns)
+            println!("Cycle {} status: {:?}", cycle, status);
+            assert!(
+                status.avg_tick_time_ms < 50.0,
+                "Average tick time should be under 50ms, got {}",
+                status.avg_tick_time_ms
+            );
+        }
 
         // Assert thread handles were taken and joined (which sets engine.threads to None or clears it)
         let threads_lock = engine.threads.lock().unwrap();

@@ -12,6 +12,8 @@
     "tauri:build": "tauri build --features desktop",
     "test": "vitest run",
     "test:frontend": "vitest run --config vitest.config.ts --root tests",
+    "test:e2e": "npm run test:e2e --prefix tests",
+    "test:all": "npm run test && npm run test:frontend && npm run test:e2e",
     "gen:manifest": "esbuild scripts/gen_map_manifest.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/gen_map_manifest.cjs && node node_modules/.cache/gen_map_manifest.cjs",
     "lint": "eslint ."
   },
