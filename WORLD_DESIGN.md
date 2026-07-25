@@ -292,9 +292,44 @@ render↔sim. Mỗi tick: chỉ lặp brain cho agent tầng HOT; tầng WARM th
 - Không cấp phát trong tick: `LodGate` là `SystemParam` trên stack, `LodSnapshot` là `Copy`.
 - Gate: 9 unit + 9 integration (`tests/simulation_lod_tests.rs`), clippy sạch.
 
-**⚠️ Tầng 2 — quần thể thống kê + re-hydrate. CHƯA làm, cố ý tách riêng.**
-Bản trên mua **CPU, không mua bộ nhớ**: agent COLD vẫn giữ trọng số não, vẫn giữ tham số CPG cuối, vẫn di chuyển,
-ăn và trao đổi chất — nó chỉ thôi *nghĩ*. Muốn thu hồi ~22,5 KiB mỗi agent (đo ở gate EB-S12) thì phải thay cá thể ở
-xa bằng **thống kê quần thể theo ô** và **nở lại** khi observer tới gần. Đó là **mô hình thứ hai của cùng một hệ sinh
-thái**, và nó phải bảo toàn năng lượng khép kín qua *mọi* lần chuyển tầng — nên 4 điều kiện verify ở trên
-(bảo toàn năng lượng COLD↔HOT, re-hydrate không sinh/mất năng lượng) là gate của **tầng 2**, chưa phải của tầng 1.
+**✅ Tầng 2 — quần thể thống kê + re-hydrate. Đã thực thi:** `src-tauri/src/core/aggregate_population.rs`.
+
+Agent ngủ bị **huỷ hẳn** (entity, component, não). Còn lại là mấy con số trong một chunk (lưới 32×32).
+
+- **Bảo toàn năng lượng — một dòng, một chỗ.** Con vật ngủ **vẫn là con vật**: năng lượng của nó chưa bị ăn, chưa
+  hô hấp, chưa về mùn — chỉ thôi được phân giải theo từng cá thể. Nên **không có compartment thứ tư** và **không có
+  giao dịch ledger** nào: `ecosystem_census_system` cộng thêm `DormantCohorts::total_energy()` vào `pool.animals`,
+  hết. Phương án thay thế (dồn dự trữ vào mùn) cũng bảo toàn EU nhưng **sai sinh thái** — đi khỏi một bầy thú là
+  bón phân cho cả vùng.
+- **Nhả năng lượng và huỷ body dùng chung một sync point.** `DehydrateAgentCommand` là `Command` đúng vì lý do
+  `ReclaimAndDespawnAgentCommand` đã ghi: nếu ghi sổ trong system rồi despawn qua `Commands`, còn một khoảng trong
+  đó body vẫn sống mang dự trữ đã bị đếm ở chỗ khác → mỗi lần ngủ là thế giới đẻ ra một suất EU.
+- **Trễ (hysteresis) 120 tick.** Không có nó, agent chạm mép vùng warm là mất não ngay tick đầu, và một observer
+  lia camera qua lại sẽ **điều khiển tiến hoá**.
+- **Đa dạng di truyền: có giới hạn, và được đếm.** Mỗi chunk giữ tối đa 8 genome, lấy **mẫu ngẫu nhiên đều**
+  (reservoir, thuật toán R) chứ không phải "8 đứa đến sau cùng" — mẫu theo thứ tự đến là chọn lọc theo thời điểm
+  đến, vô nghĩa về sinh học. Hệ quả nêu thẳng: **cohort ngủ có kích thước quần thể hiệu dụng = 8**, trôi dạt di
+  truyền ở đó nhanh hơn quần thể sống. `genomes_dropped()` đếm đúng số genome đã mất.
+- **Lossless dưới cap.** Cohort chưa quá 8 cá thể thì trả lại **đúng** những genome đã nuốt. Trên cap là mất mát
+  có chủ đích. Ranh giới đó là một test, không phải một ghi chú.
+- Gate: 11 unit + 14 integration (`tests/aggregate_population_tests.rs`). Gate năng lượng G1.1 và gate determinism
+  vẫn xanh sau khi sửa census.
+
+**Tiết kiệm bộ nhớ là CÓ ĐIỀU KIỆN — nói rõ vì dễ tưởng nhầm:**
+
+| Cohort | Archive giữ gì | Tiết kiệm |
+|---|---|---|
+| ≤ 8 cá thể | **đủ mọi genome** | chỉ body ECS + mạng `learned` — cỡ hệ số 2, không hơn |
+| > 8 cá thể | 8 genome | không chặn trên: bộ nhớ ngủ thành O(số chunk), không còn O(số agent) |
+
+Nghĩa là vài agent đi khuất tầm mắt gần như **không** tiết kiệm gì. Trần bộ nhớ chỉ nhúc nhích ở quy mô mà một chunk
+vượt cap — đúng cái quy mô mà mục tiêu "hàng triệu agent" sống, và cũng đúng cái quy mô mà ngủ trở nên mất mát.
+Hai điều đó là **cùng một điều**.
+
+**⚠️ Còn nợ — động lực học quần thể ngủ.** Mục này ở trên yêu cầu cohort chạy sinh thái tổng hợp khi ngủ (logistic,
+Holling, chết theo mật độ). **Chưa có.** Cohort hiện bị **đóng băng**: năng lượng và số lượng không đổi cho tới khi
+có gì đó đánh thức. Artifact thật, gọi tên thẳng: **thời gian không trôi ở nơi không ai nhìn.** Hoãn chứ không vội
+vì hai nửa hỏng theo hai kiểu khác nhau — bảo toàn ở đây chính xác và chứng minh được, còn sinh thái tổng hợp là
+*mô hình thứ hai của cùng hệ*; ghép chung một commit thì một residual trôi sẽ có hai nghi phạm thay vì một.
+4 điều kiện verify liệt kê ở trên: (1) và (3) **đã xanh**; (2) và (4) thuộc tầng 1 và cũng đã xanh; phần động lực
+học còn lại là commit kế tiếp, trên một nền đã chứng minh xong bảo toàn.
