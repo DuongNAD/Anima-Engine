@@ -28,6 +28,16 @@ use crate::physics::{
 };
 use tauri::Emitter;
 
+/// How often the emit thread pushes a frame to the frontend. ~30 Hz; the simulation itself ticks at
+/// 60, and the webview cannot usefully repaint faster than this.
+const EMIT_INTERVAL: Duration = Duration::from_millis(33);
+
+/// Rate limit for `pheromone-update` specifically. It carries a 128x128 f32 field, which Tauri puts
+/// on the wire as a JSON array of ~16k numbers — roughly two orders of magnitude more bytes than
+/// every other event in this loop combined, parsed on the webview's main thread. A diffusing scalar
+/// field does not read differently at 10 Hz than at 30, so it gets its own, slower clock.
+const PHEROMONE_EMIT_INTERVAL: Duration = Duration::from_millis(100);
+
 pub enum ModelUpdate {
     NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
     #[cfg(feature = "ml-wgpu")]
@@ -1445,54 +1455,54 @@ impl SimulationEngine {
         let environmental_state_clone_emit = Arc::clone(&self.environmental_state);
 
         let emit_handle = thread::spawn(move || {
-            let mut local_emit_buffer = Vec::with_capacity(1000);
+            use crate::core::emit::{new_tick_payload, refresh_tick_payload, PheromoneEmitGate};
+
+            // One payload, reused for the life of the thread. It used to be rebuilt every frame: a
+            // pre-allocated segment buffer `.clone()`d into a fresh payload — allocating the very
+            // Vec the pre-allocation existed to avoid — plus the environmental state cloned twice
+            // over and a new un-hinted `HashMap` each time. See `core::emit` for the details and the
+            // tests that pin it.
+            let mut tick_payload = new_tick_payload();
             let mut local_pheromone_emit = crate::ai::pheromone::PheromoneGridState {
-                grid: vec![0.0; 128 * 128],
-                width: 128,
-                height: 128,
+                grid: vec![0.0; crate::ai::pheromone::CELL_COUNT],
+                width: crate::ai::pheromone::GRID_SIZE as u32,
+                height: crate::ai::pheromone::GRID_SIZE as u32,
             };
+            let mut pheromone_gate = PheromoneEmitGate::new(
+                crate::ai::pheromone::CELL_COUNT,
+                PHEROMONE_EMIT_INTERVAL,
+                Instant::now(),
+            );
             let mut local_raycast_emit = Vec::with_capacity(1000);
             let mut local_combat_emit = Vec::with_capacity(100);
 
             while running_clone_emit.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(33));
+                thread::sleep(EMIT_INTERVAL);
 
                 if let Some(ref handle) = app_handle_emit {
-                    local_emit_buffer.clear();
                     {
                         let states = agent_states_clone_emit
                             .read()
                             .unwrap_or_else(|e| e.into_inner());
-                        local_emit_buffer.extend_from_slice(&states);
-                    }
-                    let local_environmental_state = {
-                        let shared = environmental_state_clone_emit
+                        let env = environmental_state_clone_emit
                             .read()
                             .unwrap_or_else(|e| e.into_inner());
-                        shared.clone()
-                    };
-                    let mut head_directions = std::collections::HashMap::new();
-                    for seg in &local_emit_buffer {
-                        if seg.parent_segment_id.is_none() || seg.segment_id == 0 {
-                            head_directions.insert(seg.agent_id, seg.head_direction);
-                        }
+                        refresh_tick_payload(&mut tick_payload, &states, &env);
                     }
-                    let tick_payload = SimulationTickPayload {
-                        segments: local_emit_buffer.clone(),
-                        environmental_state: local_environmental_state.clone(),
-                        head_directions,
-                    };
                     let _ = handle.emit("simulation-tick", &tick_payload);
 
-                    {
+                    // The pheromone field is the most expensive event this loop can send by a wide
+                    // margin — 128x128 f32 becomes a JSON array of ~16k numbers. The gate rate-limits
+                    // it and drops it entirely when unchanged; see `core::emit::PheromoneEmitGate`.
+                    let should_emit_pheromone = {
                         let shared = pheromone_grid_state_emit
                             .read()
                             .unwrap_or_else(|e| e.into_inner());
-                        local_pheromone_emit.grid.copy_from_slice(&shared.grid);
-                        local_pheromone_emit.width = shared.width;
-                        local_pheromone_emit.height = shared.height;
+                        pheromone_gate.poll(&shared, &mut local_pheromone_emit, Instant::now())
+                    };
+                    if should_emit_pheromone {
+                        let _ = handle.emit("pheromone-update", &local_pheromone_emit);
                     }
-                    let _ = handle.emit("pheromone-update", &local_pheromone_emit);
 
                     local_raycast_emit.clear();
                     {
