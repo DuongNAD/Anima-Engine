@@ -63,6 +63,94 @@ nhất trong toàn hệ** — và đó cũng chính là chỗ có đòn bẩy ca
 
 ## 2. Phần A — MAP
 
+### A0-bis. Đợt hai (2026-07-25, sau khi ADR-0003 xong): thứ tự ưu tiên map ĐÃ ĐỔI
+
+Đợt nghiên cứu đầu xếp map theo **độ chân thực**. Sau khi gate **EB-S12** đo được bộ nhớ per-agent,
+ràng buộc thật lộ ra ở chỗ khác — và nó nằm ở **độ phân giải map**, không phải ở bộ nhớ.
+
+**Ba bậc hạ phân giải nối tiếp nhau, đo từ code:**
+
+| Bậc | Kích thước | Nơi | Số ô |
+|---|---|---|---|
+| Frontend `worldGen.ts` sinh | tới 2048² | `WORLD_GEN_VERSION = 20` | 4.194.304 |
+| Xuất ra artifact | **256²** | `worldCache.ts: SIM_ARTIFACT_SIZE = 256` | 65.536 |
+| Backend nạp vào `TerrainMap` | **128²** | `MapSettings::default()`, qua `to_terrain_map(128, 128)` | **16.384** |
+
+`ResourceField` — trường NPP mà toàn bộ sinh thái đọc — dựng từ `terrain_map.width/height`, tức
+cũng **128²**. Thế giới agent thật sự sống trong đó có **16.384 ô** trên 200 world-unit mỗi trục,
+tức **~1,56 unit/ô**.
+
+**Phát hiện 1 — backend vứt đi 75% số ô mà frontend đã gửi tới.** Artifact đến ở 256² rồi bị
+`to_terrain_map` hạ xuống 128². Dữ liệu **đã nằm sẵn trong bộ nhớ**; việc hạ này không đổi lấy gì cả.
+Nâng `MapSettings::default()` lên 256² tốn thêm ~1 MiB và **gấp đôi độ phân giải tuyến tính miễn phí**.
+
+**Phát hiện 2 — độ phân giải map chạm trần TRƯỚC bộ nhớ.** Ghép với EB-S12 (~46.500 agent thường
+trú mỗi GiB trọng số):
+
+| Độ phân giải sim | Số ô | Agent/ô ở 46.500 agent | unit/ô |
+|---|---|---|---|
+| **128² (hiện tại)** | 16.384 | **2,84** | 1,56 |
+| 256² | 65.536 | 0,71 | 0,78 |
+| 512² | 262.144 | 0,18 | 0,39 |
+
+Ở 2,84 agent mỗi ô, sinh thái **không còn nghĩa**: cạn kiệt tài nguyên cục bộ, lãnh thổ, phát tán,
+thích nghi địa phương đều sụp về nhiễu vì mọi cá thể ở chung một ô. Nói cách khác, **quy mô agent bị
+map chặn trước khi bị RAM chặn.**
+
+**Phát hiện 3 — và cái trần đó rẻ đến mức khó tin.** Trường map ở 512² là
+`4 × f32 + 1 × u8` mỗi ô ≈ **4,25 MiB**. Cùng lúc, 46.500 agent tốn ~**1 GiB** trọng số. Map là
+**~0,4%** chi phí của agent ở cùng quy mô.
+
+> **Kết luận đợt hai:** trước khi làm bất cứ việc nào về *độ chân thực* map, hãy nâng độ phân giải
+> thế giới sim. 128² → 256² là **miễn phí** (dữ liệu đã có); → 512² tốn vài MiB. Đây là đòn bẩy rẻ
+> nhất trong toàn bộ tài liệu này, và nó đứng **trước** cả A1.
+
+Cảnh báo trung thực: nâng độ phân giải làm tăng chi phí mỗi tick của các hệ đọc trường (regrowth,
+grazing, census) theo O(số ô). Cần benchmark trước, và đây chính là chỗ Simulation-LOD (A6) trả tiền.
+
+#### Đã làm 128² → 256² (2026-07-25) và cái giá đo được
+
+`MapSettings::default()` nâng lên **256²**, và `erosion_steps` **20.000 → 80.000**.
+
+Vì sao phải nâng cả erosion: mỗi giọt nước bào một đường, nên **ngân sách giọt cố định trải trên gấp
+bốn số ô là yếu đi bốn lần trên mỗi đơn vị diện tích**. Nâng độ phân giải mà giữ nguyên số giọt sẽ
+**làm phẳng** địa hình chứ không làm sắc nét hơn — một hồi quy im lặng đúng kiểu tài liệu này liên
+tục gặp. `MAX_EROSION_ITERATIONS` (100.000) vẫn chặn trên.
+
+**Giá phải trả, đo thật:** test 120.000 tick `live_world_conserves_energy_...` chạy **509 giây**,
+so với **82 giây** ghi trước đó. Quy ra mỗi tick: **~4,2 ms** so với **~0,68 ms** — tức **~25% ngân
+sách khung hình 60 FPS** cho riêng trường sinh thái, thay vì ~4%.
+
+**Giới hạn của phép đo, phải nói rõ:** con số 82 giây lấy **trước** khi phiên song song vá rò rỉ EU.
+Tôi thử đo lại A/B ở 128² *có* bản vá đó nhưng bị chặn vì tranh chấp file build với phiên đó, nên
+**không tách được** phần nào của mức tăng là do độ phân giải và phần nào do bản vá. Suy luận (chưa
+đo): phần lớn là do độ phân giải, vì regrowth là O(số ô) còn bản vá chỉ đổi thứ tự despawn.
+
+**Vì sao có thể siêu tuyến tính (6,2× chứ không phải 4×):** ở 128², bốn trường `f32` chiếm ~256 KiB —
+vừa L2. Ở 256² là ~1 MiB — không còn vừa. Đây là giả thuyết cache, chưa đo bằng profiler.
+
+**Cách giảm, chưa làm:** cập nhật trường theo **lượt so le** — mỗi tick chỉ xử lý 1/N số ô với `N·dt`.
+Regrowth là quá trình logistic chậm nên tương đương bậc nhất, và nó trả lại gần hết chi phí mà vẫn
+giữ độ phân giải. **Chưa làm vì nó đụng đúng đường closed-EU mà phiên song song vừa vá** — cần phối
+hợp, không nên làm đơn phương.
+
+### A6. Simulation-LOD — từ "tối ưu hoá" thành điều kiện tiên quyết — *Adopt*
+
+ADR-0003 kết luận Simulation-LOD là **điều kiện tiên quyết của quy mô**, không phải tối ưu hoá:
+trần bộ nhớ là **số agent thường trú**, không phải tổng quần thể. Tài liệu LOD mô phỏng đưa ra đúng
+khung cần:
+
+- **Mô hình vi mô ở vùng quan tâm, vĩ mô ở ngoài** — vùng đang quan sát dùng agent đầy đủ, phần còn
+  lại dùng mô hình quần thể. Anima đã có sẵn nửa vĩ mô: `core/ecology.rs` (MTE, Holling III,
+  năng lượng đóng) chính là mô hình quần thể cần thiết.
+- **Gộp không gian**: các agent tương tự trong cùng vùng được đại diện bởi **một agent tổng hợp**,
+  giảm CPU rõ rệt và **tự chọn mức biểu diễn** phù hợp cho từng agent.
+- **Agent tổng hợp cho quần thể rất lớn**: khi mô phỏng tường minh từng cá thể là bất khả, trừu tượng
+  hoá nhiều cá thể thành một agent hợp thành.
+
+Điểm nối với ADR-0003 cần ghi rõ: `LifetimeLearning.active_radius` hiện **đo từ gốc toạ độ** — chỗ
+giữ chỗ có chủ ý. Khi Simulation-LOD thật xuất hiện, nó là tâm LOD mà bán kính này phải bám theo.
+
 ### A0. Khoảng trống đã biết vs. khoảng trống mới phát hiện
 
 `WORLD_DESIGN.md` §2 đã liệt kê 10 khoảng trống và §3 đã dẫn 5 nguồn tham chiếu
@@ -87,6 +175,31 @@ là *triệu chứng* của cùng một nguyên nhân: **thiếu tầng nhân qu
   và mô hình khí hậu toàn cầu tính mưa/nhiệt **theo cả năm**.
 - **realistic-planet-generation-and-simulation** (FreezeDriedMangos) — mảng + thời tiết + dòng hải lưu,
   giữ lại dữ liệu mảng sau khi sinh để tính tiếp.
+
+**Bổ sung đợt hai — nguồn đúng hơn cho việc Anima cần làm.**
+
+Các dự án ở trên (WorldEngine/PyPlatec, Gleba…) chạy **mô phỏng vật lý** mảng. Nhưng Anima không cần
+*quá trình* kiến tạo, chỉ cần *kết quả* của nó — và có một bài đúng nhu cầu đó:
+
+- **Cortial, Peytavie, Galin & Guérin, "Procedural Tectonic Planets" (Computer Graphics Forum /
+  Eurographics 2019).** Điểm mấu chốt: **thủ tục, không phải mô phỏng vật lý**. Bài này *xấp xỉ* các
+  hiện tượng như hút chìm và va chạm để biến dạng thạch quyển thay vì mô phỏng chúng, và nhờ vậy
+  chạy **tương tác** — người dùng điều khiển chuyển động mảng, kích hoạt tách giãn, và thấy kết quả
+  ngay. Nó sinh ra đúng bộ đặc trưng Anima đang thiếu: lục địa, sống núi giữa đại dương, dãy núi,
+  **vòng cung đảo núi lửa**.
+- Và quan trọng cho kiến trúc Anima: bài này **thiết kế sẵn cho việc khuếch đại về sau** — mô hình
+  thô ở quy mô hành tinh được bồi chi tiết bằng dữ liệu thủ tục *hoặc* DEM thật. Đó chính là mô hình
+  hai tầng A2b/A4 đã đề xuất: **thô, tất định, rẻ ở tầng dữ liệu; chi tiết ở tầng hiển thị.**
+
+- **tectonics.js** (davidson16807, mã nguồn mở) cho chi tiết triển khai đáng giá nhất, vì nó nói rõ
+  sự khác biệt giữa hai trường hợp: bản 3D dùng lưới icosahedron trên mặt cầu, **còn trong 2D thì ô
+  lưới chỉ là mảng 2D và crust được chuyển giữa các ô bằng vector số nguyên**. Cơ chế thì đơn giản
+  đến bất ngờ: nơi mảng chồng lên nhau, crust bị **xoá** — đó là hút chìm; nơi hở ra, crust **mới
+  được sinh** — đó là sống núi giữa đại dương.
+
+  **Map của Anima là lưới 2D phẳng**, nên toàn bộ phần hình học cầu — thứ làm mọi bản tectonics
+  trông đáng sợ — **không áp dụng**. Cần đúng ba thứ: một mảng `plate_id` mỗi ô, một vector vận tốc
+  số nguyên mỗi mảng, và luật xoá-khi-chồng / sinh-khi-hở.
 
 **Đề xuất cụ thể cho Anima.** Không cần mô phỏng mảng đầy đủ. Đủ để phá thế đối xứng:
 
@@ -444,6 +557,10 @@ nút thắt; (b) chuyển state lên GPU xung đột trực tiếp với luật 
 
 Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify được trên máy yếu".
 
+> **Cập nhật 2026-07-25:** hai hàng **0a** và **0b** ở cuối bảng được chèn thêm sau khi EB-S12 đo
+> xong bộ nhớ; chúng đứng **trước** mọi hàng khác. Xem §A0-bis. Các bậc 1–10 dưới đây giữ nguyên thứ
+> tự tương đối của đợt nghiên cứu đầu, và bậc 1–6 đã hoàn thành qua ADR-0003.
+
 | Bậc | Việc | Vì sao trước | Verify headless? |
 |---|---|---|---|
 | **1** | **C2** — RNG có seed | Chặn mọi so sánh đối chứng của B1; refactor cơ học, rủi ro thấp nhất trong danh sách | ✅ cargo test |
@@ -453,6 +570,8 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 | **5** | **C1a** — nâng `burn` | Biên hẹp lại sau B1; bỏ được `unsafe impl Send/Sync` | ✅ cargo |
 | **6** | **B3** — thêm chiều hành vi vào archive (+ pyribs oracle) | Cần B1 mới có hành vi để đo | ✅ |
 | **7** | **A2b** — hoa văn erosion thủ tục | Lợi ích thị giác lớn nhất/chi phí, không đổi data | ⚠️ cần nhìn |
+| **0a** | **Nâng sim world 128² → 256²** | **MIỄN PHÍ** — artifact đã đến ở 256², backend đang vứt 75% số ô | ✅ cargo test |
+| **0b** | **A6** — Simulation-LOD backend | Quy mô agent bị map chặn trước RAM; LOD là chỗ trả tiền cho độ phân giải cao hơn | ✅ headless |
 | **8** | **B4** — A2C thành học-trong-đời (sau cờ) | Cần B1 xong trước | ✅ |
 | **9** | **B5** — harness ASAL ngoại tuyến | Cần AE runner ổn định + có ảnh render | ⚠️ cần quota API |
 | **10** | **C1b** — nâng `bevy_ecs` | Biên rộng nhất; làm khi các bậc trên đã ổn định | ✅ cargo |
@@ -493,6 +612,8 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 - [Physically-based analytical erosion for fast terrain generation (INRIA, 2024)](https://www-sop.inria.fr/reves/Basilic/2024/TGSC24/Analytical_Terrains_EG.pdf) · [Real-time Terrain Enhancement with Controlled Procedural Patterns (CGF 2024)](https://onlinelibrary.wiley.com/doi/10.1111/cgf.14992) · [Interactive Hydraulic Erosion Simulator (GPU)](https://huw-man.github.io/Interactive-Erosion-Simulator-on-GPU/)
 - [Terrain Diffusion Network (climatic-aware)](https://arxiv.org/pdf/2308.16725) · [StyleDEM](https://arxiv.org/pdf/2304.09626) · [Multi-theme GAN terrain amplification (ToG)](https://dl.acm.org/doi/10.1145/3355089.3356553) · [DEM super-resolution framework (2024)](https://www.tandfonline.com/doi/full/10.1080/17538947.2024.2356121)
 - [Climate Modeling 101](https://medium.com/universe-factory/climate-modeling-101-4544e00a2ff2) · [An Apple Pie from Scratch — Biomes and Climate Zones](https://worldbuildingpasta.blogspot.com/2020/05/an-apple-pie-from-scratch-part-vib.html)
+- **Đợt hai:** [Procedural Tectonic Planets (Cortial et al., CGF/Eurographics 2019)](https://onlinelibrary.wiley.com/doi/abs/10.1111/cgf.13614) · [PDF](https://perso.liris.cnrs.fr/eric.galin/Articles/2019-planets.pdf) · [tóm tắt](https://www.physicsbasedanimation.com/2019/05/08/procedural-tectonic-plates/) · [tectonics.js](https://github.com/davidson16807/tectonics.js) · [Real-time hyper-amplification of planets (The Visual Computer, 2020)](https://link.springer.com/article/10.1007/s00371-020-01923-4)
+- **Simulation-LOD:** [Very Large-Scale Multi-Agent Simulation in AgentScope](https://arxiv.org/pdf/2407.17789) · [Level of Detail AI for Virtual Characters](https://www.researchgate.net/publication/221252089_Level_of_Detail_AI_for_Virtual_Characters_in_Games_and_Simulation) · [Simulation Principles from Dwarf Fortress (Game AI Pro 2)](https://www.gameaipro.com/GameAIPro2/GameAIPro2_Chapter41_Simulation_Principles_from_Dwarf_Fortress.pdf)
 - [bevy-sculpter (SDF + Surface Nets)](https://crates.io/crates/bevy-sculpter) · [bevy_voxel_world](https://github.com/splashdust/bevy_voxel_world) · [godot_voxel](https://github.com/Zylann/godot_voxel)
 
 **Mô hình machine / ALife**

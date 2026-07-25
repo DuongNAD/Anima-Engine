@@ -86,13 +86,25 @@ pub struct MapSettings {
 impl Default for MapSettings {
     fn default() -> Self {
         Self {
-            width: 128,
-            height: 128,
+            // The shared World Artifact arrives at 256² (`SIM_ARTIFACT_SIZE` in `worldCache.ts`), so
+            // a 128² working map threw away three quarters of the cells the frontend had already
+            // computed and sent. Matching the artifact makes `to_terrain_map` a straight copy.
+            //
+            // Resolution is also what bounds agent density, before memory does: `ResourceField` — the
+            // NPP field the whole ecology reads — is built at this size, and at 128² a population of
+            // ~46k (the per-agent memory budget from ADR-0003 gate EB-S12) would be ~2.8 agents per
+            // cell. Local depletion, territory and dispersal all collapse into noise at that density.
+            width: 256,
+            height: 256,
             seed: 1337,
             octaves: 6,
             lacunarity: 2.0,
             gain: 0.5,
-            erosion_steps: 20000,
+            // Scaled with cell count, not left fixed. Each droplet carves roughly one path, so a
+            // fixed budget spread over four times the cells is four times weaker per unit area —
+            // raising the resolution alone would have quietly *flattened* the terrain rather than
+            // sharpening it. `MAX_EROSION_ITERATIONS` (100,000) still caps it.
+            erosion_steps: 80000,
         }
     }
 }
