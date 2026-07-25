@@ -55,6 +55,18 @@ image = "0.24.7"
 # adapter over it. New domain modules go in the member crate, not here.
 members = ["crates/*"]
 
+# Debug info is by far the largest thing this repo writes to disk. Every `cargo test` links a fresh
+# set of test binaries under new hashes and Cargo never garbage-collects the old ones, so the `.pdb`
+# files accumulate without bound: 884 of them, 182 GB, in `target/debug/deps` alone — 177 GB of that
+# written across two days of agent runs, on a machine with 90 GB free.
+#
+# `line-tables-only` keeps the file/line numbers, which is all a panic backtrace and the test harness
+# ever read; what it drops is the type and variable info only a step-debugger uses. Set on the
+# workspace root because that is the only place Cargo reads profiles from, and `profile.test`
+# inherits from `dev`, which is where the test binaries actually come from.
+[profile.dev]
+debug = "line-tables-only"
+
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
 
