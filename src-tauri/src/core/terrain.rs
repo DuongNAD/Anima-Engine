@@ -697,7 +697,6 @@ impl TerrainMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
     fn test_heightmap_range_normalization() {
@@ -854,11 +853,17 @@ mod tests {
             }
         }
 
-        let output_path = Path::new(r"e:\Project\Anima-Engine\anima_world_refined.png");
+        // A temp directory, not a hardcoded `e:\Project\Anima-Engine\...`. That path exists on
+        // exactly one machine, so the test passed there and failed everywhere else — including CI,
+        // where it was the only red test in the Rust job (`IoError(NotFound)`). A unit test that
+        // depends on a developer's drive layout is not testing the encoder.
+        let output_path = std::env::temp_dir().join("anima_world_refined_test.png");
         img_buf
-            .save(output_path)
+            .save(&output_path)
             .expect("Failed to save sample map image");
         assert!(output_path.exists());
+        // Leave nothing behind; the assertion above is the whole point of writing it.
+        let _ = std::fs::remove_file(&output_path);
     }
 
     #[test]
