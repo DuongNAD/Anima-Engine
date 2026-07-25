@@ -19,22 +19,13 @@ use crate::core::resources::MapBounds;
 
 // ---- Time -----------------------------------------------------------------------------------
 
-/// Physics/collision tick rate in Hz — the fixed simulation step. Mirrors `TimeStep(1.0/60.0)`
-/// inserted in `core/ecs.rs`.
-pub const TICK_HZ: f64 = 60.0;
-
-/// Fixed simulation time step, in sim-seconds (`1 / TICK_HZ` ≈ 0.016667).
-pub const TICK_DT_SECONDS: f64 = 1.0 / TICK_HZ;
-
-/// Ticks in one evolutionary epoch (`EpochManager::ticks_per_epoch`, `core/simulation_loop.rs`).
-pub const TICKS_PER_EPOCH: u64 = 1000;
-
-/// Sim-seconds in one simulated year: the `SeasonClock` sweeps one full 2π phase over this span
-/// (`rate = TAU / SECONDS_PER_YEAR` in `core/ecology.rs`).
-pub const SECONDS_PER_YEAR: f64 = 100.0;
-
-/// Ticks in one simulated year (`SECONDS_PER_YEAR * TICK_HZ` = 6000 at 60 Hz).
-pub const TICKS_PER_YEAR: u64 = 6000;
+// The time laws now live in `anima-domain` (G2 task 1) — the headless runner and the live world
+// must agree on them or a manifest replayed in one does not describe the other. Re-exported rather
+// than redeclared so this units table stays one document and the S01 checks below still read
+// against the same names.
+pub use anima_domain::laws::{
+    SECONDS_PER_YEAR, TICKS_PER_EPOCH, TICKS_PER_YEAR, TICK_DT_SECONDS, TICK_HZ,
+};
 
 // ---- Space ----------------------------------------------------------------------------------
 
