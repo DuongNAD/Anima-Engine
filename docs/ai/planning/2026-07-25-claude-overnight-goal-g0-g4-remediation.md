@@ -984,3 +984,78 @@ No file outside the list was touched for this goal.
   outside the single-node trajectory.
 - With determinism **off** — the default — the live schedule still runs multi-threaded and is not
   reproducible. That is the intended trade: only runs that need reproducibility pay for it.
+
+---
+
+### G1.4 — Generated Rust↔TS contracts — 2026-07-25 (Claude Opus 5)
+
+**Status: PARTIAL. The gate does not pass.** The concrete contract bug the audit named is fixed and
+the drift that hid it is removed, but the goal's actual requirement — generate the TypeScript types
+from the Rust structs, delete the hand-written duplicates, run a parity check in CI — is **not
+done**. Recorded here rather than presented as complete.
+
+**Rung reached: Unit verified** for the bug fix. Nothing beyond that.
+
+#### The bug is worse than the audit described
+
+The audit said `head_directions` "is typed as an object/map in `src/types/index.ts:40`, but
+`src/App.tsx:634` only handles it when it is an array". Both anchors are exact. But the conclusion
+to draw is not "the type is wrong" — **the type was right**, and three other things were wrong:
+
+| Place | Said | Reality |
+|---|---|---|
+| `core/simulation_state.rs:47` | `HashMap<u32, [f32; 3]>` → JSON **object** | the contract |
+| `src/types/index.ts:43` | `{ [key: number]: [number,number,number] }` | **correct already** |
+| `src/App.tsx:634` | `Array.isArray(head_directions)` | never true → branch never ran |
+| `src/types/index.ts:35` | `HeadDirectionTelemetry { agent_id, direction }` | a shape the backend has never sent |
+| `tests/mocks/mock_ipc_payloads.ts:428` | `head_directions: HeadDirectionTelemetry[]` | the same fiction, fed to every test |
+
+So the feature was **dead**: `Array.isArray({...})` is false, so `setHeadDirections` never fired.
+
+#### Why 237 passing tests could not see it
+
+The mock agreed with the **consumer** instead of with the **backend**. Every frontend test handed
+`App.tsx` an array — exactly the shape it was (wrongly) written for — so the code path looked
+exercised while the real payload had never once reached it.
+
+The confirmation is that **all 237 tests still pass after the fix**. That is not reassurance, it is
+the finding: the suite asserts "does not crash", never "the payload is actually applied". A mock that
+is written from the consumer's assumptions rather than from the producer's contract cannot detect a
+contract violation — it *encodes* one.
+
+This is the strongest argument in the program for G1.4's actual requirement. A generated type would
+have made all three wrong places uncompilable.
+
+#### Done
+
+- `App.tsx` reads the object form (`Object.entries`, numeric-keyed), with the reason recorded inline.
+- `HeadDirectionTelemetry` deleted from `src/types/index.ts` — it described nothing that exists.
+- `tests/mocks/mock_ipc_payloads.ts` now declares and builds the object form, so the mock states the
+  backend's contract rather than the consumer's guess.
+- ESLint warnings 445 → 444 (the dead type); ratchet baseline lowered to lock it in.
+
+Verification: `npm run build` ok, `npm run test:frontend` 24 files / 237 tests, `npm run lint`
+0 errors / 444 warnings, ratchet green.
+
+#### Not done — this is the bulk of G1.4
+
+- **No codegen.** `ts-rs` is not a dependency and no `#[derive(TS)]` exists. All **22** types in
+  `src/types/index.ts` are still hand-maintained mirrors.
+- **No CI parity check**, which is the literal gate. Until it exists, the next `head_directions`
+  can happen exactly the same way.
+- The Rust payload structs are spread across five files, and three are **outside G1's allowed-files
+  list**: `core/components.rs` (`EnvironmentalState`, `RaycastTelemetry`, `CombatEvent`),
+  `ai/pheromone.rs` (`PheromoneGridState`), `commands/{evolution,environment}.rs`
+  (`EvolutionSettings`, `MapElitesGridState`, `EcosystemState`). Deriving on them widens the goal's
+  file scope, which should be an explicit decision rather than something done in passing.
+
+**Suggested shape for finishing it**: add `ts-rs`, derive `TS` on the eleven IPC payload structs,
+export to `src/types/generated/`, reduce `src/types/index.ts` to re-exports, and add a CI step that
+regenerates and runs `git diff --exit-code src/types/generated`. The mock file should then import
+the generated types instead of redeclaring them — redeclaring is what made this bug invisible.
+
+#### Stop condition
+
+Not a stop condition in the plan's sense; I ran out of context budget to do the codegen properly and
+chose to land a verified partial rather than a half-applied `ts-rs` migration that could leave the
+build red. The bug fix stands on its own and is independently useful.
