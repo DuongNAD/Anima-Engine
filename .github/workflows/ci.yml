@@ -54,6 +54,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            # cargo-audit is `cargo install`ed below, which builds it from source — several minutes
+            # on a Windows runner. Caching the bin directory makes that a first-run cost.
+            ~/.cargo/bin
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
@@ -61,6 +64,21 @@ jobs:
       - name: cargo fmt --check
         if: ${{ !cancelled() }}
         run: cargo fmt --check
+
+      # Nothing checked Rust advisories before this. There were five, including gix-fs
+      # RUSTSEC-2024-0350 (arbitrary code execution, CVSS 8.8) reachable through burn's `train`
+      # feature. Three were cleared by `cargo update`; the `train` feature was dropped because
+      # nothing here uses Burn's Learner harness, which took burn-dataset and gix out of the
+      # compiled graph. src-tauri/.cargo/audit.toml documents the two that remain as lockfile-only
+      # entries, with the commands that verify they are never built.
+      - name: Install cargo-audit
+        if: ${{ !cancelled() }}
+        # `--locked` for a reproducible build of the tool itself. Skipped when the cache restored it.
+        run: cargo install cargo-audit --locked || cargo audit --version
+
+      - name: cargo audit
+        if: ${{ !cancelled() }}
+        run: cargo audit
 
       - name: cargo clippy --all-targets -D warnings
         if: ${{ !cancelled() }}
@@ -124,6 +142,19 @@ jobs:
       # tests/ is a second npm package with its own lockfile and its own node_modules.
       - name: Install tests/ dependencies
         run: npm ci --prefix tests
+
+      # Nothing checked dependency advisories before this. The two packages were carrying a critical
+      # (vitest UI server: arbitrary file read and execute) and four high findings, all reachable
+      # only by someone running `npm audit` by hand. `--audit-level=high` deliberately ignores
+      # low/moderate: a gate that fires on every transitive moderate gets muted, and a muted gate is
+      # worse than none.
+      - name: npm audit (root)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high
+
+      - name: npm audit (tests)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high --prefix tests
 
       - name: npm run lint
         if: ${{ !cancelled() }}

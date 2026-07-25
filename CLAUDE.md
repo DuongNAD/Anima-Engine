@@ -22,6 +22,10 @@ Backend (run from `src-tauri/`):
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
 
+Dependency advisories are gated: `cargo audit` (backend, config in `src-tauri/.cargo/audit.toml`) and `npm audit --audit-level=high` (both npm packages). Two Rust advisories are ignored there with the verification recorded — they are lockfile-only entries for `burn-dataset`, which no enabled feature compiles.
+
+**burn is pinned at 0.13.2 and the upgrade is not a security fix.** Checked 2026-07-26: 0.14 still resolves the same vulnerable `gix-tempfile`, and it breaks `ai/model.rs` and `core/training.rs` (`Data` → `TensorData`, and `Wgpu` lost its third generic parameter). The version is many releases behind and worth moving for its own reasons, but it touches the numerically sensitive learner and buys nothing on the advisory front. `bevy_ecs` is likewise at 0.13 with no advisory pressure.
+
 There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`); it runs the gates above plus a `cargo tree` check that a default build really excludes the gated crates. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.ps1`).
 
 ## Gotchas
