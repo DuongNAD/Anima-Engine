@@ -30,10 +30,55 @@ use tauri::Emitter;
 
 pub enum ModelUpdate {
     NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
+    #[cfg(feature = "ml-wgpu")]
     Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
 }
 
+/// The four handles a learner thread needs: the running flag, the transition receiver, the model
+/// sender and the old-model receiver.
+type LearnArgs = (
+    Arc<AtomicBool>,
+    crossbeam_channel::Receiver<Transition>,
+    crossbeam_channel::Sender<ModelUpdate>,
+    crossbeam_channel::Receiver<ModelUpdate>,
+);
+
+/// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
+/// `ml-wgpu` feature is off entirely.
+fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+    let (running, trans_rx, model_tx, old_model_rx) = args;
+    thread::spawn(move || {
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        run_training_loop::<burn_ndarray::NdArray<f32>>(
+            running,
+            trans_rx,
+            model_tx,
+            old_model_rx,
+            device,
+            ModelUpdate::NdArray,
+        );
+    })
+}
+
+/// GPU learner. Only exists with the `ml-wgpu` feature; the whole wgpu/naga/ash stack goes with it.
+#[cfg(feature = "ml-wgpu")]
+fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+    let (running, trans_rx, model_tx, old_model_rx) = args;
+    thread::spawn(move || {
+        let device = burn_wgpu::WgpuDevice::default();
+        run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
+            running,
+            trans_rx,
+            model_tx,
+            old_model_rx,
+            device,
+            ModelUpdate::Wgpu,
+        );
+    })
+}
+
 pub struct SimulationEngine {
+
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
     pub agent_states: Arc<RwLock<Vec<SegmentState>>>,
@@ -146,6 +191,10 @@ impl SimulationEngine {
             .unwrap_or(true);
 
         let mut has_wgpu = false;
+        // The GPU backend is behind the `ml-wgpu` feature (G2). Without it there is no device to
+        // probe for, so the learner always takes the ndarray path — which is the same path a
+        // machine with no usable GPU already took.
+        #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let probe = std::panic::catch_unwind(|| {
                 let _ = burn_wgpu::WgpuDevice::default();
@@ -154,39 +203,28 @@ impl SimulationEngine {
                 has_wgpu = true;
             }
         }
+        #[cfg(not(feature = "ml-wgpu"))]
+        let _ = use_gpu;
 
+        // Both learners take the same four handles. Extracted so the feature split does not have to
+        // duplicate the ndarray body into a second cfg branch.
+        let learn_args = (
+            Arc::clone(&self.running),
+            trans_rx.clone(),
+            model_tx.clone(),
+            old_model_rx.clone(),
+        );
+
+        #[cfg(feature = "ml-wgpu")]
         let learn_handle = if has_wgpu {
-            let running_learn = Arc::clone(&self.running);
-            let trans_rx_clone = trans_rx.clone();
-            let model_tx_clone = model_tx.clone();
-            let old_model_rx_clone = old_model_rx.clone();
-            thread::spawn(move || {
-                let device = burn_wgpu::WgpuDevice::default();
-                run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
-                    running_learn,
-                    trans_rx_clone,
-                    model_tx_clone,
-                    old_model_rx_clone,
-                    device,
-                    ModelUpdate::Wgpu,
-                );
-            })
+            spawn_wgpu_learner(learn_args)
         } else {
-            let running_learn = Arc::clone(&self.running);
-            let trans_rx_clone = trans_rx.clone();
-            let model_tx_clone = model_tx.clone();
-            let old_model_rx_clone = old_model_rx.clone();
-            thread::spawn(move || {
-                let device = burn_ndarray::NdArrayDevice::Cpu;
-                run_training_loop::<burn_ndarray::NdArray<f32>>(
-                    running_learn,
-                    trans_rx_clone,
-                    model_tx_clone,
-                    old_model_rx_clone,
-                    device,
-                    ModelUpdate::NdArray,
-                );
-            })
+            spawn_ndarray_learner(learn_args)
+        };
+        #[cfg(not(feature = "ml-wgpu"))]
+        let learn_handle = {
+            let _ = has_wgpu;
+            spawn_ndarray_learner(learn_args)
         };
 
         let (stats_tx, stats_rx) = crossbeam_channel::bounded::<Vec<AgentEpochStats>>(128);
@@ -1036,7 +1074,20 @@ impl SimulationEngine {
             schedule.add_systems((
                 herbivore_grazing_system.after(integrate_physics_system),
                 resource_field_regrowth_system.after(herbivore_grazing_system),
-                ecosystem_census_system.after(resource_field_regrowth_system),
+                // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
+                // resource, which nothing inserts by default, so a stock run is unaffected.
+                //
+                // After physics, so an agent is tiered on the position it actually reached this
+                // tick; before the census, because the census is the only place a dormant cohort's
+                // energy is counted and it has to see the result of both. Bevy inserts the sync
+                // point that applies their commands from these ordering constraints.
+                crate::core::aggregate_population::dehydrate_cold_agents_system
+                    .after(integrate_physics_system),
+                crate::core::aggregate_population::rehydrate_wakeable_chunks_system
+                    .after(crate::core::aggregate_population::dehydrate_cold_agents_system),
+                ecosystem_census_system
+                    .after(resource_field_regrowth_system)
+                    .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
             ));
 
             schedule.run(&mut world);

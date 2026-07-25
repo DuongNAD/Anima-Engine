@@ -1,4 +1,5 @@
 pub mod agent_systems;
+pub mod aggregate_population;
 pub mod causal;
 pub mod components;
 pub mod determinism;

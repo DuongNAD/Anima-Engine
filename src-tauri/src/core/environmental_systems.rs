@@ -146,11 +146,20 @@ pub fn ecosystem_census_system(
     agent_query: Query<&crate::ai::hrrl::HomeostaticState, With<Agent>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     ledger: Option<ResMut<EnergyLedger>>,
+    dormant: Option<Res<crate::core::aggregate_population::DormantCohorts>>,
 ) {
     if let Some(mut pool) = biomass {
         let mut total = 0.0f64;
         for homeo in agent_query.iter() {
             total += homeo.energy.max(0.0) as f64;
+        }
+        // A dormant agent is still an animal. The aggregate LOD tier destroys the body but not the
+        // energy: it moves from a per-agent `f32` reserve into a per-chunk `f64` pool, both of them
+        // the `Animals` compartment. Summing only live agents here is the one place that would turn
+        // the whole tier into an energy leak, so it is the one place that has to know about it.
+        // Absent the resource — the default — this adds nothing.
+        if let Some(cohorts) = dormant.as_ref() {
+            total += cohorts.total_energy();
         }
         pool.animals = total;
         // The census is the moment all three authoritative stores are simultaneously current

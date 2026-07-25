@@ -326,6 +326,24 @@ impl AgentBrain {
         }
     }
 
+    /// Rebuild a brain around a genome that is already shared.
+    ///
+    /// For the restore paths that carry a brain rather than rolling one (D01) — re-hydration out of
+    /// the aggregate LOD tier is the current caller. Taking the `Arc` avoids deep-copying ~6 KiB of
+    /// weights back out of it just to put them behind a new one.
+    ///
+    /// `learned` starts empty by construction: an individual coming back from an archive has not
+    /// lived the life that produced the learned weights, and copying them in would be inheritance of
+    /// acquired characteristics through the back door.
+    pub fn from_arc(
+        genotype: std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>,
+    ) -> Self {
+        Self {
+            genotype,
+            learned: None,
+        }
+    }
+
     /// The network inference should actually use: what the individual has learned, else its genome.
     pub fn live(&self) -> &std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype> {
         self.learned.as_ref().unwrap_or(&self.genotype)
