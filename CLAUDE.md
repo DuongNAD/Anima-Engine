@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Single Cargo crate (not a workspace); `tests/` is a second npm package with its own `node_modules`.
+Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Cargo workspace rooted at `src-tauri/` (the `anima-engine` package, plus `crates/anima-domain` holding the world laws); `tests/` is a second npm package with its own `node_modules`.
 
 ## Commands
 
@@ -15,12 +15,14 @@ Frontend (run from repo root):
 - `npm run test:frontend` — Vitest over the dedicated `tests/` suite (`--root tests`). This is the suite handoff docs use.
 - `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; legacy `any` and unused-var issues are warnings only.
 
-Backend (run from `src-tauri/`):
-- `cargo test` — unit + integration tests.
-- `cargo clippy` — Rust linter (ships with the toolchain).
-- `cargo build --release` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
+- `npm run tauri:dev` / `npm run tauri:build` — the desktop app. **Use these, not bare `tauri dev`/`tauri build`:** they pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the bare commands ship a `default = []` binary with no Neo4j lineage, no cross-shard migration and the CPU learner. All three have fallbacks, so nothing fails loudly.
 
-There is no Makefile or CI. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.ps1`).
+Backend (run from `src-tauri/`):
+- `cargo test` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only).
+- `cargo clippy` — Rust linter (ships with the toolchain).
+- `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
+
+There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`); it runs the gates above plus a `cargo tree` check that a default build really excludes the gated crates. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.ps1`).
 
 ## Gotchas
 
