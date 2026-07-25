@@ -16,7 +16,10 @@ tauri-plugin-shell = "2.0.0"
 # not a new crate. Note: deserialization does not deduplicate shared Arcs, which is fine here because
 # each agent owns its own genome.
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
+# `raw_value` lets the snapshot envelope hold the state as the exact bytes written to disk, so the
+# checksum covers those bytes instead of a re-serialization. serde_json's f64 round trip is not
+# bit-exact (observed: 990.5102615356445 reads back as ...444), so re-hashing cannot be trusted.
+serde_json = { version = "1.0", features = ["raw_value"] }
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
@@ -27,6 +30,10 @@ socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"
 rand = "0.8"
+# Direct dependency so `SimRng` can save and restore its exact stream position. `StdRng` IS
+# ChaCha12Rng in rand 0.8 but does not expose `get_word_pos`/`set_word_pos`, and a snapshot that
+# cannot restore the draw position is not a checkpoint (G1.2).
+rand_chacha = "0.3"
 neo4rs = "0.7.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 tokio = { version = "1.36", features = ["full"] }

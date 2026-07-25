@@ -332,43 +332,7 @@ fn copy_agent_reserves(from: &mut World, to: &mut World) {
 }
 
 fn empty_saved_state() -> anima_engine_lib::core::simulation_state::SavedSimulationState {
-    use anima_engine_lib::core::simulation_state::{SavedSimulationState, SerializedPheromoneGrid};
-    SavedSimulationState {
-        tick_count: 0,
-        active_environment_event: anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::Stable,
-        food_spawn_settings: FoodSpawnSettings::default(),
-        map_bounds: MapBounds {
-            min: glam::Vec3::new(-100.0, 0.0, -100.0),
-            max: glam::Vec3::new(100.0, 0.0, 100.0),
-        },
-        epoch_manager: EpochManager::default(),
-        pheromone_grid: SerializedPheromoneGrid {
-            values: vec![0.0; 16384],
-            diffusion_rate: 0.12,
-            decay_rate: 0.04,
-        },
-        foods: vec![],
-        agents: vec![],
-        evolution_settings: anima_engine_lib::commands::EvolutionSettings {
-            mutation_rate: 0.2,
-            selection_bias: 1.2,
-            grid_resolution: 30,
-        },
-        map_elites_grid: anima_engine_lib::commands::MapElitesGridState {
-            grid: std::collections::HashMap::new(),
-            grid_resolution: 30,
-        },
-        chronicle_history: vec![],
-        lineage_nodes: vec![],
-        lineage_relations: vec![],
-        lakes: vec![],
-        trees: vec![],
-        world_identity: Default::default(),
-        eco_detritus: 0.0,
-        eco_plants: 0.0,
-        eco_animals: 0.0,
-        resource_field_r: Vec::new(),
-    }
+    anima_engine_lib::core::simulation_state::empty_saved_state_for_tests()
 }
 
 /// Food entities are markers, not stores: eating one must move EU out of detritus, never mint it.

@@ -83,9 +83,14 @@ pub const DEFAULT_SIM_SEED: u64 = 1337;
 /// serialisation is a *requirement* of a reproducible draw order, not an accident to optimise away —
 /// two systems drawing from one stream in parallel would reintroduce exactly the non-determinism
 /// this type exists to remove.
+/// The stream is `ChaCha12Rng` rather than `StdRng` for one reason: a checkpoint has to restore the
+/// draw *position*, not just the seed, or a resumed run diverges from an uninterrupted one on its
+/// very next draw (G1.2). `StdRng` is a newtype over `ChaCha12Rng` in rand 0.8 but does not expose
+/// `get_word_pos`/`set_word_pos`. Naming the concrete type is therefore not a behaviour change —
+/// `simrng_stream_matches_stdrng_exactly` pins that the two produce identical sequences.
 #[derive(Resource)]
 pub struct SimRng {
-    inner: rand::rngs::StdRng,
+    inner: rand_chacha::ChaCha12Rng,
     seed: u64,
 }
 
@@ -93,9 +98,25 @@ impl SimRng {
     pub fn from_seed(seed: u64) -> Self {
         use rand::SeedableRng;
         Self {
-            inner: rand::rngs::StdRng::seed_from_u64(seed),
+            inner: rand_chacha::ChaCha12Rng::seed_from_u64(seed),
             seed,
         }
+    }
+
+    /// How far into the stream this generator has drawn, as a ChaCha word position.
+    ///
+    /// Together with [`seed`](Self::seed) this is the complete state of the stream, so a snapshot
+    /// can put it back exactly rather than restarting it.
+    pub fn stream_pos(&self) -> u128 {
+        self.inner.get_word_pos()
+    }
+
+    /// Rebuild the stream at `seed` and fast-forward it to `word_pos` — the restore half of
+    /// [`stream_pos`](Self::stream_pos). O(1): ChaCha seeks, it does not replay.
+    pub fn restore(seed: u64, word_pos: u128) -> Self {
+        let mut me = Self::from_seed(seed);
+        me.inner.set_word_pos(word_pos);
+        me
     }
 
     /// Seeded from the world the agents live in, via [`resolve_run_seed`].
@@ -114,7 +135,7 @@ impl SimRng {
         *self = Self::from_seed(seed);
     }
 
-    pub fn rng(&mut self) -> &mut rand::rngs::StdRng {
+    pub fn rng(&mut self) -> &mut rand_chacha::ChaCha12Rng {
         &mut self.inner
     }
 }

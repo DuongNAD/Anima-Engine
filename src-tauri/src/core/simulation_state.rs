@@ -178,6 +178,84 @@ pub struct SavedSimulationState {
     /// field keeps whatever `init_world` generated.
     #[serde(default)]
     pub resource_field_r: Vec<f32>,
+
+    // ---- G1.2: the rest of what makes this a checkpoint rather than a picture ----------------
+    /// Seed of the run's RNG stream.
+    #[serde(default)]
+    pub sim_rng_seed: u64,
+    /// **Draw position** of that stream. This is the field that separates a checkpoint from a save:
+    /// restoring the seed alone restarts the sequence, so a resumed run diverges from an
+    /// uninterrupted one on its very next random draw. Zero on a pre-G1.2 save, which reads as
+    /// "start of stream" — the old behaviour.
+    #[serde(default)]
+    pub sim_rng_pos: u128,
+    /// Season clock, which scales plant regrowth. Without it a reload lands in a different season
+    /// and the ecology diverges immediately.
+    #[serde(default)]
+    pub season_phase: f32,
+    #[serde(default)]
+    pub season_rate: f32,
+    /// The closed-EU baseline the energy ledger locked after genesis (G1.1). Carried so a resumed
+    /// run keeps measuring conservation against the *original* genesis, instead of re-baselining on
+    /// load and thereby forgiving any drift that happened before the save.
+    #[serde(default)]
+    pub energy_baseline: Option<f64>,
+
+    /// Which on-disk schema this state was read from, filled in by
+    /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
+    /// envelope that carries the real version.
+    #[serde(skip)]
+    pub loaded_from_schema: u32,
+}
+
+/// A `SavedSimulationState` with every field at its zero value.
+///
+/// Exists because several test suites (and the snapshot module's own tests) need a state to mutate
+/// a field or two of, and hand-writing all twenty-odd fields at each site meant every new field
+/// broke five test files at once.
+pub fn empty_saved_state_for_tests() -> SavedSimulationState {
+    SavedSimulationState {
+        tick_count: 0,
+        active_environment_event: crate::evolution::meta_ai::EnvironmentalEvent::Stable,
+        food_spawn_settings: crate::core::ecs::FoodSpawnSettings::default(),
+        map_bounds: crate::core::ecs::MapBounds {
+            min: glam::Vec3::new(-100.0, 0.0, -100.0),
+            max: glam::Vec3::new(100.0, 10.0, 100.0),
+        },
+        epoch_manager: crate::core::ecs::EpochManager::default(),
+        pheromone_grid: SerializedPheromoneGrid {
+            values: vec![0.0; 16384],
+            diffusion_rate: 0.12,
+            decay_rate: 0.04,
+        },
+        foods: Vec::new(),
+        agents: Vec::new(),
+        evolution_settings: crate::commands::EvolutionSettings {
+            mutation_rate: 0.2,
+            selection_bias: 1.2,
+            grid_resolution: 30,
+        },
+        map_elites_grid: crate::commands::MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 30,
+        },
+        chronicle_history: Vec::new(),
+        lineage_nodes: Vec::new(),
+        lineage_relations: Vec::new(),
+        lakes: Vec::new(),
+        trees: Vec::new(),
+        world_identity: Default::default(),
+        eco_detritus: 0.0,
+        eco_plants: 0.0,
+        eco_animals: 0.0,
+        resource_field_r: Vec::new(),
+        sim_rng_seed: 0,
+        sim_rng_pos: 0,
+        season_phase: 0.0,
+        season_rate: 0.0,
+        energy_baseline: None,
+        loaded_from_schema: 0,
+    }
 }
 
 /// Put the saved closed-energy state back into the world (G1.1).
@@ -212,6 +290,30 @@ pub fn restore_energy_state(world: &mut World, state: &SavedSimulationState) {
             pool.detritus = state.eco_detritus;
             pool.plants = state.eco_plants;
             pool.animals = state.eco_animals;
+        }
+    }
+
+    // G1.2. A save that predates these carries zeroes, which read as "leave what init_world built" —
+    // i.e. the old behaviour, so old saves stay loadable (D09).
+    if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+        world.insert_resource(crate::core::resources::SimRng::restore(
+            state.sim_rng_seed,
+            state.sim_rng_pos,
+        ));
+    }
+    if state.season_rate != 0.0 {
+        if let Some(mut clock) = world.get_resource_mut::<crate::core::ecology::SeasonClock>() {
+            clock.phase = state.season_phase;
+            clock.rate = state.season_rate;
+        }
+    }
+    if let Some(baseline) = state.energy_baseline {
+        if let Some(mut ledger) =
+            world.get_resource_mut::<crate::core::energy_ledger::EnergyLedger>()
+        {
+            // `lock_baseline` ignores repeat calls, so this only takes effect on a ledger that has
+            // not locked yet — which is exactly the freshly built world a restore lands in.
+            ledger.lock_baseline(baseline);
         }
     }
 }
@@ -363,6 +465,22 @@ pub fn serialize_world_state(
         .get_resource::<crate::core::ecology::ResourceField>()
         .map(|f| f.r.clone())
         .unwrap_or_default();
+    // G1.2: the rest of the trajectory-relevant state. The RNG's *draw position* is the field that
+    // makes this a checkpoint — with only the seed, a resumed run restarts the stream and diverges
+    // on its next draw.
+    let (sim_rng_seed, sim_rng_pos) = world
+        .get_resource::<crate::core::resources::SimRng>()
+        .map(|r| (r.seed(), r.stream_pos()))
+        .unwrap_or((0, 0));
+    let (season_phase, season_rate) = world
+        .get_resource::<crate::core::ecology::SeasonClock>()
+        .map(|c| (c.phase, c.rate))
+        .unwrap_or((0.0, 0.0));
+    // Carried so a resumed run measures conservation against the ORIGINAL genesis rather than
+    // re-baselining on load, which would forgive any drift that happened before the save.
+    let energy_baseline = world
+        .get_resource::<crate::core::energy_ledger::EnergyLedger>()
+        .and_then(|l| l.baseline());
     // World identity so the save is pinned to the world it belongs to (S08); default if a world was
     // built before this resource existed.
     let world_identity = world
@@ -567,5 +685,11 @@ pub fn serialize_world_state(
         eco_plants,
         eco_animals,
         resource_field_r,
+        sim_rng_seed,
+        sim_rng_pos,
+        season_phase,
+        season_rate,
+        energy_baseline,
+        loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

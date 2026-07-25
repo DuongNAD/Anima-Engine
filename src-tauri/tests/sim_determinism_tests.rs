@@ -347,3 +347,53 @@ fn peek_seed_matches_a_full_decode() {
     assert!(WorldArtifact::peek_seed(&bad_magic).is_err());
     assert!(WorldArtifact::peek_seed(&bytes[..8]).is_err());
 }
+
+/// `SimRng` names `ChaCha12Rng` rather than `StdRng` so a snapshot can restore the draw position
+/// (G1.2). In rand 0.8 `StdRng` IS a newtype over `ChaCha12Rng`, so that swap must be invisible —
+/// this pins it instead of trusting the documentation. If rand ever repoints `StdRng` at a
+/// different algorithm, this fails and tells you the trajectory of every existing run just moved.
+#[test]
+fn simrng_stream_matches_stdrng_exactly() {
+    use rand::{Rng, SeedableRng};
+    for seed in [0u64, 1, 1337, 0x5EED, u64::MAX] {
+        let mut sim = anima_engine_lib::core::resources::SimRng::from_seed(seed);
+        let mut std_rng = rand::rngs::StdRng::seed_from_u64(seed);
+        for i in 0..256 {
+            assert_eq!(
+                sim.rng().gen::<u64>(),
+                std_rng.gen::<u64>(),
+                "seed {seed} diverged at draw {i}"
+            );
+        }
+    }
+}
+
+/// The half of the stream state a checkpoint has to carry. Restoring seed alone is not enough:
+/// the resumed stream must continue where the saved one left off, not restart.
+#[test]
+fn simrng_restores_its_exact_stream_position() {
+    use rand::Rng;
+    let mut original = anima_engine_lib::core::resources::SimRng::from_seed(1337);
+    for _ in 0..1000 {
+        let _: u64 = original.rng().gen();
+    }
+    let pos = original.stream_pos();
+
+    let mut resumed = anima_engine_lib::core::resources::SimRng::restore(1337, pos);
+    for i in 0..256 {
+        assert_eq!(
+            resumed.rng().gen::<u64>(),
+            original.rng().gen::<u64>(),
+            "resumed stream diverged at draw {i}"
+        );
+    }
+
+    // And the naive "just reseed" path must NOT match, or this test proves nothing.
+    let mut reseeded = anima_engine_lib::core::resources::SimRng::from_seed(1337);
+    let mut fresh = anima_engine_lib::core::resources::SimRng::restore(1337, pos);
+    assert_ne!(
+        reseeded.rng().gen::<u64>(),
+        fresh.rng().gen::<u64>(),
+        "reseeding from the same seed must not accidentally land on the saved position"
+    );
+}

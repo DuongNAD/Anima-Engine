@@ -21,6 +21,7 @@ pub mod sim_rules;
 pub mod simulation_lifecycle;
 pub mod simulation_loop;
 pub mod simulation_state;
+pub mod snapshot;
 pub mod terrain;
 pub mod world_artifact;
 pub mod world_systems;

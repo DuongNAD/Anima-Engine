@@ -106,11 +106,9 @@ fn test_10000_trees_spawning_and_lifecycle() {
         }],
         trees,
         world_identity: Default::default(),
-        // G1.1 closed-energy state; zeroes mean "nothing to restore" (pre-G1.1 save).
-        eco_detritus: 0.0,
-        eco_plants: 0.0,
-        eco_animals: 0.0,
-        resource_field_r: Vec::new(),
+        // Everything not named above (closed-energy state, RNG stream position, season clock)
+        // takes its zero value, which every restore path reads as "nothing was saved here".
+        ..anima_engine_lib::core::simulation_state::empty_saved_state_for_tests()
     };
 
     // Run start/stop cycles to verify no thread leaks

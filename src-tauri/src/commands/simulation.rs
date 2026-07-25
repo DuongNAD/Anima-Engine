@@ -48,9 +48,14 @@ pub fn save_simulation_state(
         .recv_timeout(std::time::Duration::from_secs(5))
         .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())?;
 
-    let json_str = serde_json::to_string_pretty(&saved_state)
-        .map_err(|e| format!("Serialization error: {}", e))?;
-    std::fs::write(&file_path, json_str).map_err(|e| format!("File writing error: {}", e))?;
+    // G1.2: wrap in a versioned, checksummed envelope and write it atomically. The old path was
+    // `to_string_pretty` into `fs::write`, which truncates the destination before writing a byte —
+    // a crash or a full disk destroyed the save you already had in order to fail at writing a new
+    // one.
+    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
+        .map_err(|e| format!("Serialization error: {e}"))?;
+    crate::core::snapshot::write_atomic(std::path::Path::new(&file_path), &envelope)
+        .map_err(|e| format!("File writing error: {e}"))?;
 
     Ok(true)
 }
@@ -61,10 +66,11 @@ pub fn load_simulation_state(
     app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
-    let json_str =
-        std::fs::read_to_string(&file_path).map_err(|e| format!("File read error: {}", e))?;
-    let loaded_state = serde_json::from_str::<SavedSimulationState>(&json_str)
-        .map_err(|e| format!("Parsing error: {}", e))?;
+    // Verifies the checksum and migrates a pre-envelope save (schema 1 or 2) forward. A corrupt or
+    // truncated file is refused here with a message naming the problem, instead of deserializing
+    // into a plausible-looking world.
+    let loaded_state =
+        crate::core::snapshot::read(std::path::Path::new(&file_path)).map_err(|e| e.to_string())?;
 
     let engine = &state.engine;
     let was_running = engine.running.load(std::sync::atomic::Ordering::SeqCst);
