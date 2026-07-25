@@ -289,8 +289,17 @@ impl TerrainMap {
             |(min_val, max_val), &val| (min_val.min(val), max_val.max(val)),
         );
         let el_range = max_el - min_el;
+        // Sequential (not rayon), for the same reason the temperature pass below is: a `par_iter`
+        // here makes the process-wide allocation count depend on how rayon happened to split the
+        // work, and rayon splits by work-stealing, so the count moves with how idle the workers
+        // were. This normalize and its twin after erosion sit on either side of the erosion loop,
+        // so a 5000-iteration gap between them changed the stealing pattern and cost exactly one
+        // extra job allocation — which is what made
+        // `test_terrain_zero_heap_allocations_erosion_hotpath` pass alone and fail after the other
+        // tests in its binary had run. Scaling a `width * height` array of f32 is memory-bound and
+        // was never worth a thread pool.
         if el_range > 0.0 {
-            raw_elevations.par_iter_mut().for_each(|el| {
+            raw_elevations.iter_mut().for_each(|el| {
                 *el = (*el - min_el) / el_range;
             });
         }
@@ -429,8 +438,9 @@ impl TerrainMap {
             |(min_val, max_val), &val| (min_val.min(val), max_val.max(val)),
         );
         let el_range = max_el - min_el;
+        // Sequential — the post-erosion twin of the normalize above. See it for why.
         if el_range > 0.0 {
-            elevations.par_iter_mut().for_each(|el| {
+            elevations.iter_mut().for_each(|el| {
                 *el = (*el - min_el) / el_range;
             });
         }
