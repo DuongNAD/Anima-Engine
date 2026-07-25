@@ -378,6 +378,7 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
         lineage_relations: vec![],
         lakes: vec![],
         trees,
+        world_identity: Default::default(),
     };
 
     *engine.pending_load_state.lock().unwrap() = Some(state);

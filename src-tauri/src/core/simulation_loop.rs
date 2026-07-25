@@ -471,6 +471,23 @@ impl SimulationEngine {
 
             let mut world = init_world();
 
+            // S08: warn loudly if the save belongs to a DIFFERENT world than the one just built, so
+            // saved agents/positions aren't silently dropped into a mismatched world. Compared
+            // against the WorldIdentity resource init_world inserts (the terrain-domain fingerprint),
+            // never the artifact header checksum. A default (all-zero) saved identity is a legacy
+            // save and is skipped.
+            if let Some(state) = state_to_load.as_ref() {
+                let current = world
+                    .get_resource::<crate::core::world_artifact::WorldIdentity>()
+                    .copied()
+                    .unwrap_or_default();
+                if let Some(reason) = state.world_identity.mismatch_against(&current) {
+                    eprintln!(
+                        "WARNING: loading a save from a different world — {reason}; saved agents may be placed in a mismatched world"
+                    );
+                }
+            }
+
             let loaded_bounds = state_to_load
                 .as_ref()
                 .map(|s| s.map_bounds)

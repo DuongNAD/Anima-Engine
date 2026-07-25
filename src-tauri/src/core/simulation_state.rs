@@ -151,6 +151,10 @@ pub struct SavedSimulationState {
     pub lineage_relations: Vec<crate::evolution::lineage::LineageRelation>,
     pub lakes: Vec<SerializedLake>,
     pub trees: Vec<SerializedTree>,
+    /// Identity of the world this save belongs to (M1.5 / S08). `#[serde(default)]` keeps pre-M1
+    /// saves (which lack the field) loadable — they deserialize to the all-zero default.
+    #[serde(default)]
+    pub world_identity: crate::core::world_artifact::WorldIdentity,
 }
 
 pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
@@ -271,6 +275,12 @@ pub fn serialize_world_state(
     let epoch_manager = world
         .get_resource::<EpochManager>()
         .cloned()
+        .unwrap_or_default();
+    // World identity so the save is pinned to the world it belongs to (S08); default if a world was
+    // built before this resource existed.
+    let world_identity = world
+        .get_resource::<crate::core::world_artifact::WorldIdentity>()
+        .copied()
         .unwrap_or_default();
 
     let pheromone_grid =
@@ -460,5 +470,6 @@ pub fn serialize_world_state(
         lineage_relations: lineage_tracker.get_lineage_graph().unwrap_or_default().1,
         lakes,
         trees,
+        world_identity,
     }
 }

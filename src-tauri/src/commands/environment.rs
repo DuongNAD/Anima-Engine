@@ -121,3 +121,13 @@ pub fn get_chronicle_history(state: State<'_, AppState>) -> Result<Vec<Chronicle
         .unwrap_or_else(|e| e.into_inner());
     Ok(history.clone())
 }
+
+/// Persist the frontend-generated **shared World Artifact** to the canonical on-disk path so the
+/// simulation (`init_world`) boots on the SAME world that is rendered, instead of generating its own.
+/// The frontend calls this once when it finishes generating the world. Returns the written path.
+#[tauri::command]
+pub fn save_world_artifact(bytes: Vec<u8>) -> Result<String, String> {
+    let path = crate::core::world_artifact::default_artifact_path();
+    crate::core::world_artifact::write_artifact_bytes_to(&path, &bytes)?;
+    Ok(path.to_string_lossy().into_owned())
+}

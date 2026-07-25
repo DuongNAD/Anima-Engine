@@ -113,7 +113,7 @@ pub enum BiomeType {
     Snow = 10,
 }
 
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TerrainMap {
     pub width: usize,
     pub height: usize,
@@ -612,6 +612,66 @@ impl TerrainMap {
     }
 }
 
+/// Bump when the generation algorithm changes so stale on-disk world caches are ignored.
+pub const WORLD_CACHE_VERSION: u32 = 1;
+
+/// Deterministic cache key from everything that affects generation (settings + tuning config +
+/// algorithm version). Same inputs → same key → same cached world file.
+fn terrain_cache_key(settings: &MapSettings, config: &MapConfig) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    WORLD_CACHE_VERSION.hash(&mut h);
+    settings.seed.hash(&mut h);
+    settings.width.hash(&mut h);
+    settings.height.hash(&mut h);
+    settings.octaves.hash(&mut h);
+    settings.lacunarity.to_bits().hash(&mut h);
+    settings.gain.to_bits().hash(&mut h);
+    settings.erosion_steps.hash(&mut h);
+    config.sea_ratio.to_bits().hash(&mut h);
+    config.sand_ratio.to_bits().hash(&mut h);
+    config.snow_ratio.to_bits().hash(&mut h);
+    config.noise_scale.to_bits().hash(&mut h);
+    h.finish()
+}
+
+impl TerrainMap {
+    /// Generate-once + cache: the authoritative agent world is expensive to reproduce and must be
+    /// identical across runs, so we serialize it (compact binary via bincode) to `cache_dir` keyed
+    /// by [`terrain_cache_key`]. On a cache hit we deserialize straight from disk and skip
+    /// generation entirely; on a miss (or any corrupt/mismatched file) we generate and best-effort
+    /// write the cache. Generation is already deterministic (seeded RNG), so the cache is a speed
+    /// optimization layered on top of that guarantee — never a correctness dependency.
+    pub fn load_or_generate(settings: &MapSettings, cache_dir: &Path) -> Self {
+        let config = get_map_config();
+        let key = terrain_cache_key(settings, config);
+        let path = cache_dir.join(format!("world_{:016x}.bin", key));
+
+        if let Ok(bytes) = std::fs::read(&path) {
+            if let Ok((map, _)) = bincode::serde::decode_from_slice::<TerrainMap, _>(
+                &bytes,
+                bincode::config::standard(),
+            ) {
+                // Guard against a truncated/mismatched cache slipping through.
+                if map.width == settings.width
+                    && map.height == settings.height
+                    && map.elevations.len() == settings.width * settings.height
+                    && map.biomes.len() == map.elevations.len()
+                {
+                    return map;
+                }
+            }
+        }
+
+        let map = Self::generate(settings);
+        if let Ok(bytes) = bincode::serde::encode_to_vec(&map, bincode::config::standard()) {
+            let _ = std::fs::create_dir_all(cache_dir);
+            let _ = std::fs::write(&path, bytes);
+        }
+        map
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -807,5 +867,78 @@ mod tests {
                 config.sand_ratio
             );
         }
+    }
+
+    fn tiny_settings() -> MapSettings {
+        MapSettings {
+            width: 24,
+            height: 24,
+            seed: 7,
+            octaves: 3,
+            lacunarity: 2.0,
+            gain: 0.5,
+            erosion_steps: 200,
+        }
+    }
+
+    #[test]
+    fn generate_is_deterministic() {
+        // The whole generate-once + cache guarantee rests on this: same settings → identical world.
+        let s = tiny_settings();
+        let a = TerrainMap::generate(&s);
+        let b = TerrainMap::generate(&s);
+        assert_eq!(a.elevations, b.elevations);
+        assert_eq!(a.biomes, b.biomes);
+        assert_eq!(a.moistures, b.moistures);
+        assert_eq!(a.temperatures, b.temperatures);
+        assert_eq!(a.flows, b.flows);
+        assert_eq!(a.pois, b.pois);
+    }
+
+    #[test]
+    fn terrain_bincode_roundtrip_is_exact() {
+        let m = TerrainMap::generate(&tiny_settings());
+        let bytes = bincode::serde::encode_to_vec(&m, bincode::config::standard()).expect("encode");
+        let (back, _): (TerrainMap, usize) =
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard()).expect("decode");
+        assert_eq!(back.width, m.width);
+        assert_eq!(back.height, m.height);
+        assert_eq!(back.elevations, m.elevations);
+        assert_eq!(back.biomes, m.biomes);
+        assert_eq!(back.moistures, m.moistures);
+        assert_eq!(back.temperatures, m.temperatures);
+        assert_eq!(back.flows, m.flows);
+        assert_eq!(back.pois, m.pois);
+    }
+
+    #[test]
+    fn load_or_generate_writes_cache_then_reloads_identically() {
+        let dir = std::env::temp_dir().join("anima_test_cache_lorg");
+        let _ = std::fs::remove_dir_all(&dir);
+        let s = tiny_settings();
+
+        // First call: cache miss → generate + write a cache file.
+        let a = TerrainMap::load_or_generate(&s, &dir);
+        let wrote = std::fs::read_dir(&dir)
+            .expect("cache dir created")
+            .filter_map(|e| e.ok())
+            .any(|f| f.file_name().to_string_lossy().starts_with("world_"));
+        assert!(
+            wrote,
+            "load_or_generate should write a world_*.bin cache file"
+        );
+
+        // Second call: cache hit → deserialized straight from disk, byte-identical world.
+        let b = TerrainMap::load_or_generate(&s, &dir);
+        assert_eq!(a.elevations, b.elevations);
+        assert_eq!(a.biomes, b.biomes);
+        assert_eq!(a.pois, b.pois);
+
+        // And it equals a fresh generation (cache is transparent, not lossy).
+        let fresh = TerrainMap::generate(&s);
+        assert_eq!(a.elevations, fresh.elevations);
+        assert_eq!(a.biomes, fresh.biomes);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

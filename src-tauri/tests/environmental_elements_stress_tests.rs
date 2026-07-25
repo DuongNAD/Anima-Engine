@@ -105,6 +105,7 @@ fn test_10000_trees_spawning_and_lifecycle() {
             replenishment_rate: 5.0,
         }],
         trees,
+        world_identity: Default::default(),
     };
 
     // Run start/stop cycles to verify no thread leaks

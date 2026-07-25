@@ -48,6 +48,7 @@ fn test_saved_simulation_state_serialization() {
         lineage_relations: vec![],
         lakes: vec![],
         trees: vec![],
+        world_identity: Default::default(),
     };
 
     let serialized = serde_json::to_string(&state);

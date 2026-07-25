@@ -77,6 +77,7 @@ fn test_load_zero_agents() {
         lineage_relations: vec![],
         lakes: vec![],
         trees: vec![],
+        world_identity: Default::default(),
     };
 
     // Put into pending load state
