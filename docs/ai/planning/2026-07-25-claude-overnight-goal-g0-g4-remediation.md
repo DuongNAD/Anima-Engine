@@ -1090,8 +1090,71 @@ bindings regenerate byte-identical, so the new CI parity step is green.
 
 ### G2 — Platform convergence — 2026-07-25 (Claude Opus 5)
 
-**Status: STARTED, then stopped on a stop condition.** One of four tasks is partly done. The three
-G2 gates do **not** pass. **Rung reached: Designed** for the feature split; nothing beyond it.
+**Status: two of three gates pass.** Gate #2 (a default build excludes the optional subsystems) and
+gate #3 (declared RAM ceiling) are **done and verified in both feature configurations**. Gate #1
+(one law change alters both engines) is untouched — it needs the crate extraction and workspace
+split, which is genuinely multi-session. **Rung reached: Live integrated** for the build split and
+the runner budget.
+
+The stop condition below was hit mid-session and later cleared: the other agent's file started
+compiling, and the work resumed.
+
+#### Gate #2 — PASSES
+
+```text
+cargo tree --no-default-features  ->  0 neo4rs / tokio-tungstenite crates
+cargo tree --features desktop     ->  3
+cargo clippy --all-targets --no-default-features -- -D warnings   rc=0
+cargo clippy --all-targets --features desktop      -- -D warnings   rc=0
+cargo fmt --check                                                   rc=0
+cargo test --features desktop     578 passed, 0 failed, 4 ignored
+```
+
+`default = []`; `networking` pulls tokio-tungstenite, `neo4j` pulls neo4rs, `desktop` turns both on.
+
+The gate was cheap because both subsystems already had working fallbacks. Every `neo4rs` call in
+`FallbackLineageTracker` sits inside `if self.is_online()`, and `is_online` can only become true
+after a successful connect — which cannot happen with no driver. So the query blocks compile out and
+the type falls back to its in-memory tracker, which is the same state a failed connection has always
+produced. The driver handle keeps its field either way via a type alias (`neo4rs::Graph` with the
+feature, `Infallible` without), so `is_online` stays the single switch the file already branched on
+instead of every method growing a cfg.
+
+CI enforces it by inspecting the **dependency graph**, not just that it compiles — `cargo tree`
+grepped for the gated crates. Compilation alone would go on passing the first time someone adds an
+unconditional `use`.
+
+#### Gate #3 — PASSES
+
+`MAX_SEEDS`, `MAX_OBSERVABLES` and `MAX_DURATION_TICKS` each bounded one axis; nothing bounded their
+**product**. `RunResult::series` keeps every sample in memory and `run_ensemble` keeps every
+`RunResult`, so a manifest at the documented maxima is not merely slow — 1024 seeds × 100M ticks ×
+4096 observables estimates to about **27 petabytes**, and the process dies with nothing pointing at
+the manifest.
+
+`MAX_ENSEMBLE_RESULT_BYTES` declares a 2 GiB ceiling, and `validate()` now refuses a manifest whose
+estimate exceeds it, reporting the estimate, the limit and the three dimensions that produced it so
+the operator can lower `sample_period`, seeds or duration deliberately. It is stated as **policy**
+rather than measured from the host: a ceiling discovered at runtime is not a contract.
+
+The estimate saturates rather than wraps, with a test for it — a wrapped product comes out small and
+sails through the very check it should fail, which is the one failure mode a budget must not have.
+`sample_period == 0` means "never sample" and costs nothing, so a long run recording only final
+observables stays legal.
+
+#### Remaining
+
+- **Gate #1** — untouched. Needs tasks 1+2 in full: extract `anima-domain` and split into five
+  workspace members. Multi-session, and the only G2 item that is.
+- **Burn/WGPU is not gated.** Scoping shrank it — `burn` is used in **two** files, not the nine an
+  initial grep suggested (seven were prose matches on "burned energy"). The blocker is shape, not
+  size: `learn_handle` is assigned from an `if has_wgpu { .. } else { .. }` whose branches cannot be
+  individually `cfg`'d, so it needs restructuring rather than attribute-sprinkling. Left undone
+  rather than half-applied.
+- Task 3 (thread/task lifecycle: the dropped inference `JoinHandle`, a supervisor, cancellation
+  tokens) — untouched.
+- `tokio = { features = ["full"] }` is still unconditional. Narrowing it is the natural next step now
+  that the two subsystems that need it are behind features.
 
 #### Precondition check
 
@@ -1140,19 +1203,6 @@ rather than left dirty because earlier in this program a concurrent agent swept 
 mine into its own commits (`9174210`); a labelled commit is safer than a loose working tree.
 
 Re-verify with `cargo check --no-default-features --all-targets` once their file builds.
-
-#### Not done
-
-- **Gate #1** (one law change alters both engines) — untouched. Requires tasks 1+2 in full:
-  extracting `anima-domain` and the five-crate workspace split. Multi-session.
-- **Gate #2** — half. Remaining: the Neo4j gate (`lineage.rs`, 9 `neo4rs` sites, behind an
-  in-memory fallback that already exists) and Burn/WGPU (2 files). Note `tokio = { features =
-  ["full"] }` is unconditional and both remaining gates depend on narrowing it; that is likely the
-  first thing to touch.
-- **Gate #3** (experiment at documented limits within a declared RAM ceiling) — untouched. Task 4
-  is the most self-contained remaining work: `MAX_SEEDS 1024 × MAX_OBSERVABLES 4096 ×
-  MAX_DURATION_TICKS 100M` in `experiment.rs:33`, with the runner holding all samples in RAM.
-- Task 3 (thread/task lifecycle) — untouched.
 
 #### Honest scope note
 
