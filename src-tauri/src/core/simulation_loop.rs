@@ -78,7 +78,6 @@ fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
 }
 
 pub struct SimulationEngine {
-
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
     pub agent_states: Arc<RwLock<Vec<SegmentState>>>,
@@ -190,6 +189,7 @@ impl SimulationEngine {
             .map(|val| val != "false" && val != "0")
             .unwrap_or(true);
 
+        #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
         let mut has_wgpu = false;
         // The GPU backend is behind the `ml-wgpu` feature (G2). Without it there is no device to
         // probe for, so the learner always takes the ndarray path — which is the same path a
@@ -650,6 +650,7 @@ impl SimulationEngine {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
                             }
+                            #[cfg(feature = "ml-wgpu")]
                             (
                                 ModelUpdate::Wgpu(new_m),
                                 crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _),
@@ -657,6 +658,7 @@ impl SimulationEngine {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
                             }
+                            #[cfg_attr(not(feature = "ml-wgpu"), allow(unreachable_patterns))]
                             _ => {}
                         }
                     }
@@ -1085,6 +1087,12 @@ impl SimulationEngine {
                     .after(integrate_physics_system),
                 crate::core::aggregate_population::rehydrate_wakeable_chunks_system
                     .after(crate::core::aggregate_population::dehydrate_cold_agents_system),
+                // The dormant cohorts' own ecology, sitting where its live counterparts sit: after
+                // live grazing and before regrowth, so both consumers draw on the same standing
+                // field before it grows back.
+                crate::core::aggregate_population::dormant_cohort_ecology_system
+                    .after(herbivore_grazing_system)
+                    .before(resource_field_regrowth_system),
                 ecosystem_census_system
                     .after(resource_field_regrowth_system)
                     .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),

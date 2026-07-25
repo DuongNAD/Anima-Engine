@@ -29,7 +29,7 @@ glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
 burn = { version = "0.13.2", features = ["std", "train"] }
 burn-ndarray = { version = "0.13.2" }
-burn-wgpu = { version = "0.13.2" }
+burn-wgpu = { version = "0.13.2", optional = true }
 socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"
@@ -67,8 +67,11 @@ default = []
 neo4j = ["dep:neo4rs"]
 # Cross-shard WebSocket migration.
 networking = ["dep:tokio-tungstenite"]
+# GPU learner backend. Off => the ndarray CPU learner, which is already the fallback whenever the
+# GPU probe fails. This is the heaviest gate by far: it drops wgpu, naga, ash, d3d12 and the rest.
+ml-wgpu = ["dep:burn-wgpu"]
 # What the shipped desktop binary builds with.
-desktop = ["neo4j", "networking"]
+desktop = ["neo4j", "networking", "ml-wgpu"]
 
 # NOTE: `ureq` (the Gemini client) is deliberately NOT gated. G2 names Burn/WGPU, Neo4j and
 # networking; ureq is a small pure-Rust HTTP client with no transitive weight worth a feature, and

@@ -1,3 +1,7 @@
+// The GPU fallback path only exists with the `ml-wgpu` feature (G2); without it there is no Wgpu
+// backend to fall back FROM, so this suite has nothing to assert.
+#![cfg(feature = "ml-wgpu")]
+
 use anima_engine_lib::ai::model::{BrainModel, BrainModelBackend};
 use burn::tensor::{Data, Shape, Tensor};
 use std::sync::Mutex;

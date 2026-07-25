@@ -246,6 +246,7 @@ pub fn run_inference_batch(
                 let (actor_out, _) = model.forward(input_tensor);
                 actor_out.into_data().value
             }
+            #[cfg(feature = "ml-wgpu")]
             BrainModelBackend::Wgpu(model, device) => {
                 let data = Data::new(scratch.inputs.clone(), Shape::new([batch_size, 15]));
                 let input_tensor =
@@ -313,6 +314,7 @@ pub enum BrainModelBackend {
         ActorCriticModel<burn_ndarray::NdArray<f32>>,
         burn_ndarray::NdArrayDevice,
     ),
+    #[cfg(feature = "ml-wgpu")]
     Wgpu(
         ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>,
         burn_wgpu::WgpuDevice,
@@ -371,10 +373,12 @@ impl BrainModel {
         draw(hidden_dim, hidden_dim, &mut rng); // critic weight
         draw(1, hidden_dim, &mut rng); // critic bias
 
+        #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
         let use_gpu = std::env::var("ANIMA_USE_GPU")
             .map(|val| val != "false" && val != "0")
             .unwrap_or(true);
 
+        #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let built = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
@@ -408,10 +412,12 @@ impl BrainModel {
     }
 
     pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize) -> Self {
+        #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
         let use_gpu = std::env::var("ANIMA_USE_GPU")
             .map(|val| val != "false" && val != "0")
             .unwrap_or(true);
 
+        #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let wgpu_res = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
@@ -651,6 +657,7 @@ pub fn brain_inference_system(
             let (actor_out, _) = model.forward(input_tensor);
             actor_out.into_data().value
         }
+        #[cfg(feature = "ml-wgpu")]
         BrainModelBackend::Wgpu(model, device) => {
             let data = Data::new(inputs, Shape::new([batch_size, 15]));
             let input_tensor =
