@@ -186,6 +186,8 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   useFrame((state) => {
     if (!camera) return;
+    (window as any).activeScene = state.scene;
+    (window as any).activeCamera = camera;
 
     if (cameraMode === 'orbit') {
       if (orbitControlsRef.current && typeof orbitControlsRef.current.update === 'function') {

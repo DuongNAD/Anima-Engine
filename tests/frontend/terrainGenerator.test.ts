@@ -166,7 +166,7 @@ describe('Terrain Generator - Vegetation Placement', () => {
       expect(cell.elevation).toBeLessThan(80);
 
       // Allowed types
-      expect(['Oak', 'Pine', 'Bush', 'Rock', 'Palm', 'Cactus', 'Jungle', 'Birch', 'Flowers']).toContain(p.type);
+      expect(['Oak', 'Pine', 'Bush', 'Rock', 'Palm', 'Cactus', 'Jungle', 'Birch', 'Flowers', 'Dead Trunk', 'Snow Pine', 'Ice Rock']).toContain(p.type);
     }
   });
 });

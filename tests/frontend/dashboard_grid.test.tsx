@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
@@ -51,11 +51,13 @@ describe('MAP-Elites Grid Dashboard UI', () => {
     expect(gridContainer).toBeDefined();
 
     // Check that occupied cells are styled correctly
-    const cell1 = screen.getByTestId('grid-cell-10,20');
-    expect(cell1.style.backgroundColor).toContain('rgba(255, 255, 255, 0.525)');
+    await waitFor(() => {
+      const cell1 = screen.getByTestId('grid-cell-10,20');
+      expect(cell1.style.backgroundColor).toContain('rgba(255, 255, 255, 0.525)');
 
-    const cell2 = screen.getByTestId('grid-cell-30,40');
-    expect(cell2.style.backgroundColor).toContain('rgba(255, 255, 255, 0.56)');
+      const cell2 = screen.getByTestId('grid-cell-30,40');
+      expect(cell2.style.backgroundColor).toContain('rgba(255, 255, 255, 0.56)');
+    });
   });
 
   it('should dispatch Tauri update_evolution_settings when mutation rate slider is changed', async () => {

@@ -9,6 +9,9 @@ export default tseslint.config(
     ignores: [
       'dist',
       'src-tauri',
+      // One-off CommonJS codegen script at the repo root, not part of the TS/browser app this
+      // config lints. Came in with the `main` merge and trips `no-require-imports` otherwise.
+      'update_vegetation.js',
       'tests/node_modules',
       'map-prototype',
       'rabbit-standalone',

@@ -18,7 +18,11 @@ export default defineConfig({
       'react': path.resolve(__dirname, '../node_modules/react'),
       'react-dom': path.resolve(__dirname, '../node_modules/react-dom'),
       '@tauri-apps/api': path.resolve(__dirname, '../node_modules/@tauri-apps/api'),
-      // Only the R3F reconciler is mocked under jsdom; real three runs headless.
+      // Both, and they need each other. `tests/` is its own npm package with its own
+      // node_modules, which is why everything above is pinned to the root copy; `three` is pinned
+      // for the same reason. Only the R3F reconciler is mocked — real three runs headless — and a
+      // mocked reconciler talking to a *second* copy of three would be worse than either alone.
+      'three': path.resolve(__dirname, '../node_modules/three'),
       '@react-three/fiber': path.resolve(__dirname, './mocks/react-three-fiber-mock.tsx'),
     },
   },

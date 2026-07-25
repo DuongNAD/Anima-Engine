@@ -60,6 +60,7 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (th
 });
 
 (HTMLElement.prototype as any).computeVertexNormals = vi.fn();
+(HTMLElement.prototype as any).computeBoundingSphere = vi.fn();
 
 // Capture custom attributes set on elements (like BufferAttributes on bufferGeometry)
 Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {

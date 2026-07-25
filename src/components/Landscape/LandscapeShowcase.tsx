@@ -19,6 +19,35 @@ import { getMemoizedTerrain, loadOrGenerateTerrain, heightDataFromTerrain } from
 const WORLD_SIZE = 160;
 const WORLD_SEED = 'seed';
 
+// Patch THREE.Object3D to prevent R3F crash on data-* attributes in browser
+if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
+  const createRecursiveProxy = (): any => {
+    return new Proxy({}, {
+      get(target: any, prop: string | symbol) {
+        if (prop === 'then') return undefined;
+        if (prop === 'set' || prop === 'copy') return undefined;
+        if (!(prop in target)) {
+          target[prop] = createRecursiveProxy();
+        }
+        return target[prop];
+      }
+    });
+  };
+
+  Object.defineProperty(THREE.Object3D.prototype, 'data', {
+    get() {
+      if (!this._r3fDataProxy) {
+        this._r3fDataProxy = createRecursiveProxy();
+      }
+      return this._r3fDataProxy;
+    },
+    set(val) {
+      this._r3fDataProxy = val;
+    },
+    configurable: true,
+  });
+}
+
 export const LandscapeShowcase: React.FC = () => {
   const [weather, setWeather] = useState<'clear' | 'rain' | 'snow' | 'fog'>('clear');
   const [speed, setSpeed] = useState<number>(1.0);
@@ -74,6 +103,11 @@ export const LandscapeShowcase: React.FC = () => {
     audioManager.updateEnvironment(weather, speed, volume);
   }, [weather, speed, volume]);
 
+  // From the cached terrain, not a second generation. `main` built its own height map here at
+  // 1000×1000 (capped to 100 under vitest, because that size was too slow for tests); this branch
+  // later moved to one shared `terrain` at WORLD_SIZE, generated once and passed down, which is why
+  // that side is not carried over — regenerating per consumer is the cost the cache exists to
+  // remove, and the vitest cap was a symptom of it.
   const heightMap = useMemo(
     () => (terrain ? heightDataFromTerrain(terrain) : new Float32Array(0)),
     [terrain],
@@ -144,9 +178,21 @@ export const LandscapeShowcase: React.FC = () => {
 
       <Minimap gridWidth={WORLD_SIZE} gridHeight={WORLD_SIZE} />
 
-      <Canvas camera={{ position: [0, WORLD_SIZE * 0.42, WORLD_SIZE * 0.72], fov: 60 }} style={{ width: '100%', height: '100%' }} onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.0035); }}>
+      <Canvas
+        camera={{ position: [0, WORLD_SIZE * 0.42, WORLD_SIZE * 0.72], fov: 60 }}
+        // `gl` hints from `main`: orthogonal to the terrain question, so they carry over.
+        gl={{ powerPreference: 'high-performance', antialias: true }}
+        style={{ width: '100%', height: '100%' }}
+        onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.0035); }}
+      >
         <Sky speed={speed} timeOfDay={timeOfDay} />
         <Terrain width={WORLD_SIZE} height={WORLD_SIZE} wetnessRatio={wetnessRatio} terrain={terrain} />
+        {/* Seabed under the transparent water plane, from `main`. Sized to the grid rather than its
+            fixed 2000, which was scaled for that side's 1000-wide world. */}
+        <mesh rotation-x={-Math.PI / 2} position={[0, -5, 0]} receiveShadow name="seabed-mesh">
+          <planeGeometry args={[WORLD_SIZE * 2, WORLD_SIZE * 2]} />
+          <meshStandardMaterial color="#d2b48c" roughness={0.9} metalness={0.1} />
+        </mesh>
         <Water width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} terrain={terrain} />
         <Vegetation width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} densityFactor={1.0} terrain={terrain} />
         <Weather weather={weather} precipitationRate={precipitationRate} />

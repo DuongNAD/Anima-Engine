@@ -172,6 +172,11 @@ describe('Vegetation Component Tests', () => {
       } else if (name === 'vegetation-instanced-mesh-birch-leaves') {
         expectedZ += 3.2 * s;
       } else if (name === 'vegetation-instanced-mesh-flowers') {
+        // Flat, not scaled. `main` changed this to `0.3 * s` alongside a Vegetation.tsx that scaled
+        // the offset; that component side was not carried in the merge (it predates the shared
+        // terrain prop and TERRAIN_HEIGHT_SCALE), so the expectation follows the component that
+        // actually ships. What it catches is the empty-placements fallback, where s is 0 and the
+        // two forms differ by the whole offset.
         expectedZ += 0.3;
       }
 
