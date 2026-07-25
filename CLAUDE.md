@@ -34,6 +34,87 @@ There is no Makefile or CI. `tsc` strict mode runs on build; ESLint (frontend) a
 - **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.** For 3D model / rabbit work, serve `rabbit-standalone/` statically instead (e.g. `py -m http.server 8000`).
 - Ignore build-artifact noise: `src-tauri/target_*` dirs, `*.log`, `err*.txt`, `out*.txt`, and the root `.agents/` / `$.agents/` vendored cargo dirs.
 
+## Required reading for creature spawn and morphology
+
+Before changing genotype, phenotype, genesis, birth, epoch replacement, save/load,
+migration, pigment, creature physics geometry, or live-agent rendering, read in order:
+
+1. `docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md`
+2. `docs/decisions/ADR-0001-creature-development-lifecycle.md`
+3. `docs/explanation/CREATURE_MORPHOGENESIS.md`
+4. `docs/planning/CREATURE_MORPHOGENESIS_PLAN.md`
+
+Hard rules:
+
+- Do not read environment inside `decode_genotype` and apply development to every
+  call-site. Restore and migration preserve a serialized `DevelopedPhenotype`.
+- Development happens once at genesis/birth; ECS spawning consumes a phenotype.
+- `LocomotionMedium` is a creature trait, not a value inferred from the destination
+  cell during legality checking.
+- Keep S43 for Red-Queen predator/prey coevolution. Local adaptation uses CM-S11
+  reciprocal-transplant evidence.
+- Current epoch evolution is `EvolutionaryReplacement`, not biological reproduction.
+- Use code symbols as anchors and re-read current files before implementation; line
+  numbers in archived drafts are historical.
+- Files in `docs/archive/` are superseded and must not be used as implementation plans.
+
+## Required reading for alternate world laws and evolution experiments
+
+Before changing world genesis conditions, simulation laws, scenario/experiment schemas, exotic
+energy (“mana”), energy pathways, lineage/species diagnostics, causal observability or World Lab UI,
+read in order:
+
+1. `docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md`
+2. `docs/decisions/ADR-0002-world-laws-and-exotic-energy.md`
+3. `docs/explanation/ALTERNATE_EVOLUTIONARY_REGIMES.md`
+4. `docs/ai/requirements/2026-07-24-feature-alternate-evolution-world-lab.md`
+5. `docs/ai/design/2026-07-24-feature-alternate-evolution-world-lab.md`
+6. `docs/ai/planning/2026-07-24-feature-alternate-evolution-world-lab.md`
+7. `docs/ai/implementation/2026-07-24-feature-alternate-evolution-world-lab.md`
+8. `docs/ai/testing/2026-07-24-feature-alternate-evolution-world-lab.md`
+9. For AE2.5 continuation/audit only:
+   `docs/ai/planning/2026-07-25-claude-overnight-goal-ae25.md`
+10. For the AE3 headless pathway/selection slice and its independent audit:
+    `docs/ai/planning/2026-07-25-claude-overnight-goal-ae3.md`
+
+Authority rule: current code plus fresh tests win over prose; then use the authoritative/current
+sections in implementation and testing, then planning status, then the requirements/design target.
+Sections explicitly marked `SUPERSEDED`, `FIRST PASS`, or historical are evidence of past decisions,
+not implementation instructions. Re-read symbols before editing; do not infer current APIs from a
+historical sketch.
+
+Hard rules:
+
+- `WorldLawSet` is immutable within a run. In the shipped headless slice, a changed law requires a
+  new genesis manifest/run; a checkpoint branch changes declared runtime interventions/forcings
+  with `CauseId`s, never the law fingerprint.
+- Core code uses generic `ExoticEnergy`; “Mana” is a scenario/UI display name.
+- MU is not EU. Keep the accepted closed-EU contract and audit exotic sources/sinks separately.
+- Exotic energy must not rewrite genotype, species id, population or fitness directly. Effects go
+  through field → pathway/cost → performance → survival/reproduction → trait/lineage change.
+- `exotic_energy=None` is the baseline compatibility and rollback path.
+- Do not call a visual morph or one MAP-Elites cell a species. Follow AE-S11/AE-S14 evidence gates.
+- Start implementation at AE1 manifest/runner, then AE2 field/budget. Do not start by adding Mana
+  fields to every organism or by building the UI.
+- AE3 lives in `core/evolution_pathway.rs` and is **opt-in**: with no `ae3.` initial-condition key the
+  population is disabled and the AE1–AE2.5 path stays bit-identical. Performance must be derived from
+  a completed uptake→spend transaction (`state.last_spent_mu`), never from `expressed`/`has_exotic`.
+  Only `ReferencePopulation::reproduce` may write cohort counts or genotypes; sensing, uptake,
+  metabolism and performance accounting may not. The population uses its own seeded RNG stream and
+  must never draw from the ecology stream, or the AE-S01 baseline checksum diverges.
+- AE3 observables are emitted only when the population exists; a manifest requesting one without a
+  population must fail preflight rather than report a zero.
+- `EnergyPathwayGenotype::crossover` accepts only matching expressed source ids; an incompatible
+  source pair returns `None`. Do not silently combine source-specific traits.
+- `evolution.births` is cumulative and therefore has `Aggregation::Instant`, not `Sum`.
+- Causal provenance may root at a forcing only when the run can prove that forcing was the sole
+  effective MU origin. Mixed-origin fields keep the conservative world-law/field parent until the
+  ledger supports multiple parents.
+- `Scenario`/`ReferenceEcosystem` remains the legacy headless machinery;
+  `ReferenceEvolutionWorld` proves AE3 only for the opt-in aggregate reference population. Do not
+  claim the live Bevy world is experiment-ready until its deterministic adapter and persistence
+  gates pass.
+
 ## Environment (Rust backend, loaded via dotenvy from `.env`, gitignored)
 
 - `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (`ai/model.rs`).
