@@ -177,8 +177,16 @@ cap — đúng quy mô mà "hàng triệu agent" sống, và cũng đúng quy m�
 (kích thước quần thể hiệu dụng của cohort ngủ = 8, `genomes_dropped()` đếm phần đã mất). Hai điều đó
 là cùng một điều, và đó là cái giá thật của A6 chứ không phải "tối ưu hoá miễn phí".
 
-Phần **chưa** làm: cohort ngủ hiện **đóng băng**, chưa chạy sinh thái tổng hợp (logistic/Holling/chết
-theo mật độ). Chi tiết và gate ở `WORLD_DESIGN.md` §7.
+**Sinh thái tổng hợp cho cohort ngủ cũng đã xong** (`dormant_cohort_ecology_system`): cohort hô hấp
+và gặm cỏ, nên thời gian có trôi ở nơi không ai nhìn. Ràng buộc chi phối không phải "mô hình cho hay"
+mà là **đừng thành một sinh thái thứ hai** — mọi chênh lệch giữa hai mô hình chính là sự chú ý của
+observer rò vào sinh học. Vì thế trao đổi chất được **đo** từ `FeatureTracker` của chính các thành viên
+lúc còn sống chứ không mô hình hoá lại, và **không có chết đói** (agent sống ở 0 EU cũng không chết).
+
+Một cái bẫy đáng ghi vì nó chạy trơn và sai âm thầm: đưa `herbivore_intake` **tổng** tài nguyên cả chunk
+thì biên dịch được, bảo toàn năng lượng chính xác, mọi test bảo toàn đều qua — nhưng Holling Type II
+bão hoà theo **mật độ**, nên tổng ~64 ô nằm sâu trong vùng bão hoà và đàn ngủ ăn giỏi hơn đàn được nhìn.
+Đáp ứng chức năng là trên đầu cá thể nên phải áp trên đầu cá thể. Chi tiết và gate ở `WORLD_DESIGN.md` §7.
 
 ### A0. Khoảng trống đã biết vs. khoảng trống mới phát hiện
 
@@ -592,9 +600,8 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 >
 > **0a xong** (256² + so-le trường sinh thái đưa chi phí tick từ 509s về 64,8s, thấp hơn cả 82s ở 128²).
 > **0b xong cả hai tầng**: phân tầng nhịp suy nghĩ (`simulation_lod.rs`) và quần thể tổng hợp
-> (`aggregate_population.rs`). Nhưng phần nâng trần bộ nhớ **chỉ có hiệu lực khi một chunk vượt 8 cá
-> thể**, và ở đó nó **mất đa dạng di truyền có kiểm đếm**. Còn nợ: sinh thái tổng hợp cho cohort ngủ.
-> Chi tiết ở §A6.
+> (`aggregate_population.rs`), kể cả sinh thái cho cohort ngủ. Nhưng phần nâng trần bộ nhớ **chỉ có
+> hiệu lực khi một chunk vượt 8 cá thể**, và ở đó nó **mất đa dạng di truyền có kiểm đếm**. Chi tiết ở §A6.
 
 | Bậc | Việc | Vì sao trước | Verify headless? |
 |---|---|---|---|

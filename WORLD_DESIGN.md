@@ -255,7 +255,7 @@ frontend đọc artifact đó để render (bỏ `worldGen.ts` khỏi đường 
 
 ---
 
-## 7. Simulation-LOD (backend) — TẦNG 1 ĐÃ THỰC THI
+## 7. Simulation-LOD (backend) — ĐÃ THỰC THI ĐỦ HAI TẦNG
 
 > Mảnh ghép thật sự cho "hàng triệu agent" trên máy yếu. Ở **backend Rust**.
 > Thiết kế dưới đây là bản gốc; phần **đã thực thi** và phần **còn nợ** ghi ở mục "Trạng thái" cuối mục.
@@ -312,7 +312,7 @@ Agent ngủ bị **huỷ hẳn** (entity, component, não). Còn lại là mấy
   truyền ở đó nhanh hơn quần thể sống. `genomes_dropped()` đếm đúng số genome đã mất.
 - **Lossless dưới cap.** Cohort chưa quá 8 cá thể thì trả lại **đúng** những genome đã nuốt. Trên cap là mất mát
   có chủ đích. Ranh giới đó là một test, không phải một ghi chú.
-- Gate: 11 unit + 14 integration (`tests/aggregate_population_tests.rs`). Gate năng lượng G1.1 và gate determinism
+- Gate: 22 unit + 21 integration (`tests/aggregate_population_tests.rs`). Gate năng lượng G1.1 và gate determinism
   vẫn xanh sau khi sửa census.
 
 **Tiết kiệm bộ nhớ là CÓ ĐIỀU KIỆN — nói rõ vì dễ tưởng nhầm:**
@@ -326,10 +326,44 @@ Nghĩa là vài agent đi khuất tầm mắt gần như **không** tiết kiệ
 vượt cap — đúng cái quy mô mà mục tiêu "hàng triệu agent" sống, và cũng đúng cái quy mô mà ngủ trở nên mất mát.
 Hai điều đó là **cùng một điều**.
 
-**⚠️ Còn nợ — động lực học quần thể ngủ.** Mục này ở trên yêu cầu cohort chạy sinh thái tổng hợp khi ngủ (logistic,
-Holling, chết theo mật độ). **Chưa có.** Cohort hiện bị **đóng băng**: năng lượng và số lượng không đổi cho tới khi
-có gì đó đánh thức. Artifact thật, gọi tên thẳng: **thời gian không trôi ở nơi không ai nhìn.** Hoãn chứ không vội
-vì hai nửa hỏng theo hai kiểu khác nhau — bảo toàn ở đây chính xác và chứng minh được, còn sinh thái tổng hợp là
-*mô hình thứ hai của cùng hệ*; ghép chung một commit thì một residual trôi sẽ có hai nghi phạm thay vì một.
-4 điều kiện verify liệt kê ở trên: (1) và (3) **đã xanh**; (2) và (4) thuộc tầng 1 và cũng đã xanh; phần động lực
-học còn lại là commit kế tiếp, trên một nền đã chứng minh xong bảo toàn.
+**✅ Sinh thái tổng hợp cho cohort ngủ — đã thực thi:** `dormant_cohort_ecology_system`.
+Thời gian **có** trôi ở nơi không ai nhìn: cohort hô hấp, và phần ăn cỏ trong đó gặm `ResourceField` dưới chunk của
+mình. Cả 4 điều kiện verify liệt kê ở trên đều xanh.
+
+Ràng buộc chi phối không phải "mô hình sinh thái cho hay", mà là **đừng trở thành một sinh thái thứ hai, khác đi** —
+mọi chênh lệch giữa hai mô hình chính là sự chú ý của observer rò vào sinh học. Hai hệ quả gánh chịu điều đó:
+
+- **Trao đổi chất là ĐO, không phải mô hình hoá.** Cohort đốt đúng tốc độ mà thành viên của nó *đã được đo* khi còn
+  là body sống (`FeatureTracker`, trung bình mỗi tick của epoch hiện tại). Viết một công thức maintenance-only là
+  cách tự nhiên nhất và sẽ làm **ngủ rẻ hơn bị nhìn**, khiến vùng không ai quan sát âm thầm nuôi được quần thể lớn hơn.
+- **Không có chết đói.** Agent sống ở 0 năng lượng không bị despawn (`update_agent_evaluation_system` chỉ ngừng đếm),
+  nên cohort đói chạm đáy 0 và **giữ nguyên số thành viên**. Thêm chết theo mật độ trông như sinh thái phong phú hơn,
+  thực chất là observer chọn ai chết.
+
+**Cái bẫy mà phép gộp giăng ra — ghi lại vì nó chạy trơn tru và sai âm thầm.** Cách hiển nhiên là đưa cho
+`herbivore_intake` **tổng** tài nguyên của cả chunk. Nó biên dịch được, bảo toàn năng lượng chính xác, mọi test bảo
+toàn đều qua. Nhưng Holling Type II bão hoà theo **mật độ**: tổng của ~64 ô nằm sâu trong vùng bão hoà hơn bất kỳ ô
+đơn lẻ nào mà agent sống đứng lên, nên **đàn ngủ ăn giỏi hơn đàn được nhìn**. Đáp ứng chức năng là *trên đầu cá thể*
+nên phải áp *trên đầu cá thể*: mỗi cá thể ngủ gặm như đang đứng trên một ô **trung bình** của chunk, rồi mới nhân với
+số con ăn cỏ. Test `sleeping_is_not_cheaper_than_being_watched` là thứ đã bắt được nó, và là thứ giữ nó.
+
+**⚠️ Điều kiện bắt buộc — CHƯA persist.** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo
+detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không
+sinh hay huỷ EU. Nhưng nó **không** mang `DormantCohorts`. Vậy save một run đang có cá thể ngủ sẽ **âm thầm xoá**
+quần thể đó cùng năng lượng của nó: chúng không nằm trong `agents`, EU của chúng không nằm trong scalar nào, và
+thế giới nạp lại đơn giản là ít đi. Không gì phát hiện được, vì baseline mới sẽ khoá ở lần census đầu sau khi nạp.
+
+→ **Đừng bật dormancy trên run có save, cho tới khi cohort vào được snapshot envelope.** Hôm nay an toàn chỉ vì
+không chỗ nào chèn resource đó — tầng này tắt trong mọi đường đã ship, và tiêu điểm LOD từ UI (thứ sẽ bật nó lên)
+chưa tồn tại. Ai nối tiêu điểm đó thì sở hữu dòng này.
+
+**Phần thô hơn, và một bất đối xứng còn để ngỏ — nêu tên thay vì giấu:**
+
+- Đàn ngủ không được phân giải tới vị trí trong chunk, nên nó gặm các ô theo tỉ lệ tài nguyên từng ô chứ không chọn ô.
+  Hành vi phân tán theo giving-up density của thú ăn cỏ sống không có bản tương ứng ở mức tổng hợp.
+- **Chưa có ăn thịt ở mức tổng hợp.** Trong thế giới sống, `combat_system` chuyển EU từ mồi sang thú săn và thải phần
+  còn lại về mùn theo hiệu suất Lindeman — tức chuỗi thức ăn sống *rò* năng lượng xuống dưới. Cohort ngủ gộp dự trữ
+  của cả hai lớp vào một con số, nên phép chuyển đó thành vô hiệu và phần thất thoát Lindeman không xảy ra: một chunk
+  có cả hai lớp bảo toàn năng lượng **tốt hơn một chút khi ngủ so với khi thức**. Hướng lệch đã biết, độ lớn bị chặn
+  bởi tốc độ ăn thịt. Để ngỏ chứ không lấp bằng một mô hình gặp gỡ tự nghĩ ra — một tốc độ gặp gỡ sai sẽ là thứ
+  phụ-thuộc-observer tệ hơn cái nó vá. Cohort thuần một bậc dinh dưỡng (trường hợp phổ biến) không bị ảnh hưởng.
