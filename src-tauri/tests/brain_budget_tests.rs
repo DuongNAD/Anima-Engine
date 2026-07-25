@@ -46,9 +46,32 @@ fn requests(count: usize, with_brains: bool) -> Vec<AgentInferenceRequest> {
 
 // --- EB-S03: allocation on the tick path ---------------------------------------------------------
 
+/// The four EB-S03 measurements run under one `#[test]`, and the reason is not style.
+///
+/// `TEST_LOCK` serialises the test *bodies*, but libtest still gives each `#[test]` its own thread,
+/// and spawning those threads allocates outside the lock. The allocator is a `#[global_allocator]`
+/// counting the whole process, so a sibling's start-up landing inside a measured window is counted
+/// as if the code under test had allocated. On an idle machine the threads are all up before the
+/// first body runs and nothing is seen; under the load of a full `cargo test --features desktop` they
+/// interleave, and `a_learning_step_allocates_nothing` fails claiming 4 allocations in a function
+/// that makes none. Observed roughly one run in three.
+///
+/// One `#[test]` means one thread and no siblings, which makes the measurement deterministic rather
+/// than load-dependent. Counting stays process-wide, which matters: `terrain.rs` erosion runs on
+/// rayon workers, so a per-thread counter would silently stop measuring the very allocations
+/// `map_generation_zero_alloc_tests` exists to catch.
 #[test]
-fn evolved_inference_allocates_nothing_per_tick() {
+fn eb_s03_allocation_on_the_tick_path() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    evolved_inference_allocates_nothing_per_tick();
+    a_learning_step_allocates_nothing();
+    installing_a_learned_network_costs_one_allocation();
+    the_shared_model_path_is_not_allocation_free_and_never_was();
+}
+
+fn evolved_inference_allocates_nothing_per_tick() {
+    eprintln!("phase: evolved inference, steady state");
 
     let model = BrainModel::new_seeded(15, 64, action_index::CPG_LEN, 1);
     let reqs = requests(AGENTS, true);
@@ -72,9 +95,8 @@ fn evolved_inference_allocates_nothing_per_tick() {
     assert_eq!(responses.len(), AGENTS);
 }
 
-#[test]
 fn a_learning_step_allocates_nothing() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    eprintln!("phase: learn_step gradient update");
 
     let mut genotype = brain(9);
     let state = [0.4f32; 15];
@@ -115,12 +137,11 @@ fn a_learning_step_allocates_nothing() {
     );
 }
 
-#[test]
 fn installing_a_learned_network_costs_one_allocation() {
     // The documented exception. Learning replaces the whole network so an in-flight inference
     // request is never mutated underneath, and that replacement allocates once. This pins the cost
     // at *one* — if it ever became one per weight or per tick, that would be the regression.
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    eprintln!("phase: installing a learned network");
 
     let mut agent = AgentBrain::from_genotype(brain(11));
     let updated = (*agent.genotype).clone();
@@ -135,13 +156,12 @@ fn installing_a_learned_network_costs_one_allocation() {
     );
 }
 
-#[test]
 fn the_shared_model_path_is_not_allocation_free_and_never_was() {
     // Reported rather than asserted to zero. The Burn batch clones its input buffer and builds a
     // tensor, which allocates — that predates ADR-0003 and is a property of routing through Burn.
     // The point of measuring it is that "evolved inference allocates nothing" above is a real
     // improvement over the legacy path, not an accident of how the test is written.
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    eprintln!("phase: shared Burn model path");
 
     let model = BrainModel::new_seeded(15, 64, action_index::CPG_LEN, 2);
     let reqs = requests(AGENTS, false);

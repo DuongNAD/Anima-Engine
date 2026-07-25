@@ -1613,6 +1613,61 @@ impl SimulationEngine {
     }
 }
 
+/// Discount applied to the bootstrapped next-state value in the shared learner's TD target.
+pub const DISCOUNT: f32 = 0.99;
+
+/// The A2C objective for the shared model: `L = mean((a − â)²·td) + ½·mean(td²)`.
+///
+/// ### The sign
+///
+/// The actor term is advantage-weighted behavioural cloning, and its coefficient is `+td`. With a
+/// positive advantage, minimising `td·(a − â)²` shrinks `(a − â)²` and so pulls the policy **toward**
+/// the action that turned out better than expected; with a negative advantage the coefficient flips
+/// and it pushes away. This matches [`crate::evolution::brain_genotype::learn_step`], which is the
+/// per-agent implementation of the same objective.
+///
+/// This loop used to compute `(a − â)²·(−td)`, which is that objective inverted: a positive
+/// advantage made the loss *decrease* as `(a − â)²` grew, so gradient descent drove the shared policy
+/// away from actions that turned out well and toward ones that turned out badly. The network still
+/// ran and still produced finite numbers, which is why it survived. ADR-0003 recorded the
+/// discrepancy and had `learn_step` deliberately implement the correct sign rather than reproduce
+/// the defect; this brings the shared learner into line, so there is now one objective rather than
+/// two that disagree.
+///
+/// Note the trajectory of an existing shared-model run changes as a result. That is the point — the
+/// old trajectory was descending the wrong gradient.
+///
+/// Extracted from the loop body so it can be tested at all: `run_training_loop` blocks on a channel
+/// forever and owns its optimiser, so nothing about the objective was reachable from a test.
+/// `a2c_loss_direction_tests` pairs a finite-difference gradient check with a behavioural assertion,
+/// because a gradient check alone passes just as happily for an inverted objective.
+pub fn a2c_loss<B>(
+    model: &ActorCriticModel<B>,
+    states: Tensor<B, 2>,
+    next_states: Tensor<B, 2>,
+    actions: Tensor<B, 2>,
+    rewards: Tensor<B, 2>,
+    discount: f32,
+) -> Tensor<B, 1>
+where
+    B: Backend<FloatElem = f32>,
+{
+    let (actor_out, critic_out) = model.forward(states);
+    let (_, critic_out_next) = model.forward(next_states);
+
+    let target = rewards + critic_out_next.detach() * discount;
+    let td_error = target - critic_out;
+
+    let critic_diff = td_error.clone();
+    let loss_critic = (critic_diff.clone() * critic_diff).mean();
+
+    let diff = actor_out - actions;
+    // `+td`, not `−td`. See the sign discussion above.
+    let loss_actor = ((diff.clone() * diff) * td_error.detach()).mean();
+
+    loss_actor + loss_critic * 0.5
+}
+
 fn run_training_loop<B>(
     running: Arc<AtomicBool>,
     trans_rx: crossbeam_channel::Receiver<Transition>,
@@ -1669,19 +1724,14 @@ fn run_training_loop<B>(
                         &device,
                     );
 
-                    let (actor_out, critic_out) = train_model.forward(states_tensor.clone());
-                    let (_, critic_out_next) = train_model.forward(next_states_tensor.clone());
-
-                    let target = rewards_tensor + critic_out_next.detach() * 0.99;
-                    let td_error = target - critic_out.clone();
-
-                    let critic_diff = td_error.clone();
-                    let loss_critic = (critic_diff.clone() * critic_diff).mean();
-
-                    let diff = actor_out - actions_tensor;
-                    let loss_actor = ((diff.clone() * diff) * (-td_error.detach())).mean();
-
-                    let loss_total = loss_actor + loss_critic * 0.5;
+                    let loss_total = a2c_loss(
+                        &train_model,
+                        states_tensor.clone(),
+                        next_states_tensor.clone(),
+                        actions_tensor,
+                        rewards_tensor,
+                        DISCOUNT,
+                    );
 
                     let grads = loss_total.backward();
                     let grads_params = GradientsParams::from_grads(grads, &train_model);

@@ -84,9 +84,31 @@ fn empty_grid() -> PheromoneGridState {
     }
 }
 
+/// All three measurements live under one `#[test]` on purpose.
+///
+/// `TrackingAllocator` is a `#[global_allocator]` and counts every allocation in the process while
+/// active. The `TEST_LOCK` convention the other zero-allocation suites use serialises the test
+/// *bodies*, but the harness still runs each `#[test]` on its own thread, and spawning those threads
+/// allocates outside the lock. On an idle machine all the threads are up before the first body
+/// starts measuring and nothing is observed; under the load of a full workspace run they interleave,
+/// and a sibling's start-up lands inside the measured window. That is how this file first appeared:
+/// green three times in isolation, "made 4 heap allocations" inside `cargo test --features desktop`.
+///
+/// One test means no sibling threads, which makes the measurement deterministic instead of
+/// load-dependent. The phases are separated by `eprintln!` so a failure still says which one broke.
+/// The same hazard applies to the other `*_zero_alloc_tests.rs` files; they have simply not lost the
+/// race yet.
 #[test]
-fn tick_payload_refresh_is_allocation_free_in_steady_state() {
+fn emit_path_is_allocation_free() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    tick_payload_refresh_is_allocation_free_in_steady_state();
+    refresh_still_allocates_nothing_when_the_population_changes_size();
+    pheromone_gate_is_allocation_free_whether_or_not_it_sends();
+}
+
+fn tick_payload_refresh_is_allocation_free_in_steady_state() {
+    eprintln!("phase: tick payload refresh in steady state");
 
     let segments = frame_segments();
     let env = environmental_state();
@@ -110,9 +132,8 @@ fn tick_payload_refresh_is_allocation_free_in_steady_state() {
     );
 }
 
-#[test]
 fn refresh_still_allocates_nothing_when_the_population_changes_size() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    eprintln!("phase: refresh across a changing population size");
 
     // Agents die and are born every epoch, so the segment count moves between frames. Shrinking
     // must not free the buffer and growing back must not re-allocate it — that would put the cost
@@ -140,9 +161,8 @@ fn refresh_still_allocates_nothing_when_the_population_changes_size() {
     );
 }
 
-#[test]
 fn pheromone_gate_is_allocation_free_whether_or_not_it_sends() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    eprintln!("phase: pheromone gate, sending and suppressing");
 
     let start = Instant::now();
     let interval = Duration::from_millis(100);

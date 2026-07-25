@@ -372,18 +372,24 @@ impl BrainGenotype {
 /// `td·(a − â)²` pulls the policy **toward** the action it took; with a negative advantage the
 /// coefficient flips and it pushes away. The critic term fits the value estimate.
 ///
-/// ### This deliberately differs in sign from the shared model
+/// ### The shared model now uses the same sign
 ///
-/// `run_training_loop` in `core/simulation_loop.rs` uses `(a − â)² · (−td)`. That coefficient is
-/// inverted: a *positive* advantage makes the loss decrease as `(a − â)²` grows, so gradient descent
-/// drives the shared policy **away** from actions that turned out better than expected, and toward
-/// ones that turned out worse. A `learn_step` written to match would have reproduced the defect
-/// rather than the intent, so it implements the correct sign. The discrepancy is real and pre-dates
-/// ADR-0003; fixing the shared model changes the legacy trajectory and is tracked separately.
+/// `run_training_loop` in `core/simulation_loop.rs` used to compute `(a − â)² · (−td)`. That
+/// coefficient is inverted: a *positive* advantage makes the loss decrease as `(a − â)²` grows, so
+/// gradient descent drove the shared policy **away** from actions that turned out better than
+/// expected, and toward ones that turned out worse. A `learn_step` written to match would have
+/// reproduced the defect rather than the intent, so this implemented the correct sign and ADR-0003
+/// recorded the discrepancy as outstanding.
 ///
-/// The direction is pinned by `learning_moves_the_policy_toward_a_rewarded_action`, and the gradient
-/// itself by `the_learning_gradient_matches_finite_differences` — a check on the derivative alone
-/// would have accepted the inverted objective too.
+/// That has since been fixed: the shared objective lives in
+/// [`crate::core::simulation_loop::a2c_loss`] and carries `+td`, so there is now one objective
+/// rather than two that disagree. Shared-model runs from before the fix followed a different
+/// trajectory, which was the point of fixing it.
+///
+/// The direction here is pinned by `learning_moves_the_policy_toward_a_rewarded_action`, and the
+/// gradient itself by `the_learning_gradient_matches_finite_differences` — a check on the derivative
+/// alone would have accepted the inverted objective too. `a2c_loss_direction_tests` applies the same
+/// pairing to the shared model and additionally asserts the two agree.
 ///
 /// ### Two deliberate departures, both about cost
 ///

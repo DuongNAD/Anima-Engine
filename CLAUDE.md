@@ -76,8 +76,10 @@ that runs, returns finite numbers and is silently wrong:
 - **`BrainGenotype`'s weight layout is `w[out * fan_in + in]` — the transpose of Burn's
   `[d_input, d_output]`.** Copy flat weights across without transposing and the network still runs.
   Use `ActorCriticModel::from_flat_weights`, which transposes, and keep the EB-S02 parity gate green.
-- **The shared A2C actor loss in `run_training_loop` has a known inverted sign** (tracked as its own
-  task). Do not copy it into new code; `brain_genotype::learn_step` has the corrected form.
+- **There is one A2C objective, `simulation_loop::a2c_loss`, and its actor coefficient is `+td`.**
+  The shared learner previously used `(a − â)²·(−td)`, which drove the policy away from actions that
+  beat expectation; it now matches `brain_genotype::learn_step`. `a2c_loss_direction_tests` fails if
+  the sign is reinverted. If you add a third learner, call `a2c_loss` rather than restating it.
 - Numerical code needs **two** kinds of test: a gradient check against finite differences catches a
   wrong derivative, but passes for a wrong objective too. Pair it with a behavioural assertion.
 
