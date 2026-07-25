@@ -20,6 +20,7 @@ pub mod scenario;
 pub mod sim_clock;
 pub mod sim_rules;
 pub mod simulation_lifecycle;
+pub mod simulation_lod;
 pub mod simulation_loop;
 pub mod simulation_state;
 pub mod snapshot;

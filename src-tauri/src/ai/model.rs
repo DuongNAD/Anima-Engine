@@ -739,6 +739,7 @@ pub fn brain_inference_system(
 /// well*, but not inherit what was learned.
 pub fn lifetime_learning_system(
     policy: Option<Res<crate::core::resources::BrainPolicy>>,
+    lod_focus: Option<Res<crate::core::simulation_lod::LodFocus>>,
     mut tick: Local<u32>,
     mut scratch: Local<crate::evolution::brain_genotype::LearnScratch>,
     mut agents: Query<(
@@ -764,7 +765,17 @@ pub fn lifetime_learning_system(
             continue; // nothing was done yet, so there is nothing to learn from
         }
         // Active-radius gate: agents outside it are not simulated in enough detail to learn from.
-        if cfg.active_radius.is_finite() && pos.0.length() > cfg.active_radius {
+        //
+        // Measured from the simulation-LOD focus, which is what ADR-0003 decision 6 asked for. Until
+        // LOD existed this fell back to the world origin — a stand-in that made the constraint
+        // testable but put the "active" region wherever the map happened to be centred. With no
+        // focus set it still falls back to the origin, so headless runs are unchanged.
+        let center = lod_focus
+            .as_deref()
+            .filter(|f| f.enabled)
+            .map(|f| f.center)
+            .unwrap_or(glam::Vec3::ZERO);
+        if cfg.active_radius.is_finite() && pos.0.distance(center) > cfg.active_radius {
             continue;
         }
 

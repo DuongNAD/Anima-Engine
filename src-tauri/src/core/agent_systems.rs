@@ -488,10 +488,14 @@ pub fn sensory_system(
     channels: Res<InferenceChannels>,
     mut ticket_counter: Local<u64>,
     mut local_batch: Local<Option<InferenceRequestBatch>>,
+    mut lod: crate::core::simulation_lod::LodGate,
 ) {
     if let Some(ref mut raycasts_res) = active_raycasts {
         raycasts_res.raycasts.clear();
     }
+
+    // One snapshot for the whole population, so every agent is tiered against the same focus.
+    let lod = lod.begin_tick();
 
     let mut batch = local_batch.take().unwrap_or_else(|| {
         channels
@@ -507,6 +511,16 @@ pub fn sensory_system(
         agent_query.iter_mut()
     {
         if !matches!(*cog_state, CognitiveState::Ready) {
+            continue;
+        }
+
+        // Simulation LOD: how often this agent gets to think, by where it is. With no focus set —
+        // every headless run, and any UI that has not published a view position — `tier_at` returns
+        // `Hot` for everything and this is a no-op.
+        //
+        // A skipped agent is not frozen: it keeps its last CPG parameters and goes on moving,
+        // eating and metabolising. Only the inference is skipped, which is the dominant cost.
+        if !lod.should_think(agent_pos.0, entity.index()) {
             continue;
         }
 
