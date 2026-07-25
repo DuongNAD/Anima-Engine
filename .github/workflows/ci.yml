@@ -5,8 +5,17 @@ name: CI
 # here because more than one gate is expected to be red while G0-G4 remediation is in progress.
 
 on:
+  # `main` only, not `['**']`. A branch with an open PR was matching both triggers and running the
+  # whole workflow twice for one commit — including the Rust job, which builds wgpu, neo4j and the
+  # WebSocket stack on a Windows runner and takes the better part of an hour. The two runs also
+  # could not cancel each other: `concurrency.group` keys on `github.ref`, which is
+  # `refs/heads/<branch>` for the push and `refs/pull/<n>/merge` for the pull_request, so they are
+  # different groups by construction.
+  #
+  # The trade is real and worth stating: a branch with no PR open now gets no CI. Push it, open the
+  # PR, and the same gates run — on the merge commit, which is the thing actually being merged.
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
