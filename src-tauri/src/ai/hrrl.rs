@@ -1,5 +1,5 @@
 use bevy_ecs::prelude::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Component, Clone, Debug, Serialize, Deserialize)]
 pub struct HomeostaticState {

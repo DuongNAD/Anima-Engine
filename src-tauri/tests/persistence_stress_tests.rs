@@ -1,15 +1,18 @@
 mod common;
 
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
-use anima_engine_lib::core::simulation_lifecycle::{SimulationEngine, SavedSimulationState, SerializedPheromoneGrid};
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::simulation_lifecycle::{
+    SavedSimulationState, SerializedPheromoneGrid, SimulationEngine,
+};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -57,7 +60,7 @@ fn test_load_zero_agents() {
                 position: glam::Vec3::new(1.0, 0.0, 2.0),
                 energy_value: 30.0,
                 hydration_value: 20.0,
-            }
+            },
         ],
         agents: vec![], // Zero agents
         evolution_settings: EvolutionSettings {
@@ -74,6 +77,10 @@ fn test_load_zero_agents() {
         lineage_relations: vec![],
         lakes: vec![],
         trees: vec![],
+        world_identity: Default::default(),
+        // Everything not named above (closed-energy state, RNG stream position, season clock)
+        // takes its zero value, which every restore path reads as "nothing was saved here".
+        ..anima_engine_lib::core::simulation_state::empty_saved_state_for_tests()
     };
 
     // Put into pending load state
@@ -97,7 +104,11 @@ fn test_load_zero_agents() {
 
     // Verify agents telemetry has length 0
     let states = engine.agent_states.read().unwrap();
-    assert_eq!(states.len(), 0, "Agent states should be empty when loading state with 0 agents");
+    assert_eq!(
+        states.len(),
+        0,
+        "Agent states should be empty when loading state with 0 agents"
+    );
 
     engine.stop();
 }
@@ -108,7 +119,7 @@ fn test_load_corrupted_json() {
 
     let temp_dir = std::env::temp_dir();
     let file_path = temp_dir.join("corrupted_state.json");
-    
+
     // Write invalid JSON content
     std::fs::write(&file_path, "{ corrupted_json_missing_brackets: ").unwrap();
 
@@ -118,7 +129,10 @@ fn test_load_corrupted_json() {
 
     // Deserialize should fail
     let deserialized = serde_json::from_str::<SavedSimulationState>(&json_str);
-    assert!(deserialized.is_err(), "Expected parsing error for corrupted JSON");
+    assert!(
+        deserialized.is_err(),
+        "Expected parsing error for corrupted JSON"
+    );
 
     // Cleanup
     let _ = std::fs::remove_file(file_path);
@@ -129,7 +143,7 @@ fn test_load_missing_file() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let missing_path = "non_existent_file_persistence_999.json";
-    
+
     // File read should fail with NotFound
     let read_result = std::fs::read_to_string(missing_path);
     assert!(read_result.is_err());
@@ -166,12 +180,21 @@ fn test_100_save_load_cycles() {
 
     // Save initial state
     let (tx, rx) = std::sync::mpsc::channel();
-    engine.save_request_tx.send(tx).expect("Failed to send initial save request");
-    let mut current_state = rx.recv_timeout(Duration::from_secs(5))
-        .expect("Timeout waiting for initial save");
+    engine
+        .save_request_tx
+        .send(tx)
+        .expect("Failed to send initial save request");
+    let mut current_state = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("Timeout waiting for initial save")
+        .expect("initial save must not be refused");
 
     assert!(current_state.tick_count > 0);
-    assert_eq!(current_state.agents.len(), 10, "Should spawn 10 agents by default");
+    assert_eq!(
+        current_state.agents.len(),
+        10,
+        "Should spawn 10 agents by default"
+    );
 
     engine.stop();
 
@@ -195,21 +218,49 @@ fn test_100_save_load_cycles() {
 
         // Save state at the end of this run
         let (tx_cycle, rx_cycle) = std::sync::mpsc::channel();
-        engine.save_request_tx.send(tx_cycle)
+        engine
+            .save_request_tx
+            .send(tx_cycle)
             .unwrap_or_else(|e| panic!("Failed to send save request in cycle {}: {:?}", cycle, e));
-        
-        let new_state = rx_cycle.recv_timeout(Duration::from_secs(2))
-            .unwrap_or_else(|e| panic!("Timeout/error receiving save in cycle {}: {:?}", cycle, e));
+
+        let new_state = rx_cycle
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap_or_else(|e| panic!("Timeout/error receiving save in cycle {}: {:?}", cycle, e))
+            .unwrap_or_else(|why| panic!("save refused in cycle {}: {}", cycle, why));
 
         // Verify that the data is not glitched/NaN
         for agent in &new_state.agents {
-            assert!(agent.root_position.x.is_finite(), "NaN/Inf coordinate in cycle {}", cycle);
-            assert!(agent.root_position.y.is_finite(), "NaN/Inf coordinate in cycle {}", cycle);
-            assert!(agent.root_position.z.is_finite(), "NaN/Inf coordinate in cycle {}", cycle);
+            assert!(
+                agent.root_position.x.is_finite(),
+                "NaN/Inf coordinate in cycle {}",
+                cycle
+            );
+            assert!(
+                agent.root_position.y.is_finite(),
+                "NaN/Inf coordinate in cycle {}",
+                cycle
+            );
+            assert!(
+                agent.root_position.z.is_finite(),
+                "NaN/Inf coordinate in cycle {}",
+                cycle
+            );
             for segment in &agent.segments {
-                assert!(segment.position.x.is_finite(), "NaN/Inf segment coordinate in cycle {}", cycle);
-                assert!(segment.position.y.is_finite(), "NaN/Inf segment coordinate in cycle {}", cycle);
-                assert!(segment.position.z.is_finite(), "NaN/Inf segment coordinate in cycle {}", cycle);
+                assert!(
+                    segment.position.x.is_finite(),
+                    "NaN/Inf segment coordinate in cycle {}",
+                    cycle
+                );
+                assert!(
+                    segment.position.y.is_finite(),
+                    "NaN/Inf segment coordinate in cycle {}",
+                    cycle
+                );
+                assert!(
+                    segment.position.z.is_finite(),
+                    "NaN/Inf segment coordinate in cycle {}",
+                    cycle
+                );
             }
         }
 
@@ -221,7 +272,7 @@ fn test_100_save_load_cycles() {
     }
 
     let _allocations = ALLOCATOR.stop_tracking();
-    
+
     // We expect some allocations because starting/stopping the engine, serializing to state,
     // and thread initialization/joining allocates memory. But it should not lock, panic,
     // or leak unbounded memory resources (thread handles and channels are fully joined and dropped).

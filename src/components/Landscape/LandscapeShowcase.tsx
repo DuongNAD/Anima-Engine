@@ -11,7 +11,13 @@ import PositionalAudio from './PositionalAudio';
 import CameraControls from './CameraControls';
 import Minimap from './Minimap';
 import { audioManager } from './utils/audioManager';
-import { generateTerrainData } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { getMemoizedTerrain, loadOrGenerateTerrain, heightDataFromTerrain } from './utils/terrainCache';
+
+// World footprint (cells). Larger = bigger, more varied world; generation is cached so the
+// heavy cost is paid only on the first ever run for a given size/seed.
+const WORLD_SIZE = 160;
+const WORLD_SEED = 'seed';
 
 // Patch THREE.Object3D to prevent R3F crash on data-* attributes in browser
 if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
@@ -50,6 +56,24 @@ export const LandscapeShowcase: React.FC = () => {
   const [cameraMode, setCameraMode] = useState<'orbit' | 'fly' | 'cinematic' | 'map'>('orbit');
   const [timeOfDay, setTimeOfDay] = useState<number>(12.0);
 
+  // Load the world ONCE (shared by every component). With IndexedDB available we read the
+  // cached world from a previous session (skipping heavy generation); without it (e.g. tests)
+  // we generate synchronously so the scene is present on first render.
+  const [terrain, setTerrain] = useState<TerrainData | null>(() =>
+    typeof indexedDB === 'undefined' ? getMemoizedTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED) : null,
+  );
+  useEffect(() => {
+    if (terrain) return;
+    let alive = true;
+    loadOrGenerateTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED).then((t) => {
+      if (alive) setTerrain(t);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     audioManager.initialize();
   }, []);
@@ -79,11 +103,15 @@ export const LandscapeShowcase: React.FC = () => {
     audioManager.updateEnvironment(weather, speed, volume);
   }, [weather, speed, volume]);
 
-  const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
-  const actualWidth = isVitest ? 100 : 1000;
-  const actualHeight = isVitest ? 100 : 1000;
-
-  const heightMap = useMemo(() => generateTerrainData(actualWidth, actualHeight), [actualWidth, actualHeight]);
+  // From the cached terrain, not a second generation. `main` built its own height map here at
+  // 1000×1000 (capped to 100 under vitest, because that size was too slow for tests); this branch
+  // later moved to one shared `terrain` at WORLD_SIZE, generated once and passed down, which is why
+  // that side is not carried over — regenerating per consumer is the cost the cache exists to
+  // remove, and the vitest cap was a symptom of it.
+  const heightMap = useMemo(
+    () => (terrain ? heightDataFromTerrain(terrain) : new Float32Array(0)),
+    [terrain],
+  );
 
   let windSpeed = 1.0;
   let precipitationRate = 0.0;
@@ -112,6 +140,26 @@ export const LandscapeShowcase: React.FC = () => {
     waterTransparency = 0.7;
   }
 
+  if (!terrain) {
+    return (
+      <div
+        data-testid="landscape-showcase"
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#0a0a0a',
+          color: '#9aa',
+          fontFamily: 'sans-serif',
+        }}
+      >
+        Generating world…
+      </div>
+    );
+  }
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }} data-testid="landscape-showcase">
       <LandscapeControlsOverlay
@@ -128,26 +176,29 @@ export const LandscapeShowcase: React.FC = () => {
         timeOfDay={timeOfDay}
       />
 
-      <Minimap gridWidth={1000} gridHeight={1000} />
+      <Minimap gridWidth={WORLD_SIZE} gridHeight={WORLD_SIZE} />
 
       <Canvas
-        camera={{ position: [0, 150, 300], fov: 60 }}
+        camera={{ position: [0, WORLD_SIZE * 0.42, WORLD_SIZE * 0.72], fov: 60 }}
+        // `gl` hints from `main`: orthogonal to the terrain question, so they carry over.
         gl={{ powerPreference: 'high-performance', antialias: true }}
         style={{ width: '100%', height: '100%' }}
+        onCreated={(state) => { state.scene.fog = new THREE.FogExp2('#87ceeb', 0.0035); }}
       >
         <Sky speed={speed} timeOfDay={timeOfDay} />
-        <Terrain width={1000} height={1000} wetnessRatio={wetnessRatio} />
-        {/* Seabed mesh base underneath the transparent water plane */}
+        <Terrain width={WORLD_SIZE} height={WORLD_SIZE} wetnessRatio={wetnessRatio} terrain={terrain} />
+        {/* Seabed under the transparent water plane, from `main`. Sized to the grid rather than its
+            fixed 2000, which was scaled for that side's 1000-wide world. */}
         <mesh rotation-x={-Math.PI / 2} position={[0, -5, 0]} receiveShadow name="seabed-mesh">
-          <planeGeometry args={[2000, 2000]} />
+          <planeGeometry args={[WORLD_SIZE * 2, WORLD_SIZE * 2]} />
           <meshStandardMaterial color="#d2b48c" roughness={0.9} metalness={0.1} />
         </mesh>
-        <Water width={1000} height={1000} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} />
-        <Vegetation width={1000} height={1000} windSpeed={windSpeed} densityFactor={1.0} />
+        <Water width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} reflectionColor={waterReflectionColor} depthTransparency={waterTransparency} timeOfDay={timeOfDay} terrain={terrain} />
+        <Vegetation width={WORLD_SIZE} height={WORLD_SIZE} windSpeed={windSpeed} densityFactor={1.0} terrain={terrain} />
         <Weather weather={weather} precipitationRate={precipitationRate} />
         <PositionalAudio id="ambient-forest" position={[0, 2, 0]} volume={volume} isMuted={isMuted} />
         <PositionalAudio id="waterfall" position={[10, 1, 10]} volume={volume} isMuted={isMuted} />
-        <CameraControls cameraMode={cameraMode} terrainHeightMap={heightMap} gridWidth={actualWidth} gridHeight={actualHeight} />
+        <CameraControls cameraMode={cameraMode} terrainHeightMap={heightMap} gridWidth={WORLD_SIZE} gridHeight={WORLD_SIZE} />
       </Canvas>
     </div>
   );

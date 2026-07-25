@@ -10,27 +10,104 @@ crate-type = ["lib"]
 [dependencies]
 tauri = { version = "2.0.0", features = ["test"] }
 tauri-plugin-shell = "2.0.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `rc` enables Serialize/Deserialize for Arc. `AgentBrain` holds its genome behind an Arc so the
+# per-tick inference request can carry it as a refcount bump instead of cloning a weight vector on
+# the hot path — the zero-allocation rule in SIMULATION_RULES.md. Feature of an existing dependency,
+# not a new crate. Note: deserialization does not deduplicate shared Arcs, which is fine here because
+# each agent owns its own genome.
+anima-domain = { path = "crates/anima-domain", features = ["bevy"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+# `raw_value` lets the snapshot envelope hold the state as the exact bytes written to disk, so the
+# checksum covers those bytes instead of a re-serialization. serde_json's f64 round trip is not
+# bit-exact (observed: 990.5102615356445 reads back as ...444), so re-hashing cannot be trusted.
+serde_json = { version = "1.0", features = ["raw_value"] }
+# Generates the TypeScript IPC types from the Rust structs (G1.4). The hand-written mirrors in
+# src/types/ drifted from the backend and a dead feature shipped for it (`head_directions`); a
+# generated type makes that a compile error instead of a silent no-op. Exports run under `cargo test`.
+ts-rs = "10"
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
 burn = { version = "0.13.2", features = ["std", "train"] }
 burn-ndarray = { version = "0.13.2" }
-burn-wgpu = { version = "0.13.2" }
+burn-wgpu = { version = "0.13.2", optional = true }
 socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"
 rand = "0.8"
-neo4rs = "0.7.0"
+# Direct dependency so `SimRng` can save and restore its exact stream position. `StdRng` IS
+# ChaCha12Rng in rand 0.8 but does not expose `get_word_pos`/`set_word_pos`, and a snapshot that
+# cannot restore the draw position is not a checkpoint (G1.2).
+rand_chacha = "0.3"
+neo4rs = { version = "0.7.0", optional = true }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 tokio = { version = "1.36", features = ["full"] }
 ureq = { version = "2.9", features = ["json"] }
 dotenvy = "0.15"
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", optional = true }
 futures-util = "0.3"
+noise = "0.8.2"
+image = "0.24.7"
 
 
+[workspace]
+# The crate split (G2 task 1). `anima-domain` holds the world laws; `anima-engine` is the live
+# adapter over it. New domain modules go in the member crate, not here.
+members = ["crates/*"]
+
+# Without this, `cargo test` from this directory runs ONLY the root package: when the workspace root
+# is itself a package, Cargo's default selection is that package alone. The member crates compile as
+# dependencies, so nothing looks wrong — their `#[cfg(test)]` tests simply never run. That silently
+# took the 20 tests of the newly extracted `anima-domain` out of every gate, including CI's
+# `cargo test`, the moment the crate was created.
+#
+# Listing the members here fixes it at the source, so the documented acceptance command keeps
+# working unchanged rather than everyone having to remember `--workspace`. The glob tracks `members`,
+# so a crate added later is covered without a second edit — which is the failure mode being fixed.
+default-members = [".", "crates/*"]
+
+# Debug info is by far the largest thing this repo writes to disk. Every `cargo test` links a fresh
+# set of test binaries under new hashes and Cargo never garbage-collects the old ones, so the `.pdb`
+# files accumulate without bound: 884 of them, 182 GB, in `target/debug/deps` alone — 177 GB of that
+# written across two days of agent runs, on a machine with 90 GB free.
+#
+# `line-tables-only` keeps the file/line numbers, which is all a panic backtrace and the test harness
+# ever read; what it drops is the type and variable info only a step-debugger uses. Set on the
+# workspace root because that is the only place Cargo reads profiles from, and `profile.test`
+# inherits from `dev`, which is where the test binaries actually come from.
+[profile.dev]
+debug = "line-tables-only"
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
+
+[features]
+# G2 gate: a DEFAULT build must not compile the heavy optional subsystems. The desktop app turns
+# them back on (see the `desktop` feature), but a library consumer — and CI's fast path — gets a
+# crate that does not link a Neo4j driver, a WebSocket stack or an HTTP client it never calls.
+#
+# The feature has to be passed on the command line: `tauri.conf.json` has no field for Cargo
+# features — the Tauri v2 config schema does not define one — so a plain `npm run tauri build`
+# silently produces a `default = []` binary with the in-memory lineage tracker, no cross-shard
+# migration and the CPU learner. Every one of those has a working fallback, which is exactly why
+# nobody would notice. `npm run tauri:dev` / `npm run tauri:build` pass it; use those.
+#
+# Each gated subsystem has a working fallback that predates this split, which is why the gates are
+# cheap: lineage falls back to its in-memory tracker, and the Meta-AI falls back to
+# `MockMetaAiClient` — the same pure function a deterministic run already uses (G1.3).
+default = []
+
+# Neo4j-backed lineage. Off => `FallbackLineageTracker` runs purely in memory.
+neo4j = ["dep:neo4rs"]
+# Cross-shard WebSocket migration.
+networking = ["dep:tokio-tungstenite"]
+# GPU learner backend. Off => the ndarray CPU learner, which is already the fallback whenever the
+# GPU probe fails. This is the heaviest gate by far: it drops wgpu, naga, ash, d3d12 and the rest.
+ml-wgpu = ["dep:burn-wgpu"]
+# What the shipped desktop binary builds with. Passed by the `tauri:dev` / `tauri:build` npm
+# scripts and by CI's clippy/test steps; nothing turns it on implicitly.
+desktop = ["neo4j", "networking", "ml-wgpu"]
+
+# NOTE: `ureq` (the Gemini client) is deliberately NOT gated. G2 names Burn/WGPU, Neo4j and
+# networking; ureq is a small pure-Rust HTTP client with no transitive weight worth a feature, and
+# G1.3 already routes any deterministic run to `MockMetaAiClient` regardless of the build.

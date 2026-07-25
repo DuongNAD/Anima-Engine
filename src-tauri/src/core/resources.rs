@@ -1,9 +1,11 @@
+use crate::core::components::{
+    AgentMigrationData, CombatEvent, OutboundMigration, RaycastTelemetry, ShardingConfig,
+};
+use crate::evolution::genotype::MorphologyGenotype;
+use crate::evolution::meta_ai::EnvironmentalEvent;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::sync::{Arc, RwLock};
-use crate::evolution::meta_ai::EnvironmentalEvent;
-use crate::evolution::genotype::MorphologyGenotype;
-use crate::core::components::{RaycastTelemetry, CombatEvent, ShardingConfig, AgentMigrationData, OutboundMigration};
 
 #[derive(Resource, Default)]
 pub struct ActiveRaycasts {
@@ -63,6 +65,248 @@ impl Default for MapBounds {
     }
 }
 
+/// Fallback seed for a world that declares none — a bare `World::new()` in a test harness. A real
+/// run always gets its seed from the world it lives in; see [`resolve_run_seed`].
+///
+/// Equal to [`crate::core::terrain::MapSettings`]'s default seed on purpose, so the fallback and the
+/// default generator agree instead of silently disagreeing.
+pub const DEFAULT_SIM_SEED: u64 = 1337;
+
+/// The single seeded RNG for every stochastic decision the *live* simulation makes.
+///
+/// The headless experiment slice already bans `thread_rng()` — see the module docs on
+/// [`crate::core::exotic_energy`] and [`crate::core::experiment_runner`] — so a manifest replays to
+/// the same trajectory. This resource extends that guarantee to the live Bevy world: same seed plus
+/// same tick order yields the same run.
+///
+/// Systems take `ResMut<SimRng>`, which makes Bevy serialise them against one another. That
+/// serialisation is a *requirement* of a reproducible draw order, not an accident to optimise away —
+/// two systems drawing from one stream in parallel would reintroduce exactly the non-determinism
+/// this type exists to remove.
+/// The stream is `ChaCha12Rng` rather than `StdRng` for one reason: a checkpoint has to restore the
+/// draw *position*, not just the seed, or a resumed run diverges from an uninterrupted one on its
+/// very next draw (G1.2). `StdRng` is a newtype over `ChaCha12Rng` in rand 0.8 but does not expose
+/// `get_word_pos`/`set_word_pos`. Naming the concrete type is therefore not a behaviour change —
+/// `simrng_stream_matches_stdrng_exactly` pins that the two produce identical sequences.
+#[derive(Resource)]
+pub struct SimRng {
+    inner: rand_chacha::ChaCha12Rng,
+    seed: u64,
+}
+
+impl SimRng {
+    pub fn from_seed(seed: u64) -> Self {
+        use rand::SeedableRng;
+        Self {
+            inner: rand_chacha::ChaCha12Rng::seed_from_u64(seed),
+            seed,
+        }
+    }
+
+    /// How far into the stream this generator has drawn, as a ChaCha word position.
+    ///
+    /// Together with [`seed`](Self::seed) this is the complete state of the stream, so a snapshot
+    /// can put it back exactly rather than restarting it.
+    pub fn stream_pos(&self) -> u128 {
+        self.inner.get_word_pos()
+    }
+
+    /// Rebuild the stream at `seed` and fast-forward it to `word_pos` — the restore half of
+    /// [`stream_pos`](Self::stream_pos). O(1): ChaCha seeks, it does not replay.
+    pub fn restore(seed: u64, word_pos: u128) -> Self {
+        let mut me = Self::from_seed(seed);
+        me.inner.set_word_pos(word_pos);
+        me
+    }
+
+    /// Seeded from the world the agents live in, via [`resolve_run_seed`].
+    pub fn for_world(world_seed: u32) -> Self {
+        Self::from_seed(resolve_run_seed(world_seed))
+    }
+
+    /// The seed this stream was constructed from. Save-state and provenance records report it so a
+    /// run can be reconstructed later.
+    pub fn seed(&self) -> u64 {
+        self.seed
+    }
+
+    /// Restart the stream from `seed`, discarding draw position. Used when loading a saved run.
+    pub fn reseed(&mut self, seed: u64) {
+        *self = Self::from_seed(seed);
+    }
+
+    pub fn rng(&mut self) -> &mut rand_chacha::ChaCha12Rng {
+        &mut self.inner
+    }
+}
+
+impl Default for SimRng {
+    fn default() -> Self {
+        Self::from_seed(DEFAULT_SIM_SEED)
+    }
+}
+
+/// An explicit `ANIMA_SIM_SEED` override, if one is set and parses.
+///
+/// This exists for headless experiment sweeps that need to vary the stochastic trajectory while
+/// holding the world fixed. An unparseable value is ignored rather than fatal — a malformed env var
+/// must not take down a run.
+pub fn sim_seed_override_from_env() -> Option<u64> {
+    std::env::var("ANIMA_SIM_SEED")
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+}
+
+/// The run's seed, resolved from the world the agents actually live in.
+///
+/// Invariant **D07** of `docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md` names
+/// [`crate::core::world_artifact::WorldIdentity`]'s seed as the origin of every simulation RNG
+/// stream, so the world is the authority and `ANIMA_SIM_SEED` is only an override on top of it.
+/// Deriving the seed from the world is what makes "this trajectory belongs to this world" true
+/// rather than merely likely.
+pub fn resolve_run_seed(world_seed: u32) -> u64 {
+    sim_seed_override_from_env().unwrap_or_else(|| u64::from(world_seed))
+}
+
+/// Whether newly created agents get their own heritable brain, and what shape it takes.
+///
+/// **Off by default.** With `evolved = false` nothing spawns a [`crate::core::components::AgentBrain`]
+/// and every agent runs on the shared [`crate::ai::model::BrainModel`] exactly as before — the
+/// rollback path ADR-0003 decision 7 requires, and the baseline gate EB-S04 compares against.
+///
+/// A resource rather than a scattered `std::env::var` so tests can set it directly and a run's
+/// configuration is visible in one place. `ANIMA_EVOLVED_BRAINS` seeds it at world construction.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct BrainPolicy {
+    pub evolved: bool,
+    pub arch: crate::evolution::brain_genotype::ArchSpec,
+    /// In-life learning — the Baldwin half of ADR-0003's hybrid. **Off by default, and behind its own
+    /// flag**, because it is the expensive half: one backward pass per learning agent.
+    pub lifetime_learning: LifetimeLearning,
+    /// Energy an agent spends per second maintaining every 1,000 brain parameters. **`0.0` by
+    /// default**, which is the baseline: no brain has ever cost anything to run.
+    ///
+    /// Neural tissue is metabolically expensive in real organisms, and a cost that scales with brain
+    /// size is what stops selection from growing brains for free. Without it, a bigger brain is
+    /// strictly better and the only limit is the memory budget — which selection cannot feel.
+    ///
+    /// ADR-0003 decision 10 requires this to stay `0.0` until **EB-S06** shows closed energy holds
+    /// with it switched on, because the charge has to reach the detritus pool rather than vanish.
+    pub brain_metabolic_cost: f32,
+}
+
+/// Configuration for in-life learning.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LifetimeLearning {
+    pub enabled: bool,
+    pub learning_rate: f32,
+    pub discount: f32,
+    /// Ticks between updates. Learning replaces the agent's network, which allocates, so it runs on
+    /// an interval rather than every tick — and the interval is the knob that trades adaptation speed
+    /// against cost.
+    pub interval: u32,
+    /// Only agents within this distance of the world origin learn.
+    ///
+    /// The stand-in for Simulation-LOD, which is still owed at the backend (M3). ADR-0003 decision 6
+    /// requires learning to be confined to an active radius; wiring that to the real LOD centre is
+    /// part of the LOD work, and until then the radius is measured from the origin so the constraint
+    /// exists and is testable rather than merely promised.
+    pub active_radius: f32,
+}
+
+impl Default for LifetimeLearning {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            learning_rate: 1e-3,
+            discount: 0.99,
+            interval: 8,
+            active_radius: f32::INFINITY,
+        }
+    }
+}
+
+impl Default for BrainPolicy {
+    fn default() -> Self {
+        Self {
+            evolved: false,
+            arch: crate::evolution::brain_genotype::EVOLVED_ARCH,
+            lifetime_learning: LifetimeLearning::default(),
+            brain_metabolic_cost: 0.0,
+        }
+    }
+}
+
+impl BrainPolicy {
+    /// Enabled by `ANIMA_EVOLVED_BRAINS` set to anything other than `0`/`false`/empty. Anything
+    /// unset or unparseable leaves the legacy behaviour in place — the safe direction for a flag
+    /// that changes what the simulation *is*.
+    pub fn from_env() -> Self {
+        let evolved = std::env::var("ANIMA_EVOLVED_BRAINS")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                !(v.is_empty() || v == "0" || v == "false")
+            })
+            .unwrap_or(false);
+        let learning = std::env::var("ANIMA_LIFETIME_LEARNING")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                !(v.is_empty() || v == "0" || v == "false")
+            })
+            .unwrap_or(false);
+        Self {
+            evolved,
+            lifetime_learning: LifetimeLearning {
+                // Learning without a per-agent brain would have nothing of its own to change, so it
+                // is only meaningful alongside `evolved`.
+                enabled: learning && evolved,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    /// A fresh brain for a newly created individual, or `None` when evolved brains are off.
+    ///
+    /// Called at genesis and evolutionary replacement only. Restore and migration must **not** call
+    /// this — they carry a brain that already exists (invariant D01).
+    pub fn new_brain(
+        &self,
+        rng: &mut impl rand::Rng,
+    ) -> Option<crate::core::components::AgentBrain> {
+        if !self.evolved {
+            return None;
+        }
+        crate::evolution::brain_genotype::BrainGenotype::random(self.arch, rng)
+            .ok()
+            .map(crate::core::components::AgentBrain::from_genotype)
+    }
+}
+
+/// Named sub-streams of the run seed.
+///
+/// The live simulation is multi-threaded: world setup, the Bevy schedule and the evolution thread
+/// all draw random numbers, and they do not run in a fixed interleaving relative to one another.
+/// Handing each its own stream keeps every draw sequence reproducible on its own terms; a single
+/// shared stream would make the result depend on thread scheduling, which is precisely what this
+/// work removes.
+pub mod sim_stream {
+    pub const WORLD_INIT: u64 = 1;
+    pub const EVOLUTION: u64 = 2;
+}
+
+/// An independent, reproducible stream for code that is not a Bevy system (setup paths and worker
+/// threads). Pass the run seed from [`resolve_run_seed`] and a constant from [`sim_stream`].
+///
+/// `run_seed` is a parameter rather than something read from the environment inside, so the caller's
+/// choice of seed is visible at the call site and testable without touching process state.
+pub fn derived_rng(run_seed: u64, stream: u64) -> rand::rngs::StdRng {
+    use rand::SeedableRng;
+    // Golden-ratio odd constant, same mixing trick `terrain.rs` uses to decorrelate noise seeds.
+    let mixed = run_seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    rand::rngs::StdRng::seed_from_u64(mixed)
+}
+
 #[derive(Resource, serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default)]
 pub struct EpochManager {
     pub ticks_per_epoch: u64,
@@ -77,6 +321,10 @@ pub struct AgentEpochStats {
     pub fitness: f32,
     pub speed: f32,
     pub efficiency: f32,
+    /// Total body mass (Metabolic-Theory master trait) — a MAP-Elites ecological niche axis.
+    pub body_mass: f32,
+    /// Distance roamed this epoch (foraging range / niche breadth) — the other niche axis.
+    pub foraging_range: f32,
     pub position: glam::Vec3,
     pub lineage_id: String,
     pub generation: u32,
@@ -87,11 +335,27 @@ pub struct EvolutionSender(pub crossbeam_channel::Sender<Vec<AgentEpochStats>>);
 
 #[derive(Resource, Clone, Debug, Default)]
 pub struct EvolutionQueue {
-    pub pending_replacements: Vec<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>,
+    pub pending_replacements: Vec<(
+        Entity,
+        MorphologyGenotype,
+        glam::Vec3,
+        String,
+        u32,
+        Vec<String>,
+    )>,
 }
 
 #[derive(Resource)]
-pub struct EvolutionReceiver(pub crossbeam_channel::Receiver<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>);
+pub struct EvolutionReceiver(
+    pub  crossbeam_channel::Receiver<(
+        Entity,
+        MorphologyGenotype,
+        glam::Vec3,
+        String,
+        u32,
+        Vec<String>,
+    )>,
+);
 
 #[derive(Resource, Clone)]
 pub struct ShardingResource(pub Arc<RwLock<ShardingConfig>>);

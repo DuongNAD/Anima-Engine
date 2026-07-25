@@ -1,15 +1,16 @@
 mod common;
 
+use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator, TimeStep};
+use anima_engine_lib::core::ecs::{
+    energy_decay_system, init_world, wrap_coordinates_system, JointAxis, MapBounds, Position,
+    Rotation, Segment, Velocity,
+};
+use anima_engine_lib::physics::{
+    integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
+    Ray3D, RigidBody, SpatialCollider, SpatialHashGrid,
+};
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
-use anima_engine_lib::physics::{
-    resolve_joints_system, integrate_physics_system, RigidBody, JointConstraint,
-    rebuild_spatial_grid_system, SpatialCollider, SpatialHashGrid, Ray3D,
-};
-use anima_engine_lib::core::ecs::{
-    init_world, wrap_coordinates_system, energy_decay_system, Position, Rotation, Velocity, Segment, JointAxis, MapBounds,
-};
-use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator, TimeStep};
 use std::sync::Mutex;
 
 #[global_allocator]
@@ -24,27 +25,49 @@ fn test_static_equilibrium() {
     let mut world = World::new();
     world.insert_resource(TimeStep(0.01));
 
-    let parent = world.spawn((
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-    )).id();
+    let parent = world
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+        ))
+        .id();
 
-    let child = world.spawn((
-        Position(Vec3::new(0.0, 0.0, 3.0)),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 1, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        JointConstraint {
-            parent_entity: parent,
-            anchor_offset: Vec3::new(0.0, 0.0, 1.0),
-            stiffness: 100.0,
-            damping: 10.0,
-        },
-    )).id();
+    let child = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 3.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0,
+                damping: 10.0,
+            },
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems((
@@ -71,7 +94,11 @@ fn test_static_equilibrium() {
     let p_joint_child = p_child - r_child * Vec3::new(0.0, 0.0, 1.0);
     let final_error = (p_joint_parent - p_joint_child).length();
 
-    assert!(final_error < 1.0, "Drift correction should pull segments closer; initial error 1.0, final error {}", final_error);
+    assert!(
+        final_error < 1.0,
+        "Drift correction should pull segments closer; initial error 1.0, final error {}",
+        final_error
+    );
 }
 
 #[test]
@@ -80,29 +107,51 @@ fn test_cpg_driven_oscillation() {
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016)); // ~60fps
 
-    let parent = world.spawn((
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-    )).id();
+    let parent = world
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+        ))
+        .id();
 
-    let child = world.spawn((
-        Position(Vec3::new(0.0, 0.0, 2.0)),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 1, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        JointConstraint {
-            parent_entity: parent,
-            anchor_offset: Vec3::new(0.0, 0.0, 1.0),
-            stiffness: 100.0, // large enough to track instantly
-            damping: 10.0,
-        },
-        JointAxis(Vec3::Y),
-        CpgOscillator::new(1.0, 0.5),
-    )).id();
+    let child = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 2.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0, // large enough to track instantly
+                damping: 10.0,
+            },
+            JointAxis(Vec3::Y),
+            CpgOscillator::new(1.0, 0.5),
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems((
@@ -121,7 +170,13 @@ fn test_cpg_driven_oscillation() {
         let signed_angle = if axis.y < 0.0 { -angle } else { angle };
 
         // Verify that signed_angle is close to cpg.output
-        assert!((signed_angle - cpg.output).abs() < 1e-4, "Tick {}: signed_angle ({}) should track cpg.output ({})", tick, signed_angle, cpg.output);
+        assert!(
+            (signed_angle - cpg.output).abs() < 1e-4,
+            "Tick {}: signed_angle ({}) should track cpg.output ({})",
+            tick,
+            signed_angle,
+            cpg.output
+        );
     }
 }
 
@@ -131,29 +186,51 @@ fn test_zero_allocation_hot_path() {
     let mut world = init_world();
 
     // Spawn parent and child connected by joint
-    let parent = world.spawn((
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-    )).id();
+    let parent = world
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+        ))
+        .id();
 
-    let _child = world.spawn((
-        Position(Vec3::new(0.0, 0.0, 2.0)),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 1, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        JointConstraint {
-            parent_entity: parent,
-            anchor_offset: Vec3::new(0.0, 0.0, 1.0),
-            stiffness: 100.0,
-            damping: 10.0,
-        },
-        JointAxis(Vec3::Y),
-        CpgOscillator::new(1.0, 0.5),
-    )).id();
+    let _child = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 2.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0,
+                damping: 10.0,
+            },
+            JointAxis(Vec3::Y),
+            CpgOscillator::new(1.0, 0.5),
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
@@ -176,7 +253,11 @@ fn test_zero_allocation_hot_path() {
     }
     let allocs = ALLOCATOR.stop_tracking();
 
-    assert_eq!(allocs, 0, "Physics hot path should perform 0 heap allocations, but made {}", allocs);
+    assert_eq!(
+        allocs, 0,
+        "Physics hot path should perform 0 heap allocations, but made {}",
+        allocs
+    );
 }
 
 #[test]
@@ -186,27 +267,49 @@ fn test_damping_effect() {
     let mut world_undamped = World::new();
     world_undamped.insert_resource(TimeStep(0.01));
 
-    let parent_u = world_undamped.spawn((
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1e6, velocity: Vec3::ZERO, force: Vec3::ZERO }, // static parent
-    )).id();
+    let parent_u = world_undamped
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1e6,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            }, // static parent
+        ))
+        .id();
 
-    let child_u = world_undamped.spawn((
-        Position(Vec3::new(0.0, 0.0, 3.0)), // displaced by 1.0 from joint anchor (2.0)
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 1, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        JointConstraint {
-            parent_entity: parent_u,
-            anchor_offset: Vec3::new(0.0, 0.0, 1.0),
-            stiffness: 100.0,
-            damping: 0.0, // undamped
-        },
-    )).id();
+    let child_u = world_undamped
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 3.0)), // displaced by 1.0 from joint anchor (2.0)
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent_u,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0,
+                damping: 0.0, // undamped
+            },
+        ))
+        .id();
 
     let mut schedule_u = Schedule::default();
     schedule_u.add_systems((
@@ -220,7 +323,8 @@ fn test_damping_effect() {
         schedule_u.run(&mut world_undamped);
         let p_parent = world_undamped.get::<Position>(parent_u).unwrap().0;
         let p_child = world_undamped.get::<Position>(child_u).unwrap().0;
-        let err = (p_parent + Vec3::new(0.0, 0.0, 1.0) - (p_child - Vec3::new(0.0, 0.0, 1.0))).length();
+        let err =
+            (p_parent + Vec3::new(0.0, 0.0, 1.0) - (p_child - Vec3::new(0.0, 0.0, 1.0))).length();
         if i > 150 && err > max_err_undamped {
             max_err_undamped = err;
         }
@@ -230,27 +334,49 @@ fn test_damping_effect() {
     let mut world_damped = World::new();
     world_damped.insert_resource(TimeStep(0.01));
 
-    let parent_d = world_damped.spawn((
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1e6, velocity: Vec3::ZERO, force: Vec3::ZERO },
-    )).id();
+    let parent_d = world_damped
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1e6,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+        ))
+        .id();
 
-    let child_d = world_damped.spawn((
-        Position(Vec3::new(0.0, 0.0, 3.0)),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        Segment { id: 1, length: 2.0, radius: 0.5, mass: 1.0 },
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        JointConstraint {
-            parent_entity: parent_d,
-            anchor_offset: Vec3::new(0.0, 0.0, 1.0),
-            stiffness: 100.0,
-            damping: 10.0, // damped
-        },
-    )).id();
+    let child_d = world_damped
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 3.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent_d,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0,
+                damping: 10.0, // damped
+            },
+        ))
+        .id();
 
     let mut schedule_d = Schedule::default();
     schedule_d.add_systems((
@@ -264,12 +390,21 @@ fn test_damping_effect() {
 
     let p_parent = world_damped.get::<Position>(parent_d).unwrap().0;
     let p_child = world_damped.get::<Position>(child_d).unwrap().0;
-    let final_err_damped = (p_parent + Vec3::new(0.0, 0.0, 1.0) - (p_child - Vec3::new(0.0, 0.0, 1.0))).length();
+    let final_err_damped =
+        (p_parent + Vec3::new(0.0, 0.0, 1.0) - (p_child - Vec3::new(0.0, 0.0, 1.0))).length();
 
     // Assert that the undamped system is still oscillating (max error remains high)
     // while the damped system has settled (error is very small).
-    assert!(max_err_undamped > 0.5, "Undamped system should continue to oscillate with high amplitude, got max_err={}", max_err_undamped);
-    assert!(final_err_damped < 0.05, "Damped system should settle to near equilibrium, got final_err={}", final_err_damped);
+    assert!(
+        max_err_undamped > 0.5,
+        "Undamped system should continue to oscillate with high amplitude, got max_err={}",
+        max_err_undamped
+    );
+    assert!(
+        final_err_damped < 0.05,
+        "Damped system should settle to near equilibrium, got final_err={}",
+        final_err_damped
+    );
 }
 
 #[test]
@@ -285,26 +420,33 @@ fn test_spatial_grid_rebuild_and_raycast() {
     let grid = SpatialHashGrid::new_prepopulated(10.0, &bounds);
     world.insert_resource(grid);
 
-    let entity_a = world.spawn((
-        Position(Vec3::new(10.0, 0.0, 10.0)),
-        SpatialCollider { radius: 1.0 },
-    )).id();
+    let entity_a = world
+        .spawn((
+            Position(Vec3::new(10.0, 0.0, 10.0)),
+            SpatialCollider { radius: 1.0 },
+        ))
+        .id();
 
-    let entity_b = world.spawn((
-        Position(Vec3::new(99.0, 0.0, 0.0)),
-        SpatialCollider { radius: 1.0 },
-    )).id();
+    let entity_b = world
+        .spawn((
+            Position(Vec3::new(99.0, 0.0, 0.0)),
+            SpatialCollider { radius: 1.0 },
+        ))
+        .id();
 
-    let entity_c = world.spawn((
-        Position(Vec3::new(-99.0, 0.0, 0.0)),
-        SpatialCollider { radius: 1.0 },
-    )).id();
+    let entity_c = world
+        .spawn((
+            Position(Vec3::new(-99.0, 0.0, 0.0)),
+            SpatialCollider { radius: 1.0 },
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems(rebuild_spatial_grid_system);
     schedule.run(&mut world);
 
-    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> = bevy_ecs::system::SystemState::new(&mut world);
+    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> =
+        bevy_ecs::system::SystemState::new(&mut world);
     let query = system_state.get(&world);
     let grid = world.get_resource::<SpatialHashGrid>().unwrap();
 
@@ -367,7 +509,8 @@ fn test_spatial_grid_zero_allocation() {
     schedule.add_systems(rebuild_spatial_grid_system);
     schedule.run(&mut world);
 
-    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> = bevy_ecs::system::SystemState::new(&mut world);
+    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> =
+        bevy_ecs::system::SystemState::new(&mut world);
     let query = system_state.get(&world);
     let grid = world.get_resource::<SpatialHashGrid>().unwrap();
     let ray = Ray3D {
@@ -382,7 +525,11 @@ fn test_spatial_grid_zero_allocation() {
     let _ = grid.raycast(&ray, 100.0, &bounds, &query);
     let allocs = ALLOCATOR.stop_tracking();
 
-    assert_eq!(allocs, 0, "Raycast should perform 0 heap allocations, but made {}", allocs);
+    assert_eq!(
+        allocs, 0,
+        "Raycast should perform 0 heap allocations, but made {}",
+        allocs
+    );
 }
 
 #[test]
@@ -402,10 +549,18 @@ fn test_decoupled_systems_zero_allocation() {
     world.insert_resource(grid);
 
     // Create and insert InferenceChannels
-    let (req_tx, req_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceRequestBatch>();
-    let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceRequestBatch>();
-    let (res_tx, res_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceResponseBatch>();
-    let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::agent_systems::InferenceResponseBatch>();
+    let (req_tx, req_rx) = crossbeam_channel::unbounded::<
+        anima_engine_lib::core::agent_systems::InferenceRequestBatch,
+    >();
+    let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<
+        anima_engine_lib::core::agent_systems::InferenceRequestBatch,
+    >();
+    let (res_tx, res_rx) = crossbeam_channel::unbounded::<
+        anima_engine_lib::core::agent_systems::InferenceResponseBatch,
+    >();
+    let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded::<
+        anima_engine_lib::core::agent_systems::InferenceResponseBatch,
+    >();
 
     // Pre-populate pools
     for _ in 0..8 {
@@ -428,28 +583,36 @@ fn test_decoupled_systems_zero_allocation() {
     world.insert_resource(channels);
 
     // Spawn agent entity
-    let agent = world.spawn((
-        anima_engine_lib::core::ecs::Agent,
-        Position(Vec3::ZERO),
-        Rotation(Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        RigidBody { mass: 1.0, velocity: Vec3::ZERO, force: Vec3::ZERO },
-        anima_engine_lib::ai::hrrl::HomeostaticState {
-            energy: 100.0,
-            energy_target: 100.0,
-            hydration: 100.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-        anima_engine_lib::core::ecs::CognitiveState::default(),
-        anima_engine_lib::core::ecs::InertiaComponent::default(),
-        anima_engine_lib::core::ecs::SensoryBufferComponent::default(),
-    )).id();
+    let agent = world
+        .spawn((
+            anima_engine_lib::core::ecs::Agent,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            anima_engine_lib::ai::hrrl::HomeostaticState {
+                energy: 100.0,
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+            anima_engine_lib::core::ecs::CognitiveState::default(),
+            anima_engine_lib::core::ecs::InertiaComponent::default(),
+            anima_engine_lib::core::ecs::SensoryBufferComponent::default(),
+        ))
+        .id();
 
     // Insert ParentAgent to identify itself
-    world.entity_mut(agent).insert(anima_engine_lib::core::ecs::ParentAgent(agent));
+    world
+        .entity_mut(agent)
+        .insert(anima_engine_lib::core::ecs::ParentAgent(agent));
 
     let mut schedule = Schedule::default();
     schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
@@ -467,11 +630,13 @@ fn test_decoupled_systems_zero_allocation() {
             if let Some(req) = req_batch.requests.first() {
                 if let Ok(mut res_batch) = recycle_res_rx.try_recv() {
                     res_batch.responses.clear();
-                    res_batch.responses.push(anima_engine_lib::core::agent_systems::AgentInferenceResponse {
-                        entity: req.entity,
-                        actions: [1.2, 0.5, 1.2, 0.5],
-                        request_id: req.request_id,
-                    });
+                    res_batch.responses.push(
+                        anima_engine_lib::core::agent_systems::AgentInferenceResponse {
+                            entity: req.entity,
+                            actions: [1.2, 0.5, 1.2, 0.5, 1.0, 1.0, 1.0, 1.0],
+                            request_id: req.request_id,
+                        },
+                    );
                     let _ = res_tx.send(res_batch);
                 }
             }
@@ -481,19 +646,21 @@ fn test_decoupled_systems_zero_allocation() {
 
     // Start tracking allocations
     ALLOCATOR.start_tracking();
-    
+
     schedule.run(&mut world);
-    
+
     // Process requests
     if let Ok(req_batch) = req_rx.try_recv() {
         if let Some(req) = req_batch.requests.first() {
             if let Ok(mut res_batch) = recycle_res_rx.try_recv() {
                 res_batch.responses.clear();
-                res_batch.responses.push(anima_engine_lib::core::agent_systems::AgentInferenceResponse {
-                    entity: req.entity,
-                    actions: [1.2, 0.5, 1.2, 0.5],
-                    request_id: req.request_id,
-                });
+                res_batch.responses.push(
+                    anima_engine_lib::core::agent_systems::AgentInferenceResponse {
+                        entity: req.entity,
+                        actions: [1.2, 0.5, 1.2, 0.5, 1.0, 1.0, 1.0, 1.0],
+                        request_id: req.request_id,
+                    },
+                );
                 let _ = res_tx.send(res_batch);
             }
         }
@@ -501,5 +668,9 @@ fn test_decoupled_systems_zero_allocation() {
     }
 
     let allocs = ALLOCATOR.stop_tracking();
-    assert_eq!(allocs, 0, "Decoupled hot path loop should perform 0 heap allocations, but made {}", allocs);
+    assert_eq!(
+        allocs, 0,
+        "Decoupled hot path loop should perform 0 heap allocations, but made {}",
+        allocs
+    );
 }

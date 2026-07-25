@@ -1223,6 +1223,381 @@ The custom shader must react correctly to the existing dynamic Day/Night cycle (
 - [ ] The water's brightness and color correctly shift during the Day/Night cycle transition.
 - [ ] The application continues to render smoothly without crashing (FPS > 30).
 
+## Follow-up — 2026-06-16T06:03:41Z
+
+Implement a standalone Rust prototype for a world map generator with hydraulic erosion simulation, biome determination, and visualization capability, isolated from the main engine codebase.
+
+Working directory: e:/Project/Anima-Engine/map-prototype
+Integrity mode: development
+
+## Requirements
+
+### R1. Standalone Cargo Binary
+Create a standalone Cargo package at `e:/Project/Anima-Engine/map-prototype` that builds a command-line interface (CLI) tool. The tool must use the `noise` crate for terrain generation, `image` crate for outputting image files, `rand` crate for random number generation, and `rayon` crate for parallel execution.
+
+### R2. Terrain Generation & Hydraulic Erosion
+Generate a 1024x1024 heightmap using 6-octave Fractional Brownian Motion (fBm) Perlin noise. Apply the hydraulic erosion algorithm using droplet simulation (100,000 iterations, droplet lifetime of 30 steps) as specified in the provided reference code, modifying elevation and recording flow accumulation to simulate river paths.
+
+### R3. Biome Classification & Flow Accumulation
+Determine biomes (DeepOcean, Ocean, Beach, Desert, Grassland, Forest, TropicalRainforest, Taiga, Tundra, Snow, and River) based on elevation, moisture, and flow accumulation. Moisture should be influenced by both raw noise and proximity to rivers (flow accumulation).
+
+### R4. Map Visualization & Output
+Generate a PNG image named `anima_world_final.png` representing the 1024x1024 world map with colors corresponding to each biome. Print generation statistics (noise generation time, erosion time, biome mapping time) to stdout.
+
+## Acceptance Criteria
+
+### Compilation & Execution
+- [ ] The Cargo package in `map-prototype` compiles successfully without warnings or errors (`cargo build --release`).
+- [ ] Running the binary (`cargo run --release`) executes successfully without panics and exits with code 0.
+
+### Output Artifacts
+- [ ] A file named `anima_world_final.png` is created in the working directory.
+- [ ] `anima_world_final.png` is a valid PNG image with dimensions exactly 1024x1024 pixels.
+- [ ] The image contains at least 5 distinct biome colors (ensuring biomes like rivers, oceans, beaches, and land biomes are successfully generated).
+
+### Verification Script
+- [ ] A verification script (e.g., in Python or Bash) exists in `map-prototype` to run the generator and programmatically assert these acceptance criteria.
+
+## Reference Code
+
+### Cargo.toml Dependencies
+```toml
+[dependencies]
+noise = "0.8.2"
+image = "0.24.7"
+rand = "0.8.5"
+rayon = "1.7.0"
+```
+
+### main.rs
+```rust
+use noise::{NoiseFn, Perlin, Seedable};
+use image::{RgbImage, Rgb};
+use rand::Rng;
+use rayon::prelude::*;
+
+// Cấu trúc hằng số cho xói mòn
+const EROSION_ITERATIONS: usize = 100_000; // Số lượng giọt nước mưa
+const DROplet_LIFETIME: usize = 30;       // Quãng đường giọt nước chảy
+const INERTIA: f64 = 0.05;                // Quán tính dòng chảy
+const SEDIMENT_CAPACITY: f64 = 4.0;       // Sức chứa trầm tích của nước
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Biome {
+    DeepOcean, Ocean, Beach, Desert, Grassland, Forest, TropicalRainforest, Taiga, Tundra, Snow, River
+}
+
+struct World {
+    width: usize,
+    height: usize,
+    elevation: Vec<f64>,
+    moisture: Vec<f64>,
+    flow: Vec<f64>, // Dòng chảy tích tụ để xác định vị trí sông
+}
+
+impl World {
+    fn new(width: usize, height: usize, seed: u32) -> Self {
+        let perlin = Perlin::new(seed);
+        let mut elevation = vec![0.0; width * height];
+        let moisture = vec![0.0; width * height];
+        let flow = vec![0.0; width * height];
+
+        // Khởi tạo địa hình cơ bản với Fractional Brownian Motion (fBm)
+        for y in 0..height {
+            for x in 0..width {
+                let nx = x as f64 / width as f64 - 0.5;
+                let ny = y as f64 / height as f64 - 0.5;
+                
+                let mut e = 0.0;
+                let mut weight = 1.0;
+                let mut freq = 1.5;
+                for _ in 0..6 { // 6 lớp nhiễu chồng lên nhau
+                    e += weight * perlin.get([freq * nx, freq * ny]);
+                    weight *= 0.5;
+                    freq *= 2.0;
+                }
+                elevation[y * width + x] = (e + 1.0) / 2.0;
+            }
+        }
+
+        World { width, height, elevation, moisture, flow }
+    }
+
+    // THUẬT TOÁN XÓI MÒN THỦY LỰC (Hydraulic Erosion)
+    fn apply_erosion(&mut self) {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..EROSION_ITERATIONS {
+            let mut x = rng.gen_range(0.0..self.width as f64 - 1.0);
+            let mut y = rng.gen_range(0.0..self.height as f64 - 1.0);
+            let mut dir_x = 0.0;
+            let mut dir_y = 0.0;
+            let mut sediment = 0.0;
+            let mut water = 1.0;
+            let mut speed = 1.0;
+
+            for _ in 0..DROplet_LIFETIME {
+                let node_x = x as usize;
+                let node_y = y as usize;
+                let idx = node_y * self.width + node_x;
+
+                // Tính toán vector độ dốc (Gradient)
+                let grad_x = self.elevation[idx + 1] - self.elevation[idx];
+                let grad_y = self.elevation[idx + self.width] - self.elevation[idx];
+
+                // Cập nhật hướng di chuyển dựa trên độ dốc và quán tính
+                dir_x = dir_x * INERTIA - grad_x * (1.0 - INERTIA);
+                dir_y = dir_y * INERTIA - grad_y * (1.0 - INERTIA);
+
+                // Chuẩn hóa hướng
+                let len = (dir_x * dir_x + dir_y * dir_y).sqrt().max(0.001);
+                dir_x /= len;
+                dir_y /= len;
+
+                let next_x = x + dir_x;
+                let next_y = y + dir_y;
+
+                if next_x < 0.0 || next_x >= (self.width - 1) as f64 || next_y < 0.0 || next_y >= (self.height - 1) as f64 {
+                    break;
+                }
+
+                // Chênh lệch độ cao
+                let h_old = self.elevation[idx];
+                let h_new = self.elevation[next_y as usize * self.width + next_x as usize];
+                let delta_h = h_new - h_old;
+
+                // Xói mòn hoặc Bồi đắp
+                let capacity = (-delta_h).max(0.0) * speed * water * SEDIMENT_CAPACITY;
+                if sediment > capacity || delta_h > 0.0 {
+                    // Bồi đắp (khi lên dốc hoặc thừa trầm tích)
+                    let deposit = if delta_h > 0.0 { delta_h.min(sediment) } else { (sediment - capacity) * 0.1 };
+                    sediment -= deposit;
+                    self.elevation[idx] += deposit;
+                } else {
+                    // Bào mòn (khi xuống dốc)
+                    let erode = ((capacity - sediment) * 0.1).min(-delta_h);
+                    sediment += erode;
+                    self.elevation[idx] -= erode;
+                }
+
+                // Tích tụ dòng chảy (để tạo sông)
+                self.flow[idx] += water;
+
+                speed = (speed * speed + delta_h * 10.0).sqrt();
+                water *= 0.99; // Bay hơi dần
+                x = next_x;
+                y = next_y;
+            }
+        }
+    }
+
+    fn generate_biomes(&mut self, seed: u32) -> Vec<Biome> {
+        let perlin = Perlin::new(seed + 5);
+        let mut biomes = Vec::with_capacity(self.width * self.height);
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let idx = y * self.width + x;
+                let nx = x as f64 / self.width as f64;
+                let ny = y as f64 / self.height as f64;
+                
+                // Độ ẩm chịu ảnh hưởng bởi nhiễu và độ gần của dòng sông (flow)
+                let raw_moisture = (perlin.get([nx * 2.0, ny * 2.0]) + 1.0) / 2.0;
+                let river_effect = (self.flow[idx] * 0.1).min(1.0);
+                let moisture = (raw_moisture + river_effect).min(1.0);
+
+                biomes.push(self.determine_biome(self.elevation[idx], moisture, self.flow[idx]));
+            }
+        }
+        biomes
+    }
+
+    fn determine_biome(&self, elevation: f64, moisture: f64, flow: f64) -> Biome {
+        if elevation < 0.2 { return Biome::DeepOcean; }
+        if elevation < 0.25 { return Biome::Ocean; }
+        if flow > 20.0 && elevation < 0.7 { return Biome::River; } // Sông hình thành nơi nước tụ nhiều
+        if elevation < 0.28 { return Biome::Beach; }
+
+        if elevation > 0.85 { return Biome::Snow; }
+        if elevation > 0.75 { return if moisture > 0.4 { Biome::Taiga } else { Biome::Tundra }; }
+
+        if moisture < 0.2 { return Biome::Desert; }
+        if moisture < 0.4 { return Biome::Grassland; }
+        if moisture < 0.7 { return Biome::Forest; }
+        
+        Biome::TropicalRainforest
+    }
+}
+
+fn main() {
+    let width = 1024;
+    let height = 1024;
+    let mut world = World::new(width, height, 1337);
+
+    println!("Đang giả lập xói mòn thủy lực...");
+    world.apply_erosion();
+
+    println!("Đang phân bổ hệ sinh thái...");
+    let biomes = world.generate_biomes(1337);
+
+    // Xuất hình ảnh
+    let mut img = RgbImage::new(width as u32, height as u32);
+    for y in 0..height {
+        for x in 0..width {
+            let biome = biomes[y * width + x];
+            img.put_pixel(x as u32, y as u32, get_biome_color(biome));
+        }
+    }
+    img.save("anima_world_final.png").unwrap();
+    println!("Hoàn tất! Kết quả tại anima_world_final.png");
+}
+
+fn get_biome_color(biome: Biome) -> Rgb<u8> {
+    match biome {
+        Biome::DeepOcean => Rgb([10, 20, 60]),
+        Biome::Ocean => Rgb([20, 50, 120]),
+        Biome::River => Rgb([40, 100, 200]),
+        Biome::Beach => Rgb([240, 220, 160]),
+        Biome::Desert => Rgb([220, 180, 100]),
+        Biome::Grassland => Rgb([140, 190, 80]),
+        Biome::Forest => Rgb([40, 100, 30]),
+        Biome::TropicalRainforest => Rgb([10, 60, 20]),
+        Biome::Taiga => Rgb([100, 120, 90]),
+        Biome::Tundra => Rgb([160, 170, 150]),
+        Biome::Snow => Rgb([255, 255, 255]),
+    }
+}
+```
+
+## Follow-up — 2026-06-16T13:33:25+07:00
+
+Nâng cấp và cải tiến hệ thống tạo bản đồ (map generation) của Anima-Engine. Hệ thống sẽ kết hợp Perlin Noise và Hydraulic Erosion để tạo ra địa hình tự nhiên, liền mạch, đồng thời hiển thị dưới dạng 2D tile-based hoặc hình ảnh với màu sắc sống động để phân biệt rõ các khu vực sinh quyển (biome).
+
+Working directory: e:/Project/Anima-Engine
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Cải tiến thuật toán tạo địa hình
+- Tích hợp hoặc nâng cấp Perlin Noise và thuật toán xói mòn thủy văn (Hydraulic Erosion) để tạo ra các dải địa hình tự nhiên, uốn lượn và chân thực hơn.
+- Không giới hạn ngôn ngữ/kiến trúc cụ thể (tuân theo cấu trúc Rust/C++ hiện tại của dự án Anima-Engine), nhưng phải đảm bảo sinh ra dữ liệu độ cao (heightmap) ổn định.
+
+### R2. Hệ thống hiển thị 2D (Biome Rendering)
+- Áp dụng một bảng màu đẹp, tương phản tốt để ánh xạ các mức độ cao/nhiệt độ thành các sinh quyển khác nhau (Đại dương, Bãi cát, Đồng cỏ, Rừng, Núi đá, Tuyết đỉnh núi).
+- Hệ thống cần phải có cơ chế xuất dữ liệu ra định dạng trực quan (có thể là file ảnh .png/.ppm hoặc render trên viewport 2D) để dễ dàng quan sát sự "sống động" và logic của bản đồ.
+
+## Acceptance Criteria
+
+### Xác minh thuật toán (Programmatic Verification)
+- [ ] Hệ thống tạo map phải biên dịch và chạy thành công mà không có lỗi runtime/panic.
+- [ ] Dữ liệu heightmap sinh ra phải nằm trong giới hạn hợp lệ (ví dụ: [0.0, 1.0]) và có thể kiểm chứng thông qua unit test.
+
+### Xác minh hiển thị (Objective Output Verification)
+- [ ] Có một script hoặc hàm test tự động gọi engine để sinh bản đồ và xuất ra một tập tin hình ảnh mẫu (hoặc dạng ma trận tile hiển thị).
+- [ ] Bản đồ kết quả phải thể hiện tối thiểu 5 loại địa hình (biome) riêng biệt dựa trên độ cao, với các mảng màu khác biệt, không bị vỡ vụn vô lý.
+
+## Follow-up — 2026-06-16T16:06:31+07:00
+
+# Teamwork Project Prompt — Draft
+
+Refine the standalone Rust world map generator to produce high-quality, game-ready maps. The maps should be clear, beautiful, realistic, and vivid, moving beyond raw biome colors to a professional aesthetic.
+
+Working directory: e:/Project/Anima-Engine/map-prototype
+Integrity mode: Flexible — the team can use any approach that works.
+
+## Requirements
+
+### R1. 3D Shaded Relief / Topographic Style
+- Implement a lighting model to calculate shaded relief (bóng đổ 3D) based on a simulated sun/light source.
+- This should make mountains, valleys, and terrain features pop out realistically.
+- Biome colors should be smoothed or blended to remove jagged transitions, producing a cohesive, vivid look.
+
+### R2. Output Formats (Preview + Technical Data)
+- **Combined Preview Image (`anima_world_final.png`)**: A fully composited image blending the biome colors with the shaded relief for direct viewing.
+- **Technical Maps**: Export separate images for future engine integration:
+  - `heightmap.png` (Grayscale elevation data)
+  - `normalmap.png` (RGB normal map calculated from height differences)
+  - `colormap.png` (Raw Albedo/Biome colors without shading)
+
+### R3. Maintain and Enhance Erosion/Hydraulic Features
+- Keep the existing hydraulic erosion and river generation.
+- Ensure rivers render beautifully (e.g., carved into the normal map and colored distinctively in the color map).
+
+## Acceptance Criteria
+
+### Visualization and Aesthetics
+- [ ] Running the cargo project generates `anima_world_final.png` with visible 3D shading, realistic light/shadows on mountains, and vivid biome colors.
+- [ ] The generated map visually resembles a high-quality game map or topographic map.
+
+### Technical Data Export
+- [ ] The program outputs `heightmap.png`, `normalmap.png`, and `colormap.png` alongside the final preview.
+- [ ] The `normalmap.png` correctly encodes surface normals (typically RGB with R=X, G=Y, B=Z).
+
+### Verification
+- [ ] `verify.py` is updated to check for the existence of *all* generated output images (`anima_world_final.png`, `heightmap.png`, `normalmap.png`, `colormap.png`).
+- [ ] Running `verify.py` successfully validates the outputs without errors.
+
+## Follow-up — 2026-06-16T16:39:15+07:00
+
+Nâng cấp và cải tiến hệ thống tạo bản đồ (map generation) của Anima-Engine để đạt được chất lượng hình ảnh cao, giống với bản đồ thế giới game chuyên nghiệp được cung cấp. Bản đồ phải có cấu trúc hòn đảo lớn bao quanh bởi nước, có các vùng sinh quyển phân bố tự nhiên và chi tiết cao.
+
+Working directory: e:/Project/Anima-Engine
+Integrity mode: benchmark
+
+## Requirements
+
+### R1. Cấu trúc địa hình dạng Hòn Đảo (Island-like Terrain)
+- Nâng cấp thuật toán tạo địa hình (kết hợp Perlin Noise với Radial/Distance Falloff map) để ép phần đất liền tập trung ở giữa và viền ngoài luôn là biển/đại dương.
+- Tạo ra sự phân hóa địa hình sắc nét, bao gồm núi tuyết, sa mạc, và rừng rậm.
+
+### R2. Hệ thống hiển thị chất lượng cao (High-Quality Rendering)
+- Render bản đồ với độ chi tiết cao, màu sắc phức tạp và chân thực (tuyết trắng có vân núi, sa mạc vàng/cam, rừng rậm xanh mướt).
+- Thêm một lớp lưới tọa độ (Grid lines) mờ phủ lên trên bản đồ để dễ định vị.
+- Có cơ chế rải ngẫu nhiên các biểu tượng đánh dấu (POIs / Animal icons màu xanh) lên các vị trí hợp lý trên đất liền để tạo sự sống động.
+
+## Acceptance Criteria
+
+### Xác minh thuật toán (Programmatic Verification)
+- [ ] Hàm tạo map phải áp dụng Falloff map thành công để luôn sinh ra cấu trúc hòn đảo (viền map là nước).
+- [ ] Thuật toán phân bổ POI phải sinh ra được danh sách tọa độ nằm hoàn toàn trên phần đất liền (không nằm dưới nước).
+
+### Xác minh hiển thị (Objective Output Verification)
+- [ ] Script kết xuất tự động tạo ra một file hình ảnh mới (VD: `anima_world_refined.png`).
+- [ ] Hình ảnh kết quả PHẢI có cấu trúc hòn đảo (nước bao quanh).
+- [ ] Hình ảnh kết quả PHẢI có lưới tọa độ (Grid) hiển thị đè lên trên.
+- [ ] Hình ảnh kết quả PHẢI thể hiện các dải màu sinh quyển chi tiết (Tuyết, Sa mạc, Rừng) với ranh giới tự nhiên.
+- [ ] Hình ảnh kết quả PHẢI hiển thị các điểm/biểu tượng (POIs) rải rác trên phần đất liền giống như bản đồ tham chiếu.
+
+## Follow-up — 2026-06-16T17:56:28+07:00
+
+# Teamwork Project Prompt — Draft
+
+> Status: Step 6 — Review Requirements and Acceptance Criteria
+> Goal: Craft prompt → get user approval → delegate to teamwork_preview
+
+Xây dựng lại hệ thống tạo bản đồ (Map Generation) cho Anima-Engine hoàn toàn bằng thuật toán (Procedural Generation) thay vì dùng ảnh tĩnh. Hệ thống phải tự động sinh ra các phân vùng sinh thái (núi tuyết, sa mạc, rừng, biển) với đồ họa cực kì đẹp mắt, mượt mà và sống động tương đương với một bản đồ vẽ tay/AAA, đồng thời phải dễ dàng tinh chỉnh (tunable) các thông số địa hình trong code.
+
+Working directory: e:/Project/Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Procedural Generation Không Dùng Ảnh Nền
+Hệ thống hiển thị bản đồ phải sử dụng các thuật toán (như Noise, GLSL Shaders, hoặc WebGL/Three.js) để tự động kết xuất ra bản đồ mà không dựa vào bất kì file ảnh nền nguyên khối nào (như `base_map.png`). Lưới tọa độ và POIs vẫn phải hoạt động tốt trên bản đồ mới này.
+
+### R2. Đồ Họa Cấp Độ Cao (High-fidelity Visuals)
+Bản đồ được sinh ra phải có các khu vực sinh thái rõ rệt (Tuyết, Sa mạc, Rừng, Nước) với sự chuyển tiếp mượt mà (blending), chi tiết vân bề mặt hoặc đổ bóng tự nhiên, loại bỏ hoàn toàn cảm giác "ma trận ô vuông màu" (blocky tilemap) của phiên bản cũ.
+
+### R3. Tham Số Hóa (Tunability)
+Các thuật toán tạo địa hình phải xuất ra được các tham số cấu hình (vd: mức độ nhiễu, tỉ lệ biển/đất liền, ngưỡng sinh quyển) ở một file config riêng biệt hoặc dạng hằng số dễ tìm để người dùng có thể tùy ý sửa đổi và thay đổi hình dáng bản đồ.
+
+## Acceptance Criteria
+
+### Verification & Testing
+- [ ] **R1 Check:** Mã nguồn không chứa bất kì logic tải file ảnh tĩnh nào (`PIXI.Assets.load('/base_map.png')` hoặc tương tự) để làm nền bản đồ. Địa hình phải được tính toán từ dữ liệu mảng hoặc Shader.
+- [ ] **R2 Check (Agent-as-judge):** Một Agent độc lập sẽ chạy ứng dụng, chụp màn hình canvas và đánh giá dựa trên tiêu chí "Smooth Blending & Natural Variation" (không có các khối vuông màu cứng nhắc, các vùng sinh thái phải có ranh giới tự nhiên).
+- [ ] **R3 Check:** Tồn tại ít nhất 3 tham số toàn cục (hoặc tham số truyền vào hàm sinh) cho phép thay đổi tỉ lệ Biển/Cát/Tuyết và Noise Scale, thay đổi các tham số này làm thay đổi hình dáng bản đồ nhưng ứng dụng không bị crash.
+
 ## Follow-up — 2026-06-18T03:06:50Z
 
 Expand the procedural landscape map of the Anima Engine to 1000x1000 scale, integrate diverse new ecological environments (Desert, Jungle, Volcanic, Glacier), and enhance details while maintaining performance.

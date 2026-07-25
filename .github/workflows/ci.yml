@@ -1,0 +1,130 @@
+name: CI
+
+# Every gate is its own step so a run reports *which* gate failed rather than stopping at the first
+# one. `if: ${{ !cancelled() }}` keeps later steps running after an earlier failure, which matters
+# here because more than one gate is expected to be red while G0-G4 remediation is in progress.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (src-tauri)
+    # Windows on purpose: this is the platform the project is developed and released on, and
+    # src-tauri/.cargo/config.toml carries x86_64-pc-windows-msvc rustflags.
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rustfmt and clippy
+        run: rustup component add rustfmt clippy
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: cargo fmt --check
+        if: ${{ !cancelled() }}
+        run: cargo fmt --check
+
+      - name: cargo clippy --all-targets -D warnings
+        if: ${{ !cancelled() }}
+        run: cargo clippy --all-targets --features desktop -- -D warnings
+
+      # G2 gate #2: a DEFAULT build must not compile the optional subsystems. Checking it here — not
+      # just that it builds, but that the crates are absent from the dependency graph — is what stops
+      # the gate from rotting the first time someone adds an unconditional `use`.
+      - name: Default build excludes Neo4j, the WebSocket stack and Burn/WGPU
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          cargo clippy --all-targets --no-default-features -- -D warnings
+          leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite|burn-wgpu|naga' || true)
+          echo "gated crates present in a default build: $leaked"
+          test "$leaked" -eq 0
+
+      # G1.4 parity gate. ts-rs writes src/types/generated/ during `cargo test`; if a Rust IPC
+      # struct changed without its TypeScript being regenerated, the working tree is dirty here and
+      # this fails. That is the check that would have caught `head_directions` being a map on one
+      # side and an array on the other.
+      - name: TypeScript IPC bindings match the Rust structs
+        if: ${{ !cancelled() }}
+        run: |
+          cargo test --lib export_bindings
+          git diff --exit-code -- ../src/types/generated
+
+      - name: cargo test
+        if: ${{ !cancelled() }}
+        # No GPU on the runner, so burn falls back to the ndarray CPU backend (ai/model.rs).
+        env:
+          ANIMA_USE_GPU: "0"
+        run: cargo test --features desktop
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      # tests/ is a second npm package with its own lockfile and its own node_modules.
+      - name: Install tests/ dependencies
+        run: npm ci --prefix tests
+
+      - name: npm run lint
+        if: ${{ !cancelled() }}
+        run: npm run lint
+
+      - name: ESLint warning ratchet
+        if: ${{ !cancelled() }}
+        run: node scripts/eslint_ratchet.mjs
+
+      - name: npm run test (src suite)
+        if: ${{ !cancelled() }}
+        run: npm run test
+
+      - name: npm run test:frontend (tests/ suite)
+        if: ${{ !cancelled() }}
+        run: npm run test:frontend
+
+      - name: npm run build
+        if: ${{ !cancelled() }}
+        run: npm run build
+
+      - name: Docs link check
+        if: ${{ !cancelled() }}
+        run: node scripts/check_docs_links.mjs

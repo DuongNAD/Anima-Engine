@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "timestampNote": "set on capture",
+  "seed": 1337,
+  "config": {
+    "gridDim": 128,
+    "tickHz": 60,
+    "ticksPerEpoch": 1000
+  },
+  "hardware": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) i5-14600KF",
+    "cpuCount": 20,
+    "totalMemMB": 48941
+  },
+  "timings": {
+    "terrain_fbm_proxy": {
+      "ms": 10.677,
+      "iterations": 50,
+      "note": "PROXY ONLY — a cheap 128^2 fBm-like arithmetic loop on the CAPTURE machine, NOT the real terrain generator and NOT the target hardware. Replace with a `cargo test --release` terrain-gen timing or an in-app tick capture on the Dell Vostro 3530 (i7-1355U). See BENCHMARK_BASELINE.md; numbers are not locked (WORLD_SIMULATION_PLAN.md §10.2)."
+    },
+    "field_fbm_proxy": {
+      "ms": 16.395,
+      "iterations": 200,
+      "note": "PROXY ONLY — a cheap 128^2 fBm-like arithmetic loop on the CAPTURE machine, NOT the real terrain generator and NOT the target hardware. Replace with a `cargo test --release` terrain-gen timing or an in-app tick capture on the Dell Vostro 3530 (i7-1355U). See BENCHMARK_BASELINE.md; numbers are not locked (WORLD_SIMULATION_PLAN.md §10.2)."
+    }
+  },
+  "proxyChecksum": -123.728181,
+  "notes": "Timings above are PROXY measurements from the machine that ran this script, not the engine and not the target hardware. Baseline perf numbers are NOT locked until captured on the Vostro 3530 (WORLD_SIMULATION_PLAN.md §10.2)."
+}

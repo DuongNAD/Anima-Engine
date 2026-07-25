@@ -1,5 +1,5 @@
 use glam::Vec3;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MorphologyNode {
@@ -24,6 +24,13 @@ pub struct MorphologyGenotype {
 }
 
 impl MorphologyGenotype {
+    /// Total body mass = sum of every segment's mass. In the Metabolic Theory of Ecology this
+    /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
+    /// the most important ecological / life-history niche axis for the MAP-Elites archive.
+    pub fn total_mass(&self) -> f32 {
+        self.nodes.iter().map(|n| n.mass).sum()
+    }
+
     pub fn new() -> Self {
         Self {
             nodes: Vec::new(),
@@ -48,9 +55,10 @@ pub fn decode_genotype(
 ) -> bevy_ecs::prelude::Entity {
     use crate::ai::cpg::CpgOscillator;
     use crate::ai::hrrl::{HomeostaticState, LastTransitionState};
+    use crate::core::components::ActionGates;
     use crate::core::ecs::{
-        Agent, ChildrenLinks, JointAxis, ParentAgent, ParentLink, Position, Rotation, Segment,
-        SegmentJointForce, Velocity, CognitiveState, InertiaComponent, SensoryBufferComponent,
+        Agent, ChildrenLinks, CognitiveState, InertiaComponent, JointAxis, ParentAgent, ParentLink,
+        Position, Rotation, Segment, SegmentJointForce, SensoryBufferComponent, Velocity,
     };
     use crate::physics::dynamics::{JointConstraint, RigidBody};
     use crate::physics::SpatialCollider;
@@ -104,17 +112,22 @@ pub fn decode_genotype(
                 has_last: false,
             },
             ChildrenLinks(Vec::new()),
-            SpatialCollider { radius: root_node.radius },
+            SpatialCollider {
+                radius: root_node.radius,
+            },
             CognitiveState::default(),
             InertiaComponent::default(),
             SensoryBufferComponent::default(),
         ))
         .id();
 
-    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0)
+    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0). `ActionGates::default()` is fully
+    // open, so an agent spawned here behaves exactly as it did before the gates existed — the
+    // component is installed now so that later steps have somewhere to write, not to change anything.
     world.entity_mut(root_entity).insert((
         ParentAgent(root_entity),
         SegmentJointForce(0.0),
+        ActionGates::default(),
     ));
 
     // BFS Queue holds: (current_node, parent_entity, parent_pos, parent_rot)
@@ -172,7 +185,9 @@ pub fn decode_genotype(
                         CpgOscillator::new(1.0, 0.5),
                         ParentAgent(root_entity),
                         SegmentJointForce(0.0),
-                        SpatialCollider { radius: child_node.radius },
+                        SpatialCollider {
+                            radius: child_node.radius,
+                        },
                     ))
                     .id();
 

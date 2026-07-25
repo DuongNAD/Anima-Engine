@@ -1,10 +1,14 @@
-#![allow(clippy::too_many_arguments, clippy::collapsible_match, clippy::type_complexity)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::collapsible_match,
+    clippy::type_complexity
+)]
 
 pub mod ai;
+pub mod commands;
 pub mod core;
 pub mod evolution;
 pub mod physics;
-pub mod commands;
 
 use crate::core::engine::SimulationEngine;
 use std::sync::Arc;
@@ -45,12 +49,18 @@ pub fn run() {
             commands::get_active_raycasts,
             commands::get_lineage_graph,
             commands::get_chronicle_history,
+            commands::set_lod_focus,
+            commands::get_lod_focus,
+            commands::get_lod_bands,
             commands::set_sharding_config,
             commands::get_sharding_config,
             commands::trigger_migration,
             commands::get_test_rabbit_state,
             commands::save_simulation_state,
-            commands::load_simulation_state
+            commands::load_simulation_state,
+            commands::get_terrain_map,
+            commands::get_ecosystem_state,
+            commands::save_world_artifact
         ])
         .setup(|app| {
             use crate::core::simulation_lifecycle::SavedSimulationState;
@@ -59,11 +69,16 @@ pub fn run() {
                 let default_save_path = app_data_dir.join("default_save.json");
                 if default_save_path.exists() {
                     if let Ok(json_str) = std::fs::read_to_string(&default_save_path) {
-                        if let Ok(loaded_state) = serde_json::from_str::<SavedSimulationState>(&json_str) {
-                            *app_state.evolution_settings.lock().unwrap() = loaded_state.evolution_settings.clone();
-                            *app_state.map_elites_grid.lock().unwrap() = loaded_state.map_elites_grid.clone();
-                            
-                            *app_state.engine.pending_load_state.lock().unwrap() = Some(loaded_state);
+                        if let Ok(loaded_state) =
+                            serde_json::from_str::<SavedSimulationState>(&json_str)
+                        {
+                            *app_state.evolution_settings.lock().unwrap() =
+                                loaded_state.evolution_settings.clone();
+                            *app_state.map_elites_grid.lock().unwrap() =
+                                loaded_state.map_elites_grid.clone();
+
+                            *app_state.engine.pending_load_state.lock().unwrap() =
+                                Some(loaded_state);
                             app_state.engine.start(
                                 Some(app.handle().clone()),
                                 Arc::clone(&app_state.evolution_settings),
@@ -79,15 +94,19 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
             let state = app_handle.state::<AppState>();
             let engine = &state.engine;
-            
+
             if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
                 let (tx, rx) = std::sync::mpsc::channel();
                 if engine.save_request_tx.send(tx).is_ok() {
-                    if let Ok(saved_state) = rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                    // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
+                    // dropped deliberately — the autosave is best-effort and there is no one left
+                    // to tell, whereas the explicit save command surfaces the reason.
+                    if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2))
+                    {
                         if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
                             let _ = std::fs::create_dir_all(&app_data_dir);
                             let default_save_path = app_data_dir.join("default_save.json");
@@ -100,6 +119,5 @@ pub fn run() {
                 engine.stop();
             }
         }
-        _ => {}
     });
 }

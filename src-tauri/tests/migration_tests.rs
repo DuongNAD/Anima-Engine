@@ -1,29 +1,36 @@
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+// Cross-shard WebSocket migration lives behind the `networking` feature (G2). Without it this
+// suite has nothing to exercise, so the whole file compiles away rather than failing to link.
+#![cfg(feature = "networking")]
+
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    AgentMigrationData, ShardingConfig, OutboundMigration, InboundMigrationReceiver,
-    OutboundMigrationSender, ShardingResource, check_migration_boundaries_system,
-    process_inbound_migrations_system, AgentParentLineageIds, FeatureTracker, Velocity,
-    Position, Rotation, ParentAgent, Segment, SegmentJointForce, Prey, AgentClass, EpochManager, Agent,
-    MapBounds, ChildrenLinks
-};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
-use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::core::engine::{
-    AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration,
-    EvolutionSender, EvolutionReceiver, EvolutionQueue,
-    run_websocket_server, run_websocket_client
+use anima_engine_lib::core::ecs::{
+    check_migration_boundaries_system, process_inbound_migrations_system, Agent, AgentClass,
+    AgentMigrationData, AgentParentLineageIds, ChildrenLinks, FeatureTracker,
+    InboundMigrationReceiver, MapBounds, OutboundMigration, OutboundMigrationSender, ParentAgent,
+    Position, Prey, Rotation, Segment, ShardingConfig, ShardingResource, Velocity,
 };
+use anima_engine_lib::core::engine::{
+    run_websocket_client, run_websocket_server, AgentEvaluation, AgentGeneration, AgentGenotype,
+    AgentLineageId,
+};
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
 
 #[tokio::test]
 async fn test_agent_migration_serialization_and_resilience() {
     let genotype = {
         let mut g = MorphologyGenotype::new();
-        g.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
+        g.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.5,
+        });
         g
     };
 
@@ -62,6 +69,7 @@ async fn test_agent_migration_serialization_and_resilience() {
             has_last: true,
         }),
         source_port: 0,
+        brain: None,
     };
 
     // Serialization / Deserialization check
@@ -70,7 +78,10 @@ async fn test_agent_migration_serialization_and_resilience() {
     assert_eq!(deserialized.lineage_id, agent.lineage_id);
     assert_eq!(deserialized.generation, agent.generation);
     assert_eq!(deserialized.parent_ids, agent.parent_ids);
-    assert_eq!(deserialized.homeostatic_state.energy, agent.homeostatic_state.energy);
+    assert_eq!(
+        deserialized.homeostatic_state.energy,
+        agent.homeostatic_state.energy
+    );
     assert!(deserialized.evaluation.is_some());
     assert!(deserialized.feature_tracker.is_some());
     assert!(deserialized.last_transition_state.is_some());
@@ -82,7 +93,7 @@ async fn test_agent_migration_serialization_and_resilience() {
 
     let running_clone = Arc::clone(&running);
     let inbound_tx_clone = inbound_tx.clone();
-    
+
     // Start run_websocket_client
     let client_handle = tokio::spawn(async move {
         run_websocket_client::<tauri::test::MockRuntime>(
@@ -91,16 +102,19 @@ async fn test_agent_migration_serialization_and_resilience() {
             running_clone,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Send a message targeting a closed port (9999)
-    outbound_tx.send(OutboundMigration {
-        target_port: 9999,
-        data: agent.clone(),
-        bounds_min_x: -100.0,
-        bounds_max_x: 100.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: 9999,
+            data: agent.clone(),
+            bounds_min_x: -100.0,
+            bounds_max_x: 100.0,
+        })
+        .unwrap();
 
     // Verify bounce back
     let bounced = tokio::time::timeout(Duration::from_secs(2), async {
@@ -110,7 +124,9 @@ async fn test_agent_migration_serialization_and_resilience() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for bounce back");
+    })
+    .await
+    .expect("Timeout waiting for bounce back");
 
     assert_eq!(bounced.lineage_id, agent.lineage_id);
     // Bounced back velocity should be negative and position flipped inward
@@ -125,7 +141,12 @@ async fn test_agent_migration_serialization_and_resilience() {
 async fn test_migration_tier1_ports_8080_to_8081() {
     let genotype = {
         let mut g = MorphologyGenotype::new();
-        g.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
+        g.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.5,
+        });
         g
     };
 
@@ -150,22 +171,26 @@ async fn test_migration_tier1_ports_8080_to_8081() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
     let (client_inbound_tx, _client_inbound_rx) = crossbeam_channel::unbounded();
     let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded();
-    
+
     let running = Arc::new(AtomicBool::new(true));
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             8091,
             server_inbound_tx,
             running_server,
             None,
-        ).await;
+        )
+        .await;
     });
 
     let running_client = Arc::clone(&running);
@@ -176,19 +201,22 @@ async fn test_migration_tier1_ports_8080_to_8081() {
             running_client,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Give server a bit of time to start up
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Send the agent to the client
-    outbound_tx.send(OutboundMigration {
-        target_port: 8091,
-        data: agent.clone(),
-        bounds_min_x: -100.0,
-        bounds_max_x: 100.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: 8091,
+            data: agent.clone(),
+            bounds_min_x: -100.0,
+            bounds_max_x: 100.0,
+        })
+        .unwrap();
 
     // Verify server receives it
     let received = tokio::time::timeout(Duration::from_secs(5), async {
@@ -198,7 +226,9 @@ async fn test_migration_tier1_ports_8080_to_8081() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for migration to be received by server");
+    })
+    .await
+    .expect("Timeout waiting for migration to be received by server");
 
     assert_eq!(received.lineage_id, agent.lineage_id);
     assert_eq!(received.generation, agent.generation);
@@ -223,41 +253,52 @@ fn test_migration_tier2_boundaries_and_serialization_failures() {
     world.insert_resource(MapBounds::default());
 
     // Spawn segment entity associated with the agent
-    let segment_entity = world.spawn((
-        ParentAgent(Entity::PLACEHOLDER), // will be updated or just placeholder
-        Position(Vec3::new(105.0, 0.0, 0.0)),
-        Rotation(glam::Quat::IDENTITY),
-        Velocity(Vec3::new(1.0, 0.0, 0.0)),
-        Segment { id: 0, length: 1.0, radius: 0.2, mass: 1.0 },
-        ChildrenLinks(Vec::new()),
-    )).id();
+    let segment_entity = world
+        .spawn((
+            ParentAgent(Entity::PLACEHOLDER), // will be updated or just placeholder
+            Position(Vec3::new(105.0, 0.0, 0.0)),
+            Rotation(glam::Quat::IDENTITY),
+            Velocity(Vec3::new(1.0, 0.0, 0.0)),
+            Segment {
+                id: 0,
+                length: 1.0,
+                radius: 0.2,
+                mass: 1.0,
+            },
+            ChildrenLinks(Vec::new()),
+        ))
+        .id();
 
     // Spawn an agent at x = 105.0 moving right (vx > 0.0) -> triggers outbound migration
     let genotype = MorphologyGenotype::new();
-    let agent_entity = world.spawn((
-        Agent,
-        Position(Vec3::new(105.0, 0.0, 0.0)),
-        Rotation(glam::Quat::IDENTITY),
-        Velocity(Vec3::new(1.0, 0.0, 0.0)),
-        AgentGenotype(genotype.clone()),
-        HomeostaticState {
-            energy: 100.0,
-            energy_target: 100.0,
-            hydration: 100.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-        AgentLineageId("boundary-lineage-id".to_string()),
-        AgentGeneration(3),
-        AgentParentLineageIds(vec!["p1".to_string()]),
-        Prey,
-        ChildrenLinks(vec![segment_entity]),
-    )).id();
+    let agent_entity = world
+        .spawn((
+            Agent,
+            Position(Vec3::new(105.0, 0.0, 0.0)),
+            Rotation(glam::Quat::IDENTITY),
+            Velocity(Vec3::new(1.0, 0.0, 0.0)),
+            AgentGenotype(genotype.clone()),
+            HomeostaticState {
+                energy: 100.0,
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+            AgentLineageId("boundary-lineage-id".to_string()),
+            AgentGeneration(3),
+            AgentParentLineageIds(vec!["p1".to_string()]),
+            Prey,
+            ChildrenLinks(vec![segment_entity]),
+        ))
+        .id();
 
     // Update parent agent link
-    world.entity_mut(segment_entity).insert(ParentAgent(agent_entity));
+    world
+        .entity_mut(segment_entity)
+        .insert(ParentAgent(agent_entity));
 
     let mut schedule = Schedule::default();
     schedule.add_systems(check_migration_boundaries_system);
@@ -268,7 +309,9 @@ fn test_migration_tier2_boundaries_and_serialization_failures() {
     assert!(world.get_entity(segment_entity).is_none());
 
     // Verify outbound channel has the migration package
-    let outbound = outbound_rx.try_recv().expect("Should have sent outbound migration");
+    let outbound = outbound_rx
+        .try_recv()
+        .expect("Should have sent outbound migration");
     assert_eq!(outbound.target_port, 8081);
     assert_eq!(outbound.data.lineage_id, "boundary-lineage-id");
     assert_eq!(outbound.data.generation, 3);
@@ -286,7 +329,12 @@ fn test_migration_tier3_lineage_integration() {
 
     let genotype = {
         let mut g = MorphologyGenotype::new();
-        g.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.0 });
+        g.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.0,
+        });
         g
     };
 
@@ -311,6 +359,7 @@ fn test_migration_tier3_lineage_integration() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     inbound_tx.send(data).unwrap();
@@ -327,18 +376,21 @@ fn test_migration_tier3_lineage_integration() {
         &AgentLineageId,
         &AgentGeneration,
         &AgentParentLineageIds,
-        &HomeostaticState
+        &HomeostaticState,
     )>();
 
     let results: Vec<_> = query.iter(&world).collect();
     assert_eq!(results.len(), 1);
 
-    let (pos, vel, gen, lineage, generation, parents, homeo) = results[0];
+    let (pos, vel, _gen, lineage, generation, parents, homeo) = results[0];
     assert_eq!(pos.0, Vec3::new(5.0, 2.0, 3.0));
     assert_eq!(vel.0, Vec3::new(-1.0, 0.0, 0.0));
     assert_eq!(lineage.0, "inbound-lineage-id");
     assert_eq!(generation.0, 5);
-    assert_eq!(parents.0, vec!["parent-a".to_string(), "parent-b".to_string()]);
+    assert_eq!(
+        parents.0,
+        vec!["parent-a".to_string(), "parent-b".to_string()]
+    );
     assert_eq!(homeo.energy, 90.0);
 }
 
@@ -353,12 +405,15 @@ async fn test_migration_tier4_parallel_workload() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,
             None,
-        ).await;
+        )
+        .await;
     });
 
     let running_client = Arc::clone(&running);
@@ -369,7 +424,8 @@ async fn test_migration_tier4_parallel_workload() {
             running_client,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Let the server start
@@ -403,13 +459,15 @@ async fn test_migration_tier4_parallel_workload() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             tx.send(OutboundMigration {
                 target_port: port,
                 data: agent,
                 bounds_min_x: -100.0,
                 bounds_max_x: 100.0,
-            }).unwrap();
+            })
+            .unwrap();
         });
         join_handles.push(handle);
     }
@@ -422,7 +480,7 @@ async fn test_migration_tier4_parallel_workload() {
     let received_count = tokio::time::timeout(Duration::from_secs(5), async {
         let mut got = 0;
         loop {
-            while let Ok(_) = server_inbound_rx.try_recv() {
+            while server_inbound_rx.try_recv().is_ok() {
                 got += 1;
             }
             if got >= count {
@@ -430,7 +488,9 @@ async fn test_migration_tier4_parallel_workload() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for parallel migrations");
+    })
+    .await
+    .expect("Timeout waiting for parallel migrations");
 
     assert_eq!(received_count, count);
 

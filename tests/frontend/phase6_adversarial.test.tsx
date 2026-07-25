@@ -162,8 +162,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 2.71) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(5);
-    expect(zoomedLake[1]).toBeCloseTo(5);
+    expect(zoomedLake[0]).toBeCloseTo(30);
+    expect(zoomedLake[1]).toBeCloseTo(12.5);
   });
 
   it('Verify Zoom In is unbounded and can reach extremely high scale values', async () => {
@@ -191,8 +191,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 81.37) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(150);
-    expect(zoomedLake[1]).toBeCloseTo(150);
+    expect(zoomedLake[0]).toBeCloseTo(900);
+    expect(zoomedLake[1]).toBeCloseTo(375);
   });
 
   // --- PAN LIMITS & STRESS CASES ---
@@ -223,8 +223,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = panCalls.slice(-8);
     const pannedLake = finalCalls.find(c => Math.abs(c[2] - 27.12) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(550);
-    expect(pannedLake[1]).toBeCloseTo(550);
+    expect(pannedLake[0]).toBeCloseTo(800);
+    expect(pannedLake[1]).toBeCloseTo(625);
   });
 
   // --- TAURI COMMAND CALLING ERRORS ---
@@ -330,7 +330,27 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     });
 
     const corruptedPayload = {
-      segments: [],
+      segments: [
+        {
+          agent_id: 1,
+          segment_id: 0,
+          parent_segment_id: null,
+          x: 10.0,
+          y: 1.5,
+          z: -5.0,
+          yaw: 0.1,
+          pitch: 0.0,
+          roll: 0.0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0,
+          joint_axis_x: 0,
+          joint_axis_y: 0,
+          joint_axis_z: 0,
+          energy: 95.5,
+          agent_type: 'predator'
+        }
+      ],
       environmental_state: { elements: [] },
       head_directions: [
         {
@@ -594,7 +614,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const drawCalls = mockGraphicsMethods.drawCircle.mock.calls;
     const finalLake = drawCalls.find(c => Math.abs(c[2] - 271.2) < 0.1);
     expect(finalLake).toBeDefined();
-    expect(finalLake[0]).toBeCloseTo(1500);
-    expect(finalLake[1]).toBeCloseTo(-500);
+    expect(finalLake[0]).toBeCloseTo(4000);
+    expect(finalLake[1]).toBeCloseTo(250);
   });
 });

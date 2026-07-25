@@ -417,15 +417,16 @@ export interface EnvironmentalState {
   elements: EnvironmentalElement[];
 }
 
-export interface HeadDirectionTelemetry {
-  agent_id: number;
-  direction: [number, number, number];
-}
-
+// `head_directions` mirrors a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON OBJECT
+// keyed by agent id. It was declared here as an ARRAY of {agent_id, direction} — a shape the
+// backend has never sent. App.tsx was written against that same fiction, so the real object payload
+// fell through its `Array.isArray` guard and head directions silently never updated. The mock
+// agreeing with the consumer instead of with the backend is precisely why 237 passing tests could
+// not see it (G1.4).
 export interface SimulationTickPayload {
   segments: SegmentState[];
   environmental_state: EnvironmentalState;
-  head_directions: HeadDirectionTelemetry[];
+  head_directions: Record<number, [number, number, number]>;
 }
 
 // --- Phase 6 Mock Data ---
@@ -455,12 +456,9 @@ export const mockSimulationTickPayload: SimulationTickPayload = {
     head_direction: [1.0, 0.0, 0.0] as [number, number, number]
   })),
   environmental_state: mockEnvironmentalState,
-  head_directions: [
-    {
-      agent_id: 1,
-      direction: [1.0, 0.0, 0.0]
-    }
-  ]
+  head_directions: {
+    1: [1.0, 0.0, 0.0]
+  }
 };
 
 

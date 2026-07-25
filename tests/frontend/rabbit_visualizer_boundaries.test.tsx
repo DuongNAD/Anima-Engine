@@ -6,8 +6,7 @@ import RabbitVisualizer from '../../playground/RabbitVisualizer';
 
 const originalCreateElement = React.createElement;
 // Inject data-testid using name attribute for R3F compatibility in JSDOM
-// @ts-ignore
-React.createElement = function (type: any, props: any, ...children: any[]) {
+(React as any).createElement = function (type: any, props: any, ...children: any[]) {
   if (props && typeof type === 'string' && (type === 'mesh' || type === 'group') && props.name) {
     props = { ...props, 'data-testid': props.name };
   }

@@ -1,17 +1,15 @@
-use bevy_ecs::prelude::*;
-use std::sync::Arc;
-use crate::core::ecs::{
-    Position, ParentAgent, SegmentJointForce,
-    EpochManager, FeatureTracker, AgentClass, Predator, Prey,
-    EvolutionQueue, EvolutionSender, EvolutionReceiver, AgentEpochStats,
-    Segment, Food, CognitiveState, InertiaComponent,
-    Rotation,
-};
+use crate::ai::cpg::CpgOscillator;
+use crate::ai::hrrl::HomeostaticState;
 use crate::core::ecs::ActiveEnvironmentEvent;
 use crate::core::ecs::Velocity;
-use crate::ai::hrrl::HomeostaticState;
-use crate::ai::cpg::CpgOscillator;
-use crate::evolution::genotype::{MorphologyGenotype, decode_genotype};
+use crate::core::ecs::{
+    AgentClass, AgentEpochStats, CognitiveState, EpochManager, EvolutionQueue, EvolutionReceiver,
+    EvolutionSender, FeatureTracker, Food, InertiaComponent, ParentAgent, Position, Predator, Prey,
+    Rotation, Segment, SegmentJointForce,
+};
+use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
+use bevy_ecs::prelude::*;
+use std::sync::Arc;
 
 #[derive(Resource)]
 pub struct BevyEvolutionSettings(pub Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>);
@@ -59,7 +57,9 @@ pub struct AgentEvaluation {
 pub struct NextNodeId(pub u32);
 
 #[derive(Resource)]
-pub struct EnvironmentalEventReceiver(pub crossbeam_channel::Receiver<crate::evolution::meta_ai::EnvironmentalEvent>);
+pub struct EnvironmentalEventReceiver(
+    pub crossbeam_channel::Receiver<crate::evolution::meta_ai::EnvironmentalEvent>,
+);
 
 pub fn receive_environmental_events_system(
     receiver: Res<EnvironmentalEventReceiver>,
@@ -78,6 +78,65 @@ pub struct SpawnGenotypeCommand {
     pub lineage_id: String,
     pub generation: u32,
     pub parent_ids: Vec<String>,
+}
+
+/// Reclaim a dying agent's energy reserve into detritus and destroy it, as one indivisible step.
+///
+/// Splitting those two was an order-dependent energy leak, and a subtle one.
+/// `apply_staggered_evolution_system` used to credit detritus with the corpse's reserve
+/// *immediately*, but despawn through `Commands`, which do not apply until the end of the schedule
+/// run. In between, the agent was still alive holding a reserve that had already been banked:
+///
+/// - any system running later that tick which burned that reserve (metabolism) credited detritus a
+///   second time with energy it had already received — EU created;
+/// - any system that fed it (grazing, food, fruit) drew EU out of detritus into a body that was
+///   about to be destroyed — EU destroyed.
+///
+/// Which of the two happened, and how often, depended on the order Bevy's multi-threaded executor
+/// happened to pick, so a run's residual drifted a different direction every time and the whole
+/// thing looked like floating-point noise. Doing the reclaim at the same sync point as the despawn
+/// removes the window entirely: nothing can observe a reserve that has been banked but not yet
+/// destroyed.
+pub struct ReclaimAndDespawnAgentCommand {
+    /// The agent's root entity. Its segments are found by `ParentAgent` and go with it.
+    pub root: Entity,
+}
+
+impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
+    fn apply(self, world: &mut World) {
+        // Zero the reserve as it is banked, so the transfer is exact and there is no reserve left
+        // for anything to double-count even in principle.
+        let reclaimed = match world.get_mut::<HomeostaticState>(self.root) {
+            Some(mut homeo) => {
+                let amount = homeo.energy;
+                crate::core::energy_ledger::debit_reserve(&mut homeo.energy, amount)
+            }
+            None => 0.0,
+        };
+        if reclaimed > 0.0 {
+            if let Some(mut pool) =
+                world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>()
+            {
+                pool.detritus += reclaimed;
+            }
+        }
+
+        let mut doomed: Vec<Entity> = Vec::new();
+        let mut q = world.query::<(Entity, &ParentAgent)>();
+        for (entity, parent) in q.iter(world) {
+            if parent.0 == self.root {
+                doomed.push(entity);
+            }
+        }
+        for entity in doomed {
+            if let Some(e) = world.get_entity_mut(entity) {
+                e.despawn();
+            }
+        }
+        if let Some(e) = world.get_entity_mut(self.root) {
+            e.despawn();
+        }
+    }
 }
 
 impl bevy_ecs::system::Command for SpawnGenotypeCommand {
@@ -106,6 +165,64 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
                 world.entity_mut(entity).insert(Prey);
             }
         }
+
+        // Invariant D06: evolutionary replacement is NOT a birth, and its energy must come from
+        // the individual it replaces. `decode_genotype` hands every new body a flat starting
+        // reserve; before G1.1 that reserve came from nowhere while the replaced individual's own
+        // reserve had *also* just been returned to detritus by `apply_staggered_evolution_system`,
+        // so every epoch replacement created roughly one full reserve of EU out of thin air.
+        //
+        // The reserve is now withdrawn from detritus — exactly where the predecessor's energy
+        // went. A pool that cannot cover it means the replacement starts hungry and the shortfall
+        // is counted in `EnergyLedger::refused`, rather than the world quietly gaining energy.
+        // Worlds built without the closed ledger (bare unit-test harnesses) keep the flat grant.
+        if world.contains_resource::<crate::core::ecology::EcosystemBiomass>()
+            && world.contains_resource::<crate::core::energy_ledger::EnergyLedger>()
+        {
+            world.resource_scope(
+                |world, mut ledger: Mut<crate::core::energy_ledger::EnergyLedger>| {
+                    world.resource_scope(
+                        |world, mut pool: Mut<crate::core::ecology::EcosystemBiomass>| {
+                            if let Some(mut homeo) =
+                                world.get_mut::<crate::ai::hrrl::HomeostaticState>(entity)
+                            {
+                                let requested = homeo.energy;
+                                let cap = homeo.energy_target;
+                                homeo.energy = 0.0;
+                                ledger.transfer_into_reserve(
+                                    &mut pool,
+                                    crate::core::energy_ledger::Compartment::Detritus,
+                                    &mut homeo.energy,
+                                    cap,
+                                    requested,
+                                    crate::core::energy_ledger::EnergyEvent::Replacement,
+                                );
+                            }
+                        },
+                    );
+                },
+            );
+        }
+
+        // Evolutionary replacement creates a *new* individual, so it gets a new brain — unlike
+        // restore and migration, which carry one that already exists (invariant D01). The draw comes
+        // from `SimRng`, so the same run seed produces the same founding brains.
+        //
+        // Legacy note: this is `EvolutionaryReplacement`, not biological reproduction, so the brain
+        // is rolled fresh rather than inherited from the parents that MAP-Elites selected. Making it
+        // heritable across replacement is part of the birth work in M5, not of this ADR.
+        let policy = world
+            .get_resource::<crate::core::resources::BrainPolicy>()
+            .copied()
+            .unwrap_or_default();
+        if policy.evolved {
+            let brain = world
+                .get_resource_mut::<crate::core::resources::SimRng>()
+                .and_then(|mut rng| policy.new_brain(rng.rng()));
+            if let Some(brain) = brain {
+                world.entity_mut(entity).insert(brain);
+            }
+        }
     }
 }
 
@@ -122,7 +239,12 @@ pub fn sync_evolution_settings_system(
 
 pub fn update_agent_evaluation_system(
     mut agent_query: Query<(Entity, &Position, &mut AgentEvaluation, &HomeostaticState)>,
-    segment_query: Query<(&ParentAgent, &crate::physics::dynamics::RigidBody, &Velocity, Option<&SegmentJointForce>)>,
+    segment_query: Query<(
+        &ParentAgent,
+        &crate::physics::dynamics::RigidBody,
+        &Velocity,
+        Option<&SegmentJointForce>,
+    )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let dt = time_step.0;
@@ -157,7 +279,6 @@ pub fn update_agent_evaluation_system(
     }
 }
 
-
 pub fn check_epoch_completion_system(
     mut epoch_manager: ResMut<EpochManager>,
     evolution_sender: Res<EvolutionSender>,
@@ -172,6 +293,7 @@ pub fn check_epoch_completion_system(
     )>,
     bounds: Res<crate::core::ecs::MapBounds>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut sim_rng: ResMut<crate::core::resources::SimRng>,
 ) {
     epoch_manager.current_epoch_ticks += 1;
     if epoch_manager.current_epoch_ticks >= epoch_manager.ticks_per_epoch {
@@ -180,13 +302,18 @@ pub fn check_epoch_completion_system(
 
         let dt = time_step.0;
         let mut stats_batch = Vec::new();
-        let mut rng = rand::thread_rng();
+        let rng = sim_rng.rng();
         use rand::Rng;
 
-        for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in agent_query.iter_mut() {
+        for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in
+            agent_query.iter_mut()
+        {
             let avg_speed = tracker.cumulative_distance / (tracker.tick_count as f32 * dt + 1e-6);
             let efficiency = tracker.cumulative_distance / (tracker.cumulative_energy_decay + 1e-6);
             let fitness = tracker.cumulative_distance + tracker.tick_count as f32;
+            // Ecological niche descriptors: body mass (MTE master trait) + foraging range.
+            let body_mass = genotype.0.total_mass();
+            let foraging_range = tracker.cumulative_distance;
 
             let spawn_x = rng.gen_range(bounds.min.x..bounds.max.x);
             let spawn_z = rng.gen_range(bounds.min.z..bounds.max.z);
@@ -198,6 +325,8 @@ pub fn check_epoch_completion_system(
                 fitness,
                 speed: avg_speed,
                 efficiency,
+                body_mass,
+                foraging_range,
                 position: next_pos,
                 lineage_id: lineage_id.0.clone(),
                 generation: generation.0,
@@ -217,18 +346,34 @@ pub fn apply_staggered_evolution_system(
     mut commands: Commands,
     evolution_receiver: Res<EvolutionReceiver>,
     mut queue: ResMut<EvolutionQueue>,
-    parent_agent_query: Query<(Entity, &ParentAgent)>,
     position_query: Query<&Position>,
     predator_query: Query<&Predator>,
+    // The corpse's reserve and its segments are both handled by
+    // `ReclaimAndDespawnAgentCommand` at the sync point, so this system no longer needs the
+    // segment query or direct access to the biomass pool.
 ) {
     // Collect all spawn instructions
-    while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) = evolution_receiver.0.try_recv() {
-        queue.pending_replacements.push((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids));
+    while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) =
+        evolution_receiver.0.try_recv()
+    {
+        queue.pending_replacements.push((
+            old_entity,
+            next_genotype,
+            initial_pos,
+            lineage_id,
+            generation,
+            parent_ids,
+        ));
     }
 
     // Pop at most 1 replacement from the EvolutionQueue per frame
-    if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) = queue.pending_replacements.pop() {
-        let spawn_pos = position_query.get(old_entity).map(|p| p.0).unwrap_or(default_pos);
+    if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) =
+        queue.pending_replacements.pop()
+    {
+        let spawn_pos = position_query
+            .get(old_entity)
+            .map(|p| p.0)
+            .unwrap_or(default_pos);
 
         let agent_class = if predator_query.get(old_entity).is_ok() {
             AgentClass::Predator
@@ -236,14 +381,11 @@ pub fn apply_staggered_evolution_system(
             AgentClass::Prey
         };
 
-        // Despawn old segments
-        for (seg_entity, parent) in parent_agent_query.iter() {
-            if parent.0 == old_entity {
-                commands.entity(seg_entity).despawn();
-            }
-        }
-        // Despawn root entity
-        commands.entity(old_entity).despawn();
+        // Corpse decomposition: the dying agent's remaining reserve returns to the closed detritus
+        // pool instead of vanishing at despawn — the death half of the energy cycle
+        // (plants → animals → detritus → plants). Reclaim and despawn happen together, in one
+        // command, for the reason documented on `ReclaimAndDespawnAgentCommand`.
+        commands.add(ReclaimAndDespawnAgentCommand { root: old_entity });
 
         // Spawn new offspring at the same position
         commands.add(SpawnGenotypeCommand {
@@ -263,13 +405,42 @@ pub struct AgentInferenceRequest {
     pub entity: Entity,
     pub sensory_input: [f32; 15],
     pub request_id: u64,
+    /// The agent's own brain, when it has one. Carried as an `Arc` clone — a refcount bump, not a
+    /// copy of the weight vector — so attaching it costs the tick path no allocation.
+    ///
+    /// `None` routes the agent through the shared [`crate::ai::model::BrainModel`] exactly as before.
+    pub brain: Option<std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>>,
 }
+
+/// Actions an inference produces.
+///
+/// Sized for the evolved architecture: `0..CPG_LEN` are the CPG parameters, the rest are the
+/// ecological gates (see [`crate::evolution::brain_genotype::action_index`]). A shared-model agent
+/// fills only the CPG slots and leaves the gates at their fully-open default, so widening this array
+/// does not change what a legacy agent does.
+pub const ACTION_SLOTS: usize = crate::evolution::brain_genotype::action_index::COUNT;
 
 #[derive(Debug, Clone)]
 pub struct AgentInferenceResponse {
     pub entity: Entity,
-    pub actions: [f32; 4],
+    pub actions: [f32; ACTION_SLOTS],
     pub request_id: u64,
+}
+
+impl AgentInferenceResponse {
+    /// Actions for an agent whose brain produced nothing usable: no locomotion change and every gate
+    /// left open. Chosen so a failed inference degrades to "carry on as before", never to an agent
+    /// that silently stops eating.
+    pub fn open_gates_default() -> [f32; ACTION_SLOTS] {
+        let mut actions = [0.0f32; ACTION_SLOTS];
+        for slot in actions
+            .iter_mut()
+            .skip(crate::evolution::brain_genotype::action_index::CPG_LEN)
+        {
+            *slot = 1.0;
+        }
+        actions
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -291,15 +462,19 @@ pub struct InferenceChannels {
 }
 
 pub fn sensory_system(
-    mut agent_query: Query<(
-        Entity,
-        &Position,
-        &Rotation,
-        &HomeostaticState,
-        Option<&Predator>,
-        Option<&crate::ai::pheromone::OlfactorySensors>,
-        &mut CognitiveState,
-    ), With<crate::core::ecs::Agent>>,
+    mut agent_query: Query<
+        (
+            Entity,
+            &Position,
+            &Rotation,
+            &HomeostaticState,
+            Option<&Predator>,
+            Option<&crate::ai::pheromone::OlfactorySensors>,
+            &mut CognitiveState,
+            Option<&crate::core::components::AgentBrain>,
+        ),
+        With<crate::core::ecs::Agent>,
+    >,
     food_query: Query<&Position, With<Food>>,
     prey_query: Query<(&Position, &HomeostaticState), (With<crate::core::ecs::Agent>, With<Prey>)>,
     spatial_grid: Option<Res<crate::physics::SpatialHashGrid>>,
@@ -313,20 +488,39 @@ pub fn sensory_system(
     channels: Res<InferenceChannels>,
     mut ticket_counter: Local<u64>,
     mut local_batch: Local<Option<InferenceRequestBatch>>,
+    mut lod: crate::core::simulation_lod::LodGate,
 ) {
     if let Some(ref mut raycasts_res) = active_raycasts {
         raycasts_res.raycasts.clear();
     }
 
+    // One snapshot for the whole population, so every agent is tiered against the same focus.
+    let lod = lod.begin_tick();
+
     let mut batch = local_batch.take().unwrap_or_else(|| {
-        channels.recycle_req_rx.try_recv().unwrap_or_else(|_| InferenceRequestBatch {
-            requests: Vec::with_capacity(128),
-        })
+        channels
+            .recycle_req_rx
+            .try_recv()
+            .unwrap_or_else(|_| InferenceRequestBatch {
+                requests: Vec::with_capacity(128),
+            })
     });
     batch.requests.clear();
 
-    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state) in agent_query.iter_mut() {
+    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state, opt_brain) in
+        agent_query.iter_mut()
+    {
         if !matches!(*cog_state, CognitiveState::Ready) {
+            continue;
+        }
+
+        // Simulation LOD: how often this agent gets to think, by where it is. With no focus set —
+        // every headless run, and any UI that has not published a view position — `tier_at` returns
+        // `Hot` for everything and this is a no-op.
+        //
+        // A skipped agent is not frozen: it keeps its last CPG parameters and goes on moving,
+        // eating and metabolising. Only the inference is skipped, which is the dominant cost.
+        if !lod.should_think(agent_pos.0, entity.index()) {
             continue;
         }
 
@@ -375,7 +569,7 @@ pub fn sensory_system(
                 origin: agent_pos.0,
                 direction,
             };
-            
+
             if let Some(hit) = grid.raycast(&ray, 10.0, map_bounds, &collider_query) {
                 let root_agent_id = if let Ok(parent) = parent_agent_query.get(hit.entity) {
                     parent.0
@@ -402,13 +596,15 @@ pub fn sensory_system(
         }
 
         if let Some(ref mut raycasts_res) = active_raycasts {
-            raycasts_res.raycasts.push(crate::core::ecs::RaycastTelemetry {
-                origin: agent_pos.0.to_array(),
-                direction: direction.to_array(),
-                hit_distance,
-                hit_entity_type: hit_type,
-                agent_id: entity.index(),
-            });
+            raycasts_res
+                .raycasts
+                .push(crate::core::ecs::RaycastTelemetry {
+                    origin: agent_pos.0.to_array(),
+                    direction: direction.to_array(),
+                    hit_distance,
+                    hit_entity_type: hit_type,
+                    agent_id: entity.index(),
+                });
         }
 
         let (left_reading, right_reading) = if let Some(sensors) = opt_sensors {
@@ -444,6 +640,12 @@ pub fn sensory_system(
             entity,
             sensory_input: state_arr,
             request_id: ticket_id,
+            // An `Arc` clone: a refcount bump, no weight copy, so the request stays allocation-free.
+            //
+            // `live()` is the learned network when there is one, else the genome. Both sit behind
+            // the same `Arc`, so which branch it takes costs nothing here — the reason learning
+            // replaces the whole network on an interval instead of mutating weights every tick.
+            brain: opt_brain.map(|b| std::sync::Arc::clone(b.live())),
         });
     }
 
@@ -489,6 +691,7 @@ pub fn action_resolution_system(
         &mut CognitiveState,
         &mut InertiaComponent,
         Option<&mut crate::ai::hrrl::LastTransitionState>,
+        Option<&mut crate::core::components::ActionGates>,
     )>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
@@ -496,19 +699,36 @@ pub fn action_resolution_system(
 ) {
     while let Ok(batch) = channels.res_rx.try_recv() {
         for response in &batch.responses {
-            if let Ok((_entity, mut cog_state, mut inertia, opt_last)) = agent_query.get_mut(response.entity) {
+            if let Ok((_entity, mut cog_state, mut inertia, opt_last, opt_gates)) =
+                agent_query.get_mut(response.entity)
+            {
                 if let CognitiveState::PendingInference(ticket_id) = *cog_state {
                     if ticket_id == response.request_id {
-                        // Update InertiaComponent
-                        inertia.cpg_parameters = response.actions;
+                        use crate::evolution::brain_genotype::action_index;
+
+                        // Outputs `0..CPG_LEN` steer locomotion, exactly as before.
+                        let mut cpg = [0.0f32; action_index::CPG_LEN];
+                        cpg.copy_from_slice(&response.actions[..action_index::CPG_LEN]);
+                        inertia.cpg_parameters = cpg;
                         inertia.ticks_pending = 0;
 
                         // Reset state to Ready
                         *cog_state = CognitiveState::Ready;
 
-                        // Save last transition state
+                        // The remaining outputs are the ecological gates. A shared-model agent gets
+                        // them filled with the fully-open default upstream, so this assignment is a
+                        // no-op for it — the legacy path keeps behaving as it did.
+                        if let Some(mut gates) = opt_gates {
+                            gates.pheromone_emit = response.actions[action_index::PHEROMONE_EMIT];
+                            gates.attack_intent = response.actions[action_index::ATTACK_INTENT];
+                            gates.feed_intent = response.actions[action_index::FEED_INTENT];
+                        }
+
+                        // Save last transition state. This feeds the shared model's A2C update,
+                        // which only ever knew about the CPG parameters, so it keeps its 4 slots
+                        // rather than growing to hold gates no gradient touches.
                         if let Some(mut last) = opt_last {
-                            last.action = response.actions;
+                            last.action = cpg;
                             last.has_last = true;
                         }
 
@@ -527,4 +747,3 @@ pub fn action_resolution_system(
         let _ = channels.recycle_res_tx.send(batch);
     }
 }
-

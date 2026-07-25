@@ -1,7 +1,7 @@
-use tauri::State;
-use std::sync::Arc;
+use crate::core::simulation_lifecycle::{SavedSimulationState, SimulationStatus};
 use crate::AppState;
-use crate::core::simulation_lifecycle::{SimulationStatus, SavedSimulationState};
+use std::sync::Arc;
+use tauri::State;
 
 #[tauri::command]
 pub fn get_simulation_status(state: State<'_, AppState>) -> Result<SimulationStatus, String> {
@@ -38,17 +38,27 @@ pub fn save_simulation_state(
         return Err("Simulation is not running".to_string());
     }
 
-    let (tx, rx) = std::sync::mpsc::channel::<SavedSimulationState>();
-    engine.save_request_tx.send(tx)
+    let (tx, rx) = std::sync::mpsc::channel::<Result<SavedSimulationState, String>>();
+    engine
+        .save_request_tx
+        .send(tx)
         .map_err(|e| format!("Failed to send save request: {}", e))?;
 
-    let saved_state = rx.recv_timeout(std::time::Duration::from_secs(5))
-        .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())?;
+    // Two different failures, kept apart: the sim thread never answered, versus it answered that
+    // this world cannot be saved. The second is a refusal with a reason the user can act on, so it
+    // is passed through verbatim rather than flattened into a generic save error.
+    let saved_state = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())??;
 
-    let json_str = serde_json::to_string_pretty(&saved_state)
-        .map_err(|e| format!("Serialization error: {}", e))?;
-    std::fs::write(&file_path, json_str)
-        .map_err(|e| format!("File writing error: {}", e))?;
+    // G1.2: wrap in a versioned, checksummed envelope and write it atomically. The old path was
+    // `to_string_pretty` into `fs::write`, which truncates the destination before writing a byte —
+    // a crash or a full disk destroyed the save you already had in order to fail at writing a new
+    // one.
+    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
+        .map_err(|e| format!("Serialization error: {e}"))?;
+    crate::core::snapshot::write_atomic(std::path::Path::new(&file_path), &envelope)
+        .map_err(|e| format!("File writing error: {e}"))?;
 
     Ok(true)
 }
@@ -59,10 +69,11 @@ pub fn load_simulation_state(
     app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
-    let json_str = std::fs::read_to_string(&file_path)
-        .map_err(|e| format!("File read error: {}", e))?;
-    let loaded_state = serde_json::from_str::<SavedSimulationState>(&json_str)
-        .map_err(|e| format!("Parsing error: {}", e))?;
+    // Verifies the checksum and migrates a pre-envelope save (schema 1 or 2) forward. A corrupt or
+    // truncated file is refused here with a message naming the problem, instead of deserializing
+    // into a plausible-looking world.
+    let loaded_state =
+        crate::core::snapshot::read(std::path::Path::new(&file_path)).map_err(|e| e.to_string())?;
 
     let engine = &state.engine;
     let was_running = engine.running.load(std::sync::atomic::Ordering::SeqCst);
@@ -74,7 +85,7 @@ pub fn load_simulation_state(
     *state.map_elites_grid.lock().unwrap() = loaded_state.map_elites_grid.clone();
 
     *engine.pending_load_state.lock().unwrap() = Some(loaded_state);
-    
+
     engine.start(
         Some(app_handle),
         Arc::clone(&state.evolution_settings),
@@ -213,7 +224,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 4. Front-Left Leg (part_type: 4.0)
-    let (fl_leg_x, fl_leg_y, fl_leg_z) = local_to_world(0.8 + (t * 4.0 + std::f32::consts::PI).sin() * 0.15, -0.8 - hop_height * 0.35, 0.5);
+    let (fl_leg_x, fl_leg_y, fl_leg_z) = local_to_world(
+        0.8 + (t * 4.0 + std::f32::consts::PI).sin() * 0.15,
+        -0.8 - hop_height * 0.35,
+        0.5,
+    );
     parts.push(AdvancedRabbitPart {
         x: fl_leg_x,
         y: fl_leg_y,
@@ -231,7 +246,8 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 5. Front-Right Leg (part_type: 5.0)
-    let (fr_leg_x, fr_leg_y, fr_leg_z) = local_to_world(0.8 + (t * 4.0).sin() * 0.15, -0.8 - hop_height * 0.35, -0.5);
+    let (fr_leg_x, fr_leg_y, fr_leg_z) =
+        local_to_world(0.8 + (t * 4.0).sin() * 0.15, -0.8 - hop_height * 0.35, -0.5);
     parts.push(AdvancedRabbitPart {
         x: fr_leg_x,
         y: fr_leg_y,
@@ -249,7 +265,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 6. Hind-Left Leg (part_type: 6.0)
-    let (hl_leg_x, hl_leg_y, hl_leg_z) = local_to_world(-1.2 - hop_height * 0.1 + (t * 4.0).sin() * 0.1, -0.6 - hop_height * 0.4, 0.6);
+    let (hl_leg_x, hl_leg_y, hl_leg_z) = local_to_world(
+        -1.2 - hop_height * 0.1 + (t * 4.0).sin() * 0.1,
+        -0.6 - hop_height * 0.4,
+        0.6,
+    );
     parts.push(AdvancedRabbitPart {
         x: hl_leg_x,
         y: hl_leg_y,
@@ -267,7 +287,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 7. Hind-Right Leg (part_type: 7.0)
-    let (hr_leg_x, hr_leg_y, hr_leg_z) = local_to_world(-1.2 - hop_height * 0.1 + (t * 4.0 + std::f32::consts::PI).sin() * 0.1, -0.6 - hop_height * 0.4, -0.6);
+    let (hr_leg_x, hr_leg_y, hr_leg_z) = local_to_world(
+        -1.2 - hop_height * 0.1 + (t * 4.0 + std::f32::consts::PI).sin() * 0.1,
+        -0.6 - hop_height * 0.4,
+        -0.6,
+    );
     parts.push(AdvancedRabbitPart {
         x: hr_leg_x,
         y: hr_leg_y,
@@ -304,7 +328,11 @@ pub fn generate_dynamic_rabbit(
     });
 
     // 9. Mouth (part_type: 9.0)
-    let chewing_offset = if is_eating { (t * 15.0).sin() * 0.08 } else { 0.0 };
+    let chewing_offset = if is_eating {
+        (t * 15.0).sin() * 0.08
+    } else {
+        0.0
+    };
     let (mouth_x, mouth_y, mouth_z) = local_to_world(2.3, -0.4 + chewing_offset, 0.0);
     parts.push(AdvancedRabbitPart {
         x: mouth_x,
@@ -379,4 +407,53 @@ pub fn get_test_rabbit_state() -> tauri::ipc::Response {
         buffer.extend_from_slice(&part.part_type.to_le_bytes());
     }
     tauri::ipc::Response::new(buffer)
+}
+
+/// Point simulation detail at the observer, or turn the targeting off.
+///
+/// `enabled: false` returns the engine to uniform detail — every agent `Hot`, thinking every tick,
+/// which is what an engine built before simulation LOD did. That is the default, and it is the
+/// rollback path: nothing here is sticky.
+///
+/// Writing is all this does. The value is picked up by `sync_lod_focus_system` on the next tick
+/// rather than reaching into the world from the UI thread, because the world belongs to the
+/// simulation thread and a command that borrowed it would have to stop it first.
+#[tauri::command]
+pub fn set_lod_focus(
+    state: State<'_, AppState>,
+    focus: crate::core::simulation_lod::LodFocus,
+) -> Result<(), String> {
+    let mut shared = state
+        .engine
+        .lod_focus
+        .0
+        .write()
+        .map_err(|e| e.to_string())?;
+    *shared = focus;
+    Ok(())
+}
+
+/// The focus the engine is currently using.
+#[tauri::command]
+pub fn get_lod_focus(
+    state: State<'_, AppState>,
+) -> Result<crate::core::simulation_lod::LodFocus, String> {
+    let shared = state.engine.lod_focus.0.read().map_err(|e| e.to_string())?;
+    Ok(*shared)
+}
+
+/// The tier boundaries this build uses.
+///
+/// A caller needs these to decide whether setting a focus is even appropriate: the agent viewport
+/// only turns tiering on when everything it is showing fits inside the hot radius, because
+/// degrading an agent the user is looking at is worse than paying for it. Exposing the number
+/// rather than letting the frontend hardcode `50.0` keeps that decision tied to the one definition
+/// in `LodBands::default`.
+///
+/// Returns the default rather than reading the world's resource because nothing changes it at
+/// runtime — the default *is* the live value — and reaching into the simulation thread's world for
+/// a constant would mean stopping it.
+#[tauri::command]
+pub fn get_lod_bands() -> crate::core::simulation_lod::LodBands {
+    crate::core::simulation_lod::LodBands::default()
 }

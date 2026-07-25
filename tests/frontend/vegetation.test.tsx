@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import { Vegetation } from '../../src/components/Landscape/Vegetation';
-import { generateTerrain, getBilinearInterpolatedElevation } from '../../src/components/Landscape/utils/terrainGenerator';
+import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
 
 // Mock react-three-fiber Canvas and useFrame
 let frameCallbacks: Array<(state: any, delta: number) => void> = [];
@@ -138,7 +138,7 @@ describe('Vegetation Component Tests', () => {
 
       const px = position.x + width / 2;
       const py = position.z + height / 2;
-      let expectedZ = getBilinearInterpolatedElevation(px, py, width, height, terrainData.grid) * 1.8;
+      let expectedZ = getBilinearInterpolatedElevation(px, py, width, height, terrainData.grid) * TERRAIN_HEIGHT_SCALE;
 
       const name = element ? element.getAttribute('name') : '';
       if (name === 'vegetation-instanced-mesh-oak') {
@@ -172,7 +172,12 @@ describe('Vegetation Component Tests', () => {
       } else if (name === 'vegetation-instanced-mesh-birch-leaves') {
         expectedZ += 3.2 * s;
       } else if (name === 'vegetation-instanced-mesh-flowers') {
-        expectedZ += 0.3 * s;
+        // Flat, not scaled. `main` changed this to `0.3 * s` alongside a Vegetation.tsx that scaled
+        // the offset; that component side was not carried in the merge (it predates the shared
+        // terrain prop and TERRAIN_HEIGHT_SCALE), so the expectation follows the component that
+        // actually ships. What it catches is the empty-placements fallback, where s is 0 and the
+        // two forms differ by the whole offset.
+        expectedZ += 0.3;
       }
 
       // Height (y) must match the terrain height plus offset

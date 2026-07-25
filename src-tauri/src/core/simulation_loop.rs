@@ -5,27 +5,76 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use burn::backend::Autodiff;
-use burn::tensor::backend::Backend;
-use burn::tensor::{Tensor, Data, Shape};
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
 use burn::module::AutodiffModule;
+use burn::optim::{AdamConfig, GradientsParams, Optimizer};
+use burn::tensor::backend::Backend;
+use burn::tensor::{Data, Shape, Tensor};
 
-use tauri::Emitter;
-use crate::evolution::lineage::LineageTracker;
-use crate::core::resources::EvolutionQueue;
-use crate::core::ecs::*;
-use crate::core::agent_systems::*;
-use crate::core::networking_systems::*;
-use crate::core::simulation_state::*;
 use crate::ai::cpg::update_cpg_system;
-use crate::ai::model::{BrainModel, BrainInferenceBuffer, hrrl_learning_system, ActorCriticModel};
 use crate::ai::hrrl::{Transition, TransitionSender};
-use crate::evolution::genotype::{decode_genotype, MorphologyGenotype, MorphologyNode, MorphologyEdge};
-use crate::physics::{resolve_joints_system, integrate_physics_system, JointConstraint, rebuild_spatial_grid_system};
+use crate::ai::model::{hrrl_learning_system, ActorCriticModel, BrainInferenceBuffer, BrainModel};
+use crate::core::agent_systems::*;
+use crate::core::ecs::*;
+#[allow(unused_imports)]
+use crate::core::networking_systems::*;
+use crate::core::resources::EvolutionQueue;
+use crate::core::simulation_state::*;
+use crate::evolution::genotype::{
+    decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
+};
+use crate::evolution::lineage::LineageTracker;
+use crate::physics::{
+    integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
+};
+use tauri::Emitter;
 
 pub enum ModelUpdate {
     NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
+    #[cfg(feature = "ml-wgpu")]
     Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
+}
+
+/// The four handles a learner thread needs: the running flag, the transition receiver, the model
+/// sender and the old-model receiver.
+type LearnArgs = (
+    Arc<AtomicBool>,
+    crossbeam_channel::Receiver<Transition>,
+    crossbeam_channel::Sender<ModelUpdate>,
+    crossbeam_channel::Receiver<ModelUpdate>,
+);
+
+/// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
+/// `ml-wgpu` feature is off entirely.
+fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+    let (running, trans_rx, model_tx, old_model_rx) = args;
+    thread::spawn(move || {
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        run_training_loop::<burn_ndarray::NdArray<f32>>(
+            running,
+            trans_rx,
+            model_tx,
+            old_model_rx,
+            device,
+            ModelUpdate::NdArray,
+        );
+    })
+}
+
+/// GPU learner. Only exists with the `ml-wgpu` feature; the whole wgpu/naga/ash stack goes with it.
+#[cfg(feature = "ml-wgpu")]
+fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+    let (running, trans_rx, model_tx, old_model_rx) = args;
+    thread::spawn(move || {
+        let device = burn_wgpu::WgpuDevice::default();
+        run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
+            running,
+            trans_rx,
+            model_tx,
+            old_model_rx,
+            device,
+            ModelUpdate::Wgpu,
+        );
+    })
 }
 
 pub struct SimulationEngine {
@@ -39,13 +88,27 @@ pub struct SimulationEngine {
     pub lineage_tracker: Arc<crate::evolution::lineage::FallbackLineageTracker>,
     pub chronicle_history: Arc<RwLock<Vec<ChronicleEvent>>>,
     pub sharding_config: Arc<RwLock<crate::core::ecs::ShardingConfig>>,
+    /// Where simulation detail is centred, written by `set_lod_focus` and read once per tick by
+    /// [`crate::core::simulation_lod::sync_lod_focus_system`]. Starts disabled, which tiers every
+    /// agent `Hot` — an engine nobody has pointed a camera at behaves exactly as it did before.
+    pub lod_focus: crate::core::simulation_lod::SharedLodFocus,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
 
-    pub save_request_tx: crossbeam_channel::Sender<std::sync::mpsc::Sender<SavedSimulationState>>,
-    pub save_request_rx: crossbeam_channel::Receiver<std::sync::mpsc::Sender<SavedSimulationState>>,
+    /// A save request, carrying the channel the sim thread answers on.
+    ///
+    /// The answer is a `Result` because a save can be legitimately **refused**: see
+    /// [`crate::core::aggregate_population::DormantCohorts::snapshot_refusal`]. A refusal has to
+    /// reach the caller as an error — the alternative is writing a file that is silently missing a
+    /// population, which is the failure this type exists to make impossible to ignore.
+    pub save_request_tx:
+        crossbeam_channel::Sender<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
+    pub save_request_rx:
+        crossbeam_channel::Receiver<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
+    pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
+    pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
 }
 
 impl Default for SimulationEngine {
@@ -56,12 +119,16 @@ impl Default for SimulationEngine {
 
 impl SimulationEngine {
     pub fn new() -> Self {
-        let uri = std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
+        let uri =
+            std::env::var("NEO4J_URI").unwrap_or_else(|_| "bolt://localhost:7687".to_string());
         let user = std::env::var("NEO4J_USER").unwrap_or_else(|_| "neo4j".to_string());
         let pass = std::env::var("NEO4J_PASSWORD").unwrap_or_else(|_| "password".to_string());
-        let lineage_tracker = Arc::new(crate::evolution::lineage::FallbackLineageTracker::new(&uri, &user, &pass));
+        let lineage_tracker = Arc::new(crate::evolution::lineage::FallbackLineageTracker::new(
+            &uri, &user, &pass,
+        ));
         let sharding_config = Arc::new(RwLock::new(crate::core::ecs::ShardingConfig::default()));
-        let (manual_migration_trigger, manual_migration_receiver) = crossbeam_channel::unbounded::<u16>();
+        let (manual_migration_trigger, manual_migration_receiver) =
+            crossbeam_channel::unbounded::<u16>();
         let (save_request_tx, save_request_rx) = crossbeam_channel::unbounded();
         let pending_load_state = Arc::new(Mutex::new(None));
 
@@ -85,12 +152,19 @@ impl SimulationEngine {
             lineage_tracker,
             chronicle_history: Arc::new(RwLock::new(Vec::new())),
             sharding_config,
+            lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
             manual_migration_trigger,
             manual_migration_receiver,
             save_request_tx,
             save_request_rx,
             pending_load_state,
-            environmental_state: Arc::new(RwLock::new(crate::core::ecs::EnvironmentalState::default())),
+            environmental_state: Arc::new(RwLock::new(
+                crate::core::ecs::EnvironmentalState::default(),
+            )),
+            terrain_map: Arc::new(RwLock::new(None)),
+            ecosystem_state: Arc::new(RwLock::new(
+                crate::commands::environment::EcosystemState::default(),
+            )),
         }
     }
 
@@ -118,6 +192,7 @@ impl SimulationEngine {
         let active_raycasts_clone = Arc::clone(&self.active_raycasts);
         let combat_events_clone = Arc::clone(&self.combat_events);
         let environmental_state_clone = Arc::clone(&self.environmental_state);
+        let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
 
         let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
         let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
@@ -127,7 +202,12 @@ impl SimulationEngine {
             .map(|val| val != "false" && val != "0")
             .unwrap_or(true);
 
+        #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
         let mut has_wgpu = false;
+        // The GPU backend is behind the `ml-wgpu` feature (G2). Without it there is no device to
+        // probe for, so the learner always takes the ndarray path — which is the same path a
+        // machine with no usable GPU already took.
+        #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let probe = std::panic::catch_unwind(|| {
                 let _ = burn_wgpu::WgpuDevice::default();
@@ -136,44 +216,41 @@ impl SimulationEngine {
                 has_wgpu = true;
             }
         }
+        #[cfg(not(feature = "ml-wgpu"))]
+        let _ = use_gpu;
 
+        // Both learners take the same four handles. Extracted so the feature split does not have to
+        // duplicate the ndarray body into a second cfg branch.
+        let learn_args = (
+            Arc::clone(&self.running),
+            trans_rx.clone(),
+            model_tx.clone(),
+            old_model_rx.clone(),
+        );
+
+        #[cfg(feature = "ml-wgpu")]
         let learn_handle = if has_wgpu {
-            let running_learn = Arc::clone(&self.running);
-            let trans_rx_clone = trans_rx.clone();
-            let model_tx_clone = model_tx.clone();
-            let old_model_rx_clone = old_model_rx.clone();
-            thread::spawn(move || {
-                let device = burn_wgpu::WgpuDevice::default();
-                run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
-                    running_learn,
-                    trans_rx_clone,
-                    model_tx_clone,
-                    old_model_rx_clone,
-                    device,
-                    |m| ModelUpdate::Wgpu(m),
-                );
-            })
+            spawn_wgpu_learner(learn_args)
         } else {
-            let running_learn = Arc::clone(&self.running);
-            let trans_rx_clone = trans_rx.clone();
-            let model_tx_clone = model_tx.clone();
-            let old_model_rx_clone = old_model_rx.clone();
-            thread::spawn(move || {
-                let device = burn_ndarray::NdArrayDevice::Cpu;
-                run_training_loop::<burn_ndarray::NdArray<f32>>(
-                    running_learn,
-                    trans_rx_clone,
-                    model_tx_clone,
-                    old_model_rx_clone,
-                    device,
-                    |m| ModelUpdate::NdArray(m),
-                );
-            })
+            spawn_ndarray_learner(learn_args)
+        };
+        #[cfg(not(feature = "ml-wgpu"))]
+        let learn_handle = {
+            let _ = has_wgpu;
+            spawn_ndarray_learner(learn_args)
         };
 
         let (stats_tx, stats_rx) = crossbeam_channel::bounded::<Vec<AgentEpochStats>>(128);
-        let (spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>(128);
-        let (env_tx, env_rx) = crossbeam_channel::bounded::<crate::evolution::meta_ai::EnvironmentalEvent>(32);
+        let (spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(
+            Entity,
+            MorphologyGenotype,
+            glam::Vec3,
+            String,
+            u32,
+            Vec<String>,
+        )>(128);
+        let (env_tx, env_rx) =
+            crossbeam_channel::bounded::<crate::evolution::meta_ai::EnvironmentalEvent>(32);
 
         let running_clone_evo = Arc::clone(&self.running);
         let evolution_running_clone = Arc::clone(&evolution_running);
@@ -188,16 +265,43 @@ impl SimulationEngine {
                 let settings = evolution_settings_clone.lock().unwrap();
                 settings.grid_resolution
             };
-            let mut archive = crate::evolution::map_elites::MapElitesArchive::new(1.0 / (initial_resolution as f32));
+            let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
+                1.0 / (initial_resolution as f32),
+            );
             let mut node_id_counter = 3u32;
-            let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> = match std::env::var("GEMINI_SESSION_TOKEN") {
-                Ok(token) if !token.trim().is_empty() => {
-                    Box::new(crate::evolution::meta_ai::GeminiWebSessionClient::new(&token))
-                }
-                _ => {
-                    Box::new(crate::evolution::meta_ai::GeminiMetaAiClient::new(Duration::from_secs(5)))
-                }
-            };
+            // Selection, recombination and mutation all draw from this one stream, so the same run
+            // seed reproduces the same offspring — see `resources::sim_stream`.
+            //
+            // This thread is spawned *before* the ECS world exists, so it cannot read `SimRng` off
+            // the world; it resolves the same seed from the same source the world will use. That the
+            // two agree is pinned by `sim_determinism_tests::evolution_thread_and_world_agree_on_seed`.
+            let mut evo_rng = crate::core::resources::derived_rng(
+                crate::core::resources::resolve_run_seed(
+                    crate::core::world_artifact::world_seed_from_disk(),
+                ),
+                crate::core::resources::sim_stream::EVOLUTION,
+            );
+            // G1.3. This thread mints lineage and chronicle ids and stamps chronicle entries, all of
+            // which end up in saved state — so in a deterministic run they must come from the run,
+            // not from OS entropy and the wall clock. It resolves the mode and the run id from the
+            // same sources the world will use, for the same reason `evo_rng` above does: the thread
+            // is spawned before the ECS world exists.
+            let evo_deterministic = crate::core::determinism::DeterministicMode::from_env();
+            let evo_run_id = crate::core::resources::resolve_run_seed(
+                crate::core::world_artifact::world_seed_from_disk(),
+            );
+            // Separate namespaces so two id sources on one thread cannot collide.
+            let chronicle_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "chronicle");
+            let offspring_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "lineage");
+            let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
+                match std::env::var("GEMINI_SESSION_TOKEN") {
+                    Ok(token) if !token.trim().is_empty() => Box::new(
+                        crate::evolution::meta_ai::GeminiWebSessionClient::new(&token),
+                    ),
+                    _ => Box::new(crate::evolution::meta_ai::GeminiMetaAiClient::new(
+                        Duration::from_secs(5),
+                    )),
+                };
             let mut meta_ai_history = Vec::new();
             let mut meta_ai_epoch = 0u32;
 
@@ -212,7 +316,8 @@ impl SimulationEngine {
                     meta_ai_history.push(new_event);
                     let _ = env_tx.send(new_event);
 
-                    let id = uuid::Uuid::new_v4().to_string();
+                    let id =
+                        crate::core::determinism::next_entity_id(evo_deterministic, &chronicle_ids);
                     let (event_type, title, description) = match new_event {
                         crate::evolution::meta_ai::EnvironmentalEvent::ResourceDrought => (
                             "Drought".to_string(),
@@ -241,10 +346,13 @@ impl SimulationEngine {
                         ),
                     };
 
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
+                    // Derived from the epoch counter in a deterministic run, so replaying a manifest
+                    // reproduces the same chronicle rather than one stamped with when it happened
+                    // to be replayed.
+                    let timestamp = crate::core::determinism::timestamp_ms(
+                        evo_deterministic,
+                        meta_ai_epoch as u64 * crate::core::sim_rules::TICKS_PER_EPOCH,
+                    );
 
                     let mut parameter_delta = std::collections::HashMap::new();
                     match new_event {
@@ -283,7 +391,11 @@ impl SimulationEngine {
                     let mut grid_updated = false;
                     let (selection_bias, mutation_rate, grid_res) = {
                         let settings = evolution_settings_clone.lock().unwrap();
-                        (settings.selection_bias, settings.mutation_rate, settings.grid_resolution)
+                        (
+                            settings.selection_bias,
+                            settings.mutation_rate,
+                            settings.grid_resolution,
+                        )
                     };
 
                     let target_res = 1.0 / (grid_res as f32);
@@ -293,7 +405,13 @@ impl SimulationEngine {
                     }
 
                     for stats in &stats_batch {
-                        let features = vec![stats.speed, stats.efficiency];
+                        // MAP-Elites niche axes = ecological descriptors (body mass × foraging
+                        // range), normalized so the QD archive illuminates ecological diversity.
+                        let features = crate::core::ecology::ecological_descriptors(
+                            stats.body_mass,
+                            stats.foraging_range,
+                        )
+                        .to_vec();
                         let elite = crate::evolution::map_elites::EliteIndividual {
                             genotype: stats.genotype.clone(),
                             fitness: stats.fitness,
@@ -311,10 +429,17 @@ impl SimulationEngine {
                             grid_state.grid.clear();
                             for (coords, elite) in archive.grid.iter() {
                                 let key = format!("{},{}", coords.0, coords.1);
-                                grid_state.grid.insert(key, crate::commands::EliteIndividualState {
-                                    fitness: elite.fitness as f64,
-                                    features: elite.features.iter().map(|&f| f as f64).collect(),
-                                });
+                                grid_state.grid.insert(
+                                    key,
+                                    crate::commands::EliteIndividualState {
+                                        fitness: elite.fitness as f64,
+                                        features: elite
+                                            .features
+                                            .iter()
+                                            .map(|&f| f as f64)
+                                            .collect(),
+                                    },
+                                );
                             }
                         }
 
@@ -328,38 +453,43 @@ impl SimulationEngine {
                     }
 
                     for stats in stats_batch {
-                        let parent_a = archive.select_parent(selection_bias);
-                        let parent_b = archive.select_parent(selection_bias);
+                        let parent_a = archive.select_parent(selection_bias, &mut evo_rng);
+                        let parent_b = archive.select_parent(selection_bias, &mut evo_rng);
 
-                        let (mut offspring, parent_ids, max_parent_gen, relation_type) = if let Some(elite_a) = parent_a {
-                            if let Some(elite_b) = parent_b {
-                                let child = crate::evolution::crossover::crossover_genotypes(
-                                    &elite_a.genotype,
-                                    &elite_b.genotype,
-                                    &mut node_id_counter,
-                                );
-                                (
-                                    child,
-                                    vec![elite_a.lineage_id.clone(), elite_b.lineage_id.clone()],
-                                    elite_a.generation.max(elite_b.generation),
-                                    crate::evolution::lineage::RelationType::Crossover,
-                                )
+                        let (mut offspring, parent_ids, max_parent_gen, relation_type) =
+                            if let Some(elite_a) = parent_a {
+                                if let Some(elite_b) = parent_b {
+                                    let child = crate::evolution::crossover::crossover_genotypes(
+                                        &elite_a.genotype,
+                                        &elite_b.genotype,
+                                        &mut node_id_counter,
+                                        &mut evo_rng,
+                                    );
+                                    (
+                                        child,
+                                        vec![
+                                            elite_a.lineage_id.clone(),
+                                            elite_b.lineage_id.clone(),
+                                        ],
+                                        elite_a.generation.max(elite_b.generation),
+                                        crate::evolution::lineage::RelationType::Crossover,
+                                    )
+                                } else {
+                                    (
+                                        elite_a.genotype.clone(),
+                                        vec![elite_a.lineage_id.clone()],
+                                        elite_a.generation,
+                                        crate::evolution::lineage::RelationType::Clone,
+                                    )
+                                }
                             } else {
                                 (
-                                    elite_a.genotype.clone(),
-                                    vec![elite_a.lineage_id.clone()],
-                                    elite_a.generation,
+                                    stats.genotype.clone(),
+                                    vec![stats.lineage_id.clone()],
+                                    stats.generation,
                                     crate::evolution::lineage::RelationType::Clone,
                                 )
-                            }
-                        } else {
-                            (
-                                stats.genotype.clone(),
-                                vec![stats.lineage_id.clone()],
-                                stats.generation,
-                                crate::evolution::lineage::RelationType::Clone,
-                            )
-                        };
+                            };
 
                         let mut final_rel_type = relation_type;
                         if mutation_rate > 0.0 {
@@ -370,11 +500,15 @@ impl SimulationEngine {
                                 &mut offspring,
                                 &mut node_id_counter,
                                 mutation_rate,
+                                &mut evo_rng,
                             );
                         }
 
                         let offspring_generation = max_parent_gen + 1;
-                        let offspring_id = uuid::Uuid::new_v4().to_string();
+                        let offspring_id = crate::core::determinism::next_entity_id(
+                            evo_deterministic,
+                            &offspring_ids,
+                        );
 
                         let _ = lineage_tracker_evo.add_reproduction(
                             offspring_id.clone(),
@@ -384,7 +518,14 @@ impl SimulationEngine {
                             final_rel_type,
                         );
 
-                        let _ = spawn_tx.send((stats.entity, offspring, stats.position, offspring_id, offspring_generation, parent_ids));
+                        let _ = spawn_tx.send((
+                            stats.entity,
+                            offspring,
+                            stats.position,
+                            offspring_id,
+                            offspring_generation,
+                            parent_ids,
+                        ));
                     }
                 }
             }
@@ -395,6 +536,7 @@ impl SimulationEngine {
         let app_handle_net = app_handle.clone();
         let lineage_tracker_sim = Arc::clone(&self.lineage_tracker);
         let sharding_config_sim = Arc::clone(&self.sharding_config);
+        let lod_focus_sim = self.lod_focus.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
         let pending_load_state_clone = Arc::clone(&self.pending_load_state);
@@ -403,36 +545,105 @@ impl SimulationEngine {
         let lineage_tracker_sim_save = Arc::clone(&self.lineage_tracker);
         let evolution_settings_clone_save = Arc::clone(&evolution_settings);
         let map_elites_grid_clone_save = Arc::clone(&map_elites_grid);
+        let terrain_map_clone = Arc::clone(&self.terrain_map);
 
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
-        let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
+        let (inbound_tx, inbound_rx) =
+            crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
+        let (outbound_tx, outbound_rx) =
+            crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
 
         let sim_handle = thread::spawn(move || {
             let state_to_load = pending_load_state_clone.lock().unwrap().take();
-            
+
             let mut world = init_world();
-            
-            let loaded_bounds = state_to_load.as_ref().map(|s| s.map_bounds).unwrap_or_else(MapBounds::default);
+
+            // S08: warn loudly if the save belongs to a DIFFERENT world than the one just built, so
+            // saved agents/positions aren't silently dropped into a mismatched world. Compared
+            // against the WorldIdentity resource init_world inserts (the terrain-domain fingerprint),
+            // never the artifact header checksum. A default (all-zero) saved identity is a legacy
+            // save and is skipped.
+            if let Some(state) = state_to_load.as_ref() {
+                let current = world
+                    .get_resource::<crate::core::world_artifact::WorldIdentity>()
+                    .copied()
+                    .unwrap_or_default();
+                if let Some(reason) = state.world_identity.mismatch_against(&current) {
+                    eprintln!(
+                        "WARNING: loading a save from a different world — {reason}; saved agents may be placed in a mismatched world"
+                    );
+                }
+            }
+
+            let loaded_bounds = state_to_load
+                .as_ref()
+                .map(|s| s.map_bounds)
+                .unwrap_or_default();
             world.insert_resource(loaded_bounds);
-            world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(10.0, &loaded_bounds));
-            
-            let loaded_pheromone = state_to_load.as_ref().map(|s| {
-                crate::ai::pheromone::PheromoneGrid {
+
+            if let Some(terrain_map) = world.get_resource::<crate::core::terrain::TerrainMap>() {
+                let state = crate::commands::environment::TerrainMapState::from_resource(
+                    terrain_map,
+                    &loaded_bounds,
+                );
+                if let Ok(mut lock) = terrain_map_clone.write() {
+                    *lock = Some(state);
+                }
+            }
+
+            world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
+                10.0,
+                &loaded_bounds,
+            ));
+
+            let loaded_pheromone = state_to_load
+                .as_ref()
+                .map(|s| crate::ai::pheromone::PheromoneGrid {
                     values: s.pheromone_grid.values.clone(),
                     scratch: vec![0.0; crate::ai::pheromone::CELL_COUNT],
                     diffusion_rate: s.pheromone_grid.diffusion_rate,
                     decay_rate: s.pheromone_grid.decay_rate,
-                }
-            }).unwrap_or_default();
+                })
+                .unwrap_or_default();
             world.insert_resource(loaded_pheromone);
 
-            world.insert_resource(BrainModel::new(15, 64, 4));
+            // Seeded from the run, so the shared brain a legacy agent uses is the same network every
+            // time the same world is launched. `SimRng` is already in the world by now (`init_world`).
+            let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
+            world.insert_resource(BrainModel::new_seeded(15, 64, 4, run_seed));
             world.insert_resource(BrainInferenceBuffer::default());
 
+            // Simulation LOD. Until now this whole subsystem was unreachable from the running app:
+            // every system took `Option<Res<..>>` and nothing ever inserted the resources, so ~1900
+            // lines of tested code bought the shipped engine exactly nothing. These three lines are
+            // what connect it.
+            //
+            // Tier one is safe to have present unconditionally because its default is off *in the
+            // data*, not in the wiring: `LodFocus::default()` is disabled, a disabled focus tiers
+            // every agent `Hot`, and `Hot` is the pre-LOD behaviour. So an app that never calls
+            // `set_lod_focus` is bit-identical to one built before this existed.
+            world.insert_resource(crate::core::simulation_lod::LodFocus::default());
+            world.insert_resource(crate::core::simulation_lod::LodBands::default());
+            world.insert_resource(lod_focus_sim);
+
+            // Tier two is not, so it stays behind an explicit switch. It destroys bodies, runs a
+            // second ecology, and refuses to save while anything is asleep — see
+            // `aggregate_lod_enabled_from_env`. Absent the resource, all three of its systems
+            // return on their first line.
+            if crate::core::aggregate_population::aggregate_lod_enabled_from_env() {
+                world.insert_resource(
+                    crate::core::aggregate_population::DormantCohorts::from_bounds(
+                        run_seed,
+                        &loaded_bounds,
+                    ),
+                );
+            }
+
             let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
-            let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
+            let (recycle_req_tx, recycle_req_rx) =
+                crossbeam_channel::unbounded::<InferenceRequestBatch>();
             let (res_tx, res_rx) = crossbeam_channel::unbounded::<InferenceResponseBatch>();
-            let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded::<InferenceResponseBatch>();
+            let (recycle_res_tx, recycle_res_rx) =
+                crossbeam_channel::unbounded::<InferenceResponseBatch>();
 
             // Pre-populate recycle pools to ensure zero heap allocations in the hot path
             for _ in 0..16 {
@@ -458,22 +669,40 @@ impl SimulationEngine {
             let model_rx_inference = model_rx;
             let old_model_tx_inference = old_model_tx;
 
-            thread::spawn(move || {
-                let mut brain_model = BrainModel::new(15, 64, 4);
-                let mut inputs = Vec::with_capacity(2048);
+            let inference_seed = run_seed;
+            // Retained, not dropped. This worker was spawned and its JoinHandle thrown away, so a
+            // stopped simulation left an inference thread running until the process happened to
+            // exit — and a restart spawned a second one alongside it. It is joined at the end of
+            // this thread, below, once `running` is false and the batch channel has closed.
+            let inference_handle = thread::spawn(move || {
+                // The same seed the world's copy used. These are two separately-constructed models
+                // that are meant to be the same network until the training thread starts sending
+                // updates; with unseeded initialisation they never were.
+                let mut brain_model = BrainModel::new_seeded(15, 64, 4, inference_seed);
+                // Allocated once and reused every batch: the worker runs on the tick path's critical
+                // chain, so per-batch allocation here would show up as frame jitter.
+                let mut inference_scratch = crate::ai::model::InferenceScratch::with_capacity(256);
 
                 while running_inference.load(Ordering::SeqCst) {
                     // Check for model update
                     if let Ok(new_model) = model_rx_inference.try_recv() {
                         match (new_model, &mut brain_model.backend) {
-                            (ModelUpdate::NdArray(new_m), crate::ai::model::BrainModelBackend::NdArray(ref mut old_m, _)) => {
+                            (
+                                ModelUpdate::NdArray(new_m),
+                                crate::ai::model::BrainModelBackend::NdArray(ref mut old_m, _),
+                            ) => {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
                             }
-                            (ModelUpdate::Wgpu(new_m), crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _)) => {
+                            #[cfg(feature = "ml-wgpu")]
+                            (
+                                ModelUpdate::Wgpu(new_m),
+                                crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _),
+                            ) => {
                                 let old = std::mem::replace(old_m, new_m);
                                 let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
                             }
+                            #[cfg_attr(not(feature = "ml-wgpu"), allow(unreachable_patterns))]
                             _ => {}
                         }
                     }
@@ -488,41 +717,16 @@ impl SimulationEngine {
                             });
                             res_batch.responses.clear();
 
-                            let batch_size = req_batch.requests.len();
-                            inputs.clear();
-                            for req in &req_batch.requests {
-                                inputs.extend_from_slice(&req.sensory_input);
-                            }
-
-                            // Run forward pass
-                            let outputs_vec = match &brain_model.backend {
-                                crate::ai::model::BrainModelBackend::NdArray(model, device) => {
-                                    let data = burn::tensor::Data::new(inputs.clone(), burn::tensor::Shape::new([batch_size, 15]));
-                                    let input_tensor = burn::tensor::Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
-                                    let (actor_out, _) = model.forward(input_tensor);
-                                    actor_out.into_data().value
-                                }
-                                crate::ai::model::BrainModelBackend::Wgpu(model, device) => {
-                                    let data = burn::tensor::Data::new(inputs.clone(), burn::tensor::Shape::new([batch_size, 15]));
-                                    let input_tensor = burn::tensor::Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(data, device);
-                                    let (actor_out, _) = model.forward(input_tensor);
-                                    actor_out.into_data().value
-                                }
-                            };
-
-                            for (agent_idx, req) in req_batch.requests.iter().enumerate() {
-                                let mut actions = [0.0f32; 4];
-                                for k in 0..4 {
-                                    if let Some(&val) = outputs_vec.get(agent_idx * 4 + k) {
-                                        actions[k] = val;
-                                    }
-                                }
-                                res_batch.responses.push(AgentInferenceResponse {
-                                    entity: req.entity,
-                                    actions,
-                                    request_id: req.request_id,
-                                });
-                            }
+                            // Same function the tests drive synchronously — see
+                            // `ai::model::run_inference_batch`. Keeping the worker a thin shell
+                            // around it means the logic that decides every agent's action each tick
+                            // is reachable by a test instead of sealed inside a spawned closure.
+                            crate::ai::model::run_inference_batch(
+                                &brain_model,
+                                &req_batch.requests,
+                                &mut res_batch.responses,
+                                &mut inference_scratch,
+                            );
 
                             let _ = res_tx.send(res_batch);
                         }
@@ -531,18 +735,21 @@ impl SimulationEngine {
                     }
                 }
             });
-            
-            let loaded_food_settings = state_to_load.as_ref().map(|s| s.food_spawn_settings).unwrap_or_else(FoodSpawnSettings::default);
+
+            let loaded_food_settings = state_to_load
+                .as_ref()
+                .map(|s| s.food_spawn_settings)
+                .unwrap_or_default();
             world.insert_resource(loaded_food_settings);
             world.insert_resource(EnvironmentalSpawnSettings::default());
-            
+
             world.insert_resource(TransitionSender(trans_tx));
 
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
             world.insert_resource(BevyEvolutionRunning(evolution_running));
             world.insert_resource(BevyMapElitesGrid(map_elites_grid));
             world.insert_resource(BevyAppHandle(app_handle_clone));
-            
+
             let initial_resolution = {
                 let settings_lock = evolution_settings_clone_save.lock().unwrap();
                 settings_lock.grid_resolution
@@ -553,9 +760,11 @@ impl SimulationEngine {
                 grid_resolution: initial_resolution,
             });
             world.insert_resource(BevyMapElitesArchive {
-                archive: crate::evolution::map_elites::MapElitesArchive::new(1.0 / (initial_resolution as f32)),
+                archive: crate::evolution::map_elites::MapElitesArchive::new(
+                    1.0 / (initial_resolution as f32),
+                ),
             });
-            
+
             let mut next_node_id = 3;
             if let Some(ref state) = state_to_load {
                 for agent in &state.agents {
@@ -571,32 +780,46 @@ impl SimulationEngine {
             world.insert_resource(EvolutionSender(stats_tx));
             world.insert_resource(EvolutionReceiver(spawn_rx));
             world.insert_resource(EnvironmentalEventReceiver(env_rx));
-            
-            let loaded_epoch = state_to_load.as_ref().map(|s| s.epoch_manager).unwrap_or(EpochManager {
-                ticks_per_epoch: 1000,
-                current_epoch_ticks: 0,
-                current_epoch: 0,
-            });
+
+            let loaded_epoch =
+                state_to_load
+                    .as_ref()
+                    .map(|s| s.epoch_manager)
+                    .unwrap_or(EpochManager {
+                        ticks_per_epoch: 1000,
+                        current_epoch_ticks: 0,
+                        current_epoch: 0,
+                    });
             world.insert_resource(loaded_epoch);
             world.insert_resource(EvolutionQueue::default());
 
             world.insert_resource(crate::core::ecs::InboundMigrationReceiver(inbound_rx));
             world.insert_resource(crate::core::ecs::OutboundMigrationSender(outbound_tx));
             world.insert_resource(crate::core::ecs::ShardingResource(sharding_config_sim));
-            world.insert_resource(crate::core::ecs::BevyMigrationTrigger(manual_migration_receiver_clone));
+            world.insert_resource(crate::core::ecs::BevyMigrationTrigger(
+                manual_migration_receiver_clone,
+            ));
 
-            let loaded_env = state_to_load.as_ref().map(|s| ActiveEnvironmentEvent(s.active_environment_event)).unwrap_or_default();
+            let loaded_env = state_to_load
+                .as_ref()
+                .map(|s| ActiveEnvironmentEvent(s.active_environment_event))
+                .unwrap_or_default();
             world.insert_resource(loaded_env);
 
             if let Some(ref state) = state_to_load {
-                lineage_tracker_sim.load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
+                lineage_tracker_sim
+                    .load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
                 if let Ok(mut history) = chronicle_history_clone_save.write() {
                     *history = state.chronicle_history.clone();
                 }
-                
+
                 for agent in &state.agents {
                     spawn_serialized_agent(&mut world, agent);
                 }
+                // G1.1: the closed-energy compartments and the standing crop come back with the
+                // agents. Without this a load rebuilt detritus at zero and plants at full capacity,
+                // so every save/load boundary moved EU and whole-run conservation was unprovable.
+                crate::core::simulation_state::restore_energy_state(&mut world, state);
                 for food in &state.foods {
                     use crate::core::ecs::Food;
                     world.spawn((
@@ -616,7 +839,9 @@ impl SimulationEngine {
                             replenishment_rate: lake.replenishment_rate,
                         },
                         Position(lake.position),
-                        crate::physics::SpatialCollider { radius: lake.radius },
+                        crate::physics::SpatialCollider {
+                            radius: lake.radius,
+                        },
                     ));
                 }
                 for tree in &state.trees {
@@ -630,15 +855,32 @@ impl SimulationEngine {
                             seed_spread_radius: tree.seed_spread_radius,
                         },
                         Position(tree.position),
-                        crate::physics::SpatialCollider { radius: tree.radius },
+                        crate::physics::SpatialCollider {
+                            radius: tree.radius,
+                        },
                     ));
                 }
             } else {
                 let mut genotype = MorphologyGenotype::new();
-                genotype.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
-                genotype.add_node(MorphologyNode { id: 1, length: 1.0, radius: 0.2, mass: 1.0 });
-                genotype.add_node(MorphologyNode { id: 2, length: 1.0, radius: 0.2, mass: 0.8 });
-                
+                genotype.add_node(MorphologyNode {
+                    id: 0,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 1.5,
+                });
+                genotype.add_node(MorphologyNode {
+                    id: 1,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 1.0,
+                });
+                genotype.add_node(MorphologyNode {
+                    id: 2,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 0.8,
+                });
+
                 genotype.add_edge(MorphologyEdge {
                     source_node: 0,
                     target_node: 1,
@@ -655,7 +897,8 @@ impl SimulationEngine {
                 for i in 0..10 {
                     let initial_pos = glam::Vec3::new(i as f32 * 5.0, 0.0, 0.0);
                     let initial_rot = glam::Quat::IDENTITY;
-                    let agent_entity = decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
+                    let agent_entity =
+                        decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
                     let lineage_id = uuid::Uuid::new_v4().to_string();
                     let _ = lineage_tracker_sim.add_root(lineage_id.clone(), genotype.clone());
 
@@ -678,33 +921,159 @@ impl SimulationEngine {
                     } else {
                         world.entity_mut(agent_entity).insert(Predator);
                     }
+
+                    // Genesis creates individuals, so it develops brains (invariant D01). Off
+                    // unless `ANIMA_EVOLVED_BRAINS` is set, in which case each founder draws its
+                    // own weights from the run's stream — same seed, same founding population.
+                    let policy = world
+                        .get_resource::<crate::core::resources::BrainPolicy>()
+                        .copied()
+                        .unwrap_or_default();
+                    if policy.evolved {
+                        let brain = world
+                            .get_resource_mut::<crate::core::resources::SimRng>()
+                            .and_then(|mut rng| policy.new_brain(rng.rng()));
+                        if let Some(brain) = brain {
+                            world.entity_mut(agent_entity).insert(brain);
+                        }
+                    }
                 }
 
-                world.spawn((
-                    Lake {
-                        current_water: 500.0,
-                        max_water: 500.0,
-                        replenishment_rate: 5.0,
-                    },
-                    Position(glam::Vec3::new(50.0, 0.0, 50.0)),
-                    crate::physics::SpatialCollider { radius: 30.0 },
-                ));
+                let env_settings = world
+                    .get_resource::<EnvironmentalSpawnSettings>()
+                    .cloned()
+                    .unwrap_or_default();
+                let terrain_map = world
+                    .get_resource::<crate::core::terrain::TerrainMap>()
+                    .cloned();
+                let bounds = world
+                    .get_resource::<MapBounds>()
+                    .cloned()
+                    .unwrap_or_default();
 
-                world.spawn((
-                    Tree {
-                        current_fruit: 100.0,
-                        max_fruit: 100.0,
-                        fruit_growth_rate: 2.0,
-                        time_since_last_drop: 0.0,
-                        seed_drop_cooldown: 15.0,
-                        seed_spread_radius: 20.0,
-                    },
-                    Position(glam::Vec3::new(-50.0, 0.0, -50.0)),
-                    crate::physics::SpatialCollider { radius: 10.0 },
-                ));
+                let mut lake_candidates = Vec::new();
+                let mut tree_candidates = Vec::new();
+
+                if let Some(ref tm) = terrain_map {
+                    for row in 0..tm.height {
+                        for col in 0..tm.width {
+                            let idx = row * tm.width + col;
+                            let biome = tm.biomes[idx];
+                            let elevation = tm.elevations[idx];
+
+                            let px = bounds.min.x
+                                + ((col as f32 + 0.5) / tm.width as f32)
+                                    * (bounds.max.x - bounds.min.x);
+                            let pz = bounds.min.z
+                                + ((row as f32 + 0.5) / tm.height as f32)
+                                    * (bounds.max.z - bounds.min.z);
+                            let pos = glam::Vec3::new(px, 0.0, pz);
+
+                            if (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4 {
+                                lake_candidates.push(pos);
+                            }
+                            if biome == 5 || biome == 6 || biome == 7 {
+                                tree_candidates.push(pos);
+                            }
+                        }
+                    }
+                }
+
+                use rand::seq::SliceRandom;
+                // Setup code, not a system, so it takes its own reproducible stream. The world
+                // exists by now, so the run seed is read straight off `SimRng` rather than resolved
+                // a second time.
+                let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
+                let mut rng = crate::core::resources::derived_rng(
+                    run_seed,
+                    crate::core::resources::sim_stream::WORLD_INIT,
+                );
+
+                // Spawn Lakes
+                if !lake_candidates.is_empty() {
+                    lake_candidates.shuffle(&mut rng);
+                    let num_lakes_to_spawn = 5.min(lake_candidates.len());
+                    for &pos in lake_candidates.iter().take(num_lakes_to_spawn) {
+                        world.spawn((
+                            Lake {
+                                current_water: env_settings.default_lake_water,
+                                max_water: env_settings.default_lake_water,
+                                replenishment_rate: env_settings.default_lake_replenish,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 10.0 },
+                        ));
+                    }
+                } else {
+                    world.spawn((
+                        Lake {
+                            current_water: env_settings.default_lake_water,
+                            max_water: env_settings.default_lake_water,
+                            replenishment_rate: env_settings.default_lake_replenish,
+                        },
+                        Position(glam::Vec3::new(50.0, 0.0, 50.0)),
+                        crate::physics::SpatialCollider { radius: 30.0 },
+                    ));
+                }
+
+                // Spawn Trees
+                if !tree_candidates.is_empty() {
+                    tree_candidates.shuffle(&mut rng);
+                    let num_trees_to_spawn = env_settings.max_tree_count.min(tree_candidates.len());
+                    for &pos in tree_candidates.iter().take(num_trees_to_spawn) {
+                        world.spawn((
+                            Tree {
+                                current_fruit: env_settings.default_tree_fruit,
+                                max_fruit: env_settings.default_tree_fruit,
+                                fruit_growth_rate: env_settings.default_tree_growth,
+                                time_since_last_drop: 0.0,
+                                seed_drop_cooldown: env_settings.default_seed_cooldown,
+                                seed_spread_radius: env_settings.default_seed_spread,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 2.0 },
+                        ));
+                    }
+                } else {
+                    world.spawn((
+                        Tree {
+                            current_fruit: env_settings.default_tree_fruit,
+                            max_fruit: env_settings.default_tree_fruit,
+                            fruit_growth_rate: env_settings.default_tree_growth,
+                            time_since_last_drop: 0.0,
+                            seed_drop_cooldown: env_settings.default_seed_cooldown,
+                            seed_spread_radius: env_settings.default_seed_spread,
+                        },
+                        Position(glam::Vec3::new(-50.0, 0.0, -50.0)),
+                        crate::physics::SpatialCollider { radius: 10.0 },
+                    ));
+                }
             }
 
+            let deterministic = world
+                .get_resource::<crate::core::determinism::DeterministicMode>()
+                .copied()
+                .unwrap_or_default();
+
             let mut schedule = Schedule::default();
+            // G1.3: system execution order must be declared, not incidental.
+            //
+            // Bevy's multi-threaded executor guarantees that two systems with conflicting access
+            // never run at the same time, but NOT which of them goes first. The `.after(...)`
+            // constraints below pin the order that matters causally; everything else was left to
+            // whatever the executor happened to pick, which is not a property of the manifest. That
+            // is not a theoretical concern: G1.1 found an energy residual whose *sign* changed
+            // between runs because of it, and G1.2's checkpoint gate had to declare its own order
+            // to get a stable checksum at all.
+            //
+            // The single-threaded executor walks the schedule's topological order, which is a
+            // function of the declared constraints and insertion order alone — the same binary and
+            // manifest therefore produce the same order every time. It costs parallelism, which is
+            // the correct trade for a run whose purpose is to be reproducible; an interactive
+            // session leaves determinism off and keeps the multi-threaded executor.
+            if deterministic.is_enabled() {
+                schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+            }
             schedule.add_systems((
                 sync_evolution_settings_system,
                 receive_environmental_events_system,
@@ -714,9 +1083,12 @@ impl SimulationEngine {
                 update_cpg_system.after(action_resolution_system),
                 resolve_joints_system.after(update_cpg_system),
                 integrate_physics_system.after(resolve_joints_system),
-                crate::ai::pheromone::agent_release_pheromone_system.after(integrate_physics_system),
-                crate::ai::pheromone::update_pheromone_grid_system.after(crate::ai::pheromone::agent_release_pheromone_system),
-                crate::ai::pheromone::agent_read_pheromone_system.after(crate::ai::pheromone::update_pheromone_grid_system),
+                crate::ai::pheromone::agent_release_pheromone_system
+                    .after(integrate_physics_system),
+                crate::ai::pheromone::update_pheromone_grid_system
+                    .after(crate::ai::pheromone::agent_release_pheromone_system),
+                crate::ai::pheromone::agent_read_pheromone_system
+                    .after(crate::ai::pheromone::update_pheromone_grid_system),
             ));
             schedule.add_systems((
                 update_agent_evaluation_system.after(integrate_physics_system),
@@ -730,6 +1102,10 @@ impl SimulationEngine {
                 detect_food_collisions_system.after(integrate_physics_system),
                 combat_system.after(integrate_physics_system),
                 hrrl_learning_system.after(metabolic_decay_system),
+                // Runs after `hrrl_learning_system`, which is where `LastTransitionState` and the
+                // homeostatic deviation this reads are refreshed. Returns immediately unless both
+                // evolved brains and lifetime learning are switched on.
+                crate::ai::model::lifetime_learning_system.after(hrrl_learning_system),
                 check_epoch_completion_system.after(metabolic_decay_system),
                 apply_staggered_evolution_system.after(check_epoch_completion_system),
                 crate::core::ecs::manual_migration_system.after(integrate_physics_system),
@@ -737,6 +1113,42 @@ impl SimulationEngine {
                 lake_replenishment_system.after(apply_environmental_effects_system),
                 seed_dropping_system.after(apply_environmental_effects_system),
                 detect_environmental_collisions_system.after(integrate_physics_system),
+            ));
+
+            // Ecosystem-dynamics systems (Phase 7) in their own tuple — Bevy caps a single
+            // add_systems tuple at 20, and `.after(...)` ordering resolves across calls.
+            schedule.add_systems((
+                herbivore_grazing_system.after(integrate_physics_system),
+                resource_field_regrowth_system.after(herbivore_grazing_system),
+                // The app's focus reaches the world here, ahead of both readers — `sensory_system`,
+                // which tiers inference, and the dormancy systems below. Ordered explicitly rather
+                // than left to Bevy: an unconstrained sync would let a tick tier agents against
+                // last tick's camera, which is harmless for a moving observer and confusing to
+                // debug.
+                crate::core::simulation_lod::sync_lod_focus_system
+                    .before(sensory_system)
+                    .before(crate::core::aggregate_population::dehydrate_cold_agents_system),
+                // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
+                // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
+                // unaffected.
+                //
+                // After physics, so an agent is tiered on the position it actually reached this
+                // tick; before the census, because the census is the only place a dormant cohort's
+                // energy is counted and it has to see the result of both. Bevy inserts the sync
+                // point that applies their commands from these ordering constraints.
+                crate::core::aggregate_population::dehydrate_cold_agents_system
+                    .after(integrate_physics_system),
+                crate::core::aggregate_population::rehydrate_wakeable_chunks_system
+                    .after(crate::core::aggregate_population::dehydrate_cold_agents_system),
+                // The dormant cohorts' own ecology, sitting where its live counterparts sit: after
+                // live grazing and before regrowth, so both consumers draw on the same standing
+                // field before it grows back.
+                crate::core::aggregate_population::dormant_cohort_ecology_system
+                    .after(herbivore_grazing_system)
+                    .before(resource_field_regrowth_system),
+                ecosystem_census_system
+                    .after(resource_field_regrowth_system)
+                    .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
             ));
 
             schedule.run(&mut world);
@@ -757,46 +1169,65 @@ impl SimulationEngine {
 
             let mut state_buffer = Vec::with_capacity(1000);
             let mut state_raycast_buffer = Vec::with_capacity(1000);
-            let mut local_env_state = crate::core::ecs::EnvironmentalState { elements: Vec::with_capacity(64) };
+            let mut local_env_state = crate::core::ecs::EnvironmentalState {
+                elements: Vec::with_capacity(64),
+            };
 
             while running_clone.load(Ordering::SeqCst) {
                 let start_time = Instant::now();
-
 
                 schedule.run(&mut world);
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
-                    let serialized = serialize_world_state(
-                        &mut world,
-                        tick_count,
-                        &chronicle_history_clone_save,
-                        &lineage_tracker_sim_save,
-                        &evolution_settings_clone_save,
-                        &map_elites_grid_clone_save,
-                    );
-                    let _ = tx.send(serialized);
+                    // Checked before serializing, not after: the snapshot cannot carry dormant
+                    // cohorts, so a world holding any is not one this format can describe.
+                    let refusal = world
+                        .get_resource::<crate::core::aggregate_population::DormantCohorts>()
+                        .and_then(|c| c.snapshot_refusal());
+                    let answer = match refusal {
+                        Some(why) => Err(why),
+                        None => Ok(serialize_world_state(
+                            &mut world,
+                            tick_count,
+                            &chronicle_history_clone_save,
+                            &lineage_tracker_sim_save,
+                            &evolution_settings_clone_save,
+                            &map_elites_grid_clone_save,
+                        )),
+                    };
+                    let _ = tx.send(answer);
                 }
 
                 state_buffer.clear();
 
-                for (entity, segment, pos, rot, parent_agent, joint_constraint, joint_axis) in query_state.iter(&world) {
+                for (entity, segment, pos, rot, parent_agent, joint_constraint, joint_axis) in
+                    query_state.iter(&world)
+                {
                     let (yaw, pitch, roll) = rot.0.to_euler(glam::EulerRot::YXZ);
-                    
-                    let parent_segment_id = world.get::<ParentLink>(entity)
+
+                    let parent_segment_id = world
+                        .get::<ParentLink>(entity)
                         .and_then(|parent_link| world.get::<Segment>(parent_link.0))
                         .map(|parent_segment| parent_segment.id);
 
-                    let (energy, hydration) = if let Some(homeo) = world.get::<crate::ai::hrrl::HomeostaticState>(parent_agent.0) {
+                    let (energy, hydration) = if let Some(homeo) =
+                        world.get::<crate::ai::hrrl::HomeostaticState>(parent_agent.0)
+                    {
                         (homeo.energy, homeo.hydration)
                     } else {
                         (0.0, 0.0)
                     };
 
-                    let head_rot = world.get::<Rotation>(parent_agent.0).map(|r| r.0).unwrap_or(glam::Quat::IDENTITY);
+                    let head_rot = world
+                        .get::<Rotation>(parent_agent.0)
+                        .map(|r| r.0)
+                        .unwrap_or(glam::Quat::IDENTITY);
                     let head_direction = (head_rot * glam::Vec3::Z).to_array();
 
-                    let joint_anchor = joint_constraint.map(|jc| jc.anchor_offset).unwrap_or(glam::Vec3::ZERO);
+                    let joint_anchor = joint_constraint
+                        .map(|jc| jc.anchor_offset)
+                        .unwrap_or(glam::Vec3::ZERO);
                     let j_axis = joint_axis.map(|ja| ja.0).unwrap_or(glam::Vec3::ZERO);
 
                     let agent_type = if world.get::<Predator>(parent_agent.0).is_some() {
@@ -838,52 +1269,139 @@ impl SimulationEngine {
                 }
 
                 if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
-                    let mut grid_state = pheromone_grid_state_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut grid_state = pheromone_grid_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     grid_state.grid.copy_from_slice(&grid.values);
                 }
 
                 state_raycast_buffer.clear();
-                if let Some(raycasts_res) = world.get_resource::<crate::core::ecs::ActiveRaycasts>() {
+                if let Some(raycasts_res) = world.get_resource::<crate::core::ecs::ActiveRaycasts>()
+                {
                     state_raycast_buffer.extend_from_slice(&raycasts_res.raycasts);
                 }
                 {
-                    let mut shared = active_raycasts_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut shared = active_raycasts_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut *shared, &mut state_raycast_buffer);
                 }
 
-                if let Some(mut combat_res) = world.get_resource_mut::<crate::core::ecs::CombatEvents>() {
+                if let Some(mut combat_res) =
+                    world.get_resource_mut::<crate::core::ecs::CombatEvents>()
+                {
                     if !combat_res.events.is_empty() {
-                        let mut shared = combat_events_clone.write().unwrap_or_else(|e| e.into_inner());
+                        let mut shared = combat_events_clone
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner());
                         shared.extend(combat_res.events.drain(..));
                     }
                 }
 
                 {
                     local_env_state.elements.clear();
-                    let mut lake_query = world.query::<(&Position, &crate::physics::SpatialCollider, &crate::core::ecs::Lake)>();
+                    let mut lake_query = world.query::<(
+                        &Position,
+                        &crate::physics::SpatialCollider,
+                        &crate::core::ecs::Lake,
+                    )>();
                     for (pos, collider, lake) in lake_query.iter(&world) {
-                        local_env_state.elements.push(crate::core::ecs::EnvironmentalElement {
-                            element_type: "lake".to_string(),
-                            x: pos.0.x,
-                            y: pos.0.z,
-                            radius: collider.radius,
-                            resources: lake.current_water,
-                        });
+                        local_env_state
+                            .elements
+                            .push(crate::core::ecs::EnvironmentalElement {
+                                element_type: "lake".to_string(),
+                                x: pos.0.x,
+                                y: pos.0.z,
+                                radius: collider.radius,
+                                resources: lake.current_water,
+                            });
                     }
 
-                    let mut tree_query = world.query::<(&Position, &crate::physics::SpatialCollider, &crate::core::ecs::Tree)>();
+                    let mut tree_query = world.query::<(
+                        &Position,
+                        &crate::physics::SpatialCollider,
+                        &crate::core::ecs::Tree,
+                    )>();
                     for (pos, collider, tree) in tree_query.iter(&world) {
-                        local_env_state.elements.push(crate::core::ecs::EnvironmentalElement {
-                            element_type: "tree".to_string(),
-                            x: pos.0.x,
-                            y: pos.0.z,
-                            radius: collider.radius,
-                            resources: tree.current_fruit,
-                        });
+                        local_env_state
+                            .elements
+                            .push(crate::core::ecs::EnvironmentalElement {
+                                element_type: "tree".to_string(),
+                                x: pos.0.x,
+                                y: pos.0.z,
+                                radius: collider.radius,
+                                resources: tree.current_fruit,
+                            });
                     }
 
-                    let mut shared = environmental_state_clone.write().unwrap_or_else(|e| e.into_inner());
+                    let mut shared = environmental_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut shared.elements, &mut local_env_state.elements);
+                }
+
+                // Publish the live ecosystem snapshot: the conserved biomass ledger, the
+                // predator/prey split and the biodiversity indices over that split.
+                {
+                    let (detritus, plants, animals) = world
+                        .get_resource::<crate::core::ecology::EcosystemBiomass>()
+                        .map(|b| (b.detritus, b.plants, b.animals))
+                        .unwrap_or((0.0, 0.0, 0.0));
+                    let mut prey_count = 0u32;
+                    let mut predator_count = 0u32;
+                    // Guild body masses feed the character-displacement / Red-Queen signal
+                    // (mean total body mass of prey vs predators).
+                    let mut prey_mass_sum = 0.0f32;
+                    let mut pred_mass_sum = 0.0f32;
+                    let mut prey_q = world
+                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
+                            With<crate::core::components::Agent>,
+                            With<crate::core::components::Prey>,
+                        )>();
+                    for g in prey_q.iter(&world) {
+                        prey_count += 1;
+                        prey_mass_sum += g.0.total_mass();
+                    }
+                    let mut pred_q = world
+                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
+                            With<crate::core::components::Agent>,
+                            With<crate::core::components::Predator>,
+                        )>();
+                    for g in pred_q.iter(&world) {
+                        predator_count += 1;
+                        pred_mass_sum += g.0.total_mass();
+                    }
+                    let prey_mass = if prey_count > 0 {
+                        prey_mass_sum / prey_count as f32
+                    } else {
+                        0.0
+                    };
+                    let predator_mass = if predator_count > 0 {
+                        pred_mass_sum / predator_count as f32
+                    } else {
+                        0.0
+                    };
+                    let archive_coverage = world
+                        .get_resource::<crate::core::agent_systems::BevyMapElitesArchive>()
+                        .map(|a| a.archive.grid.len() as u32)
+                        .unwrap_or(0);
+                    let counts = [prey_count, predator_count];
+                    let mut shared = ecosystem_state_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    shared.detritus = detritus;
+                    shared.plants = plants;
+                    shared.animals = animals;
+                    shared.total = detritus + plants + animals;
+                    shared.prey_count = prey_count;
+                    shared.predator_count = predator_count;
+                    shared.shannon = crate::core::ecology::shannon_index(&counts);
+                    shared.simpson = crate::core::ecology::simpson_index(&counts);
+                    shared.prey_mass = prey_mass;
+                    shared.predator_mass = predator_mass;
+                    shared.niche_divergence =
+                        crate::core::ecology::niche_divergence(prey_mass, predator_mass);
+                    shared.archive_coverage = archive_coverage;
                 }
 
                 let elapsed = start_time.elapsed();
@@ -907,6 +1425,12 @@ impl SimulationEngine {
                 if elapsed < target_frame_duration {
                     thread::sleep(target_frame_duration - elapsed);
                 }
+            }
+
+            // The inference worker watches the same `running` flag, so it is already winding down;
+            // joining makes that ordering explicit instead of leaving it to process exit.
+            if let Err(e) = inference_handle.join() {
+                eprintln!("inference thread panicked: {e:?}");
             }
 
             let mut stat = status_clone.lock().unwrap_or_else(|e| e.into_inner());
@@ -961,7 +1485,9 @@ impl SimulationEngine {
                     let _ = handle.emit("simulation-tick", &tick_payload);
 
                     {
-                        let shared = pheromone_grid_state_emit.read().unwrap_or_else(|e| e.into_inner());
+                        let shared = pheromone_grid_state_emit
+                            .read()
+                            .unwrap_or_else(|e| e.into_inner());
                         local_pheromone_emit.grid.copy_from_slice(&shared.grid);
                         local_pheromone_emit.width = shared.width;
                         local_pheromone_emit.height = shared.height;
@@ -970,14 +1496,18 @@ impl SimulationEngine {
 
                     local_raycast_emit.clear();
                     {
-                        let shared = active_raycasts_emit.read().unwrap_or_else(|e| e.into_inner());
+                        let shared = active_raycasts_emit
+                            .read()
+                            .unwrap_or_else(|e| e.into_inner());
                         local_raycast_emit.extend_from_slice(&shared);
                     }
                     let _ = handle.emit("raycast-update", &local_raycast_emit);
 
                     local_combat_emit.clear();
                     {
-                        let mut shared = combat_events_emit.write().unwrap_or_else(|e| e.into_inner());
+                        let mut shared = combat_events_emit
+                            .write()
+                            .unwrap_or_else(|e| e.into_inner());
                         std::mem::swap(&mut *shared, &mut local_combat_emit);
                     }
                     for event in &local_combat_emit {
@@ -996,22 +1526,57 @@ impl SimulationEngine {
                 .enable_all()
                 .build()
                 .unwrap();
-            
+
             rt.block_on(async {
                 let local_port = {
                     let config = sharding_config_clone.read().unwrap();
                     config.local_port
                 };
 
-                let server_fut = run_websocket_server(local_port, inbound_tx_clone, running_clone_net.clone(), app_handle_net);
-                let client_fut = run_websocket_client(outbound_rx, inbound_tx, running_clone_net, app_handle, local_port);
+                // Cross-shard migration is behind the `networking` feature (G2). Without it the thread
+                // still exists and still owns its channels — it simply has no transport to run, so a
+                // single-node build shuts down through exactly the same path.
+                #[cfg(not(feature = "networking"))]
+                {
+                    let _ = (
+                        local_port,
+                        inbound_tx_clone,
+                        running_clone_net,
+                        app_handle_net,
+                        outbound_rx,
+                        inbound_tx,
+                        app_handle,
+                    );
+                }
+                #[cfg(feature = "networking")]
+                {
+                    let server_fut = run_websocket_server(
+                        local_port,
+                        inbound_tx_clone,
+                        running_clone_net.clone(),
+                        app_handle_net,
+                    );
+                    let client_fut = run_websocket_client(
+                        outbound_rx,
+                        inbound_tx,
+                        running_clone_net,
+                        app_handle,
+                        local_port,
+                    );
 
-                let _ = tokio::join!(server_fut, client_fut);
+                    let _ = tokio::join!(server_fut, client_fut);
+                }
             });
         });
 
         let mut threads_lock = self.threads.lock().unwrap_or_else(|e| e.into_inner());
-        *threads_lock = Some(vec![sim_handle, emit_handle, evo_handle, net_handle, learn_handle]);
+        *threads_lock = Some(vec![
+            sim_handle,
+            emit_handle,
+            evo_handle,
+            net_handle,
+            learn_handle,
+        ]);
     }
 
     pub fn stop(&self) {
@@ -1048,12 +1613,18 @@ fn run_training_loop<B>(
 ) where
     B: Backend<FloatElem = f32> + 'static,
     B::Device: Clone + Send + Sync + 'static,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device> + burn::tensor::backend::AutodiffBackend<Device = B::Device, FloatElem = f32, IntElem = B::IntElem> + 'static,
-    ActorCriticModel<Autodiff<B>>: AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
+    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>
+        + burn::tensor::backend::AutodiffBackend<
+            Device = B::Device,
+            FloatElem = f32,
+            IntElem = B::IntElem,
+        > + 'static,
+    ActorCriticModel<Autodiff<B>>:
+        AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
 {
     let mut train_model = ActorCriticModel::<Autodiff<B>>::new(15, 64, 4, &device);
     let mut optim = AdamConfig::new().init();
-    
+
     let mut batch = Vec::new();
     while running.load(Ordering::SeqCst) {
         match trans_rx.recv_timeout(Duration::from_millis(10)) {
@@ -1093,7 +1664,7 @@ fn run_training_loop<B>(
 
                     let target = rewards_tensor + critic_out_next.detach() * 0.99;
                     let td_error = target - critic_out.clone();
-                    
+
                     let critic_diff = td_error.clone();
                     let loss_critic = (critic_diff.clone() * critic_diff).mean();
 

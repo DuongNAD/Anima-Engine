@@ -1,27 +1,28 @@
 mod common;
 
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::AtomicBool;
-use std::time::Duration;
-use std::thread;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
+use anima_engine_lib::ai::cpg::TimeStep;
+use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::ecs::{
-    Agent, Prey, Position, ParentAgent, Lake, Tree, EnvironmentalSpawnSettings, MapBounds,
-    FoodSpawnSettings, EpochManager,
-    fruit_growth_system, lake_replenishment_system, seed_dropping_system, detect_environmental_collisions_system,
+    detect_environmental_collisions_system, fruit_growth_system, lake_replenishment_system,
+    seed_dropping_system, Agent, EnvironmentalSpawnSettings, EpochManager, FoodSpawnSettings, Lake,
+    MapBounds, ParentAgent, Position, Prey, Tree,
 };
 use anima_engine_lib::core::simulation_lifecycle::{
-    SimulationEngine, SavedSimulationState, SerializedPheromoneGrid, SerializedLake, SerializedTree,
+    SavedSimulationState, SerializedLake, SerializedPheromoneGrid, SerializedTree, SimulationEngine,
 };
-use anima_engine_lib::ai::hrrl::HomeostaticState;
-use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::evolution::meta_ai::EnvironmentalEvent;
-use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -45,7 +46,11 @@ fn test_10000_trees_spawning_and_lifecycle() {
     let mut trees = Vec::with_capacity(10000);
     for i in 0..10000 {
         trees.push(SerializedTree {
-            position: glam::Vec3::new((i % 100) as f32 * 2.0 - 100.0, 0.0, (i / 100) as f32 * 2.0 - 100.0),
+            position: glam::Vec3::new(
+                (i % 100) as f32 * 2.0 - 100.0,
+                0.0,
+                (i / 100) as f32 * 2.0 - 100.0,
+            ),
             radius: 1.5,
             current_fruit: 50.0,
             max_fruit: 100.0,
@@ -92,16 +97,18 @@ fn test_10000_trees_spawning_and_lifecycle() {
         chronicle_history: vec![],
         lineage_nodes: vec![],
         lineage_relations: vec![],
-        lakes: vec![
-            SerializedLake {
-                position: glam::Vec3::new(0.0, 0.0, 0.0),
-                radius: 10.0,
-                current_water: 100.0,
-                max_water: 100.0,
-                replenishment_rate: 5.0,
-            }
-        ],
+        lakes: vec![SerializedLake {
+            position: glam::Vec3::new(0.0, 0.0, 0.0),
+            radius: 10.0,
+            current_water: 100.0,
+            max_water: 100.0,
+            replenishment_rate: 5.0,
+        }],
         trees,
+        world_identity: Default::default(),
+        // Everything not named above (closed-energy state, RNG stream position, season clock)
+        // takes its zero value, which every restore path reads as "nothing was saved here".
+        ..anima_engine_lib::core::simulation_state::empty_saved_state_for_tests()
     };
 
     // Run start/stop cycles to verify no thread leaks
@@ -123,13 +130,20 @@ fn test_10000_trees_spawning_and_lifecycle() {
 
         // Make sure average tick time is within reasonable limits (no massive slowdowns)
         println!("Cycle {} status: {:?}", cycle, status);
-        assert!(status.avg_tick_time_ms < 50.0, "Average tick time should be under 50ms, got {}", status.avg_tick_time_ms);
+        assert!(
+            status.avg_tick_time_ms < 50.0,
+            "Average tick time should be under 50ms, got {}",
+            status.avg_tick_time_ms
+        );
 
         engine.stop();
-        
+
         // Assert thread handles were taken and joined (which sets engine.threads to None or clears it)
         let threads_lock = engine.threads.lock().unwrap();
-        assert!(threads_lock.is_none(), "Thread handles must be taken and joined successfully");
+        assert!(
+            threads_lock.is_none(),
+            "Thread handles must be taken and joined successfully"
+        );
     }
 }
 
@@ -152,6 +166,8 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
         default_seed_cooldown: 15.0,
         default_seed_spread: 20.0,
     });
+    // Stochastic systems draw from a declared stream; a world without one has no replay story.
+    world.insert_resource(anima_engine_lib::core::resources::SimRng::from_seed(0x5EED));
 
     // Spawn 10,000 trees
     for i in 0..10000 {
@@ -164,7 +180,11 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
                 seed_drop_cooldown: 15.0,
                 seed_spread_radius: 20.0,
             },
-            Position(Vec3::new((i % 100) as f32 * 2.0 - 100.0, 0.0, (i / 100) as f32 * 2.0 - 100.0)),
+            Position(Vec3::new(
+                (i % 100) as f32 * 2.0 - 100.0,
+                0.0,
+                (i / 100) as f32 * 2.0 - 100.0,
+            )),
             anima_engine_lib::physics::SpatialCollider { radius: 1.5 },
         ));
     }
@@ -177,32 +197,46 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
                 max_water: 500.0,
                 replenishment_rate: 5.0,
             },
-            Position(Vec3::new((i % 10) as f32 * 20.0 - 100.0, 0.0, (i / 10) as f32 * 20.0 - 100.0)),
+            Position(Vec3::new(
+                (i % 10) as f32 * 20.0 - 100.0,
+                0.0,
+                (i / 10) as f32 * 20.0 - 100.0,
+            )),
             anima_engine_lib::physics::SpatialCollider { radius: 10.0 },
         ));
     }
 
     // Spawn 100 agents (heavy load)
     for i in 0..100 {
-        let agent_entity = world.spawn((
-            Agent,
-            Prey,
-            Position(Vec3::new((i % 10) as f32 * 15.0 - 75.0, 0.0, (i / 10) as f32 * 15.0 - 75.0)),
-            HomeostaticState {
-                energy: 50.0,
-                energy_target: 100.0,
-                hydration: 50.0,
-                hydration_target: 100.0,
-                temperature: 37.0,
-                temp_target: 37.0,
-                previous_deviation: 0.0,
-            },
-        )).id();
+        let agent_entity = world
+            .spawn((
+                Agent,
+                Prey,
+                Position(Vec3::new(
+                    (i % 10) as f32 * 15.0 - 75.0,
+                    0.0,
+                    (i / 10) as f32 * 15.0 - 75.0,
+                )),
+                HomeostaticState {
+                    energy: 50.0,
+                    energy_target: 100.0,
+                    hydration: 50.0,
+                    hydration_target: 100.0,
+                    temperature: 37.0,
+                    temp_target: 37.0,
+                    previous_deviation: 0.0,
+                },
+            ))
+            .id();
 
         // 3 segments per agent
         for j in 0..3 {
             world.spawn((
-                Position(Vec3::new((i % 10) as f32 * 15.0 - 75.0 + j as f32 * 0.5, 0.0, (i / 10) as f32 * 15.0 - 75.0)),
+                Position(Vec3::new(
+                    (i % 10) as f32 * 15.0 - 75.0 + j as f32 * 0.5,
+                    0.0,
+                    (i / 10) as f32 * 15.0 - 75.0,
+                )),
                 ParentAgent(agent_entity),
             ));
         }
@@ -229,7 +263,10 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
     }
     let allocs = ALLOCATOR.stop_tracking();
 
-    println!("Allocations during environmental elements systems ticks: {}", allocs);
+    println!(
+        "Allocations during environmental elements systems ticks: {}",
+        allocs
+    );
     assert_eq!(
         allocs, 0,
         "Environmental element systems hot path should make 0 heap allocations, but made {}",

@@ -2,6 +2,7 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getSkyParams } from './utils/skyParams';
+import { testAttrs } from './testAttrs';
 
 interface SkyProps {
   speed?: number;
@@ -98,10 +99,12 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
     <group
       name="sky-group"
       userData={{ timeOfDay, lightIntensity: params.sunIntensity, skyColor: params.skyColor, speed }}
-      data-speed={speed}
-      data-time-of-day={timeOfDay}
-      data-light-intensity={params.sunIntensity}
-      data-sky-color={params.skyColor}
+      {...testAttrs({
+        'data-speed': speed,
+        'data-time-of-day': timeOfDay,
+        'data-light-intensity': params.sunIntensity,
+        'data-sky-color': params.skyColor,
+      })}
     >
       {/* Sky dome */}
       <mesh ref={skyRef} name="sky-mesh">

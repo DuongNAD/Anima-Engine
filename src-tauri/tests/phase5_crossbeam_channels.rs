@@ -1,8 +1,8 @@
-use std::sync::Arc;
-use std::time::Duration;
-use std::thread;
-use anima_engine_lib::core::engine::SimulationEngine;
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::engine::SimulationEngine;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 #[test]
 fn test_engine_toggle_stress_channels() {
@@ -36,7 +36,11 @@ fn test_engine_toggle_stress_channels() {
         );
 
         // Assert it is running
-        assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be running on iteration {}", i);
+        assert!(
+            engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be running on iteration {}",
+            i
+        );
 
         // Sleep briefly to let threads spawn, execute channel requests
         thread::sleep(Duration::from_millis(50));
@@ -45,12 +49,20 @@ fn test_engine_toggle_stress_channels() {
         engine.stop();
 
         // Assert it is stopped
-        assert!(!engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be stopped on iteration {}", i);
+        assert!(
+            !engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be stopped on iteration {}",
+            i
+        );
 
         // Verify that the threads Option is cleared and joined
         {
             let threads_lock = engine.threads.lock().unwrap();
-            assert!(threads_lock.is_none(), "Threads should be joined and None on iteration {}", i);
+            assert!(
+                threads_lock.is_none(),
+                "Threads should be joined and None on iteration {}",
+                i
+            );
         }
     }
 }

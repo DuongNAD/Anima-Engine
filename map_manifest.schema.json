@@ -1,0 +1,153 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://anima-engine.local/map_manifest.schema.json",
+  "title": "Anima Map Manifest",
+  "description": "Schema for an Anima-Engine map manifest (M0.5 / test S05). Binds a World Artifact (ANMW) to the shared coordinate system, the 22/11 biome taxonomy, and the canonical camera/view list consumed by the map-vision gate (WORLD_SIMULATION_PLAN.md §13). Missing any required field makes a manifest invalid.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "worldArtifact", "coordinateSystem", "biomeTaxonomy", "views"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "description": "Manifest schema version."
+    },
+    "worldArtifact": {
+      "type": "object",
+      "description": "Reference to the shared World Artifact this map renders (see src-tauri/src/core/world_artifact.rs).",
+      "additionalProperties": true,
+      "required": ["path", "magic", "version", "width", "height", "seaLevel"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Repo-relative or absolute path to the .anmw artifact bytes."
+        },
+        "magic": {
+          "const": "ANMW",
+          "description": "Artifact magic; must be the literal ANMW."
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "WORLD_ARTIFACT_VERSION the artifact was written with."
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Artifact grid width in cells."
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Artifact grid height in cells."
+        },
+        "seaLevel": {
+          "type": "number",
+          "description": "Normalized sea level [0,1] shared by frontend and backend."
+        },
+        "checksum": {
+          "type": "string",
+          "description": "Optional content checksum (e.g. sha256:...) of the artifact bytes."
+        }
+      }
+    },
+    "coordinateSystem": {
+      "type": "object",
+      "description": "World-space bounds shared by render, collision, navigation and simulation. Values are fixed by SIMULATION_RULES.md / resources.rs MapBounds::default.",
+      "additionalProperties": true,
+      "required": ["worldMinXZ", "worldMaxXZ", "worldMinY", "worldMaxY", "gridDim"],
+      "properties": {
+        "worldMinXZ": {
+          "const": -100,
+          "description": "Minimum world X and Z (a 200x200 world-unit square)."
+        },
+        "worldMaxXZ": {
+          "const": 100,
+          "description": "Maximum world X and Z."
+        },
+        "worldMinY": {
+          "const": 0,
+          "description": "Minimum world Y (WORLD_MIN_Y)."
+        },
+        "worldMaxY": {
+          "const": 10,
+          "description": "Maximum world Y (WORLD_MAX_Y = elevation * 10)."
+        },
+        "gridDim": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Backend simulation grid dimension (DEFAULT_GRID_DIM = 128)."
+        }
+      }
+    },
+    "biomeTaxonomy": {
+      "type": "object",
+      "description": "Biome taxonomy sizes: 22 canonical frontend biomes lifted from 11 legacy backend biomes.",
+      "additionalProperties": true,
+      "required": ["canonicalCount", "legacyCount"],
+      "properties": {
+        "canonicalCount": {
+          "const": 22,
+          "description": "Number of canonical (frontend) biomes."
+        },
+        "legacyCount": {
+          "const": 11,
+          "description": "Number of legacy (backend) biomes."
+        }
+      }
+    },
+    "views": {
+      "type": "array",
+      "description": "Canonical camera views inspected by the map-vision gate. At least one required.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/view" }
+    }
+  },
+  "definitions": {
+    "view": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "imagePath", "camera"],
+      "properties": {
+        "id": {
+          "description": "Canonical view identifier (WORLD_SIMULATION_PLAN.md §13).",
+          "enum": [
+            "overview",
+            "navigation",
+            "collision",
+            "lighting",
+            "spawn",
+            "water",
+            "biome_transition",
+            "ecosystem"
+          ]
+        },
+        "imagePath": {
+          "type": "string",
+          "description": "Path to the rendered image for this view."
+        },
+        "camera": { "$ref": "#/definitions/camera" }
+      }
+    },
+    "camera": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["position", "target"],
+      "properties": {
+        "position": {
+          "$ref": "#/definitions/vec3",
+          "description": "Camera world-space position [x, y, z]."
+        },
+        "target": {
+          "$ref": "#/definitions/vec3",
+          "description": "Camera world-space look-at target [x, y, z]."
+        }
+      }
+    },
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}

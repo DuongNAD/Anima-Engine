@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "experiment_id": "ae-mana-patchy",
+  "name": "mana-patchy-renewable",
+  "world_identity": {
+    "seed": 1337,
+    "generator_version": 20,
+    "width": 128,
+    "height": 128,
+    "checksum": 3735928559
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": {
+      "id": "arcane_flux",
+      "display_name": "Mana",
+      "unit": "MU",
+      "source_model": "Renewable",
+      "topology": {
+        "Patchy": {
+          "hotspot_count": 4,
+          "radius_cells": 2.5
+        }
+      },
+      "initial_amount": 150.0,
+      "source_rate": 0.05,
+      "diffusion_rate": 0.1,
+      "decay_rate": 0.01,
+      "max_density": 10.0,
+      "boundary": "Closed"
+    }
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "precip",
+        1.0
+      ],
+      [
+        "temperature",
+        0.5
+      ],
+      [
+        "plants",
+        100.0
+      ],
+      [
+        "herbivores",
+        40.0
+      ],
+      [
+        "predators",
+        8.0
+      ],
+      [
+        "detritus",
+        0.0
+      ]
+    ]
+  },
+  "interventions": [],
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "duration_ticks": 6000,
+  "sample_period": 600,
+  "observable_ids": [
+    "plants",
+    "herbivores"
+  ],
+  "exotic_interventions": [
+    {
+      "id": 1,
+      "cause_id": 901,
+      "kind": "RemoveSource",
+      "region": "Global",
+      "start_tick": 3000,
+      "duration_ticks": 1200,
+      "amount": 0.25,
+      "curve": "Step"
+    }
+  ]
+}

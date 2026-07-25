@@ -174,16 +174,20 @@ fn test_real_simulation_engine_start_stop() {
     assert!(!engine.get_status().running);
 
     // Start the simulation engine
-    let evolution_settings = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::EvolutionSettings {
-        mutation_rate: 0.15,
-        selection_bias: 1.5,
-        grid_resolution: 50,
-    }));
+    let evolution_settings = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::EvolutionSettings {
+            mutation_rate: 0.15,
+            selection_bias: 1.5,
+            grid_resolution: 50,
+        },
+    ));
     let evolution_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let map_elites_grid = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::MapElitesGridState {
-        grid: std::collections::HashMap::new(),
-        grid_resolution: 50,
-    }));
+    let map_elites_grid = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 50,
+        },
+    ));
     engine.start(
         None::<tauri::AppHandle<tauri::test::MockRuntime>>,
         evolution_settings,
@@ -218,17 +222,41 @@ fn test_real_simulation_engine_start_stop() {
     // Verify agent segment telemetry data
     {
         let states = engine.agent_states.read().unwrap();
-        assert_eq!(states.len(), 30, "Should track exactly 30 segments (10 agents * 3 segments)");
-        
-        // Find segment with ID 1 and verify parent
-        let seg_1 = states.iter().find(|s| s.segment_id == 1).expect("Should find segment 1");
-        assert_eq!(seg_1.parent_segment_id, Some(0), "Segment 1 must have parent 0");
+        assert_eq!(
+            states.len(),
+            30,
+            "Should track exactly 30 segments (10 agents * 3 segments)"
+        );
 
-        let seg_2 = states.iter().find(|s| s.segment_id == 2).expect("Should find segment 2");
-        assert_eq!(seg_2.parent_segment_id, Some(1), "Segment 2 must have parent 1");
+        // Find segment with ID 1 and verify parent
+        let seg_1 = states
+            .iter()
+            .find(|s| s.segment_id == 1)
+            .expect("Should find segment 1");
+        assert_eq!(
+            seg_1.parent_segment_id,
+            Some(0),
+            "Segment 1 must have parent 0"
+        );
+
+        let seg_2 = states
+            .iter()
+            .find(|s| s.segment_id == 2)
+            .expect("Should find segment 2");
+        assert_eq!(
+            seg_2.parent_segment_id,
+            Some(1),
+            "Segment 2 must have parent 1"
+        );
 
         // Verify root segment (segment 0) has no parent
-        let seg_0 = states.iter().find(|s| s.segment_id == 0).expect("Should find segment 0");
-        assert_eq!(seg_0.parent_segment_id, None, "Segment 0 must have no parent");
+        let seg_0 = states
+            .iter()
+            .find(|s| s.segment_id == 0)
+            .expect("Should find segment 0");
+        assert_eq!(
+            seg_0.parent_segment_id, None,
+            "Segment 0 must have no parent"
+        );
     }
 }

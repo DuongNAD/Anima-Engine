@@ -150,11 +150,11 @@ describe('Phase 6 UI, Persistence, Viewport, and Telemetry Tests', () => {
     // Tree canopy leaves: radius = 16 * 0.8 = 12.8
     const initialTree = initialCalls.find(c => Math.abs(c[2] - 12.8) < 0.1);
     expect(initialLake).toBeDefined();
-    expect(initialLake[0]).toBeCloseTo(50);
-    expect(initialLake[1]).toBeCloseTo(50);
+    expect(initialLake[0]).toBeCloseTo(300);
+    expect(initialLake[1]).toBeCloseTo(125);
     expect(initialTree).toBeDefined();
-    expect(initialTree[0]).toBeCloseTo(-50);
-    expect(initialTree[1]).toBeCloseTo(-56.4);
+    expect(initialTree[0]).toBeCloseTo(200);
+    expect(initialTree[1]).toBeCloseTo(218.6);
 
     // Click Zoom In (zoom becomes 1.1)
     mockGraphicsMethods.drawCircle.mockClear();
@@ -167,11 +167,11 @@ describe('Phase 6 UI, Persistence, Viewport, and Telemetry Tests', () => {
     // Tree canopy leaves = 12.8 * 1.1 = 14.08
     const zoomedTree = zoomCalls.find(c => Math.abs(c[2] - 14.08) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(55);
-    expect(zoomedLake[1]).toBeCloseTo(55);
+    expect(zoomedLake[0]).toBeCloseTo(330);
+    expect(zoomedLake[1]).toBeCloseTo(137.5);
     expect(zoomedTree).toBeDefined();
-    expect(zoomedTree[0]).toBeCloseTo(-55);
-    expect(zoomedTree[1]).toBeCloseTo(-62.04);
+    expect(zoomedTree[0]).toBeCloseTo(220);
+    expect(zoomedTree[1]).toBeCloseTo(240.46);
 
     // Click Pan Right (pan.x becomes 10)
     mockGraphicsMethods.drawCircle.mockClear();
@@ -181,8 +181,8 @@ describe('Phase 6 UI, Persistence, Viewport, and Telemetry Tests', () => {
     const panCalls = mockGraphicsMethods.drawCircle.mock.calls;
     const pannedLake = panCalls.find(c => Math.abs(c[2] - 29.83) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(65);
-    expect(pannedLake[1]).toBeCloseTo(55);
+    expect(pannedLake[0]).toBeCloseTo(340);
+    expect(pannedLake[1]).toBeCloseTo(137.5);
   });
 
   it('renders environmental elements with appropriate colors', async () => {

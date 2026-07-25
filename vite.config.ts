@@ -3,11 +3,17 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
   resolve: {
     alias: {
       "@tauri-apps/api": path.resolve(__dirname, "node_modules/@tauri-apps/api"),
+      ...(mode === 'test' ? {
+        // Only the R3F reconciler is mocked under jsdom; real three runs headless
+        // (geometry/math classes need no WebGL context).
+        "@react-three/fiber": path.resolve(__dirname, "tests/mocks/react-three-fiber-mock.tsx"),
+      } : {}),
+      "@": path.resolve(__dirname, "./src"),
     },
   },
   // Prevent vite from obscuring rust errors
@@ -38,4 +44,4 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["./tests/setup-vitest.ts"],
   },
-});
+}));

@@ -209,6 +209,30 @@ beforeEach(() => {
       }
       case 'get_environmental_elements':
         return mockEnvironmentalState;
+      case 'get_terrain_map':
+        return {
+          width: 128,
+          height: 128,
+          elevations: new Array(128 * 128).fill(0.5),
+          moistures: new Array(128 * 128).fill(0.5),
+          biomes: new Array(128 * 128).fill(4), // Grassland = 4
+          flows: new Array(128 * 128).fill(0.0),
+        };
+      case 'get_ecosystem_state':
+        return {
+          detritus: 100,
+          plants: 500,
+          animals: 300,
+          total: 900,
+          prey_count: 12,
+          predator_count: 3,
+          shannon: 0.5,
+          simpson: 0.4,
+          prey_mass: 6.0,
+          predator_mass: 9.0,
+          niche_divergence: 0.15,
+          archive_coverage: 42,
+        };
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

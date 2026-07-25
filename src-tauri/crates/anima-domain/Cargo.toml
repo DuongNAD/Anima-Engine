@@ -1,0 +1,25 @@
+[package]
+name = "anima-domain"
+version = "0.1.0"
+edition = "2021"
+description = "World laws, transactions and provenance, independent of any engine adapter."
+
+# Deliberately minimal. This crate is the shared core the headless runner and the live Bevy world
+# are both meant to be adapters over (G2 task 1), so anything that ties it to one of them —
+# bevy_ecs, tauri, burn — does not belong here. If a dependency is about to be added, that is the
+# moment to ask whether the type being added is really a world law.
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+# OPTIONAL, and off by default. The domain crate stays engine-free for anyone who just wants the
+# laws; the live Bevy adapter turns this on so domain types can be ECS resources without the engine
+# having to newtype every one of them (the orphan rule forbids `impl Resource for` a foreign type).
+#
+# This is the seam that makes the rest of the extraction ordinary work rather than a categorical
+# blocker: before it, anything carrying `#[derive(Resource)]` simply could not live here.
+bevy_ecs = { version = "0.13.0", optional = true }
+
+[features]
+default = []
+# ECS integration for the live adapter: domain types gain `#[derive(Resource)]`.
+bevy = ["dep:bevy_ecs"]

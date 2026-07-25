@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex, atomic::AtomicBool};
-use anima_engine_lib::core::simulation_lifecycle::{SimulationEngine, SavedSimulationState};
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::simulation_lifecycle::{SavedSimulationState, SimulationEngine};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 #[test]
 fn test_saved_simulation_state_serialization() {
@@ -31,7 +31,7 @@ fn test_saved_simulation_state_serialization() {
                 position: glam::Vec3::new(1.0, 0.0, 2.0),
                 energy_value: 30.0,
                 hydration_value: 20.0,
-            }
+            },
         ],
         agents: vec![],
         evolution_settings: EvolutionSettings {
@@ -48,6 +48,10 @@ fn test_saved_simulation_state_serialization() {
         lineage_relations: vec![],
         lakes: vec![],
         trees: vec![],
+        world_identity: Default::default(),
+        // Everything not named above (closed-energy state, RNG stream position, season clock)
+        // takes its zero value, which every restore path reads as "nothing was saved here".
+        ..anima_engine_lib::core::simulation_state::empty_saved_state_for_tests()
     };
 
     let serialized = serde_json::to_string(&state);
@@ -98,7 +102,9 @@ fn test_engine_save_load_lifecycle() {
 
     let saved_state = rx.recv_timeout(std::time::Duration::from_secs(2));
     assert!(saved_state.is_ok());
-    let saved_state = saved_state.unwrap();
+    let saved_state = saved_state
+        .unwrap()
+        .expect("a world with no dormant cohorts must save");
 
     assert!(saved_state.tick_count > 0);
     assert_eq!(saved_state.agents.len(), 10);
@@ -129,7 +135,9 @@ fn test_engine_save_load_lifecycle() {
     let _ = engine.save_request_tx.send(tx2);
     let loaded_state = rx2.recv_timeout(std::time::Duration::from_secs(2));
     assert!(loaded_state.is_ok());
-    let loaded_state = loaded_state.unwrap();
+    let loaded_state = loaded_state
+        .unwrap()
+        .expect("a restored world must save again");
 
     assert!(loaded_state.tick_count >= 1000);
     assert_eq!(loaded_state.epoch_manager.current_epoch, 99);

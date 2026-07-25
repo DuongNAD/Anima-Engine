@@ -1,16 +1,15 @@
-use std::sync::Arc;
+// Cross-shard WebSocket migration lives behind the `networking` feature (G2). Without it this
+// suite has nothing to exercise, so the whole file compiles away rather than failing to link.
+#![cfg(feature = "networking")]
+
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    AgentMigrationData, OutboundMigration, InboundMigrationReceiver,
-    OutboundMigrationSender, AgentClass, Prey
-};
-use anima_engine_lib::evolution::genotype::MorphologyGenotype;
-use anima_engine_lib::core::engine::{
-    run_websocket_server, run_websocket_client
-};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
+use anima_engine_lib::core::engine::{run_websocket_client, run_websocket_server};
+use anima_engine_lib::evolution::genotype::MorphologyGenotype;
 
 #[tokio::test]
 async fn test_high_throughput_websocket_transfers() {
@@ -23,12 +22,15 @@ async fn test_high_throughput_websocket_transfers() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,
             None,
-        ).await;
+        )
+        .await;
     });
 
     let running_client = Arc::clone(&running);
@@ -39,7 +41,8 @@ async fn test_high_throughput_websocket_transfers() {
             running_client,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Let the server start
@@ -73,6 +76,7 @@ async fn test_high_throughput_websocket_transfers() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             let _ = tx.send(OutboundMigration {
                 target_port: port,
@@ -105,12 +109,20 @@ async fn test_high_throughput_websocket_transfers() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await;
+    })
+    .await;
 
     running.store(false, Ordering::SeqCst);
     let _ = tokio::join!(server_handle, client_handle);
 
     let (received, ids) = received_count.expect("Timeout waiting for high-throughput migrations");
-    println!("Unique IDs received (first 10): {:?}", ids.iter().take(10).collect::<Vec<_>>());
-    assert_eq!(received, count, "Expected {} messages but received {}", count, received);
+    println!(
+        "Unique IDs received (first 10): {:?}",
+        ids.iter().take(10).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        received, count,
+        "Expected {} messages but received {}",
+        count, received
+    );
 }

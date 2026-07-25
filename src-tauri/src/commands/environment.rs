@@ -1,27 +1,135 @@
-use tauri::State;
-use crate::AppState;
 use crate::core::simulation_lifecycle::ChronicleEvent;
+use crate::AppState;
+use tauri::State;
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct TerrainMapState {
+    pub width: usize,
+    pub height: usize,
+    pub biomes: Vec<u8>,
+    pub elevations: Vec<f32>,
+    pub moistures: Vec<f32>,
+    pub temperatures: Vec<f32>,
+    pub bounds: crate::core::resources::MapBounds,
+    pub pois: Vec<(usize, usize)>,
+}
+
+impl TerrainMapState {
+    pub fn from_resource(
+        terrain_map: &crate::core::terrain::TerrainMap,
+        bounds: &crate::core::resources::MapBounds,
+    ) -> Self {
+        Self {
+            width: terrain_map.width,
+            height: terrain_map.height,
+            biomes: terrain_map.biomes.clone(),
+            elevations: terrain_map.elevations.clone(),
+            moistures: terrain_map.moistures.clone(),
+            temperatures: terrain_map.temperatures.clone(),
+            bounds: *bounds,
+            pois: terrain_map.pois.clone(),
+        }
+    }
+}
+
+/// Live snapshot of the closed ecosystem for the dashboard: the three energy compartments of
+/// the conserved biomass ledger (which should sum ~constant), the population split, and the
+/// biodiversity indices. Published once per tick by the simulation thread.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
+pub struct EcosystemState {
+    pub detritus: f64,
+    pub plants: f64,
+    pub animals: f64,
+    pub total: f64,
+    pub prey_count: u32,
+    pub predator_count: u32,
+    pub shannon: f32,
+    pub simpson: f32,
+    /// Coevolution diagnostics: mean body mass of each guild, their normalized separation on
+    /// the trait axis (character displacement / Red-Queen), and MAP-Elites niche coverage
+    /// (occupied cells = a quality-diversity / open-endedness proxy).
+    pub prey_mass: f32,
+    pub predator_mass: f32,
+    pub niche_divergence: f32,
+    pub archive_coverage: u32,
+}
 
 #[tauri::command]
-pub fn get_pheromone_grid(state: State<'_, AppState>) -> Result<crate::ai::pheromone::PheromoneGridState, String> {
-    let shared = state.engine.pheromone_grid_state.read().unwrap_or_else(|e| e.into_inner());
+pub fn get_ecosystem_state(state: State<'_, AppState>) -> Result<EcosystemState, String> {
+    let shared = state
+        .engine
+        .ecosystem_state
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     Ok(shared.clone())
 }
 
 #[tauri::command]
-pub fn get_environmental_elements(state: State<'_, AppState>) -> Result<crate::core::ecs::EnvironmentalState, String> {
-    let shared = state.engine.environmental_state.read().unwrap_or_else(|e| e.into_inner());
+pub fn get_terrain_map(state: State<'_, AppState>) -> Result<TerrainMapState, String> {
+    let shared = state
+        .engine
+        .terrain_map
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    shared
+        .clone()
+        .ok_or_else(|| "Terrain map not initialized".to_string())
+}
+
+#[tauri::command]
+pub fn get_pheromone_grid(
+    state: State<'_, AppState>,
+) -> Result<crate::ai::pheromone::PheromoneGridState, String> {
+    let shared = state
+        .engine
+        .pheromone_grid_state
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     Ok(shared.clone())
 }
 
 #[tauri::command]
-pub fn get_active_raycasts(state: State<'_, AppState>) -> Result<Vec<crate::core::ecs::RaycastTelemetry>, String> {
-    let shared = state.engine.active_raycasts.read().unwrap_or_else(|e| e.into_inner());
+pub fn get_environmental_elements(
+    state: State<'_, AppState>,
+) -> Result<crate::core::ecs::EnvironmentalState, String> {
+    let shared = state
+        .engine
+        .environmental_state
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    Ok(shared.clone())
+}
+
+#[tauri::command]
+pub fn get_active_raycasts(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::core::ecs::RaycastTelemetry>, String> {
+    let shared = state
+        .engine
+        .active_raycasts
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     Ok(shared.clone())
 }
 
 #[tauri::command]
 pub fn get_chronicle_history(state: State<'_, AppState>) -> Result<Vec<ChronicleEvent>, String> {
-    let history = state.engine.chronicle_history.read().unwrap_or_else(|e| e.into_inner());
+    let history = state
+        .engine
+        .chronicle_history
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
     Ok(history.clone())
+}
+
+/// Persist the frontend-generated **shared World Artifact** to the canonical on-disk path so the
+/// simulation (`init_world`) boots on the SAME world that is rendered, instead of generating its own.
+/// The frontend calls this once when it finishes generating the world. Returns the written path.
+#[tauri::command]
+pub fn save_world_artifact(bytes: Vec<u8>) -> Result<String, String> {
+    let path = crate::core::world_artifact::default_artifact_path();
+    crate::core::world_artifact::write_artifact_bytes_to(&path, &bytes)?;
+    Ok(path.to_string_lossy().into_owned())
 }

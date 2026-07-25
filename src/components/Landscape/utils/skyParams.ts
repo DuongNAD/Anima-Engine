@@ -12,6 +12,13 @@ export interface SkyParams {
   starOpacity: number;
 }
 
+/** Unit direction TO the sun for a given time of day (shared by sky + water shaders). */
+export function sunDirectionForTime(timeOfDay: number): [number, number, number] {
+  const angle = ((timeOfDay - 6) / 24) * Math.PI * 2;
+  const v = new THREE.Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle) * 0.1).normalize();
+  return [v.x, v.y, v.z];
+}
+
 export function getSkyParams(timeOfDay: number): SkyParams {
   const keyframes = [
     { time: 0, skyColor: '#02020a', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#050510', ambientIntensity: 0.05, hemiSkyColor: '#050510', hemiGroundColor: '#020205', hemiIntensity: 0.05, starOpacity: 1.0 },

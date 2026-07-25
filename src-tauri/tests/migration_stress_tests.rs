@@ -1,33 +1,39 @@
+// Cross-shard WebSocket migration lives behind the `networking` feature (G2). Without it this
+// suite has nothing to exercise, so the whole file compiles away rather than failing to link.
+#![cfg(feature = "networking")]
+
 mod common;
 
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
-use anima_engine_lib::core::ecs::{
-    AgentMigrationData, ShardingConfig, OutboundMigration, InboundMigrationReceiver,
-    OutboundMigrationSender, ShardingResource, check_migration_boundaries_system,
-    process_inbound_migrations_system, AgentParentLineageIds, FeatureTracker, Velocity,
-    Position, Rotation, ParentAgent, Segment, Prey, AgentClass, Agent,
-    MapBounds, ChildrenLinks
-};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
-use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::core::engine::{
-    AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration,
-    run_websocket_server, run_websocket_client
+use anima_engine_lib::core::ecs::{
+    check_migration_boundaries_system, process_inbound_migrations_system, Agent, AgentClass,
+    AgentMigrationData, AgentParentLineageIds, ChildrenLinks, InboundMigrationReceiver, MapBounds,
+    OutboundMigration, OutboundMigrationSender, ParentAgent, Position, Prey, Rotation, Segment,
+    ShardingConfig, ShardingResource, Velocity,
 };
+use anima_engine_lib::core::engine::{
+    run_websocket_client, run_websocket_server, AgentGeneration, AgentGenotype, AgentLineageId,
+};
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
-static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+// Held for the whole async test on purpose: these bind fixed ports and must not overlap.
+// `std::sync::Mutex` is the wrong tool for that — its guard is not `Send` across an await, which
+// clippy flags as `await_holding_lock`. Tokio.s mutex is built for exactly this.
+static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[tokio::test]
 async fn test_stress_high_throughput_websocket_transfers() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().await;
 
     let port = 8095;
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
@@ -38,12 +44,15 @@ async fn test_stress_high_throughput_websocket_transfers() {
 
     let running_server = Arc::clone(&running);
     let server_handle = tokio::spawn(async move {
-        run_websocket_server::<tauri::test::MockRuntime>(
+        // The server returns a Result on exit; the test asserts on the channel traffic instead, so
+        // discard it explicitly rather than leaving a must_use dangling.
+        let _ = run_websocket_server::<tauri::test::MockRuntime>(
             port,
             server_inbound_tx,
             running_server,
             None,
-        ).await;
+        )
+        .await;
     });
 
     let running_client = Arc::clone(&running);
@@ -54,7 +63,8 @@ async fn test_stress_high_throughput_websocket_transfers() {
             running_client,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Let the server start
@@ -67,7 +77,12 @@ async fn test_stress_high_throughput_websocket_transfers() {
         let tx = outbound_tx.clone();
         let handle = tokio::spawn(async move {
             let mut genotype = MorphologyGenotype::new();
-            genotype.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
+            genotype.add_node(MorphologyNode {
+                id: 0,
+                length: 1.0,
+                radius: 0.2,
+                mass: 1.5,
+            });
             let agent = AgentMigrationData {
                 genotype,
                 homeostatic_state: HomeostaticState {
@@ -89,13 +104,15 @@ async fn test_stress_high_throughput_websocket_transfers() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             tx.send(OutboundMigration {
                 target_port: port,
                 data: agent,
                 bounds_min_x: -100.0,
                 bounds_max_x: 100.0,
-            }).unwrap();
+            })
+            .unwrap();
         });
         join_handles.push(handle);
     }
@@ -108,7 +125,7 @@ async fn test_stress_high_throughput_websocket_transfers() {
     let received_count = tokio::time::timeout(Duration::from_secs(10), async {
         let mut got = 0;
         loop {
-            while let Ok(_) = server_inbound_rx.try_recv() {
+            while server_inbound_rx.try_recv().is_ok() {
                 got += 1;
             }
             if got >= count {
@@ -116,7 +133,9 @@ async fn test_stress_high_throughput_websocket_transfers() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for 200 parallel migrations");
+    })
+    .await
+    .expect("Timeout waiting for 200 parallel migrations");
 
     assert_eq!(received_count, count);
 
@@ -126,11 +145,16 @@ async fn test_stress_high_throughput_websocket_transfers() {
 
 #[tokio::test]
 async fn test_closed_port_bounce_back_custom_boundaries() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().await;
 
     let genotype = {
         let mut g = MorphologyGenotype::new();
-        g.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
+        g.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.5,
+        });
         g
     };
 
@@ -155,6 +179,7 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     // Client closed-port bounce-back check with custom map boundaries
@@ -164,7 +189,7 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
 
     let running_clone = Arc::clone(&running);
     let inbound_tx_clone = inbound_tx.clone();
-    
+
     let client_handle = tokio::spawn(async move {
         run_websocket_client::<tauri::test::MockRuntime>(
             outbound_rx,
@@ -172,16 +197,19 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
             running_clone,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     // Send a message targeting a closed port (9999) with custom bounds min: -200.0, max: 200.0
-    outbound_tx.send(OutboundMigration {
-        target_port: 9999,
-        data: agent.clone(),
-        bounds_min_x: -200.0,
-        bounds_max_x: 200.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: 9999,
+            data: agent.clone(),
+            bounds_min_x: -200.0,
+            bounds_max_x: 200.0,
+        })
+        .unwrap();
 
     // Verify bounce back
     let bounced = tokio::time::timeout(Duration::from_secs(2), async {
@@ -191,7 +219,9 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for bounce back");
+    })
+    .await
+    .expect("Timeout waiting for bounce back");
 
     assert_eq!(bounced.lineage_id, agent.lineage_id);
     // Bounced back velocity should be negative and position flipped inward based on max boundary 200.0
@@ -206,12 +236,14 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
         ..agent.clone()
     };
 
-    outbound_tx.send(OutboundMigration {
-        target_port: 9999,
-        data: left_outbound_agent,
-        bounds_min_x: -200.0,
-        bounds_max_x: 200.0,
-    }).unwrap();
+    outbound_tx
+        .send(OutboundMigration {
+            target_port: 9999,
+            data: left_outbound_agent,
+            bounds_min_x: -200.0,
+            bounds_max_x: 200.0,
+        })
+        .unwrap();
 
     let bounced_left = tokio::time::timeout(Duration::from_secs(2), async {
         loop {
@@ -220,7 +252,9 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }).await.expect("Timeout waiting for left bounce back");
+    })
+    .await
+    .expect("Timeout waiting for left bounce back");
 
     // Bounced back velocity should be positive and position flipped inward based on min boundary -200.0
     assert!(bounced_left.velocity.x > 0.0);
@@ -233,7 +267,7 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
 
 #[test]
 fn test_migration_systems_zero_heap_allocations_on_hot_path() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.blocking_lock();
 
     let mut world = World::new();
 
@@ -254,45 +288,56 @@ fn test_migration_systems_zero_heap_allocations_on_hot_path() {
     };
     world.insert_resource(bounds);
 
-    let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
+    let (_inbound_tx, inbound_rx) = crossbeam_channel::unbounded();
     world.insert_resource(InboundMigrationReceiver(inbound_rx));
 
     // Spawn 10 agents and their child segments inside the map boundaries (so no migrations are triggered)
     for i in 0..10 {
         let initial_pos = Vec3::new((i as f32) * 10.0 - 50.0, 0.0, 0.0);
-        let segment_entity = world.spawn((
-            ParentAgent(Entity::PLACEHOLDER),
-            Position(initial_pos),
-            Rotation(glam::Quat::IDENTITY),
-            Velocity(Vec3::ZERO),
-            Segment { id: 0, length: 1.0, radius: 0.2, mass: 1.0 },
-            ChildrenLinks(Vec::new()),
-        )).id();
+        let segment_entity = world
+            .spawn((
+                ParentAgent(Entity::PLACEHOLDER),
+                Position(initial_pos),
+                Rotation(glam::Quat::IDENTITY),
+                Velocity(Vec3::ZERO),
+                Segment {
+                    id: 0,
+                    length: 1.0,
+                    radius: 0.2,
+                    mass: 1.0,
+                },
+                ChildrenLinks(Vec::new()),
+            ))
+            .id();
 
         let genotype = MorphologyGenotype::new();
-        let agent_entity = world.spawn((
-            Agent,
-            Position(initial_pos),
-            Rotation(glam::Quat::IDENTITY),
-            Velocity(Vec3::ZERO),
-            AgentGenotype(genotype),
-            HomeostaticState {
-                energy: 100.0,
-                energy_target: 100.0,
-                hydration: 100.0,
-                hydration_target: 100.0,
-                temperature: 37.0,
-                temp_target: 37.0,
-                previous_deviation: 0.0,
-            },
-            AgentLineageId(format!("hot-path-lineage-{}", i)),
-            AgentGeneration(0),
-            AgentParentLineageIds(vec![]),
-            Prey,
-            ChildrenLinks(vec![segment_entity]),
-        )).id();
+        let agent_entity = world
+            .spawn((
+                Agent,
+                Position(initial_pos),
+                Rotation(glam::Quat::IDENTITY),
+                Velocity(Vec3::ZERO),
+                AgentGenotype(genotype),
+                HomeostaticState {
+                    energy: 100.0,
+                    energy_target: 100.0,
+                    hydration: 100.0,
+                    hydration_target: 100.0,
+                    temperature: 37.0,
+                    temp_target: 37.0,
+                    previous_deviation: 0.0,
+                },
+                AgentLineageId(format!("hot-path-lineage-{}", i)),
+                AgentGeneration(0),
+                AgentParentLineageIds(vec![]),
+                Prey,
+                ChildrenLinks(vec![segment_entity]),
+            ))
+            .id();
 
-        world.entity_mut(segment_entity).insert(ParentAgent(agent_entity));
+        world
+            .entity_mut(segment_entity)
+            .insert(ParentAgent(agent_entity));
     }
 
     let mut schedule = Schedule::default();

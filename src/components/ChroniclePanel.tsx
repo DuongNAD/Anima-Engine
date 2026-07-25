@@ -68,6 +68,10 @@ export const ChroniclePanel: React.FC<ChroniclePanelProps> = ({ chronicleHistory
                   >
                     ⚠️ Parameter Deltas:{' '}
                     {Object.entries(evt.parameter_delta)
+                      // The generated type maps Rust's `HashMap<String, f64>` to
+                      // `{ [key in string]?: number }` — an index lookup can miss, so the value is
+                      // optional. The old hand-written type claimed it never could.
+                      .filter((entry): entry is [string, number] => entry[1] !== undefined)
                       .map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`)
                       .join(', ')}
                   </div>

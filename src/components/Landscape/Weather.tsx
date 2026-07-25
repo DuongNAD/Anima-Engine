@@ -1,6 +1,7 @@
-import React, { useRef, useMemo, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
+import React, { useRef, useMemo, useState, useEffect } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { testAttrs } from './testAttrs';
 
 interface WeatherProps {
   weather: 'clear' | 'rain' | 'snow' | 'fog';
@@ -18,6 +19,7 @@ export const Weather: React.FC<WeatherProps> = ({
   const rainGeomRef = useRef<THREE.BufferGeometry>(null);
   const snowGeomRef = useRef<THREE.BufferGeometry>(null);
   const pointsRef = useRef<any>(null); // For legacy compatibility with any tests expecting this ref
+  const { scene } = useThree();
 
   // Maximum particle counts
   const maxRainCount = 1000;
@@ -50,6 +52,14 @@ export const Weather: React.FC<WeatherProps> = ({
     }
     return arr;
   }, []);
+
+  // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184)
+  useEffect(() => {
+    scene.fog = new THREE.FogExp2('#87ceeb', currentFogDensity);
+    return () => {
+      scene.fog = null;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useFrame((state, delta) => {
     const time = state.clock.getElapsedTime();
@@ -127,6 +137,12 @@ export const Weather: React.FC<WeatherProps> = ({
     if (pointsRef.current && pointsRef.current.position) {
       pointsRef.current.position.y = -((time * 5) % 10);
     }
+
+    // Update fog imperatively
+    if (scene.fog && scene.fog instanceof THREE.FogExp2) {
+      scene.fog.density = currentFogDensity;
+      scene.fog.color.set(targetFogColor);
+    }
   });
 
   // Calculate rendering states
@@ -153,13 +169,13 @@ export const Weather: React.FC<WeatherProps> = ({
     <group
       name="weather-group"
       userData={{ weather, precipitationRate, particleCount: totalParticleCount, fogDensity: currentFogDensity }}
-      data-weather={weather}
-      data-precipitation-rate={precipitationRate}
-      data-particle-count={totalParticleCount}
-      data-fog-density={currentFogDensity}
+      {...testAttrs({
+        'data-weather': weather,
+        'data-precipitation-rate': precipitationRate,
+        'data-particle-count': totalParticleCount,
+        'data-fog-density': currentFogDensity,
+      })}
     >
-      {/* Fog element attaches to scene */}
-      <fogExp2 attach="fog" color={targetFogColor} density={currentFogDensity} />
 
       {/* Rain Points system */}
       {showRain && (

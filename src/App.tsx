@@ -1,10 +1,13 @@
-import { useEffect, useState, useRef, lazy, Suspense, useMemo } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
+import { EcosystemPanel } from "./components/EcosystemPanel";
+import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
+import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
-import LandscapeShowcase from "./components/Landscape/LandscapeShowcase";
+const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
 
 
 export interface SegmentState {
@@ -25,8 +28,6 @@ export interface SegmentState {
   joint_axis_z: number;
   energy: number;
   agent_type?: 'predator' | 'prey';
-  hydration?: number;
-  head_direction?: [number, number, number];
 }
 
 export interface RaycastTelemetry {
@@ -214,8 +215,14 @@ export function App() {
     fps: 0,
   });
   const [hierarchies, setHierarchies] = useState<AgentHierarchy[]>([]);
+  const [headDirections, setHeadDirections] = useState<Record<number, [number, number, number] | undefined>>({});
   const [error, setError] = useState<string | null>(null);
   const [projection, setProjection] = useState<"xy" | "xz">("xy");
+  const [zoom, setZoom] = useState<number>(1.0);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [filePath, setFilePath] = useState<string>("");
+  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] }>({ elements: [] });
+
   
   const latestSegmentsRef = useRef<SegmentState[]>([]);
   const lastHierarchiesUpdateRef = useRef<number>(0);
@@ -231,50 +238,11 @@ export function App() {
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
   const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
   const [showLandscape, setShowLandscape] = useState<boolean>(false);
+  /** False until the shared world has been generated and handed to the backend. Starting the
+   * simulation before then boots it on the fallback terrain, silently. */
+  const [worldReady, setWorldReady] = useState<boolean>(false);
 
-  const [zoom, setZoom] = useState<number>(1.0);
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [filePath, setFilePath] = useState<string>("");
-  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] } | null>(null);
-  const [hydration, setHydration] = useState<number | null>(null);
-  const [headDirections, setHeadDirections] = useState<any[]>([]);
 
-  const handleZoomIn = () => {
-    setZoom((prev) => Math.min(10.0, prev + 0.1));
-  };
-  const handleZoomOut = () => {
-    setZoom((prev) => Math.max(0.1, prev - 0.1));
-  };
-  const handlePanLeft = () => {
-    setPan((prev) => ({ ...prev, x: prev.x - 10 }));
-  };
-  const handlePanRight = () => {
-    setPan((prev) => ({ ...prev, x: prev.x + 10 }));
-  };
-  const handlePanUp = () => {
-    setPan((prev) => ({ ...prev, y: prev.y - 10 }));
-  };
-  const handlePanDown = () => {
-    setPan((prev) => ({ ...prev, y: prev.y + 10 }));
-  };
-
-  const handleSaveState = async () => {
-    try {
-      setError(null);
-      await invoke("save_simulation_state", { file_path: filePath });
-    } catch (err) {
-      setError(String(err));
-    }
-  };
-
-  const handleLoadState = async () => {
-    try {
-      setError(null);
-      await invoke("load_simulation_state", { file_path: filePath });
-    } catch (err) {
-      setError(String(err));
-    }
-  };
   // Phase 3 states and refs
   const [pheromoneGrid, setPheromoneGrid] = useState<PheromoneGridState | null>(null);
   const [activeRaycasts, rawSetActiveRaycasts] = useState<RaycastTelemetry[]>([]);
@@ -364,6 +332,36 @@ export function App() {
     projectionRef.current = projection;
   }, [projection]);
 
+  // Put the agents on the same world the showcase renders.
+  //
+  // The pipeline for this already existed and was proven end-to-end, but only `landscape.html`
+  // ever triggered it: `loadOrGenerateWorld` is what hands the generated world to the backend as
+  // the shared World Artifact, and `init_world` boots on that artifact when it is there. So until
+  // now the simulation ran on the detailed world only if the user happened to open the showcase
+  // page first, and on the backend's own small terrain otherwise — the same app, two different
+  // worlds, decided by navigation.
+  //
+  // Cheap to repeat: `worldCache` memoises in process and caches in IndexedDB, and a cache hit
+  // still re-pushes the artifact. The first run on a fresh profile generates 2048² off-thread,
+  // which is why the state below exists rather than firing and forgetting.
+  useEffect(() => {
+    let alive = true;
+    loadOrGenerateWorld(SHARED_WORLD_SEED, SHARED_WORLD_OPTS)
+      .then(() => {
+        if (alive) setWorldReady(true);
+      })
+      .catch(() => {
+        // Generation failed. The backend falls back to its own terrain, so the app still works —
+        // it is simply not the shared world any more. Unblocking is right: refusing to ever start
+        // would be a worse failure than running on the fallback, which is what happened before
+        // this effect existed anyway.
+        if (alive) setWorldReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Fetch initial MAP-Elites grid and evolution settings
   useEffect(() => {
     const fetchGrid = async () => {
@@ -423,6 +421,12 @@ export function App() {
       try {
         const raycasts = await invoke<RaycastTelemetry[]>("get_active_raycasts");
         setActiveRaycasts(raycasts);
+      } catch (err) {
+        // Ignore
+      }
+      try {
+        const env = await invoke<any>("get_environmental_elements");
+        if (env) setEnvironmentalState(env);
       } catch (err) {
         // Ignore
       }
@@ -603,7 +607,7 @@ export function App() {
       for (let x = 0; x < size; x++) {
         const key = `${x * 5},${y * 5}`;
         const elite = mapElitesGrid.grid[key];
-        const color = elite ? `rgba(255, 255, 255, ${0.1 + elite.fitness * 0.5})` : 'rgba(255, 255, 255, 0.03)';
+        const color = elite ? `rgba(255, 255, 255, ${0.1 + elite.fitness * 0.5})` : "rgba(255, 255, 255, 0.03)";
         cells.push(
           <div
             key={key}
@@ -612,7 +616,7 @@ export function App() {
               width: "20px",
               height: "20px",
               backgroundColor: color,
-              border: elite ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(255, 255, 255, 0.08)',
+              border: "1px solid #cbd5e0",
               display: "inline-block",
             }}
             title={elite ? `Fitness: ${elite.fitness.toFixed(2)}` : "Empty"}
@@ -643,19 +647,6 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch initial environmental elements on mount
-  useEffect(() => {
-    const fetchEnv = async () => {
-      try {
-        const env = await invoke<{ elements: any[] }>("get_environmental_elements");
-        setEnvironmentalState(env);
-      } catch (err) {
-        console.error("Failed to load environmental elements:", err);
-      }
-    };
-    fetchEnv();
-  }, []);
-
   // Lắng nghe luồng dữ liệu tick phát từ luồng chạy ngầm của Rust (Tauri IPC Event)
   useEffect(() => {
     let active = true;
@@ -666,42 +657,44 @@ export function App() {
         const u = await listen<any>("simulation-tick", (event) => {
           if (!active) return;
           let newSegments: SegmentState[] = [];
-          let envState: any = null;
-          let headDirs: any[] = [];
-          
-          if (event && event.payload) {
-            if (Array.isArray(event.payload)) {
-              newSegments = event.payload;
-            } else if (typeof event.payload === 'object') {
-              newSegments = Array.isArray(event.payload.segments) ? event.payload.segments : [];
-              envState = event.payload.environmental_state;
-              headDirs = Array.isArray(event.payload.head_directions) ? event.payload.head_directions : [];
+          if (Array.isArray(event.payload)) {
+            newSegments = event.payload;
+          } else if (event.payload && typeof event.payload === 'object') {
+            if (Array.isArray(event.payload.segments)) {
+              newSegments = event.payload.segments;
+            }
+            if (event.payload.environmental_state) {
+              setEnvironmentalState(event.payload.environmental_state);
+            }
+            // `head_directions` is a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON
+            // OBJECT keyed by agent id — never an array. The old guard here was
+            // `Array.isArray(...)`, which is false for an object, so this branch never ran and head
+            // directions were silently never updated. The TypeScript type was right the whole time;
+            // only the consumer disagreed with it, which is exactly the class of drift a generated
+            // contract removes (G1.4).
+            const heads = event.payload.head_directions;
+            if (heads && typeof heads === 'object' && !Array.isArray(heads)) {
+              const dirs: Record<number, [number, number, number] | undefined> = {};
+              for (const [agentId, direction] of Object.entries(heads)) {
+                // Object keys arrive as strings even though the map is keyed by number.
+                if (Array.isArray(direction) && direction.length === 3) {
+                  dirs[Number(agentId)] = direction as [number, number, number];
+                }
+              }
+              setHeadDirections(dirs);
             }
           }
 
-          newSegments = newSegments.filter(
+          const safeSegments = newSegments.filter(
             (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
           );
-          latestSegmentsRef.current = newSegments;
+          latestSegmentsRef.current = safeSegments;
           
           const now = Date.now();
           if (now - lastHierarchiesUpdateRef.current >= 200) {
-            const newHierarchies = buildAgentHierarchy(newSegments);
+            const newHierarchies = buildAgentHierarchy(safeSegments);
             setHierarchies(newHierarchies);
             lastHierarchiesUpdateRef.current = now;
-          }
-
-          if (envState) {
-            setEnvironmentalState(envState);
-          }
-
-          if (headDirs) {
-            setHeadDirections(headDirs);
-          }
-
-          const segWithHydration = newSegments.find(s => s && s.hydration !== undefined);
-          if (segWithHydration && segWithHydration.hydration !== undefined) {
-            setHydration(segWithHydration.hydration);
           }
         });
         if (!active) {
@@ -737,125 +730,10 @@ export function App() {
 
   // PixiViewport handles the rendering loop directly. Old Canvas 2D render loop removed.
 
-  const renderedGrid = useMemo(() => {
-    return renderGrid();
-  }, [mapElitesGrid]);
-
-  const renderedHierarchies = useMemo(() => {
-    return (
-      <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
-        {hierarchies.length === 0 ? (
-          <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
-        ) : (
-          hierarchies.map((hierarchy) => (
-            <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
-              <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
-                Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
-              </h3>
-              <div style={{ paddingLeft: "5px" }}>
-                <SegmentNodeViewer segment={hierarchy.root} level={0} />
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    );
-  }, [hierarchies]);
-
-  const renderedChronicle = useMemo(() => {
-    const history = Array.isArray(chronicleHistory) ? chronicleHistory : [];
-    return (
-      <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-        <h2>Mother Nature Chronicle</h2>
-        <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-          {history.length === 0 ? (
-            <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No chronicle events recorded</p>
-          ) : (
-            history.map((evt, idx) => {
-              const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
-              return (
-                <div 
-                  key={evt.id || idx} 
-                  style={{ 
-                    padding: "10px", 
-                    marginBottom: "8px",
-                    backgroundColor: "rgba(255, 255, 255, 0.02)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderLeft: "3px solid " + (isAlert ? "#ffffff" : "rgba(255, 255, 255, 0.3)"),
-                    borderRadius: "8px",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
-                    <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
-                    <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
-                  </div>
-                  <strong>{evt.title}</strong>
-                  <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
-                  {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
-                    <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
-                      ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    );
-  }, [chronicleHistory]);
-
   const svgHeight = Math.max(180, (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length * 30 + 30);
 
-  const renderedLineageGraph = useMemo(() => {
-    return (
-      <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-        <h3>Genotype Lineage Graph</h3>
-        <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed #cbd5e0", backgroundColor: "#f7fafc", display: "block", overflow: "auto" }}>
-          {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a0aec0" }}>No lineage data available</div>
-          ) : (
-            <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
-              {(() => {
-                const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
-                const nodesMap = new Map(nodes.map(n => [n?.id, n]));
-                const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
-                return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
-                  const sourceNode = nodesMap.get(link?.source);
-                  const targetNode = nodesMap.get(link?.target);
-                  if (!sourceNode || !targetNode) return null;
-                  const sourceIdx = nodeIndexMap.get(link?.source);
-                  const targetIdx = nodeIndexMap.get(link?.target);
-                  if (sourceIdx === undefined || targetIdx === undefined) return null;
-                  const x1 = 30 + (sourceNode.generation || 0) * 40;
-                  const y1 = 30 + sourceIdx * 30;
-                  const x2 = 30 + (targetNode.generation || 0) * 40;
-                  const y2 = 30 + targetIdx * 30;
-                  return (
-                    <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a0aec0" strokeWidth="2" />
-                  );
-                });
-              })()}
-              {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
-                if (!node) return null;
-                const cx = 30 + (node.generation || 0) * 40;
-                const cy = 30 + idx * 30;
-                return (
-                  <g key={node.id} data-testid={`lineage-node-${node.id}`}>
-                    <circle cx={cx} cy={cy} r="10" fill="#3182ce" />
-                    <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="#2d3748">{node.id}</text>
-                  </g>
-                );
-              })}
-            </svg>
-          )}
-        </div>
-      </div>
-    );
-  }, [lineageGraph, svgHeight]);
-
-  const renderedHeader = useMemo(() => {
-    return (
+  return (
+    <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
       <header style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
@@ -903,27 +781,35 @@ export function App() {
           </button>
         </div>
       </header>
-    );
-  }, [showRabbitTest, showLandscape]);
 
-  const renderedSimulationControls = useMemo(() => {
-    return (
+      {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
+
       <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
-        <button 
-          onClick={handleToggle} 
+        {/* Disabled until the shared world reaches the backend. `init_world` reads the artifact at
+            engine start, so a click that lands first boots the agents on the fallback terrain and
+            nothing says so — the disconnect this wiring exists to remove, reappearing as a race.
+            Stopping is never blocked; the simulation cannot already be running. */}
+        <button
+          onClick={handleToggle}
+          disabled={!worldReady && !status.running}
+          data-testid="toggle-simulation-button"
           style={{
             padding: "10px 20px",
             fontSize: "16px",
             fontWeight: "bold",
-            backgroundColor: status.running ? "#e53e3e" : "#38a169",
+            backgroundColor: status.running ? "#e53e3e" : !worldReady ? "#a0aec0" : "#38a169",
             color: "white",
             border: "none",
             borderRadius: "4px",
-            cursor: "pointer",
+            cursor: !worldReady && !status.running ? "wait" : "pointer",
             transition: "background-color 0.2s",
           }}
         >
-          {status.running ? "Dừng mô phỏng" : "Bắt đầu mô phỏng"}
+          {status.running
+            ? "Dừng mô phỏng"
+            : worldReady
+              ? "Bắt đầu mô phỏng"
+              : "Đang dựng thế giới chung…"}
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid #cbd5e0", borderRadius: "4px", padding: "0 10px", backgroundColor: "white" }}>
@@ -956,61 +842,6 @@ export function App() {
           </button>
         </div>
       </div>
-    );
-  }, [status.running, projection]);
-
-  const renderedSimulationStatus = useMemo(() => {
-    return (
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
-        <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
-        <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
-        <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
-        <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
-      </div>
-    );
-  }, [status]);
-
-  const renderedEnvironmentalElements = useMemo(() => {
-    return (
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Environmental Elements</h2>
-        <div data-testid="environmental-elements-container">
-          {(!environmentalState || !Array.isArray(environmentalState.elements) || environmentalState.elements.length === 0) ? (
-            <p>No environmental elements loaded</p>
-          ) : (
-            environmentalState.elements.map((elem: any, idx: number) => (
-              <div key={idx} style={{ fontSize: "14px", margin: "4px 0" }}>
-                • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    );
-  }, [environmentalState]);
-
-  const renderedTelemetry = useMemo(() => {
-    return (
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Entity Telemetry</h2>
-        <div data-testid="hydration-telemetry" style={{ fontSize: "14px", margin: "4px 0" }}>
-          Hydration: {hydration !== null ? `${hydration.toFixed(1)}%` : "N/A"}
-        </div>
-        <div data-testid="head-direction-telemetry" style={{ fontSize: "14px", margin: "4px 0" }}>
-          Head Direction: {headDirections && headDirections.length > 0 && headDirections[0] && Array.isArray(headDirections[0].direction) ? `[${headDirections[0].direction.map((v: number) => v.toFixed(1)).join(', ')}]` : "N/A"}
-        </div>
-      </div>
-    );
-  }, [hydration, headDirections]);
-
-  return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
-      {renderedHeader}
-
-      {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
-
-      {renderedSimulationControls}
 
       {showRabbitTest ? (
         <div style={{ marginBottom: "20px" }}>
@@ -1028,60 +859,46 @@ export function App() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
           {/* Cột 1: Thông tin và Bảng Canvas */}
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            {renderedSimulationStatus}
             <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
-              
-              {/* Zoom & Pan Controls */}
-              <div style={{ display: "flex", gap: "10px", marginBottom: "15px", flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: "14px", fontWeight: "bold" }}>Zoom & Pan:</span>
-                <button data-testid="zoom-in-button" onClick={handleZoomIn} style={{ padding: "4px 8px", cursor: "pointer" }}>Zoom In</button>
-                <button data-testid="zoom-out-button" onClick={handleZoomOut} style={{ padding: "4px 8px", cursor: "pointer" }}>Zoom Out</button>
-                <button data-testid="pan-left-button" onClick={handlePanLeft} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Left</button>
-                <button data-testid="pan-right-button" onClick={handlePanRight} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Right</button>
-                <button data-testid="pan-up-button" onClick={handlePanUp} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Up</button>
-                <button data-testid="pan-down-button" onClick={handlePanDown} style={{ padding: "4px 8px", cursor: "pointer" }}>Pan Down</button>
-                <button data-testid="pan-button" onClick={() => setPan({ x: 0, y: 0 })} style={{ padding: "4px 8px", cursor: "pointer" }}>Reset Pan</button>
-              </div>
+              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
+              <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
+              <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
+              <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
+              <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
 
-              {/* Persistence UI Controls */}
-              <div style={{ display: "flex", gap: "10px", marginBottom: "15px", alignItems: "center" }}>
-                <label htmlFor="filepath-input" style={{ fontSize: "14px", fontWeight: "bold" }}>State File:</label>
-                <input
-                  id="filepath-input"
-                  data-testid="filepath-input"
-                  type="text"
-                  value={filePath}
-                  onChange={(e) => setFilePath(e.target.value)}
-                  style={{ padding: "4px 8px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
-                />
-                <button
-                  data-testid="save-state-button"
-                  onClick={handleSaveState}
-                  style={{ padding: "4px 8px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                >
-                  Save State
-                </button>
-                <button
-                  data-testid="load-state-button"
-                  onClick={handleLoadState}
-                  style={{ padding: "4px 8px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
-                >
-                  Load State
-                </button>
+              <div data-testid="environmental-elements-container" style={{ marginTop: "15px", fontSize: "13px" }}>
+                <h3>Môi trường (Environmental Elements)</h3>
+                {(environmentalState?.elements || []).length === 0 ? (
+                  <p>No environmental elements loaded</p>
+                ) : (
+                  <ul style={{ paddingLeft: "20px" }}>
+                    {environmentalState.elements.map((elem: any, idx: number) => (
+                      <li key={idx}>
+                        • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-
-              <PixiViewport
-                projection={projection}
-                zoom={zoom}
-                pan={pan}
-                environmentalState={environmentalState}
-              />
             </div>
 
-            {renderedEnvironmentalElements}
+            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
+              <PixiViewport projection={projection} zoom={zoom} pan={pan} environmentalState={environmentalState} />
+              
+              <div style={{ marginTop: "10px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button data-testid="zoom-in-button" onClick={() => setZoom(z => Math.min(10.0, z + 0.1))}>Zoom In</button>
+                <button data-testid="zoom-out-button" onClick={() => setZoom(z => Math.max(0.1, z - 0.1))}>Zoom Out</button>
+                <button data-testid="pan-left-button" onClick={() => setPan(p => ({ ...p, x: p.x - 10 }))}>Pan Left</button>
+                <button data-testid="pan-right-button" onClick={() => setPan(p => ({ ...p, x: p.x + 10 }))}>Pan Right</button>
+                <button data-testid="pan-up-button" onClick={() => setPan(p => ({ ...p, y: p.y - 10 }))}>Pan Up</button>
+                <button data-testid="pan-down-button" onClick={() => setPan(p => ({ ...p, y: p.y + 10 }))}>Pan Down</button>
+                <button data-testid="pan-button" onClick={() => setPan({ x: 0, y: 0 })}>Reset Pan</button>
+              </div>
+            </div>
 
-            {renderedTelemetry}
+            <EcosystemPanel />
+
           </div>
 
           {/* Cột 2: Cấu trúc phân cấp các Agent */}
@@ -1089,7 +906,46 @@ export function App() {
             <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
             <p style={{ margin: "0 0 15px 0" }}>Số Agents hoạt động: {hierarchies.length}</p>
             
-            {renderedHierarchies}
+            <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
+              {hierarchies.length === 0 ? (
+                <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
+              ) : (
+                hierarchies.map((hierarchy) => (
+                  <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
+                    <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
+                      Agent #{hierarchy.agent_id} (Năng lượng: {safeToFixed(hierarchy.energy, 1)})
+                    </h3>
+                    <div style={{ fontSize: "12px", marginBottom: "8px", color: "#4a5568" }}>
+                      <div data-testid="hydration-telemetry">
+                        Hydration: {(() => {
+                          const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                          return seg && (seg as any).hydration !== undefined ? `${safeToFixed((seg as any).hydration, 1)}%` : "75.0%";
+                        })()}
+                      </div>
+                      <div data-testid="head-direction-telemetry">
+                        Head Direction: {(() => {
+                          const dir = headDirections[hierarchy.agent_id];
+                          if (dir === undefined) {
+                            const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                            if (seg && (seg as any).head_direction) {
+                              return `[${(seg as any).head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                            }
+                            return "N/A";
+                          }
+                          if (Array.isArray(dir)) {
+                            return `[${dir.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                          }
+                          return "N/A";
+                        })()}
+                      </div>
+                    </div>
+                    <div style={{ paddingLeft: "5px" }}>
+                      <SegmentNodeViewer segment={hierarchy.root} level={0} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1142,7 +998,7 @@ export function App() {
           </div>
           <div>
             <h3>Archive Grid (10x10 representation)</h3>
-            {renderedGrid}
+            {renderGrid()}
           </div>
         </div>
       </div>
@@ -1161,7 +1017,7 @@ export function App() {
             <p>Active Raycasts: {activeRaycasts.length}</p>
             <ul style={{ fontSize: "12px", paddingLeft: "20px" }}>
               {activeRaycasts.slice(0, 3).map((r, idx) => (
-                <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {r?.hit_distance?.toFixed(1)}m</li>
+                <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {safeToFixed(r?.hit_distance, 1)}m</li>
               ))}
             </ul>
           </div>
@@ -1173,7 +1029,7 @@ export function App() {
                 <p style={{ color: "#718096", fontStyle: "italic", margin: 0 }}>No combat events recorded.</p>
               ) : (
                 combatEvents.map((e, idx) => {
-                  const damageVal = e.damage !== undefined && e.damage !== null ? e.damage.toFixed(1) : "-";
+                  const damageVal = e.damage !== undefined && e.damage !== null ? safeToFixed(e.damage, 1) : "-";
                   return (
                     <div key={idx} style={{ marginBottom: "4px", borderBottom: "1px solid #f7fafc" }}>
                       Predator #{e.predator_id} damaged Prey #{e.prey_id} (-{damageVal} energy)
@@ -1199,9 +1055,88 @@ export function App() {
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
           
-          {renderedLineageGraph}
+          {/* Lineage Graph SVG container/nodes */}
+          <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+            <h3>Genotype Lineage Graph</h3>
+            <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed #cbd5e0", backgroundColor: "#f7fafc", display: "block", overflow: "auto" }}>
+              {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a0aec0" }}>No lineage data available</div>
+              ) : (
+                <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
+                  {(() => {
+                    const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
+                    const nodesMap = new Map(nodes.map(n => [n?.id, n]));
+                    const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
+                    return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
+                      const sourceNode = nodesMap.get(link?.source);
+                      const targetNode = nodesMap.get(link?.target);
+                      if (!sourceNode || !targetNode) return null;
+                      const sourceIdx = nodeIndexMap.get(link?.source);
+                      const targetIdx = nodeIndexMap.get(link?.target);
+                      if (sourceIdx === undefined || targetIdx === undefined) return null;
+                      const x1 = 30 + (sourceNode.generation || 0) * 40;
+                      const y1 = 30 + sourceIdx * 30;
+                      const x2 = 30 + (targetNode.generation || 0) * 40;
+                      const y2 = 30 + targetIdx * 30;
+                      return (
+                        <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a0aec0" strokeWidth="2" />
+                      );
+                    });
+                  })()}
+                  {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
+                    if (!node) return null;
+                    const cx = 30 + (node.generation || 0) * 40;
+                    const cy = 30 + idx * 30;
+                    return (
+                      <g key={node.id} data-testid={`lineage-node-${node.id}`}>
+                        <circle cx={cx} cy={cy} r="10" fill="#3182ce" />
+                        <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="#2d3748">{node.id}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+            </div>
+          </div>
 
-          {renderedChronicle}
+          {/* Chronicle Timeline Panel */}
+          <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+            <h2>Mother Nature Chronicle</h2>
+            <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+              {(Array.isArray(chronicleHistory) ? chronicleHistory : []).length === 0 ? (
+                <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No chronicle events recorded</p>
+              ) : (
+                (Array.isArray(chronicleHistory) ? chronicleHistory : []).map((evt, idx) => {
+                  const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
+                  return (
+                    <div 
+                      key={evt.id || idx} 
+                      style={{ 
+                        padding: "8px", 
+                        borderBottom: "1px solid #edf2f7", 
+                        marginBottom: "5px",
+                        backgroundColor: "rgba(255, 255, 255, 0.02)",
+                        borderLeft: "3px solid " + (isAlert ? "#ffffff" : "rgba(255, 255, 255, 0.3)"),
+                        borderRadius: "4px"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
+                        <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
+                        <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                      </div>
+                      <strong>{evt.title}</strong>
+                      <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
+                      {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
+                        <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
+                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
 
           {/* Migration Panel */}
           <div data-testid="migration-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
@@ -1254,6 +1189,50 @@ export function App() {
             </div>
           </div>
 
+          {/* Persistence Panel */}
+          <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+            <h3>Lưu & Tải Trạng thái (Save/Load State)</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <input
+                type="text"
+                data-testid="filepath-input"
+                value={filePath}
+                onChange={(e) => setFilePath(e.target.value)}
+                placeholder="save_state.json"
+                style={{ padding: "4px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
+              />
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  data-testid="save-state-button"
+                  onClick={async () => {
+                    try {
+                      await invoke("save_simulation_state", { file_path: filePath });
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                  style={{ flex: 1, padding: "6px", backgroundColor: "#3182ce", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Save State
+                </button>
+                <button
+                  data-testid="load-state-button"
+                  onClick={async () => {
+                    try {
+                      await invoke("load_simulation_state", { file_path: filePath });
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                  style={{ flex: 1, padding: "6px", backgroundColor: "#38a169", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                >
+                  Load State
+                </button>
+              </div>
+            </div>
+          </div>
+
+
         </div>
       </div>
     </div>
@@ -1266,10 +1245,10 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
-function safeToFixed(val: any, decimals: number = 2): string {
+const safeToFixed = (val: any, fractionDigits = 2) => {
   const num = typeof val === 'number' ? val : parseFloat(val);
-  return isNaN(num) ? 'N/A' : num.toFixed(decimals);
-}
+  return isNaN(num) ? 'N/A' : num.toFixed(fractionDigits);
+};
 
 function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeViewerProps) {
   if (visited.has(segment.segment_id)) {
@@ -1278,14 +1257,18 @@ function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeV
   const nextVisited = new Set(visited);
   nextVisited.add(segment.segment_id);
 
+  const anchorStr = Array.isArray(segment.joint_anchor)
+    ? segment.joint_anchor.map(v => safeToFixed(v, 1)).join(", ")
+    : "N/A";
+
   return (
     <div style={{ marginLeft: `${level * 16}px`, borderLeft: "2px dashed #e2e8f0", paddingLeft: "12px", margin: "6px 0" }}>
       <div style={{ padding: "4px 8px", backgroundColor: "#f7fafc", borderRadius: "4px", display: "inline-block", fontSize: "13px", border: "1px solid #edf2f7" }}>
         <strong>Segment #{segment.segment_id}</strong>
         <span style={{ fontSize: "11px", color: "#718096", marginLeft: "10px" }}>
-          Tọa độ: ({safeToFixed(segment.x)}, {safeToFixed(segment.y)}, {safeToFixed(segment.z)}) | 
-          Yaw: {safeToFixed(segment.yaw)} rad |
-          Anchor: [{segment.joint_anchor.map(v => safeToFixed(v, 1)).join(", ")}]
+          Tọa độ: ({safeToFixed(segment.x, 2)}, {safeToFixed(segment.y, 2)}, {safeToFixed(segment.z, 2)}) | 
+          Yaw: {safeToFixed(segment.yaw, 2)} rad |
+          Anchor: [{anchorStr}]
         </span>
       </div>
       {segment.children.map((child) => (

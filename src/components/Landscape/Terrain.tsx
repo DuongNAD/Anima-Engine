@@ -1,12 +1,17 @@
 import React, { useMemo, useRef, useLayoutEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, extend } from '@react-three/fiber';
 import * as THREE from 'three';
-import { generateTerrain, generateTerrainData, getBiomeColor } from './utils/terrainGenerator';
+import { generateTerrain, biomeColor, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { testAttrs } from './testAttrs';
+
+// Register THREE.LOD with R3F so <lod> JSX element works
+extend({ Lod: THREE.LOD });
 
 declare global {
   namespace JSX {
     interface IntrinsicElements {
-      lOD: any;
+      lod: any;
     }
   }
 }
@@ -15,35 +20,16 @@ interface TerrainProps {
   width?: number;
   height?: number;
   wetnessRatio?: number;
+  /** Shared, pre-generated (and cached) terrain. Falls back to generating when omitted. */
+  terrain?: TerrainData;
 }
 
-function getBlendedBiomeColor(elevation: number, moisture: number, temperature?: number): { r: number; g: number; b: number } {
-  let r = 0, g = 0, b = 0;
-  let count = 0;
-  // Sample a small 3x3 grid around the coordinate to smooth boundaries
-  const steps = [-2, 0, 2];
-  for (const de of steps) {
-    for (const dm of steps) {
-      const sampleE = Math.max(0, Math.min(100, elevation + de));
-      const sampleM = Math.max(0, Math.min(100, moisture + dm));
-      const col = getBiomeColor(sampleE, sampleM, temperature);
-      r += col.r;
-      g += col.g;
-      b += col.b;
-      count++;
-    }
-  }
-  return { r: r / count, g: g / count, b: b / count };
-}
-
-export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0 }) => {
-  const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
-  const actualWidth = isVitest ? Math.min(width, 100) : width;
-  const actualHeight = isVitest ? Math.min(height, 100) : height;
-
-  // Generate the basic terrain data
-  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
-  const terrainData = useMemo(() => generateTerrainData(actualWidth, actualHeight), [actualWidth, actualHeight]);
+export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wetnessRatio = 0, terrain: propTerrain }) => {
+  // Use the shared terrain when provided (generated once + cached); otherwise generate locally.
+  const terrain = useMemo(
+    () => propTerrain ?? generateTerrain(width, height, 'seed'),
+    [propTerrain, width, height],
+  );
 
   const lodRef = useRef<THREE.LOD>(null);
   const meshRef0 = useRef<THREE.Mesh>(null);
@@ -54,38 +40,10 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
   const geomRef1 = useRef<THREE.BufferGeometry>(null);
   const geomRef2 = useRef<THREE.BufferGeometry>(null);
 
-  const materialShaderRef = useRef<any>(null);
-
-  const onBeforeCompile = (shader: any) => {
-    shader.uniforms.time = { value: 0 };
-    shader.uniforms.uWidth = { value: actualWidth };
-    shader.uniforms.uHeight = { value: actualHeight };
-    materialShaderRef.current = shader;
-
-    shader.vertexShader = `
-      uniform float time;
-      uniform float uWidth;
-      uniform float uHeight;
-    ` + shader.vertexShader;
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `
-      #include <begin_vertex>
-      if (position.y < 5.4) {
-        float gx = position.x + uWidth / 2.0;
-        float gz = position.z + uHeight / 2.0;
-        float wave = sin(gx * 0.15 + time * 1.5) * cos(gz * 0.15 + time) * 0.3;
-        transformed.y += wave;
-      }
-      `
-    );
-  };
-
   // Helper to construct geometry arrays for a given LOD step size
   const getGeometryData = (step: number) => {
-    const w = Math.ceil(actualWidth / step);
-    const h = Math.ceil(actualHeight / step);
+    const w = Math.ceil(width / step);
+    const h = Math.ceil(height / step);
 
     const positions = new Float32Array(w * h * 3);
     const colors = new Float32Array(w * h * 3);
@@ -93,14 +51,14 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
 
     for (let yIndex = 0; yIndex < h; yIndex++) {
       for (let xIndex = 0; xIndex < w; xIndex++) {
-        const gx = Math.min(actualWidth - 1, xIndex * step);
-        const gy = Math.min(actualHeight - 1, yIndex * step);
+        const gx = Math.min(width - 1, xIndex * step);
+        const gy = Math.min(height - 1, yIndex * step);
 
         const cell = terrain.grid[gy][gx];
 
-        const posX = gx - actualWidth / 2;
-        const posY = gy - actualHeight / 2;
-        const posZ = cell.elevation * 1.8; // Elevation deformation
+        const posX = gx - width / 2;
+        const posY = gy - height / 2;
+        const posZ = cell.elevation * TERRAIN_HEIGHT_SCALE; // Elevation deformation
 
         const i = yIndex * w + xIndex;
         positions[i * 3] = posX;
@@ -115,7 +73,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
         } else if (cell.isRiver === 3) {
           color = { r: 0x1a / 255, g: 0x7a / 255, b: 0x90 / 255 };
         } else {
-          color = getBlendedBiomeColor(cell.elevation, cell.moisture, cell.temperature);
+          color = biomeColor(cell.biome);
         }
         colors[i * 3] = color.r;
         colors[i * 3 + 1] = color.g;
@@ -130,6 +88,8 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
         const c = (yIndex + 1) * w + xIndex;
         const d = (yIndex + 1) * w + (xIndex + 1);
 
+        // CCW winding when viewed from above so computeVertexNormals() yields +Y normals
+        // (otherwise the flat top is back-face culled and the terrain looks transparent).
         indices.push(a, c, b);
         indices.push(b, c, d);
       }
@@ -146,7 +106,6 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
       geomRef0.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geomRef0.current.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
       geomRef0.current.computeVertexNormals();
-      geomRef0.current.computeBoundingSphere();
     }
 
     // Initialize geometry for LOD 1 (Medium Detail - step 4)
@@ -156,7 +115,6 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
       geomRef1.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geomRef1.current.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
       geomRef1.current.computeVertexNormals();
-      geomRef1.current.computeBoundingSphere();
     }
 
     // Initialize geometry for LOD 2 (Low Detail - step 16)
@@ -166,56 +124,85 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
       geomRef2.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geomRef2.current.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
       geomRef2.current.computeVertexNormals();
-      geomRef2.current.computeBoundingSphere();
     }
-  }, [actualWidth, actualHeight, wetnessRatio]);
+  }, [width, height, wetnessRatio]);
 
   useLayoutEffect(() => {
     if (lodRef.current && typeof (lodRef.current as any).addLevel === 'function' && meshRef0.current && meshRef1.current && meshRef2.current) {
       // Clear levels to support clean re-mounting/updates
-      (lodRef.current as any).levels.length = 0;
+      while ((lodRef.current as any).levels && (lodRef.current as any).levels.length > 0) { (lodRef.current as any).levels.pop(); }
       
       // Setup LOD thresholds
       (lodRef.current as any).addLevel(meshRef0.current, 0);      // High detail close up
-      (lodRef.current as any).addLevel(meshRef1.current, 250);    // Medium detail mid range
-      (lodRef.current as any).addLevel(meshRef2.current, 600);    // Low detail far away
+      (lodRef.current as any).addLevel(meshRef1.current, 150);    // Medium detail mid range
+      (lodRef.current as any).addLevel(meshRef2.current, 400);    // Low detail far away
     }
   }, []);
 
   useFrame((state) => {
-    if (isVitest) return;
-    if (materialShaderRef.current) {
-      materialShaderRef.current.uniforms.time.value = state.clock.getElapsedTime();
-    }
+    const time = state.clock.getElapsedTime();
+    const animateLOD = (geomRef: React.RefObject<THREE.BufferGeometry>, step: number) => {
+      if (!geomRef.current) return;
+      const geom = geomRef.current;
+      const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
+      if (!posAttr) return;
+      const pos = posAttr.array as Float32Array;
+      const w = Math.ceil(width / step);
+      const h = Math.ceil(height / step);
+
+      let needsUpdate = false;
+      for (let yIndex = 0; yIndex < h; yIndex++) {
+        for (let xIndex = 0; xIndex < w; xIndex++) {
+          const gx = Math.min(width - 1, xIndex * step);
+          const gy = Math.min(height - 1, yIndex * step);
+          const cell = terrain.grid[gy][gx];
+
+          if (cell.elevation < 3.0 && !cell.isRiver) {
+            const i = yIndex * w + xIndex;
+            const x = gx;
+            const y = gy;
+            const wave = Math.sin(x * 0.15 + time * 1.5) * Math.cos(y * 0.15 + time) * 0.3;
+            pos[i * 3 + 1] = (cell.elevation * TERRAIN_HEIGHT_SCALE) + wave;
+            needsUpdate = true;
+          }
+        }
+      }
+      if (needsUpdate) {
+        posAttr.needsUpdate = true;
+        geom.computeVertexNormals();
+      }
+    };
+
+    animateLOD(geomRef0, 1);
+    animateLOD(geomRef1, 4);
+    animateLOD(geomRef2, 16);
   });
 
   return (
-    <lOD ref={lodRef} name="terrain-lod">
+    <lod ref={lodRef} name="terrain-lod">
       {/* LOD Level 0: High Detail */}
       <mesh
         ref={meshRef0}
         name="terrain-mesh"
-        userData={{ wetnessRatio, gridLength: terrainData.length }}
-        data-wetness-ratio={wetnessRatio}
-        castShadow
-        receiveShadow
+        userData={{ wetnessRatio, gridLength: width * height }}
+        {...testAttrs({ 'data-wetness-ratio': wetnessRatio })}
       >
         <bufferGeometry ref={geomRef0} />
-        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} onBeforeCompile={onBeforeCompile} />
+        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} />
       </mesh>
 
       {/* LOD Level 1: Medium Detail */}
-      <mesh ref={meshRef1} name="terrain-mesh-lod-1" castShadow receiveShadow>
+      <mesh ref={meshRef1} name="terrain-mesh-lod-1">
         <bufferGeometry ref={geomRef1} />
-        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} onBeforeCompile={onBeforeCompile} />
+        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} />
       </mesh>
 
       {/* LOD Level 2: Low Detail */}
-      <mesh ref={meshRef2} name="terrain-mesh-lod-2" castShadow receiveShadow>
+      <mesh ref={meshRef2} name="terrain-mesh-lod-2">
         <bufferGeometry ref={geomRef2} />
-        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} onBeforeCompile={onBeforeCompile} />
+        <meshStandardMaterial vertexColors roughness={1.0 - wetnessRatio} metalness={0.1} />
       </mesh>
-    </lOD>
+    </lod>
   );
 };
 

@@ -123,14 +123,43 @@ export function fbm(
   return total / maxValue;
 }
 
-export type BiomeType = 'ocean' | 'beach' | 'grassland' | 'forest' | 'taiga' | 'alpine rock' | 'snow peaks' | 'desert' | 'jungle' | 'volcanic' | 'glacier';
+/**
+ * Vertical scale applied when turning the generator's elevation values (~[0, 100]) into
+ * world-space Y on the landscape grid. The grid footprint is ~64 units wide, so this is
+ * kept small to keep peaks proportional to the map (≈0.3× the width) instead of spiking
+ * far above it. Terrain, Water and Vegetation MUST all use this same constant so the
+ * terrain mesh, water surface and props stay vertically aligned.
+ */
+export const TERRAIN_HEIGHT_SCALE = 0.3;
+
+// The union of both sides of the merge. This branch added `savanna` and `tundra` to fill out the
+// Whittaker matrix; `main` added `volcanic` and `glacier` as temperature extremes. They are not
+// alternatives — every consumer table below (terrain colour, water, flora) now has to cover all
+// thirteen, which is what the merge of those files does.
+export type BiomeType =
+  | 'ocean'
+  | 'beach'
+  | 'desert'
+  | 'savanna'
+  | 'grassland'
+  | 'forest'
+  | 'jungle'
+  | 'taiga'
+  | 'tundra'
+  | 'alpine rock'
+  | 'snow peaks'
+  | 'volcanic'
+  | 'glacier';
 
 export interface TerrainCell {
   x: number;
   y: number;
-  elevation: number; // 0 to 100
-  moisture: number;  // 0 to 100
-  temperature: number;
+  elevation: number;   // 0 to 100
+  // Optional rather than required: `main` made it mandatory, but this branch has callers that build
+  // cells without one and rely on `determineBiome`'s default. Optional accepts both; required would
+  // have been a compile error at every one of them.
+  moisture: number;    // 0 to 100
+  temperature?: number; // raw generator scale, ~[-1.8, 1.9]; negative is cold
   biome: BiomeType;
   isRiver: boolean | number;
   isLake: boolean;
@@ -168,29 +197,54 @@ export function getBilinearInterpolatedElevation(px: number, py: number, width: 
 }
 
 /**
- * Determines the biome based on elevation and moisture thresholds.
+ * Whittaker-style biome classification from elevation (0..100), moisture (0..100) and a
+ * raw temperature (the generator scale, ~[-1.8, 1.9]; negative is cold). It defaults to 0.5 —
+ * temperate — so old two-argument callers keep working.
  */
-export function determineBiome(elevation: number, moisture: number, temperature?: number): BiomeType {
-  if (temperature !== undefined) {
-    if (temperature > 0.95) return 'volcanic';
-    if (temperature < -0.5) return 'glacier';
-    if (temperature > 0.6) {
-      if (moisture < 20) return 'desert';
-      if (moisture >= 70) return 'jungle';
-    }
-  }
-  if (elevation < 3.0) {
-    return 'ocean';
-  }
-  if (elevation < 5.0) {
-    return 'beach';
-  }
-  if (elevation >= 80) {
-    return 'snow peaks';
-  }
+export function determineBiome(elevation: number, moisture: number, temperature: number = 0.5): BiomeType {
+  // Temperature extremes, from `main`. They sit ahead of everything because they are not points on
+  // the Whittaker matrix below — they are off the end of it, and a volcanic field has to read as
+  // volcanic whatever its elevation says.
+  //
+  // Which scale `temperature` is on was the whole difficulty of this merge, and it is settled here
+  // in `main`'s favour: this is the generator's RAW value (~[-1.8, 1.9]), not the [0,1] normalized
+  // one this branch briefly used. Both sides compile either way and both produce plausible terrain,
+  // which is why it had to be decided on evidence rather than preference:
+  //
+  //   - `main`'s tests pin the raw scale directly (0.98 → volcanic, -0.6 → glacier, 0.8 → desert).
+  //   - Every test on this branch calls `determineBiome` with two arguments, so none of them pins
+  //     the scale at all — switching costs nothing here.
+  //   - On the normalized scale the generator can never emit `glacier`, because normalization
+  //     floors at 0 and the threshold is negative. The biome would exist and be unreachable.
+  //
+  // The matrix thresholds below are therefore re-expressed on the raw scale, through the same
+  // mapping the generator used: `raw = temp01 * 2.5 - 1`, so 0.4 → 0.0 and 0.66 → 0.65. The 0.5
+  // default still lands in the temperate band, which is what keeps the two-argument callers working.
+  if (temperature > 0.95) return 'volcanic';
+  if (temperature < -0.5) return 'glacier';
+
+  if (elevation < 3.0) return 'ocean';
+  if (elevation < 5.0) return 'beach';
+  if (elevation >= 80) return 'snow peaks';
+
+  // High terrain: cold rock / snow caps, montane taiga only where mild & humid.
   if (elevation >= 60) {
+    if (temperature < 0.0) return 'alpine rock';
     return moisture >= 50 ? 'taiga' : 'alpine rock';
   }
+
+  // Lowland & midland — temperature x moisture matrix.
+  if (temperature >= 0.65) {
+    // Hot belt.
+    if (moisture < 30) return 'desert';
+    if (moisture < 58) return 'savanna';
+    return 'jungle';
+  }
+  if (temperature < 0.0) {
+    // Cold belt.
+    return moisture < 40 ? 'tundra' : 'taiga';
+  }
+  // Temperate belt (default): preserved original behaviour.
   return moisture >= 45 ? 'forest' : 'grassland';
 }
 
@@ -819,22 +873,29 @@ export function generateTerrainData(width: number, height: number): Float32Array
   return data;
 }
 
-export function getBiomeColor(elevation: number, moisture: number, temperature?: number): { r: number; g: number; b: number } {
-  const biome = determineBiome(elevation, moisture, temperature);
+/** RGB (0..1) for each biome. Single source of truth for terrain colouring. */
+export function biomeColor(biome: BiomeType): { r: number; g: number; b: number } {
   switch (biome) {
-    case 'ocean': return { r: 0.1, g: 0.3, b: 0.8 };
-    case 'beach': return { r: 0.9, g: 0.8, b: 0.6 };
-    case 'snow peaks': return { r: 0.95, g: 0.95, b: 0.95 };
-    case 'taiga': return { r: 0.1, g: 0.4, b: 0.3 };
-    case 'alpine rock': return { r: 0.5, g: 0.5, b: 0.5 };
-    case 'forest': return { r: 0.2, g: 0.6, b: 0.2 };
-    case 'grassland': return { r: 0.4, g: 0.7, b: 0.3 };
-    case 'desert': return { r: 0.85, g: 0.7, b: 0.4 };
-    case 'jungle': return { r: 0.1, g: 0.5, b: 0.2 };
-    case 'volcanic': return { r: 0.3, g: 0.15, b: 0.15 };
-    case 'glacier': return { r: 0.7, g: 0.85, b: 0.95 };
-    default: return { r: 0.4, g: 0.7, b: 0.3 };
+    case 'ocean': return { r: 0.10, g: 0.30, b: 0.80 };
+    case 'beach': return { r: 0.90, g: 0.82, b: 0.60 };
+    case 'desert': return { r: 0.85, g: 0.74, b: 0.45 };
+    case 'savanna': return { r: 0.74, g: 0.72, b: 0.36 };
+    case 'grassland': return { r: 0.45, g: 0.70, b: 0.32 };
+    case 'forest': return { r: 0.18, g: 0.55, b: 0.22 };
+    case 'jungle': return { r: 0.08, g: 0.42, b: 0.18 };
+    case 'taiga': return { r: 0.16, g: 0.42, b: 0.34 };
+    case 'tundra': return { r: 0.62, g: 0.66, b: 0.60 };
+    case 'alpine rock': return { r: 0.50, g: 0.50, b: 0.52 };
+    case 'snow peaks': return { r: 0.95, g: 0.96, b: 0.97 };
+    // From `main`, with its two new biomes.
+    case 'volcanic': return { r: 0.30, g: 0.15, b: 0.15 };
+    case 'glacier': return { r: 0.70, g: 0.85, b: 0.95 };
+    default: return { r: 0.45, g: 0.70, b: 0.32 };
   }
+}
+
+export function getBiomeColor(elevation: number, moisture: number, temperature: number = 0.5): { r: number; g: number; b: number } {
+  return biomeColor(determineBiome(elevation, moisture, temperature));
 }
 
 export function generateFloraPlacements(width: number, height: number): { x: number; y: number; type: string; scale: number }[] {

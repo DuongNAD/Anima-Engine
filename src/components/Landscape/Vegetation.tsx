@@ -1,7 +1,14 @@
 import React, { useMemo, useRef, useLayoutEffect, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { generateFloraPlacements, generateTerrain, mulberry32, getBilinearInterpolatedElevation } from './utils/terrainGenerator';
+import { generateTerrain, mulberry32, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
+import type { TerrainData } from './utils/terrainGenerator';
+import { testAttrs } from './testAttrs';
+
+// Tree/rock geometries were authored for the legacy tall terrain; shrink their instances so
+// they read as trees (not mountain-sized) on the current, much flatter terrain. Grass keeps
+// its own (already small) scale.
+const TREE_SCALE = 0.35;
 
 interface VegetationProps {
   width?: number;
@@ -11,6 +18,8 @@ interface VegetationProps {
   windDirection?: number; // Prop required by Milestone 4
   densityFactor?: number;
   maxCapacity?: number;
+  /** Shared, pre-generated (and cached) terrain. Falls back to generating when omitted. */
+  terrain?: TerrainData;
 }
 
 // Helper to merge two buffer geometries with distinct vertex colors
@@ -71,52 +80,59 @@ export const Vegetation: React.FC<VegetationProps> = ({
   windDirection,
   densityFactor = 1.0,
   maxCapacity = 1000,
+  terrain: propTerrain,
 }) => {
-  const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
-  const actualWidth = isVitest ? Math.min(width, 100) : width;
-  const actualHeight = isVitest ? Math.min(height, 100) : height;
-
   // Use windDirection if defined, fallback to windAngle
   const currentWindDirection = windDirection !== undefined ? windDirection : windAngle;
 
-  const terrain = useMemo(() => generateTerrain(actualWidth, actualHeight, 'seed'), [actualWidth, actualHeight]);
-  const allPlacements = useMemo(() => generateFloraPlacements(actualWidth, actualHeight), [actualWidth, actualHeight]);
+  // Use the shared terrain when provided (generated once + cached); otherwise generate locally.
+  const terrain = useMemo(
+    () => propTerrain ?? generateTerrain(width, height, 'seed'),
+    [propTerrain, width, height],
+  );
+  const allPlacements = useMemo(() => terrain.flora, [terrain]);
 
-  // Scale maxCapacity with map size if not explicitly set high
-  const activeMaxCapacity = useMemo(() => {
-    return Math.max(maxCapacity, Math.floor((actualWidth * actualHeight) / 60));
-  }, [maxCapacity, actualWidth, actualHeight]);
-
-  // Apply density factor and active max capacity to main placements
-  let placements = useMemo(() => {
+  // Apply density factor and max capacity to main placements
+  const placements = useMemo(() => {
     let list = allPlacements.filter((_, idx) => {
       return (idx / (allPlacements.length || 1)) < densityFactor;
     });
 
-    if (list.length > activeMaxCapacity) {
-      list = list.slice(0, activeMaxCapacity);
+    if (list.length > maxCapacity) {
+      list = list.slice(0, maxCapacity);
     }
     return list;
-  }, [allPlacements, densityFactor, activeMaxCapacity]);
+  }, [allPlacements, densityFactor, maxCapacity]);
 
   // Overlap prevention distance filter
   const filteredPlacements = useMemo(() => {
     const list: typeof placements = [];
+    const minDistanceSq = 1.0;
     for (const p of placements) {
-      // Double check biome rules just in case
-      const cellY = Math.min(actualHeight - 1, Math.max(0, Math.floor(p.y)));
-      const cellX = Math.min(actualWidth - 1, Math.max(0, Math.floor(p.x)));
-      const cell = terrain.grid[cellY][cellX];
-      // Allow flora to spawn down to elevation >= 3.0 (beach/land level above ocean water)
-      const isWet = cell.elevation < 3.0 || cell.isLake || cell.isRiver || cell.isWaterfall;
-      const isSnow = cell.biome === 'snow peaks' || cell.elevation >= 80;
-      
-      if (!isWet && !isSnow) {
-        list.push(p);
+      let tooClose = false;
+      for (const fp of list) {
+        const dx = p.x - fp.x;
+        const dy = p.y - fp.y;
+        if (dx * dx + dy * dy < minDistanceSq) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (!tooClose) {
+        // Double check biome rules just in case
+        const cellY = Math.min(height - 1, Math.max(0, Math.floor(p.y)));
+        const cellX = Math.min(width - 1, Math.max(0, Math.floor(p.x)));
+        const cell = terrain.grid[cellY][cellX];
+        const isWet = cell.elevation < 20 || cell.isLake || cell.isRiver || cell.isWaterfall;
+        const isSnow = cell.biome === 'snow peaks' || cell.elevation >= 80;
+        
+        if (!isWet && !isSnow) {
+          list.push(p);
+        }
       }
     }
     return list;
-  }, [placements, terrain, actualWidth, actualHeight]);
+  }, [placements, terrain, width, height]);
 
   // Seeded generation of grass patches
   const grassPlacements = useMemo(() => {
@@ -125,17 +141,10 @@ export const Vegetation: React.FC<VegetationProps> = ({
     if (densityFactor <= 0) return list;
 
     const random = mulberry32(54321); // unique seed for grass
-    const area = actualWidth * actualHeight;
-    // For large grids (e.g. 1000x1000), step coordinates to avoid 1,000,000 JS loop. Keep step=1 for 100x100 tests.
-    const step = Math.max(1, Math.floor(Math.sqrt(area / 15000)));
-
-    for (let y = 0; y < actualHeight; y += step) {
-      for (let x = 0; x < actualWidth; x += step) {
-        // Sample a cell within the step block
-        const targetX = Math.min(actualWidth - 1, x + (step > 1 ? Math.floor(random() * step) : 0));
-        const targetY = Math.min(actualHeight - 1, y + (step > 1 ? Math.floor(random() * step) : 0));
-        const cell = terrain.grid[targetY][targetX];
-        const isWet = cell.elevation < 3.0 || cell.isLake || cell.isRiver || cell.isWaterfall;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const cell = terrain.grid[y][x];
+        const isWet = cell.elevation < 20 || cell.isLake || cell.isRiver || cell.isWaterfall;
         const isSnow = cell.biome === 'snow peaks' || cell.elevation >= 80;
         if (isWet || isSnow) continue;
 
@@ -151,35 +160,28 @@ export const Vegetation: React.FC<VegetationProps> = ({
         // Apply densityFactor
         grassDensity *= densityFactor;
 
-        // Scale probability check and number of patches to match the step size
-        if (random() < Math.min(0.95, grassDensity * (step > 1 ? 2.5 : 1.0))) {
-          const maxPatches = step > 1 ? Math.floor(step * 0.8) : 2;
-          const numPatches = Math.floor(random() * maxPatches) + 1;
+        if (random() < grassDensity) {
+          const numPatches = Math.floor(random() * 2) + 1;
           for (let i = 0; i < numPatches; i++) {
-            const offsetX = random() * step;
-            const offsetY = random() * step;
+            const offsetX = random();
+            const offsetY = random();
             const scale = 0.3 + random() * 0.4;
-            const px = targetX + offsetX;
-            const py = targetY + offsetY;
-            if (px < actualWidth && py < actualHeight) {
-              list.push({
-                x: px,
-                y: py,
-                scale,
-              });
-            }
+            list.push({
+              x: x + offsetX,
+              y: y + offsetY,
+              scale,
+            });
           }
         }
       }
     }
     
-    // Cap grass elements to scaled max capacity
-    const grassMaxCapacity = activeMaxCapacity * 1.5;
-    if (list.length > grassMaxCapacity) {
-      return list.slice(0, grassMaxCapacity);
+    // Cap grass elements to max capacity as well
+    if (list.length > maxCapacity) {
+      return list.slice(0, maxCapacity);
     }
     return list;
-  }, [terrain, actualWidth, actualHeight, densityFactor, activeMaxCapacity]);
+  }, [terrain, width, height, densityFactor, maxCapacity]);
 
   // Group placements by species
   const oakPlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Oak'), [filteredPlacements]);
@@ -191,9 +193,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
   const junglePlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Jungle'), [filteredPlacements]);
   const birchPlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Birch'), [filteredPlacements]);
   const flowersPlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Flowers'), [filteredPlacements]);
-  const deadTrunkPlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Dead Trunk'), [filteredPlacements]);
-  const snowPinePlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Snow Pine'), [filteredPlacements]);
-  const iceRockPlacements = useMemo(() => filteredPlacements.filter(p => p.type === 'Ice Rock'), [filteredPlacements]);
 
   const speciesCounts = useMemo(() => ({
     Oak: oakPlacements.length,
@@ -205,15 +204,11 @@ export const Vegetation: React.FC<VegetationProps> = ({
     Jungle: junglePlacements.length,
     Birch: birchPlacements.length,
     Flowers: flowersPlacements.length,
-    DeadTrunk: deadTrunkPlacements.length,
-    SnowPine: snowPinePlacements.length,
-    IceRock: iceRockPlacements.length,
     Grass: grassPlacements.length,
   }), [
     oakPlacements, pinePlacements, bushPlacements, rockPlacements,
     palmPlacements, cactusPlacements, junglePlacements, birchPlacements,
-    flowersPlacements, deadTrunkPlacements, snowPinePlacements, iceRockPlacements,
-    grassPlacements
+    flowersPlacements, grassPlacements
   ]);
 
   // 3D Low-poly models
@@ -234,10 +229,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
     const birchTrunk = new THREE.CylinderGeometry(0.2, 0.3, 3, 5);
     const birchLeaves = new THREE.DodecahedronGeometry(1.8, 1);
     const flowersGeo = new THREE.SphereGeometry(0.4, 5, 5);
-    const deadTrunkGeo = new THREE.CylinderGeometry(0.2, 0.35, 2.0, 5);
-    const snowPineTrunk = new THREE.CylinderGeometry(0.2, 0.35, 2.2, 5);
-    const snowPineLeaves = new THREE.ConeGeometry(1.8, 3.2, 5);
-    const iceRockGeo = new THREE.DodecahedronGeometry(1.4, 0);
 
     // Grass (Intersecting Cross-Planes)
     const p1 = new THREE.PlaneGeometry(0.5, 0.5);
@@ -272,10 +263,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
       BirchLeaves: birchLeaves,
       Flowers: flowersGeo,
       Grass: grassGeo,
-      DeadTrunk: deadTrunkGeo,
-      SnowPineTrunk: snowPineTrunk,
-      SnowPineLeaves: snowPineLeaves,
-      IceRock: iceRockGeo,
     };
   }, []);
 
@@ -436,10 +423,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
       BirchLeaves: createWindMat('#88b840'),
       Flowers: createWindMat('#dd6699'),
       Grass: createGrassMat('#4ade80'),
-      DeadTrunk: createWindMat('#4a3b32'),
-      SnowPineTrunk: createWindMat('#4c3a2a'),
-      SnowPineLeaves: createWindMat('#c8e3f5'),
-      IceRock: createStaticMat('#88ccee'),
     };
   }, [uniforms]);
 
@@ -461,10 +444,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
   const birchLRef = useRef<THREE.InstancedMesh>(null);
   const flowersRef = useRef<THREE.InstancedMesh>(null);
   const grassRef = useRef<THREE.InstancedMesh>(null);
-  const deadTrunkRef = useRef<THREE.InstancedMesh>(null);
-  const snowPineTRef = useRef<THREE.InstancedMesh>(null);
-  const snowPineLRef = useRef<THREE.InstancedMesh>(null);
-  const iceRockRef = useRef<THREE.InstancedMesh>(null);
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
@@ -480,12 +459,12 @@ export const Vegetation: React.FC<VegetationProps> = ({
       if (!ref.current) return;
       const inst = ref.current;
       if (placementsArray.length === 0) {
-        const gx = Math.min(actualWidth - 1, Math.max(0, Math.floor(actualWidth / 2)));
-        const gy = Math.min(actualHeight - 1, Math.max(0, Math.floor(actualHeight / 2)));
+        const gx = Math.min(width - 1, Math.max(0, Math.floor(width / 2)));
+        const gy = Math.min(height - 1, Math.max(0, Math.floor(height / 2)));
         const cell = terrain.grid[gy]?.[gx];
-        const x = gx - actualWidth / 2;
-        const z = gy - actualHeight / 2;
-        const y = cell ? cell.elevation * 1.8 : 0;
+        const x = gx - width / 2;
+        const z = gy - height / 2;
+        const y = cell ? cell.elevation * TERRAIN_HEIGHT_SCALE : 0;
         const fallbackYOffset = ref === flowersRef ? 0.3 : 0;
 
         dummy.position.set(x, y + fallbackYOffset, z);
@@ -497,12 +476,15 @@ export const Vegetation: React.FC<VegetationProps> = ({
         }
       } else {
         placementsArray.forEach((p, idx) => {
-          const x = p.x - actualWidth / 2;
-          const z = p.y - actualHeight / 2;
-          const y = getBilinearInterpolatedElevation(p.x, p.y, actualWidth, actualHeight, terrain.grid) * 1.8;
+          const x = p.x - width / 2;
+          const z = p.y - height / 2;
+          const y = getBilinearInterpolatedElevation(p.x, p.y, width, height, terrain.grid) * TERRAIN_HEIGHT_SCALE;
 
-          dummy.position.set(x, y + yOffset * p.scale, z);
-          dummy.scale.set(p.scale, p.scale, p.scale);
+          // Grass keeps its native scale; trees/rocks are shrunk to terrain-appropriate size.
+          const s = p.scale * (ref === grassRef ? 1 : TREE_SCALE);
+
+          dummy.position.set(x, y + yOffset * s, z);
+          dummy.scale.set(s, s, s);
           dummy.rotation.set(0, 0, 0);
 
           const rotSeed = p.x * seedOffset + p.y * (seedOffset + 1.23);
@@ -549,14 +531,9 @@ export const Vegetation: React.FC<VegetationProps> = ({
 
     setupInstances(flowersRef, flowersPlacements, 0.3, 'y', 100.12);
     setupInstances(grassRef, grassPlacements, 0, 'y', 111.23);
-
-    setupInstances(deadTrunkRef, deadTrunkPlacements, 1.0, 'y', 121.23);
-    setupInstances(snowPineTRef, snowPinePlacements, 1.1, 'none', 132.34);
-    setupInstances(snowPineLRef, snowPinePlacements, 2.5, 'none', 132.34);
-    setupInstances(iceRockRef, iceRockPlacements, -0.2, 'all', 143.45);
   }, [
-    actualWidth,
-    actualHeight,
+    width,
+    height,
     terrain,
     oakPlacements,
     pinePlacements,
@@ -567,9 +544,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
     junglePlacements,
     birchPlacements,
     flowersPlacements,
-    deadTrunkPlacements,
-    snowPinePlacements,
-    iceRockPlacements,
     grassPlacements,
     dummy,
   ]);
@@ -583,9 +557,11 @@ export const Vegetation: React.FC<VegetationProps> = ({
         density: filteredPlacements.length + grassPlacements.length,
         speciesCounts,
       }}
-      data-wind-speed={windSpeed}
-      data-wind-angle={currentWindDirection}
-      data-density={filteredPlacements.length + grassPlacements.length}
+      {...testAttrs({
+        'data-wind-speed': windSpeed,
+        'data-wind-angle': currentWindDirection,
+        'data-density': filteredPlacements.length + grassPlacements.length,
+      })}
     >
       <instancedMesh
         ref={oakTRef}
@@ -731,49 +707,6 @@ export const Vegetation: React.FC<VegetationProps> = ({
       >
         <primitive object={geometries.Grass} attach="geometry" />
         <primitive object={materials.Grass} attach="material" />
-      </instancedMesh>
-
-      <instancedMesh
-        ref={deadTrunkRef}
-        name="vegetation-instanced-mesh-dead-trunk"
-        args={[null as any, null as any, Math.max(1, speciesCounts.DeadTrunk)]}
-        castShadow
-        receiveShadow
-      >
-        <primitive object={geometries.DeadTrunk} attach="geometry" />
-        <primitive object={materials.DeadTrunk} attach="material" />
-      </instancedMesh>
-
-      <instancedMesh
-        ref={snowPineTRef}
-        name="vegetation-instanced-mesh-snow-pine"
-        args={[null as any, null as any, Math.max(1, speciesCounts.SnowPine)]}
-        castShadow
-        receiveShadow
-      >
-        <primitive object={geometries.SnowPineTrunk} attach="geometry" />
-        <primitive object={materials.SnowPineTrunk} attach="material" />
-      </instancedMesh>
-      <instancedMesh
-        ref={snowPineLRef}
-        name="vegetation-instanced-mesh-snow-pine-leaves"
-        args={[null as any, null as any, Math.max(1, speciesCounts.SnowPine)]}
-        castShadow
-        receiveShadow
-      >
-        <primitive object={geometries.SnowPineLeaves} attach="geometry" />
-        <primitive object={materials.SnowPineLeaves} attach="material" />
-      </instancedMesh>
-
-      <instancedMesh
-        ref={iceRockRef}
-        name="vegetation-instanced-mesh-ice-rock"
-        args={[null as any, null as any, Math.max(1, speciesCounts.IceRock)]}
-        castShadow
-        receiveShadow
-      >
-        <primitive object={geometries.IceRock} attach="geometry" />
-        <primitive object={materials.IceRock} attach="material" />
       </instancedMesh>
     </group>
   );
