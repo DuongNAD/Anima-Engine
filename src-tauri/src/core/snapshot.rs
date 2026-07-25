@@ -345,8 +345,8 @@ pub fn world_checksum(world: &mut bevy_ecs::world::World) -> u32 {
 
     let mut bytes: Vec<u8> = Vec::with_capacity(4096);
 
-    let mut push_f32 = |b: &mut Vec<u8>, v: f32| b.extend_from_slice(&v.to_bits().to_le_bytes());
-    let mut push_f64 = |b: &mut Vec<u8>, v: f64| b.extend_from_slice(&v.to_bits().to_le_bytes());
+    let push_f32 = |b: &mut Vec<u8>, v: f32| b.extend_from_slice(&v.to_bits().to_le_bytes());
+    let push_f64 = |b: &mut Vec<u8>, v: f64| b.extend_from_slice(&v.to_bits().to_le_bytes());
 
     // Agents: reserve and body state, plus position, keyed by a stable id.
     let mut agents: Vec<[u32; 6]> = Vec::new();
