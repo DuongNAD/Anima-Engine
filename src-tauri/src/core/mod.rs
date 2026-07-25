@@ -1,11 +1,15 @@
 pub mod agent_systems;
+pub mod causal;
 pub mod components;
 pub mod ecology;
 pub mod ecs;
 pub mod engine;
 pub mod environmental_systems;
+pub mod intervention;
 pub mod networking_systems;
 pub mod resources;
+pub mod scenario;
+pub mod sim_clock;
 pub mod sim_rules;
 pub mod simulation_lifecycle;
 pub mod simulation_loop;
