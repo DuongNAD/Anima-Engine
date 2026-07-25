@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
+import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
@@ -236,6 +238,9 @@ export function App() {
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
   const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
   const [showLandscape, setShowLandscape] = useState<boolean>(false);
+  /** False until the shared world has been generated and handed to the backend. Starting the
+   * simulation before then boots it on the fallback terrain, silently. */
+  const [worldReady, setWorldReady] = useState<boolean>(false);
 
 
   // Phase 3 states and refs
@@ -326,6 +331,36 @@ export function App() {
   useEffect(() => {
     projectionRef.current = projection;
   }, [projection]);
+
+  // Put the agents on the same world the showcase renders.
+  //
+  // The pipeline for this already existed and was proven end-to-end, but only `landscape.html`
+  // ever triggered it: `loadOrGenerateWorld` is what hands the generated world to the backend as
+  // the shared World Artifact, and `init_world` boots on that artifact when it is there. So until
+  // now the simulation ran on the detailed world only if the user happened to open the showcase
+  // page first, and on the backend's own small terrain otherwise — the same app, two different
+  // worlds, decided by navigation.
+  //
+  // Cheap to repeat: `worldCache` memoises in process and caches in IndexedDB, and a cache hit
+  // still re-pushes the artifact. The first run on a fresh profile generates 2048² off-thread,
+  // which is why the state below exists rather than firing and forgetting.
+  useEffect(() => {
+    let alive = true;
+    loadOrGenerateWorld(SHARED_WORLD_SEED, SHARED_WORLD_OPTS)
+      .then(() => {
+        if (alive) setWorldReady(true);
+      })
+      .catch(() => {
+        // Generation failed. The backend falls back to its own terrain, so the app still works —
+        // it is simply not the shared world any more. Unblocking is right: refusing to ever start
+        // would be a worse failure than running on the fallback, which is what happened before
+        // this effect existed anyway.
+        if (alive) setWorldReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Fetch initial MAP-Elites grid and evolution settings
   useEffect(() => {
@@ -750,21 +785,31 @@ export function App() {
       {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
 
       <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
-        <button 
-          onClick={handleToggle} 
+        {/* Disabled until the shared world reaches the backend. `init_world` reads the artifact at
+            engine start, so a click that lands first boots the agents on the fallback terrain and
+            nothing says so — the disconnect this wiring exists to remove, reappearing as a race.
+            Stopping is never blocked; the simulation cannot already be running. */}
+        <button
+          onClick={handleToggle}
+          disabled={!worldReady && !status.running}
+          data-testid="toggle-simulation-button"
           style={{
             padding: "10px 20px",
             fontSize: "16px",
             fontWeight: "bold",
-            backgroundColor: status.running ? "#e53e3e" : "#38a169",
+            backgroundColor: status.running ? "#e53e3e" : !worldReady ? "#a0aec0" : "#38a169",
             color: "white",
             border: "none",
             borderRadius: "4px",
-            cursor: "pointer",
+            cursor: !worldReady && !status.running ? "wait" : "pointer",
             transition: "background-color 0.2s",
           }}
         >
-          {status.running ? "Dừng mô phỏng" : "Bắt đầu mô phỏng"}
+          {status.running
+            ? "Dừng mô phỏng"
+            : worldReady
+              ? "Bắt đầu mô phỏng"
+              : "Đang dựng thế giới chung…"}
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid #cbd5e0", borderRadius: "4px", padding: "0 10px", backgroundColor: "white" }}>
