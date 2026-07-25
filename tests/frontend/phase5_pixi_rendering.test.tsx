@@ -18,25 +18,35 @@ const mockGraphicsMethods = {
 
 vi.mock('pixi.js', () => {
   return {
-    Application: vi.fn().mockImplementation(() => ({
-      init: vi.fn().mockResolvedValue(undefined),
-      canvas: document.createElement('canvas'),
-      stage: {
+    // `function`, not an arrow: PixiViewport calls these with `new`, and under @vitest/spy 4 a
+    // mock constructed with `new` reaches its implementation through `Reflect.construct`. An arrow
+    // has no [[Construct]] slot, so it throws "() => ({...}) is not a constructor" from inside the
+    // spy. Vitest 1 called the implementation plainly, so arrows worked there by accident.
+    Application: vi.fn(function () {
+      return {
+        init: vi.fn().mockResolvedValue(undefined),
+        canvas: document.createElement('canvas'),
+        stage: {
+          addChild: vi.fn(),
+          removeChild: vi.fn(),
+        },
+        renderer: {},
+        ticker: {
+          add: vi.fn(),
+          remove: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+    }),
+    Graphics: vi.fn(function () {
+      return mockGraphicsMethods;
+    }),
+    Container: vi.fn(function () {
+      return {
         addChild: vi.fn(),
         removeChild: vi.fn(),
-      },
-      renderer: {},
-      ticker: {
-        add: vi.fn(),
-        remove: vi.fn(),
-      },
-      destroy: vi.fn(),
-    })),
-    Graphics: vi.fn().mockImplementation(() => mockGraphicsMethods),
-    Container: vi.fn().mockImplementation(() => ({
-      addChild: vi.fn(),
-      removeChild: vi.fn(),
-    })),
+      };
+    }),
   };
 });
 
