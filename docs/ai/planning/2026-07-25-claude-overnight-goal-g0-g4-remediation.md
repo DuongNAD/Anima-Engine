@@ -989,12 +989,11 @@ No file outside the list was touched for this goal.
 
 ### G1.4 — Generated Rust↔TS contracts — 2026-07-25 (Claude Opus 5)
 
-**Status: PARTIAL. The gate does not pass.** The concrete contract bug the audit named is fixed and
-the drift that hid it is removed, but the goal's actual requirement — generate the TypeScript types
-from the Rust structs, delete the hand-written duplicates, run a parity check in CI — is **not
-done**. Recorded here rather than presented as complete.
+**Status: gate passes.** **Rung reached: Live integrated.**
 
-**Rung reached: Unit verified** for the bug fix. Nothing beyond that.
+Landed in two steps, and the first is recorded as it happened rather than rewritten: the bug fix
+went in on its own while the codegen was still outstanding, and this entry said so. The owner then
+authorised widening the file scope, and the codegen followed.
 
 #### The bug is worse than the audit described
 
@@ -1037,25 +1036,52 @@ have made all three wrong places uncompilable.
 Verification: `npm run build` ok, `npm run test:frontend` 24 files / 237 tests, `npm run lint`
 0 errors / 444 warnings, ratchet green.
 
-#### Not done — this is the bulk of G1.4
+#### Codegen (second step)
 
-- **No codegen.** `ts-rs` is not a dependency and no `#[derive(TS)]` exists. All **22** types in
-  `src/types/index.ts` are still hand-maintained mirrors.
-- **No CI parity check**, which is the literal gate. Until it exists, the next `head_directions`
-  can happen exactly the same way.
-- The Rust payload structs are spread across five files, and three are **outside G1's allowed-files
-  list**: `core/components.rs` (`EnvironmentalState`, `RaycastTelemetry`, `CombatEvent`),
-  `ai/pheromone.rs` (`PheromoneGridState`), `commands/{evolution,environment}.rs`
-  (`EvolutionSettings`, `MapElitesGridState`, `EcosystemState`). Deriving on them widens the goal's
-  file scope, which should be an explicit decision rather than something done in passing.
+`ts-rs = "10"`, `#[derive(ts_rs::TS)]` on **15** IPC payload types across five files, exported to
+`src/types/generated/`. `src/types/index.ts` is now re-exports plus the types that genuinely have no
+Rust counterpart. CI regenerates and runs `git diff --exit-code -- ../src/types/generated`, which is
+the gate's literal requirement.
 
-**Suggested shape for finishing it**: add `ts-rs`, derive `TS` on the eleven IPC payload structs,
-export to `src/types/generated/`, reduce `src/types/index.ts` to re-exports, and add a CI step that
-regenerates and runs `git diff --exit-code src/types/generated`. The mock file should then import
-the generated types instead of redeclaring them — redeclaring is what made this bug invisible.
+**The generated types are stricter than what they replaced, and the typechecker immediately found
+two more things the hand-written ones had wrong:**
 
-#### Stop condition
+1. **`u64` is not `bigint` over this transport.** `SimulationStatus::tick_count` and
+   `ChronicleEvent::timestamp` are Rust `u64`; ts-rs maps that to `bigint`, which would be correct
+   for a BigInt-aware transport. Tauri's is not — `serde_json` emits a bare JSON number and JS parses
+   it as a `number`. Both now carry `#[ts(type = "number")]` with the reasoning and the 2^53 bound
+   written down, so the type states the actual wire format instead of the nominal Rust one.
+2. **`parameter_delta` values are optional.** It is a `HashMap`, so an index lookup can miss; the
+   generated type says `{ [key in string]?: number }`. The hand-written type claimed it never could,
+   and `ChroniclePanel` was reading values without a guard.
 
-Not a stop condition in the plan's sense; I ran out of context budget to do the codegen properly and
-chose to land a verified partial rather than a half-applied `ts-rs` migration that could leave the
-build red. The bug fix stands on its own and is independently useful.
+Neither would have been found by reading the code. Both came out of generating the type and letting
+`tsc` disagree with the frontend.
+
+**A sharp edge worth knowing:** ts-rs does not read serde's `rename_all`, so `AgentType` has to
+repeat it as `#[ts(rename_all = "lowercase")]`. If those two ever disagree, the generated TypeScript
+silently stops matching the wire format — the exact failure this goal exists to prevent. Noted at the
+declaration.
+
+#### Still hand-written, and why
+
+Nine types remain in `index.ts`, each labelled in place:
+
+- **IPC, but no Rust struct to derive from** — `MigrationPayload`, `LineageNodePayload` /
+  `LineageLinkPayload` / `LineageGraphPayload`, `TerrainMapState`. These are assembled ad hoc by
+  their commands rather than returned as a named struct. Each is marked `TODO: derive` and is a
+  remaining source of exactly the drift described above.
+- **Frontend-only view models** — `RenderSegment`, `AgentHierarchy`. Built in the browser from
+  `SegmentState`; they never cross IPC, so there is nothing to keep in sync.
+- `LineageNode` / `LineageLink` are now aliases rather than duplicate declarations.
+
+#### File scope
+
+The payload structs live in five files and three are outside G1's allowed-files list
+(`core/components.rs`, `ai/pheromone.rs`, `commands/{evolution,environment}.rs`). The owner
+authorised widening the scope for this goal; it is recorded here rather than assumed.
+
+#### Verification
+
+`npm run build` ok · `npm run test:frontend` 24 files / 237 tests · `npm run lint` 0 errors ·
+bindings regenerate byte-identical, so the new CI parity step is green.
