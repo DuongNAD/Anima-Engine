@@ -3,11 +3,17 @@
 // glob-import this one and only the transport is optional.
 #[cfg(feature = "networking")]
 use futures_util::{SinkExt, StreamExt};
+#[cfg(feature = "networking")]
 use socket2::{Domain, Protocol, Socket, Type};
+#[cfg(feature = "networking")]
 use std::net::SocketAddr;
+#[cfg(feature = "networking")]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "networking")]
 use std::sync::Arc;
+#[cfg(feature = "networking")]
 use std::time::Duration;
+#[cfg(feature = "networking")]
 use tauri::Emitter;
 #[cfg(feature = "networking")]
 use tokio_tungstenite::accept_async;

@@ -35,12 +35,40 @@ pub const MAX_OBSERVABLES: usize = 4096;
 pub const MAX_INTERVENTIONS: usize = 4096;
 pub const MAX_DURATION_TICKS: u64 = 100_000_000;
 
+/// Declared RAM ceiling for one ensemble, in bytes (G2 gate #3).
+///
+/// The individual limits above bound each dimension on its own, but nothing bounded their
+/// **product** — and `RunResult::series` holds every sample in memory while `run_ensemble` holds
+/// every `RunResult`. A manifest at the documented maxima (1024 seeds x 100M ticks x 4096
+/// observables) is therefore not merely slow: it asks for petabytes and the process dies with no
+/// explanation that points at the manifest.
+///
+/// 2 GiB is the declared ceiling. It is a *policy* number, not a measurement of any particular
+/// machine, which is why it is stated here rather than discovered at runtime: an experiment that
+/// does not fit is refused up front with the estimate and the limit, so the operator can lower
+/// `sample_period`, seeds or duration deliberately instead of finding out by OOM.
+pub const MAX_ENSEMBLE_RESULT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Bytes charged per sampled observable. One `(String, f64)` pair: 24 bytes of `String` header, a
+/// short name on the heap, and the `f64`. Deliberately a round over-estimate — the budget exists to
+/// refuse the catastrophic case, and under-charging would defeat it.
+pub const BYTES_PER_SAMPLED_OBSERVABLE: u64 = 64;
+
 // ---- Structured errors (AE-101) --------------------------------------------------------------
 
 /// Every way validation can fail, as structured data (never a bare string) so callers — and the
 /// eventual World Lab UI — can react per-case instead of scraping a message.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ExperimentError {
+    /// The manifest is individually legal but its dimensions multiply out past
+    /// [`MAX_ENSEMBLE_RESULT_BYTES`]. Carries both numbers so the message can say by how much.
+    EnsembleTooLarge {
+        estimated_bytes: u64,
+        limit_bytes: u64,
+        seeds: usize,
+        samples_per_run: u64,
+        observables: usize,
+    },
     /// A schema version the current build does not understand (never silently defaulted).
     UnsupportedSchemaVersion {
         component: String,
@@ -102,6 +130,16 @@ pub enum ExperimentError {
 impl std::fmt::Display for ExperimentError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ExperimentError::EnsembleTooLarge {
+                estimated_bytes,
+                limit_bytes,
+                seeds,
+                samples_per_run,
+                observables,
+            } => write!(
+                f,
+                "ensemble would hold about {estimated_bytes} bytes in memory, over the declared \n                 ceiling of {limit_bytes} ({seeds} seeds x {samples_per_run} samples x \n                 {observables} observables); lower sample_period, seeds or duration_ticks"
+            ),
             ExperimentError::UnsupportedSchemaVersion {
                 component,
                 found,
@@ -1151,7 +1189,43 @@ impl ExperimentManifest {
                 }
             }
         }
+        // G2 gate #3: the dimensions are individually legal — now check their PRODUCT against the
+        // declared RAM ceiling. Nothing else did, and `RunResult::series` keeps every sample while
+        // `run_ensemble` keeps every `RunResult`, so a manifest at the documented maxima asks for
+        // petabytes and dies without ever pointing at the manifest.
+        let estimated_bytes = self.estimated_result_bytes(registry);
+        if estimated_bytes > MAX_ENSEMBLE_RESULT_BYTES {
+            return Err(ExperimentError::EnsembleTooLarge {
+                estimated_bytes,
+                limit_bytes: MAX_ENSEMBLE_RESULT_BYTES,
+                seeds: self.seeds.len(),
+                samples_per_run: self.samples_per_run(),
+                observables: self.observable_ids.len().max(registry.specs.len()),
+            });
+        }
         Ok(())
+    }
+
+    /// How many samples one run records. `sample_period == 0` means "never sample", so the series
+    /// stays empty and only the final observables are kept.
+    pub fn samples_per_run(&self) -> u64 {
+        self.duration_ticks
+            .checked_div(self.sample_period)
+            .unwrap_or(0)
+    }
+
+    /// Upper bound on the bytes an ensemble of this manifest will hold in memory.
+    ///
+    /// `seeds x samples_per_run x observables x BYTES_PER_SAMPLED_OBSERVABLE`, saturating so an
+    /// absurd manifest reports `u64::MAX` rather than wrapping to a small number and sailing
+    /// through the very check it should fail. The observable count is the larger of what the
+    /// manifest asks for and what the registry can emit, because a run records whatever it emits.
+    pub fn estimated_result_bytes(&self, registry: &ObservableRegistry) -> u64 {
+        let observables = self.observable_ids.len().max(registry.specs.len()) as u64;
+        (self.seeds.len() as u64)
+            .saturating_mul(self.samples_per_run())
+            .saturating_mul(observables)
+            .saturating_mul(BYTES_PER_SAMPLED_OBSERVABLE)
     }
 
     /// The control variant of this manifest for a genesis fork: identical in every shared input, with
@@ -2062,5 +2136,57 @@ mod tests {
         ];
         let tags: HashSet<u8> = kinds.into_iter().map(intervention_kind_tag).collect();
         assert_eq!(tags.len(), kinds.len());
+    }
+}
+
+#[cfg(test)]
+mod ensemble_budget_tests {
+    use super::*;
+
+    /// G2 gate #3. A manifest at the documented maxima is individually legal on every axis, and
+    /// before this check it was accepted — then the runner tried to hold the result set in RAM.
+    /// It must now be refused up front, naming the estimate and the limit.
+    #[test]
+    fn a_manifest_at_the_documented_maxima_is_refused_not_attempted() {
+        let seeds = MAX_SEEDS as u64;
+        let samples = MAX_DURATION_TICKS; // sample_period = 1
+        let observables = MAX_OBSERVABLES as u64;
+        let estimate = seeds
+            .saturating_mul(samples)
+            .saturating_mul(observables)
+            .saturating_mul(BYTES_PER_SAMPLED_OBSERVABLE);
+
+        assert!(
+            estimate > MAX_ENSEMBLE_RESULT_BYTES,
+            "the documented maxima must exceed the declared ceiling, or this gate is vacuous: \
+             {estimate} vs {MAX_ENSEMBLE_RESULT_BYTES}"
+        );
+        // ~2.7e16 bytes — about 27 petabytes. The point of the ceiling in one number.
+        assert!(estimate > 1e16 as u64, "estimate was {estimate}");
+    }
+
+    /// The estimate saturates instead of wrapping. A wrapped product would come out small and sail
+    /// through the very check it should fail — the failure mode a budget must not have.
+    #[test]
+    fn the_estimate_saturates_rather_than_wrapping() {
+        let huge = u64::MAX;
+        let product = huge
+            .saturating_mul(huge)
+            .saturating_mul(huge)
+            .saturating_mul(BYTES_PER_SAMPLED_OBSERVABLE);
+        assert_eq!(product, u64::MAX);
+        assert!(product > MAX_ENSEMBLE_RESULT_BYTES);
+    }
+
+    /// `sample_period == 0` means "never sample", so the series stays empty and the budget is not
+    /// charged for it. A long run that records only final observables is legitimate.
+    #[test]
+    fn never_sampling_costs_nothing_in_series_memory() {
+        assert_eq!(samples_for(0, MAX_DURATION_TICKS), 0);
+        assert_eq!(samples_for(1000, 100_000), 100);
+    }
+
+    fn samples_for(sample_period: u64, duration_ticks: u64) -> u64 {
+        duration_ticks.checked_div(sample_period).unwrap_or(0)
     }
 }

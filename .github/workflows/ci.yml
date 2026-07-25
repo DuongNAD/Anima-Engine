@@ -55,7 +55,19 @@ jobs:
 
       - name: cargo clippy --all-targets -D warnings
         if: ${{ !cancelled() }}
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features desktop -- -D warnings
+
+      # G2 gate #2: a DEFAULT build must not compile the optional subsystems. Checking it here — not
+      # just that it builds, but that the crates are absent from the dependency graph — is what stops
+      # the gate from rotting the first time someone adds an unconditional `use`.
+      - name: Default build excludes Neo4j and the WebSocket stack
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          cargo clippy --all-targets --no-default-features -- -D warnings
+          leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite' || true)
+          echo "gated crates present in a default build: $leaked"
+          test "$leaked" -eq 0
 
       # G1.4 parity gate. ts-rs writes src/types/generated/ during `cargo test`; if a Rust IPC
       # struct changed without its TypeScript being regenerated, the working tree is dirty here and
@@ -71,8 +83,8 @@ jobs:
         if: ${{ !cancelled() }}
         # No GPU on the runner, so burn falls back to the ndarray CPU backend (ai/model.rs).
         env:
-          ANIMA_USE_GPU: '0'
-        run: cargo test
+          ANIMA_USE_GPU: "0"
+        run: cargo test --features desktop
 
   frontend:
     name: Frontend

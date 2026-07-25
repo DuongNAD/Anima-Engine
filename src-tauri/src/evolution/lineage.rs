@@ -101,8 +101,11 @@ impl LineageTracker for InMemoryLineageTracker {
     }
 }
 
+// Only the Neo4j paths drive this runtime; without the `neo4j` feature nothing here is async.
+#[cfg(feature = "neo4j")]
 static TOKIO_RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
 
+#[cfg(feature = "neo4j")]
 fn get_tokio_runtime() -> &'static tokio::runtime::Runtime {
     TOKIO_RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
