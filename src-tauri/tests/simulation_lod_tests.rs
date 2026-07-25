@@ -276,3 +276,130 @@ fn tiering_is_reproducible() {
     let mut b = mk();
     assert_eq!(a.ask_counts(32), b.ask_counts(32));
 }
+
+// ---- Wiring ----------------------------------------------------------------------------------
+//
+// Until the focus could be set from outside, everything above tested a subsystem the running app
+// never reached: `sensory_system` took `Option<Res<LodFocus>>` and nothing ever inserted it. These
+// pin the connection itself, and the two properties that make it safe to have connected.
+
+/// The app's focus reaches the world.
+#[test]
+fn a_focus_written_by_the_app_reaches_the_world_on_the_next_tick() {
+    use anima_engine_lib::core::simulation_lod::{sync_lod_focus_system, SharedLodFocus};
+
+    let mut world = World::new();
+    let shared = SharedLodFocus::new_disabled();
+    world.insert_resource(LodFocus::default());
+    world.insert_resource(shared.clone());
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(sync_lod_focus_system);
+
+    schedule.run(&mut world);
+    assert!(
+        !world.resource::<LodFocus>().enabled,
+        "a focus nobody has set must stay disabled"
+    );
+
+    // What `set_lod_focus` does, from the other thread.
+    *shared.0.write().unwrap() = LodFocus::at(Vec3::new(12.0, 0.0, -7.0));
+    schedule.run(&mut world);
+
+    let applied = *world.resource::<LodFocus>();
+    assert!(applied.enabled);
+    assert_eq!(applied.center, Vec3::new(12.0, 0.0, -7.0));
+
+    // And it goes back. A focus that could be turned on but not off would make LOD a one-way door.
+    *shared.0.write().unwrap() = LodFocus::default();
+    schedule.run(&mut world);
+    assert!(!world.resource::<LodFocus>().enabled);
+}
+
+/// A headless world has no handle to sync from, and the sync must not invent one.
+///
+/// This is the property that keeps the determinism gates and the experiment runner on exactly the
+/// path they had before the wiring existed: no UI, no `SharedLodFocus`, no writes to `LodFocus`.
+#[test]
+fn without_the_shared_handle_the_sync_leaves_the_world_alone() {
+    use anima_engine_lib::core::simulation_lod::sync_lod_focus_system;
+
+    let mut world = World::new();
+    world.insert_resource(LodFocus::at(Vec3::new(3.0, 0.0, 4.0)));
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(sync_lod_focus_system);
+    schedule.run(&mut world);
+
+    assert_eq!(
+        *world.resource::<LodFocus>(),
+        LodFocus::at(Vec3::new(3.0, 0.0, 4.0)),
+        "with no handle to read, the sync must be a no-op rather than a reset"
+    );
+}
+
+/// The aggregate tier stays off unless asked for, and "unset" means off.
+///
+/// The failure this forbids is the one every engine switch here is shaped against: a flag whose
+/// absence turns the feature *on*. Tier two destroys entities and blocks saving, so reading an
+/// unset variable as "yes" would be an expensive way to find out.
+#[test]
+fn the_aggregate_tier_is_off_unless_the_environment_asks_for_it() {
+    use anima_engine_lib::core::aggregate_population::aggregate_lod_enabled_from_env;
+
+    const VAR: &str = "ANIMA_AGGREGATE_LOD";
+    let restore = std::env::var(VAR).ok();
+
+    std::env::remove_var(VAR);
+    assert!(!aggregate_lod_enabled_from_env(), "unset must mean off");
+
+    for off in ["", "0", "false", "False", "  0  "] {
+        std::env::set_var(VAR, off);
+        assert!(!aggregate_lod_enabled_from_env(), "{off:?} must mean off");
+    }
+    for on in ["1", "true", "yes"] {
+        std::env::set_var(VAR, on);
+        assert!(aggregate_lod_enabled_from_env(), "{on:?} must mean on");
+    }
+
+    match restore {
+        Some(v) => std::env::set_var(VAR, v),
+        None => std::env::remove_var(VAR),
+    }
+}
+
+/// The wire shape of `LodFocus` is what the frontend actually sends.
+///
+/// `set_lod_focus` takes a `LodFocus` straight off the IPC boundary, and glam's `Vec3` serialises
+/// as a three-element sequence rather than `{x,y,z}`. Nothing else in the build would notice the
+/// difference: a mismatched payload fails at runtime, in a command whose only job is to write a
+/// value nobody reads back, so the focus would simply never move and the tier would look broken
+/// rather than mis-wired. This pins the exact JSON `WorldShowcase` emits.
+#[test]
+fn the_focus_deserialises_from_the_json_the_frontend_sends() {
+    let sent = r#"{"enabled":true,"center":[12.5,0.0,-7.25]}"#;
+    let focus: LodFocus = serde_json::from_str(sent).expect("the frontend payload must parse");
+    assert!(focus.enabled);
+    assert_eq!(focus.center, Vec3::new(12.5, 0.0, -7.25));
+
+    // And the disabled form the page sends on unmount.
+    let off = r#"{"enabled":false,"center":[0.0,0.0,0.0]}"#;
+    let focus: LodFocus = serde_json::from_str(off).expect("the disable payload must parse");
+    assert!(!focus.enabled);
+}
+
+/// `get_lod_bands` serialises the field name the frontend reads.
+///
+/// `focusForViewport` refuses to tier when it cannot learn the hot radius, so a renamed field does
+/// not break anything loudly — it silently turns simulation LOD off in the agent viewport and
+/// leaves no trace. Pinning the wire name is what makes that a compile-adjacent failure instead.
+#[test]
+fn the_bands_serialise_the_field_name_the_viewport_reads() {
+    let json = serde_json::to_value(LodBands::default()).expect("bands must serialise");
+    let radius = json
+        .get("hot_radius")
+        .and_then(|v| v.as_f64())
+        .expect("the frontend reads `hot_radius`");
+    assert_eq!(radius, LodBands::default().hot_radius as f64);
+    assert!(radius > 0.0, "a zero radius would tier every agent Cold");
+}

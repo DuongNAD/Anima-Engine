@@ -38,15 +38,18 @@ pub fn save_simulation_state(
         return Err("Simulation is not running".to_string());
     }
 
-    let (tx, rx) = std::sync::mpsc::channel::<SavedSimulationState>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<SavedSimulationState, String>>();
     engine
         .save_request_tx
         .send(tx)
         .map_err(|e| format!("Failed to send save request: {}", e))?;
 
+    // Two different failures, kept apart: the sim thread never answered, versus it answered that
+    // this world cannot be saved. The second is a refusal with a reason the user can act on, so it
+    // is passed through verbatim rather than flattened into a generic save error.
     let saved_state = rx
         .recv_timeout(std::time::Duration::from_secs(5))
-        .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())?;
+        .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())??;
 
     // G1.2: wrap in a versioned, checksummed envelope and write it atomically. The old path was
     // `to_string_pretty` into `fs::write`, which truncates the destination before writing a byte —
@@ -404,4 +407,53 @@ pub fn get_test_rabbit_state() -> tauri::ipc::Response {
         buffer.extend_from_slice(&part.part_type.to_le_bytes());
     }
     tauri::ipc::Response::new(buffer)
+}
+
+/// Point simulation detail at the observer, or turn the targeting off.
+///
+/// `enabled: false` returns the engine to uniform detail — every agent `Hot`, thinking every tick,
+/// which is what an engine built before simulation LOD did. That is the default, and it is the
+/// rollback path: nothing here is sticky.
+///
+/// Writing is all this does. The value is picked up by `sync_lod_focus_system` on the next tick
+/// rather than reaching into the world from the UI thread, because the world belongs to the
+/// simulation thread and a command that borrowed it would have to stop it first.
+#[tauri::command]
+pub fn set_lod_focus(
+    state: State<'_, AppState>,
+    focus: crate::core::simulation_lod::LodFocus,
+) -> Result<(), String> {
+    let mut shared = state
+        .engine
+        .lod_focus
+        .0
+        .write()
+        .map_err(|e| e.to_string())?;
+    *shared = focus;
+    Ok(())
+}
+
+/// The focus the engine is currently using.
+#[tauri::command]
+pub fn get_lod_focus(
+    state: State<'_, AppState>,
+) -> Result<crate::core::simulation_lod::LodFocus, String> {
+    let shared = state.engine.lod_focus.0.read().map_err(|e| e.to_string())?;
+    Ok(*shared)
+}
+
+/// The tier boundaries this build uses.
+///
+/// A caller needs these to decide whether setting a focus is even appropriate: the agent viewport
+/// only turns tiering on when everything it is showing fits inside the hot radius, because
+/// degrading an agent the user is looking at is worse than paying for it. Exposing the number
+/// rather than letting the frontend hardcode `50.0` keeps that decision tied to the one definition
+/// in `LodBands::default`.
+///
+/// Returns the default rather than reading the world's resource because nothing changes it at
+/// runtime — the default *is* the live value — and reaching into the simulation thread's world for
+/// a constant would mean stopping it.
+#[tauri::command]
+pub fn get_lod_bands() -> crate::core::simulation_lod::LodBands {
+    crate::core::simulation_lod::LodBands::default()
 }

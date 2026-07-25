@@ -912,3 +912,68 @@ fn the_ecology_step_is_inert_without_the_cohorts_resource() {
         after - before
     );
 }
+
+// ---- Persistence -----------------------------------------------------------------------------
+
+/// A world with anything asleep refuses to save, rather than writing a file missing a population.
+///
+/// This is the one place the tier can lose data instead of just resolution. `DormantCohorts` is not
+/// a field of the snapshot envelope and a dormant individual has no entity, so
+/// `serialize_world_state` — which writes what it can query — would produce a file that is short a
+/// herd. Worse, it would be short that herd's EU: the census counts cohort energy into
+/// `pool.animals`, so the reload comes back lighter than it left and `EnergyLedger::lock_baseline`
+/// takes the smaller total as the new baseline instead of reporting a leak. Both failures are
+/// silent, which is why the refusal has to exist before the focus is ever wired up.
+///
+/// The second half matters as much as the first: the refusal has to *clear*. A wall that never
+/// comes down would make the tier unusable rather than safe.
+#[test]
+fn a_world_with_sleeping_agents_refuses_to_save_rather_than_lose_them() {
+    let spawn = glam::Vec3::new(0.0, 0.0, 0.0);
+    let mut world = build_world(6, spawn, true);
+    enable_dormancy(&mut world, 3, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+
+    assert!(
+        world
+            .resource::<DormantCohorts>()
+            .snapshot_refusal()
+            .is_none(),
+        "nothing is asleep yet, so saving must still be allowed"
+    );
+
+    let mut schedule = dormancy_schedule();
+    run(&mut world, &mut schedule, 12);
+    assert_eq!(world.resource::<DormantCohorts>().total_dormant(), 6);
+
+    let why = world
+        .resource::<DormantCohorts>()
+        .snapshot_refusal()
+        .expect("six sleeping agents must block the save");
+    // An operator can only act on a refusal that says what would have been lost.
+    assert!(
+        why.contains('6'),
+        "the refusal should name how many are asleep: {why}"
+    );
+
+    // The observer walks back; once the last one is a body again, the world is describable.
+    world.insert_resource(LodFocus::at(spawn));
+    world.insert_resource(LodBands {
+        hot_radius: 40.0,
+        warm_radius: 60.0,
+        warm_interval: 4,
+    });
+    run(&mut world, &mut schedule, 20);
+
+    assert_eq!(
+        world.resource::<DormantCohorts>().total_dormant(),
+        0,
+        "the herd should have fully woken"
+    );
+    assert!(
+        world
+            .resource::<DormantCohorts>()
+            .snapshot_refusal()
+            .is_none(),
+        "with everyone awake the refusal must lift"
+    );
+}

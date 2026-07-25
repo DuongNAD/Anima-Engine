@@ -117,6 +117,9 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 - `get_lineage_graph` -> `LineageGraphState`
 - `get_chronicle_history` -> `Vec<ChronicleEvent>`
 - `get_ecosystem_state` -> `EcosystemState` (closed-energy ledger: detritus/plants/animals/total, prey/predator counts, Shannon/Simpson) — published each tick, polled by the frontend `EcosystemPanel`
+- `set_lod_focus(focus: LodFocus)` -> `()` — where simulation detail is centred, i.e. the observer's world position. `{ enabled: false, center: [0,0,0] }` is the default and the rollback: every agent `Hot`, thinking every tick, exactly as before simulation LOD existed. Applied on the next tick by `sync_lod_focus_system`, not immediately — the world belongs to the simulation thread.
+- `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
+- `get_lod_bands` -> `LodBands` — tier boundaries (`hot_radius`, `warm_radius`, `warm_interval`). The agent viewport asks for these rather than hardcoding them: it only sets a focus while everything on screen fits inside `hot_radius`, so that no agent the user is looking at is ever tiered down.
 
 ### Tauri Events
 - `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)

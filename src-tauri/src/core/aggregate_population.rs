@@ -189,6 +189,27 @@ pub const REHYDRATION_PER_TICK: usize = 4;
 /// dormancy enabled draws an identical sequence in every other system to one without it.
 pub const DORMANCY_STREAM: u64 = 7;
 
+/// Whether this process runs the aggregate tier at all.
+///
+/// Off unless `ANIMA_AGGREGATE_LOD` is set to something other than `0`/`false`/empty — the same
+/// shape as `ANIMA_EVOLVED_BRAINS`, `ANIMA_LIFETIME_LEARNING` and `ANIMA_DETERMINISTIC`, so "unset"
+/// keeps the behaviour the engine already had.
+///
+/// Opt-in rather than on by default, and the reasons are not squeamishness. This tier destroys
+/// entities, runs a **second model of the same ecology**, makes an agent's fate depend on where the
+/// observer is standing, and — until the cohorts are in the snapshot envelope — makes a run refuse
+/// to save while anything is asleep ([`DormantCohorts::snapshot_refusal`]). Tier one, which only
+/// changes how *often* a distant agent thinks, needs no flag: it is driven by the focus, and an
+/// unset focus tiers everything `Hot`.
+pub fn aggregate_lod_enabled_from_env() -> bool {
+    std::env::var("ANIMA_AGGREGATE_LOD")
+        .map(|v| {
+            let v = v.trim().to_ascii_lowercase();
+            !(v.is_empty() || v == "0" || v == "false")
+        })
+        .unwrap_or(false)
+}
+
 /// Marks how long an agent has been continuously `Cold`.
 ///
 /// Inserted when an agent first goes cold and removed when it warms, so it costs an archetype move
@@ -437,6 +458,37 @@ impl DormantCohorts {
     /// How many individuals are currently dormant.
     pub fn total_dormant(&self) -> u64 {
         self.chunks.iter().map(|c| c.count as u64).sum()
+    }
+
+    /// Why a snapshot must refuse to run right now, or `None` if saving is safe.
+    ///
+    /// A dormant individual has no entity, and `DormantCohorts` is not a field of the snapshot
+    /// envelope. `serialize_world_state` writes what it can query — agents — so a sleeping
+    /// population is in neither the file nor the world restored from it. Saving anyway does two
+    /// things at once, both quiet: it deletes those individuals, and it breaks closed EU, because
+    /// `ecosystem_census_system` counts cohort energy into `pool.animals` while they sleep. The
+    /// reload therefore comes back lighter than it left, and `EnergyLedger::lock_baseline` would
+    /// take the smaller total as the new baseline instead of reporting the loss.
+    ///
+    /// Refusing is the conservative half of the answer. The other half — round-tripping the
+    /// cohorts, their archived genomes, the reservoir sampler's `seen` count and this resource's
+    /// RNG position — is real work with a schema bump, so until someone does it this is a wall
+    /// rather than a leak.
+    ///
+    /// It cannot fire today: nothing inserts `DormantCohorts` (`simulation_lod` is off unless a
+    /// focus is set), so it is a tripwire for whoever wires the observer focus up. That is exactly
+    /// when it is needed — the tier is invisible by construction, and so is the data it would take.
+    pub fn snapshot_refusal(&self) -> Option<String> {
+        let dormant = self.total_dormant();
+        if dormant == 0 {
+            return None;
+        }
+        Some(format!(
+            "refusing to save: {dormant} dormant individual(s) holding {:.3} EU are not carried by \
+             the snapshot format, and saving would delete them without a trace. Move the LOD focus \
+             so they re-hydrate, or drop the DormantCohorts resource, then save again.",
+            self.total_energy()
+        ))
     }
 
     /// Cumulative individuals absorbed into dormancy.

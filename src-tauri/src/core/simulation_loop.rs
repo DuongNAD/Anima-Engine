@@ -88,11 +88,23 @@ pub struct SimulationEngine {
     pub lineage_tracker: Arc<crate::evolution::lineage::FallbackLineageTracker>,
     pub chronicle_history: Arc<RwLock<Vec<ChronicleEvent>>>,
     pub sharding_config: Arc<RwLock<crate::core::ecs::ShardingConfig>>,
+    /// Where simulation detail is centred, written by `set_lod_focus` and read once per tick by
+    /// [`crate::core::simulation_lod::sync_lod_focus_system`]. Starts disabled, which tiers every
+    /// agent `Hot` — an engine nobody has pointed a camera at behaves exactly as it did before.
+    pub lod_focus: crate::core::simulation_lod::SharedLodFocus,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
 
-    pub save_request_tx: crossbeam_channel::Sender<std::sync::mpsc::Sender<SavedSimulationState>>,
-    pub save_request_rx: crossbeam_channel::Receiver<std::sync::mpsc::Sender<SavedSimulationState>>,
+    /// A save request, carrying the channel the sim thread answers on.
+    ///
+    /// The answer is a `Result` because a save can be legitimately **refused**: see
+    /// [`crate::core::aggregate_population::DormantCohorts::snapshot_refusal`]. A refusal has to
+    /// reach the caller as an error — the alternative is writing a file that is silently missing a
+    /// population, which is the failure this type exists to make impossible to ignore.
+    pub save_request_tx:
+        crossbeam_channel::Sender<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
+    pub save_request_rx:
+        crossbeam_channel::Receiver<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
@@ -140,6 +152,7 @@ impl SimulationEngine {
             lineage_tracker,
             chronicle_history: Arc::new(RwLock::new(Vec::new())),
             sharding_config,
+            lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
             manual_migration_trigger,
             manual_migration_receiver,
             save_request_tx,
@@ -523,6 +536,7 @@ impl SimulationEngine {
         let app_handle_net = app_handle.clone();
         let lineage_tracker_sim = Arc::clone(&self.lineage_tracker);
         let sharding_config_sim = Arc::clone(&self.sharding_config);
+        let lod_focus_sim = self.lod_focus.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
         let pending_load_state_clone = Arc::clone(&self.pending_load_state);
@@ -597,6 +611,32 @@ impl SimulationEngine {
             let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
             world.insert_resource(BrainModel::new_seeded(15, 64, 4, run_seed));
             world.insert_resource(BrainInferenceBuffer::default());
+
+            // Simulation LOD. Until now this whole subsystem was unreachable from the running app:
+            // every system took `Option<Res<..>>` and nothing ever inserted the resources, so ~1900
+            // lines of tested code bought the shipped engine exactly nothing. These three lines are
+            // what connect it.
+            //
+            // Tier one is safe to have present unconditionally because its default is off *in the
+            // data*, not in the wiring: `LodFocus::default()` is disabled, a disabled focus tiers
+            // every agent `Hot`, and `Hot` is the pre-LOD behaviour. So an app that never calls
+            // `set_lod_focus` is bit-identical to one built before this existed.
+            world.insert_resource(crate::core::simulation_lod::LodFocus::default());
+            world.insert_resource(crate::core::simulation_lod::LodBands::default());
+            world.insert_resource(lod_focus_sim);
+
+            // Tier two is not, so it stays behind an explicit switch. It destroys bodies, runs a
+            // second ecology, and refuses to save while anything is asleep — see
+            // `aggregate_lod_enabled_from_env`. Absent the resource, all three of its systems
+            // return on their first line.
+            if crate::core::aggregate_population::aggregate_lod_enabled_from_env() {
+                world.insert_resource(
+                    crate::core::aggregate_population::DormantCohorts::from_bounds(
+                        run_seed,
+                        &loaded_bounds,
+                    ),
+                );
+            }
 
             let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
             let (recycle_req_tx, recycle_req_rx) =
@@ -1080,8 +1120,17 @@ impl SimulationEngine {
             schedule.add_systems((
                 herbivore_grazing_system.after(integrate_physics_system),
                 resource_field_regrowth_system.after(herbivore_grazing_system),
+                // The app's focus reaches the world here, ahead of both readers — `sensory_system`,
+                // which tiers inference, and the dormancy systems below. Ordered explicitly rather
+                // than left to Bevy: an unconstrained sync would let a tick tier agents against
+                // last tick's camera, which is harmless for a moving observer and confusing to
+                // debug.
+                crate::core::simulation_lod::sync_lod_focus_system
+                    .before(sensory_system)
+                    .before(crate::core::aggregate_population::dehydrate_cold_agents_system),
                 // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
-                // resource, which nothing inserts by default, so a stock run is unaffected.
+                // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
+                // unaffected.
                 //
                 // After physics, so an agent is tiered on the position it actually reached this
                 // tick; before the census, because the census is the only place a dormant cohort's
@@ -1131,15 +1180,23 @@ impl SimulationEngine {
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
-                    let serialized = serialize_world_state(
-                        &mut world,
-                        tick_count,
-                        &chronicle_history_clone_save,
-                        &lineage_tracker_sim_save,
-                        &evolution_settings_clone_save,
-                        &map_elites_grid_clone_save,
-                    );
-                    let _ = tx.send(serialized);
+                    // Checked before serializing, not after: the snapshot cannot carry dormant
+                    // cohorts, so a world holding any is not one this format can describe.
+                    let refusal = world
+                        .get_resource::<crate::core::aggregate_population::DormantCohorts>()
+                        .and_then(|c| c.snapshot_refusal());
+                    let answer = match refusal {
+                        Some(why) => Err(why),
+                        None => Ok(serialize_world_state(
+                            &mut world,
+                            tick_count,
+                            &chronicle_history_clone_save,
+                            &lineage_tracker_sim_save,
+                            &evolution_settings_clone_save,
+                            &map_elites_grid_clone_save,
+                        )),
+                    };
+                    let _ = tx.send(answer);
                 }
 
                 state_buffer.clear();

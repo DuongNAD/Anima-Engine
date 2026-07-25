@@ -347,15 +347,22 @@ toàn đều qua. Nhưng Holling Type II bão hoà theo **mật độ**: tổng 
 nên phải áp *trên đầu cá thể*: mỗi cá thể ngủ gặm như đang đứng trên một ô **trung bình** của chunk, rồi mới nhân với
 số con ăn cỏ. Test `sleeping_is_not_cheaper_than_being_watched` là thứ đã bắt được nó, và là thứ giữ nó.
 
-**⚠️ Điều kiện bắt buộc — CHƯA persist.** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo
-detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không
-sinh hay huỷ EU. Nhưng nó **không** mang `DormantCohorts`. Vậy save một run đang có cá thể ngủ sẽ **âm thầm xoá**
-quần thể đó cùng năng lượng của nó: chúng không nằm trong `agents`, EU của chúng không nằm trong scalar nào, và
-thế giới nạp lại đơn giản là ít đi. Không gì phát hiện được, vì baseline mới sẽ khoá ở lần census đầu sau khi nạp.
+**⚠️ Điều kiện bắt buộc — VẪN chưa persist, nhưng đã có tường chặn.** `SavedSimulationState` rất kỹ về năng lượng
+khép kín (mang theo detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới
+save/load không sinh hay huỷ EU. Nhưng nó **không** mang `DormantCohorts`. Cứ ghi ra thì save một run đang có cá thể
+ngủ sẽ **âm thầm xoá** quần thể đó cùng năng lượng của nó: chúng không nằm trong `agents`, EU của chúng không nằm
+trong scalar nào, và thế giới nạp lại đơn giản là ít đi — không gì phát hiện được, vì baseline mới sẽ khoá ở lần
+census đầu sau khi nạp.
 
-→ **Đừng bật dormancy trên run có save, cho tới khi cohort vào được snapshot envelope.** Hôm nay an toàn chỉ vì
-không chỗ nào chèn resource đó — tầng này tắt trong mọi đường đã ship, và tiêu điểm LOD từ UI (thứ sẽ bật nó lên)
-chưa tồn tại. Ai nối tiêu điểm đó thì sở hữu dòng này.
+→ Nên đường save **từ chối** thay vì ghi ra một file thiếu người. `DormantCohorts::snapshot_refusal` trả lý do kèm
+số cá thể và EU đang ngủ; kênh save mang `Result<SavedSimulationState, String>` nên việc này **không thể bị bỏ quên**
+ở call-site; và `save_simulation_state` đẩy nguyên lý do đó lên UI. Từ chối tự hết khi mọi cá thể tỉnh lại —
+`a_world_with_sleeping_agents_refuses_to_save_rather_than_lose_them` giữ cả hai nửa, vì một bức tường không bao giờ
+hạ xuống thì làm tầng này *không dùng được* chứ không phải *an toàn*.
+
+→ Đây là nửa thận trọng, không phải lời giải. Nửa còn lại — cho cohort, kho genome, bộ đếm `seen` của reservoir và
+vị trí RNG dormancy đi trọn một vòng save/load, kèm nâng `SCHEMA_VERSION` — vẫn chưa làm. Ai nối tiêu điểm LOD từ UI
+thì sở hữu dòng này: tầng sẽ chạy được, nhưng run có cá thể ngủ vẫn chưa save được.
 
 **Phần thô hơn, và một bất đối xứng còn để ngỏ — nêu tên thay vì giấu:**
 

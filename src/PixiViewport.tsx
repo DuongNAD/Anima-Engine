@@ -3,6 +3,16 @@ import * as PIXI from 'pixi.js';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { TerrainMapState } from './types';
+import {
+  fetchHotRadius,
+  focusForViewport,
+  sendLodFocus,
+  sendLodFocusNow,
+  shouldSend,
+  FOCUS_OFF,
+  SAMPLE_INTERVAL_MS,
+  type LodFocusPayload,
+} from './utils/lodFocus';
 
 const BIOME_COLORS: { [key: number]: number } = {
   0: 0x0a1450, // DeepOcean
@@ -224,6 +234,12 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
   const zoomRef = useRef<number>(zoom);
   const panRef = useRef<{ x: number; y: number }>(pan);
 
+  // What this viewport is currently looking at, in backend world units — the input to simulation
+  // LOD (see the effect near the bottom of this file). Written by `draw`, which is the only place
+  // that knows the pan/zoom/auto-fit mapping. `null` means "no usable focus": the side-on `xy`
+  // projection shows height, not depth, so it carries no z to point the simulation at.
+  const lodViewRef = useRef<{ x: number; z: number; visibleHalfExtent: number } | null>(null);
+
   useEffect(() => {
     if (propEnvironmentalState) {
       environmentalStateRef.current = propEnvironmentalState;
@@ -340,6 +356,20 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       const wy = midY - (cy - centerY) / scale;
       return [wx, wy];
     };
+
+    // Publish the view for simulation LOD. Only under the top-down projection: in `xy` the second
+    // screen axis is height, so `screenToWorld` yields no z, and inventing one would tier half the
+    // world against a coordinate the user never chose.
+    if (proj === 'xz') {
+      const [viewX, viewZ] = screenToWorld(500 / 2, 350 / 2);
+      const worldPerPixel = 1 / (scale * (zoomRef.current || 1));
+      // Half the diagonal, not half the width: the screen corner is the farthest point still
+      // visible, and it is the one that must not fall outside the hot band.
+      const visibleHalfExtent = Math.hypot(500 / 2, 350 / 2) * worldPerPixel;
+      lodViewRef.current = { x: viewX, z: viewZ, visibleHalfExtent };
+    } else {
+      lodViewRef.current = null;
+    }
 
     // Draw Terrain Background Sprite or HUD background fallback
     const terrainMap = terrainMapRef.current;
@@ -997,6 +1027,53 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     draw();
   }, [propSegments, propRaycasts, propPheromoneGrid, projection, propEnvironmentalState, zoom, pan]);
 
+  // Simulation LOD: tell the backend where this viewport is looking, so it can spend its per-tick
+  // brain inference there instead of uniformly (`core/simulation_lod.rs`).
+  //
+  // This view *draws the agents*, which makes it stricter than the landscape showcase: a focus that
+  // is wrong here shows up as agents moving sluggishly. Two guards carry that, both inside
+  // `focusForViewport`: the hot radius is asked of the backend rather than assumed, and no focus is
+  // sent while the viewport shows more world than that radius covers — zoomed out, every agent on
+  // screen is one the user is looking at, and uniform detail is the correct answer.
+  useEffect(() => {
+    let hotRadius: number | null = null;
+    let last: LodFocusPayload | null = null;
+    let inFlight = false;
+    let stopped = false;
+
+    void fetchHotRadius().then((r) => {
+      if (!stopped) hotRadius = r;
+    });
+
+    const id = setInterval(() => {
+      if (inFlight) return;
+      const v = lodViewRef.current;
+      const next = v
+        ? focusForViewport(v.x, v.z, v.visibleHalfExtent, hotRadius)
+        : FOCUS_OFF;
+      if (!shouldSend(last, next)) return;
+      inFlight = true;
+      void sendLodFocus(next).then((ok) => {
+        inFlight = false;
+        if (ok) last = next;
+      });
+    }, SAMPLE_INTERVAL_MS);
+
+    // Leaving must hand detail back. React's cleanup does not run for a document navigation, so
+    // `pagehide` covers that path, and the send is synchronous because a dynamic import does not
+    // resolve on a page being torn down.
+    const leave = () => {
+      sendLodFocusNow(FOCUS_OFF);
+    };
+    window.addEventListener('pagehide', leave);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
+  }, []);
+
   return (
     <div
       ref={containerRef}
@@ -1020,3 +1097,4 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 };
 
 export default PixiViewport;
+

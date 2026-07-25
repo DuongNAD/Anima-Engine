@@ -31,8 +31,9 @@
 //! at all — held by `without_a_focus_every_agent_thinks_every_tick` and
 //! `a_disabled_focus_changes_nothing` in `tests/simulation_lod_tests.rs`.
 
-use bevy_ecs::prelude::Resource;
+use bevy_ecs::prelude::{Res, ResMut, Resource};
 use glam::Vec3;
+use std::sync::{Arc, RwLock};
 
 /// How much detail an agent is being simulated with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,7 +47,7 @@ pub enum LodTier {
 ///
 /// Headless runs have no camera, so this stays disabled and everything is `Hot`. A UI can set it to
 /// the view position later; nothing here depends on that existing.
-#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+#[derive(Resource, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LodFocus {
     pub enabled: bool,
     pub center: Vec3,
@@ -70,8 +71,49 @@ impl LodFocus {
     }
 }
 
+/// The focus as the **app** holds it, shared across the thread boundary.
+///
+/// The Tauri command thread writes it; [`sync_lod_focus_system`] copies it into [`LodFocus`] once
+/// per tick. A handle rather than the resource itself because the writer and the reader are on
+/// different threads — the same shape `ShardingResource` uses, and the reason the tier could not
+/// simply be switched on from a command before now.
+#[derive(Resource, Clone)]
+pub struct SharedLodFocus(pub Arc<RwLock<LodFocus>>);
+
+impl SharedLodFocus {
+    /// A shared focus that starts disabled — every agent `Hot`, indistinguishable from no LOD.
+    pub fn new_disabled() -> Self {
+        Self(Arc::new(RwLock::new(LodFocus::default())))
+    }
+}
+
+/// Copy the app's focus into the world, once per tick, before anything tiers on it.
+///
+/// Inert without the shared handle, which is what keeps a headless run — no UI, no camera, nothing
+/// to write it — on exactly the path it had before: no handle, no writes, every agent `Hot`.
+///
+/// A poisoned lock leaves the last focus in place instead of panicking. The simulation thread
+/// outliving a dead UI thread with a slightly stale camera position is strictly better than the
+/// simulation dying with it.
+pub fn sync_lod_focus_system(shared: Option<Res<SharedLodFocus>>, focus: Option<ResMut<LodFocus>>) {
+    // Separate bindings rather than one tuple pattern: the tuple is a temporary, and the read guard
+    // below borrows out of it.
+    let Some(shared) = shared else {
+        return;
+    };
+    let Some(mut focus) = focus else {
+        return;
+    };
+    // Copied out in its own statement so the read guard is released here, rather than living to the
+    // end of the function as an `if let` scrutinee temporary would.
+    let latest = shared.0.read().ok().map(|next| *next);
+    if let Some(latest) = latest {
+        *focus = latest;
+    }
+}
+
 /// Tier boundaries and how often a `Warm` agent thinks.
-#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+#[derive(Resource, Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LodBands {
     pub hot_radius: f32,
     pub warm_radius: f32,

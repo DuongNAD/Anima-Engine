@@ -186,7 +186,8 @@ fn test_100_save_load_cycles() {
         .expect("Failed to send initial save request");
     let mut current_state = rx
         .recv_timeout(Duration::from_secs(5))
-        .expect("Timeout waiting for initial save");
+        .expect("Timeout waiting for initial save")
+        .expect("initial save must not be refused");
 
     assert!(current_state.tick_count > 0);
     assert_eq!(
@@ -224,7 +225,8 @@ fn test_100_save_load_cycles() {
 
         let new_state = rx_cycle
             .recv_timeout(Duration::from_secs(2))
-            .unwrap_or_else(|e| panic!("Timeout/error receiving save in cycle {}: {:?}", cycle, e));
+            .unwrap_or_else(|e| panic!("Timeout/error receiving save in cycle {}: {:?}", cycle, e))
+            .unwrap_or_else(|why| panic!("save refused in cycle {}: {}", cycle, why));
 
         // Verify that the data is not glitched/NaN
         for agent in &new_state.agents {

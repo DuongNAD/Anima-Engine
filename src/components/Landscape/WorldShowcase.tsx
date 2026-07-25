@@ -19,6 +19,15 @@ import type { World } from './utils/worldGen';
 import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
+import {
+  focusFromLookAt,
+  sendLodFocus,
+  sendLodFocusNow,
+  shouldSend,
+  FOCUS_OFF,
+  SAMPLE_INTERVAL_MS,
+  type LodFocusPayload,
+} from '../../utils/lodFocus';
 import { sunDirectionForTime } from './utils/skyParams';
 import { audioManager } from './utils/audioManager';
 
@@ -168,6 +177,51 @@ export const WorldShowcase: React.FC = () => {
       });
     }, 250);
     return () => clearInterval(id);
+  }, []);
+
+  // Tell the simulation where the explorer is standing, so it can spend its per-tick brain
+  // inference near them instead of uniformly (`core/simulation_lod.rs`). Sampled on a timer like
+  // the HUD readout above rather than driven from the render loop: this is a hint about where
+  // detail belongs, and the tiers cannot respond faster than the camera is sampled.
+  //
+  // Inert outside Tauri. See `utils/lodFocus` for why leaving sends an explicit *off* rather than
+  // simply going quiet, and why the camera's height is dropped.
+  useEffect(() => {
+    let last: LodFocusPayload | null = null;
+    let inFlight = false;
+    const id = setInterval(() => {
+      if (inFlight) return;
+      const v = viewRef.current;
+      // `target`, not `cam`: in orbit mode the camera sits off the terrain to frame the whole
+      // continent, and mapping *that* would focus the simulation outside its own world.
+      const next = focusFromLookAt(v.targetX, v.targetZ, RENDER_SIZE);
+      if (!shouldSend(last, next)) return;
+      inFlight = true;
+      void sendLodFocus(next).then((ok) => {
+        inFlight = false;
+        // Recorded only once it lands, so a dropped message is retried rather than assumed applied.
+        if (ok) last = next;
+      });
+    }, SAMPLE_INTERVAL_MS);
+    // Handing detail back is part of leaving. Without it the simulation stays tiered around
+    // wherever the explorer last stood, with distant agents frozen out of thinking because a page
+    // closed — and the agent views on `index.html` would inherit that stale focus with nothing on
+    // screen to explain it.
+    //
+    // React's cleanup alone does not cover this. It runs on unmount, and leaving `landscape.html`
+    // is a document navigation: the JS context is torn down without React ever unmounting anything.
+    // `pagehide` is the event that actually fires for a navigation, a tab close and a bfcache
+    // eviction, so both paths are wired and the send is idempotent.
+    const leave = () => {
+      // Synchronous: an `await import(...)` does not resolve on a page being torn down.
+      sendLodFocusNow(FOCUS_OFF);
+    };
+    window.addEventListener('pagehide', leave);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('pagehide', leave);
+      leave();
+    };
   }, []);
 
   // Ambient wind bed. Browsers block audio until a user gesture, so we lazily start the

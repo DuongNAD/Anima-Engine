@@ -49,6 +49,9 @@ pub fn run() {
             commands::get_active_raycasts,
             commands::get_lineage_graph,
             commands::get_chronicle_history,
+            commands::set_lod_focus,
+            commands::get_lod_focus,
+            commands::get_lod_bands,
             commands::set_sharding_config,
             commands::get_sharding_config,
             commands::trigger_migration,
@@ -99,7 +102,11 @@ pub fn run() {
             if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
                 let (tx, rx) = std::sync::mpsc::channel();
                 if engine.save_request_tx.send(tx).is_ok() {
-                    if let Ok(saved_state) = rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                    // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
+                    // dropped deliberately — the autosave is best-effort and there is no one left
+                    // to tell, whereas the explicit save command surfaces the reason.
+                    if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2))
+                    {
                         if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
                             let _ = std::fs::create_dir_all(&app_data_dir);
                             let default_save_path = app_data_dir.join("default_save.json");

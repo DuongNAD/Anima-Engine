@@ -115,3 +115,38 @@ export function worldXzToCell(
   }
   return uvToCell(u, v, width, height);
 }
+
+/**
+ * Render-space `(x, z)` to backend world-space `(x, z)`.
+ *
+ * The fourth space in the contract, and the only one defined entirely frontend-side: the terrain
+ * mesh lays cell `u` out at `(u - 0.5) * renderSize` (WorldTerrain.tsx), so render space is a
+ * `renderSize`-wide square centred on the origin. World space is the `bounds` rectangle. Both are
+ * axis-aligned, so this is the pure scale the contract promises — no rotation, no shear — and it is
+ * its own inverse under swapped arguments.
+ *
+ * Written down here rather than inline at the call site because it is a *contract* between the
+ * renderer and the simulation, not a rendering detail: it is what makes "where the explorer is
+ * standing" mean anything to a backend whose world is 200 units across while the scene is 1200.
+ */
+export function renderXzToWorldXz(
+  x: number,
+  z: number,
+  renderSize: number,
+  bounds: XZBounds = DEFAULT_XZ_BOUNDS,
+): [number, number] {
+  if (!(renderSize > 0)) {
+    // A zero or NaN extent has no defined scale. Returning the world centre keeps a caller that
+    // renders before its world has loaded from steering the simulation with a NaN.
+    return [
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minZ + bounds.maxZ) / 2,
+    ];
+  }
+  const u = x / renderSize + 0.5;
+  const v = z / renderSize + 0.5;
+  return [
+    bounds.minX + u * (bounds.maxX - bounds.minX),
+    bounds.minZ + v * (bounds.maxZ - bounds.minZ),
+  ];
+}

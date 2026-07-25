@@ -102,7 +102,9 @@ fn test_engine_save_load_lifecycle() {
 
     let saved_state = rx.recv_timeout(std::time::Duration::from_secs(2));
     assert!(saved_state.is_ok());
-    let saved_state = saved_state.unwrap();
+    let saved_state = saved_state
+        .unwrap()
+        .expect("a world with no dormant cohorts must save");
 
     assert!(saved_state.tick_count > 0);
     assert_eq!(saved_state.agents.len(), 10);
@@ -133,7 +135,9 @@ fn test_engine_save_load_lifecycle() {
     let _ = engine.save_request_tx.send(tx2);
     let loaded_state = rx2.recv_timeout(std::time::Duration::from_secs(2));
     assert!(loaded_state.is_ok());
-    let loaded_state = loaded_state.unwrap();
+    let loaded_state = loaded_state
+        .unwrap()
+        .expect("a restored world must save again");
 
     assert!(loaded_state.tick_count >= 1000);
     assert_eq!(loaded_state.epoch_manager.current_epoch, 99);
