@@ -1,3 +1,7 @@
+// The WebSocket stack is behind the `networking` feature (G2). `MigrationPayload` and
+// `hash_lineage_id` below are plain data and stay available either way, because other modules
+// glob-import this one and only the transport is optional.
+#[cfg(feature = "networking")]
 use futures_util::{SinkExt, StreamExt};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::net::SocketAddr;
@@ -5,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::Emitter;
+#[cfg(feature = "networking")]
 use tokio_tungstenite::accept_async;
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -23,6 +28,7 @@ pub fn hash_lineage_id(id: &str) -> u32 {
     (std::hash::Hasher::finish(&hasher) & 0x7FFFFFFF) as u32
 }
 
+#[cfg(feature = "networking")]
 pub async fn run_websocket_server<R: tauri::Runtime>(
     port: u16,
     inbound_tx: crossbeam_channel::Sender<crate::core::ecs::AgentMigrationData>,
@@ -139,6 +145,7 @@ pub async fn run_websocket_server<R: tauri::Runtime>(
     Ok(())
 }
 
+#[cfg(feature = "networking")]
 pub async fn run_websocket_client<R: tauri::Runtime>(
     outbound_rx: crossbeam_channel::Receiver<crate::core::ecs::OutboundMigration>,
     inbound_tx: crossbeam_channel::Sender<crate::core::ecs::AgentMigrationData>,

@@ -1,3 +1,7 @@
+// Cross-shard WebSocket migration lives behind the `networking` feature (G2). Without it this
+// suite has nothing to exercise, so the whole file compiles away rather than failing to link.
+#![cfg(feature = "networking")]
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

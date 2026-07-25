@@ -38,12 +38,12 @@ rand = "0.8"
 # ChaCha12Rng in rand 0.8 but does not expose `get_word_pos`/`set_word_pos`, and a snapshot that
 # cannot restore the draw position is not a checkpoint (G1.2).
 rand_chacha = "0.3"
-neo4rs = "0.7.0"
+neo4rs = { version = "0.7.0", optional = true }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 tokio = { version = "1.36", features = ["full"] }
 ureq = { version = "2.9", features = ["json"] }
 dotenvy = "0.15"
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", optional = true }
 futures-util = "0.3"
 noise = "0.8.2"
 image = "0.24.7"
@@ -51,3 +51,25 @@ image = "0.24.7"
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
+
+[features]
+# G2 gate: a DEFAULT build must not compile the heavy optional subsystems. The desktop app turns
+# them back on (see the `desktop` feature, which src-tauri/tauri.conf.json builds with), but a
+# library consumer — and CI's fast path — gets a crate that does not link a Neo4j driver, a
+# WebSocket stack or an HTTP client it never calls.
+#
+# Each gated subsystem has a working fallback that predates this split, which is why the gates are
+# cheap: lineage falls back to its in-memory tracker, and the Meta-AI falls back to
+# `MockMetaAiClient` — the same pure function a deterministic run already uses (G1.3).
+default = []
+
+# Neo4j-backed lineage. Off => `FallbackLineageTracker` runs purely in memory.
+neo4j = ["dep:neo4rs"]
+# Cross-shard WebSocket migration.
+networking = ["dep:tokio-tungstenite"]
+# What the shipped desktop binary builds with.
+desktop = ["neo4j", "networking"]
+
+# NOTE: `ureq` (the Gemini client) is deliberately NOT gated. G2 names Burn/WGPU, Neo4j and
+# networking; ureq is a small pure-Rust HTTP client with no transitive weight worth a feature, and
+# G1.3 already routes any deterministic run to `MockMetaAiClient` regardless of the build.
