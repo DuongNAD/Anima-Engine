@@ -94,6 +94,10 @@ pub fn init_world() -> World {
     ));
     // Off unless `ANIMA_EVOLVED_BRAINS` says otherwise, so a default run is the ADR-0003 baseline.
     world.insert_resource(crate::core::resources::BrainPolicy::from_env());
+    // Off unless `ANIMA_DETERMINISTIC` says otherwise (G1.3). An interactive session keeps real
+    // uuids, real timestamps and the multi-threaded executor; a run that must be reproducible turns
+    // this on and gives up all three.
+    world.insert_resource(crate::core::determinism::DeterministicMode::from_env());
     world.insert_resource(world_identity);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
         10.0, &bounds,

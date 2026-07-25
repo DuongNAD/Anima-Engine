@@ -229,6 +229,18 @@ impl SimulationEngine {
                 ),
                 crate::core::resources::sim_stream::EVOLUTION,
             );
+            // G1.3. This thread mints lineage and chronicle ids and stamps chronicle entries, all of
+            // which end up in saved state — so in a deterministic run they must come from the run,
+            // not from OS entropy and the wall clock. It resolves the mode and the run id from the
+            // same sources the world will use, for the same reason `evo_rng` above does: the thread
+            // is spawned before the ECS world exists.
+            let evo_deterministic = crate::core::determinism::DeterministicMode::from_env();
+            let evo_run_id = crate::core::resources::resolve_run_seed(
+                crate::core::world_artifact::world_seed_from_disk(),
+            );
+            // Separate namespaces so two id sources on one thread cannot collide.
+            let chronicle_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "chronicle");
+            let offspring_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "lineage");
             let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
                 match std::env::var("GEMINI_SESSION_TOKEN") {
                     Ok(token) if !token.trim().is_empty() => Box::new(
@@ -252,7 +264,8 @@ impl SimulationEngine {
                     meta_ai_history.push(new_event);
                     let _ = env_tx.send(new_event);
 
-                    let id = uuid::Uuid::new_v4().to_string();
+                    let id =
+                        crate::core::determinism::next_entity_id(evo_deterministic, &chronicle_ids);
                     let (event_type, title, description) = match new_event {
                         crate::evolution::meta_ai::EnvironmentalEvent::ResourceDrought => (
                             "Drought".to_string(),
@@ -281,10 +294,13 @@ impl SimulationEngine {
                         ),
                     };
 
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64;
+                    // Derived from the epoch counter in a deterministic run, so replaying a manifest
+                    // reproduces the same chronicle rather than one stamped with when it happened
+                    // to be replayed.
+                    let timestamp = crate::core::determinism::timestamp_ms(
+                        evo_deterministic,
+                        meta_ai_epoch as u64 * crate::core::sim_rules::TICKS_PER_EPOCH,
+                    );
 
                     let mut parameter_delta = std::collections::HashMap::new();
                     match new_event {
@@ -437,7 +453,10 @@ impl SimulationEngine {
                         }
 
                         let offspring_generation = max_parent_gen + 1;
-                        let offspring_id = uuid::Uuid::new_v4().to_string();
+                        let offspring_id = crate::core::determinism::next_entity_id(
+                            evo_deterministic,
+                            &offspring_ids,
+                        );
 
                         let _ = lineage_tracker_evo.add_reproduction(
                             offspring_id.clone(),
@@ -946,7 +965,30 @@ impl SimulationEngine {
                 }
             }
 
+            let deterministic = world
+                .get_resource::<crate::core::determinism::DeterministicMode>()
+                .copied()
+                .unwrap_or_default();
+
             let mut schedule = Schedule::default();
+            // G1.3: system execution order must be declared, not incidental.
+            //
+            // Bevy's multi-threaded executor guarantees that two systems with conflicting access
+            // never run at the same time, but NOT which of them goes first. The `.after(...)`
+            // constraints below pin the order that matters causally; everything else was left to
+            // whatever the executor happened to pick, which is not a property of the manifest. That
+            // is not a theoretical concern: G1.1 found an energy residual whose *sign* changed
+            // between runs because of it, and G1.2's checkpoint gate had to declare its own order
+            // to get a stable checksum at all.
+            //
+            // The single-threaded executor walks the schedule's topological order, which is a
+            // function of the declared constraints and insertion order alone — the same binary and
+            // manifest therefore produce the same order every time. It costs parallelism, which is
+            // the correct trade for a run whose purpose is to be reproducible; an interactive
+            // session leaves determinism off and keeps the multi-threaded executor.
+            if deterministic.is_enabled() {
+                schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+            }
             schedule.add_systems((
                 sync_evolution_settings_system,
                 receive_environmental_events_system,

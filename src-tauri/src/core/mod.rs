@@ -1,6 +1,7 @@
 pub mod agent_systems;
 pub mod causal;
 pub mod components;
+pub mod determinism;
 pub mod dynamic_fields;
 pub mod ecology;
 pub mod ecs;

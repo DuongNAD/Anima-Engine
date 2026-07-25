@@ -55,6 +55,15 @@ impl GeminiMetaAiClient {
 
 impl MetaAiClient for GeminiMetaAiClient {
     fn generate_event(&self, epoch: u32, history: &[EnvironmentalEvent]) -> EnvironmentalEvent {
+        // G1.3: a deterministic run may not consult a live model. The answer would depend on a
+        // network, a secret and a remote model's weights — none of which are part of the manifest,
+        // so a replay could not reproduce it. The contract is that external AI may only *propose*
+        // interventions, which are frozen into the manifest and replayed from there; by replay time
+        // there is nothing left to ask. `MockMetaAiClient` is a pure function of epoch and history,
+        // which is exactly what a replay needs.
+        if !crate::core::determinism::DeterministicMode::from_env().allows_external_ai() {
+            return MockMetaAiClient.generate_event(epoch, history);
+        }
         let api_key = match &self.api_key {
             Some(key) if !key.is_empty() => key,
             _ => {
@@ -206,6 +215,11 @@ impl GeminiWebSessionClient {
 
 impl MetaAiClient for GeminiWebSessionClient {
     fn generate_event(&self, epoch: u32, history: &[EnvironmentalEvent]) -> EnvironmentalEvent {
+        // Same G1.3 gate as `GeminiMetaAiClient`: a deterministic run must not reach the network in
+        // either code path, or which client happened to be configured would decide reproducibility.
+        if !crate::core::determinism::DeterministicMode::from_env().allows_external_ai() {
+            return MockMetaAiClient.generate_event(epoch, history);
+        }
         let history_str: Vec<String> = history.iter().map(|e| e.to_string()).collect();
         let prompt = format!(
             "You are directing an evolutionary simulation. The current epoch is {}. \
