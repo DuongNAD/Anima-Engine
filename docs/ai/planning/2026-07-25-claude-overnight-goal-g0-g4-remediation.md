@@ -855,3 +855,132 @@ plus two dependency lines (`rand_chacha`, and `serde_json`'s `raw_value` feature
   slice, not in the live Bevy world, so they are not part of the trajectory this gate measures. When
   AE4 brings them into the live world they must be added to `SavedSimulationState` **and**
   `world_checksum` at the same time, or the gate will silently stop covering them.
+
+---
+
+### G1.3 — Deterministic mode for the live engine — 2026-07-25 (Claude Opus 5)
+
+**Status: gate passes.** **Rung reached: Live integrated** for the deterministic core, with the
+scope limit in "Not done" below.
+
+New: `src-tauri/src/core/determinism.rs`, `src-tauri/tests/determinism_gate_tests.rs`,
+`docs/reference/DETERMINISM_CONTRACT.md`.
+
+#### The promise, and its limit
+
+> Same manifest + same build ⇒ same trajectory.
+
+Deliberately **not** bit-identical across targets or optimisation levels — float reassociation makes
+that a much larger claim. `snapshot::BuildProvenance` records target and profile precisely so a
+cross-machine mismatch can be attributed rather than puzzled over.
+
+#### Audit anchors, re-read
+
+| Audit anchor | Verdict |
+|---|---|
+| `Uuid::new_v4()` at `simulation_loop.rs:255` | **Exact, still there.** Routed through `RunIdentity`. Two more found at `:440` and `:798`. |
+| wall-clock at `simulation_loop.rs:284` | **Exact, still there.** Routed through `tick_timestamp_ms`. |
+| Gemini at `meta_ai.rs:51` | **Confirmed.** Both clients now refuse the network in a deterministic run. |
+| "current determinism tests exercise RNG and operators, not two complete live processes" | **Confirmed.** The new gate runs two processes. |
+
+#### The fourth source, which the audit did not list
+
+**Bevy's executor picks system order per run.** It guarantees two systems with conflicting access
+never run simultaneously, but not which goes first — and that order is not part of the manifest.
+
+This is not a new observation so much as the *same* one that has been causing trouble across this
+whole program: it is the root cause behind the G1.1 energy residual whose sign changed between runs,
+and the reason G1.2's checkpoint gate had to declare its own order to get a stable checksum at all.
+Naming it here closes that thread. `DeterministicMode` now selects `ExecutorKind::SingleThreaded`,
+whose topological order is a function of the declared constraints and insertion order alone.
+
+#### Default off, on purpose
+
+An interactive session wants real uuids and real timestamps: the chronicle is a user-facing log, and
+stamping it with tick-derived time would be a lie in that context. Experiments want the opposite. So
+`ANIMA_DETERMINISTIC` turns it on and **unset always means the legacy path** — same shape as
+`ANIMA_EVOLVED_BRAINS` and `ANIMA_USE_GPU`, so nothing about an existing run changes silently.
+
+When on: ids come from `RunIdentity` (`"<prefix>-<run_id:016x>-<counter:08x>"`, hex-padded so ids
+sort in issue order and a lineage graph reads sensibly, with a separate namespace per thread so two
+sources cannot collide without a lock on the hot path); timestamps from `tick_timestamp_ms`; the
+external model is refused in favour of `MockMetaAiClient`, a pure function of epoch and history.
+
+#### Gate — two processes, not two worlds
+
+The instrument is a **child process**, and that choice is the substance of the gate.
+`HashMap`/`HashSet` iteration order comes from `RandomState`, which seeds itself **once per
+process**. Two worlds in one process share that seed, so they agree with each other while both
+disagree with tomorrow's run — a same-process A/B literally cannot observe that class of bug. Each
+test re-executes the test binary with a role env var and compares the checksum lines it prints.
+
+```text
+straight: process A = 0x9791c852, process B = 0x9791c852
+straight = 0x9791c852, checkpoint-resumed = 0x9791c852
+full = 0x9791c852, half = 0x210d8f04
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out
+```
+
+Both halves of the required gate: two independent processes replaying the same manifest agree, and a
+checkpoint continuation in a third process agrees with an uninterrupted run.
+
+**The negative control is what makes the rest mean anything.** The same manifest run for half as many
+ticks must hash *differently*; without that, a constant checksum would turn both headline gates green
+for the wrong reason.
+
+#### A real bug the gate caught in G1.2's own work
+
+Running the full suite surfaced `restore_reproduces_the_world_with_zero_further_ticks` failing on
+`animals: 946.5262908935547` vs `...548` — one ULP, with every authoritative store matching exactly.
+
+`world_checksum` was hashing `EcosystemBiomass::plants` and `::animals`, which are **derived
+mirrors** of the resource field and the agent reserves. Both were already hashed cell-by-cell and
+agent-by-agent, so including the mirrors hashed the same energy twice — and imported an error that
+is not the world's, since a mirror survives a save as a single `f64` through JSON and serde_json's
+f64 round trip is not bit-exact (the same limitation G1.2 recorded).
+
+Fixed by hashing `detritus` only, the one compartment that is an authoritative store. The rule this
+settles, now written into the module: **a fingerprint of the world hashes the stores, never the views
+of them.** All G1.2 checksums moved as a result (`reference=0x26187817`), which is expected — the
+instrument changed, the world did not.
+
+#### Verification loop
+
+```text
+cargo fmt --check                          rc=0
+cargo clippy --all-targets -- -D warnings  rc=101 — pre-existing findings in migration_*/
+                                           adversarial_challenger only, 0 in G1.3 code
+cargo test                                 513 passed, 1 failed, 4 ignored
+```
+
+The one failure is `terrain_challenger_tests::test_terrain_zero_heap_allocations_erosion_hotpath`,
+the pre-existing flake documented in the G0 entry. No regressions from G1.3.
+
+Two earlier full-suite runs were lost to `LNK1104` — a second agent was running `cargo test` against the
+same target directory and held test binaries open. That is build contention, not a code failure;
+the run that completed cleanly is reported below.
+
+Frontend loop unchanged by this goal.
+
+#### Deviations from the allowed-files list
+
+`evolution/meta_ai.rs` is on the list. `core/determinism.rs` is a new module under `core/`, allowed.
+No file outside the list was touched for this goal.
+
+#### Not done
+
+- **The system order is deterministic but not *written down*.** The single-threaded executor gives a
+  stable total order, but it is still inferred from insertion order plus scattered `.after(...)`
+  constraints rather than a declared list a reader can check. Converting the live schedule to a full
+  `.chain()` or ordered `SystemSet`s remains open, and is the honest reading of "explicitly
+  declared, not incidental".
+- The gate builds a world and runs the energy schedule directly; it does **not** go through
+  `SimulationEngine::start`. So it proves the deterministic *core*, not the whole live startup path.
+  **G2** is where that becomes testable.
+- `meta_ai::add_chronicle_event` still uses `Uuid::new_v4()` + `SystemTime::now()` — it receives
+  neither the mode nor a tick. Its output is a UI log rather than part of the measured trajectory,
+  but it does reach saved state, so it needs finishing.
+- `networking_systems.rs` retains several `SystemTime::now()` calls; outside G1's allowed files and
+  outside the single-node trajectory.
+- With determinism **off** — the default — the live schedule still runs multi-threaded and is not
+  reproducible. That is the intended trade: only runs that need reproducibility pay for it.

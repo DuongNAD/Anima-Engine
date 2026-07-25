@@ -383,11 +383,18 @@ pub fn world_checksum(world: &mut bevy_ecs::world::World) -> u32 {
         }
     }
 
-    // Closed-energy compartments.
+    // Detritus only — the one closed-energy compartment that is an authoritative store.
+    //
+    // `plants` mirrors the resource field and `animals` mirrors the agent reserves, both of which
+    // are already hashed above; including them would hash the same energy twice. Worse, it would
+    // import an error that is not the world's: a mirror survives a save as a single `f64` through
+    // JSON, and serde_json's f64 round trip is not bit-exact, so a restored `animals` can land one
+    // ULP away from the value the census computed. That made the checkpoint gate fail on a
+    // difference in a *derived* number while every authoritative store matched exactly.
+    //
+    // The rule this settles: a fingerprint of the world hashes the stores, never the views of them.
     if let Some(pool) = world.get_resource::<crate::core::ecology::EcosystemBiomass>() {
         push_f64(&mut bytes, pool.detritus);
-        push_f64(&mut bytes, pool.plants);
-        push_f64(&mut bytes, pool.animals);
     }
 
     // The stream, including how far into it we are.
