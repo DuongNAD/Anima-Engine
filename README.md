@@ -14,6 +14,8 @@ thế giới có phiên bản, kết quả tái lập được và bằng chứn
 | Xem lộ trình mô phỏng dài hạn | [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) |
 | Xem các quy tắc không được phá vỡ | [SIMULATION_RULES.md](SIMULATION_RULES.md) |
 | Triển khai sinh vật thích nghi môi trường | [Creature Development Contract](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+| Sửa bộ não agent, gen não hoặc không gian hành động | [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
+| Xem đề xuất nâng cấp map và mô hình ML | [Khảo sát map & ML](docs/research/MAP_AND_ML_UPGRADE_RESEARCH.md) |
 | Chọn công nghệ nguồn mở để tích hợp | [Kế hoạch áp dụng nguồn mở](docs/planning/OPEN_SOURCE_ADOPTION_PLAN.md) |
 | Tra cứu toàn bộ tài liệu | [Trung tâm tài liệu](docs/README.md) |
 
@@ -51,8 +53,30 @@ Các kiểm tra hiện có:
 ```powershell
 npm run test:frontend
 npm run lint
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml -j 2
 ```
+
+`-j 2` không phải tuỳ chọn thẩm mỹ: build song song đầy đủ làm cạn paging file trên máy phát
+triển hiện tại và cargo báo `LNK1104` / `os error 1455` giữa chừng.
+
+Vài suite dùng **global allocator** để đếm cấp phát, hoặc đọc/ghi biến môi trường. Chúng đã
+tự khoá bằng mutex trong từng file, nhưng hai tiến trình `cargo test` chạy đồng thời vẫn
+tranh chấp file `.exe` (`os error 32`) — chạy một lần một.
+
+## Cờ chạy
+
+Mặc định là đường legacy: không bật cờ nào thì mô phỏng chạy đúng như trước khi các tính năng
+dưới đây tồn tại.
+
+| Biến | Mặc định | Tác dụng |
+|---|---|---|
+| `ANIMA_SIM_SEED` | seed của world | Ghi đè seed ngẫu nhiên của run (dùng cho sweep headless) |
+| `ANIMA_EVOLVED_BRAINS` | tắt | Mỗi agent có bộ não di truyền riêng thay vì dùng chung một mạng |
+| `ANIMA_LIFETIME_LEARNING` | tắt | Học trong đời cá thể; chỉ có hiệu lực khi đã bật cờ trên |
+| `ANIMA_DETERMINISTIC` | tắt | Chế độ tất định cho replay/checkpoint |
+| `ANIMA_USE_GPU` | bật | `burn-wgpu`; đặt `0` để rơi về CPU `ndarray` |
+| `ANIMA_WORLD_ARTIFACT` | temp dir | Đường dẫn World Artifact dùng chung |
+| `ANIMA_CACHE_DIR` | temp dir | Nơi cache world sinh ở backend |
 
 Đo baseline:
 
