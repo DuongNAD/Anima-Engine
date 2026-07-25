@@ -112,9 +112,17 @@ fn get_tokio_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+/// The Neo4j driver handle, or a type that can never be constructed when the `neo4j` feature is
+/// off (G2). Keeping the field present either way means `is_online` stays the single switch the
+/// rest of this file already branches on, instead of every method growing a cfg.
+#[cfg(feature = "neo4j")]
+type Neo4jGraph = neo4rs::Graph;
+#[cfg(not(feature = "neo4j"))]
+type Neo4jGraph = std::convert::Infallible;
+
 pub struct FallbackLineageTracker {
     in_memory: InMemoryLineageTracker,
-    neo4j_graph: RwLock<Option<neo4rs::Graph>>,
+    neo4j_graph: RwLock<Option<Neo4jGraph>>,
     is_online: AtomicBool,
 }
 
@@ -124,42 +132,52 @@ impl FallbackLineageTracker {
         let is_online = AtomicBool::new(false);
         let neo4j_graph = RwLock::new(None);
 
-        let config = neo4rs::ConfigBuilder::new()
-            .uri(uri)
-            .user(user)
-            .password(pass)
-            .build();
+        // Without the `neo4j` feature there is no driver to connect with, so the tracker simply stays
+        // offline — which is the same state a failed connection produces, and a path this type was
+        // built to handle from the start.
+        #[cfg(feature = "neo4j")]
+        {
+            let config = neo4rs::ConfigBuilder::new()
+                .uri(uri)
+                .user(user)
+                .password(pass)
+                .build();
 
-        let graph = if let Ok(config) = config {
-            let connect_fut = neo4rs::Graph::connect(config);
-            let rt = get_tokio_runtime();
-            let (tx, rx) = crossbeam_channel::bounded(1);
-            rt.spawn(async move {
-                let res = async {
-                    let g =
-                        tokio::time::timeout(std::time::Duration::from_millis(500), connect_fut)
-                            .await
-                            .ok()?
-                            .ok()?;
-                    let ping = neo4rs::query("RETURN 1");
-                    tokio::time::timeout(std::time::Duration::from_millis(500), g.run(ping))
+            let graph = if let Ok(config) = config {
+                let connect_fut = neo4rs::Graph::connect(config);
+                let rt = get_tokio_runtime();
+                let (tx, rx) = crossbeam_channel::bounded(1);
+                rt.spawn(async move {
+                    let res = async {
+                        let g = tokio::time::timeout(
+                            std::time::Duration::from_millis(500),
+                            connect_fut,
+                        )
                         .await
                         .ok()?
                         .ok()?;
-                    Some(g)
-                }
-                .await;
-                let _ = tx.send(res);
-            });
-            rx.recv().unwrap_or(None)
-        } else {
-            None
-        };
+                        let ping = neo4rs::query("RETURN 1");
+                        tokio::time::timeout(std::time::Duration::from_millis(500), g.run(ping))
+                            .await
+                            .ok()?
+                            .ok()?;
+                        Some(g)
+                    }
+                    .await;
+                    let _ = tx.send(res);
+                });
+                rx.recv().unwrap_or(None)
+            } else {
+                None
+            };
 
-        if graph.is_some() {
-            is_online.store(true, Ordering::SeqCst);
-            *neo4j_graph.write().unwrap() = graph;
+            if graph.is_some() {
+                is_online.store(true, Ordering::SeqCst);
+                *neo4j_graph.write().unwrap() = graph;
+            }
         }
+        #[cfg(not(feature = "neo4j"))]
+        let _ = (uri, user, pass);
 
         Self {
             in_memory,
@@ -168,6 +186,7 @@ impl FallbackLineageTracker {
         }
     }
 
+    #[cfg(feature = "neo4j")]
     fn run_neo4j_async<F, T>(&self, fut: F) -> Result<T, String>
     where
         F: std::future::Future<Output = Result<T, String>> + Send + 'static,
@@ -210,6 +229,9 @@ impl LineageTracker for FallbackLineageTracker {
     fn add_root(&self, id: String, genotype: MorphologyGenotype) -> Result<(), String> {
         self.in_memory.add_root(id.clone(), genotype.clone())?;
 
+        // Compiled out entirely without the `neo4j` feature: `is_online` can only become true after a
+        // successful connect, which cannot happen when there is no driver.
+        #[cfg(feature = "neo4j")]
         if self.is_online() {
             let graph_opt = self.neo4j_graph.read().map_err(|e| e.to_string())?.clone();
             if let Some(graph) = graph_opt {
@@ -251,6 +273,9 @@ impl LineageTracker for FallbackLineageTracker {
             relation_type,
         )?;
 
+        // Compiled out entirely without the `neo4j` feature: `is_online` can only become true after a
+        // successful connect, which cannot happen when there is no driver.
+        #[cfg(feature = "neo4j")]
         if self.is_online() {
             let graph_opt = self.neo4j_graph.read().map_err(|e| e.to_string())?.clone();
             if let Some(graph) = graph_opt {
@@ -301,6 +326,9 @@ impl LineageTracker for FallbackLineageTracker {
     }
 
     fn get_lineage_graph(&self) -> Result<(Vec<LineageNode>, Vec<LineageRelation>), String> {
+        // Compiled out entirely without the `neo4j` feature: `is_online` can only become true after a
+        // successful connect, which cannot happen when there is no driver.
+        #[cfg(feature = "neo4j")]
         if self.is_online() {
             let graph_opt = self.neo4j_graph.read().map_err(|e| e.to_string())?.clone();
             if let Some(graph) = graph_opt {

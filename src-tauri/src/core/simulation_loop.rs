@@ -15,6 +15,7 @@ use crate::ai::hrrl::{Transition, TransitionSender};
 use crate::ai::model::{hrrl_learning_system, ActorCriticModel, BrainInferenceBuffer, BrainModel};
 use crate::core::agent_systems::*;
 use crate::core::ecs::*;
+#[allow(unused_imports)]
 use crate::core::networking_systems::*;
 use crate::core::resources::EvolutionQueue;
 use crate::core::simulation_state::*;
@@ -1406,21 +1407,39 @@ impl SimulationEngine {
                     config.local_port
                 };
 
-                let server_fut = run_websocket_server(
-                    local_port,
-                    inbound_tx_clone,
-                    running_clone_net.clone(),
-                    app_handle_net,
-                );
-                let client_fut = run_websocket_client(
-                    outbound_rx,
-                    inbound_tx,
-                    running_clone_net,
-                    app_handle,
-                    local_port,
-                );
+                // Cross-shard migration is behind the `networking` feature (G2). Without it the thread
+                // still exists and still owns its channels — it simply has no transport to run, so a
+                // single-node build shuts down through exactly the same path.
+                #[cfg(not(feature = "networking"))]
+                {
+                    let _ = (
+                        local_port,
+                        inbound_tx_clone,
+                        running_clone_net,
+                        app_handle_net,
+                        outbound_rx,
+                        inbound_tx,
+                        app_handle,
+                    );
+                }
+                #[cfg(feature = "networking")]
+                {
+                    let server_fut = run_websocket_server(
+                        local_port,
+                        inbound_tx_clone,
+                        running_clone_net.clone(),
+                        app_handle_net,
+                    );
+                    let client_fut = run_websocket_client(
+                        outbound_rx,
+                        inbound_tx,
+                        running_clone_net,
+                        app_handle,
+                        local_port,
+                    );
 
-                let _ = tokio::join!(server_fut, client_fut);
+                    let _ = tokio::join!(server_fut, client_fut);
+                }
             });
         });
 
