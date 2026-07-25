@@ -80,6 +80,65 @@ pub struct SpawnGenotypeCommand {
     pub parent_ids: Vec<String>,
 }
 
+/// Reclaim a dying agent's energy reserve into detritus and destroy it, as one indivisible step.
+///
+/// Splitting those two was an order-dependent energy leak, and a subtle one.
+/// `apply_staggered_evolution_system` used to credit detritus with the corpse's reserve
+/// *immediately*, but despawn through `Commands`, which do not apply until the end of the schedule
+/// run. In between, the agent was still alive holding a reserve that had already been banked:
+///
+/// - any system running later that tick which burned that reserve (metabolism) credited detritus a
+///   second time with energy it had already received — EU created;
+/// - any system that fed it (grazing, food, fruit) drew EU out of detritus into a body that was
+///   about to be destroyed — EU destroyed.
+///
+/// Which of the two happened, and how often, depended on the order Bevy's multi-threaded executor
+/// happened to pick, so a run's residual drifted a different direction every time and the whole
+/// thing looked like floating-point noise. Doing the reclaim at the same sync point as the despawn
+/// removes the window entirely: nothing can observe a reserve that has been banked but not yet
+/// destroyed.
+pub struct ReclaimAndDespawnAgentCommand {
+    /// The agent's root entity. Its segments are found by `ParentAgent` and go with it.
+    pub root: Entity,
+}
+
+impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
+    fn apply(self, world: &mut World) {
+        // Zero the reserve as it is banked, so the transfer is exact and there is no reserve left
+        // for anything to double-count even in principle.
+        let reclaimed = match world.get_mut::<HomeostaticState>(self.root) {
+            Some(mut homeo) => {
+                let amount = homeo.energy;
+                crate::core::energy_ledger::debit_reserve(&mut homeo.energy, amount)
+            }
+            None => 0.0,
+        };
+        if reclaimed > 0.0 {
+            if let Some(mut pool) =
+                world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>()
+            {
+                pool.detritus += reclaimed;
+            }
+        }
+
+        let mut doomed: Vec<Entity> = Vec::new();
+        let mut q = world.query::<(Entity, &ParentAgent)>();
+        for (entity, parent) in q.iter(world) {
+            if parent.0 == self.root {
+                doomed.push(entity);
+            }
+        }
+        for entity in doomed {
+            if let Some(e) = world.get_entity_mut(entity) {
+                e.despawn();
+            }
+        }
+        if let Some(e) = world.get_entity_mut(self.root) {
+            e.despawn();
+        }
+    }
+}
+
 impl bevy_ecs::system::Command for SpawnGenotypeCommand {
     fn apply(self, world: &mut World) {
         let entity = decode_genotype(world, &self.genotype, self.initial_pos, self.initial_rot);
@@ -287,11 +346,11 @@ pub fn apply_staggered_evolution_system(
     mut commands: Commands,
     evolution_receiver: Res<EvolutionReceiver>,
     mut queue: ResMut<EvolutionQueue>,
-    parent_agent_query: Query<(Entity, &ParentAgent)>,
     position_query: Query<&Position>,
     predator_query: Query<&Predator>,
-    homeo_query: Query<&HomeostaticState>,
-    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    // The corpse's reserve and its segments are both handled by
+    // `ReclaimAndDespawnAgentCommand` at the sync point, so this system no longer needs the
+    // segment query or direct access to the biomass pool.
 ) {
     // Collect all spawn instructions
     while let Ok((old_entity, next_genotype, initial_pos, lineage_id, generation, parent_ids)) =
@@ -322,22 +381,11 @@ pub fn apply_staggered_evolution_system(
             AgentClass::Prey
         };
 
-        // Corpse decomposition: the dying agent's remaining reserve energy returns to the
-        // closed detritus pool instead of vanishing at despawn — the death half of the energy
-        // cycle (plants → animals → detritus → plants). Conserved: the census stops counting
-        // this agent's reserve next tick, and that same energy now sits in detritus.
-        if let (Ok(homeo), Some(pool)) = (homeo_query.get(old_entity), biomass.as_mut()) {
-            pool.detritus += homeo.energy.max(0.0) as f64;
-        }
-
-        // Despawn old segments
-        for (seg_entity, parent) in parent_agent_query.iter() {
-            if parent.0 == old_entity {
-                commands.entity(seg_entity).despawn();
-            }
-        }
-        // Despawn root entity
-        commands.entity(old_entity).despawn();
+        // Corpse decomposition: the dying agent's remaining reserve returns to the closed detritus
+        // pool instead of vanishing at despawn — the death half of the energy cycle
+        // (plants → animals → detritus → plants). Reclaim and despawn happen together, in one
+        // command, for the reason documented on `ReclaimAndDespawnAgentCommand`.
+        commands.add(ReclaimAndDespawnAgentCommand { root: old_entity });
 
         // Spawn new offspring at the same position
         commands.add(SpawnGenotypeCommand {

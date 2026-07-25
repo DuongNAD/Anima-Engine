@@ -15,6 +15,7 @@
 
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::core::agent_systems::apply_staggered_evolution_system;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
 use anima_engine_lib::core::ecs::{
     init_world, Agent, EpochManager, Food, MapBounds, Position, Predator, Prey, Tree,
@@ -29,7 +30,6 @@ use anima_engine_lib::core::environmental_systems::{
 use anima_engine_lib::core::resources::{
     EnvironmentalSpawnSettings, EvolutionQueue, EvolutionReceiver, FoodSpawnSettings,
 };
-use anima_engine_lib::core::agent_systems::apply_staggered_evolution_system;
 use anima_engine_lib::core::world_systems::{
     combat_system, detect_food_collisions_system, metabolic_decay_system, spawn_food_system,
 };
@@ -467,4 +467,51 @@ fn epoch_replacement_does_not_create_energy() {
         "20 epoch replacements moved the closed total by {drift}; before G1.1 each one minted a \
          full starting reserve"
     );
+}
+
+/// Diagnostic: run each energy system in isolation for many ticks and report which one moves the
+/// closed total. Ignored by default — it is a bisector for conservation bugs, not a gate.
+#[test]
+#[ignore]
+fn diagnose_which_system_moves_the_closed_total() {
+    use bevy_ecs::schedule::IntoSystemConfigs;
+    let names: [&str; 10] = [
+        "metabolic_decay",
+        "spawn_food",
+        "detect_food_collisions",
+        "combat",
+        "fruit_growth",
+        "detect_environmental_collisions",
+        "apply_staggered_evolution",
+        "herbivore_grazing",
+        "resource_field_regrowth",
+        "ecosystem_census",
+    ];
+    for (idx, name) in names.iter().enumerate() {
+        let (mut world, _tx) = build_live_world();
+        // Warm up with the full schedule so the world is in a realistic state.
+        let mut warm = energy_schedule();
+        for _ in 0..200 {
+            warm.run(&mut world);
+        }
+        let mut single = Schedule::default();
+        match idx {
+            0 => single.add_systems(metabolic_decay_system.into_configs()),
+            1 => single.add_systems(spawn_food_system.into_configs()),
+            2 => single.add_systems(detect_food_collisions_system.into_configs()),
+            3 => single.add_systems(combat_system.into_configs()),
+            4 => single.add_systems(fruit_growth_system.into_configs()),
+            5 => single.add_systems(detect_environmental_collisions_system.into_configs()),
+            6 => single.add_systems(apply_staggered_evolution_system.into_configs()),
+            7 => single.add_systems(herbivore_grazing_system.into_configs()),
+            8 => single.add_systems(resource_field_regrowth_system.into_configs()),
+            _ => single.add_systems(ecosystem_census_system.into_configs()),
+        };
+        let before = closed_total(&mut world);
+        for _ in 0..2000 {
+            single.run(&mut world);
+        }
+        let after = closed_total(&mut world);
+        println!("{name:38} delta={:+.9}", after - before);
+    }
 }
