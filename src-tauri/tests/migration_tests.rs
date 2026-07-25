@@ -65,6 +65,7 @@ async fn test_agent_migration_serialization_and_resilience() {
             has_last: true,
         }),
         source_port: 0,
+        brain: None,
     };
 
     // Serialization / Deserialization check
@@ -166,6 +167,7 @@ async fn test_migration_tier1_ports_8080_to_8081() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
@@ -351,6 +353,7 @@ fn test_migration_tier3_lineage_integration() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     inbound_tx.send(data).unwrap();
@@ -448,6 +451,7 @@ async fn test_migration_tier4_parallel_workload() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             tx.send(OutboundMigration {
                 target_port: port,

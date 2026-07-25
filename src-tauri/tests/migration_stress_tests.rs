@@ -95,6 +95,7 @@ async fn test_stress_high_throughput_websocket_transfers() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             tx.send(OutboundMigration {
                 target_port: port,
@@ -169,6 +170,7 @@ async fn test_closed_port_bounce_back_custom_boundaries() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     // Client closed-port bounce-back check with custom map boundaries

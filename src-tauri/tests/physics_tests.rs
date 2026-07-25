@@ -633,7 +633,7 @@ fn test_decoupled_systems_zero_allocation() {
                     res_batch.responses.push(
                         anima_engine_lib::core::agent_systems::AgentInferenceResponse {
                             entity: req.entity,
-                            actions: [1.2, 0.5, 1.2, 0.5],
+                            actions: [1.2, 0.5, 1.2, 0.5, 1.0, 1.0, 1.0, 1.0],
                             request_id: req.request_id,
                         },
                     );
@@ -657,7 +657,7 @@ fn test_decoupled_systems_zero_allocation() {
                 res_batch.responses.push(
                     anima_engine_lib::core::agent_systems::AgentInferenceResponse {
                         entity: req.entity,
-                        actions: [1.2, 0.5, 1.2, 0.5],
+                        actions: [1.2, 0.5, 1.2, 0.5, 1.0, 1.0, 1.0, 1.0],
                         request_id: req.request_id,
                     },
                 );

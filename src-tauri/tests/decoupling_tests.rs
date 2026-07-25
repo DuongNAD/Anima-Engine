@@ -164,7 +164,7 @@ fn test_decoupled_inference_cycle() {
     res_batch.responses.clear();
     res_batch.responses.push(AgentInferenceResponse {
         entity: agent,
-        actions: [0.5, 0.8, 0.5, 0.8], // test CPG actions
+        actions: [0.5, 0.8, 0.5, 0.8, 1.0, 1.0, 1.0, 1.0], // CPG params + open gates
         request_id: ticket_id,
     });
     res_tx.send(res_batch).unwrap();

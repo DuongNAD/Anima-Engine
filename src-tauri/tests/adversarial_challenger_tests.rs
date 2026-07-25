@@ -151,6 +151,7 @@ async fn test_adversarial_stale_connection_cache() {
         feature_tracker: None,
         last_transition_state: None,
         source_port: 0,
+        brain: None,
     };
 
     // Send first migration (should succeed and establish cached connection)

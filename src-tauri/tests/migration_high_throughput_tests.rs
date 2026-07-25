@@ -70,6 +70,7 @@ async fn test_high_throughput_websocket_transfers() {
                 feature_tracker: None,
                 last_transition_state: None,
                 source_port: 0,
+                brain: None,
             };
             let _ = tx.send(OutboundMigration {
                 target_port: port,

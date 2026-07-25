@@ -381,6 +381,11 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
         lakes: vec![],
         trees,
         world_identity: Default::default(),
+        // G1.1 closed-energy state; zeroes mean "nothing to restore" (pre-G1.1 save).
+        eco_detritus: 0.0,
+        eco_plants: 0.0,
+        eco_animals: 0.0,
+        resource_field_r: Vec::new(),
     };
 
     *engine.pending_load_state.lock().unwrap() = Some(state);
