@@ -255,11 +255,10 @@ frontend đọc artifact đó để render (bỏ `worldGen.ts` khỏi đường 
 
 ---
 
-## 7. Simulation-LOD (backend) — thiết kế CHỜ THỰC THI
+## 7. Simulation-LOD (backend) — TẦNG 1 ĐÃ THỰC THI
 
-> Mảnh ghép thật sự cho "hàng triệu agent" trên máy yếu. Ở **backend Rust** — đợi phiên đang sửa backend
-> (`ecs.rs`/`simulation_loop.rs`/`sim_clock.rs`/`scenario.rs`…) xong rồi mới đụng, tránh xung đột. Thiết kế mức
-> khái niệm dưới đây sẽ **bám theo cấu trúc backend tại thời điểm ổn định** khi thực thi.
+> Mảnh ghép thật sự cho "hàng triệu agent" trên máy yếu. Ở **backend Rust**.
+> Thiết kế dưới đây là bản gốc; phần **đã thực thi** và phần **còn nợ** ghi ở mục "Trạng thái" cuối mục.
 
 **Nguyên lý:** brain inference (Burn) là chi phí trội; không thể chạy đủ cho triệu agent @60FPS trên Vostro 3530.
 Giải pháp là **phân tầng cập nhật theo khoảng cách tới tiêu điểm (camera/observer) hoặc theo mức "đáng quan tâm"**:
@@ -278,5 +277,24 @@ render↔sim. Mỗi tick: chỉ lặp brain cho agent tầng HOT; tầng WARM th
 **Verify (không cần chạy app):** `cargo test` — (1) bảo toàn năng lượng khi COLD↔HOT chuyển tầng (tổng năng lượng bất biến),
 (2) agent HOT giữ hành vi cũ, (3) re-hydrate không tạo/mất năng lượng, (4) `allocs == 0` trong tick. `cargo clippy` sạch.
 
-**Trạng thái:** ⏳ **chờ phiên backend xong** (monitor nền đang theo dõi: commit mới HOẶC `src-tauri` im ≥20 phút). Khi có tín
-hiệu, tôi sẽ (a) đọc lại `simulation_loop.rs`/`ecs.rs` ở trạng thái mới, (b) chốt điểm hook, (c) thực thi + `cargo test`.
+### Trạng thái (2026-07-25)
+
+**✅ Tầng 1 — phân tầng nhịp suy nghĩ. Đã thực thi:** `src-tauri/src/core/simulation_lod.rs`, hook trong
+`sensory_system` ngay sau chốt `CognitiveState::Ready`.
+
+- HOT/WARM/COLD chia theo khoảng cách tới `LodFocus`; mặc định `hot_radius=50`, `warm_radius=100`, `warm_interval=8`.
+- WARM **so le theo entity index** (`(tick + index) % interval`), không dồn cả dải vào một tick — cùng tổng công việc
+  nhưng đến thành gai mà khung hình chịu còn số trung bình giấu đi. Cùng thủ thuật với so-le trường tài nguyên.
+- **Mặc định tắt.** `LodFocus::enabled = false` ⇒ mọi agent HOT ⇒ không phân biệt được với bản không có module.
+  Mọi run headless hôm nay rơi vào nhánh này.
+- Trả nốt một lời hứa của ADR-0003: `LifetimeLearning.active_radius` nay đo từ tâm LOD thay vì gốc toạ độ
+  (gốc toạ độ là chỗ đứng tạm để ràng buộc kiểm được khi chưa có gì để lấy làm tâm).
+- Không cấp phát trong tick: `LodGate` là `SystemParam` trên stack, `LodSnapshot` là `Copy`.
+- Gate: 9 unit + 9 integration (`tests/simulation_lod_tests.rs`), clippy sạch.
+
+**⚠️ Tầng 2 — quần thể thống kê + re-hydrate. CHƯA làm, cố ý tách riêng.**
+Bản trên mua **CPU, không mua bộ nhớ**: agent COLD vẫn giữ trọng số não, vẫn giữ tham số CPG cuối, vẫn di chuyển,
+ăn và trao đổi chất — nó chỉ thôi *nghĩ*. Muốn thu hồi ~22,5 KiB mỗi agent (đo ở gate EB-S12) thì phải thay cá thể ở
+xa bằng **thống kê quần thể theo ô** và **nở lại** khi observer tới gần. Đó là **mô hình thứ hai của cùng một hệ sinh
+thái**, và nó phải bảo toàn năng lượng khép kín qua *mọi* lần chuyển tầng — nên 4 điều kiện verify ở trên
+(bảo toàn năng lượng COLD↔HOT, re-hydrate không sinh/mất năng lượng) là gate của **tầng 2**, chưa phải của tầng 1.

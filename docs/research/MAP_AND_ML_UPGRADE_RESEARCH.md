@@ -151,6 +151,22 @@ khung cần:
 Điểm nối với ADR-0003 cần ghi rõ: `LifetimeLearning.active_radius` hiện **đo từ gốc toạ độ** — chỗ
 giữ chỗ có chủ ý. Khi Simulation-LOD thật xuất hiện, nó là tâm LOD mà bán kính này phải bám theo.
 
+#### Đã thực thi (2026-07-25) — và phần cố ý chưa làm
+
+`src-tauri/src/core/simulation_lod.rs` + hook trong `sensory_system` hiện thực **nửa đầu** khung trên:
+ba tầng HOT/WARM/COLD theo khoảng cách tới `LodFocus`, quyết định **agent được nghĩ bao lâu một lần**
+(mỗi tick / mỗi `warm_interval` tick / không bao giờ). WARM so le theo entity index, không dồn cả dải
+vào một tick. `LodFocus` mặc định **tắt**, và focus tắt ⇒ mọi agent HOT — nên mọi run headless hôm nay
+không phân biệt được với bản không có module. `active_radius` nói ở trên nay đã đo từ tâm LOD.
+
+**Nửa sau — gộp không gian và agent tổng hợp — chưa làm, và đây là nửa đắt hơn.** Agent COLD trong bản
+đã ship vẫn giữ trọng số não, vẫn di chuyển, ăn và trao đổi chất; nó chỉ thôi *nghĩ*. Vậy bản này mua
+**CPU chứ không mua bộ nhớ** — mà trần quy mô mà chính mục này mở đầu bằng cách nêu lại **là bộ nhớ**.
+Nói cách khác: tầng 1 làm cho một quần thể thường trú chạy nhanh hơn, nó **không** nâng trần số agent
+thường trú. Nâng trần đó cần đúng hai gạch đầu dòng còn lại ở trên (gộp không gian, agent tổng hợp)
+cộng với **nở lại khi observer tới gần** — và vì đó là mô hình thứ hai của cùng hệ sinh thái, nó phải
+bảo toàn năng lượng khép kín qua mọi lần chuyển tầng. Gate của nó nằm ở `WORLD_DESIGN.md` §7.
+
 ### A0. Khoảng trống đã biết vs. khoảng trống mới phát hiện
 
 `WORLD_DESIGN.md` §2 đã liệt kê 10 khoảng trống và §3 đã dẫn 5 nguồn tham chiếu
@@ -560,6 +576,11 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 > **Cập nhật 2026-07-25:** hai hàng **0a** và **0b** ở cuối bảng được chèn thêm sau khi EB-S12 đo
 > xong bộ nhớ; chúng đứng **trước** mọi hàng khác. Xem §A0-bis. Các bậc 1–10 dưới đây giữ nguyên thứ
 > tự tương đối của đợt nghiên cứu đầu, và bậc 1–6 đã hoàn thành qua ADR-0003.
+>
+> **0a xong** (256² + so-le trường sinh thái đưa chi phí tick từ 509s về 64,8s, thấp hơn cả 82s ở 128²).
+> **0b mới xong một nửa** (◑): phân tầng nhịp suy nghĩ đã ship, **gộp không gian/agent tổng hợp thì
+> chưa** — nên nó đã mua CPU mà chưa nâng trần bộ nhớ, tức chưa trả xong đúng món mà §A0-bis xếp nó
+> lên hàng 0. Chi tiết ở §A6.
 
 | Bậc | Việc | Vì sao trước | Verify headless? |
 |---|---|---|---|
@@ -570,8 +591,8 @@ Sắp theo **đòn bẩy ÷ rủi ro**, có tính tới ràng buộc "verify đ�
 | **5** | **C1a** — nâng `burn` | Biên hẹp lại sau B1; bỏ được `unsafe impl Send/Sync` | ✅ cargo |
 | **6** | **B3** — thêm chiều hành vi vào archive (+ pyribs oracle) | Cần B1 mới có hành vi để đo | ✅ |
 | **7** | **A2b** — hoa văn erosion thủ tục | Lợi ích thị giác lớn nhất/chi phí, không đổi data | ⚠️ cần nhìn |
-| **0a** | **Nâng sim world 128² → 256²** | **MIỄN PHÍ** — artifact đã đến ở 256², backend đang vứt 75% số ô | ✅ cargo test |
-| **0b** | **A6** — Simulation-LOD backend | Quy mô agent bị map chặn trước RAM; LOD là chỗ trả tiền cho độ phân giải cao hơn | ✅ headless |
+| **0a** ✅ | **Nâng sim world 128² → 256²** | **MIỄN PHÍ** — artifact đã đến ở 256², backend đang vứt 75% số ô | ✅ cargo test |
+| **0b** ◑ | **A6** — Simulation-LOD backend | Quy mô agent bị map chặn trước RAM; LOD là chỗ trả tiền cho độ phân giải cao hơn | ✅ headless |
 | **8** | **B4** — A2C thành học-trong-đời (sau cờ) | Cần B1 xong trước | ✅ |
 | **9** | **B5** — harness ASAL ngoại tuyến | Cần AE runner ổn định + có ảnh render | ⚠️ cần quota API |
 | **10** | **C1b** — nâng `bevy_ecs` | Biên rộng nhất; làm khi các bậc trên đã ổn định | ✅ cargo |
