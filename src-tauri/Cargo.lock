@@ -72,9 +72,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "anima-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "anima-engine"
 version = "0.1.0"
 dependencies = [
+ "anima-domain",
  "bevy_ecs",
  "bincode",
  "burn",
