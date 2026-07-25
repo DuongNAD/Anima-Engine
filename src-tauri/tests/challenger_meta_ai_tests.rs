@@ -157,6 +157,8 @@ fn test_ecs_hot_path_zero_allocations_i22() {
         default_hydration: 20.0,
     };
     world.insert_resource(food_settings);
+    // Stochastic systems draw from a declared stream; a world without one has no replay story.
+    world.insert_resource(anima_engine_lib::core::resources::SimRng::from_seed(0x5EED));
 
     // Bounded channels and receiver
     let (_env_tx, env_rx) = crossbeam_channel::bounded::<EnvironmentalEvent>(32);

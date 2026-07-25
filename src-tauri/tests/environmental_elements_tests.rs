@@ -93,6 +93,8 @@ fn test_seed_dropping_limits_and_bounds() {
         default_seed_cooldown: 15.0,
         default_seed_spread: 2.0,
     });
+    // Stochastic systems draw from a declared stream; a world without one has no replay story.
+    world.insert_resource(anima_engine_lib::core::resources::SimRng::from_seed(0x5EED));
 
     // Spawn 1 parent tree
     world.spawn((

@@ -44,12 +44,13 @@ pub fn is_valid_genotype(genotype: &MorphologyGenotype) -> bool {
     visited.len() == genotype.nodes.len()
 }
 
+/// Draws from the caller's stream so mutation replays: see [`crate::core::resources::SimRng`].
 pub fn mutate_genotype(
     genotype: &mut MorphologyGenotype,
     node_id_counter: &mut u32,
     mutation_rate: f64,
+    rng: &mut impl Rng,
 ) {
-    let mut rng = rand::thread_rng();
     if !rng.gen_bool(mutation_rate) {
         return;
     }
@@ -59,7 +60,7 @@ pub fn mutate_genotype(
 
     // Shuffle the operators to try them randomly
     let mut operators = vec![1, 2, 3, 4];
-    operators.shuffle(&mut rng);
+    operators.shuffle(&mut *rng);
 
     let mut success = false;
     for op in operators {

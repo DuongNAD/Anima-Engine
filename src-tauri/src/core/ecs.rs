@@ -81,6 +81,12 @@ pub fn init_world() -> World {
     });
     world.insert_resource(crate::core::ecology::SeasonClock::default());
     world.insert_resource(terrain_map);
+    // The run's randomness is seeded from the world the agents live in, not from ambient process
+    // state — invariant D07 of the creature-development contract. Resolved here, where the world's
+    // identity is first known, so there is exactly one place that decides it.
+    world.insert_resource(crate::core::resources::SimRng::for_world(
+        world_identity.seed,
+    ));
     world.insert_resource(world_identity);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
         10.0, &bounds,

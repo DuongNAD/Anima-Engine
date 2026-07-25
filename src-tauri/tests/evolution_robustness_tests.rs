@@ -3,6 +3,14 @@ use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, 
 use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
 use anima_engine_lib::evolution::mutation::{is_valid_genotype, mutate_genotype};
 use glam::Vec3;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+
+/// The evolution operators draw from a caller-supplied stream now, so tests seed their own. A
+/// failure here reproduces on re-run instead of depending on what `thread_rng` happened to hand out.
+fn test_rng() -> StdRng {
+    StdRng::seed_from_u64(0xB0B)
+}
 
 #[test]
 fn test_selection_bias_tournament() {
@@ -45,9 +53,10 @@ fn test_selection_bias_tournament() {
 
     // Sample with uniform selection (selection_bias <= 1.0)
     let samples_uniform = 1000;
+    let mut rng = test_rng();
     let mut counts_uniform = std::collections::HashMap::new();
     for _ in 0..samples_uniform {
-        let selected = archive.select_parent(1.0).unwrap();
+        let selected = archive.select_parent(1.0, &mut rng).unwrap();
         *counts_uniform.entry(selected.fitness as i32).or_insert(0) += 1;
     }
 
@@ -61,7 +70,7 @@ fn test_selection_bias_tournament() {
     let samples_tournament = 1000;
     let mut counts_tournament = std::collections::HashMap::new();
     for _ in 0..samples_tournament {
-        let selected = archive.select_parent(5.0).unwrap();
+        let selected = archive.select_parent(5.0, &mut rng).unwrap();
         *counts_tournament
             .entry(selected.fitness as i32)
             .or_insert(0) += 1;
@@ -113,11 +122,12 @@ fn test_robust_mutation() {
     assert!(is_valid_genotype(&genotype));
 
     let mut counter = 3;
+    let mut rng = test_rng();
 
     // Mutate 200 times and check constraints every time
     for _ in 0..200 {
         let prev_genotype = genotype.clone();
-        mutate_genotype(&mut genotype, &mut counter, 1.0);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
 
         // Ensure the genotype is valid
         assert!(
@@ -267,9 +277,10 @@ fn test_subtree_crossover() {
     assert!(is_valid_genotype(&parent_b));
 
     let mut counter = 20;
+    let mut rng = test_rng();
 
     for _ in 0..50 {
-        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter);
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
 
         assert!(
             is_valid_genotype(&child),

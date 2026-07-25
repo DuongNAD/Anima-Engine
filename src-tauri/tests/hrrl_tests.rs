@@ -92,6 +92,8 @@ fn test_food_spawning_and_collision_replenishment() {
         default_energy: 30.0,
         default_hydration: 20.0,
     });
+    // Stochastic systems draw from a declared stream; a world without one has no replay story.
+    world.insert_resource(anima_engine_lib::core::resources::SimRng::from_seed(0x5EED));
 
     // 1. Verify spawning
     let mut schedule = Schedule::default();

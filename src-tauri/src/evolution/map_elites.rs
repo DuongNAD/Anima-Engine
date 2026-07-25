@@ -1,5 +1,5 @@
 use crate::evolution::genotype::MorphologyGenotype;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct EliteIndividual {
@@ -11,14 +11,18 @@ pub struct EliteIndividual {
 }
 
 pub struct MapElitesArchive {
-    pub grid: HashMap<(i32, i32), EliteIndividual>,
+    /// Ordered on purpose. Parent selection walks this collection, and `HashMap` iteration order
+    /// varies per process (`RandomState` seeds itself), so a `HashMap` here would leave selection
+    /// irreproducible even with a seeded RNG. `BTreeMap` gives a stable order keyed on niche
+    /// coordinates; the API surface used elsewhere (`len`/`get`/`insert`/`iter`/`clear`) is identical.
+    pub grid: BTreeMap<(i32, i32), EliteIndividual>,
     pub grid_resolution: f32,
 }
 
 impl MapElitesArchive {
     pub fn new(grid_resolution: f32) -> Self {
         Self {
-            grid: HashMap::new(),
+            grid: BTreeMap::new(),
             grid_resolution,
         }
     }
@@ -49,19 +53,23 @@ impl MapElitesArchive {
         }
     }
 
-    pub fn select_parent(&self, selection_bias: f64) -> Option<&EliteIndividual> {
+    /// Draws from the caller's stream so selection replays: see [`crate::core::resources::SimRng`].
+    pub fn select_parent(
+        &self,
+        selection_bias: f64,
+        rng: &mut impl rand::Rng,
+    ) -> Option<&EliteIndividual> {
         if self.grid.is_empty() {
             return None;
         }
         use rand::seq::IteratorRandom;
-        let mut rng = rand::thread_rng();
         if selection_bias <= 1.0 {
-            self.grid.values().choose(&mut rng)
+            self.grid.values().choose(rng)
         } else {
             let k = (selection_bias.ceil() as usize).max(2);
             let mut best: Option<&EliteIndividual> = None;
             for _ in 0..k {
-                if let Some(candidate) = self.grid.values().choose(&mut rng) {
+                if let Some(candidate) = self.grid.values().choose(&mut *rng) {
                     match best {
                         Some(b) => {
                             if candidate.fitness > b.fitness {

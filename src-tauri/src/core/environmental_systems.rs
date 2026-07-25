@@ -119,6 +119,7 @@ pub fn seed_dropping_system(
     bounds: Res<MapBounds>,
     time_step: Res<crate::ai::cpg::TimeStep>,
     settings: Res<EnvironmentalSpawnSettings>,
+    mut sim_rng: ResMut<crate::core::resources::SimRng>,
 ) {
     let dt = time_step.0;
     let tree_count = tree_query.iter().count();
@@ -131,7 +132,7 @@ pub fn seed_dropping_system(
 
             if tree_count + spawned_this_tick < settings.max_tree_count {
                 use rand::Rng;
-                let mut rng = rand::thread_rng();
+                let rng = sim_rng.rng();
                 let angle = rng.gen_range(0.0..std::f32::consts::TAU);
                 let dist = rng.gen_range(2.0..tree.seed_spread_radius);
                 let spawn_x = (pos.0.x + angle.cos() * dist).clamp(bounds.min.x, bounds.max.x);

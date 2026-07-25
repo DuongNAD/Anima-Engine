@@ -163,6 +163,8 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
         default_seed_cooldown: 15.0,
         default_seed_spread: 20.0,
     });
+    // Stochastic systems draw from a declared stream; a world without one has no replay story.
+    world.insert_resource(anima_engine_lib::core::resources::SimRng::from_seed(0x5EED));
 
     // Spawn 10,000 trees
     for i in 0..10000 {

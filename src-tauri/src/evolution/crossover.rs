@@ -28,10 +28,12 @@ fn get_subtree(
     (subtree_nodes, subtree_edges)
 }
 
+/// Draws from the caller's stream so recombination replays: see [`crate::core::resources::SimRng`].
 pub fn crossover_genotypes(
     parent_a: &MorphologyGenotype,
     parent_b: &MorphologyGenotype,
     node_id_counter: &mut u32,
+    rng: &mut impl rand::Rng,
 ) -> MorphologyGenotype {
     if parent_a.nodes.is_empty() {
         return parent_b.clone();
@@ -42,7 +44,6 @@ pub fn crossover_genotypes(
 
     let mut child = parent_a.clone();
     let backup_counter = *node_id_counter;
-    let mut rng = rand::thread_rng();
 
     // Identify the root of child
     let mut incoming = std::collections::HashSet::new();
@@ -66,7 +67,7 @@ pub fn crossover_genotypes(
 
     if non_roots.is_empty() {
         // Fallback case: Child only has a root. Graft parent_b's subtree as child.
-        if let Some(w_node) = parent_b.nodes.choose(&mut rng) {
+        if let Some(w_node) = parent_b.nodes.choose(&mut *rng) {
             let (sub_nodes, sub_edges) = get_subtree(parent_b, w_node.id);
             let mut map = std::collections::HashMap::new();
             for node in &sub_nodes {
@@ -108,7 +109,7 @@ pub fn crossover_genotypes(
         }
     } else {
         // Select a random non-root node v in the child
-        if let Some(&v) = non_roots.choose(&mut rng) {
+        if let Some(&v) = non_roots.choose(&mut *rng) {
             if let Some(incoming_edge_idx) = child.edges.iter().position(|e| e.target_node == v) {
                 let mut incoming_edge = child.edges.remove(incoming_edge_idx);
                 let (v_sub_nodes, _v_sub_edges) = get_subtree(&child, v);
@@ -122,7 +123,7 @@ pub fn crossover_genotypes(
                 });
 
                 // Select a random node w from Parent B
-                if let Some(w_node) = parent_b.nodes.choose(&mut rng) {
+                if let Some(w_node) = parent_b.nodes.choose(&mut *rng) {
                     let (w_sub_nodes, w_sub_edges) = get_subtree(parent_b, w_node.id);
 
                     // Graft the subtree rooted at w from parent_b into child

@@ -217,6 +217,18 @@ impl SimulationEngine {
                 1.0 / (initial_resolution as f32),
             );
             let mut node_id_counter = 3u32;
+            // Selection, recombination and mutation all draw from this one stream, so the same run
+            // seed reproduces the same offspring — see `resources::sim_stream`.
+            //
+            // This thread is spawned *before* the ECS world exists, so it cannot read `SimRng` off
+            // the world; it resolves the same seed from the same source the world will use. That the
+            // two agree is pinned by `sim_determinism_tests::evolution_thread_and_world_agree_on_seed`.
+            let mut evo_rng = crate::core::resources::derived_rng(
+                crate::core::resources::resolve_run_seed(
+                    crate::core::world_artifact::world_seed_from_disk(),
+                ),
+                crate::core::resources::sim_stream::EVOLUTION,
+            );
             let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
                 match std::env::var("GEMINI_SESSION_TOKEN") {
                     Ok(token) if !token.trim().is_empty() => Box::new(
@@ -373,8 +385,8 @@ impl SimulationEngine {
                     }
 
                     for stats in stats_batch {
-                        let parent_a = archive.select_parent(selection_bias);
-                        let parent_b = archive.select_parent(selection_bias);
+                        let parent_a = archive.select_parent(selection_bias, &mut evo_rng);
+                        let parent_b = archive.select_parent(selection_bias, &mut evo_rng);
 
                         let (mut offspring, parent_ids, max_parent_gen, relation_type) =
                             if let Some(elite_a) = parent_a {
@@ -383,6 +395,7 @@ impl SimulationEngine {
                                         &elite_a.genotype,
                                         &elite_b.genotype,
                                         &mut node_id_counter,
+                                        &mut evo_rng,
                                     );
                                     (
                                         child,
@@ -419,6 +432,7 @@ impl SimulationEngine {
                                 &mut offspring,
                                 &mut node_id_counter,
                                 mutation_rate,
+                                &mut evo_rng,
                             );
                         }
 
@@ -874,7 +888,14 @@ impl SimulationEngine {
                 }
 
                 use rand::seq::SliceRandom;
-                let mut rng = rand::thread_rng();
+                // Setup code, not a system, so it takes its own reproducible stream. The world
+                // exists by now, so the run seed is read straight off `SimRng` rather than resolved
+                // a second time.
+                let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
+                let mut rng = crate::core::resources::derived_rng(
+                    run_seed,
+                    crate::core::resources::sim_stream::WORLD_INIT,
+                );
 
                 // Spawn Lakes
                 if !lake_candidates.is_empty() {

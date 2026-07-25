@@ -147,12 +147,13 @@ pub fn spawn_food_system(
     food_query: Query<&Food>,
     bounds: Res<MapBounds>,
     settings: Res<FoodSpawnSettings>,
+    mut sim_rng: ResMut<crate::core::resources::SimRng>,
 ) {
     use rand::Rng;
     let current_food_count = food_query.iter().count();
     if current_food_count < settings.max_food_count {
         let to_spawn = settings.max_food_count - current_food_count;
-        let mut rng = rand::thread_rng();
+        let rng = sim_rng.rng();
         for _ in 0..to_spawn {
             let x = rng.gen_range(bounds.min.x..bounds.max.x);
             let z = rng.gen_range(bounds.min.z..bounds.max.z);
@@ -507,6 +508,7 @@ pub fn manual_migration_system(
     bounds: Res<MapBounds>,
     sharding: Res<ShardingResource>,
     outbound_sender: Option<Res<OutboundMigrationSender>>,
+    mut sim_rng: ResMut<crate::core::resources::SimRng>,
 ) {
     let trigger = match trigger {
         Some(t) => t,
@@ -523,7 +525,7 @@ pub fn manual_migration_system(
 
     while let Ok(target_port) = trigger.0.try_recv() {
         use rand::seq::IteratorRandom;
-        let mut rng = rand::thread_rng();
+        let rng = sim_rng.rng();
         if let Some((
             entity,
             pos,
@@ -537,7 +539,7 @@ pub fn manual_migration_system(
             opt_eval,
             opt_tracker,
             opt_last_transition,
-        )) = agent_query.iter().choose(&mut rng)
+        )) = agent_query.iter().choose(&mut *rng)
         {
             let x_min = bounds.min.x;
             let x_max = bounds.max.x;

@@ -3,6 +3,14 @@ use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, 
 use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
 use anima_engine_lib::evolution::mutation::mutate_genotype;
 use glam::Vec3;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+
+/// The evolution operators draw from a caller-supplied stream now, so tests seed their own. A
+/// failure here reproduces on re-run instead of depending on what `thread_rng` happened to hand out.
+fn test_rng() -> StdRng {
+    StdRng::seed_from_u64(0xA11CE)
+}
 
 #[test]
 fn test_map_elites_binning() {
@@ -128,7 +136,8 @@ fn test_mutate_genotype() {
     // With rate 0.0, nothing changes
     let mut counter = 1;
     let original = genotype.clone();
-    mutate_genotype(&mut genotype, &mut counter, 0.0);
+    let mut rng = test_rng();
+    mutate_genotype(&mut genotype, &mut counter, 0.0, &mut rng);
     assert_eq!(genotype.nodes.len(), original.nodes.len());
     assert_eq!(genotype.nodes[0].length, original.nodes[0].length);
 
@@ -137,7 +146,7 @@ fn test_mutate_genotype() {
     for _ in 0..100 {
         let mut temp_genotype = original.clone();
         let mut temp_counter = 1;
-        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0);
+        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0, &mut rng);
         if temp_genotype.nodes.len() == 2
             || temp_genotype.nodes[0].length != 2.0
             || temp_genotype.nodes[0].radius != 0.5
@@ -190,7 +199,8 @@ fn test_crossover_genotypes() {
 
     // Run crossover
     let mut counter = 4;
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter);
+    let mut rng = test_rng();
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
 
     // The subtree crossover should result in 2 nodes: the root (id 0) and a grafted node from parent_b with remapped id 4.
     assert_eq!(child.nodes.len(), 2);
@@ -229,9 +239,10 @@ fn test_map_elites_extremes() {
     }
 
     let mut counter = 15;
+    let mut rng = test_rng();
     // Mutate multiple times with mutation_rate = 1.0, verify it never exceeds 15 nodes
     for _ in 0..50 {
-        mutate_genotype(&mut genotype, &mut counter, 1.0);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
         assert!(genotype.nodes.len() <= 15);
     }
 
