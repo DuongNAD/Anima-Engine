@@ -550,3 +550,176 @@ ALL RUST COMMITS BUILD
 - Three sibling agent-scratch directories exist on disk with mangled names — `" .agents"` (leading
   space), `"...agents"` and `"$.agents"`. Two of them were tracked. All three are now ignored; the
   leading-space pattern is escaped in `.gitignore` so it is not mistaken for indentation.
+
+---
+
+### G1.1 — One energy ledger for the live world — 2026-07-25 (Claude Opus 5)
+
+**Status: gate passes.** The live world now conserves EU **bit-exactly**, not merely within
+tolerance. **Rung reached: Live integrated** for the energy ledger.
+
+New: `src-tauri/src/core/energy_ledger.rs`, `src-tauri/tests/energy_conservation_tests.rs`,
+`docs/reference/ENERGY_LEDGER_CONTRACT.md`.
+
+#### Audit anchors, re-read against current code
+
+Every anchor in the G1.1 table was checked against the current file, not the line number.
+
+| Audit anchor | Current symbol | Verdict |
+|---|---|---|
+| `genotype.rs:101` flat 100 EU at decode | `decode_genotype`, `HomeostaticState { energy: 100.0 }` | **Still there, and correct.** Not a leak — see D06 below. |
+| `simulation_loop.rs:879` genesis spawns 10 | genesis loop in `SimulationEngine::start` | **Not a leak** — boundary condition. |
+| `agent_systems.rs:287` replacement double-grants | `apply_staggered_evolution_system` + `SpawnGenotypeCommand::apply` | **Real leak, closed.** |
+| `world_systems.rs:150,206` food | `spawn_food_system`, `detect_food_collisions_system` | **Real leak, closed.** |
+| `environmental_systems.rs:5,207` fruit | `fruit_growth_system`, `detect_environmental_collisions_system` | **Real leak, closed.** |
+
+Two anchors are **not** leaks, and the Creature Development contract is why. Invariant **D06** says
+the founding population's energy *is* the boundary condition and the closed-EU baseline is locked
+**after** plants, animals and detritus are initialised. So genesis granting each founder a reserve
+is correct; what was missing was the baseline lock. Only post-genesis creation is a leak. Reading
+D06 first — as the G1 stop condition requires before touching genesis semantics — changed the
+design: no founder is funded out of detritus, which avoids a large and unnecessary ecology shift.
+
+#### Leaks found that the audit did not list
+
+1. **`ecosystem_census_system` overwrote `pool.animals` with a fresh census every tick.** That is
+   why the five listed leaks were invisible: the mirror was rewritten from reality, so the sum
+   tracked reality and only the *total* drifted. It still recomputes the mirror, but now also
+   measures the closed total and records the residual on the ledger, so conservation is readable
+   off a running world.
+2. **`energy_decay_system` was a pure sink** — it burned reserves and credited nothing. It is not in
+   the live schedule (only three test suites use it), so it was not causing live drift, but it is
+   now a transfer like `metabolic_decay_system`.
+3. **Grazing, predation and plant regrowth leaked at ULP scale.** These are transfers between two
+   authoritative stores and I initially classified them as conserved by construction. They are not:
+   both sides are `f32`, so `cell -= x` and `reserve += x` each round, and "the source lost what the
+   destination gained" is false in the last bits. Measured at **−0.32 EU over 120k ticks** — a
+   one-way trend, not noise.
+4. **Death was not atomic with despawn, and that was the big one.** See below.
+
+#### The order-dependent leak
+
+After closing 1–3 the residual was exactly `0.000000000` under `--test-threads=1` — and **+2.14 EU**
+over 120k ticks when Bevy's multi-threaded executor was free to choose an order, **−0.21** the next
+run. Sign and magnitude changed per run, which is exactly what floating-point noise looks like.
+
+It was not noise. `apply_staggered_evolution_system` credited detritus with a corpse's reserve
+*immediately* but despawned through `Commands`, which do not apply until the end of the schedule
+run. In the window between, the agent was alive holding a reserve that had already been banked:
+
+- a later system that burned it (metabolism) credited detritus a **second** time → EU created;
+- a later system that fed it (grazing/food/fruit) drew EU from detritus into a body about to be
+  destroyed → EU destroyed.
+
+Which one happened depended on the order the executor picked. `ReclaimAndDespawnAgentCommand` now
+does both at the same sync point. Generalised rule, written into the contract: **an energy change
+must be atomic with the lifecycle change that causes it.**
+
+A single-system bisector (`diagnose_which_system_moves_the_closed_total`, `#[ignore]`) showed every
+system conserving in isolation, which is what pointed at an interaction rather than a site.
+
+#### Design
+
+`EnergyLedger` / `EnergyTransaction` in `core/energy_ledger.rs`. Three compartments only — adding a
+fourth for uneaten food and unpicked fruit would put an undeclared quantity in
+`sim_rules::STATE_VARIABLES`, so those are modelled as **claims on detritus settled at consumption**.
+
+The rule that makes it exact: **debit the source by the destination's measured `f64` delta, never by
+the amount requested.** `transfer_into_reserve` applies to the `f32` reserve first, reads back what
+actually landed, and withdraws precisely that. Rounding therefore cannot leak — an amount that did
+not land is never withdrawn. `credit_reserve` / `debit_reserve` extend the same discipline to
+store-to-store transfers. Everything is scalar arithmetic on a heap-free resource, so the
+`allocs == 0` assertions on the tick path are untouched (`cargo test` shows the zero-alloc suites
+still green).
+
+#### Ecology-balance delta
+
+**None.** No existing ecology, migration, persistence or physics test changed behaviour or needed
+retuning. No constant was adjusted. Full suite: **479 passed, 1 failed, 2 ignored** — and the single
+failure is `terrain_challenger_tests::test_terrain_zero_heap_allocations_erosion_hotpath`, the
+pre-existing flake documented in the G0 entry (fails ~60% of runs at `2221ede`, i.e. before any of
+this work).
+
+Because founders are a boundary condition rather than a withdrawal, and because food and fruit are
+claims rather than a new store, closing the leaks did not starve the world. `EnergyLedger::refused`
+records demand the pool could not fund — 0.113 EU across 120k ticks, i.e. the world is not running
+an energy deficit.
+
+#### Gate
+
+The gate asks for millions of ticks. `ANIMA_ENERGY_GATE_TICKS=3000000`, single test, **34 minutes**:
+
+```text
+running 1 test
+test live_world_conserves_energy_across_births_deaths_and_a_save_load_cycle ...
+ticks=3000000 replacements=6000 baseline=40802.449965 final=40802.449965
+residual=0.000000000 worst_seen=0.000000000 tolerance=0.001
+ledger: granted=773489.502 refused=2.861 settled=19648091
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 2033.98s
+```
+
+**3,000,000 ticks. 6,000 births and deaths. 19,648,091 ledger transactions moving 773,489 EU. A
+residual of exactly `0.000000000`** — not "within tolerance", identical to the baseline, and
+`worst_seen` shows it never drifted at any point mid-run either.
+
+The CI-affordable default (`cargo test --test energy_conservation_tests`, **default parallel test
+threads**, ~83 s):
+
+```text
+20 replacements: before=41802.359373 after=41802.359373 drift=0.000000000
+ticks=120000 replacements=240 baseline=40802.449965 final=40802.449965
+residual=0.000000000 worst_seen=0.000000000 tolerance=0.001
+ledger: granted=30189.084 refused=0.113 settled=789668
+test result: ok. 3 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 82.66s
+```
+
+Both runs include births, deaths and one save/load cycle.
+
+The gate must run with **default threads**; forcing `--test-threads=1` hides the order-dependent
+class of bug above. Tick count is `ANIMA_ENERGY_GATE_TICKS`; default 120k so `cargo test` stays a
+CI-affordable ~80 s.
+
+**Tolerance.** `RESIDUAL_ABS_TOLERANCE_EU = 1e-3` EU, declared in `core::energy_ledger` and justified
+in `docs/reference/ENERGY_LEDGER_CONTRACT.md` §5: it bounds `f32`→`f64` census widening
+(~10^4 EU over ~10^2 stores, `f64` eps 2.2e-16, ~10^6 steps ⇒ ~1e-6 EU), leaving three orders of
+margin while still being ~10^-7 of a world total — so a leak of even one food item is caught by a
+wide margin. No local `1e-4` assertion was promoted into a product-wide tolerance.
+
+#### Save/load
+
+`SavedSimulationState` did not persist the energy compartments, so a load rebuilt detritus at zero
+and plants at full capacity — every save/load boundary moved EU. It now carries the three closed-EU
+scalars plus `ResourceField::r`, restored by `simulation_state::restore_energy_state`, all behind
+`#[serde(default)]` so pre-G1.1 saves stay loadable (D09). Stored as scalars rather than the
+`EcosystemBiomass` struct because `core::ecology` is outside G1's allowed files and does not derive
+`Serialize`. **G1.2 should replace this with the versioned `SnapshotEnvelope`** — it is the minimum
+that makes the G1.1 gate honest, not the snapshot design.
+
+#### Files changed
+
+`core/energy_ledger.rs` (new), `core/mod.rs`, `core/ecs.rs`, `core/agent_systems.rs`,
+`core/world_systems.rs`, `core/environmental_systems.rs`, `core/simulation_state.rs`,
+`core/simulation_loop.rs`, `tests/energy_conservation_tests.rs` (new), plus the four test suites that
+construct `SavedSimulationState` literally. `core/ecology.rs` and `core/sim_rules.rs` were **not**
+touched — they are outside G1's allowed files, and the design was chosen so it did not need them.
+
+#### Repository note
+
+A second agent was committing the ADR-0003 brain feature to this branch during the run and swept
+part of this in-progress work into its commits (`9174210 test(core): energy-ledger conservation
+suite`). That snapshot predates the atomicity fix, so `9174210` alone does **not** conserve energy
+under parallel execution; `9335560` is the commit that closes it. Nothing was lost. The working tree
+is now clean (0 dirty entries).
+
+#### Not done
+
+- `EnergyEvent::Intervention` is a placeholder: the ledger is not yet wired to `intervention` /
+  `CauseId`, so a declared intervention cannot yet move EU through it.
+- `cargo clippy --all-targets -- -D warnings` still fails with **12** findings (was 14), all
+  pre-existing in `adversarial_challenger_tests.rs`, `migration_stress_tests.rs` and
+  `migration_high_throughput_tests.rs`, none from G1.1. These were blocked in G0 because the files
+  held another agent's uncommitted work; that tree is now clean, so they are finally actionable.
+  Five are `MutexGuard` held across an await and need real restructuring of async test code.
+- The flaky terrain zero-alloc test still makes `cargo test` an unreliable CI gate.
