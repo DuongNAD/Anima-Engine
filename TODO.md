@@ -1,10 +1,365 @@
 # Danh sách công việc & Kế hoạch tiếp theo (TODO)
 
-> ⬇️ Mục đang làm: **World Terrain Overhaul** (mới nhất: Khí hậu thật v11 ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
+> ⬇️ Mục đang làm: **World Terrain Overhaul** (mới nhất: v19 spillway + WORLD_DESIGN ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
 
 ---
 
-# 🧬 [MỚI NHẤT] E11 — Metric đồng tiến hoá (Red Queen): phân kỳ niche + độ phủ archive (2026-07-03)
+# 🎲 [MỚI NHẤT] C2 — RNG CÓ SEED cho sim sống + nghiên cứu nâng cấp map/ML (2026-07-25)
+
+Người dùng yêu cầu nghiên cứu sâu **map** và **mô hình machine**, tham khảo nguồn mở/paper/Reddit/X.
+Kết quả khảo sát: **[`docs/research/MAP_AND_ML_UPGRADE_RESEARCH.md`](docs/research/MAP_AND_ML_UPGRADE_RESEARCH.md)** (status `proposed`).
+Chốt với người dùng: **hybrid tiến hoá + học-trong-đời**; làm **C2 trước**.
+
+- **Phát hiện lớn nhất (chưa làm, là B1):** `BrainModel::new(15,64,4)` là Bevy Resource → **toàn bộ agent
+  dùng CHUNG một bộ não**; genome chỉ có hình thái. Kèm ràng buộc hẹp thứ hai: 4 output actor đi thẳng vào
+  `InertiaComponent.cpg_parameters` → não là **bộ điều khiển dáng đi**, không phải bộ ra quyết định. Hai
+  thứ này phải sửa CÙNG nhau mới quan sát được đa dạng hành vi.
+- **✅ C2 XONG — RNG có seed.** `core/resources.rs`: `SimRng` (resource; `StdRng` + seed; đọc `ANIMA_SIM_SEED`,
+  mặc định `DEFAULT_SIM_SEED=1337`; có `reseed`/`seed()`), `sim_seed_from_env()`, `derived_rng(stream)` +
+  `sim_stream::{WORLD_INIT, EVOLUTION}`. **Cả 8 điểm `thread_rng()` biến mất khỏi `src/`**: 4 system nhận
+  `ResMut<SimRng>` (`spawn_food_system`, `seed_dropping_system`, `check_epoch_completion_system`,
+  `manual_migration_system`); 3 hàm tiến hoá nhận `&mut impl Rng` (`mutate_genotype`, `crossover_genotypes`,
+  `MapElitesArchive::select_parent`); world-init + luồng tiến hoá lấy sub-stream riêng.
+- **Lỗi thứ hai phát hiện khi sửa — `HashMap` phá tái lập.** `MapElitesArchive.grid` là `HashMap`, mà
+  `RandomState` **gieo hạt theo tiến trình** → thứ tự duyệt đổi mỗi lần chạy. `select_parent` duyệt chính
+  collection này ⇒ **có RNG seed vẫn không tái lập**. Đã đổi `HashMap` → **`BTreeMap`** (khoá `(i32,i32)`
+  đã `Ord`; `len`/`get`/`insert`/`iter`/`clear` giữ nguyên nên không call-site nào phải sửa).
+- **Vì sao nhiều stream chứ không một:** world setup / Bevy schedule / luồng tiến hoá chạy **đồng thời**;
+  một stream chung sẽ khiến kết quả phụ thuộc **thứ tự lập lịch thread** — đúng thứ đang loại bỏ.
+- **Gate mới:** `tests/sim_determinism_tests.rs` **11/11** — cùng seed ⇒ cùng chuỗi; seed khác ⇒ phân kỳ;
+  `reseed` tua lại; sub-stream độc lập + tái lập; **chọn cha mẹ / mutation / crossover replay**; archive duyệt
+  theo **thứ tự khoá niche** (chốt lỗi `HashMap`); và một test **quét mã nguồn** fail nếu `thread_rng()` quay lại.
+- **6 test world phải khai báo seed.** `ResMut<SimRng>` panic nếu resource vắng — **đó là hành vi đúng**: một
+  world không khai báo seed thì không có câu chuyện tái lập nào. 7 test (challenger_meta_ai, environmental_elements
+  ×2, hrrl, lineage_stress ×2 — cái thứ 2 do poisoned mutex lan ra, meta_ai_stress) đã thêm
+  `world.insert_resource(SimRng::from_seed(0x5EED))`. Các test này đều là **zero-alloc**, và chúng xanh trở lại ⇒
+  `StdRng` không cấp phát trên hot path (đúng như `ThreadRng` trước đó).
+- **Verify (số thật, chạy đầy đủ):** `cargo test --no-fail-fast` toàn backend → **358 passed · 1 failed · 1 ignored**,
+  **0 lỗi build**. Riêng `terrain_challenger_tests::test_terrain_zero_heap_allocations_erosion_hotpath` là **FLAKY,
+  KHÔNG liên quan**: chênh đúng **1 allocation (11 vs 12)**, **xanh khi chạy riêng 3/3 lần** và xanh khi chạy lại cả
+  file — đếm allocation bằng global allocator bị nhiễu khi 4 test trong file chạy song song. Thay đổi này không đụng
+  `terrain.rs` hay bất kỳ đường nào nó gọi.
+- **Clippy:** `cargo clippy --lib --tests` → **0 chẩn đoán ở TOÀN BỘ file thuộc thay đổi này** (40 chẩn đoán còn lại
+  đều ở file khác, có sẵn từ trước).
+- **Lưu ý phối hợp:** một phiên song song đang sửa backend (`core/evolution_pathway.rs`, hằng `ae3::*`,
+  `ReferenceEvolutionWorld`) trong CÙNG working tree; vài lần `cargo check` giữa chừng gãy vì bản ghi dở của họ.
+  Số ở trên lấy lúc lib compile sạch.
+- **Còn nợ của C2:** save/load **chưa mang seed lẫn vị trí draw** ⇒ nạp lại một run đã lưu chưa tiếp tục đúng
+  chuỗi ngẫu nhiên. `SimRng::reseed` đã sẵn; wiring vào `SavedSimulationState` là bước riêng.
+- **Tinh chỉnh:** seed run → env `ANIMA_SIM_SEED`; thêm stream mới → hằng số trong `resources::sim_stream`.
+- **✅ ADR-0003 ĐÃ VIẾT (chưa code):** [`docs/decisions/ADR-0003-evolved-per-agent-brains.md`](docs/decisions/ADR-0003-evolved-per-agent-brains.md)
+  (`proposed`) — não di truyền theo cá thể + mở rộng action space. Chốt: `BrainGenotype` là **anh em** của
+  `MorphologyGenotype` (KHÔNG nằm trong `DevelopedPhenotype`) vì **ADR-0001 accepted nhưng CHƯA triển khai**
+  (không có `ecomorph.rs`/`develop_at_birth` trong code) — ADR-0003 không được phụ thuộc vào nó · giao diện
+  **cố định** ở v1 (CPPN/HyperNEAT hoãn sang ADR riêng, kích hoạt bởi gate EB-S09) · **4 van hành động mới chỉ
+  mở van cho hành vi ĐÃ tồn tại** (pheromone hiện phát vô điều kiện mỗi tick, combat/ăn kích hoạt tự động theo
+  khoảng cách) nên mặc định "luôn mở" tái lập đúng hành vi hôm nay · inference **không qua `burn`** (matmul thủ
+  công, zero-alloc) ⇒ `burn` co lại còn đường training, giảm rủi ro nâng 0.13→0.21 · rollback
+  `brain_genotype=None` theo tiền lệ `exotic_energy=None` · học-trong-đời sau cờ, **mặc định TẮT** · 12 gate
+  **EB-S01…EB-S12**.
+- **Rủi ro mở đã ghi thẳng trong ADR:** trọng số 5.769 `f32` ≈ **22,5 KiB/agent** ⇒ 1 triệu agent ≈ **21 GiB**
+  ⇒ **Simulation-LOD (M3 backend) trở thành điều kiện tiên quyết của quy mô**, không còn là tối ưu hoá.
+- **✅ ADR-0003 BƯỚC 1 XONG — hoà giải seed (trả nợ C2).** D07 quy định seed lấy từ `WorldIdentity.seed`;
+  `SimRng::from_env()` cũ đọc `ANIMA_SIM_SEED` là sai thứ tự thẩm quyền. Nay: `resolve_run_seed(world_seed)`
+  (world là nguồn, env chỉ **override** cho sweep headless) · **`init_world` là nơi DUY NHẤT** chèn `SimRng`
+  ⇒ mọi test dùng `init_world()` tự có (đã gỡ 2 dòng insert thừa) · luồng tiến hoá sinh ra **trước** world nên
+  dùng `world_seed_from_disk()` + **`WorldArtifact::peek_seed`** (đọc mỗi header 36B, không giải mã payload
+  2048²) · `derived_rng(run_seed, stream)` nhận seed tường minh thay vì tự đọc env.
+- **✅ ADR-0003 BƯỚC 2 XONG — `evolution/brain_genotype.rs` (hàm thuần, KHÔNG system nào đọc).** `ArchSpec`
+  `I → H → H → {A actor, 1 critic}` **khớp `ActorCriticModel`** (2 lớp trunk — ADR viết nhầm "1 lớp ẩn", đã sửa)
+  · `BrainGenotype{version, arch, weights}` + validate · khởi tạo **He cho trunk / Xavier cho head** (một sigma
+  chung sẽ bão hoà sigmoid ở bề rộng 64 ⇒ quần thể khởi đầu trông giống hệt nhau vì lý do không liên quan chọn lọc)
+  · `mutate_brain(rate, sigma)` không bao giờ đổi kiến trúc · `crossover_brains` uniform per-weight, arch lệch thì
+  fallback parent A · **`forward_into` zero-alloc** (buffer của caller) + wrapper cấp phát cho test. **17/17 unit test.**
+- **⚠️ Bẫy đã ghi cho bước 3 (parity EB-S02):** layout ở đây là `w[out*fan_in + in]`, **CHUYỂN VỊ** so với
+  `burn 0.13` (`Linear::weight` shape `[d_input, d_output]`, `input.matmul(weight)`). Chép phẳng không chuyển vị
+  ⇒ mạng chạy được, số hữu hạn, **sai âm thầm**. Burn cũng init **cả bias** từ `U(-k,k)`, không phải 0.
+- **Lỗi của chính tôi do full-suite bắt được:** 3 test đọc/ghi `ANIMA_SIM_SEED` chạy song song trong cùng tiến trình
+  ⇒ đua nhau; xanh khi chạy riêng file, đỏ khi chạy cả suite (đúng loại lỗi với test terrain flaky). Đã thêm
+  `ENV_LOCK` mutex (recover poison để lỗi thật không bị che). **5/5 lần chạy liên tiếp xanh.**
+- **Verify bước 1+2:** `cargo test --no-fail-fast` toàn backend → **383 passed · 1 failed · 0 lỗi build**. Failure là
+  `core::evolution_pathway::tests::ae302_...` của **phiên song song** — file đó **không tham chiếu bất kỳ thứ gì
+  tôi sửa** (grep 0 kết quả) và **xanh khi chạy riêng**. `sim_determinism_tests` **15/15**, `brain_genotype` **17/17**.
+  `cargo clippy --lib --tests` **0 chẩn đoán ở mọi file tôi sửa**.
+- **✅ ADR-0003 BƯỚC 3 XONG — parity gate EB-S02.** `ActorCriticModel::from_flat_weights(...)` trong
+  `ai/model.rs` (**lần đầu chạm runtime, thuần additive**: một constructor + 2 hàm private, không đổi hành vi
+  model đang chạy). Nhận `usize` chứ không `ArchSpec` để **`ai` không phụ thuộc `evolution`** và
+  `brain_genotype` không phải kéo `burn` vào (quyết định 5 của ADR). `transpose_to_burn` tách riêng + unit-test
+  vì lỗi chuyển vị là **vô hình**: cùng độ dài, và với lớp vuông thì vẫn chạy.
+- **`tests/brain_parity_tests.rs` 8/8:** parity trên arch đang chạy (15×64×4), arch mở rộng (15×64×8),
+  **4 arch mọi chiều khác nhau** (arch vuông sẽ để lọt lỗi chuyển vị), input bão hoà (ReLU tắt/mở hẳn + sigmoid
+  vào đuôi phẳng), **độc lập theo hàng trong batch** (burn chạy batch, đường thủ công chạy từng agent — chỉ hoán
+  đổi được nếu output của một hàng không phụ thuộc hàng khác), và genome đã qua mutation+crossover (phân phối mà
+  He/Xavier không bao giờ sinh ra).
+- **Hai test chứng minh gate CÓ LỰC:** một trọng số lệch, hoặc một lớp bị chuyển vị, **phải** phá parity — nếu
+  tolerance đủ lỏng để nuốt trôi thì mọi assert còn lại chỉ là trang trí.
+- **Tolerance có căn cứ, không nói suông:** hạ tạm xuống `1e-12` để đọc sai số thật → actor **`1.8e-7`**
+  (đúng bằng `f32::EPSILON`, tức **một ULP** — hai bản cài đặt khớp tới giới hạn của kiểu), critic **`8.0e-7`**.
+  Chốt `TOLERANCE = 1e-5`: dư 1–2 bậc so với nhiễu float, vẫn thấp xa mọi lỗi thật.
+- **Verify bước 3:** `cargo test --no-fail-fast` toàn backend → **395 passed · 0 failed · 0 ignored-fail ·
+  0 lỗi build** (lần chạy này cả file của phiên song song cũng xanh). `cargo clippy --lib --tests` **0 chẩn đoán
+  ở mọi file tôi sửa**. Gate **EB-S01, EB-S02 pass**; 10 gate còn lại pending.
+- **✅ ADR-0003 BƯỚC 4 XONG — mở rộng action space, van mặc định MỞ ⇒ hành vi không đổi (EB-S05).**
+  `core::components::ActionGates{pheromone_emit, attack_intent, feed_intent}` + `ACTION_GATE_THRESHOLD=0.5`
+  (**ngưỡng tất định** — van xác suất sẽ phải dùng RNG, tức nối kết quả sinh thái vào thứ tự draw, đúng thứ
+  `SimRng` sinh ra để tránh). `ActionGates::of(None)` đọc là **MỞ** — save cũ không được nạp thành agent từ chối ăn (D09).
+  Nối: `agent_release_pheromone_system` (nhân + clamp `[0,1]` chống output não loạn), `detect_food_collisions_system`,
+  và **CẢ HAI nhánh** của `combat_system` (nhánh có/không `CombatEvents` — predator không được đánh ở đường này mà
+  nhịn ở đường kia). `decode_genotype` gắn `ActionGates::default()`. **Chưa có gì ghi vào component** — chỉ là chỗ cho bước 5.
+- **Tinh chỉnh phạm vi (phát hiện khi làm):** **KHÔNG** nới `BrainModel::new(15,64,4)`→`(15,64,8)` ở bước này.
+  Đổi số tham số model dùng chung ⇒ đổi lượng RNG tiêu thụ lúc init ⇒ đổi trọng số ⇒ **đổi quỹ đạo hôm nay**, tức
+  tự phá EB-S04. Tensor hành động chỉ nới khi `brain_genotype=Some(..)`, nơi arch rộng là **của riêng cá thể**.
+  ⇒ Bước 4 **không đụng IPC/TypeScript** như dự đoán ban đầu trong ADR.
+- **`tests/action_gates_tests.rs` 13/13:** mỗi van có **cặp** test — *đồng nhất* (`default()` == không có component)
+  **và** *nhạy* (van đóng thì chặn thật). Chỉ có test đồng nhất thì một van bị bỏ quên vẫn pass.
+- **Một giả thiết của tôi SAI, đã sửa:** định dò rủi ro thứ-tự-archetype bằng tranh giành **thức ăn** → 4/4 agent đều
+  ăn được (`[40,40,40,40]`), vì `despawn` là **deferred Commands** ⇒ trong một tick không hề có tranh giành. Chỗ thật
+  sự nhạy thứ tự là **combat**: nó sửa energy **trực tiếp** và `predation_capture` phụ thuộc energy **hiện tại** của
+  con mồi ⇒ ai đánh trước ăn miếng đậm nhất. Đã đổi sang 3 predator / 1 prey, assert các phần **không bằng nhau**
+  (nếu bằng nhau thì test không phát hiện được đảo thứ tự) rồi so có-van vs không-van.
+- **Vì sao phải dò:** thêm component **đổi archetype**, Bevy duyệt query **theo archetype**, và cả hai system đều
+  `break` ở kết quả đầu — van mở thì *số học* không đổi nhưng **ai** ăn/**ai** bị ăn vẫn có thể đổi. Các test đồng
+  nhất per-system không thấy được vì mỗi cái chỉ có một actor.
+- **Verify bước 4:** `cargo test --no-fail-fast` → **407 passed · 1 failed · 0 lỗi build**. Failure là
+  `terrain_challenger_tests::test_terrain_zero_heap_allocations_erosion_hotpath` — **flaky đã biết, không liên quan**
+  (đã tạo task riêng). `cargo clippy --lib --tests` **0 chẩn đoán ở mọi file tôi sửa**.
+  Gate **EB-S01, EB-S02, EB-S05 pass**; 9 gate còn lại pending.
+- **🟡 ADR-0003 BƯỚC 5 — MỘT PHẦN.** Xong phần dữ liệu + vòng đời; **chưa** nối vào suy luận.
+  - **`core::components::AgentBrain{genotype, learned}`**: `genotype` là cái sinh sản chép, `learned` là
+    runtime state chết theo cá thể. `live_weights()` ưu tiên `learned`. **Không Lamarck** — có test khoá.
+  - **Save + migration (D02)**: `SerializedAgent.brain` và `AgentMigrationData.brain`, cả hai `#[serde(default)]`.
+    Restore (`spawn_serialized_agent`) và migration (`SpawnMigrationCommand`) **mang theo** brain chứ **không sinh
+    mới** (D01 — cấp brain mới cho cá thể restore là tạo sinh vật khác đội cùng lineage id). Brain hỏng (độ dài
+    `learned` lệch arch) bị **từ chối + log**, agent rơi về model dùng chung thay vì chạy nhiễu.
+  - **`core::resources::BrainPolicy`** (resource, mặc định **TẮT**, bật bằng `ANIMA_EVOLVED_BRAINS`; resource chứ
+    không phải đọc env rải rác ⇒ test set trực tiếp được). `EVOLVED_ARCH` = 15×64×**8** và **`action_index`** chốt
+    ý nghĩa từng output (0..4 CPG, 4 pheromone, 5 attack, 6 feed, 7 signal dự trữ) — để off-by-one không biến
+    "ăn" thành "đánh" một cách im lặng.
+  - **Genesis + `SpawnGenotypeCommand`** tạo brain khi cờ bật, rút từ `SimRng` ⇒ cùng seed, cùng quần thể sáng lập.
+  - **`tests/brain_persistence_tests.rs` 14/14** (EB-S07, EB-S10): restore giữ đúng brain · **restore 2 lần từ
+    cùng payload cho kết quả giống hệt** (nếu bị roll mới thì agent vẫn "có brain, vẫn hợp lý, vẫn đúng lineage id"
+    — chỉ so hai lần restore mới lộ) · `None` không bị âm thầm nâng cấp · save cũ không có trường `brain` → `None` ·
+    `learned` round-trip và `live_weights()` ưu tiên nó · payload migration qua wire · policy mặc định tắt + tái lập.
+- **✅ ADR-0003 BƯỚC 5b XONG — brain riêng ĐIỀU KHIỂN HÀNH VI THẬT.** Phát hiện khi làm:
+  **`ai::model::brain_inference_system` KHÔNG nằm trong schedule**; đường sống là `sensory_system` →
+  `InferenceRequestBatch` **qua channel** → worker thread → `action_resolution_system`.
+  - `AgentBrain.genotype` → **`Arc<BrainGenotype>`** (bật feature `rc` của `serde`, **không thêm crate**), nên
+    `AgentInferenceRequest.brain` chỉ **tăng refcount** thay vì chép ~23 KiB trọng số mỗi agent mỗi tick.
+    Test dùng **`Arc::ptr_eq`** để chứng minh không chép — so bằng giá trị sẽ pass kể cả khi đã chép.
+  - Worker **LỌC** request có brain ra khỏi lô Burn thay vì chạy hết rồi ghi đè ⇒ đường legacy giữ
+    **bit-identical** khi không agent nào có brain (nền EB-S04), và không trả tiền cho forward pass bị vứt.
+    Lô rỗng thì bỏ Burn hẳn (tensor 0 hàng). Buffer worker (`shared_slots`/`shared_actions`/`brain_scratch`)
+    cấp phát 1 lần rồi tái dùng, cùng kiểu với `inputs` sẵn có.
+  - `AgentInferenceResponse.actions` `[f32;4]`→`[f32;8]`; `action_resolution_system` ghi `0..CPG_LEN` vào CPG,
+    3 slot sau vào `ActionGates`. **`LastTransitionState.action` GIỮ 4 slot** — nó nuôi A2C của model dùng chung,
+    vốn không biết gì về van, nên không có lý do phình save format.
+  - **Fallback khi brain lỗi = van MỞ + không đổi vận động**, không phải vector 0: vector 0 đọc thành "đóng mọi
+    van", tức agent lặng lẽ ngừng ăn vì lý do không liên quan chọn lọc.
+- **⚠️ Đính chính dự đoán của chính tôi trong ADR:** đã ghi bước này "chạm IPC + TypeScript". **SAI.** Vector hành
+  động nằm trọn backend — `grep` `src/commands/` và toàn bộ `src/**.ts(x)` cho **0 tham chiếu** tới
+  `cpg_parameters`/`actions`. **Toàn bộ ADR-0003 không chạm frontend.** Đã sửa cả phần "Hệ quả tiêu cực" của ADR.
+- **`tests/brain_action_routing_tests.rs` 9/9:** agent có brain gửi đúng genome (và **chia sẻ** chứ không chép) ·
+  agent legacy không gửi gì · output van tới đúng `ActionGates` (brain quyết định "săn nhưng không ăn" — điều
+  **bất khả** trước bước này) · CPG vẫn lấy 4 slot đầu · response của model dùng chung để van **mở nguyên** ·
+  agent không có component van vẫn resolve được · **hai genome khác nhau ra quyết định khác nhau trên cùng input**.
+- **Verify bước 5b:** `cargo test --no-fail-fast` → **430 passed · 1 failed · 0 lỗi build**; failure là
+  `terrain_challenger_tests::...erosion_hotpath` (**flaky đã biết, không liên quan**). `cargo clippy --lib --tests`
+  **0 chẩn đoán ở mọi file tôi sửa**. Gate **EB-S01, EB-S02, EB-S05, EB-S07, EB-S10 pass**; 7 còn lại pending.
+- **✅ ADR-0003 BƯỚC 6 XONG — ĐỐI CHỨNG CÓ SEED, và nó tìm ra một lỗi.**
+  - **Harness:** `tests/brain_controlled_comparison_tests.rs` **11/11** — chạy vòng lặp ECS headless (không cần
+    Tauri) và bơm channel suy luận bằng **CHÍNH** `run_inference_batch` mà worker gọi. Để làm được, logic worker
+    được **tách khỏi closure của thread** ra `ai::model::run_inference_batch` + `InferenceScratch`; trước đó nó
+    **không test được** — mà đó lại là hàm quyết định mọi hành động của mọi agent mỗi tick.
+  - **🔴 LỖI TÌM ĐƯỢC (C2 chưa bắt): model dùng chung khởi tạo KHÔNG tất định.** Hai lần chạy cùng seed cho
+    **vị trí và năng lượng khớp** nhưng `cpg_parameters` **khác**. Nguyên nhân: `LinearConfig::init` trả
+    `Param::uninitialized` — trọng số materialize **LƯỜI** từ RNG tĩnh toàn tiến trình **tự tiến lên** mỗi lần
+    rút. Nên gọi `Backend::seed` trước lúc dựng **KHÔNG sửa được gì**: model thứ hai rút từ generator đã bị model
+    thứ nhất đẩy đi. (Tôi đã thử `Backend::seed` trước — vẫn fail cả khi chạy đơn luồng riêng lẻ, đó là cách loại
+    trừ giả thuyết "race".)
+  - **Sửa:** `BrainModel::new_seeded` tự rút trọng số từ stream có seed rồi nạp qua `from_flat_weights`, giữ
+    **nguyên phân phối** `U(-k,k)`, `k=sqrt(1/fan_in)` của Burn. Cả world lẫn worker dùng cùng run seed — trước
+    đây hai model đó **chưa bao giờ giống nhau** dù lẽ ra phải giống.
+  - **🔴 Regression của chính tôi, đã sửa:** bản đầu materialize tensor **NGAY** ⇒ đẩy `SimulationEngine::start`
+    chậm quá ngưỡng, `environmental_elements_stress_tests` (2 test) fail vì engine chưa kịp tick trong 150ms.
+    Sửa bằng `Param::uninitialized` — giữ **lười** materialize như Burn, nhưng **giá trị đã được quyết định**.
+  - **Hệ quả phải nói thẳng:** quỹ đạo baseline **KHÔNG** còn trùng bản dựng trước ADR — vì trước đó *không tồn
+    tại* một quỹ đạo baseline ổn định để mà trùng. Đây là sửa lỗi có chủ ý, không phải hồi quy.
+- **KẾT QUẢ ĐO ĐƯỢC (EB-S11):** cùng một quan sát đưa cho cả quần thể → `None` cho **1** chính sách duy nhất
+  (đúng bản chất model dùng chung), `Some` cho **8/8 chính sách khác nhau**, và khác **cả ở kênh sinh thái** chứ
+  không chỉ dáng đi; ít nhất một agent kết thúc run với van **lệch khỏi mặc định mở**. Cùng seed thì tái lập,
+  seed khác thì quần thể khác, bật cờ thì run đổi. **Đa dạng hành vi là có thật và đo được.**
+- **Còn nợ:** **độ phủ MAP-Elites archive** chưa đo được headless (cần luồng tiến hoá) ⇒ nửa còn lại của EB-S11
+  vẫn pending.
+- **Verify bước 6:** `cargo test --no-fail-fast` → **441 passed · 1 failed · 0 lỗi build**; failure là
+  `terrain_challenger_tests::...erosion_hotpath` (**flaky đã biết**). `cargo clippy --lib --tests` **0 chẩn đoán
+  ở mọi file tôi sửa**. Gate **EB-S01, EB-S02, EB-S05, EB-S07, EB-S10, EB-S11(hành vi) pass**; **EB-S04 một phần**;
+  còn EB-S03/S06/S08/S09/S12 pending.
+- **✅ ADR-0003 BƯỚC 7 XONG — HỌC-TRONG-ĐỜI, và nó tìm ra lỗi thứ hai.**
+  - **`brain_genotype::learn_step`**: backprop **viết tay** cho đúng topology này (relu×2 → sigmoid actor +
+    critic tuyến tính), cùng `LearnScratch` để một tick học **không cấp phát**. `ai::model::lifetime_learning_system`
+    + `resources::LifetimeLearning{enabled, learning_rate, discount, interval, active_radius}`
+    (`ANIMA_LIFETIME_LEARNING`, **chỉ có hiệu lực khi `evolved`** — học mà không có não riêng thì không có gì để đổi).
+    Reward = chính drive-reduction homeostatic mà model dùng chung đang dùng.
+  - **`AgentBrain.learned` → `Option<Arc<BrainGenotype>>`** + `live()`. Học **thay** cả mạng thay vì sửa tại chỗ:
+    mạng cũ có thể đang được một request suy luận cầm, giật trọng số ra dưới chân nó sẽ khiến hành động của agent
+    phụ thuộc thời điểm thread. Đổi lại, mỗi lần học cấp phát 1 lần ⇒ **`interval` throttle** là để trả giá đó.
+  - **🔴 LỖI THỨ HAI TÌM ĐƯỢC: A2C của model dùng chung SAI DẤU.** `run_training_loop` dùng `(a−â)²·(−td)`:
+    advantage **dương** ⇒ hệ số âm ⇒ giảm loss = **tăng** `(a−â)²` = đẩy chính sách **RA XA** hành động vừa tốt
+    hơn kỳ vọng, và **VỀ PHÍA** hành động tệ hơn. Model dùng chung đã và đang học **ngược**. `learn_step` viết
+    **đúng dấu** (`+td`) thay vì sao chép lỗi. Lỗi **có trước** ADR-0003; sửa đổi quỹ đạo legacy ⇒ **đã tạo task riêng**.
+  - **Vì sao gradient check một mình KHÔNG đủ:** `the_learning_gradient_matches_finite_differences` pass với
+    **CẢ HAI** dấu — nó chỉ kiểm đạo hàm có khớp hàm loss, **không** kiểm hàm loss có đúng ý đồ.
+    `learning_moves_the_policy_toward_a_rewarded_action` mới là test phát hiện ra (fail với dấu cũ). Cần **cả hai**.
+  - **Hai khác biệt có chủ ý, đều về chi phí:** **SGD thay vì Adam** (Adam cần 2 buffer moment/tham số ⇒ gấp ba
+    bộ nhớ per-agent vốn đã là rủi ro quy mô); **chỉ huấn luyện khối CPG** vì `LastTransitionState.action` chỉ ghi
+    4 tham số vận động, không có target cho van sinh thái ⇒ v1 phân vai: **tiến hoá đặt chính sách sinh thái,
+    học-trong-đời tinh chỉnh dáng đi**. Huấn luyện van cần ghi thêm giá trị van đã dùng = đổi save format, hoãn.
+  - **`active_radius` hiện đo từ gốc toạ độ** — chỗ giữ chỗ cho Simulation-LOD (M3 backend còn nợ). Ràng buộc của
+    ADR **tồn tại và test được** thay vì chỉ là lời hứa; nối vào tâm LOD thật là phần việc của M3.
+  - **`tests/brain_lifetime_learning_tests.rs` 9/9** + 21/21 unit test `brain_genotype`: mặc định không học · học
+    cần `evolved` · bật thì đổi thật · **genome không bị ghi ngược** (kiểm qua system đang chạy, không chỉ qua type) ·
+    tái lập theo seed · **ngoài active-radius không học** · `interval` chặn thật · agent chưa hành động thì bỏ qua ·
+    world không có policy resource **không panic**.
+- **Verify bước 7:** `cargo test --no-fail-fast` → **454 passed · 1 failed · 0 lỗi build**; failure là
+  `terrain_challenger_tests::...erosion_hotpath` (**flaky đã biết**). `cargo clippy --lib --tests` **0 chẩn đoán ở
+  mọi file tôi sửa**. Gate **EB-S01, S02, S05, S07, S08, S10, S11(hành vi) pass**; **EB-S04 một phần**;
+  còn **EB-S03, S06, S09, S12** pending (zero-alloc tick với não riêng, closed-EU khi bật chi phí não, bức tường
+  brain–body, ngân sách bộ nhớ).
+- **✅ EB-S03 + EB-S12 XONG — `tests/brain_budget_tests.rs` 7/7** (ổn định 5/5 lần chạy).
+  - **EB-S03 (zero-alloc):** suy luận per-agent **0 alloc/tick** · bước gradient **0 alloc** · cài mạng đã học tốn
+    **ĐÚNG 1** alloc — ngoại lệ có chủ ý (thay cả mạng để request đang bay không bị giật trọng số), pin ở **1** để
+    nếu thành 1/tick hay 1/trọng số thì test đỏ. **Đường Burn dùng chung KHÔNG zero-alloc và chưa bao giờ**
+    (`inputs.clone()` + dựng tensor) — tôi **đo và ghi lại** thay vì assert 0 rồi giấu, vì nó làm rõ "per-agent
+    0 alloc" là cải thiện thật chứ không phải cách viết test.
+  - **EB-S12 (bộ nhớ):** **22,5 KiB/agent** (5.769 f32); agent có học mang **HAI** mạng ⇒ **45 KiB**, tức **một
+    nửa** số agent thường trú trong cùng ngân sách — chi phí thật của nửa Baldwin. Trần công bố
+    `BRAIN_BUDGET_BYTES` 24 KiB / 48 KiB ⇒ đổi kiến trúc làm phình bộ nhớ phải là **sửa hằng số có chủ ý**, không
+    phải phát hiện ở quy mô lớn. 1 triệu agent ≈ **21,5 GiB** ⇒ ~**46.500 agent thường trú mỗi GiB**. Trong ba
+    hướng giảm ADR liệt kê, mới dùng được hướng đầu: `H` 64→32 cho **~3,1×** ít tham số (ma trận trunk→trunk chi phối).
+  - **Bẫy lặp lại lần thứ ba:** allocator là **toàn tiến trình**, nên 3 test đo bộ nhớ (không giữ lock) cấp phát
+    song song và làm hỏng số của test zero-alloc → **13 alloc** cho vòng lặp đáng lẽ 0. **Mọi** test trong file có
+    tracking allocator phải giữ lock, kể cả test không đo alloc. (Lần đầu sửa bằng perl bị lỗi cú pháp nên file
+    không đổi mà test vẫn xanh — tức lần xanh đó là **may mắn**; đã sửa lại bằng Edit và chạy 5/5.)
+  - **Lưu ý máy:** `cargo test` mặc định làm cạn paging file (`os error 1455` khi mmap rlib). Dùng **`-j 2`**.
+- **Verify:** `cargo test --no-fail-fast -j 2` → **462 passed · 0 failed · 0 lỗi build** (lần này test terrain
+  flaky cũng xanh). `cargo clippy --lib --tests` **0 chẩn đoán ở mọi file tôi sửa**.
+  **ADR-0003: 9/12 gate pass** (EB-S01, S02, S03, S05, S07, S08, S10, S11-hành-vi, S12) · **EB-S04 một phần** ·
+  còn **EB-S06** (closed-EU khi bật `brain_metabolic_cost`) và **EB-S09** (bức tường brain–body) — cả hai cần
+  tính năng chưa bật, không phải nợ đo đạc.
+- **✅ EB-S06 + EB-S09 XONG — `tests/brain_cost_and_coupling_tests.rs` 9/9.**
+  - **EB-S06 (chi phí não, closed-EU):** `BrainPolicy.brain_metabolic_cost` (đơn vị: energy/giây trên mỗi 1.000
+    tham số, **mặc định `0.0`**) + `AgentBrain::metabolic_cost()`. **Điểm mấu chốt của thiết kế:** chi phí được
+    **gộp vào `total_cost`** trong `metabolic_decay_system` chứ **KHÔNG** trừ riêng — vì mọi thứ trong `total_cost`
+    chảy qua `decay` → `respired` → `detritus`, nên năng lượng bị **DI CHUYỂN** chứ không bị **HUỶ**, và EU đóng
+    *by construction*. Trừ riêng là cách viết tự nhiên hơn và **sẽ rò**. Delta < **1e-9** (đúng ngưỡng S01).
+  - Chi phí **có thật và tăng theo kích thước não** (não 15×16×8 tốn ít hơn 15×64×8) ⇒ có áp lực chọn lọc chống
+    phình não, đúng lý do ADR đặt ra nó. Tính theo **genome**, không theo mạng đã học — học không làm não to ra
+    nên không được làm tăng hoá đơn. `NaN`/âm/0 đều bị bỏ qua thay vì làm hỏng sổ năng lượng.
+  - **🔬 EB-S09 (bức tường brain–body) — ĐÃ ĐO, TÍN HIỆU YẾU NHƯNG CÓ.** Reciprocal transplant trên trục hình thái
+    (thân **2/3/5/8 đốt × 5 gait**, đo **quãng đường** — chính đại lượng `check_epoch_completion_system` chấm điểm,
+    không phải proxy bịa ra). Kết quả:
+    - 2 đốt → gait **2** (0,066) · 3 đốt → gait **1** (0,490) · 5 đốt → gait **2** (1,422) · 8 đốt → gait **2** (1,943)
+    - Ở thân 3 đốt, gait 1 hơn gait 2 **~53%** (0,490 vs 0,321) — **không phải nhiễu**.
+    - ⇒ **Điều khiển tối ưu ĐÃ phụ thuộc cơ thể**, đúng cơ chế dự đoán: 4 tham số CPG áp cho *mọi* khớp bất kể
+      cơ thể có bao nhiêu.
+  - **Kết luận:** **CHƯA mở ADR phương án D (CPPN/HyperNEAT)** — quần thể khởi tạo vẫn là 10 cá thể **cùng một
+    genotype 3-node**, nên bức tường chưa gây thiệt hại thật. Nhưng đây là bằng chứng nó **sẽ** cần khi hình thái
+    đa dạng thật, không còn là lo xa. Đọc lại điều kiện kích hoạt khi quần thể có nhiều body plan.
+  - **Hệ quả phụ đáng lưu ý:** quãng đường tăng mạnh theo số đốt (0,066 → 1,94) ⇒ so fitness **giữa** các hình thái
+    bị nhiễu bởi kích thước cơ thể — thêm một lý do MAP-Elites phải **bin theo khối lượng** thay vì xếp hạng phẳng.
+- **Verify:** `cargo test --no-fail-fast -j 2` → **470 passed · 1 failed · 0 lỗi build**; failure là
+  `terrain_challenger_tests::...erosion_hotpath` (**flaky đã biết**, xanh ở lần chạy trước). `cargo clippy` **0 chẩn
+  đoán ở mọi file tôi sửa**.
+  🎉 **ADR-0003: 11/12 gate pass**; chỉ **EB-S04 còn một phần** (và phần thiếu là *không thể đo* — không có bản dựng
+  trước ADR để so, xem bước 6). **Toàn bộ ADR-0003 đã triển khai và đo xong.**
+- **✅ ADR-0003 CHUYỂN SANG `accepted` (2026-07-25).** Frontmatter `status: accepted` + `accepted_date`;
+  [`docs/decisions/README.md`](docs/decisions/README.md) và [`docs/README.md`](docs/README.md) đã cập nhật.
+  Thêm mục **"Trạng thái tại thời điểm accepted"** ghi lại đúng những gì đúng khi khoá quyết định, để người đọc
+  sau không phải suy ra từ lịch sử: 11/12 gate · EB-S04 thiếu phần **không thể đo** · **3 lỗi có sẵn** đã tìm ra
+  (2 đã sửa, 1 tách task) · và **2 quyết định vận hành CÒN ĐỂ MỞ CÓ CHỦ Ý**:
+  - **Có bật `brain_metabolic_cost` mặc định không?** EB-S06 chứng minh bật được mà không rò năng lượng, nhưng
+    bật nó **đổi áp lực chọn lọc** ⇒ là quyết định của chủ dự án, không phải hệ quả kỹ thuật.
+  - **Ngưỡng nào ở EB-S09 thì mở ADR phương án D?** Đọc hiện tại "yếu nhưng có"; ngưỡng nên chốt khi quần thể
+    thực sự có nhiều body plan, không phải đoán bây giờ.
+- **ADR-0003 giờ là quyết định BẤT BIẾN.** Theo quy ước `docs/decisions/README.md`: **không viết lại để đổi kết
+  luận** — muốn đổi thì tạo ADR mới và dùng `supersedes`/`superseded_by`. Ba việc ADR này **không** bao trùm:
+  độ phủ MAP-Elites archive (cần luồng tiến hoá headless), Simulation-LOD thật cho `active_radius` (M3 backend),
+  và phương án D (CPPN/HyperNEAT) khi EB-S09 vượt ngưỡng.
+- **Verify bước 5:** `cargo test --no-fail-fast` → **421 passed · 1 failed · 0 lỗi build**; failure là
+  `terrain_challenger_tests::test_terrain_zero_heap_allocations_erosion_hotpath` (**flaky đã biết, không liên quan**,
+  đã có task riêng). `cargo clippy --lib --tests` **0 chẩn đoán ở mọi file tôi sửa**.
+  Gate **EB-S01, EB-S02, EB-S05, EB-S07, EB-S10 pass**; 7 gate còn lại pending.
+
+---
+
+# 🧹 Housekeeping (chờ backend) — test hồi quy M1 hydrology + đính chính §6 (2026-07-24)
+
+Trong lúc chờ phiên backend xong (để làm Simulation-LOD), làm việc frontend an toàn (không đụng `src-tauri`):
+- **Test hồi quy M1** mới (`src/__tests__/worldHydrology.test.ts`, 3 test @512²): world sane (0 NaN, đất ~38%, có Ocean/River/Lake/Beach) · hồ hình thành + **endorheic salt lake** (saline>0 nhưng không phải tất cả bồn) · `riverAmt` ∈ [0,255]. → khoá hành vi spillway/delta/endorheic (v19/v20) vốn trước chỉ có smoke tạm.
+- **Đính chính WORLD_DESIGN §6**: stack `LandscapeShowcase/terrainGenerator/terrainCache/Terrain/Water/Vegetation/Sky/Weather/Minimap` **KHÔNG chết** — `src/App.tsx` import + là nền ~½ bộ 237 test; `worldGen.ts` còn dùng `ImprovedNoise2D`. → **KHÔNG gỡ** (đề xuất "dọn" trước đó là SAI).
+- **Verify:** src Vitest **57/57** (thêm 3; các test frontend của phiên song song cũng đang xanh) · tsc 0 · lint 0.
+
+---
+
+# 🧩 M3 — Chunk + LOD động + STREAMING cho terrain (đo trần tài nguyên) (2026-07-24)
+
+Mở đường tối ưu cho nhiều agent: chia terrain thành lưới chunk để **frustum-cull** vùng ngoài màn hình + hạ chi tiết chunk xa (**LOD**). **Thuần frontend, file mới, KHÔNG đụng backend** (phiên song song đang ở đó); **KHÔNG bump `WORLD_GEN_VERSION`** (render-side).
+
+- **`utils/chunkLod.ts` mới** (thuần, test được): `makeChunkGrid` (lưới C×C phủ kín [0,1]²), `lodForDistance`/`resForLod` (LOD theo khoảng cách, chia đôi res mỗi cấp, clamp `minRes`), `estimateCost` (đếm tam giác + cull = "đo trần tài nguyên"), `buildChunkGeometry` (mesh 1 chunk **khớp CHÍNH XÁC** quy ước WorldTerrain: X=(u−0.5)·rs, Y=elev·hu, Z=(v−0.5)·rs, uv=(u,v); + skirt che khe giữa chunk khác LOD).
+- **`WorldTerrainLod.tsx` mới** (opt-in): terrain chunk-hoá, dùng lại texture builder + material + river-shimmer **y hệt** WorldTerrain (1 material chung, nhiều chunk mesh). **LOD ĐỘNG theo camera**: mỗi frame chunk dưới camera giữ chi tiết cao, chunk xa hạ res; **cache geometry per (chunk,lod)** dựng-1-lần rồi **swap imperatively** (không rebuild/re-render), throttle theo quãng camera di chuyển (`RECOMPUTE_MOVE=30u`), skirt che khe. Mặc định uniform (chỉ culling) = **hình học trùng khít WorldTerrain**.
+- **STREAMING** (`updateActiveChunks` + WorldTerrainLod): với `loadRadius>0`, chỉ chunk gần camera **resident** (mount + dựng geometry); chunk xa **unmount + dispose geometry** (thả sau commit qua useEffect) → **trần bộ nhớ cố định** bất kể world to cỡ nào = đường mở world lớn hơn 1 mesh. Hysteresis (`unloadRadius > loadRadius`) chống thrash ở biên. (Streaming thả terrain xa → hợp view mặt đất/sương, KHÔNG hợp overview toàn map → opt-in.)
+- **WorldShowcase**: cờ `TERRAIN_CHUNKED` (mặc định **false** → giữ WorldTerrain đã kiểm chứng) + `TERRAIN_DYNAMIC_LOD` + `TERRAIN_LOAD_RADIUS` (0 = không stream). Export 4 hàm build texture từ WorldTerrain (cộng dồn `export`, không đổi hành vi).
+- **Verify SỐ (Node, three thật)**: uniform grid 36 chunk = **294912 tam giác KHỚP chính xác single-mesh** (parity=true), 0 NaN, phủ ±600 đủ, **seam gap = 0.0e0** (liền mạch), skirt đúng. **Đo trần tài nguyên (tĩnh)**: overview 100%, walk 19%, fly góc 12%. **LOD động**: camera ở góc (0,0)→near lod0/far(5,5) lod2; sang góc đối diện → **tái tâm chi tiết** (lods A≠B), 0 NaN, ~14% tam giác uniform. → PASS.
+- **Verify streaming (Node)**: world **16×16=256 chunk**, camera quét toàn map → **tối đa 22 chunk resident (9%)**, dựng lazy 100/thả 92 khi rời, 0 NaN → trần bộ nhớ chặn. PASS.
+- **Verify khác**: tsc 0 · src Vitest **54/54** (+12 chunkLod: LOD động + streaming) · test:frontend **237/237** · lint 4 file M3 **0 lỗi** · `npm run build` ✅.
+- **Trung thực**: bản LOD *live* (mượt popping/skirt trông thế nào) CHƯA nhìn tận mắt (Browser pane không hiển thị trên máy này) → để **opt-in OFF**; uniform mode đã chứng minh trùng khít + logic LOD động verify bằng harness/test. Bật: `TERRAIN_CHUNKED=true` (+ `TERRAIN_LOD_DISTANCES=[520,900]`/`TERRAIN_SKIRT=6` cho LOD).
+- **Còn lại M3**: chỉ còn **Simulation-LOD backend** (agent trong active-radius chạy brain đầy đủ, ngoài đó cập nhật thống kê) — ở backend, nên phối hợp với phiên đang sửa backend để tránh xung đột. (Terrain chunk + LOD động + streaming: XONG.)
+- **Tinh chỉnh**: `TERRAIN_CHUNKS_PER_SIDE`/`TERRAIN_LOD_DISTANCES`/`TERRAIN_SKIRT` (WorldShowcase); `resForLod`/`minRes` (chunkLod.ts).
+
+---
+
+# 🕳 M4 — HANG ĐỘNG THẬT: hốc 3D thay decal phẳng (2026-07-24)
+
+Theo yêu cầu "hang động" trong danh sách môi trường. Thay decal ellipse đen phẳng (`WorldCaves` cũ) bằng **hình khối 3D thật**. **KHÔNG bump `WORLD_GEN_VERSION`** (data hang `cave*` không đổi — thuần render, cache giữ nguyên).
+
+- **`utils/caveGeometry.ts` mới** (`buildCavesGeometry`): mỗi cửa hang thành **funnel đá noise-displaced** — loe rộng ở miệng (gồ nhẹ khỏi vách theo hướng downhill) rồi thóp dần về **túi tối kín**; vertex color tối dần vào trong (miệng sáng đá, đáy gần đen) nên hốc đọc là hang dù nắng chiều nào; jitter bán kính per-vertex cho vách gồ ghề. Ngồi trên **đúng mặt mesh** qua `sampleMeshHeight`. Tất cả gộp **1 BufferGeometry / 1 draw call** (97 vertex + 180 tam giác mỗi hang).
+- **`WorldCaves.tsx`**: đổi từ InstancedMesh CircleGeometry unlit → 1 `<mesh>` gộp + `MeshStandardMaterial` vertexColors, DoubleSide, có ánh sáng (hết cảm giác sticker đen). Thêm prop `meshResolution`.
+- **Giới hạn trung thực (heightmap)**: mesh terrain liên tục không đục lỗ được ở res 384, nên hang xuyên-núi đi-vào-được sẽ bị vách che. Hốc concave lồi nhẹ là cách render cửa hang KHÔNG bị che trên biểu diễn heightmap; hang xuyên/overhang thật cần **voxel/SDF terrain** (WORLD_DESIGN M4+). Vẫn là nâng cấp thật (khối 3D + parallax + đổ bóng) so với decal.
+- **Verify:** tsc 0 · lint 2 file hang 0 lỗi · builder standalone Node **PASS** (@1024² 12 hang→1164 vertex/2160 tam giác; @2048² 50 hang→4850 vertex/9000 tam giác; **0 NaN, 0 index lỗi, có color+normal, Y ngồi trên vách 0–88u**) · src Vitest **42/42** · test:frontend **237/237** · `npm run build` ✅. World v20 nạp trong browser (50 hang, 0 lỗi three/WebGL). *(Screenshot live bất khả — Browser pane không hiển thị trên máy này; verify qua builder standalone + render path chuẩn + tests.)*
+- **Tinh chỉnh:** `RINGS`/`SEG` (độ mịn), `depth`/`mouthR`/`sag` (hình dạng), tông đá `rim`/`deep` trong caveGeometry.ts.
+- Lưu ý: 1 lỗi `npm run lint` ở `scripts/bench_baseline.mjs` là của phiên song song (M2/benchmark), không phải M4.
+
+---
+
+# 🏝 v20 — M1 HOÀN TẤT: delta cửa sông + hồ nội lưu (endorheic salt lake) (2026-07-24)
+
+Vá nốt vật lý thủy văn (M1) theo yêu cầu "đủ môi trường + đúng vật lý". **Bump `WORLD_GEN_VERSION` 19→20.**
+
+- **Delta cửa sông** (Pass 4d mới): nơi sông (`riverAmt≥150`) gặp biển, bồi tích cát theo quạt flow-scaled vào vùng nông (depth<0.03) → đáy nông dần, ô vượt mực biển nổi thành **cồn cát Beach** (delta thêm chút đất — đúng thực tế, đất vẫn ~38%). ~90 cửa sông @1024².
+- **Hồ nội lưu (endorheic)** (Pass 4b-2 tách THEO TỪNG hồ): `computeLakes` giờ trả `outletPaths` per-basin (thay flat `outlets`). Mỗi bồn tính moisture TB trên ô hồ; **khô (< `ENDORHEIC_MOISTURE=0.24`) → hồ TẬN**: KHÔNG route sông thoát (bốc hơi cân bằng dòng vào), đặt cờ `saline` + viền **salt flat** (Beach) quanh hồ. Ẩm → vẫn spillway ra sông như v19. → **4/25 hồ nội lưu @1024² (~16%, khớp Trái Đất ~18% đất nội lưu)**. `LakeBasin` thêm cờ `saline?`.
+- **Verify:** tsc 0 · smoke @1024² saline=4/25, mouths=90, 0 NaN, 22/22, đất 38.0% · @2048² 3.9s, 28 hồ, 450 thác, 0 NaN, 22/22 · cargo lib **36/36** (fixture world thật tái sinh v20) · src Vitest **21/21** · test:frontend **237/237** · lint 0 · build ✅. *(Render tái dùng đường Beach/Lake sẵn có — chưa screenshot.)*
+- **🎉 M1 (vá vật lý thủy văn) HOÀN TẤT**: hồ thoát nước (v19) + delta cửa sông + endorheic (v20). Còn: M2 xác nhận runtime trực quan (cần app), M3 chunk/LOD, M4 hang thật.
+- **Tinh chỉnh:** ngưỡng nội lưu → `ENDORHEIC_MOISTURE` (0.24); kích thước/độ nông delta → `DELTA_DEPOSIT`/`DELTA_MAX_DEPTH`/`DELTA_MIN_RIVER` (Pass 4d).
+
+---
+
+# 🌊 v19 — Sông THOÁT HỒ (spillway) + tài liệu WORLD_DESIGN + phát hiện map tách đôi (2026-07-24)
+
+Người dùng đặt lại mục tiêu "map chân thực, đúng vật lý, đủ môi trường, cache, tối ưu cho triệu agent". Khảo sát 2 tầng phát hiện **map bị TÁCH ĐÔI**: world 3D đẹp (`worldGen.ts` 2048²/22 biome, có cache IndexedDB) chỉ là **trang trí**; agent thật sống ở `terrain.rs` **128²/11 biome, KHÔNG cache, sinh lại mỗi lần chạy**. Đã lập **[`WORLD_DESIGN.md`](WORLD_DESIGN.md)** (khảo sát hiện trạng + tham chiếu kỹ thuật + kiến trúc "một world quyền lực, sinh 1 lần, cache, dùng chung" + roadmap M0–M5). **Bump `WORLD_GEN_VERSION` 18→19.**
+
+- **Vá vật lý #1 — mọi hồ đều THOÁT NƯỚC** (`computeLakes` trả thêm `outlets` + Pass 4b-2): Priority-Flood đã biết mực tràn + mặt `filled` không-lõm. Với mỗi bồn giữ lại, **BFS trên plateau ngập** (cell `filled ≈ level` nối với hồ) tới ngưỡng tràn thật (`filled < level`) → route steepest-descent trên `(filled, elev)` xuống biển/hồ thấp hơn → stamp `riverAmt=170` + `Biome.River` (guard giống River overlay: không đè băng/biển/hồ). Trước đây hồ là **vũng kín** (bản legacy `terrainGenerator.ts` từng route spillway, bản SoA làm mất) — nay **bảo toàn nước**: hồ→suối→biển/cascade.
+- **Bài học**: hàng xóm trực tiếp của cell-hồ luôn ở `filled = level` (vành nông), không bao giờ `< level` → pour-detection ngây thơ cho `outlets=0`; phải **BFS qua plateau** mới chạm ngưỡng tràn.
+- **Verify (frontend v19):** `tsc --noEmit` 0 lỗi · smoke @1024² **outlets=386/newRiver=215** (River 8901→9116), 0 NaN, 22/22, đất 38.0% · smoke @2048² 4.3s, 28 hồ, 450 thác, 0 NaN, 22/22 · src Vitest **17/17** · test:frontend **237/237** · lint **0 lỗi** (441 warning legacy) · `npm run build` ✅ (2 entry). *(Chưa chụp screenshot headless — thay đổi thuần data, tái dùng đường render river/`riverAmt` sẵn có.)*
+- **M0 ĐÃ CHỐT: A→B** (frontend giàu làm nguồn trước, port Rust sau, giữ định dạng đọc).
+- **M2 (một phần) — BACKEND sinh-1-lần + cache đĩa + reload** (nơi agent THẬT sống, trước đây sinh lại mỗi lần): `TerrainMap` thêm `Serialize/Deserialize`; **`TerrainMap::load_or_generate(settings, cache_dir)`** — băm key từ settings+`MapConfig`+`WORLD_CACHE_VERSION` → cache hit đọc thẳng bincode từ đĩa (bỏ qua sinh), miss thì sinh + ghi best-effort; `init_world` dùng nó (override `ANIMA_CACHE_DIR`, mặc định `temp/anima_world_cache`). Sinh vốn đã deterministic (RNG seed) nên cache là tối ưu tốc độ chồng lên bảo đảm đó. **Verify backend:** `cargo test --lib terrain::tests` **9/9** (3 mới: round-trip bincode exact, `generate_is_deterministic`, cache write→reload identical) · `cargo clippy --lib` **0 warning**.
+- **M2 (cốt lõi) — WORLD ARTIFACT dùng chung + chứng minh liên-ngôn-ngữ** (ghép hai world làm một, verify KHÔNG cần chạy app): định dạng nhị phân LE trung tính (magic `ANMW`, `elevation/moisture/temperature/flow` f32 + `biome` u8 — **không dùng bincode Rust-only**). Cài 2 phía: Rust `core/world_artifact.rs` (`from_bytes/to_bytes` + `to_terrain_map` downsample + **map biome 22→11**) và TS `utils/worldArtifact.ts` (`encode/decodeWorldArtifact`). **Chứng minh:** fixture do **encoder TS** ghi (`scripts/gen_artifact_fixture.ts` → `src-tauri/tests/fixtures/world_4x4.anmw`) được **cargo-test đọc lại, assert byte-cho-byte khớp Rust** (`decodes_frontend_generated_fixture`). `init_world` nay đọc `ANIMA_WORLD_ARTIFACT` → agent sống trên **chính world frontend sinh ra** (fallback cache nếu vắng). **Verify:** cargo `world_artifact` **5/5** · lib **34/34** · clippy 0 · tsc 0 · src Vitest **20/20** (worldArtifact 3) · lint 0 lỗi · build ✅.
+- **M2 (luồng runtime) — GHÉP HAI WORLD chạy thật, verify luồng DỮ LIỆU end-to-end (không cần app)**: frontend `worldCache.loadOrGenerateWorld` → `worldToArtifact(world, 256)` (downsample) → `invoke('save_world_artifact', bytes)`; backend command `save_world_artifact` **validate + ghi** ra `default_artifact_path()` (env `ANIMA_WORLD_ARTIFACT`, mặc định temp); `init_world` đọc path đó → `to_terrain_map` → **agent sống trên world frontend sinh ra** (fallback cache nếu chưa có). **Bằng chứng:** cargo test `real_frontend_world_becomes_valid_terrain_map` — world **THẬT 128²** từ `worldGen.ts` (fixture `world_real_128.anmw` do frontend encode) → TerrainMap backend hợp lệ **có cả biển lẫn đất**; `write_to_path_validates_then_reloads`. **Verify:** cargo lib **36/36** · clippy 0 · tsc 0 · src Vitest **21/21** (worldArtifact 4) · test:frontend **237/237** · lint 0 · build ✅.
+- **Còn lại (roadmap WORLD_DESIGN.md)**: M1 (delta cửa sông + bồn nội lưu); **M2 chỉ còn XÁC NHẬN TRỰC QUAN runtime (dòng `invoke` chạy thật trong Tauri + sim đọc đúng) + 3D render TỪ world chung + terrain vào save-state — CẦN CHẠY APP (không làm trên Vostro yếu)**; M3 chunk/LOD/sim-LOD; M4 hang thật (voxel). *Thuật toán + luồng dữ liệu đã xong & verify.*
+- **Tinh chỉnh:** độ đậm suối thoát → `riverAmt=170` (Pass 4b-2); ngưỡng plateau → eps `1e-6`; vị trí cache backend → `ANIMA_CACHE_DIR`; invalidate cache → `WORLD_CACHE_VERSION` (terrain.rs).
+
+---
+
+# 🧬 E11 — Metric đồng tiến hoá (Red Queen): phân kỳ niche + độ phủ archive (2026-07-03)
 
 Tiếp Phase 7 (E11). Đo bằng chứng đua vũ trang predator-prey + open-endedness.
 
