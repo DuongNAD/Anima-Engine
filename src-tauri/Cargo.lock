@@ -75,6 +75,7 @@ dependencies = [
 name = "anima-domain"
 version = "0.1.0"
 dependencies = [
+ "bevy_ecs",
  "serde",
 ]
 

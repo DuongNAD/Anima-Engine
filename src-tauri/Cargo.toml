@@ -15,7 +15,7 @@ tauri-plugin-shell = "2.0.0"
 # the hot path — the zero-allocation rule in SIMULATION_RULES.md. Feature of an existing dependency,
 # not a new crate. Note: deserialization does not deduplicate shared Arcs, which is fine here because
 # each agent owns its own genome.
-anima-domain = { path = "crates/anima-domain" }
+anima-domain = { path = "crates/anima-domain", features = ["bevy"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 # `raw_value` lets the snapshot envelope hold the state as the exact bytes written to disk, so the
 # checksum covers those bytes instead of a re-serialization. serde_json's f64 round trip is not

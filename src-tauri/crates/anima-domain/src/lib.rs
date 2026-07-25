@@ -15,6 +15,7 @@
 //! keeps working and the extraction is not a breaking change for the rest of the tree.
 
 pub mod causal;
+pub mod energy;
 pub mod intervention;
 pub mod laws;
 pub mod sim_clock;

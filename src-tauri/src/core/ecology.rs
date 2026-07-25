@@ -470,25 +470,10 @@ pub fn biome_from_u8(b: u8) -> BiomeType {
 
 // ---- Closed biomass pool (conservation / anti-collapse) --------------------------------
 
-/// The world's conserved energy ledger. Energy lost to metabolism, unassimilated predation
-/// and death is returned here as detritus; plant regrowth draws it back down. Tracking the
-/// three compartments lets the dashboard show trophic balance and proves conservation.
-#[derive(Resource, Clone, Copy, Debug, Default)]
-pub struct EcosystemBiomass {
-    /// Free detritus/energy available to regrow plants.
-    pub detritus: f64,
-    /// Standing plant biomass (mirrors ResourceField total, updated each tick).
-    pub plants: f64,
-    /// Energy currently embodied in living animals.
-    pub animals: f64,
-}
-
-impl EcosystemBiomass {
-    /// Total energy in the closed system (should stay ~constant → conservation check).
-    pub fn total(&self) -> f64 {
-        self.detritus + self.plants + self.animals
-    }
-}
+// The closed-energy compartments moved to `anima-domain` (G2 task 1) — both engines must share one
+// definition of the conserved ledger. Re-exported so every `ecology::EcosystemBiomass` path keeps
+// working.
+pub use anima_domain::energy::EcosystemBiomass;
 
 #[cfg(test)]
 mod tests {
