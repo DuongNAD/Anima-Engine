@@ -688,9 +688,18 @@ pub fn serialize_world_state(
         pheromone_grid,
         foods,
         agents,
-        evolution_settings: evolution_settings.lock().unwrap().clone(),
-        map_elites_grid: map_elites_grid.lock().unwrap().clone(),
-        chronicle_history: chronicle_history.read().unwrap().clone(),
+        evolution_settings: evolution_settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
+        map_elites_grid: map_elites_grid
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
+        chronicle_history: chronicle_history
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
         lineage_nodes: lineage_tracker.get_lineage_graph().unwrap_or_default().0,
         lineage_relations: lineage_tracker.get_lineage_graph().unwrap_or_default().1,
         lakes,

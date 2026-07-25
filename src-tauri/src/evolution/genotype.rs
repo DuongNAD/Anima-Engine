@@ -64,9 +64,18 @@ pub fn decode_genotype(
     use crate::physics::SpatialCollider;
     use std::collections::{HashSet, VecDeque};
 
-    if genotype.nodes.is_empty() {
-        panic!("Cannot decode empty genotype");
-    }
+    // Kept as a panic rather than converted to a `Result`, deliberately.
+    //
+    // `decode_genotype` returns an `Entity` and is called from genesis, birth, epoch replacement,
+    // restore and migration. Threading a `Result` out would change all of those, and every caller
+    // would have to invent an answer to "what is a creature with no body" — which is a question the
+    // creature-development contract already answers by construction: a genotype with no nodes cannot
+    // be produced by mutation, crossover or decode, so reaching here means an upstream invariant is
+    // already broken and continuing would spawn a corrupt agent into the world.
+    assert!(
+        !genotype.nodes.is_empty(),
+        "cannot decode a genotype with no nodes; a morphology genome always has at least a root"
+    );
 
     // Find the root node: the first node in genotype.nodes or a node with no incoming edges.
     let has_incoming: HashSet<u32> = genotype.edges.iter().map(|e| e.target_node).collect();

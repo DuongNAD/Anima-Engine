@@ -211,7 +211,9 @@ impl SimulationEngine {
 
         let evo_handle = thread::spawn(move || {
             let initial_resolution = {
-                let settings = evolution_settings_clone.lock().unwrap();
+                let settings = evolution_settings_clone
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 settings.grid_resolution
             };
             let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
@@ -339,7 +341,9 @@ impl SimulationEngine {
 
                     let mut grid_updated = false;
                     let (selection_bias, mutation_rate, grid_res) = {
-                        let settings = evolution_settings_clone.lock().unwrap();
+                        let settings = evolution_settings_clone
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         (
                             settings.selection_bias,
                             settings.mutation_rate,
@@ -393,7 +397,9 @@ impl SimulationEngine {
                         }
 
                         let grid_to_emit = {
-                            let grid_state = map_elites_grid_clone.lock().unwrap();
+                            let grid_state = map_elites_grid_clone
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner());
                             grid_state.clone()
                         };
                         if let Some(ref handle) = app_handle_evo {
@@ -502,7 +508,10 @@ impl SimulationEngine {
             crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
 
         let sim_handle = thread::spawn(move || {
-            let state_to_load = pending_load_state_clone.lock().unwrap().take();
+            let state_to_load = pending_load_state_clone
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
 
             let mut world = init_world();
 
@@ -700,7 +709,9 @@ impl SimulationEngine {
             world.insert_resource(BevyAppHandle(app_handle_clone));
 
             let initial_resolution = {
-                let settings_lock = evolution_settings_clone_save.lock().unwrap();
+                let settings_lock = evolution_settings_clone_save
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 settings_lock.grid_resolution
             };
             world.insert_resource(ActiveEvolutionSettings {
@@ -1403,14 +1414,29 @@ impl SimulationEngine {
         let inbound_tx_clone = inbound_tx.clone();
 
         let net_handle = thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            // Deliberately fatal, and confined to this thread: without a runtime there is no
+            // cross-shard migration at all, and every path below is `rt.block_on`. The message is
+            // the point — a bare `.unwrap()` here reported only "called Option::unwrap on a None
+            // value" from a thread the user never started explicitly.
+            let rt = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
-                .unwrap();
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!(
+                        "migration thread could not start a tokio runtime ({e}); cross-shard \
+                         migration is disabled for this run"
+                    );
+                    return;
+                }
+            };
 
             rt.block_on(async {
                 let local_port = {
-                    let config = sharding_config_clone.read().unwrap();
+                    let config = sharding_config_clone
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner());
                     config.local_port
                 };
 

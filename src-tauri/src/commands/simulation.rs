@@ -81,10 +81,19 @@ pub fn load_simulation_state(
         engine.stop();
     }
 
-    *state.evolution_settings.lock().unwrap() = loaded_state.evolution_settings.clone();
-    *state.map_elites_grid.lock().unwrap() = loaded_state.map_elites_grid.clone();
+    *state
+        .evolution_settings
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = loaded_state.evolution_settings.clone();
+    *state
+        .map_elites_grid
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = loaded_state.map_elites_grid.clone();
 
-    *engine.pending_load_state.lock().unwrap() = Some(loaded_state);
+    *engine
+        .pending_load_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(loaded_state);
 
     engine.start(
         Some(app_handle),
