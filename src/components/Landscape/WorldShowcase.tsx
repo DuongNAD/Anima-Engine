@@ -20,6 +20,11 @@ import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
 import {
+  SHARED_WORLD_SEED as WORLD_SEED,
+  SHARED_WORLD_SIZE as WORLD_SIZE,
+  SHARED_WORLD_SHAPE as WORLD_SHAPE,
+} from '../../utils/sharedWorld';
+import {
   focusFromLookAt,
   sendLodFocus,
   sendLodFocusNow,
@@ -31,11 +36,10 @@ import {
 import { sunDirectionForTime } from './utils/skyParams';
 import { audioManager } from './utils/audioManager';
 
-// Data resolution of the world (cells). Rendering is decoupled from this (see RENDER_SIZE).
-// 2048^2 = ~4M cells: a huge, detailed continent generated once (off-thread) and cached.
-const WORLD_SIZE = 2048;
-const WORLD_SEED = 'seed';
-const WORLD_SHAPE: 'island' | 'continent' = 'continent';
+// The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
+// aliased to the names this file already used. It moved because the main app pushes the *same*
+// world to the simulation: a second copy of those three values would not fail, it would make the
+// world the agents live on depend on which page loaded last.
 
 // World-space extent the terrain is drawn at (independent of WORLD_SIZE).
 const RENDER_SIZE = 1200;
