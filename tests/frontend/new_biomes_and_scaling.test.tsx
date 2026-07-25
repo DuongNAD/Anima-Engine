@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import {
   generateTerrain,
@@ -11,19 +11,19 @@ import { Minimap } from '../../src/components/Landscape/Minimap';
 import Water from '../../src/components/Landscape/Water';
 
 // Mock react-three-fiber Canvas and useFrame
-let frameCallbacks: Array<(state: any, delta: number) => void> = [];
+let frameCallbacks: FrameCb[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCb) => {
       frameCallbacks.push(cb);
     },
   };
 });
 
 describe('New Biomes and Terrain Scaling Tests', () => {
-  let originalSetAttribute: any;
+  let originalSetAttribute: typeof HTMLElement.prototype.setAttribute;
 
   beforeEach(() => {
     frameCallbacks = [];
@@ -43,8 +43,8 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     });
 
     HTMLElement.prototype.addLevel = vi.fn().mockImplementation(function (
-      this: any,
-      mesh: any,
+      this: MockLodElement,
+      mesh: unknown,
       distance: number
     ) {
       this.levels.push({ object: mesh, distance });
@@ -66,9 +66,9 @@ describe('New Biomes and Terrain Scaling Tests', () => {
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
     HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: any,
+      this: MockAttrElement,
       name: string,
-      value: any
+      value: string
     ) {
       if (value instanceof THREE.BufferAttribute) {
         this._capturedAttributes.set(name, value);
@@ -123,13 +123,13 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (HTMLElement.prototype as any).levels;
-    delete (HTMLElement.prototype as any).addLevel;
-    delete (HTMLElement.prototype as any).setIndex;
-    delete (HTMLElement.prototype as any).computeVertexNormals;
-    delete (HTMLElement.prototype as any)._capturedAttributes;
-    delete (HTMLElement.prototype as any).uniforms;
-    delete (HTMLElement.prototype as any).geometry;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).levels;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).addLevel;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).setIndex;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).computeVertexNormals;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>)._capturedAttributes;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).uniforms;
+    delete (HTMLElement.prototype as unknown as Record<string, unknown>).geometry;
   });
 
   describe('1. 1000x1000 Terrain Scaling', () => {
@@ -154,13 +154,13 @@ describe('New Biomes and Terrain Scaling Tests', () => {
       
       // Check that temperature field is present on the cell structure
       expect(sampleCell).toHaveProperty('temperature');
-      expect(typeof (sampleCell as any).temperature).toBe('number');
+      expect(typeof sampleCell.temperature).toBe('number');
     });
   });
 
   describe('2. Biome Determination with Temperature Bounds', () => {
     it('should determine the correct biome based on elevation, moisture, and temperature', () => {
-      const determineBiomeFn = determineBiome as any;
+      const determineBiomeFn = determineBiome;
 
       // Desert: Hot and dry
       expect(determineBiomeFn(30, 15, 0.8)).toBe('desert');
@@ -178,7 +178,7 @@ describe('New Biomes and Terrain Scaling Tests', () => {
 
   describe('3. Biome Coloring Updates', () => {
     it('should return correct colors for the new biomes', () => {
-      const getBiomeColorFn = getBiomeColor as any;
+      const getBiomeColorFn = getBiomeColor;
 
       // Desert: sand color (e.g. reddish-yellow, r > 0.7, g > 0.6)
       const desertColor = getBiomeColorFn(30, 15, 0.8);
@@ -215,7 +215,7 @@ describe('New Biomes and Terrain Scaling Tests', () => {
       terrain.flora.forEach((f) => {
         const cx = Math.floor(f.x);
         const cy = Math.floor(f.y);
-        const cell = terrain.grid[cy][cx] as any;
+        const cell = terrain.grid[cy][cx];
 
         if (cell.biome === 'desert') {
           expect(f.type).toBe('Cactus');
@@ -241,14 +241,14 @@ describe('New Biomes and Terrain Scaling Tests', () => {
 
   describe('5. Minimap Cell Colors', () => {
     it('should draw correct colors on the minimap for the new biomes', () => {
-      let capturedImageData: any = null;
+      let capturedImageData: ImageData | null = null;
       const originalGetContext = HTMLCanvasElement.prototype.getContext;
       
       HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function(type: string) {
         if (type === '2d') {
           return {
             createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
-            putImageData: (imgData: any) => {
+            putImageData: (imgData: ImageData) => {
               capturedImageData = imgData;
             },
             fillRect: vi.fn(),

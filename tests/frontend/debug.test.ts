@@ -1,5 +1,5 @@
 import { describe, it } from 'vitest';
-import { ImprovedNoise2D, determineBiome, poissonDiskSampling, mulberry32 } from '../../src/components/Landscape/utils/terrainGenerator';
+import { ImprovedNoise2D } from '../../src/components/Landscape/utils/terrainGenerator';
 
 describe('simulate end-to-end waterfalls', () => {
   it('runs peak search increment 1 and lake/river generation', () => {
@@ -42,9 +42,7 @@ describe('simulate end-to-end waterfalls', () => {
 
     const baseSeed = hashString(seed);
     const elevationNoise = new ImprovedNoise2D(baseSeed);
-    const lakeNoise = new ImprovedNoise2D(baseSeed + 5000);
-    const random = mulberry32(baseSeed);
-
+    const lakeNoise = new ImprovedNoise2D(baseSeed + 5000);
     const terrElev = new Float32Array(width * height);
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
@@ -240,9 +238,7 @@ describe('simulate end-to-end waterfalls', () => {
             if (rx < 0 || rx >= width || ry < 0 || ry >= height) continue;
             const ri = ry * width + rx;
             const d = Math.sqrt(dx * dx + dy * dy);
-            if (d <= rw && isRiver[ri] === 0) {
-              const profile = 1 - Math.pow(d / rw, 2);
-              if (d <= rw * 0.7) {
+            if (d <= rw && isRiver[ri] === 0) {              if (d <= rw * 0.7) {
                 isRiver[ri] = drop > dropThreshold ? 2 : 1;
               }
             }

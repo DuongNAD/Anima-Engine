@@ -4,6 +4,16 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as THREE from 'three';
 import { audioManager } from './utils/audioManager';
 
+// Diagnostics handles the landscape tests and tooling read off . Typed rather than cast
+// per use: six  casts said nothing about what is actually published there.
+interface DiagnosticsWindow extends Window {
+  getTerrainHeight?: (x: number, z: number) => number;
+  globalTerrainHeightMap?: Float32Array;
+  teleportCameraTarget?: (wx: number, wz: number) => void;
+  activeCamera?: unknown;
+  activeScene?: unknown;
+}
+
 extend({ OrbitControls });
 
 declare global {
@@ -64,10 +74,10 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   // Expose helper globally and register teleport handler
   useEffect(() => {
-    (window as any).getTerrainHeight = getTerrainHeight;
-    (window as any).globalTerrainHeightMap = terrainHeightMap;
+    (window as unknown as DiagnosticsWindow).getTerrainHeight = getTerrainHeight;
+    (window as unknown as DiagnosticsWindow).globalTerrainHeightMap = terrainHeightMap;
 
-    (window as any).teleportCameraTarget = (wx: number, wz: number) => {
+    (window as unknown as DiagnosticsWindow).teleportCameraTarget = (wx: number, wz: number) => {
       const th = getTerrainHeight(wx, wz);
       activeTarget.current.set(wx, th, wz);
 
@@ -87,7 +97,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   // Keep track of the active camera reference for Minimap
   useEffect(() => {
-    (window as any).activeCamera = camera;
+    (window as unknown as DiagnosticsWindow).activeCamera = camera;
   }, [camera]);
 
   // Handle keyboard events
@@ -186,8 +196,8 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   useFrame((state) => {
     if (!camera) return;
-    (window as any).activeScene = state.scene;
-    (window as any).activeCamera = camera;
+    (window as unknown as DiagnosticsWindow).activeScene = state.scene;
+    (window as unknown as DiagnosticsWindow).activeCamera = camera;
 
     if (cameraMode === 'orbit') {
       if (orbitControlsRef.current && typeof orbitControlsRef.current.update === 'function') {
