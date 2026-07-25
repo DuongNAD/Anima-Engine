@@ -13,21 +13,21 @@ pub type DefaultBackend = burn_ndarray::NdArray<f32>;
 #[cfg(feature = "ml-wgpu")]
 type WgpuBackend = burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>;
 
-/// Run one forward pass and read it back, to find out whether this machine can actually run wgpu.
+/// Run one forward pass and read it back, so the wgpu probe measures the thing it claims to.
 ///
-/// This exists because the obvious probe does not work, and fails in the most expensive way: it
-/// reports success.
+/// The probe used to wrap only construction. On a GPU-less CI runner that returned `Ok`, the caller
+/// took the Wgpu branch, and `No adapter found for graphics API AutoGraphicsApi` arrived at the
+/// first tensor operation — outside the `catch_unwind` meant to catch it. The fallback was written,
+/// was correct, and never ran.
 ///
-/// Building a `WgpuDevice` and an `ActorCriticModel` over it is **lazy** in burn-wgpu 0.13 — no
-/// adapter is requested until the first real tensor operation. So a `catch_unwind` wrapped around
-/// construction alone returns `Ok` on a machine with no GPU, the caller takes the Wgpu branch
-/// believing the probe passed, and `No adapter found for graphics API AutoGraphicsApi` arrives
-/// later, at the first inference, outside every guard that was meant to catch it. The fallback was
-/// written, was correct, and never ran. It took a GPU-less CI runner to show it, because on any
-/// machine with a GPU both paths look identical.
+/// Exactly *when* burn-wgpu demands an adapter is not something this comment should assert. An
+/// attempt to pin it down locally, by building a `Wgpu<Metal>` model on Windows, panicked at
+/// construction — the opposite of what the CI log shows for `AutoGraphicsApi`. So the honest
+/// statement is narrower: the moment varies, and the guard has to span all of it. That is what this
+/// does — construction and a real operation, both inside one `catch_unwind`.
 ///
-/// `into_data` is the part that matters: it synchronises and copies back to the host, which is what
-/// forces the queued work to actually execute rather than sitting in a command buffer.
+/// `into_data` is the part that makes it an operation rather than a queue entry: it synchronises
+/// and copies back to the host, forcing the work to actually execute.
 #[cfg(feature = "ml-wgpu")]
 fn wgpu_survives_one_forward_pass(
     model: &ActorCriticModel<WgpuBackend>,
