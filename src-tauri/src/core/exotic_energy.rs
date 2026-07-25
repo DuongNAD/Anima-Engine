@@ -27,42 +27,9 @@ use serde::{Deserialize, Serialize};
 
 // ---- Typed identifiers (AE-201) --------------------------------------------------------------
 
-/// The canonical biomass-equivalent energy unit. An exotic law may never claim it.
-pub const EU_UNIT: &str = "EU";
-/// The MVP exotic-energy unit — "mana unit". Distinct from [`EU_UNIT`] by contract (ER04).
-pub const MU_UNIT: &str = "MU";
-
-/// A stable identifier for an exotic energy source (e.g. `"arcane_flux"`). Newtype so it can never be
-/// confused with a display name or a unit string.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct EnergySourceId(pub String);
-
-impl EnergySourceId {
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-/// A stable unit identifier (e.g. `"MU"`, `"EU"`). Newtype so unit mixing is a type error, not a
-/// silent string coincidence.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct UnitId(pub String);
-
-impl UnitId {
-    pub fn new(u: impl Into<String>) -> Self {
-        Self(u.into())
-    }
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-    /// Whether this unit is the closed-EU biomass-equivalent unit (which an exotic source may not use).
-    pub fn is_eu(&self) -> bool {
-        self.0 == EU_UNIT
-    }
-}
+// The unit vocabulary moved into `anima-domain` (G2 task 1): both engines must mean the same thing
+// by "EU", and a vocabulary each defined for itself is the second source of truth G2 removes.
+pub use anima_domain::units::{EnergySourceId, UnitId, EU_UNIT, MU_UNIT};
 
 // ---- World-law data (AE-202 schema; behaviour validated below) -------------------------------
 
