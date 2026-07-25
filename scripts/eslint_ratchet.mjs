@@ -15,7 +15,7 @@ import process from 'node:process';
 
 // Measured on chore/init-and-frontend-test-fixes, 2026-07-25, with 0 errors.
 // Only ever lower this number.
-const DEFAULT_BASELINE = 445;
+const DEFAULT_BASELINE = 444;
 
 const parsed = Number.parseInt(process.env.ESLINT_WARNING_BASELINE ?? '', 10);
 const limit = Number.isFinite(parsed) ? parsed : DEFAULT_BASELINE;

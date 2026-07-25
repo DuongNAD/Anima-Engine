@@ -631,13 +631,21 @@ export function App() {
             if (event.payload.environmental_state) {
               setEnvironmentalState(event.payload.environmental_state);
             }
-            if (Array.isArray(event.payload.head_directions)) {
+            // `head_directions` is a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON
+            // OBJECT keyed by agent id — never an array. The old guard here was
+            // `Array.isArray(...)`, which is false for an object, so this branch never ran and head
+            // directions were silently never updated. The TypeScript type was right the whole time;
+            // only the consumer disagreed with it, which is exactly the class of drift a generated
+            // contract removes (G1.4).
+            const heads = event.payload.head_directions;
+            if (heads && typeof heads === 'object' && !Array.isArray(heads)) {
               const dirs: Record<number, [number, number, number] | undefined> = {};
-              event.payload.head_directions.forEach((d: any) => {
-                if (d && typeof d === 'object') {
-                  dirs[d.agent_id] = d.direction;
+              for (const [agentId, direction] of Object.entries(heads)) {
+                // Object keys arrive as strings even though the map is keyed by number.
+                if (Array.isArray(direction) && direction.length === 3) {
+                  dirs[Number(agentId)] = direction as [number, number, number];
                 }
-              });
+              }
               setHeadDirections(dirs);
             }
           }

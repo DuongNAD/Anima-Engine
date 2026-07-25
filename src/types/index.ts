@@ -32,11 +32,6 @@ export interface EnvironmentalState {
   elements: EnvironmentalElement[];
 }
 
-export interface HeadDirectionTelemetry {
-  agent_id: number;
-  direction: [number, number, number];
-}
-
 export interface SimulationTickPayload {
   segments: SegmentState[];
   environmental_state: EnvironmentalState;
