@@ -6,10 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Single Cargo crate (not a workspace); `tests/` is a second npm package with its own `node_modules`.
 
-- `src/` — React/TS frontend (PixiJS 8 for the 2D viewport, three + @react-three/fiber for the 3D landscape).
-- `src-tauri/` — Rust backend. Crate `anima-engine`, lib name `anima_engine_lib`. Modules under `src/`: `core/`, `ai/`, `evolution/`, `physics/`, `network/`, `commands/`.
-- `tests/` — frontend Vitest (`frontend/`) + Playwright (`e2e/`) suite with its own deps.
-
 ## Commands
 
 Frontend (run from repo root):
@@ -140,17 +136,9 @@ Hard rules:
   claim the live Bevy world is experiment-ready until its deterministic adapter and persistence
   gates pass.
 
-## Environment (Rust backend, loaded via dotenvy from `.env`, gitignored)
-
-- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (`ai/model.rs`).
-- `GEMINI_API_KEY` — Gemini REST in `evolution/meta_ai.rs`; absent → mock fallback.
-- `GEMINI_WEBSESSION_ENDPOINT` — Gemini Web-Session endpoint for `GeminiWebSessionClient`.
-- Neo4j credentials (`evolution/lineage.rs`) — falls back to in-memory offline mode when Neo4j is unavailable.
-
 ## Code style
 
-- TypeScript strict suite: `strict`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`. Path alias `@/*` → `src/*`. No Prettier/ESLint — match surrounding style.
-- Rust edition 2021; no `rustfmt.toml` (defaults).
+- No Prettier — match surrounding style. TS strict flags and the `@/*` alias live in `tsconfig.json`.
 
 ## Tauri IPC contract
 
