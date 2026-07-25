@@ -1,58 +1,47 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
+import { buildCavesGeometry } from './utils/caveGeometry';
 
 // ---------------------------------------------------------------------------------------
-// WorldCaves — cave mouths on steep bare-rock faces (World.cave*). Each mouth is a
-// near-black unlit ellipse set against the cliff (an unlit surface on a lit mountainside
-// reads as a hole), all instances in one draw call.
+// WorldCaves — real 3D cave mouths on steep bare-rock faces (World.cave*). Each mouth is a
+// rocky, noise-displaced funnel that flares open at the cliff and tapers back to a dark
+// pocket (see caveGeometry.ts), all merged into ONE lit mesh / one draw call. Vertex colours
+// carry the interior darkness so the hollow reads as a cave whatever the sun angle.
 // ---------------------------------------------------------------------------------------
 
 export interface WorldCavesProps {
   world: World;
   renderSize?: number;
   heightRatio?: number;
+  meshResolution?: number;
 }
 
-export const WorldCaves: React.FC<WorldCavesProps> = ({ world, renderSize = 400, heightRatio = 0.13 }) => {
-  const ref = useRef<THREE.InstancedMesh>(null);
-  const count = world.caveCount ?? 0;
+export const WorldCaves: React.FC<WorldCavesProps> = ({
+  world,
+  renderSize = 400,
+  heightRatio = 0.13,
+  meshResolution = 384,
+}) => {
   const heightUnits = renderSize * heightRatio;
 
-  const geom = useMemo(() => new THREE.CircleGeometry(1, 10), []);
+  const geom = useMemo(
+    () => buildCavesGeometry(world, renderSize, heightUnits, meshResolution),
+    [world, renderSize, heightUnits, meshResolution],
+  );
 
-  useLayoutEffect(() => {
-    const inst = ref.current;
-    if (!inst || count === 0) return;
-    const dummy = new THREE.Object3D();
-    const toWorld = renderSize / world.size;
-    for (let i = 0; i < count; i++) {
-      const yaw = world.caveYaw[i];
-      const dirX = Math.cos(yaw);
-      const dirZ = Math.sin(yaw);
-      // Proud of the face along the outward (downhill) bearing so it doesn't z-fight the mesh.
-      dummy.position.set(
-        world.caveX[i] * toWorld + dirX * 0.4,
-        world.caveE[i] * heightUnits + 0.9,
-        world.caveZ[i] * toWorld + dirZ * 0.4,
-      );
-      dummy.rotation.set(0, Math.PI / 2 - yaw, 0);
-      dummy.scale.set(1.5, 1.1, 1);
-      dummy.updateMatrix();
-      if (typeof inst.setMatrixAt === 'function') inst.setMatrixAt(i, dummy.matrix);
-    }
-    if (inst.instanceMatrix) inst.instanceMatrix.needsUpdate = true;
-  }, [world, count, renderSize, heightUnits]);
-
+  // Dispose the merged geometry when the world (and thus the geometry) changes or unmounts.
   useEffect(() => {
-    return () => geom.dispose();
+    return () => {
+      if (geom && typeof geom.dispose === 'function') geom.dispose();
+    };
   }, [geom]);
 
-  if (count === 0) return null;
+  if (!geom) return null;
   return (
-    <instancedMesh ref={ref} args={[geom, undefined as any, count]} name="world-caves">
-      <meshBasicMaterial color="#0b0906" side={THREE.DoubleSide} />
-    </instancedMesh>
+    <mesh geometry={geom} name="world-caves" frustumCulled={false}>
+      <meshStandardMaterial vertexColors roughness={1} metalness={0} side={THREE.DoubleSide} />
+    </mesh>
   );
 };
 

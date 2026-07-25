@@ -8,7 +8,7 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 18;
+export const WORLD_GEN_VERSION = 20;
 
 export enum Biome {
   Ocean = 0,
@@ -104,6 +104,8 @@ export interface LakeBasin {
   maxX: number;
   minY: number;
   maxY: number;
+  /** Endorheic (terminal) lake in an arid basin: no outflow river, ringed by a salt flat. */
+  saline?: boolean;
 }
 
 export interface World {
@@ -299,14 +301,15 @@ function classify(
     return Biome.Beach;
   }
 
-  // Mountain caps by lapsed temperature (+ a pure-height failsafe for the tallest peaks).
+  // Mountain caps by lapsed temperature (+ a height failsafe for the tallest COLD peaks).
   // The lines are NOT ruler-straight contours: wet flanks push the snowline down (more
   // precipitation), and steep faces shed their snow (need to be colder to stay white), so
   // the caps ripple and bare-rock streaks break through on the sheer sides — like a real
   // massif instead of dip-dyed cones.
   const capJit = (moist - 0.45) * 0.06;
   if (temp < T_GLACIER + capJit * 0.5) return Biome.Glacier;
-  if (temp < T_SNOW + capJit - slope * 0.05 || elev > 0.94) return Biome.Snow;
+  if (temp < T_SNOW + capJit - slope * 0.05 || (elev > 0.94 && temp < T_ROCK))
+    return Biome.Snow;
   if (temp < T_ROCK + capJit * 0.7 + slope * 0.04 || slope > INLAND_CLIFF_SLOPE) return Biome.Rock;
 
   // Rivers thread the vegetated land (they freeze over / vanish under the caps above).
@@ -368,7 +371,8 @@ function pickFlora(b: Biome, r: number): FloraType | -1 {
     case Biome.Tundra:
       return r < 0.52 ? FloraType.Bush : r < 0.92 ? FloraType.Tuft : FloraType.Rock;
     case Biome.Alpine:
-      return r < 0.55 ? FloraType.Tuft : r < 0.9 ? FloraType.Pine : FloraType.Rock; // scree blocks
+      // Alpine meadow sits just under the treeline: tufts + dwarf scrub over scree, no trees.
+      return r < 0.6 ? FloraType.Tuft : r < 0.9 ? FloraType.Bush : FloraType.Rock;
     case Biome.Forest:
       return r < 0.78 ? FloraType.Round : FloraType.Bush;
     case Biome.Grassland:
@@ -551,7 +555,7 @@ function computeLakes(
   elev: Float32Array,
   size: number,
   seaLevel: number,
-): { water: Float32Array; basins: LakeBasin[] } {
+): { water: Float32Array; basins: LakeBasin[]; outletPaths: number[][] } {
   const n = size * size;
   const filled = new Float32Array(n);
   const closed = new Uint8Array(n);
@@ -697,7 +701,113 @@ function computeLakes(
     const b = basinsAll[id];
     return { level: b.level, minX: b.minX, maxX: b.maxX, minY: b.minY, maxY: b.maxY };
   });
-  return { water, basins };
+
+  // ---- Spillway outflow routing (hydrological consistency) ------------------------------
+  // Priority-Flood already knows each basin's spill level AND the depression-free `filled`
+  // drainage surface (which descends monotonically to an outlet). From each kept basin's
+  // lowest saddle (its pour point) we trace the overflow downhill across `filled` until it
+  // reaches the ocean, another water body, or the map edge — so every lake DRAINS as a river
+  // instead of sitting as a sealed puddle (conservation of water). Returns the flat list of
+  // channel cell indices for the caller to stamp as rivers.
+  // One traced spillway path per KEPT basin (aligned with `basins`), so the caller can decide
+  // per-basin whether it actually drains (humid → river) or is a terminal salt lake (arid → none).
+  const outletPaths: number[][] = basins.map(() => []);
+  {
+    const keptOrder = new Int32Array(basinsAll.length).fill(-1);
+    keptIdx.forEach((id, k) => (keptOrder[id] = k));
+    // One seed cell per kept basin (any of its lake cells).
+    const seed = new Int32Array(basinsAll.length).fill(-1);
+    for (let i = 0; i < n; i++) {
+      const ci = comp[i];
+      if (ci >= 0 && kept[ci] && seed[ci] < 0) seed[ci] = i;
+    }
+    // The deep lake is ringed by a shallow flooded rim that shares the same `filled == level`
+    // plateau, so a lake cell's direct neighbours are never below the spill level — the escape
+    // is across that rim. Grow a BFS over the whole flooded plateau (cells with filled ≈ level)
+    // until it touches a cell with filled < level: that is the pour point (lowest saddle).
+    const pourExit = new Int32Array(basinsAll.length).fill(-1);
+    const plateauMark = new Int32Array(n).fill(-1); // basin id whose plateau BFS owns this cell
+    const stack: number[] = [];
+    for (let b = 0; b < basinsAll.length; b++) {
+      if (!kept[b] || seed[b] < 0) continue;
+      const level = basinsAll[b].level;
+      let bestFilled = Infinity;
+      stack.length = 0;
+      stack.push(seed[b]);
+      plateauMark[seed[b]] = b;
+      while (stack.length > 0) {
+        const c = stack.pop() as number;
+        const cx = c % size;
+        const cy = (c / size) | 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+            const ni = ny * size + nx;
+            if (plateauMark[ni] === b) continue;
+            if (filled[ni] > level + 1e-6) continue; // rim wall (real terrain) — not the plateau
+            if (filled[ni] < level - 1e-6) {
+              // Drains below the lake surface → a spill exit. Keep the lowest one.
+              if (filled[ni] < bestFilled) {
+                bestFilled = filled[ni];
+                pourExit[b] = ni;
+              }
+              continue;
+            }
+            plateauMark[ni] = b; // same flooded plateau — keep growing
+            stack.push(ni);
+          }
+        }
+      }
+    }
+    // Trace each spill exit downhill on (filled, then elevation) — filled keeps us depression-
+    // free, the elevation tiebreak drains flats without looping. Bounded by MAX_STEPS + a
+    // per-channel visited mark.
+    const traceMark = new Int32Array(n).fill(-1);
+    const MAX_STEPS = size * 2;
+    for (let b = 0; b < basinsAll.length; b++) {
+      if (!kept[b] || pourExit[b] < 0) continue;
+      const path = outletPaths[keptOrder[b]];
+      let cur = pourExit[b];
+      let steps = 0;
+      while (steps++ < MAX_STEPS) {
+        // The ocean, another lake, and the border are all outlets — stop there.
+        if (elev[cur] < seaLevel || water[cur] > 0) break;
+        const cx = cur % size;
+        const cy = (cur / size) | 0;
+        if (cx === 0 || cy === 0 || cx === size - 1 || cy === size - 1) break;
+        if (traceMark[cur] === b) break; // revisited within this basin's trace → stop (loop guard)
+        traceMark[cur] = b;
+        path.push(cur);
+        let best = -1;
+        let bestFilled = filled[cur];
+        let bestElev = elev[cur];
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = cx + dx;
+            const ny = cy + dy;
+            if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+            const ni = ny * size + nx;
+            if (
+              filled[ni] < bestFilled - 1e-7 ||
+              (filled[ni] <= bestFilled + 1e-7 && elev[ni] < bestElev - 1e-7)
+            ) {
+              best = ni;
+              bestFilled = filled[ni];
+              bestElev = elev[ni];
+            }
+          }
+        }
+        if (best < 0) break; // no descent available (already at an outlet)
+        cur = best;
+      }
+    }
+  }
+
+  return { water, basins, outletPaths };
 }
 
 /**
@@ -1141,16 +1251,132 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
 
   // ---- Pass 4b: lake basins (standing water in depressions) ----
-  const { water, basins: lakeBasins } = useLakes
+  const { water, basins: lakeBasins, outletPaths } = useLakes
     ? computeLakes(elevation, size, seaLevel)
-    : { water: new Float32Array(n), basins: [] as LakeBasin[] };
+    : { water: new Float32Array(n), basins: [] as LakeBasin[], outletPaths: [] as number[][] };
   // Recolour flooded cells as Lake so the terrain mesh + minimap read as water.
   if (useLakes) {
     for (let i = 0; i < n; i++) if (water[i] > 0) biome[i] = Biome.Lake;
   }
 
+  // ---- Pass 4b-2: lake drainage — humid basins spill a river; arid basins are terminal salt lakes ----
+  // computeLakes traced each basin's overflow downhill, but whether that overflow EXISTS depends on
+  // the water balance. In a wet basin the lake overtops its sill and feeds a river (exorheic). In an
+  // arid basin evaporation removes the inflow before it can spill, so the lake is ENDORHEIC — a
+  // terminal salt lake (Dead Sea / Great Salt Lake) with no outflow, ringed by a salt flat. We decide
+  // per basin from its mean moisture.
+  if (useLakes) {
+    const ENDORHEIC_MOISTURE = 0.24; // drier than this → the basin cannot overflow → terminal
+    for (let k = 0; k < lakeBasins.length; k++) {
+      const lb = lakeBasins[k];
+      let msum = 0;
+      let mcount = 0;
+      for (let y = lb.minY; y <= lb.maxY; y++) {
+        for (let x = lb.minX; x <= lb.maxX; x++) {
+          const i = y * size + x;
+          if (water[i] > 0) {
+            msum += moisture[i];
+            mcount++;
+          }
+        }
+      }
+      const meanMoist = mcount > 0 ? msum / mcount : 1;
+
+      if (meanMoist < ENDORHEIC_MOISTURE) {
+        // Endorheic: no outflow. Ring the lake with a thin salt flat (reuse Beach = pale sand).
+        lb.saline = true;
+        const y0 = Math.max(1, lb.minY - 1);
+        const y1 = Math.min(size - 2, lb.maxY + 1);
+        const x0 = Math.max(1, lb.minX - 1);
+        const x1 = Math.min(size - 2, lb.maxX + 1);
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const i = y * size + x;
+            if (water[i] > 0 || elevation[i] < seaLevel) continue;
+            const b = biome[i];
+            if (b === Biome.Lake || b === Biome.River || b === Biome.Glacier || b === Biome.Snow) continue;
+            let touchesLake = false;
+            for (let dy = -1; dy <= 1 && !touchesLake; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                if (water[(y + dy) * size + (x + dx)] > 0) {
+                  touchesLake = true;
+                  break;
+                }
+              }
+            }
+            if (touchesLake) biome[i] = Biome.Beach; // salt-flat ring around the terminal lake
+          }
+        }
+        continue; // this lake does not drain — skip its spillway
+      }
+
+      // Exorheic: stamp the traced spillway as an outflow river (mask + biome).
+      const path = outletPaths[k] ?? [];
+      for (let p = 0; p < path.length; p++) {
+        const i = path[p];
+        if (elevation[i] < seaLevel || water[i] > 0) continue;
+        const b = biome[i];
+        if (b === Biome.Glacier || b === Biome.Snow || b === Biome.Ocean || b === Biome.Lake) continue;
+        if (riverAmt[i] < 170) riverAmt[i] = 170; // visible outflow stream (mask + ribbon tint)
+        biome[i] = Biome.River;
+      }
+    }
+  }
+
   // ---- Pass 4c: shoreline band (damp sand around oceans & lakes) ----
   const shore = computeShore(elevation, water, size, seaLevel);
+
+  // ---- Pass 4d: river-mouth deltas — sandy sediment fans where rivers meet the sea ----
+  // A river drops its sediment load as it slows entering the ocean, shoaling the seabed and raising
+  // emergent sandy bars: a delta. We deposit a small flow-scaled fan into the near-shore shallows at
+  // each river mouth; cells raised above sea level become sandy Beach lobes, the rest stay bright
+  // sandy shallows. (Deltas legitimately add a little land, so the land fraction ticks up slightly.)
+  if (useLakes) {
+    const DELTA_MIN_RIVER = 150; // only substantial rivers build a delta
+    const DELTA_MAX_DEPTH = 0.03; // deposit only into the near-shore shallows
+    const DELTA_DEPOSIT = 0.05; // max sediment thickness at the mouth
+    const mouths: number[] = [];
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = y * size + x;
+        if (riverAmt[i] < DELTA_MIN_RIVER || elevation[i] < seaLevel) continue;
+        let sea = false;
+        for (let dy = -1; dy <= 1 && !sea; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const j = (y + dy) * size + (x + dx);
+            if (elevation[j] < seaLevel && water[j] === 0) {
+              sea = true;
+              break;
+            }
+          }
+        }
+        if (sea) mouths.push(i);
+      }
+    }
+    for (let m = 0; m < mouths.length; m++) {
+      const mi = mouths[m];
+      const strength = Math.min(1, riverAmt[mi] / 255);
+      const rad = 1 + Math.round(strength * 3);
+      const mx = mi % size;
+      const my = (mi / size) | 0;
+      for (let dy = -rad; dy <= rad; dy++) {
+        const yy = my + dy;
+        if (yy < 1 || yy >= size - 1) continue;
+        for (let dx = -rad; dx <= rad; dx++) {
+          const xx = mx + dx;
+          if (xx < 1 || xx >= size - 1) continue;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d > rad + 0.5) continue;
+          const j = yy * size + xx;
+          if (elevation[j] >= seaLevel || water[j] > 0) continue; // only deposit into open sea
+          if (seaLevel - elevation[j] > DELTA_MAX_DEPTH) continue; // hug the coast
+          const fan = (1 - d / (rad + 0.5)) * strength;
+          elevation[j] = Math.min(elevation[j] + fan * DELTA_DEPOSIT, seaLevel + 0.004);
+          if (elevation[j] >= seaLevel) biome[j] = Biome.Beach; // emergent sandy delta lobe
+        }
+      }
+    }
+  }
 
   // ---- Pass 4e: waterfalls — steep drops along river channels ----
   // A river cell whose steepest descent exceeds MIN_DROP reads as a waterfall: keep the lip
@@ -1282,9 +1508,21 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       // pickFlora returns -1 for ocean / beach / river / lake / snow / glacier.
       let ft = pickFlora(b, rng());
       if (ft === -1) continue;
-      // Tall trees cannot root on steep faces — scrub takes over near cliffs and up at the
-      // wind-blasted treeline slopes.
-      if (
+      // Above the treeline nothing tall can root: any tree that would land in the bare-rock
+      // band or colder (temp < T_ROCK — the same treeline classify() uses for the Rock cap)
+      // becomes alpine ground cover instead, so pines never climb onto the snow caps.
+      const isTallFlora =
+        ft === FloraType.Pine ||
+        ft === FloraType.Round ||
+        ft === FloraType.Jungle ||
+        ft === FloraType.Acacia ||
+        ft === FloraType.Palm ||
+        ft === FloraType.Cactus ||
+        ft === FloraType.DeadTree;
+      if (isTallFlora && temperature[i] < T_ROCK) {
+        ft = FloraType.Tuft;
+      } else if (
+        // Tall trees cannot root on steep faces either — scrub takes over near cliffs.
         slope[i] > 0.55 &&
         (ft === FloraType.Pine || ft === FloraType.Round || ft === FloraType.Jungle || ft === FloraType.Acacia || ft === FloraType.Palm)
       ) {

@@ -29,7 +29,7 @@ function hash01(x: number, y: number): number {
  * border texels into organic transitions for free. A subtle per-cell brightness jitter breaks
  * up the dead-flat look of wide single-biome fields. Palette = BIOME_RGB, same as the minimap.
  */
-function buildColorTexture(world: World): THREE.DataTexture {
+export function buildColorTexture(world: World): THREE.DataTexture {
   const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
   const data = new Uint8Array(size * size * 4);
   const RIVER_RGB = BIOME_RGB[Biome.River];
@@ -187,7 +187,7 @@ function buildColorTexture(world: World): THREE.DataTexture {
  * badlands) without double-counting the large shapes. Follows the same uv mapping as the
  * colour texture / water heightmap: texel (x, y) = data cell (x, y).
  */
-function buildNormalTexture(
+export function buildNormalTexture(
   world: World,
   renderSize: number,
   heightRatio: number,
@@ -247,7 +247,7 @@ function buildNormalTexture(
  * makes rivers and lakes catch the sun and glint as it moves — the single biggest "this is
  * real water" cue — for the cost of one small texture.
  */
-function buildRoughnessTexture(world: World): THREE.DataTexture {
+export function buildRoughnessTexture(world: World): THREE.DataTexture {
   const { size, biome, water, riverAmt, shore, elevation, seaLevel } = world;
   const res = Math.max(512, size >> 1);
   const scale = size / res;
@@ -289,7 +289,7 @@ function buildRoughnessTexture(world: World): THREE.DataTexture {
  * noise is mean-centred, its mipmaps average back to 1.0, so the effect self-fades with
  * distance for free.
  */
-function buildDetailTexture(): THREE.DataTexture {
+export function buildDetailTexture(): THREE.DataTexture {
   const N = 256;
   const G = 32; // base lattice
   const lat = new Float32Array((G + 1) * (G + 1));

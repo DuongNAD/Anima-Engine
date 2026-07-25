@@ -1,5 +1,25 @@
 import { generateWorld, WORLD_GEN_VERSION } from './worldGen';
 import type { World, WorldGenOptions } from './worldGen';
+import { worldToArtifact } from './worldArtifact';
+
+// Resolution of the shared World Artifact handed to the sim backend (the render world is far larger;
+// the sim only needs a modest grid, and downsampling keeps the IPC payload small).
+const SIM_ARTIFACT_SIZE = 256;
+
+/**
+ * Best-effort: hand the just-loaded world to the Rust backend (via the `save_world_artifact` command)
+ * so the SIMULATION runs on the SAME authoritative world that is rendered — the crux of unifying the
+ * two worlds. No-ops silently outside a Tauri context (the browser-only showcase, tests, SSR).
+ */
+async function persistWorldArtifact(world: World): Promise<void> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const buf = worldToArtifact(world, SIM_ARTIFACT_SIZE);
+    await invoke('save_world_artifact', { bytes: Array.from(new Uint8Array(buf)) });
+  } catch {
+    /* not under Tauri, or backend unavailable — rendering is unaffected */
+  }
+}
 
 // ---------------------------------------------------------------------------------------
 // Persistent cache for the huge SoA World.
@@ -157,6 +177,7 @@ export async function loadOrGenerateWorld(seed: string | number, opts: WorldGenO
       const cached = await idbGet(key);
       if (isValid(cached, size)) {
         memo.set(key, cached);
+        void persistWorldArtifact(cached);
         return cached;
       }
     } catch {
@@ -171,6 +192,7 @@ export async function loadOrGenerateWorld(seed: string | number, opts: WorldGenO
       /* best-effort persistence; rendering does not depend on it */
     });
   }
+  void persistWorldArtifact(generated);
   return generated;
 }
 

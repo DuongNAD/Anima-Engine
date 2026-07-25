@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import WorldTerrain from './WorldTerrain';
+import WorldTerrainLod from './WorldTerrainLod';
 import WorldVegetation from './WorldVegetation';
 import WorldWater from './WorldWater';
 import WorldWaterfalls from './WorldWaterfalls';
@@ -31,6 +32,20 @@ const WORLD_SHAPE: 'island' | 'continent' = 'continent';
 const RENDER_SIZE = 1200;
 const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
+// M3: opt-in chunked terrain (frustum-culls off-screen chunks; see WorldTerrainLod / chunkLod).
+// OFF by default = the proven single-mesh WorldTerrain. Turn on for a chunked terrain; add
+// TERRAIN_LOD_DISTANCES (e.g. [520, 900]) + TERRAIN_SKIRT (e.g. 6) to also drop distant detail,
+// which then FOLLOWS THE CAMERA (TERRAIN_DYNAMIC_LOD). Uniform mode (empty distances) is
+// geometry-identical to WorldTerrain; verify the LOD look on real hardware before defaulting it.
+const TERRAIN_CHUNKED: boolean = false;
+const TERRAIN_CHUNKS_PER_SIDE = 6;
+const TERRAIN_LOD_DISTANCES: number[] = [];
+const TERRAIN_SKIRT = 0;
+const TERRAIN_DYNAMIC_LOD = true;
+// Streaming: keep only chunks within this world-radius of the camera resident (0 = off = all
+// chunks). Bounds GPU/mesh memory for worlds bigger than one in-memory mesh, but unloads distant
+// terrain — suits ground-level (walk/fly, fogged horizon) views, not the whole-map overview.
+const TERRAIN_LOAD_RADIUS = 0;
 
 type Quality = 'high' | 'low';
 
@@ -240,12 +255,26 @@ export const WorldShowcase: React.FC = () => {
           worldScale={RENDER_SIZE}
         />
 
-        <WorldTerrain
-          world={world}
-          renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
-          meshResolution={MESH_RES}
-        />
+        {TERRAIN_CHUNKED ? (
+          <WorldTerrainLod
+            world={world}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            meshResolution={MESH_RES}
+            chunksPerSide={TERRAIN_CHUNKS_PER_SIDE}
+            lodDistances={TERRAIN_LOD_DISTANCES}
+            skirtDepth={TERRAIN_SKIRT}
+            dynamicLod={TERRAIN_DYNAMIC_LOD}
+            loadRadius={TERRAIN_LOAD_RADIUS}
+          />
+        ) : (
+          <WorldTerrain
+            world={world}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            meshResolution={MESH_RES}
+          />
+        )}
 
         <WorldVegetation
           world={world}
@@ -264,7 +293,7 @@ export const WorldShowcase: React.FC = () => {
           sunDir={sunDir}
         />
         <WorldWaterfalls world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
-        <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+        <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} meshResolution={MESH_RES} />
         <WorldBirds renderSize={RENDER_SIZE} />
         <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
         <WorldWildlife
