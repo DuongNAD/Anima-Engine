@@ -1090,7 +1090,7 @@ bindings regenerate byte-identical, so the new CI parity step is green.
 
 ### G2 — Platform convergence — 2026-07-25 (Claude Opus 5)
 
-**Status: two of three gates pass.** Gate #2 (a default build excludes the optional subsystems) and
+**Status: two of three gates pass; the third is scoped but not started.** Gate #2 (a default build excludes the optional subsystems) and
 gate #3 (declared RAM ceiling) are **done and verified in both feature configurations**. Gate #1
 (one law change alters both engines) is untouched — it needs the crate extraction and workspace
 split, which is genuinely multi-session. **Rung reached: Live integrated** for the build split and
@@ -1209,3 +1209,51 @@ Re-verify with `cargo check --no-default-features --all-targets` once their file
 G2 is not a one-session goal. `src-tauri` is 27,598 lines across 53 files in a single crate, and
 `simulation_loop.rs` alone is 1,549. The work above was chosen to be independently useful and
 independently revertible rather than to leave a half-migrated workspace.
+
+#### G2 addendum — gate #2 completed, task 3 partly done
+
+**Gate #2 now passes in full**, including Burn/WGPU:
+
+```text
+cargo tree --no-default-features  ->  0 matches for neo4rs|tokio-tungstenite|burn-wgpu|naga
+cargo tree --features desktop     ->  4
+clippy --all-targets -D warnings, BOTH configurations  ->  rc=0
+cargo fmt --check                                      ->  rc=0
+cargo test --features desktop     ->  579 passed, 0 failed, 4 ignored
+```
+
+The Burn/WGPU blocker recorded earlier was **shape, not size**. `learn_handle` was assigned from
+`if has_wgpu { A } else { B }`, and an if/else expression cannot have one branch `cfg`'d out, so a
+naive gate would have duplicated the whole ndarray body. Extracting both into `spawn_wgpu_learner` /
+`spawn_ndarray_learner` over a shared `LearnArgs` reduced the split to a single `cfg` on the `let`,
+with no duplicated body. Worth remembering: when a `cfg` looks like it needs duplication, the fix is
+usually to name the thing being duplicated.
+
+This is the heaviest of the three gates — it drops wgpu, naga, ash, d3d12, glow and gpu-allocator
+from a default build. Without the feature the learner always takes the ndarray path, which is
+already the path any machine with no usable GPU took, so it is a build-size change and not a
+behaviour change.
+
+**Task 3, the concrete half:** the inference worker was spawned with its `JoinHandle` discarded, so
+a stopped simulation left it running until process exit and a restart spawned a second one beside
+it. It is now retained and joined after `running` goes false. Still open: a task supervisor and
+cancellation tokens across the five long-lived threads, and `lineage.rs` blocking on an async Neo4j
+call — both design changes that belong with the crate split rather than ahead of it.
+
+#### Gate #1 — not started, and deliberately so
+
+Scoped but not begun. The extractable seed for `anima-domain` is identifiable: `causal` and
+`intervention` are mutually dependent and reference nothing else; `sim_clock` depends only on
+`sim_rules`; none of the four touch Bevy or Tauri. `sim_rules` additionally wants `ecology`
+(`EcosystemBiomass`) and `resources` (`MapBounds`), so those two types are the first thing the
+domain crate needs to own.
+
+A crate split is all-or-nothing: until every module resolves in its new home the tree does not
+build. Starting one without room to finish and verify it would leave the repository unbuildable —
+the outcome avoided deliberately in G1.4 (the ts-rs migration) and in the first pass at Burn/WGPU.
+So it is left untouched rather than half-applied.
+
+For whoever picks it up: `tokio = { features = ["full"] }` is still unconditional, and now that the
+three subsystems needing it are behind features, narrowing it is the natural first move — it will
+surface how much of the tree assumes tokio is always present, which is exactly the information the
+split needs.
