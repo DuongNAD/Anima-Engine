@@ -97,6 +97,11 @@ pub struct SerializedAgent {
     pub homeostatic_state: crate::ai::hrrl::HomeostaticState,
     pub last_transition_state: crate::ai::hrrl::LastTransitionState,
     pub segments: Vec<SerializedSegmentState>,
+    /// The agent's own brain, when it has one. `None` is a legacy agent running on the shared
+    /// [`crate::ai::model::BrainModel`] — and is what every save written before ADR-0003 decodes to,
+    /// so old saves keep their old behaviour (invariant D09).
+    #[serde(default)]
+    pub brain: Option<crate::core::components::AgentBrain>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -155,6 +160,60 @@ pub struct SavedSimulationState {
     /// saves (which lack the field) loadable — they deserialize to the all-zero default.
     #[serde(default)]
     pub world_identity: crate::core::world_artifact::WorldIdentity,
+    /// The closed-energy compartments (G1.1). Without these a load rebuilt `EcosystemBiomass` from
+    /// scratch — detritus back to zero, plants back to a full resource field — which created or
+    /// destroyed EU at every save/load boundary and made whole-run conservation unprovable.
+    ///
+    /// Stored as three plain scalars rather than the `EcosystemBiomass` struct because that type
+    /// lives in `core::ecology`, which is outside G1's allowed files and does not derive `Serialize`.
+    /// G1.2 replaces this with a proper versioned snapshot envelope.
+    #[serde(default)]
+    pub eco_detritus: f64,
+    #[serde(default)]
+    pub eco_plants: f64,
+    #[serde(default)]
+    pub eco_animals: f64,
+    /// Standing plant resource per cell. `r_max` is not stored: it is derived from the world's
+    /// biomes, which the world identity already pins. Empty on a pre-G1.1 save, in which case the
+    /// field keeps whatever `init_world` generated.
+    #[serde(default)]
+    pub resource_field_r: Vec<f32>,
+}
+
+/// Put the saved closed-energy state back into the world (G1.1).
+///
+/// Call this on the restore path *after* agents have been respawned, so the `animals` compartment
+/// the save recorded is not immediately contradicted. Invariant D06 says restore transfers the same
+/// reserve and adds no EU; that is only true if the pool and the standing crop come back too.
+///
+/// A pre-G1.1 save carries zeroes and an empty field, which this treats as "nothing to restore" and
+/// leaves whatever `init_world` built — the old behaviour, so old saves stay loadable (D09).
+pub fn restore_energy_state(world: &mut World, state: &SavedSimulationState) {
+    if !state.resource_field_r.is_empty() {
+        if let Some(mut field) = world.get_resource_mut::<crate::core::ecology::ResourceField>() {
+            // Only adopt a field of the same shape. A mismatch means the save belongs to a
+            // differently sized world, which the S08 identity check already warns about; silently
+            // resizing here would turn that warning into corrupted energy accounting.
+            if field.r.len() == state.resource_field_r.len() {
+                field.r.copy_from_slice(&state.resource_field_r);
+            } else {
+                eprintln!(
+                    "saved resource field has {} cells but this world has {}; \
+                     keeping the generated field and its energy",
+                    state.resource_field_r.len(),
+                    field.r.len()
+                );
+            }
+        }
+    }
+    let has_pool = state.eco_detritus != 0.0 || state.eco_plants != 0.0 || state.eco_animals != 0.0;
+    if has_pool {
+        if let Some(mut pool) = world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>() {
+            pool.detritus = state.eco_detritus;
+            pool.plants = state.eco_plants;
+            pool.animals = state.eco_animals;
+        }
+    }
 }
 
 pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
@@ -184,6 +243,24 @@ pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
     world
         .entity_mut(root_entity)
         .insert(agent.last_transition_state);
+
+    // Restore the saved brain verbatim. Invariant D01: restore is not development, so a saved
+    // individual must never be handed a freshly rolled brain — that would be a different creature
+    // wearing the same lineage id. A `None` here is a legacy agent and correctly stays on the
+    // shared model rather than being upgraded behind the user's back.
+    if let Some(brain) = &agent.brain {
+        match brain.validate() {
+            Ok(()) => {
+                world.entity_mut(root_entity).insert(brain.clone());
+            }
+            Err(e) => {
+                eprintln!(
+                    "agent {} has an unreadable brain ({e}); restoring it on the shared model",
+                    agent.lineage_id
+                );
+            }
+        }
+    }
 
     match agent.class {
         AgentClass::Predator => {
@@ -276,6 +353,16 @@ pub fn serialize_world_state(
         .get_resource::<EpochManager>()
         .cloned()
         .unwrap_or_default();
+    // Closed-energy state (G1.1). A save that omits these is not a checkpoint of the energy system:
+    // reloading it would rebuild detritus at zero and plants at full capacity, silently moving EU.
+    let (eco_detritus, eco_plants, eco_animals) = world
+        .get_resource::<crate::core::ecology::EcosystemBiomass>()
+        .map(|p| (p.detritus, p.plants, p.animals))
+        .unwrap_or((0.0, 0.0, 0.0));
+    let resource_field_r = world
+        .get_resource::<crate::core::ecology::ResourceField>()
+        .map(|f| f.r.clone())
+        .unwrap_or_default();
     // World identity so the save is pinned to the world it belongs to (S08); default if a world was
     // built before this resource existed.
     let world_identity = world
@@ -323,6 +410,7 @@ pub fn serialize_world_state(
         &AgentGeneration,
         &AgentParentLineageIds,
         Option<&Predator>,
+        Option<&crate::core::components::AgentBrain>,
     )>();
 
     let mut collected_agents = Vec::new();
@@ -340,6 +428,7 @@ pub fn serialize_world_state(
         gen,
         parents,
         predator,
+        brain,
     ) in agent_query.iter(world)
     {
         collected_agents.push((
@@ -356,6 +445,7 @@ pub fn serialize_world_state(
             gen.0,
             parents.0.clone(),
             predator.is_some(),
+            brain.cloned(),
         ));
     }
 
@@ -382,6 +472,7 @@ pub fn serialize_world_state(
         gen,
         parents,
         is_predator,
+        brain,
     ) in collected_agents
     {
         let class = if is_predator {
@@ -424,6 +515,7 @@ pub fn serialize_world_state(
             homeostatic_state: homeo,
             last_transition_state: last_trans,
             segments,
+            brain,
         });
     }
 
@@ -471,5 +563,9 @@ pub fn serialize_world_state(
         lakes,
         trees,
         world_identity,
+        eco_detritus,
+        eco_plants,
+        eco_animals,
+        resource_field_r,
     }
 }

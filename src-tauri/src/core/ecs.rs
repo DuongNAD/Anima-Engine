@@ -79,6 +79,11 @@ pub fn init_world() -> World {
         plants: starting_plants,
         animals: 0.0,
     });
+    // The one route by which EU may enter a compartment from another compartment. Inserted next to
+    // the biomass pool it operates on; its baseline is locked after genesis, not here, because
+    // invariant D06 makes the founding population's energy a boundary condition rather than a
+    // transaction.
+    world.insert_resource(crate::core::energy_ledger::EnergyLedger::default());
     world.insert_resource(crate::core::ecology::SeasonClock::default());
     world.insert_resource(terrain_map);
     // The run's randomness is seeded from the world the agents live in, not from ambient process
@@ -87,6 +92,8 @@ pub fn init_world() -> World {
     world.insert_resource(crate::core::resources::SimRng::for_world(
         world_identity.seed,
     ));
+    // Off unless `ANIMA_EVOLVED_BRAINS` says otherwise, so a default run is the ADR-0003 baseline.
+    world.insert_resource(crate::core::resources::BrainPolicy::from_env());
     world.insert_resource(world_identity);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
         10.0, &bounds,

@@ -54,10 +54,20 @@ pub fn wrap_coordinates_system(mut query: Query<&mut Position>, bounds: Res<MapB
 pub fn energy_decay_system(
     mut query: Query<&mut crate::ai::hrrl::HomeostaticState>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
 ) {
     let decay = 0.5 * time_step.0;
+    // Recycled into detritus exactly as `metabolic_decay_system` does, so this stays a transfer
+    // rather than an EU sink if a schedule ever runs it beside the closed ledger. Subtracting two
+    // nearby f32s is exact, so detritus is credited with precisely what the reserve lost.
+    let mut respired = 0.0f64;
     for mut homeo in query.iter_mut() {
+        let before = homeo.energy;
         homeo.energy = (homeo.energy - decay).max(0.0);
+        respired += (before - homeo.energy) as f64;
+    }
+    if let Some(ref mut pool) = biomass {
+        pool.detritus += respired;
     }
 }
 
@@ -68,6 +78,7 @@ pub fn metabolic_decay_system(
         Option<&mut FeatureTracker>,
         Option<&Velocity>,
         Option<&Predator>,
+        Option<&crate::core::components::AgentBrain>,
     )>,
     segment_query: Query<(
         &ParentAgent,
@@ -77,7 +88,11 @@ pub fn metabolic_decay_system(
     )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    brain_policy: Option<Res<crate::core::resources::BrainPolicy>>,
 ) {
+    let brain_cost_per_1k = brain_policy
+        .map(|p| p.brain_metabolic_cost)
+        .unwrap_or_default();
     let dt = time_step.0;
     // Energy burned by metabolism this tick is recycled into the closed detritus pool
     // (conservation) rather than vanishing.
@@ -86,7 +101,9 @@ pub fn metabolic_decay_system(
     let k_velocity = 0.2;
     let k_force = 0.3;
 
-    for (agent_entity, mut homeo, opt_tracker, velocity, opt_predator) in agent_query.iter_mut() {
+    for (agent_entity, mut homeo, opt_tracker, velocity, opt_predator, opt_brain) in
+        agent_query.iter_mut()
+    {
         // Split the cost into (1) MAINTENANCE — governed by the Metabolic Theory of Ecology,
         // I = i0·M^(3/4)·e^(−E/kT), so bigger bodies cost less per gram and warmth speeds the
         // burn — and (2) ACTIVITY — the linear locomotion cost of moving mass and firing
@@ -107,7 +124,17 @@ pub fn metabolic_decay_system(
             homeo.temperature,
             crate::core::ecology::E_ANIMAL_EV,
         );
-        let total_cost = k_base + maintenance + activity_cost;
+        // (3) COGNITION — neural tissue costs energy to keep running, scaled by brain size. Folded
+        // into `total_cost` rather than deducted separately on purpose: everything in `total_cost`
+        // flows through `decay` into `respired` and out into the detritus pool below, so the charge
+        // is *moved* rather than destroyed and closed energy holds by construction (gate EB-S06).
+        // A separate deduction would have been the natural way to write it and would have leaked.
+        //
+        // `brain_metabolic_cost` is `0.0` unless a run turns it on, so this term vanishes by default.
+        let cognition_cost = opt_brain
+            .map(|b| b.metabolic_cost(brain_cost_per_1k))
+            .unwrap_or(0.0);
+        let total_cost = k_base + maintenance + activity_cost + cognition_cost;
 
         let sweat_rate = if homeo.temperature > homeo.temp_target {
             0.5 * (homeo.temperature - homeo.temp_target)
@@ -172,13 +199,25 @@ pub fn spawn_food_system(
 pub fn detect_food_collisions_system(
     mut commands: Commands,
     mut agent_query: Query<
-        (Entity, &Position, &mut crate::ai::hrrl::HomeostaticState),
+        (
+            Entity,
+            &Position,
+            &mut crate::ai::hrrl::HomeostaticState,
+            Option<&crate::core::components::ActionGates>,
+        ),
         With<Agent>,
     >,
     segment_query: Query<(&Position, &ParentAgent)>,
     food_query: Query<(Entity, &Position, &Food)>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
 ) {
-    for (agent_entity, agent_pos, mut homeo) in agent_query.iter_mut() {
+    for (agent_entity, agent_pos, mut homeo, gates) in agent_query.iter_mut() {
+        // Feeding used to fire on contact alone. The gate defaults open and reads open when absent,
+        // so this is a no-op until a brain drives it (ADR-0003 decision 4).
+        if !crate::core::components::ActionGates::of(gates).feeds() {
+            continue;
+        }
         let mut sum_pos = glam::Vec3::ZERO;
         let mut count = 0;
         for (seg_pos, parent_agent) in segment_query.iter() {
@@ -196,7 +235,28 @@ pub fn detect_food_collisions_system(
         for (food_entity, food_pos, food) in food_query.iter() {
             if centroid.distance(food_pos.0) < 1.5 {
                 commands.entity(food_entity).despawn();
-                homeo.energy = (homeo.energy + food.energy_value).min(homeo.energy_target);
+                // A spawned food item is a *claim* on detritus, not a store: `spawn_food_system`
+                // scatters markers, and the energy behind one is only found when something eats
+                // it. Before G1.1 this line added `energy_value` to the animal with nothing
+                // debited anywhere, which made food a permanent EU source. Hydration is a WU
+                // quantity and is not part of the closed energy ledger, so it is untouched.
+                let cap = homeo.energy_target;
+                match (biomass.as_mut(), ledger.as_mut()) {
+                    (Some(pool), Some(ledger)) => {
+                        ledger.transfer_into_reserve(
+                            pool,
+                            crate::core::energy_ledger::Compartment::Detritus,
+                            &mut homeo.energy,
+                            cap,
+                            food.energy_value,
+                            crate::core::energy_ledger::EnergyEvent::Feeding,
+                        );
+                    }
+                    // Bare test worlds without the closed ledger keep the original behaviour.
+                    _ => {
+                        homeo.energy = (homeo.energy + food.energy_value).min(cap);
+                    }
+                }
                 homeo.hydration =
                     (homeo.hydration + food.hydration_value).min(homeo.hydration_target);
                 break;
@@ -207,7 +267,12 @@ pub fn detect_food_collisions_system(
 
 pub fn combat_system(
     mut predator_query: Query<
-        (Entity, &Position, &mut crate::ai::hrrl::HomeostaticState),
+        (
+            Entity,
+            &Position,
+            &mut crate::ai::hrrl::HomeostaticState,
+            Option<&crate::core::components::ActionGates>,
+        ),
         (With<Agent>, With<Predator>),
     >,
     mut prey_query: Query<
@@ -223,7 +288,9 @@ pub fn combat_system(
         events_res.predator_centroids.clear();
         events_res.prey_centroids.clear();
 
-        for (entity, pos, _) in predator_query.iter() {
+        // Centroid telemetry still covers every predator, gated or not — a predator that chooses not
+        // to strike is still present in the world and should stay visible to observers.
+        for (entity, pos, _, _) in predator_query.iter() {
             events_res
                 .predator_centroids
                 .push((entity, pos.0, Vec3::ZERO, 0));
@@ -273,7 +340,15 @@ pub fn combat_system(
                         if prey_homeo.energy <= 0.0 {
                             continue;
                         }
-                        if let Ok((_, _, mut pred_homeo)) = predator_query.get_mut(pred_entity) {
+                        if let Ok((_, _, mut pred_homeo, pred_gates)) =
+                            predator_query.get_mut(pred_entity)
+                        {
+                            // Striking used to be automatic on proximity. The gate defaults open and
+                            // reads open when absent, so this is a no-op until a brain drives it
+                            // (ADR-0003 decision 4).
+                            if !crate::core::components::ActionGates::of(pred_gates).attacks() {
+                                continue;
+                            }
                             let needed = (pred_homeo.energy_target - pred_homeo.energy).max(0.0);
                             if needed > 0.0 {
                                 // Holling Type III capture + Lindeman assimilation: the predator
@@ -286,11 +361,23 @@ pub fn combat_system(
                                 );
                                 let assimilated =
                                     captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
-                                prey_homeo.energy = (prey_homeo.energy - captured).max(0.0);
-                                pred_homeo.energy =
-                                    (pred_homeo.energy + assimilated).min(pred_homeo.energy_target);
+                                // Both reserves are `f32`, so neither the strip nor the meal is
+                                // exact and "detritus gets captured - assimilated" is only true
+                                // in real arithmetic. Read back what each reserve actually
+                                // changed by and give detritus the difference, so predation
+                                // conserves to the bit instead of to three decimal places.
+                                let pred_cap = pred_homeo.energy_target;
+                                let removed = crate::core::energy_ledger::debit_reserve(
+                                    &mut prey_homeo.energy,
+                                    captured,
+                                );
+                                let gained = crate::core::energy_ledger::credit_reserve(
+                                    &mut pred_homeo.energy,
+                                    assimilated,
+                                    pred_cap,
+                                );
                                 if let Some(ref mut pool) = biomass {
-                                    pool.detritus += (captured - assimilated) as f64;
+                                    pool.detritus += removed - gained;
                                 }
                                 if captured > 0.0
                                     && events_res.events.len() < events_res.events.capacity()
@@ -310,7 +397,12 @@ pub fn combat_system(
             }
         }
     } else {
-        for (pred_entity, pred_pos, mut pred_homeo) in predator_query.iter_mut() {
+        for (pred_entity, pred_pos, mut pred_homeo, pred_gates) in predator_query.iter_mut() {
+            // Same gate as the telemetry branch above — a predator must not strike in one code path
+            // and hold back in the other just because combat events happen to be unavailable.
+            if !crate::core::components::ActionGates::of(pred_gates).attacks() {
+                continue;
+            }
             let mut pred_sum = glam::Vec3::ZERO;
             let mut pred_count = 0;
             for (seg_pos, parent_agent) in segment_query.iter() {
@@ -349,11 +441,20 @@ pub fn combat_system(
                         let captured =
                             crate::core::ecology::predation_capture(prey_homeo.energy, needed);
                         let assimilated = captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
-                        prey_homeo.energy = (prey_homeo.energy - captured).max(0.0);
-                        pred_homeo.energy =
-                            (pred_homeo.energy + assimilated).min(pred_homeo.energy_target);
+                        // Same measured transfer as the telemetry branch above — a predator must
+                        // not conserve energy in one code path and leak it in the other.
+                        let pred_cap = pred_homeo.energy_target;
+                        let removed = crate::core::energy_ledger::debit_reserve(
+                            &mut prey_homeo.energy,
+                            captured,
+                        );
+                        let gained = crate::core::energy_ledger::credit_reserve(
+                            &mut pred_homeo.energy,
+                            assimilated,
+                            pred_cap,
+                        );
                         if let Some(ref mut pool) = biomass {
-                            pool.detritus += (captured - assimilated) as f64;
+                            pool.detritus += removed - gained;
                         }
                     }
                     break;
@@ -379,6 +480,7 @@ pub fn check_migration_boundaries_system(
             Option<&crate::core::agent_systems::AgentEvaluation>,
             Option<&FeatureTracker>,
             Option<&crate::ai::hrrl::LastTransitionState>,
+            Option<&crate::core::components::AgentBrain>,
         ),
         With<Agent>,
     >,
@@ -414,6 +516,7 @@ pub fn check_migration_boundaries_system(
         opt_eval,
         opt_tracker,
         opt_last_transition,
+        opt_brain,
     ) in agent_query.iter()
     {
         let x = pos.0.x;
@@ -456,6 +559,7 @@ pub fn check_migration_boundaries_system(
                 feature_tracker: opt_tracker.cloned(),
                 last_transition_state: opt_last_transition.cloned(),
                 source_port: config.local_port,
+                brain: opt_brain.cloned(),
             };
 
             let _ = sender.0.send(OutboundMigration {
@@ -501,6 +605,7 @@ pub fn manual_migration_system(
             Option<&crate::core::agent_systems::AgentEvaluation>,
             Option<&FeatureTracker>,
             Option<&crate::ai::hrrl::LastTransitionState>,
+            Option<&crate::core::components::AgentBrain>,
         ),
         With<Agent>,
     >,
@@ -539,6 +644,7 @@ pub fn manual_migration_system(
             opt_eval,
             opt_tracker,
             opt_last_transition,
+            opt_brain,
         )) = agent_query.iter().choose(&mut *rng)
         {
             let x_min = bounds.min.x;
@@ -565,6 +671,7 @@ pub fn manual_migration_system(
                 feature_tracker: opt_tracker.cloned(),
                 last_transition_state: opt_last_transition.cloned(),
                 source_port: config.local_port,
+                brain: opt_brain.cloned(),
             };
 
             let _ = sender.0.send(OutboundMigration {
@@ -631,6 +738,24 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
 
         if let Some(lts) = self.data.last_transition_state {
             world.entity_mut(root_entity).insert(lts);
+        }
+
+        // Migration moves the same creature to another shard (invariant D01: it is not a birth), so
+        // the brain travels with it rather than being rolled afresh on arrival. A `None` is a legacy
+        // agent that keeps running on the shared model.
+        if let Some(brain) = self.data.brain {
+            match brain.validate() {
+                Ok(()) => {
+                    world.entity_mut(root_entity).insert(brain);
+                }
+                Err(e) => {
+                    eprintln!(
+                        "migrating agent {} carried an unreadable brain ({e}); \
+                         it arrives on the shared model",
+                        self.data.lineage_id
+                    );
+                }
+            }
         }
 
         match self.data.agent_class {

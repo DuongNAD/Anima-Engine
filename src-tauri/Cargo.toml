@@ -10,7 +10,12 @@ crate-type = ["lib"]
 [dependencies]
 tauri = { version = "2.0.0", features = ["test"] }
 tauri-plugin-shell = "2.0.0"
-serde = { version = "1.0", features = ["derive"] }
+# `rc` enables Serialize/Deserialize for Arc. `AgentBrain` holds its genome behind an Arc so the
+# per-tick inference request can carry it as a refcount bump instead of cloning a weight vector on
+# the hot path — the zero-allocation rule in SIMULATION_RULES.md. Feature of an existing dependency,
+# not a new crate. Note: deserialization does not deduplicate shared Arcs, which is fine here because
+# each agent owns its own genome.
+serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }

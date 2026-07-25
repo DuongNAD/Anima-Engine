@@ -55,6 +55,7 @@ pub fn decode_genotype(
 ) -> bevy_ecs::prelude::Entity {
     use crate::ai::cpg::CpgOscillator;
     use crate::ai::hrrl::{HomeostaticState, LastTransitionState};
+    use crate::core::components::ActionGates;
     use crate::core::ecs::{
         Agent, ChildrenLinks, CognitiveState, InertiaComponent, JointAxis, ParentAgent, ParentLink,
         Position, Rotation, Segment, SegmentJointForce, SensoryBufferComponent, Velocity,
@@ -120,10 +121,14 @@ pub fn decode_genotype(
         ))
         .id();
 
-    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0)
-    world
-        .entity_mut(root_entity)
-        .insert((ParentAgent(root_entity), SegmentJointForce(0.0)));
+    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0). `ActionGates::default()` is fully
+    // open, so an agent spawned here behaves exactly as it did before the gates existed — the
+    // component is installed now so that later steps have somewhere to write, not to change anything.
+    world.entity_mut(root_entity).insert((
+        ParentAgent(root_entity),
+        SegmentJointForce(0.0),
+        ActionGates::default(),
+    ));
 
     // BFS Queue holds: (current_node, parent_entity, parent_pos, parent_rot)
     let mut queue = VecDeque::new();

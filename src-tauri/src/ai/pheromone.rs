@@ -160,14 +160,23 @@ impl PheromoneReleaser {
 /// System to release pheromone from agents to the grid.
 pub fn agent_release_pheromone_system(
     mut grid: ResMut<PheromoneGrid>,
-    query: Query<(&Position, &PheromoneReleaser)>,
+    query: Query<(
+        &Position,
+        &PheromoneReleaser,
+        Option<&crate::core::components::ActionGates>,
+    )>,
     bounds: Res<MapBounds>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     let dt = time_step.0;
-    for (pos, releaser) in query.iter() {
+    for (pos, releaser, gates) in query.iter() {
+        // Emission used to be unconditional. It is now scaled by the agent's gate, which defaults to
+        // 1.0 and reads as 1.0 when absent — so this is the same arithmetic until something evolves
+        // a reason to fall silent (ADR-0003 decision 4).
+        let scale = crate::core::components::ActionGates::of(gates).pheromone_scale();
         if let Some(idx) = grid.pos_to_index(pos.0, &bounds) {
-            grid.values[idx] = (grid.values[idx] + releaser.strength * dt).min(MAX_CONCENTRATION);
+            grid.values[idx] =
+                (grid.values[idx] + releaser.strength * scale * dt).min(MAX_CONCENTRATION);
         }
     }
 }
