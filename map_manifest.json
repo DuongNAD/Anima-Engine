@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "worldArtifact": {
+    "path": "artifacts/world_128.anmw",
+    "magic": "ANMW",
+    "version": 2,
+    "width": 128,
+    "height": 128,
+    "seaLevel": 0.42,
+    "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "coordinateSystem": {
+    "worldMinXZ": -100,
+    "worldMaxXZ": 100,
+    "worldMinY": 0,
+    "worldMaxY": 10,
+    "gridDim": 128
+  },
+  "biomeTaxonomy": {
+    "canonicalCount": 22,
+    "legacyCount": 11
+  },
+  "views": [
+    {
+      "id": "overview",
+      "imagePath": "map-views/overview.png",
+      "camera": {
+        "position": [0, 95, 95],
+        "target": [0, 0, 0]
+      }
+    },
+    {
+      "id": "navigation",
+      "imagePath": "map-views/navigation.png",
+      "camera": {
+        "position": [-60, 45, -60],
+        "target": [-40, 0, -40]
+      }
+    },
+    {
+      "id": "collision",
+      "imagePath": "map-views/collision.png",
+      "camera": {
+        "position": [50, 30, 50],
+        "target": [30, 2, 30]
+      }
+    },
+    {
+      "id": "lighting",
+      "imagePath": "map-views/lighting.png",
+      "camera": {
+        "position": [0, 80, -90],
+        "target": [0, 5, 0]
+      }
+    },
+    {
+      "id": "spawn",
+      "imagePath": "map-views/spawn.png",
+      "camera": {
+        "position": [20, 25, 20],
+        "target": [10, 1, 10]
+      }
+    },
+    {
+      "id": "water",
+      "imagePath": "map-views/water.png",
+      "camera": {
+        "position": [-80, 22, 12],
+        "target": [-95, 0, 0]
+      }
+    },
+    {
+      "id": "biome_transition",
+      "imagePath": "map-views/biome_transition.png",
+      "camera": {
+        "position": [40, 32, -40],
+        "target": [20, 2, -20]
+      }
+    },
+    {
+      "id": "ecosystem",
+      "imagePath": "map-views/ecosystem.png",
+      "camera": {
+        "position": [-30, 35, 60],
+        "target": [-10, 1, 40]
+      }
+    }
+  ]
+}

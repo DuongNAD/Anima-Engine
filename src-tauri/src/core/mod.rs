@@ -6,6 +6,7 @@ pub mod engine;
 pub mod environmental_systems;
 pub mod networking_systems;
 pub mod resources;
+pub mod sim_rules;
 pub mod simulation_lifecycle;
 pub mod simulation_loop;
 pub mod simulation_state;

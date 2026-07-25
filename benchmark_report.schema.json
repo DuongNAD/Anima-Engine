@@ -1,0 +1,104 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://anima-engine.local/benchmark_report.schema.json",
+  "title": "Anima-Engine benchmark baseline report (M0.4)",
+  "description": "Shape of benchmark_report.json produced by scripts/bench_baseline.mjs. Captures the reproducibility envelope (seed + config + hardware) plus a timings block. Perf numbers are NOT locked until captured on the target Vostro 3530 (WORLD_SIMULATION_PLAN.md §10.2). Extra top-level fields (schemaVersion, timestampNote, proxyChecksum, notes, …) are allowed.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["seed", "config", "hardware", "timings"],
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "description": "Version of this report schema the file conforms to."
+    },
+    "timestampNote": {
+      "type": "string",
+      "description": "Capture note, NOT a machine clock read. Default 'set on capture'."
+    },
+    "seed": {
+      "type": "number",
+      "description": "Deterministic simulation seed (canonical M0 default 1337)."
+    },
+    "config": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["gridDim", "tickHz", "ticksPerEpoch"],
+      "properties": {
+        "gridDim": {
+          "type": "number",
+          "description": "Backend sim grid cells per side (DEFAULT_GRID_DIM = 128)."
+        },
+        "tickHz": {
+          "type": "number",
+          "description": "Fixed physics tick rate in Hz (TICK_HZ = 60)."
+        },
+        "ticksPerEpoch": {
+          "type": "number",
+          "description": "Ticks per evolutionary epoch (TICKS_PER_EPOCH = 1000)."
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "platform",
+        "release",
+        "arch",
+        "cpuModel",
+        "cpuCount",
+        "totalMemMB"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string",
+          "description": "os.platform() of the capture machine."
+        },
+        "release": {
+          "type": "string",
+          "description": "os.release() of the capture machine."
+        },
+        "arch": {
+          "type": "string",
+          "description": "os.arch() of the capture machine."
+        },
+        "cpuModel": {
+          "type": "string",
+          "description": "Model string of the first CPU (os.cpus()[0].model)."
+        },
+        "cpuCount": {
+          "type": "number",
+          "description": "Logical CPU count (os.cpus().length)."
+        },
+        "totalMemMB": {
+          "type": "number",
+          "description": "Total system memory in MB (os.totalmem() / 1024^2)."
+        }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "description": "Named measurements. Non-empty. Each entry carries ms, iterations and a note.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["ms", "iterations", "note"],
+        "properties": {
+          "ms": {
+            "type": "number",
+            "description": "Wall-clock milliseconds over all iterations."
+          },
+          "iterations": {
+            "type": "number",
+            "description": "Iteration count the ms figure covers."
+          },
+          "note": {
+            "type": "string",
+            "description": "What was measured and how to replace it with a real capture."
+          }
+        }
+      }
+    }
+  }
+}
