@@ -78,6 +78,11 @@ fn test_load_zero_agents() {
         lakes: vec![],
         trees: vec![],
         world_identity: Default::default(),
+        // G1.1 closed-energy state; zeroes mean "nothing to restore" (pre-G1.1 save).
+        eco_detritus: 0.0,
+        eco_plants: 0.0,
+        eco_animals: 0.0,
+        resource_field_r: Vec::new(),
     };
 
     // Put into pending load state
