@@ -216,6 +216,22 @@ pub struct SavedSimulationState {
     #[serde(default)]
     pub energy_baseline: Option<f64>,
 
+    // ---- Schema 4: the aggregate LOD tier ----------------------------------------------------
+    /// Dormant populations, if the aggregate tier was running.
+    ///
+    /// These are agents. They have no ECS entity — that is what the tier does — so nothing else in
+    /// this struct describes them, and a save written without this field lost a population *and*
+    /// the EU it was holding, while `ecosystem_census_system` had been counting that EU in
+    /// `pool.animals` the whole time. The reload therefore came back lighter than it left, and
+    /// `EnergyLedger::lock_baseline` took the smaller total as the new baseline rather than
+    /// reporting the loss. Both halves of that were silent, which is why saving used to be refused
+    /// outright while anything slept.
+    ///
+    /// `None` on a schema-3 or older save, and on any run without the tier — which is every run
+    /// that does not set `ANIMA_AGGREGATE_LOD`.
+    #[serde(default)]
+    pub dormant_cohorts: Option<crate::core::aggregate_population::SavedDormantCohorts>,
+
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
     /// envelope that carries the real version.
@@ -269,6 +285,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         season_phase: 0.0,
         season_rate: 0.0,
         energy_baseline: None,
+        dormant_cohorts: None,
         loaded_from_schema: 0,
     }
 }
@@ -496,6 +513,13 @@ pub fn serialize_world_state(
     let energy_baseline = world
         .get_resource::<crate::core::energy_ledger::EnergyLedger>()
         .and_then(|l| l.baseline());
+    // The aggregate tier, when it is running. Absent on every run that has not opted in, which is
+    // why this is an Option rather than a default-constructed grid: an empty grid and "no tier"
+    // are different worlds, and restoring the first where the second was saved would insert a
+    // resource that switches dormancy ON for a run that never had it.
+    let dormant_cohorts = world
+        .get_resource::<crate::core::aggregate_population::DormantCohorts>()
+        .map(|c| c.to_saved());
     // World identity so the save is pinned to the world it belongs to (S08); default if a world was
     // built before this resource existed.
     let world_identity = world
@@ -705,6 +729,7 @@ pub fn serialize_world_state(
         season_phase,
         season_rate,
         energy_baseline,
+        dormant_cohorts,
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

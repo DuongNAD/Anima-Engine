@@ -915,47 +915,67 @@ fn the_ecology_step_is_inert_without_the_cohorts_resource() {
 
 // ---- Persistence -----------------------------------------------------------------------------
 
-/// A world with anything asleep refuses to save, rather than writing a file missing a population.
+/// A sleeping herd survives a save/load round trip, with its energy and its genomes.
 ///
-/// This is the one place the tier can lose data instead of just resolution. `DormantCohorts` is not
-/// a field of the snapshot envelope and a dormant individual has no entity, so
-/// `serialize_world_state` — which writes what it can query — would produce a file that is short a
-/// herd. Worse, it would be short that herd's EU: the census counts cohort energy into
-/// `pool.animals`, so the reload comes back lighter than it left and `EnergyLedger::lock_baseline`
-/// takes the smaller total as the new baseline instead of reporting a leak. Both failures are
-/// silent, which is why the refusal has to exist before the focus is ever wired up.
+/// This is the one place the tier could lose data rather than resolution, and it is why saving used
+/// to be refused outright while anything slept. A dormant individual has no entity, so
+/// `serialize_world_state` — which writes what it can query — sees nothing of it. Writing the file
+/// anyway deleted the population *and* its EU, which `ecosystem_census_system` had been counting
+/// into `pool.animals` the whole time: the reload came back lighter than it left, and
+/// `EnergyLedger::lock_baseline` took the smaller total as the new baseline instead of reporting
+/// the loss. Both halves were silent.
 ///
-/// The second half matters as much as the first: the refusal has to *clear*. A wall that never
-/// comes down would make the tier unusable rather than safe.
+/// Schema 4 carries the cohorts, so the assertion is now the strong one — the total is unchanged,
+/// not merely "not obviously wrong".
 #[test]
-fn a_world_with_sleeping_agents_refuses_to_save_rather_than_lose_them() {
+fn a_sleeping_herd_survives_a_save_and_load_with_its_energy_intact() {
+    use anima_engine_lib::core::aggregate_population::SavedDormantCohorts;
+
     let spawn = glam::Vec3::new(0.0, 0.0, 0.0);
     let mut world = build_world(6, spawn, true);
     enable_dormancy(&mut world, 3, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
-
-    assert!(
-        world
-            .resource::<DormantCohorts>()
-            .snapshot_refusal()
-            .is_none(),
-        "nothing is asleep yet, so saving must still be allowed"
-    );
 
     let mut schedule = dormancy_schedule();
     run(&mut world, &mut schedule, 12);
     assert_eq!(world.resource::<DormantCohorts>().total_dormant(), 6);
 
-    let why = world
-        .resource::<DormantCohorts>()
-        .snapshot_refusal()
-        .expect("six sleeping agents must block the save");
-    // An operator can only act on a refusal that says what would have been lost.
+    let before = world.resource::<DormantCohorts>();
+    let dormant_energy = before.total_energy();
+    let archived: usize = (0..before.chunk_count())
+        .filter_map(|i| before.cohort(i))
+        .map(|c| c.archived())
+        .sum();
+    assert!(dormant_energy > 0.0, "the fixture must hold energy asleep");
     assert!(
-        why.contains('6'),
-        "the refusal should name how many are asleep: {why}"
+        archived > 0,
+        "and genomes, or re-hydration has nothing to build from"
     );
 
-    // The observer walks back; once the last one is a body again, the world is describable.
+    // Through JSON, not a struct clone: the snapshot goes to disk as text, and a field that
+    // serializes but does not deserialize would pass a clone-based test and lose the herd on a real
+    // reload.
+    let saved = before.to_saved();
+    let json = serde_json::to_string(&saved).expect("cohorts must serialize");
+    let parsed: SavedDormantCohorts = serde_json::from_str(&json).expect("and deserialize");
+    let restored = DormantCohorts::from_saved(&parsed).expect("and rebuild");
+
+    assert_eq!(restored.total_dormant(), 6);
+    assert_eq!(
+        restored.total_energy().to_bits(),
+        dormant_energy.to_bits(),
+        "dormant EU must survive bit-for-bit; anything else is a leak at the save boundary"
+    );
+    let archived_after: usize = (0..restored.chunk_count())
+        .filter_map(|i| restored.cohort(i))
+        .map(|c| c.archived())
+        .sum();
+    assert_eq!(
+        archived_after, archived,
+        "archived genomes must come back too"
+    );
+
+    // And the restored tier is live, not a museum piece: put it in a world and the herd wakes.
+    world.insert_resource(restored);
     world.insert_resource(LodFocus::at(spawn));
     world.insert_resource(LodBands {
         hot_radius: 40.0,
@@ -963,17 +983,72 @@ fn a_world_with_sleeping_agents_refuses_to_save_rather_than_lose_them() {
         warm_interval: 4,
     });
     run(&mut world, &mut schedule, 20);
-
     assert_eq!(
         world.resource::<DormantCohorts>().total_dormant(),
         0,
-        "the herd should have fully woken"
+        "a restored cohort must be able to wake"
     );
+    assert!(live_agents(&mut world) > 0, "and come back as bodies");
+}
+
+/// The dormancy RNG comes back where it left off, not at the start of its stream.
+///
+/// Seed alone is not the state. Re-hydration samples which archived genome a returning individual
+/// gets, so a stream restarted at zero hands out a different one than an uninterrupted run would —
+/// a save/load boundary that quietly re-rolls the population. Same distinction `SimRng` draws for
+/// the world stream, and the same reason.
+#[test]
+fn the_dormancy_stream_resumes_rather_than_restarts() {
+    use anima_engine_lib::core::aggregate_population::SavedDormantCohorts;
+
+    // Sixty in one chunk, not six. The dormancy stream is drawn only by the reservoir sampler,
+    // which only runs once a cohort is over ARCHIVE_CAP — a fixture under the cap never touches it,
+    // so a test built on one would be asserting that zero round-trips to zero.
+    let mut world = build_spaced_world(60, glam::Vec3::ZERO, 0.01, true);
+    enable_dormancy(&mut world, 2, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
+    let mut schedule = dormancy_schedule();
+    run(&mut world, &mut schedule, 12);
+
+    let saved = world.resource::<DormantCohorts>().to_saved();
     assert!(
-        world
-            .resource::<DormantCohorts>()
-            .snapshot_refusal()
-            .is_none(),
-        "with everyone awake the refusal must lift"
+        saved.rng_pos > 0,
+        "the fixture must actually have drawn from the dormancy stream, or this proves nothing"
+    );
+
+    let json = serde_json::to_string(&saved).unwrap();
+    let parsed: SavedDormantCohorts = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        parsed.rng_pos, saved.rng_pos,
+        "the draw position must round-trip"
+    );
+    assert_eq!(parsed.rng_seed, saved.rng_seed);
+
+    let restored = DormantCohorts::from_saved(&parsed).unwrap();
+    assert_eq!(
+        restored.to_saved().rng_pos,
+        saved.rng_pos,
+        "rebuilding must seek the stream back, not reseed it"
+    );
+}
+
+/// A grid whose chunk count disagrees with its side is refused, not loaded.
+///
+/// `chunk_index` computes `row * grid + col` and indexes `chunks` with it. A file claiming a 32×32
+/// grid while carrying 100 chunks would not fail here — it would fail much later, as dormant agents
+/// landing in the wrong chunk or a panic with nothing pointing back at the save.
+#[test]
+fn a_snapshot_with_an_inconsistent_grid_is_refused() {
+    let c = DormantCohorts::new(7, -100.0, -100.0, 100.0, 100.0);
+    let mut saved = c.to_saved();
+    saved.chunks.truncate(saved.chunks.len() - 1);
+    // `match` rather than `expect_err`: `DormantCohorts` holds a live RNG and is deliberately not
+    // `Debug`, so the Result cannot be unwrapped for its error.
+    let err = match DormantCohorts::from_saved(&saved) {
+        Ok(_) => panic!("a short grid must be refused"),
+        Err(why) => why,
+    };
+    assert!(
+        err.contains("chunks"),
+        "the error should say what is wrong: {err}"
     );
 }

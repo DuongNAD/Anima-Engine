@@ -97,10 +97,11 @@ pub struct SimulationEngine {
 
     /// A save request, carrying the channel the sim thread answers on.
     ///
-    /// The answer is a `Result` because a save can be legitimately **refused**: see
-    /// [`crate::core::aggregate_population::DormantCohorts::snapshot_refusal`]. A refusal has to
-    /// reach the caller as an error — the alternative is writing a file that is silently missing a
-    /// population, which is the failure this type exists to make impossible to ignore.
+    /// The answer is a `Result` because serializing a world is not guaranteed to succeed. It began
+    /// as the channel for a refusal — the snapshot could not carry dormant cohorts, so saving while
+    /// anything slept would have written a file silently missing a population. Schema 4 carries
+    /// them, so that particular refusal is gone; the fallible shape stays, because the failure it
+    /// was protecting against is the kind that is invisible when it is not typed.
     pub save_request_tx:
         crossbeam_channel::Sender<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
     pub save_request_rx:
@@ -629,13 +630,37 @@ impl SimulationEngine {
             // second ecology, and refuses to save while anything is asleep — see
             // `aggregate_lod_enabled_from_env`. Absent the resource, all three of its systems
             // return on their first line.
-            if crate::core::aggregate_population::aggregate_lod_enabled_from_env() {
-                world.insert_resource(
-                    crate::core::aggregate_population::DormantCohorts::from_bounds(
-                        run_seed,
-                        &loaded_bounds,
-                    ),
-                );
+            //
+            // A restore takes precedence over the switch, and deliberately so: a save that carries
+            // dormant cohorts carries agents, and their EU is already counted in the biomass
+            // compartments this same load restores. Skipping them because an environment variable
+            // happens to be unset in this process would delete a population and leave the ledger
+            // describing energy that no longer exists. The file decides, not the shell.
+            let saved_cohorts = state_to_load
+                .as_ref()
+                .and_then(|s| s.dormant_cohorts.as_ref());
+            match saved_cohorts {
+                Some(saved) => {
+                    match crate::core::aggregate_population::DormantCohorts::from_saved(saved) {
+                        Ok(cohorts) => world.insert_resource(cohorts),
+                        // Refused rather than silently dropped: the alternative is a world whose
+                        // animal compartment counts EU held by cohorts that were never restored.
+                        Err(why) => eprintln!(
+                            "WARNING: dormant cohorts in the snapshot are unusable and were not \
+                             restored — {why}. The closed-EU total will read short by whatever \
+                             they were holding."
+                        ),
+                    }
+                }
+                None if crate::core::aggregate_population::aggregate_lod_enabled_from_env() => {
+                    world.insert_resource(
+                        crate::core::aggregate_population::DormantCohorts::from_bounds(
+                            run_seed,
+                            &loaded_bounds,
+                        ),
+                    );
+                }
+                None => {}
             }
 
             let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
@@ -1180,22 +1205,19 @@ impl SimulationEngine {
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
-                    // Checked before serializing, not after: the snapshot cannot carry dormant
-                    // cohorts, so a world holding any is not one this format can describe.
-                    let refusal = world
-                        .get_resource::<crate::core::aggregate_population::DormantCohorts>()
-                        .and_then(|c| c.snapshot_refusal());
-                    let answer = match refusal {
-                        Some(why) => Err(why),
-                        None => Ok(serialize_world_state(
-                            &mut world,
-                            tick_count,
-                            &chronicle_history_clone_save,
-                            &lineage_tracker_sim_save,
-                            &evolution_settings_clone_save,
-                            &map_elites_grid_clone_save,
-                        )),
-                    };
+                    // No longer refused while anything is dormant: schema 4 carries the cohorts,
+                    // their archived genomes and the dormancy RNG position, so a world holding a
+                    // sleeping herd is one this format can describe. The `Result` stays because a
+                    // save that cannot fail is a claim, not a fact — restore already has one
+                    // failure mode (a grid whose chunk count disagrees with its side).
+                    let answer = Ok(serialize_world_state(
+                        &mut world,
+                        tick_count,
+                        &chronicle_history_clone_save,
+                        &lineage_tracker_sim_save,
+                        &evolution_settings_clone_save,
+                        &map_elites_grid_clone_save,
+                    ));
                     let _ = tx.send(answer);
                 }
 
