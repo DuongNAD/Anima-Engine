@@ -1085,3 +1085,77 @@ authorised widening the scope for this goal; it is recorded here rather than ass
 
 `npm run build` ok · `npm run test:frontend` 24 files / 237 tests · `npm run lint` 0 errors ·
 bindings regenerate byte-identical, so the new CI parity step is green.
+
+---
+
+### G2 — Platform convergence — 2026-07-25 (Claude Opus 5)
+
+**Status: STARTED, then stopped on a stop condition.** One of four tasks is partly done. The three
+G2 gates do **not** pass. **Rung reached: Designed** for the feature split; nothing beyond it.
+
+#### Precondition check
+
+All four G1 gates pass (G1.1–G1.4 entries above). Before starting G2 the verification loop was
+brought fully green for the first time in this program — the 12 clippy findings carried since G0
+were cleared in `6ae3285`:
+
+```text
+cargo fmt --check                          rc=0
+cargo clippy --all-targets -- -D warnings  rc=0
+cargo test                                 546 passed, 1 failed, 4 ignored
+```
+
+The one failure is the pre-existing flaky terrain zero-alloc test, which is now **the only thing
+between this repo and a green CI**.
+
+Those 12 were not noise. Five were `MutexGuard` held across an await: `TEST_LOCK` serialises tests
+that bind fixed ports, so the guard is *deliberately* held for the whole test — `std::sync::Mutex`
+was simply the wrong tool, and clippy was pointing at a real mismatch. Switched to
+`tokio::sync::Mutex`, with `blocking_lock()` in the sync tests sharing it.
+
+#### Done
+
+Task 2, partially: **the `networking` feature gate** (`b3fdec6`). `default = []`; `networking`
+pulls in tokio-tungstenite; `desktop` turns the optional subsystems back on. Only the transport is
+gated — `MigrationPayload` and `hash_lineage_id` stay unconditional because other modules
+glob-import that one. Six WS test suites get a crate-level `#![cfg(feature = "networking")]`.
+
+`ureq` was considered and deliberately left ungated, with the reason in `Cargo.toml`: G2 names
+Burn/WGPU, Neo4j and networking. ureq is small and pure-Rust, and G1.3 already routes deterministic
+runs to `MockMetaAiClient` regardless of build flags.
+
+Useful finding while scoping: **`burn` is only used in two files** (`ai/model.rs`,
+`core/simulation_loop.rs`), not the nine an initial grep suggested — the rest were prose matches on
+"burned energy". The Burn/WGPU gate is therefore much smaller than the audit implies.
+
+#### Stop condition hit
+
+> "An unrelated change appearing mid-run is a stop condition: log it and stop, do not 'fix' it."
+
+`src/core/aggregate_population.rs` — another agent's in-progress file, which appeared during this
+session — fails to compile under **both** `--no-default-features` and `--features desktop`, on an
+unrelated `AgentBrain` associated item. `cargo check` therefore cannot confirm anything about the
+networking gate, so that commit is landed **unverified and labelled as such**. It was committed
+rather than left dirty because earlier in this program a concurrent agent swept in-progress work of
+mine into its own commits (`9174210`); a labelled commit is safer than a loose working tree.
+
+Re-verify with `cargo check --no-default-features --all-targets` once their file builds.
+
+#### Not done
+
+- **Gate #1** (one law change alters both engines) — untouched. Requires tasks 1+2 in full:
+  extracting `anima-domain` and the five-crate workspace split. Multi-session.
+- **Gate #2** — half. Remaining: the Neo4j gate (`lineage.rs`, 9 `neo4rs` sites, behind an
+  in-memory fallback that already exists) and Burn/WGPU (2 files). Note `tokio = { features =
+  ["full"] }` is unconditional and both remaining gates depend on narrowing it; that is likely the
+  first thing to touch.
+- **Gate #3** (experiment at documented limits within a declared RAM ceiling) — untouched. Task 4
+  is the most self-contained remaining work: `MAX_SEEDS 1024 × MAX_OBSERVABLES 4096 ×
+  MAX_DURATION_TICKS 100M` in `experiment.rs:33`, with the runner holding all samples in RAM.
+- Task 3 (thread/task lifecycle) — untouched.
+
+#### Honest scope note
+
+G2 is not a one-session goal. `src-tauri` is 27,598 lines across 53 files in a single crate, and
+`simulation_loop.rs` alone is 1,549. The work above was chosen to be independently useful and
+independently revertible rather than to leave a half-migrated workspace.
