@@ -10,6 +10,36 @@ use crate::core::ecs::{Food, ParentAgent, Position, Predator, Prey, Rotation, Se
 
 pub type DefaultBackend = burn_ndarray::NdArray<f32>;
 
+#[cfg(feature = "ml-wgpu")]
+type WgpuBackend = burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>;
+
+/// Run one forward pass and read it back, so the wgpu probe measures the thing it claims to.
+///
+/// The probe used to wrap only construction. On a GPU-less CI runner that returned `Ok`, the caller
+/// took the Wgpu branch, and `No adapter found for graphics API AutoGraphicsApi` arrived at the
+/// first tensor operation — outside the `catch_unwind` meant to catch it. The fallback was written,
+/// was correct, and never ran.
+///
+/// Exactly *when* burn-wgpu demands an adapter is not something this comment should assert. An
+/// attempt to pin it down locally, by building a `Wgpu<Metal>` model on Windows, panicked at
+/// construction — the opposite of what the CI log shows for `AutoGraphicsApi`. So the honest
+/// statement is narrower: the moment varies, and the guard has to span all of it. That is what this
+/// does — construction and a real operation, both inside one `catch_unwind`.
+///
+/// `into_data` is the part that makes it an operation rather than a queue entry: it synchronises
+/// and copies back to the host, forcing the work to actually execute.
+#[cfg(feature = "ml-wgpu")]
+fn wgpu_survives_one_forward_pass(
+    model: &ActorCriticModel<WgpuBackend>,
+    device: &burn_wgpu::WgpuDevice,
+    input_dim: usize,
+) {
+    let data = Data::new(vec![0.0f32; input_dim], Shape::new([1, input_dim]));
+    let input = Tensor::<WgpuBackend, 2>::from_data(data, device);
+    let (actor, _) = model.forward(input);
+    let _ = actor.into_data();
+}
+
 #[derive(Module, Debug)]
 pub struct ActorCriticModel<B: Backend> {
     trunk1: Linear<B>,
@@ -382,11 +412,15 @@ impl BrainModel {
         if use_gpu {
             let built = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
-                let model = ActorCriticModel::<
-                    burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>,
-                >::from_flat_weights(
-                    input_dim, hidden_dim, action_dim, &weights, &device
+                let model = ActorCriticModel::<WgpuBackend>::from_flat_weights(
+                    input_dim, hidden_dim, action_dim, &weights, &device,
                 );
+                // Inside the guard, and after the model exists: construction is lazy, so this is
+                // the first moment an adapter is actually demanded. See
+                // `wgpu_survives_one_forward_pass`.
+                if let Ok(ref m) = model {
+                    wgpu_survives_one_forward_pass(m, &device, input_dim);
+                }
                 (model, device)
             });
             if let Ok((Ok(model), device)) = built {
@@ -421,10 +455,12 @@ impl BrainModel {
         if use_gpu {
             let wgpu_res = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
-                let model =
-                    ActorCriticModel::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>::new(
-                        input_dim, hidden_dim, action_dim, &device,
-                    );
+                let model = ActorCriticModel::<WgpuBackend>::new(
+                    input_dim, hidden_dim, action_dim, &device,
+                );
+                // Same reason as in `new_seeded`: without this the probe only proves that a struct
+                // can be allocated, and the machine is asked for a GPU much later.
+                wgpu_survives_one_forward_pass(&model, &device, input_dim);
                 (model, device)
             });
 
