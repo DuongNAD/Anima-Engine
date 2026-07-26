@@ -35,9 +35,10 @@
 //! would silently switch that off and call it a safety improvement.
 
 use crate::core::simulation_lod::LodFocus;
-use anima_domain::causal::{CauseId, CAUSE_BACKGROUND};
+use anima_domain::causal::{CauseId, CAUSE_BACKGROUND, CAUSE_OBSERVER};
 use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 /// How an observer is allowed to relate to the world for the duration of a run.
 ///
@@ -124,6 +125,13 @@ impl ObserverPolicy {
 /// `a_full_hour_of_trace_fits_a_declared_budget`.
 pub const DEFAULT_OBSERVER_TRACE_CAPACITY: usize = 216_000;
 
+/// Room for the actions a human takes in a long session.
+///
+/// Sized against a person, not against the tick rate: an observer clicking steadily every two seconds
+/// for an hour produces about 1,800 actions. Ten thousand is generous for that and costs ~160 KiB,
+/// which is nothing beside the focus buffer beside it.
+pub const DEFAULT_OBSERVER_ACTION_CAPACITY: usize = 10_000;
+
 /// What the world saw of the observer at one tick.
 ///
 /// The **effective** focus, after [`ObserverPolicy`] has had its say — not what the UI asked for.
@@ -154,7 +162,15 @@ pub struct ObserverSample {
 #[derive(Resource, Clone, Debug)]
 pub struct ObserverTrace {
     samples: Vec<ObserverSample>,
+    /// What the observer *did*, kept beside what they *saw* rather than inside `ObserverSample`.
+    ///
+    /// Two buffers because they answer different questions and have different shapes. The focus
+    /// timeline is a step function that replay reconstructs by holding between samples; actions are
+    /// discrete events at a tick and holding one would be meaningless. Folding actions into
+    /// `ObserverSample` would also change the type `ObserverReplay` reads, for no gain.
+    actions: Vec<ObserverActionRecord>,
     dropped: u64,
+    dropped_actions: u64,
     last: Option<LodFocus>,
 }
 
@@ -168,9 +184,38 @@ impl ObserverTrace {
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             samples: Vec::with_capacity(capacity),
+            // Actions come from a human at UI speed, not from the tick loop, so the buffer is sized
+            // for a long session of clicking rather than for 60 Hz. A capacity tied to `capacity`
+            // would scale it against the wrong thing entirely.
+            actions: Vec::with_capacity(DEFAULT_OBSERVER_ACTION_CAPACITY),
             dropped: 0,
+            dropped_actions: 0,
             last: None,
         }
+    }
+
+    /// Store one action, or count it if the buffer is full.
+    ///
+    /// Same contract as [`record`](Self::record): the buffer never grows, because this runs from the
+    /// tick path. Unlike focus samples there is no de-duplication — two identical actions a second
+    /// apart are two things a human did, not one.
+    pub fn record_action(&mut self, record: ObserverActionRecord) -> bool {
+        if self.actions.len() == self.actions.capacity() {
+            self.dropped_actions += 1;
+            return false;
+        }
+        self.actions.push(record);
+        true
+    }
+
+    pub fn actions(&self) -> &[ObserverActionRecord] {
+        &self.actions
+    }
+
+    /// How many actions could not be stored. Counted separately from focus samples: losing a
+    /// human's action is a provenance hole, while losing a focus sample only costs replay fidelity.
+    pub fn dropped_actions(&self) -> u64 {
+        self.dropped_actions
     }
 
     /// Record `focus` at `tick` if it differs from the last thing recorded.
@@ -276,6 +321,158 @@ impl ObserverReplay {
 
     pub fn remaining(&self) -> usize {
         self.samples.len().saturating_sub(self.cursor)
+    }
+}
+
+// ---- Observer actions (ADR-0004 C3) -------------------------------------------------------------
+
+/// Something a human did to the running world, beyond looking at it.
+///
+/// ## These are not future actions
+///
+/// ADR-0004 O2 deferred `ObserverSample.actions` on the grounds that the engine had no embodied
+/// actions yet — the observer had a camera and nothing else. That was wrong, and finding out changed
+/// the scope: **every variant below is an IPC command that already existed and already wrote straight
+/// into shared state with no declaration, no record and no attribution.**
+///
+/// The ADR named the camera as the fifth source of outside-world leakage in
+/// `DETERMINISM_CONTRACT` §2. These are stronger than the camera. The camera changes *which agents
+/// think*; [`EvolutionSettingsChanged`](Self::EvolutionSettingsChanged) changes the mutation rate and
+/// selection bias that selection itself runs under, and
+/// [`MigrationTriggered`](Self::MigrationTriggered) moves populations between shards.
+///
+/// ## What this type does, and does not, change
+///
+/// Recording only. The commands still do exactly what they did — this makes their effects
+/// **attributable**, it does not yet make the seam mandatory. Enforcement (an observer may write the
+/// world *only* through here) is a separate change, and it needs the causal ledger to exist in the
+/// live Bevy world, which is G2. Record first, enforce second, mirroring O2-then-O3.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ObserverAction {
+    /// `update_evolution_settings`. A human changing the mutation rate mid-run is a change to the
+    /// laws selection operates under, applied to a population already living under the old ones.
+    EvolutionSettingsChanged {
+        /// `f64` to match `EvolutionSettings` exactly. Narrowing to `f32` here would make the record
+        /// a lossy copy of the value the world actually took, which is the one thing a provenance
+        /// record must not be.
+        mutation_rate: f64,
+        selection_bias: f64,
+        grid_resolution: u32,
+    },
+    /// `toggle_evolution`. Selection stops or starts; the ecology keeps running either way.
+    EvolutionToggled { running: bool },
+    /// `trigger_migration`. Agents leave for another shard because someone asked them to.
+    MigrationTriggered { target_port: u16 },
+    /// `set_sharding_config`. Changes how the world is partitioned under a running population.
+    ShardingConfigChanged { local_port: u16 },
+}
+
+impl ObserverAction {
+    /// The IPC command this action came from, so a trace can be read back against `PROJECT.md`'s
+    /// documented surface rather than against this enum's own naming.
+    pub fn command_name(&self) -> &'static str {
+        match self {
+            Self::EvolutionSettingsChanged { .. } => "update_evolution_settings",
+            Self::EvolutionToggled { .. } => "toggle_evolution",
+            Self::MigrationTriggered { .. } => "trigger_migration",
+            Self::ShardingConfigChanged { .. } => "set_sharding_config",
+        }
+    }
+
+    /// Human-readable "why" for a [`CausalLedger`](anima_domain::causal::CausalLedger) entry.
+    ///
+    /// Allocates, and deliberately not called from the tick path — recording a sample stores the
+    /// `Copy` action and nothing else; this is for the ledger, which lives in the headless slice.
+    pub fn mechanism(&self) -> String {
+        match *self {
+            Self::EvolutionSettingsChanged {
+                mutation_rate,
+                selection_bias,
+                grid_resolution,
+            } => format!(
+                "an observer set mutation_rate={mutation_rate}, selection_bias={selection_bias}, \
+                 grid_resolution={grid_resolution} mid-run"
+            ),
+            Self::EvolutionToggled { running } => {
+                format!(
+                    "an observer turned evolution {}",
+                    if running { "on" } else { "off" }
+                )
+            }
+            Self::MigrationTriggered { target_port } => {
+                format!("an observer sent agents to shard on port {target_port}")
+            }
+            Self::ShardingConfigChanged { local_port } => {
+                format!("an observer repartitioned the world, local_port={local_port}")
+            }
+        }
+    }
+}
+
+/// One action, when it happened, and whose doing it was.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ObserverActionRecord {
+    pub tick: u64,
+    pub action: ObserverAction,
+    /// Always [`CAUSE_OBSERVER`] today. Carried explicitly rather than implied so a trace merged from
+    /// more than one source cannot lose which effects a human owns.
+    pub cause_id: CauseId,
+}
+
+/// Actions as the **app** holds them, across the thread boundary.
+///
+/// Tauri commands run on their own thread and cannot touch the world's resources, which is the same
+/// constraint that made [`SharedLodFocus`](crate::core::simulation_lod::SharedLodFocus) a handle. A
+/// command pushes here; [`drain_observer_actions_system`] moves them into the
+/// [`ObserverTrace`] once per tick.
+#[derive(Resource, Clone, Default)]
+pub struct SharedObserverActions(pub Arc<Mutex<Vec<ObserverActionRecord>>>);
+
+impl SharedObserverActions {
+    pub fn new() -> Self {
+        // Room for a burst of UI activity between two ticks without the command thread reallocating.
+        Self(Arc::new(Mutex::new(Vec::with_capacity(64))))
+    }
+
+    /// Called from a Tauri command. Never blocks the world: a poisoned lock drops the record rather
+    /// than propagating a panic into the IPC layer, and says so.
+    pub fn push(&self, action: ObserverAction) {
+        match self.0.lock() {
+            Ok(mut queue) => queue.push(ObserverActionRecord {
+                // The tick is stamped by the drain, which is the only place that knows it. Zero here
+                // means "not yet stamped" and is never observed outside this queue.
+                tick: 0,
+                action,
+                cause_id: CAUSE_OBSERVER,
+            }),
+            Err(_) => eprintln!(
+                "observer action '{}' was not recorded: the action queue's lock is poisoned",
+                action.command_name()
+            ),
+        }
+    }
+}
+
+/// Move queued actions into the trace, stamping each with the tick the world saw it on.
+///
+/// Inert without both resources, like the rest of this subsystem. Allocation-free on the tick path:
+/// `drain` reuses the queue's buffer and the trace's buffer is pre-allocated.
+pub fn drain_observer_actions_system(
+    queued: Option<bevy_ecs::system::Res<SharedObserverActions>>,
+    trace: Option<bevy_ecs::system::ResMut<ObserverTrace>>,
+    mut tick: bevy_ecs::system::Local<u64>,
+) {
+    let (Some(queued), Some(mut trace)) = (queued, trace) else {
+        return;
+    };
+    *tick = tick.wrapping_add(1);
+    let Ok(mut queue) = queued.0.lock() else {
+        return;
+    };
+    for mut record in queue.drain(..) {
+        record.tick = *tick;
+        trace.record_action(record);
     }
 }
 

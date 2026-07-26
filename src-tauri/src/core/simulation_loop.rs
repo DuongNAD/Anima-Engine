@@ -59,6 +59,12 @@ pub struct SimulationEngine {
     /// [`crate::core::simulation_lod::sync_lod_focus_system`]. Starts disabled, which tiers every
     /// agent `Hot` — an engine nobody has pointed a camera at behaves exactly as it did before.
     pub lod_focus: crate::core::simulation_lod::SharedLodFocus,
+    /// What the observer *did*, queued by Tauri commands and drained into the trace once per tick by
+    /// [`crate::core::observer::drain_observer_actions_system`] (ADR-0004 C3).
+    ///
+    /// Same handle shape as `lod_focus`, and for the same reason: commands run on their own thread and
+    /// cannot reach the world's resources.
+    pub observer_actions: crate::core::observer::SharedObserverActions,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
 
@@ -122,6 +128,7 @@ impl SimulationEngine {
             chronicle_history: Arc::new(RwLock::new(Vec::new())),
             sharding_config,
             lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
+            observer_actions: crate::core::observer::SharedObserverActions::new(),
             manual_migration_trigger,
             manual_migration_receiver,
             save_request_tx,
@@ -515,6 +522,9 @@ impl SimulationEngine {
         let lineage_tracker_sim = Arc::clone(&self.lineage_tracker);
         let sharding_config_sim = Arc::clone(&self.sharding_config);
         let lod_focus_sim = self.lod_focus.clone();
+        // Cloned out here rather than inside the thread closure: touching `self` in there would
+        // borrow the engine into the thread and the borrow escapes the method.
+        let observer_actions_sim = self.observer_actions.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
         let pending_load_state_clone = Arc::clone(&self.pending_load_state);
@@ -620,6 +630,10 @@ impl SimulationEngine {
                 cause_id: anima_domain::causal::CAUSE_OBSERVER,
             });
             world.insert_resource(crate::core::observer::ObserverTrace::default());
+            // ADR-0004 C3. The four IPC commands that already write into a running world —
+            // `update_evolution_settings`, `toggle_evolution`, `trigger_migration`,
+            // `set_sharding_config` — queue here, and the drain below puts them on the record.
+            world.insert_resource(observer_actions_sim);
 
             // Tier two is not, so it stays behind an explicit switch. It destroys bodies, runs a
             // second ecology, and refuses to save while anything is asleep — see
@@ -1155,6 +1169,11 @@ impl SimulationEngine {
                 // file a camera path the world never experienced.
                 crate::core::observer::record_observer_trace_system
                     .after(crate::core::simulation_lod::sync_lod_focus_system),
+                // Ordered after the focus recorder so a tick's samples and that tick's actions land
+                // in the same trace in a fixed order — two runs of the same session then produce the
+                // same record, which is what makes a trace comparable at all.
+                crate::core::observer::drain_observer_actions_system
+                    .after(crate::core::observer::record_observer_trace_system),
                 // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
                 // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
                 // unaffected.
