@@ -3,10 +3,11 @@
   "schemaVersion": 1,
   "_generated": {
     "by": "scripts/gen_world_manifest.ts",
-    "seed": "1337",
+    "seed": "seed",
     "shape": "continent",
+    "sourceSize": 2048,
     "worldGenVersion": 20,
-    "note": "Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is gitignored; this manifest is tracked because the coordinate contract and test S05 read it."
+    "note": "Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is gitignored; this manifest is tracked because the coordinate contract and test S05 read it. The identity above is the app identity from src/utils/sharedWorld.ts — it is not a knob."
   },
   "worldArtifact": {
     "path": "artifacts/world_256.anmw",
@@ -14,8 +15,8 @@
     "version": 2,
     "width": 256,
     "height": 256,
-    "seaLevel": 0.23743,
-    "checksum": "sha256:8c9c4f31fb25d1d21425d1c500e059d99fa1a5f397f90cc5a87a1825833c8590",
+    "seaLevel": 0.31722,
+    "checksum": "sha256:ff644602467995b2bb560ae053a1e8fe0bd8305767180994cbd511da0e72a905",
     "bytes": 1114148
   },
   "coordinateSystem": {

@@ -24,6 +24,67 @@ export const CANONICAL_VIEW_IDS = [
 /** A canonical view identifier. */
 export type CanonicalViewId = (typeof CANONICAL_VIEW_IDS)[number];
 
+/** A world-space point, in the canonical coordinate bounds. */
+export interface CanonicalPoint {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+// ---- the canonical camera poses ----------------------------------------------------------
+//
+// One definition, two consumers: `scripts/gen_world_manifest.ts` publishes these as the manifest's
+// `views[].camera`, and `tests/e2e/canonical_views.spec.ts` flies exactly them to produce
+// `map-views/*.png`. They lived only in the generator while no capture existed, which meant the
+// manifest could specify one shot and a harness take another and nothing would notice.
+//
+// Expressed in the CANONICAL bounds from COORDINATE_CONTRACT.md — x, z ∈ [-100, 100], y ∈ [0, 10]
+// — because that is the space the manifest publishes and the map-review gates read. The landscape
+// scene is a different span (1200 units wide, y exaggerated); `canonicalCameraToRender` is the
+// only conversion, so a capture cannot quietly use a different one.
+
+/** Span of the canonical XZ bounds (COORDINATE_CONTRACT.md §4: -100..100). */
+export const CANONICAL_XZ_EXTENT = 200;
+/** Top of the canonical Y range (elevation 1.0). */
+export const CANONICAL_MAX_Y = 10;
+
+/**
+ * Where each canonical view looks from, and at what.
+ *
+ * Fixed poses, deliberately: a canonical view is a *repeatable* shot, so that a before/after pair
+ * differs by the change under review and nothing else. A pose derived from world state at capture
+ * time would move whenever the world moved, and two images that frame different places cannot be
+ * compared.
+ */
+export const CANONICAL_VIEW_CAMERAS: Record<CanonicalViewId, CanonicalPoint> = {
+  overview: { position: [0, 95, 95], target: [0, 0, 0] },
+  navigation: { position: [-60, 45, -60], target: [-40, 0, -40] },
+  collision: { position: [50, 30, 50], target: [30, 2, 30] },
+  lighting: { position: [0, 80, -90], target: [0, 5, 0] },
+  spawn: { position: [20, 25, 20], target: [10, 1, 10] },
+  water: { position: [-80, 22, 12], target: [-95, 0, 0] },
+  biome_transition: { position: [40, 32, -40], target: [20, 2, -20] },
+  ecosystem: { position: [-30, 35, 60], target: [-10, 1, 40] },
+};
+
+/**
+ * Convert a canonical-bounds camera pose into the landscape scene's own span.
+ *
+ * XZ and Y scale differently and that is not a bug: the scene spans `renderSize` horizontally but
+ * only `renderSize * heightRatio` vertically for a full-elevation column, so the render has a
+ * vertical exaggeration relative to the canonical `y = elevation * 10`. Applying the horizontal
+ * factor to `y` would put every camera kilometres above the terrain.
+ */
+export function canonicalCameraToRender(
+  cam: CanonicalPoint,
+  renderSize: number,
+  heightRatio: number,
+): CanonicalPoint {
+  const kxz = renderSize / CANONICAL_XZ_EXTENT;
+  const ky = (renderSize * heightRatio) / CANONICAL_MAX_Y;
+  const map = (p: [number, number, number]): [number, number, number] => [p[0] * kxz, p[1] * ky, p[2] * kxz];
+  return { position: map(cam.position), target: map(cam.target) };
+}
+
 /** Result of validating a manifest: `ok` is true only when `errors` is empty. */
 export interface MapManifestValidationResult {
   ok: boolean;

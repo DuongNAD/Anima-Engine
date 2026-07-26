@@ -3,7 +3,17 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateMapManifest, CANONICAL_VIEW_IDS } from '@/components/Landscape/utils/mapManifest';
+import {
+  validateMapManifest,
+  CANONICAL_VIEW_IDS,
+  CANONICAL_VIEW_CAMERAS,
+} from '@/components/Landscape/utils/mapManifest';
+import { hashSeed, WORLD_GEN_VERSION } from '@/components/Landscape/utils/worldGen';
+import {
+  SHARED_WORLD_SEED,
+  SHARED_WORLD_SHAPE,
+  SHARED_WORLD_SIZE,
+} from '@/utils/sharedWorld';
 
 // Evidence gate for the COMMITTED map manifest.
 //
@@ -85,6 +95,48 @@ describe('map manifest — the committed file, not a copy of it', () => {
     expect(dv.getUint32(4, true)).toBe(wa.version);
     expect(dv.getUint32(8, true)).toBe(wa.width);
     expect(dv.getUint32(12, true)).toBe(wa.height);
+  });
+
+  it('is the world the app renders, not merely a world', () => {
+    // The failure mode this test exists for, and it is subtler than a placeholder checksum: the
+    // generator ran `generateWorld("1337", { size: 256 })` and encoded it. Every number in the
+    // manifest was then real — real bytes, real SHA-256 — and described a world nothing renders.
+    //
+    // The shipped path is `sharedWorld.ts` (seed "seed", 2048², continent) generated in full and
+    // then `worldToArtifact(world, 256)`. Generating at 256 directly is a *different world*, not a
+    // coarser view of that one: the generator samples its noise at whatever grid it is handed.
+    //
+    // So the binding is to `sharedWorld.ts` — not to a second copy of the identity written here,
+    // which would have been just as wrong and just as green.
+    const m = loadManifest();
+    const gen = m._generated as Record<string, unknown>;
+
+    expect(gen.seed, 'manifest seed must be the shared world seed').toBe(SHARED_WORLD_SEED);
+    expect(gen.shape).toBe(SHARED_WORLD_SHAPE);
+    expect(gen.sourceSize, 'the artifact must be a downsample of the authoritative world').toBe(
+      SHARED_WORLD_SIZE,
+    );
+    expect(gen.worldGenVersion).toBe(WORLD_GEN_VERSION);
+
+    // ...and the bytes agree. The ANMW header carries the world identity at offsets 20 (seed u32)
+    // and 24 (generator version), so this is checked against the artifact itself rather than
+    // against the manifest's own description of it.
+    const wa = m.worldArtifact as Record<string, unknown>;
+    const bytes = readFileSync(resolve(ROOT, String(wa.path)));
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    expect(dv.getUint32(20, true), 'artifact header seed').toBe(hashSeed(SHARED_WORLD_SEED));
+    expect(dv.getUint32(24, true), 'artifact header generator version').toBe(WORLD_GEN_VERSION);
+  });
+
+  it('specifies the camera poses the capture harness actually flies', () => {
+    // The manifest's `views[].camera` is the contract a capture must shoot. If it were written
+    // independently of the harness, the manifest could describe one shot and the PNG be another.
+    const m = loadManifest();
+    const views = m.views as Array<Record<string, unknown>>;
+    for (const v of views) {
+      const id = String(v.id) as keyof typeof CANONICAL_VIEW_CAMERAS;
+      expect(v.camera, `view "${id}" camera`).toEqual(CANONICAL_VIEW_CAMERAS[id]);
+    }
   });
 
   it('agrees with the backend coordinate contract', () => {

@@ -3,8 +3,8 @@ import { extend, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from './utils/worldGen';
-import { FloraType } from './utils/worldGen';
 import { sampleMeshHeight, biomeAt } from './utils/worldSample';
+import { buildFloraColliderIndex, resolveFloraOverlap } from './utils/floraClearance';
 import type { CameraView } from './WorldMinimap';
 
 extend({ OrbitControls });
@@ -98,30 +98,12 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   };
 
   // Static tree colliders for walk mode: trunked flora bucketed into an 8-unit grid, so the
-  // player capsule can be pushed out of trunks with a 9-cell lookup instead of a 100k scan.
-  const treeGrid = useMemo(() => {
-    const TALL = new Set<number>([
-      FloraType.Pine,
-      FloraType.Round,
-      FloraType.Jungle,
-      FloraType.Cactus,
-      FloraType.Acacia,
-      FloraType.Palm,
-      FloraType.DeadTree,
-    ]);
-    const grid = new Map<number, number[]>();
-    const toWorld = renderSize / world.size;
-    for (let i = 0; i < world.floraCount; i++) {
-      if (!TALL.has(world.floraType[i])) continue;
-      const x = world.floraX[i] * toWorld;
-      const z = world.floraZ[i] * toWorld;
-      const key = Math.floor((x + renderSize) / 8) * 2048 + Math.floor((z + renderSize) / 8);
-      let arr = grid.get(key);
-      if (!arr) grid.set(key, (arr = []));
-      arr.push(i);
-    }
-    return grid;
-  }, [world, renderSize]);
+  // player capsule can be pushed out of trunks with a local lookup instead of a 100k scan.
+  //
+  // The set of solid types and the radius rule used to live inline here, and `findSpawn` had no
+  // copy of either — which is how the opening camera ended up inside foliage. Both now come from
+  // `floraClearance.ts`, which the spawn picker and the canonical-view capture also import.
+  const floraIndex = useMemo(() => buildFloraColliderIndex(world, renderSize), [world, renderSize]);
 
   // Keyboard state (fly / walk). Codes, not chars, so layout doesn't matter.
   useEffect(() => {
@@ -380,30 +362,13 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
             nz = cz0;
           }
         }
-        // Push the player capsule out of tree trunks (9 surrounding grid cells).
-        const toWorld = renderSize / world.size;
-        const gcx = Math.floor((nx + renderSize) / 8);
-        const gcz = Math.floor((nz + renderSize) / 8);
-        for (let dxc = -1; dxc <= 1; dxc++) {
-          for (let dzc = -1; dzc <= 1; dzc++) {
-            const arr = treeGrid.get((gcx + dxc) * 2048 + (gcz + dzc));
-            if (!arr) continue;
-            for (let kk = 0; kk < arr.length; kk++) {
-              const ti = arr[kk];
-              const tx = world.floraX[ti] * toWorld;
-              const tz = world.floraZ[ti] * toWorld;
-              const r = 0.45 + world.floraScale[ti] * 0.25;
-              const ddx = nx - tx;
-              const ddz = nz - tz;
-              const d2 = ddx * ddx + ddz * ddz;
-              if (d2 < r * r && d2 > 1e-6) {
-                const d = Math.sqrt(d2);
-                nx = tx + (ddx / d) * r;
-                nz = tz + (ddz / d) * r;
-              }
-            }
-          }
-        }
+        // Push the player capsule out of tree trunks. `resolveFloraOverlap` is the shared policy;
+        // it also resolves the case this loop used to skip — a player exactly on a trunk centre,
+        // where the old `d2 > 1e-6` guard meant the one position that most needed pushing out was
+        // the only one never pushed.
+        const pushed = resolveFloraOverlap(floraIndex, nx, nz);
+        nx = pushed.x;
+        nz = pushed.z;
       }
       // Reconcile velocity with what actually happened (a wall/slope zeroes that component,
       // so momentum doesn't build up against it and the head-bob doesn't fake a stride).

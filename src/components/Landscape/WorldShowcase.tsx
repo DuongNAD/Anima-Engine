@@ -19,6 +19,7 @@ import type { World } from './utils/worldGen';
 import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
+import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import {
   SHARED_WORLD_SEED as WORLD_SEED,
   SHARED_WORLD_SIZE as WORLD_SIZE,
@@ -42,7 +43,12 @@ import { audioManager } from './utils/audioManager';
 // world the agents live on depend on which page loaded last.
 
 // World-space extent the terrain is drawn at (independent of WORLD_SIZE).
-const RENDER_SIZE = 1200;
+//
+// Imported rather than written as a literal because the flora collider and canopy radii in
+// `floraClearance.ts` are calibrated for this span — a tree is 1.4 units across *of a 1200-unit
+// map*. Changing the scene extent without changing those together silently resizes every tree
+// relative to the world.
+const RENDER_SIZE = FLORA_RADIUS_REFERENCE_EXTENT;
 const HEIGHT_RATIO = 0.14;
 const MESH_RES = 384;
 // M3: opt-in chunked terrain (frustum-culls off-screen chunks; see WorldTerrainLod / chunkLod).
@@ -139,11 +145,15 @@ export const WorldShowcase: React.FC = () => {
 
   // Open the world on a scenic patch of LAND rather than the origin (usually open ocean).
   // Runs once the world is ready; the rig applies the teleport on its first frame.
+  //
+  // Kept in a ref as well, because Reset needs the *same* position — see the reset handler.
   const spawnedRef = useRef(false);
+  const homeRef = useRef<{ x: number; z: number } | null>(null);
   useEffect(() => {
     if (!world || !isWorldRenderable(world) || spawnedRef.current) return;
     spawnedRef.current = true;
     const s = findSpawn(world, RENDER_SIZE);
+    homeRef.current = s;
     viewRef.current.targetX = s.x;
     viewRef.current.targetZ = s.z;
     teleportRef.current = { x: s.x, z: s.z };
@@ -467,7 +477,14 @@ export const WorldShowcase: React.FC = () => {
         onQuality={setQuality}
         onMute={() => setMuted((m) => !m)}
         onReset={() => {
-          teleportRef.current = { x: 0, z: 0 };
+          // Reset returns to the spawn the world opened on, not to the origin.
+          //
+          // `{ x: 0, z: 0 }` is the middle of the map, and this file's own comment two screens up
+          // says the middle of the map is usually open ocean — which is what a browser
+          // reproduction found: pressing Reset put the readout biome at "Đại dương" and dropped
+          // the camera into the sea. `findSpawn` had already computed a validated, flora-clear
+          // landing spot on load; Reset just has to use it.
+          teleportRef.current = homeRef.current ?? { x: 0, z: 0 };
         }}
       />
 

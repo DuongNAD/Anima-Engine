@@ -171,7 +171,12 @@ export enum FloraType {
 
 // ---- Seeded helpers ------------------------------------------------------------------
 
-function hashSeed(seed: string | number): number {
+/**
+ * The seed a world identity actually generates under, as the u32 written into the World Artifact
+ * header. Exported so evidence tests can bind a committed artifact's bytes to `sharedWorld.ts`
+ * without regenerating a 2048² world to find out.
+ */
+export function hashSeed(seed: string | number): number {
   if (typeof seed === 'number') return seed >>> 0;
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {

@@ -1,4 +1,5 @@
 import type { World } from './worldGen';
+import { buildFloraColliderIndex, floraOverlapAt, resolveFloraOverlap } from './floraClearance';
 
 // ---------------------------------------------------------------------------------------
 // Shared sampling helpers for the SoA world. Keeping these in one place guarantees the
@@ -74,11 +75,30 @@ function spawnBiomeScore(b: number): number {
  * terrain instead of the origin (which is often open ocean). Scans a coarse sample of cells
  * and scores each by biome appeal, flatness, a little water nearby for scenery, and closeness
  * to the map centre. Deterministic. Falls back to the origin if the world is all water.
+ *
+ * **Flora clearance is part of "pleasant".** A cell can be flat, grassy, near the shore and still
+ * open the view into a canopy — and at the shipped world identity it did: this returned render
+ * (-128.7, -93.5), where a broadleaf of canopy radius 1.34 stands 1.90 units away and therefore
+ * subtends ninety degrees of the frame. A candidate is only eligible if it clears the `'spawn'`
+ * footprint of every solid flora, which is the shared policy in `floraClearance.ts` — the canopy
+ * widened until it stops being the whole picture.
+ *
+ * If no scored cell is clear at all — a fully forested world — the best cell is taken and stepped
+ * out of the canopy deterministically rather than returned as-is.
  */
 export function findSpawn(world: World, renderSize: number): { x: number; z: number } {
   const { size, biome, elevation, slope, shore, seaLevel } = world;
   if (!biome || biome.length < size * size || !elevation) return { x: 0, z: 0 };
+
+  const flora = buildFloraColliderIndex(world, renderSize);
+  const toRenderX = (gx: number): number => (gx / (size - 1) - 0.5) * renderSize;
+
   const step = Math.max(1, Math.floor(size / 160));
+  // Two winners are tracked: the best cell that is genuinely clear (what we want to return) and
+  // the best cell overall (what we fall back to and push out of the trees).
+  let bestClear = -Infinity;
+  let clearX: number | null = null;
+  let clearZ = 0;
   let best = -Infinity;
   let bx = Math.floor(size / 2);
   let bz = Math.floor(size / 2);
@@ -113,12 +133,22 @@ export function findSpawn(world: World, renderSize: number): { x: number; z: num
         bx = gx;
         bz = gy;
       }
+      if (score > bestClear) {
+        const rx = toRenderX(gx);
+        const rz = toRenderX(gy);
+        if (floraOverlapAt(flora, rx, rz, 0, 'spawn') === null) {
+          bestClear = score;
+          clearX = rx;
+          clearZ = rz;
+        }
+      }
     }
   }
-  return {
-    x: (bx / (size - 1) - 0.5) * renderSize,
-    z: (bz / (size - 1) - 0.5) * renderSize,
-  };
+
+  if (clearX !== null) return { x: clearX, z: clearZ };
+  // Nothing scored was clear. Take the best cell and step out of the canopy rather than handing
+  // back a position known to be inside one.
+  return resolveFloraOverlap(flora, toRenderX(bx), toRenderX(bz), 0, 'spawn');
 }
 
 /**

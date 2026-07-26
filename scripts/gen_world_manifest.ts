@@ -34,7 +34,7 @@
 // or with an explicit seed/size:
 //   npm run gen:world-manifest -- 1337 256
 
-import { writeFileSync, mkdirSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { resolve, dirname } from 'path';
 import {
@@ -43,17 +43,43 @@ import {
   worldToArtifact,
 } from '../src/components/Landscape/utils/worldArtifact';
 import { generateWorld } from '../src/components/Landscape/utils/worldGen';
-import { CANONICAL_VIEW_IDS } from '../src/components/Landscape/utils/mapManifest';
+import {
+  CANONICAL_VIEW_CAMERAS,
+  CANONICAL_VIEW_IDS,
+} from '../src/components/Landscape/utils/mapManifest';
+import {
+  SHARED_WORLD_SEED,
+  SHARED_WORLD_SHAPE,
+  SHARED_WORLD_SIZE,
+} from '../src/utils/sharedWorld';
 
 // ---- config ---------------------------------------------------------------------------------
-
-const SEED = process.argv[2] ?? '1337';
+//
+// # Which world this describes, and why that is not a free choice
+//
+// The app has exactly one world identity, declared in `src/utils/sharedWorld.ts`: seed "seed",
+// 2048², continent. `WorldShowcase` renders it, `worldCache.loadOrGenerateWorld` hands it to the
+// backend, and `worldToArtifact(world, 256)` is the downsample that becomes the simulation's
+// working grid. Two callers that disagree about any of the three do not merely render differently
+// — they generate two worlds and the simulation lives on whichever page loaded last. That is why
+// those constants are an identity rather than settings, and it is stated at the top of the file
+// that owns them.
+//
+// This script used to generate `generateWorld("1337", { size: 256 })` and encode it directly. The
+// resulting checksum was real — real bytes, real SHA-256, nothing fabricated — and it identified a
+// world the app never renders. Note that "generate at 2048 then downsample to 256" and "generate
+// at 256" are not two routes to one result: the generator samples noise at the grid it is given,
+// so the second is a different world, not a coarser view of the first.
+//
+// So: import the identity, generate the authoritative world, downsample exactly as the shipped
+// path does.
+const SEED = process.argv[2] ?? SHARED_WORLD_SEED;
+const SOURCE_SIZE = Number(process.argv[3] ?? SHARED_WORLD_SIZE);
 // The BACKEND working resolution — `DEFAULT_GRID_DIM` in `src-tauri/src/core/sim_rules.rs`, which
-// is bound by test `s03_default_grid_dim_tracks_map_settings_default` to `MapSettings::default()`.
-// It was 128 here for as long as that constant was stale; the world has run 256² since the working
-// map was matched to the artifact.
-const DIM = Number(process.argv[3] ?? 256);
-const SHAPE = 'continent' as const;
+// is bound by test `s03_default_grid_dim_tracks_map_settings_default` to `MapSettings::default()`,
+// and by `worldCache.SIM_ARTIFACT_SIZE` on the shipped path.
+const DIM = Number(process.argv[4] ?? 256);
+const SHAPE = SHARED_WORLD_SHAPE;
 
 // Fixed by MapBounds::default / SIMULATION_RULES.md. Restated as literals rather than imported so a
 // silent change on either side shows up as a manifest diff.
@@ -65,35 +91,23 @@ const CANONICAL_BIOME_COUNT = 22;
 const LEGACY_BIOME_COUNT = 11;
 
 /**
- * Camera specifications for the canonical views.
+ * Camera specifications for the canonical views — imported, not restated.
  *
- * These are a *contract for what a capture must shoot*, not a record of captures that happened.
- * There is no capture pipeline in this repository — the project renders a 3D mesh and
- * `gen_map_manifest.ts` says as much about `pipeline.panorama` — and CLAUDE.md forbids running the
- * full backend on the development machine.
- *
- * So every view is emitted with `captured: false` and no image is claimed. The gate in
- * `mapManifestEvidence.test.ts` enforces the invariant that actually matters: anything claiming
- * `captured: true` must have a file on disk. The day a capture harness lands, it flips these flags
- * and the gate is already watching. Inventing eight PNGs to make a check go green is the exact
- * failure this whole file exists to remove.
+ * `CANONICAL_VIEW_CAMERAS` is the single definition the deterministic capture harness
+ * (`tests/e2e/canonical_views.spec.ts`) actually flies. Declaring the poses here as well would
+ * mean the manifest could describe a shot nobody took.
  */
-const VIEW_CAMERAS: Record<string, { position: [number, number, number]; target: [number, number, number] }> = {
-  overview: { position: [0, 95, 95], target: [0, 0, 0] },
-  navigation: { position: [-60, 45, -60], target: [-40, 0, -40] },
-  collision: { position: [50, 30, 50], target: [30, 2, 30] },
-  lighting: { position: [0, 80, -90], target: [0, 5, 0] },
-  spawn: { position: [20, 25, 20], target: [10, 1, 10] },
-  water: { position: [-80, 22, 12], target: [-95, 0, 0] },
-  biome_transition: { position: [40, 32, -40], target: [20, 2, -20] },
-  ecosystem: { position: [-30, 35, 60], target: [-10, 1, 40] },
-};
+const VIEW_CAMERAS = CANONICAL_VIEW_CAMERAS;
 
 // ---- generate -------------------------------------------------------------------------------
 
-console.log(`generating world seed=${SEED} size=${DIM} shape=${SHAPE} ...`);
-const world = generateWorld(SEED, { size: DIM, shape: SHAPE });
+console.log(
+  `generating the authoritative world seed=${SEED} size=${SOURCE_SIZE} shape=${SHAPE}, ` +
+    `downsampling to ${DIM}² ...`,
+);
+const world = generateWorld(SEED, { size: SOURCE_SIZE, shape: SHAPE });
 
+// Exactly what `worldCache.persistWorldArtifact` does before `save_world_artifact`.
 const buf = worldToArtifact(world, DIM);
 const bytes = Buffer.from(buf);
 
@@ -110,12 +124,17 @@ const manifest = {
   schemaVersion: 1,
   _generated: {
     by: 'scripts/gen_world_manifest.ts',
+    // The identity of the world these bytes came from. `mapManifestEvidence.test.ts` binds each of
+    // these to `src/utils/sharedWorld.ts`, so a manifest generated for some other world fails the
+    // gate instead of looking like evidence.
     seed: SEED,
     shape: SHAPE,
+    sourceSize: SOURCE_SIZE,
     worldGenVersion: world.version,
     note:
       'Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is ' +
-      'gitignored; this manifest is tracked because the coordinate contract and test S05 read it.',
+      'gitignored; this manifest is tracked because the coordinate contract and test S05 read it. ' +
+      'The identity above is the app identity from src/utils/sharedWorld.ts — it is not a knob.',
   },
   worldArtifact: {
     path: artifactRel,
@@ -140,22 +159,36 @@ const manifest = {
     canonicalCount: CANONICAL_BIOME_COUNT,
     legacyCount: LEGACY_BIOME_COUNT,
   },
-  views: CANONICAL_VIEW_IDS.map((id) => ({
-    id,
-    imagePath: `map-views/${id}.png`,
-    camera: VIEW_CAMERAS[id],
-    // See the note on VIEW_CAMERAS. No capture pipeline exists, so nothing is claimed.
-    captured: false,
-  })),
+  views: CANONICAL_VIEW_IDS.map((id) => {
+    const imagePath = `map-views/${id}.png`;
+    const abs = resolve(process.cwd(), imagePath);
+    // `captured` reports what is on disk when this runs. It is never asserted: if the capture
+    // harness has not run, this stays false and the evidence gate is satisfied by the honest
+    // absence rather than by a claim.
+    if (!existsSync(abs)) {
+      return { id, imagePath, camera: VIEW_CAMERAS[id], captured: false };
+    }
+    const png = readFileSync(abs);
+    return {
+      id,
+      imagePath,
+      camera: VIEW_CAMERAS[id],
+      captured: true,
+      bytes: png.length,
+      checksum: `sha256:${createHash('sha256').update(png).digest('hex')}`,
+    };
+  }),
 };
 
 const out = resolve(process.cwd(), 'map_manifest.json');
 writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
 
+const capturedCount = manifest.views.filter((v) => v.captured).length;
 console.log(
   `wrote ${artifactRel} (${bytes.length} bytes)\n` +
     `wrote map_manifest.json\n` +
+    `  identity: seed=${SEED} source=${SOURCE_SIZE}² shape=${SHAPE} genVersion=${world.version}\n` +
     `  gridDim=${DIM} unitsPerCell=${(WORLD_MAX_XZ - WORLD_MIN_XZ) / DIM} seaLevel=${manifest.worldArtifact.seaLevel}\n` +
     `  ${checksum}\n` +
-    `  views: ${CANONICAL_VIEW_IDS.length} specified, 0 captured`,
+    `  views: ${CANONICAL_VIEW_IDS.length} specified, ${capturedCount} captured`,
 );
