@@ -34,10 +34,14 @@ Toàn bộ số dưới đây được chạy lại trong ngày, trên `main` t�
 | Test frontend (tests/) | `npm run test:frontend` | 26 file · **243 pass**, 1 skip |
 | Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error**, 491 warning (baseline 491) |
 | Build | `npm run build` | pass |
-| Link tài liệu | `node scripts/check_docs_links.mjs` | 245 link, **0 gãy** |
+| Link tài liệu | `node scripts/check_docs_links.mjs` | 384 link trong 89 file, **0 gãy** — đo lại 2026-07-26 |
 
 Quy mô: Rust ~47,7k dòng / 128 file · TS ~25,6k dòng / 126 file · 627 hàm `#[test]` ·
 62 file test tích hợp backend · 46 file test frontend · 7 spec Playwright · 45 tài liệu.
+
+> **Chỉ hàng "Link tài liệu" được đo lại ngày 2026-07-26** (đợt review nguồn mở + chuẩn hoá tài
+> liệu, xem [`TODO.md`](../../TODO.md)). Các hàng còn lại và dòng quy mô ở trên vẫn là số của lần
+> chạy tại `c0a3cff` và **chưa** được chạy lại trong phiên đó — đợt review không đụng tới code.
 
 Chỉ số kỷ luật đáng giữ, vì mất đi thì khó lấy lại:
 
@@ -130,9 +134,18 @@ thường trú) đang dựa trên ước lượng.
 device, xong dưới một giây. Cần một bản chạy **trên phần cứng đích** (hoặc một runner có GPU)
 để thay các trường proxy, rồi commit report kèm khối hardware.
 
+**Công cụ cho việc này đã được duyệt từ 2026-07-24 và chưa ai thêm vào.** OSS-010 trong
+[kế hoạch áp dụng nguồn mở](OPEN_SOURCE_ADOPTION_PLAN.md) chốt Criterion là `dev-dependency` để bench
+headless; nó không có trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) tính đến 2026-07-26.
+Criterion hợp đúng với ràng buộc vận hành ở trên vì nó bench **từng system** chứ không boot Tauri:
+`integrate_physics_system`, `ResourceField::step_regrowth`, `DynamicFields::step_water` và `a2c_loss`
+đều gọi được ngoài app và không cần GPU. Đây là hai mặt của cùng một mục — đừng nhận §3.2 rồi đi
+viết một harness đo mới.
+
 **Định nghĩa hoàn thành:** `benchmark_report.json` chứa số đo thật kèm định danh phần cứng ·
 test S04 (`src/__tests__/benchmarkReport.test.ts`) vẫn xanh · `BENCHMARK_BASELINE.md` gỡ nhãn proxy ·
-ngân sách của EB-S12 (22,5 KiB/agent, ~46.500 agent/GiB) được đối chiếu với số thật.
+ngân sách của EB-S12 (22,5 KiB/agent, ~46.500 agent/GiB) được đối chiếu với số thật ·
+Criterion là `dev-dependency` và **không** xuất hiện trong `cargo tree` của bản dựng mặc định (G2 #2).
 
 #### 3.3 Đưa thế giới Bevy sống qua gate thí nghiệm
 
@@ -262,6 +275,40 @@ phải cái handle đó.
   engine chưa có hành động nhập vai nào — một `Vec` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm
   thầm" mà ADR này tồn tại để tránh.
 
+#### 3.15 Phả hệ: bộ nhớ không có trần, và không truy được dòng dõi
+
+> **Số thứ tự là append-only.** Mục này thuộc **P1** nhưng mang số 3.15 vì 3.9–3.14 đã được bảng P2
+> dùng, và `CLAUDE.md` cùng các kế hoạch khác tham chiếu chéo theo số. Đổi số sẽ làm gãy các tham
+> chiếu đó — đắt hơn nhiều so với một số thứ tự trông lệch.
+
+**Vì sao P1.** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi lần sinh
+sản thành một `LineageNode` kèm **bản sao đầy đủ** `MorphologyGenotype`, cộng một `LineageRelation`
+cho mỗi cha mẹ, và **không bao giờ prune**. Bộ nhớ vì thế tăng theo **tổng số cá thể từng sống**,
+không theo số đang sống — với một run 60 FPS dài đó là đường tăng không có trần. Đây cũng là lý do
+không trả lời được "hai cá thể này rẽ nhánh ở đâu": không có truy vấn MRCA.
+
+Hệ quả khoa học đáng kể hơn hệ quả kỹ thuật: **không có MRCA thì không bám được *line of descent***,
+tức là không dùng được giao thức mà Avida dùng để **đo** một sự kiện tiến hoá thay vì kể lại nó. Với
+một dự án mà §3.3 đang cố chứng minh thế giới sống là experiment-ready, đó là một lỗ hổng bằng chứng.
+
+**Điểm neo:** `InMemoryLineageTracker`, `LineageNode`, `LineageRelation`, trait `LineageTracker` —
+tất cả trong [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs). Test tải sẵn có:
+`tests/lineage_stress.rs`.
+
+**Đường đi, và nó không tốn dependency nào.** Chi tiết ở OS7 trong
+[kế hoạch áp dụng nguồn mở](OPEN_SOURCE_ADOPTION_PLAN.md) và
+[khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md). Tóm tắt: lấy **thuật toán** `simplify()` của
+tskit chứ không lấy crate (binding C + mô hình tree-sequence trên toạ độ genomic, cả hai đều không
+hợp với genotype kiểu Karl Sims ở đây), và lấy **định dạng** Newick chứ không lấy code R.
+
+**Thứ tự bắt buộc:** Newick → `simplify`/MRCA → giao thức đo. Không có MRCA thì không có gì để xuất
+ra một cây có nghĩa.
+
+**Định nghĩa hoàn thành:** một parser bên thứ ba (`ape`/DendroPy) đọc được output Newick · test từ
+chối cây có chu trình, node mồ côi hoặc nhiều gốc · sau `simplify`, bộ nhớ lineage là O(cá thể
+sống) và quan hệ tổ tiên của phần giữ lại **không đổi** · MRCA tất định, có test trên cây biết trước
+đáp án.
+
 ---
 
 ### P2 — Vệ sinh, làm được lẻ
@@ -274,6 +321,8 @@ phải cái handle đó.
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
+| 3.16 | Đóng phần còn nợ của OSS-003 | [`LICENSE`](../../LICENSE) proprietary đã có; **chưa có `NOTICE`** | `LICENSE` không tách phạm vi code / model / dataset / asset. Và một sản phẩm proprietary **vẫn** phải attribution cho mọi thành phần permissive được phân phối — hiện chưa có file nào làm việc đó |
+| 3.17 | Inventory dependency (OSS-004) | [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | Lỗ hổng đã có bằng chứng: `burn`/`burn-wgpu` là **runtime dep đang chạy** nhưng vắng khỏi ma trận khảo sát tới 2026-07-26, trong khi ma trận có cả những thứ chưa từng thêm |
 
 ---
 

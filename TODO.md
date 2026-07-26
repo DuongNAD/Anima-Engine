@@ -7,7 +7,64 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] ADR-0004 O3 — phát lại người quan sát (cơ chế xong, tuyên bố phiên sống vẫn chặn) (2026-07-26)
+# ⏪ [MỚI NHẤT] Review nguồn mở đợt 1 + chuẩn hoá tài liệu (2026-07-26)
+
+Không đụng tới code. Đây là đợt review định kỳ đầu tiên của
+[`docs/research/OPEN_SOURCE_LANDSCAPE.md`](docs/research/OPEN_SOURCE_LANDSCAPE.md), khởi từ một câu
+hỏi khảo sát 19 dự án bên ngoài.
+
+## Phát hiện chính — tài liệu sai, không chỉ thiếu
+
+Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
+
+1. **`OPEN_SOURCE_POLICY.md` nói "repository hiện chưa có `LICENSE`".** File tồn tại, và là
+   **proprietary, all rights reserved**. Blocker quản trị OSS-003 vì thế đã gỡ — nhưng theo hướng
+   **thắt chặt**: thành phần copyleft (GPL/AGPL) nay là chặn cứng cho mọi đường tiếp xúc với code,
+   áp cho ít nhất SLiM, Avida, ALIEN và Thrive. Hệ quả phụ chưa xử lý: chưa có `NOTICE` cho các
+   thành phần permissive đang được phân phối (mục 3.16 mới).
+2. **`three-mesh-bvh` được xếp "Pilot ưu tiên cao" trên một tiền đề code đã bác bỏ.** Không có
+   `THREE.Raycaster` nào trong `src/`; cao độ địa hình lấy giải tích qua `sampleElevation`; LOD theo
+   khoảng cách đã có ở `chunkLod.ts`. Còn `raycasts` trong `PixiViewport.tsx` là telemetry cảm biến
+   backend vẽ thành đường 2D — trùng tên, khác việc. Hạ xuống Defer, kèm trigger mở lại.
+3. **Criterion đã được chốt "Adopt" từ 2026-07-24 (OSS-010) và chưa từng được thêm.** Việc này
+   không còn là vệ sinh: nó là công cụ đã duyệt cho đúng mục **P0 §3.2** (tuyên bố "60 FPS
+   real-time" chưa từng được đo). Và nó hợp ràng buộc nặng nhất của dự án — không chạy full backend
+   trên máy dev — vì bench từng system headless chứ không boot Tauri.
+
+## Đã ghi thêm
+
+- 9 ứng viên thiếu khỏi ma trận, trong đó `burn`/`burn-wgpu` là **runtime dep đang chạy mà không có
+  trong inventory** (mục 3.17 mới).
+- Miền mới **§5 Phả hệ**: `lineage.rs` lưu mọi lần sinh sản kèm bản sao genotype đầy đủ và không bao
+  giờ prune → bộ nhớ tăng theo *tổng số từng sống*. Lấy **thuật toán** `simplify()` của tskit chứ
+  không lấy crate, và **định dạng** Newick chứ không lấy code R. Thành §3.15 (P1) + OS7.
+- **§3.1 Landlab:** vì sao là Oracle chứ không phải dependency — bốn lý do gắn với code
+  (`step_water` định tuyến đồng bộ có chủ ý; ngân sách nước phải ~0 ở gate S16; thang thời gian địa
+  chất vs 60 Hz; Python trong tick loop). Kèm khoảng trống thật mà nó chỉ ra: không có flow
+  accumulation, và `step_erosion` không vận chuyển trầm tích.
+- F2 Rapier: giữ Pilot nhưng thêm **tiền điều kiện cứng** — không mở pilot trước khi physics/CPG
+  hết chạy song song, vì OSS-040 đòi một đường cơ sở lặp lại được, mà hiện một run liền mạch còn
+  không khớp chính nó.
+
+## Chuẩn hoá tài liệu
+
+- Tạo `docs/research/README.md` và `docs/governance/README.md` — hai thư mục duy nhất thiếu index
+  dù mỗi cái đã có hai tài liệu. Thêm quy tắc "mỗi thư mục con của `docs/` phải có index" vào chính
+  sách, vì đó là điều kiện để OSS-001 (≤ 2 lần nhấp) còn đúng khi thêm tài liệu mới.
+- Thêm frontmatter cho 2 tài liệu `docs/ai/planning/` không có; ghi nhận `**Status:** proposed` của
+  bản G0–G4 đã lỗi thời (G1.1–G1.4 nay là *Live integrated*).
+- Hợp thức hoá ba khác biệt đã tồn tại sẵn thay vì churn: `completed` vào enum trạng thái (chỉ cho
+  `docs/ai/`), schema `kind: agent-goal`, và **miễn** cho `docs/ai/*/README.md` — chúng là template
+  thượng nguồn, không phải tài liệu chưa hoàn thành.
+
+## Ba việc tiếp theo, theo thứ tự
+
+1. OSS-010 Criterion (P0, chặn §3.2) · 2. OSS-070 xuất Newick (~40 dòng, 0 dependency) ·
+3. Phần còn nợ của OSS-003: tách phạm vi license và tạo `NOTICE`.
+
+---
+
+# ⏪ ADR-0004 O3 — phát lại người quan sát (cơ chế xong, tuyên bố phiên sống vẫn chặn) (2026-07-26)
 
 `668 pass · 0 fail · 71 target` (O2 là 662/70, tức **+6 test / +1 target**), clippy sạch, 318 link
 docs 0 gãy.

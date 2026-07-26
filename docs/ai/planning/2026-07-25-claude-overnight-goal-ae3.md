@@ -1,3 +1,15 @@
+---
+kind: agent-goal
+agent: claude-code-background
+feature: alternate-evolution-world-lab
+title: Overnight Goal — AE3 Headless Pathway and Selection Slice
+status: completed
+created: 2026-07-25
+completed: 2026-07-25
+owner: simulation-architecture
+predecessor: 2026-07-25-claude-overnight-goal-ae25.md
+---
+
 # Claude Overnight Goal — AE3 Headless Pathway and Selection Slice
 
 **Status:** complete for the scoped headless reference slice; independent audit passed  

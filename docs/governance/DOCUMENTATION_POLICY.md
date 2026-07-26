@@ -2,7 +2,7 @@
 title: Chính sách tài liệu
 status: accepted
 owner: maintainers
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-26
 review_cycle: quarterly
 ---
 
@@ -35,7 +35,7 @@ Tài liệu trong `docs/` dùng front matter:
 ```yaml
 ---
 title: Tên rõ nghĩa
-status: proposed | active | accepted | deprecated | superseded
+status: proposed | active | accepted | completed | deprecated | superseded
 owner: team-or-role
 last_reviewed: YYYY-MM-DD
 review_cycle: monthly | quarterly | per-release
@@ -43,6 +43,41 @@ review_cycle: monthly | quarterly | per-release
 ```
 
 `last_reviewed` là ngày nội dung được xác minh, không phải ngày chỉnh chính tả.
+
+### `completed` và schema mở rộng cho `docs/ai/` (chuẩn hoá 2026-07-26)
+
+Ba khác biệt dưới đây đã tồn tại trong cây tài liệu trước khi được viết ra. Ghi lại thành quy tắc
+để phiên sau không "sửa" đi rồi phiên sau nữa lại sửa về.
+
+**1. `completed` là trạng thái hợp lệ, chỉ cho `docs/ai/`.** Một bản ghi mục tiêu đã hoàn thành
+không phải `accepted` (nó không phải quyết định), cũng không phải `superseded` (không có gì thay thế
+nó). Ép nó vào một trong hai là mô tả sai. `completed` chỉ dùng cho tài liệu working-set trong
+`docs/ai/`; tài liệu ở `reference/`, `decisions/`, `explanation/` không dùng trạng thái này.
+
+**2. Tài liệu `kind: agent-goal` trong `docs/ai/planning/` dùng schema mở rộng:**
+
+```yaml
+---
+kind: agent-goal
+agent: <tên agent chạy>
+feature: <slug feature>
+title: ...
+status: proposed | active | completed
+created: YYYY-MM-DD
+completed: YYYY-MM-DD      # khi status: completed
+owner: team-or-role
+predecessor: <tên file>    # tuỳ chọn, tạo chuỗi thời gian
+---
+```
+
+Đây là **bản ghi phiên làm việc**, không phải nguồn sự thật. Khi thân tài liệu và
+[`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) mâu thuẫn, tài liệu trạng thái
+thắng — thân agent-goal được giữ nguyên làm bản ghi của kế hoạch **tại thời điểm đó**.
+
+**3. `docs/ai/*/README.md` là template thượng nguồn, được miễn.** Chúng dùng schema
+`phase`/`title`/`description` và thân là placeholder (`[Description]`). Chúng là khung của quy trình
+lifecycle, không phải tài liệu dự án, nên không áp metadata tối thiểu và **không** cần điền. Đừng
+coi chúng là tài liệu chưa hoàn thành.
 
 ## Quy tắc nguồn sự thật
 
@@ -85,6 +120,11 @@ ADR bắt buộc khi:
 
 ## Liên kết và đặt tên
 
+- **Mỗi thư mục con của `docs/` phải có `README.md` làm index.** Đây là điều kiện để OSS-001 (mọi
+  tài liệu chuẩn cách điểm vào ≤ 2 lần nhấp) còn đúng khi thêm tài liệu mới: không có index, tài
+  liệu thứ hai trong một thư mục chỉ tới được nếu ai đó nhớ thêm nó vào `docs/README.md`. Bổ sung
+  2026-07-26 sau khi phát hiện `research/` và `governance/` thiếu index dù mỗi thư mục đã có hai
+  tài liệu.
 - Dùng link tương đối trong Markdown.
 - Link tới nguồn chuẩn, không tạo chuỗi alias dài.
 - Tên file viết hoa kiểu hiện tại cho contract gốc; file trong `docs/` dùng tên mô tả
