@@ -1,20 +1,31 @@
 {
+  "$schema": "./map_manifest.schema.json",
   "schemaVersion": 1,
+  "_generated": {
+    "by": "scripts/gen_world_manifest.ts",
+    "seed": "1337",
+    "shape": "continent",
+    "worldGenVersion": 20,
+    "note": "Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is gitignored; this manifest is tracked because the coordinate contract and test S05 read it."
+  },
   "worldArtifact": {
-    "path": "artifacts/world_128.anmw",
+    "path": "artifacts/world_256.anmw",
     "magic": "ANMW",
     "version": 2,
-    "width": 128,
-    "height": 128,
-    "seaLevel": 0.42,
-    "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    "width": 256,
+    "height": 256,
+    "seaLevel": 0.23743,
+    "checksum": "sha256:8c9c4f31fb25d1d21425d1c500e059d99fa1a5f397f90cc5a87a1825833c8590",
+    "bytes": 1114148
   },
   "coordinateSystem": {
     "worldMinXZ": -100,
     "worldMaxXZ": 100,
     "worldMinY": 0,
     "worldMaxY": 10,
-    "gridDim": 128
+    "gridDim": 256,
+    "unitsPerCell": 0.78125,
+    "worldScale": 200
   },
   "biomeTaxonomy": {
     "canonicalCount": 22,
@@ -25,65 +36,137 @@
       "id": "overview",
       "imagePath": "map-views/overview.png",
       "camera": {
-        "position": [0, 95, 95],
-        "target": [0, 0, 0]
-      }
+        "position": [
+          0,
+          95,
+          95
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ]
+      },
+      "captured": false
     },
     {
       "id": "navigation",
       "imagePath": "map-views/navigation.png",
       "camera": {
-        "position": [-60, 45, -60],
-        "target": [-40, 0, -40]
-      }
+        "position": [
+          -60,
+          45,
+          -60
+        ],
+        "target": [
+          -40,
+          0,
+          -40
+        ]
+      },
+      "captured": false
     },
     {
       "id": "collision",
       "imagePath": "map-views/collision.png",
       "camera": {
-        "position": [50, 30, 50],
-        "target": [30, 2, 30]
-      }
+        "position": [
+          50,
+          30,
+          50
+        ],
+        "target": [
+          30,
+          2,
+          30
+        ]
+      },
+      "captured": false
     },
     {
       "id": "lighting",
       "imagePath": "map-views/lighting.png",
       "camera": {
-        "position": [0, 80, -90],
-        "target": [0, 5, 0]
-      }
+        "position": [
+          0,
+          80,
+          -90
+        ],
+        "target": [
+          0,
+          5,
+          0
+        ]
+      },
+      "captured": false
     },
     {
       "id": "spawn",
       "imagePath": "map-views/spawn.png",
       "camera": {
-        "position": [20, 25, 20],
-        "target": [10, 1, 10]
-      }
+        "position": [
+          20,
+          25,
+          20
+        ],
+        "target": [
+          10,
+          1,
+          10
+        ]
+      },
+      "captured": false
     },
     {
       "id": "water",
       "imagePath": "map-views/water.png",
       "camera": {
-        "position": [-80, 22, 12],
-        "target": [-95, 0, 0]
-      }
+        "position": [
+          -80,
+          22,
+          12
+        ],
+        "target": [
+          -95,
+          0,
+          0
+        ]
+      },
+      "captured": false
     },
     {
       "id": "biome_transition",
       "imagePath": "map-views/biome_transition.png",
       "camera": {
-        "position": [40, 32, -40],
-        "target": [20, 2, -20]
-      }
+        "position": [
+          40,
+          32,
+          -40
+        ],
+        "target": [
+          20,
+          2,
+          -20
+        ]
+      },
+      "captured": false
     },
     {
       "id": "ecosystem",
       "imagePath": "map-views/ecosystem.png",
       "camera": {
-        "position": [-30, 35, 60],
-        "target": [-10, 1, 40]
-      }
+        "position": [
+          -30,
+          35,
+          60
+        ],
+        "target": [
+          -10,
+          1,
+          40
+        ]
+      },
+      "captured": false
     }
   ]
 }
