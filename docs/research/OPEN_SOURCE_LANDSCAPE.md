@@ -53,7 +53,7 @@ expression. Không mục nào trong đợt review này được xác minh licens
 |---|---|---:|---|---|
 | [Bevy](https://github.com/bevyengine/bevy) | ECS/scheduling Rust | MIT OR Apache-2.0 | Adopt, đang dùng | Giữ `bevy_ecs` 0.13 trong M1–M2; nâng cấp bằng ADR riêng |
 | [tracing](https://github.com/tokio-rs/tracing) | Telemetry có cấu trúc | MIT | Adopt — **chưa thực thi** ⚠️ | Span/event, correlation ID; không thay causal ledger |
-| [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) | Benchmark Rust | MIT OR Apache-2.0 | Adopt — **chưa thực thi, nay chặn P0** ⚠️ | `dev-dependency`, benchmark headless |
+| [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) | Benchmark Rust | MIT OR Apache-2.0 | ✅ **Adopted 2026-07-26** | `dev-dependency` (`default-features = false`), `src-tauri/benches/tick_systems.rs`; vô hình với `cargo tree -e normal` |
 | [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) | Audit license/advisory/source | Apache-2.0 OR MIT | Adopt — blocker license đã gỡ; **một phần đã được phủ** | Kiểm tra CI, không vào binary |
 | [lychee](https://github.com/lycheeverse/lychee) | Kiểm tra link tài liệu | MIT OR Apache-2.0 | **Superseded** bởi script nội bộ (đổi 2026-07-26) | Không còn cần; `scripts/check_docs_links.mjs` đã là gate |
 | [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) | Raycast/truy vấn mesh Three.js | MIT | **Defer** — tiền đề bị bác bỏ (đổi 2026-07-26) | Frontend; xét lại khi thật sự có `THREE.Raycaster` trên đường nóng |
@@ -172,6 +172,20 @@ nói rằng tuyên bố "60 FPS real-time" của dự án chưa từng được 
 số hiện tại là proxy. Criterion là công cụ đã được duyệt cho đúng việc đó, và nó hợp với ràng buộc
 vận hành nặng nhất của dự án — **không chạy full backend trên máy dev** — vì nó bench từng system
 headless chứ không boot Tauri.
+
+> **Đã đóng cùng ngày, 2026-07-26.** Criterion đã ship (OSS-010): `dev-dependency` +
+> [`src-tauri/benches/tick_systems.rs`](../../src-tauri/benches/tick_systems.rs), 16 số đo thật vào
+> [`benchmark_report.json`](../../benchmark_report.json). Xem
+> [`docs/how-to/BENCHMARKING.md`](../how-to/BENCHMARKING.md).
+>
+> **`tracing` (OSS-011) thì chưa**, và đợt đo đã hạ ưu tiên của nó: OSS-010 nằm trên đường tới hạn
+> P0 vì nó sinh **bằng chứng**; `tracing` là observability kỹ thuật và không sinh bằng chứng nào cho
+> §3.2. Nó vẫn `Adopt`, chỉ không còn khẩn.
+>
+> **Hai thứ đợt đo tìm ra mà bảng này chưa phản ánh:** phần cứng mục tiêu đã đổi sang i5-14600KF
+> (khai báo *Dell Vostro 3530* cũ vô hiệu), và con số ~4,2 ms trong doc comment của
+> `ResourceField::REGROWTH_STRIDE` **không tái lập được** — release build cho ~0,36 ms. Cái sau là
+> finding cần đối chứng, không phải lỗi đã xác định; việc stride vẫn đúng (đo được 3,97×).
 
 ## Việc còn nợ của đợt review này
 

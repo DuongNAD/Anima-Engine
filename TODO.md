@@ -7,7 +7,56 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] Review nguồn mở đợt 1 + chuẩn hoá tài liệu (2026-07-26)
+# ⏪ [MỚI NHẤT] OSS-010 Criterion — đo thật thay cho ước lượng, và hoà giải trạng thái (2026-07-26)
+
+Hai PR trong cùng ngày, ghi chung vì mục thứ hai tồn tại chỉ để sửa cái mục thứ nhất làm sai đi.
+
+## OSS-010 (PR #11, merge `80dabdd`)
+
+Criterion vào làm `dev-dependency`, cộng `src-tauri/benches/tick_systems.rs`. Nó hợp với ràng buộc
+nặng nhất của dự án — **không chạy full backend** — vì bench từng system headless chứ không boot
+Tauri. Bảng số: [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md).
+
+Ba thứ số đo nói ra, đáng nhớ hơn bản thân các con số:
+
+1. **Ngân sách khung hình là cận dưới.** Tổng system chạy mỗi tick ở 1.000 agent ≈ **493 µs ≈ 3,0 %**
+   của 16,67 ms. Chưa gồm não, lập lịch ECS, emit, va chạm, trao đổi chất. **Không** rút ra tuyên bố
+   "60 FPS" từ đây.
+2. **Chi phí không ở chỗ hay đoán.** `integrate_physics_system` rẻ và tuyến tính (4,92 ns/agent);
+   `rebuild_spatial_grid_system` đắt **gấp ~15 lần** ở cùng số agent, và phần lớn chi phí quy mô nhỏ
+   là quét ô lưới cấp phát sẵn chứ không phải xử lý agent. Tối ưu ở đó, không phải solver.
+3. **Con số 4,2 ms trong `ecology.rs` không tái lập.** Release build cho ~0,36 ms — thấp hơn ~12 lần.
+   Việc stride **vẫn đúng** (đo được 3,97×); chỉ con số biện minh là chưa đối chứng được. Finding
+   mở, không phải lỗi đã xác định.
+
+**Một chỗ tôi sai và đã tự sửa trong cùng PR:** số báo cáo lần đầu là **slope estimate**, không phải
+trung vị — dòng `time: [a b c]` của `cargo bench` in ra slope khi lấy mẫu tuyến tính. Chênh thật:
+`step_water` 297,6 µs (slope) so với 271,5 µs (trung vị). Mọi con số đã chuyển sang trung vị; mọi kết
+luận giữ nguyên.
+
+**Phần cứng mục tiêu đổi sang i5-14600KF** (khai báo *Dell Vostro 3530* vô hiệu, người duy trì xác
+nhận). `benchmark_report.json` vốn đã ghi đúng CPU — chỉ văn xuôi là còn nói máy cũ.
+
+**Guard chống hỏng im lặng:** `target/` bị gitignore, nên chạy `bench_baseline.mjs` trên clone mới sẽ
+thay số thật bằng proxy — mà kết quả **vẫn validate, vẫn trông như baseline**. Script nay từ chối và
+exit ≠ 0 trừ khi `ANIMA_BENCH_ALLOW_PROXY_ONLY=1`. Đã test cả hai chiều.
+
+**§3.2 vẫn chưa đóng, nhưng không còn vì phần cứng:** cái đo được là cận dưới của một tick. Ba hàng
+đắt nhất đòi in-app tick capture, và suy luận não per-agent đang tắt mặc định (§3.1).
+
+## Hoà giải trạng thái (PR này)
+
+PR #9 (review nguồn mở) merge **sau** #11 nhưng được viết **trước**, nên nó vào `main` mang theo ba
+khẳng định đã hết đúng: OSS-010 "chưa thực thi", "chưa có mục nào được thực thi", và §3.2 nói công cụ
+"chưa ai thêm vào". Không phải xung đột git — hai PR không đụng file chung — nên nó merge sạch và để
+lại tài liệu nói sai. Mục này sửa đúng ba chỗ đó.
+
+Bài học giữ lại trong `OPEN_SOURCE_ADOPTION_PLAN.md`: **một tài liệu trạng thái viết bằng câu tuyệt
+đối hết hạn nhanh hơn tài liệu viết theo từng mục có ngày.**
+
+---
+
+# ⏪ Review nguồn mở đợt 1 + chuẩn hoá tài liệu (2026-07-26)
 
 Không đụng tới code. Đây là đợt review định kỳ đầu tiên của
 [`docs/research/OPEN_SOURCE_LANDSCAPE.md`](docs/research/OPEN_SOURCE_LANDSCAPE.md), khởi từ một câu
