@@ -1193,6 +1193,32 @@ impl ExperimentManifest {
             return Err(ExperimentError::InvalidObserverPolicy { reason });
         }
 
+        // `CAUSE_OBSERVER` means "a human did this, live". An intervention **authored into a
+        // manifest** cannot be that by definition — the manifest was written before the run — so a
+        // declared one claiming that id would share a root with the observer's own effects and make
+        // `root_cause` answer a question nobody asked. Cause ids are hand-assigned with no allocator
+        // anywhere, so this is checked rather than assumed.
+        //
+        // This does **not** contradict ADR-0004 C3, which lowers a live observer action to an
+        // `InterventionCommand` carrying exactly this id. That one is built at runtime and never
+        // passes through here; the rule is about declared input, not about the id itself.
+        for cause_id in self
+            .interventions
+            .iter()
+            .map(|cmd| cmd.cause_id)
+            .chain(self.exotic_interventions.iter().map(|f| f.cause_id))
+        {
+            if cause_id == anima_domain::causal::CAUSE_OBSERVER {
+                return Err(ExperimentError::InvalidObserverPolicy {
+                    reason: format!(
+                        "a manifest-declared intervention claims cause id {cause_id}, reserved for \
+                         the live observer (ADR-0004); declared input cannot have been caused by a \
+                         human acting during the run — pick an id of your own"
+                    ),
+                });
+            }
+        }
+
         // Observables: bounded, unique, all present in the registry.
         if self.observable_ids.len() > MAX_OBSERVABLES {
             return Err(ExperimentError::ResourceLimit {
@@ -2240,6 +2266,8 @@ mod observer_policy_manifest_tests {
     //! The behaviour of the policy in a live world is `tests/observer_policy_tests.rs`.
     use super::tests::base_manifest;
     use super::*;
+    use crate::core::intervention::InterventionKind;
+    use anima_domain::causal::CauseId;
 
     /// The rollback path. A manifest written before ADR-0004 has no `observer` key, and must load
     /// and validate exactly as it did — which is why `MANIFEST_SCHEMA_VERSION` was deliberately not
@@ -2328,5 +2356,62 @@ mod observer_policy_manifest_tests {
         assert!(ok
             .validate(&ObservableRegistry::reference_default())
             .is_ok());
+    }
+
+    /// A manifest cannot author an intervention as if a live human had caused it. The run had not
+    /// started when the manifest was written, so the claim is false by construction — and if it were
+    /// allowed through, a scenario forcing and the observer's own doing would share a root and
+    /// `root_cause` would stop distinguishing them.
+    /// A run simulates ticks `1..=duration_ticks`, and `validate_intervention` refuses a window that
+    /// can never fire inside it. `start_tick: 1` keeps these fixtures about cause ids rather than
+    /// about scheduling.
+    fn intervention_with_cause(cause_id: CauseId) -> InterventionCommand {
+        InterventionCommand {
+            id: 1,
+            cause_id,
+            kind: InterventionKind::RainfallDelta,
+            region: Region::Global,
+            start_tick: 1,
+            duration_ticks: 1,
+            intensity: 0.1,
+            signed_negative: true,
+            curve: Curve::Step,
+            reversible: true,
+        }
+    }
+
+    #[test]
+    fn a_declared_intervention_may_not_claim_the_observer_cause() {
+        let m = ExperimentManifest {
+            interventions: vec![intervention_with_cause(
+                anima_domain::causal::CAUSE_OBSERVER,
+            )],
+            ..base_manifest()
+        };
+        assert!(
+            matches!(
+                m.validate(&ObservableRegistry::reference_default()),
+                Err(ExperimentError::InvalidObserverPolicy { .. })
+            ),
+            "a declared intervention claiming CAUSE_OBSERVER must be refused, got {:?}",
+            m.validate(&ObservableRegistry::reference_default())
+        );
+    }
+
+    /// The rule above must not have swept up the ids a manifest author actually writes. Without this
+    /// the check could reject everything and still look correct.
+    #[test]
+    fn ordinary_hand_written_cause_ids_are_still_accepted() {
+        for cause_id in [1u32, 2, 7, 4096] {
+            let m = ExperimentManifest {
+                interventions: vec![intervention_with_cause(cause_id)],
+                ..base_manifest()
+            };
+            assert!(
+                m.validate(&ObservableRegistry::reference_default()).is_ok(),
+                "cause id {cause_id} should be free for a manifest author to use, got {:?}",
+                m.validate(&ObservableRegistry::reference_default())
+            );
+        }
     }
 }

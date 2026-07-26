@@ -128,8 +128,14 @@ pub fn sync_lod_focus_system(
         // No policy resource means nobody declared one, and that must stay indistinguishable from
         // the engine before this existed — so the focus is obeyed. `Absent` is the opposite: a
         // positive declaration that there is no observer, and it denies the focus.
+        //
+        // A denied focus is replaced wholesale, not merely disabled. Clearing `enabled` and keeping
+        // `center` would leave a live camera path sitting inside the world for any later reader to
+        // pick up — reintroducing exactly the perturbation this denies — and it would fill the O2
+        // trace with movement the world never felt. Under a non-perturbing policy the world does not
+        // get to know where the observer is standing.
         if policy.is_some_and(|p| !p.allows_focus()) {
-            latest.enabled = false;
+            latest = LodFocus::default();
         }
         *focus = latest;
     }

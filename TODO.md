@@ -7,7 +7,62 @@
 
 ---
 
-# 👁️ [MỚI NHẤT] ADR-0004 accepted — O1: người quan sát thành chính sách được khai báo (2026-07-26)
+# 🧾 [MỚI NHẤT] ADR-0004 O2 — ghi lại người quan sát, và cắm rễ hệ quả vào họ (2026-07-26)
+
+`662 pass · 0 fail · 70 target` (O1 là 647/68, tức **+15 test / +2 target**), clippy sạch, 318 link
+docs 0 gãy.
+
+## Đã làm
+
+- `ObserverTrace` ghi **focus hiệu lực** (sau policy, không phải cái UI xin), buffer cấp phát sẵn,
+  ghi-khi-đổi, và **đếm** mẫu tràn thay vì bỏ im lặng — một trace ngừng ghi trong im lặng đọc y hệt
+  một camera ngừng di chuyển.
+- `CAUSE_OBSERVER` ở **đỉnh** dải `CauseId` (scenario cấp tay từ dưới lên, không có bộ cấp phát nào),
+  cộng `is_reserved_cause`, cộng luật cấm manifest giành id đó.
+- App sống nay khai báo `Inhabit` thật thay vì "chưa khai báo". Hành vi không đổi — `Inhabit` là
+  policy duy nhất cho focus đi qua — nhưng hệ quả đã có gốc thay vì đọc như động lực nền.
+- `DETERMINISM_CONTRACT` §2 nay là **năm** nguồn rò rỉ, thêm §2.1 cho camera kèm bảng ba policy.
+- Gate: `observer_trace_tests` (6, có control âm) + `observer_trace_zero_alloc_tests` (1 test, 3 pha)
+  + 8 unit test mới.
+
+## Lỗ hổng thiết kế mà chính test bắt được
+
+O1 enforce policy bằng `enabled = false` nhưng **giữ nguyên `center`**. Nên dưới `Spectate`, toạ độ
+camera vẫn trôi vào world mỗi tick: trace đầy chuyển động thế giới chưa từng cảm nhận, và tệ hơn —
+một đường camera sống nằm sẵn trong world cho system sau này đọc phải, tái lập đúng cái nhiễu vừa
+cấm. Gate O1 không thấy vì nó chỉ đo *ai được suy nghĩ*, mà `tier_at` trả `Hot` khi `!enabled` bất kể
+`center`. **Sửa: từ chối focus là thay trọn `LodFocus::default()`.**
+
+## Ba điều chỉnh so với C2/C3 khi va vào code thật
+
+1. **`ObserverSample` không mang `actions`.** Engine chưa có hành động nhập vai nào. Một
+   `Vec<ObserverAction>` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm thầm".
+2. **`CausalLedger` chưa có trong world Bevy sống** (headless tới khi G2 hội tụ), nên provenance được
+   chứng minh ở chỗ ledger thật sự sống. Gate `observer_writes_go_through_the_intervention_seam` là
+   **n/a**, không phải pending — chưa có hành động nào để đi qua seam.
+3. **Một mâu thuẫn tự tạo, đã gỡ:** validate cấm intervention giành `CAUSE_OBSERVER`, nhưng C3 nói
+   hành động observer *hạ xuống thành* intervention mang đúng id đó. Phân biệt đúng: cấm manifest
+   **khai báo sẵn** (viết trước khi run bắt đầu ⇒ không thể do người gây ra lúc chạy), không cấm
+   intervention sinh **lúc chạy**.
+
+## Bẫy quy trình, tự vấp hai lần trong lượt này
+
+Phóng thẳng `clippy` + cả suite mà không `cargo check --all-targets` trước. Hai lỗi — thiếu import
+`InterventionKind`/`CauseId`, và fixture dùng `start_tick: 0` nên trượt khỏi cửa sổ `1..=run_ticks`
+(`experiment.rs:999` từ chối factor không bao giờ kích hoạt) — đều bắt được trong 20 giây bằng
+`cargo check`, thay vì mất hai vòng nhiều phút.
+
+Đáng chú ý: chính `ordinary_hand_written_cause_ids_are_still_accepted` cứu lượt này. Nếu chỉ có test
+"cấm CAUSE_OBSERVER", tôi đã tưởng luật hoạt động trong khi thực ra nó từ chối **mọi** manifest.
+
+## Còn lại
+
+**O3** (replay `Inhabit`, phụ thuộc §3.3/§3.6) và cùng với nó `TraceRef` vào `SNAPSHOT_CONTRACT`
+(cần bump schema + migration).
+
+---
+
+# 👁️ ADR-0004 accepted — O1: người quan sát thành chính sách được khai báo (2026-07-26)
 
 ADR-0004 được chấp nhận. **O1 đã ship**, đo được `647 pass · 0 fail · 68 target` (baseline 629/67,
 tức **+18 test / +1 target**, không hồi quy).

@@ -584,6 +584,19 @@ impl SimulationEngine {
             world.insert_resource(crate::core::simulation_lod::LodBands::default());
             world.insert_resource(lod_focus_sim);
 
+            // ADR-0004. The app has driven `set_lod_focus` from `PixiViewport.tsx` since LOD was
+            // wired up, which means the camera has been tiering the world all along — deciding
+            // which agents get to think. That is `Inhabit`, and saying so is the whole point of the
+            // ADR: the perturbation was always there, only undeclared.
+            //
+            // Behaviour is unchanged. `Inhabit` is the one policy that lets the focus through, so
+            // this is the same engine with an honest label. What it buys is that the effects now
+            // have a root — `CAUSE_OBSERVER` — instead of reading as baseline dynamics.
+            world.insert_resource(crate::core::observer::ObserverPolicy::Inhabit {
+                cause_id: anima_domain::causal::CAUSE_OBSERVER,
+            });
+            world.insert_resource(crate::core::observer::ObserverTrace::default());
+
             // Tier two is not, so it stays behind an explicit switch. It destroys bodies, runs a
             // second ecology, and refuses to save while anything is asleep — see
             // `aggregate_lod_enabled_from_env`. Absent the resource, all three of its systems
@@ -1113,6 +1126,11 @@ impl SimulationEngine {
                 crate::core::simulation_lod::sync_lod_focus_system
                     .before(sensory_system)
                     .before(crate::core::aggregate_population::dehydrate_cold_agents_system),
+                // ADR-0004 O2. Records what the world actually saw of the observer, so it must run
+                // *after* the policy has had its say — reading the raw shared focus instead would
+                // file a camera path the world never experienced.
+                crate::core::observer::record_observer_trace_system
+                    .after(crate::core::simulation_lod::sync_lod_focus_system),
                 // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
                 // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
                 // unaffected.

@@ -34,6 +34,7 @@
 //! `PixiViewport.tsx` since simulation LOD was wired up; if "unset" denied the focus, this module
 //! would silently switch that off and call it a safety improvement.
 
+use crate::core::simulation_lod::LodFocus;
 use anima_domain::causal::{CauseId, CAUSE_BACKGROUND};
 use bevy_ecs::prelude::Resource;
 use serde::{Deserialize, Serialize};
@@ -113,6 +114,130 @@ impl ObserverPolicy {
     }
 }
 
+// ---- Observer trace (ADR-0004 O2) ---------------------------------------------------------------
+
+/// 60 Hz for an hour is 216 000 ticks, and a continuously-panning camera changes on every one of
+/// them. Sized for that worst case rather than the typical one: being too small truncates the
+/// record, and being too large costs a few MiB once.
+///
+/// The exact cost is asserted rather than estimated — see
+/// `a_full_hour_of_trace_fits_a_declared_budget`.
+pub const DEFAULT_OBSERVER_TRACE_CAPACITY: usize = 216_000;
+
+/// What the world saw of the observer at one tick.
+///
+/// The **effective** focus, after [`ObserverPolicy`] has had its say — not what the UI asked for.
+/// Under `Spectate` the camera moves and this does not, which is exactly the record wanted: the
+/// trace is evidence of what the world was subjected to, not of where a human happened to look.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ObserverSample {
+    pub tick: u64,
+    pub focus: LodFocus,
+}
+
+/// The observer's effect on the world over a run, recorded on change (ADR-0004 C2).
+///
+/// ## Why recording is enough to be useful before replay exists
+///
+/// O3 — replaying an `Inhabit` run without a human — needs the live engine to be deterministic, and
+/// it is not yet (`DETERMINISM_CONTRACT` §5). Provenance does not wait for that. "Why did that herd
+/// die out" is answerable as soon as the observer's presence is on the record; "run it again exactly"
+/// is a later and larger promise. This type delivers the first without pretending to the second.
+///
+/// ## Bounded, and honest about it
+///
+/// The buffer is allocated once and never grows, because this is written from the tick path and the
+/// hot loop may not allocate. When it fills, further samples are **counted, not silently dropped** —
+/// [`dropped`](Self::dropped) and [`is_truncated`](Self::is_truncated) exist so a trace can say it is
+/// partial. A trace that quietly stopped recording would read exactly like a camera that stopped
+/// moving, and those two must never look the same.
+#[derive(Resource, Clone, Debug)]
+pub struct ObserverTrace {
+    samples: Vec<ObserverSample>,
+    dropped: u64,
+    last: Option<LodFocus>,
+}
+
+impl Default for ObserverTrace {
+    fn default() -> Self {
+        Self::with_capacity(DEFAULT_OBSERVER_TRACE_CAPACITY)
+    }
+}
+
+impl ObserverTrace {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            samples: Vec::with_capacity(capacity),
+            dropped: 0,
+            last: None,
+        }
+    }
+
+    /// Record `focus` at `tick` if it differs from the last thing recorded.
+    ///
+    /// Returns whether a sample was stored. Allocation-free: the buffer never grows, so a full trace
+    /// counts the sample as dropped instead of reallocating on the tick path.
+    ///
+    /// A focus whose centre has gone to NaN compares unequal to itself and would therefore record
+    /// every tick until the buffer fills. That is deliberate — it is a real fault becoming visible
+    /// and self-limiting, rather than one being smoothed over.
+    pub fn record(&mut self, tick: u64, focus: LodFocus) -> bool {
+        if self.last == Some(focus) {
+            return false;
+        }
+        if self.samples.len() == self.samples.capacity() {
+            self.dropped += 1;
+            return false;
+        }
+        self.samples.push(ObserverSample { tick, focus });
+        self.last = Some(focus);
+        true
+    }
+
+    pub fn samples(&self) -> &[ObserverSample] {
+        &self.samples
+    }
+
+    pub fn len(&self) -> usize {
+        self.samples.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.samples.is_empty()
+    }
+
+    /// How many changes could not be stored because the buffer was full.
+    pub fn dropped(&self) -> u64 {
+        self.dropped
+    }
+
+    /// Whether this trace is missing samples, and therefore cannot support a faithful replay.
+    pub fn is_truncated(&self) -> bool {
+        self.dropped > 0
+    }
+}
+
+/// Record what the world actually saw of the observer this tick.
+///
+/// Ordered **after** [`sync_lod_focus_system`](crate::core::simulation_lod::sync_lod_focus_system)
+/// so it reads the policed focus. Reading the raw [`SharedLodFocus`] instead would record a camera
+/// path the world never experienced, and a `Spectate` run would file evidence of a perturbation that
+/// its whole promise is that it did not commit.
+///
+/// Inert without the resource, like every other part of this subsystem: no trace, no recording, and
+/// a run that never installed one behaves exactly as it did before ADR-0004.
+pub fn record_observer_trace_system(
+    focus: Option<bevy_ecs::system::Res<crate::core::simulation_lod::LodFocus>>,
+    trace: Option<bevy_ecs::system::ResMut<ObserverTrace>>,
+    mut tick: bevy_ecs::system::Local<u64>,
+) {
+    let (Some(focus), Some(mut trace)) = (focus, trace) else {
+        return;
+    };
+    *tick = tick.wrapping_add(1);
+    trace.record(*tick, *focus);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +301,102 @@ mod tests {
             serde_json::to_string(&ObserverPolicy::Spectate).expect("serialize"),
             r#"{"mode":"spectate"}"#
         );
+    }
+
+    // ---- Observer trace -------------------------------------------------------------------------
+
+    fn at(x: f32) -> LodFocus {
+        LodFocus::at(glam::Vec3::new(x, 0.0, 0.0))
+    }
+
+    #[test]
+    fn the_trace_records_only_when_the_focus_changes() {
+        let mut trace = ObserverTrace::with_capacity(16);
+        assert!(
+            trace.record(1, at(0.0)),
+            "the first sample sets the baseline"
+        );
+        assert!(
+            !trace.record(2, at(0.0)),
+            "an unchanged focus is not an event"
+        );
+        assert!(!trace.record(3, at(0.0)));
+        assert!(trace.record(4, at(5.0)));
+        assert_eq!(trace.len(), 2);
+        assert_eq!(
+            trace.samples().iter().map(|s| s.tick).collect::<Vec<_>>(),
+            vec![1, 4],
+            "the recorded ticks must be the ones the focus actually moved on"
+        );
+    }
+
+    /// A `Spectate` run feeds this system a focus that is always disabled, so after the opening
+    /// baseline there is nothing to record — the world was subjected to nothing.
+    #[test]
+    fn a_focus_that_never_changes_costs_one_sample() {
+        let mut trace = ObserverTrace::with_capacity(16);
+        for tick in 1..=100 {
+            trace.record(tick, LodFocus::default());
+        }
+        assert_eq!(trace.len(), 1);
+        assert!(!trace.is_truncated());
+    }
+
+    /// Full means **declared** full. A trace that quietly stopped recording reads exactly like a
+    /// camera that stopped moving, and those two must never be indistinguishable.
+    #[test]
+    fn a_full_trace_counts_what_it_could_not_keep() {
+        let mut trace = ObserverTrace::with_capacity(3);
+        for tick in 0..10u64 {
+            trace.record(tick, at(tick as f32));
+        }
+        assert_eq!(trace.len(), 3);
+        assert_eq!(trace.dropped(), 7);
+        assert!(
+            trace.is_truncated(),
+            "a truncated trace must say so, or a later replay would trust a partial record"
+        );
+    }
+
+    /// The default buffer is allocated once per run and held for its life, so its cost belongs in a
+    /// test rather than in a comment someone has to trust. ADR-0004 asks for a measured trace size;
+    /// this is the ceiling that measurement has to stay under.
+    #[test]
+    fn a_full_hour_of_trace_fits_a_declared_budget() {
+        const BUDGET_BYTES: usize = 8 * 1024 * 1024;
+        let bytes = DEFAULT_OBSERVER_TRACE_CAPACITY * std::mem::size_of::<ObserverSample>();
+        assert!(
+            bytes <= BUDGET_BYTES,
+            "an hour of observer trace now costs {bytes} bytes, over the {BUDGET_BYTES} budget — \
+             either shrink ObserverSample or lower the capacity on purpose"
+        );
+        // Not a tautology: catches a sample that has quietly grown, e.g. by gaining a String.
+        assert!(
+            std::mem::size_of::<ObserverSample>() <= 32,
+            "ObserverSample grew to {} bytes",
+            std::mem::size_of::<ObserverSample>()
+        );
+    }
+
+    #[test]
+    fn a_fresh_trace_is_neither_truncated_nor_populated() {
+        let trace = ObserverTrace::with_capacity(4);
+        assert!(trace.is_empty());
+        assert!(!trace.is_truncated());
+        assert_eq!(trace.dropped(), 0);
+    }
+
+    /// The observer's cause id must not be reachable by a scenario author counting up from 1.
+    #[test]
+    fn the_observer_cause_is_reserved_and_far_from_hand_assigned_ids() {
+        use anima_domain::causal::{is_reserved_cause, CAUSE_OBSERVER};
+        assert!(is_reserved_cause(CAUSE_OBSERVER));
+        assert!(is_reserved_cause(CAUSE_BACKGROUND));
+        for hand_written in [1u32, 2, 3, 10, 100, 65_535] {
+            assert!(
+                !is_reserved_cause(hand_written),
+                "{hand_written} is the sort of id a manifest author writes and must stay free"
+            );
+        }
     }
 }

@@ -230,9 +230,23 @@ phải cái handle đó.
   báo ngược lại và **cấm** camera. Lẫn hai cái này sẽ âm thầm tắt LOD của app đang chạy, vì
   `PixiViewport.tsx` vẫn gọi `set_lod_focus` thật.
 
-  Còn lại: **O2** (ghi trace + `CauseId` cho hành động) và **O3** (replay `Inhabit`, phụ thuộc
-  §3.3/§3.6). Hệ quả của ADR lên `DETERMINISM_CONTRACT` §2 (nguồn rò rỉ thứ năm: camera) và
-  `SNAPSHOT_CONTRACT` vẫn **chưa** được áp — chúng thuộc O2.
+  **O2 cũng đã ship (2026-07-26).** `ObserverTrace` ghi focus **hiệu lực** (sau policy) vào buffer
+  cấp phát sẵn, ghi-khi-đổi, và **đếm** mẫu tràn thay vì bỏ im lặng. `CAUSE_OBSERVER` nằm ở đỉnh dải
+  `CauseId` vì scenario cấp tay từ dưới lên; manifest bị cấm giành id đó. App sống nay khai báo
+  `Inhabit` thật thay vì "chưa khai báo" — hành vi không đổi, nhưng hệ quả đã có gốc.
+  `DETERMINISM_CONTRACT` §2 nay là **năm** nguồn rò rỉ, có §2.1 cho camera.
+
+  Gate: `tests/observer_trace_tests.rs` (6) + `tests/observer_trace_zero_alloc_tests.rs` (1 test,
+  3 pha) — gồm control âm `a_chain_the_observer_did_not_start_does_not_name_them`.
+
+  **Bẫy thứ hai, do chính test bắt được:** từ chối focus phải thay **trọn** `LodFocus::default()`,
+  không chỉ tắt `enabled`. Giữ lại `center` sẽ để nguyên một đường camera sống bên trong world cho
+  system sau này đọc phải — tái lập đúng cái nhiễu vừa cấm.
+
+  Còn lại: **O3** (replay `Inhabit`, phụ thuộc §3.3/§3.6) và, cùng với nó, `TraceRef` vào
+  `SNAPSHOT_CONTRACT` (cần bump schema + migration). `ObserverSample` chưa mang `actions` vì engine
+  chưa có hành động nhập vai nào — một `Vec` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm thầm"
+  mà ADR này tồn tại để tránh.
 
 ---
 

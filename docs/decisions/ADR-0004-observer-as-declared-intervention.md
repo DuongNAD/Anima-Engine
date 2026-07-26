@@ -273,8 +273,23 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
    vì LOD-bật là đường đang chạy thật — `PixiViewport.tsx` gọi `set_lod_focus` từ khi simulation LOD
    được nối vào app. Nếu O1 chỉ có `Absent`/`Spectate` thì mọi run của app sống sẽ không có chính sách
    hợp lệ nào và LOD bị tắt câm. Ở O1, `Inhabit` **khai báo** sự nhiễu; **ghi lại** nó là O2.
-3. **O2 — Ghi trace + `CauseId` cho hành động.** Ledger và provenance chạy được kể cả khi replay chưa
-   bit-exact: "vì sao đàn thú chết" là câu hỏi trả lời được trước khi "chạy lại y hệt" trả lời được.
+3. **O2 — Ghi trace + `CauseId`. ✅ Xong 2026-07-26.** `ObserverTrace` ghi **focus hiệu lực** (sau
+   policy, không phải cái UI xin) vào buffer cấp phát sẵn, ghi-khi-đổi, và **đếm** mẫu tràn thay vì
+   bỏ im lặng — một trace ngừng ghi trong im lặng đọc y hệt một camera ngừng di chuyển.
+   `CAUSE_OBSERVER` được đặt ở **đỉnh** dải `CauseId` vì scenario cấp tay từ dưới lên, và manifest bị
+   cấm giành id đó.
+
+   Ba điều chỉnh so với C2/C3 khi va vào code thật:
+
+   - **`ObserverSample` không mang `actions`.** Chưa có hành động nhập vai nào trong engine — người
+     quan sát mới chỉ có camera. Một `Vec<ObserverAction>` rỗng vĩnh viễn là đúng thứ "chạy được và
+     sai âm thầm" mà ADR này tồn tại để tránh. Nó vào cùng lúc với hành động thật.
+   - **`CausalLedger` chưa có trong world Bevy sống** — nó là đồ headless cho tới khi G2 hội tụ. Nên
+     provenance được chứng minh ở chỗ ledger thật sự sống, còn ở live thì O2 giao bản ghi và cause id.
+     Gate `observer_writes_go_through_the_intervention_seam` vì thế là **n/a**, không phải pending:
+     chưa có hành động nào để đi qua seam. Nó có nghĩa khi hành động nhập vai xuất hiện.
+   - **Trace chưa vào save state.** `TraceRef` trong `SNAPSHOT_CONTRACT` cần bump schema và migration;
+     nó thuộc về O3, nơi replay biến bản ghi thành thứ có ích khi nạp lại.
 4. **O3 — `Inhabit` replay.** *Phụ thuộc G2 = §3.3 + §3.6* (đường live tất định). Không tuyên bố
    replay trước mốc này.
 5. **O4 — Fork phản thực + so cặp trong UI**, dùng lại đường checkpoint của AE-209.
@@ -292,10 +307,13 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 | Determinism | **Control âm**: `an_inhabited_camera_actually_changes_who_thinks` | Cùng camera path, `Inhabit` ⇒ timeline **phải khác**. Không có nó, gate trên xanh cả khi camera chưa từng tới được world | ✅ 2026-07-26 |
 | ER01 | `the_observer_policy_leaves_the_law_fingerprint_alone` | `laws.fingerprint()` không đổi theo policy; đổi manifest fingerprint thì có | ✅ 2026-07-26 |
 | Determinism | `an_inhabited_run_replays_from_its_trace_without_a_human` *(O3, sau G2 = §3.3+§3.6)* | Bằng checksum phiên sống | pending |
-| Provenance | `trace_to_root` trên hệ quả sau một hành động observer *(O2)* | Trả về `CauseId` của observer, không phải `CAUSE_BACKGROUND` | pending |
-| Correctness | `observer_writes_go_through_the_intervention_seam` *(O2)* | Không đường ghi world state nào khác từ observer | pending |
-| Performance | Bench tick path khi đang ghi trace *(O2)* | `allocs == 0`; regression tick time trong ngưỡng `BENCHMARK_BASELINE.md` | pending |
-| Performance | Kích thước trace, phiên 1 giờ, camera quay liên tục *(O2)* | Đo thật, đặt ngưỡng sau lần đo đầu | pending |
+| Provenance | `effects_downstream_of_the_observer_trace_back_to_the_observer` | `root_cause` ba mắt xích sau vẫn trả `CAUSE_OBSERVER` | ✅ 2026-07-26 |
+| Provenance | **Control âm**: `a_chain_the_observer_did_not_start_does_not_name_them` | Chuỗi nền phải trả `CAUSE_BACKGROUND`, nếu không thì gate trên xanh cả khi `root_cause` trả observer vô điều kiện | ✅ 2026-07-26 |
+| Correctness | `a_declared_intervention_may_not_claim_the_observer_cause` + `ordinary_hand_written_cause_ids_are_still_accepted` | Manifest không giành được `CAUSE_OBSERVER`; id thường vẫn tự do | ✅ 2026-07-26 |
+| Correctness | `a_spectating_camera_leaves_nothing_for_the_world_to_answer_for` | Focus bị từ chối được thay **trọn** `LodFocus::default()`, không chỉ tắt `enabled` | ✅ 2026-07-26 |
+| Performance | `the_observer_trace_does_not_allocate_on_the_tick_path` (3 pha: camera chạy, camera đứng, buffer đầy) | `allocs == 0` cả ba | ✅ 2026-07-26 |
+| Performance | `a_full_hour_of_trace_fits_a_declared_budget` | 216 000 mẫu × `size_of::<ObserverSample>()` ≤ 8 MiB | ✅ 2026-07-26 |
+| Correctness | `observer_writes_go_through_the_intervention_seam` | Không đường ghi world state nào khác từ observer | **n/a cho tới khi có hành động nhập vai** — xem ghi chú dưới |
 | License/security | Không dependency mới | n/a | ✅ 2026-07-26 |
 
 **Đính chính một điều bảng này từng hứa sai.** Bản đầu ghi `spectate_matches_absent` là "hai tiến trình
@@ -314,8 +332,8 @@ một `Spectate` cài đặt sai thành "y hệt `Absent` vì trace bị bỏ qu
 
 ## Tài liệu bị ảnh hưởng
 
-- **Contract/reference**: [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) (§2 thêm
-  nguồn rò rỉ thứ năm: camera; §5 thêm phụ thuộc O3 → G2);
+- **Contract/reference**: [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) — ✅ đã
+  cập nhật 2026-07-26: §2 nay là **năm** nguồn rò rỉ, với §2.1 mới cho camera và bảng ba policy;
   [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) (chính sách
   quan sát là một phần của danh tính run);
   [`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md) (`TraceRef` trong saved state).
