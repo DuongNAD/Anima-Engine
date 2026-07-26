@@ -169,6 +169,18 @@ Frontend nói chuyện với lõi Rust bằng lệnh và sự kiện Tauri — v
 `simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`,
 `migration-event`.
 
+> **Đổi hành vi 2026-07-27 — save/load.** Tham số `file_path` giữ nguyên tên (tương thích IPC) nhưng
+> nay là **tên save**, không phải đường dẫn: nó được phân giải trong thư mục app-data
+> (`<app_data_dir>/saves/<tên>.json`). Trước đây chuỗi từ frontend đi thẳng vào `write_atomic` /
+> `read`, nên bất cứ thứ gì gọi được `invoke` đều ghi/đọc được **file bất kỳ** mà tiến trình có
+> quyền. Tên chỉ được chứa `[A-Za-z0-9._-]` (allow-list, không phải block-list — xem
+> [`commands/save_paths.rs`](src-tauri/src/commands/save_paths.rs) giải thích vì sao block-list thua
+> trước `..%2f`, UNC, ADS `save.json:evil`, và tên thiết bị `CON`/`NUL`).
+>
+> **Save cũ nằm ngoài thư mục đó sẽ không đọc được nữa.** Cách chuyển: copy file `.json` vào
+> `<app_data_dir>/saves/` rồi load bằng tên. Không có bước migrate tự động, vì tự động đọc một đường
+> dẫn tuỳ ý chính là lỗ hổng vừa đóng.
+
 Danh sách đầy đủ kèm payload nằm ở [PROJECT.md § Interface Contracts](PROJECT.md) — đọc trước
 khi đổi bề mặt IPC, và cập nhật nó trong cùng thay đổi.
 

@@ -1,6 +1,7 @@
 pub mod environment;
 pub mod evolution;
 pub mod networking;
+pub mod save_paths;
 pub mod simulation;
 
 pub use environment::*;

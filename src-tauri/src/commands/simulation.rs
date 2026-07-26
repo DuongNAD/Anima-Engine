@@ -28,11 +28,34 @@ pub fn toggle_simulation(
     }
 }
 
+/// Directory this app is allowed to keep saves in, created on demand.
+///
+/// Every save path is built from here plus a validated name — see [`crate::commands::save_paths`]
+/// for why a frontend-supplied string is never treated as a path.
+fn saves_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot locate the app data directory: {e}"))?
+        .join("saves");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("cannot create the save directory {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
 #[tauri::command]
 pub fn save_simulation_state(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
+    // `file_path` keeps its name for IPC compatibility but is now a save *name*, not a path. It
+    // used to go straight to `write_atomic`, so anything that could reach `invoke` could write a
+    // file anywhere this process has permission.
+    let target =
+        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &file_path)?;
+
     let engine = &state.engine;
     if !engine.running.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("Simulation is not running".to_string());
@@ -57,7 +80,7 @@ pub fn save_simulation_state(
     // one.
     let envelope = crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
         .map_err(|e| format!("Serialization error: {e}"))?;
-    crate::core::snapshot::write_atomic(std::path::Path::new(&file_path), &envelope)
+    crate::core::snapshot::write_atomic(&target, &envelope)
         .map_err(|e| format!("File writing error: {e}"))?;
 
     Ok(true)
@@ -69,11 +92,17 @@ pub fn load_simulation_state(
     app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
+    // Same contract as save: a name resolved under app-data, never a path from the webview. Reading
+    // an arbitrary path was the more dangerous half of the old behaviour — it pulled attacker-chosen
+    // bytes into the running world, and surfaced parse failures containing file contents back to the
+    // caller.
+    let source =
+        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &file_path)?;
+
     // Verifies the checksum and migrates a pre-envelope save (schema 1 or 2) forward. A corrupt or
     // truncated file is refused here with a message naming the problem, instead of deserializing
     // into a plausible-looking world.
-    let loaded_state =
-        crate::core::snapshot::read(std::path::Path::new(&file_path)).map_err(|e| e.to_string())?;
+    let loaded_state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
 
     let engine = &state.engine;
     let was_running = engine.running.load(std::sync::atomic::Ordering::SeqCst);
