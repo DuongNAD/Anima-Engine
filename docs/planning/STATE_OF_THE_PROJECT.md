@@ -225,13 +225,47 @@ G2 duy nhất thật sự nhiều phiên.
 **Định nghĩa hoàn thành:** một hằng số luật đổi ở `anima-domain` làm cả hai engine đổi hành vi,
 có test chứng minh.
 
-#### 3.7 Vòng đời thread: supervisor + cancellation
+#### 3.7 Vòng đời thread: supervisor **xong**, cancellation token còn lại
 
-`simulation_loop.rs` spawn bốn thread (`evo`, `sim`, `inference`, `net`), `emit.rs` và
-`training.rs` mỗi file thêm nữa. **Lưu ý bản ghi cũ đã lạc hậu:** `inference_handle` từng bị
-drop thì **nay đã được join** ([`simulation_loop.rs:660`](../../src-tauri/src/core/simulation_loop.rs)
-có ghi chú giải thích). Phần còn thiếu là supervisor và cancellation token thống nhất, không
-phải cái handle đó.
+**Cách đặt vấn đề cũ của mục này sai, và đó là phần đáng đọc nhất.** Nó nói "rò thread". Một lượt
+kiểm kê **cả bảy** chỗ `thread::spawn` trong crate cho thấy handle nào cũng được thu hồi: năm cái vào
+vector mà `stop` join, `inference_handle` được join trong sim thread, và hai biến thể learner là một
+thread mà chỉ một cái được dựng. **Không có thread Rust nào bị rò.** Ai nhận mục này mà đi tìm chỗ rò
+sẽ tìm một thứ không tồn tại.
+
+Khoảng trống thật là `stop` không trả lời được hai câu hỏi duy nhất quan trọng khi shutdown sai — và
+chế độ hỏng thì vô hạn.
+
+##### Đã xong (2026-07-26, PR #14 → `e5fb8be`)
+
+[`core/thread_supervisor.rs`](../../src-tauri/src/core/thread_supervisor.rs). Mỗi thread mang một
+`ExitToken` có tên, **move vào closure** nên nó drop khi stack unwind — kể cả khi panic. Đó là phân
+biệt mà `let _ = handle.join()` không làm được: thread chết bẩn báo "đã thoát", không phải "treo".
+
+`stop` giờ **chờ báo cáo trước khi join**. Thứ tự là cốt lõi: `JoinHandle::join` không có timeout, nên
+join trước nghĩa là một thread phớt lờ `running` làm `stop` chờ mãi — đúng hình dạng cú treo CI, một
+cú chờ không giết được và không in gì.
+
+Gate: [`tests/thread_lifecycle_tests.rs`](../../src-tauri/tests/thread_lifecycle_tests.rs) (6) +
+6 unit test của module. Hợp đồng "sau `stop`, không còn gì `start` sinh ra đang chạy" nay **được máy
+kiểm** thay vì giả định, cộng 8 chu kỳ start/stop vì lỗi CI xuất hiện ở test cycle 101 lần — nơi rò
+một thread mỗi chu kỳ mới cộng dồn.
+
+**Đánh đổi, ghi ra chứ không giấu:** thread quá hạn 30 giây thì **không** được join. Nó bị detach và
+rò suốt đời tiến trình. Rò một thread **có tên** kèm thông báo hơn một `stop()` không bao giờ trả về
+và không nói gì — nhưng đó là đánh đổi, không phải bản sửa. Bản sửa là thứ khiến thread đó phớt lờ
+`running`.
+
+##### Còn lại
+
+- **Cancellation token thống nhất.** Hiện chỉ có một tín hiệu, `running: Arc<AtomicBool>`, và mỗi
+  thread tự chọn tần suất kiểm. Supervisor cho biết *ai* không về; nó không làm thread đó về nhanh hơn.
+- **Cú treo CI vẫn chưa được giải thích.** Nó không tái hiện kể từ PR #10, và phần vừa xong gỡ chế độ
+  hỏng *vô hạn* mà **chưa** tái hiện được thứ kích hoạt nó. Ba dụng cụ giờ đã ở trên `main` (watchdog
+  PR #10, `--nocapture` PR #12, supervisor PR #14); lần treo kế tiếp sẽ nêu tên chu kỳ, pha, hoặc
+  thread — thay vì 90 phút im lặng.
+- Closure sim-thread ~900 dòng và evo thread ~290 dòng trong `start()` vẫn chưa tách; xem §4 và ghi
+  chú nợ của lượt refactor trước.
 
 #### 3.8 Hai ADR đang ở trạng thái `proposed`, và cả hai đều đang đỡ tải
 
