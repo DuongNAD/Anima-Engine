@@ -47,9 +47,11 @@ flowchart TD
 | Xem requirements/design/testing/task của feature đang phát triển | [AI lifecycle docs](ai/requirements/2026-07-24-feature-alternate-evolution-world-lab.md) |
 | Hiểu kiến trúc và nguyên nhân của quyết định | [Explanation](explanation/README.md) |
 | Xem việc cần làm và thứ tự phụ thuộc | [Planning](planning/README.md) |
+| Xem bằng chứng bên ngoài và khảo sát | [Research](research/README.md) |
 | Xem đánh giá dự án nguồn mở | [Open-source landscape](research/OPEN_SOURCE_LANDSCAPE.md) |
 | Xem đề xuất nâng cấp map và mô hình machine | [Map & ML upgrade research](research/MAP_AND_ML_UPGRADE_RESEARCH.md) *(proposed)* |
 | Ghi hoặc tra cứu quyết định kiến trúc | [ADR index](decisions/README.md) |
+| Xem quy tắc duy trì hệ thống | [Governance](governance/README.md) |
 | Duy trì và tái cấu trúc tài liệu | [Documentation policy](governance/DOCUMENTATION_POLICY.md) |
 | Thêm dependency hoặc sao chép mã/asset | [Open-source policy](governance/OPEN_SOURCE_POLICY.md) |
 

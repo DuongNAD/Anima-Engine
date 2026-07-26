@@ -1,4 +1,22 @@
+---
+kind: agent-goal
+agent: claude-code-background
+feature: g0-g4-remediation
+title: Overnight Goal — G0–G4 Remediation Program (post-audit)
+status: active
+created: 2026-07-25
+last_reviewed: 2026-07-26
+owner: simulation-architecture
+predecessor: 2026-07-25-claude-overnight-goal-ae3.md
+---
+
 # Claude Overnight Goal — G0–G4 Remediation Program (post-audit)
+
+> **Cập nhật frontmatter 2026-07-26.** Dòng `**Status:**` bên dưới ghi *"proposed; no goal in this
+> file has started"* và điều đó **không còn đúng**: G1.1–G1.4 và G2 gate #2/#3 đã được
+> [`STATE_OF_THE_PROJECT.md`](../../planning/STATE_OF_THE_PROJECT.md) §2 ghi nhận là *Live
+> integrated*. Frontmatter vì thế là `active`, không phải `proposed`. Thân tài liệu được giữ nguyên
+> làm bản ghi của kế hoạch gốc; trạng thái đo được nằm ở `STATE_OF_THE_PROJECT.md`.
 
 **Status:** proposed; no goal in this file has started
 **Date:** 2026-07-25

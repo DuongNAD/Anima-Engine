@@ -2,18 +2,25 @@
 title: Chính sách sử dụng nguồn mở
 status: proposed
 owner: maintainers
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-26
 review_cycle: quarterly
 ---
 
 # Chính sách sử dụng nguồn mở
 
-## Trạng thái cần quyết định
+## License của Anima Engine — đã quyết định
 
-Repository hiện chưa có `LICENSE` ở thư mục gốc. Việc công khai source không tự cấp
-quyền sử dụng, sửa đổi hay phân phối. Người duy trì phải quyết định license của Anima
-Engine và phạm vi riêng cho code, model, dataset, texture, ảnh và âm thanh trước khi
-nhận hoặc phân phối đáng kể nội dung bên thứ ba.
+[`LICENSE`](../../LICENSE) ở thư mục gốc là **proprietary, all rights reserved**
+(© 2026 Duong Nguyen Anh). Việc công khai source không tự cấp quyền sử dụng, sửa đổi hay phân phối,
+kể cả với chính repository này.
+
+> **Sửa 2026-07-26.** Bản trước của mục này viết *"Repository hiện chưa có `LICENSE` ở thư mục
+> gốc"* và coi đó là blocker quản trị duy nhất. Câu đó **đã sai sự thật**: file tồn tại. Blocker
+> (OSS-003) vì thế **đã được gỡ** — nhưng nó gỡ theo hướng thắt chặt, không phải nới ra. Xem hệ quả
+> ở mục kế tiếp.
+
+Phạm vi riêng cho code, model, dataset, texture, ảnh và âm thanh vẫn **chưa được tách bạch** trong
+`LICENSE`; đó là phần còn nợ của OSS-003, không phải toàn bộ nó.
 
 Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
 
@@ -24,6 +31,20 @@ Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
 | Cho phép sau kiểm tra | MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib | Ghi inventory, attribution/NOTICE và lock version |
 | Cần review rõ ràng | MPL-2.0, LGPL, EPL, CC cho data/asset, license tùy chỉnh | ADR + xác định linking/distribution/modification |
 | Chặn mặc định cho code tích hợp | GPL, AGPL, proprietary, source-available, không license | Chỉ tiếp tục sau quyết định license/pháp lý rõ ràng |
+
+### Hệ quả của việc Anima Engine là proprietary
+
+Hàng thứ ba của bảng trên nay có hiệu lực thật, không còn là mặc định thận trọng:
+
+- Một sản phẩm **proprietary không phân phối được** code copyleft (GPL/AGPL) đã link vào. Với các dự
+  án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) nghĩa là **đọc bài
+  báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ hai là vùng xám
+  pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý.
+- Điều này áp cho ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
+- Ngược lại, hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Nhưng
+  output không mặc nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
+- Dự án proprietary vẫn phải giữ **attribution/NOTICE** cho mọi thành phần permissive được phân
+  phối. Hiện repository **chưa có file `NOTICE`**; cần tạo trước lần phát hành đầu tiên.
 
 Một tool AGPL chạy tách biệt trong research có rủi ro khác với thư viện link vào ứng
 dụng, nhưng vẫn phải review cách triển khai, phân phối và đầu ra. Không suy luận từ
