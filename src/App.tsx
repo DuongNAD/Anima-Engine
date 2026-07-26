@@ -17,49 +17,56 @@ const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
 
 
-export interface RaycastTelemetry {
-  origin: [number, number, number];
-  direction: [number, number, number];
-  hit_distance: number;
-  hit_entity_type: 'Food' | 'Predator' | 'Prey' | 'Obstacle' | 'None';
-  agent_id: number;
-}
+// ---------------------------------------------------------------------------------------
+// IPC payload types: imported from the generated bindings, not re-declared here.
+//
+// Nine of these were hand-written copies of Rust structs. They were *correct* copies, which is
+// what made the arrangement dangerous: nothing compared them to their source, so the day a Rust
+// field was renamed the frontend would keep compiling against a shape the backend had stopped
+// sending, and the failure would arrive as an `undefined` at runtime instead of a type error at
+// build time.
+//
+// `src/types/generated/` is written by ts-rs from the structs themselves, and CI runs
+// `cargo test --lib export_bindings` followed by `git diff --exit-code` over that directory — so
+// drift there fails the build. A hand-written mirror sits outside that gate by construction.
+//
+// Re-exported as well as imported because the rest of the app and the frontend suite import these
+// names from `App`; the alternative is a rename sweep across call sites that buys nothing.
+// ---------------------------------------------------------------------------------------
 
-export interface PheromoneGridState {
-  grid: number[];
-  width: number;
-  height: number;
-}
+import type { RaycastTelemetry } from './types/generated/RaycastTelemetry';
+import type { HitEntityType } from './types/generated/HitEntityType';
+import type { PheromoneGridState } from './types/generated/PheromoneGridState';
+import type { CombatEvent } from './types/generated/CombatEvent';
+import type { SimulationStatus } from './types/generated/SimulationStatus';
+import type { EvolutionSettings } from './types/generated/EvolutionSettings';
+import type { EliteIndividualState } from './types/generated/EliteIndividualState';
+import type { MapElitesGridState } from './types/generated/MapElitesGridState';
+import type { ChronicleEvent } from './types/generated/ChronicleEvent';
+import type { EcosystemState } from './types/generated/EcosystemState';
+import type { EnvironmentalState } from './types/generated/EnvironmentalState';
+import type { EnvironmentalElement } from './types/generated/EnvironmentalElement';
 
-export interface CombatEvent {
-  predator_id: number;
-  prey_id: number;
-  damage: number;
-  energy_transferred: number;
-}
+export type {
+  RaycastTelemetry,
+  HitEntityType,
+  PheromoneGridState,
+  CombatEvent,
+  SimulationStatus,
+  EvolutionSettings,
+  EliteIndividualState,
+  MapElitesGridState,
+  ChronicleEvent,
+  EcosystemState,
+  EnvironmentalState,
+  EnvironmentalElement,
+};
 
-export interface SimulationStatus {
-  running: boolean;
-  tick_count: number;
-  avg_tick_time_ms: number;
-  fps: number;
-}
-
-export interface EvolutionSettings {
-  mutation_rate: number;
-  selection_bias: number;
-  grid_resolution: number;
-}
-
-export interface EliteIndividualState {
-  fitness: number;
-  features: number[];
-}
-
-export interface MapElitesGridState {
-  grid: Record<string, EliteIndividualState>;
-  grid_resolution: number;
-}
+// The three below have no ts-rs source, so they stay hand-written — and that is a gap, not a
+// decision. `get_lineage_graph` and the `migration-event` payload cross the same bridge as
+// everything above with none of the same protection. Deriving `TS` on the Rust side is the fix;
+// `tests/frontend/ipcBindingAuthority.test.ts` names them, so the gap is counted rather than
+// forgotten, and shrinking that list is the only way to change the number it asserts.
 
 export interface LineageNode {
   id: string;
@@ -78,15 +85,6 @@ export interface LineageGraphState {
   nodes: LineageNode[];
   links: LineageLink[];
   db_connected: boolean;
-}
-
-export interface ChronicleEvent {
-  id: string;
-  event_type: 'Drought' | 'TemperatureSpike' | 'PredatorWave' | 'Abundance';
-  timestamp: number;
-  title: string;
-  description: string;
-  parameter_delta: Record<string, number>;
 }
 
 export interface MigrationPayload {
@@ -896,7 +894,15 @@ export function App() {
                       <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
                       {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
                         <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
-                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
+                          {/* `v` is `number | undefined` under the generated type and was `number`
+                              under the hand-written mirror — the first real drift the switch
+                              exposed. The Rust side is a `HashMap<String, f64>`, so a lookup can
+                              miss, and `undefined >= 0` is false: a missing delta rendered as
+                              "rate: undefined" with no plus sign, silently. */}
+                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta)
+                            .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+                            .map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`)
+                            .join(', ')}
                         </div>
                       )}
                     </div>
