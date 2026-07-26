@@ -1,4 +1,11 @@
 import type { Page } from '@playwright/test';
+import type { ChronicleEvent } from '../../src/types/generated/ChronicleEvent';
+import type { EcosystemState } from '../../src/types/generated/EcosystemState';
+import type { EnvironmentalState } from '../../src/types/generated/EnvironmentalState';
+import type { MapElitesGridState } from '../../src/types/generated/MapElitesGridState';
+import type { PheromoneGridState } from '../../src/types/generated/PheromoneGridState';
+import type { RaycastTelemetry } from '../../src/types/generated/RaycastTelemetry';
+import type { SimulationStatus } from '../../src/types/generated/SimulationStatus';
 
 // ---------------------------------------------------------------------------------------
 // A deterministic, in-page Tauri IPC transport for browser E2E.
@@ -47,26 +54,61 @@ export interface TauriMockHandle {
  * Deterministic replies, keyed by command.
  *
  * Fixed values, never randomised: a spec that asserts "the tick counter shows 1234" is only
- * meaningful if 1234 is what the transport said. Shapes follow `src/types/generated/*`, which
- * `ts-rs` derives from the Rust structs, so a backend change that alters the contract shows up
- * as a type error here rather than as a mock that quietly describes an older API.
+ * meaningful if 1234 is what the transport said.
+ *
+ * **Typed by the generated bindings, not by hand.** `src/types/generated/*` is what `ts-rs`
+ * derives from the Rust structs, so annotating each reply makes a wrong shape a compile error.
+ * That is not hypothetical caution: the first version of this table invented
+ * `{ resolution, cells, coverage, best_fitness }` for `get_map_elites_grid` and
+ * `{ danger, food }` for `get_pheromone_grid`. Both are plausible and neither is the contract —
+ * the real shapes are `{ grid: Record<string, EliteIndividualState>, grid_resolution }` and
+ * `{ grid: number[], width, height }`. The app crashed into its own error boundary with
+ * `Cannot read properties of undefined (reading '0,0')`, and every spec then failed on a missing
+ * `<h1>`, which reads like a broken app rather than a mock describing an API that never existed.
  */
 const DETERMINISTIC_REPLIES: Record<string, unknown> = {
-  get_simulation_status: { running: false, tick_count: 1234, avg_tick_time_ms: 4.2, fps: 60 },
-  get_map_elites_grid: { resolution: 2, cells: [], coverage: 0, best_fitness: 0 },
-  get_pheromone_grid: { width: 2, height: 2, danger: [0, 0, 0, 0], food: [0, 0, 0, 0] },
-  get_active_raycasts: [],
-  get_environmental_elements: [],
+  get_simulation_status: {
+    running: false,
+    tick_count: 1234,
+    avg_tick_time_ms: 4.2,
+    fps: 60,
+  } satisfies SimulationStatus,
+  get_map_elites_grid: {
+    grid: { '0,0': { fitness: 1.5, features: [0.25, 0.75] } },
+    grid_resolution: 8,
+  } satisfies MapElitesGridState,
+  get_pheromone_grid: {
+    grid: [0, 0, 0, 0],
+    width: 2,
+    height: 2,
+  } satisfies PheromoneGridState,
+  get_active_raycasts: [] satisfies RaycastTelemetry[],
+  get_environmental_elements: { elements: [] } satisfies EnvironmentalState,
   get_lineage_graph: { nodes: [], edges: [] },
-  get_chronicle_history: [],
+  get_chronicle_history: [] satisfies ChronicleEvent[],
   get_ecosystem_state: {
-    producer_biomass: 100,
-    herbivore_biomass: 50,
-    carnivore_biomass: 10,
-    detritus_pool: 25,
-    total_energy: 185,
-  },
+    detritus: 25,
+    plants: 100,
+    animals: 60,
+    total: 185,
+    prey_count: 40,
+    predator_count: 20,
+    shannon: 0.9,
+    simpson: 0.6,
+    prey_mass: 1.2,
+    predator_mass: 2.4,
+    niche_divergence: 0.5,
+    archive_coverage: 0.3,
+  } satisfies EcosystemState,
   get_terrain_map: { width: 2, height: 2, cells: [0, 0, 0, 0] },
+  // The LOD focus pair. Neither appears in a literal `invoke("...")` in `src/` — `lodFocus.ts`
+  // resolves `invoke` into a cached function and calls it through a variable — so a grep for
+  // command names misses them. Leaving them out of this table was not a harmless gap: the mock
+  // rejects unknown commands, `sendLodFocus` runs on a timer, and the resulting stream of
+  // unhandled rejections tore the page down mid-suite. Every spec then failed on a missing `h1`,
+  // which reads like the app is broken rather than like the transport is incomplete.
+  get_lod_bands: { bands: [] },
+  set_lod_focus: null,
   toggle_simulation: true,
   toggle_evolution: true,
   update_evolution_settings: null,
@@ -91,7 +133,7 @@ export async function installDeterministicTauri(
   await page.addInitScript((table: Record<string, unknown>) => {
     interface MockState {
       callbacks: Map<number, (payload: unknown) => void>;
-      listeners: Map<string, number[]>;
+      listeners: Map<string, Array<{ handler: number; eventId: number }>>;
       invocations: Array<{ cmd: string; args: unknown }>;
       nextCallbackId: number;
       nextEventId: number;
@@ -125,15 +167,19 @@ export async function installDeterministicTauri(
         // The event plugin. `listen()` compiles to this; there is no separate channel.
         if (cmd === 'plugin:event|listen') {
           const name = String(args?.event);
-          const handler = Number(args?.handler);
+          const eventId = state.nextEventId++;
           const list = state.listeners.get(name) ?? [];
-          list.push(handler);
+          list.push({ handler: Number(args?.handler), eventId });
           state.listeners.set(name, list);
-          return Promise.resolve(state.nextEventId++);
+          return Promise.resolve(eventId);
         }
         if (cmd === 'plugin:event|unlisten') {
+          // The real plugin removes ONE listener by id, not all of them for the event. Clearing
+          // the list would make a component's own teardown silence every other subscriber.
           const name = String(args?.event);
-          state.listeners.set(name, []);
+          const eventId = Number(args?.eventId);
+          const list = state.listeners.get(name) ?? [];
+          state.listeners.set(name, list.filter((e) => e.eventId !== eventId));
           return Promise.resolve(null);
         }
 
@@ -151,13 +197,31 @@ export async function installDeterministicTauri(
 
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = internals;
 
+    // A second global, and not an optional one.
+    //
+    // `unlisten()` calls `window.__TAURI_EVENT_PLUGIN_INTERNALS__.unregisterListener(event, id)`
+    // *before* it invokes `plugin:event|unlisten` (event.js:43), with no guard. Without it every
+    // teardown threw `Cannot read properties of undefined (reading 'unregisterListener')` — and
+    // React 18 StrictMode mounts twice, so the very first render unsubscribed and threw. The
+    // rejections took down the whole page.
+    (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener(event: string, eventId: number): void {
+        const list = state.listeners.get(event);
+        if (!list) return;
+        state.listeners.set(
+          event,
+          list.filter((entry) => entry.eventId !== eventId),
+        );
+      },
+    };
+
     // The spec-facing side. Kept separate from `__TAURI_INTERNALS__` so nothing the app can
     // reach depends on it.
     (window as unknown as Record<string, unknown>).__animaTauriMock = {
       emit(name: string, payload: unknown): number {
         const list = state.listeners.get(name) ?? [];
-        for (const id of list) {
-          state.callbacks.get(id)?.({ event: name, id, payload });
+        for (const entry of list) {
+          state.callbacks.get(entry.handler)?.({ event: name, id: entry.eventId, payload });
         }
         return list.length;
       },
@@ -187,7 +251,14 @@ export async function installDeterministicTauri(
       );
     },
     async invokedCommands(): Promise<string[]> {
-      const calls = await this.invocations();
+      const calls = await page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __animaTauriMock: { invocations(): Array<{ cmd: string; args: unknown }> };
+            }
+          ).__animaTauriMock.invocations(),
+      );
       return [...new Set(calls.map((c) => c.cmd))];
     },
   };

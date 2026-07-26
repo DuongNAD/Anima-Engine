@@ -187,26 +187,137 @@ export interface PixiViewportProps {
   pan?: { x: number; y: number };
 }
 
-const beginFill = (g: any, color: number, alpha?: number) => {
-  if (typeof g.beginFill === 'function') {
-    g.beginFill(color, alpha);
-  } else if (typeof g.fill === 'function') {
-    g.fill({ color, alpha });
+// ---------------------------------------------------------------------------------------
+// Graphics adapter: pixi 8's API, expressed in the call shape this file already uses.
+//
+// # Why an adapter and not a rewrite
+//
+// These helpers used to prefer `beginFill` / `endFill` / `lineStyle` and only fall back to the
+// modern methods. pixi 8.19 still *has* the old ones — as deprecation stubs — so every redraw
+// emitted a wall of warnings, once per call, at 30 Hz. Fresh Playwright output showed them at
+// `beginFill` (~144), `endFill` (~154) and `lineStyle` (~159).
+//
+// The two APIs are not a rename. v7 is stateful — set a fill, draw shapes, close it — while v8 is
+// path-then-style: record shapes, then `fill(...)` / `stroke(...)` applies to what was recorded.
+// A straight swap would reverse the order of every drawing call in this file.
+//
+// So the adapter keeps the v7 *call shape* and defers: `beginFill` and `lineStyle` remember a
+// style, the shape helpers record geometry, and `endFill` (or `strokePath`, for open paths that
+// never had a fill) applies both. The `dirty` set is what makes nested strokes work — the
+// minimap's three-ring border sets a new `lineStyle` between rects, and without flushing at that
+// point all three rings would come out at whatever width happened to be set last.
+//
+// The v7 branch is kept because both Vitest configs mock `pixi.js`, and the mock implements the
+// v7 surface. It is not dead code; it is the path the unit tests take.
+// ---------------------------------------------------------------------------------------
+
+type FillStyle = { color: number; alpha?: number };
+type StrokeStyle = { width: number; color: number; alpha?: number };
+
+const pendingFill = new WeakMap<object, FillStyle>();
+const pendingStroke = new WeakMap<object, StrokeStyle>();
+/** Graphics with geometry recorded since the last style application. */
+const dirty = new WeakSet<object>();
+
+/** True for the real pixi 8 Graphics; false for the v7-shaped test mock. */
+const isModernGraphics = (g: any): boolean =>
+  typeof g?.fill === 'function' && typeof g?.rect === 'function';
+
+/** Apply whatever styles are pending to the geometry recorded so far. */
+const flushStyles = (g: any) => {
+  const fill = pendingFill.get(g);
+  if (fill) {
+    g.fill(fill);
+    pendingFill.delete(g);
   }
+  const stroke = pendingStroke.get(g);
+  if (stroke) {
+    g.stroke(stroke);
+    pendingStroke.delete(g);
+  }
+  dirty.delete(g);
 };
 
-const endFill = (g: any) => {
-  if (typeof g.endFill === 'function') {
-    g.endFill();
+const beginFill = (g: any, color: number, alpha?: number) => {
+  if (isModernGraphics(g)) {
+    if (dirty.has(g)) flushStyles(g);
+    pendingFill.set(g, { color, alpha });
+  } else if (typeof g.beginFill === 'function') {
+    g.beginFill(color, alpha);
   }
 };
 
 const lineStyle = (g: any, width: number, color: number, alpha?: number) => {
-  if (typeof g.lineStyle === 'function') {
+  if (isModernGraphics(g)) {
+    if (dirty.has(g)) flushStyles(g);
+    pendingStroke.set(g, { width, color, alpha });
+  } else if (typeof g.lineStyle === 'function') {
     g.lineStyle(width, color, alpha);
-  } else if (typeof g.stroke === 'function') {
-    g.stroke({ width, color, alpha });
   }
+};
+
+const endFill = (g: any) => {
+  if (isModernGraphics(g)) {
+    flushStyles(g);
+  } else if (typeof g.endFill === 'function') {
+    g.endFill();
+  }
+};
+
+/**
+ * Close an open stroked path — a `lineStyle` followed by `moveTo`/`lineTo` with no fill.
+ *
+ * v7 drew those as the calls were made, so they needed no closing call. v8 needs the `stroke()`
+ * that applies them, and without it the grid, the raycast beams and the segment linkages simply
+ * would not appear.
+ */
+const strokePath = (g: any) => {
+  if (isModernGraphics(g)) flushStyles(g);
+};
+
+const drawRect = (g: any, x: number, y: number, w: number, h: number) => {
+  if (isModernGraphics(g)) {
+    g.rect(x, y, w, h);
+    dirty.add(g);
+  } else {
+    g.drawRect(x, y, w, h);
+  }
+};
+
+const drawCircle = (g: any, x: number, y: number, r: number) => {
+  if (isModernGraphics(g)) {
+    g.circle(x, y, r);
+    dirty.add(g);
+  } else {
+    g.drawCircle(x, y, r);
+  }
+};
+
+const drawPolygon = (g: any, points: number[]) => {
+  if (isModernGraphics(g)) {
+    g.poly(points);
+    dirty.add(g);
+  } else {
+    g.drawPolygon(points);
+  }
+};
+
+const moveTo = (g: any, x: number, y: number) => {
+  g.moveTo(x, y);
+  if (isModernGraphics(g)) dirty.add(g);
+};
+
+const lineTo = (g: any, x: number, y: number) => {
+  g.lineTo(x, y);
+  if (isModernGraphics(g)) dirty.add(g);
+};
+
+/** Clear the canvas and any style this adapter was holding for it. */
+const clearGraphics = (g: any) => {
+  pendingFill.delete(g);
+  pendingStroke.delete(g);
+  dirty.delete(g);
+  g.clear();
 };
 
 export const PixiViewport: React.FC<PixiViewportProps> = ({
@@ -264,7 +375,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     const graphics = graphicsRef.current;
     if (!graphics) return;
 
-    graphics.clear();
+    clearGraphics(graphics);
 
     const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
     const raycasts = propRaycasts !== undefined ? propRaycasts : raycastsRef.current;
@@ -388,7 +499,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       bgSpriteRef.current.height = bottomY - topY;
     } else {
       beginFill(graphics, 0x09090b, 1.0); // Soft dark HUD background fallback
-      graphics.drawRect(0, 0, 500, 350);
+      drawRect(graphics, 0, 0, 500, 350);
       endFill(graphics);
     }
 
@@ -402,16 +513,21 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       const vx = minX + i * gridSizeX;
       const [screenVX1, screenVY1] = getCoords(vx, maxY);
       const [screenVX2, screenVY2] = getCoords(vx, minY);
-      graphics.moveTo(screenVX1, screenVY1);
-      graphics.lineTo(screenVX2, screenVY2);
+      moveTo(graphics, screenVX1, screenVY1);
+      lineTo(graphics, screenVX2, screenVY2);
       
       // Horizontal lines
       const hy = minY + i * gridSizeY;
       const [screenHX1, screenHY1] = getCoords(minX, hy);
       const [screenHX2, screenHY2] = getCoords(maxX, hy);
-      graphics.moveTo(screenHX1, screenHY1);
-      graphics.lineTo(screenHX2, screenHY2);
+      moveTo(graphics, screenHX1, screenHY1);
+      lineTo(graphics, screenHX2, screenHY2);
     }
+    // After the loop, not inside it: `lineStyle` is set once above, and `strokePath` consumes the
+    // pending style. Stroking per iteration would draw the first grid line and then, with nothing
+    // pending, silently draw none of the other thirty-one. v8's `stroke()` applies to every
+    // subpath recorded since the last style, so one call here is both correct and cheaper.
+    strokePath(graphics);
 
     // 0.5. Draw POI markers on top of the background
     if (terrainMap && Array.isArray(terrainMap.pois)) {
@@ -426,11 +542,11 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
         // Draw a nice blue icon with a white border
         beginFill(graphics, 0xffffff, 1.0); // white border
-        graphics.drawCircle(cx, cy, 5 * zoomRef.current);
+        drawCircle(graphics, cx, cy, 5 * zoomRef.current);
         endFill(graphics);
         
         beginFill(graphics, 0x1d9bf0, 1.0); // blue center
-        graphics.drawCircle(cx, cy, 3.5 * zoomRef.current);
+        drawCircle(graphics, cx, cy, 3.5 * zoomRef.current);
         endFill(graphics);
       });
     }
@@ -454,7 +570,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             const [rx2, ry2] = getCoords(wx2, wy2);
             const rw = rx2 - rx;
             const rh = ry2 - ry;
-            graphics.drawRect(rx, ry, rw, rh);
+            drawRect(graphics, rx, ry, rw, rh);
             endFill(graphics);
           }
         });
@@ -475,31 +591,31 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           const radius = (elem.radius + waveOffset) * currentScale * zoomRef.current;
 
           beginFill(graphics, 0xcccccc, 0.1);
-          graphics.drawCircle(cx, cy, radius);
+          drawCircle(graphics, cx, cy, radius);
           endFill(graphics);
 
           beginFill(graphics, 0xcccccc, 0.15);
-          graphics.drawCircle(cx, cy, radius * 0.7);
+          drawCircle(graphics, cx, cy, radius * 0.7);
           endFill(graphics);
 
           beginFill(graphics, 0xcccccc, 0.2);
-          graphics.drawCircle(cx, cy, radius * 0.4);
+          drawCircle(graphics, cx, cy, radius * 0.4);
           endFill(graphics);
         } else {
           // Trees: botanical assets
           const treeSize = ((elem.resources / 100.0) * 12 + 10) * currentScale * zoomRef.current;
 
           beginFill(graphics, 0x444444, 0.9); // Trunk
-          graphics.drawRect(cx - 3 * zoomRef.current, cy, 6 * zoomRef.current, treeSize * 0.8);
+          drawRect(graphics, cx - 3 * zoomRef.current, cy, 6 * zoomRef.current, treeSize * 0.8);
           endFill(graphics);
 
           beginFill(graphics, 0x888888, 0.85); // Canopy leaves
-          graphics.drawCircle(cx, cy - treeSize * 0.4, treeSize * 0.8);
+          drawCircle(graphics, cx, cy - treeSize * 0.4, treeSize * 0.8);
           endFill(graphics);
           
           beginFill(graphics, 0xaaaaaa, 0.8);
-          graphics.drawCircle(cx - treeSize * 0.3, cy - treeSize * 0.2, treeSize * 0.6);
-          graphics.drawCircle(cx + treeSize * 0.3, cy - treeSize * 0.2, treeSize * 0.6);
+          drawCircle(graphics, cx - treeSize * 0.3, cy - treeSize * 0.2, treeSize * 0.6);
+          drawCircle(graphics, cx + treeSize * 0.3, cy - treeSize * 0.2, treeSize * 0.6);
           endFill(graphics);
         }
       });
@@ -518,13 +634,14 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           const [ecx, ecy] = getCoords(endX, endY);
 
           lineStyle(graphics, 1.5 * zoomRef.current, r.hit_entity_type === 'None' ? 0xaaaaaa : 0xffffff, r.hit_entity_type === 'None' ? 0.25 : 0.75);
-          graphics.moveTo(scx, scy);
-          graphics.lineTo(ecx, ecy);
+          moveTo(graphics, scx, scy);
+          lineTo(graphics, ecx, ecy);
+          strokePath(graphics);
 
           // Draw small hit-point marker
           if (r.hit_entity_type !== 'None') {
             beginFill(graphics, 0xffffff, 0.9);
-            graphics.drawCircle(ecx, ecy, 3 * zoomRef.current);
+            drawCircle(graphics, ecx, ecy, 3 * zoomRef.current);
             endFill(graphics);
           }
         }
@@ -546,8 +663,9 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
             const opacity = 0.3 + ((s.energy || 0) / 100.0) * 0.7;
             lineStyle(graphics, 3.5 * zoomRef.current, 0x888888, opacity);
-            graphics.moveTo(px, py);
-            graphics.lineTo(cx, cy);
+            moveTo(graphics, px, py);
+            lineTo(graphics, cx, cy);
+            strokePath(graphics);
           }
         }
       });
@@ -574,23 +692,25 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           const p2_y = cy + Math.sin(angle + 2.3) * predSize * 0.7;
           const p3_x = cx + Math.cos(angle - 2.3) * predSize * 0.7;
           const p3_y = cy + Math.sin(angle - 2.3) * predSize * 0.7;
-          graphics.drawPolygon([p1_x, p1_y, p2_x, p2_y, p3_x, p3_y]);
+          drawPolygon(graphics, [p1_x, p1_y, p2_x, p2_y, p3_x, p3_y]);
           endFill(graphics);
 
           // Head arrow indicator line
           lineStyle(graphics, 2 * zoomRef.current, 0xffffff, 0.7);
-          graphics.moveTo(cx, cy);
-          graphics.lineTo(cx + Math.cos(angle) * predSize * 1.4, cy + Math.sin(angle) * predSize * 1.4);
+          moveTo(graphics, cx, cy);
+          lineTo(graphics, cx + Math.cos(angle) * predSize * 1.4, cy + Math.sin(angle) * predSize * 1.4);
+          strokePath(graphics);
         } else if (s.agent_type === 'prey') {
           const preySize = 10 * zoomRef.current;
           beginFill(graphics, 0x777777, opacity);
-          graphics.drawCircle(cx, cy, preySize);
+          drawCircle(graphics, cx, cy, preySize);
           endFill(graphics);
 
           // Tail indicator pointing backward
           lineStyle(graphics, 2.5 * zoomRef.current, 0x777777, opacity * 0.8);
-          graphics.moveTo(cx, cy);
-          graphics.lineTo(cx - Math.cos(angle) * preySize * 1.6, cy - Math.sin(angle) * preySize * 1.6);
+          moveTo(graphics, cx, cy);
+          lineTo(graphics, cx - Math.cos(angle) * preySize * 1.6, cy - Math.sin(angle) * preySize * 1.6);
+          strokePath(graphics);
 
           // Prey hydration bar
           if (s.hydration !== undefined) {
@@ -600,18 +720,18 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             const by = cy - preySize - 6 * zoomRef.current;
 
             beginFill(graphics, 0x333333, 0.85); // Backing dark gray
-            graphics.drawRect(bx, by, barW, barH);
+            drawRect(graphics, bx, by, barW, barH);
             endFill(graphics);
 
             beginFill(graphics, 0xdddddd, 0.95); // Hydration level light gray
-            graphics.drawRect(bx, by, barW * (s.hydration / 100.0), barH);
+            drawRect(graphics, bx, by, barW * (s.hydration / 100.0), barH);
             endFill(graphics);
           }
         } else {
           const isRoot = s.parent_segment_id === null || s.parent_segment_id === undefined;
           const color = isRoot ? 0x888888 : 0xaaaaaa;
           beginFill(graphics, color, opacity);
-          graphics.drawCircle(cx, cy, 10 * zoomRef.current);
+          drawCircle(graphics, cx, cy, 10 * zoomRef.current);
           endFill(graphics);
         }
       });
@@ -625,7 +745,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
     beginFill(graphics, 0x09090b, 0.8); // Dark semi-transparent background
     lineStyle(graphics, 1.5, 0x888888, 0.7);
-    graphics.drawRect(mmX, mmY, mmW, mmH);
+    drawRect(graphics, mmX, mmY, mmW, mmH);
     endFill(graphics);
 
     const getMinimapCoords = (x: number, y: number): [number, number] => {
@@ -650,7 +770,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const ey = proj === 'xy' ? elem.y : elem.z;
         const [mx, my] = getMinimapCoords(elem.x, ey);
         beginFill(graphics, elem.type === 'lake' ? 0xcccccc : 0x888888, 0.9);
-        graphics.drawCircle(mx, my, 3.5);
+        drawCircle(graphics, mx, my, 3.5);
         endFill(graphics);
       });
     }
@@ -663,7 +783,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const isRoot = s.parent_segment_id === null || s.parent_segment_id === undefined;
         if (isRoot) {
           beginFill(graphics, s.agent_type === 'predator' ? 0xffffff : 0x777777, 1.0);
-          graphics.drawCircle(mx, my, 2.5);
+          drawCircle(graphics, mx, my, 2.5);
           endFill(graphics);
         }
       });
@@ -683,13 +803,13 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
     beginFill(graphics, 0xffffff, 0.05); 
     lineStyle(graphics, 8, 0x555555, 0.15); // Outer soft border
-    graphics.drawRect(bx - 2, by - 2, bw + 4, bh + 4);
+    drawRect(graphics, bx - 2, by - 2, bw + 4, bh + 4);
 
     lineStyle(graphics, 5, 0xaaaaaa, 0.35); // Medium glow border
-    graphics.drawRect(bx - 1, by - 1, bw + 2, bh + 2);
+    drawRect(graphics, bx - 1, by - 1, bw + 2, bh + 2);
 
     lineStyle(graphics, 2.5, 0xffffff, 0.8); // Core thick border
-    graphics.drawRect(bx, by, bw, bh);
+    drawRect(graphics, bx, by, bw, bh);
     endFill(graphics);
   };
 

@@ -192,21 +192,35 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run build
 
-      # The seven specs under tests/e2e existed but nothing ran them: there was no `test:e2e` script
-      # at the root, no step here, and their Playwright config started no dev server, so each spec
-      # hit its own `catch` and called `test.skip()`. They drive the UI through a page-level Tauri
-      # IPC stub, so a Rust release build is not needed — `webServer` + a warm-up navigation is.
+      # Browser-scope E2E: zero fail, zero skip.
       #
-      # The suite now starts its own server on port 5177 (not 5173) with `reuseExistingServer:
-      # false`, and `global-setup.ts` refuses to run unless the served page is actually Anima. That
-      # is not hypothetical: on 2026-07-27 port 5173 on the development machine was held by an
-      # unrelated project's Vite server, and the old config would have adopted it and reported the
-      # mismatch as skips.
+      # This comment used to describe the specs as driving "a page-level Tauri IPC stub" needing no
+      # release build, while the specs themselves spawned `target/release/anima-engine` and skipped
+      # when it was absent. Both statements were in the repository at once and neither was checkable,
+      # because the run was always green. It was the second that matched the code, and it did not
+      # matter: the spawned process rendered into its own webview and Playwright drove an unrelated
+      # Vite page, so nothing connected them and no IPC was exercised in either direction.
       #
-      # Five specs still skip here because they spawn `target/release/anima-engine`, which this job
-      # does not build. The skip is deliberate and now names itself. To make it a hard failure —
-      # do this if a release-build step is ever added above — set ANIMA_E2E_REQUIRE_BACKEND=1 on the
-      # step below. Do NOT set it without that build step; it will fail every run.
+      # What runs here now is the first description, made true. `tests/e2e/tauri-mock.ts` implements
+      # the three functions `@tauri-apps/api` routes through, with fixed replies typed by the
+      # generated `ts-rs` bindings, so the real frontend runs against a real transport. No binary,
+      # no spawn, no skips — absent UI is a failure.
+      #
+      # The suite starts its own server on port 5177 (not 5173) with `reuseExistingServer: false`,
+      # and `global-setup.ts` refuses to run unless the served page is actually Anima. That is not
+      # hypothetical: on 2026-07-27 port 5173 on the development machine was held by an unrelated
+      # project's Vite server, and the old config would have adopted it and reported the mismatch
+      # as skips.
+      #
+      # Real-backend coverage is `tests/e2e/real_backend.spec.ts`, which declares no test unless
+      # ANIMA_E2E_REQUIRE_BACKEND=1 and fails closed when it is set. Set it on this step only after
+      # adding a `cargo build --release --features desktop` step AND a tauri-driver WebDriver
+      # session; it fails, by design, without both.
+      #
+      # The canonical map view capture (`npm run capture:views`) is deliberately NOT here: it needs
+      # a GPU, and on this runner it would fall back to SwiftShader — 0.27 fps against 46.7, and a
+      # different rasteriser, so a different picture. CI verifies the committed PNGs instead, via
+      # the checksums in map_manifest.json (tests/frontend/mapManifestEvidence.test.ts).
       - name: Install Playwright browsers
         if: ${{ !cancelled() }}
         run: npx playwright install --with-deps chromium
