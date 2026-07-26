@@ -32,7 +32,19 @@ jobs:
     # Windows on purpose: this is the platform the project is developed and released on, and
     # src-tauri/.cargo/config.toml carries x86_64-pc-windows-msvc rustflags.
     runs-on: windows-latest
-    timeout-minutes: 90
+    # Raised from 90. The suite outgrew it: the same job took 26 minutes when it had 65 test targets
+    # and passed 54 minutes with `cargo test` still running once ADR-0004's observer work brought it
+    # to 69. What costs the time is linking, not running — a change anywhere in the lib relinks every
+    # test binary, and linking on Windows is the expensive part.
+    #
+    # 90 was already only ~1.7x the last known-good run, which is not headroom, it is a coin flip.
+    # This keeps the timeout doing its actual job — catching a hang — while leaving room for a suite
+    # that is still growing. If a run ever gets near this, the answer is to look at what hung, not to
+    # raise the number again.
+    #
+    # Queue time is not counted here: a job that waited 94 minutes for a Windows runner (observed
+    # 2026-07-26) still starts its clock at zero.
+    timeout-minutes: 150
     defaults:
       run:
         working-directory: src-tauri
