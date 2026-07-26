@@ -1,5 +1,24 @@
 # BENCHMARK BASELINE — M0.4
 
+> **Cập nhật 2026-07-26 — đã có số đo thật theo từng system, ở một tài liệu khác.**
+> OSS-010 đã thêm Criterion và một bộ benchmark headless: [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md).
+> Bộ đó đo **từng system** (`step_water`, `integrate_physics_system`, `a2c_loss`,
+> `WorldArtifact::to_bytes`, …) mà không boot Tauri và không mở GPU device, nên nó không vi phạm
+> cảnh báo vận hành bên dưới.
+>
+> **Nó KHÔNG thay tài liệu này, vì hai lý do phải nói rõ:**
+>
+> 1. Số đó chạy trên **Intel Core i5-14600KF (desktop, 14C/20T, 47,8 GB)** — *không phải* Dell
+>    Vostro 3530 mà tài liệu này khai là phần cứng mục tiêu. Hoặc khai báo mục tiêu đã lỗi thời và
+>    cần cập nhật, hoặc bảng kia phải chạy lại trên máy đó. Đây là quyết định của người duy trì,
+>    không phải thứ tự suy ra được.
+> 2. Bộ Criterion đo **cận dưới của khung hình**, không đo khung hình. Nó chưa gồm suy luận não,
+>    lập lịch ECS, thread emit, va chạm và trao đổi chất. Các hàng "Physics tick" / "Brain/sensor"
+>    dưới đây vẫn cần một in-app tick capture.
+>
+> `timings` trong [`benchmark_report.json`](benchmark_report.json) **vẫn là proxy** và chưa được
+> đụng tới trong đợt này.
+
 Tài liệu này mô tả *reproducible benchmark scaffold* của Anima-Engine: cách capture
 seed + config + hardware + timings một cách **rẻ và trung thực**, và cách thay các số
 proxy bằng số thật trên phần cứng mục tiêu.

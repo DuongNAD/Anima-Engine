@@ -93,6 +93,24 @@ debug = "line-tables-only"
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
 
+[dev-dependencies]
+# OSS-010. The "60 FPS real-time" claim had never been measured: BENCHMARK_BASELINE.md declares its
+# own numbers proxies because running the full backend crashed the dev machine. Criterion measures
+# individual tick systems headless, so the claim becomes checkable without booting Tauri or opening
+# a GPU device.
+#
+# `default-features = false` drops the HTML report, which pulls plotters and a second rayon tree for
+# output nobody reads in CI; `cargo_bench_support` is the one feature `cargo bench` needs to drive
+# the harness. As a dev-dependency it is invisible to `cargo tree -e normal`, which is what the G2
+# feature-split gate actually checks — see `.github/workflows/ci.yml`.
+criterion = { version = "0.5", default-features = false, features = [
+    "cargo_bench_support",
+] }
+
+[[bench]]
+name = "tick_systems"
+harness = false
+
 [features]
 # G2 gate: a DEFAULT build must not compile the heavy optional subsystems. The desktop app turns
 # them back on (see the `desktop` feature), but a library consumer — and CI's fast path — gets a
