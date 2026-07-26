@@ -1,6 +1,7 @@
 mod common;
 
-use std::sync::atomic::AtomicBool;
+use common::stall_detector::StallDetector;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -15,6 +16,139 @@ static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+// ---- Watchdog for `test_100_save_load_cycles` ---------------------------------------------------
+//
+// This test hung the CI Rust job twice in a row on 2026-07-26 (run 30190881586, both attempts): it
+// was the last target to start, produced no result for ~83 minutes, and the job died at its
+// `timeout-minutes: 90` cap. GitHub reports that as `cancelled`, so the run list made it look like
+// somebody had stopped the build.
+//
+// The whole target takes **6.2 seconds** on a dev machine, so this is not a slow test that needs a
+// bigger budget. Something blocks, and it blocks only on the `push`-to-main runs — three
+// `pull_request` runs of the same code passed in about 8 minutes each. That smells like a race in
+// engine start/stop rather than a systematic difference, and the standing suspect is the thread
+// lifecycle debt in `STATE_OF_THE_PROJECT.md` §3.7: four threads spawned per `start`, no unified
+// cancellation, and this loop does it 101 times.
+//
+// The watchdog does not fix that. It makes the failure **legible**: instead of 90 minutes of silence
+// the log names the cycle and the phase that was in flight. Two runs were burned learning only the
+// target name; the next one should hand over the line number.
+//
+// `process::exit` rather than a panic, deliberately: the hang is in another thread, and a panic on
+// the watchdog thread would be swallowed while libtest kept waiting for the blocked one.
+
+/// Cycle currently in flight; `0` means the loop has not started yet, [`CYCLES_DONE`] means it
+/// finished and the process is now expected to exit.
+static WATCHDOG_CYCLE: AtomicU64 = AtomicU64::new(0);
+
+/// Sentinel for "every cycle completed". Distinguishing this from "stuck on the last cycle" is not
+/// cosmetic: the observed CI failure is that all 100 cycles **pass** and the binary then never
+/// exits, so a watchdog that only watches cycle progress reports the wrong thing at the wrong time.
+const CYCLES_DONE: u64 = u64::MAX;
+
+/// How long the process may take to exit after the last cycle before that counts as the leak.
+///
+/// Two minutes, weighed both ways. Too short risks turning a green build red on a slow runner, which
+/// is worse than the status quo for an intermittent fault. Too long gives back the whole point, which
+/// is beating the 90-minute job cap. The target completes in ~6s locally and the entire 71-target
+/// Rust job takes ~8 minutes on a passing CI run, so a two-minute exit is already pathological —
+/// while still leaving a 45x margin under the cap.
+const EXIT_GRACE_SECS: u64 = 120;
+/// Which call inside the cycle is in flight — see [`PHASES`].
+static WATCHDOG_PHASE: AtomicU64 = AtomicU64::new(0);
+
+const PHASES: [&str; 6] = [
+    "not started",
+    "engine.start",
+    "settle sleep",
+    "save request + recv",
+    "verify state",
+    "engine.stop",
+];
+
+/// Ten times the observed CI budget for the whole target and roughly 200x the local runtime, so this
+/// can only fire on a genuine stall — never on a slow runner.
+const WATCHDOG_BUDGET_SECS: u64 = 300;
+
+/// The budget, overridable by `ANIMA_STRESS_WATCHDOG_SECS`.
+///
+/// Read-only, and read once. `STATE_OF_THE_PROJECT.md` §4 warns that tests touching the environment
+/// need a shared mutex — that applies to tests that *set* variables and race each other. Nothing in
+/// this binary writes one.
+fn watchdog_budget() -> Duration {
+    let secs = std::env::var("ANIMA_STRESS_WATCHDOG_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|s| *s > 0)
+        .unwrap_or(WATCHDOG_BUDGET_SECS);
+    Duration::from_secs(secs)
+}
+
+fn phase(p: u64) {
+    WATCHDOG_PHASE.store(p, Ordering::SeqCst);
+}
+
+/// Kill the process with diagnostics if the cycle loop stops making progress.
+fn spawn_watchdog() {
+    let budget = watchdog_budget();
+    let tick = Duration::from_secs(1).min(budget);
+    let exit_grace = Duration::from_secs(EXIT_GRACE_SECS).min(budget);
+    thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let mut detector = StallDetector::new(budget);
+        let mut done_detector = StallDetector::new(exit_grace);
+        loop {
+            thread::sleep(tick);
+            let cycle = WATCHDOG_CYCLE.load(Ordering::SeqCst);
+
+            // The observed CI failure lives here, not above: every cycle passes and the binary then
+            // fails to exit, because `engine.stop()` does not reclaim the threads each `start`
+            // spawned. Reproduced locally 2026-07-26 — two runs in three left a live process behind
+            // with 79 threads, and it held the test executable hard enough to fail the next link
+            // with LNK1104.
+            if cycle == CYCLES_DONE {
+                if !done_detector.observe(CYCLES_DONE, tick) {
+                    continue;
+                }
+                eprintln!(
+                    "\n=== persistence_stress_tests watchdog ===\n\
+                     All 100 cycles passed, and this binary has not exited {}s later.\n\
+                     That is the leak, not slowness: the target completes in ~6s.\n\
+                     `engine.stop()` is not reclaiming the threads each `start` spawns, so the \
+                     process outlives its own tests — which on CI hangs `cargo test` until the \
+                     job's 90-minute cap (run 30190881586, both attempts).\n\
+                     Root cause is the thread lifecycle debt in STATE_OF_THE_PROJECT.md §3.7.\n\
+                     Failing loudly here instead of hanging.\n\
+                     =========================================",
+                    done_detector.stalled_for().as_secs(),
+                );
+                thread::sleep(Duration::from_millis(200));
+                std::process::exit(101);
+            }
+
+            if !detector.observe(cycle, tick) {
+                continue;
+            }
+            let phase = WATCHDOG_PHASE.load(Ordering::SeqCst) as usize;
+            eprintln!(
+                "\n=== persistence_stress_tests watchdog ===\n\
+                 test_100_save_load_cycles made no progress for {}s.\n\
+                 stalled in cycle {} of 100, at: {}\n\
+                 total elapsed: {}s. The whole target takes ~6s locally.\n\
+                 =========================================",
+                detector.stalled_for().as_secs(),
+                cycle,
+                PHASES.get(phase).unwrap_or(&"unknown"),
+                started.elapsed().as_secs(),
+            );
+            // Flush ordering matters: libtest captures stderr, so give it a moment to drain before
+            // the process disappears.
+            thread::sleep(Duration::from_millis(200));
+            std::process::exit(101);
+        }
+    });
+}
 
 #[test]
 fn test_load_zero_agents() {
@@ -200,14 +334,31 @@ fn test_100_save_load_cycles() {
 
     engine.stop();
 
+    // Armed before tracking starts, on purpose: spawning a thread allocates, and `common/allocator.rs`
+    // documents at length how a thread starting mid-measurement gets counted against the code under
+    // test. Nothing asserts on the count here today, but the next person to add an assertion should
+    // not have to discover this.
+    //
+    // See the watchdog comment at the top of this file: two CI runs died at the 90-minute job cap
+    // inside this loop and the log named only the target. This makes the next one name the cycle.
+    spawn_watchdog();
+
     // Track initial allocations in hot-loop tick to establish a baseline
     ALLOCATOR.start_tracking();
 
-    for cycle in 1..=100 {
+    for cycle in 1..=100u64 {
+        WATCHDOG_CYCLE.store(cycle, Ordering::SeqCst);
+        // Coarse progress in the log too, so a stall is visible while it is happening rather than
+        // only in the watchdog's post-mortem.
+        if cycle % 10 == 1 {
+            eprintln!("save/load cycle {cycle}/100");
+        }
+
         // Load the saved state from previous cycle
         *engine.pending_load_state.lock().unwrap() = Some(current_state.clone());
 
         // Start engine
+        phase(1);
         engine.start::<tauri::test::MockRuntime>(
             None,
             Arc::clone(&evo_settings),
@@ -216,9 +367,11 @@ fn test_100_save_load_cycles() {
         );
 
         // Run briefly to allow simulation ticks to execute
+        phase(2);
         thread::sleep(Duration::from_millis(15));
 
         // Save state at the end of this run
+        phase(3);
         let (tx_cycle, rx_cycle) = std::sync::mpsc::channel();
         engine
             .save_request_tx
@@ -231,6 +384,7 @@ fn test_100_save_load_cycles() {
             .unwrap_or_else(|why| panic!("save refused in cycle {}: {}", cycle, why));
 
         // Verify that the data is not glitched/NaN
+        phase(4);
         for agent in &new_state.agents {
             assert!(
                 agent.root_position.x.is_finite(),
@@ -270,9 +424,14 @@ fn test_100_save_load_cycles() {
         current_state = new_state;
 
         // Stop the engine to finish the cycle
+        phase(5);
         engine.stop();
     }
 
+    eprintln!("all 100 save/load cycles completed");
+    // Hands the watchdog over to its second job: from here the only thing left is for this process
+    // to exit, and failing to do that is the bug that hung CI twice.
+    WATCHDOG_CYCLE.store(CYCLES_DONE, Ordering::SeqCst);
     let _allocations = ALLOCATOR.stop_tracking();
 
     // We expect some allocations because starting/stopping the engine, serializing to state,
