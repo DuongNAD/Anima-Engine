@@ -29,6 +29,7 @@ fn node(id: &str, generation: u32) -> LineageNode {
         id: id.to_string(),
         generation,
         genotype: None,
+        cumulative_mutations: None,
     }
 }
 
@@ -37,6 +38,7 @@ fn rel(source: &str, target: &str, kind: RelationType) -> LineageRelation {
         source_id: source.to_string(),
         target_id: target.to_string(),
         relation_type: kind,
+        path_events: None,
     }
 }
 

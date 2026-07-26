@@ -380,6 +380,7 @@ mod tests {
             id: id.to_string(),
             generation,
             genotype: None,
+            cumulative_mutations: None,
         }
     }
 
@@ -388,6 +389,7 @@ mod tests {
             source_id: source.to_string(),
             target_id: target.to_string(),
             relation_type: RelationType::Mutate,
+            path_events: None,
         }
     }
 

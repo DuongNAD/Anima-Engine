@@ -32,6 +32,7 @@ fn node(id: &str, generation: u32) -> LineageNode {
         id: id.to_string(),
         generation,
         genotype: None,
+        cumulative_mutations: None,
     }
 }
 
@@ -40,6 +41,7 @@ fn edge(source: &str, target: &str) -> LineageRelation {
         source_id: source.to_string(),
         target_id: target.to_string(),
         relation_type: RelationType::Mutate,
+        path_events: None,
     }
 }
 
@@ -260,6 +262,7 @@ fn a_deep_chain_does_not_overflow_the_stack() {
             source_id: format!("n{:07}", g - 1),
             target_id: format!("n{g:07}"),
             relation_type: RelationType::Clone,
+            path_events: None,
         })
         .collect();
 

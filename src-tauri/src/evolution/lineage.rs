@@ -8,6 +8,94 @@ pub struct LineageNode {
     pub id: String,
     pub generation: u32,
     pub genotype: Option<MorphologyGenotype>,
+    /// Mutation events on the path from this node's root, inclusive of its own arrival.
+    ///
+    /// # Why `Option<u32>` and not `u32`
+    ///
+    /// `LineageNode` is serialized inside `SavedSimulationState`. A bare `u32` would default to `0`
+    /// on every save written before this field existed, and `0` does not read as "unknown" — it
+    /// reads as **"this lineage never mutated"**. That is finite, plausible, and wrong, which is the
+    /// worst shape a wrong number can have. `None` means *not recorded; derive it from the edges as
+    /// before*, and [`cumulative_mutations_from_edges`] is that derivation.
+    ///
+    /// # Why it has to exist at all
+    ///
+    /// Compaction reaches its O(alive) bound only by splicing out unary paths, and a spliced edge
+    /// represents a *path* rather than an event — so it cannot carry the per-edge [`RelationType`]
+    /// that the old count walked. Storing the total per node makes the walk unnecessary instead of
+    /// approximating it: five `Mutate` edges compressed into one still read as five.
+    #[serde(default)]
+    pub cumulative_mutations: Option<u32>,
+}
+
+/// Cumulative mutation count per node id, derived from edges alone.
+///
+/// This is the **one** implementation of the rule. It was previously inlined in
+/// `commands::evolution::get_lineage_graph`; keeping a second copy next to the stored field is how
+/// a stored value and a derived value drift into disagreeing, and the whole point of the field is
+/// that the two agree.
+///
+/// The rule: a node's count is the greatest count among its parents, plus one when any edge into
+/// it is a [`RelationType::Mutate`]. `max` rather than a sum because the count describes *one*
+/// line of descent — a crossover child inherits the longer history, it does not add the two.
+pub fn cumulative_mutations_from_edges(
+    nodes: &[LineageNode],
+    relations: &[LineageRelation],
+) -> std::collections::HashMap<String, u32> {
+    let mut parents: std::collections::HashMap<&str, Vec<(&str, RelationType)>> =
+        std::collections::HashMap::new();
+    for rel in relations {
+        parents
+            .entry(rel.target_id.as_str())
+            .or_default()
+            .push((rel.source_id.as_str(), rel.relation_type));
+    }
+
+    // Iterative rather than recursive: a long trunk is exactly the shape this walks, and a deep
+    // lineage would blow the stack on the machine it matters on. `visiting` also makes a cyclic
+    // graph terminate with a finite answer instead of hanging.
+    let mut memo: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut visiting: std::collections::HashSet<&str> = std::collections::HashSet::new();
+
+    for node in nodes {
+        if memo.contains_key(&node.id) {
+            continue;
+        }
+        let mut stack: Vec<(&str, bool)> = vec![(node.id.as_str(), false)];
+        while let Some((id, expanded)) = stack.pop() {
+            if memo.contains_key(id) {
+                visiting.remove(id);
+                continue;
+            }
+            if expanded {
+                let mut count = 0;
+                if let Some(ps) = parents.get(id) {
+                    let mut max_parent = 0;
+                    let mut mutated = false;
+                    for (pid, rel) in ps {
+                        max_parent = max_parent.max(memo.get(*pid).copied().unwrap_or(0));
+                        if *rel == RelationType::Mutate {
+                            mutated = true;
+                        }
+                    }
+                    count = max_parent + u32::from(mutated);
+                }
+                memo.insert(id.to_string(), count);
+                visiting.remove(id);
+                continue;
+            }
+            visiting.insert(id);
+            stack.push((id, true));
+            if let Some(ps) = parents.get(id) {
+                for (pid, _) in ps {
+                    if !memo.contains_key(*pid) && !visiting.contains(*pid) {
+                        stack.push((*pid, false));
+                    }
+                }
+            }
+        }
+    }
+    memo
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,7 +109,20 @@ pub enum RelationType {
 pub struct LineageRelation {
     pub source_id: String,
     pub target_id: String,
+    /// The reproduction event that produced `target_id` from `source_id`.
+    ///
+    /// When [`Self::path_events`] is `Some(n)` with `n > 1` this edge stands for a *path*, and the
+    /// type is the strongest event on it (`Crossover` > `Mutate` > `Clone`) — a summary, not an
+    /// event that happened. Read [`Self::path_events`] before drawing a conclusion from it, and
+    /// take mutation totals from [`LineageNode::cumulative_mutations`], which stays exact.
     pub relation_type: RelationType,
+    /// Reproduction events this edge represents, or `None` for a single recorded event.
+    ///
+    /// Present only on edges produced by compaction's unary-path splicing. `None` rather than `1`
+    /// so that every pre-existing save deserializes to "a plain edge" without a migration, and so
+    /// that "summarised" is visibly different from "recorded".
+    #[serde(default)]
+    pub path_events: Option<u32>,
 }
 
 /// What one [`LineageTracker::compact`] call removed.
@@ -71,18 +172,25 @@ pub trait LineageTracker: Send + Sync {
     /// [`to_newick`](super::newick::to_newick) and [`simplify`](super::simplify::simplify) would
     /// later reject.
     ///
-    /// # What it deliberately does NOT do
+    /// # What it does, and what that costs
     ///
-    /// **No unary-path compression.** That is the step that reaches the O(alive) bound, and it
-    /// removes nodes that existing consumers still read: the lineage graph the UI draws comes
-    /// straight from here, and `get_mutations_count` in `commands/evolution.rs` walks per-edge
-    /// `RelationType`s that a compressed edge cannot carry. Enabling it for storage requires a
-    /// per-node cumulative mutation count to be persisted first — a change to `LineageNode`, which
-    /// is written into save state. Until then compaction removes extinct branches, which is where
-    /// the genotypes are, and leaves the trunk.
+    /// **Unary-path compression is ON**, which is what takes the store to its O(alive) bound —
+    /// pruning alone keeps every trunk back to genesis. It became safe once
+    /// [`LineageNode::cumulative_mutations`] existed: the count the UI shows no longer depends on
+    /// walking per-edge [`RelationType`]s that a spliced edge cannot carry.
+    ///
+    /// The price is paid in resolution, not correctness. A spliced node's **genotype is gone**, and
+    /// the edge that replaced it carries [`LineageRelation::path_events`] to say so. Totals stay
+    /// exact; the individual events between two surviving nodes do not survive.
+    ///
+    /// Ordering inside this method is load-bearing: every node's cumulative count is backfilled
+    /// against the **full** graph before anything is spliced. Deriving it afterwards would read the
+    /// compacted graph and return a smaller, entirely plausible, wrong number.
     ///
     /// **Neo4j is untouched.** Only the in-memory store shrinks. Deleting from the graph database
-    /// is a destructive remote operation and needs its own decision.
+    /// is a destructive remote operation and needs its own decision. A consequence worth knowing:
+    /// while Neo4j is online `get_lineage_graph` reads from it and returns the **full** graph, so
+    /// the compacted store is not what the UI sees.
     fn compact(&self, samples: &[String]) -> Result<CompactionReport, String>;
 }
 
@@ -104,6 +212,22 @@ impl InMemoryLineageTracker {
             relations: RwLock::new(Vec::new()),
         }
     }
+
+    /// Replace the whole graph — the restore path, used when a save is loaded.
+    ///
+    /// Nodes arrive exactly as they were serialized, which for any save written before
+    /// [`LineageNode::cumulative_mutations`] existed means `None` everywhere. That is deliberate
+    /// and must not be "fixed" by backfilling here: the derivation belongs in
+    /// [`LineageTracker::compact`], where it runs against the full graph at the one moment it
+    /// matters. Backfilling on load would also mean paying for a whole-graph walk on every restore.
+    pub fn load_state(&self, nodes: Vec<LineageNode>, relations: Vec<LineageRelation>) {
+        if let Ok(mut n) = self.nodes.write() {
+            *n = nodes;
+        }
+        if let Ok(mut r) = self.relations.write() {
+            *r = relations;
+        }
+    }
 }
 
 impl LineageTracker for InMemoryLineageTracker {
@@ -112,6 +236,8 @@ impl LineageTracker for InMemoryLineageTracker {
             id,
             generation: 0,
             genotype: Some(genotype),
+            // A root has no ancestry, so zero is a recorded fact here, not a default.
+            cumulative_mutations: Some(0),
         };
         self.nodes.write().map_err(|e| e.to_string())?.push(node);
         Ok(())
@@ -125,12 +251,42 @@ impl LineageTracker for InMemoryLineageTracker {
         parents: Vec<String>,
         relation_type: RelationType,
     ) -> Result<(), String> {
+        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
+
+        // Derived from the parents already in the store, before the offspring is pushed. Only
+        // parents that exist contribute — an unknown parent has its edge refused below, so it is
+        // not part of this individual's ancestry and must not be part of its count either.
+        //
+        // `None` is contagious on purpose: if any real parent's count was never recorded (a node
+        // restored from a pre-field save), this node's total is not knowable from the store alone,
+        // and claiming a number derived from a partial ancestry would be worse than saying
+        // "unknown" and letting the edge walk answer.
+        let cumulative_mutations = {
+            let mut max_parent: Option<u32> = None;
+            let mut saw_unrecorded = false;
+            for parent in &parents {
+                if let Some(p) = nodes.iter().find(|n| &n.id == parent) {
+                    match p.cumulative_mutations {
+                        Some(v) => max_parent = Some(max_parent.map_or(v, |m: u32| m.max(v))),
+                        None => saw_unrecorded = true,
+                    }
+                }
+            }
+            if saw_unrecorded {
+                None
+            } else {
+                // No known parent at all ⇒ this offspring is effectively a root.
+                let base = max_parent.unwrap_or(0);
+                Some(base.saturating_add(u32::from(relation_type == RelationType::Mutate)))
+            }
+        };
+
         let node = LineageNode {
             id: offspring_id.clone(),
             generation,
             genotype: Some(genotype),
+            cumulative_mutations,
         };
-        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
         nodes.push(node);
         // Known ids are read from the node list rather than kept as a side index: the list is
         // already behind this lock, and a second structure would be one more thing compaction has
@@ -156,6 +312,7 @@ impl LineageTracker for InMemoryLineageTracker {
                 source_id: parent,
                 target_id: offspring_id.clone(),
                 relation_type,
+                path_events: None,
             });
         }
 
@@ -180,16 +337,31 @@ impl LineageTracker for InMemoryLineageTracker {
         let nodes_before = nodes.len();
         let relations_before = relations.len();
 
-        // `simplify` decides what survives; the filtering below is what applies it. Deriving the
-        // stored relations from `SimplifiedEdge` instead would mean inventing a `RelationType` for
-        // each one — the fabrication that module exists to refuse. Filtering the ORIGINALS keeps
-        // every type exactly as it was recorded.
+        // ---- backfill before anything is removed ------------------------------------------------
+        //
+        // Compression is only safe once every surviving node carries its own total, because after
+        // the splice the intermediates that the edge walk counted are gone — walking the compacted
+        // graph would return a smaller, entirely plausible, wrong number.
+        //
+        // A store restored from a pre-field save has `None` everywhere, so the backfill has to
+        // happen here, against the FULL graph, while the evidence for it still exists. Doing it
+        // after `simplify_with` would compute the same wrong number the field exists to prevent.
+        let derived = cumulative_mutations_from_edges(&nodes, &relations);
+        for node in nodes.iter_mut() {
+            if node.cumulative_mutations.is_none() {
+                node.cumulative_mutations = derived.get(&node.id).copied();
+            }
+        }
+
+        // `simplify` decides what survives; the rewrite below is what applies it. Unary-path
+        // splicing is now ON — it is the step that reaches the O(alive) bound, and it is what the
+        // per-node count above was added to make safe.
         let plan = simplify_with(
             &nodes,
             &relations,
             samples,
             SimplifyOptions {
-                compress_unary_paths: false,
+                compress_unary_paths: true,
             },
         )
         .map_err(|e| e.to_string())?;
@@ -197,11 +369,52 @@ impl LineageTracker for InMemoryLineageTracker {
         let keep: std::collections::HashSet<&str> =
             plan.nodes.iter().map(|n| n.id.as_str()).collect();
 
-        let kept_relations: Vec<LineageRelation> = relations
+        // Relations must be rebuilt from the PLAN, not filtered from the originals. Filtering was
+        // correct while nothing was spliced; with compression on it silently disconnects the graph,
+        // because both original edges of an `A → B → C` path reference the removed `B` and would
+        // both be dropped, orphaning `C`. The plan's edge is the one that spans the splice.
+        let original_type: std::collections::HashMap<(&str, &str), RelationType> = relations
             .iter()
-            .filter(|r| keep.contains(r.source_id.as_str()) && keep.contains(r.target_id.as_str()))
-            .cloned()
+            .map(|r| {
+                (
+                    (r.source_id.as_str(), r.target_id.as_str()),
+                    r.relation_type,
+                )
+            })
             .collect();
+
+        let kept_relations: Vec<LineageRelation> = plan
+            .edges
+            .iter()
+            .map(|e| {
+                let key = (e.parent_id.as_str(), e.child_id.as_str());
+                // An uncompressed edge keeps the type exactly as it was recorded. Only a spliced
+                // path gets a summary, and `path_events` marks it as one so no reader mistakes the
+                // summary for an observation.
+                let (relation_type, path_events) = if e.events <= 1 {
+                    (
+                        original_type
+                            .get(&key)
+                            .copied()
+                            .unwrap_or(RelationType::Clone),
+                        None,
+                    )
+                } else if e.crossovers > 0 {
+                    (RelationType::Crossover, Some(e.events))
+                } else if e.mutations > 0 {
+                    (RelationType::Mutate, Some(e.events))
+                } else {
+                    (RelationType::Clone, Some(e.events))
+                };
+                LineageRelation {
+                    source_id: e.parent_id.clone(),
+                    target_id: e.child_id.clone(),
+                    relation_type,
+                    path_events,
+                }
+            })
+            .collect();
+
         let kept_nodes: Vec<LineageNode> = nodes
             .iter()
             .filter(|n| keep.contains(n.id.as_str()))
@@ -348,12 +561,7 @@ impl FallbackLineageTracker {
     }
 
     pub fn load_state(&self, nodes: Vec<LineageNode>, relations: Vec<LineageRelation>) {
-        if let Ok(mut mem_nodes) = self.in_memory.nodes.write() {
-            *mem_nodes = nodes;
-        }
-        if let Ok(mut mem_relations) = self.in_memory.relations.write() {
-            *mem_relations = relations;
-        }
+        self.in_memory.load_state(nodes, relations);
     }
 }
 
@@ -482,6 +690,10 @@ impl LineageTracker for FallbackLineageTracker {
                             id,
                             generation: gen_val as u32,
                             genotype,
+                            // Not a column in the graph database. `None` sends the reader to the
+                            // edge walk, which is exact here because Neo4j keeps the full,
+                            // uncompacted graph.
+                            cumulative_mutations: None,
                         });
                     }
 
@@ -506,6 +718,9 @@ impl LineageTracker for FallbackLineageTracker {
                             source_id: parent_id,
                             target_id: child_id,
                             relation_type,
+                            // Neo4j holds the uncompacted graph — `compact` only ever shrinks the
+                            // in-memory store — so every edge read back is a single event.
+                            path_events: None,
                         });
                     }
 

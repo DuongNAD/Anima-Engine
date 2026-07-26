@@ -158,13 +158,14 @@ pub struct SimplifyOptions {
     /// Splice out retained non-sample nodes that have exactly one parent and one child.
     ///
     /// This is the step that reaches the O(alive) bound — pruning alone keeps every trunk back to
-    /// genesis. It is also the step that removes nodes an existing consumer can still see: the
-    /// lineage graph the UI draws comes straight from the tracker, and `get_mutations_count` in
-    /// `commands/evolution.rs` walks per-edge `RelationType`s that a compressed edge no longer has.
+    /// genesis. It also removes nodes a consumer can still see, so it was gated behind persisting a
+    /// per-node cumulative mutation count: `commands/evolution.rs` used to derive the UI's mutation
+    /// figure by walking per-edge `RelationType`s, which a compressed edge cannot carry.
     ///
-    /// So the **live tracker compacts with this off** ([`super::lineage::LineageTracker::compact`])
-    /// and analysis turns it on. Turning it on for storage needs a per-node cumulative mutation
-    /// count to be persisted first — see that method's documentation.
+    /// That count now exists ([`super::lineage::LineageNode::cumulative_mutations`]), so the
+    /// **live tracker compacts with this on** ([`super::lineage::LineageTracker::compact`]).
+    /// A caller that still needs per-event resolution between two nodes must read the graph before
+    /// compaction — [`SimplifiedEdge::events`] reports how many events an edge stands for.
     pub compress_unary_paths: bool,
 }
 
@@ -436,6 +437,7 @@ mod tests {
             id: id.to_string(),
             generation,
             genotype: None,
+            cumulative_mutations: None,
         }
     }
 
@@ -444,6 +446,7 @@ mod tests {
             source_id: source.to_string(),
             target_id: target.to_string(),
             relation_type: kind,
+            path_events: None,
         }
     }
 
