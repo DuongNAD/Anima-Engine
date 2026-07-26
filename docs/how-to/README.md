@@ -40,12 +40,27 @@ Chỉ thay đổi simulation core thì tối thiểu chạy Cargo test; thay cod
 
 ## Đo baseline
 
+Hai thứ khác nhau, đừng lẫn:
+
+**Số đo thật, theo từng system** (OSS-010) — chạy từ `src-tauri/`:
+
+```powershell
+cargo bench --bench tick_systems
+```
+
+Cách chạy, cách so mốc, cách gỡ và **bảng baseline đã cam kết** nằm ở
+[`BENCHMARKING.md`](BENCHMARKING.md). Đây là bộ trả lời câu "một tick tốn bao nhiêu", vì nó đo từng
+system headless — không Tauri, không GPU device.
+
+**Harness report proxy** (M0.4) — chạy từ repo root:
+
 ```powershell
 node scripts/bench_baseline.mjs
 ```
 
 Đọc cách diễn giải và metadata bắt buộc tại
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Không so hai report nếu khác
+[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). `timings` của report này **là proxy theo
+thiết kế** — một vòng fBm, không phải engine. Không so hai report nếu khác
 build mode, workload, seed hoặc cấu hình máy mà không ghi rõ.
 
 ## Tạo/kiểm tra world artifact fixture

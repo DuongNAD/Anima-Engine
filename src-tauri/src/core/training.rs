@@ -20,14 +20,19 @@ use burn::tensor::{Data, Shape, Tensor};
 use crate::ai::hrrl::Transition;
 use crate::ai::model::ActorCriticModel;
 
+// These four are `pub` so `benches/tick_systems.rs` can build the learner at the shape the learner
+// actually runs at. A benchmark that hard-codes 15/64/4/32 keeps reporting a number for the old
+// architecture the first time one of them changes, and nothing fails — the bench still runs, still
+// prints a time, and the time is for a network the engine no longer uses.
+
 /// Observation width the shared model is built for, and the stride each transition contributes.
-const STATE_DIM: usize = 15;
+pub const STATE_DIM: usize = 15;
 /// Hidden width of both trunk layers.
-const HIDDEN_DIM: usize = 64;
+pub const HIDDEN_DIM: usize = 64;
 /// The four CPG locomotion parameters. The ecological gates are evolved, not trained here.
-const ACTION_DIM: usize = 4;
+pub const ACTION_DIM: usize = 4;
 /// Transitions accumulated before one optimiser step.
-const BATCH_SIZE: usize = 32;
+pub const BATCH_SIZE: usize = 32;
 /// Adam step size for the shared model.
 const LEARNING_RATE: f64 = 1e-3;
 /// Discount applied to the bootstrapped next-state value in the TD target.

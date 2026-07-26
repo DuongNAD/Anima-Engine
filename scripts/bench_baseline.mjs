@@ -1,24 +1,36 @@
 // scripts/bench_baseline.mjs
 //
-// M0.4 — reproducible benchmark BASELINE SCAFFOLD (Anima-Engine).
+// M0.4 — reproducible benchmark BASELINE (Anima-Engine).
 //
 // The full Bevy/Tauri backend must NOT be launched here: running it
 // (`npm run tauri dev` / `cargo run`) has CRASHED the dev machine, and even a
 // GPU-device probe is off-limits (WORLD_SIMULATION_PLAN.md §10.2 note). So this
 // script captures the *reproducibility envelope* — seed, config, hardware — and
-// times a deliberately CHEAP, pure-CPU PROXY loop instead of a real tick.
+// gathers timings from two sources:
 //
-// The proxy is an fBm-like arithmetic loop over a 128² grid. It is NOT the real
-// terrain generator and its numbers are NOT the engine's numbers; it exists only
-// to give the report a non-empty, reproducible `timings` block and to prove the
-// harness works. Replace it, on the target hardware, with a real
-// `cargo test --release` terrain-gen timing or an in-app tick capture (see
-// BENCHMARK_BASELINE.md). Perf numbers stay UNLOCKED until then (plan §10.2).
+//   1. REAL per-system measurements, read from Criterion's own output under
+//      `src-tauri/target/criterion/**/new/estimates.json` (OSS-010). These come
+//      from `cargo bench --bench tick_systems`, which drives one system at a time
+//      headless — no Tauri, no window, no GPU device. See
+//      docs/how-to/BENCHMARKING.md.
+//   2. A cheap pure-CPU PROXY loop, kept as a harness self-test and as the anchor
+//      for `proxyChecksum`. It is NOT the engine and never was.
 //
-// Dependencies: Node built-ins only (`node:os`, `node:fs`, `node:process`) plus
-// the `URL` and `performance` globals. No third-party packages, no Date.now().
+// Ordering matters: run `cargo bench` FIRST, then this script. `target/` is
+// gitignored, so a fresh clone has no Criterion data — and a proxy-only report
+// overwriting a real one is a silent regression. The script refuses to do that
+// unless ANIMA_BENCH_ALLOW_PROXY_ONLY=1 says it is intended.
 //
-// Run:  node scripts/bench_baseline.mjs
+// One consequence worth stating: real measurements vary run to run, so this file
+// no longer diffs byte-stable. That stability was only ever available because
+// nothing real was being measured. Values are rounded to keep the noise small.
+//
+// Dependencies: Node built-ins only (`node:os`, `node:fs`, `node:path`,
+// `node:process`) plus the `URL` and `performance` globals. No third-party
+// packages, no Date.now().
+//
+// Run:  cargo bench --bench tick_systems   (from src-tauri/, optional but expected)
+//       node scripts/bench_baseline.mjs
 // Out:  benchmark_report.json  (written at repo root, next to this script's parent)
 
 import os from 'node:os';
@@ -72,11 +84,78 @@ function fbmProxy(dim, s, octaves) {
 }
 
 const PROXY_NOTE =
-  'PROXY ONLY — a cheap 128^2 fBm-like arithmetic loop on the CAPTURE machine, ' +
-  'NOT the real terrain generator and NOT the target hardware. Replace with a ' +
-  '`cargo test --release` terrain-gen timing or an in-app tick capture on the ' +
-  'Dell Vostro 3530 (i7-1355U). See BENCHMARK_BASELINE.md; numbers are not locked ' +
-  '(WORLD_SIMULATION_PLAN.md §10.2).';
+  'HARNESS SELF-TEST, not an engine measurement — a cheap 128^2 fBm-like ' +
+  'arithmetic loop. It is not the terrain generator and never was. Kept because it ' +
+  'anchors proxyChecksum and proves the harness runs; the real per-system numbers ' +
+  'are the criterion/* entries. See docs/how-to/BENCHMARKING.md.';
+
+// ---- real measurements, read from Criterion ---------------------------------
+
+// Criterion writes one estimates.json per benchmark under
+// `target/criterion/<sanitised group>/<bench>[/<param>]/new/estimates.json`.
+// Group names have `/` replaced by `_`, but a BenchmarkId parameter stays a
+// directory — so the layout is walked rather than reconstructed, which keeps this
+// working if Criterion changes how it sanitises a name.
+const CRITERION_ROOT = new URL('../src-tauri/target/criterion/', import.meta.url);
+
+function findEstimates(dirUrl, relative = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dirUrl, { withFileTypes: true });
+  } catch {
+    return []; // no criterion output at all
+  }
+  const found = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const childUrl = new URL(`${encodeURIComponent(entry.name)}/`, dirUrl);
+    if (entry.name === 'new') {
+      const fileUrl = new URL('estimates.json', childUrl);
+      if (fs.existsSync(fileUrl)) found.push({ name: relative.join('/'), fileUrl });
+      continue;
+    }
+    // `base` holds the previous run and `report` holds rendered HTML; neither is a
+    // measurement of this run.
+    if (entry.name === 'base' || entry.name === 'report') continue;
+    found.push(...findEstimates(childUrl, [...relative, entry.name]));
+  }
+  return found;
+}
+
+/// Criterion point estimates are in NANOSECONDS.
+function readCriterionTimings() {
+  const timings = {};
+  for (const { name, fileUrl } of findEstimates(CRITERION_ROOT).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  )) {
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(fileUrl, 'utf8'));
+    } catch {
+      continue; // a half-written file from an interrupted run is not a measurement
+    }
+    const medianNs = parsed?.median?.point_estimate;
+    if (typeof medianNs !== 'number' || !Number.isFinite(medianNs)) continue;
+    const meanNs = parsed?.mean?.point_estimate;
+    const stdDevNs = parsed?.std_dev?.point_estimate;
+
+    // `ms` is the PER-ITERATION median, so `iterations: 1` keeps the pair honest
+    // against the schema's "ms over all iterations" wording. Sub-microsecond
+    // benchmarks would round to 0.000 ms, so the nanosecond figures are carried
+    // alongside and are the ones to read.
+    timings[`criterion/${name}`] = {
+      ms: Math.round((medianNs / 1e6) * 1e6) / 1e6,
+      iterations: 1,
+      note:
+        'REAL measurement — Criterion median, release build, per iteration. ' +
+        'Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.',
+      medianNs: Math.round(medianNs * 1e3) / 1e3,
+      ...(typeof meanNs === 'number' ? { meanNs: Math.round(meanNs * 1e3) / 1e3 } : {}),
+      ...(typeof stdDevNs === 'number' ? { stdDevNs: Math.round(stdDevNs * 1e3) / 1e3 } : {}),
+    };
+  }
+  return timings;
+}
 
 function timeLoop(iterations, fn) {
   const t0 = performance.now();
@@ -98,6 +177,36 @@ const proxyChecksum = Math.round((terrain.checksum + field.checksum) * 1e6) / 1e
 // ---- assemble the report ----------------------------------------------------
 
 const cpus = os.cpus();
+const criterionTimings = readCriterionTimings();
+const criterionCount = Object.keys(criterionTimings).length;
+
+// Write at repo root (parent of scripts/), resolved off this file — no path module
+// needed, and fs accepts a file: URL directly on every platform.
+const outUrl = new URL('../benchmark_report.json', import.meta.url);
+
+// Guard against the silent regression: `target/` is gitignored, so running this on a
+// fresh clone finds no Criterion data. Without this check the script would cheerfully
+// replace a committed report full of real measurements with proxies only, and the
+// result would still validate, still look like a baseline, and be worthless. Opt in
+// explicitly if proxy-only really is what you want.
+if (criterionCount === 0 && process.env.ANIMA_BENCH_ALLOW_PROXY_ONLY !== '1') {
+  const existingIsReal = (() => {
+    try {
+      const existing = JSON.parse(fs.readFileSync(outUrl, 'utf8'));
+      return Object.keys(existing?.timings ?? {}).some((k) => k.startsWith('criterion/'));
+    } catch {
+      return false; // no report yet, or unreadable — there is nothing to protect
+    }
+  })();
+  if (existingIsReal) {
+    process.stderr.write(
+      'refusing to overwrite real Criterion timings with a proxy-only report.\n' +
+        'Run `cargo bench --bench tick_systems` from src-tauri/ first, or set\n' +
+        'ANIMA_BENCH_ALLOW_PROXY_ONLY=1 if a proxy-only report is intended.\n',
+    );
+    process.exit(1);
+  }
+}
 
 const report = {
   schemaVersion: 1,
@@ -117,6 +226,7 @@ const report = {
     totalMemMB: Math.round(os.totalmem() / (1024 * 1024)),
   },
   timings: {
+    ...criterionTimings,
     terrain_fbm_proxy: {
       ms: terrain.ms,
       iterations: terrain.iterations,
@@ -131,19 +241,26 @@ const report = {
   // Reproducibility anchor (keeps the proxy loops alive; not a performance metric).
   proxyChecksum,
   notes:
-    'Timings above are PROXY measurements from the machine that ran this script, ' +
-    'not the engine and not the target hardware. Baseline perf numbers are NOT ' +
-    'locked until captured on the Vostro 3530 (WORLD_SIMULATION_PLAN.md §10.2).',
+    criterionCount > 0
+      ? `The criterion/* entries are REAL per-system measurements on the target ` +
+        `hardware (${(cpus[0]?.model ?? 'unknown').trim()}), from ` +
+        `cargo bench --bench tick_systems. They are a LOWER BOUND on a tick, not a ` +
+        `frame: brain inference, ECS scheduling, emit, collision and metabolism are ` +
+        `not among them. The *_fbm_proxy entries are a harness self-test, not the ` +
+        `engine. See docs/how-to/BENCHMARKING.md.`
+      : 'PROXY ONLY — no Criterion output was found under src-tauri/target/criterion. ' +
+        'Run `cargo bench --bench tick_systems` from src-tauri/ and re-run this ' +
+        'script to capture real per-system numbers.',
 };
 
-// Write at repo root (parent of scripts/), resolved off this file — no path module
-// needed, and fs accepts a file: URL directly on every platform.
-const outUrl = new URL('../benchmark_report.json', import.meta.url);
 fs.writeFileSync(outUrl, `${JSON.stringify(report, null, 2)}\n`);
 
 process.stdout.write(
   `benchmark_report.json written (seed=${seed}, ` +
+    `${criterionCount} real Criterion timings, ` +
     `terrain_fbm_proxy=${terrain.ms}ms/${terrain.iterations} iters, ` +
-    `field_fbm_proxy=${field.ms}ms/${field.iterations} iters). PROXY numbers — ` +
-    `capture real timings on the target hardware before treating them as a baseline.\n`,
+    `field_fbm_proxy=${field.ms}ms/${field.iterations} iters)` +
+    (criterionCount === 0
+      ? '. PROXY ONLY — run `cargo bench --bench tick_systems` first.\n'
+      : '.\n'),
 );

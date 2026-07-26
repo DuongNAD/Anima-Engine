@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://anima-engine.local/benchmark_report.schema.json",
   "title": "Anima-Engine benchmark baseline report (M0.4)",
-  "description": "Shape of benchmark_report.json produced by scripts/bench_baseline.mjs. Captures the reproducibility envelope (seed + config + hardware) plus a timings block. Perf numbers are NOT locked until captured on the target Vostro 3530 (WORLD_SIMULATION_PLAN.md §10.2). Extra top-level fields (schemaVersion, timestampNote, proxyChecksum, notes, …) are allowed.",
+  "description": "Shape of benchmark_report.json produced by scripts/bench_baseline.mjs. Captures the reproducibility envelope (seed + config + hardware) plus a timings block. Target hardware is an Intel Core i5-14600KF as of 2026-07-26 (the earlier Dell Vostro 3530 declaration is void). Timings keyed `criterion/*` are real per-system measurements from `cargo bench --bench tick_systems`; `*_fbm_proxy` entries are a harness self-test. Perf numbers are still NOT locked, because what is measured is a lower bound on a tick rather than a frame (WORLD_SIMULATION_PLAN.md §10.2, BENCHMARK_BASELINE.md). Extra top-level fields (schemaVersion, timestampNote, proxyChecksum, notes, …) are allowed.",
   "type": "object",
   "additionalProperties": true,
   "required": ["seed", "config", "hardware", "timings"],
@@ -78,7 +78,7 @@
     },
     "timings": {
       "type": "object",
-      "description": "Named measurements. Non-empty. Each entry carries ms, iterations and a note.",
+      "description": "Named measurements. Non-empty. Each entry carries ms, iterations and a note. Keys prefixed `criterion/` are real per-system medians (ms is per iteration, so iterations is 1, and medianNs/meanNs/stdDevNs carry the precision that sub-microsecond benchmarks would lose in ms).",
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
