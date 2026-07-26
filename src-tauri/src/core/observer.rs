@@ -454,6 +454,133 @@ impl SharedObserverActions {
     }
 }
 
+/// The only place a human's write reaches the world (ADR-0004 C3, enforcement).
+///
+/// ## What this removes
+///
+/// Before this, each of the four commands pushed an [`ObserverAction`] and *then* wrote shared state
+/// — two statements that a new command, or an edited one, could trivially get down to one. The
+/// source-scanning test in `observer_action_tests` existed precisely because nothing structural
+/// stopped that.
+///
+/// Here recording and writing are **one call**. There is no way to perform the write and skip the
+/// record, because the caller never sees the write.
+///
+/// ## Why the caller does not pass the action
+///
+/// Each method builds its own [`ObserverAction`] from the value being written. An earlier sketch had
+/// a single `apply(action)`, which would have let a caller record `EvolutionToggled { running: true }`
+/// while writing `false` — a record that disagrees with the world is worse than no record, because it
+/// is believed. Deriving the action from the write makes that unrepresentable.
+///
+/// ## Two honest limits
+///
+/// 1. **The record is a summary, not a replayable payload.** `ShardingConfigChanged` carries
+///    `local_port`, not the whole [`ShardingConfig`]. Enough to answer "who changed this and when",
+///    not enough to replay the change. Replay of actions is O3 territory and needs the full payload.
+/// 2. **Level A, not level B.** The handles below are still reachable elsewhere in the crate: they
+///    live on `AppState` because `SimulationEngine::start` takes them as arguments. Making the raw
+///    write path unreachable by the compiler means changing that signature, which touches 10 call
+///    sites across 7 test files. Until then this closes the *forgetting* failure mode, not the
+///    *deliberate bypass* one, and the source scan stays as the backstop for the latter.
+#[derive(Clone)]
+pub struct ObserverSeam {
+    actions: SharedObserverActions,
+    evolution_settings: Arc<Mutex<crate::commands::EvolutionSettings>>,
+    evolution_running: Arc<std::sync::atomic::AtomicBool>,
+    sharding_config: Arc<std::sync::RwLock<crate::core::ecs::ShardingConfig>>,
+    migration_trigger: crossbeam_channel::Sender<u16>,
+}
+
+impl ObserverSeam {
+    pub fn new(
+        actions: SharedObserverActions,
+        evolution_settings: Arc<Mutex<crate::commands::EvolutionSettings>>,
+        evolution_running: Arc<std::sync::atomic::AtomicBool>,
+        sharding_config: Arc<std::sync::RwLock<crate::core::ecs::ShardingConfig>>,
+        migration_trigger: crossbeam_channel::Sender<u16>,
+    ) -> Self {
+        Self {
+            actions,
+            evolution_settings,
+            evolution_running,
+            sharding_config,
+            migration_trigger,
+        }
+    }
+
+    /// Change the laws selection runs under, mid-run, and say so.
+    pub fn set_evolution_settings(
+        &self,
+        settings: crate::commands::EvolutionSettings,
+    ) -> Result<(), String> {
+        // Recorded before the write, always. The reverse order leaves a window in which the world has
+        // already changed and nothing says who changed it.
+        self.actions.push(ObserverAction::EvolutionSettingsChanged {
+            mutation_rate: settings.mutation_rate,
+            selection_bias: settings.selection_bias,
+            grid_resolution: settings.grid_resolution,
+        });
+        let mut current = self
+            .evolution_settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *current = settings;
+        Ok(())
+    }
+
+    /// Turn selection on or off. Returns the new state, which is what the command reports back.
+    pub fn toggle_evolution(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        let next = !self.evolution_running.load(Ordering::SeqCst);
+        self.actions
+            .push(ObserverAction::EvolutionToggled { running: next });
+        self.evolution_running.store(next, Ordering::SeqCst);
+        next
+    }
+
+    /// Send agents to another shard.
+    ///
+    /// The record is pushed before the send and is **not** rolled back if the send fails. That is
+    /// deliberate: a human asked for this, and "they asked and it failed" is a different fact from
+    /// "they never asked". Losing the request would make a failed migration indistinguishable from
+    /// one nobody requested.
+    pub fn trigger_migration(&self, target_port: u16) -> Result<(), String> {
+        self.actions
+            .push(ObserverAction::MigrationTriggered { target_port });
+        self.migration_trigger
+            .send(target_port)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Repartition the world under a running population.
+    pub fn set_sharding_config(
+        &self,
+        config: crate::core::ecs::ShardingConfig,
+    ) -> Result<(), String> {
+        self.actions.push(ObserverAction::ShardingConfigChanged {
+            local_port: config.local_port,
+        });
+        let mut current = self.sharding_config.write().map_err(|e| e.to_string())?;
+        *current = config;
+        Ok(())
+    }
+
+    /// Read-only view of the settings, for commands that report rather than change them.
+    pub fn evolution_settings(&self) -> crate::commands::EvolutionSettings {
+        self.evolution_settings
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Whether selection is currently running.
+    pub fn evolution_is_running(&self) -> bool {
+        self.evolution_running
+            .load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
 /// Move queued actions into the trace, stamping each with the tick the world saw it on.
 ///
 /// Inert without both resources, like the rest of this subsystem. Allocation-free on the tick path:

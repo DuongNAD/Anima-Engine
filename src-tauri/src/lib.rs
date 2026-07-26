@@ -19,24 +19,45 @@ pub struct AppState {
     pub evolution_settings: Arc<std::sync::Mutex<commands::EvolutionSettings>>,
     pub evolution_running: Arc<std::sync::atomic::AtomicBool>,
     pub map_elites_grid: Arc<std::sync::Mutex<commands::MapElitesGridState>>,
+    /// The one route a human's write takes into the running world (ADR-0004 C3).
+    ///
+    /// The four handles above and beside it are still here because `SimulationEngine::start` takes
+    /// them as arguments — so this is enforcement by *construction of the write*, not yet by
+    /// visibility. See [`ObserverSeam`](core::observer::ObserverSeam) for what that does and does not
+    /// close.
+    pub seam: core::observer::ObserverSeam,
 }
 pub fn run() {
     let initial_grid = std::collections::HashMap::new();
 
+    // Hoisted out of the `manage(..)` literal so the seam can be handed the same handles the rest of
+    // the app reads through, rather than a second set that would drift from them.
+    let engine = Arc::new(SimulationEngine::new());
+    let evolution_settings = Arc::new(std::sync::Mutex::new(commands::EvolutionSettings {
+        mutation_rate: 0.15,
+        selection_bias: 1.5,
+        grid_resolution: 50,
+    }));
+    let evolution_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let seam = core::observer::ObserverSeam::new(
+        engine.observer_actions.clone(),
+        Arc::clone(&evolution_settings),
+        Arc::clone(&evolution_running),
+        Arc::clone(&engine.sharding_config),
+        engine.manual_migration_trigger.clone(),
+    );
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            engine: Arc::new(SimulationEngine::new()),
-            evolution_settings: Arc::new(std::sync::Mutex::new(commands::EvolutionSettings {
-                mutation_rate: 0.15,
-                selection_bias: 1.5,
-                grid_resolution: 50,
-            })),
-            evolution_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            engine,
+            evolution_settings,
+            evolution_running,
             map_elites_grid: Arc::new(std::sync::Mutex::new(commands::MapElitesGridState {
                 grid: initial_grid,
                 grid_resolution: 50,
             })),
+            seam,
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_simulation_status,
