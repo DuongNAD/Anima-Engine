@@ -16,17 +16,145 @@
     "totalMemMB": 48941
   },
   "timings": {
+    "criterion/artifact/checksum_256x256": {
+      "ms": 1.369847,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 1369847.368,
+      "meanNs": 1387354.579,
+      "stdDevNs": 171547.562
+    },
+    "criterion/artifact/from_bytes_256x256": {
+      "ms": 1.127408,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 1127408.333,
+      "meanNs": 1247019.556,
+      "stdDevNs": 438182.621
+    },
+    "criterion/artifact/to_bytes_256x256": {
+      "ms": 1.464528,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 1464527.5,
+      "meanNs": 1618495.9,
+      "stdDevNs": 433810.443
+    },
+    "criterion/learner/a2c_loss_batch32": {
+      "ms": 0.284738,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 284737.533,
+      "meanNs": 304884.477,
+      "stdDevNs": 92266.855
+    },
+    "criterion/spatial_grid/rebuild_spatial_grid_system/100": {
+      "ms": 0.013448,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 13447.617,
+      "meanNs": 14179.546,
+      "stdDevNs": 1952.214
+    },
+    "criterion/spatial_grid/rebuild_spatial_grid_system/1000": {
+      "ms": 0.094327,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 94327.475,
+      "meanNs": 101491.77,
+      "stdDevNs": 28334.245
+    },
+    "criterion/spatial_grid/rebuild_spatial_grid_system/10000": {
+      "ms": 0.734456,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 734456.399,
+      "meanNs": 708830.642,
+      "stdDevNs": 146109.588
+    },
+    "criterion/tick_dynamic_fields/step_erosion_256x256": {
+      "ms": 0.020106,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 20105.517,
+      "meanNs": 20566.939,
+      "stdDevNs": 2412.378
+    },
+    "criterion/tick_dynamic_fields/step_soil_256x256": {
+      "ms": 0.047189,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 47188.889,
+      "meanNs": 47830.087,
+      "stdDevNs": 2709.409
+    },
+    "criterion/tick_dynamic_fields/step_water_256x256": {
+      "ms": 0.271494,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 271493.964,
+      "meanNs": 288696.343,
+      "stdDevNs": 49187.57
+    },
+    "criterion/tick_physics/integrate_physics_system/100": {
+      "ms": 0.000493,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 493.072,
+      "meanNs": 495.301,
+      "stdDevNs": 11.114
+    },
+    "criterion/tick_physics/integrate_physics_system/1000": {
+      "ms": 0.004893,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 4892.846,
+      "meanNs": 4901.524,
+      "stdDevNs": 131.749
+    },
+    "criterion/tick_physics/integrate_physics_system/10000": {
+      "ms": 0.049196,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 49196.063,
+      "meanNs": 49949.763,
+      "stdDevNs": 3803.628
+    },
+    "criterion/tick_resource_field/step_regrowth_256x256": {
+      "ms": 0.070579,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 70578.713,
+      "meanNs": 72216.15,
+      "stdDevNs": 5668.017
+    },
+    "criterion/tick_resource_field/step_regrowth_gated_256x256": {
+      "ms": 0.218475,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 218474.734,
+      "meanNs": 269941.049,
+      "stdDevNs": 136495.377
+    },
+    "criterion/tick_resource_field/step_regrowth_gated_strided_256x256": {
+      "ms": 0.055006,
+      "iterations": 1,
+      "note": "REAL measurement — Criterion median, release build, per iteration. Source: cargo bench --bench tick_systems. See docs/how-to/BENCHMARKING.md.",
+      "medianNs": 55006.454,
+      "meanNs": 57357.911,
+      "stdDevNs": 6950.105
+    },
     "terrain_fbm_proxy": {
-      "ms": 10.677,
+      "ms": 10.757,
       "iterations": 50,
-      "note": "PROXY ONLY — a cheap 128^2 fBm-like arithmetic loop on the CAPTURE machine, NOT the real terrain generator and NOT the target hardware. Replace with a `cargo test --release` terrain-gen timing or an in-app tick capture on the Dell Vostro 3530 (i7-1355U). See BENCHMARK_BASELINE.md; numbers are not locked (WORLD_SIMULATION_PLAN.md §10.2)."
+      "note": "HARNESS SELF-TEST, not an engine measurement — a cheap 128^2 fBm-like arithmetic loop. It is not the terrain generator and never was. Kept because it anchors proxyChecksum and proves the harness runs; the real per-system numbers are the criterion/* entries. See docs/how-to/BENCHMARKING.md."
     },
     "field_fbm_proxy": {
-      "ms": 16.395,
+      "ms": 16.081,
       "iterations": 200,
-      "note": "PROXY ONLY — a cheap 128^2 fBm-like arithmetic loop on the CAPTURE machine, NOT the real terrain generator and NOT the target hardware. Replace with a `cargo test --release` terrain-gen timing or an in-app tick capture on the Dell Vostro 3530 (i7-1355U). See BENCHMARK_BASELINE.md; numbers are not locked (WORLD_SIMULATION_PLAN.md §10.2)."
+      "note": "HARNESS SELF-TEST, not an engine measurement — a cheap 128^2 fBm-like arithmetic loop. It is not the terrain generator and never was. Kept because it anchors proxyChecksum and proves the harness runs; the real per-system numbers are the criterion/* entries. See docs/how-to/BENCHMARKING.md."
     }
   },
   "proxyChecksum": -123.728181,
-  "notes": "Timings above are PROXY measurements from the machine that ran this script, not the engine and not the target hardware. Baseline perf numbers are NOT locked until captured on the Vostro 3530 (WORLD_SIMULATION_PLAN.md §10.2)."
+  "notes": "The criterion/* entries are REAL per-system measurements on the target hardware (Intel(R) Core(TM) i5-14600KF), from cargo bench --bench tick_systems. They are a LOWER BOUND on a tick, not a frame: brain inference, ECS scheduling, emit, collision and metabolism are not among them. The *_fbm_proxy entries are a harness self-test, not the engine. See docs/how-to/BENCHMARKING.md."
 }

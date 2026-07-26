@@ -74,9 +74,16 @@ kế. Đã xác minh 2026-07-26 — 0 kết quả.
 
 ## Baseline 2026-07-26
 
-**Đây là số đo, không phải proxy.** Trung vị Criterion, build `--release`, mỗi mục 100 mẫu.
+**Đây là số đo, không phải proxy.** Build `--release`, mỗi mục 100 mẫu.
 
-### Phần cứng
+> **Đọc số nào: trung vị.** Dòng `time: [a b c]` mà `cargo bench` in ra **không phải trung vị** —
+> với lấy mẫu tuyến tính, `b` là **slope estimate**. Hai con số lệch nhau thật: `step_water` cho
+> slope 297,6 µs nhưng trung vị 271,5 µs. Bảng dưới dùng **trung vị**, đọc từ
+> `median.point_estimate` trong `target/criterion/**/new/estimates.json`, vì nó bền hơn với vài
+> mẫu ngoại lai trên một máy desktop có tải nền. Cả trung vị lẫn trung bình đều được ghi vào
+> [`benchmark_report.json`](../../benchmark_report.json).
+
+### Phần cứng — đây là máy mục tiêu
 
 | | |
 |---|---|
@@ -86,39 +93,39 @@ kế. Đã xác minh 2026-07-26 — 0 kết quả.
 | Toolchain | rustc 1.95.0 · cargo 1.95.0 |
 | Lệnh | `cargo bench --bench tick_systems -- --warm-up-time 1 --measurement-time 3` |
 
-> ⚠️ **Đây KHÔNG phải phần cứng mục tiêu đã khai.** [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md)
-> đặt mục tiêu là *Dell Vostro 3530 (i7-1355U, Iris Xe iGPU + dGPU)* — một máy laptop khác hẳn. Vì
-> vậy bảng này **chưa** đóng được mệnh đề "số thật trên phần cứng mục tiêu" của
-> `STATE_OF_THE_PROJECT.md` §3.2. Hoặc khai báo phần cứng mục tiêu đã lỗi thời và cần cập nhật,
-> hoặc bảng này phải được chạy lại trên máy kia. Không tự chọn giúp — đó là quyết định của người
-> duy trì.
+Phần cứng mục tiêu của dự án nay **chính là máy này** (cập nhật 2026-07-26, thay cho khai báo
+Dell Vostro 3530 cũ trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md)). Nghĩa là bảng
+dưới **là** số đo trên phần cứng mục tiêu.
+
+Điều đó vẫn **không** đủ để đóng `STATE_OF_THE_PROJECT.md` §3.2 — xem [§ Cái vẫn còn
+thiếu](#cái-vẫn-còn-thiếu).
 
 ### Trường thế giới, 256×256 (kích thước thật, `MapSettings::default()`)
 
-| Hàm | Trung vị | Ghi chú |
-|---|---:|---|
-| `ResourceField::step_regrowth` | **72,0 µs** | Không gate, một pass |
-| `ResourceField::step_regrowth_gated` | **240,7 µs** | Hai pass, có ngân sách detritus |
-| `ResourceField::step_regrowth_gated_strided` | **57,0 µs** | `REGROWTH_STRIDE = 4` — **nhanh hơn 4,22×** bản không stride |
-| `DynamicFields::step_water` | **297,6 µs** | **Đắt nhất trong mọi system chạy mỗi tick** |
-| `DynamicFields::step_soil` | 47,5 µs | |
-| `DynamicFields::step_erosion` | 20,1 µs | Công thức cục bộ, không vận chuyển trầm tích |
+| Hàm | Trung vị | Trung bình | Ghi chú |
+|---|---:|---:|---|
+| `ResourceField::step_regrowth` | 70,6 µs | 72,2 µs | Không gate, một pass |
+| `ResourceField::step_regrowth_gated` | 218,5 µs | 269,9 µs | Hai pass, có ngân sách detritus |
+| `ResourceField::step_regrowth_gated_strided` | **55,0 µs** | 57,4 µs | `REGROWTH_STRIDE = 4` — **nhanh hơn 3,97×** bản không stride |
+| `DynamicFields::step_water` | **271,5 µs** | 288,7 µs | **Đắt nhất trong mọi system chạy mỗi tick** |
+| `DynamicFields::step_soil` | 47,2 µs | 47,8 µs | |
+| `DynamicFields::step_erosion` | 20,1 µs | 20,6 µs | Công thức cục bộ, không vận chuyển trầm tích |
 
-### Theo số agent
+### Theo số agent (trung vị)
 
 | Hàm | 100 | 1.000 | 10.000 | Biên/agent |
 |---|---:|---:|---:|---:|
-| `integrate_physics_system` | 494 ns | 4,91 µs | 50,5 µs | ~5,0 ns |
-| `rebuild_spatial_grid_system` | 13,7 µs | 90,8 µs | 609,0 µs | ~60 ns + ~13 µs cố định |
+| `integrate_physics_system` | 493 ns | 4,9 µs | 49,2 µs | **4,92 ns** |
+| `rebuild_spatial_grid_system` | 13,4 µs | 94,3 µs | **734,5 µs** | **72,8 ns** + ~13 µs cố định |
 
-### Ngoài đường tick
+### Ngoài đường tick (trung vị)
 
 | Hàm | Trung vị | Ghi chú |
 |---|---:|---|
-| `a2c_loss` (batch 32, kiến trúc 15→64→64→{4,1}) | **309,7 µs** | Mỗi bước optimiser, trên **thread learner** — không nằm trong ngân sách khung hình |
-| `WorldArtifact::to_bytes` (256²) | 1,62 ms | ~1,05 MiB · ~656 MiB/s |
-| `WorldArtifact::from_bytes` (256²) | 1,25 ms | ~852 MiB/s |
-| `WorldArtifact::checksum` (256²) | 1,39 ms | ~766 MiB/s |
+| `a2c_loss` (batch 32, kiến trúc 15→64→64→{4,1}) | **284,7 µs** | Mỗi bước optimiser, trên **thread learner** — không nằm trong ngân sách khung hình |
+| `WorldArtifact::to_bytes` (256²) | 1,46 ms | Artifact ~1,05 MiB |
+| `WorldArtifact::from_bytes` (256²) | 1,13 ms | |
+| `WorldArtifact::checksum` (256²) | 1,37 ms | |
 
 ---
 
@@ -130,34 +137,34 @@ Cộng các system chạy mỗi tick, ở 1.000 agent:
 
 | Thành phần | µs |
 |---|---:|
-| `step_regrowth_gated_strided` | 57,0 |
-| `step_water` | 297,6 |
-| `step_soil` | 47,5 |
+| `step_regrowth_gated_strided` | 55,0 |
+| `step_water` | 271,5 |
+| `step_soil` | 47,2 |
 | `step_erosion` | 20,1 |
 | `integrate_physics_system` | 4,9 |
-| `rebuild_spatial_grid_system` | 90,8 |
-| **Tổng** | **≈ 518 µs** |
+| `rebuild_spatial_grid_system` | 94,3 |
+| **Tổng** | **≈ 493 µs** |
 
-≈ **3,1 %** của khung hình 16,67 ms. Ở 10.000 agent: ≈ 1,08 ms ≈ **6,5 %**.
+≈ **3,0 %** của khung hình 16,67 ms. Ở 10.000 agent: ≈ 1,18 ms ≈ **7,1 %**.
 
 **Đây là cận dưới và phải đọc đúng như vậy.** Nó chưa gồm suy luận của não agent, lập lịch ECS,
 change detection, thread emit, va chạm, CPG, trao đổi chất, và mọi thứ không có trong bảng. Một
 tuyên bố "60 FPS" **không** được rút ra từ con số này.
 
 Ngoại suy tới trần quần thể EB-S12 (~46.500 agent), tuyến tính theo biên/agent đo được:
-physics ≈ 233 µs, spatial ≈ 2,80 ms, trường ≈ 422 µs → **≈ 3,46 ms ≈ 21 %** khung hình. Đây là
+physics ≈ 229 µs, spatial ≈ 3,40 ms, trường ≈ 394 µs → **≈ 4,02 ms ≈ 24 %** khung hình. Đây là
 **ngoại suy, không phải phép đo** — lưới băm có số ô cố định nên mật độ agent mỗi ô tăng theo N, và
 hành vi ngoài dải đã đo không được bảo đảm.
 
 ### 2. Chi phí không nằm ở chỗ người ta hay đoán
 
-`integrate_physics_system` **rẻ**: 5 ns/agent, tuyến tính sạch qua ba bậc. Ở 10.000 agent nó tốn
-50 µs — 0,3 % khung hình.
+`integrate_physics_system` **rẻ**: 4,92 ns/agent, tuyến tính sạch qua ba bậc. Ở 10.000 agent nó tốn
+49 µs — 0,3 % khung hình.
 
-`rebuild_spatial_grid_system` tốn **gấp 12 lần** ở cùng số agent (609 µs so với 50 µs). Và hình
-dạng chi phí của nó khác: ở 100 agent là 137 ns/agent, ở 10.000 là 61 ns/agent — tức phần lớn chi
-phí ở quy mô nhỏ là **quét toàn bộ ô lưới đã cấp phát sẵn**, không phải xử lý agent. Đây là nơi
-đáng tối ưu trước, không phải solver vật lý.
+`rebuild_spatial_grid_system` tốn **gấp gần 15 lần** ở cùng số agent (734 µs so với 49 µs). Và hình
+dạng chi phí của nó khác: ở 100 agent là 134 ns/agent, ở 10.000 là 73 ns/agent — tức một phần đáng
+kể chi phí ở quy mô nhỏ là **quét toàn bộ ô lưới đã cấp phát sẵn**, không phải xử lý agent. Đây là
+nơi đáng tối ưu trước, không phải solver vật lý.
 
 `step_water` một mình đắt hơn cả nhóm trường còn lại cộng lại, và đắt hơn physics ở 10.000 agent.
 
@@ -166,18 +173,36 @@ phí ở quy mô nhỏ là **quét toàn bộ ô lưới đã cấp phát sẵn*
 Doc comment của `ResourceField::REGROWTH_STRIDE` ghi rằng đường regrowth trước khi stride tốn bốn
 pass mỗi tick, **"đo được ~4,2 ms/tick — một phần tư ngân sách khung hình 60 FPS"**.
 
-Đo lại trên máy này, build release: `step_regrowth_gated` = **0,241 ms**. Cộng hai pass
-`total_biomass()` mà bản cũ cần (mỗi pass cỡ `step_regrowth`, ~72 µs) ra **≈ 0,34 ms** — thấp hơn
-con số ghi trong doc khoảng **12 lần**.
+Đo lại trên máy này, build release: `step_regrowth_gated` = **0,219 ms**. Cộng hai pass
+`total_biomass()` mà bản cũ cần (mỗi pass nhiều nhất cỡ `step_regrowth`, ~71 µs) ra **≈ 0,36 ms** —
+thấp hơn con số ghi trong doc khoảng **12 lần**.
 
 Hai điều cần tách bạch, vì trộn vào nhau sẽ dẫn tới kết luận sai:
 
-- **Việc stride là đúng và có lợi thật.** Đo được **4,22×**. Không có gì phải rút lại.
+- **Việc stride là đúng và có lợi thật.** Đo được **3,97×**. Không có gì phải rút lại.
 - **Con số headline biện minh cho nó thì không tái lập.** Không thể kết luận doc sai từ đây: bản đo
   cũ có thể ở build debug, trên máy khác, hoặc gồm cả công việc khác trong cùng tick. Đây là một
   **finding cần đối chứng**, không phải một lỗi đã xác định — theo quy tắc 6 của
   [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding chứ không tự coi bên nào
   đúng.
+
+## Cái vẫn còn thiếu
+
+Phần cứng mục tiêu nay đã khớp, nhưng §3.2 của
+[`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) vẫn **chưa đóng**, và lý do không
+phải phần cứng:
+
+- **Đây là cận dưới của tick, không phải khung hình.** Các hàng "Physics tick 60 Hz",
+  "Brain/sensor 10–20 Hz" trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi một
+  **nhịp thực tế của app đang chạy**, mà bộ này theo thiết kế không chạy app. Cần một in-app tick
+  capture, và ràng buộc "không chạy full backend" vẫn còn hiệu lực.
+- **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
+  chưa có gì để đo trên đường mặc định.
+- `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**
+  (`DEFAULT_GRID_DIM` trong `sim_rules.rs`), trong khi thế giới thật chạy **256²**
+  (`MapSettings::default()`) và hằng số 128 kia **không được đọc ở đâu trong `src/`**. Bộ bench này
+  dùng 256². Đây là một finding riêng đang mở, không sửa ở đây vì nó chạm vào
+  `COORDINATE_CONTRACT.md`.
 
 ## Cách thêm một benchmark
 
