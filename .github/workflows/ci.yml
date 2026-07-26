@@ -112,9 +112,25 @@ jobs:
         env:
           ANIMA_USE_GPU: "0"
         shell: bash
+        # `--nocapture` is here because without it a hang tells you nothing. This job died twice at
+        # its timeout inside `persistence_stress_tests` (run 30190881586, both attempts) and the log
+        # held exactly one useful line: the name of the target. libtest buffers a test's output and
+        # prints it only when that test fails, so a target that never finishes prints nothing at all
+        # — not even which test was in flight. Measured, because the reason mattered: with capture on,
+        # `eprintln!` is swallowed from the test thread *and* from any thread it spawned; with
+        # `--nocapture` both reach the log. That is what makes the `persistence_stress_tests` watchdog
+        # able to report at all.
+        #
+        # It does not weaken the gate below. Measured on the full suite both ways: identical
+        # `test targets: 56, empty: 0`, and identical counts of `Running` and anchored `running N
+        # tests` lines, so `check_test_targets.mjs` parses the interleaved output exactly the same.
+        #
+        # Not added to the documented local command on purpose: unlike `--features desktop`, this
+        # changes only what is *printed*, never what runs, so CI and local still execute the same
+        # tests. Pass it yourself when you are chasing a hang.
         run: |
           set -o pipefail
-          cargo test --features desktop 2>&1 | tee ../cargo-test-output.txt
+          cargo test --features desktop -- --nocapture 2>&1 | tee ../cargo-test-output.txt
 
       # A test target that compiles but runs nothing exits 0, so `cargo test` alone cannot see it.
       # Seven files here are gated behind `networking`/`ml-wgpu`; under a default build every one

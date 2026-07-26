@@ -37,6 +37,19 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 //
 // `process::exit` rather than a panic, deliberately: the hang is in another thread, and a panic on
 // the watchdog thread would be swallowed while libtest kept waiting for the blocked one.
+//
+// ## The diagnostic needs `--nocapture` to be seen
+//
+// Measured, and it cost a wrong assumption first: libtest's output capture swallows `eprintln!` from
+// the test thread **and** from any thread it spawned. I had assumed capture was thread-local and that
+// a spawned watchdog would bypass it; a probe showed neither line appears without `--nocapture`, and
+// both appear with it. Since the watchdog ends in `process::exit`, libtest never gets the chance to
+// flush a captured buffer either.
+//
+// CI passes `--nocapture` for exactly this reason (`.github/workflows/ci.yml`, the `cargo test`
+// step). Running this locally without it, the watchdog still saves you from a ninety-minute hang —
+// the process dies in two minutes with exit code 101 — but it dies **silently**. Add `--nocapture`
+// when you are the one chasing it.
 
 /// Cycle currently in flight; `0` means the loop has not started yet, [`CYCLES_DONE`] means it
 /// finished and the process is now expected to exit.
