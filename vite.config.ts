@@ -1,10 +1,42 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type Plugin } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import fs from "fs";
+
+/**
+ * Standalone scratch pages that live in `public/` so the dev server can serve them, but which must
+ * not end up inside the shipped desktop binary.
+ *
+ * `ecosystem.html` is the reason this exists: it pulls three.js and simplex-noise from
+ * `cdnjs.cloudflare.com` at runtime, unpinned and unverified. Vite copies `public/` verbatim, so
+ * every `tauri build` was packaging a page that fetches and executes remote code. The production CSP
+ * (`default-src 'self'`) now blocks that at runtime — but shipping the page at all is the part worth
+ * removing, not just neutralising.
+ *
+ * They stay in `public/` because `tests/challenger_runner.js` navigates to
+ * `http://localhost:5173/ecosystem.html` against the dev server, and that workflow is unaffected:
+ * this plugin only runs at `closeBundle`, on the build output.
+ */
+const DEV_ONLY_PUBLIC_PAGES = ["ecosystem.html", "webgl-test.html"];
+
+function excludeDevOnlyPagesFromBundle(): Plugin {
+  return {
+    name: "anima-exclude-dev-only-public-pages",
+    apply: "build",
+    closeBundle() {
+      for (const page of DEV_ONLY_PUBLIC_PAGES) {
+        const target = path.resolve(__dirname, "dist", page);
+        if (fs.existsSync(target)) {
+          fs.rmSync(target);
+        }
+      }
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  plugins: [react(), excludeDevOnlyPagesFromBundle()],
   resolve: {
     alias: {
       "@tauri-apps/api": path.resolve(__dirname, "node_modules/@tauri-apps/api"),

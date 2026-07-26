@@ -15,7 +15,8 @@
     "test:e2e": "npm run test:e2e --prefix tests",
     "test:all": "npm run test && npm run test:frontend && npm run test:e2e",
     "gen:manifest": "esbuild scripts/gen_map_manifest.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/gen_map_manifest.cjs && node node_modules/.cache/gen_map_manifest.cjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "check:csp": "node scripts/check_csp_compat.mjs"
   },
   "dependencies": {
     "@playwright/test": "^1.61.0",
