@@ -35,7 +35,15 @@ const CHECK = process.argv.includes('--check');
 const SRC_TAURI = join(ROOT, 'src-tauri');
 
 function run(cmd, args, cwd) {
-  return execFileSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
+  // `shell: true` on Windows: `npm` is `npm.cmd` there, and `execFileSync` will not find a `.cmd`
+  // without going through the shell (ENOENT with an empty stdout, which is indistinguishable from
+  // a command that produced nothing).
+  return execFileSync(cmd, args, {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 1 << 28,
+    shell: process.platform === 'win32',
+  });
 }
 
 // ---- Rust: what links into the desktop binary -------------------------------------------------
@@ -82,24 +90,66 @@ const rustCrates = [...shipped]
   .sort((a, b) => a.key.localeCompare(b.key));
 
 // ---- npm: what Vite bundles into dist/ --------------------------------------------------------
-const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-const npmDeps = Object.keys(pkg.dependencies ?? {}).sort();
+//
+// The **production closure**, not the direct dependency list.
+//
+// This used to read `package.json.dependencies` and stop there — eight names. Vite bundles the
+// transitive graph, so the components actually shipping inside `dist/` include everything those
+// eight pull in: `scheduler` (React's cooordinator), `@pixi/*`, `earcut`, `eventemitter3`,
+// `zustand`, `react-reconciler`, and so on. Every one of them carries the same attribution
+// obligation as the package that named it, and none of them appeared.
+//
+// `npm ls --omit=dev --all --json` walks the installed tree from the production roots, which is
+// the same closure the bundler traverses. Deduplicated on exact `name@version`, because npm's tree
+// repeats a shared dependency under each dependent and a NOTICE listing `scheduler` eleven times
+// is not more attributive.
 const npmPackages = [];
-for (const name of npmDeps) {
-  const manifest = join(ROOT, 'node_modules', name, 'package.json');
-  if (!existsSync(manifest)) {
-    npmPackages.push({ key: name, license: 'NOT INSTALLED', repo: '' });
-    continue;
+{
+  let tree;
+  try {
+    // `npm ls` exits non-zero on peer-dependency complaints while still emitting valid JSON, so the
+    // output is used and the exit code is not.
+    tree = JSON.parse(
+      run('npm', ['ls', '--omit=dev', '--all', '--json', '--long'], ROOT),
+    );
+  } catch (e) {
+    if (!e.stdout) throw e;
+    tree = JSON.parse(e.stdout);
   }
-  const m = JSON.parse(readFileSync(manifest, 'utf8'));
-  const license =
-    typeof m.license === 'string'
-      ? m.license
-      : Array.isArray(m.licenses)
-        ? m.licenses.map((l) => l.type ?? l).join(' OR ')
-        : (m.license?.type ?? 'UNKNOWN');
-  const repo = typeof m.repository === 'string' ? m.repository : (m.repository?.url ?? '');
-  npmPackages.push({ key: `${m.name} ${m.version}`, license, repo });
+
+  const seen = new Map();
+  const walk = (node) => {
+    for (const [name, dep] of Object.entries(node.dependencies ?? {})) {
+      // A deduped node carries no version of its own; the resolved copy appears elsewhere in the
+      // tree, so skipping it here loses nothing.
+      if (dep.version) {
+        const key = `${name} ${dep.version}`;
+        if (!seen.has(key)) {
+          seen.set(key, {
+            key,
+            license: normaliseLicense(dep),
+            repo: normaliseRepo(dep),
+          });
+        }
+      }
+      walk(dep);
+    }
+  };
+  walk(tree);
+  npmPackages.push(...[...seen.values()].sort((a, b) => a.key.localeCompare(b.key)));
+}
+
+/** npm licence fields come in three historical shapes; all three still occur in a real tree. */
+function normaliseLicense(m) {
+  if (typeof m.license === 'string') return m.license;
+  if (Array.isArray(m.licenses)) return m.licenses.map((l) => l.type ?? l).join(' OR ');
+  if (m.license?.type) return m.license.type;
+  return 'UNKNOWN';
+}
+
+function normaliseRepo(m) {
+  if (typeof m.repository === 'string') return m.repository;
+  return m.repository?.url ?? m.homepage ?? '';
 }
 
 // ---- group ------------------------------------------------------------------------------------
@@ -145,8 +195,11 @@ and verify in CI with \`node scripts/gen_notice.mjs --check\`.
   dev-dependencies (test-only, not distributed) and build-dependencies (run at build time, not
   linked). The full lockfile is a superset and would over-attribute; \`Cargo.toml\`'s direct
   dependencies are a subset and would under-attribute.
-- **npm:** \`dependencies\` from \`package.json\`, because Vite bundles them into \`dist/\` and
-  \`dist/\` is packaged into the desktop binary. \`devDependencies\` are not distributed.
+- **npm:** the **production closure** — \`npm ls --omit=dev --all\` from the \`dependencies\` roots,
+  deduplicated on exact name+version. Vite bundles the transitive graph into \`dist/\` and \`dist/\`
+  is packaged into the desktop binary, so a component's obligation does not depend on whether a
+  human happened to name it in \`package.json\`. Listing only the direct dependencies attributed 8
+  packages and omitted everything they pull in. \`devDependencies\` are not distributed.
 - **Excluded:** workspace members (\`anima-engine\`, \`anima-domain\`) — first-party, covered by
   \`LICENSE\`.
 

@@ -22,7 +22,9 @@
     "check:bundle": "node scripts/check_bundle_budget.mjs",
     "check:notice": "node scripts/gen_notice.mjs --check",
     "check:flora-footprint": "node scripts/check_flora_footprint.mjs",
-    "capture:views": "npm run capture:views --prefix tests"
+    "capture:views": "npm run capture:views --prefix tests",
+    "gen:sbom": "node scripts/gen_sbom.mjs",
+    "check:sbom": "node scripts/gen_sbom.mjs --check"
   },
   "dependencies": {
     "@playwright/test": "^1.61.0",

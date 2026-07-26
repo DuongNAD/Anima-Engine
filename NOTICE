@@ -18,8 +18,11 @@ and verify in CI with `node scripts/gen_notice.mjs --check`.
   dev-dependencies (test-only, not distributed) and build-dependencies (run at build time, not
   linked). The full lockfile is a superset and would over-attribute; `Cargo.toml`'s direct
   dependencies are a subset and would under-attribute.
-- **npm:** `dependencies` from `package.json`, because Vite bundles them into `dist/` and
-  `dist/` is packaged into the desktop binary. `devDependencies` are not distributed.
+- **npm:** the **production closure** — `npm ls --omit=dev --all` from the `dependencies` roots,
+  deduplicated on exact name+version. Vite bundles the transitive graph into `dist/` and `dist/`
+  is packaged into the desktop binary, so a component's obligation does not depend on whether a
+  human happened to name it in `package.json`. Listing only the direct dependencies attributed 8
+  packages and omitted everything they pull in. `devDependencies` are not distributed.
 - **Excluded:** workspace members (`anima-engine`, `anima-domain`) — first-party, covered by
   `LICENSE`.
 
@@ -540,24 +543,67 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 
 ## JavaScript components
 
-### Packages bundled into dist/ — 8 component(s)
+### Packages bundled into dist/ — 45 component(s)
 
-#### MIT (6)
+#### MIT (36)
 
+- @babel/runtime 7.29.7 — https://github.com/babel/babel.git
+- @pixi/colord 2.9.6 — omgovich/colord
 - @react-three/fiber 8.18.0 — git+https://github.com/pmndrs/react-three-fiber.git
+- @tweenjs/tween.js 23.1.3 — https://github.com/tweenjs/tween.js.git
+- @types/earcut 3.0.0 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/prop-types 15.7.15 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/react 18.3.31 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/react-reconciler 0.26.7 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/react-reconciler 0.28.9 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/stats.js 0.17.4 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
 - @types/three 0.184.1 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @types/webxr 0.5.24 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
+- @xmldom/xmldom 0.8.13 — git://github.com/xmldom/xmldom.git
+- base64-js 1.5.1 — git://github.com/beatgammit/base64-js.git
+- buffer 6.0.3 — git://github.com/feross/buffer.git
+- csstype 3.2.3 — https://github.com/frenic/csstype
+- eventemitter3 5.0.4 — git://github.com/primus/eventemitter3.git
+- fflate 0.8.3 — https://github.com/101arrowz/fflate
+- gifuct-js 2.1.2 — https://github.com/matt-way/gifuct-js.git
+- ismobilejs 1.1.1 — https://github.com/kaimallea/isMobile.git
+- its-fine 1.2.5 — https://github.com/pmndrs/its-fine
+- js-binary-schema-parser 2.0.3 — https://github.com/matt-way/jsBinarySchemaParser.git
+- js-tokens 4.0.0 — lydell/js-tokens
+- loose-envify 1.4.0 — git://github.com/zertosh/loose-envify.git
+- meshoptimizer 1.1.1 — https://github.com/zeux/meshoptimizer
+- parse-svg-path 0.2.0 — git://github.com/jkroso/parse-svg-path.git
 - pixi.js 8.19.0 — https://github.com/pixijs/pixijs.git
 - react 18.3.1 — https://github.com/facebook/react.git
 - react-dom 18.3.1 — https://github.com/facebook/react.git
+- react-reconciler 0.27.0 — https://github.com/facebook/react.git
+- react-use-measure 2.1.7 — https://github.com/pmndrs/react-use-measure
+- scheduler 0.21.0 — https://github.com/facebook/react.git
+- scheduler 0.23.2 — https://github.com/facebook/react.git
+- suspend-react 0.1.3 — pmndrs/suspend-react
 - three 0.184.0 — https://github.com/mrdoob/three.js
+- zustand 3.7.2 — git+https://github.com/pmndrs/zustand.git
 
-#### Apache-2.0 (1)
+#### Apache-2.0 (4)
 
+- @dimforge/rapier3d-compat 0.12.0 — https://github.com/dimforge/rapier.js
 - @playwright/test 1.61.0 — git+https://github.com/microsoft/playwright.git
+- playwright 1.61.0 — git+https://github.com/microsoft/playwright.git
+- playwright-core 1.61.0 — git+https://github.com/microsoft/playwright.git
+
+#### BSD-3-Clause (3)
+
+- @webgpu/types 0.1.70 — gpuweb/types
+- ieee754 1.2.1 — git://github.com/feross/ieee754.git
+- tiny-lru 11.4.7 — git://github.com/avoidwork/tiny-lru.git
 
 #### Apache-2.0 OR MIT (1)
 
 - @tauri-apps/api 2.11.0 — git+https://github.com/tauri-apps/tauri.git
+
+#### ISC (1)
+
+- earcut 3.0.2 — git://github.com/mapbox/earcut.git
 
 
 ## Gaps

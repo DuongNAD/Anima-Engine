@@ -22,7 +22,7 @@
 //
 // Usage: node scripts/check_bundle_budget.mjs [distDir]
 
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, readFileSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
 
 const ROOT = process.cwd();
@@ -97,6 +97,59 @@ for (const f of files) {
 
 if (total > TOTAL_BUDGET_KIB) {
   failures.push(`total shipped JS is ${total.toFixed(1)} KiB, budget ${TOTAL_BUDGET_KIB} KiB`);
+}
+
+// ---- the split, checked as behaviour rather than as a number ----------------------------------
+//
+// A byte ceiling around the 836 KiB three.js/react-three-fiber chunk is regression protection and
+// nothing more: it would still pass on the day someone adds `import * as THREE from 'three'` to
+// `App.tsx` and doubles what the 2D dashboard downloads, because the chunk's own size would not
+// change. The property that matters is *which route pays for it*.
+//
+// Measured against the built output, 2026-07-27, with `vite preview` and a real browser:
+//
+//   /                 17 JS files fetched — react-three-fiber chunk: NOT fetched
+//   /landscape.html    9 JS files fetched — react-three-fiber chunk: fetched
+//
+// So the chunk is already a route boundary, which is the correct architectural answer here: it is
+// the three.js runtime, every consumer of it needs all of it, and the only page that renders 3D is
+// the only page that loads it. Splitting three.js internally is tree-shaking, which rolldown
+// already does; splitting r3f from three would produce two chunks that are always fetched together.
+//
+// The remaining 836 KiB is three.js itself, and it is honestly still 836 KiB — that debt is scored,
+// not resolved. What this gate adds is that the debt cannot silently spread to the dashboard.
+const ENTRY_HTML = { 'index.html': '2D dashboard', 'landscape.html': 'landscape scene' };
+/** Chunks that must never be reachable from the dashboard entry's static preload graph. */
+const THREE_D_CHUNK = /^react-three-fiber/;
+
+for (const [file, label] of Object.entries(ENTRY_HTML)) {
+  const p = join(DIST, file);
+  if (!existsSync(p)) {
+    failures.push(`${file} is missing from dist/ — was the build run?`);
+    continue;
+  }
+  const html = readFileSync(p, 'utf8');
+  const referenced = [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)].map((m) => m[1]);
+  const loadsThreeD = referenced.some((n) => THREE_D_CHUNK.test(n));
+
+  if (file === 'index.html' && loadsThreeD) {
+    failures.push(
+      `the ${label} (${file}) statically loads the three.js chunk. It renders 2D only; something ` +
+        `now imports three (or react-three-fiber) at module scope from the dashboard entry. Import ` +
+        `it lazily, or the dashboard pays 836 KiB for a renderer it does not use.`,
+    );
+  }
+  if (file === 'landscape.html' && !loadsThreeD) {
+    // The other direction, so the check above cannot pass because the chunk stopped existing.
+    failures.push(
+      `the ${label} (${file}) does not reference the three.js chunk. Either the 3D scene stopped ` +
+        `loading its renderer, or the chunk was renamed and this gate is now vacuous.`,
+    );
+  }
+  console.log(
+    `  entry ${file.padEnd(16)} ${String(referenced.length).padStart(3)} static chunk(s), ` +
+      `3D renderer: ${loadsThreeD ? 'yes' : 'no'}`,
+  );
 }
 
 const width = Math.max(...files.map((f) => f.name.length));

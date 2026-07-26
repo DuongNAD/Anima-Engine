@@ -140,6 +140,34 @@ jobs:
         if: ${{ !cancelled() }}
         run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
 
+      # The attribution inventory and the SBOM run on THIS job, not the frontend one, because both
+      # read the Rust graph with `cargo tree --features desktop` — and this is the job that has a
+      # toolchain and a warm cargo cache. They also need `node_modules` for the npm production
+      # closure, hence the install step below.
+      #
+      # Both were package scripts that nothing invoked. `NOTICE` going stale is not a cosmetic
+      # problem: it is the artifact that discharges the MIT/BSD attribution obligation for 419
+      # crates and 45 npm packages, and a stale one under-attributes silently.
+      - name: Install root dependencies (for the npm production closure)
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm ci --no-audit --no-fund
+
+      - name: NOTICE is current with the shipped dependency graph
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:notice
+
+      - name: SBOM is current with the shipped dependency graph
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:sbom
+
+      - name: Declared flora footprints match the real geometry
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:flora-footprint
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -191,6 +219,21 @@ jobs:
       - name: npm run build
         if: ${{ !cancelled() }}
         run: npm run build
+
+      # These three read `dist/`, so they run after the build and not before it. They existed as
+      # package scripts and nothing invoked them — a script is not a gate until something fails on
+      # it.
+      - name: CSP compatibility of the shipped artifacts
+        if: ${{ !cancelled() }}
+        run: npm run check:csp
+
+      # Byte budgets *and* the route split: `index.html` must not statically load the three.js
+      # chunk. Measured with a real browser against `vite preview` (2026-07-27): the dashboard
+      # fetches 17 JS files and none of them is that chunk; the landscape entry fetches it. A byte
+      # ceiling alone would still pass if someone imported three into `App.tsx`.
+      - name: Bundle budget and route split
+        if: ${{ !cancelled() }}
+        run: npm run check:bundle
 
       # Browser-scope E2E: zero fail, zero skip.
       #
