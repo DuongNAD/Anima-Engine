@@ -297,7 +297,7 @@ pub fn run_inference_batch(
     let outputs_vec = if batch_size == 0 {
         Vec::new()
     } else {
-        match &brain_model.backend {
+        match brain_model.backend() {
             BrainModelBackend::NdArray(model, device) => {
                 let data = Data::new(scratch.inputs.clone(), Shape::new([batch_size, 15]));
                 let input_tensor = Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
@@ -380,18 +380,33 @@ pub enum BrainModelBackend {
 }
 
 pub struct BrainModel {
-    pub backend: BrainModelBackend,
+    /// Private, and that is the whole point.
+    ///
+    /// The `unsafe impl Sync` below is sound only while every parameter's lazy `OnceCell` has
+    /// already been filled. While this field was `pub`, any code in the crate — or any test —
+    /// could assign a freshly built `BrainModelBackend` into it and hand the result to Bevy's
+    /// parallel `Res<T>` readers, and the safety argument would be false with nothing to say so.
+    ///
+    /// Everything now goes through [`BrainModel::from_backend`], which materialises before the
+    /// value exists, and through the `replace_*_model` methods, which re-materialise after a
+    /// swap. That turns a rule a future author has to remember into one they cannot break.
+    backend: BrainModelBackend,
     pub input_dim: usize,
     pub action_dim: usize,
 }
 
-// SAFETY: these are the only two `unsafe` blocks in the backend, and they used to carry no argument
-// at all. The argument is below. It was checked against burn 0.13.2 on 2026-07-27 and it is
-// **version-specific** — re-derive it on any burn upgrade.
+// SAFETY: this is the only `unsafe` block in the backend. It used to be two — a `Send` impl sat
+// beside this one and was carrying no weight: `assert_send::<BrainModel>()` compiles without it,
+// because every field is `Send` on its own. `brain_model_is_send_without_an_unsafe_impl` is that
+// assertion, kept so the day a burn upgrade loses the bound, the build fails rather than the
+// redundant `unsafe` quietly absorbing it.
 //
-// ## Why the auto traits do not apply
+// The argument below was checked against burn 0.13.2 on 2026-07-27 and it is **version-specific**
+// — re-derive it on any burn upgrade.
 //
-// Not because of `WgpuDevice`, which is the obvious suspect and is innocent. Replacing these impls
+// ## Why the auto trait does not apply
+//
+// Not because of `WgpuDevice`, which is the obvious suspect and is innocent. Replacing the impls
 // with a `T: Send + Sync` static assertion produced the real reason, on **both** backends:
 //
 //     `std::cell::OnceCell<Tensor<NdArray, 2>>` cannot be shared between threads safely
@@ -427,12 +442,80 @@ pub struct BrainModel {
 // 3. On a burn upgrade, re-run the static assertion in that test: if `Param` becomes `Sync`, delete
 //    these impls rather than keeping them, because a redundant `unsafe impl` silences the compiler
 //    the day the bound is genuinely lost.
-unsafe impl Send for BrainModel {}
 unsafe impl Sync for BrainModel {}
 
 impl bevy_ecs::system::Resource for BrainModel {}
 
 impl BrainModel {
+    /// The only way a `BrainModel` comes into existence, and the only way its backend changes.
+    ///
+    /// Materialising here rather than at each call site is what makes requirement 1 of the SAFETY
+    /// note above structural. It was previously a convention followed at four sites, and the CPU
+    /// pair did not follow it — which is how the latent race got in. A convention that has already
+    /// been broken once should not be re-established as a convention.
+    fn from_backend(backend: BrainModelBackend, input_dim: usize, action_dim: usize) -> Self {
+        let model = Self {
+            backend,
+            input_dim,
+            action_dim,
+        };
+        model.materialize();
+        model
+    }
+
+    /// Drain every lazy `Param` on the constructing thread.
+    fn materialize(&self) {
+        match &self.backend {
+            BrainModelBackend::NdArray(model, device) => {
+                materialize_params(model, device, self.input_dim);
+            }
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(model, device) => {
+                wgpu_survives_one_forward_pass(model, device, self.input_dim);
+            }
+        }
+    }
+
+    /// Read-only view of the backend, for the forward passes that need to match on it.
+    pub fn backend(&self) -> &BrainModelBackend {
+        &self.backend
+    }
+
+    /// Install a freshly trained CPU model, returning the old one for the caller to recycle.
+    ///
+    /// `None` when this `BrainModel` is not running the ndarray backend — the same no-op the
+    /// inference worker's mismatched-variant arm used to perform inline, but now with the
+    /// re-materialisation that a swapped-in model needs.
+    pub fn replace_ndarray_model(
+        &mut self,
+        new: ActorCriticModel<burn_ndarray::NdArray<f32>>,
+    ) -> Option<ActorCriticModel<burn_ndarray::NdArray<f32>>> {
+        // `match`, not `let ... else`: without the `ml-wgpu` feature the enum has a single variant,
+        // and an irrefutable `let ... else` is a clippy error there. The match is exhaustive in
+        // both configurations.
+        let old = match &mut self.backend {
+            BrainModelBackend::NdArray(current, _) => std::mem::replace(current, new),
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(..) => return None,
+        };
+        self.materialize();
+        Some(old)
+    }
+
+    /// Install a freshly trained GPU model, returning the old one for the caller to recycle.
+    #[cfg(feature = "ml-wgpu")]
+    pub fn replace_wgpu_model(
+        &mut self,
+        new: ActorCriticModel<WgpuBackend>,
+    ) -> Option<ActorCriticModel<WgpuBackend>> {
+        let old = match &mut self.backend {
+            BrainModelBackend::Wgpu(current, _) => std::mem::replace(current, new),
+            BrainModelBackend::NdArray(..) => return None,
+        };
+        self.materialize();
+        Some(old)
+    }
+
     /// Build the shared model with **reproducible** weights.
     ///
     /// The shared brain used to be different on every launch, so two runs of the same world with the
@@ -494,11 +577,11 @@ impl BrainModel {
                 (model, device)
             });
             if let Ok((Ok(model), device)) = built {
-                return Self {
-                    backend: BrainModelBackend::Wgpu(model, device),
+                return Self::from_backend(
+                    BrainModelBackend::Wgpu(model, device),
                     input_dim,
                     action_dim,
-                };
+                );
             }
             eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
         }
@@ -511,11 +594,11 @@ impl BrainModel {
         // The CPU path needs this for the same reason the GPU path does, and only the GPU path had
         // it: draining lazy `Param` initialization here is what makes `unsafe impl Sync` sound.
         materialize_params(&model, &device, input_dim);
-        Self {
-            backend: BrainModelBackend::NdArray(model, device),
+        Self::from_backend(
+            BrainModelBackend::NdArray(model, device),
             input_dim,
             action_dim,
-        }
+        )
     }
 
     pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize) -> Self {
@@ -539,11 +622,11 @@ impl BrainModel {
 
             match wgpu_res {
                 Ok((model, device)) => {
-                    return Self {
-                        backend: BrainModelBackend::Wgpu(model, device),
+                    return Self::from_backend(
+                        BrainModelBackend::Wgpu(model, device),
                         input_dim,
                         action_dim,
-                    };
+                    );
                 }
                 Err(_) => {
                     eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
@@ -556,11 +639,11 @@ impl BrainModel {
             input_dim, hidden_dim, action_dim, &device,
         );
         materialize_params(&model, &device, input_dim);
-        Self {
-            backend: BrainModelBackend::NdArray(model, device),
+        Self::from_backend(
+            BrainModelBackend::NdArray(model, device),
             input_dim,
             action_dim,
-        }
+        )
     }
 }
 
@@ -760,7 +843,7 @@ pub fn brain_inference_system(
         return;
     }
 
-    let outputs_vec = match &brain_model.backend {
+    let outputs_vec = match brain_model.backend() {
         BrainModelBackend::NdArray(model, device) => {
             let data = Data::new(inputs, Shape::new([batch_size, 15]));
             let input_tensor = Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
@@ -1074,59 +1157,73 @@ pub fn hrrl_learning_system(
 mod tests {
     use super::*;
 
-    /// Requirement 1 of the `unsafe impl Send/Sync` proof above, made checkable.
+    /// Requirement 1 of the `unsafe impl Sync` proof above, made **structural** rather than scanned.
     ///
-    /// The soundness of sharing a `BrainModel` rests on every parameter's lazy `OnceCell` having
-    /// been filled on the constructing thread. burn 0.13 exposes no way to *ask* a `Param` whether
-    /// it is initialized, so this scans the source instead — the same idiom `sim_determinism_tests`
-    /// uses to keep `thread_rng()` out. It is not elegant; it is the only thing that fails when a
-    /// future constructor forgets, which is exactly the mistake that made the CPU path unsound for
-    /// as long as it did.
+    /// This used to be a source scan: count `backend: BrainModelBackend::` sites, look backwards
+    /// for a `materialize_params(` call. That was the honest tool available at the time, and it is
+    /// a weak one — it proves something about the text of one file, not about the type. It could
+    /// not see a construction in another module, and it said nothing at all about the field being
+    /// `pub`, which let any caller install a fresh backend and invalidate the whole argument.
+    ///
+    /// The invariant is now enforced by construction: `backend` is private, `from_backend` is the
+    /// only way to build the struct, and it materialises before returning. What is left to check is
+    /// that the encapsulation is real, so this asserts the two facts a future edit could break.
     #[test]
-    fn every_brain_model_constructor_materializes_its_parameters() {
+    fn the_backend_field_is_not_reachable_from_outside_its_module() {
         let whole = include_str!("model.rs");
-
-        // Production code only. Without this cut the scan matches its OWN search string a few lines
-        // below and reports a construction site inside this test — which is exactly what happened
-        // the first time it ran.
         let src = whole
             .split_once("\n#[cfg(test)]")
             .map(|(before, _)| before)
             .expect("this file has a test module");
 
-        // Each place a `BrainModel` is produced with a backend in it.
-        let sites: Vec<usize> = src
-            .match_indices("backend: BrainModelBackend::")
-            .map(|(i, _)| i)
-            .collect();
-        assert_eq!(
-            sites.len(),
-            4,
-            "expected exactly the four known construction sites (new/new_seeded x wgpu/ndarray); \
-             found {}. A new one needs a materialize_params call, not a bigger number here.",
-            sites.len()
+        // `pub backend` would restore the hole: an outside caller could assign a backend whose
+        // `Param` cells are still lazy and hand the result to Bevy's parallel `Res<T>` readers.
+        assert!(
+            !src.contains("pub backend:"),
+            "`BrainModel::backend` is public again. The soundness of `unsafe impl Sync` depends on \
+             every parameter having been materialised before the value is shared, and a public \
+             field lets a caller install one that has not been. Route it through `from_backend`."
         );
 
-        for site in sites {
-            // Look back over the enclosing construction for a materialization call. The window is
-            // generous because the wgpu paths route through `wgpu_survives_one_forward_pass`.
-            let start = site.saturating_sub(1400);
-            let window = &src[start..site];
-            assert!(
-                window.contains("materialize_params(")
-                    || window.contains("wgpu_survives_one_forward_pass("),
-                "a BrainModel is constructed at byte {site} without draining lazy Param \
-                 initialization first. See the SAFETY note on `unsafe impl Send for BrainModel`: \
-                 an unmaterialized OnceCell shared across Bevy's parallel `Res<T>` readers is a \
-                 data race that `unsafe impl Sync` will happily compile."
-            );
-        }
+        // Every struct literal must go through the constructor. A literal `Self { backend: ... }`
+        // outside `from_backend` skips materialisation.
+        let literals = src.matches("backend: BrainModelBackend::").count();
+        assert_eq!(
+            literals, 0,
+            "found {literals} direct `BrainModel` struct literal(s). Use \
+             `Self::from_backend(...)`, which materialises lazy parameters before the value exists."
+        );
 
-        // Negative control: the scan can fail. If this ever matches, the search string drifted and
-        // the loop above has been vacuously passing.
+        // Negative control: the scan can still fail.
         assert!(
-            !src.contains("backend: BrainModelBackendThatDoesNotExist::"),
-            "control string should never match"
+            src.contains("fn from_backend("),
+            "control: from_backend should exist in this file"
+        );
+    }
+
+    /// `Send` is derived, not asserted.
+    ///
+    /// There used to be an unsafe `Send` impl next to the `Sync` one. The
+    /// compiler experiment that produced the SAFETY argument above reported **only** `Sync`
+    /// failures — `OnceCell` and the `+ Send`-but-not-`+ Sync` initializer closure — so the `Send`
+    /// impl was carrying no weight. A redundant `unsafe impl` is worse than none: it silences the
+    /// compiler on the day the bound is genuinely lost.
+    ///
+    /// This compiles only while every field is `Send` on its own. If a burn upgrade breaks that,
+    /// this fails to build and the answer is a fresh derivation, not a new `unsafe impl`.
+    #[test]
+    fn brain_model_is_send_without_an_unsafe_impl() {
+        fn assert_send<T: Send>() {}
+        assert_send::<BrainModel>();
+        assert_send::<BrainModelBackend>();
+
+        // And the file must not have grown one back.
+        let src = include_str!("model.rs");
+        assert!(
+            // Assembled at compile time so this scan cannot match its own search string — the
+            // mistake the previous source-scan gate made on its first run.
+            !src.contains(concat!("unsafe impl ", "Send for BrainModel")),
+            "`Send` is derived here. Re-adding `unsafe impl Send` hides a future regression."
         );
     }
 

@@ -775,24 +775,22 @@ impl SimulationEngine {
                 while running_inference.load(Ordering::SeqCst) {
                     // Check for model update
                     if let Ok(new_model) = model_rx_inference.try_recv() {
-                        match (new_model, &mut brain_model.backend) {
-                            (
-                                ModelUpdate::NdArray(new_m),
-                                crate::ai::model::BrainModelBackend::NdArray(ref mut old_m, _),
-                            ) => {
-                                let old = std::mem::replace(old_m, new_m);
-                                let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
+                        // Through `BrainModel`'s own API rather than by reaching into its backend.
+                        // A swapped-in model carries the same lazy `Param` cells a fresh one does,
+                        // and the replace methods re-materialise them; the field is private now
+                        // precisely so this cannot be done any other way.
+                        match new_model {
+                            ModelUpdate::NdArray(new_m) => {
+                                if let Some(old) = brain_model.replace_ndarray_model(new_m) {
+                                    let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
+                                }
                             }
                             #[cfg(feature = "ml-wgpu")]
-                            (
-                                ModelUpdate::Wgpu(new_m),
-                                crate::ai::model::BrainModelBackend::Wgpu(ref mut old_m, _),
-                            ) => {
-                                let old = std::mem::replace(old_m, new_m);
-                                let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
+                            ModelUpdate::Wgpu(new_m) => {
+                                if let Some(old) = brain_model.replace_wgpu_model(new_m) {
+                                    let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
+                                }
                             }
-                            #[cfg_attr(not(feature = "ml-wgpu"), allow(unreachable_patterns))]
-                            _ => {}
                         }
                     }
 

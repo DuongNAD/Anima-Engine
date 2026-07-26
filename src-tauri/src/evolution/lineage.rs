@@ -38,6 +38,71 @@ pub struct LineageNode {
 /// The rule: a node's count is the greatest count among its parents, plus one when any edge into
 /// it is a [`RelationType::Mutate`]. `max` rather than a sum because the count describes *one*
 /// line of descent — a crossover child inherits the longer history, it does not add the two.
+/// Turn a simplify plan's edges back into storable [`LineageRelation`]s.
+///
+/// Extracted from `compact` so the impossible case below is reachable from a test. It used to be
+/// inline, and it handled that case by inventing an observation:
+///
+/// ```text
+/// original_type.get(&key).copied().unwrap_or(RelationType::Clone)
+/// ```
+///
+/// An edge with `events <= 1` is a single original relation carried through unchanged, so its
+/// `(parent, child)` pair is necessarily in `relations`. If it is not, the plan and the graph
+/// disagree — a broken invariant — and `Clone` is not a conservative default for that. It is a
+/// specific claim about what happened: *this child is an unmutated copy of this parent*. It would
+/// be written to the lineage store, read back by the diagnostics, and counted as a reproduction
+/// event that never occurred. A lineage that quietly makes up ancestry is worse than one that
+/// stops.
+pub fn rebuild_relations_from_plan(
+    edges: &[crate::evolution::simplify::SimplifiedEdge],
+    relations: &[LineageRelation],
+) -> Result<Vec<LineageRelation>, String> {
+    let original_type: std::collections::HashMap<(&str, &str), RelationType> = relations
+        .iter()
+        .map(|r| {
+            (
+                (r.source_id.as_str(), r.target_id.as_str()),
+                r.relation_type,
+            )
+        })
+        .collect();
+
+    edges
+        .iter()
+        .map(|e| {
+            let key = (e.parent_id.as_str(), e.child_id.as_str());
+            // An uncompressed edge keeps the type exactly as it was recorded. Only a spliced path
+            // gets a summary, and `path_events` marks it as one so no reader mistakes the summary
+            // for an observation.
+            let (relation_type, path_events) = if e.events <= 1 {
+                let recorded = original_type.get(&key).copied().ok_or_else(|| {
+                    format!(
+                        "simplify plan carries an uncompressed edge {} -> {} that is not in the \
+                         lineage relations. This is a broken plan/graph invariant, not a clone: \
+                         defaulting it to RelationType::Clone would record a reproduction event \
+                         that was never observed.",
+                        e.parent_id, e.child_id
+                    )
+                })?;
+                (recorded, None)
+            } else if e.crossovers > 0 {
+                (RelationType::Crossover, Some(e.events))
+            } else if e.mutations > 0 {
+                (RelationType::Mutate, Some(e.events))
+            } else {
+                (RelationType::Clone, Some(e.events))
+            };
+            Ok(LineageRelation {
+                source_id: e.parent_id.clone(),
+                target_id: e.child_id.clone(),
+                relation_type,
+                path_events,
+            })
+        })
+        .collect()
+}
+
 pub fn cumulative_mutations_from_edges(
     nodes: &[LineageNode],
     relations: &[LineageRelation],
@@ -373,47 +438,7 @@ impl LineageTracker for InMemoryLineageTracker {
         // correct while nothing was spliced; with compression on it silently disconnects the graph,
         // because both original edges of an `A → B → C` path reference the removed `B` and would
         // both be dropped, orphaning `C`. The plan's edge is the one that spans the splice.
-        let original_type: std::collections::HashMap<(&str, &str), RelationType> = relations
-            .iter()
-            .map(|r| {
-                (
-                    (r.source_id.as_str(), r.target_id.as_str()),
-                    r.relation_type,
-                )
-            })
-            .collect();
-
-        let kept_relations: Vec<LineageRelation> = plan
-            .edges
-            .iter()
-            .map(|e| {
-                let key = (e.parent_id.as_str(), e.child_id.as_str());
-                // An uncompressed edge keeps the type exactly as it was recorded. Only a spliced
-                // path gets a summary, and `path_events` marks it as one so no reader mistakes the
-                // summary for an observation.
-                let (relation_type, path_events) = if e.events <= 1 {
-                    (
-                        original_type
-                            .get(&key)
-                            .copied()
-                            .unwrap_or(RelationType::Clone),
-                        None,
-                    )
-                } else if e.crossovers > 0 {
-                    (RelationType::Crossover, Some(e.events))
-                } else if e.mutations > 0 {
-                    (RelationType::Mutate, Some(e.events))
-                } else {
-                    (RelationType::Clone, Some(e.events))
-                };
-                LineageRelation {
-                    source_id: e.parent_id.clone(),
-                    target_id: e.child_id.clone(),
-                    relation_type,
-                    path_events,
-                }
-            })
-            .collect();
+        let kept_relations = rebuild_relations_from_plan(&plan.edges, &relations)?;
 
         let kept_nodes: Vec<LineageNode> = nodes
             .iter()

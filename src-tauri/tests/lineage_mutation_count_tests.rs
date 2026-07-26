@@ -336,3 +336,115 @@ fn a_compressed_edge_says_that_it_is_a_summary() {
         );
     }
 }
+
+/// A simplify plan that names an edge the graph does not have is a broken invariant, and must be
+/// reported as one.
+///
+/// The code under test used to read:
+///
+/// ```text
+/// original_type.get(&key).copied().unwrap_or(RelationType::Clone)
+/// ```
+///
+/// `Clone` looks like a harmless default. It is not a default at all — it is a claim that this
+/// child is an unmutated copy of this parent, and it would have been written to the lineage store,
+/// read back by the diagnostics, and counted as a reproduction event that never happened. The
+/// per-node mutation count that the rest of this file exists to protect is derived from exactly
+/// these types.
+///
+/// A missing original relation means the plan and the graph disagree. There is no correct value to
+/// substitute, so the only honest outcome is a typed failure.
+mod plan_integrity {
+    use anima_engine_lib::evolution::lineage::{
+        rebuild_relations_from_plan, LineageRelation, RelationType,
+    };
+    use anima_engine_lib::evolution::simplify::SimplifiedEdge;
+
+    fn rel(parent: &str, child: &str, t: RelationType) -> LineageRelation {
+        LineageRelation {
+            source_id: parent.to_string(),
+            target_id: child.to_string(),
+            relation_type: t,
+            path_events: None,
+        }
+    }
+
+    fn edge(
+        parent: &str,
+        child: &str,
+        events: u32,
+        mutations: u32,
+        crossovers: u32,
+    ) -> SimplifiedEdge {
+        SimplifiedEdge {
+            parent_id: parent.to_string(),
+            child_id: child.to_string(),
+            events,
+            mutations,
+            crossovers,
+        }
+    }
+
+    #[test]
+    fn an_uncompressed_edge_with_no_original_relation_is_an_error_not_a_clone() {
+        let relations = vec![rel("a", "b", RelationType::Mutate)];
+        // `events == 1` says "this is one original relation, carried through" — but (b, c) was
+        // never recorded.
+        let plan = vec![edge("b", "c", 1, 0, 0)];
+
+        let err = rebuild_relations_from_plan(&plan, &relations)
+            .expect_err("a plan edge with no original relation must not be silently typed");
+        assert!(
+            err.contains("b -> c"),
+            "the error must name the offending edge; got: {err}"
+        );
+        assert!(
+            err.contains("Clone"),
+            "the error should say what it refused to invent; got: {err}"
+        );
+    }
+
+    #[test]
+    fn a_well_formed_plan_still_carries_recorded_types_through() {
+        // The positive control. Without it the test above passes for a function that always errors.
+        let relations = vec![
+            rel("a", "b", RelationType::Mutate),
+            rel("b", "c", RelationType::Clone),
+            rel("c", "d", RelationType::Crossover),
+        ];
+        let plan = vec![
+            edge("a", "b", 1, 1, 0),
+            edge("b", "c", 1, 0, 0),
+            edge("c", "d", 1, 0, 1),
+        ];
+
+        let out = rebuild_relations_from_plan(&plan, &relations).expect("plan matches the graph");
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].relation_type, RelationType::Mutate);
+        assert_eq!(out[1].relation_type, RelationType::Clone);
+        assert_eq!(out[2].relation_type, RelationType::Crossover);
+        // An uncompressed edge is not a summary, so it carries no path_events.
+        assert!(out.iter().all(|r| r.path_events.is_none()));
+    }
+
+    #[test]
+    fn a_compressed_edge_needs_no_original_relation() {
+        // Compressed edges span spliced-out nodes, so their endpoints are legitimately absent from
+        // the original relations. Only `events <= 1` claims to be a recorded edge — the fix must
+        // not turn a normal compression into an error.
+        let relations: Vec<LineageRelation> = vec![];
+        let plan = vec![
+            edge("a", "z", 5, 3, 0),
+            edge("a", "y", 4, 0, 1),
+            edge("a", "x", 2, 0, 0),
+        ];
+
+        let out =
+            rebuild_relations_from_plan(&plan, &relations).expect("compressed edges are fine");
+        assert_eq!(out[0].relation_type, RelationType::Mutate);
+        assert_eq!(out[0].path_events, Some(5));
+        assert_eq!(out[1].relation_type, RelationType::Crossover);
+        assert_eq!(out[2].relation_type, RelationType::Clone);
+        assert_eq!(out[2].path_events, Some(2));
+    }
+}
