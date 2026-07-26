@@ -187,12 +187,22 @@ fn every_world_mutating_command_still_records_an_observer_action() {
         let body = &rest[..end];
 
         assert!(
-            body.contains("observer_actions"),
-            "`{command}` in {path} writes to a running world but no longer records an \
-             ObserverAction. Either route it through `state.engine.observer_actions.push(..)`, or if \
-             it genuinely stopped mutating the world, drop it from this list and say why in the \
-             commit. ADR-0004 C3."
+            body.contains("state.seam."),
+            "`{command}` in {path} writes to a running world but no longer goes through \
+             `state.seam`. The seam records and writes in one call; a command that bypasses it can \
+             change the world without saying who did. ADR-0004 C3."
         );
+
+        // The stronger half, and the actual enforcement: the command must have **no** direct write
+        // path left. Recording used to sit beside a raw write, which is exactly the shape that lets a
+        // later edit drop the recording and keep the write.
+        for forbidden in [".lock()", ".write()", ".store(", ".send("] {
+            assert!(
+                !body.contains(forbidden),
+                "`{command}` in {path} still contains `{forbidden}` — a direct write path beside the \
+                 seam. Move it into `ObserverSeam` so recording cannot be separated from writing."
+            );
+        }
     }
 }
 
@@ -210,9 +220,17 @@ fn the_source_scan_can_actually_fail() {
         .map(|i| i + 1)
         .unwrap_or(rest.len());
     assert!(
-        !rest[..end].contains("observer_actions"),
-        "a read-only getter is recording an observer action, which means the scan above would pass \
-         even if the mutating commands stopped recording"
+        !rest[..end].contains("state.seam."),
+        "a read-only getter goes through the seam, which means the scan above would pass even if the \
+         mutating commands stopped using it"
+    );
+    // And the forbidden-write half must be capable of firing: this getter *does* contain `.lock()`,
+    // so the same assertion applied here would fail. Without this, a scan that never sees a forbidden
+    // token would look like proof when it is only absence.
+    assert!(
+        rest[..end].contains(".lock()"),
+        "the read-only getter no longer contains `.lock()`, so the forbidden-write assertion above \
+         is no longer known to be capable of firing — find another witness or the gate is hollow"
     );
 }
 

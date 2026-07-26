@@ -69,22 +69,9 @@ pub fn update_evolution_settings(
     {
         return Err("Invalid settings".to_string());
     }
-    // ADR-0004 C3. Recorded *before* the write, so a trace cannot show an effect whose cause is
-    // missing — the reverse order would leave a window where the world had already changed and
-    // nothing said who changed it.
-    state.engine.observer_actions.push(
-        crate::core::observer::ObserverAction::EvolutionSettingsChanged {
-            mutation_rate: settings.mutation_rate,
-            selection_bias: settings.selection_bias,
-            grid_resolution: settings.grid_resolution,
-        },
-    );
-
-    let mut evolution_settings = state
-        .evolution_settings
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    *evolution_settings = settings;
+    // ADR-0004 C3. One call that records and writes; this command no longer has a path that does one
+    // without the other.
+    state.seam.set_evolution_settings(settings)?;
     Ok(true)
 }
 
@@ -93,18 +80,9 @@ pub fn toggle_evolution(
     state: State<'_, AppState>,
     _app_handle: tauri::AppHandle,
 ) -> Result<bool, String> {
-    let running = &state.evolution_running;
-    let was_running = running.load(std::sync::atomic::Ordering::SeqCst);
-    let new_running = !was_running;
-    // Recorded before the store, for the same reason as above.
-    state
-        .engine
-        .observer_actions
-        .push(crate::core::observer::ObserverAction::EvolutionToggled {
-            running: new_running,
-        });
-    running.store(new_running, std::sync::atomic::Ordering::SeqCst);
-    Ok(new_running)
+    // The seam reads the current value, records the flip and applies it as one operation — so the
+    // recorded value cannot disagree with the value the world took.
+    Ok(state.seam.toggle_evolution())
 }
 
 #[tauri::command]
