@@ -48,5 +48,17 @@ export default defineConfig(({ mode }) => ({
     environment: "jsdom",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: ["./tests/setup-vitest.ts"],
+    // Matches tests/vitest.config.ts, which has carried this since it started rendering <App />.
+    //
+    // The first `render(<App />)` in a file pays for the whole lazy module graph plus world
+    // generation under jsdom; every later render in the same file is ~150ms. That first one measures
+    // 4.2s on a dev machine — 84% of vitest's 5s default — and 10.9s on a GitHub ubuntu runner,
+    // which is where it started failing. It passed before only because the margin happened to be on
+    // the right side of the line, not because it was comfortable.
+    //
+    // Raising the timeout rather than trimming the test: what makes it slow is App's real startup
+    // cost, which is the thing under test. A version fast enough for a 5s budget would be a version
+    // that no longer mounts the app.
+    testTimeout: 15000,
   },
 }));
