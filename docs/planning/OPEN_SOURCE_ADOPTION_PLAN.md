@@ -9,31 +9,51 @@ target: M0-M4
 
 # Kế hoạch áp dụng nguồn mở
 
-## Trạng thái thật (2026-07-26)
+## Trạng thái thật (cập nhật 2026-07-26, sau khi OSS-010 ship)
 
-Kế hoạch này được lập 2026-07-24 và **chưa có mục nào được thực thi**. Bảng dưới là đối chiếu giữa
-kế hoạch và code, để phiên sau không đọc một `[x]` không tồn tại thành việc đã xong. Bằng chứng
-chi tiết nằm ở [§ Điều đã thay đổi](../research/OPEN_SOURCE_LANDSCAPE.md#điều-đã-thay-đổi-kể-từ-2026-07-24)
+Kế hoạch này được lập 2026-07-24. Bảng dưới là đối chiếu giữa kế hoạch và code, để phiên sau không
+đọc một `[x]` không tồn tại thành việc đã xong. Bằng chứng chi tiết nằm ở
+[§ Điều đã thay đổi](../research/OPEN_SOURCE_LANDSCAPE.md#điều-đã-thay-đổi-kể-từ-2026-07-24)
 trong khảo sát.
 
-| Mục | Kế hoạch nói | Thực tế 2026-07-26 | Xử lý |
+> **Bản đầu của mục này (2026-07-26, sáng) mở đầu bằng *"chưa có mục nào được thực thi"*.** Câu đó
+> đúng khi viết và **sai vài giờ sau**: OSS-010 đã ship trong cùng ngày. Giữ lại ghi chú này vì
+> chính nó là bài học — một tài liệu trạng thái viết bằng câu tuyệt đối sẽ hết hạn nhanh hơn tài
+> liệu viết theo từng mục có ngày.
+
+| Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data |
+| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data + `NOTICE` |
 | OSS-004 inventory | Tạo inventory ban đầu | Chưa có; và `burn`/`burn-wgpu` bị **bỏ sót** khỏi khảo sát | Đã thêm dòng vào khảo sát; inventory tự động vẫn nợ |
-| OSS-010 Criterion | Adopt | **Không có trong `Cargo.toml`** | **Nâng lên P0** — xem dưới |
-| OSS-011 tracing | Adopt | Không có trong `Cargo.toml` | Giữ, nhưng sau Criterion |
-| OSS-012 cargo-deny | Adopt sau khi chọn license | Advisory **đã được phủ** bởi `cargo audit` + `npm audit` | Thu hẹp phạm vi còn licenses/bans/sources |
-| OSS-013 lychee | Adopt | `scripts/check_docs_links.mjs` **đã là gate CI** | **Đóng — superseded** |
-| OS2 oracle | 2–3 tuần | Chưa bắt đầu; OSS-021 bị chặn bởi OSS-020 | Giữ thứ tự, ghi rõ blocker |
+| OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
+| OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
+| OSS-012 cargo-deny | Adopt sau khi chọn license | ⬜ Advisory **đã được phủ** bởi `cargo audit` + `npm audit` | Thu hẹp phạm vi còn licenses/bans/sources |
+| OSS-013 lychee | Adopt | ✅ `scripts/check_docs_links.mjs` **đã là gate CI** | **Đóng — superseded** |
+| OS2 oracle | 2–3 tuần | ⬜ Chưa bắt đầu; OSS-021 bị chặn bởi OSS-020 | Giữ thứ tự, ghi rõ blocker |
 | OS3 BVH/meshopt | Pilot | Tiền đề bị code bác bỏ | **Park** — xem OS3 |
 | OS4 Rapier | Pilot có feature flag | Đường physics/CPG sống chưa tất định | Thêm tiền điều kiện cứng |
 | OS5 Arrow | Khi ≥100 MB/run | Trigger **chưa đạt** | Giữ Defer |
+| OS7 phả hệ | *(mới)* | ⬜ Chưa bắt đầu | OSS-070 (Newick) là món rẻ nhất còn lại |
 
-**Thay đổi ưu tiên lớn nhất của đợt review này:** OSS-010 (Criterion) không còn là "tooling ít rủi
-ro" mà là **điều kiện của một mục P0**. [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) §3.2 ghi
-rằng tuyên bố "60 FPS real-time" chưa từng được đo và `BENCHMARK_BASELINE.md` tự khai số hiện tại là
-proxy. Criterion là công cụ đã duyệt cho đúng việc đó, và nó hợp với ràng buộc vận hành nặng nhất —
-**không chạy full backend trên máy dev** — vì nó bench từng system headless chứ không boot Tauri.
+### OSS-010 đã ship (2026-07-26)
+
+Criterion vào làm `dev-dependency` với `default-features = false`, cộng
+[`src-tauri/benches/tick_systems.rs`](../../src-tauri/benches/tick_systems.rs). Bảng số và cách diễn
+giải: [`docs/how-to/BENCHMARKING.md`](../how-to/BENCHMARKING.md).
+
+Ba điều đáng ghi lại, vì chúng đổi cách đọc các mục khác trong kế hoạch này:
+
+1. **Phần cứng mục tiêu đã đổi.** Nay là Intel Core i5-14600KF; khai báo Dell Vostro 3530 cũ **không
+   còn hiệu lực**. Máy capture và máy mục tiêu là một, nên số đo tính là đo-trên-máy-đích.
+2. **§3.2 vẫn chưa đóng, nhưng không còn vì phần cứng.** Cái đo được là **cận dưới của một tick**,
+   không phải khung hình: chưa gồm suy luận não, lập lịch ECS, emit, va chạm, trao đổi chất. Ba hàng
+   đắt nhất trong `BENCHMARK_BASELINE.md` vẫn đòi in-app tick capture.
+3. **Một finding mới, chưa giải quyết.** Con số ~4,2 ms trong doc comment của
+   `ResourceField::REGROWTH_STRIDE` **không tái lập** — release build cho ~0,36 ms, thấp hơn ~12
+   lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số biện minh cho nó là chưa đối chứng được.
+
+**Mục OS1 đáng làm tiếp là OSS-011 (`tracing`)**, nhưng nó **không** còn nằm trên đường tới hạn P0
+như OSS-010 từng nằm. Ưu tiên cao hơn hiện là OSS-070 (xuất Newick) — xem OS7.
 
 ## Mục tiêu
 
@@ -80,23 +100,31 @@ tiếp xúc với code**, không còn là "cần review thêm" — xem
 
 ### OS1 — Tooling ít rủi ro
 
-**Thời lượng:** 3–5 ngày. **Phụ thuộc:** OS0. **Trạng thái 2026-07-26: chưa thực thi mục nào.**
+**Thời lượng:** 3–5 ngày. **Phụ thuộc:** OS0. **Trạng thái: 2/4 xong (2026-07-26).**
 
 | ID | Công việc | Kiểm tra / tiêu chí | Trạng thái |
 |---|---|---|---|
-| OSS-010 | Thêm Criterion cho tick, spatial query và artifact encode/decode | Benchmark chạy headless, lưu machine metadata và baseline | ⬜ **P0** — chặn §3.2 |
-| OSS-011 | Khai báo trực tiếp `tracing` và quy ước correlation ID | Không log mỗi entity/tick mặc định; overhead tắt < 2% | ⬜ Sau OSS-010 |
+| OSS-010 | Thêm Criterion cho tick, spatial query và artifact encode/decode | Benchmark chạy headless, lưu machine metadata và baseline | ✅ **XONG 2026-07-26** |
+| OSS-011 | Khai báo trực tiếp `tracing` và quy ước correlation ID | Không log mỗi entity/tick mặc định; overhead tắt < 2% | ⬜ Mục OS1 còn lại đáng làm nhất |
 | OSS-012 | Thêm `cargo-deny` cho **licenses/bans/sources** | CI chặn license/source ngoài policy | ⬜ Phạm vi đã hẹp lại: advisory nay do `cargo audit` + `npm audit` phủ |
 | OSS-013 | ~~Thêm lychee cho Markdown~~ | — | ✅ **Superseded** bởi [`scripts/check_docs_links.mjs`](../../scripts/check_docs_links.mjs) |
 
-**OSS-010 là mục đáng làm trước tiên trong toàn bộ kế hoạch này**, vì nó là mục duy nhất nằm trên
-đường tới hạn P0. Phạm vi tối thiểu đáng giá: bench `integrate_physics_system`,
-`ResourceField::step_regrowth`, `DynamicFields::step_water` và `a2c_loss` — bốn thứ chạy mỗi tick,
-đều là hàm gọi được ngoài Tauri, không cần GPU và không cần boot app.
+**OSS-010 — bằng chứng hoàn tất, đã kiểm.** Bench phủ `integrate_physics_system`,
+`rebuild_spatial_grid_system`, `ResourceField::step_regrowth{,_gated,_gated_strided}`,
+`DynamicFields::step_{water,soil,erosion}`, `a2c_loss` và `WorldArtifact::{to,from}_bytes`/`checksum`
+— tất cả gọi được ngoài Tauri, không cần GPU, không boot app. Machine metadata và 16 số đo thật nằm
+trong [`benchmark_report.json`](../../benchmark_report.json) dưới tiền tố `criterion/`;
+`scripts/bench_baseline.mjs` đọc thẳng từ output của Criterion.
 
-**Gate:** build/test hiện tại không hồi quy; dependency lock được commit; mỗi công cụ
-có hướng dẫn cập nhật và tắt. Criterion phải là `dev-dependency`: nếu nó xuất hiện trong
-`cargo tree` của bản dựng mặc định thì gate tách feature (G2 #2) đã bị vi phạm.
+**Gate đã xác minh:** `cargo tree --no-default-features -e normal` cho **0 kết quả** cho `criterion`
+— nó là `dev-dependency` nên vô hình với đồ thị mà gate tách feature (G2 #2) thật sự kiểm. `fmt`,
+`clippy --all-targets` ở cả hai cấu hình feature, và `cargo test --features desktop` (673 pass /
+0 fail) đều xanh. Cách gỡ ghi ở [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) §"Tắt / gỡ".
+
+**Một guard được thêm cùng lúc, vì nó chặn đúng loại hỏng im lặng repo này quan tâm:** `target/` bị
+gitignore, nên chạy `bench_baseline.mjs` trên một clone mới sẽ thay report đầy số thật bằng proxy —
+và kết quả vẫn validate, vẫn trông như baseline. Script nay từ chối và exit ≠ 0, trừ khi
+`ANIMA_BENCH_ALLOW_PROXY_ONLY=1`.
 
 ### OS2 — Bộ oracle khoa học ngoại tuyến
 
@@ -259,17 +287,20 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 
 ## Ba hành động tiếp theo
 
-> **Cập nhật 2026-07-26.** Danh sách cũ được giữ bên dưới làm bản ghi; nó đã lỗi thời ở cả ba mục —
-> hành động 1 đã xong một phần, hành động 2 nêu lychee (nay superseded), và không mục nào phản ánh
-> việc OSS-010 đã lên P0.
+> **Cập nhật 2026-07-26 (lần 2).** ~~Thêm Criterion (OSS-010)~~ đã **xong** trong cùng ngày, nên
+> danh sách tụt xuống một bậc. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.
 
-1. **Thêm Criterion (OSS-010).** Là mục duy nhất của kế hoạch này nằm trên đường tới hạn P0
-   ([`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) §3.2). `dev-dependency`, bench bốn hàm
-   chạy mỗi tick, không boot Tauri, không cần GPU.
-2. **OSS-070 — xuất Newick.** Món rẻ nhất trong kế hoạch: ~40 dòng, 0 dependency, và mua được một
-   kiểm tra độc lập cho tính đúng của phả hệ.
-3. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
+1. **OSS-070 — xuất Newick.** Món rẻ nhất còn lại trong kế hoạch: ~40 dòng, 0 dependency, và mua
+   được một **kiểm tra độc lập cho tính đúng của phả hệ** — một parser bên thứ ba sẽ từ chối cây có
+   chu trình, node mồ côi hoặc nhiều gốc. Chặn trước OSS-071/072 (`simplify`, MRCA).
+2. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
    tạo `NOTICE` cho các thành phần permissive đang được phân phối.
+3. **OSS-011 (`tracing`).** Mục OS1 còn lại. Không còn nằm trên đường tới hạn P0 — nó là
+   observability kỹ thuật, không phải bằng chứng khoa học.
+
+Một mục **không** nằm trong ba việc trên nhưng đã mở: đối chứng con số ~4,2 ms trong doc comment của
+`ResourceField::REGROWTH_STRIDE`, thứ mà bench không tái lập được (~0,36 ms). Nó là finding, chưa
+phải lỗi đã xác định.
 
 <details>
 <summary>Danh sách cũ (2026-07-24) — giữ làm bản ghi</summary>

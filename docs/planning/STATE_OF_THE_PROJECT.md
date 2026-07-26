@@ -34,7 +34,7 @@ Toàn bộ số dưới đây được chạy lại trong ngày, trên `main` t�
 | Test frontend (tests/) | `npm run test:frontend` | 26 file · **243 pass**, 1 skip |
 | Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error**, 491 warning (baseline 491) |
 | Build | `npm run build` | pass |
-| Link tài liệu | `node scripts/check_docs_links.mjs` | 384 link trong 89 file, **0 gãy** — đo lại 2026-07-26 |
+| Link tài liệu | `node scripts/check_docs_links.mjs` | 406 link trong 90 file, **0 gãy** — đo lại 2026-07-26 |
 
 Quy mô: Rust ~47,7k dòng / 128 file · TS ~25,6k dòng / 126 file · 627 hàm `#[test]` ·
 62 file test tích hợp backend · 46 file test frontend · 7 spec Playwright · 45 tài liệu.
@@ -120,32 +120,50 @@ Một gate không thể pass bằng cách sửa code đúng thì phải được
 mặc định (`evolved: true` hay giữ opt-in) được ghi thành mục quyết định trong ADR · nếu bật mặc định
 thì `cargo test --features desktop` vẫn xanh và EB-S03 (`allocs == 0`) vẫn giữ.
 
-#### 3.2 Thay số hiệu năng proxy bằng số đo thật
+#### 3.2 Thay số hiệu năng proxy bằng số đo thật — **một nửa đã xong (2026-07-26)**
 
-**Vì sao P0.** [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) **tự khai** rằng số hiện
-tại là proxy, vì chạy full backend đã crash máy dev. Nghĩa là tuyên bố "60 FPS real-time"
-của dự án **chưa từng được đo**. Mọi quyết định về scale (LOD, ngân sách bộ nhớ não, số agent
-thường trú) đang dựa trên ước lượng.
+**Vì sao vẫn P0.** Tuyên bố "60 FPS real-time" của dự án nay **đã có số đỡ, nhưng chưa được chứng
+minh**. Mọi quyết định về scale (LOD, ngân sách bộ nhớ não, số agent thường trú) trước đây dựa trên
+ước lượng; giờ chúng dựa trên một **cận dưới đo được**, không phải một khung hình đo được.
 
 **Ràng buộc vận hành có thật:** không chạy `npm run tauri dev` / `cargo run` trên máy dev.
 Đây là ràng buộc, không phải lời khuyên — nó đã crash máy.
 
-**Đường đi khả thi:** `scripts/bench_baseline.mjs` đã chạy hoàn toàn trên CPU, không mở
-device, xong dưới một giây. Cần một bản chạy **trên phần cứng đích** (hoặc một runner có GPU)
-để thay các trường proxy, rồi commit report kèm khối hardware.
+##### Đã xong
 
-**Công cụ cho việc này đã được duyệt từ 2026-07-24 và chưa ai thêm vào.** OSS-010 trong
-[kế hoạch áp dụng nguồn mở](OPEN_SOURCE_ADOPTION_PLAN.md) chốt Criterion là `dev-dependency` để bench
-headless; nó không có trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) tính đến 2026-07-26.
-Criterion hợp đúng với ràng buộc vận hành ở trên vì nó bench **từng system** chứ không boot Tauri:
-`integrate_physics_system`, `ResourceField::step_regrowth`, `DynamicFields::step_water` và `a2c_loss`
-đều gọi được ngoài app và không cần GPU. Đây là hai mặt của cùng một mục — đừng nhận §3.2 rồi đi
-viết một harness đo mới.
+- **OSS-010 Criterion đã ship.** `dev-dependency` + [`src-tauri/benches/tick_systems.rs`](../../src-tauri/benches/tick_systems.rs),
+  bench từng system headless — không Tauri, không GPU device. Bảng số và cảnh báo diễn giải:
+  [`docs/how-to/BENCHMARKING.md`](../how-to/BENCHMARKING.md).
+- **Phần cứng mục tiêu đã đổi và đã khớp.** Nay là Intel Core i5-14600KF; khai báo *Dell Vostro
+  3530* cũ **không còn hiệu lực**. Máy capture và máy đích là một, nên số đo tính là đo-trên-đích.
+- **`benchmark_report.json` mang 16 số đo thật** dưới tiền tố `criterion/`, kèm khối hardware đúng.
+  `scripts/bench_baseline.mjs` đọc thẳng từ output Criterion, và **từ chối** ghi đè số thật bằng
+  proxy (exit ≠ 0) trừ khi `ANIMA_BENCH_ALLOW_PROXY_ONLY=1`.
+- Gate `cargo tree --no-default-features -e normal` xác nhận Criterion **không** vào bản dựng mặc
+  định (G2 #2), và test S04 vẫn xanh.
 
-**Định nghĩa hoàn thành:** `benchmark_report.json` chứa số đo thật kèm định danh phần cứng ·
-test S04 (`src/__tests__/benchmarkReport.test.ts`) vẫn xanh · `BENCHMARK_BASELINE.md` gỡ nhãn proxy ·
-ngân sách của EB-S12 (22,5 KiB/agent, ~46.500 agent/GiB) được đối chiếu với số thật ·
-Criterion là `dev-dependency` và **không** xuất hiện trong `cargo tree` của bản dựng mặc định (G2 #2).
+##### Còn thiếu — và không còn vì phần cứng
+
+Cái đo được là **cận dưới của một tick, không phải khung hình**: tổng các system chạy mỗi tick ở
+1.000 agent ≈ 493 µs ≈ 3,0 % của 16,67 ms, nhưng con số đó **chưa gồm** suy luận não, lập lịch ECS,
+change detection, thread emit, va chạm và trao đổi chất.
+
+1. **In-app tick capture** cho các hàng `Physics tick` / `Brain/sensor` / `Full-brain agents` trong
+   [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Ràng buộc "không chạy full backend" vẫn
+   còn, nên đây cần một harness đo tick an toàn — chưa có.
+2. **Suy luận não per-agent** là phần đắt nhất còn lại và **đang tắt mặc định** (§3.1), nên chưa có
+   gì trên đường mặc định để đo. §3.1 và §3.2 vì thế nối vào nhau.
+
+**Định nghĩa hoàn thành (phần còn lại):** ba hàng nói trên có số thật · `BENCHMARK_BASELINE.md`
+tuyên bố khoá số theo `WORLD_SIMULATION_PLAN.md` §10.2 · ngân sách EB-S12 (22,5 KiB/agent,
+~46.500 agent/GiB) được đối chiếu với số thật thay vì với ngoại suy tuyến tính hiện tại (~4,02 ms
+≈ 24 % khung hình, **là ngoại suy chứ không phải phép đo**).
+
+**Một finding mở, sinh ra từ chính đợt đo:** doc comment của `ResourceField::REGROWTH_STRIDE` ghi
+đường trước khi stride tốn ~4,2 ms/tick; đo lại release build cho **~0,36 ms**, thấp hơn ~12 lần.
+Việc stride vẫn đúng và có lợi (đo được 3,97×) — chỉ con số biện minh cho nó là chưa đối chứng được.
+Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), đây là finding cần
+đối chứng, không phải lỗi đã xác định.
 
 #### 3.3 Đưa thế giới Bevy sống qua gate thí nghiệm
 
