@@ -263,6 +263,20 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
 - **`terrain_challenger_tests` zero-alloc từng flaky** khi bốn test trong file chạy song song
   (lệch đúng 1 allocation). Lần chạy 2026-07-26 xanh; nếu thấy đỏ, chạy riêng file trước khi
   kết luận là hồi quy.
+- **Chạy `cargo` từ PowerShell, không phải Git Bash.** Đo 2026-07-26: cùng một lệnh, cùng một cây mã
+  nguồn — qua Git Bash cho `587 passed, 0 failed` với **15 target chết ở `STATUS_ENTRYPOINT_NOT_FOUND`
+  (0xc0000139)** trước khi chạy nổi một test; qua PowerShell cho **629 passed, 0 failed, exit 0**.
+  15 target đó đúng là nhóm feature-gated nạp DLL native nặng (`migration_*`, `persistence_*`,
+  `lineage_stress`, `environmental_elements_*`, `tauri_ipc`, `adversarial_challenger`): Git Bash chèn
+  `/usr/bin` của MSYS2 vào `PATH` và chúng phân giải nhầm một DLL ở đó. 0xc0000139 nghĩa là "tìm thấy
+  DLL, thiếu entry point mong đợi".
+  **Hai ngõ cụt, ghi ra để không ai đi lại:** đây *không* phải artifact cũ — `cargo clean -p anima-engine`
+  rồi dựng lại tái hiện đủ 15 crash y hệt. Và *không* phải hồi quy — cây mã nguồn khi đó giống hệt một
+  `main` vừa đo xanh vài giờ trước.
+- **Chạy các suite tuần tự, đừng chồng nhau.** Một bản build `cargo` chạy song song làm suite Vitest
+  `tests/` báo ~28 lỗi giả: timeout render bị đọc thành "không tìm thấy DOM node", nên lỗi trông như
+  một khẳng định sai chứ không như một timeout. Chạy lại lúc máy rảnh: 243 pass, và thời gian tường
+  rơi từ 50,5s xuống 19,5s. Trước khi kết luận đỏ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
 - **Nhiều agent có thể cùng sửa cây này.** Một `cargo check` gãy giữa chừng có thể là bản ghi dở
   của phiên khác, không phải lỗi của bạn.
 - **Và hệ quả nặng hơn: công việc của phiên khác có thể đang nằm trên nhánh của bạn.** Đã xảy ra

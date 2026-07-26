@@ -22,14 +22,14 @@ run → checkpoint fork → đối chứng, có provenance nhân quả) và mộ
 
 Điều này không phải suy đoán. Nó đã nằm trong code:
 
-- [`LodFocus`](../../src-tauri/src/core/simulation_lod.rs:51) mang vị trí camera của người quan sát.
-  [`SharedLodFocus`](../../src-tauri/src/core/simulation_lod.rs:81) để luồng lệnh Tauri ghi, và
-  [`sync_lod_focus_system`](../../src-tauri/src/core/simulation_lod.rs:98) chép nó vào world mỗi tick.
-- [`tier_at`](../../src-tauri/src/core/simulation_lod.rs:180) phân agent thành `Hot` / `Warm` / `Cold`
+- [`LodFocus`](../../src-tauri/src/core/simulation_lod.rs) mang vị trí camera của người quan sát.
+  [`SharedLodFocus`](../../src-tauri/src/core/simulation_lod.rs) để luồng lệnh Tauri ghi, và
+  [`sync_lod_focus_system`](../../src-tauri/src/core/simulation_lod.rs) chép nó vào world mỗi tick.
+- [`tier_at`](../../src-tauri/src/core/simulation_lod.rs) phân agent thành `Hot` / `Warm` / `Cold`
   theo khoảng cách tới focus đó, và
-  [`should_infer`](../../src-tauri/src/core/simulation_lod.rs:165) quyết định agent có được suy nghĩ
+  [`should_infer`](../../src-tauri/src/core/simulation_lod.rs) quyết định agent có được suy nghĩ
   trong tick này không.
-- Test [`cold_agents_stop_asking_entirely`](../../src-tauri/tests/simulation_lod_tests.rs:167) chốt
+- Test [`cold_agents_stop_asking_entirely`](../../src-tauri/tests/simulation_lod_tests.rs) chốt
   rằng agent `Cold` **thật sự không suy nghĩ** — đây là chủ đích, đó chính là khoản tiết kiệm.
 
 Ghép lại: **chỗ người chơi nhìn quyết định con nào được suy nghĩ.** Đây là hiệu ứng quan sát viên,
@@ -39,7 +39,7 @@ Cần phân biệt hai tính chất thường bị gộp làm một:
 
 | | Định nghĩa | LOD hiện tại |
 |---|---|---|
-| **Tái lập được** | Cùng đầu vào ⇒ cùng quỹ đạo | **Có** — [`tiering_is_reproducible`](../../src-tauri/tests/simulation_lod_tests.rs:266); tiering là hàm thuần của `(focus, entity_index, tick)`, không clock, không RNG |
+| **Tái lập được** | Cùng đầu vào ⇒ cùng quỹ đạo | **Có** — [`tiering_is_reproducible`](../../src-tauri/tests/simulation_lod_tests.rs); tiering là hàm thuần của `(focus, entity_index, tick)`, không clock, không RNG |
 | **Không nhiễu** | Bật/tắt không đổi quỹ đạo | **Không** — và không thể có, vì `Cold` không nghĩ là chủ đích |
 
 Hôm nay run nghiên cứu vẫn sạch, nhưng chỉ nhờ một chi tiết: `LodFocus::default()` là
@@ -68,7 +68,7 @@ ledger), [`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md).
 - **Hot loop cấm cấp phát heap.** Ghi lại dấu vết người quan sát không được cấp phát trong tick path
   (test khẳng định `allocs == 0`).
 - **Tương thích ngược schema.** Manifest cũ và JSON thiếu key phải nạp được nguyên vẹn — đúng cách
-  [`exotic_interventions`](../../src-tauri/src/core/experiment.rs:1029) đã làm với `#[serde(default)]`.
+  [`exotic_interventions`](../../src-tauri/src/core/experiment.rs) đã làm với `#[serde(default)]`.
 - **Không sinh ra thế giới thứ ba.** Dự án đã có vết nứt headless/live; giải pháp không được thêm một
   nhánh nữa.
 
@@ -97,7 +97,7 @@ Một binary cho trải nghiệm, một cho thí nghiệm.
 
 Người quan sát vẫn nhập vai đầy đủ, nhưng mọi tác động của họ — kể cả **ánh nhìn** — đi qua đúng
 những đường ống mà can thiệp khí hậu đã đi: khai báo trong manifest, cấp `CauseId`, ghi vào
-[`CausalLedger`](../../src-tauri/crates/anima-domain/src/causal.rs:49), và tái lập được từ bản ghi.
+[`CausalLedger`](../../src-tauri/crates/anima-domain/src/causal.rs), và tái lập được từ bản ghi.
 
 - **Ưu**: giữ được cả hai mục tiêu; tận dụng hạ tầng đã có; biến "người chơi làm nhiễu" từ ô nhiễm
   thành **dữ liệu**.
@@ -120,7 +120,7 @@ Chọn **Phương án C**, gồm bốn phần.
 
 ### C1 — Ba chính sách quan sát, khai báo trong manifest
 
-Thêm vào [`ExperimentManifest`](../../src-tauri/src/core/experiment.rs:1010), với `#[serde(default)]`
+Thêm vào [`ExperimentManifest`](../../src-tauri/src/core/experiment.rs), với `#[serde(default)]`
 để manifest cũ nạp nguyên vẹn:
 
 ```rust
@@ -145,12 +145,12 @@ Ranh giới then chốt nằm giữa `Spectate` và `Inhabit`, không nằm gi�
 - **`Inhabit` được phép làm mọi thứ**, với điều kiện mọi thứ đó nằm trong bản ghi.
 
 `ObserverPolicy` đi vào
-[`ExperimentManifest::fingerprint()`](../../src-tauri/src/core/experiment.rs:1252) — nó là đầu vào
+[`ExperimentManifest::fingerprint()`](../../src-tauri/src/core/experiment.rs) — nó là đầu vào
 **có nghĩa**, nên nó phải lật fingerprint đúng như AE-S03 lật khi một luật đổi. Hệ quả cố ý: một run
 có người nhập vai mang **danh tính khác**, không phải phiên bản nhiễm của cùng một danh tính.
 
 Nhưng nó **không** được chạm vào
-[`WorldLawSet::fingerprint()`](../../src-tauri/src/core/experiment.rs:350). Đây là cái bẫy gần nhất
+[`WorldLawSet::fingerprint()`](../../src-tauri/src/core/experiment.rs). Đây là cái bẫy gần nhất
 của ADR này: người quan sát trông giống một điều kiện của thế giới, và nhét họ vào law set thì code
 vẫn chạy, số vẫn hữu hạn. Nhưng [`ADR-0002`](ADR-0002-world-laws-and-exotic-energy.md) (ER01) buộc
 `WorldLawSet` bất biến trong một run và một nhánh checkpoint **không bao giờ** đổi law fingerprint —
@@ -192,21 +192,21 @@ một nguồn phân kỳ ngầm.
 > **Người quan sát không được ghi thẳng vào world state.**
 
 Hành động nhập vai tạo ra một lệnh đi qua đúng cái seam mà
-[`InterventionQueue`](../../src-tauri/crates/anima-domain/src/intervention.rs:162) đã dùng, và thay
+[`InterventionQueue`](../../src-tauri/crates/anima-domain/src/intervention.rs) đã dùng, và thay
 đổi kết quả được ghi bằng
-[`CausalLedger::record`](../../src-tauri/crates/anima-domain/src/causal.rs:67) với `cause_id` của
+[`CausalLedger::record`](../../src-tauri/crates/anima-domain/src/causal.rs) với `cause_id` của
 người quan sát. Vì `record` đã có quy tắc "cause của parent luôn thắng", cả chuỗi hệ quả phía sau tự
 động thừa kế gốc — và
-[`trace_to_root`](../../src-tauri/crates/anima-domain/src/causal.rs:115) trả lời được:
+[`trace_to_root`](../../src-tauri/crates/anima-domain/src/causal.rs) trả lời được:
 
 > Đàn thú này tuyệt chủng vì một con người đã đi qua ở tick 40 231.
 
 `ObserverAction` là **enum riêng, không nhồi vào**
-[`InterventionKind`](../../src-tauri/crates/anima-domain/src/intervention.rs:86).
+[`InterventionKind`](../../src-tauri/crates/anima-domain/src/intervention.rs).
 `InterventionKind` có hình dạng *vùng + cường độ + đường cong*, hợp với forcing khí hậu và hoàn toàn
 không hợp với "tôi vừa ăn một quả". Nơi một hành động **thật sự** mang hình dạng vùng (đốt một khu
 rừng), nó hạ xuống thành một `InterventionCommand` bình thường và dùng lại
-[`validate_intervention`](../../src-tauri/src/core/experiment.rs:924). Hai kênh, một `CauseId`
+[`validate_intervention`](../../src-tauri/src/core/experiment.rs). Hai kênh, một `CauseId`
 namespace, một ledger.
 
 `CAUSE_BACKGROUND = 0` giữ nguyên nghĩa; người quan sát nhận id từ dải riêng để một hiệu ứng do người
@@ -219,7 +219,7 @@ Tiến hóa cần hàng vạn thế hệ; một phiên chơi có 40 phút. Quy t
 > **Tua nhanh là render ít khung hình hơn trên cùng số tick, không phải bỏ tick.**
 
 Bỏ tick không phải tua nhanh — đó là một thế giới khác.
-[`SimClock::fires(tick, period)`](../../src-tauri/crates/anima-domain/src/sim_clock.rs:65) đã thuần
+[`SimClock::fires(tick, period)`](../../src-tauri/crates/anima-domain/src/sim_clock.rs) đã thuần
 theo tick, nên nhịp trình chiếu tách được khỏi nhịp mô phỏng mà không đụng vào quỹ đạo. Hệ số tua đi
 vào trace header (nó đổi *khi nào* người chơi có mặt để tác động), không đi vào lịch trình tick.
 
