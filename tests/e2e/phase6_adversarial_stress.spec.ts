@@ -95,7 +95,7 @@ test.describe('Phase 6 E2E - Challenger Adversarial & Stress Tests', () => {
     });
 
     // Navigate to local Vite dev server
-    await page.goto('http://localhost:5173', { waitUntil: 'load' });
+    await page.goto('/', { waitUntil: 'load' });
   });
 
   test('Adversarial E2E: Stable under corrupted/non-numeric telemetry formats', async ({ page }) => {

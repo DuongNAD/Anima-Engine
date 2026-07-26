@@ -99,7 +99,7 @@ test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
     });
 
     // Navigate to local Vite dev server
-    await page.goto('http://localhost:5173', { waitUntil: 'load' });
+    await page.goto('/', { waitUntil: 'load' });
   });
 
   test('Adversarial E2E: Stable under rapid projection switching', async ({ page }) => {

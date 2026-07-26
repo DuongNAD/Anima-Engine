@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import { requireBackendOrSkip } from './backend-gate';
 
 let tauriProcess: any = null;
 let spawnError: any = null;
@@ -40,19 +41,10 @@ test.afterAll(() => {
 });
 
 test('Phase 4 E2E: lineage graph tree and chronicle alerts', async ({ page }) => {
-  if (spawnError) {
-    console.warn(`[E2E WARNING] Tauri process failed to spawn: ${spawnError.message || spawnError}. Skipping.`);
-    test.skip();
-    return;
-  }
-
-  try {
-    await page.goto('http://localhost:5173', { timeout: 5000 });
-  } catch (error: any) {
-    console.warn(`[E2E WARNING] Failed to connect to dev server on port 5173. Skipping.`);
-    test.skip();
-    return;
-  }
+  if (!requireBackendOrSkip(spawnError, 'phase4_e2e')) return;
+  // global-setup already proved this server is up and is Anima, so a navigation failure here
+  // is a real failure and must not be softened into a skip.
+  await page.goto('/', { timeout: 15000 });
 
   try {
     // 1. Assert App title

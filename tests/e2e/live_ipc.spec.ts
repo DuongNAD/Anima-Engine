@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import { requireBackendOrSkip } from './backend-gate';
 
 let tauriProcess: any = null;
 let spawnError: any = null;
@@ -45,20 +46,12 @@ test.afterAll(() => {
 
 test('F1 & F2 E2E: IPC connection and real-time status retrieval from backend', async ({ page }) => {
   // 1. Skip gracefully if spawn failed
-  if (spawnError) {
-    console.warn(`[E2E WARNING] Tauri backend process failed to spawn: ${spawnError.message || spawnError}. Skipping E2E test gracefully.`);
-    test.skip();
-    return;
-  }
+  if (!requireBackendOrSkip(spawnError, 'live_ipc')) return;
 
   // 2. Navigate to Vite dev server port 5173 with a safety timeout
-  try {
-    await page.goto('http://localhost:5173', { timeout: 5000 });
-  } catch (error: any) {
-    console.warn(`[E2E WARNING] Failed to connect to port 5173: ${error.message || error}. Skipping E2E test gracefully.`);
-    test.skip();
-    return;
-  }
+  // global-setup already proved this server is up and is Anima, so a navigation failure here
+  // is a real failure and must not be softened into a skip.
+  await page.goto('/', { timeout: 15000 });
 
   // 3. Verify heading and handle port conflicts/mismatches gracefully
   try {

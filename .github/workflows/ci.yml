@@ -196,6 +196,17 @@ jobs:
       # at the root, no step here, and their Playwright config started no dev server, so each spec
       # hit its own `catch` and called `test.skip()`. They drive the UI through a page-level Tauri
       # IPC stub, so a Rust release build is not needed — `webServer` + a warm-up navigation is.
+      #
+      # The suite now starts its own server on port 5177 (not 5173) with `reuseExistingServer:
+      # false`, and `global-setup.ts` refuses to run unless the served page is actually Anima. That
+      # is not hypothetical: on 2026-07-27 port 5173 on the development machine was held by an
+      # unrelated project's Vite server, and the old config would have adopted it and reported the
+      # mismatch as skips.
+      #
+      # Five specs still skip here because they spawn `target/release/anima-engine`, which this job
+      # does not build. The skip is deliberate and now names itself. To make it a hard failure —
+      # do this if a release-build step is ever added above — set ANIMA_E2E_REQUIRE_BACKEND=1 on the
+      # step below. Do NOT set it without that build step; it will fail every run.
       - name: Install Playwright browsers
         if: ${{ !cancelled() }}
         run: npx playwright install --with-deps chromium
