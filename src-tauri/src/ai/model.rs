@@ -34,10 +34,38 @@ fn wgpu_survives_one_forward_pass(
     device: &burn_wgpu::WgpuDevice,
     input_dim: usize,
 ) {
-    let data = Data::new(vec![0.0f32; input_dim], Shape::new([1, input_dim]));
-    let input = Tensor::<WgpuBackend, 2>::from_data(data, device);
-    let (actor, _) = model.forward(input);
+    materialize_params(model, device, input_dim);
+}
+
+/// Run one forward pass so every [`burn::module::Param`] resolves its lazy initializer **here**,
+/// on the constructing thread, before the model can be shared.
+///
+/// # Why this is a soundness requirement, not a warm-up
+///
+/// `linear_from_parts` builds parameters with `Param::uninitialized`, which stores a `OnceCell<T>`
+/// plus a closure and fills the cell on first `val()`. That is deliberate — eagerly uploading every
+/// layer at construction pushed `SimulationEngine::start` past the point the stress tests observe a
+/// first tick — but it means a freshly built model carries **unsynchronised interior mutability**.
+///
+/// `BrainModel` is then handed out as a Bevy resource, and Bevy runs `Res<T>` readers in parallel.
+/// Two systems first-touching the same parameter at the same time would race on that `OnceCell`,
+/// and `unsafe impl Sync` would let it compile. Draining the laziness before the value escapes the
+/// constructor is what makes the cell write-once-then-read-only, which is the invariant the
+/// `unsafe impl` at the bottom of this file actually depends on.
+///
+/// `into_data` is load-bearing: it synchronises and copies back to the host, so the work is really
+/// executed rather than merely queued.
+fn materialize_params<B: Backend>(
+    model: &ActorCriticModel<B>,
+    device: &B::Device,
+    input_dim: usize,
+) {
+    let data: Data<B::FloatElem, 2> =
+        Data::new(vec![0.0f32; input_dim], Shape::new([1, input_dim])).convert();
+    let input = Tensor::<B, 2>::from_data(data, device);
+    let (actor, critic) = model.forward(input);
     let _ = actor.into_data();
+    let _ = critic.into_data();
 }
 
 #[derive(Module, Debug)]
@@ -357,6 +385,48 @@ pub struct BrainModel {
     pub action_dim: usize,
 }
 
+// SAFETY: these are the only two `unsafe` blocks in the backend, and they used to carry no argument
+// at all. The argument is below. It was checked against burn 0.13.2 on 2026-07-27 and it is
+// **version-specific** — re-derive it on any burn upgrade.
+//
+// ## Why the auto traits do not apply
+//
+// Not because of `WgpuDevice`, which is the obvious suspect and is innocent. Replacing these impls
+// with a `T: Send + Sync` static assertion produced the real reason, on **both** backends:
+//
+//     `std::cell::OnceCell<Tensor<NdArray, 2>>` cannot be shared between threads safely
+//     `dyn Fn(&WgpuDevice, bool) -> Tensor<..., 2> + Send` cannot be shared between threads safely
+//
+// burn's `Param<T>` is `{ state: OnceCell<T>, initialization: Option<RwLock<Option<Uninitialized<T>>>> }`.
+// It is `!Sync` because of the `OnceCell` and the `+ Send`-but-not-`+ Sync` initializer closure.
+// So it is `Sync`, not `Send`, that fails, and it fails on the CPU path too — this was never a
+// GPU-only concern.
+//
+// ## Why sharing is nonetheless sound here
+//
+// The hazard a `OnceCell` presents is *concurrent first write*. `BrainModel` is inserted as a Bevy
+// resource and Bevy runs `Res<T>` readers in parallel, so two systems first-touching a parameter
+// simultaneously would be a genuine data race.
+//
+// That cannot happen because every constructor of this type drains the laziness before the value
+// escapes: `new` and `new_seeded` both call `materialize_params` (GPU path via
+// `wgpu_survives_one_forward_pass`), which forces a full forward pass and `into_data` on the
+// constructing thread. After that every `OnceCell` is populated, and a populated `OnceCell` is only
+// ever read — `Param::val()` takes `&self` and cannot clear it. Read-only shared access to
+// immutable data is safe regardless of the `Sync` bound.
+//
+// This was not true before 2026-07-27: only the wgpu path forced a pass, so the CPU path handed out
+// a model with empty cells and the impls below were covering a real latent race.
+//
+// ## What must stay true
+//
+// 1. Every path that constructs a `BrainModel` calls `materialize_params` before returning it.
+//    `a_freshly_built_model_has_no_lazy_parameters_left` is the gate.
+// 2. Nothing mutates parameters through a shared `&BrainModel`. In-place learning goes through
+//    `&mut` (`hrrl_learning_system`), which excludes concurrent readers by borrow.
+// 3. On a burn upgrade, re-run the static assertion in that test: if `Param` becomes `Sync`, delete
+//    these impls rather than keeping them, because a redundant `unsafe impl` silences the compiler
+//    the day the bound is genuinely lost.
 unsafe impl Send for BrainModel {}
 unsafe impl Sync for BrainModel {}
 
@@ -438,6 +508,9 @@ impl BrainModel {
             input_dim, hidden_dim, action_dim, &weights, &device,
         )
         .expect("weights were built for exactly this architecture");
+        // The CPU path needs this for the same reason the GPU path does, and only the GPU path had
+        // it: draining lazy `Param` initialization here is what makes `unsafe impl Sync` sound.
+        materialize_params(&model, &device, input_dim);
         Self {
             backend: BrainModelBackend::NdArray(model, device),
             input_dim,
@@ -482,6 +555,7 @@ impl BrainModel {
         let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::new(
             input_dim, hidden_dim, action_dim, &device,
         );
+        materialize_params(&model, &device, input_dim);
         Self {
             backend: BrainModelBackend::NdArray(model, device),
             input_dim,
@@ -999,6 +1073,90 @@ pub fn hrrl_learning_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Requirement 1 of the `unsafe impl Send/Sync` proof above, made checkable.
+    ///
+    /// The soundness of sharing a `BrainModel` rests on every parameter's lazy `OnceCell` having
+    /// been filled on the constructing thread. burn 0.13 exposes no way to *ask* a `Param` whether
+    /// it is initialized, so this scans the source instead — the same idiom `sim_determinism_tests`
+    /// uses to keep `thread_rng()` out. It is not elegant; it is the only thing that fails when a
+    /// future constructor forgets, which is exactly the mistake that made the CPU path unsound for
+    /// as long as it did.
+    #[test]
+    fn every_brain_model_constructor_materializes_its_parameters() {
+        let whole = include_str!("model.rs");
+
+        // Production code only. Without this cut the scan matches its OWN search string a few lines
+        // below and reports a construction site inside this test — which is exactly what happened
+        // the first time it ran.
+        let src = whole
+            .split_once("\n#[cfg(test)]")
+            .map(|(before, _)| before)
+            .expect("this file has a test module");
+
+        // Each place a `BrainModel` is produced with a backend in it.
+        let sites: Vec<usize> = src
+            .match_indices("backend: BrainModelBackend::")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            sites.len(),
+            4,
+            "expected exactly the four known construction sites (new/new_seeded x wgpu/ndarray); \
+             found {}. A new one needs a materialize_params call, not a bigger number here.",
+            sites.len()
+        );
+
+        for site in sites {
+            // Look back over the enclosing construction for a materialization call. The window is
+            // generous because the wgpu paths route through `wgpu_survives_one_forward_pass`.
+            let start = site.saturating_sub(1400);
+            let window = &src[start..site];
+            assert!(
+                window.contains("materialize_params(")
+                    || window.contains("wgpu_survives_one_forward_pass("),
+                "a BrainModel is constructed at byte {site} without draining lazy Param \
+                 initialization first. See the SAFETY note on `unsafe impl Send for BrainModel`: \
+                 an unmaterialized OnceCell shared across Bevy's parallel `Res<T>` readers is a \
+                 data race that `unsafe impl Sync` will happily compile."
+            );
+        }
+
+        // Negative control: the scan can fail. If this ever matches, the search string drifted and
+        // the loop above has been vacuously passing.
+        assert!(
+            !src.contains("backend: BrainModelBackendThatDoesNotExist::"),
+            "control string should never match"
+        );
+    }
+
+    /// A shared `&BrainModel` must survive being held by many threads at once — the shape Bevy's
+    /// parallel `Res<T>` scheduling creates.
+    ///
+    /// Deliberately modest about what it proves: a data race is non-deterministic, so a green run
+    /// here is **not** evidence of soundness and must not be cited as such. The deterministic gate
+    /// is `every_brain_model_constructor_materializes_its_parameters` above; this one only catches
+    /// the blunt failure, a model that cannot cross a thread boundary at all.
+    #[test]
+    fn a_model_can_be_shared_across_threads() {
+        let model = std::sync::Arc::new(BrainModel::new_seeded(15, 64, 4, 7));
+        assert_eq!((model.input_dim, model.action_dim), (15, 4));
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let m = std::sync::Arc::clone(&model);
+                std::thread::spawn(move || (m.input_dim, m.action_dim))
+            })
+            .collect();
+
+        for h in handles {
+            assert_eq!(
+                h.join()
+                    .expect("no thread may panic holding a shared model"),
+                (15, 4)
+            );
+        }
+    }
 
     #[test]
     fn transpose_reorders_output_major_into_burn_order() {
