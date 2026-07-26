@@ -242,7 +242,7 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 | ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất | Trạng thái |
 |---|---|---|---|---|
 | OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
-| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ⬜ |
+| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ✅ **XONG 2026-07-26** — 13 + 6 test; **chưa nối vào tracker sống** |
 | OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ⬜ |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
@@ -304,6 +304,43 @@ kèm hướng dẫn cài, và nửa Rust của gate vẫn chạy.
 **Chưa nối vào IPC.** `to_newick` hiện là hàm thư viện, chưa có lệnh Tauri nào gọi. Đó là việc riêng
 và cần cập nhật hợp đồng IPC ở `PROJECT.md`; không gộp vào đây.
 
+#### OSS-071 — đã ship phần thuật toán (2026-07-26)
+
+[`src-tauri/src/evolution/simplify.rs`](../../src-tauri/src/evolution/simplify.rs) +
+[`tests/lineage_simplify_tests.rs`](../../src-tauri/tests/lineage_simplify_tests.rs) (13 test) và 6
+unit test. Hai bước, và **bước hai mới là bước chặn được bộ nhớ**:
+
+1. **Prune** — bỏ node không có hậu duệ nào trong tập sample (thường là quần thể sống).
+2. **Nén đường đơn** — node không phải sample, đúng 1 cha và 1 con thì bị nối tắt.
+
+**Bước 1 một mình không đủ**, và điều đó được biến thành phép đo chứ không phải lời khẳng định:
+tổ tiên của quần thể sống vẫn kéo về tận genesis, nên prune chỉ bỏ nhánh tuyệt chủng và giữ nguyên
+mọi thân cây. Test `pruning_without_compression_would_not_have_been_enough` đo cả hai và đòi chênh
+> 3×. Trên cây nhị phân sâu 10 (2.047 node, 16 cá thể sống): còn **31 node** = 16 sample + 15 điểm
+rẽ nhánh, đúng cận `2·samples`.
+
+**Chỗ suýt sai âm thầm, và là lý do `SimplifiedEdge` không có `relation_type`:**
+`get_mutations_count` trong `commands/evolution.rs` **đếm cạnh `Mutate` dọc đường tổ tiên** để ra con
+số đột biến hiển thị trên UI. Gộp 5 cạnh `Mutate` thành 1 cạnh `Mutate` là **giữ đúng kiểu mà làm số
+đếm thành 1 thay vì 5** — hữu hạn, hợp lý, sai gấp năm. Nên cạnh mang `events`/`mutations`/
+`crossovers`, và là **kiểu riêng** chứ không mở rộng `LineageRelation` (đã persist vào save state và
+Neo4j — không nhét khái niệm phân tích vào định dạng lưu trữ).
+
+Hai chỗ **từ chối nén** vì cùng lý do đó: node crossover (2 cha — nối tắt phải chọn một và vứt cái
+kia), và hình thoi (nén sẽ gộp hai đường tổ tiên khác nhau thành một cạnh rồi cộng số đếm như thể
+chúng nối tiếp).
+
+**Kiểm chứng bằng OSS-070, đúng như DoD nêu.** `newick.rs` được tách thêm `to_newick_from` nhận cặp
+(cha, con), để một lineage đã simplify xuất được Newick **mà không ai phải bịa ra một
+`relation_type`** — `to_newick` nay là wrapper mỏng nên hai đường không thể lệch. Test
+`the_simplified_lineage_is_still_a_tree_a_newick_parser_would_accept` dùng nó để chốt kết quả vẫn
+không chu trình, không cạnh mồ côi, không đảo generation.
+
+**Chưa nối vào tracker sống.** `simplify` là hàm thuần trả về một *giá trị*; chưa gì thay thế bộ nhớ
+của `InMemoryLineageTracker`, nên bộ nhớ thực tế **chưa giảm**. Bước đó cần một chính sách về *khi
+nào* chạy và ai cung cấp danh sách cá thể sống, cộng tương tác với `load_state`/Neo4j — việc riêng,
+không gộp vào đây.
+
 **Thứ tự là bắt buộc, không phải gợi ý:** không có MRCA thì không có gì để xuất ra một cây có
 nghĩa, nên OSS-073 không thể đi trước OSS-072.
 
@@ -339,21 +376,22 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 
 ## Ba hành động tiếp theo
 
-> **Cập nhật 2026-07-26 (lần 3).** ~~OSS-010 Criterion~~ và ~~OSS-070 serializer Newick~~ đều đã
-> **xong** trong cùng ngày, nên danh sách tụt xuống hai bậc. Danh sách 2026-07-24 gốc giữ ở cuối làm
-> bản ghi.
+> **Cập nhật 2026-07-26 (lần 4).** ~~OSS-010 Criterion~~, ~~OSS-070 Newick~~ và ~~OSS-071 thuật toán
+> `simplify`~~ đều đã **xong** trong cùng ngày. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.
 
-1. **OSS-071 — `simplify()` kiểu tskit.** Nay đã mở khoá: OSS-070 cho một cách **kiểm chứng kết quả**
-   của nó. Đây là mục đóng đường tăng bộ nhớ không trần trong `lineage.rs`, và bất biến cần giữ là
-   *quan hệ tổ tiên của phần giữ lại không đổi* — chính là thứ so được bằng cách xuất Newick trước và
-   sau khi prune.
-2. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
+1. **Nối `simplify` vào tracker sống.** Đây là chỗ bộ nhớ **thực sự** giảm — hiện `simplify` mới là
+   một hàm thuần trả về giá trị, chưa gì thay thế bộ nhớ của `InMemoryLineageTracker`, nên đường
+   tăng không trần trong `lineage.rs` **vẫn còn nguyên**. Cần một chính sách về *khi nào* chạy, ai
+   cung cấp danh sách cá thể sống, và tương tác với `load_state`/Neo4j.
+2. **OSS-072 — truy vấn MRCA.** Phụ thuộc OSS-071, nay đã mở khoá. Đây là thứ mở đường cho OSS-073
+   (giao thức đo "line of descent" kiểu Avida), và là thứ hiện **không trả lời được** câu "hai cá
+   thể này rẽ nhánh ở đâu".
+3. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
    tạo `NOTICE` cho các thành phần permissive đang được phân phối.
-3. **OSS-011 (`tracing`).** Mục OS1 còn lại. Không còn nằm trên đường tới hạn P0 — nó là
-   observability kỹ thuật, không phải bằng chứng khoa học.
 
-Hai việc nhỏ còn treo từ OSS-070, cả hai là quyết định của người duy trì chứ không phải công việc
-tiếp nối: cài một parser phylogenetics để chạy chân cuối của DoD, và nối `to_newick` vào IPC.
+Ngoài ba việc trên: **OSS-011 (`tracing`)** vẫn mở nhưng đã bị hạ ưu tiên — nó là observability kỹ
+thuật, không sinh bằng chứng khoa học nào. Và **nối `to_newick`/`simplify` vào IPC** cần một thay đổi
+hợp đồng ở `PROJECT.md`.
 
 Một mục **không** nằm trong ba việc trên nhưng đã mở: đối chứng con số ~4,2 ms trong doc comment của
 `ResourceField::REGROWTH_STRIDE`, thứ mà bench không tái lập được (~0,36 ms). Nó là finding, chưa

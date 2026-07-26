@@ -7,7 +7,62 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] OSS-070 — xuất Newick, và cái test bắt được (2026-07-26)
+# ⏪ [MỚI NHẤT] OSS-071 — `simplify()`, và chỗ nó suýt nói dối (2026-07-26)
+
+`src-tauri/src/evolution/simplify.rs` + `tests/lineage_simplify_tests.rs` (13 test) + 6 unit test.
+`726 pass · 0 fail`, 73 target 0 rỗng, fmt + clippy sạch, docs link 412/0 gãy.
+
+## Bước hai mới là bước có tác dụng
+
+1. **Prune** — bỏ node không có hậu duệ nào trong tập sample.
+2. **Nén đường đơn** — node không phải sample, đúng 1 cha 1 con thì nối tắt.
+
+**Bước 1 một mình KHÔNG chặn được bộ nhớ**, và điều đó được biến thành phép đo chứ không phải lời
+khẳng định: tổ tiên của quần thể sống vẫn kéo về genesis, nên prune chỉ bỏ nhánh tuyệt chủng và giữ
+nguyên mọi thân cây. `pruning_without_compression_would_not_have_been_enough` đo cả hai và đòi chênh
+> 3×. Cây nhị phân sâu 10 (2.047 node, 16 cá thể sống) → còn **31 node** = 16 sample + 15 điểm rẽ
+nhánh, đúng cận `2·samples`.
+
+## Chỗ suýt sai âm thầm
+
+`get_mutations_count` trong `commands/evolution.rs` **đếm cạnh `Mutate` dọc đường tổ tiên** để ra con
+số đột biến trên UI. Gộp 5 cạnh `Mutate` thành 1 cạnh `Mutate` là **giữ đúng kiểu mà làm số đếm
+thành 1 thay vì 5** — hữu hạn, hợp lý, sai gấp năm.
+
+Nên `SimplifiedEdge` mang `events`/`mutations`/`crossovers` thay vì `relation_type`, và là **kiểu
+riêng** chứ không mở rộng `LineageRelation` — cái đó đã persist vào save state và Neo4j; không nhét
+khái niệm chỉ dùng để phân tích vào một định dạng lưu trữ.
+
+Hai chỗ **từ chối nén** cùng lý do: node crossover (2 cha — nối tắt phải chọn một, vứt cái kia), và
+hình thoi (nén sẽ gộp hai đường tổ tiên khác nhau thành một cạnh rồi cộng số đếm như thể nối tiếp).
+
+## Kiểm chứng bằng OSS-070
+
+Tách thêm `to_newick_from` nhận cặp (cha, con), để lineage đã simplify xuất được Newick **mà không
+ai phải bịa `relation_type`**; `to_newick` nay là wrapper mỏng nên hai đường không lệch được. Test
+`the_simplified_lineage_is_still_a_tree_a_newick_parser_would_accept` chốt kết quả vẫn không chu
+trình, không cạnh mồ côi, không đảo generation.
+
+Control âm: `the_ancestry_check_can_actually_fail` cắt một cạnh khỏi kết quả và đòi phép so tổ tiên
+phải đỏ — nếu không, `ancestry_among_retained_nodes_is_unchanged` có thể đang xanh vì phép so rỗng
+chứ không vì bất biến đúng.
+
+## Chưa xong, có lý do
+
+**Chưa nối vào tracker sống**, nên **bộ nhớ thực tế chưa giảm**. `simplify` là hàm thuần trả về một
+*giá trị*. Bước thay thế bộ nhớ của `InMemoryLineageTracker` cần chính sách về khi nào chạy, ai cung
+cấp danh sách cá thể sống, và tương tác với `load_state`/Neo4j.
+
+## Một ghi chú vận hành
+
+Lần chạy full suite đầu tiên đỏ với `rustc.exe` tự crash (`STATUS_STACK_BUFFER_OVERRUN`) và báo
+thiếu rlib của chính `anima_engine_lib`. **Không phải lỗi code**: `Get-Process cargo` cho thấy hai
+tiến trình của phiên khác đang ghi cùng `target/`. Chờ chúng xong rồi chạy lại: 726 pass, 0 fail.
+Trước khi kết luận một lỗi build kỳ lạ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
+
+---
+
+# ⏪ OSS-070 — xuất Newick, và cái test bắt được (2026-07-26)
 
 `src-tauri/src/evolution/newick.rs` + `tests/newick_export_tests.rs` (14 test) + 8 unit test.
 `706 pass · 0 fail · 4 ignored`, 72 target 0 rỗng, fmt + clippy sạch. **0 dependency mới** — Newick
