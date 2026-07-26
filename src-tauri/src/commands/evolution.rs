@@ -69,6 +69,17 @@ pub fn update_evolution_settings(
     {
         return Err("Invalid settings".to_string());
     }
+    // ADR-0004 C3. Recorded *before* the write, so a trace cannot show an effect whose cause is
+    // missing — the reverse order would leave a window where the world had already changed and
+    // nothing said who changed it.
+    state.engine.observer_actions.push(
+        crate::core::observer::ObserverAction::EvolutionSettingsChanged {
+            mutation_rate: settings.mutation_rate,
+            selection_bias: settings.selection_bias,
+            grid_resolution: settings.grid_resolution,
+        },
+    );
+
     let mut evolution_settings = state
         .evolution_settings
         .lock()
@@ -85,6 +96,13 @@ pub fn toggle_evolution(
     let running = &state.evolution_running;
     let was_running = running.load(std::sync::atomic::Ordering::SeqCst);
     let new_running = !was_running;
+    // Recorded before the store, for the same reason as above.
+    state
+        .engine
+        .observer_actions
+        .push(crate::core::observer::ObserverAction::EvolutionToggled {
+            running: new_running,
+        });
     running.store(new_running, std::sync::atomic::Ordering::SeqCst);
     Ok(new_running)
 }

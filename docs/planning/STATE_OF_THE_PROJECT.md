@@ -323,9 +323,24 @@ và không nói gì — nhưng đó là đánh đổi, không phải bản sửa
   `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2` nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá
   đó cho dữ liệu chưa mode nào tiêu thụ là sai thứ tự. Khi làm, phải vào **cả** `SavedSimulationState`
   lẫn `world_checksum` một lượt (§8) — lưu ý khi *ghi* thì trace là đầu ra và không thuộc checksum,
-  khi *phát lại* thì phần còn lại là đầu vào và thuộc. `ObserverSample` vẫn chưa mang `actions` vì
-  engine chưa có hành động nhập vai nào — một `Vec` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm
-  thầm" mà ADR này tồn tại để tránh.
+  khi *phát lại* thì phần còn lại là đầu vào và thuộc.
+
+  **Hành động nhập vai: đã ghi nhận (2026-07-26), chưa cưỡng chế.** Câu cũ ở đây nói engine chưa có
+  hành động nhập vai nào. Sai — chúng đã tồn tại từ trước, chỉ không được gọi bằng tên đó. Bốn lệnh
+  IPC ghi thẳng vào thế giới đang chạy mà không khai báo: `update_evolution_settings`,
+  `toggle_evolution`, `trigger_migration`, `set_sharding_config`. Và chúng **mạnh hơn camera** —
+  camera đổi *con nào được suy nghĩ*, còn cái đầu tiên đổi **luật mà chọn lọc vận hành dưới đó**,
+  giữa run. Nghĩa là `DETERMINISM_CONTRACT` §2 chưa đủ ở nguồn thứ năm.
+
+  Đã ship: `ObserverAction` + `SharedObserverActions` + `drain_observer_actions_system` + buffer
+  `actions` riêng trong `ObserverTrace` (đếm tràn riêng, vì mất một hành động là lỗ **provenance**
+  còn mất một mẫu focus chỉ mất độ trung thực replay). Gate:
+  [`tests/observer_action_tests.rs`](../../src-tauri/tests/observer_action_tests.rs) (11), gồm một
+  test **quét mã nguồn** chặn bốn lệnh đó lặng lẽ quay lại đường cũ — kèm control âm chứng minh scan
+  có thể fail.
+
+  Còn lại là **cưỡng chế**: một lệnh vẫn có thể với qua queue mà ghi thẳng shared state. Việc đó cần
+  ledger có mặt trong world sống, tức §3.3/§3.6.
 
 #### 3.15 Phả hệ: bộ nhớ không có trần, và không truy được dòng dõi
 

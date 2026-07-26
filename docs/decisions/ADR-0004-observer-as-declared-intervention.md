@@ -281,9 +281,34 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 
    Ba điều chỉnh so với C2/C3 khi va vào code thật:
 
-   - **`ObserverSample` không mang `actions`.** Chưa có hành động nhập vai nào trong engine — người
-     quan sát mới chỉ có camera. Một `Vec<ObserverAction>` rỗng vĩnh viễn là đúng thứ "chạy được và
-     sai âm thầm" mà ADR này tồn tại để tránh. Nó vào cùng lúc với hành động thật.
+   - ~~**`ObserverSample` không mang `actions`.** Chưa có hành động nhập vai nào trong engine.~~
+     **Câu này sai, và biết được điều đó đã mở rộng phạm vi ADR (sửa 2026-07-26).** Hành động nhập vai
+     **đã tồn tại từ trước** — chỉ không được gọi bằng tên đó. Bốn lệnh IPC ghi thẳng vào thế giới đang
+     chạy, không khai báo, không ghi lại, không quy trách:
+
+     | Lệnh | Ghi gì |
+     |---|---|
+     | `update_evolution_settings` | `mutation_rate`, `selection_bias` vào settings mà evo thread đọc |
+     | `toggle_evolution` | bật/tắt chọn lọc |
+     | `trigger_migration` | agent rời sang shard khác |
+     | `set_sharding_config` | cách thế giới được phân mảnh |
+
+     Và chúng **mạnh hơn camera**. Camera đổi *con nào được suy nghĩ*; cái đầu tiên đổi **luật mà chọn
+     lọc vận hành dưới đó**, giữa run, trên một quần thể đang sống dưới luật cũ. Nghĩa là §2 của
+     `DETERMINISM_CONTRACT` chưa đủ ở nguồn thứ năm — còn ít nhất bốn nguồn nữa, và nặng hơn.
+
+     Đã ship (2026-07-26): `ObserverAction` + `SharedObserverActions` (handle qua biên thread, cùng
+     hình dạng `SharedLodFocus` và cùng lý do) + `drain_observer_actions_system` + buffer `actions`
+     trong `ObserverTrace`, đếm riêng phần tràn vì mất một hành động là **lỗ provenance**, còn mất một
+     mẫu focus chỉ mất độ trung thực khi replay. Gate:
+     [`tests/observer_action_tests.rs`](../../src-tauri/tests/observer_action_tests.rs) (11).
+
+     **Chỉ ghi nhận, chưa cưỡng chế.** Bốn lệnh vẫn làm đúng việc cũ; thay đổi này khiến hệ quả của
+     chúng **quy trách được**, chứ chưa khiến seam thành bắt buộc. Một lệnh vẫn có thể với qua queue
+     mà ghi thẳng shared state — đúng điều cả bốn từng làm. Cưỡng chế cần ledger có mặt trong world
+     sống, tức G2. Trong lúc chờ, thứ chặn một lệnh lặng lẽ quay lại đường cũ là **một test quét mã
+     nguồn**, theo khuôn `sim_determinism_tests` dùng để chặn `thread_rng()` — kèm control âm chứng
+     minh scan đó có thể fail.
    - **`CausalLedger` chưa có trong world Bevy sống** — nó là đồ headless cho tới khi G2 hội tụ. Nên
      provenance được chứng minh ở chỗ ledger thật sự sống, còn ở live thì O2 giao bản ghi và cause id.
      Gate `observer_writes_go_through_the_intervention_seam` vì thế là **n/a**, không phải pending:
@@ -337,7 +362,10 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 | Correctness | `a_spectating_camera_leaves_nothing_for_the_world_to_answer_for` | Focus bị từ chối được thay **trọn** `LodFocus::default()`, không chỉ tắt `enabled` | ✅ 2026-07-26 |
 | Performance | `the_observer_trace_does_not_allocate_on_the_tick_path` (3 pha: camera chạy, camera đứng, buffer đầy) | `allocs == 0` cả ba | ✅ 2026-07-26 |
 | Performance | `a_full_hour_of_trace_fits_a_declared_budget` | 216 000 mẫu × `size_of::<ObserverSample>()` ≤ 8 MiB | ✅ 2026-07-26 |
-| Correctness | `observer_writes_go_through_the_intervention_seam` | Không đường ghi world state nào khác từ observer | **n/a cho tới khi có hành động nhập vai** — xem ghi chú dưới |
+| Provenance | `a_queued_action_reaches_the_trace_rooted_at_the_observer` | Hành động do lệnh IPC xếp hàng tới được trace, đóng dấu tick, cắm rễ `CAUSE_OBSERVER` | ✅ 2026-07-26 |
+| Provenance | `every_world_mutating_command_still_records_an_observer_action` (quét mã nguồn) + control âm `the_source_scan_can_actually_fail` | Cả bốn lệnh ghi-vào-thế-giới vẫn ghi nhận; và scan **có thể** fail | ✅ 2026-07-26 |
+| Provenance | `effects_of_an_observer_action_trace_back_to_the_observer` + control âm | `root_cause` trả `CAUSE_OBSERVER` qua chuỗi hệ quả | ✅ 2026-07-26 |
+| Correctness | `observer_writes_go_through_the_intervention_seam` (**enforcement**) | Observer **không thể** ghi world bằng đường khác | pending — chờ ledger vào world sống (G2) |
 | License/security | Không dependency mới | n/a | ✅ 2026-07-26 |
 
 **Đính chính một điều bảng này từng hứa sai.** Bản đầu ghi `spectate_matches_absent` là "hai tiến trình
