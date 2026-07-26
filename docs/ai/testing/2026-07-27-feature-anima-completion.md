@@ -61,7 +61,63 @@ The failure is misleading rather than merely slow because every file pays for a 
 dump attached. Fixed by pinning `maxWorkers: 4` in `tests/vitest.config.ts`. **No assertion was
 relaxed** — all 243 still run.
 
-## 3. Gates after the change
+## 0. Final acceptance run — the committed state at `c5e3c30`+, measured 2026-07-27
+
+Every row run fresh, in this worktree, after the last code change. §3 below is the first session's
+mid-pass measurement and is kept for its red-first evidence, not as the current state.
+
+| Gate | Command | Result | Exit |
+|---|---|---|---|
+| Backend test | `cargo test --features desktop --no-fail-fast` | **775 passed · 0 failed · 4 ignored**, 78 result lines | 0 |
+| Empty targets | `node scripts/check_test_targets.mjs cargo-test-output.txt` | **76 targets, 0 empty** | 0 |
+| Backend format | `cargo fmt --check` | clean | 0 |
+| Clippy desktop | `cargo clippy --all-targets --features desktop -- -D warnings` | clean | 0 |
+| Clippy headless | `cargo clippy --all-targets --no-default-features -- -D warnings` | clean | 0 |
+| Rust advisories | `cargo audit` | 773 crate deps scanned, no unignored advisory | 0 |
+| Generated bindings | `cargo test --lib export_bindings` | **16 passed**, incl. the new `LegacyImportListing` | 0 |
+| npm advisories (root) | `npm audit --audit-level=high` | 0 vulnerabilities | 0 |
+| npm advisories (tests) | `npm audit --audit-level=high --prefix tests` | 0 vulnerabilities | 0 |
+| ESLint | `npm run lint` | **0 errors, 472 warnings** | 0 |
+| ESLint ratchet | `node scripts/eslint_ratchet.mjs` | 0 errors, 472 warnings (baseline lowered 483 → 472) | 0 |
+| Frontend unit (`src/`) | `npm run test` | **14 files, 107 passed** | 0 |
+| Frontend integration (`tests/`) | `npm run test:frontend` | **29 files, 264 passed, 1 skipped** | 0 |
+| Build | `npm run build` | pass (`tsc` strict + 2 Vite entries) | 0 |
+| CSP compatibility | `npm run check:csp` | 2 shipped HTML files, 0 external origins, 0 inline script bodies | 0 |
+| Bundle budget + split | `npm run check:bundle` | 1700.3 / 2000 KiB; **`index.html` 3D renderer: no**, `landscape.html`: yes | 0 |
+| NOTICE | `npm run check:notice` | up to date — **419 crates + 45 npm packages** | 0 |
+| SBOM | `npm run check:sbom` | up to date — **464 components** (CycloneDX 1.5) | 0 |
+| Flora footprint | `npm run check:flora-footprint` | 7 solid types measured against real three, 0 drift | 0 |
+| Doc links | `node scripts/check_docs_links.mjs` | 436 links in 94 files, 0 broken | 0 |
+| E2E (browser) | `npm run test:e2e` | **17 passed · 0 failed · 0 skipped** | 0 |
+| E2E (real backend, required) | `ANIMA_E2E_REQUIRE_BACKEND=1 … real_backend.spec.ts` | **2 failed** — fails closed on both missing preconditions, as designed | 1 |
+| Canonical capture | `npm run capture:views` | **8 passed**, all eight PNGs written on hardware GL | 0 |
+| DevKit lint (feature) | `npx ai-devkit lint --feature anima-completion` | **All checks passed** (7 lifecycle docs) | 0 |
+| MCP — discover | `discover_map_artifacts` | `missingViewKinds: []` (was missing 5) | — |
+| MCP — validate | `validate_map_manifest animal-map.manifest.json` | **pass, 100/100, 0 critical/high**, 429 entities, against the *shipped* identity | — |
+| MCP — prepare | `prepare_team_review` | brief produced, "Missing canonical views: none" | — |
+| MCP — inspect | `inspect_map_views` (all 8) | all eight returned and reviewed | — |
+
+Movement against the first session's numbers: backend 765 → **775**; `src/` 90 → **107**; `tests/`
+250 → **264**; E2E 9 passed/5 skipped → **17 passed/0 skipped**; ESLint 483 → **472**; npm
+attribution 8 → **45**; canonical views 0 → **8**.
+
+### 0.1 Red-first evidence for this session's changes
+
+| Change | How it was proven red | Observed |
+|---|---|---|
+| Flora clearance policy | ran the new suite before the module existed | 14 tests failed to resolve the import; then the spawn assertion was checked against the *old* `findSpawn` at 256/512/1024/2048 to find where the defect actually lives — only 2048 |
+| `check:flora-footprint` | perturbed `Acacia` 0.95 → 0.85 | **failed**, naming the drift 0.1 > 1e-3 |
+| Canonical capture | ran it | **three defects**: HUD composited into every frame; `spawn` framed open ocean; camera Y lifted to 1596 over a 1200-wide map |
+| Worldgen ordering | ran `validate_map_manifest` against the shipped world | **3 high** ecology findings; 0 after the fix |
+| `BrainModel` encapsulation | made the field private and ran clippy | **failed** — `phase5_burn_wgpu_fallback` was reaching into it |
+| `unsafe impl Send` removal | `assert_send::<BrainModel>()` | **compiled**, so the impl was redundant |
+| Lineage `Clone` fabrication | fed a plan edge with no original relation | typed error; positive control proves the happy path still carries recorded types |
+| Tauri IPC mock | ran the suite against invented payload shapes | app crashed into its error boundary — `Cannot read properties of undefined (reading '0,0')` |
+| `parameter_delta` optionality | switched to the generated type | `tsc` error TS18048 — the hand-written mirror had claimed non-optional |
+| SBOM determinism | compared `localeCompare` order to a plain sort | **mismatch**; the sort was the bug |
+| Bundle route split | measured `/` and `/landscape.html` in a real browser | `/` fetches 17 JS files, **none** the three.js chunk |
+
+## 3. Gates after the change (first session, mid-pass)
 
 | Gate | Command | Result | Exit |
 |---|---|---|---|
@@ -145,9 +201,12 @@ Stated plainly so no reader over-reads the green above.
 | Claim | Status | Why |
 |---|---|---|
 | The app runs under the new CSP | **unverified** | Needs the Tauri webview. CLAUDE.md forbids running the full backend on this machine (it has crashed it). `npm run check:csp` validates *shipped artifacts against the declared policy*, not the running app. A human `npm run tauri:dev` is the missing step. |
-| The eight canonical map views | **not captured** | No capture pipeline exists. All eight are `captured: false` and no image is claimed; the gate enforces `captured:true ⇒ file exists`. Fabricating PNGs to green a check is the failure this pass exists to remove. |
-| Visual map quality | **not reviewable** | The only images in the repo are `public/base_map.png` (a hand-drawn illustration, not a render of the generated world — `PixiViewport.tsx:980` calls it a fallback that was replaced) and `screenshot.png` (a night-time orbit capture, mostly black). Per `AGENTS.md` rule 5, map completion is **not** claimed. |
-| Live-Bevy experiment readiness | **out of scope** | §3.3/§3.6 of the status doc; multi-session. CLAUDE.md's prohibition stays in force. |
+| The eight canonical map views | ~~not captured~~ → **captured** | Superseded. `npm run capture:views` renders all eight from the real scene on hardware GL; the manifest carries each PNG's SHA-256 and the evidence test verifies them. What remains external is *re-capturing*, which needs a GPU (0.27 fps on SwiftShader against 46.7) — a machine requirement, not an absent pipeline. |
+| Visual map quality | ~~not reviewable~~ → **reviewed** | Superseded. Eight canonical renders of the shipped world were inspected through the MCP in the mandatory order, and the review found real defects (§0.1). The deterministic gate is pass 100/100, 0 critical/high, against the *shipped* identity rather than a stand-in. |
+| Real-backend E2E | **not run** | Needs a release build and a `tauri-driver` session; neither exists here. `real_backend.spec.ts` fails closed under `ANIMA_E2E_REQUIRE_BACKEND=1` rather than skipping, so the gap is loud. |
+| Licence texts packaged | **not done** | `NOTICE` attributes 464 components and says so itself. An inventory is a prerequisite for discharging the MIT/BSD obligation, not the discharge. Release-blocking, owner/legal. |
+| ESLint at zero | **not reached** | 472 warnings remain, and the 483 → 472 movement came from deleting files rather than fixing warnings. No rule relaxed, no file excluded, baseline lowered to lock in what was gained. |
+| Live-Bevy experiment readiness | **out of scope** | §3.3/§3.6 of the status doc; multi-session. CLAUDE.md's prohibition stays in force, and this pass did not approach it. |
 | Per-agent evolved brains as default | **blocked on a decision** | DEC-1 in the planning doc. |
 
 ## 7. Findings raised during this pass that were not in the brief
