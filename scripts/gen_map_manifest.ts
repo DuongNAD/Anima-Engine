@@ -211,7 +211,6 @@ for (let k = 0; k < world.floraCount; k += floraStride) {
 world.lakeBasins.forEach((lk, idx) => {
   const cx = Math.round((lk.minX + lk.maxX) / 2);
   const cy = Math.round((lk.minY + lk.maxY) / 2);
-  const ci = Math.min(SIZE * SIZE - 1, Math.max(0, cy * SIZE + cx));
   entities.push({
     id: `lake-${idx}`,
     kind: 'water',

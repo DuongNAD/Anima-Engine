@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
-import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
@@ -154,7 +153,7 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
     const cleanupSpies: any[] = [];
 
     // Mock the listen function specifically for this test
-    vi.mocked(listen).mockImplementation(async (eventName: string, callback: any) => {
+    vi.mocked(listen).mockImplementation(async (eventName: string, _callback: any) => {
       const spy = vi.fn(() => {});
       cleanupSpies.push({ eventName, spy });
       return spy;
@@ -172,7 +171,7 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
 
     // Check if the cleanup functions returned by listen were called.
     expect(cleanupSpies.length).toBeGreaterThan(0);
-    cleanupSpies.forEach(({ eventName, spy }) => {
+    cleanupSpies.forEach(({ spy }) => {
       expect(spy).toHaveBeenCalled(); // Confirms the listener was CLEANED UP!
     });
   });

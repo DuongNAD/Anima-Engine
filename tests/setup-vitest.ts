@@ -3,15 +3,12 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import * as THREE from 'three';
 import {
   mockSimulationStatus as originalStatus,
-  mockEvolutionSettings as originalEvolutionSettings,
   mockMapElitesGridState as originalMapElitesGridState,
   EvolutionSettings,
   mockPheromoneGridState,
   mockRaycastTelemetry,
   mockLineageGraph,
   mockChronicleHistory,
-  mockChronicleEvent,
-  mockMigrationPayload,
   mockEnvironmentalState
 } from './mocks/mock_ipc_payloads';
 
@@ -116,7 +113,6 @@ Object.defineProperty(HTMLElement.prototype, 'geometry', {
 const listeners = new Map<string, Array<(event: any) => void>>();
 
 let mockSimulationStatus = { ...originalStatus };
-let mockEvolutionSettings = { ...originalEvolutionSettings };
 let mockMapElitesGridState = JSON.parse(JSON.stringify(originalMapElitesGridState));
 let mockEvolutionRunning = false;
 let mockLineageState = { ...mockLineageGraph };
@@ -154,7 +150,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   listeners.clear();
   mockSimulationStatus = { ...originalStatus };
-  mockEvolutionSettings = { ...originalEvolutionSettings };
   mockMapElitesGridState = JSON.parse(JSON.stringify(originalMapElitesGridState));
   mockEvolutionRunning = false;
   mockLineageState = { ...mockLineageGraph };
@@ -181,7 +176,9 @@ beforeEach(() => {
         ) {
           throw new Error("Invalid settings: mutation_rate must be in [0.0, 1.0] and selection_bias must be positive.");
         }
-        mockEvolutionSettings = { ...settings };
+        // The validated settings are deliberately not stored: no command in this mock reads them
+        // back, so a variable holding them was written and never observed. The behaviour under
+        // test is the validation above, which still throws.
         return true;
       }
       case 'toggle_evolution':

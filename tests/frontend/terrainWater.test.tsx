@@ -169,7 +169,7 @@ describe('Terrain and Water Component Tests', () => {
     it('should initialize geometry with heights deformed correctly based on elevation data', () => {
       const width = 64;
       const height = 64;
-      const { container } = render(<Terrain width={width} height={height} />);
+      render(<Terrain width={width} height={height} />);
 
       // Retrieve high-detail bufferGeometry
       const highMesh = screen.getByTestId('terrain-mesh');
@@ -183,7 +183,6 @@ describe('Terrain and Water Component Tests', () => {
       expect(colorAttr).toBeDefined();
 
       const positions = posAttr.array;
-      const colors = colorAttr.array;
 
       // Height logic check: y coordinate is index i*3 + 1
       // Let's verify coordinates for (x=0, y=0) which is index 0

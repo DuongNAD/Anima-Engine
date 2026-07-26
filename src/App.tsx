@@ -280,19 +280,19 @@ export function App() {
       try {
         const grid = await invoke<PheromoneGridState>("get_pheromone_grid");
         setPheromoneGrid(grid);
-      } catch (err) {
+      } catch {
         // Ignore
       }
       try {
         const raycasts = await invoke<RaycastTelemetry[]>("get_active_raycasts");
         setActiveRaycasts(raycasts);
-      } catch (err) {
+      } catch {
         // Ignore
       }
       try {
         const env = await invoke<any>("get_environmental_elements");
         if (env) setEnvironmentalState(env);
-      } catch (err) {
+      } catch {
         // Ignore
       }
     };

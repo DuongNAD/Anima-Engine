@@ -1,7 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
-import * as PIXI from 'pixi.js';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
@@ -70,7 +69,7 @@ import PixiViewport from '../../src/PixiViewport';
 
 describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   const setupDefaultInvokeMock = (overrides: Record<string, any> = {}) => {
-    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+    vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
           throw overrides[cmd];

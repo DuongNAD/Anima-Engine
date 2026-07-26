@@ -13,7 +13,6 @@ import PositionalAudio from '../../src/components/Landscape/PositionalAudio';
 import CameraControls from '../../src/components/Landscape/CameraControls';
 import { audioManager } from '../../src/components/Landscape/utils/audioManager';
 import {
-  generateTerrainData,
   determineBiome,
   generateTerrain,
   mulberry32,

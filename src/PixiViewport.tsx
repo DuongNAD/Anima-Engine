@@ -83,7 +83,7 @@ function generateTerrainCanvas(terrainMap: TerrainMapState): HTMLCanvasElement {
   let imgDataLarge: ImageData;
   try {
     imgDataLarge = ctxLarge.getImageData(0, 0, targetWidth, targetHeight);
-  } catch (e) {
+  } catch {
     return canvasSmall;
   }
 
@@ -1005,17 +1005,17 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       try {
         const env = await invoke<any>('get_environmental_elements');
         if (active && env) environmentalStateRef.current = env;
-      } catch (err) {}
+      } catch {}
 
       try {
         const grid = await invoke<any>('get_pheromone_grid');
         if (active && grid) pheromoneGridRef.current = grid;
-      } catch (err) {}
+      } catch {}
 
       try {
         const raycasts = await invoke<any>('get_active_raycasts');
         if (active && raycasts) raycastsRef.current = raycasts;
-      } catch (err) {}
+      } catch {}
 
       try {
         const uTick = await listen<any>('simulation-tick', (event) => {
@@ -1090,7 +1090,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
               loaded = true;
               break; // Stop retrying if successful
             }
-          } catch (err) {
+          } catch {
             // Backend may not be ready yet (or Texture unavailable) — wait and retry.
             await new Promise(resolve => setTimeout(resolve, 100));
           }

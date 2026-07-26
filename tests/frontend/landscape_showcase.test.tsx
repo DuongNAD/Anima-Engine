@@ -9,10 +9,9 @@ import Water from '../../src/components/Landscape/Water';
 import Sky from '../../src/components/Landscape/Sky';
 import Vegetation from '../../src/components/Landscape/Vegetation';
 import Weather from '../../src/components/Landscape/Weather';
-import PositionalAudio from '../../src/components/Landscape/PositionalAudio';
 import CameraControls from '../../src/components/Landscape/CameraControls';
 import { audioManager } from '../../src/components/Landscape/utils/audioManager';
-import { generateTerrainData, getBiomeColor, determineBiome, generateTerrain, generateFloraPlacements } from '../../src/components/Landscape/utils/terrainGenerator';
+import { generateTerrainData, determineBiome, generateTerrain, generateFloraPlacements } from '../../src/components/Landscape/utils/terrainGenerator';
 
 // Mock Canvas and useFrame for R3F compatibility
 let frameCallbacks: Array<(state: any) => void> = [];

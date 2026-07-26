@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import React from 'react';
-import * as PIXI from 'pixi.js';
 
 // Mock pixi.js classes and systems
 const mockGraphicsMethods = {
@@ -121,7 +120,6 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
     // Biome 0: DeepOcean (0x0a1450) -> R=10, G=20, B=80
     // Biome 2: Beach (0xdcd38c) -> R=220, G=210, B=140
     // Biome 10: Snow (0xf0f0f5) -> R=240, G=240, B=245
-    const imgData = mockContext.createImageData.mock.results[0].value;
     
     // Restore getContext
     HTMLCanvasElement.prototype.getContext = originalGetContext;

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import React, { useEffect, useRef } from 'react';
-import * as PIXI from 'pixi.js';
+import React, {} from 'react';
 
 // 1. Mock pixi.js
 const mockGraphicsMethods = {
@@ -67,7 +66,7 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
   });
 
   it('should mount successfully and handle empty/null agent telemetry payloads without errors', async () => {
-    const { container } = render(
+    render(
       <PixiViewport segments={null} raycasts={null} pheromoneGrid={null} />
     );
 

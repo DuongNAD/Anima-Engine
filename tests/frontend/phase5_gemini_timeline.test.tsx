@@ -3,7 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import React from 'react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 
 // Mock Tauri Core
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {

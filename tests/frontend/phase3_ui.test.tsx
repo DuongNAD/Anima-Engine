@@ -2,11 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 import {
   mockRaycastTelemetry,
   mockPheromoneGridState,
-  mockCombatEvent,
   mockSegmentStates,
   RaycastTelemetry,
   PheromoneGridState,
