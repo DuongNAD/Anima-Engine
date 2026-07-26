@@ -18,7 +18,7 @@ Code: `src-tauri/src/core/determinism.rs`. Gate: `src-tauri/tests/determinism_ga
 biến đó thành một lời hứa khác và lớn hơn nhiều. `snapshot::BuildProvenance` ghi target và profile
 chính xác để một sai lệch giữa hai máy có thể **quy trách nhiệm** thay vì gây bối rối.
 
-## 2. Bốn nguồn rò rỉ thế giới bên ngoài
+## 2. Năm nguồn rò rỉ thế giới bên ngoài
 
 | Nguồn | Rò rỉ |
 |---|---|
@@ -26,11 +26,43 @@ chính xác để một sai lệch giữa hai máy có thể **quy trách nhiệ
 | `SystemTime::now()` — chronicle timestamp | đồng hồ treo tường |
 | Gemini (`evolution::meta_ai`) | mạng, một secret, và output của một model từ xa |
 | **Thứ tự chạy hệ thống của Bevy** | lịch trình của executor đa luồng |
+| **Camera của người quan sát** (`LodFocus`) | chỗ một con người đang nhìn |
 
 Nguồn thứ tư dễ bị bỏ sót nhất vì trông như chi tiết triển khai chứ không phải *đầu vào*. Bevy đảm
 bảo hai hệ thống tranh chấp không chạy cùng lúc, nhưng **không** đảm bảo cái nào chạy trước. Đây
 không phải lo lắng lý thuyết: G1.1 phát hiện một residual năng lượng **đổi dấu giữa các lần chạy** vì
 nó, và gate của G1.2 phải tự khai báo thứ tự mới có được checksum ổn định.
+
+### 2.1 Nguồn thứ năm: camera (ADR-0004)
+
+Thêm vào 2026-07-26. Nó bị bỏ sót lâu nhất vì không trông giống một nguồn ngẫu nhiên nào cả — nhưng
+`tier_at` phân agent theo khoảng cách tới `LodFocus`, và một agent `Cold` **không suy nghĩ**
+(`cold_agents_stop_asking_entirely`). Nên **chỗ người dùng nhìn quyết định con nào được suy nghĩ**.
+
+Khác bốn nguồn trên ở một điểm quan trọng: nó **tái lập được nhưng có nhiễu**. Tiering là hàm thuần
+của `(focus, entity_index, tick)` — không clock, không RNG — nên cùng một đường camera luôn cho cùng
+kết quả. Cái nó không làm được là *không đổi gì*, và không thể làm được: `Cold` bỏ suy nghĩ chính là
+khoản tiết kiệm. Gộp "tái lập được" với "không nhiễu" là cái bẫy ở đây.
+
+Vì thế nó không bị tắt như ba nguồn đầu, mà bị **khai báo**
+([`ObserverPolicy`](../../src-tauri/src/core/observer.rs)):
+
+| Policy | Camera có tier không | Quỹ đạo |
+|---|---|---|
+| `Absent` | không | đường headless |
+| `Spectate` | không | **bắt buộc bằng** `Absent` — gate `spectate_matches_absent` |
+| `Inhabit` | có | một **treatment khác**, không phải bản nhiễm của cùng một run |
+
+Hai điều dễ sai, cả hai đã có test giữ:
+
+- **Thiếu resource `ObserverPolicy` ≠ `Absent`.** Thiếu = chưa ai khai báo ⇒ tuân theo camera, giữ
+  nguyên hành vi tiền-ADR. `Absent` là khai báo ngược lại ⇒ cấm camera.
+- **Từ chối focus là thay trọn `LodFocus::default()`, không chỉ tắt `enabled`.** Giữ lại `center` sẽ
+  để nguyên một đường camera sống bên trong world cho bất kỳ system nào sau này đọc phải.
+
+Một run `Inhabit` được ghi lại qua [`ObserverTrace`](../../src-tauri/src/core/observer.rs) và cắm rễ
+ở `CAUSE_OBSERVER`. Bản ghi đó **chưa** đủ để replay: replay cần đường live tất định, tức mục §5 dưới
+đây. Provenance thì không phải chờ.
 
 ## 3. Công tắc
 

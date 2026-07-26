@@ -19,6 +19,25 @@ pub type CauseId = u32;
 /// Reserved cause id for changes with no explicit intervention behind them (baseline dynamics).
 pub const CAUSE_BACKGROUND: CauseId = 0;
 
+/// Reserved cause id for a live human observer (ADR-0004 O2).
+///
+/// At the **top** of the range on purpose. Scenario ids are author-assigned by hand from the bottom
+/// (`cause_id: 1`, `2`, …) with no allocator anywhere, so a constant picked from down there could
+/// silently come to mean two different things in one ledger — the observer's doing and a scenario
+/// forcing, sharing a root. `u32::MAX` is somewhere no hand-written manifest lands by accident, and
+/// [`ExperimentManifest::validate`](../../../src/core/experiment.rs) refuses a scenario intervention
+/// that claims it anyway rather than trusting that.
+pub const CAUSE_OBSERVER: CauseId = CauseId::MAX;
+
+/// Whether `id` belongs to the engine rather than to a scenario author.
+///
+/// Reserved ids carry meaning the ledger relies on: [`CAUSE_BACKGROUND`] means "no explicit cause"
+/// and [`CAUSE_OBSERVER`] means "a human did this". A scenario reusing either would make
+/// [`CausalLedger::root_cause`] answer a different question than the one asked.
+pub fn is_reserved_cause(id: CauseId) -> bool {
+    id == CAUSE_BACKGROUND || id == CAUSE_OBSERVER
+}
+
 /// Index of an [`EffectRecord`] in a [`CausalLedger`]. Equal to the record's position, so lookups
 /// are O(1) and stable across a run.
 pub type EffectId = u32;

@@ -1,6 +1,248 @@
 # Danh sách công việc & Kế hoạch tiếp theo (TODO)
 
-> ⬇️ Mục đang làm: **World Terrain Overhaul** (mới nhất: v19 spillway + WORLD_DESIGN ngay dưới). Phần "Mô hình Thỏ Papercraft" cũ được giữ lại ở cuối file như lưu trữ.
+> ⬇️ **Backlog ưu tiên và trạng thái đo được nay nằm ở
+> [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md)** — đó là tài liệu
+> một phiên mới đọc đầu tiên. File này giữ **nhật ký công việc** theo thứ tự thời gian ngược, để tra
+> cứu "việc đó đã làm khi nào và vì sao". Phần "Mô hình Thỏ Papercraft" cũ được giữ ở cuối file như lưu trữ.
+
+---
+
+# ⏪ [MỚI NHẤT] ADR-0004 O3 — phát lại người quan sát (cơ chế xong, tuyên bố phiên sống vẫn chặn) (2026-07-26)
+
+`668 pass · 0 fail · 71 target` (O2 là 662/70, tức **+6 test / +1 target**), clippy sạch, 318 link
+docs 0 gãy.
+
+## Đã làm
+
+`ObserverReplay` phát lại một trace thay cho camera sống. Hai thuộc tính đáng nói:
+
+- **Loại trừ, không phải ưu tiên.** Khi replay có mặt, `SharedLodFocus` bị bỏ qua hoàn toàn. Nếu chỉ
+  "ưu tiên trace", một `set_lod_focus` lạc từ UI ai đó quên đóng sẽ lái run trong khi trace vẫn được
+  ghi công — cách duy nhất một replay nói dối về thứ nó tái tạo. `a_live_camera_cannot_steer_a_replay`
+  chạy camera thù địch ngược chiều suốt run và kết quả không đổi.
+- **Nội suy được khai báo** đúng thứ C2 đòi: focus **giữ nguyên** giữa hai mẫu. Không phải xấp xỉ cho
+  tiện — vì `record` chỉ lưu khi giá trị đổi, giữ-nguyên tái dựng **đúng** tín hiệu gốc.
+
+Gate: `tests/observer_replay_tests.rs` (6), gồm control âm
+`replaying_a_different_trace_produces_a_different_session`.
+
+## Cái KHÔNG tuyên bố, và vì sao
+
+Gate `an_inhabited_run_replays_from_its_trace_without_a_human` vẫn **pending**. Nó đo quỹ đạo *thế
+giới sống*, mà physics/CPG chạy song song nên một run liền mạch còn không khớp chính nó
+(`DETERMINISM_CONTRACT` §5). Gate vừa viết tự khai báo thứ tự schedule và ghim **hệ con** — đúng phạm
+vi `SNAPSHOT_CONTRACT` §8 tự nhận. ADR-0004 tự dặn "không tuyên bố replay trước G2".
+
+## Hoãn có lý do, không phải quên
+
+Lưu trace vào save state cần bump `SCHEMA_VERSION` 4→5, mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`
+nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ là sai
+thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn
+`world_checksum` một lượt (§8).
+
+Ghi lại một phân biệt đáng giá khi tới lúc đó: **khi ghi, trace là đầu ra** và không lái thế giới nên
+không thuộc checksum; **khi phát lại, phần trace còn lại là đầu vào** và thuộc. Cùng một dữ liệu, hai
+vai trò tuỳ mode.
+
+---
+
+# 🧾 ADR-0004 O2 — ghi lại người quan sát, và cắm rễ hệ quả vào họ (2026-07-26)
+
+`662 pass · 0 fail · 70 target` (O1 là 647/68, tức **+15 test / +2 target**), clippy sạch, 318 link
+docs 0 gãy.
+
+## Đã làm
+
+- `ObserverTrace` ghi **focus hiệu lực** (sau policy, không phải cái UI xin), buffer cấp phát sẵn,
+  ghi-khi-đổi, và **đếm** mẫu tràn thay vì bỏ im lặng — một trace ngừng ghi trong im lặng đọc y hệt
+  một camera ngừng di chuyển.
+- `CAUSE_OBSERVER` ở **đỉnh** dải `CauseId` (scenario cấp tay từ dưới lên, không có bộ cấp phát nào),
+  cộng `is_reserved_cause`, cộng luật cấm manifest giành id đó.
+- App sống nay khai báo `Inhabit` thật thay vì "chưa khai báo". Hành vi không đổi — `Inhabit` là
+  policy duy nhất cho focus đi qua — nhưng hệ quả đã có gốc thay vì đọc như động lực nền.
+- `DETERMINISM_CONTRACT` §2 nay là **năm** nguồn rò rỉ, thêm §2.1 cho camera kèm bảng ba policy.
+- Gate: `observer_trace_tests` (6, có control âm) + `observer_trace_zero_alloc_tests` (1 test, 3 pha)
+  + 8 unit test mới.
+
+## Lỗ hổng thiết kế mà chính test bắt được
+
+O1 enforce policy bằng `enabled = false` nhưng **giữ nguyên `center`**. Nên dưới `Spectate`, toạ độ
+camera vẫn trôi vào world mỗi tick: trace đầy chuyển động thế giới chưa từng cảm nhận, và tệ hơn —
+một đường camera sống nằm sẵn trong world cho system sau này đọc phải, tái lập đúng cái nhiễu vừa
+cấm. Gate O1 không thấy vì nó chỉ đo *ai được suy nghĩ*, mà `tier_at` trả `Hot` khi `!enabled` bất kể
+`center`. **Sửa: từ chối focus là thay trọn `LodFocus::default()`.**
+
+## Ba điều chỉnh so với C2/C3 khi va vào code thật
+
+1. **`ObserverSample` không mang `actions`.** Engine chưa có hành động nhập vai nào. Một
+   `Vec<ObserverAction>` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm thầm".
+2. **`CausalLedger` chưa có trong world Bevy sống** (headless tới khi G2 hội tụ), nên provenance được
+   chứng minh ở chỗ ledger thật sự sống. Gate `observer_writes_go_through_the_intervention_seam` là
+   **n/a**, không phải pending — chưa có hành động nào để đi qua seam.
+3. **Một mâu thuẫn tự tạo, đã gỡ:** validate cấm intervention giành `CAUSE_OBSERVER`, nhưng C3 nói
+   hành động observer *hạ xuống thành* intervention mang đúng id đó. Phân biệt đúng: cấm manifest
+   **khai báo sẵn** (viết trước khi run bắt đầu ⇒ không thể do người gây ra lúc chạy), không cấm
+   intervention sinh **lúc chạy**.
+
+## Bẫy quy trình, tự vấp hai lần trong lượt này
+
+Phóng thẳng `clippy` + cả suite mà không `cargo check --all-targets` trước. Hai lỗi — thiếu import
+`InterventionKind`/`CauseId`, và fixture dùng `start_tick: 0` nên trượt khỏi cửa sổ `1..=run_ticks`
+(`experiment.rs:999` từ chối factor không bao giờ kích hoạt) — đều bắt được trong 20 giây bằng
+`cargo check`, thay vì mất hai vòng nhiều phút.
+
+Đáng chú ý: chính `ordinary_hand_written_cause_ids_are_still_accepted` cứu lượt này. Nếu chỉ có test
+"cấm CAUSE_OBSERVER", tôi đã tưởng luật hoạt động trong khi thực ra nó từ chối **mọi** manifest.
+
+## Còn lại
+
+**O3** (replay `Inhabit`, phụ thuộc §3.3/§3.6) và cùng với nó `TraceRef` vào `SNAPSHOT_CONTRACT`
+(cần bump schema + migration).
+
+---
+
+# 👁️ ADR-0004 accepted — O1: người quan sát thành chính sách được khai báo (2026-07-26)
+
+ADR-0004 được chấp nhận. **O1 đã ship**, đo được `647 pass · 0 fail · 68 target` (baseline 629/67,
+tức **+18 test / +1 target**, không hồi quy).
+
+## Đã làm
+
+- [`core/observer.rs`](src-tauri/src/core/observer.rs) — `ObserverPolicy` = `Absent` / `Spectate` /
+  `Inhabit { cause_id }`.
+- Enforcement ở [`sync_lod_focus_system`](src-tauri/src/core/simulation_lod.rs) — **một chỗ duy nhất**,
+  vì đó là một chỗ duy nhất camera chạm được vào world.
+- `ExperimentManifest.observer` với `#[serde(default)]`, vào fingerprint qua tag `0xF7`, và `validate`
+  từ chối `Inhabit` cắm rễ ở `CAUSE_BACKGROUND`.
+- Gate: [`tests/observer_policy_tests.rs`](src-tauri/tests/observer_policy_tests.rs) 7 pass +
+  11 unit test cho kiểu và manifest.
+
+## Hai chỗ phải lệch khỏi ADR khi va vào code thật — đã ghi vào ADR, không lặng lẽ
+
+1. **Enum ship cả ba biến thể, không phải hai như C1 viết.** LOD-bật là đường đang chạy thật
+   (`PixiViewport.tsx` gọi `set_lod_focus`), nên thiếu `Inhabit` sẽ khiến app sống không có chính sách
+   hợp lệ nào và LOD bị tắt câm. Ở O1 `Inhabit` **khai báo** nhiễu; **ghi lại** là O2.
+2. **Gate không phải checksum hai tiến trình như bảng bằng chứng ban đầu hứa.** Khuôn đó đo quỹ đạo
+   thế giới sống, mà đường live chưa tất định (`DETERMINISM_CONTRACT` §5) — dùng nó ở O1 sẽ tạo một
+   gate đỏ vì lý do không liên quan tới người quan sát. Thay bằng so **timeline "agent nào xin nghĩ ở
+   tick nào"** qua 40 tick với camera đi hết mọi band; so cả chuỗi chứ không so tổng.
+
+## Bẫy mới, đáng nhớ nhất của lượt này
+
+**Thiếu resource `ObserverPolicy` ≠ `Absent`.** Thiếu nghĩa là chưa ai khai báo ⇒ **tuân theo camera**
+(giữ nguyên hành vi cũ). `Absent` là khai báo ngược lại ⇒ **cấm** camera. Lẫn hai cái này sẽ âm thầm
+tắt LOD của app đang chạy và trông như một cải tiến an toàn.
+
+## Chưa làm, có chủ đích
+
+App sống vẫn ở trạng thái "chưa khai báo". Cho nó `Inhabit` cần một `CauseId` thật, mà cấp phát cause
+id thuộc về **O2** (nơi có ledger) — bịa một hằng số bây giờ có thể trùng id do scenario cấp.
+Hệ quả của ADR lên `DETERMINISM_CONTRACT` §2 (nguồn rò rỉ thứ năm: camera) và `SNAPSHOT_CONTRACT`
+cũng thuộc O2.
+
+---
+
+# 🧭 ADR-0004 + hoà giải tài liệu giữa các phiên (2026-07-26)
+
+Người dùng yêu cầu **kiểm tra các phiên khác xem có lệch hướng không**, rồi **cập nhật tài liệu**.
+
+## Kết luận kiểm tra: không có lệch hướng kỹ thuật
+
+Đối chiếu 4 nhánh, 6 PR và các phiên gần nhất với luật cứng trong CLAUDE.md và kế hoạch G0–G4:
+không phiên nào vi phạm hợp đồng nào. Lượt kiểm toán lúc 04:07 (`STATE_OF_THE_PROJECT.md`) là công
+việc tốt và các số của nó tự chạy lại được. Vấn đề tìm thấy là **vệ sinh quy trình và mâu thuẫn
+tài liệu**, không phải hướng đi.
+
+## Đã sửa trong lượt này
+
+- **Mới:** [`docs/decisions/ADR-0004`](docs/decisions/ADR-0004-observer-as-declared-intervention.md)
+  — người quan sát nhập vai là can thiệp được khai báo (`proposed`). Xuất phát từ một phát hiện:
+  `LodFocus` do camera lái **đã** là forcing lên thế giới (`cold_agents_stop_asking_entirely`) và
+  đang nằm ngoài mọi provenance. Đây là **nguồn rò rỉ thứ năm** bổ sung cho bốn nguồn ở
+  `DETERMINISM_CONTRACT` §2.
+- **`STATE_OF_THE_PROJECT.md` §3.3 và §3.6 là cùng một việc** (G2 task 1 / hội tụ AE4) nhưng bị xếp
+  ở hai bậc P0 và P1. Một phiên nhận §3.3 sẽ chạm tường ngay. Đã buộc hai mục vào nhau và ghi rõ
+  §3.6 thực chất là P0.
+- **Một việc, hai tên.** `DETERMINISM_CONTRACT` §5 và kế hoạch G0–G4 gọi đường khởi động live là
+  **G2**; tài liệu sống gọi là **§3.3**. Đã ghi chú chéo ở cả hai phía thay vì chọn một tên.
+- **`STATE_OF_THE_PROJECT.md` §3.8 (mới)** — hai ADR `proposed` giờ đều đang đỡ tải: ADR-0004 dựa
+  vào ER01 của ADR-0002, nên việc hoà giải ADR-0002 (§3.10) đã lên giá. Bảng P2 dời số 3.8→3.9…3.13→3.14.
+- **§4 thêm một bẫy đã xảy ra thật:** công việc chưa commit của phiên khác có thể đang nằm trên
+  nhánh của bạn — chạy `git status` + `gh pr list` trước khi commit.
+
+## Còn mở — cần người dùng quyết
+
+- **PR #6 đang lẫn phạm vi.** Toàn bộ tài liệu kiểm toán + ADR-0004 chưa commit, nằm trên
+  `fix/temp-path-collisions` — nhánh có PR #6 mở với tiêu đề chỉ nói về temp path. Cần tách sang
+  nhánh docs riêng trước khi push. Chưa tự commit vì đụng công việc chưa commit của phiên khác.
+- **ADR-0004 chờ quyết định.** Chưa đem hệ quả của nó vào contract nào, đúng kỷ luật `proposed`.
+
+---
+
+# 🔍 Kiểm toán toàn dự án + tài liệu bàn giao (2026-07-26)
+
+Người dùng yêu cầu **đánh giá dự án và chấm điểm**, rồi **cập nhật tài liệu + đề xuất việc cho phiên sau**.
+
+## Kiểm toán: chạy lại toàn bộ gate, không trích dẫn tài liệu
+
+Trên `main` tại `c0a3cff`, cây làm việc sạch. Mọi số dưới đây là **số đo trong ngày**:
+
+- `cargo test --features desktop --no-fail-fast` → **629 pass · 0 fail · 4 ignored**, 67 test binary,
+  **0 warning biên dịch**.
+- `check_test_targets.mjs` → 65 target, **0 target chạy rỗng**.
+- `cargo fmt --check` và `cargo clippy --all-targets --features desktop -- -D warnings` → **sạch cả hai**.
+- `npm run test` → 13 file · **90 pass**. `npm run test:frontend` → 26 file · **243 pass**, 1 skip.
+- `npm run lint` → **0 error**, 491 warning (ratchet baseline 491, giữ nguyên). `npm run build` → pass.
+- `check_docs_links.mjs` → 245 link, **0 gãy**.
+
+**Điểm: 8,0/10.** Kỹ thuật loại giỏi, sản phẩm loại khá.
+
+## Ba con số nói nhiều nhất về chất lượng
+
+- **5** `.unwrap()/.expect()` trong toàn bộ Rust *production* (con số thô 275 gần như nằm hết trong
+  `#[cfg(test)]`). Với 47,7k dòng thì đây là kỷ luật hiếm.
+- **2** khối `unsafe` trong cả backend — nhưng **cả hai đều thiếu `// SAFETY:`** (`ai/model.rs:360`,
+  `unsafe impl Send/Sync for BrainModel`, type này ôm `WgpuDevice`). Đây là 2/2, không phải 2 trên nhiều.
+- **3** marker `TODO/FIXME` trong mã nguồn. Không có vùng code bị bỏ hoang.
+
+## Khoảng cách thật của dự án — KHÔNG phải chất lượng, mà là bằng chứng trên đường mặc định
+
+1. **Não tiến hoá per-agent đang TẮT mặc định.** `BrainPolicy::default()` có `evolved: false` ⇒ một run
+   mặc định vẫn là **mọi agent dùng chung một `BrainModel`** — đúng gap mà `MAP_AND_ML_UPGRADE_RESEARCH.md`
+   gọi là lớn nhất. Máy móc đã xong và đã test (**11/12 gate EB pass**); nó chỉ đang tắt.
+   **Phát hiện đáng giá nhất của lượt kiểm toán:** gate còn lại **EB-S04** fail vì khởi tạo model dùng chung
+   đã đổi từ ngẫu nhiên sang **có seed** — tức fail vì một **cải tiến có chủ ý**, không phải hồi quy. Một gate
+   không thể pass bằng cách viết code đúng thì phải được **re-baseline tường minh**, và đó mới là việc cần
+   làm trước, không phải lật cờ.
+2. **Số hiệu năng là proxy.** `BENCHMARK_BASELINE.md` tự khai điều này (không chạy full backend vì đã crash
+   máy dev) ⇒ tuyên bố "60 FPS real-time" **chưa từng được đo**, và mọi quyết định về scale đang dựa trên
+   ước lượng.
+3. **Thế giới Bevy sống chưa experiment-ready.** Phần khoa học AE1–AE3 nằm ở `ReferenceEvolutionWorld`
+   **headless**. Lệnh cấm tuyên bố experiment-ready trong CLAUDE.md vẫn đang đúng.
+
+## Nợ nền tảng đã biết (không phải nợ bảo mật — advisory đã sạch và đã có gate)
+
+- `burn`/`wgpu` chưa gate được sau feature. **Blocker là hình dạng, không phải khối lượng:** `learn_handle`
+  (`simulation_loop.rs:182`) gán từ `if has_wgpu {…} else {…}` mà hai nhánh không `cfg` riêng được.
+- `tokio = { features = ["full"] }` vẫn vô điều kiện (`Cargo.toml:56`), dù hai hệ con cần nó đã nằm sau feature.
+- G2 gate #1 (một thay đổi luật đổi cả hai engine) còn dở — `anima-domain` đã tách, cần thêm workspace member.
+- Vòng đời thread: cần supervisor + cancellation token. **Đính chính bản ghi G2 cũ:** `inference_handle`
+  từng bị drop thì **nay đã được join** (`simulation_loop.rs:660` có ghi chú) — phần còn thiếu không phải cái handle đó.
+- Nợ framework: `burn` 0.13.2 (ghim, có lý do), `bevy_ecs` 0.13, React 18→19, `@react-three/fiber` 8→9.
+- 491 warning ESLint bị **đóng băng** ở baseline: ratchet chặn tăng nhưng không ép giảm.
+- ADR-0002 vẫn `proposed` dù AE1–AE3 đã ship ⇒ theo quy tắc 6 của chính sách tài liệu, phải **mở finding**,
+  không tự coi code là đúng.
+
+## Tài liệu đã cập nhật trong lượt này
+
+- **Mới:** [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md) — tài liệu sống,
+  tên ổn định: trạng thái đo được + bậc đạt được từng hệ con + backlog P0/P1/P2 kèm **điểm neo file:symbol**
+  và **định nghĩa hoàn thành** cho từng mục + bẫy đã biết + bộ lệnh xác minh đầy đủ.
+- `CLAUDE.md`: thêm mục **Start here** trỏ tới tài liệu trên. Ranh giới: CLAUDE.md giữ **luật không đổi giữa
+  các phiên**, STATE_OF_THE_PROJECT giữ **trạng thái đang đổi**.
+- `docs/planning/README.md`: thêm hàng "Bắt đầu ở đây".
+- `handoff.md`, `plan.md`: gắn nhãn **lịch sử** — chúng mô tả công việc Phase 1 / Phase 6 đã xong từ lâu và
+  đang trông như tài liệu hiện hành.
 
 ---
 

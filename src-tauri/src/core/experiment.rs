@@ -18,6 +18,7 @@
 
 use crate::core::exotic_energy::{ExoticEnergyLaw, ExoticIntervention, UnitId, EU_UNIT};
 use crate::core::intervention::{Curve, InterventionCommand, Region};
+use crate::core::observer::ObserverPolicy;
 use crate::core::sim_clock::RateBand;
 use crate::core::world_artifact::WorldIdentity;
 use serde::{Deserialize, Serialize};
@@ -111,6 +112,9 @@ pub enum ExperimentError {
     InvalidRegistry { reason: String },
     /// A runtime exotic-source forcing (AE-209) is malformed or cannot apply to this run.
     InvalidExoticIntervention { id: u32, reason: String },
+    /// The declared observer policy (ADR-0004) is malformed — e.g. an `Inhabit` that roots its
+    /// effects at the background cause, which would file a human's doing as baseline dynamics.
+    InvalidObserverPolicy { reason: String },
     /// A run was requested for a seed that is not in the manifest's declared seed set.
     SeedNotInManifest { seed: u64 },
     /// A checkpoint-fork treatment intervention could never be applied in the post-fork window
@@ -184,6 +188,9 @@ impl std::fmt::Display for ExperimentError {
             }
             ExperimentError::InvalidExoticIntervention { id, reason } => {
                 write!(f, "invalid exotic forcing {id}: {reason}")
+            }
+            ExperimentError::InvalidObserverPolicy { reason } => {
+                write!(f, "invalid observer policy: {reason}")
             }
             ExperimentError::SeedNotInManifest { seed } => {
                 write!(f, "seed {seed} is not in the manifest's seed set")
@@ -1027,6 +1034,16 @@ pub struct ExperimentManifest {
     /// Defaults to empty so existing manifests (and JSON without the key) keep working.
     #[serde(default)]
     pub exotic_interventions: Vec<ExoticIntervention>,
+    /// How an observer may relate to this run (ADR-0004). A **declared input**, so it changes the
+    /// manifest fingerprint — but never the world-law fingerprint, which stays immutable for the run
+    /// (ER01). That separation is what lets a checkpoint be forked to drop the observer.
+    ///
+    /// Defaults to [`ObserverPolicy::Absent`] so manifests written before ADR-0004 — and any JSON
+    /// without the key — load and behave exactly as they did. `MANIFEST_SCHEMA_VERSION` is
+    /// deliberately **not** bumped for the same reason: [`validate`](Self::validate) rejects any
+    /// version it does not equal, so a bump would turn an additive field into a breaking change.
+    #[serde(default)]
+    pub observer: ObserverPolicy,
 }
 
 impl ExperimentManifest {
@@ -1168,6 +1185,40 @@ impl ExperimentManifest {
             }
         }
 
+        // Observer policy (ADR-0004): well-formed, or refuse the manifest. An `Inhabit` rooted at
+        // the background cause is the failure worth catching here — it would run happily and file
+        // the observer's own effects as baseline dynamics, which is a lie the causal ledger would
+        // then repeat to everyone downstream.
+        if let Some(reason) = self.observer.rejection_reason() {
+            return Err(ExperimentError::InvalidObserverPolicy { reason });
+        }
+
+        // `CAUSE_OBSERVER` means "a human did this, live". An intervention **authored into a
+        // manifest** cannot be that by definition — the manifest was written before the run — so a
+        // declared one claiming that id would share a root with the observer's own effects and make
+        // `root_cause` answer a question nobody asked. Cause ids are hand-assigned with no allocator
+        // anywhere, so this is checked rather than assumed.
+        //
+        // This does **not** contradict ADR-0004 C3, which lowers a live observer action to an
+        // `InterventionCommand` carrying exactly this id. That one is built at runtime and never
+        // passes through here; the rule is about declared input, not about the id itself.
+        for cause_id in self
+            .interventions
+            .iter()
+            .map(|cmd| cmd.cause_id)
+            .chain(self.exotic_interventions.iter().map(|f| f.cause_id))
+        {
+            if cause_id == anima_domain::causal::CAUSE_OBSERVER {
+                return Err(ExperimentError::InvalidObserverPolicy {
+                    reason: format!(
+                        "a manifest-declared intervention claims cause id {cause_id}, reserved for \
+                         the live observer (ADR-0004); declared input cannot have been caused by a \
+                         human acting during the run — pick an id of your own"
+                    ),
+                });
+            }
+        }
+
         // Observables: bounded, unique, all present in the registry.
         if self.observable_ids.len() > MAX_OBSERVABLES {
             return Err(ExperimentError::ResourceLimit {
@@ -1303,6 +1354,23 @@ impl ExperimentManifest {
         c.tag(0xF5).u64(obs.len() as u64);
         for id in obs {
             c.str(&id);
+        }
+
+        // Observer policy (ADR-0004). All three must give different identities, including `Absent`
+        // vs `Spectate` — those two are required to produce the *same trajectory*, but they are
+        // different declarations about how the run was watched, and a run's identity records what
+        // was declared. `Inhabit` is a different treatment outright.
+        c.tag(0xF7);
+        match self.observer {
+            ObserverPolicy::Absent => {
+                c.tag(0x60);
+            }
+            ObserverPolicy::Spectate => {
+                c.tag(0x61);
+            }
+            ObserverPolicy::Inhabit { cause_id } => {
+                c.tag(0x62).u32(cause_id);
+            }
         }
         c.hash()
     }
@@ -1510,11 +1578,12 @@ mod tests {
         ])
     }
 
-    fn base_manifest() -> ExperimentManifest {
+    pub(super) fn base_manifest() -> ExperimentManifest {
         ExperimentManifest {
             schema_version: MANIFEST_SCHEMA_VERSION,
             experiment_id: "exp-1".into(),
             name: "baseline".into(),
+            observer: ObserverPolicy::default(),
             world_identity: WorldIdentity {
                 seed: 1337,
                 generator_version: 20,
@@ -2188,5 +2257,161 @@ mod ensemble_budget_tests {
 
     fn samples_for(sample_period: u64, duration_ticks: u64) -> u64 {
         duration_ticks.checked_div(sample_period).unwrap_or(0)
+    }
+}
+
+#[cfg(test)]
+mod observer_policy_manifest_tests {
+    //! ADR-0004 O1 at the manifest level: the rollback path, run identity, and the ER01 boundary.
+    //! The behaviour of the policy in a live world is `tests/observer_policy_tests.rs`.
+    use super::tests::base_manifest;
+    use super::*;
+    use crate::core::intervention::InterventionKind;
+    use anima_domain::causal::CauseId;
+
+    /// The rollback path. A manifest written before ADR-0004 has no `observer` key, and must load
+    /// and validate exactly as it did — which is why `MANIFEST_SCHEMA_VERSION` was deliberately not
+    /// bumped for an additive field.
+    #[test]
+    fn a_manifest_without_an_observer_key_reads_as_absent() {
+        let m = base_manifest();
+        let mut json: serde_json::Value =
+            serde_json::to_value(&m).expect("manifest should serialize");
+        json.as_object_mut()
+            .expect("manifest is an object")
+            .remove("observer")
+            .expect("the key should have been there to remove");
+
+        let restored: ExperimentManifest =
+            serde_json::from_value(json).expect("a pre-ADR-0004 manifest must still load");
+        assert_eq!(restored.observer, ObserverPolicy::Absent);
+        assert!(restored
+            .validate(&ObservableRegistry::reference_default())
+            .is_ok());
+    }
+
+    /// The policy is a declared input, so it is part of the run's identity — including `Absent` vs
+    /// `Spectate`, which produce the *same trajectory* but are different declarations about how the
+    /// run was watched.
+    #[test]
+    fn the_observer_policy_changes_the_run_identity() {
+        let absent = base_manifest();
+        let spectate = ExperimentManifest {
+            observer: ObserverPolicy::Spectate,
+            ..absent.clone()
+        };
+        let inhabit = ExperimentManifest {
+            observer: ObserverPolicy::Inhabit { cause_id: 9 },
+            ..absent.clone()
+        };
+
+        let (a, s, i) = (
+            absent.fingerprint(),
+            spectate.fingerprint(),
+            inhabit.fingerprint(),
+        );
+        assert_ne!(a, s, "Absent and Spectate must not share a run identity");
+        assert_ne!(a, i, "Absent and Inhabit must not share a run identity");
+        assert_ne!(s, i, "Spectate and Inhabit must not share a run identity");
+    }
+
+    /// **ER01.** The observer is state, not law. If it reached the world-law fingerprint, a
+    /// checkpoint could not be forked to drop the observer — which is the whole point of recording
+    /// one. This is the nearest trap in ADR-0004 and it is cheap to guard.
+    #[test]
+    fn the_observer_policy_leaves_the_law_fingerprint_alone() {
+        let absent = base_manifest();
+        let inhabit = ExperimentManifest {
+            observer: ObserverPolicy::Inhabit { cause_id: 9 },
+            ..absent.clone()
+        };
+        assert_eq!(
+            absent.laws.fingerprint(),
+            inhabit.laws.fingerprint(),
+            "the observer policy moved the world-law fingerprint; a checkpoint branch can no \
+             longer drop the observer without changing the laws"
+        );
+    }
+
+    /// An `Inhabit` that roots at the background cause would file a human's doing as baseline
+    /// dynamics, so `trace_to_root` would report the observer's own effects as something the world
+    /// did by itself. Refused at validation rather than discovered in a ledger.
+    #[test]
+    fn an_inhabit_rooted_at_the_background_cause_is_refused() {
+        let m = ExperimentManifest {
+            observer: ObserverPolicy::Inhabit {
+                cause_id: anima_domain::causal::CAUSE_BACKGROUND,
+            },
+            ..base_manifest()
+        };
+        assert!(matches!(
+            m.validate(&ObservableRegistry::reference_default()),
+            Err(ExperimentError::InvalidObserverPolicy { .. })
+        ));
+
+        let ok = ExperimentManifest {
+            observer: ObserverPolicy::Inhabit { cause_id: 1 },
+            ..base_manifest()
+        };
+        assert!(ok
+            .validate(&ObservableRegistry::reference_default())
+            .is_ok());
+    }
+
+    /// A manifest cannot author an intervention as if a live human had caused it. The run had not
+    /// started when the manifest was written, so the claim is false by construction — and if it were
+    /// allowed through, a scenario forcing and the observer's own doing would share a root and
+    /// `root_cause` would stop distinguishing them.
+    /// A run simulates ticks `1..=duration_ticks`, and `validate_intervention` refuses a window that
+    /// can never fire inside it. `start_tick: 1` keeps these fixtures about cause ids rather than
+    /// about scheduling.
+    fn intervention_with_cause(cause_id: CauseId) -> InterventionCommand {
+        InterventionCommand {
+            id: 1,
+            cause_id,
+            kind: InterventionKind::RainfallDelta,
+            region: Region::Global,
+            start_tick: 1,
+            duration_ticks: 1,
+            intensity: 0.1,
+            signed_negative: true,
+            curve: Curve::Step,
+            reversible: true,
+        }
+    }
+
+    #[test]
+    fn a_declared_intervention_may_not_claim_the_observer_cause() {
+        let m = ExperimentManifest {
+            interventions: vec![intervention_with_cause(
+                anima_domain::causal::CAUSE_OBSERVER,
+            )],
+            ..base_manifest()
+        };
+        assert!(
+            matches!(
+                m.validate(&ObservableRegistry::reference_default()),
+                Err(ExperimentError::InvalidObserverPolicy { .. })
+            ),
+            "a declared intervention claiming CAUSE_OBSERVER must be refused, got {:?}",
+            m.validate(&ObservableRegistry::reference_default())
+        );
+    }
+
+    /// The rule above must not have swept up the ids a manifest author actually writes. Without this
+    /// the check could reject everything and still look correct.
+    #[test]
+    fn ordinary_hand_written_cause_ids_are_still_accepted() {
+        for cause_id in [1u32, 2, 7, 4096] {
+            let m = ExperimentManifest {
+                interventions: vec![intervention_with_cause(cause_id)],
+                ..base_manifest()
+            };
+            assert!(
+                m.validate(&ObservableRegistry::reference_default()).is_ok(),
+                "cause id {cause_id} should be free for a manifest author to use, got {:?}",
+                m.validate(&ObservableRegistry::reference_default())
+            );
+        }
     }
 }

@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Start here
+
+`docs/planning/STATE_OF_THE_PROJECT.md` is the living status doc: what was last **measured** green (not what a doc claims), what rung each subsystem has reached, and the prioritized backlog with file-level anchors and a definition of done per item. Read it before picking up work, and update it when you finish something — it is what the next session reads first.
+
+This file (CLAUDE.md) holds the rules that do not change between sessions. That one holds the state that does.
+
 ## What this is
 
 Anima-Engine is a real-time, GPU-accelerated Artificial Life & Evolution simulator built as a **Tauri v2 desktop app**. Backend is Rust (Bevy ECS + Burn ML) running a 60 FPS background simulation thread; frontend is TypeScript/React/Vite communicating over Tauri IPC. Cargo workspace rooted at `src-tauri/` (the `anima-engine` package, plus `crates/anima-domain` holding the world laws); `tests/` is a second npm package with its own `node_modules`.
