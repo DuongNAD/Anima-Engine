@@ -6,7 +6,7 @@
     "seed": "seed",
     "shape": "continent",
     "sourceSize": 2048,
-    "worldGenVersion": 20,
+    "worldGenVersion": 21,
     "note": "Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is gitignored; this manifest is tracked because the coordinate contract and test S05 read it. The identity above is the app identity from src/utils/sharedWorld.ts — it is not a knob."
   },
   "worldArtifact": {
@@ -16,7 +16,7 @@
     "width": 256,
     "height": 256,
     "seaLevel": 0.31722,
-    "checksum": "sha256:ff644602467995b2bb560ae053a1e8fe0bd8305767180994cbd511da0e72a905",
+    "checksum": "sha256:94641ead70b78ba07c62115129fa7aca6934c83464117e13871575d55b39d8d7",
     "bytes": 1114148
   },
   "coordinateSystem": {
@@ -39,8 +39,8 @@
       "camera": {
         "position": [
           0,
-          95,
-          95
+          112,
+          112
         ],
         "target": [
           0,
@@ -48,126 +48,142 @@
           0
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1359538,
+      "checksum": "sha256:b2ef930fb073c0ef2790206b8a5f5c6c324f3964c74104822f39662b9c032768"
     },
     {
       "id": "navigation",
       "imagePath": "map-views/navigation.png",
       "camera": {
         "position": [
-          -60,
-          45,
-          -60
+          -23.9,
+          30.1,
+          -32.5
         ],
         "target": [
-          -40,
-          0,
-          -40
+          2.1,
+          10.1,
+          -6.5
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1181972,
+      "checksum": "sha256:99dad4f55a2d86570e662272fb87f0f4b32013fb78c8efe813352100953c94df"
     },
     {
       "id": "collision",
       "imagePath": "map-views/collision.png",
       "camera": {
         "position": [
-          50,
-          30,
-          50
+          -101,
+          14.7,
+          -5
         ],
         "target": [
-          30,
-          2,
-          30
+          -94,
+          11.2,
+          2
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 982028,
+      "checksum": "sha256:b378e8975278a59be5d7077035a6ae6187821b9c4b0a892a3849bc235bbe41cb"
     },
     {
       "id": "lighting",
       "imagePath": "map-views/lighting.png",
       "camera": {
         "position": [
-          0,
-          80,
-          -90
+          -93.9,
+          46.7,
+          16.6
         ],
         "target": [
-          0,
-          5,
-          0
+          -59.9,
+          14.8,
+          -17.4
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1493699,
+      "checksum": "sha256:856111a1f42ac6dc3e8b7f31d3cc74c2ac854ba64a1795fc22a482d63be47047"
     },
     {
       "id": "spawn",
       "imagePath": "map-views/spawn.png",
       "camera": {
         "position": [
-          20,
-          25,
-          20
+          -25.8,
+          20.4,
+          -23.4
         ],
         "target": [
-          10,
-          1,
-          10
+          -16.8,
+          15.4,
+          -14.4
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 836935,
+      "checksum": "sha256:68d606479bad6503c2d9a054573ced7e776b32575aa9c99968ced53f9339d949"
     },
     {
       "id": "water",
       "imagePath": "map-views/water.png",
       "camera": {
         "position": [
-          -80,
-          22,
-          12
+          -121.1,
+          44.4,
+          10.3
         ],
         "target": [
-          -95,
-          0,
-          0
+          -67.3,
+          12.1,
+          64
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1153878,
+      "checksum": "sha256:29febf1425c2df115221d43a12a3553098936fb2c1185e27f5a71dc722eecc47"
     },
     {
       "id": "biome_transition",
       "imagePath": "map-views/biome_transition.png",
       "camera": {
         "position": [
-          40,
-          32,
-          -40
+          -106.1,
+          23.4,
+          -4.1
         ],
         "target": [
-          20,
-          2,
-          -20
+          -86.1,
+          9.4,
+          15.9
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1228544,
+      "checksum": "sha256:8464a796426e034dca723048d6d2296b1c575e135aa9dfd54245c5ad68cbc046"
     },
     {
       "id": "ecosystem",
       "imagePath": "map-views/ecosystem.png",
       "camera": {
         "position": [
-          -30,
-          35,
-          60
+          -104.7,
+          18.5,
+          -14.7
         ],
         "target": [
-          -10,
-          1,
-          40
+          -91.7,
+          10.5,
+          -1.7
         ]
       },
-      "captured": false
+      "captured": true,
+      "bytes": 1033766,
+      "checksum": "sha256:2517b13c80b4f6a8c2bd927d5e725d2162592ed08e2504035530805bc7baffae"
     }
   ]
 }

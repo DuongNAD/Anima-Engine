@@ -21,7 +21,8 @@
     "gen:artifact-fixture": "node scripts/run_ts.mjs scripts/gen_artifact_fixture.ts",
     "check:bundle": "node scripts/check_bundle_budget.mjs",
     "check:notice": "node scripts/gen_notice.mjs --check",
-    "check:flora-footprint": "node scripts/check_flora_footprint.mjs"
+    "check:flora-footprint": "node scripts/check_flora_footprint.mjs",
+    "capture:views": "npm run capture:views --prefix tests"
   },
   "dependencies": {
     "@playwright/test": "^1.61.0",

@@ -42,6 +42,16 @@ export interface WorldCameraRigProps {
   meshResolution: number;
   viewRef: React.MutableRefObject<CameraView>;
   teleportRef: React.MutableRefObject<{ x: number; z: number } | null>;
+  /**
+   * A fixed camera pose, in render space, for deterministic canonical-view capture.
+   *
+   * `null` on every ordinary visit — see `utils/captureMode.ts`. When set, the rig stops being a
+   * camera *controller*: it plants the camera on this pose every frame and takes no input. That
+   * is the point. Orbit damping, walk momentum and head-bob all mean the camera is still settling
+   * for some time after it arrives, so a screenshot taken "once the scene has loaded" would
+   * differ run to run by however much smoothing was left.
+   */
+  capturePose?: { position: [number, number, number]; target: [number, number, number] } | null;
 }
 
 const EYE = 2.1; // walking eye height (world units)
@@ -67,6 +77,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   meshResolution,
   viewRef,
   teleportRef,
+  capturePose = null,
 }) => {
   const { camera, gl } = useThree();
   const controlsRef = useRef<any>(null);
@@ -228,6 +239,20 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     const rawFps = delta > 0 ? 1 / delta : 0;
     v.fps = v.fps ? v.fps * 0.9 + rawFps * 0.1 : rawFps;
 
+    // Capture: plant the camera and return before any controller runs. Assigning the pose and
+    // then letting orbit/walk continue would let damping drag it off over the following frames.
+    if (capturePose) {
+      camera.position.set(capturePose.position[0], capturePose.position[1], capturePose.position[2]);
+      camera.lookAt(capturePose.target[0], capturePose.target[1], capturePose.target[2]);
+      v.targetX = capturePose.target[0];
+      v.targetZ = capturePose.target[2];
+      v.camX = camera.position.x;
+      v.camZ = camera.position.z;
+      v.biome = biomeAt(world, v.targetX, v.targetZ, renderSize);
+      v.locked = false;
+      return;
+    }
+
     if (mode === 'orbit' || mode === 'top') {
       const controls = controlsRef.current;
       if (!controls) return;
@@ -379,7 +404,16 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     }
 
     // Keep the camera over (or near) the map.
-    const lim = renderSize * 0.75;
+    // Spectator cameras (orbit/top/fly/cine) may sit outside the terrain — framing the whole
+    // continent requires it. A WALKER may not.
+    //
+    // The single 0.75 * renderSize limit let one: the terrain mesh spans +/-renderSize/2 = 600
+    // units, the clamp allowed 900, and `surfaceY` returns sea level for anything off the mesh.
+    // So walking west past the shoreline carried on for another 300 units across open water with
+    // no ground beneath — the "boundary escape" the map-review rubric calls critical. Visible in
+    // the canonical captures as the bright sliver past the terrain edge in `water.png` and
+    // `biome_transition.png`; that edge is walkable in walk mode.
+    const lim = mode === 'walk' ? renderSize * 0.5 : renderSize * 0.75;
     camera.position.x = Math.max(-lim, Math.min(lim, camera.position.x));
     camera.position.z = Math.max(-lim, Math.min(lim, camera.position.z));
 

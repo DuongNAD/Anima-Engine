@@ -29,6 +29,8 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 
 export default defineConfig({
   testDir: './',
+  // The canonical view capture is a GPU-bound producer with its own config; see capture.config.ts.
+  testIgnore: ['**/canonical_views.spec.ts'],
   timeout: 30 * 1000,
   expect: {
     timeout: 5000,

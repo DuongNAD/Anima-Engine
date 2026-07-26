@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import WorldTerrain from './WorldTerrain';
 import WorldTerrainLod from './WorldTerrainLod';
@@ -20,6 +20,9 @@ import { BIOME_NAMES_VI, BIOME_EMOJI } from './utils/worldGen';
 import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
+import { canonicalCameraToRender } from './utils/mapManifest';
+import { CAPTURE_READY_FLAG, CAPTURE_SETTLE_FRAMES, readCaptureRequest } from './utils/captureMode';
+import type { CaptureRequest } from './utils/captureMode';
 import {
   SHARED_WORLD_SEED as WORLD_SEED,
   SHARED_WORLD_SIZE as WORLD_SIZE,
@@ -111,6 +114,27 @@ function isWorldRenderable(w: World): boolean {
   );
 }
 
+/**
+ * Signals the canonical-view capture harness that the scene has settled.
+ *
+ * Rendered only in capture mode. "Loaded" is not the same as "settled": R3F suspends on textures
+ * and geometry, `WorldTerrain` builds its mesh on first frame, and instanced flora uploads its
+ * matrices in a layout effect. A screenshot on the first frame after `load` catches some of that
+ * mid-flight, and which part varies with machine speed — the exact way a capture stops being
+ * reproducible. Counting real rendered frames is the cheap, honest wait: by the time this many
+ * have gone by, everything above has run.
+ */
+const CaptureReadySignal: React.FC<{ frames: number }> = ({ frames }) => {
+  const seen = useRef(0);
+  useFrame(() => {
+    seen.current += 1;
+    if (seen.current === frames) {
+      (window as unknown as Record<string, unknown>)[CAPTURE_READY_FLAG] = true;
+    }
+  });
+  return null;
+};
+
 /** Precipitation intensity (0..1) for each weather kind. */
 function precipFor(weather: WeatherKind): number {
   if (weather === 'rain') return 0.85;
@@ -126,11 +150,23 @@ export const WorldShowcase: React.FC = () => {
       ? getMemoizedWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
       : null,
   );
-  const [timeOfDay, setTimeOfDay] = useState(11.0);
-  const [speed, setSpeed] = useState(1.0); // 0 = paused
-  const [weather, setWeather] = useState<WeatherKind>('clear');
+  // Deterministic capture of the canonical map views. `null` on every ordinary visit — see
+  // `captureMode.ts` for why this is a query parameter and nothing else. Read once: the request
+  // is fixed for the lifetime of the page, and re-reading it per render would let a history
+  // change move the camera mid-capture.
+  const captureRef = useRef<CaptureRequest | null>(null);
+  if (captureRef.current === null) {
+    captureRef.current = readCaptureRequest(
+      typeof window === 'undefined' ? '' : window.location.search,
+    );
+  }
+  const capture = captureRef.current;
+
+  const [timeOfDay, setTimeOfDay] = useState(capture?.timeOfDay ?? 11.0);
+  const [speed, setSpeed] = useState(capture ? 0 : 1.0); // 0 = paused
+  const [weather, setWeather] = useState<WeatherKind>(capture?.weather ?? 'clear');
   const [camMode, setCamMode] = useState<CameraMode>('orbit');
-  const [quality, setQuality] = useState<Quality>('high');
+  const [quality, setQuality] = useState<Quality>(capture?.quality ?? 'high');
   const [muted, setMuted] = useState(false);
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
 
@@ -290,11 +326,22 @@ export const WorldShowcase: React.FC = () => {
   }
 
   const sunDir = sunDirectionForTime(timeOfDay);
+  // Canonical poses are published in the canonical [-100, 100] bounds; the scene is a different
+  // span with its own vertical exaggeration. One conversion, in `mapManifest.ts`.
+  const capturePose = capture
+    ? canonicalCameraToRender(capture.camera, RENDER_SIZE, HEIGHT_RATIO)
+    : null;
 
   return (
     <div data-testid="world-showcase" style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
-        shadows
+        // `shadows` (bare) asks react-three-fiber for PCFSoftShadowMap, which three 0.184
+        // deprecated: `WebGLShadowMap` warns and silently uses PCFShadowMap instead
+        // (three.module.js:9135). The warning fires on every shadow-map rebuild, so a running
+        // scene emitted it continuously — and it was telling the truth: the soft filter had not
+        // been in use for some time. Naming the filter three actually applies removes the noise
+        // and changes no pixels.
+        shadows="percentage"
         dpr={[1, 1.5]}
         gl={{ powerPreference: 'high-performance' }}
         camera={{
@@ -379,9 +426,20 @@ export const WorldShowcase: React.FC = () => {
           meshResolution={MESH_RES}
           viewRef={viewRef}
           teleportRef={teleportRef}
+          capturePose={capturePose}
         />
+        {capture ? <CaptureReadySignal frames={CAPTURE_SETTLE_FRAMES} /> : null}
       </Canvas>
 
+      {/* Every HTML overlay below is HUD. In capture mode none of it renders.
+
+          Playwright's element screenshot captures the PAGE REGION the element occupies, not the
+          element's own pixel buffer, so anything painted on top of the canvas composites into the
+          image. The first capture run produced eight 'canonical map views' with the control panel,
+          the compass ribbon, the biome banner and the minimap burned into them — a picture of the
+          application, where the manifest promised a picture of the world. */}
+      {capture ? null : (
+        <>
       {/* Compass heading ribbon (rAF-driven, no per-frame React re-render). */}
       <WorldCompass viewRef={viewRef} />
 
@@ -496,6 +554,8 @@ export const WorldShowcase: React.FC = () => {
           teleportRef.current = { x, z };
         }}
       />
+        </>
+      )}
     </div>
   );
 };

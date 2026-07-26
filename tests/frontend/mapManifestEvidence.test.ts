@@ -169,6 +169,35 @@ describe('map manifest — the committed file, not a copy of it', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it('every captured view is on disk and hashes to what it declares', () => {
+    // This is the gate a GPU-less CI runner holds on behalf of the capture harness. Producing the
+    // eight views needs real hardware (`tests/e2e/capture.config.ts` records the 173x measurement
+    // against SwiftShader), so CI cannot re-shoot them — but it can check that the committed
+    // bytes are the bytes the manifest describes.
+    const m = loadManifest();
+    const views = m.views as Array<Record<string, unknown>>;
+    const captured = views.filter((v) => v.captured === true);
+
+    expect(captured.length, 'the canonical views are a hard gate in AGENTS.md, not optional').toBe(
+      CANONICAL_VIEW_IDS.length,
+    );
+
+    for (const v of captured) {
+      const img = resolve(ROOT, String(v.imagePath));
+      expect(existsSync(img), `view "${v.id}" claims captured:true but ${v.imagePath} is missing`).toBe(
+        true,
+      );
+      const bytes = readFileSync(img);
+      expect(bytes.subarray(0, 8), `${v.id} must be a PNG`).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+      expect(bytes.length, `${v.id}.png size`).toBe(v.bytes);
+      expect(`sha256:${createHash('sha256').update(bytes).digest('hex')}`, `${v.id}.png checksum`).toBe(
+        v.checksum,
+      );
+    }
+  });
+
   it('only claims a captured image when the image is on disk', () => {
     // The invariant that matters, and the one that survives the capture pipeline landing later.
     //
@@ -189,9 +218,9 @@ describe('map manifest — the committed file, not a copy of it', () => {
       }
     }
 
-    // Record the current honest state, so flipping a flag without capturing is a deliberate act
-    // that updates this number rather than something that slips through.
+    // The other direction is covered above; this one keeps the implication itself alive even if
+    // a future world drops a view back to uncaptured.
     const capturedCount = views.filter((v) => v.captured === true).length;
-    expect(capturedCount).toBe(0);
+    expect(capturedCount).toBeGreaterThan(0);
   });
 });

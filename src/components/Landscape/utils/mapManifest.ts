@@ -56,32 +56,52 @@ export const CANONICAL_MAX_Y = 10;
  * compared.
  */
 export const CANONICAL_VIEW_CAMERAS: Record<CanonicalViewId, CanonicalPoint> = {
-  overview: { position: [0, 95, 95], target: [0, 0, 0] },
-  navigation: { position: [-60, 45, -60], target: [-40, 0, -40] },
-  collision: { position: [50, 30, 50], target: [30, 2, 30] },
-  lighting: { position: [0, 80, -90], target: [0, 5, 0] },
-  spawn: { position: [20, 25, 20], target: [10, 1, 10] },
-  water: { position: [-80, 22, 12], target: [-95, 0, 0] },
-  biome_transition: { position: [40, 32, -40], target: [20, 2, -20] },
-  ecosystem: { position: [-30, 35, 60], target: [-10, 1, 40] },
+  // Whole map from 45°. 950 render units out; 815 is the minimum that frames a 1200-unit map at
+  // the scene's 55° vertical FOV and 16:9, and the previous pose sat at 806 and clipped two edges.
+  overview: { position: [0, 112, 112], target: [0, 0, 0] },
+  // Most open walkable neighbourhood (jungle clearing).
+  navigation: { position: [-23.9, 30.1, -32.5], target: [2.1, 10.1, -6.5] },
+  // Densest stand of solid trunks: 348 colliders in one 24-unit bucket.
+  collision: { position: [-101, 14.7, -5], target: [-94, 11.2, 2] },
+  // Highest relief in the world (elevation 0.88, slope 1.00 — glacier), lit from the side so the
+  // shadow pass has something to cast against.
+  lighting: { position: [-93.9, 46.7, 16.6], target: [-59.9, 14.8, -17.4] },
+  // The position `findSpawn` actually returns at the shipped identity: render (-100.5, -86.5),
+  // grassland. The pose it replaced targeted canonical (10, 1, 10) — the middle of the map, which
+  // on this world is open ocean, so the "spawn" view was a photograph of the sea.
+  spawn: { position: [-25.8, 20.4, -23.4], target: [-16.8, 15.4, -14.4] },
+  // Largest lake basin, 344 cells across.
+  water: { position: [-121.1, 44.4, 10.3], target: [-67.3, 12.1, 64] },
+  // Six distinct land biomes within ten cells — the sharpest boundary in the world.
+  biome_transition: { position: [-106.1, 23.4, -4.1], target: [-86.1, 9.4, 15.9] },
+  // Densest flora of any kind: 249 instances in one 20-unit bucket.
+  ecosystem: { position: [-104.7, 18.5, -14.7], target: [-91.7, 10.5, -1.7] },
 };
 
 /**
  * Convert a canonical-bounds camera pose into the landscape scene's own span.
  *
- * XZ and Y scale differently and that is not a bug: the scene spans `renderSize` horizontally but
- * only `renderSize * heightRatio` vertically for a full-elevation column, so the render has a
- * vertical exaggeration relative to the canonical `y = elevation * 10`. Applying the horizontal
- * factor to `y` would put every camera kilometres above the terrain.
+ * **Uniform scale, including Y.** The tempting alternative is to scale `y` by the terrain's own
+ * factor — `renderSize * heightRatio / CANONICAL_MAX_Y` — since `CANONICAL_MAX_Y` is 10 and the
+ * render column is `renderSize * heightRatio` tall. That is wrong, and the first capture run shows
+ * why: `overview` is authored at `[0, 95, 95]`, a 45° look at the origin, and the terrain factor
+ * (16.8 at the shipped settings) lifted it to y=1596 over a 1200-wide map. The result was a
+ * near-vertical shot of a small distant square.
+ *
+ * `CANONICAL_MAX_Y` describes how high *terrain* goes, not where a camera may sit. A pose is a
+ * point in space and an angle; only a uniform scale preserves the angle, which is the whole
+ * content of a camera specification.
+ *
+ * `heightRatio` is therefore unused, and kept in the signature deliberately: it is the number a
+ * future reader will reach for, and its absence from the body is where they should find out why.
  */
 export function canonicalCameraToRender(
   cam: CanonicalPoint,
   renderSize: number,
-  heightRatio: number,
+  _heightRatio?: number,
 ): CanonicalPoint {
-  const kxz = renderSize / CANONICAL_XZ_EXTENT;
-  const ky = (renderSize * heightRatio) / CANONICAL_MAX_Y;
-  const map = (p: [number, number, number]): [number, number, number] => [p[0] * kxz, p[1] * ky, p[2] * kxz];
+  const k = renderSize / CANONICAL_XZ_EXTENT;
+  const map = (p: [number, number, number]): [number, number, number] => [p[0] * k, p[1] * k, p[2] * k];
   return { position: map(cam.position), target: map(cam.target) };
 }
 

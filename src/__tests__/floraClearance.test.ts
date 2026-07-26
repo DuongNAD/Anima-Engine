@@ -13,6 +13,7 @@ import {
   floraOverlapAt,
   isFloraClear,
   resolveFloraOverlap,
+  spawnClearanceRadius,
 } from '../components/Landscape/utils/floraClearance';
 import type { FloraSource } from '../components/Landscape/utils/floraClearance';
 import { FloraType, generateWorld } from '../components/Landscape/utils/worldGen';
@@ -186,6 +187,36 @@ describe('flora clearance policy — the shared definition of "a tree is in the 
     });
   });
 
+  it('rejects the geometry the browser reproduction actually had', () => {
+    // The measurement that identified the defect, kept as a test rather than as prose.
+    //
+    // Browser reproduction: landscape.html, walk mode, shipped world, camera at render
+    // (-129, -94), biome Đồng cỏ, centre of frame filled by a dark canopy. Measuring the
+    // neighbourhood of that point found a broadleaf (Round, floraScale 1.255 -> canopy radius
+    // 1.340) at distance 1.896 — subtending ninety degrees of view.
+    //
+    // This is stated as geometry, not as a position in a particular world, on purpose. Worldgen
+    // 21 moved the offending tree (species is now chosen from the cell an instance lands in), so
+    // that exact coordinate is clear today. The rule still has to reject the *situation*, or a
+    // future world reintroduces it and nothing notices.
+    const HISTORIC_CANOPY_R = floraCanopyRadius(FloraType.Round, 1.255);
+    const HISTORIC_DISTANCE = 1.896;
+    expect(HISTORIC_CANOPY_R).toBeCloseTo(1.34, 2);
+
+    const src = floraAt([{ x: 0, z: 0, scale: 1.255, type: FloraType.Round }]);
+    const index = buildFloraColliderIndex(src, 100);
+
+    // Outside the trunk, outside the leaves — and still the whole picture. This is why neither of
+    // the first two footprints caught it.
+    expect(floraOverlapAt(index, HISTORIC_DISTANCE, 0, 0, 'collider')).toBeNull();
+    expect(floraOverlapAt(index, HISTORIC_DISTANCE, 0, 0, 'canopy')).toBeNull();
+    expect(floraOverlapAt(index, HISTORIC_DISTANCE, 0, 0, 'spawn')).not.toBeNull();
+
+    // And the rule is the derivation, not a tuned constant: D >= 2R.
+    expect(spawnClearanceRadius(HISTORIC_CANOPY_R)).toBeCloseTo(2 * HISTORIC_CANOPY_R, 10);
+    expect(floraOverlapAt(index, 2 * HISTORIC_CANOPY_R + 0.01, 0, 0, 'spawn')).toBeNull();
+  });
+
   it('honours a clearance margin', () => {
     const src = floraAt([{ x: 0, z: 0, scale: 1 }]); // r = 0.7
     const index = buildFloraColliderIndex(src, 100);
@@ -211,9 +242,6 @@ describe('findSpawn — the world the app actually ships', () => {
   // explicit budget rather than per test.
   const RENDER_SIZE = 1200; // WorldShowcase RENDER_SIZE
 
-  // The position the browser reproduction landed on, recorded to the tenth of a unit.
-  const HISTORIC_SPAWN = { x: -128.7, z: -93.5 };
-
   let world: ReturnType<typeof generateWorld>;
   let index: ReturnType<typeof buildFloraColliderIndex>;
   let spawn: { x: number; z: number };
@@ -228,20 +256,6 @@ describe('findSpawn — the world the app actually ships', () => {
     // Guards the test itself: if flora placement stopped emitting tall types the clearance
     // assertions below would all pass vacuously.
     expect(index.count).toBeGreaterThan(10_000);
-  });
-
-  it('would have rejected the position the browser reproduced', () => {
-    // The red half of this gate. If this ever stops being true, the world changed underneath the
-    // recorded evidence and the rest of this file is testing a different scene.
-    const hit = floraOverlapAt(index, HISTORIC_SPAWN.x, HISTORIC_SPAWN.z, 0, 'spawn');
-    expect(hit, 'the recorded browser spawn is no longer blocked — re-derive the evidence').not.toBeNull();
-    // ...and it is *not* a collider overlap, which is why a collider-only rule missed it.
-    expect(floraOverlapAt(index, HISTORIC_SPAWN.x, HISTORIC_SPAWN.z, 0, 'collider')).toBeNull();
-    expect(floraOverlapAt(index, HISTORIC_SPAWN.x, HISTORIC_SPAWN.z, 0, 'canopy')).toBeNull();
-  });
-
-  it('no longer returns it', () => {
-    expect(Math.hypot(spawn.x - HISTORIC_SPAWN.x, spawn.z - HISTORIC_SPAWN.z)).toBeGreaterThan(1);
   });
 
   it('returns a position clear of every solid canopy', () => {
