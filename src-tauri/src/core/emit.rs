@@ -197,8 +197,12 @@ pub struct EmitChannels {
 pub fn spawn_emit_thread<R: tauri::Runtime>(
     channels: EmitChannels,
     app_handle: Option<tauri::AppHandle<R>>,
+    exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
+        // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
+        // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
+        let _exit = exit;
         let EmitChannels {
             running,
             agent_states,

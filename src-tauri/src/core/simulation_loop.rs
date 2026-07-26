@@ -13,6 +13,8 @@ use crate::core::ecs::*;
 use crate::core::networking_systems::*;
 use crate::core::resources::EvolutionQueue;
 use crate::core::simulation_state::*;
+// Thread names and the exit registry `stop` reports against (§3.7).
+use crate::core::thread_supervisor as sup;
 // The shared learner — its objective, loop and backend threads — lives in `core::training`.
 #[cfg(feature = "ml-wgpu")]
 use crate::core::training::spawn_wgpu_learner;
@@ -26,6 +28,16 @@ use crate::physics::{
 };
 use tauri::Emitter;
 
+/// How long `stop` waits for every thread to report exit before naming the stragglers (§3.7).
+///
+/// Chosen from what the threads actually promise: the sim loop targets 60 FPS, the websocket server
+/// re-checks `running` against a 100 ms sleep, and the rest poll their channels. A thread needing more
+/// than a second to notice a flag is already misbehaving, so thirty is not a performance budget — it
+/// is slack for a loaded CI runner, and anything past it is a real fault rather than slowness.
+///
+/// On the happy path this costs nothing: `wait_for_exit` returns as soon as the registry empties.
+const SHUTDOWN_GRACE_SECS: u64 = 30;
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -33,7 +45,13 @@ pub struct SimulationEngine {
     pub pheromone_grid_state: Arc<RwLock<crate::ai::pheromone::PheromoneGridState>>,
     pub active_raycasts: Arc<RwLock<Vec<crate::core::ecs::RaycastTelemetry>>>,
     pub combat_events: Arc<RwLock<Vec<crate::core::ecs::CombatEvent>>>,
-    pub threads: Mutex<Option<Vec<thread::JoinHandle<()>>>>,
+    /// The threads `start` spawned, each paired with the name `stop` reports it by.
+    ///
+    /// Named because an unnamed `Vec<JoinHandle<()>>` makes a stalled shutdown indistinguishable
+    /// across five candidates — see [`crate::core::thread_supervisor`] (§3.7).
+    pub threads: Mutex<Option<Vec<(&'static str, thread::JoinHandle<()>)>>>,
+    /// Which of those threads have reported exit. Read by `stop` to bound its wait.
+    pub supervisor: crate::core::thread_supervisor::ThreadSupervisor,
     pub lineage_tracker: Arc<crate::evolution::lineage::FallbackLineageTracker>,
     pub chronicle_history: Arc<RwLock<Vec<ChronicleEvent>>>,
     pub sharding_config: Arc<RwLock<crate::core::ecs::ShardingConfig>>,
@@ -83,6 +101,7 @@ impl SimulationEngine {
         let pending_load_state = Arc::new(Mutex::new(None));
 
         Self {
+            supervisor: crate::core::thread_supervisor::ThreadSupervisor::new(),
             running: Arc::new(AtomicBool::new(false)),
             status: Arc::new(Mutex::new(SimulationStatus {
                 running: false,
@@ -180,14 +199,14 @@ impl SimulationEngine {
 
         #[cfg(feature = "ml-wgpu")]
         let learn_handle = if has_wgpu {
-            spawn_wgpu_learner(learn_args)
+            spawn_wgpu_learner(learn_args, self.supervisor.token(sup::LEARN))
         } else {
-            spawn_ndarray_learner(learn_args)
+            spawn_ndarray_learner(learn_args, self.supervisor.token(sup::LEARN))
         };
         #[cfg(not(feature = "ml-wgpu"))]
         let learn_handle = {
             let _ = has_wgpu;
-            spawn_ndarray_learner(learn_args)
+            spawn_ndarray_learner(learn_args, self.supervisor.token(sup::LEARN))
         };
 
         let (stats_tx, stats_rx) = crossbeam_channel::bounded::<Vec<AgentEpochStats>>(128);
@@ -210,7 +229,10 @@ impl SimulationEngine {
         let lineage_tracker_evo = Arc::clone(&self.lineage_tracker);
         let chronicle_history_clone = Arc::clone(&self.chronicle_history);
 
+        let evo_exit = self.supervisor.token(sup::EVO);
         let evo_handle = thread::spawn(move || {
+            // Dropped when this thread unwinds, panic included — see `core::thread_supervisor`.
+            let _exit = evo_exit;
             let initial_resolution = {
                 let settings = evolution_settings_clone
                     .lock()
@@ -508,7 +530,9 @@ impl SimulationEngine {
         let (outbound_tx, outbound_rx) =
             crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
 
+        let sim_exit = self.supervisor.token(sup::SIM);
         let sim_handle = thread::spawn(move || {
+            let _exit = sim_exit;
             let state_to_load = pending_load_state_clone
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
@@ -1447,13 +1471,16 @@ impl SimulationEngine {
                 environmental_state: Arc::clone(&self.environmental_state),
             },
             app_handle_emit,
+            self.supervisor.token(sup::EMIT),
         );
 
         let running_clone_net = Arc::clone(&self.running);
         let sharding_config_clone = Arc::clone(&self.sharding_config);
         let inbound_tx_clone = inbound_tx.clone();
 
+        let net_exit = self.supervisor.token(sup::NET);
         let net_handle = thread::spawn(move || {
+            let _exit = net_exit;
             // Deliberately fatal, and confined to this thread: without a runtime there is no
             // cross-shard migration at all, and every path below is `rt.block_on`. The message is
             // the point — a bare `.unwrap()` here reported only "called Option::unwrap on a None
@@ -1517,12 +1544,14 @@ impl SimulationEngine {
         });
 
         let mut threads_lock = self.threads.lock().unwrap_or_else(|e| e.into_inner());
+        // Paired with the same names the supervisor registered, so `stop` can join them in a known
+        // order and name whichever one did not come back.
         *threads_lock = Some(vec![
-            sim_handle,
-            emit_handle,
-            evo_handle,
-            net_handle,
-            learn_handle,
+            (sup::SIM, sim_handle),
+            (sup::EMIT, emit_handle),
+            (sup::EVO, evo_handle),
+            (sup::NET, net_handle),
+            (sup::LEARN, learn_handle),
         ]);
     }
 
@@ -1537,9 +1566,34 @@ impl SimulationEngine {
             return;
         }
         let mut threads_lock = self.threads.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(handles) = threads_lock.take() {
-            for handle in handles {
-                let _ = handle.join();
+        let Some(handles) = threads_lock.take() else {
+            return;
+        };
+
+        // Wait for every thread to *report* exit before joining any of them (§3.7). The order matters:
+        // `JoinHandle::join` has no timeout, so joining first means one thread ignoring `running`
+        // blocks `stop` forever — which is exactly how this looked from CI, an unkillable wait with no
+        // output to say which thread or why.
+        let stuck = self
+            .supervisor
+            .wait_for_exit(std::time::Duration::from_secs(SHUTDOWN_GRACE_SECS));
+
+        for (name, handle) in handles {
+            if stuck.contains(&name) {
+                // Deliberately not joined. Joining is the unbounded wait this exists to remove;
+                // skipping detaches the thread, which leaks it for the life of the process. Leaking
+                // one *named* thread and saying so beats a `stop()` that never returns — but it is a
+                // trade, and the real fix is whatever made this thread ignore `running`.
+                eprintln!(
+                    "simulation shutdown: thread '{name}' did not exit within {SHUTDOWN_GRACE_SECS}s \
+                     and was left detached; it is leaked for the life of this process"
+                );
+                continue;
+            }
+            // The result is inspected rather than discarded: `let _ = join()` made a thread that
+            // panicked indistinguishable from one that shut down cleanly.
+            if handle.join().is_err() {
+                eprintln!("simulation shutdown: thread '{name}' panicked");
             }
         }
     }

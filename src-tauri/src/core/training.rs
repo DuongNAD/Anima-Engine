@@ -55,9 +55,15 @@ pub type LearnArgs = (
 
 /// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
 /// `ml-wgpu` feature is off entirely.
-pub fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+pub fn spawn_ndarray_learner(
+    args: LearnArgs,
+    exit: crate::core::thread_supervisor::ExitToken,
+) -> thread::JoinHandle<()> {
     let (running, trans_rx, model_tx, old_model_rx) = args;
     thread::spawn(move || {
+        // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
+        // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
+        let _exit = exit;
         let device = burn_ndarray::NdArrayDevice::Cpu;
         run_training_loop::<burn_ndarray::NdArray<f32>>(
             running,
@@ -72,9 +78,13 @@ pub fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
 
 /// GPU learner. Only exists with the `ml-wgpu` feature; the whole wgpu/naga/ash stack goes with it.
 #[cfg(feature = "ml-wgpu")]
-pub fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
+pub fn spawn_wgpu_learner(
+    args: LearnArgs,
+    exit: crate::core::thread_supervisor::ExitToken,
+) -> thread::JoinHandle<()> {
     let (running, trans_rx, model_tx, old_model_rx) = args;
     thread::spawn(move || {
+        let _exit = exit;
         let device = burn_wgpu::WgpuDevice::default();
         run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
             running,
