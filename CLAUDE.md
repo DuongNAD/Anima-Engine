@@ -19,7 +19,13 @@ Frontend (run from repo root):
 - `npm run build` — `tsc && vite build`; typechecks first, builds two entries (`index.html`, `landscape.html`).
 - `npm run test` — Vitest over `src/**`.
 - `npm run test:frontend` — Vitest over the dedicated `tests/` suite (`--root tests`). This is the suite handoff docs use.
-- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; legacy `any` and unused-var issues are warnings only.
+- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; legacy `any` and unused-var issues are warnings only. Pair with `node scripts/eslint_ratchet.mjs`, whose baseline (483) may only ever be **lowered**.
+- `npm run check:csp` — validates the shipped `dist/` against the CSP declared in `tauri.conf.json`: no external origins, no inline `<script>` bodies, hardening directives present. It checks *artifacts against policy*; it cannot prove the app boots under that policy, which needs `npm run tauri:dev` and a human.
+- `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
+- `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
+- `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
+
+**`esbuild` is not installed** — Vite 8 bundles with rolldown/oxc (the same reason `build.minify` must stay `true`). Any script invoking `esbuild` fails with `'esbuild' is not recognized`; `gen:manifest` did, silently, for as long as it existed. Run TypeScript scripts with `node scripts/run_ts.mjs <file.ts> [args]`.
 
 - `npm run tauri:dev` / `npm run tauri:build` — the desktop app. **Use these, not bare `tauri dev`/`tauri build`:** they pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the bare commands ship a `default = []` binary with no Neo4j lineage, no cross-shard migration and the CPU learner. All three have fallbacks, so nothing fails loudly.
 
