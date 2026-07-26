@@ -19,29 +19,36 @@ gate chưa xanh.
 
 ---
 
-## 1. Trạng thái đo được (2026-07-26)
+## 1. Trạng thái đo được (2026-07-26, tại `d006f64`)
 
-Toàn bộ số dưới đây được chạy lại trong ngày, trên `main` tại `c0a3cff`, cây làm việc sạch.
-Đây là số đo, không phải trích dẫn tài liệu.
+Đây là số đo, không phải trích dẫn tài liệu. Mọi hàng **trừ một** được chạy lại tại `d006f64`
+(nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge); hàng ngoại lệ được đánh dấu
+trong bảng.
 
 | Gate | Lệnh | Kết quả |
 |---|---|---|
-| Backend test | `cargo test --features desktop --no-fail-fast` | **629 pass · 0 fail · 4 ignored**, 67 test binary, 0 warning biên dịch |
-| Target rỗng | `node scripts/check_test_targets.mjs <output>` | 65 target, **0 target chạy rỗng** |
+| Backend test | `cargo test --features desktop --no-fail-fast` | **746 pass · 0 fail · 4 ignored**, 75 test binary, 0 warning biên dịch |
+| Target rỗng | `node scripts/check_test_targets.mjs <output>` | 75 target, **0 target chạy rỗng** |
 | Format | `cargo fmt --check` | sạch |
 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | sạch |
+| Lint backend (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | sạch |
 | Test frontend (src) | `npm run test` | 13 file · **90 pass** |
-| Test frontend (tests/) | `npm run test:frontend` | 26 file · **243 pass**, 1 skip |
+| Test frontend (tests/) | `npm run test:frontend` | ⚠️ **CHƯA đo lại tại `d006f64`.** Số gần nhất trên máy rảnh: **243 pass**, 1 skip — xem cảnh báo dưới |
 | Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error**, 491 warning (baseline 491) |
 | Build | `npm run build` | pass |
-| Link tài liệu | `node scripts/check_docs_links.mjs` | 406 link trong 90 file, **0 gãy** — đo lại 2026-07-26 |
+| Link tài liệu | `node scripts/check_docs_links.mjs` | 417 link trong 90 file, **0 gãy** |
 
-Quy mô: Rust ~47,7k dòng / 128 file · TS ~25,6k dòng / 126 file · 627 hàm `#[test]` ·
-62 file test tích hợp backend · 46 file test frontend · 7 spec Playwright · 45 tài liệu.
+> ⚠️ **Suite `tests/` đã đỏ giả trong lần đo tại `d006f64`, và bản chạy lại chưa hoàn thành** —
+> máy liên tục bận vì phiên khác. Nó tái hiện **đúng chữ ký** ghi ở §4: **28 lỗi**, thời gian tường
+> 45,25s (so với ~19,5s lúc rảnh), và `Get-Process cargo` lúc đó cho thấy **4 tiến trình build của
+> phiên khác** đang chạy.
+>
+> **Việc đầu tiên của phiên sau, nếu cần một bảng §1 sạch:** chạy lại `npm run test:frontend` **một
+> mình** trên máy rảnh và điền số vào hàng đó. Con số **28** là dấu hiệu nhận dạng lỗi giả — trước
+> khi kết luận suite này đỏ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
 
-> **Chỉ hàng "Link tài liệu" được đo lại ngày 2026-07-26** (đợt review nguồn mở + chuẩn hoá tài
-> liệu, xem [`TODO.md`](../../TODO.md)). Các hàng còn lại và dòng quy mô ở trên vẫn là số của lần
-> chạy tại `c0a3cff` và **chưa** được chạy lại trong phiên đó — đợt review không đụng tới code.
+Quy mô (chưa đếm lại từ `c0a3cff`, chỉ dùng để cảm nhận bậc độ lớn): Rust ~47,7k dòng / 128 file ·
+TS ~25,6k dòng / 126 file · 7 spec Playwright.
 
 Chỉ số kỷ luật đáng giữ, vì mất đi thì khó lấy lại:
 
@@ -90,6 +97,37 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
+
+### 3.0 Phiên sau bắt đầu ở đây (bàn giao 2026-07-26)
+
+Ba việc, đã xếp sẵn thứ tự. Mỗi việc có mục riêng bên dưới với điểm neo và định nghĩa hoàn thành —
+đây chỉ là bản đồ để không phải đọc cả tài liệu mới biết cầm cái gì.
+
+| # | Việc | Vì sao là việc này | Đọc |
+|---|---|---|---|
+| 1 | **Số đếm đột biến theo node → bật nén lưu trữ** | Thứ **duy nhất** còn chặn cận O(alive) của bộ nhớ lineage. Đã định vị chính xác, không còn gì phải khảo sát | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
+| 2 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
+| 3 | **In-app tick capture** | §3.2 nay chỉ còn thiếu đúng cái này; phần cứng và công cụ đã xong | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
+
+**Ba cái bẫy đã trả giá trong ngày 2026-07-26 — đọc trước khi sửa quanh những vùng đó:**
+
+- **`add_reproduction` từ chối ghi cạnh có cha không tồn tại.** Đừng "sửa" thành ghi vô điều kiện:
+  một cạnh mồ côi làm hỏng **toàn bộ** đồ thị lineage, vì cả `to_newick` lẫn `simplify` từ chối xử
+  lý đồ thị chứa nó.
+- **Tập sample của `compact` không phải "ai đang sống"** — phải gồm mọi `lineage_id` trong archive
+  MAP-Elites.
+- **Số `cargo bench` in ra là *slope estimate*, không phải trung vị.** Chênh thật: `step_water`
+  297,6 µs (slope) so với 271,5 µs (trung vị). Bảng số dùng trung vị, đọc từ `estimates.json`.
+
+**Hai finding đang mở, chưa ai đối chứng:**
+
+- Con số **~4,2 ms** trong doc comment của `ResourceField::REGROWTH_STRIDE` **không tái lập được** —
+  release build cho ~0,36 ms, thấp hơn ~12 lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số
+  biện minh là chưa đối chứng.
+- **`DEFAULT_GRID_DIM = 128`** trong `sim_rules.rs` **không được đọc ở đâu trong `src/`**, trong khi
+  thế giới thật chạy **256²**. `COORDINATE_CONTRACT.md` rút ra tỉ lệ `200/128 = 1.5625` từ nó — nếu
+  lưới thật là 256 thì hệ số đó **sai gấp đôi**, và một hệ số toạ độ sai là thứ chạy được, ra số hữu
+  hạn, và sai âm thầm. Đây là mục có sức công phá lớn nhất trong hai cái.
 
 ### P0 — Đóng vòng lặp khoa học
 
@@ -348,33 +386,85 @@ và không nói gì — nhưng đó là đánh đổi, không phải bản sửa
 > dùng, và `CLAUDE.md` cùng các kế hoạch khác tham chiếu chéo theo số. Đổi số sẽ làm gãy các tham
 > chiếu đó — đắt hơn nhiều so với một số thứ tự trông lệch.
 
-**Vì sao P1.** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi lần sinh
-sản thành một `LineageNode` kèm **bản sao đầy đủ** `MorphologyGenotype`, cộng một `LineageRelation`
-cho mỗi cha mẹ, và **không bao giờ prune**. Bộ nhớ vì thế tăng theo **tổng số cá thể từng sống**,
-không theo số đang sống — với một run 60 FPS dài đó là đường tăng không có trần. Đây cũng là lý do
-không trả lời được "hai cá thể này rẽ nhánh ở đâu": không có truy vấn MRCA.
+> **Cập nhật 2026-07-26 — ba phần tư đã xong.** Bản gốc của mục này mô tả một tình trạng nay đã
+> khác. Phần còn lại được viết ở [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) với đủ điểm neo để
+> một phiên mới bắt tay ngay.
+
+**Vì sao vẫn P1.** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi lần
+sinh sản thành một `LineageNode` kèm **bản sao đầy đủ** `MorphologyGenotype`. Đường tăng nay **đã có
+trần một phần** (compaction bỏ nhánh tuyệt chủng mỗi 50 epoch) nhưng **chưa đạt O(cá thể sống)**, vì
+compaction chạy với nén tắt. Và vẫn **không trả lời được "hai cá thể này rẽ nhánh ở đâu"**: chưa có
+truy vấn MRCA.
 
 Hệ quả khoa học đáng kể hơn hệ quả kỹ thuật: **không có MRCA thì không bám được *line of descent***,
 tức là không dùng được giao thức mà Avida dùng để **đo** một sự kiện tiến hoá thay vì kể lại nó. Với
 một dự án mà §3.3 đang cố chứng minh thế giới sống là experiment-ready, đó là một lỗ hổng bằng chứng.
 
-**Điểm neo:** `InMemoryLineageTracker`, `LineageNode`, `LineageRelation`, trait `LineageTracker` —
-tất cả trong [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs). Test tải sẵn có:
-`tests/lineage_stress.rs`.
+**Đã xong (2026-07-26), theo thứ tự chúng khoá vào nhau:**
 
-**Đường đi, và nó không tốn dependency nào.** Chi tiết ở OS7 trong
+| Mục | Kết quả | Neo |
+|---|---|---|
+| OSS-070 xuất Newick | ✅ DendroPy 5.0.10 đọc được; gate hai nửa cùng một fixture | `evolution/newick.rs`, `scripts/verify_newick.py` |
+| OSS-071 thuật toán `simplify` | ✅ 2.047 node / 16 sống → **31 node**, đúng cận `2·samples` | `evolution/simplify.rs` |
+| OSS-071b nối vào tracker sống | 🟡 `compact()` chạy mỗi 50 epoch, **nén tắt** | `lineage.rs`, `simulation_loop.rs` |
+
+**Đường đi không tốn dependency nào**, và điều đó vẫn đúng: lấy **thuật toán** `simplify()` của
+tskit chứ không lấy crate, lấy **định dạng** Newick chứ không lấy code R. Chi tiết ở OS7 trong
 [kế hoạch áp dụng nguồn mở](OPEN_SOURCE_ADOPTION_PLAN.md) và
-[khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md). Tóm tắt: lấy **thuật toán** `simplify()` của
-tskit chứ không lấy crate (binding C + mô hình tree-sequence trên toạ độ genomic, cả hai đều không
-hợp với genotype kiểu Karl Sims ở đây), và lấy **định dạng** Newick chứ không lấy code R.
+[khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md).
 
-**Thứ tự bắt buộc:** Newick → `simplify`/MRCA → giao thức đo. Không có MRCA thì không có gì để xuất
-ra một cây có nghĩa.
+##### 3.15.1 Việc còn lại — đọc mục này trước
 
-**Định nghĩa hoàn thành:** một parser bên thứ ba (`ape`/DendroPy) đọc được output Newick · test từ
-chối cây có chu trình, node mồ côi hoặc nhiều gốc · sau `simplify`, bộ nhớ lineage là O(cá thể
-sống) và quan hệ tổ tiên của phần giữ lại **không đổi** · MRCA tất định, có test trên cây biết trước
-đáp án.
+Hai việc, **theo đúng thứ tự này**. Việc 1 mở khoá cận O(alive); việc 2 mở khoá phần khoa học.
+
+**(1) Lưu số đếm đột biến tích luỹ theo node, rồi bật nén cho tầng lưu trữ.**
+
+*Vì sao chưa làm được ngay:* `get_mutations_count` trong
+[`commands/evolution.rs`](../../src-tauri/src/commands/evolution.rs) suy ra con số đột biến hiển thị
+trên UI bằng cách **đi qua `RelationType` từng cạnh**. Một cạnh đã nén đại diện cho một *đường* chứ
+không phải một sự kiện, nên nó không mang được kiểu đó — bật nén mà không xử lý trước sẽ làm số đếm
+sai (gộp 5 cạnh `Mutate` thành 1 thì con số đọc ra là 1, không phải 5).
+
+*Cách làm:* thêm một trường vào `LineageNode` giữ **số đột biến tích luỹ từ gốc**. Nó biến phép đi
+kia thành thừa **và** nhanh hơn.
+
+- **Kiểu phải là `Option<u32>`, không phải `u32`.** `LineageNode` nằm trong `SavedSimulationState`;
+  một `u32` mặc định `0` sẽ đọc thành *"không có đột biến"* cho **mọi save cũ** — hữu hạn, hợp lý,
+  và sai. `None` nghĩa là "chưa ghi, hãy tính theo cách cũ", và `get_lineage_graph` fallback về phép
+  đi qua cạnh khi gặp `None`.
+- Thêm trường có `#[serde(default)]` thì **không cần** bump `SCHEMA_VERSION`: save cũ đọc ra `None`,
+  và code cũ đọc save mới sẽ bỏ qua trường lạ. Kiểm lại giả định này trước khi dựa vào nó.
+- Rồi đổi `LineageTracker::compact` sang `SimplifyOptions { compress_unary_paths: true }`.
+
+*Định nghĩa hoàn thành:* số đột biến trên UI **không đổi** trước và sau khi nén (test so hai đường) ·
+một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
+fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
+
+**(2) OSS-072 — truy vấn MRCA.**
+
+*Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
+
+*Định nghĩa hoàn thành:* MRCA tất định, có test trên cây biết trước đáp án · xử lý đúng trường hợp
+**DAG** (crossover cho hai cha, nên MRCA không nhất thiết duy nhất — phải quyết định trả về gì và
+**ghi rõ**, đừng chọn bừa một nhánh) · trường hợp không có tổ tiên chung trả về gì cũng phải khai
+báo, vì rừng nhiều gốc là chuyện bình thường ở đây.
+
+Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) — nó cần MRCA.
+
+**Hai cái bẫy đã trả giá rồi, đừng đạp lại:**
+
+- **`add_reproduction` nay từ chối ghi cạnh có cha không tồn tại.** Đừng "sửa" nó thành ghi vô điều
+  kiện: một cạnh mồ côi làm hỏng **toàn bộ** đồ thị, vì cả `to_newick` lẫn `simplify` đều từ chối xử
+  lý đồ thị chứa nó.
+- **Tập sample của `compact` không phải "ai đang sống".** Phải gồm mọi `lineage_id` trong archive
+  MAP-Elites, vì một elite có thể được chọn làm cha ở epoch sau mà không phải tổ tiên của ai đang
+  sống.
+
+**Chưa nối vào IPC.** `to_newick` và `simplify` đều chưa có lệnh Tauri nào gọi. Cần sửa hợp đồng ở
+[`PROJECT.md`](../../PROJECT.md) §"Interface Contracts".
+
+**Neo4j:** `compact` chỉ co bộ nhớ trong. Khi Neo4j online, `get_lineage_graph` đọc từ database nên
+vẫn trả đồ thị **đầy đủ**.
 
 ---
 
