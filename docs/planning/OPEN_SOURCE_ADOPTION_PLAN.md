@@ -239,18 +239,70 @@ JSON/CSV để debug và trao đổi dễ hơn.
 Giai đoạn này không thêm **một** dependency nào; nó lấy *thuật toán* và *định dạng* thay vì thư
 viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md).
 
-| ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất |
-|---|---|---|---|
-| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc |
-| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** |
-| OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định |
-| OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run |
+| ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất | Trạng thái |
+|---|---|---|---|---|
+| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
+| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ⬜ |
+| OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ⬜ |
+| OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
 **Vì sao đáng làm sớm:** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi
 lần sinh sản kèm **bản sao đầy đủ** `MorphologyGenotype` và **không bao giờ prune**. Đó là đường
-tăng bộ nhớ không có trần với một run dài. OSS-070 là món rẻ nhất trong toàn kế hoạch (~40 dòng,
-0 dependency) và lợi ích lớn nhất của nó không phải là interop mà là **kiểm tra độc lập tính đúng
+tăng bộ nhớ không có trần với một run dài. OSS-070 là món rẻ nhất trong toàn kế hoạch
+(0 dependency) và lợi ích lớn nhất của nó không phải là interop mà là **kiểm tra độc lập tính đúng
 của phả hệ**.
+
+#### OSS-070 — đã ship phần serializer (2026-07-26)
+
+[`src-tauri/src/evolution/newick.rs`](../../src-tauri/src/evolution/newick.rs) +
+[`tests/newick_export_tests.rs`](../../src-tauri/tests/newick_export_tests.rs) (14 test) và 8 unit
+test. `to_newick` nhận đúng thứ `LineageTracker::get_lineage_graph` trả về, nên chạy được với cả
+tracker in-memory lẫn bản restore từ Neo4j.
+
+**Quyết định thiết kế phải nói rõ, vì nó là một đánh đổi chứ không phải chi tiết:** `Crossover` cho
+một cá thể **hai** cha mẹ, nên lineage là **DAG**, còn Newick chỉ biểu diễn **cây**. Export giữ
+**một** cha mẹ và **đếm** số cạnh không biểu diễn được, trả về ở `dropped_parent_edges`. Đếm thay vì
+bỏ im lặng chính là toàn bộ vấn đề: một export lặng lẽ cắt một nửa phả hệ có crossover vẫn parse
+được, vẫn vẽ ra được, và vẫn sai. Cha mẹ nào sống sót được chọn theo **id nhỏ nhất**, không theo thứ
+tự cạnh — vì thứ tự khác nhau giữa tracker in-memory (push order) và Neo4j (query order).
+
+**Một defect thật do chính test bắt được, ghi lại vì nó dễ tái phát:** kiểm tra generation ban đầu
+chạy **trước** kiểm tra chu trình. Nhưng generation không thể tăng đơn điệu vòng quanh một chu
+trình, nên **mọi chu trình đều kéo theo đảo generation** — và báo lỗi generation cho một đồ thị có
+vòng lặp là báo triệu chứng thay vì nguyên nhân, dẫn người đọc tới một node có bản ghi hoàn toàn
+bình thường. Thứ tự nay là: chu trình trước, generation sau.
+
+**Chân "parser bên thứ ba" của DoD đã chạy được.** Gate là **hai nửa trên cùng một file**, và
+không nửa nào đứng một mình có giá trị:
+
+```bash
+cargo test --test newick_export_tests   # export vẫn sinh ra đúng fixture
+python scripts/verify_newick.py         # DendroPy đồng ý fixture là một cây hợp lệ
+```
+
+Fixture: [`src-tauri/tests/fixtures/newick/lineage_forest.nwk`](../../src-tauri/tests/fixtures/newick/lineage_forest.nwk).
+Nửa Rust ghim output vào file; nửa Python bắt DendroPy đọc **cùng file đó**. Round-trip thuần Rust
+chỉ chứng minh serializer nhất quán với chính nó; một parser đọc file cũ không chứng minh gì về code
+hiện tại.
+
+Lineage của fixture cố tình khó chịu: hai gốc, một crossover có cạnh không biểu diễn được, một nhãn
+chứa dấu cách và một nhãn chứa dấu hai chấm. Một fixture dựng từ chuỗi gọn gàng chỉ chứng minh
+export chạy đúng ở ca chưa ai nghi ngờ.
+
+**Đã kiểm rằng gate này thật sự đỏ được** (một gate chưa từng đỏ thì chưa phải gate), bằng cách phá
+fixture theo hai cách:
+
+- **Lồng ngoặc ngược chiều** — vẫn là Newick *hợp lệ*, nên parser đọc trót lọt; nhưng khẳng định về
+  topology bắt được, và đây là loại lỗi mà so chuỗi phía Rust không thấy.
+- **Bỏ quote quanh nhãn có dấu hai chấm** — DendroPy từ chối phân tích. Đây đúng là điều quy tắc
+  quote tồn tại để chặn: `child:two` không quote sẽ bị đọc thành branch length và **cắt cụt tên**
+  chứ không báo lỗi, trừ khi phần còn lại không phải số. Kiểm chứng từ bên ngoài.
+
+`dendropy` là **dev-only, không có gì trong sản phẩm phụ thuộc Python**. Thiếu nó thì script thoát
+kèm hướng dẫn cài, và nửa Rust của gate vẫn chạy.
+
+**Chưa nối vào IPC.** `to_newick` hiện là hàm thư viện, chưa có lệnh Tauri nào gọi. Đó là việc riêng
+và cần cập nhật hợp đồng IPC ở `PROJECT.md`; không gộp vào đây.
 
 **Thứ tự là bắt buộc, không phải gợi ý:** không có MRCA thì không có gì để xuất ra một cây có
 nghĩa, nên OSS-073 không thể đi trước OSS-072.
@@ -287,16 +339,21 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 
 ## Ba hành động tiếp theo
 
-> **Cập nhật 2026-07-26 (lần 2).** ~~Thêm Criterion (OSS-010)~~ đã **xong** trong cùng ngày, nên
-> danh sách tụt xuống một bậc. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.
+> **Cập nhật 2026-07-26 (lần 3).** ~~OSS-010 Criterion~~ và ~~OSS-070 serializer Newick~~ đều đã
+> **xong** trong cùng ngày, nên danh sách tụt xuống hai bậc. Danh sách 2026-07-24 gốc giữ ở cuối làm
+> bản ghi.
 
-1. **OSS-070 — xuất Newick.** Món rẻ nhất còn lại trong kế hoạch: ~40 dòng, 0 dependency, và mua
-   được một **kiểm tra độc lập cho tính đúng của phả hệ** — một parser bên thứ ba sẽ từ chối cây có
-   chu trình, node mồ côi hoặc nhiều gốc. Chặn trước OSS-071/072 (`simplify`, MRCA).
+1. **OSS-071 — `simplify()` kiểu tskit.** Nay đã mở khoá: OSS-070 cho một cách **kiểm chứng kết quả**
+   của nó. Đây là mục đóng đường tăng bộ nhớ không trần trong `lineage.rs`, và bất biến cần giữ là
+   *quan hệ tổ tiên của phần giữ lại không đổi* — chính là thứ so được bằng cách xuất Newick trước và
+   sau khi prune.
 2. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
    tạo `NOTICE` cho các thành phần permissive đang được phân phối.
 3. **OSS-011 (`tracing`).** Mục OS1 còn lại. Không còn nằm trên đường tới hạn P0 — nó là
    observability kỹ thuật, không phải bằng chứng khoa học.
+
+Hai việc nhỏ còn treo từ OSS-070, cả hai là quyết định của người duy trì chứ không phải công việc
+tiếp nối: cài một parser phylogenetics để chạy chân cuối của DoD, và nối `to_newick` vào IPC.
 
 Một mục **không** nằm trong ba việc trên nhưng đã mở: đối chứng con số ~4,2 ms trong doc comment của
 `ResourceField::REGROWTH_STRIDE`, thứ mà bench không tái lập được (~0,36 ms). Nó là finding, chưa

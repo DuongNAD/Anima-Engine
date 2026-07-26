@@ -7,7 +7,65 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] OSS-010 Criterion — đo thật thay cho ước lượng, và hoà giải trạng thái (2026-07-26)
+# ⏪ [MỚI NHẤT] OSS-070 — xuất Newick, và cái test bắt được (2026-07-26)
+
+`src-tauri/src/evolution/newick.rs` + `tests/newick_export_tests.rs` (14 test) + 8 unit test.
+`706 pass · 0 fail · 4 ignored`, 72 target 0 rỗng, fmt + clippy sạch. **0 dependency mới** — Newick
+là *định dạng*, nên license của `ape`/`ggtree` không liên quan gì.
+
+## Đánh đổi phải nói rõ, vì nó không phải chi tiết
+
+`Crossover` cho một cá thể **hai** cha mẹ ⇒ lineage là **DAG**; Newick chỉ biểu diễn **cây**. Export
+giữ **một** cha mẹ và **đếm** số cạnh không biểu diễn được (`dropped_parent_edges`).
+
+Đếm thay vì bỏ im lặng là toàn bộ vấn đề: một export lặng lẽ cắt một nửa phả hệ có crossover **vẫn
+parse được, vẫn vẽ ra được, và vẫn sai**. Cha mẹ sống sót chọn theo **id nhỏ nhất**, không theo thứ
+tự cạnh — vì thứ tự khác nhau giữa tracker in-memory (push order) và Neo4j (query order), và một
+export đổi hình dạng theo nơi dữ liệu đến từ đâu thì không tái lập được.
+
+## Defect thật do test bắt được
+
+Kiểm tra generation ban đầu chạy **trước** kiểm tra chu trình. Nhưng generation không thể tăng đơn
+điệu vòng quanh một chu trình, nên **mọi chu trình đều kéo theo đảo generation** — code báo
+`GenerationInversion` cho một đồ thị mà vấn đề thật là vòng lặp, tức **báo triệu chứng thay vì
+nguyên nhân**, và dẫn người đọc tới một node có bản ghi hoàn toàn bình thường.
+
+Ba test đỏ vì đúng lý do đó (`a_cycle_is_refused`, `a_cycle_beside_a_healthy_tree_is_still_refused`,
+`the_reported_cycle_node_is_on_the_loop_not_merely_hanging_off_it`). Thứ tự nay là **chu trình
+trước, generation sau**. Lỗi thứ tư là test tôi viết sai: gạch ngang không phải ký tự dành riêng của
+Newick, nên `a-kid` không cần quote — và nếu nó cần thì mọi UUID sẽ bị quote vô ích.
+
+Hai control âm đáng giữ: `a_cycle_beside_a_healthy_tree_is_still_refused` chứng minh "không có gốc"
+**không** phải phép thử tương đương với "có chu trình"; `a_deep_chain_does_not_overflow_the_stack`
+(50.000 node) chốt rằng emitter là vòng lặp chứ không đệ quy — bản đệ quy sẽ qua mọi test vừa màn
+hình và chết đúng lúc run thật đủ dài.
+
+## Chân "parser bên thứ ba" đã chạy — và đã được chứng minh là đỏ được
+
+DendroPy 5.0.10 (`pip install dendropy`, **dev-only**) đọc
+`src-tauri/tests/fixtures/newick/lineage_forest.nwk`. Gate là **hai nửa trên cùng một file**:
+`cargo test` ghim output vào fixture, `python scripts/verify_newick.py` bắt parser ngoài đọc chính
+file đó. Round-trip thuần Rust chỉ chứng minh serializer nhất quán với chính nó.
+
+Đã phá fixture hai cách để chắc gate không xanh vô nghĩa:
+
+- **Lồng ngoặc ngược chiều** — vẫn là Newick *hợp lệ* nên parse trót lọt, nhưng khẳng định topology
+  bắt được. Đây là loại lỗi so chuỗi phía Rust không thấy.
+- **Bỏ quote quanh nhãn có dấu hai chấm** — DendroPy từ chối. Đúng thứ quy tắc quote tồn tại để
+  chặn: `child:two` không quote bị đọc thành branch length và **cắt cụt tên** chứ không báo lỗi,
+  trừ khi phần còn lại không phải số.
+
+## Chưa xong, có lý do
+
+**Chưa nối vào IPC.** `to_newick` là hàm thư viện, chưa lệnh Tauri nào gọi. Việc riêng, cần cập nhật
+hợp đồng IPC ở `PROJECT.md`.
+
+Mục kế tiếp mở khoá: **OSS-071 `simplify()`** — và OSS-070 vừa cho nó cách kiểm chứng, vì bất biến
+"quan hệ tổ tiên của phần giữ lại không đổi" so được bằng cách xuất Newick trước và sau prune.
+
+---
+
+# ⏪ OSS-010 Criterion — đo thật thay cho ước lượng, và hoà giải trạng thái (2026-07-26)
 
 Hai PR trong cùng ngày, ghi chung vì mục thứ hai tồn tại chỉ để sửa cái mục thứ nhất làm sai đi.
 
