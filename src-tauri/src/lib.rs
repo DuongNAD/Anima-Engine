@@ -81,18 +81,38 @@ pub fn run() {
             commands::load_simulation_state,
             commands::get_terrain_map,
             commands::get_ecosystem_state,
-            commands::save_world_artifact
+            commands::save_world_artifact,
+            commands::list_legacy_saves,
+            commands::import_legacy_save
         ])
         .setup(|app| {
-            use crate::core::simulation_lifecycle::SavedSimulationState;
             let app_state = app.state::<AppState>();
             if let Ok(app_data_dir) = app.path().app_data_dir() {
-                let default_save_path = app_data_dir.join("default_save.json");
-                if default_save_path.exists() {
-                    if let Ok(json_str) = std::fs::read_to_string(&default_save_path) {
-                        if let Ok(loaded_state) =
-                            serde_json::from_str::<SavedSimulationState>(&json_str)
-                        {
+                // One autosave, under the same contract as every other save.
+                //
+                // This used to read `app_data_dir/default_save.json` — a bare `serde_json` dump,
+                // outside the `saves/` directory the load command can reach, with no envelope, no
+                // checksum and no schema version. Two persistence contracts existed side by side
+                // and only one of them was versioned.
+                //
+                // The autosave now lives at `saves/autosave.json` and goes through
+                // `snapshot::read`, which verifies the checksum and migrates a pre-envelope file
+                // forward. The old location is read **once**, if the new one is absent, so an
+                // existing user's world is adopted rather than stranded; nothing writes back to it.
+                let saves_dir = app_data_dir.join("saves");
+                let autosave = saves_dir.join(crate::commands::save_paths::AUTOSAVE_NAME);
+                let legacy = app_data_dir.join(crate::commands::save_paths::LEGACY_AUTOSAVE_FILE);
+                let source = if autosave.exists() {
+                    Some(autosave)
+                } else if legacy.exists() {
+                    Some(legacy)
+                } else {
+                    None
+                };
+
+                if let Some(path) = source {
+                    match crate::core::snapshot::read(&path) {
+                        Ok(loaded_state) => {
                             *app_state
                                 .evolution_settings
                                 .lock()
@@ -114,6 +134,18 @@ pub fn run() {
                                 Arc::clone(&app_state.evolution_settings),
                                 Arc::clone(&app_state.evolution_running),
                                 Arc::clone(&app_state.map_elites_grid),
+                            );
+                        }
+                        // A corrupt or unreadable autosave is not a reason to refuse to launch —
+                        // the app starts on a fresh world instead. But the previous code swallowed
+                        // this with `if let Ok(..)` and said nothing, so a user whose world failed
+                        // to load saw an empty simulation and no explanation. The file is left in
+                        // place, so it can still be inspected or recovered.
+                        Err(e) => {
+                            eprintln!(
+                                "[anima] autosave at {} could not be read ({e}); starting a fresh \
+                                 world. The file has been left untouched.",
+                                path.display()
                             );
                         }
                     }
@@ -138,10 +170,20 @@ pub fn run() {
                     if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2))
                     {
                         if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
-                            let _ = std::fs::create_dir_all(&app_data_dir);
-                            let default_save_path = app_data_dir.join("default_save.json");
-                            if let Ok(json_str) = serde_json::to_string_pretty(&saved_state) {
-                                let _ = std::fs::write(default_save_path, json_str);
+                            // Same directory, same envelope, same atomic write as an explicit
+                            // save. The old form was `to_string_pretty` into `fs::write`, which
+                            // truncates the destination before writing a byte — so a crash or a
+                            // full disk during exit destroyed the autosave the user already had in
+                            // order to fail at producing a new one. It also wrote a bare state with
+                            // no schema version, which the load command could not read back.
+                            let saves = app_data_dir.join("saves");
+                            if std::fs::create_dir_all(&saves).is_ok() {
+                                let target = saves.join(crate::commands::save_paths::AUTOSAVE_NAME);
+                                if let Ok(envelope) =
+                                    crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
+                                {
+                                    let _ = crate::core::snapshot::write_atomic(&target, &envelope);
+                                }
                             }
                         }
                     }

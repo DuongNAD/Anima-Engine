@@ -959,14 +959,24 @@ export function App() {
 
           {/* Persistence Panel */}
           <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h3>Lưu & Tải Trạng thái (Save/Load State)</h3>
+            <h3>Lưu &amp; Tải Trạng thái (Save/Load State)</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {/* A save NAME, not a path.
+                  The backend resolves it inside this app's own data directory and refuses anything
+                  path-shaped (`commands/save_paths.rs`). The label and placeholder used to imply a
+                  filesystem path, which is what the old backend accepted — so a user who typed one
+                  now gets a refusal they have no way to interpret. Say what the field is. */}
+              <label htmlFor="save-name-input" style={{ fontSize: 12, color: "#4a5568" }}>
+                Tên bản lưu (save name) — chữ, số, <code>. _ -</code>. Không phải đường dẫn; tệp
+                luôn nằm trong thư mục dữ liệu của ứng dụng.
+              </label>
               <input
+                id="save-name-input"
                 type="text"
                 data-testid="filepath-input"
                 value={filePath}
                 onChange={(e) => setFilePath(e.target.value)}
-                placeholder="save_state.json"
+                placeholder="the_ol_world"
                 style={{ padding: "4px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
               />
               <div style={{ display: "flex", gap: "8px" }}>

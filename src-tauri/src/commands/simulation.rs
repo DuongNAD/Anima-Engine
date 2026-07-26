@@ -134,6 +134,108 @@ pub fn load_simulation_state(
     Ok(true)
 }
 
+/// The directory a user drops a pre-confinement save into. See `save_paths::LEGACY_IMPORT_DIR`.
+fn legacy_import_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot locate the app data directory: {e}"))?
+        .join(crate::commands::save_paths::LEGACY_IMPORT_DIR);
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "cannot create the legacy import directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    Ok(dir)
+}
+
+/// What the user can import, and where to put it.
+#[derive(serde::Serialize, ts_rs::TS)]
+// Same target as every other generated type. `src/core/*.rs` and this file are at the same depth,
+// so the string is identical rather than re-derived — an `export_to` that resolves somewhere else
+// produces a binding nothing imports and a drift gate that never sees it.
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct LegacyImportListing {
+    /// Absolute path of the drop directory, so the UI can tell the user where to copy the file.
+    pub directory: String,
+    /// Names present there now, each valid as an argument to `import_legacy_save`.
+    pub names: Vec<String>,
+}
+
+/// List the saves available for legacy import.
+///
+/// Reads a directory this app owns and returns names only. It cannot be pointed anywhere else, so
+/// there is nothing here for a compromised webview to aim.
+#[tauri::command]
+pub fn list_legacy_saves(app_handle: tauri::AppHandle) -> Result<LegacyImportListing, String> {
+    let dir = legacy_import_dir(&app_handle)?;
+    let mut names: Vec<String> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| crate::commands::save_paths::sanitize_save_name(name).is_ok())
+        .collect();
+    names.sort();
+    Ok(LegacyImportListing {
+        directory: dir.to_string_lossy().into_owned(),
+        names,
+    })
+}
+
+/// Import a save written before path confinement, **read-only**, into the app's save directory.
+///
+/// # Why this is not "load an absolute path"
+///
+/// The accepted design promises pre-confinement saves stay loadable through an explicitly opt-in
+/// migration. Implementing that as a command taking an absolute path would hand back exactly the
+/// capability the confinement removed — a compromised webview would call it with an SSH key and
+/// read the parse error.
+///
+/// So the authorising act is one the page cannot perform: the user copies the old file into
+/// `<app data>/legacy-import/` with their own file manager. This command addresses it by name,
+/// through the same allow-list as every other save name, reads it, and copies it forward into
+/// `saves/` under a name the user chose. The legacy file is never written to, never truncated, and
+/// never deleted — if the import produces a world the user does not want, the original is still
+/// where they put it.
+#[tauri::command]
+pub fn import_legacy_save(
+    app_handle: tauri::AppHandle,
+    legacy_name: String,
+    save_as: String,
+) -> Result<String, String> {
+    let source = crate::commands::save_paths::resolve_legacy_import_path(
+        &legacy_import_dir(&app_handle)?,
+        &legacy_name,
+    )?;
+    if !source.is_file() {
+        return Err(format!(
+            "no file named {legacy_name:?} in the legacy import directory. Copy the old save there \
+             first — this command cannot read from anywhere else."
+        ));
+    }
+
+    // The same reader the load command uses: it verifies the checksum of an enveloped save and
+    // migrates a pre-envelope one (schema 1 or 2) forward. A legacy file is exactly the second case.
+    let state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
+
+    // Re-seal into the current envelope and write it where saves live. The import is a copy
+    // forward, so the imported world gets the checksum and versioning every other save has.
+    let target =
+        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &save_as)?;
+    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(state)
+        .map_err(|e| format!("could not re-seal the imported save: {e}"))?;
+    crate::core::snapshot::write_atomic(&target, &envelope)
+        .map_err(|e| format!("could not write the imported save: {e}"))?;
+
+    Ok(target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or(save_as))
+}
+
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[repr(C)]
 pub struct AdvancedRabbitPart {

@@ -125,6 +125,48 @@ pub fn resolve_save_path(saves_dir: &Path, raw_name: &str) -> Result<PathBuf, St
     Ok(full)
 }
 
+/// Name of the reserved autosave, written on exit and adopted on startup.
+///
+/// A real save under the same contract as every other one — same directory, same envelope, same
+/// atomic write. It used to be `app_data_dir/default_save.json`: a bare `serde_json` dump written
+/// with `fs::write` (which truncates before writing, so a crash mid-write destroyed the autosave in
+/// order to fail at producing a new one), outside the `saves/` directory the explicit commands use,
+/// and unreachable from the load command. Two persistence contracts, one of them unversioned.
+pub const AUTOSAVE_NAME: &str = "autosave.json";
+
+/// The pre-`saves/` autosave file, read once and then left alone.
+pub const LEGACY_AUTOSAVE_FILE: &str = "default_save.json";
+
+/// Directory a user drops an old absolute-path save into so the app can import it.
+///
+/// # Why a directory and not a path argument
+///
+/// The accepted design promises that saves written before the path confinement remain loadable
+/// through a read-only, explicitly opt-in migration. The obvious implementation — a command taking
+/// an absolute path — reopens the exact hole the confinement closed: a compromised webview would
+/// call it with `C:\Users\...\.ssh\id_rsa` and read the failure message.
+///
+/// "Explicitly opt-in" has to mean *the user*, not the page. So the authorising act is one the
+/// webview cannot perform: the user copies the old file into this directory with their own file
+/// manager. The import command then addresses it **by name**, through the same allow-list every
+/// other save name passes, and only ever reads.
+///
+/// This is a migration aid, not a second save location: nothing writes here, and
+/// `resolve_legacy_import_path` is used exclusively by the read path.
+pub const LEGACY_IMPORT_DIR: &str = "legacy-import";
+
+/// Resolve a name inside the legacy import directory. **Read-only** — never a write target.
+pub fn resolve_legacy_import_path(import_dir: &Path, raw_name: &str) -> Result<PathBuf, String> {
+    let name = sanitize_save_name(raw_name).map_err(|e| e.to_string())?;
+    let full = import_dir.join(&name);
+    if full.parent() != Some(import_dir) {
+        return Err(format!(
+            "refusing to resolve legacy import {raw_name:?} outside the import directory"
+        ));
+    }
+    Ok(full)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +274,103 @@ mod tests {
                 "{ok:?} not json"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod legacy_import_tests {
+    use super::*;
+
+    fn import_dir() -> PathBuf {
+        PathBuf::from(if cfg!(windows) {
+            r"C:\Users\test\AppData\Roaming\com.anima.engine\legacy-import"
+        } else {
+            "/home/test/.local/share/com.anima.engine/legacy-import"
+        })
+    }
+
+    fn saves() -> PathBuf {
+        PathBuf::from(if cfg!(windows) {
+            r"C:\Users\test\AppData\Roaming\com.anima.engine\saves"
+        } else {
+            "/home/test/.local/share/com.anima.engine/saves"
+        })
+    }
+
+    /// The legacy import path is a *name* in a directory this app owns, not an escape hatch.
+    ///
+    /// This is the test that matters for the design's promise. "Existing absolute-path saves stay
+    /// loadable" is easy to implement as a command taking an absolute path — and that hands back
+    /// exactly the capability the confinement removed. A compromised webview would call it with
+    /// `C:\Users\...\.ssh\id_rsa` and read the parse failure. So the import resolver takes the same
+    /// allow-listed name as everything else, and the authorising act (copying the file into the
+    /// drop directory) is one the page cannot perform.
+    #[test]
+    fn legacy_import_refuses_every_path_shaped_argument() {
+        for evil in [
+            "../evil",
+            r"..\evil",
+            "../../Windows/System32/drivers/etc/hosts",
+            "/etc/passwd",
+            r"C:\Users\me\.ssh\id_rsa",
+            r"\\server\share\evil",
+            "save.json:stream",
+            "sub/dir/save",
+            "..",
+            "CON",
+            "NUL.json",
+        ] {
+            assert!(
+                resolve_legacy_import_path(&import_dir(), evil).is_err(),
+                "{evil:?} resolved as a legacy import"
+            );
+        }
+    }
+
+    #[test]
+    fn a_legacy_name_resolves_inside_the_import_directory_only() {
+        let p = resolve_legacy_import_path(&import_dir(), "old_world").unwrap();
+        assert_eq!(p.parent(), Some(import_dir().as_path()));
+        assert_eq!(p.file_name().unwrap(), "old_world.json");
+
+        // ...and it is a different directory from where saves are written, so an import can never
+        // be mistaken for a save target.
+        assert_ne!(p.parent(), Some(saves().as_path()));
+    }
+
+    /// The import directory is never a write target.
+    ///
+    /// Enforced structurally rather than by convention: `resolve_save_path` — the only resolver the
+    /// write paths use — cannot produce a path in the import directory, because it joins onto the
+    /// saves directory it is given and asserts containment.
+    #[test]
+    fn nothing_writes_into_the_legacy_import_directory() {
+        let written = resolve_save_path(&saves(), "anything").unwrap();
+        assert_eq!(written.parent(), Some(saves().as_path()));
+        assert!(!written.starts_with(import_dir()));
+
+        // And the reverse: a caller who passes the import directory *as* the saves directory still
+        // gets containment, so there is no argument that makes one resolver write into the other's
+        // space by accident.
+        let contained = resolve_save_path(&import_dir(), "anything").unwrap();
+        assert_eq!(contained.parent(), Some(import_dir().as_path()));
+    }
+
+    #[test]
+    fn the_autosave_is_an_ordinary_save_name() {
+        // The autosave now lives in `saves/` under the same rules as any other save, so the load
+        // command can read it and the envelope covers it. Previously it was a bare JSON file in a
+        // directory the load command could not reach.
+        assert_eq!(sanitize_save_name(AUTOSAVE_NAME).unwrap(), AUTOSAVE_NAME);
+        let p = resolve_save_path(&saves(), AUTOSAVE_NAME).unwrap();
+        assert_eq!(p.parent(), Some(saves().as_path()));
+    }
+
+    #[test]
+    fn the_legacy_autosave_file_name_is_still_a_valid_name_to_read() {
+        // Startup adopts `default_save.json` once when `saves/autosave.json` is absent. It is read
+        // from the app data root, not from `saves/`, but keeping it a legal name means the adoption
+        // path shares the same validation rather than bypassing it.
+        assert!(sanitize_save_name(LEGACY_AUTOSAVE_FILE).is_ok());
     }
 }

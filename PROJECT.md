@@ -51,6 +51,37 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 - `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
 - `get_lod_bands` -> `LodBands` — tier boundaries (`hot_radius`, `warm_radius`, `warm_interval`). The agent viewport asks for these rather than hardcoding them: it only sets a focus while everything on screen fits inside `hot_radius`, so that no agent the user is looking at is ever tiered down.
 
+#### Persistence
+
+`file_path` keeps its parameter name for IPC compatibility. **It is a save *name*, not a path.**
+Both commands resolve it inside this app's own data directory and refuse anything path-shaped;
+they previously took the string straight to `fs`, so anything that could reach `invoke` could write
+a file anywhere the process had permission and read any file back into the running world.
+
+- `save_simulation_state(file_path: String)` -> `bool` — `file_path` is a single file name matching
+  `[A-Za-z0-9._-]{1,100}`, normalised to `*.json`, written under `<app data>/saves/` as a versioned
+  `SnapshotEnvelope` via an atomic write. Separators, drive letters, `..`, UNC prefixes, NTFS
+  streams and Windows device names (`CON`, `NUL`, `COM1`…) are refused with a reason.
+  See `src-tauri/src/commands/save_paths.rs`.
+- `load_simulation_state(file_path: String)` -> `bool` — the same name contract, read back from
+  `<app data>/saves/`. The reader verifies the envelope checksum and migrates schema 1–2 forward.
+- `list_legacy_saves` -> `LegacyImportListing` — `{ directory, names }` for
+  `<app data>/legacy-import/`, the drop box for saves written before path confinement.
+- `import_legacy_save(legacy_name: String, save_as: String)` -> `String` — reads one file from that
+  directory, re-seals it into the current envelope, and writes it into `saves/` under `save_as`.
+  **Read-only** with respect to the legacy file: never written, truncated or deleted.
+
+  Why a drop directory rather than an absolute path argument: "explicitly opt-in" has to mean *the
+  user*, not the page. A command taking an absolute path would hand back exactly the capability the
+  confinement removed — a compromised webview would call it with an SSH key and read the parse
+  error. Copying a file into the drop box is an act the webview cannot perform.
+
+The **autosave** (written on exit, adopted on startup) is an ordinary save named `autosave.json`
+under the same directory, envelope and atomic write. It was `<app data>/default_save.json`: a bare
+`serde_json` dump written with `fs::write`, unversioned, and unreachable from `load_simulation_state`.
+Startup reads the old location once if `saves/autosave.json` is absent, so existing worlds are
+adopted rather than stranded, and never writes back to it.
+
 ### Tauri Events
 - `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)
 - `map-elites-update` (Payload: `MapElitesGridState`)
