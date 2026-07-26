@@ -52,6 +52,7 @@ out*.txt
 # Agent Workspace Temp files
 .agents/
 .gemini/
+.worktrees/
 # Machine-specific Claude Code MCP config (absolute server paths; regenerate per machine)
 .mcp.json
 /tests/test-results/
