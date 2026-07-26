@@ -114,11 +114,20 @@ world-units ([resources.rs](src-tauri/src/core/resources.rs), `MapBounds::defaul
 
 | Nguồn | Lưới | Phủ world | units / ô (ngang) |
 |---|---|---|---|
-| Backend sim (mặc định) | 128 × 128 (`DEFAULT_GRID_DIM`) | 200 × 200 | 200 / 128 = **1.5625** |
+| Backend sim (mặc định) | 256 × 256 (`DEFAULT_GRID_DIM`) | 200 × 200 | 200 / 256 = **0.78125** |
 | Frontend worldGen | 128 | (theo bounds khi map sang world) | 200 / 128 = 1.5625 |
 | Frontend worldGen | 256 | " | 200 / 256 = 0.78125 |
 | Frontend worldGen | 1024 | " | 200 / 1024 = 0.1953125 |
 | Frontend worldGen | 2048 | " | 200 / 2048 = 0.09765625 |
+
+> **Đã sửa 2026-07-27.** Hàng "Backend sim" trước đây ghi `128 × 128` và `200 / 128 = 1.5625`.
+> `MapSettings::default()` đã là **256²** từ lúc khớp với World Artifact, nên hệ số cũ **sai gấp
+> đôi**. `DEFAULT_GRID_DIM` nay là 256 và bị test `s03_default_grid_dim_tracks_map_settings_default`
+> buộc phải bằng `MapSettings::default().width` — sửa một bên mà quên bên kia sẽ đỏ.
+>
+> Điều **không** hỏng, và đáng ghi để phiên sau không đi tìm: mọi phép biến đổi trong
+> [`sim_rules.rs`](src-tauri/src/core/sim_rules.rs) đều **nhận `width`/`height` làm tham số**, không
+> hằng số nào bị đọc trong lúc chạy. Hằng số sai chỉ làm sai **tài liệu**, không làm sai toạ độ.
 
 **`world_scale` trong World Artifact v2**: header dài **36 byte**
 (`magic, version=2, width, height, seaLevel, seed, generator_version, world_scale, checksum` — xem

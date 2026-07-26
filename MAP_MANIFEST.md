@@ -63,7 +63,7 @@ Các giá trị cố định theo [SIMULATION_RULES.md](SIMULATION_RULES.md) / `
 | `worldMaxXZ` | `100` | max world X và Z. |
 | `worldMinY` | `0` | `WORLD_MIN_Y`. |
 | `worldMaxY` | `10` | `WORLD_MAX_Y` (= `elevation * 10`). |
-| `gridDim` | integer ≥ 1 | grid backend (`DEFAULT_GRID_DIM = 128`). |
+| `gridDim` | integer ≥ 1 | grid backend (`DEFAULT_GRID_DIM = 256`, khớp `MapSettings::default()`). |
 
 > Hai coordinate convention cùng tồn tại và **khác nhau** (xem `sim_rules.rs`):
 > - **cell-bucket** (`get_map_indices`): `u=(x-min.x)/(max.x-min.x)`, `ix=floor(u*W).min(W-1)`; ngoài `[0,1]` → không có cell. Round-trip: tâm cell luôn bucket về đúng cell đó (property S03).

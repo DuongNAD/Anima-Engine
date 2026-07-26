@@ -72,10 +72,12 @@ Các biến môi trường tuỳ chọn (đều có default, không bắt buộc
    [`src-tauri/src/core/sim_rules.rs`](src-tauri/src/core/sim_rules.rs)) và `hardware`
    (`platform`/`release`/`arch`/`cpuModel`/`cpuCount`/`totalMemMB` lấy từ `os.*`).
    Đây là phần bắt buộc để một số đo có thể tái lập.
-   > **Finding đang mở:** `gridDim=128` khớp `DEFAULT_GRID_DIM` trong `sim_rules.rs`, nhưng hằng số
-   > đó **không được đọc ở đâu trong `src/`**, còn thế giới thật chạy **256²**
-   > (`MapSettings::default()`). Bộ Criterion dùng 256². Chưa sửa ở đây vì nó chạm vào
-   > [`COORDINATE_CONTRACT.md`](COORDINATE_CONTRACT.md) §"Backend sim".
+   > **Finding đã đóng 2026-07-27.** Trước đây `gridDim=128` khớp `DEFAULT_GRID_DIM`, nhưng hằng số
+   > đó **không được đọc ở đâu trong `src/`** còn thế giới thật chạy **256²**
+   > (`MapSettings::default()`). `DEFAULT_GRID_DIM` nay là **256**, và
+   > `s03_default_grid_dim_tracks_map_settings_default` buộc nó bằng `MapSettings::default().width`.
+   > `COORDINATE_CONTRACT.md` §4 cùng `SIMULATION_RULES.md` §5 đã sửa theo (0.78125 thay vì 1.5625).
+   > Bộ Criterion vốn đã dùng 256², nên **số đo không đổi** — chỉ nhãn `config.gridDim` mới đúng.
 2. **Timings — hai loại, ghi nhãn khác nhau.**
    - `criterion/*` là **số đo thật**: trung vị Criterion, build release, một system mỗi entry, đọc
      từ `src-tauri/target/criterion/**/new/estimates.json`. Mỗi entry mang thêm `medianNs`,

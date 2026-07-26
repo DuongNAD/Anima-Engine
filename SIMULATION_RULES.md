@@ -142,7 +142,8 @@ physics 60 Hz · brain/sensor 10–20 Hz batched · ecology cục bộ 1 Hz · p
 Chi tiết + transforms ở [COORDINATE_CONTRACT.md](COORDINATE_CONTRACT.md); cài đặt +
 round-trip test (**S03**) ở [`sim_rules.rs`](src-tauri/src/core/sim_rules.rs).
 
-- Lưới sim backend mặc định **128×128** ô (`DEFAULT_GRID_DIM`), seed 1337.
+- Lưới sim backend mặc định **256×256** ô (`DEFAULT_GRID_DIM`, khớp `MapSettings::default()`),
+  seed 1337 → **0.78125** world-unit mỗi ô.
 - World-space: `x,z ∈ [-100, 100]` (200×200 world-unit), `y = elevation · 10`.
 - Bốn không gian: **cell → uv[0,1] → world → render**. Quy ước tâm ô `uv = ((ix+.5)/W, (iy+.5)/H)`;
   world→cell dùng đúng luật `floor(coord·dim)` như `TerrainMap::get_map_indices`, nên tâm mỗi ô

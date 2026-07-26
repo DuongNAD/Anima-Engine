@@ -29,9 +29,18 @@ pub use anima_domain::laws::{
 
 // ---- Space ----------------------------------------------------------------------------------
 
-/// Default working resolution of the backend simulation grid, cells per side
-/// (`MapSettings::default`, `core/terrain.rs`).
-pub const DEFAULT_GRID_DIM: usize = 128;
+/// Default working resolution of the backend simulation grid, cells per side.
+///
+/// **This must equal [`crate::core::terrain::MapSettings::default`]'s `width`/`height`**, and
+/// `s03_default_grid_dim_tracks_map_settings_default` fails if it does not. The binding is not
+/// decoration: this constant sat at 128 long after the working map moved to 256² to match the
+/// World Artifact, and because nothing in `src/` reads it, nothing broke and nothing noticed.
+/// What did break was the prose — `COORDINATE_CONTRACT.md` §4, `SIMULATION_RULES.md` §5 and
+/// `MAP_MANIFEST.md` all derive units-per-cell from this number, and published `200/128 = 1.5625`
+/// where the truth was `200/256 = 0.78125`, a factor of two.
+///
+/// Change this and those tables together.
+pub const DEFAULT_GRID_DIM: usize = 256;
 
 /// Horizontal world-space bounds per axis, in world-units, from `MapBounds::default`
 /// (`min.xz = -100`, `max.xz = +100` → a 200×200 unit square).
@@ -370,6 +379,106 @@ mod tests {
             world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, 128, 128, &bounds),
             Some((127, 127))
         );
+    }
+
+    /// The constant is a *claim about another value*, and that is exactly how it went stale: it
+    /// documented itself as mirroring `MapSettings::default` and then sat at 128 while the default
+    /// moved to 256 to match the World Artifact. Nothing read it, so nothing broke, so nothing
+    /// noticed — while four documents kept deriving a units-per-cell figure from it that was wrong
+    /// by a factor of two.
+    ///
+    /// Correcting the number alone would leave the same trap armed. This binds the claim to the
+    /// value it claims about, so the next person to change the working resolution is told.
+    #[test]
+    fn s03_default_grid_dim_tracks_map_settings_default() {
+        let settings = crate::core::terrain::MapSettings::default();
+        assert_eq!(
+            DEFAULT_GRID_DIM, settings.width,
+            "DEFAULT_GRID_DIM ({}) no longer matches MapSettings::default().width ({}). It is the \
+             value COORDINATE_CONTRACT.md, SIMULATION_RULES.md and MAP_MANIFEST.md derive \
+             units-per-cell from - update the constant AND those tables together.",
+            DEFAULT_GRID_DIM, settings.width
+        );
+        assert_eq!(
+            settings.width, settings.height,
+            "the working grid is assumed square by the single-valued DEFAULT_GRID_DIM"
+        );
+    }
+
+    /// Units-per-cell is the number the documents publish, so pin the arithmetic rather than
+    /// trusting prose to be re-derived by hand.
+    #[test]
+    fn s03_units_per_cell_at_the_default_resolution() {
+        let span = WORLD_MAX_XZ - WORLD_MIN_XZ;
+        assert_eq!(span, 200.0);
+        assert_eq!(
+            span / DEFAULT_GRID_DIM as f32,
+            0.78125,
+            "200 / {} should be 0.78125 world-units per cell",
+            DEFAULT_GRID_DIM
+        );
+    }
+
+    /// R5: the transforms are dimension-parameterized, so the round-trip must hold at resolutions
+    /// nobody runs by default - including 1x1 (where every point is one cell), a prime-sized
+    /// non-square grid, and the real default. The pre-existing round-trip test covered 16, 128 and
+    /// 200x137 only, so a bug appearing at the actual working resolution had no gate.
+    #[test]
+    fn s03_round_trip_holds_at_non_default_and_degenerate_dimensions() {
+        let bounds = MapBounds::default();
+        for &(w, h) in &[(1usize, 1usize), (2, 2), (3, 7), (127, 127), (256, 256)] {
+            for iy in 0..h {
+                for ix in 0..w {
+                    let (x, z) = cell_center_to_world_xz(ix, iy, w, h, &bounds);
+                    let back = world_xz_to_cell(x, z, w, h, &bounds)
+                        .expect("a cell centre is inside bounds by construction");
+                    assert_eq!(
+                        back,
+                        (ix, iy),
+                        "cell ({ix},{iy}) at {w}x{h} did not round-trip (got {back:?})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Borders and corners at the *default* resolution. `uv_to_cell` clamps with `.min(dim - 1)`,
+    /// so the max edge must land on the last cell rather than one past it - an off-by-one here is
+    /// an out-of-bounds index in every field the ecology reads.
+    #[test]
+    fn s03_borders_and_corners_at_the_default_resolution() {
+        let bounds = MapBounds::default();
+        let d = DEFAULT_GRID_DIM;
+        let last = d - 1;
+
+        for &(x, z, expected) in &[
+            (WORLD_MIN_XZ, WORLD_MIN_XZ, (0, 0)),
+            (WORLD_MAX_XZ, WORLD_MIN_XZ, (last, 0)),
+            (WORLD_MIN_XZ, WORLD_MAX_XZ, (0, last)),
+            (WORLD_MAX_XZ, WORLD_MAX_XZ, (last, last)),
+        ] {
+            assert_eq!(
+                world_xz_to_cell(x, z, d, d, &bounds),
+                Some(expected),
+                "corner ({x}, {z}) at {d}x{d}"
+            );
+        }
+
+        // Strictly outside on each axis, both directions, is None - not a clamped edge cell.
+        for &(x, z) in &[
+            (WORLD_MIN_XZ - 0.001, 0.0),
+            (WORLD_MAX_XZ + 0.001, 0.0),
+            (0.0, WORLD_MIN_XZ - 0.001),
+            (0.0, WORLD_MAX_XZ + 0.001),
+        ] {
+            assert!(
+                world_xz_to_cell(x, z, d, d, &bounds).is_none(),
+                "({x}, {z}) is outside bounds and must have no cell"
+            );
+        }
+
+        // Every flat index produced at the default resolution is addressable.
+        assert_eq!(cell_index(last, last, d), d * d - 1);
     }
 
     #[test]
