@@ -62,18 +62,56 @@ Ordered by return, not by difficulty. Each package is a commit or a small run of
 One row per verified finding. `Status` is only `closed` when the named gate has been run **after**
 the fix and its output recorded.
 
-| ID | Finding | Severity | Gate that proves it closed | Artifact | Status | Commit |
-|---|---|---|---|---|---|---|
-| A1 | `map_manifest.json` references a non-existent artifact and 8 non-existent PNGs; checksum is 64 zeroes | High | evidence test opens the committed manifest, hashes the artifact | `map_manifest.json`, `artifacts/` | open | — |
-| A2 | S05 validates an inline fixture, never the committed file | High | the same evidence test, which fails if the file is absent | `src/__tests__/` | open | — |
-| A3 | Playwright adopts any server on 5173 and downgrades app mismatch to a skip | High | E2E identity assertion; wrong app ⇒ failure | `tests/e2e/playwright.config.ts` | open | — |
-| B1 | `DEFAULT_GRID_DIM = 128` vs `MapSettings::default()` = 256; four docs publish a 2× wrong scale | High | drift assertion binding constant to `MapSettings::default()` | `sim_rules.rs`, 4 docs | open | — |
-| C1 | `security.csp: null` | Medium | explicit policy present; app still loads | `tauri.conf.json` | open | — |
-| C2 | save/load accept an unconstrained path from the frontend | High | escape attempt refused; migration reader test | `commands/simulation.rs` | open | — |
-| C3 | 2 `unsafe impl Send/Sync` with no proof | Medium | proof present, or the `unsafe` gone | `ai/model.rs` | open | — |
-| D1 | Lineage memory unbounded; compression off because the mutation count walks edges | High | count identical pre/post compression; node count at `2·samples` | `evolution/lineage.rs` | open | — |
-| D2 | No `NOTICE`; `LICENSE` has no scope split; `burn` absent from inventory | Medium | `NOTICE` covers the shipped graph | `NOTICE`, `LICENSE` | open | — |
-| D3 | 491 ESLint warnings, frozen by a ratchet that only blocks growth | Medium | 0 warnings, baseline lowered | `eslint.config.js` | open | — |
+| ID | Finding | Severity | Gate that proves it closed | Status | Commit |
+|---|---|---|---|---|---|
+| A1 | `map_manifest.json` references a non-existent artifact and 8 non-existent PNGs; checksum is 64 zeroes | High | `mapManifestEvidence.test.ts` — opens the committed file, hashes the real artifact | **closed** | `8e6a165` |
+| A2 | S05 validates an inline fixture, never the committed file | High | same test; proven red by swapping the old manifest back (4 of 7 fail) | **closed** | `8e6a165` |
+| A3 | Playwright adopts any server on 5173 and downgrades app mismatch to a skip | High | own port 5177, `reuseExistingServer: false`, identity assertion throws on a wrong app | **closed** | `f99dfc1` |
+| B1 | `DEFAULT_GRID_DIM = 128` vs `MapSettings::default()` = 256; four docs publish a 2× wrong scale | High | `s03_default_grid_dim_tracks_map_settings_default`; proven red by reinstating 128 | **closed** | `250e03d` |
+| C1 | `security.csp: null` | Medium | explicit `csp` + `devCsp`; `npm run check:csp` asserts the hardening directives | **closed** (policy unverified in the live webview — see below) | `0da67a4` |
+| C2 | save/load accept an unconstrained path from the frontend | High | `save_paths` allow-list, 6 tests incl. traversal/UNC/ADS/device-name | **closed** | `378b4f6` |
+| C3 | 2 `unsafe impl Send/Sync` with no proof | Medium | proof written; `every_brain_model_constructor_materializes_its_parameters` enforces its precondition | **closed**, and it uncovered a real race — see §4 | `b27c28b` |
+| D1 | Lineage memory unbounded; compression off because the mutation count walks edges | High | count identical pre/post compression + negative control that compression is running | **closed** | `57a8246` |
+| D2 | No `NOTICE`; `LICENSE` has no scope split; `burn` absent from inventory | Medium | `NOTICE` generated from `cargo tree --features desktop -e normal`; 419 crates, 0 gaps | **closed** | `14d7abe` |
+| D3 | 491 ESLint warnings, frozen by a ratchet that only blocks growth | Medium | 0 warnings, baseline lowered | **open** — not attempted; see §5 | — |
+
+### 2.1 Findings raised during the pass, not in the brief
+
+| Finding | Severity | Status |
+|---|---|---|
+| `npm run gen:manifest` was broken — invoked `esbuild`, which is **not installed** (Vite 8 uses rolldown/oxc). The documented map exporter could not be run by anyone. | High | **closed** — `scripts/run_ts.mjs` (`8e6a165`) |
+| `public/ecosystem.html` shipped in every desktop build and loaded three.js + simplex-noise from `cdnjs.cloudflare.com`, unpinned | High | **closed** — build-only Vite plugin (`0da67a4`) |
+| The CPU brain path shared unmaterialized lazy `Param` cells across Bevy's parallel `Res<T>` readers | High | **closed** — `materialize_params` (`b27c28b`) |
+| `compact` filtered original relations by surviving-node set; with compression on this disconnects survivors | High | **closed before it shipped** — rebuilt from the plan (`57a8246`) |
+| `tests/` suite produced 28 misleading failures under CPU contention | Medium | **closed** — `maxWorkers: 4` (`3fb691d`) |
+| No bundle budget; Vite's always-on 500 kB warning cannot distinguish 856 kB from 1.4 MB | Medium | **closed** — `npm run check:bundle` |
+
+## 4. What changed in the plan once evidence arrived
+
+Recorded because the design doc was wrong about two things and the corrections are the useful part.
+
+- **The `unsafe impl`s were not redundant.** The design proposed deleting them if the types were
+  already `Send + Sync`. Replacing them with a static assertion did not compile:
+  `OnceCell<Tensor<..>>` and a `dyn Fn(..) + Send` initializer inside burn 0.13's `Param` make it
+  `!Sync` — on **both** backends, so the `WgpuDevice` everyone suspected was innocent. That turned a
+  documentation task into a correctness one: only the wgpu constructor drained the lazy
+  initialization, so the CPU path handed a value with empty cells to Bevy's parallel readers.
+- **Enabling lineage compression needed more than the status doc's two steps.** §3.15.1 described
+  adding the count and flipping the flag. It does not mention that `compact` filters *original*
+  relations by surviving-node set — correct while nothing is spliced, and silently graph-destroying
+  the moment something is. Both edges of `A → B → C` name the removed `B`, so `C` becomes a root.
+
+## 5. Not done, and why
+
+- **D3 / ESLint 491 → 0.** Not attempted. It is a mechanical sweep across ~100 files touching `any`,
+  purity, immutability and hook dependencies, and it would have displaced the security and evidence
+  findings above. The ratchet still blocks growth (baseline 491, unchanged), so nothing regressed.
+- **Generated-binding authority (WP6).** Not attempted. `src/App.tsx` still hand-mirrors IPC shapes.
+  The `ts-rs` parity gate remains green because the generated files are unchanged.
+- **CSP verified in the live webview.** `npm run check:csp` validates shipped artifacts against the
+  declared policy; it cannot prove the app boots under it, because CLAUDE.md forbids running the full
+  backend on this machine. A human `npm run tauri:dev` is the missing step.
+- **Canonical map views.** Still uncaptured; see DEC-2.
 
 ## 3. Decisions that are not mine to take
 

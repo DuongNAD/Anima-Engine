@@ -19,7 +19,31 @@ gate chưa xanh.
 
 ---
 
-## 1. Trạng thái đo được (2026-07-26, tại `d006f64`)
+## 1. Trạng thái đo được (**2026-07-27**, nhánh `feature-anima-completion` trên `6caeeb4`)
+
+Đo lại toàn bộ trong worktree `.worktrees/feature-anima-completion`. Bằng chứng đầy đủ kèm exit code
+ở [`docs/ai/testing/2026-07-27-feature-anima-completion.md`](../ai/testing/2026-07-27-feature-anima-completion.md).
+
+| Gate | Lệnh | Kết quả |
+|---|---|---|
+| Backend test | `cargo test --features desktop --no-fail-fast` | **765 pass · 0 fail · 4 ignored**, 78 dòng kết quả, 0 warning biên dịch |
+| Target rỗng | `node scripts/check_test_targets.mjs` | **76 target, 0 rỗng** |
+| Format + clippy (cả 2 cấu hình) | `cargo fmt --check`, `cargo clippy --all-targets {--features desktop, --no-default-features} -- -D warnings` | sạch |
+| Test frontend (src) | `npm run test` | 14 file · **97 pass** |
+| Test frontend (tests/) | `npm run test:frontend` | **26 file · 243 pass · 1 skip** — nay ổn định nhờ `maxWorkers: 4`, xem §4 |
+| E2E Playwright | `npm run test:e2e` | **9 pass · 0 fail · 5 skip có lý do**, server riêng cổng 5177 + kiểm định danh |
+| CSP | `npm run check:csp` | 2 file HTML ship, 0 origin ngoài, 0 inline script |
+| Ngân sách bundle | `npm run check:bundle` | 23 chunk, **1695,8 / 2000 KiB** |
+| NOTICE | `node scripts/gen_notice.mjs --check` | 419 crate + 8 gói npm, **0 thiếu giấy phép** |
+| Link tài liệu | `node scripts/check_docs_links.mjs` | 0 gãy |
+
+**Cái đã đổi so với 2026-07-26, và đáng đọc nhất:** hàng `tests/` **không phải hồi quy**. 28 lỗi là
+thật nhưng do **tranh chấp CPU**, và đã đo được cơ chế: chạy riêng một file → 4/4 pass; chạy cả suite
+với `--maxWorkers=4` → 243 pass, trong khi một tiến trình Vitest của dự án khác vẫn đang chiếm một
+core và 1,4 GB. Không assertion nào bị nới.
+
+<details>
+<summary>Bảng cũ (2026-07-26, tại <code>d006f64</code>) — giữ để đối chiếu</summary>
 
 Đây là số đo, không phải trích dẫn tài liệu. Mọi hàng **trừ một** được chạy lại tại `d006f64`
 (nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge); hàng ngoại lệ được đánh dấu
@@ -46,6 +70,8 @@ trong bảng.
 > **Việc đầu tiên của phiên sau, nếu cần một bảng §1 sạch:** chạy lại `npm run test:frontend` **một
 > mình** trên máy rảnh và điền số vào hàng đó. Con số **28** là dấu hiệu nhận dạng lỗi giả — trước
 > khi kết luận suite này đỏ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
+
+</details>
 
 Quy mô (chưa đếm lại từ `c0a3cff`, chỉ dùng để cảm nhận bậc độ lớn): Rust ~47,7k dòng / 128 file ·
 TS ~25,6k dòng / 126 file · 7 spec Playwright.
@@ -98,16 +124,36 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
 
-### 3.0 Phiên sau bắt đầu ở đây (bàn giao 2026-07-26)
+### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
 
-Ba việc, đã xếp sẵn thứ tự. Mỗi việc có mục riêng bên dưới với điểm neo và định nghĩa hoàn thành —
-đây chỉ là bản đồ để không phải đọc cả tài liệu mới biết cầm cái gì.
+> **Việc #1 của bàn giao trước đã XONG.** Số đếm đột biến theo node đã ship và nén lưu trữ đã bật —
+> xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước), nay chỉ còn OSS-072 (MRCA). Chi tiết cả đợt
+> ở [`docs/ai/planning/2026-07-27-feature-anima-completion.md`](../ai/planning/2026-07-27-feature-anima-completion.md)
+> và bảng bằng chứng ở [`docs/ai/testing/2026-07-27-feature-anima-completion.md`](../ai/testing/2026-07-27-feature-anima-completion.md).
 
 | # | Việc | Vì sao là việc này | Đọc |
 |---|---|---|---|
-| 1 | **Số đếm đột biến theo node → bật nén lưu trữ** | Thứ **duy nhất** còn chặn cận O(alive) của bộ nhớ lineage. Đã định vị chính xác, không còn gì phải khảo sát | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
-| 2 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
-| 3 | **In-app tick capture** | §3.2 nay chỉ còn thiếu đúng cái này; phần cứng và công cụ đã xong | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
+| 1 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ. Đã ghi thành quyết định DEC-1 kèm 3 phương án và khuyến nghị | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
+| 2 | **In-app tick capture** | §3.2 nay chỉ còn thiếu đúng cái này; phần cứng và công cụ đã xong | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
+| 3 | **OSS-072 MRCA** | Nửa khoa học còn lại của phả hệ. Nén đã xong nên `simplify` đã có sẵn cấu trúc cha/con để dùng lại | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
+| 4 | **ESLint 491 → 0** (§3.11) | Món nợ duy nhất trong chỉ thị 2026-07-27 **không** được đụng tới. Ratchet vẫn chặn tăng, nhưng không co lại | [§3.11 trong bảng P2](#p2--vệ-sinh-làm-được-lẻ) |
+
+**Một việc cần con người, máy không làm được:** chạy `npm run tauri:dev` một lần để xác minh CSP mới
+(`tauri.conf.json` nay có `csp` + `devCsp` thay cho `null`). `npm run check:csp` chỉ kiểm **artifact
+đã build** so với chính sách đã khai; nó **không** chứng minh app khởi động được dưới chính sách đó,
+vì CLAUDE.md cấm chạy full backend trên máy này.
+
+**Ba cái bẫy mới, trả giá ngày 2026-07-27:**
+
+- **`compact` lọc quan hệ GỐC theo tập node sống sót — đúng khi chưa nén, phá đồ thị ngay khi nén.**
+  Đường `A → B → C` có cả hai cạnh đều nhắc `B`; `B` bị cắt thì cả hai cạnh bị loại và `C` **âm thầm
+  thành root**. Phải dựng lại quan hệ từ `plan.edges`. Gate: `compaction_leaves_no_orphans`.
+- **`unsafe impl Send/Sync` trong `ai/model.rs` KHÔNG thừa, và lý do không phải `WgpuDevice`.**
+  `Param` của burn 0.13 chứa `OnceCell` + closure `dyn Fn + Send` (không `Sync`), nên hỏng ở **cả hai**
+  backend. Chỉ đường wgpu ép sẵn một forward pass; đường ndarray thì không, tức là trao ra một giá trị
+  có cell rỗng cho các reader song song của Bevy. Đừng gỡ `unsafe` mà không đọc `// SAFETY:` ở đó.
+- **`esbuild` KHÔNG được cài** (Vite 8 dùng rolldown/oxc). Mọi script gọi `esbuild` đều chết. Dùng
+  `node scripts/run_ts.mjs <file.ts>`.
 
 **Ba cái bẫy đã trả giá trong ngày 2026-07-26 — đọc trước khi sửa quanh những vùng đó:**
 
@@ -406,7 +452,7 @@ một dự án mà §3.3 đang cố chứng minh thế giới sống là experim
 |---|---|---|
 | OSS-070 xuất Newick | ✅ DendroPy 5.0.10 đọc được; gate hai nửa cùng một fixture | `evolution/newick.rs`, `scripts/verify_newick.py` |
 | OSS-071 thuật toán `simplify` | ✅ 2.047 node / 16 sống → **31 node**, đúng cận `2·samples` | `evolution/simplify.rs` |
-| OSS-071b nối vào tracker sống | 🟡 `compact()` chạy mỗi 50 epoch, **nén tắt** | `lineage.rs`, `simulation_loop.rs` |
+| OSS-071b nối vào tracker sống | ✅ **2026-07-27** — `compact()` chạy mỗi 50 epoch, **nén BẬT**; số đột biến lưu theo node | `lineage.rs`, `simulation_loop.rs` |
 
 **Đường đi không tốn dependency nào**, và điều đó vẫn đúng: lấy **thuật toán** `simplify()` của
 tskit chứ không lấy crate, lấy **định dạng** Newick chứ không lấy code R. Chi tiết ở OS7 trong
@@ -415,9 +461,21 @@ tskit chứ không lấy crate, lấy **định dạng** Newick chứ không l�
 
 ##### 3.15.1 Việc còn lại — đọc mục này trước
 
-Hai việc, **theo đúng thứ tự này**. Việc 1 mở khoá cận O(alive); việc 2 mở khoá phần khoa học.
+> **Việc (1) đã XONG 2026-07-27** (`57a8246`). `LineageNode.cumulative_mutations: Option<u32>` +
+> `#[serde(default)]` đã ship, `compact` nay chạy `compress_unary_paths: true`, và gate ở
+> `tests/lineage_mutation_count_tests.rs` (7 test) + `lineage_compaction_tests.rs` (9). Cận
+> `2·samples` đã đo được. **Chỉ còn việc (2), MRCA.**
+>
+> **Một bẫy kế hoạch dưới đây KHÔNG nói tới, và nó phá đồ thị:** `compact` lọc quan hệ **gốc** theo
+> tập node sống sót. Đúng khi chưa nén; nhưng khi nén, đường `A → B → C` có **cả hai** cạnh đều nhắc
+> `B`, nên cắt `B` là mất cả hai và `C` âm thầm thành root. Phải dựng lại quan hệ từ `plan.edges`.
+> Gate: `compaction_leaves_no_orphans` (dùng số root của `to_newick` làm máy dò).
+>
+> Hệ quả đã ghi rõ chứ không giấu: cạnh bị nén mang `path_events: Some(n)` và `relation_type` khi đó
+> là **tóm tắt đường đi**, không phải một sự kiện có thật. Genotype của node bị cắt thì mất hẳn. Tổng
+> số đột biến vẫn chính xác — đó là toàn bộ lý do trường kia tồn tại.
 
-**(1) Lưu số đếm đột biến tích luỹ theo node, rồi bật nén cho tầng lưu trữ.**
+**(1) Lưu số đếm đột biến tích luỹ theo node, rồi bật nén cho tầng lưu trữ.** ✅ **ĐÃ XONG**
 
 *Vì sao chưa làm được ngay:* `get_mutations_count` trong
 [`commands/evolution.rs`](../../src-tauri/src/commands/evolution.rs) suy ra con số đột biến hiển thị

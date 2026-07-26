@@ -70,13 +70,37 @@ relaxed** — all 243 still run.
 | Empty targets | `node scripts/check_test_targets.mjs` | **76 targets, 0 empty** | 0 |
 | Clippy desktop | `cargo clippy --all-targets --features desktop -- -D warnings` | clean | 0 |
 | Clippy headless | `cargo clippy --all-targets --no-default-features -- -D warnings` | clean | 0 |
-| Frontend unit (`src/`) | `npm run test` | **14 files, 97 passed** | 0 |
-| Frontend integration | `npx vitest run --root tests --maxWorkers=4` | **26 files, 243 passed, 1 skipped** | 0 |
+| Rust advisories | `cargo audit` | no unignored advisory | 0 |
+| DevKit lint | `ai-devkit lint` | all checks passed | 0 |
+| npm advisories (root) | `npm audit --audit-level=high` | clean | 0 |
+| npm advisories (tests) | `npm audit --audit-level=high --prefix tests` | clean | 0 |
+| ESLint | `npm run lint` | **0 errors, 483 warnings** (was 491) | 0 |
+| ESLint ratchet | `node scripts/eslint_ratchet.mjs` | 0 errors, 483 warnings (baseline 491) | 0 |
+| Frontend unit (`src/`) | `npm run test` | **13 files, 90 passed** | 0 |
+| Frontend integration | `npm run test:frontend` | **27 files, 250 passed, 1 skipped** | 0 |
 | Build | `npm run build` | pass | 0 |
 | CSP compatibility | `npm run check:csp` | 2 shipped HTML files, 0 external origins, 0 inline script bodies | 0 |
+| Bundle budget | `npm run check:bundle` | 23 chunks, **1695.8 / 2000 KiB**; largest `react-three-fiber.esm` 836.2/900 | 0 |
+| NOTICE | `node scripts/gen_notice.mjs --check` | 419 crates + 8 npm packages, **0 without a licence** | 0 |
+| Doc links | `node scripts/check_docs_links.mjs` | 434 links in 94 files, 0 broken | 0 |
+| E2E | `npm run test:e2e` | **9 passed, 0 failed, 5 skipped** (each naming its reason) | 0 |
 | MCP manifest gate | `validate_map_manifest animal-map.manifest.json` | **pass, score 100/100, 0 issues**, 408 entities | — |
 
-Backend +13 tests, frontend +7.
+Backend +19 tests (746 → 765). Frontend integration +7 (243 → 250).
+
+### 3.1 Two regressions I introduced and had to fix
+
+Recorded because a pass that only lists successes is not an honest test report.
+
+- **`npm run build` failed with `TS2307: Cannot find module 'node:fs'`.** The new manifest evidence
+  test read the filesystem but lived in `src/__tests__/`, and the root `tsconfig` type-checks `src/**`
+  against browser libs with no `@types/node` — correctly, since the frontend does not run in node.
+  `npm run test` (Vitest) passed the whole time, so only the build caught it. Moved to
+  `tests/frontend/`, which is the package that has node types. This is why the src suite reads 90
+  again and the `tests/` suite reads 250.
+- **ESLint went from 0 errors to 1.** `preserve-caught-error` — the E2E identity check threw a new
+  `Error` inside a `catch` without attaching `{ cause }`, discarding the original failure. Fixed by
+  attaching it, which is also just better diagnostics.
 
 ## 4. Red-first evidence
 
