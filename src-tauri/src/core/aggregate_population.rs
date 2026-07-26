@@ -197,10 +197,10 @@ pub const DORMANCY_STREAM: u64 = 7;
 ///
 /// Opt-in rather than on by default, and the reasons are not squeamishness. This tier destroys
 /// entities, runs a **second model of the same ecology**, makes an agent's fate depend on where the
-/// observer is standing, and — until the cohorts are in the snapshot envelope — makes a run refuse
-/// to save while anything is asleep ([`DormantCohorts::snapshot_refusal`]). Tier one, which only
-/// changes how *often* a distant agent thinks, needs no flag: it is driven by the focus, and an
-/// unset focus tiers everything `Hot`.
+/// observer is standing. It no longer blocks saving — schema 4 carries the cohorts, their archived
+/// genomes and the dormancy RNG position — but the rest of that list is reason enough to keep it
+/// opt-in. Tier one, which only changes how *often* a distant agent thinks, needs no flag: it is
+/// driven by the focus, and an unset focus tiers everything `Hot`.
 pub fn aggregate_lod_enabled_from_env() -> bool {
     std::env::var("ANIMA_AGGREGATE_LOD")
         .map(|v| {
@@ -220,7 +220,7 @@ pub struct DormancyWatch {
 }
 
 /// One archived individual: enough to build a body again, and nothing more.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ArchivedIndividual {
     pub morphology: MorphologyGenotype,
     /// The brain the individual actually had.
@@ -266,7 +266,7 @@ pub struct DormantVitals {
 ///
 /// Every field is a **sum** over members, not a mean, so absorbing and releasing an individual is
 /// an exact addition and subtraction rather than a re-derived average.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Cohort {
     /// How many dormant individuals the chunk holds.
     pub count: u32,
@@ -347,6 +347,34 @@ impl Cohort {
     }
 }
 
+/// A [`DormantCohorts`] as it goes into a snapshot.
+///
+/// A separate type rather than `Serialize` on the resource itself, because the resource holds a
+/// live `ChaCha12Rng` and a generator is not a value: what has to round-trip is its *position*, and
+/// only this crate can read that off it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SavedDormantCohorts {
+    pub chunks: Vec<Cohort>,
+    pub grid: usize,
+    pub min_x: f32,
+    pub min_z: f32,
+    pub max_x: f32,
+    pub max_z: f32,
+    pub dwell_ticks: u32,
+    pub archive_cap: usize,
+    pub rehydrate_per_tick: usize,
+    pub rng_seed: u64,
+    /// Draw position of the dormancy stream. Without it a reload re-samples the same individuals
+    /// the run had already moved past.
+    pub rng_pos: u128,
+    pub dehydrated: u64,
+    pub rehydrated: u64,
+    pub genomes_dropped: u64,
+    /// Grazed EU still owed to detritus. Small, and still real energy: dropping it on save would
+    /// make a save/load boundary a place where the closed-EU total quietly shrinks.
+    pub spilled: f64,
+}
+
 /// Per-chunk dormant populations, and the policy for entering and leaving dormancy.
 ///
 /// Insert this resource to switch the aggregate tier on. Absent it, nothing here runs.
@@ -365,6 +393,9 @@ pub struct DormantCohorts {
     /// See [`REHYDRATION_PER_TICK`].
     pub rehydrate_per_tick: usize,
     rng: rand_chacha::ChaCha12Rng,
+    /// The seed `rng` was built from. Kept so a snapshot can rebuild the exact stream: a seed
+    /// alone restarts it, and the draw position alone has nothing to seek within.
+    seed: u64,
     dehydrated: u64,
     rehydrated: u64,
     genomes_dropped: u64,
@@ -390,6 +421,7 @@ impl DormantCohorts {
             archive_cap: ARCHIVE_CAP,
             rehydrate_per_tick: REHYDRATION_PER_TICK,
             rng: rand_chacha::ChaCha12Rng::seed_from_u64(mixed),
+            seed: mixed,
             dehydrated: 0,
             rehydrated: 0,
             genomes_dropped: 0,
@@ -460,35 +492,67 @@ impl DormantCohorts {
         self.chunks.iter().map(|c| c.count as u64).sum()
     }
 
-    /// Why a snapshot must refuse to run right now, or `None` if saving is safe.
+    /// Everything a snapshot needs to bring this tier back exactly as it was.
     ///
-    /// A dormant individual has no entity, and `DormantCohorts` is not a field of the snapshot
-    /// envelope. `serialize_world_state` writes what it can query — agents — so a sleeping
-    /// population is in neither the file nor the world restored from it. Saving anyway does two
-    /// things at once, both quiet: it deletes those individuals, and it breaks closed EU, because
-    /// `ecosystem_census_system` counts cohort energy into `pool.animals` while they sleep. The
-    /// reload therefore comes back lighter than it left, and `EnergyLedger::lock_baseline` would
-    /// take the smaller total as the new baseline instead of reporting the loss.
-    ///
-    /// Refusing is the conservative half of the answer. The other half — round-tripping the
-    /// cohorts, their archived genomes, the reservoir sampler's `seen` count and this resource's
-    /// RNG position — is real work with a schema bump, so until someone does it this is a wall
-    /// rather than a leak.
-    ///
-    /// It cannot fire today: nothing inserts `DormantCohorts` (`simulation_lod` is off unless a
-    /// focus is set), so it is a tripwire for whoever wires the observer focus up. That is exactly
-    /// when it is needed — the tier is invisible by construction, and so is the data it would take.
-    pub fn snapshot_refusal(&self) -> Option<String> {
-        let dormant = self.total_dormant();
-        if dormant == 0 {
-            return None;
+    /// The RNG is carried as **seed plus draw position**, not seed alone — the same distinction
+    /// `SimRng` draws, and for the same reason: a restored seed restarts the stream, so the first
+    /// wake-up after a reload would sample a different individual than an uninterrupted run would.
+    /// ChaCha seeks in O(1), so putting it back is not a replay.
+    pub fn to_saved(&self) -> SavedDormantCohorts {
+        SavedDormantCohorts {
+            chunks: self.chunks.clone(),
+            grid: self.grid,
+            min_x: self.min_x,
+            min_z: self.min_z,
+            max_x: self.max_x,
+            max_z: self.max_z,
+            dwell_ticks: self.dwell_ticks,
+            archive_cap: self.archive_cap,
+            rehydrate_per_tick: self.rehydrate_per_tick,
+            rng_seed: self.seed,
+            rng_pos: self.rng.get_word_pos(),
+            dehydrated: self.dehydrated,
+            rehydrated: self.rehydrated,
+            genomes_dropped: self.genomes_dropped,
+            spilled: self.spilled,
         }
-        Some(format!(
-            "refusing to save: {dormant} dormant individual(s) holding {:.3} EU are not carried by \
-             the snapshot format, and saving would delete them without a trace. Move the LOD focus \
-             so they re-hydrate, or drop the DormantCohorts resource, then save again.",
-            self.total_energy()
-        ))
+    }
+
+    /// Rebuild from a snapshot. The inverse of [`to_saved`](Self::to_saved).
+    ///
+    /// Refuses a grid whose chunk count disagrees with its declared side, because the alternative
+    /// is a resource whose `chunk_index` arithmetic silently addresses off the end of `chunks` —
+    /// dormant agents landing in the wrong chunk, or a panic several ticks later with nothing
+    /// pointing back at the file.
+    pub fn from_saved(saved: &SavedDormantCohorts) -> Result<Self, String> {
+        use rand::SeedableRng;
+        if saved.grid == 0 || saved.chunks.len() != saved.grid * saved.grid {
+            return Err(format!(
+                "dormant cohorts: {} chunks for a {}×{} grid",
+                saved.chunks.len(),
+                saved.grid,
+                saved.grid
+            ));
+        }
+        let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(saved.rng_seed);
+        rng.set_word_pos(saved.rng_pos);
+        Ok(Self {
+            chunks: saved.chunks.clone(),
+            grid: saved.grid,
+            min_x: saved.min_x,
+            min_z: saved.min_z,
+            max_x: saved.max_x,
+            max_z: saved.max_z,
+            dwell_ticks: saved.dwell_ticks,
+            archive_cap: saved.archive_cap,
+            rehydrate_per_tick: saved.rehydrate_per_tick,
+            rng,
+            seed: saved.rng_seed,
+            dehydrated: saved.dehydrated,
+            rehydrated: saved.rehydrated,
+            genomes_dropped: saved.genomes_dropped,
+            spilled: saved.spilled,
+        })
     }
 
     /// Cumulative individuals absorbed into dormancy.
