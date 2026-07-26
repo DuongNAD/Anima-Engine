@@ -7,7 +7,52 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] OSS-071 — `simplify()`, và chỗ nó suýt nói dối (2026-07-26)
+# ⏪ [MỚI NHẤT] OSS-071b — nối `simplify` vào tracker sống (2026-07-26)
+
+`LineageTracker::compact(samples)` thay thế **thật** bộ nhớ của `InMemoryLineageTracker`, gọi ở
+thread tiến hoá mỗi 50 epoch. `746 pass · 0 fail`, 75 target 0 rỗng, fmt + clippy (cả hai cấu hình
+feature) sạch, docs link 416/0 gãy.
+
+## Tập sample KHÔNG phải "ai đang sống"
+
+Mọi `lineage_id` trong archive MAP-Elites đều có thể được chọn làm cha ở epoch sau, và một elite
+**không nhất thiết là tổ tiên của ai đang sống**. Prune theo liveness sẽ xoá đúng node mà lần sinh
+sản kế tiếp gọi tên.
+
+Hazard đó **từng là hỏng âm thầm**: `add_reproduction` ghi cạnh vô điều kiện, nên một sample bị sót
+tạo ra **cạnh mồ côi** — và cạnh mồ côi làm hỏng **toàn bộ** đồ thị, vì cả `to_newick` lẫn `simplify`
+đều từ chối xử lý đồ thị chứa nó. Một lần ghi sai đầu độc export và mọi lần compaction sau.
+
+Nay `add_reproduction` **từ chối ghi** cạnh có cha không tồn tại, báo lỗi nêu tên cha đó, và giữ lại
+những cạnh hợp lệ khác trong cùng lần gọi. Mất một liên kết tổ tiên thay vì mất cả đồ thị. Đó chính
+là thứ khiến compaction an toàn để bật — và nó là cải thiện độc lập, vì trước đây không gì chặn một
+cạnh mồ côi cả.
+
+## Chạy với nén TẮT, có chủ ý
+
+Nén là bước đạt cận O(alive), nhưng nó xoá node mà consumer **vẫn đang đọc**: đồ thị UI vẽ lấy thẳng
+từ tracker, và `get_mutations_count` đi qua `RelationType` **từng cạnh** — thứ một cạnh đã nén không
+mang được. Nên compaction sống chỉ bỏ nhánh tuyệt chủng, **đúng chỗ genotype nằm**, và giữ nguyên
+thân cây.
+
+**Việc kế tiếp để mở khoá phần còn lại:** lưu số đếm đột biến tích luỹ theo node, kiểu `Option<u32>`
+chứ không phải `u32` — mặc định `0` sẽ đọc thành "không có đột biến" cho mọi save cũ.
+
+## Neo4j không bị đụng
+
+Chỉ bộ nhớ trong co lại. Hệ quả cần biết: khi Neo4j online, `get_lineage_graph` đọc từ database nên
+vẫn trả **đồ thị đầy đủ**. Xoá khỏi database là thao tác phá huỷ từ xa, cần quyết định riêng.
+
+## Control âm
+
+`compacting_against_every_node_removes_nothing` — nếu `compact` xoá bất kể tập sample thì mọi khẳng
+định khác vẫn xanh trong khi nó âm thầm phá dữ liệu. Và
+`compaction_refuses_a_malformed_graph_rather_than_rewriting_it`: đồ thị có chu trình thì bỏ lần
+compaction, không im lặng viết lại — viết lại sẽ **xoá bằng chứng** về cách nó hỏng.
+
+---
+
+# ⏪ OSS-071 — `simplify()`, và chỗ nó suýt nói dối (2026-07-26)
 
 `src-tauri/src/evolution/simplify.rs` + `tests/lineage_simplify_tests.rs` (13 test) + 6 unit test.
 `726 pass · 0 fail`, 73 target 0 rỗng, fmt + clippy sạch, docs link 412/0 gãy.

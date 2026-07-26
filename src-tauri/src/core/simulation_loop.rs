@@ -38,6 +38,15 @@ use tauri::Emitter;
 /// On the happy path this costs nothing: `wait_for_exit` returns as soon as the registry empties.
 const SHUTDOWN_GRACE_SECS: u64 = 30;
 
+/// Epochs between lineage compactions (OSS-071).
+///
+/// Compaction walks the whole graph, so running it every epoch would cost more than holding the
+/// nodes it frees. Fifty is a deliberately unexciting number: large enough that the walk is
+/// amortised to nothing, small enough that the graph cannot grow by more than fifty epochs of
+/// genotypes between passes. It is not tuned against a measurement, and the honest reason is that
+/// the memory it bounds has never been profiled on a long run — if that changes, tune it then.
+const COMPACT_EVERY_EPOCHS: u32 = 50;
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -285,6 +294,8 @@ impl SimulationEngine {
                 };
             let mut meta_ai_history = Vec::new();
             let mut meta_ai_epoch = 0u32;
+            // Reused across epochs so the hot path does not allocate a fresh Vec per batch.
+            let mut new_offspring_ids: Vec<String> = Vec::new();
 
             while running_clone_evo.load(Ordering::SeqCst) {
                 if let Ok(stats_batch) = stats_rx.recv_timeout(Duration::from_millis(10)) {
@@ -503,6 +514,8 @@ impl SimulationEngine {
                             final_rel_type,
                         );
 
+                        new_offspring_ids.push(offspring_id.clone());
+
                         let _ = spawn_tx.send((
                             stats.entity,
                             offspring,
@@ -512,6 +525,48 @@ impl SimulationEngine {
                             parent_ids,
                         ));
                     }
+
+                    // ---- OSS-071: bound the lineage tracker's memory -------------------------
+                    //
+                    // Every reproduction above stored a node holding a full `MorphologyGenotype`
+                    // clone, and nothing ever removed one, so this is the growth that had no
+                    // ceiling. Compaction drops the branches that went extinct, which is where the
+                    // overwhelming majority of those genotypes are.
+                    //
+                    // The sample set is the part that has to be right. It is NOT "who is alive":
+                    // every `lineage_id` in the MAP-Elites archive can be selected as a parent by a
+                    // later epoch, and an elite need not be an ancestor of anyone currently alive.
+                    // Pruning by liveness alone would delete a node the very next reproduction
+                    // names. `add_reproduction` now refuses to write an edge to an unknown parent,
+                    // so a mistake here costs one ancestry link rather than an orphan edge that
+                    // poisons export and every future compaction.
+                    //
+                    // Every `COMPACT_EVERY_EPOCHS` rather than every epoch: compaction is O(graph),
+                    // and running it on each batch would spend more time walking the lineage than
+                    // the lineage costs to hold.
+                    if meta_ai_epoch.is_multiple_of(COMPACT_EVERY_EPOCHS) {
+                        let mut samples: Vec<String> = archive
+                            .grid
+                            .values()
+                            .map(|elite| elite.lineage_id.clone())
+                            .collect();
+                        samples.append(&mut new_offspring_ids);
+                        match lineage_tracker_evo.compact(&samples) {
+                            Ok(report) if report.nodes_removed() > 0 => eprintln!(
+                                "lineage compaction: {} -> {} nodes, {} -> {} relations",
+                                report.nodes_before,
+                                report.nodes_after,
+                                report.relations_before,
+                                report.relations_after
+                            ),
+                            Ok(_) => {}
+                            // A refusal means the graph is malformed (cycle, orphan edge, duplicate
+                            // id). Losing the compaction is the right outcome — silently rewriting
+                            // a graph that is already wrong would destroy the evidence.
+                            Err(e) => eprintln!("lineage compaction skipped: {e}"),
+                        }
+                    }
+                    new_offspring_ids.clear();
                 }
             }
         });

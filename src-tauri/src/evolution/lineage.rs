@@ -24,6 +24,23 @@ pub struct LineageRelation {
     pub relation_type: RelationType,
 }
 
+/// What one [`LineageTracker::compact`] call removed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompactionReport {
+    pub nodes_before: usize,
+    pub nodes_after: usize,
+    pub relations_before: usize,
+    pub relations_after: usize,
+}
+
+impl CompactionReport {
+    /// Nodes removed. Each took a full `MorphologyGenotype` clone with it, which is the memory this
+    /// exists to reclaim.
+    pub fn nodes_removed(&self) -> usize {
+        self.nodes_before.saturating_sub(self.nodes_after)
+    }
+}
+
 pub trait LineageTracker: Send + Sync {
     fn add_root(&self, id: String, genotype: MorphologyGenotype) -> Result<(), String>;
     fn add_reproduction(
@@ -35,6 +52,38 @@ pub trait LineageTracker: Send + Sync {
         relation_type: RelationType,
     ) -> Result<(), String>;
     fn get_lineage_graph(&self) -> Result<(Vec<LineageNode>, Vec<LineageRelation>), String>;
+
+    /// Drop every node with no `samples` descendant, freeing its genotype.
+    ///
+    /// # Why the caller supplies `samples`, and what must be in it
+    ///
+    /// The tracker does not know who is alive — it only ever sees writes. `samples` must contain
+    /// **every id that can still be named as a parent**, which is more than "the living":
+    ///
+    /// - living agents' lineage ids;
+    /// - **every `EliteIndividual::lineage_id` in the MAP-Elites archive.** An elite is selected as
+    ///   a parent for future offspring and need not be an ancestor of anyone currently alive, so
+    ///   pruning by liveness alone removes nodes the very next reproduction will name.
+    ///
+    /// Getting that wrong used to corrupt the graph silently. It no longer can:
+    /// [`Self::add_reproduction`] refuses to write an edge whose parent is unknown, so a missed
+    /// sample costs an ancestry link rather than producing an orphan edge that
+    /// [`to_newick`](super::newick::to_newick) and [`simplify`](super::simplify::simplify) would
+    /// later reject.
+    ///
+    /// # What it deliberately does NOT do
+    ///
+    /// **No unary-path compression.** That is the step that reaches the O(alive) bound, and it
+    /// removes nodes that existing consumers still read: the lineage graph the UI draws comes
+    /// straight from here, and `get_mutations_count` in `commands/evolution.rs` walks per-edge
+    /// `RelationType`s that a compressed edge cannot carry. Enabling it for storage requires a
+    /// per-node cumulative mutation count to be persisted first — a change to `LineageNode`, which
+    /// is written into save state. Until then compaction removes extinct branches, which is where
+    /// the genotypes are, and leaves the trunk.
+    ///
+    /// **Neo4j is untouched.** Only the in-memory store shrinks. Deleting from the graph database
+    /// is a destructive remote operation and needs its own decision.
+    fn compact(&self, samples: &[String]) -> Result<CompactionReport, String>;
 }
 
 pub struct InMemoryLineageTracker {
@@ -81,17 +130,94 @@ impl LineageTracker for InMemoryLineageTracker {
             generation,
             genotype: Some(genotype),
         };
-        self.nodes.write().map_err(|e| e.to_string())?.push(node);
+        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
+        nodes.push(node);
+        // Known ids are read from the node list rather than kept as a side index: the list is
+        // already behind this lock, and a second structure would be one more thing compaction has
+        // to remember to rewrite.
+        let known: std::collections::HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
 
         let mut relations = self.relations.write().map_err(|e| e.to_string())?;
+        let mut unknown: Vec<String> = Vec::new();
         for parent in parents {
+            // An edge to a node that does not exist is an ORPHAN EDGE, and it is the one defect
+            // that makes the whole graph unusable: `to_newick` and `simplify` both refuse a graph
+            // containing one, so a single bad write poisons export and compaction from then on.
+            //
+            // Before compaction existed this could not happen, because nothing was ever removed.
+            // Now it can — a caller whose `samples` set missed a future parent prunes a node the
+            // next reproduction names. Refusing the edge costs one ancestry link and leaves the
+            // offspring as a new root; writing it would cost the graph.
+            if !known.contains(parent.as_str()) {
+                unknown.push(parent);
+                continue;
+            }
             relations.push(LineageRelation {
                 source_id: parent,
                 target_id: offspring_id.clone(),
                 relation_type,
             });
         }
-        Ok(())
+
+        if unknown.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "lineage: offspring {offspring_id:?} names {} unknown parent(s) {unknown:?}; the \
+                 edges were not written. A compaction whose sample set missed a future parent is \
+                 the usual cause — see LineageTracker::compact.",
+                unknown.len()
+            ))
+        }
+    }
+
+    fn compact(&self, samples: &[String]) -> Result<CompactionReport, String> {
+        use crate::evolution::simplify::{simplify_with, SimplifyOptions};
+
+        let mut nodes = self.nodes.write().map_err(|e| e.to_string())?;
+        let mut relations = self.relations.write().map_err(|e| e.to_string())?;
+
+        let nodes_before = nodes.len();
+        let relations_before = relations.len();
+
+        // `simplify` decides what survives; the filtering below is what applies it. Deriving the
+        // stored relations from `SimplifiedEdge` instead would mean inventing a `RelationType` for
+        // each one — the fabrication that module exists to refuse. Filtering the ORIGINALS keeps
+        // every type exactly as it was recorded.
+        let plan = simplify_with(
+            &nodes,
+            &relations,
+            samples,
+            SimplifyOptions {
+                compress_unary_paths: false,
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+        let keep: std::collections::HashSet<&str> =
+            plan.nodes.iter().map(|n| n.id.as_str()).collect();
+
+        let kept_relations: Vec<LineageRelation> = relations
+            .iter()
+            .filter(|r| keep.contains(r.source_id.as_str()) && keep.contains(r.target_id.as_str()))
+            .cloned()
+            .collect();
+        let kept_nodes: Vec<LineageNode> = nodes
+            .iter()
+            .filter(|n| keep.contains(n.id.as_str()))
+            .cloned()
+            .collect();
+
+        let report = CompactionReport {
+            nodes_before,
+            nodes_after: kept_nodes.len(),
+            relations_before,
+            relations_after: kept_relations.len(),
+        };
+
+        *nodes = kept_nodes;
+        *relations = kept_relations;
+        Ok(report)
     }
 
     fn get_lineage_graph(&self) -> Result<(Vec<LineageNode>, Vec<LineageRelation>), String> {
@@ -398,5 +524,17 @@ impl LineageTracker for FallbackLineageTracker {
 
         // Fallback to in-memory graph
         self.in_memory.get_lineage_graph()
+    }
+
+    /// Compacts the in-memory store only.
+    ///
+    /// Neo4j keeps everything. That is deliberate: the database is the durable record and deleting
+    /// from it is a destructive remote operation with its own failure modes, while this method
+    /// exists to bound the memory of a process that must not grow without limit. The consequence
+    /// worth knowing is that with Neo4j online, `get_lineage_graph` reads from the database and so
+    /// still returns the FULL graph — compaction changes what the fallback holds, not what an
+    /// online run reports.
+    fn compact(&self, samples: &[String]) -> Result<CompactionReport, String> {
+        self.in_memory.compact(samples)
     }
 }
