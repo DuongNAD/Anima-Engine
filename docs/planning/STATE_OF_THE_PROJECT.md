@@ -420,6 +420,36 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   đang mở với tiêu đề chỉ nói về temp path. **Chạy `git status` và `gh pr list` trước khi commit**,
   và kiểm nhánh hiện tại có khớp việc mình đang làm không. Một PR đúng nội dung nhưng sai tiêu đề là
   một PR không ai review đúng.
+- **Phiên khác `checkout` nhánh của họ *từ nhánh của bạn*, và việc chưa commit của bạn đi theo.**
+  Đây không phải biến thể của mục trên — nó là cơ chế khác và nguy hiểm hơn, vì nó xảy ra **giữa lúc
+  bạn đang làm** chứ không phải trước khi bạn bắt đầu. Reflog ghi thẳng ra:
+  `checkout: moving from fix/thread-supervisor-3-7 to docs/oss-010-status-reconcile`.
+
+  Hai lần trong một phiên ngày 2026-07-26, và **cách phòng hiển nhiên không đủ**:
+
+  1. Lần một, việc chưa commit trôi sang nhánh của phiên khác **trong lúc bốn file của họ đang
+     `staged`**. Một lệnh `git commit` ở thời điểm đó sẽ quét trọn việc của họ vào commit của mình.
+  2. Lần hai, tôi đã kiểm nhánh ở đầu lệnh — nhưng nhánh bị đổi **giữa lệnh kiểm và lệnh commit,
+     trong cùng một khối**, nên commit rơi vào `feat/oss-070-newick-export`. Kiểm rồi tin là không đủ.
+
+  **Cách phòng thật sự hiệu quả là guard có abort, không phải kiểm rồi tin:**
+
+  ```powershell
+  $want = "your-branch"
+  $have = git branch --show-current
+  if ($have -ne $want) { "ABORT: on '$have', expected '$want'"; exit 1 }
+  ```
+
+  Và **stage theo từng đường dẫn, không bao giờ `git add -A`** — đó là thứ giữ cho việc của người khác
+  không bị cuốn vào ngay cả khi guard trượt.
+
+  Nếu commit đã rơi sai chỗ: `git cherry-pick <sha>` sang nhánh đúng, rồi `git branch -f <nhánh-của-họ>
+  <sha-cũ>` để trả con trỏ về. Dùng `branch -f` chứ **không** `reset --hard` — reset sẽ xoá working tree
+  mà phiên khác đang viết vào. Kiểm `git ls-remote --heads origin <nhánh>` trước: nếu nhánh đó chưa
+  được push và chưa có commit nào của họ thì sửa hoàn toàn sạch.
+
+  Nếu việc của bạn đang lẫn trong tree của họ: `git stash push --include-untracked -- <đúng các đường
+  dẫn của bạn>`. Có pathspec thì nó không đụng index của họ; `git stash` trần thì có.
 
 ---
 
