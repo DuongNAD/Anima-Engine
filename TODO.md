@@ -40,12 +40,25 @@ Hai control âm đáng giữ: `a_cycle_beside_a_healthy_tree_is_still_refused` c
 (50.000 node) chốt rằng emitter là vòng lặp chứ không đệ quy — bản đệ quy sẽ qua mọi test vừa màn
 hình và chết đúng lúc run thật đủ dài.
 
+## Chân "parser bên thứ ba" đã chạy — và đã được chứng minh là đỏ được
+
+DendroPy 5.0.10 (`pip install dendropy`, **dev-only**) đọc
+`src-tauri/tests/fixtures/newick/lineage_forest.nwk`. Gate là **hai nửa trên cùng một file**:
+`cargo test` ghim output vào fixture, `python scripts/verify_newick.py` bắt parser ngoài đọc chính
+file đó. Round-trip thuần Rust chỉ chứng minh serializer nhất quán với chính nó.
+
+Đã phá fixture hai cách để chắc gate không xanh vô nghĩa:
+
+- **Lồng ngoặc ngược chiều** — vẫn là Newick *hợp lệ* nên parse trót lọt, nhưng khẳng định topology
+  bắt được. Đây là loại lỗi so chuỗi phía Rust không thấy.
+- **Bỏ quote quanh nhãn có dấu hai chấm** — DendroPy từ chối. Đúng thứ quy tắc quote tồn tại để
+  chặn: `child:two` không quote bị đọc thành branch length và **cắt cụt tên** chứ không báo lỗi,
+  trừ khi phần còn lại không phải số.
+
 ## Chưa xong, có lý do
 
-- **Chưa parser bên thứ ba nào đọc thử.** Máy không có `dendropy`/`Biopython`/`R`+`ape`. Lệnh kiểm
-  đã ghi sẵn trong `OPEN_SOURCE_ADOPTION_PLAN.md` §OSS-070; cài thêm là quyết định của người duy trì.
-- **Chưa nối vào IPC.** `to_newick` là hàm thư viện, chưa lệnh Tauri nào gọi. Việc riêng, cần cập
-  nhật hợp đồng IPC ở `PROJECT.md`.
+**Chưa nối vào IPC.** `to_newick` là hàm thư viện, chưa lệnh Tauri nào gọi. Việc riêng, cần cập nhật
+hợp đồng IPC ở `PROJECT.md`.
 
 Mục kế tiếp mở khoá: **OSS-071 `simplify()`** — và OSS-070 vừa cho nó cách kiểm chứng, vì bất biến
 "quan hệ tổ tiên của phần giữ lại không đổi" so được bằng cách xuất Newick trước và sau prune.

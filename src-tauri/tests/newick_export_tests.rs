@@ -50,6 +50,48 @@ fn empty_genotype() -> MorphologyGenotype {
     }
 }
 
+/// The lineage behind the committed fixture.
+///
+/// Deliberately awkward: two roots, a crossover whose second parent cannot be represented, a label
+/// containing a space and one containing a colon. A fixture built from a tidy chain would prove the
+/// export works on the case that was never in doubt.
+fn fixture_lineage() -> (Vec<LineageNode>, Vec<LineageRelation>) {
+    let nodes = vec![
+        node("f-alpha", 0),
+        node("f-beta", 0),
+        node("child one", 1),
+        node("child:two", 2),
+        node("hybrid", 3),
+    ];
+    let relations = vec![
+        edge("f-alpha", "child one"),
+        edge("child one", "child:two"),
+        edge("child:two", "hybrid"),
+        // Second parent: a crossover. "child:two" < "f-beta", so this is the edge that is dropped.
+        edge("f-beta", "hybrid"),
+    ];
+    (nodes, relations)
+}
+
+#[test]
+fn the_committed_fixture_still_matches_what_the_export_produces() {
+    // Two-sided gate. This half pins the Rust output against the file; `scripts/verify_newick.py`
+    // makes DendroPy read the same file. Neither half alone is worth much: a Rust round-trip proves
+    // the serialiser agrees with itself, and a parser reading a stale file proves nothing about the
+    // current code.
+    let (nodes, relations) = fixture_lineage();
+    let out = to_newick(&nodes, &relations).expect("the fixture lineage is valid");
+
+    assert_eq!(out.roots, 2);
+    assert_eq!(out.dropped_parent_edges, 1);
+    assert_eq!(
+        out.to_file_contents(),
+        include_str!("fixtures/newick/lineage_forest.nwk").replace("\r\n", "\n"),
+        "the export no longer matches tests/fixtures/newick/lineage_forest.nwk -- if the change is \
+         intended, regenerate the fixture AND re-run scripts/verify_newick.py"
+    );
+}
+
 // ---- shape ------------------------------------------------------------------------------------
 
 #[test]

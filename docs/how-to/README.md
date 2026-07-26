@@ -63,6 +63,28 @@ node scripts/bench_baseline.mjs
 thiết kế** — một vòng fBm, không phải engine. Không so hai report nếu khác
 build mode, workload, seed hoặc cấu hình máy mà không ghi rõ.
 
+## Kiểm tra phả hệ bằng một parser bên ngoài
+
+Gate của OSS-070 là **hai nửa trên cùng một file**; không nửa nào đứng một mình có giá trị.
+
+```powershell
+cargo test --test newick_export_tests
+```
+
+```powershell
+py scripts\verify_newick.py
+```
+
+Nửa đầu (chạy từ `src-tauri/`) ghim output Newick vào
+[`tests/fixtures/newick/lineage_forest.nwk`](../../src-tauri/tests/fixtures/newick/lineage_forest.nwk);
+nửa sau bắt **DendroPy** đọc chính file đó. Round-trip thuần Rust chỉ chứng minh serializer nhất
+quán với chính nó — thứ đáng hỏi là một parser do người chưa từng thấy repo này viết có công nhận
+output là cây hợp lệ không.
+
+`dendropy` là **dev-only** (`pip install dendropy`); không có gì trong sản phẩm phụ thuộc Python.
+Thiếu nó thì script thoát kèm hướng dẫn cài và nửa Rust vẫn chạy. Chi tiết ở
+[kế hoạch nguồn mở §OSS-070](../planning/OPEN_SOURCE_ADOPTION_PLAN.md).
+
 ## Tạo/kiểm tra world artifact fixture
 
 Xem script hiện có:

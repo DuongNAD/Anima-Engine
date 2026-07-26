@@ -241,7 +241,7 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 
 | ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất | Trạng thái |
 |---|---|---|---|---|
-| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | 🟡 **Serializer xong 2026-07-26**; chân "parser bên thứ ba" **chưa chạy được** — xem dưới |
+| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
 | OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ⬜ |
 | OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ⬜ |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
@@ -272,18 +272,34 @@ trình, nên **mọi chu trình đều kéo theo đảo generation** — và bá
 vòng lặp là báo triệu chứng thay vì nguyên nhân, dẫn người đọc tới một node có bản ghi hoàn toàn
 bình thường. Thứ tự nay là: chu trình trước, generation sau.
 
-**Chân còn thiếu của DoD: chưa parser bên thứ ba nào đọc thử.** Máy này không có `dendropy`,
-`Biopython` hay `R`/`ape`, và cài thêm là một quyết định của người duy trì chứ không phải hệ quả tự
-nhiên của mục này. Khi có, đây là lệnh kiểm — output đã được test ghim chính xác nên có thể đối
-chiếu bằng tay ngay:
+**Chân "parser bên thứ ba" của DoD đã chạy được.** Gate là **hai nửa trên cùng một file**, và
+không nửa nào đứng một mình có giá trị:
 
 ```bash
-python -c "import dendropy; print(dendropy.Tree.get(data='((grandchild:1)child:1)founder;', schema='newick').as_ascii_plot())"
+cargo test --test newick_export_tests   # export vẫn sinh ra đúng fixture
+python scripts/verify_newick.py         # DendroPy đồng ý fixture là một cây hợp lệ
 ```
 
-```r
-Rscript -e "library(ape); plot(read.tree(text='((grandchild:1)child:1)founder;'))"
-```
+Fixture: [`src-tauri/tests/fixtures/newick/lineage_forest.nwk`](../../src-tauri/tests/fixtures/newick/lineage_forest.nwk).
+Nửa Rust ghim output vào file; nửa Python bắt DendroPy đọc **cùng file đó**. Round-trip thuần Rust
+chỉ chứng minh serializer nhất quán với chính nó; một parser đọc file cũ không chứng minh gì về code
+hiện tại.
+
+Lineage của fixture cố tình khó chịu: hai gốc, một crossover có cạnh không biểu diễn được, một nhãn
+chứa dấu cách và một nhãn chứa dấu hai chấm. Một fixture dựng từ chuỗi gọn gàng chỉ chứng minh
+export chạy đúng ở ca chưa ai nghi ngờ.
+
+**Đã kiểm rằng gate này thật sự đỏ được** (một gate chưa từng đỏ thì chưa phải gate), bằng cách phá
+fixture theo hai cách:
+
+- **Lồng ngoặc ngược chiều** — vẫn là Newick *hợp lệ*, nên parser đọc trót lọt; nhưng khẳng định về
+  topology bắt được, và đây là loại lỗi mà so chuỗi phía Rust không thấy.
+- **Bỏ quote quanh nhãn có dấu hai chấm** — DendroPy từ chối phân tích. Đây đúng là điều quy tắc
+  quote tồn tại để chặn: `child:two` không quote sẽ bị đọc thành branch length và **cắt cụt tên**
+  chứ không báo lỗi, trừ khi phần còn lại không phải số. Kiểm chứng từ bên ngoài.
+
+`dendropy` là **dev-only, không có gì trong sản phẩm phụ thuộc Python**. Thiếu nó thì script thoát
+kèm hướng dẫn cài, và nửa Rust của gate vẫn chạy.
 
 **Chưa nối vào IPC.** `to_newick` hiện là hàm thư viện, chưa có lệnh Tauri nào gọi. Đó là việc riêng
 và cần cập nhật hợp đồng IPC ở `PROJECT.md`; không gộp vào đây.
