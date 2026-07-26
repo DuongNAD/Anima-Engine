@@ -450,6 +450,29 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
 
   Nếu việc của bạn đang lẫn trong tree của họ: `git stash push --include-untracked -- <đúng các đường
   dẫn của bạn>`. Có pathspec thì nó không đụng index của họ; `git stash` trần thì có.
+- **Bài học đầy đủ hơn cả hai mục trên: trong checkout dùng chung, đừng dựa vào `HEAD` cho bất cứ
+  việc gì.** Guard ở trên chặn được commit sai nhánh, nhưng nó không chặn được mọi thứ:
+
+  - `git switch main` **im lặng không có hiệu lực** khi phiên khác vừa chiếm `HEAD` — không lỗi,
+    không cảnh báo, và mọi lệnh sau đó chạy trên nhánh của họ.
+  - `git pull --ff-only` khi đó fail với `Not possible to fast-forward` vì bạn đang trên nhánh đã
+    phân kỳ của họ, chứ không phải `main`.
+  - `git branch -d <nhánh>` so với **remote-tracking ref**, không phải với `main`, rồi cảnh báo
+    "not yet merged to HEAD". Nó vẫn xoá. Cái thật sự bảo vệ bạn là kiểm bằng ref tường minh trước:
+    `git log origin/main..<nhánh>` phải trống, hoặc `git merge-base --is-ancestor <sha> origin/main`.
+
+  Nên: **dùng ref tường minh (`origin/main`, sha) cho mọi phép kiểm**, và khi cần một `HEAD` mà
+  không ai giành được, dùng **worktree** thay vì `git switch`:
+
+  ```powershell
+  git worktree add -b <nhánh-của-bạn> <đường-dẫn-tạm> origin/main
+  # ... làm việc, commit, push trong đó ...
+  git worktree remove <đường-dẫn-tạm>
+  ```
+
+  Worktree có `HEAD` và working tree riêng, nên nó **không** chạm checkout dùng chung — không kéo theo
+  việc chưa commit của phiên khác, và không đặt commit của bạn lên nhánh của họ. Mục §4 này được viết
+  chính bằng cách đó, sau khi `git switch` thất bại trong im lặng hai lần.
 
 ---
 
