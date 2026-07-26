@@ -347,22 +347,23 @@ toàn đều qua. Nhưng Holling Type II bão hoà theo **mật độ**: tổng 
 nên phải áp *trên đầu cá thể*: mỗi cá thể ngủ gặm như đang đứng trên một ô **trung bình** của chunk, rồi mới nhân với
 số con ăn cỏ. Test `sleeping_is_not_cheaper_than_being_watched` là thứ đã bắt được nó, và là thứ giữ nó.
 
-**⚠️ Điều kiện bắt buộc — VẪN chưa persist, nhưng đã có tường chặn.** `SavedSimulationState` rất kỹ về năng lượng
-khép kín (mang theo detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới
-save/load không sinh hay huỷ EU. Nhưng nó **không** mang `DormantCohorts`. Cứ ghi ra thì save một run đang có cá thể
-ngủ sẽ **âm thầm xoá** quần thể đó cùng năng lượng của nó: chúng không nằm trong `agents`, EU của chúng không nằm
-trong scalar nào, và thế giới nạp lại đơn giản là ít đi — không gì phát hiện được, vì baseline mới sẽ khoá ở lần
-census đầu sau khi nạp.
+**✅ ĐÃ persist (schema 4).** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo detritus/plants/animals,
+từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không sinh hay huỷ EU. Giờ nó mang
+cả `DormantCohorts`: từng cohort, kho genome đã archive, bộ đếm `seen` của reservoir, và **vị trí rút** của luồng RNG
+dormancy — seed không đủ, vì tái tạo genome lúc thức dậy sẽ rút khác đi một run không bị gián đoạn.
 
-→ Nên đường save **từ chối** thay vì ghi ra một file thiếu người. `DormantCohorts::snapshot_refusal` trả lý do kèm
-số cá thể và EU đang ngủ; kênh save mang `Result<SavedSimulationState, String>` nên việc này **không thể bị bỏ quên**
-ở call-site; và `save_simulation_state` đẩy nguyên lý do đó lên UI. Từ chối tự hết khi mọi cá thể tỉnh lại —
-`a_world_with_sleeping_agents_refuses_to_save_rather_than_lose_them` giữ cả hai nửa, vì một bức tường không bao giờ
-hạ xuống thì làm tầng này *không dùng được* chứ không phải *an toàn*.
+Trước đó đường save **từ chối** ghi khi có cá thể ngủ. Lý do đã hết nên tường được gỡ, nhưng kênh save vẫn giữ dạng
+`Result<SavedSimulationState, String>`: restore vẫn có một cách hỏng thật (lưới khai báo cạnh không khớp số chunk),
+và một thao tác *không thể hỏng* là một lời khẳng định chứ không phải sự thật.
 
-→ Đây là nửa thận trọng, không phải lời giải. Nửa còn lại — cho cohort, kho genome, bộ đếm `seen` của reservoir và
-vị trí RNG dormancy đi trọn một vòng save/load, kèm nâng `SCHEMA_VERSION` — vẫn chưa làm. Ai nối tiêu điểm LOD từ UI
-thì sở hữu dòng này: tầng sẽ chạy được, nhưng run có cá thể ngủ vẫn chưa save được.
+Điều đáng ghi nhất là **vì sao** mất mát đó từng vô hình: cá thể ngủ không có entity nên `serialize_world_state` —
+thứ chỉ ghi được cái nó query được — không thấy chúng; mà `ecosystem_census_system` vẫn cộng EU của chúng vào
+`pool.animals`. Nạp lại nhẹ hơn lúc lưu, rồi `EnergyLedger::lock_baseline` lấy luôn tổng nhỏ hơn làm baseline mới
+thay vì báo lỗi. Cả hai nửa đều im lặng.
+
+Giữ bởi `a_sleeping_herd_survives_a_save_and_load_with_its_energy_intact` (đi qua JSON thật, không phải clone struct,
+và assert EU khớp **từng bit**), `the_dormancy_stream_resumes_rather_than_restarts`, và
+`a_snapshot_with_an_inconsistent_grid_is_refused`.
 
 **Phần thô hơn, và một bất đối xứng còn để ngỏ — nêu tên thay vì giấu:**
 

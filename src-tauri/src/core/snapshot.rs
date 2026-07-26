@@ -49,7 +49,8 @@ use std::path::Path;
 ///
 /// A bare `SavedSimulationState` on disk with no envelope around it is a version-1 or version-2
 /// file; [`read`] detects that and migrates it forward.
-pub const SCHEMA_VERSION: u32 = 3;
+/// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Oldest schema this build can still read. N−2 per the G1.2 requirement.
 pub const MIN_SUPPORTED_SCHEMA: u32 = SCHEMA_VERSION - 2;
@@ -291,8 +292,10 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
         return Ok(migrate(envelope.schema_version, state));
     }
 
-    // No `schema_version` key: a pre-envelope file. Those are schema 1 or 2, both inside the N−2
-    // window, and both deserialize into the current struct via `#[serde(default)]`.
+    // No `schema_version` key: a pre-envelope file, so schema 1 or 2. Schema 1 is now outside the
+    // declared N−2 window, and is still accepted here rather than rejected: an unversioned file
+    // cannot say which of the two it is, and every field either version lacks arrives through
+    // `#[serde(default)]`. Refusing on a version it never wrote down would be guessing.
     let state: SavedSimulationState = serde_json::from_slice(bytes).map_err(|e| {
         SnapshotError::Malformed(format!(
             "not an envelope and not a bare saved state either: {e}"
