@@ -586,6 +586,7 @@ mod tests {
             schema_version: MANIFEST_SCHEMA_VERSION,
             experiment_id: "mana-slice".into(),
             name: "renewable-patchy-mana".into(),
+            observer: crate::core::observer::ObserverPolicy::default(),
             world_identity: WorldIdentity::default(),
             laws: WorldLawSet::with_exotic(ExoticEnergyLaw::mana_patchy(200.0, 5)),
             initial_conditions: ref_init(),

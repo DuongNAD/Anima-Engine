@@ -210,23 +210,29 @@ phải cái handle đó.
   (xem §3.10). Điều mới: ADR-0004 viện dẫn quy tắc **ER01** của nó (`WorldLawSet` bất biến trong một
   run; nhánh checkpoint không đổi law fingerprint) làm ràng buộc thiết kế. Một ADR `proposed` giờ là
   nền của một ADR `proposed` khác — hoà giải §3.10 vì thế đã lên giá.
-- **[ADR-0004](../decisions/ADR-0004-observer-as-declared-intervention.md)** (2026-07-26, chờ quyết
-  định) — người quan sát nhập vai là can thiệp được khai báo. **Bối cảnh là một phát hiện, không phải
-  một đề xuất tính năng:** `LodFocus` do camera lái **đã** là một forcing lên thế giới và đang nằm
-  ngoài mọi provenance. [`tier_at`](../../src-tauri/src/core/simulation_lod.rs) phân tier theo khoảng
-  cách tới observer, và [`cold_agents_stop_asking_entirely`](../../src-tauri/tests/simulation_lod_tests.rs)
-  chốt rằng agent `Cold` **thật sự không suy nghĩ**. Nghĩa là chỗ người dùng nhìn quyết định con nào
-  được suy nghĩ. Hôm nay run nghiên cứu vẫn sạch, nhưng chỉ vì `LodFocus::default()` là
-  `enabled: false` và headless không có camera — đó là **hệ quả phụ của việc chưa có UI**, không phải
-  một hợp đồng.
+- **[ADR-0004](../decisions/ADR-0004-observer-as-declared-intervention.md)** — **accepted
+  2026-07-26, O1 đã ship.** Người quan sát nhập vai là can thiệp được khai báo. Bối cảnh là một phát
+  hiện chứ không phải đề xuất tính năng: `LodFocus` do camera lái **đã** là forcing lên thế giới và
+  nằm ngoài mọi provenance, vì [`tier_at`](../../src-tauri/src/core/simulation_lod.rs) phân tier theo
+  khoảng cách tới observer và
+  [`cold_agents_stop_asking_entirely`](../../src-tauri/tests/simulation_lod_tests.rs) chốt rằng agent
+  `Cold` **thật sự không suy nghĩ**.
 
-  Nếu ADR được chấp nhận, hạng mục **O1** (`ObserverPolicy::Absent`/`Spectate` + gate
-  `spectate_matches_absent`, kèm control âm) làm được **ngay** và **không** phụ thuộc §3.3/§3.6.
-  Các hạng mục còn lại (ghi trace, replay `Inhabit`) thì phụ thuộc.
+  O1 đã đóng chỗ đó: [`core/observer.rs`](../../src-tauri/src/core/observer.rs) +
+  enforcement ở `sync_lod_focus_system` + field `observer` trên `ExperimentManifest`
+  (`#[serde(default)]`, **không** bump schema version). Gate:
+  [`tests/observer_policy_tests.rs`](../../src-tauri/tests/observer_policy_tests.rs) — 7 pass, gồm
+  `spectate_matches_absent` **và** control âm `an_inhabited_camera_actually_changes_who_thinks`;
+  cộng 11 unit test cho kiểu và cho manifest.
 
-  Lưu ý cho người áp dụng: ADR còn `proposed`, nên **chưa** được đem hệ quả của nó vào
-  `DETERMINISM_CONTRACT` hay `SNAPSHOT_CONTRACT`. Nó có ghi rõ các contract sẽ bị ảnh hưởng nếu được
-  chấp nhận.
+  **Bẫy còn sống, đọc trước khi sửa quanh đây:** *thiếu resource `ObserverPolicy`* ≠ `Absent`. Thiếu
+  nghĩa là chưa ai khai báo, và phải giữ nguyên hành vi cũ — **tuân theo camera**. `Absent` là khai
+  báo ngược lại và **cấm** camera. Lẫn hai cái này sẽ âm thầm tắt LOD của app đang chạy, vì
+  `PixiViewport.tsx` vẫn gọi `set_lod_focus` thật.
+
+  Còn lại: **O2** (ghi trace + `CauseId` cho hành động) và **O3** (replay `Inhabit`, phụ thuộc
+  §3.3/§3.6). Hệ quả của ADR lên `DETERMINISM_CONTRACT` §2 (nguồn rò rỉ thứ năm: camera) và
+  `SNAPSHOT_CONTRACT` vẫn **chưa** được áp — chúng thuộc O2.
 
 ---
 

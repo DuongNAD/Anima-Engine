@@ -1479,6 +1479,7 @@ mod tests {
             schema_version: MANIFEST_SCHEMA_VERSION,
             experiment_id: "ref-baseline".into(),
             name: "ref-baseline".into(),
+            observer: crate::core::observer::ObserverPolicy::default(),
             world_identity: WorldIdentity::default(),
             laws: WorldLawSet::baseline(),
             initial_conditions: ref_init(),

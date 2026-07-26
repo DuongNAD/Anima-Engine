@@ -1,9 +1,9 @@
 ---
 title: ADR-0004 — Người quan sát nhập vai là một can thiệp được khai báo
-status: proposed
+status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-07-26
-decision_date: pending
+decision_date: 2026-07-26
 supersedes: none
 superseded_by: none
 ---
@@ -261,9 +261,18 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 
 1. **Baseline.** Chốt checksum hiện tại từ `determinism_gate_tests.rs`
    (`0xe4c7f5e9`, control âm `0xe66c09d2`) làm mốc "không đổi gì".
-2. **O1 — `ObserverPolicy` + `Absent`/`Spectate`.** Không cần trace, không cần G2. Gate quyết định là
-   `spectate_matches_absent`. Đây là bước làm cho "vừa nghiên cứu vừa trải nghiệm" thành **lời hứa
-   kiểm chứng được** thay vì khẩu hiệu, và nó khả thi ngay hôm nay.
+2. **O1 — `ObserverPolicy` + `Absent`/`Spectate`. ✅ Xong 2026-07-26.**
+   [`core/observer.rs`](../../src-tauri/src/core/observer.rs) giữ kiểu; enforcement nằm ở
+   [`sync_lod_focus_system`](../../src-tauri/src/core/simulation_lod.rs) — một chỗ duy nhất, vì đó là
+   một chỗ duy nhất camera chạm được vào world. Manifest nhận field `observer` với `#[serde(default)]`
+   và **không** bump `MANIFEST_SCHEMA_VERSION`: `validate` từ chối mọi version khác 1, nên bump sẽ
+   biến một field cộng thêm thành một thay đổi phá vỡ. Gate ở
+   [`tests/observer_policy_tests.rs`](../../src-tauri/tests/observer_policy_tests.rs).
+
+   Một điều chỉnh so với C1: enum ship **cả ba** biến thể, không phải hai. `Inhabit` phải có mặt ngay
+   vì LOD-bật là đường đang chạy thật — `PixiViewport.tsx` gọi `set_lod_focus` từ khi simulation LOD
+   được nối vào app. Nếu O1 chỉ có `Absent`/`Spectate` thì mọi run của app sống sẽ không có chính sách
+   hợp lệ nào và LOD bị tắt câm. Ở O1, `Inhabit` **khai báo** sự nhiễu; **ghi lại** nó là O2.
 3. **O2 — Ghi trace + `CauseId` cho hành động.** Ledger và provenance chạy được kể cả khi replay chưa
    bit-exact: "vì sao đàn thú chết" là câu hỏi trả lời được trước khi "chạy lại y hệt" trả lời được.
 4. **O3 — `Inhabit` replay.** *Phụ thuộc G2 = §3.3 + §3.6* (đường live tất định). Không tuyên bố
@@ -276,15 +285,29 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 
 | Gate | Lệnh / artifact | Ngưỡng | Kết quả |
 |---|---|---|---|
-| Correctness | `observer_writes_go_through_the_intervention_seam` | Không đường ghi world state nào khác từ observer | pending |
-| Correctness | Manifest cũ (không có key `observer`) nạp và validate | Bằng hành vi hôm nay | pending |
-| Determinism | `spectate_matches_absent` — hai tiến trình độc lập, cùng manifest, một `Spectate` có camera path | Cùng checksum | pending |
-| Determinism | **Control âm**: cùng camera path, `Inhabit` | Checksum **phải khác** — nếu bằng thì trace không tác dụng gì và gate trên xanh vì lý do sai | pending |
-| Determinism | `an_inhabited_run_replays_from_its_trace_without_a_human` *(sau G2)* | Bằng checksum phiên sống | pending |
-| Provenance | `trace_to_root` trên hệ quả sau một hành động observer | Trả về `CauseId` của observer, không phải `CAUSE_BACKGROUND` | pending |
-| Performance | Bench tick path khi đang ghi trace | `allocs == 0`; regression tick time trong ngưỡng `BENCHMARK_BASELINE.md` | pending |
-| Performance | Kích thước trace, phiên 1 giờ, trường hợp camera quay liên tục | Đo thật, đặt ngưỡng sau lần đo đầu | pending |
-| License/security | Không dependency mới | n/a | pending |
+| Correctness | `a_manifest_without_an_observer_key_reads_as_absent` | Manifest tiền-ADR-0004 nạp, validate, hành xử như cũ | ✅ 2026-07-26 |
+| Correctness | `an_undeclared_policy_still_obeys_the_camera` | Thiếu resource ≠ `Absent`; app đang chạy không bị tắt LOD | ✅ 2026-07-26 |
+| Correctness | `an_inhabit_rooted_at_the_background_cause_is_refused` | `validate` trả `InvalidObserverPolicy` | ✅ 2026-07-26 |
+| Determinism | `spectate_matches_absent` | Camera đi hết mọi band, timeline "ai nghĩ ở tick nào" **trùng khít** `Absent` | ✅ 2026-07-26 |
+| Determinism | **Control âm**: `an_inhabited_camera_actually_changes_who_thinks` | Cùng camera path, `Inhabit` ⇒ timeline **phải khác**. Không có nó, gate trên xanh cả khi camera chưa từng tới được world | ✅ 2026-07-26 |
+| ER01 | `the_observer_policy_leaves_the_law_fingerprint_alone` | `laws.fingerprint()` không đổi theo policy; đổi manifest fingerprint thì có | ✅ 2026-07-26 |
+| Determinism | `an_inhabited_run_replays_from_its_trace_without_a_human` *(O3, sau G2 = §3.3+§3.6)* | Bằng checksum phiên sống | pending |
+| Provenance | `trace_to_root` trên hệ quả sau một hành động observer *(O2)* | Trả về `CauseId` của observer, không phải `CAUSE_BACKGROUND` | pending |
+| Correctness | `observer_writes_go_through_the_intervention_seam` *(O2)* | Không đường ghi world state nào khác từ observer | pending |
+| Performance | Bench tick path khi đang ghi trace *(O2)* | `allocs == 0`; regression tick time trong ngưỡng `BENCHMARK_BASELINE.md` | pending |
+| Performance | Kích thước trace, phiên 1 giờ, camera quay liên tục *(O2)* | Đo thật, đặt ngưỡng sau lần đo đầu | pending |
+| License/security | Không dependency mới | n/a | ✅ 2026-07-26 |
+
+**Đính chính một điều bảng này từng hứa sai.** Bản đầu ghi `spectate_matches_absent` là "hai tiến trình
+độc lập, cùng checksum", theo khuôn của `determinism_gate_tests.rs`. Không làm được ở O1, và lý do
+đáng ghi lại: gate checksum hai tiến trình đo *quỹ đạo thế giới sống*, mà đường live **chưa tất định**
+(`DETERMINISM_CONTRACT` §5 — physics/CPG chạy song song). Đem khuôn đó vào O1 sẽ tạo ra một gate đỏ vì
+lý do không liên quan tới người quan sát.
+
+Cái O1 đo được, và đủ cho điều O1 tuyên bố: với camera đi qua mọi band, **timeline "agent nào xin suy
+nghĩ ở tick nào"** dưới `Spectate` trùng khít `Absent` — so cả chuỗi chứ không so tổng, vì hai chính
+sách có thể cộng ra cùng số lần suy nghĩ mà rơi vào các tick khác nhau. Phiên bản checksum hai tiến
+trình là việc của O3, và nó thừa hưởng G2 chứ không thay thế được gate này.
 
 Control âm là bắt buộc theo `DETERMINISM_CONTRACT` §4. Ở đây nó đặc biệt quan trọng: không có nó,
 một `Spectate` cài đặt sai thành "y hệt `Absent` vì trace bị bỏ qua hoàn toàn" sẽ làm gate xanh.

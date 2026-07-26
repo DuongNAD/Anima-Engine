@@ -30,7 +30,16 @@
 //! agent in `Hot`. An unconfigured run is therefore indistinguishable from one without this module
 //! at all — held by `without_a_focus_every_agent_thinks_every_tick` and
 //! `a_disabled_focus_changes_nothing` in `tests/simulation_lod_tests.rs`.
+//!
+//! ## Tiering is a declared perturbation (ADR-0004)
+//!
+//! Because a `Cold` agent does not think, **where the observer looks decides which agents think**.
+//! That makes the camera a forcing on the world, so [`ObserverPolicy`] gates it: only
+//! `Inhabit` may tier, and [`sync_lod_focus_system`] is where that is enforced. A run under
+//! `Spectate` keeps the camera and drops its effect, which is what lets its trajectory equal a
+//! headless one — see `tests/observer_policy_tests.rs`.
 
+use crate::core::observer::ObserverPolicy;
 use bevy_ecs::prelude::{Res, ResMut, Resource};
 use glam::Vec3;
 use std::sync::{Arc, RwLock};
@@ -95,7 +104,11 @@ impl SharedLodFocus {
 /// A poisoned lock leaves the last focus in place instead of panicking. The simulation thread
 /// outliving a dead UI thread with a slightly stale camera position is strictly better than the
 /// simulation dying with it.
-pub fn sync_lod_focus_system(shared: Option<Res<SharedLodFocus>>, focus: Option<ResMut<LodFocus>>) {
+pub fn sync_lod_focus_system(
+    shared: Option<Res<SharedLodFocus>>,
+    focus: Option<ResMut<LodFocus>>,
+    policy: Option<Res<ObserverPolicy>>,
+) {
     // Separate bindings rather than one tuple pattern: the tuple is a temporary, and the read guard
     // below borrows out of it.
     let Some(shared) = shared else {
@@ -107,7 +120,17 @@ pub fn sync_lod_focus_system(shared: Option<Res<SharedLodFocus>>, focus: Option<
     // Copied out in its own statement so the read guard is released here, rather than living to the
     // end of the function as an `if let` scrutinee temporary would.
     let latest = shared.0.read().ok().map(|next| *next);
-    if let Some(latest) = latest {
+    if let Some(mut latest) = latest {
+        // ADR-0004: this is the one place the observer's camera reaches the world, so it is the one
+        // place the declared policy is enforced. Only `Inhabit` may tier; `Spectate` keeps the
+        // camera and drops its effect, which is what makes its trajectory equal `Absent`.
+        //
+        // No policy resource means nobody declared one, and that must stay indistinguishable from
+        // the engine before this existed — so the focus is obeyed. `Absent` is the opposite: a
+        // positive declaration that there is no observer, and it denies the focus.
+        if policy.is_some_and(|p| !p.allows_focus()) {
+            latest.enabled = false;
+        }
         *focus = latest;
     }
 }

@@ -7,7 +7,48 @@
 
 ---
 
-# 🧭 [MỚI NHẤT] ADR-0004 + hoà giải tài liệu giữa các phiên (2026-07-26)
+# 👁️ [MỚI NHẤT] ADR-0004 accepted — O1: người quan sát thành chính sách được khai báo (2026-07-26)
+
+ADR-0004 được chấp nhận. **O1 đã ship**, đo được `647 pass · 0 fail · 68 target` (baseline 629/67,
+tức **+18 test / +1 target**, không hồi quy).
+
+## Đã làm
+
+- [`core/observer.rs`](src-tauri/src/core/observer.rs) — `ObserverPolicy` = `Absent` / `Spectate` /
+  `Inhabit { cause_id }`.
+- Enforcement ở [`sync_lod_focus_system`](src-tauri/src/core/simulation_lod.rs) — **một chỗ duy nhất**,
+  vì đó là một chỗ duy nhất camera chạm được vào world.
+- `ExperimentManifest.observer` với `#[serde(default)]`, vào fingerprint qua tag `0xF7`, và `validate`
+  từ chối `Inhabit` cắm rễ ở `CAUSE_BACKGROUND`.
+- Gate: [`tests/observer_policy_tests.rs`](src-tauri/tests/observer_policy_tests.rs) 7 pass +
+  11 unit test cho kiểu và manifest.
+
+## Hai chỗ phải lệch khỏi ADR khi va vào code thật — đã ghi vào ADR, không lặng lẽ
+
+1. **Enum ship cả ba biến thể, không phải hai như C1 viết.** LOD-bật là đường đang chạy thật
+   (`PixiViewport.tsx` gọi `set_lod_focus`), nên thiếu `Inhabit` sẽ khiến app sống không có chính sách
+   hợp lệ nào và LOD bị tắt câm. Ở O1 `Inhabit` **khai báo** nhiễu; **ghi lại** là O2.
+2. **Gate không phải checksum hai tiến trình như bảng bằng chứng ban đầu hứa.** Khuôn đó đo quỹ đạo
+   thế giới sống, mà đường live chưa tất định (`DETERMINISM_CONTRACT` §5) — dùng nó ở O1 sẽ tạo một
+   gate đỏ vì lý do không liên quan tới người quan sát. Thay bằng so **timeline "agent nào xin nghĩ ở
+   tick nào"** qua 40 tick với camera đi hết mọi band; so cả chuỗi chứ không so tổng.
+
+## Bẫy mới, đáng nhớ nhất của lượt này
+
+**Thiếu resource `ObserverPolicy` ≠ `Absent`.** Thiếu nghĩa là chưa ai khai báo ⇒ **tuân theo camera**
+(giữ nguyên hành vi cũ). `Absent` là khai báo ngược lại ⇒ **cấm** camera. Lẫn hai cái này sẽ âm thầm
+tắt LOD của app đang chạy và trông như một cải tiến an toàn.
+
+## Chưa làm, có chủ đích
+
+App sống vẫn ở trạng thái "chưa khai báo". Cho nó `Inhabit` cần một `CauseId` thật, mà cấp phát cause
+id thuộc về **O2** (nơi có ledger) — bịa một hằng số bây giờ có thể trùng id do scenario cấp.
+Hệ quả của ADR lên `DETERMINISM_CONTRACT` §2 (nguồn rò rỉ thứ năm: camera) và `SNAPSHOT_CONTRACT`
+cũng thuộc O2.
+
+---
+
+# 🧭 ADR-0004 + hoà giải tài liệu giữa các phiên (2026-07-26)
 
 Người dùng yêu cầu **kiểm tra các phiên khác xem có lệch hướng không**, rồi **cập nhật tài liệu**.
 
