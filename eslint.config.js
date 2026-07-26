@@ -74,6 +74,26 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       // Existing Tauri IPC payloads use `any` widely; surface it without failing the build.
       '@typescript-eslint/no-explicit-any': 'warn',
+
+      // The React Compiler rules, new in eslint-plugin-react-hooks 7 and errors by default.
+      //
+      // They arrived with the eslint 9 -> 10 upgrade, which was taken to clear a high-severity
+      // brace-expansion advisory reachable only through eslint's pinned minimatch. Turning them on
+      // as errors would have failed `npm run lint` on 53 pre-existing findings across the R3F and
+      // Pixi components, none of them introduced by that upgrade — so the security fix would have
+      // been gated behind an unrelated refactor.
+      //
+      // Warnings instead, which puts them under scripts/eslint_ratchet.mjs: the count cannot grow,
+      // and lowering it is a normal piece of work rather than a prerequisite. This is the same call
+      // the repo already made for `any` and unused vars above.
+      //
+      // Three of them look like genuine defects rather than style, and are worth taking first:
+      //   src/App.tsx:681 and WorldTerrainLod.tsx:236  react-hooks/refs (ref read during render)
+      //   src/components/Landscape/WorldTerrainLod.tsx:132  react-hooks/set-state-in-effect
+      'react-hooks/immutability': 'warn',
+      'react-hooks/purity': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
 );

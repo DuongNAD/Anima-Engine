@@ -821,11 +821,13 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
       const getCoordsNoPan = (x: number, y: number): [number, number] => {
         const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
-        let minX = -100, maxX = 100;
-        let minY = -100, maxY = 100;
-        let scale = 1.0;
-        let midX = 0;
-        let midY = 0;
+        // Only these three escape the branches. The extents used to be declared out here with
+        // fallback values that every branch immediately overwrote — `no-useless-assignment` flags
+        // the dead initialisers, and scoping the extents to the branch that computes them says the
+        // same thing more directly: outside, they mean nothing.
+        let scale: number;
+        let midX: number;
+        let midY: number;
 
         if (Array.isArray(segments) && segments.length > 0) {
           let sMinX = Infinity, sMaxX = -Infinity;
@@ -841,26 +843,21 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             if (yVal > sMaxY) sMaxY = yVal;
           });
 
-          minX = sMinX;
-          maxX = sMaxX;
-          minY = sMinY;
-          maxY = sMaxY;
-
-          const rangeX = maxX - minX || 1;
-          const rangeY = maxY - minY || 1;
+          const rangeX = sMaxX - sMinX || 1;
+          const rangeY = sMaxY - sMinY || 1;
           const padding = 50;
           const drawWidth = 500 - padding * 2;
           const drawHeight = 350 - padding * 2;
 
           scale = Math.min(drawWidth / rangeX, drawHeight / rangeY);
-          midX = (minX + maxX) / 2;
-          midY = (minY + maxY) / 2;
+          midX = (sMinX + sMaxX) / 2;
+          midY = (sMinY + sMaxY) / 2;
         } else if (terrainMapRef.current && terrainMapRef.current.bounds && terrainMapRef.current.bounds.min && terrainMapRef.current.bounds.max) {
           const bounds = terrainMapRef.current.bounds;
-          minX = bounds.min.x;
-          maxX = bounds.max.x;
-          minY = projectionRef.current === 'xy' ? bounds.min.y : bounds.min.z;
-          maxY = projectionRef.current === 'xy' ? bounds.max.y : bounds.max.z;
+          const minX = bounds.min.x;
+          const maxX = bounds.max.x;
+          const minY = projectionRef.current === 'xy' ? bounds.min.y : bounds.min.z;
+          const maxY = projectionRef.current === 'xy' ? bounds.max.y : bounds.max.z;
 
           const rangeX = maxX - minX || 1;
           const rangeY = maxY - minY || 1;
@@ -872,10 +869,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           midX = (minX + maxX) / 2;
           midY = (minY + maxY) / 2;
         } else {
-          minX = -100;
-          maxX = 100;
-          minY = -100;
-          maxY = 100;
+          // No segments and no terrain: an identity transform about the origin.
           scale = 1.0;
           midX = 0;
           midY = 0;

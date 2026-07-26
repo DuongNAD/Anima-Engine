@@ -6,6 +6,7 @@ pub mod determinism;
 pub mod dynamic_fields;
 pub mod ecology;
 pub mod ecs;
+pub mod emit;
 pub mod energy_ledger;
 pub mod engine;
 pub mod environmental_systems;
@@ -26,6 +27,7 @@ pub mod simulation_loop;
 pub mod simulation_state;
 pub mod snapshot;
 pub mod terrain;
+pub mod training;
 pub mod world_artifact;
 pub mod world_systems;
 

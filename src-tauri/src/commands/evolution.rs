@@ -51,7 +51,10 @@ pub struct LineageGraphPayload {
 
 #[tauri::command]
 pub fn get_map_elites_grid(state: State<'_, AppState>) -> Result<MapElitesGridState, String> {
-    let grid = state.map_elites_grid.lock().unwrap();
+    let grid = state
+        .map_elites_grid
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     Ok(grid.clone())
 }
 
@@ -66,7 +69,10 @@ pub fn update_evolution_settings(
     {
         return Err("Invalid settings".to_string());
     }
-    let mut evolution_settings = state.evolution_settings.lock().unwrap();
+    let mut evolution_settings = state
+        .evolution_settings
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     *evolution_settings = settings;
     Ok(true)
 }

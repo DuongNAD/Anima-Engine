@@ -65,10 +65,10 @@ test('Phase 3 E2E: telemetry panel layout and streaming', async ({ page }) => {
     const heading = page.locator('h1');
     await expect(heading).toHaveText('Anima-Engine Control Center', { timeout: 3000 });
   } catch (error: any) {
-    let foundText = 'none';
+    let foundText: string;
     try {
-      foundText = await page.locator('h1').innerText({ timeout: 1000 }) || 'none';
-    } catch (innerErr) {
+      foundText = (await page.locator('h1').innerText({ timeout: 1000 })) || 'none';
+    } catch {
       foundText = 'none';
     }
     console.warn(`[E2E WARNING] Port conflict detected on port 5173. Expected 'Anima-Engine Control Center', but found '${foundText}'. Skipping test gracefully.`);

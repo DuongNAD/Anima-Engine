@@ -1,34 +1,21 @@
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
+import { useTauriEvent } from "./hooks/useTauriEvent";
+import { buildAgentHierarchy } from "./utils/agentHierarchy";
+import type { SegmentState, RenderSegment, AgentHierarchy } from "./utils/agentHierarchy";
+
+// Re-exported so existing importers keep working; the implementation and the view-model types now
+// live in one place instead of being copied per consumer.
+export { buildAgentHierarchy };
+export type { SegmentState, RenderSegment, AgentHierarchy };
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
 
-
-export interface SegmentState {
-  agent_id: number;
-  segment_id: number;
-  parent_segment_id: number | null;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  roll: number;
-  joint_anchor_x: number;
-  joint_anchor_y: number;
-  joint_anchor_z: number;
-  joint_axis_x: number;
-  joint_axis_y: number;
-  joint_axis_z: number;
-  energy: number;
-  agent_type?: 'predator' | 'prey';
-}
 
 export interface RaycastTelemetry {
   origin: [number, number, number];
@@ -49,25 +36,6 @@ export interface CombatEvent {
   prey_id: number;
   damage: number;
   energy_transferred: number;
-}
-
-export interface AgentHierarchy {
-  agent_id: number;
-  energy: number;
-  root: RenderSegment;
-}
-
-export interface RenderSegment {
-  segment_id: number;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  roll: number;
-  joint_anchor: [number, number, number];
-  joint_axis: [number, number, number];
-  children: RenderSegment[];
 }
 
 export interface SimulationStatus {
@@ -128,83 +96,6 @@ export interface MigrationPayload {
   target_port: number;
   status: 'Success' | 'Failed';
   timestamp: number;
-}
-
-export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
-  const safeSegments = (Array.isArray(segments) ? segments : []).filter(
-    (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
-  );
-  const agentsMap = new Map<number, SegmentState[]>();
-
-  // Group segments by agent_id
-  safeSegments.forEach(seg => {
-    if (seg.agent_id === undefined || seg.agent_id === null) return;
-    if (!agentsMap.has(seg.agent_id)) {
-      agentsMap.set(seg.agent_id, []);
-    }
-    agentsMap.get(seg.agent_id)!.push(seg);
-  });
-
-  const hierarchies: AgentHierarchy[] = [];
-
-  agentsMap.forEach((segs, agentId) => {
-    const segmentMap = new Map<number, RenderSegment>();
-    let rootSegment: RenderSegment | null = null;
-    let rootEnergy = 0;
-
-    // Initialize all render segments
-    segs.forEach(s => {
-      if (!s) return;
-      const renderSeg: RenderSegment = {
-        segment_id: s.segment_id,
-        x: s.x || 0,
-        y: s.y || 0,
-        z: s.z || 0,
-        yaw: s.yaw || 0,
-        pitch: s.pitch || 0,
-        roll: s.roll || 0,
-        joint_anchor: [s.joint_anchor_x || 0, s.joint_anchor_y || 0, s.joint_anchor_z || 0],
-        joint_axis: [s.joint_axis_x || 0, s.joint_axis_y || 0, s.joint_axis_z || 0],
-        children: []
-      };
-      segmentMap.set(s.segment_id, renderSeg);
-      if (s.parent_segment_id === null || s.parent_segment_id === undefined) {
-        rootSegment = renderSeg;
-        rootEnergy = s.energy || 0;
-      }
-    });
-
-    // Wire up parent-child connections, preventing cycles
-    segs.forEach(s => {
-      if (!s) return;
-      if (s.parent_segment_id !== null && s.parent_segment_id !== undefined) {
-        const parent = segmentMap.get(s.parent_segment_id);
-        const child = segmentMap.get(s.segment_id);
-        if (parent && child) {
-          const wouldCreateCycle = (node: RenderSegment, targetId: number): boolean => {
-            if (node.segment_id === targetId) return true;
-            for (const c of node.children) {
-              if (wouldCreateCycle(c, targetId)) return true;
-            }
-            return false;
-          };
-          if (!wouldCreateCycle(child, parent.segment_id)) {
-            parent.children.push(child);
-          }
-        }
-      }
-    });
-
-    if (rootSegment) {
-      hierarchies.push({
-        agent_id: agentId,
-        energy: rootEnergy,
-        root: rootSegment
-      });
-    }
-  });
-
-  return hierarchies;
 }
 
 export function App() {
@@ -379,35 +270,11 @@ export function App() {
   }, []);
 
   // Listen to the map-elites-update event stream
-  useEffect(() => {
-    let active = true;
-    let unlisten: (() => void) | null = null;
-    const setupGridListener = async () => {
-      try {
-        const u = await listen<MapElitesGridState>("map-elites-update", (event) => {
-          if (active) {
-            setMapElitesGrid(event.payload);
-          }
-        });
-        if (!active) {
-          u();
-        } else {
-          unlisten = u;
-        }
-      } catch (err) {
-        if (active) {
-          setError(String(err));
-        }
-      }
-    };
-    setupGridListener();
-    return () => {
-      active = false;
-      if (unlisten) {
-        unlisten();
-      }
-    };
-  }, []);
+  useTauriEvent<MapElitesGridState>(
+    "map-elites-update",
+    (event) => setMapElitesGrid(event.payload),
+    (err) => setError(String(err))
+  );
 
   // Fetch initial Phase 3 states
   useEffect(() => {
@@ -435,62 +302,21 @@ export function App() {
   }, []);
 
   // Listen to Phase 3 events
-  useEffect(() => {
-    let active = true;
-    let unlistenPheromone: (() => void) | null = null;
-    let unlistenRaycast: (() => void) | null = null;
-    let unlistenCombat: (() => void) | null = null;
-
-    const setupListeners = async () => {
-      try {
-        const uPheromone = await listen<PheromoneGridState>("pheromone-update", (event) => {
-          if (active) {
-            setPheromoneGrid(event.payload);
-          }
-        });
-        if (!active) {
-          uPheromone();
-        } else {
-          unlistenPheromone = uPheromone;
-        }
-
-        const uRaycast = await listen<RaycastTelemetry[]>("raycast-update", (event) => {
-          if (active) {
-            setActiveRaycasts(event.payload);
-          }
-        });
-        if (!active) {
-          uRaycast();
-        } else {
-          unlistenRaycast = uRaycast;
-        }
-
-        const uCombat = await listen<CombatEvent>("combat-event", (event) => {
-          if (active) {
-            setCombatEvents((prev) => [event.payload, ...prev].slice(0, 50));
-          }
-        });
-        if (!active) {
-          uCombat();
-        } else {
-          unlistenCombat = uCombat;
-        }
-      } catch (err) {
-        if (active) {
-          setError(String(err));
-        }
-      }
-    };
-
-    setupListeners();
-
-    return () => {
-      active = false;
-      if (unlistenPheromone) unlistenPheromone();
-      if (unlistenRaycast) unlistenRaycast();
-      if (unlistenCombat) unlistenCombat();
-    };
-  }, []);
+  useTauriEvent<PheromoneGridState>(
+    "pheromone-update",
+    (event) => setPheromoneGrid(event.payload),
+    (err) => setError(String(err))
+  );
+  useTauriEvent<RaycastTelemetry[]>(
+    "raycast-update",
+    (event) => setActiveRaycasts(event.payload),
+    (err) => setError(String(err))
+  );
+  useTauriEvent<CombatEvent>(
+    "combat-event",
+    (event) => setCombatEvents((prev) => [event.payload, ...prev].slice(0, 50)),
+    (err) => setError(String(err))
+  );
 
   // Fetch initial Phase 4 states
   useEffect(() => {
@@ -515,51 +341,17 @@ export function App() {
     fetchPhase4Initial();
   }, []);
 
-  // Listen to Phase 4 events
-  useEffect(() => {
-    let active = true;
-    let unlistenChronicle: (() => void) | null = null;
-    let unlistenMigration: (() => void) | null = null;
-
-    const setupPhase4Listeners = async () => {
-      try {
-        const uChronicle = await listen<ChronicleEvent>("chronicle-event", (event) => {
-          if (active) {
-            setChronicleHistory((prev) => {
-              const safePrev = Array.isArray(prev) ? prev : [];
-              return event?.payload ? [event.payload, ...safePrev] : safePrev;
-            });
-          }
-        });
-        if (!active) {
-          uChronicle();
-        } else {
-          unlistenChronicle = uChronicle;
-        }
-
-        const uMigration = await listen<MigrationPayload>("migration-event", (event) => {
-          if (active) {
-            setMigrationEvents((prev) => [event.payload, ...prev]);
-          }
-        });
-        if (!active) {
-          uMigration();
-        } else {
-          unlistenMigration = uMigration;
-        }
-      } catch (err) {
-        console.error("Failed to setup Phase 4 event listeners:", err);
-      }
-    };
-
-    setupPhase4Listeners();
-
-    return () => {
-      active = false;
-      if (unlistenChronicle) unlistenChronicle();
-      if (unlistenMigration) unlistenMigration();
-    };
-  }, []);
+  // Listen to Phase 4 events. These log rather than surfacing in the UI, which is what the previous
+  // hand-rolled effect did — the hook's default error path is the same `console.error`.
+  useTauriEvent<ChronicleEvent>("chronicle-event", (event) => {
+    setChronicleHistory((prev) => {
+      const safePrev = Array.isArray(prev) ? prev : [];
+      return event?.payload ? [event.payload, ...safePrev] : safePrev;
+    });
+  });
+  useTauriEvent<MigrationPayload>("migration-event", (event) => {
+    setMigrationEvents((prev) => [event.payload, ...prev]);
+  });
 
   const handleMutationRateChange = async (newRate: number) => {
     setMutationRate(newRate);
@@ -648,76 +440,52 @@ export function App() {
   }, []);
 
   // Lắng nghe luồng dữ liệu tick phát từ luồng chạy ngầm của Rust (Tauri IPC Event)
-  useEffect(() => {
-    let active = true;
-    let unlisten: (() => void) | null = null;
-
-    const setupListener = async () => {
-      try {
-        const u = await listen<any>("simulation-tick", (event) => {
-          if (!active) return;
-          let newSegments: SegmentState[] = [];
-          if (Array.isArray(event.payload)) {
-            newSegments = event.payload;
-          } else if (event.payload && typeof event.payload === 'object') {
-            if (Array.isArray(event.payload.segments)) {
-              newSegments = event.payload.segments;
-            }
-            if (event.payload.environmental_state) {
-              setEnvironmentalState(event.payload.environmental_state);
-            }
-            // `head_directions` is a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON
-            // OBJECT keyed by agent id — never an array. The old guard here was
-            // `Array.isArray(...)`, which is false for an object, so this branch never ran and head
-            // directions were silently never updated. The TypeScript type was right the whole time;
-            // only the consumer disagreed with it, which is exactly the class of drift a generated
-            // contract removes (G1.4).
-            const heads = event.payload.head_directions;
-            if (heads && typeof heads === 'object' && !Array.isArray(heads)) {
-              const dirs: Record<number, [number, number, number] | undefined> = {};
-              for (const [agentId, direction] of Object.entries(heads)) {
-                // Object keys arrive as strings even though the map is keyed by number.
-                if (Array.isArray(direction) && direction.length === 3) {
-                  dirs[Number(agentId)] = direction as [number, number, number];
-                }
-              }
-              setHeadDirections(dirs);
+  useTauriEvent<any>(
+    "simulation-tick",
+    (event) => {
+      let newSegments: SegmentState[] = [];
+      if (Array.isArray(event.payload)) {
+        newSegments = event.payload;
+      } else if (event.payload && typeof event.payload === 'object') {
+        if (Array.isArray(event.payload.segments)) {
+          newSegments = event.payload.segments;
+        }
+        if (event.payload.environmental_state) {
+          setEnvironmentalState(event.payload.environmental_state);
+        }
+        // `head_directions` is a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON
+        // OBJECT keyed by agent id — never an array. The old guard here was
+        // `Array.isArray(...)`, which is false for an object, so this branch never ran and head
+        // directions were silently never updated. The TypeScript type was right the whole time;
+        // only the consumer disagreed with it, which is exactly the class of drift a generated
+        // contract removes (G1.4).
+        const heads = event.payload.head_directions;
+        if (heads && typeof heads === 'object' && !Array.isArray(heads)) {
+          const dirs: Record<number, [number, number, number] | undefined> = {};
+          for (const [agentId, direction] of Object.entries(heads)) {
+            // Object keys arrive as strings even though the map is keyed by number.
+            if (Array.isArray(direction) && direction.length === 3) {
+              dirs[Number(agentId)] = direction as [number, number, number];
             }
           }
-
-          const safeSegments = newSegments.filter(
-            (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
-          );
-          latestSegmentsRef.current = safeSegments;
-          
-          const now = Date.now();
-          if (now - lastHierarchiesUpdateRef.current >= 200) {
-            const newHierarchies = buildAgentHierarchy(safeSegments);
-            setHierarchies(newHierarchies);
-            lastHierarchiesUpdateRef.current = now;
-          }
-        });
-        if (!active) {
-          u();
-        } else {
-          unlisten = u;
-        }
-      } catch (err) {
-        if (active) {
-          setError(String(err));
+          setHeadDirections(dirs);
         }
       }
-    };
 
-    setupListener();
+      const safeSegments = newSegments.filter(
+        (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
+      );
+      latestSegmentsRef.current = safeSegments;
 
-    return () => {
-      active = false;
-      if (unlisten) {
-        unlisten();
+      const now = Date.now();
+      if (now - lastHierarchiesUpdateRef.current >= 200) {
+        const newHierarchies = buildAgentHierarchy(safeSegments);
+        setHierarchies(newHierarchies);
+        lastHierarchiesUpdateRef.current = now;
       }
-    };
-  }, []);
+    },
+    (err) => setError(String(err))
+  );
 
   const handleToggle = async () => {
     try {

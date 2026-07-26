@@ -18,17 +18,23 @@ Frontend (run from repo root):
 - `npm run tauri:dev` / `npm run tauri:build` — the desktop app. **Use these, not bare `tauri dev`/`tauri build`:** they pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the bare commands ship a `default = []` binary with no Neo4j lineage, no cross-shard migration and the CPU learner. All three have fallbacks, so nothing fails loudly.
 
 Backend (run from `src-tauri/`):
-- `cargo test` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only).
+- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** seven test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]`, so a bare `cargo test` compiles them to empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `node scripts/check_test_targets.mjs <captured-output>` fails when any target runs zero tests.
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
+
+Dependency advisories are gated: `cargo audit` (backend, config in `src-tauri/.cargo/audit.toml`) and `npm audit --audit-level=high` (both npm packages). Two Rust advisories are ignored there with the verification recorded — they are lockfile-only entries for `burn-dataset`, which no enabled feature compiles.
+
+**burn is pinned at 0.13.2 and the upgrade is not a security fix.** Checked 2026-07-26: 0.14 still resolves the same vulnerable `gix-tempfile`, and it breaks `ai/model.rs` and `core/training.rs` (`Data` → `TensorData`, and `Wgpu` lost its third generic parameter). The version is many releases behind and worth moving for its own reasons, but it touches the numerically sensitive learner and buys nothing on the advisory front. `bevy_ecs` is likewise at 0.13 with no advisory pressure.
 
 There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`); it runs the gates above plus a `cargo tree` check that a default build really excludes the gated crates. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.ps1`).
 
 ## Gotchas
 
 - **Test-mode mock aliasing.** When Vitest runs (`mode === 'test'`), `three` and `@react-three/fiber` are aliased to mocks in `tests/mocks/`. These aliases are duplicated in `vite.config.ts`, `tsconfig.json` paths, and `tests/vitest.config.ts` — keep them in sync. Tests run under jsdom; WebGL/R3F are mocked. `PixiViewport.tsx` falls back to a Canvas 2D path under Vitest to avoid jsdom WebGL crashes.
+- **A mock invoked with `new` needs a `function`, not an arrow.** Under `@vitest/spy` 4 a mock constructed with `new` reaches its implementation via `Reflect.construct`, and an arrow has no `[[Construct]]` slot — `vi.fn().mockImplementation(() => ({...}))` throws `TypeError: … is not a constructor` from inside the spy. Vitest 1 called the implementation plainly, so the arrow form worked there. This bites every `vi.mock('pixi.js', …)`; `PIXI.Application`, `Graphics`, `Container` and `Sprite` are all `new`ed by `PixiViewport.tsx`.
+- **Vite 8 bundles with rolldown/oxc and does not ship esbuild.** Naming `"esbuild"` in `build.minify` routes through the deprecated `transformWithEsbuild` and fails with `Cannot find package 'esbuild'`. Leave `minify: true`.
 - **Zero-heap-allocation hot loop.** Simulation tick systems (physics, CPG, collision) must not allocate on the heap; use pre-allocated buffers. Tests assert `allocs == 0` — don't introduce allocations in tick paths.
-- **Two Vitest configs.** Root `vite.config.ts` includes `src/**`; `tests/vitest.config.ts` includes `tests/frontend/**` with `testTimeout: 15000` and re-pins `react`/`react-dom`.
+- **Two Vitest configs.** Root `vite.config.ts` includes `src/**`; `tests/vitest.config.ts` includes `tests/frontend/**` and re-pins `react`/`react-dom`. Both set `testTimeout: 15000`: the first `render(<App />)` in a file pays for the whole lazy module graph plus world generation under jsdom — ~4s on a dev machine, ~11s on a GitHub ubuntu runner — while later renders in the same file are ~150ms. The root config lacked it and the src suite timed out on CI while passing locally.
 - **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.** For 3D model / rabbit work, serve `rabbit-standalone/` statically instead (e.g. `py -m http.server 8000`).
 - Ignore build-artifact noise: `src-tauri/target_*` dirs, `*.log`, `err*.txt`, `out*.txt`, and the root `.agents/` / `$.agents/` vendored cargo dirs.
 
@@ -76,8 +82,10 @@ that runs, returns finite numbers and is silently wrong:
 - **`BrainGenotype`'s weight layout is `w[out * fan_in + in]` — the transpose of Burn's
   `[d_input, d_output]`.** Copy flat weights across without transposing and the network still runs.
   Use `ActorCriticModel::from_flat_weights`, which transposes, and keep the EB-S02 parity gate green.
-- **The shared A2C actor loss in `run_training_loop` has a known inverted sign** (tracked as its own
-  task). Do not copy it into new code; `brain_genotype::learn_step` has the corrected form.
+- **There is one A2C objective, `simulation_loop::a2c_loss`, and its actor coefficient is `+td`.**
+  The shared learner previously used `(a − â)²·(−td)`, which drove the policy away from actions that
+  beat expectation; it now matches `brain_genotype::learn_step`. `a2c_loss_direction_tests` fails if
+  the sign is reinverted. If you add a third learner, call `a2c_loss` rather than restating it.
 - Numerical code needs **two** kinds of test: a gradient check against finite differences catches a
   wrong derivative, but passes for a wrong objective too. Pair it with a behavioural assertion.
 

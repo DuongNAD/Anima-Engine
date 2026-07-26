@@ -108,10 +108,13 @@ static TOKIO_RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::
 #[cfg(feature = "neo4j")]
 fn get_tokio_runtime() -> &'static tokio::runtime::Runtime {
     TOKIO_RUNTIME.get_or_init(|| {
+        // A `OnceLock` initialiser cannot return an error, and every Neo4j call below needs this
+        // runtime, so failure here is genuinely unrecoverable for the `neo4j` feature. What was
+        // missing was any indication of what failed: `.expect` names it.
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .unwrap()
+            .expect("lineage tracker could not start a tokio runtime for the Neo4j driver")
     })
 }
 
@@ -176,7 +179,7 @@ impl FallbackLineageTracker {
 
             if graph.is_some() {
                 is_online.store(true, Ordering::SeqCst);
-                *neo4j_graph.write().unwrap() = graph;
+                *neo4j_graph.write().unwrap_or_else(|e| e.into_inner()) = graph;
             }
         }
         #[cfg(not(feature = "neo4j"))]

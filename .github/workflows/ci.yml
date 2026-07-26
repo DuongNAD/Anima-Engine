@@ -54,6 +54,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            # cargo-audit is `cargo install`ed below, which builds it from source — several minutes
+            # on a Windows runner. Caching the bin directory makes that a first-run cost.
+            ~/.cargo/bin
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
@@ -61,6 +64,21 @@ jobs:
       - name: cargo fmt --check
         if: ${{ !cancelled() }}
         run: cargo fmt --check
+
+      # Nothing checked Rust advisories before this. There were five, including gix-fs
+      # RUSTSEC-2024-0350 (arbitrary code execution, CVSS 8.8) reachable through burn's `train`
+      # feature. Three were cleared by `cargo update`; the `train` feature was dropped because
+      # nothing here uses Burn's Learner harness, which took burn-dataset and gix out of the
+      # compiled graph. src-tauri/.cargo/audit.toml documents the two that remain as lockfile-only
+      # entries, with the commands that verify they are never built.
+      - name: Install cargo-audit
+        if: ${{ !cancelled() }}
+        # `--locked` for a reproducible build of the tool itself. Skipped when the cache restored it.
+        run: cargo install cargo-audit --locked || cargo audit --version
+
+      - name: cargo audit
+        if: ${{ !cancelled() }}
+        run: cargo audit
 
       - name: cargo clippy --all-targets -D warnings
         if: ${{ !cancelled() }}
@@ -93,7 +111,18 @@ jobs:
         # No GPU on the runner, so burn falls back to the ndarray CPU backend (ai/model.rs).
         env:
           ANIMA_USE_GPU: "0"
-        run: cargo test --features desktop
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --features desktop 2>&1 | tee ../cargo-test-output.txt
+
+      # A test target that compiles but runs nothing exits 0, so `cargo test` alone cannot see it.
+      # Seven files here are gated behind `networking`/`ml-wgpu`; under a default build every one
+      # reports `running 0 tests` and passes. This asserts that does not happen for the feature set
+      # CI actually runs, so an accidental gate — or a file emptied by a bad merge — is loud.
+      - name: No test target ran zero tests
+        if: ${{ !cancelled() }}
+        run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
 
   frontend:
     name: Frontend
@@ -114,6 +143,19 @@ jobs:
       - name: Install tests/ dependencies
         run: npm ci --prefix tests
 
+      # Nothing checked dependency advisories before this. The two packages were carrying a critical
+      # (vitest UI server: arbitrary file read and execute) and four high findings, all reachable
+      # only by someone running `npm audit` by hand. `--audit-level=high` deliberately ignores
+      # low/moderate: a gate that fires on every transitive moderate gets muted, and a muted gate is
+      # worse than none.
+      - name: npm audit (root)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high
+
+      - name: npm audit (tests)
+        if: ${{ !cancelled() }}
+        run: npm audit --audit-level=high --prefix tests
+
       - name: npm run lint
         if: ${{ !cancelled() }}
         run: npm run lint
@@ -133,6 +175,27 @@ jobs:
       - name: npm run build
         if: ${{ !cancelled() }}
         run: npm run build
+
+      # The seven specs under tests/e2e existed but nothing ran them: there was no `test:e2e` script
+      # at the root, no step here, and their Playwright config started no dev server, so each spec
+      # hit its own `catch` and called `test.skip()`. They drive the UI through a page-level Tauri
+      # IPC stub, so a Rust release build is not needed — `webServer` + a warm-up navigation is.
+      - name: Install Playwright browsers
+        if: ${{ !cancelled() }}
+        run: npx playwright install --with-deps chromium
+        working-directory: tests
+
+      - name: npm run test:e2e (Playwright)
+        if: ${{ !cancelled() }}
+        run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/test-results/
+          retention-days: 7
 
       - name: Docs link check
         if: ${{ !cancelled() }}

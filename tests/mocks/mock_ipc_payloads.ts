@@ -91,67 +91,12 @@ export interface RenderSegment {
   children: RenderSegment[];
 }
 
-export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
-  const agentsMap = new Map<number, SegmentState[]>();
-
-  // Group segments by agent_id
-  segments.forEach(seg => {
-    if (!agentsMap.has(seg.agent_id)) {
-      agentsMap.set(seg.agent_id, []);
-    }
-    agentsMap.get(seg.agent_id)!.push(seg);
-  });
-
-  const hierarchies: AgentHierarchy[] = [];
-
-  agentsMap.forEach((segs, agentId) => {
-    const segmentMap = new Map<number, RenderSegment>();
-    let rootSegment: RenderSegment | null = null;
-    let rootEnergy = 0;
-
-    // Initialize all render segments
-    segs.forEach(s => {
-      const renderSeg: RenderSegment = {
-        segment_id: s.segment_id,
-        x: s.x,
-        y: s.y,
-        z: s.z,
-        yaw: s.yaw,
-        pitch: s.pitch,
-        roll: s.roll,
-        joint_anchor: [s.joint_anchor_x, s.joint_anchor_y, s.joint_anchor_z],
-        joint_axis: [s.joint_axis_x, s.joint_axis_y, s.joint_axis_z],
-        children: []
-      };
-      segmentMap.set(s.segment_id, renderSeg);
-      if (s.parent_segment_id === null) {
-        rootSegment = renderSeg;
-        rootEnergy = s.energy;
-      }
-    });
-
-    // Wire up parent-child connections
-    segs.forEach(s => {
-      if (s.parent_segment_id !== null) {
-        const parent = segmentMap.get(s.parent_segment_id);
-        const child = segmentMap.get(s.segment_id);
-        if (parent && child) {
-          parent.children.push(child);
-        }
-      }
-    });
-
-    if (rootSegment) {
-      hierarchies.push({
-        agent_id: agentId,
-        energy: rootEnergy,
-        root: rootSegment
-      });
-    }
-  });
-
-  return hierarchies;
-}
+// Re-exported, NOT reimplemented. This file used to carry its own copy, and because the tests
+// imported that copy rather than the shipping one, everything they asserted about hierarchy building
+// was about a fixture. The copies had already drifted: this one had no cycle guard and no tolerance
+// for a null `agent_id`, both of which the real implementation has and neither of which any test
+// could reach. Mocks belong to payloads; behaviour under test must come from the source.
+export { buildAgentHierarchy } from '../../src/utils/agentHierarchy';
 
 export const mockSegmentStates: SegmentState[] = [
   {

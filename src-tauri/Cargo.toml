@@ -28,7 +28,19 @@ ts-rs = "10"
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
-burn = { version = "0.13.2", features = ["std", "train"] }
+# No `train` feature. It exists for Burn's `Learner`/`LearnerBuilder` harness, which this project
+# does not use — `core::training::run_training_loop` drives Adam by hand over a crossbeam channel,
+# and everything it needs (`optim`, `module`, `nn`, `tensor`, `backend::Autodiff`) is in burn-core.
+#
+# What `train` pulled in was burn-train -> burn-dataset -> gix-tempfile -> gix-fs 0.8.1, which
+# carries RUSTSEC-2024-0350: traversal outside the working tree enabling arbitrary code execution,
+# CVSS 8.8. There is no fix inside the 0.13 line; the advisory is only reachable through a
+# git-repository dataset loader that nothing here calls. Dropping the feature removes the code
+# rather than accepting the risk, and takes gix, its SHA-1 advisory (RUSTSEC-2025-0021) and a
+# sizeable chunk of build time with it.
+# `autodiff` is what the learner actually needs (it is `train`'s transitive dependency, not `train`
+# itself); naming it directly is what lets `train` go.
+burn = { version = "0.13.2", features = ["std", "autodiff"] }
 burn-ndarray = { version = "0.13.2" }
 burn-wgpu = { version = "0.13.2", optional = true }
 socket2 = "0.5"

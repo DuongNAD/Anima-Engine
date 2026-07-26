@@ -176,17 +176,27 @@ pub async fn run_websocket_client<R: tauri::Runtime>(
                     .await
                     {
                         Ok(Ok((mut ws_stream, _))) => {
-                            let serialized = serde_json::to_string(&data).unwrap();
-                            let msg = tokio_tungstenite::tungstenite::Message::Text(serialized);
-                            let send_res = match tokio::time::timeout(
-                                Duration::from_millis(500),
-                                ws_stream.send(msg),
-                            )
-                            .await
-                            {
-                                Ok(Ok(())) => Ok(()),
-                                Ok(Err(e)) => Err(e.to_string()),
-                                Err(_) => Err("Send timeout".to_string()),
+                            // A failed serialization goes through the same Result the rest of this
+                            // match arm uses, so the caller's bounce-back path puts the agent back
+                            // inside local coordinates. It used to `.unwrap()`, which panics inside
+                            // a tokio task on the networking thread — taking the migration channel
+                            // down for the whole run over one unrepresentable agent.
+                            let send_res = match serde_json::to_string(&data) {
+                                Ok(serialized) => {
+                                    let msg =
+                                        tokio_tungstenite::tungstenite::Message::Text(serialized);
+                                    match tokio::time::timeout(
+                                        Duration::from_millis(500),
+                                        ws_stream.send(msg),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(())) => Ok(()),
+                                        Ok(Err(e)) => Err(e.to_string()),
+                                        Err(_) => Err("Send timeout".to_string()),
+                                    }
+                                }
+                                Err(e) => Err(format!("serialize migration payload: {e}")),
                             };
                             let _ = ws_stream.close(None).await;
                             send_res

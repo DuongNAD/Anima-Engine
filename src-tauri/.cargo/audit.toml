@@ -1,0 +1,42 @@
+# cargo-audit configuration.
+#
+# Run:  cargo audit          (from src-tauri/; CI runs the same command)
+#
+# `cargo audit` reads Cargo.lock, and a lockfile is feature-agnostic: it records every optional
+# dependency of every resolved package, whether or not the selected feature set compiles it. So an
+# advisory can be reported against a crate that is provably never built. The two ignores below are
+# exactly that case, and each was verified rather than assumed.
+#
+# Everything else is a hard failure. Do not add an ignore without recording the check that shows the
+# code is not reachable, and re-run that check when dependencies move.
+
+[advisories]
+ignore = [
+    # gix-fs 0.8.1 — RUSTSEC-2024-0350, traversal outside the working tree enabling arbitrary code
+    # execution (CVSS 8.8).
+    #
+    # Reached only as burn-core -> burn-dataset -> gix-tempfile -> gix-fs, and `burn-dataset` is an
+    # optional dependency this crate does not enable. Dropping burn's `train` feature (see the note
+    # in Cargo.toml) removed burn-train and burn-dataset from the compiled graph; what remains is a
+    # lockfile entry.
+    #
+    # Verified, and these are the commands to re-run if it is ever in doubt:
+    #   cargo tree -e normal --target all | grep -c gix   -> 0
+    #   cargo build --features desktop 2>&1 | grep -ci "compiling gix"  -> 0
+    #
+    # Upgrading burn does not currently help: 0.14 still resolves the same vulnerable gix-tempfile,
+    # and it breaks the API in `ai/model.rs` and `core/training.rs` (`Data` -> `TensorData`, and
+    # `Wgpu` lost its third generic parameter). That migration is worth doing for its own reasons —
+    # 0.13.2 is many releases behind — but it is not a fix for this, and it touches the numerically
+    # sensitive learner. Tracked separately.
+    "RUSTSEC-2024-0350",
+
+    # gix-features 0.36.1 — RUSTSEC-2025-0021, SHA-1 collision attacks are not detected (CVSS 6.8).
+    # Same dependency path, same reasoning: pulled in only by gix-fs above, never compiled.
+    "RUSTSEC-2025-0021",
+]
+
+# Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals
+# — bincode 2.0.0-rc.3 is unmaintained and the GTK3 bindings are archived — but neither has a fix
+# short of changing the framework, and a gate that cannot go green stops being read.
+informational_warnings = []

@@ -72,13 +72,22 @@ pub fn run() {
                         if let Ok(loaded_state) =
                             serde_json::from_str::<SavedSimulationState>(&json_str)
                         {
-                            *app_state.evolution_settings.lock().unwrap() =
+                            *app_state
+                                .evolution_settings
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) =
                                 loaded_state.evolution_settings.clone();
-                            *app_state.map_elites_grid.lock().unwrap() =
+                            *app_state
+                                .map_elites_grid
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) =
                                 loaded_state.map_elites_grid.clone();
 
-                            *app_state.engine.pending_load_state.lock().unwrap() =
-                                Some(loaded_state);
+                            *app_state
+                                .engine
+                                .pending_load_state
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) = Some(loaded_state);
                             app_state.engine.start(
                                 Some(app.handle().clone()),
                                 Arc::clone(&app_state.evolution_settings),

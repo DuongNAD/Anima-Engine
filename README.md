@@ -105,7 +105,9 @@ npm run tauri dev
 Frontend:
 
 ```powershell
+npm run test
 npm run test:frontend
+npm run test:e2e
 npm run lint
 npm run build
 ```
@@ -113,14 +115,19 @@ npm run build
 Backend:
 
 ```powershell
-cargo test --manifest-path src-tauri/Cargo.toml -j 2
-cargo clippy --manifest-path src-tauri/Cargo.toml --lib --tests
+cargo test --manifest-path src-tauri/Cargo.toml --features desktop -j 2
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features desktop
 ```
 
-E2E Playwright cần binary release — chạy `cargo build --release` trong `src-tauri/` trước.
+E2E Playwright tự khởi động Vite dev server (`webServer` trong `tests/e2e/playwright.config.ts`),
+không cần binary release.
 
 Hai ràng buộc dưới đây không phải tuỳ chọn thẩm mỹ:
 
+- `--features desktop`: bảy file test mang `#![cfg(feature = "networking")]` hoặc `"ml-wgpu"` ở cấp
+  crate. Thiếu cờ này chúng biên dịch thành binary rỗng, báo `running 0 tests` và **exit 0** — 1.877
+  dòng test migration / cross-shard / GPU-fallback bị bỏ qua trong im lặng. Muốn kiểm tra: hứng
+  output rồi chạy `node scripts/check_test_targets.mjs <file>`.
 - `-j 2`: build song song đầy đủ làm cạn paging file trên máy phát triển hiện tại và cargo báo
   `LNK1104` / `os error 1455` giữa chừng.
 - Chạy **một tiến trình `cargo test` tại một thời điểm**: vài suite thay global allocator để đếm

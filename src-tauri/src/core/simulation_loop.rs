@@ -4,21 +4,19 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use burn::backend::Autodiff;
-use burn::module::AutodiffModule;
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Data, Shape, Tensor};
-
 use crate::ai::cpg::update_cpg_system;
 use crate::ai::hrrl::{Transition, TransitionSender};
-use crate::ai::model::{hrrl_learning_system, ActorCriticModel, BrainInferenceBuffer, BrainModel};
+use crate::ai::model::{hrrl_learning_system, BrainInferenceBuffer, BrainModel};
 use crate::core::agent_systems::*;
 use crate::core::ecs::*;
 #[allow(unused_imports)]
 use crate::core::networking_systems::*;
 use crate::core::resources::EvolutionQueue;
 use crate::core::simulation_state::*;
+// The shared learner — its objective, loop and backend threads — lives in `core::training`.
+#[cfg(feature = "ml-wgpu")]
+use crate::core::training::spawn_wgpu_learner;
+use crate::core::training::{spawn_ndarray_learner, ModelUpdate};
 use crate::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
@@ -27,55 +25,6 @@ use crate::physics::{
     integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
 };
 use tauri::Emitter;
-
-pub enum ModelUpdate {
-    NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
-    #[cfg(feature = "ml-wgpu")]
-    Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
-}
-
-/// The four handles a learner thread needs: the running flag, the transition receiver, the model
-/// sender and the old-model receiver.
-type LearnArgs = (
-    Arc<AtomicBool>,
-    crossbeam_channel::Receiver<Transition>,
-    crossbeam_channel::Sender<ModelUpdate>,
-    crossbeam_channel::Receiver<ModelUpdate>,
-);
-
-/// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
-/// `ml-wgpu` feature is off entirely.
-fn spawn_ndarray_learner(args: LearnArgs) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
-    thread::spawn(move || {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        run_training_loop::<burn_ndarray::NdArray<f32>>(
-            running,
-            trans_rx,
-            model_tx,
-            old_model_rx,
-            device,
-            ModelUpdate::NdArray,
-        );
-    })
-}
-
-/// GPU learner. Only exists with the `ml-wgpu` feature; the whole wgpu/naga/ash stack goes with it.
-#[cfg(feature = "ml-wgpu")]
-fn spawn_wgpu_learner(args: LearnArgs) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
-    thread::spawn(move || {
-        let device = burn_wgpu::WgpuDevice::default();
-        run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
-            running,
-            trans_rx,
-            model_tx,
-            old_model_rx,
-            device,
-            ModelUpdate::Wgpu,
-        );
-    })
-}
 
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
@@ -263,7 +212,9 @@ impl SimulationEngine {
 
         let evo_handle = thread::spawn(move || {
             let initial_resolution = {
-                let settings = evolution_settings_clone.lock().unwrap();
+                let settings = evolution_settings_clone
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 settings.grid_resolution
             };
             let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
@@ -391,7 +342,9 @@ impl SimulationEngine {
 
                     let mut grid_updated = false;
                     let (selection_bias, mutation_rate, grid_res) = {
-                        let settings = evolution_settings_clone.lock().unwrap();
+                        let settings = evolution_settings_clone
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         (
                             settings.selection_bias,
                             settings.mutation_rate,
@@ -445,7 +398,9 @@ impl SimulationEngine {
                         }
 
                         let grid_to_emit = {
-                            let grid_state = map_elites_grid_clone.lock().unwrap();
+                            let grid_state = map_elites_grid_clone
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner());
                             grid_state.clone()
                         };
                         if let Some(ref handle) = app_handle_evo {
@@ -554,7 +509,10 @@ impl SimulationEngine {
             crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
 
         let sim_handle = thread::spawn(move || {
-            let state_to_load = pending_load_state_clone.lock().unwrap().take();
+            let state_to_load = pending_load_state_clone
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
 
             let mut world = init_world();
 
@@ -776,7 +734,9 @@ impl SimulationEngine {
             world.insert_resource(BevyAppHandle(app_handle_clone));
 
             let initial_resolution = {
-                let settings_lock = evolution_settings_clone_save.lock().unwrap();
+                let settings_lock = evolution_settings_clone_save
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 settings_lock.grid_resolution
             };
             world.insert_resource(ActiveEvolutionSettings {
@@ -1459,99 +1419,46 @@ impl SimulationEngine {
             stat.running = false;
         });
 
-        let running_clone_emit = Arc::clone(&self.running);
-        let agent_states_clone_emit = Arc::clone(&self.agent_states);
-        let pheromone_grid_state_emit = Arc::clone(&self.pheromone_grid_state);
-        let active_raycasts_emit = Arc::clone(&self.active_raycasts);
-        let combat_events_emit = Arc::clone(&self.combat_events);
-        let environmental_state_clone_emit = Arc::clone(&self.environmental_state);
-
-        let emit_handle = thread::spawn(move || {
-            let mut local_emit_buffer = Vec::with_capacity(1000);
-            let mut local_pheromone_emit = crate::ai::pheromone::PheromoneGridState {
-                grid: vec![0.0; 128 * 128],
-                width: 128,
-                height: 128,
-            };
-            let mut local_raycast_emit = Vec::with_capacity(1000);
-            let mut local_combat_emit = Vec::with_capacity(100);
-
-            while running_clone_emit.load(Ordering::SeqCst) {
-                thread::sleep(Duration::from_millis(33));
-
-                if let Some(ref handle) = app_handle_emit {
-                    local_emit_buffer.clear();
-                    {
-                        let states = agent_states_clone_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        local_emit_buffer.extend_from_slice(&states);
-                    }
-                    let local_environmental_state = {
-                        let shared = environmental_state_clone_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        shared.clone()
-                    };
-                    let mut head_directions = std::collections::HashMap::new();
-                    for seg in &local_emit_buffer {
-                        if seg.parent_segment_id.is_none() || seg.segment_id == 0 {
-                            head_directions.insert(seg.agent_id, seg.head_direction);
-                        }
-                    }
-                    let tick_payload = SimulationTickPayload {
-                        segments: local_emit_buffer.clone(),
-                        environmental_state: local_environmental_state.clone(),
-                        head_directions,
-                    };
-                    let _ = handle.emit("simulation-tick", &tick_payload);
-
-                    {
-                        let shared = pheromone_grid_state_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        local_pheromone_emit.grid.copy_from_slice(&shared.grid);
-                        local_pheromone_emit.width = shared.width;
-                        local_pheromone_emit.height = shared.height;
-                    }
-                    let _ = handle.emit("pheromone-update", &local_pheromone_emit);
-
-                    local_raycast_emit.clear();
-                    {
-                        let shared = active_raycasts_emit
-                            .read()
-                            .unwrap_or_else(|e| e.into_inner());
-                        local_raycast_emit.extend_from_slice(&shared);
-                    }
-                    let _ = handle.emit("raycast-update", &local_raycast_emit);
-
-                    local_combat_emit.clear();
-                    {
-                        let mut shared = combat_events_emit
-                            .write()
-                            .unwrap_or_else(|e| e.into_inner());
-                        std::mem::swap(&mut *shared, &mut local_combat_emit);
-                    }
-                    for event in &local_combat_emit {
-                        let _ = handle.emit("combat-event", event);
-                    }
-                }
-            }
-        });
+        let emit_handle = crate::core::emit::spawn_emit_thread(
+            crate::core::emit::EmitChannels {
+                running: Arc::clone(&self.running),
+                agent_states: Arc::clone(&self.agent_states),
+                pheromone_grid: Arc::clone(&self.pheromone_grid_state),
+                active_raycasts: Arc::clone(&self.active_raycasts),
+                combat_events: Arc::clone(&self.combat_events),
+                environmental_state: Arc::clone(&self.environmental_state),
+            },
+            app_handle_emit,
+        );
 
         let running_clone_net = Arc::clone(&self.running);
         let sharding_config_clone = Arc::clone(&self.sharding_config);
         let inbound_tx_clone = inbound_tx.clone();
 
         let net_handle = thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
+            // Deliberately fatal, and confined to this thread: without a runtime there is no
+            // cross-shard migration at all, and every path below is `rt.block_on`. The message is
+            // the point — a bare `.unwrap()` here reported only "called Option::unwrap on a None
+            // value" from a thread the user never started explicitly.
+            let rt = match tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()
-                .unwrap();
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!(
+                        "migration thread could not start a tokio runtime ({e}); cross-shard \
+                         migration is disabled for this run"
+                    );
+                    return;
+                }
+            };
 
             rt.block_on(async {
                 let local_port = {
-                    let config = sharding_config_clone.read().unwrap();
+                    let config = sharding_config_clone
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner());
                     config.local_port
                 };
 
@@ -1622,95 +1529,5 @@ impl SimulationEngine {
     pub fn get_status(&self) -> SimulationStatus {
         let stat = self.status.lock().unwrap_or_else(|e| e.into_inner());
         *stat
-    }
-}
-
-fn run_training_loop<B>(
-    running: Arc<AtomicBool>,
-    trans_rx: crossbeam_channel::Receiver<Transition>,
-    model_tx: crossbeam_channel::Sender<ModelUpdate>,
-    old_model_rx: crossbeam_channel::Receiver<ModelUpdate>,
-    device: B::Device,
-    to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
-) where
-    B: Backend<FloatElem = f32> + 'static,
-    B::Device: Clone + Send + Sync + 'static,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>
-        + burn::tensor::backend::AutodiffBackend<
-            Device = B::Device,
-            FloatElem = f32,
-            IntElem = B::IntElem,
-        > + 'static,
-    ActorCriticModel<Autodiff<B>>:
-        AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
-{
-    let mut train_model = ActorCriticModel::<Autodiff<B>>::new(15, 64, 4, &device);
-    let mut optim = AdamConfig::new().init();
-
-    let mut batch = Vec::new();
-    while running.load(Ordering::SeqCst) {
-        match trans_rx.recv_timeout(Duration::from_millis(10)) {
-            Ok(transition) => {
-                batch.push(transition);
-                if batch.len() >= 32 {
-                    let mut states_vec = Vec::with_capacity(32 * 15);
-                    let mut next_states_vec = Vec::with_capacity(32 * 15);
-                    let mut actions_vec = Vec::with_capacity(32 * 4);
-                    let mut rewards_vec = Vec::with_capacity(32);
-                    for t in batch.iter() {
-                        states_vec.extend_from_slice(&t.state);
-                        next_states_vec.extend_from_slice(&t.next_state);
-                        actions_vec.extend_from_slice(&t.action);
-                        rewards_vec.push(t.reward);
-                    }
-
-                    let states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(states_vec, Shape::new([32, 15])),
-                        &device,
-                    );
-                    let next_states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(next_states_vec, Shape::new([32, 15])),
-                        &device,
-                    );
-                    let actions_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(actions_vec, Shape::new([32, 4])),
-                        &device,
-                    );
-                    let rewards_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(rewards_vec, Shape::new([32, 1])),
-                        &device,
-                    );
-
-                    let (actor_out, critic_out) = train_model.forward(states_tensor.clone());
-                    let (_, critic_out_next) = train_model.forward(next_states_tensor.clone());
-
-                    let target = rewards_tensor + critic_out_next.detach() * 0.99;
-                    let td_error = target - critic_out.clone();
-
-                    let critic_diff = td_error.clone();
-                    let loss_critic = (critic_diff.clone() * critic_diff).mean();
-
-                    let diff = actor_out - actions_tensor;
-                    let loss_actor = ((diff.clone() * diff) * (-td_error.detach())).mean();
-
-                    let loss_total = loss_actor + loss_critic * 0.5;
-
-                    let grads = loss_total.backward();
-                    let grads_params = GradientsParams::from_grads(grads, &train_model);
-                    train_model = optim.step(1e-3, train_model, grads_params);
-
-                    let eval_model = train_model.valid();
-                    let _ = model_tx.send(to_model_update(eval_model));
-                    batch.clear();
-                }
-            }
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
-                break;
-            }
-        }
-        while let Ok(old_model) = old_model_rx.try_recv() {
-            drop(old_model);
-        }
     }
 }
