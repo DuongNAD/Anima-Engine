@@ -51,6 +51,7 @@ export default async function globalSetup() {
         `Playwright starts its own server (reuseExistingServer: false), so this means the server ` +
         `failed to boot rather than that one is missing. Check the webServer output above. Set ` +
         `ANIMA_E2E_PORT to move off ${port} if it is occupied.`,
+      { cause: err },
     );
   }
 

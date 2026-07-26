@@ -3,9 +3,16 @@ import { readFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateMapManifest, CANONICAL_VIEW_IDS } from '../components/Landscape/utils/mapManifest';
+import { validateMapManifest, CANONICAL_VIEW_IDS } from '@/components/Landscape/utils/mapManifest';
 
 // Evidence gate for the COMMITTED map manifest.
+//
+// # Why this file lives in tests/ and not src/__tests__
+//
+// It reads the filesystem, and the root tsconfig type-checks `src/**` for the production build
+// against browser libs only -- no @types/node, correctly, since the frontend does not run in node.
+// Putting an fs test there broke `npm run build` with TS2307 on `node:fs`. The `tests/` package has
+// @types/node, so this is where a test that touches disk belongs.
 //
 // # Why this file exists separately from mapManifest.test.ts
 //

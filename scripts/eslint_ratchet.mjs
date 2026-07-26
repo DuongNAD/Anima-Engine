@@ -24,7 +24,11 @@ import process from 'node:process';
 // note there lists the three that look like real defects and should go first.
 //
 // Only ever lower this number.
-const DEFAULT_BASELINE = 491;
+//
+// 2026-07-27: 491 -> 483. Not from a lint cleanup — the eight came off when `ecosystem.html` and
+// `webgl-test.html` stopped being part of the shipped surface (they load unpinned scripts from a
+// CDN; see the plugin in vite.config.ts). Locked in here so the reduction cannot silently be spent.
+const DEFAULT_BASELINE = 483;
 
 const parsed = Number.parseInt(process.env.ESLINT_WARNING_BASELINE ?? '', 10);
 const limit = Number.isFinite(parsed) ? parsed : DEFAULT_BASELINE;
