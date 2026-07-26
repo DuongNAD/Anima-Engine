@@ -39,7 +39,7 @@
 //! `Spectate` keeps the camera and drops its effect, which is what lets its trajectory equal a
 //! headless one — see `tests/observer_policy_tests.rs`.
 
-use crate::core::observer::ObserverPolicy;
+use crate::core::observer::{ObserverPolicy, ObserverReplay};
 use bevy_ecs::prelude::{Res, ResMut, Resource};
 use glam::Vec3;
 use std::sync::{Arc, RwLock};
@@ -96,10 +96,14 @@ impl SharedLodFocus {
     }
 }
 
-/// Copy the app's focus into the world, once per tick, before anything tiers on it.
+/// Put the observer's focus into the world, once per tick, before anything tiers on it.
 ///
-/// Inert without the shared handle, which is what keeps a headless run — no UI, no camera, nothing
-/// to write it — on exactly the path it had before: no handle, no writes, every agent `Hot`.
+/// The focus comes from one of two places, never both: an
+/// [`ObserverReplay`](crate::core::observer::ObserverReplay) if one is installed, otherwise the live
+/// camera in [`SharedLodFocus`].
+///
+/// Inert without either, which is what keeps a headless run — no UI, no camera, nothing to write it
+/// — on exactly the path it had before: no handle, no writes, every agent `Hot`.
 ///
 /// A poisoned lock leaves the last focus in place instead of panicking. The simulation thread
 /// outliving a dead UI thread with a slightly stale camera position is strictly better than the
@@ -108,19 +112,31 @@ pub fn sync_lod_focus_system(
     shared: Option<Res<SharedLodFocus>>,
     focus: Option<ResMut<LodFocus>>,
     policy: Option<Res<ObserverPolicy>>,
+    replay: Option<ResMut<ObserverReplay>>,
+    mut tick: bevy_ecs::system::Local<u64>,
 ) {
-    // Separate bindings rather than one tuple pattern: the tuple is a temporary, and the read guard
-    // below borrows out of it.
-    let Some(shared) = shared else {
-        return;
-    };
     let Some(mut focus) = focus else {
         return;
     };
-    // Copied out in its own statement so the read guard is released here, rather than living to the
-    // end of the function as an `if let` scrutinee temporary would.
-    let latest = shared.0.read().ok().map(|next| *next);
-    if let Some(mut latest) = latest {
+    // Counted here rather than taken from a clock so replay lands on the same tick numbers the
+    // recorder used: both start at zero and increment before use, and the recorder is ordered after
+    // this system. Off-by-one between them would shift a whole trace by a tick.
+    *tick = tick.wrapping_add(1);
+
+    // ADR-0004 O3. A replay **excludes** the live camera rather than outranking it. Blending the
+    // two, or letting the camera win when it happened to be written more recently, would let a UI
+    // nobody remembered to close steer the run while the trace was still being credited for it —
+    // the one way a replay can lie about what it reproduced.
+    let source = match replay {
+        Some(mut replay) => Some(replay.focus_at(*tick)),
+        // Copied out in its own statement so the read guard is released here, rather than living to
+        // the end of the function as an `if let` scrutinee temporary would.
+        None => match shared {
+            Some(shared) => shared.0.read().ok().map(|next| *next),
+            None => return,
+        },
+    };
+    if let Some(mut latest) = source {
         // ADR-0004: this is the one place the observer's camera reaches the world, so it is the one
         // place the declared policy is enforced. Only `Inhabit` may tier; `Spectate` keeps the
         // camera and drops its effect, which is what makes its trajectory equal `Absent`.

@@ -217,6 +217,68 @@ impl ObserverTrace {
     }
 }
 
+/// A recorded trace, played back in place of a live camera (ADR-0004 O3).
+///
+/// ## The interpolation is declared, not assumed
+///
+/// The trace stores changes, not ticks, so playback has to say what happens between two samples.
+/// It **holds**: the focus in force at a tick is the last one recorded at or before it. A step
+/// function, chosen because it is what recording actually observed — `record` only stores a sample
+/// when the value changed, so holding reconstructs the original signal exactly rather than
+/// approximating it. ADR-0004 C2 requires this to be stated somewhere rather than left to whoever
+/// reads the buffer next; this is that statement.
+///
+/// ## Replay excludes the live camera
+///
+/// When this resource is present, [`sync_lod_focus_system`](crate::core::simulation_lod::sync_lod_focus_system)
+/// ignores [`SharedLodFocus`](crate::core::simulation_lod::SharedLodFocus) entirely. Not blended,
+/// not preferred — ignored. A `set_lod_focus` arriving mid-replay from a UI nobody remembered to
+/// close would otherwise steer the run while the trace was still being credited for it, which is
+/// the one way a replay can lie about what it reproduced.
+#[derive(Resource, Clone, Debug)]
+pub struct ObserverReplay {
+    samples: Vec<ObserverSample>,
+    cursor: usize,
+    current: LodFocus,
+}
+
+impl ObserverReplay {
+    pub fn from_samples(samples: Vec<ObserverSample>) -> Self {
+        Self {
+            samples,
+            cursor: 0,
+            current: LodFocus::default(),
+        }
+    }
+
+    pub fn from_trace(trace: &ObserverTrace) -> Self {
+        Self::from_samples(trace.samples().to_vec())
+    }
+
+    /// The focus in force at `tick`, advancing through any samples that have come due.
+    ///
+    /// Allocation-free: it walks a cursor forward over a buffer it already owns.
+    pub fn focus_at(&mut self, tick: u64) -> LodFocus {
+        while self.cursor < self.samples.len() && self.samples[self.cursor].tick <= tick {
+            self.current = self.samples[self.cursor].focus;
+            self.cursor += 1;
+        }
+        self.current
+    }
+
+    /// Whether every recorded sample has been played.
+    ///
+    /// Past the end the last focus keeps holding, which is right: the recording ended because the
+    /// camera stopped changing, not because it vanished.
+    pub fn is_exhausted(&self) -> bool {
+        self.cursor >= self.samples.len()
+    }
+
+    pub fn remaining(&self) -> usize {
+        self.samples.len().saturating_sub(self.cursor)
+    }
+}
+
 /// Record what the world actually saw of the observer this tick.
 ///
 /// Ordered **after** [`sync_lod_focus_system`](crate::core::simulation_lod::sync_lod_focus_system)

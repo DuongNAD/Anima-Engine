@@ -243,10 +243,24 @@ phải cái handle đó.
   không chỉ tắt `enabled`. Giữ lại `center` sẽ để nguyên một đường camera sống bên trong world cho
   system sau này đọc phải — tái lập đúng cái nhiễu vừa cấm.
 
-  Còn lại: **O3** (replay `Inhabit`, phụ thuộc §3.3/§3.6) và, cùng với nó, `TraceRef` vào
-  `SNAPSHOT_CONTRACT` (cần bump schema + migration). `ObserverSample` chưa mang `actions` vì engine
-  chưa có hành động nhập vai nào — một `Vec` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm thầm"
-  mà ADR này tồn tại để tránh.
+  **O3 — cơ chế đã ship (2026-07-26), tuyên bố phiên sống vẫn chặn.** `ObserverReplay` phát lại một
+  trace thay cho camera sống và **loại trừ** camera chứ không xếp trên nó. Nội suy được khai báo:
+  focus **giữ nguyên** giữa hai mẫu — không phải xấp xỉ, vì `record` chỉ lưu khi giá trị đổi. Gate:
+  `tests/observer_replay_tests.rs` (6), gồm control âm và một test camera thù địch không lái được
+  replay.
+
+  Ranh giới, đọc kỹ trước khi tuyên bố gì: gate đó ghim **hệ con** và tự khai báo thứ tự schedule —
+  đúng phạm vi mà `SNAPSHOT_CONTRACT` §8 tự nhận về mình. Gate
+  `an_inhabited_run_replays_from_its_trace_without_a_human` đo *quỹ đạo thế giới sống* và vẫn
+  **pending**: physics/CPG chạy song song nên một run liền mạch còn không khớp chính nó.
+
+  **Chưa làm, có lý do:** lưu trace vào save state cần bump `SCHEMA_VERSION` 4→5, mà
+  `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2` nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá
+  đó cho dữ liệu chưa mode nào tiêu thụ là sai thứ tự. Khi làm, phải vào **cả** `SavedSimulationState`
+  lẫn `world_checksum` một lượt (§8) — lưu ý khi *ghi* thì trace là đầu ra và không thuộc checksum,
+  khi *phát lại* thì phần còn lại là đầu vào và thuộc. `ObserverSample` vẫn chưa mang `actions` vì
+  engine chưa có hành động nhập vai nào — một `Vec` rỗng vĩnh viễn đúng là thứ "chạy được và sai âm
+  thầm" mà ADR này tồn tại để tránh.
 
 ---
 

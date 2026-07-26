@@ -7,7 +7,46 @@
 
 ---
 
-# 🧾 [MỚI NHẤT] ADR-0004 O2 — ghi lại người quan sát, và cắm rễ hệ quả vào họ (2026-07-26)
+# ⏪ [MỚI NHẤT] ADR-0004 O3 — phát lại người quan sát (cơ chế xong, tuyên bố phiên sống vẫn chặn) (2026-07-26)
+
+`668 pass · 0 fail · 71 target` (O2 là 662/70, tức **+6 test / +1 target**), clippy sạch, 318 link
+docs 0 gãy.
+
+## Đã làm
+
+`ObserverReplay` phát lại một trace thay cho camera sống. Hai thuộc tính đáng nói:
+
+- **Loại trừ, không phải ưu tiên.** Khi replay có mặt, `SharedLodFocus` bị bỏ qua hoàn toàn. Nếu chỉ
+  "ưu tiên trace", một `set_lod_focus` lạc từ UI ai đó quên đóng sẽ lái run trong khi trace vẫn được
+  ghi công — cách duy nhất một replay nói dối về thứ nó tái tạo. `a_live_camera_cannot_steer_a_replay`
+  chạy camera thù địch ngược chiều suốt run và kết quả không đổi.
+- **Nội suy được khai báo** đúng thứ C2 đòi: focus **giữ nguyên** giữa hai mẫu. Không phải xấp xỉ cho
+  tiện — vì `record` chỉ lưu khi giá trị đổi, giữ-nguyên tái dựng **đúng** tín hiệu gốc.
+
+Gate: `tests/observer_replay_tests.rs` (6), gồm control âm
+`replaying_a_different_trace_produces_a_different_session`.
+
+## Cái KHÔNG tuyên bố, và vì sao
+
+Gate `an_inhabited_run_replays_from_its_trace_without_a_human` vẫn **pending**. Nó đo quỹ đạo *thế
+giới sống*, mà physics/CPG chạy song song nên một run liền mạch còn không khớp chính nó
+(`DETERMINISM_CONTRACT` §5). Gate vừa viết tự khai báo thứ tự schedule và ghim **hệ con** — đúng phạm
+vi `SNAPSHOT_CONTRACT` §8 tự nhận. ADR-0004 tự dặn "không tuyên bố replay trước G2".
+
+## Hoãn có lý do, không phải quên
+
+Lưu trace vào save state cần bump `SCHEMA_VERSION` 4→5, mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`
+nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ là sai
+thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn
+`world_checksum` một lượt (§8).
+
+Ghi lại một phân biệt đáng giá khi tới lúc đó: **khi ghi, trace là đầu ra** và không lái thế giới nên
+không thuộc checksum; **khi phát lại, phần trace còn lại là đầu vào** và thuộc. Cùng một dữ liệu, hai
+vai trò tuỳ mode.
+
+---
+
+# 🧾 ADR-0004 O2 — ghi lại người quan sát, và cắm rễ hệ quả vào họ (2026-07-26)
 
 `662 pass · 0 fail · 70 target` (O1 là 647/68, tức **+15 test / +2 target**), clippy sạch, 318 link
 docs 0 gãy.

@@ -290,8 +290,28 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
      chưa có hành động nào để đi qua seam. Nó có nghĩa khi hành động nhập vai xuất hiện.
    - **Trace chưa vào save state.** `TraceRef` trong `SNAPSHOT_CONTRACT` cần bump schema và migration;
      nó thuộc về O3, nơi replay biến bản ghi thành thứ có ích khi nạp lại.
-4. **O3 — `Inhabit` replay.** *Phụ thuộc G2 = §3.3 + §3.6* (đường live tất định). Không tuyên bố
-   replay trước mốc này.
+4. **O3 — `Inhabit` replay. Cơ chế ✅ xong 2026-07-26; tuyên bố phiên sống vẫn chặn.**
+
+   `ObserverReplay` phát lại một trace thay cho camera sống, và **loại trừ** camera chứ không xếp
+   trên nó: một `set_lod_focus` lạc vào giữa lúc replay sẽ lái run trong khi trace vẫn được ghi công
+   — đó là cách duy nhất một replay nói dối về thứ nó tái tạo. Có test riêng cho điều đó
+   (`a_live_camera_cannot_steer_a_replay`).
+
+   **Nội suy được khai báo** đúng như C2 đòi: focus **giữ nguyên** giữa hai mẫu. Đây không phải xấp
+   xỉ — `record` chỉ lưu khi giá trị đổi, nên giữ-nguyên tái dựng lại đúng tín hiệu gốc.
+
+   Cái **chưa** tuyên bố, và vì sao: gate `an_inhabited_run_replays_from_its_trace_without_a_human`
+   đo *quỹ đạo thế giới sống*, mà physics/CPG chạy song song trong schedule live nên một run liền
+   mạch còn không khớp **chính nó** (`DETERMINISM_CONTRACT` §5). Gate ở đây tự khai báo thứ tự
+   schedule và ghim **hệ con**, không phải engine — cùng phạm vi mà `SNAPSHOT_CONTRACT` §8 tự nhận
+   về mình.
+
+   **Lưu trace vào save state: hoãn có lý do, không phải quên.** Nó cần bump `SCHEMA_VERSION` 4→5,
+   mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2` nên bump sẽ **mất khả năng đọc save v2**. Trả cái
+   giá đó cho dữ liệu mà chưa có mode nào tiêu thụ là sai thứ tự; nó đi cùng lúc replay trở thành
+   mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn `world_checksum` một lượt — đúng
+   quy tắc `SNAPSHOT_CONTRACT` §8. Ghi chú kèm: khi *ghi*, trace là **đầu ra** và không lái thế giới
+   nên không thuộc checksum; khi *phát lại*, phần trace còn lại là **đầu vào** và thuộc.
 5. **O4 — Fork phản thực + so cặp trong UI**, dùng lại đường checkpoint của AE-209.
 6. **Hoàn tác.** Bỏ key `observer` khỏi manifest ⇒ `ObserverPolicy::Absent` ⇒ đường hôm nay. Trace cũ
    là artifact rời, xóa không ảnh hưởng run cũ.
@@ -306,7 +326,11 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
 | Determinism | `spectate_matches_absent` | Camera đi hết mọi band, timeline "ai nghĩ ở tick nào" **trùng khít** `Absent` | ✅ 2026-07-26 |
 | Determinism | **Control âm**: `an_inhabited_camera_actually_changes_who_thinks` | Cùng camera path, `Inhabit` ⇒ timeline **phải khác**. Không có nó, gate trên xanh cả khi camera chưa từng tới được world | ✅ 2026-07-26 |
 | ER01 | `the_observer_policy_leaves_the_law_fingerprint_alone` | `laws.fingerprint()` không đổi theo policy; đổi manifest fingerprint thì có | ✅ 2026-07-26 |
-| Determinism | `an_inhabited_run_replays_from_its_trace_without_a_human` *(O3, sau G2 = §3.3+§3.6)* | Bằng checksum phiên sống | pending |
+| Replay | `a_replayed_trace_reproduces_the_session_it_recorded` | Phát lại trace cho **đúng** timeline tiering của phiên đã ghi | ✅ 2026-07-26 |
+| Replay | **Control âm**: `replaying_a_different_trace_produces_a_different_session` | Trace khác ⇒ phiên khác, nếu không thì gate trên xanh cả khi replay không tới được world | ✅ 2026-07-26 |
+| Replay | `a_live_camera_cannot_steer_a_replay` | Camera thù địch chạy ngược suốt run không đổi được kết quả | ✅ 2026-07-26 |
+| Determinism | `an_inhabited_run_replays_from_its_trace_without_a_human` *(sau G2 = §3.3+§3.6)* | Bằng checksum **phiên sống** — khác với ba dòng trên, vốn ghim hệ con | pending |
+| Persistence | `TraceRef` trong save state *(cùng lúc với replay-as-live-mode)* | Round-trip qua envelope, và vào `world_checksum` cùng lượt | pending — hoãn có lý do, xem §Kế hoạch bước 4 |
 | Provenance | `effects_downstream_of_the_observer_trace_back_to_the_observer` | `root_cause` ba mắt xích sau vẫn trả `CAUSE_OBSERVER` | ✅ 2026-07-26 |
 | Provenance | **Control âm**: `a_chain_the_observer_did_not_start_does_not_name_them` | Chuỗi nền phải trả `CAUSE_BACKGROUND`, nếu không thì gate trên xanh cả khi `root_cause` trả observer vô điều kiện | ✅ 2026-07-26 |
 | Correctness | `a_declared_intervention_may_not_claim_the_observer_cause` + `ordinary_hand_written_cause_ids_are_still_accepted` | Manifest không giành được `CAUSE_OBSERVER`; id thường vẫn tự do | ✅ 2026-07-26 |
