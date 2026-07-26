@@ -729,7 +729,10 @@ mod tests {
 
     #[test]
     fn write_to_path_validates_then_reloads() {
-        let dir = std::env::temp_dir().join("anima_test_artifact_wr");
+        // Per-process: this test wipes the directory on both ends, so a fixed name lets one
+        // `cargo test` process delete another's artifact between the write and the read-back.
+        let dir =
+            std::env::temp_dir().join(format!("anima_test_artifact_wr_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("w.anmw");
         let a = tiny_artifact();

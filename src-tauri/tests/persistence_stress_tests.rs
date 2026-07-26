@@ -117,8 +117,10 @@ fn test_load_zero_agents() {
 fn test_load_corrupted_json() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
+    // Per-process. `corrupted_state.json` in the shared system temp directory is a name any other
+    // process could also be writing, and this test asserts on the exact bytes it wrote back.
     let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join("corrupted_state.json");
+    let file_path = temp_dir.join(format!("corrupted_state_{}.json", std::process::id()));
 
     // Write invalid JSON content
     std::fs::write(&file_path, "{ corrupted_json_missing_brackets: ").unwrap();

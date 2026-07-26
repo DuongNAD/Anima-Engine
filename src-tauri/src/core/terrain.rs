@@ -857,7 +857,15 @@ mod tests {
         // exactly one machine, so the test passed there and failed everywhere else — including CI,
         // where it was the only red test in the Rust job (`IoError(NotFound)`). A unit test that
         // depends on a developer's drive layout is not testing the encoder.
-        let output_path = std::env::temp_dir().join("anima_world_refined_test.png");
+        //
+        // The pid is not decoration. The name was fixed, and this test saves, asserts, then deletes,
+        // so two `cargo test` processes sharing a machine interleave into
+        // `save / save / assert+delete / assert` — and the second assert fails on a file the first
+        // process removed. Observed exactly once, as `.save()` succeeding and `exists()` returning
+        // false on the next line. Matches the pattern already used by `snapshot.rs` and the
+        // determinism gates.
+        let output_path =
+            std::env::temp_dir().join(format!("anima_world_refined_{}.png", std::process::id()));
         img_buf
             .save(&output_path)
             .expect("Failed to save sample map image");
@@ -944,7 +952,11 @@ mod tests {
 
     #[test]
     fn load_or_generate_writes_cache_then_reloads_identically() {
-        let dir = std::env::temp_dir().join("anima_test_cache_lorg");
+        // Per-process, because the very next line wipes the directory: with a fixed name, a second
+        // `cargo test` process deletes this one's cache mid-test and the cache-hit assertion below
+        // reads a miss.
+        let dir =
+            std::env::temp_dir().join(format!("anima_test_cache_lorg_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let s = tiny_settings();
 
