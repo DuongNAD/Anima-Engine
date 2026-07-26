@@ -165,6 +165,28 @@ pub fn to_newick(
     nodes: &[LineageNode],
     relations: &[LineageRelation],
 ) -> Result<NewickExport, NewickError> {
+    to_newick_from(
+        nodes,
+        relations
+            .iter()
+            .map(|r| (r.source_id.as_str(), r.target_id.as_str())),
+    )
+}
+
+/// Write a forest from bare `(parent, child)` pairs.
+///
+/// Exists because a **simplified** lineage
+/// ([`simplify`](super::simplify::simplify)) has no `RelationType` to offer: a compressed edge
+/// stands for a path of reproductions rather than one event, and inventing a type for it is exactly
+/// the fabrication that module refuses to make. Newick does not encode the type anyway, so taking
+/// pairs lets a simplified lineage be exported without anyone having to make one up.
+///
+/// [`to_newick`] is a thin wrapper over this, so both paths share one implementation and cannot
+/// drift.
+pub fn to_newick_from<'a, I>(nodes: &[LineageNode], edges: I) -> Result<NewickExport, NewickError>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
     // ---- index the nodes, rejecting duplicate ids ------------------------------------------
     let mut index: BTreeMap<&str, usize> = BTreeMap::new();
     for (i, node) in nodes.iter().enumerate() {
@@ -181,21 +203,19 @@ pub fn to_newick(
     let mut parent_of: Vec<Option<usize>> = vec![None; nodes.len()];
     let mut dropped_parent_edges = 0usize;
 
-    for rel in relations {
-        let &parent =
-            index
-                .get(rel.source_id.as_str())
-                .ok_or_else(|| NewickError::UnknownEndpoint {
-                    source: rel.source_id.clone(),
-                    target: rel.target_id.clone(),
-                })?;
-        let &child =
-            index
-                .get(rel.target_id.as_str())
-                .ok_or_else(|| NewickError::UnknownEndpoint {
-                    source: rel.source_id.clone(),
-                    target: rel.target_id.clone(),
-                })?;
+    for (source_id, target_id) in edges {
+        let &parent = index
+            .get(source_id)
+            .ok_or_else(|| NewickError::UnknownEndpoint {
+                source: source_id.to_string(),
+                target: target_id.to_string(),
+            })?;
+        let &child = index
+            .get(target_id)
+            .ok_or_else(|| NewickError::UnknownEndpoint {
+                source: source_id.to_string(),
+                target: target_id.to_string(),
+            })?;
 
         match parent_of[child] {
             None => parent_of[child] = Some(parent),
