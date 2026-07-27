@@ -13,6 +13,16 @@ contract: ../../reference/EVOLUTION_EXPERIMENT_CONTRACT.md
 
 # Testing — Alternate Evolution & World Lab
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 ## Test objective
 
 Test suite phải phân biệt bốn tuyên bố:

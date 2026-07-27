@@ -11,6 +11,16 @@ predecessor: 2026-07-24-claude-overnight-goal-ae1-ae2.md
 
 # Overnight Goal — Headless AE2.5
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 ## Why AE2.5 exists
 
 AE1–AE2 landed and are verified (see the

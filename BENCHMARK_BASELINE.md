@@ -18,6 +18,17 @@
 > khung hình: nó chưa gồm suy luận não, lập lịch ECS, thread emit, va chạm và trao đổi chất. Các
 > hàng "Physics tick" / "Brain/sensor" dưới đây vẫn đòi một in-app tick capture, và ràng buộc "không
 > chạy full backend" vẫn còn hiệu lực. Xem [§ Trạng thái khoá số](#trạng-thái-khoá-số).
+>
+> **Cập nhật 2026-07-27 — dụng cụ đã có, số thì chưa.** In-app tick capture đã ship
+> ([`src-tauri/src/core/tick_capture.rs`](src-tauri/src/core/tick_capture.rs) + bốn lệnh IPC, có
+> test ở `tick_capture_tests.rs`, xanh trong lần chạy 2026-07-27 ghi ở
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)).
+>
+> 🔧 **"Instrumentation đã ship" KHÔNG phải "đã có một phép đo phần cứng".** Tính đến 2026-07-27
+> **chưa có lần chạy app desktop nào**, nên **không tồn tại** một số đo tick nào từ app đang chạy —
+> mọi hàng "Physics tick" / "Brain/sensor" / "Full-brain agents" dưới đây vẫn trống hoặc là proxy.
+> Thủ tục ba bước để lấy số nằm ở [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md); nó
+> cần một con người mở app, việc mà CLAUDE.md cấm tự động hoá trên máy này.
 
 Tài liệu này mô tả *reproducible benchmark scaffold* của Anima-Engine: cách capture
 seed + config + hardware + timings một cách **rẻ và trung thực**, và cách thay các số
@@ -127,3 +138,9 @@ Cái còn thiếu không phải phần cứng mà là **phạm vi**: những gì
 ba hàng đắt nhất trong bảng trên (`Physics tick`, `Brain/sensor`, `Full-brain agents MVP`) đòi một
 nhịp thật của app đang chạy. Chừng nào chưa có, đừng trích một con số nào ở đây như thể nó là ngân
 sách khung hình.
+
+**Tính đến 2026-07-27, ba hàng đó vẫn `chưa đo`, và dụng cụ đo đã có.** Đó là hai câu khác nhau và
+phải giữ chúng khác nhau: `core/tick_capture.rs` tồn tại, có test, và đo đúng lịch trình sống — nhưng
+**chưa ai chạy app desktop**, nên không có mẫu nào. Khi có, số đọc từ `p50_ns` của file export và
+điền vào bảng trên **kèm lệnh và ngày**, theo quy ước phân loại ở
+[`STATE_OF_THE_PROJECT.md` §1.1](docs/planning/STATE_OF_THE_PROJECT.md#11-phân-loại-mọi-con-số-trong-tài-liệu).

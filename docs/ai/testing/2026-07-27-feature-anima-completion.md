@@ -12,6 +12,16 @@ planning: ../planning/2026-07-27-feature-anima-completion.md
 
 # Testing & Evidence — Completion & Hardening pass
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package** on base `6caeeb4`. Every count in it
+> (test totals, warning counts, target counts, coverage numbers) is a **historical measurement**:
+> true when the command ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 Machine: Intel Core i5-14600KF, Windows 11 Pro 26200. Worktree
 `.worktrees/feature-anima-completion`, branch `feature-anima-completion`, base `6caeeb4`.
 All `cargo` runs from PowerShell, never Git Bash (Git Bash's `PATH` makes 15 feature-gated targets

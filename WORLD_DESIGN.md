@@ -245,7 +245,7 @@ frontend đọc artifact đó để render (bỏ `worldGen.ts` khỏi đường 
 
 - ⚠️ **ĐÍNH CHÍNH (2026-07-24):** stack `LandscapeShowcase.tsx` + `terrainGenerator.ts` + `terrainCache.ts` + `Terrain/Water/
   Vegetation/Sky/Weather/Minimap` **KHÔNG chết** — `LandscapeShowcase` được **`src/App.tsx` import** (viewport landscape trong app
-  chính, khác `landscape.html`) và là nền của ~một nửa bộ 237 test (`landscape_showcase*`, `terrainGenerator`, `terrainWater`,
+  chính, khác `landscape.html`) và là nền của ~một nửa bộ test frontend **lúc đó** (237 test, đếm ngày 2026-07-24; bộ này đã lớn hơn nhiều — xem [§1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)) — (`landscape_showcase*`, `terrainGenerator`, `terrainWater`,
   `vegetation`, `skyWeather`). `worldGen.ts` cũng **vẫn dùng `ImprovedNoise2D` từ `terrainGenerator`**. → **KHÔNG gỡ** (sẽ vỡ app +
   test). Nếu muốn thống nhất một stack landscape thì phải chuyển App.tsx sang WorldShowcase + viết lại test — một việc lớn, cần
   nhìn tận mắt, không phải "dọn dẹp".

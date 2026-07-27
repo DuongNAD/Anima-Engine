@@ -386,8 +386,12 @@ năng mà là **kết luận sai**: báo cáo "đồng tiến hoá" từ một h
 
 Ghi lại đúng những gì đúng khi quyết định được khoá, để người đọc sau không phải suy ra từ lịch sử.
 
+> 📜 **Đo lịch sử.** Mọi con số trong mục này là kết quả **ngày 2026-07-25**, lúc ADR được accept.
+> Chúng cố ý **không** được cập nhật: một ADR ghi lại căn cứ của quyết định tại thời điểm đó. Số
+> hiện tại ở [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
 **Đã triển khai và đo:** cả 7 bước của kế hoạch. **11/12 gate pass.**
-`cargo test --no-fail-fast -j 2` → 470 passed. Cờ `ANIMA_EVOLVED_BRAINS` và
+`cargo test --no-fail-fast -j 2` → 470 passed *(đo 2026-07-25)*. Cờ `ANIMA_EVOLVED_BRAINS` và
 `ANIMA_LIFETIME_LEARNING` đều **mặc định tắt**, `brain_metabolic_cost` mặc định `0.0` — một run
 không khai báo gì chạy đúng đường legacy.
 

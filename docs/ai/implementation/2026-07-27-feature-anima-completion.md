@@ -12,6 +12,16 @@ design: ../design/2026-07-27-feature-anima-completion.md
 
 # Implementation Notes — Completion & Hardening pass
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package** on base `6caeeb4`. Every count in it
+> (test totals, warning counts, target counts, coverage numbers) is a **historical measurement**:
+> true when the command ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 Two sessions. The first landed twelve commits and left work explicitly unfinished; an independent
 browser/code review then produced [an acceptance addendum](../../../.agents/anima-completion-supervisor-findings.md)
 of twelve numbered findings, several of which were defects the first session introduced or failed to

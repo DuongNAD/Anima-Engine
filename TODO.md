@@ -4,6 +4,13 @@
 > [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md)** — đó là tài liệu
 > một phiên mới đọc đầu tiên. File này giữ **nhật ký công việc** theo thứ tự thời gian ngược, để tra
 > cứu "việc đó đã làm khi nào và vì sao". Phần "Mô hình Thỏ Papercraft" cũ được giữ ở cuối file như lưu trữ.
+>
+> ## 📜 Mọi con số trong file này là **đo lịch sử**
+>
+> Mỗi mục ghi kết quả *tại commit của mục đó*, kể cả mục trên cùng. Một mục mới hơn ở nhánh khác,
+> hoặc một lần chạy lại sau đó, sẽ cho số khác — và điều đó **không** làm mục cũ sai, nó chỉ làm mục
+> cũ không còn là hiện tại. **Trạng thái hôm nay chỉ ở một chỗ:**
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ---
 
@@ -42,8 +49,16 @@ v1/v2 được ghi không có envelope nên đi nhánh pre-envelope. Schema nay 
 **Chưa làm, nói thẳng:** chưa có lần chạy **app desktop** nào — số hiệu năng thật vẫn cần một con
 người bấm chạy với `ANIMA_TICK_CAPTURE`, thủ tục ở `docs/how-to/BENCHMARKING.md`.
 
-Đo: `841 pass · 0 fail · 4 ignored` (desktop) và `823 pass · 0 fail · 4 ignored` (mặc định), 0 target
-rỗng, fmt + clippy hai cấu hình sạch, frontend `109` + `432` pass, lint/ratchet 0, build pass.
+**Đo lịch sử tại `bb8248e` (2026-07-27)** — `cargo test --features desktop --no-fail-fast`
+**843 pass · 0 fail · 4 ignored** (79 target, 0 rỗng) và `cargo test --no-default-features
+--no-fail-fast` **825 pass · 0 fail · 4 ignored**; `cargo fmt --check` + clippy hai cấu hình exit 0;
+`npm run test` 109 pass, `npm run test:frontend` 432 pass, lint/ratchet 0/0, `npm run build` pass.
+
+> Bản ghi đầu tiên của mục này viết `841`/`823`, lấy từ một lần chạy **trước** lần cuối cùng của
+> chính commit đó — đúng loại "chậm một lần chạy" mà quy ước ở đầu file tồn tại để chặn. Số trên là
+> số cuối cùng đã ghi trong commit message của `bb8248e`. Số **hiện tại** (khác, vì `2285a92` đã
+> thêm test và đổi allow-list) ở
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ---
 

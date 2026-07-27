@@ -11,6 +11,16 @@ requirements: ../requirements/2026-07-27-feature-anima-completion.md
 
 # Design — Completion & Hardening pass
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package** on base `6caeeb4`. Every count in it
+> (test totals, warning counts, target counts, coverage numbers) is a **historical measurement**:
+> true when the command ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 One section per requirement group. Each states the seam, the mechanism, and — where the obvious
 fix is wrong — why.
 

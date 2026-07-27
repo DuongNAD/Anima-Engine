@@ -13,6 +13,18 @@ testing: ../testing/2026-07-27-feature-anima-completion.md
 
 # Plan & Evidence Ledger — Completion & Hardening pass
 
+> ## 📜 Historical ledger — read the status table, not the numbers
+>
+> This is the record of **one dated work package** on base `6caeeb4`. Every count in it
+> (`746 passed`, `491 warnings`, `75 targets`, …) is a **historical measurement**: it was true when
+> the command ran during that package and it does **not** describe the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+>
+> Rows whose *status* has since changed carry a dated **UPDATE** note inline, so a reader is never
+> left with a stale `open`.
+
 Branch `feature-anima-completion`, worktree `.worktrees/feature-anima-completion`, base
 `6caeeb4`.
 
@@ -73,7 +85,14 @@ the fix and its output recorded.
 | C3 | 2 `unsafe impl Send/Sync` with no proof | Medium | `backend` private + `from_backend` the only constructor; `brain_model_is_send_without_an_unsafe_impl`; the `Send` impl deleted as redundant | **closed** | `b27c28b`, completed `0d6b4b2` |
 | D1 | Lineage memory unbounded; compression off because the mutation count walks edges | High | count identical pre/post compression + negative control that compression is running | **closed** | `57a8246` |
 | D2 | No `NOTICE`; `LICENSE` has no scope split; `burn` absent from inventory | Medium | `NOTICE` from `cargo tree --features desktop` and the npm graph; CycloneDX 1.5 SBOM **validated against the official pinned schema**; `licensing/THIRD_PARTY_LICENSES.txt` reproducing the texts; six `check:*` gates in CI | **closed** as an inventory **and** as text packaging for 439 of 440 distributed components (408 installed + 31 vendored from pinned upstream commits); **1 remains unresolved** (upstream never published a licence file for that release) and stays release-blocking; `LICENSE` scope split still open | `14d7abe`, `766609e`, extended this commit |
-| D3 | 491 ESLint warnings, frozen by a ratchet that only blocks growth | Medium | 0 warnings, baseline lowered | **open** — 491 → 472, from deletions rather than fixes; see §5 | — |
+| D3 | 491 ESLint warnings, frozen by a ratchet that only blocks growth | Medium | 0 warnings, baseline lowered | **closed** — see the UPDATE below | later commit on this branch |
+
+> **UPDATE 2026-07-27 — D3 is closed.** The row above records the state *during this package*
+> (491 → 472, from deletions). A later commit on the same branch took it to **0**. Verified
+> 2026-07-27 at `2285a92`: `npm run lint` exit 0, and `node scripts/eslint_ratchet.mjs` reports
+> **`eslint: 0 errors, 0 warnings (baseline 0)`**. No rule was relaxed, no file excluded and no
+> `eslint-disable` added — see `STATE_OF_THE_PROJECT.md` §3.11. §5 below is left as written, and is
+> historical.
 
 ### 2.2 Supervisor addendum — the independent review after the first session
 
@@ -95,7 +114,7 @@ catch, which is why the rows above carry a second commit.
 | 8 | Five backend-dependent E2E skips; the specs are not valid live-backend E2E; CI contract contradicts them; 1 lint error | five specs replaced by `ipc_contract.spec.ts` against a deterministic typed mock; `real_backend.spec.ts` declares nothing unless required and fails closed; CI comment reconciled; **17 passed / 0 failed / 0 skipped** | **closed** | `9230e1d` |
 | 9 | Unfinished master scope (bindings, ESLint, NOTICE/SBOM, bundle, live-Bevy, full gates) | see rows below | **partly closed** — ESLint and live-Bevy remain | `766609e`, `c5e3c30` |
 | 9a | Generated binding authority + drift gate | `App.tsx` imports the generated types; `ipcBindingAuthority.test.ts` (4 tests, incl. a positive control and a count of the remaining gap); CI already diffs after regeneration | **closed** | `c5e3c30` |
-| 9b | ESLint to 0/0 without relaxing rules | — | **open**, 472 warnings | — |
+| 9b | ESLint to 0/0 without relaxing rules | `npm run lint` exit 0 + `node scripts/eslint_ratchet.mjs` → `0 errors, 0 warnings (baseline 0)`, verified 2026-07-27 at `2285a92` | **closed** (was `open`, 472 warnings, during this package) | later commit on this branch |
 | 10 | The save-path patch does not implement its own accepted migration contract; autosave and `saves/` contradict each other; `PROJECT.md` not updated | `legacy-import` drop directory (user-authorised, read-only, never a write target); autosave moved to `saves/autosave.json` under the same envelope with one-time adoption of the old file; `PROJECT.md` §Persistence; frontend label and placeholder corrected | **closed** | `ae1fb40` |
 | 11 | Feature lifecycle incomplete — implementation/deployment/monitoring docs absent; ledger rows all say `open`; DEC-2 obsolete | three docs written and reconciled with commits; `npx ai-devkit lint --feature anima-completion` → **All checks passed**; this table; DEC-2 superseded below | **closed** | this commit |
 | 12 | NOTICE is direct-only, not an SBOM, states an unmet obligation; bundle only budgeted; `check:*` not in CI | npm closure 8 → 36 (install) → **21 measured ship closure** with a transitive regression test; CycloneDX 1.5 SBOM (458 components, dependency graph, deterministic serial, schema-validated); licence texts packaged; bundle gate asserts the **route split**, measured; six `check:*` gates wired into CI | **closed** as engineering, including the licence texts for 439 of 440; **1 unresolved** stays release-blocking and cannot be closed by engineering | `766609e`, extended this commit |
@@ -142,7 +161,10 @@ Recorded because the design doc was wrong about two things and the corrections a
 Each row states what would close it, so none of these reads as "we ran out of time" without a next
 step attached.
 
-- **D3 / ESLint 472 → 0.** **Open.** 491 → 483 → 472, and every one of those reductions came from
+- **D3 / ESLint 472 → 0.** **Was open during this package; closed later on the same branch** —
+  verified 2026-07-27 at `2285a92` by `npm run lint` (exit 0) and `node scripts/eslint_ratchet.mjs`
+  (`0 errors, 0 warnings (baseline 0)`). The paragraph below is the state **at the time of this
+  package** and is kept as the historical record of why it was hard. 491 → 483 → 472, and every one of those reductions came from
   deleting files rather than fixing a warning. The remaining 472 decompose as 365
   `no-explicit-any`, 53 `no-unused-vars`, 29 `react-hooks/immutability`, 21 `react-hooks/purity`, 14
   `exhaustive-deps` and 3 other hook warnings, across roughly a hundred files. No rule has been

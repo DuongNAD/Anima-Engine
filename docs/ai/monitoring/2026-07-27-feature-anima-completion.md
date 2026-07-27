@@ -12,6 +12,16 @@ implementation: ../implementation/2026-07-27-feature-anima-completion.md
 
 # Observability — Completion & Hardening pass
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package** on base `6caeeb4`. Every count in it
+> (test totals, warning counts, target counts, coverage numbers) is a **historical measurement**:
+> true when the command ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 A hardening pass emits no telemetry. What it produces is a set of gates, and the useful monitoring
 question is: **when one of these goes red, what has actually happened?**
 

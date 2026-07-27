@@ -90,6 +90,25 @@ coi chúng là tài liệu chưa hoàn thành.
    nguồn chuẩn trước khi sửa một trong hai.
 7. `docs/ai/` là working set theo feature. Khi một quyết định được accepted, nguồn chuẩn vẫn là
    `docs/reference/`/ADR; lifecycle docs phải link tới nguồn đó thay vì định nghĩa contract cạnh tranh.
+8. **Một con số đo chỉ có một nhà.** Trạng thái đo được của toàn dự án nằm ở
+   [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)
+   và **chỉ ở đó**. Tài liệu khác trỏ về, không chép lại — một con số được chép sẽ ôi mà không ai
+   biết, và đó chính là chế độ hỏng đã để `841 pass` đứng cạnh một lần chạy `843` và một ledger ghi
+   ESLint `open` sau khi baseline đã về 0.
+9. **Phân loại trước khi viết một con số.** Năm loại, và trộn chúng là lỗi tài liệu:
+
+   | Loại | Yêu cầu |
+   |---|---|
+   | **Đo hiện tại** | Phải kèm **lệnh + ngày chạy** (và cấu hình nếu có), hoặc trỏ về §1 |
+   | **Đo lịch sử** | Phải nói rõ là lịch sử, kèm ngày/commit sinh ra nó. Không cập nhật số cũ trong ADR hay ledger — bản ghi lịch sử là mục đích của chúng |
+   | **Tham số thiết kế / hợp đồng** | Hằng số, ngưỡng, schema version, số hiệu yêu cầu. **Không** gắn lệnh: nó không phải phép đo |
+   | **Mục tiêu / ngân sách** | Ghi là *mục tiêu*, không phải kết quả đã đạt |
+   | **Chính sách** | Khoản miễn trừ đã duyệt; phải có lý do ghi kèm và một gate cưỡng chế |
+
+10. **Đừng nâng cấp một câu khi đi qua ranh giới bằng chứng.** "Instrumentation đã ship" không phải
+    "đã có số đo"; "hạ tầng thí nghiệm tồn tại" không phải "có kết quả khoa học"; "headless adapter
+    verified" không phải "experiment-ready"; "gate CSP xanh trên artifact" không phải "app đã khởi
+    động dưới CSP đó". Giới hạn trung thực phải được giữ nguyên văn, không làm mượt.
 
 ## Ma trận thay đổi
 

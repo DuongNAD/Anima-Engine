@@ -118,8 +118,9 @@ trong [`benchmark_report.json`](../../benchmark_report.json) dưới tiền tố
 
 **Gate đã xác minh:** `cargo tree --no-default-features -e normal` cho **0 kết quả** cho `criterion`
 — nó là `dev-dependency` nên vô hình với đồ thị mà gate tách feature (G2 #2) thật sự kiểm. `fmt`,
-`clippy --all-targets` ở cả hai cấu hình feature, và `cargo test --features desktop` (673 pass /
-0 fail) đều xanh. Cách gỡ ghi ở [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) §"Tắt / gỡ".
+`clippy --all-targets` ở cả hai cấu hình feature, và `cargo test --features desktop` đều xanh —
+**673 pass / 0 fail, đo lịch sử ngày 2026-07-26**, tức lúc OSS-010 land. Số hiện tại ở
+[`STATE_OF_THE_PROJECT.md` §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền). Cách gỡ ghi ở [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) §"Tắt / gỡ".
 
 **Một guard được thêm cùng lúc, vì nó chặn đúng loại hỏng im lặng repo này quan tâm:** `target/` bị
 gitignore, nên chạy `bench_baseline.mjs` trên một clone mới sẽ thay report đầy số thật bằng proxy —

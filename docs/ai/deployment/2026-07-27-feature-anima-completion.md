@@ -12,6 +12,16 @@ implementation: ../implementation/2026-07-27-feature-anima-completion.md
 
 # Release readiness — Completion & Hardening pass
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package** on base `6caeeb4`. Every count in it
+> (test totals, warning counts, target counts, coverage numbers) is a **historical measurement**:
+> true when the command ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 This pass is hardening, not a feature: there is no flag to roll out and no schema to migrate that a
 user chooses. What it changes about *deployment* is the set of things that must be true before a
 build is distributed, and which of those a machine now checks.

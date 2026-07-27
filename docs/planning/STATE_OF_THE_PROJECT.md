@@ -19,71 +19,122 @@ gate chưa xanh.
 
 ---
 
-## 1. Trạng thái đo được (**2026-07-27**, nhánh `feature-anima-completion` trên `6caeeb4`)
+## 1. Bảng bằng chứng có thẩm quyền
 
-Đo lại toàn bộ trong worktree `.worktrees/feature-anima-completion`. Bằng chứng đầy đủ kèm exit code
-ở [`docs/ai/testing/2026-07-27-feature-anima-completion.md`](../ai/testing/2026-07-27-feature-anima-completion.md).
+> ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
+>
+> Mọi tài liệu khác **trỏ về đây** thay vì chép lại một con số dễ ôi. Nếu bạn thấy một con số
+> pass/fail/warning/target ở file khác mà không kèm lệnh + ngày, nó là **lịch sử**, không phải
+> trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
+>
+> **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
+> `feature-anima-completion`, tại commit **`2285a92`**.
 
-> **Đo lại 2026-07-27 (đợt ba, gói live-adapter + tick capture, trên `b6a579e`).** Bảy hàng đầu là
-> số chạy lại trong đợt này; phần còn lại giữ nguyên từ đợt trước vì gói này không chạm vào chúng
-> (không có thay đổi nào trong `src/`, `dist/`, lockfile hay danh sách phụ thuộc — chỉ thêm file
-> kiểu do ts-rs sinh trong `src/types/generated/`).
+Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và **loại khẳng định**:
 
-| Gate | Lệnh | Kết quả |
+- 📏 **Đo** — kết quả của lệnh ở cột bên cạnh, chạy đúng ngày ghi trong hàng.
+- 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
+- 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
+- ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `2285a92`
+
+| Loại | Gate | Lệnh | Cấu hình | Kết quả |
+|---|---|---|---|---|
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **851 passed · 0 failed · 2 ignored**, exit 0 |
+| 📏 | Backend test | `cargo test --no-default-features --no-fail-fast` | mặc định | **833 passed · 0 failed · 2 ignored**, exit 0 |
+| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile desktop` | `desktop` | exit 0 — **82 target**, 3 rỗng *(có chủ ý, có trong allow-list)*, 2 ignore *(có chủ ý)*, **7/7 target feature-gated chạy** |
+| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile default` | mặc định | exit 0 — **75 target**, 3 rỗng *(có chủ ý)*, 2 ignore *(có chủ ý)*, **0 target feature-gated được lên lịch** |
+| 📏 | Format | `cargo fmt --check` | — | exit 0 |
+| 📏 | Lint backend | `cargo clippy --all-targets --no-default-features -- -D warnings` | mặc định | exit 0 |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | `desktop` | exit 0 |
+
+Ba target rỗng và hai test `#[ignore]` **là quyết định đã ghi**, không phải nợ: lý do từng mục nằm
+trong [`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs), và gate fail với bất
+kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh sách đã hết hiệu lực.
+
+### 1.b Frontend / lint — chạy lại 2026-07-27 tại `2285a92`
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Lint frontend | `npm run lint` | exit 0 |
+| 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
+| ⏳ | Test frontend (`src/`) | `npm run test` | 14 file · **109 passed** — đo **2026-07-27 tại `bb8248e`**; gói tài liệu này không đổi mã nên không chạy lại |
+| ⏳ | Test frontend (`tests/`) | `npm run test:frontend -- --maxWorkers=4` | 38 file · **432 passed · 0 skip** — đo **2026-07-27 tại `bb8248e`**; xem §4 về nhiễu do tranh chấp CPU |
+| ⏳ | Build | `npm run build` | pass — **2026-07-27 tại `bb8248e`** |
+| ⏳ | E2E Playwright | `npm run test:e2e` | **9 passed · 0 failed · 5 skipped có lý do** — đo **2026-07-26 tại `d006f64`**; cần server riêng cổng 5177, chưa chạy lại |
+| ⏳ | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script — **2026-07-27 tại `bb8248e`**, đọc `dist/` đã build sẵn |
+| ⏳ | Ngân sách bundle | `npm run check:bundle` | 23 chunk · **1711,3 / 2000 KiB** — **2026-07-27 tại `bb8248e`**, đọc `dist/` đã build sẵn |
+
+### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `2285a92`
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | NOTICE | `npm run check:notice` | up to date — 419 crate · **21 gói npm phân phối** · 18 gói cài-nhưng-không-ship · **1 văn bản chưa giải quyết** |
+| 📏 | Văn bản license bên thứ ba | `npm run check:licenses` | up to date — **440 thành phần phân phối** · **266 văn bản khác nhau** · **1 chưa có văn bản** |
+| 📏 | SBOM | `npm run check:sbom` | up to date — **458 thành phần** · 440 phân phối · 459 bản ghi dependency |
+| 📏 | SBOM đúng schema | `npm run check:sbom-schema` | hợp lệ CycloneDX 1.5 — 458 thành phần · 458 purl duy nhất · **1 khoảng trống license đã ghi** · schema ghim ở `c320fc0f0b46` |
+| 📏 | Ranh giới bundle npm | `npm run check:bundle-closure` | **21 gói** có byte trong `dist/` (3 do toolchain nhúng), khớp ranh giới đã commit |
+| 📏 | Byte điều khiển trong source | `npm run check:text-hygiene` | **544 file** text được track, 0 byte điều khiển thô |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **518 link tương đối trong 99 file**, **0 gãy** — chạy lại *sau* gói tài liệu này; con số 485 của lần chạy trước đó thấp hơn vì gói này thêm link trỏ về bảng §1 |
+| ⏳ | Kho license upstream đã vendor | `npm run verify:upstream-licenses` | **39 file · 24 commit · 19 repository** khớp byte-cho-byte — **2026-07-27 tại `b6a579e`**; cần mạng, chạy tay, chưa chạy lại |
+
+**"1 chưa có văn bản" là `hexf-parse` 0.2.1 (CC0-1.0), và nó vẫn đang chặn phát hành.** Upstream chưa
+bao giờ publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải việc
+kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và §3.16.
+
+### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
+
+| Khẳng định | Trạng thái thật |
+|---|---|
+| Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (2026-07-27, `bb8248e`, `tests/live_experiment_tests.rs` 17 test). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
+| Hiệu năng tick trong app | 🔧 **Instrumentation đã ship** (`core/tick_capture.rs` + 4 lệnh IPC, có test). **Chưa có bất kỳ số đo phần cứng nào từ app desktop** — xem §3.2 và [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
+| Hạ tầng thí nghiệm | 🔧 Manifest/runner/fork/ledger **tồn tại và có test**. Đó **không phải** một kết quả khoa học — chưa có run nào được thiết kế, chạy và diễn giải như một thí nghiệm |
+| App khởi động dưới CSP mới | ❌ **Chưa ai mở app** dưới `csp`/`devCsp` mới. `npm run check:csp` chỉ kiểm **artifact đã build** so với chính sách đã khai; nó không chứng minh app boot được |
+| Ảnh chụp / bằng chứng thị giác của app | ❌ Không có. Không có ảnh chụp app desktop nào trong đợt này |
+| Map đã hoàn tất | ❌ **Không có review map nào trong gói này.** Đừng suy ra trạng thái map từ bảng trên |
+| `hexf-parse` | ❌ **Chưa giải quyết** — xem §1.c |
+
+### 1.1 Phân loại mọi con số trong tài liệu
+
+Quy ước áp cho **toàn bộ** cây tài liệu, để một con số không bao giờ bị đọc nhầm loại:
+
+| Loại | Nghĩa | Yêu cầu |
 |---|---|---|
-| Backend test (desktop) | `cargo test --features desktop --no-fail-fast` | **851 pass · 0 fail · 2 ignored**, exit 0 |
-| Backend test (mặc định) | `cargo test --no-default-features --no-fail-fast` | **833 pass · 0 fail · 2 ignored**, exit 0 |
-| Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile {default,desktop}` | exit 0 cả hai. desktop: 82 target, 3 rỗng (đủ 3 trong allow-list), 2 ignore (đủ 2), **7 target feature-gated chạy**. default: 75 target, 3 rỗng, 2 ignore, **0 feature-gated được lên lịch** |
-| Format + clippy (cả 2 cấu hình) | `cargo fmt --check`, `cargo clippy --all-targets {--features desktop, --no-default-features} -- -D warnings` | sạch |
-| Test frontend (src) | `npm run test` | 14 file · **109 pass** |
-| Test frontend (tests/) | `npm run test:frontend -- --maxWorkers=4` | **38 file · 432 pass · 0 skip** — xem §4 |
-| Lint + ratchet + typecheck `tests/` + build | `npm run lint`, `node scripts/eslint_ratchet.mjs`, `npm run typecheck:tests`, `npm run build` | 0 error · 0 warning (baseline 0) · 0 error · pass |
-| E2E Playwright | `npm run test:e2e` | **9 pass · 0 fail · 5 skip có lý do**, server riêng cổng 5177 + kiểm định danh |
-| CSP | `npm run check:csp` | 2 file HTML ship, 0 origin ngoài, 0 inline script |
-| Ngân sách bundle | `npm run check:bundle` | 23 chunk, **1711,3 / 2000 KiB** (đo lại 2026-07-27 đợt ba; gói này **không** đổi file nào trong `src/` ngoài kiểu do ts-rs sinh, mà kiểu thì bị xoá khi biên dịch — chênh so với 1695,8 của đợt trước không quy được cho nó) |
-| NOTICE | `npm run check:notice` | 419 crate + **21 gói npm được phân phối** + 18 gói cài-nhưng-không-ship |
-| Văn bản license bên thứ ba | `npm run check:licenses` | 440 thành phần phân phối · **266 văn bản khác nhau** · **1 chưa có văn bản** (408 đọc từ artifact + 31 vendor từ commit upstream đã ghim) |
-| Kho license upstream đã vendor | `npm run verify:upstream-licenses` (cần mạng, chạy tay) | **39 file · 24 commit · 19 repository**, khớp byte-cho-byte với URL đã ghim |
-| SBOM | `npm run check:sbom` | **458 thành phần**, 459 bản ghi dependency, CycloneDX 1.5 |
-| SBOM đúng schema | `npm run check:sbom-schema` | hợp lệ với schema chính thức, ghim ở commit `c320fc0f0b46` |
-| Ranh giới bundle npm | `npm run check:bundle-closure` | 21 gói có byte trong `dist/` (3 do toolchain nhúng) |
-| Byte điều khiển trong source | `npm run check:text-hygiene` | 525 file, **0** byte điều khiển thô |
-| Link tài liệu | `node scripts/check_docs_links.mjs` | 0 gãy |
+| **Đo hiện tại** | Kết quả một lệnh, còn đúng hôm nay | Phải có **lệnh + ngày**, hoặc trỏ về bảng §1 |
+| **Đo lịch sử** | Kết quả một lệnh **lúc đó** | Phải ghi rõ là lịch sử + commit/ngày sinh ra nó |
+| **Tham số thiết kế / hợp đồng** | Hằng số, ngưỡng, schema version, số hiệu yêu cầu | **Không** gắn lệnh — nó không phải phép đo |
+| **Mục tiêu / ngân sách** | Điều muốn đạt | Ghi là *mục tiêu*, không phải kết quả |
+| **Chính sách** | Khoản miễn trừ đã được duyệt | Phải có lý do ghi kèm, và một gate cưỡng chế |
 
-**Cái đã đổi so với 2026-07-26, và đáng đọc nhất:** hàng `tests/` **không phải hồi quy**. 28 lỗi là
-thật nhưng do **tranh chấp CPU**, và đã đo được cơ chế: chạy riêng một file → 4/4 pass; chạy cả suite
-với `--maxWorkers=4` → 243 pass, trong khi một tiến trình Vitest của dự án khác vẫn đang chiếm một
-core và 1,4 GB. Không assertion nào bị nới.
+**Ledger theo gói ở [`docs/ai/planning/`](../ai/planning/README.md) và các thư mục lifecycle cạnh nó
+là bản ghi lịch sử theo ngày.** Số trong đó đúng với commit của gói đó và **không** được đọc như
+trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều này ở đầu.
 
 <details>
-<summary>Bảng cũ (2026-07-26, tại <code>d006f64</code>) — giữ để đối chiếu</summary>
+<summary>Bảng lịch sử (2026-07-26, tại <code>d006f64</code>) — <b>số cũ, giữ để đối chiếu</b></summary>
 
-Đây là số đo, không phải trích dẫn tài liệu. Mọi hàng **trừ một** được chạy lại tại `d006f64`
-(nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge); hàng ngoại lệ được đánh dấu
-trong bảng.
+> ⚠️ **Đo lịch sử.** Mọi con số dưới đây là kết quả tại `d006f64` ngày 2026-07-26 và **không** mô tả
+> cây mã nguồn hôm nay. Trạng thái hiện tại ở [§1](#1-bảng-bằng-chứng-có-thẩm-quyền).
 
-| Gate | Lệnh | Kết quả |
+| Gate | Lệnh | Kết quả lúc đó |
 |---|---|---|
 | Backend test | `cargo test --features desktop --no-fail-fast` | **746 pass · 0 fail · 4 ignored**, 75 test binary, 0 warning biên dịch |
 | Target rỗng | `node scripts/check_test_targets.mjs <output>` | 75 target, **0 target chạy rỗng** |
 | Format | `cargo fmt --check` | sạch |
 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | sạch |
 | Lint backend (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | sạch |
-| Test frontend (src) | `npm run test` | 14 file · **109 pass**, 0 skip — đo trên `feature-anima-completion`, 2026-07-27 |
-| Test frontend (tests/) | `npm run test:frontend` | 36 file · **339 pass**, 0 skip — đo trên `feature-anima-completion`, 2026-07-27 (máy rảnh) |
-| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**) — đo lại trên `feature-anima-completion`, 2026-07-27 |
-| Typecheck `tests/` | `npm run typecheck:tests` | **0 error** — gate mới, xem §3.18 |
+| Test frontend (src) | `npm run test` | 14 file · **109 pass**, 0 skip (đo 2026-07-27) |
+| Test frontend (tests/) | `npm run test:frontend` | 36 file · **339 pass**, 0 skip (đo 2026-07-27, máy rảnh) |
+| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**) |
+| Typecheck `tests/` | `npm run typecheck:tests` | **0 error** |
 | Build | `npm run build` | pass |
 | Link tài liệu | `node scripts/check_docs_links.mjs` | 417 link trong 90 file, **0 gãy** |
 
-> ⚠️ **Suite `tests/` đã đỏ giả trong lần đo tại `d006f64`, và bản chạy lại chưa hoàn thành** —
-> máy liên tục bận vì phiên khác. Nó tái hiện **đúng chữ ký** ghi ở §4: **28 lỗi**, thời gian tường
-> 45,25s (so với ~19,5s lúc rảnh), và `Get-Process cargo` lúc đó cho thấy **4 tiến trình build của
-> phiên khác** đang chạy.
->
-> **Việc đầu tiên của phiên sau, nếu cần một bảng §1 sạch:** chạy lại `npm run test:frontend` **một
-> mình** trên máy rảnh và điền số vào hàng đó. Con số **28** là dấu hiệu nhận dạng lỗi giả — trước
-> khi kết luận suite này đỏ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
+> ⚠️ Suite `tests/` đã **đỏ giả** trong lần đo tại `d006f64` — **28 lỗi**, thời gian tường 45,25s
+> (so với ~19,5s lúc máy rảnh), với **4 tiến trình build của phiên khác** đang chạy. Con số **28** là
+> dấu hiệu nhận dạng lỗi giả; xem §4 trước khi kết luận suite này đỏ là hồi quy.
 
 </details>
 
@@ -115,17 +166,21 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Trần tài nguyên runner | Live integrated | G2 gate #3 — `MAX_ENSEMBLE_RESULT_BYTES`, ước lượng bão hoà thay vì tràn |
 | Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | 11/12 gate EB pass — xem §3.1 |
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
-| Adapter thí nghiệm cho thế giới sống | **Headless verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; 15 gate ở `live_experiment_tests.rs`. **Chưa** chạy app desktop; không có exotic energy; không có quần thể AE3 — xem §3.3 |
-| Đo tick trong tiến trình | **Đã ship, chưa có số app** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate). Số thật cần một lần chạy app — xem §3.2 |
+| Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `2285a92` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
+| Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
 | Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
 
 ### 2.1 Vì sao bộ gate này đáng tin
 
 Ghi lại để phiên sau không vô tình gỡ mất:
 
-- `scripts/check_test_targets.mjs` bắt **target biên dịch thành binary rỗng rồi exit 0**.
-  Đây là chế độ hỏng đã giấu 1.877 dòng coverage: bảy file có `#![cfg(feature = ...)]`
-  ở cấp crate, và một `cargo test` trần biến chúng thành `running 0 tests`.
+- `scripts/check_test_targets.mjs` bắt **target biên dịch thành binary rỗng rồi exit 0** *và* mọi
+  test `#[ignore]`. Cả hai chế độ hỏng đều im lặng: một target rỗng exit 0, và một test bị ignore
+  không phải pass cũng không phải fail. Từ 2026-07-27 nó cưỡng chế một **allow-list có lý do**
+  ([`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs)) theo **cả hai chiều** —
+  mục ngoài danh sách fail, và mục trong danh sách đã hết hiệu lực cũng fail, nên danh sách không thể
+  âm thầm phình ra hay mục rữa. Bảy file feature-gated nay mang `required-features` nên Cargo **không
+  lên lịch** chúng ở cấu hình không dựng được, thay vì dựng ra binary rỗng.
 - CI kiểm tách feature bằng **đồ thị phụ thuộc** (`cargo tree`), không phải bằng việc
   biên dịch được. Biên dịch được sẽ vẫn xanh vào lần đầu ai đó thêm một `use` vô điều kiện.
 - Gate parity `ts-rs`: `cargo test` sinh `src/types/generated/`, rồi `git diff --exit-code`.
