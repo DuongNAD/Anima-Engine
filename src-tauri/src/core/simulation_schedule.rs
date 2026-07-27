@@ -161,9 +161,30 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         crate::core::aggregate_population::dormant_cohort_ecology_system
             .after(herbivore_grazing_system)
             .before(resource_field_regrowth_system),
+        // The census does not accumulate, it takes a **snapshot** — `pool.animals = Σ reserves`,
+        // recomputed from scratch — so unlike `plants` and `detritus`, which are carried
+        // incrementally, its value is entirely a function of *when* in the tick it is taken.
+        //
+        // It used to declare only the two edges below, and nothing about the systems that move
+        // agent reserves. Two systems with no edge between them are ordered by the schedule's
+        // topological sort, and that sort is not a declared property of the schedule — so the order
+        // was chosen per process. Measured at commit `0bcb330`: five runs of one release binary at
+        // one seed gave two distinct `live.animals_eu` trajectories, 0.186 EU apart, which is one
+        // tick of metabolic decay across ten agents. Every other observable, and the world
+        // checksum, were bit-identical; `world_checksum` covers reserves and the resource field but
+        // not `EcosystemBiomass`, which is why no existing gate saw it.
+        //
+        // Every system that moves EU into or out of an agent's reserve is named here. Grazing is
+        // already transitively ordered through regrowth; it is stated anyway, because a reader
+        // checking this list should not have to prove a path through a third system, and because
+        // regrowth's edge could change without anyone thinking about the census.
         ecosystem_census_system
             .after(resource_field_regrowth_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
+            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+            .after(metabolic_decay_system)
+            .after(detect_food_collisions_system)
+            .after(combat_system)
+            .after(herbivore_grazing_system),
     ));
 
     // A declared experiment's interventions reach the world here. `.before(...)` only — see the

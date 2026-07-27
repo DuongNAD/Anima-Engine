@@ -167,11 +167,18 @@ pub fn ecosystem_census_system(
         if let Some(cohorts) = dormant.as_ref() {
             total += cohorts.total_energy();
         }
+        // A snapshot, not an accumulation — which is why `build_tick_schedule` must order this
+        // system after *every* system that moves EU into or out of a reserve, and why it names all
+        // of them explicitly. `plants` and `detritus` are carried incrementally and so cannot be
+        // read at the wrong moment; `animals` can, and for a while was: an unordered census
+        // reported last tick's reserves roughly half the time, chosen by the schedule's
+        // topological sort. See the comment beside `ecosystem_census_system` in
+        // `core::simulation_schedule`, and `tests/ecosystem_census_order_tests.rs` for the gate.
         pool.animals = total;
-        // The census is the moment all three authoritative stores are simultaneously current
-        // (grazing and regrowth have already run this tick), so it is where the closed-EU
-        // invariant is measured. Recording it here makes conservation a property you can read off
-        // a running world instead of one you can only compute at the end of a test.
+        // The census is the moment all three authoritative stores are simultaneously current —
+        // grazing, regrowth, metabolism, feeding and combat have all run this tick — so it is where
+        // the closed-EU invariant is measured. Recording it here makes conservation a property you
+        // can read off a running world instead of one you can only compute at the end of a test.
         if let Some(mut ledger) = ledger {
             let closed = crate::core::energy_ledger::closed_total_eu(
                 pool.plants,
