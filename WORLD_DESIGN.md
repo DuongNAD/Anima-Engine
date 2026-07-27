@@ -347,10 +347,16 @@ toàn đều qua. Nhưng Holling Type II bão hoà theo **mật độ**: tổng 
 nên phải áp *trên đầu cá thể*: mỗi cá thể ngủ gặm như đang đứng trên một ô **trung bình** của chunk, rồi mới nhân với
 số con ăn cỏ. Test `sleeping_is_not_cheaper_than_being_watched` là thứ đã bắt được nó, và là thứ giữ nó.
 
-**✅ ĐÃ persist (schema 4).** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo detritus/plants/animals,
-từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không sinh hay huỷ EU. Giờ nó mang
-cả `DormantCohorts`: từng cohort, kho genome đã archive, bộ đếm `seen` của reservoir, và **vị trí rút** của luồng RNG
-dormancy — seed không đủ, vì tái tạo genome lúc thức dậy sẽ rút khác đi một run không bị gián đoạn.
+**✅ ĐÃ persist (schema 4, mở rộng ở schema 5).** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo
+detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không sinh
+hay huỷ EU. Giờ nó mang cả `DormantCohorts`: từng cohort, kho genome đã archive, bộ đếm `seen` của reservoir, và
+**vị trí rút** của luồng RNG dormancy — seed không đủ, vì tái tạo genome lúc thức dậy sẽ rút khác đi một run không bị
+gián đoạn.
+
+Schema 5 thêm hai thứ mà gate checkpoint của thế giới sống lộ ra là còn thiếu: `resource_field_phase` (pha stride của
+regrowth — trước đó sống trong một `Local<usize>` mà không snapshot nào đọc được, nên một lần resume mọc lại **một
+phần tư khác** của thế giới) và `experiment` (fingerprint manifest/luật/registry, tick của `SimClock`, và causal
+ledger — thiếu tick thì một forcing gated theo dải nhịp nổ **sai tick** mà vẫn trông hợp lý).
 
 Trước đó đường save **từ chối** ghi khi có cá thể ngủ. Lý do đã hết nên tường được gỡ, nhưng kênh save vẫn giữ dạng
 `Result<SavedSimulationState, String>`: restore vẫn có một cách hỏng thật (lưới khai báo cạnh không khớp số chunk),

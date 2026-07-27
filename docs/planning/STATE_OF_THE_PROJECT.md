@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 review_cycle: per-release
 ---
 
@@ -24,16 +24,23 @@ gate chưa xanh.
 Đo lại toàn bộ trong worktree `.worktrees/feature-anima-completion`. Bằng chứng đầy đủ kèm exit code
 ở [`docs/ai/testing/2026-07-27-feature-anima-completion.md`](../ai/testing/2026-07-27-feature-anima-completion.md).
 
+> **Đo lại 2026-07-27 (đợt ba, gói live-adapter + tick capture, trên `b6a579e`).** Bảy hàng đầu là
+> số chạy lại trong đợt này; phần còn lại giữ nguyên từ đợt trước vì gói này không chạm vào chúng
+> (không có thay đổi nào trong `src/`, `dist/`, lockfile hay danh sách phụ thuộc — chỉ thêm file
+> kiểu do ts-rs sinh trong `src/types/generated/`).
+
 | Gate | Lệnh | Kết quả |
 |---|---|---|
-| Backend test | `cargo test --features desktop --no-fail-fast` | **765 pass · 0 fail · 4 ignored**, 78 dòng kết quả, 0 warning biên dịch |
-| Target rỗng | `node scripts/check_test_targets.mjs` | **76 target, 0 rỗng** |
+| Backend test (desktop) | `cargo test --features desktop --no-fail-fast` | **841 pass · 0 fail · 4 ignored**, 81 dòng kết quả, exit 0 |
+| Backend test (mặc định) | `cargo test --no-default-features --no-fail-fast` | **823 pass · 0 fail · 4 ignored**, 81 dòng kết quả, exit 0 |
+| Target rỗng | `node scripts/check_test_targets.mjs` | **0 rỗng** — ba target `running 0 tests` đúng là `src/main.rs` + hai target doc-test, đều nằm trong allow-list |
 | Format + clippy (cả 2 cấu hình) | `cargo fmt --check`, `cargo clippy --all-targets {--features desktop, --no-default-features} -- -D warnings` | sạch |
 | Test frontend (src) | `npm run test` | 14 file · **109 pass** |
-| Test frontend (tests/) | `npm run test:frontend` | **38 file · 432 pass · 0 skip** — ổn định nhờ `maxWorkers: 4`, xem §4 |
+| Test frontend (tests/) | `npm run test:frontend -- --maxWorkers=4` | **38 file · 432 pass · 0 skip** — xem §4 |
+| Lint + ratchet + typecheck `tests/` + build | `npm run lint`, `node scripts/eslint_ratchet.mjs`, `npm run typecheck:tests`, `npm run build` | 0 error · 0 warning (baseline 0) · 0 error · pass |
 | E2E Playwright | `npm run test:e2e` | **9 pass · 0 fail · 5 skip có lý do**, server riêng cổng 5177 + kiểm định danh |
 | CSP | `npm run check:csp` | 2 file HTML ship, 0 origin ngoài, 0 inline script |
-| Ngân sách bundle | `npm run check:bundle` | 23 chunk, **1695,8 / 2000 KiB** |
+| Ngân sách bundle | `npm run check:bundle` | 23 chunk, **1711,3 / 2000 KiB** (đo lại 2026-07-27 đợt ba; gói này **không** đổi file nào trong `src/` ngoài kiểu do ts-rs sinh, mà kiểu thì bị xoá khi biên dịch — chênh so với 1695,8 của đợt trước không quy được cho nó) |
 | NOTICE | `npm run check:notice` | 419 crate + **21 gói npm được phân phối** + 18 gói cài-nhưng-không-ship |
 | Văn bản license bên thứ ba | `npm run check:licenses` | 440 thành phần phân phối · **266 văn bản khác nhau** · **1 chưa có văn bản** (408 đọc từ artifact + 31 vendor từ commit upstream đã ghim) |
 | Kho license upstream đã vendor | `npm run verify:upstream-licenses` (cần mạng, chạy tay) | **39 file · 24 commit · 19 repository**, khớp byte-cho-byte với URL đã ghim |
@@ -107,7 +114,9 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Tách feature build | Live integrated | G2 gate #2 — CI kiểm bằng `cargo tree`, không chỉ "biên dịch được" |
 | Trần tài nguyên runner | Live integrated | G2 gate #3 — `MAX_ENSEMBLE_RESULT_BYTES`, ước lượng bão hoà thay vì tràn |
 | Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | 11/12 gate EB pass — xem §3.1 |
-| Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld`; thế giới Bevy sống **chưa** experiment-ready |
+| Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
+| Adapter thí nghiệm cho thế giới sống | **Headless verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; 15 gate ở `live_experiment_tests.rs`. **Chưa** chạy app desktop; không có exotic energy; không có quần thể AE3 — xem §3.3 |
+| Đo tick trong tiến trình | **Đã ship, chưa có số app** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate). Số thật cần một lần chạy app — xem §3.2 |
 | Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
 
 ### 2.1 Vì sao bộ gate này đáng tin
@@ -140,10 +149,11 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 
 | # | Việc | Vì sao là việc này | Đọc |
 |---|---|---|---|
-| 1 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ. Đã ghi thành quyết định DEC-1 kèm 3 phương án và khuyến nghị | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
-| 2 | **In-app tick capture** | §3.2 nay chỉ còn thiếu đúng cái này; phần cứng và công cụ đã xong | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
+| 1 | **Chạy app desktop một lần với `ANIMA_TICK_CAPTURE`** | Việc duy nhất còn lại của §3.2, và **máy không làm được** — cần một con người bấm chạy. Dụng cụ đã ship và đã test; thiếu đúng một lần chạy | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26), [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
+| 2 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ. Đã ghi thành quyết định DEC-1 kèm 3 phương án và khuyến nghị | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
 | 3 | **OSS-072 MRCA** | Nửa khoa học còn lại của phả hệ. Nén đã xong nên `simplify` đã có sẵn cấu trúc cha/con để dùng lại | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
-| 4 | **ESLint 491 → 0** (§3.11) | Món nợ duy nhất trong chỉ thị 2026-07-27 **không** được đụng tới. Ratchet vẫn chặn tăng, nhưng không co lại | [§3.11 trong bảng P2](#p2--vệ-sinh-làm-được-lẻ) |
+| 4 | ~~**In-app tick capture**~~ **XONG 2026-07-27** | Đã ship kèm 4 lệnh IPC và gate "đo không làm đổi quỹ đạo" | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
+| 5 | ~~**§3.3 adapter thí nghiệm cho thế giới sống**~~ **XONG headless 2026-07-27** | `LiveExperimentAdapter` qua runner chung, trên đúng lịch trình app chạy | [§3.3](#33-đưa-thế-giới-bevy-sống-qua-gate-thí-nghiệm--adapter-headless-đã-xong-2026-07-27) |
 
 **Một việc cần con người, máy không làm được:** chạy `npm run tauri:dev` một lần để xác minh CSP mới
 (`tauri.conf.json` nay có `csp` + `devCsp` thay cho `null`). `npm run check:csp` chỉ kiểm **artifact
@@ -172,15 +182,19 @@ vì CLAUDE.md cấm chạy full backend trên máy này.
 - **Số `cargo bench` in ra là *slope estimate*, không phải trung vị.** Chênh thật: `step_water`
   297,6 µs (slope) so với 271,5 µs (trung vị). Bảng số dùng trung vị, đọc từ `estimates.json`.
 
-**Hai finding đang mở, chưa ai đối chứng:**
+**Một finding đang mở, chưa ai đối chứng:**
 
 - Con số **~4,2 ms** trong doc comment của `ResourceField::REGROWTH_STRIDE` **không tái lập được** —
   release build cho ~0,36 ms, thấp hơn ~12 lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số
   biện minh là chưa đối chứng.
-- **`DEFAULT_GRID_DIM = 128`** trong `sim_rules.rs` **không được đọc ở đâu trong `src/`**, trong khi
-  thế giới thật chạy **256²**. `COORDINATE_CONTRACT.md` rút ra tỉ lệ `200/128 = 1.5625` từ nó — nếu
-  lưới thật là 256 thì hệ số đó **sai gấp đôi**, và một hệ số toạ độ sai là thứ chạy được, ra số hữu
-  hạn, và sai âm thầm. Đây là mục có sức công phá lớn nhất trong hai cái.
+
+**Finding `DEFAULT_GRID_DIM` đã đóng — đừng mở lại từ một bản sao cũ.** Câu cũ ở đây nói hằng số là
+**128**; nó là **256** kể từ 2026-07-27 và bị test `s03_default_grid_dim_tracks_map_settings_default`
+buộc phải bằng `MapSettings::default().width`. `COORDINATE_CONTRACT.md` §"Backend sim (mặc định)"
+đã ghi `200 / 256 = 0.78125`. Đường đo mới không dùng hằng số nào cả: tick capture đọc kích thước
+**từ `ResourceField` của thế giới đang chạy** và ghi vào `CaptureExport.workload` kèm cờ
+`dimensions_measured`, nên một số sai không thể lọt vào một report mà không lộ ra. Con số 128 còn sót
+lại **chỉ** ở `config.gridDim` trong `benchmark_report.json` (file kết quả cũ), không ở đường code nào.
 
 ### P0 — Đóng vòng lặp khoa học
 
@@ -233,15 +247,32 @@ minh**. Mọi quyết định về scale (LOD, ngân sách bộ nhớ não, số
 - Gate `cargo tree --no-default-features -e normal` xác nhận Criterion **không** vào bản dựng mặc
   định (G2 #2), và test S04 vẫn xanh.
 
-##### Còn thiếu — và không còn vì phần cứng
+##### Đã xong 2026-07-27 — dụng cụ đo in-app
+
+**In-app tick capture đã ship**: [`core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs)
++ ba checkpoint trong **đúng lịch trình sống** + kẹp `schedule` / `telemetry_publish` / `full_tick`
+trong chính vòng lặp của sim thread + bốn lệnh IPC (`start`/`status`/`stop`/`export`, kiểu TS sinh
+bằng ts-rs). Ring cấp phát sẵn, có warm-up, tần suất lấy mẫu, trần số mẫu, kế toán mẫu bị ghi đè /
+bị bỏ, và phân vị **nearest rank**. Cách dùng và giới hạn diễn giải:
+[`docs/how-to/BENCHMARKING.md`](../how-to/BENCHMARKING.md).
+
+Hai điều được kiểm bằng máy chứ không hứa:
+`capture_does_not_change_the_live_trajectory` (checksum, observable và **vị trí stream RNG** giống
+hệt khi tắt, khi có sink nhưng idle, và khi đang ghi) và
+`a_capture_of_the_real_schedule_produces_phases_that_add_up` (bốn pha checkpoint cộng lại **đúng
+bằng** pha `schedule`).
+
+##### Còn thiếu — và nay chỉ còn một lần chạy app thật
 
 Cái đo được là **cận dưới của một tick, không phải khung hình**: tổng các system chạy mỗi tick ở
 1.000 agent ≈ 493 µs ≈ 3,0 % của 16,67 ms, nhưng con số đó **chưa gồm** suy luận não, lập lịch ECS,
 change detection, thread emit, va chạm và trao đổi chất.
 
-1. **In-app tick capture** cho các hàng `Physics tick` / `Brain/sensor` / `Full-brain agents` trong
-   [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Ràng buộc "không chạy full backend" vẫn
-   còn, nên đây cần một harness đo tick an toàn — chưa có.
+1. **Chạy app desktop một lần với `ANIMA_TICK_CAPTURE`** rồi điền các hàng `Physics tick` /
+   `Brain/sensor` / `Full-brain agents` trong
+   [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) từ `p50_ns` của file export. Dụng cụ đã
+   có và đã được test; **chưa có lần chạy app đầy đủ nào** trong gói 2026-07-27, vì CLAUDE.md cấm
+   chạy full backend trên máy này. Thủ tục ba bước ghi ở BENCHMARKING.md.
 2. **Suy luận não per-agent** là phần đắt nhất còn lại và **đang tắt mặc định** (§3.1), nên chưa có
    gì trên đường mặc định để đo. §3.1 và §3.2 vì thế nối vào nhau.
 
@@ -256,15 +287,39 @@ Việc stride vẫn đúng và có lợi (đo được 3,97×) — chỉ con s�
 Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), đây là finding cần
 đối chứng, không phải lỗi đã xác định.
 
-#### 3.3 Đưa thế giới Bevy sống qua gate thí nghiệm
+#### 3.3 Đưa thế giới Bevy sống qua gate thí nghiệm — **adapter headless đã xong (2026-07-27)**
 
-**Vì sao P0.** Phần khoa học (AE1–AE3) hiện nằm ở `ReferenceEvolutionWorld` **headless**.
-CLAUDE.md cấm tuyên bố thế giới sống là experiment-ready cho tới khi adapter tất định và
-gate persistence của nó pass — và lệnh cấm đó vẫn đang đúng. Chừng nào chưa qua, "mô phỏng
-tiến hoá" và "thí nghiệm tiến hoá" là hai hệ thống khác nhau.
+**Trạng thái mới.** [`core/live_experiment.rs`](../../src-tauri/src/core/live_experiment.rs) là
+`LiveExperimentAdapter: ExperimentModel`, chạy qua **cùng** `experiment_runner` với
+`ReferenceEvolutionWorld` và trên **đúng** lịch trình app dùng —
+[`core/simulation_schedule.rs`](../../src-tauri/src/core/simulation_schedule.rs), hàm mà
+`SimulationEngine::start` gọi. Gate:
+[`tests/live_experiment_tests.rs`](../../src-tauri/tests/live_experiment_tests.rs) (15 test) —
+cùng seed + manifest ⇒ cùng checksum · can thiệp nổ **đúng tick khai báo** và không sớm hơn ·
+checkpoint fork từ tick 60 (nhánh control khớp bit với một run liền mạch) ·
+`run N == run K → ghi ra file → đọc lại → run N−K` · registry observable hợp lệ và trùng đơn vị với
+registry tham chiếu ở đúng hai id chia sẻ (`plants`, `detritus`) · và một test **hướng** giữa hai
+đường cho một luật chung.
 
-**Điểm neo:** `src-tauri/src/core/reference_world.rs`, `core/evolution_pathway.rs`,
-`core/scenario.rs`. Đọc [`docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) trước.
+**Hai lỗ persistence thật do gate này lộ ra, đã vá:**
+
+- **Pha stride của regrowth sống trong `Local<usize>`.** `REGROWTH_STRIDE = 4` nghĩa là mỗi tick chỉ
+  một phần tư số ô mọc lại, nên *phần tư nào* là trạng thái quỹ đạo — mà `Local` thì không snapshot
+  nào đọc được. Nay là `ResourceField::regrowth_phase`, được lưu (schema 5) và **vào `world_checksum`**.
+  Gate cũ không bắt được vì `K = 1500` chia hết cho 4.
+- **Một tick để lại suy luận "đang bay".** App giao request cho thread worker và nhận trả lời ở tick
+  *sau*; ở ranh giới checkpoint, hai batch khoá theo `Entity` đang nằm trong kênh, mà id entity
+  không ổn định qua restore. Adapter thí nghiệm nay trả lời **trong chính tick đã hỏi**
+  (`live_inference_pump_system`), nên mỗi tick là nguyên tử và toàn bộ quỹ đạo nằm trong world.
+
+**Chưa tuyên bố, và đừng tuyên bố:** chưa có lần chạy **app desktop đầy đủ** nào (executor đa luồng);
+adapter **từ chối** `laws.exotic_energy` vì thế giới sống không có trường MU, và không có quần thể
+AE3; và **không** tuyên bố trùng số với `ReferenceEvolutionWorld` — chỉ trùng **hướng và ý nghĩa**
+của một luật chung.
+
+**Điểm neo:** `src-tauri/src/core/live_experiment.rs`, `core/simulation_schedule.rs`,
+`core/reference_world.rs`, `core/evolution_pathway.rs`, `core/scenario.rs`. Đọc
+[`docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) trước.
 
 **Điều kiện tiên quyết — đọc trước khi bắt tay:** mục này **và** §3.6 là hai mặt của cùng một việc,
 chính là **G2 task 1** trong
@@ -279,7 +334,9 @@ qua §3.6 sẽ chạm tường ngay. Chúng được đánh số ở hai bậc �
 là **G2**. Tài liệu này gọi nó là §3.3. Cùng một việc — giữ cả hai tên khi tra cứu chéo.
 
 **Định nghĩa hoàn thành:** một manifest chạy được trên thế giới sống cho cùng checksum qua
-hai lần chạy cùng seed · save/load giữ nguyên quỹ đạo · gỡ được câu cấm tương ứng trong CLAUDE.md.
+hai lần chạy cùng seed ✅ · save/load giữ nguyên quỹ đạo ✅ · gỡ được câu cấm tương ứng trong
+CLAUDE.md ✅ (đã thay bằng một câu **hẹp hơn** nói rõ cái gì đã kiểm và cái gì chưa) · **còn lại:**
+một lần chạy app desktop dưới executor đa luồng.
 
 ---
 

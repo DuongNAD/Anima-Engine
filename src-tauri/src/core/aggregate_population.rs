@@ -1522,6 +1522,7 @@ mod tests {
             min_z: -100.0,
             max_x: 100.0,
             max_z: 100.0,
+            regrowth_phase: 0,
             r: vec![per_cell; n],
             r_max: vec![per_cell; n],
             growth_rate: 0.0,

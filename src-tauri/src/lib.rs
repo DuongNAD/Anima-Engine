@@ -83,7 +83,11 @@ pub fn run() {
             commands::get_ecosystem_state,
             commands::save_world_artifact,
             commands::list_legacy_saves,
-            commands::import_legacy_save
+            commands::import_legacy_save,
+            commands::start_tick_capture,
+            commands::stop_tick_capture,
+            commands::get_tick_capture_status,
+            commands::export_tick_capture
         ])
         .setup(|app| {
             let app_state = app.state::<AppState>();

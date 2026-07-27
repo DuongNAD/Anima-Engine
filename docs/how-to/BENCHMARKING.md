@@ -186,6 +186,48 @@ Hai điều cần tách bạch, vì trộn vào nhau sẽ dẫn tới kết lu�
   [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding chứ không tự coi bên nào
   đúng.
 
+## In-app tick capture (2026-07-27)
+
+Criterion đo **từng hàm**, trên fixture tự dựng, ngoài mọi engine đang chạy. Cái nó theo thiết kế
+không đo được là **một tick của lịch trình sống**: lập lịch ECS, change detection, suy luận, khối
+publish telemetry. [`src-tauri/src/core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs)
+đo đúng chỗ đó, **không** chạy app desktop.
+
+Bật bằng biến môi trường khi khởi động engine, hoặc bằng bốn lệnh IPC
+(`start_tick_capture` / `get_tick_capture_status` / `stop_tick_capture` / `export_tick_capture` —
+xem [`PROJECT.md`](../../PROJECT.md) §Interface Contracts):
+
+```bash
+ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2
+```
+
+Ba pha là **chính xác**, vì vòng lặp mô phỏng kẹp chúng trực tiếp bằng một `Instant`:
+`schedule` (quanh `schedule.run`), `telemetry_publish` (quanh khối trích xuất/publish), và
+`full_tick` (tổng hai cái, **không** gồm giấc ngủ giữ nhịp khung hình).
+
+Bốn pha còn lại (`sensor_brain`, `physics_movement`, `ecology_resources`, `schedule_tail`) là
+**checkpoint-bounded**, và khác biệt đó nằm trong JSON xuất ra chứ không chỉ trong tài liệu này:
+Bevy không có hook đo từng system, và tách lịch trình để đo sẽ **đổi thứ tự thực thi** — đúng thứ
+một profiler không được phép làm. Mỗi checkpoint chỉ được bảo đảm chạy **sau** một system có tên;
+một pha là "phần việc executor làm giữa hai checkpoint". `PhaseSummary.exact` nói hàng đó thuộc loại
+nào, `CaptureExport.executor` nói executor nào đã tạo ra số.
+
+Quy ước phân vị là **nearest rank** (`ceil(p/100·n) − 1`), nên mọi con số in ra là một mẫu thật, không
+phải nội suy. `plant_soil_weather` xuất hiện trong `unavailable` kèm lý do, vì `core::dynamic_fields`
+**không** nằm trong lịch trình sống — báo 0 cho nó sẽ là bịa.
+
+**Cái gói này chưa làm, nói thẳng:** chưa có lần chạy nào của **app desktop đầy đủ**. Bằng chứng
+hiện có là headless — cùng lịch trình (`simulation_schedule::build_tick_schedule`, đúng hàm
+`SimulationEngine::start` gọi), qua `tests/tick_capture_tests.rs`. Thủ tục đo còn thiếu, cần một
+con người:
+
+1. `npm run tauri:dev` (hoặc bản build release) với `ANIMA_TICK_CAPTURE` đặt sẵn;
+2. để chạy qua warm-up, rồi `export_tick_capture` với một tên file;
+3. đọc `<app data>/captures/<tên>.json` và điền các hàng `Physics tick` / `Brain/sensor` /
+   `Full-brain agents` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) từ `p50_ns`.
+
+CLAUDE.md cấm chạy full backend trên máy dev này, nên bước 1 **không** được thực hiện ở đây.
+
 ## Cái vẫn còn thiếu
 
 Phần cứng mục tiêu nay đã khớp, nhưng §3.2 của
@@ -194,15 +236,17 @@ phải phần cứng:
 
 - **Đây là cận dưới của tick, không phải khung hình.** Các hàng "Physics tick 60 Hz",
   "Brain/sensor 10–20 Hz" trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi một
-  **nhịp thực tế của app đang chạy**, mà bộ này theo thiết kế không chạy app. Cần một in-app tick
-  capture, và ràng buộc "không chạy full backend" vẫn còn hiệu lực.
+  **nhịp thực tế của app đang chạy**. Dụng cụ đo nay đã có (mục trên) và đã được kiểm bằng test;
+  cái còn thiếu là **một lần chạy app thật** để lấy số — ràng buộc "không chạy full backend" trên
+  máy này vẫn còn hiệu lực.
 - **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
   chưa có gì để đo trên đường mặc định.
-- `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**
-  (`DEFAULT_GRID_DIM` trong `sim_rules.rs`), trong khi thế giới thật chạy **256²**
-  (`MapSettings::default()`) và hằng số 128 kia **không được đọc ở đâu trong `src/`**. Bộ bench này
-  dùng 256². Đây là một finding riêng đang mở, không sửa ở đây vì nó chạm vào
-  `COORDINATE_CONTRACT.md`.
+- `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**,
+  trong khi thế giới thật chạy **256²** (`MapSettings::default()`) và `DEFAULT_GRID_DIM` trong
+  `sim_rules.rs` **đã là 256** kể từ 2026-07-27 (test `s03_default_grid_dim_tracks_map_settings_default`
+  ghim nó). Bộ bench này dùng 256², và tick capture đọc kích thước **từ `ResourceField` của thế giới
+  đang chạy** rồi ghi vào `CaptureExport.workload` kèm cờ `dimensions_measured` — nên số 128 còn lại
+  chỉ nằm trong file report cũ, không nằm trong đường đo nào.
 
 ## Cách thêm một benchmark
 

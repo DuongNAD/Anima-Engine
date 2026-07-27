@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::ai::cpg::update_cpg_system;
 use crate::ai::hrrl::{Transition, TransitionSender};
-use crate::ai::model::{hrrl_learning_system, BrainInferenceBuffer, BrainModel};
+use crate::ai::model::{BrainInferenceBuffer, BrainModel};
 use crate::core::agent_systems::*;
 use crate::core::ecs::*;
 #[allow(unused_imports)]
@@ -23,9 +22,7 @@ use crate::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use crate::evolution::lineage::LineageTracker;
-use crate::physics::{
-    integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
-};
+use crate::physics::JointConstraint;
 use tauri::Emitter;
 
 /// How long `stop` waits for every thread to report exit before naming the stragglers (§3.7).
@@ -46,6 +43,15 @@ const SHUTDOWN_GRACE_SECS: u64 = 30;
 /// genotypes between passes. It is not tuned against a measurement, and the honest reason is that
 /// the memory it bounds has never been profiled on a long run — if that changes, tune it then.
 const COMPACT_EVERY_EPOCHS: u32 = 50;
+
+/// Nanoseconds since `since`, saturated into a `u64`.
+///
+/// `Duration::as_nanos` is a `u128` because a duration can outlive a `u64` of nanoseconds (~584
+/// years). Truncating with `as u64` would wrap a stalled tick into a small, plausible number;
+/// saturating makes it obviously wrong instead, and the capture drops it.
+fn elapsed_ns(since: Instant) -> u64 {
+    since.elapsed().as_nanos().min(u64::MAX as u128) as u64
+}
 
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
@@ -74,6 +80,13 @@ pub struct SimulationEngine {
     /// Same handle shape as `lod_focus`, and for the same reason: commands run on their own thread and
     /// cannot reach the world's resources.
     pub observer_actions: crate::core::observer::SharedObserverActions,
+    /// The in-process tick profiler (`ANIMA_TICK_CAPTURE`, or the capture IPC commands).
+    ///
+    /// Lives on the engine rather than only in the world for the same reason `lod_focus` does: the
+    /// commands that start, stop and export a capture run on another thread and cannot borrow the
+    /// simulation's world. Idle until something starts it, and a capture never touches simulation
+    /// state — see [`crate::core::tick_capture`].
+    pub tick_capture: crate::core::tick_capture::SharedTickCapture,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
 
@@ -138,6 +151,7 @@ impl SimulationEngine {
             sharding_config,
             lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
             observer_actions: crate::core::observer::SharedObserverActions::new(),
+            tick_capture: crate::core::tick_capture::SharedTickCapture::new(),
             manual_migration_trigger,
             manual_migration_receiver,
             save_request_tx,
@@ -580,6 +594,7 @@ impl SimulationEngine {
         // Cloned out here rather than inside the thread closure: touching `self` in there would
         // borrow the engine into the thread and the borrow escapes the method.
         let observer_actions_sim = self.observer_actions.clone();
+        let tick_capture_shared = self.tick_capture.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
         let pending_load_state_clone = Arc::clone(&self.pending_load_state);
@@ -1144,112 +1159,30 @@ impl SimulationEngine {
                 .copied()
                 .unwrap_or_default();
 
-            let mut schedule = Schedule::default();
-            // G1.3: system execution order must be declared, not incidental.
-            //
-            // Bevy's multi-threaded executor guarantees that two systems with conflicting access
-            // never run at the same time, but NOT which of them goes first. The `.after(...)`
-            // constraints below pin the order that matters causally; everything else was left to
-            // whatever the executor happened to pick, which is not a property of the manifest. That
-            // is not a theoretical concern: G1.1 found an energy residual whose *sign* changed
-            // between runs because of it, and G1.2's checkpoint gate had to declare its own order
-            // to get a stable checksum at all.
-            //
-            // The single-threaded executor walks the schedule's topological order, which is a
-            // function of the declared constraints and insertion order alone — the same binary and
-            // manifest therefore produce the same order every time. It costs parallelism, which is
-            // the correct trade for a run whose purpose is to be reproducible; an interactive
-            // session leaves determinism off and keeps the multi-threaded executor.
-            if deterministic.is_enabled() {
-                schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+            // In-process tick capture (opt-in, bounded, and inert unless started). The sink is
+            // inserted unconditionally so a capture can be started from the UI mid-run without
+            // rebuilding the world; the three checkpoint systems it feeds return on their first
+            // line while no capture is active. `ANIMA_TICK_CAPTURE` starts one at boot for a run
+            // nobody is watching.
+            tick_capture_shared.set_executor(crate::core::simulation_schedule::executor_name(
+                deterministic,
+            ));
+            match crate::core::tick_capture::CaptureConfig::from_env() {
+                Some(Ok(config)) => {
+                    if let Err(e) = tick_capture_shared.start(config) {
+                        eprintln!("ANIMA_TICK_CAPTURE is not a usable configuration ({e}); tick capture stays off");
+                    }
+                }
+                Some(Err(e)) => eprintln!(
+                    "ANIMA_TICK_CAPTURE is not a usable configuration ({e}); tick capture stays off"
+                ),
+                None => {}
             }
-            schedule.add_systems((
-                sync_evolution_settings_system,
-                receive_environmental_events_system,
-                apply_environmental_effects_system.after(receive_environmental_events_system),
-                sensory_system,
-                action_resolution_system,
-                update_cpg_system.after(action_resolution_system),
-                resolve_joints_system.after(update_cpg_system),
-                integrate_physics_system.after(resolve_joints_system),
-                crate::ai::pheromone::agent_release_pheromone_system
-                    .after(integrate_physics_system),
-                crate::ai::pheromone::update_pheromone_grid_system
-                    .after(crate::ai::pheromone::agent_release_pheromone_system),
-                crate::ai::pheromone::agent_read_pheromone_system
-                    .after(crate::ai::pheromone::update_pheromone_grid_system),
-            ));
-            schedule.add_systems((
-                update_agent_evaluation_system.after(integrate_physics_system),
-                crate::core::ecs::check_migration_boundaries_system.after(integrate_physics_system),
-                apply_deferred.after(crate::core::ecs::check_migration_boundaries_system),
-                wrap_coordinates_system.after(apply_deferred),
-                rebuild_spatial_grid_system.after(wrap_coordinates_system),
-                crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
-                metabolic_decay_system.after(integrate_physics_system),
-                spawn_food_system.after(apply_environmental_effects_system),
-                detect_food_collisions_system.after(integrate_physics_system),
-                combat_system.after(integrate_physics_system),
-                hrrl_learning_system.after(metabolic_decay_system),
-                // Runs after `hrrl_learning_system`, which is where `LastTransitionState` and the
-                // homeostatic deviation this reads are refreshed. Returns immediately unless both
-                // evolved brains and lifetime learning are switched on.
-                crate::ai::model::lifetime_learning_system.after(hrrl_learning_system),
-                check_epoch_completion_system.after(metabolic_decay_system),
-                apply_staggered_evolution_system.after(check_epoch_completion_system),
-                crate::core::ecs::manual_migration_system.after(integrate_physics_system),
-                fruit_growth_system.after(apply_environmental_effects_system),
-                lake_replenishment_system.after(apply_environmental_effects_system),
-                seed_dropping_system.after(apply_environmental_effects_system),
-                detect_environmental_collisions_system.after(integrate_physics_system),
+            world.insert_resource(crate::core::tick_capture::TickCaptureSink::new(
+                tick_capture_shared,
             ));
 
-            // Ecosystem-dynamics systems (Phase 7) in their own tuple — Bevy caps a single
-            // add_systems tuple at 20, and `.after(...)` ordering resolves across calls.
-            schedule.add_systems((
-                herbivore_grazing_system.after(integrate_physics_system),
-                resource_field_regrowth_system.after(herbivore_grazing_system),
-                // The app's focus reaches the world here, ahead of both readers — `sensory_system`,
-                // which tiers inference, and the dormancy systems below. Ordered explicitly rather
-                // than left to Bevy: an unconstrained sync would let a tick tier agents against
-                // last tick's camera, which is harmless for a moving observer and confusing to
-                // debug.
-                crate::core::simulation_lod::sync_lod_focus_system
-                    .before(sensory_system)
-                    .before(crate::core::aggregate_population::dehydrate_cold_agents_system),
-                // ADR-0004 O2. Records what the world actually saw of the observer, so it must run
-                // *after* the policy has had its say — reading the raw shared focus instead would
-                // file a camera path the world never experienced.
-                crate::core::observer::record_observer_trace_system
-                    .after(crate::core::simulation_lod::sync_lod_focus_system),
-                // Ordered after the focus recorder so a tick's samples and that tick's actions land
-                // in the same trace in a fixed order — two runs of the same session then produce the
-                // same record, which is what makes a trace comparable at all.
-                crate::core::observer::drain_observer_actions_system
-                    .after(crate::core::observer::record_observer_trace_system),
-                // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
-                // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
-                // unaffected.
-                //
-                // After physics, so an agent is tiered on the position it actually reached this
-                // tick; before the census, because the census is the only place a dormant cohort's
-                // energy is counted and it has to see the result of both. Bevy inserts the sync
-                // point that applies their commands from these ordering constraints.
-                crate::core::aggregate_population::dehydrate_cold_agents_system
-                    .after(integrate_physics_system),
-                crate::core::aggregate_population::rehydrate_wakeable_chunks_system
-                    .after(crate::core::aggregate_population::dehydrate_cold_agents_system),
-                // The dormant cohorts' own ecology, sitting where its live counterparts sit: after
-                // live grazing and before regrowth, so both consumers draw on the same standing
-                // field before it grows back.
-                crate::core::aggregate_population::dormant_cohort_ecology_system
-                    .after(herbivore_grazing_system)
-                    .before(resource_field_regrowth_system),
-                ecosystem_census_system
-                    .after(resource_field_regrowth_system)
-                    .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
-            ));
-
+            let mut schedule = crate::core::simulation_schedule::build_tick_schedule(deterministic);
             schedule.run(&mut world);
             let mut query_state = world.query::<(
                 Entity,
@@ -1275,7 +1208,16 @@ impl SimulationEngine {
             while running_clone.load(Ordering::SeqCst) {
                 let start_time = Instant::now();
 
+                // One resource lookup and one uncontended mutex read decide whether this tick is
+                // measured at all; everything below is skipped when it is not.
+                let capturing = world
+                    .get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
+                    .map(|mut sink| sink.begin_tick())
+                    .unwrap_or(false);
+
+                let schedule_started = Instant::now();
                 schedule.run(&mut world);
+                let schedule_ns = elapsed_ns(schedule_started);
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
@@ -1294,6 +1236,12 @@ impl SimulationEngine {
                     ));
                     let _ = tx.send(answer);
                 }
+
+                // The telemetry bracket starts here, *after* the save request. A save serializes
+                // the whole world and is an operator action rather than tick work; folding it into
+                // the publish phase would put a several-millisecond spike into a distribution that
+                // is meant to describe an ordinary frame.
+                let telemetry_started = Instant::now();
 
                 state_buffer.clear();
 
@@ -1498,6 +1446,15 @@ impl SimulationEngine {
                     shared.niche_divergence =
                         crate::core::ecology::niche_divergence(prey_mass, predator_mass);
                     shared.archive_coverage = archive_coverage;
+                }
+
+                let telemetry_ns = elapsed_ns(telemetry_started);
+                if capturing {
+                    if let Some(mut sink) =
+                        world.get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
+                    {
+                        sink.commit(tick_count, schedule_ns, telemetry_ns);
+                    }
                 }
 
                 let elapsed = start_time.elapsed();

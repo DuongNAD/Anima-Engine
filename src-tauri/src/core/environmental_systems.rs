@@ -36,8 +36,8 @@ pub fn resource_field_regrowth_system(
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     season: Option<ResMut<crate::core::ecology::SeasonClock>>,
+    forcings: Option<Res<crate::core::live_experiment::LiveForcings>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
-    mut phase: Local<usize>,
 ) {
     let Some(mut field) = field else {
         return;
@@ -49,9 +49,15 @@ pub fn resource_field_regrowth_system(
         Some(mut clock) => clock.tick(time_step.0),
         None => 1.0,
     };
+    // A declared rainfall intervention scales the same fertility rather than running a second
+    // regrowth loop of its own — see `core::live_experiment`. Absent the resource, which is every
+    // run that is not a declared experiment, the multiplier is exactly 1.0 and this line is a no-op.
+    let fertility = fertility * forcings.map(|f| f.fertility_multiplier).unwrap_or(1.0);
     let stride = crate::core::ecology::ResourceField::REGROWTH_STRIDE;
-    let this_phase = *phase;
-    *phase = (*phase + 1) % stride.max(1);
+    // The phase lives on the field rather than in a `Local` so a checkpoint can restore it — see
+    // `ResourceField::regrowth_phase`.
+    let this_phase = field.regrowth_phase % stride.max(1);
+    field.regrowth_phase = (this_phase + 1) % stride.max(1);
 
     match biomass {
         Some(mut pool) => {

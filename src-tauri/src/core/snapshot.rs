@@ -50,9 +50,17 @@ use std::path::Path;
 /// A bare `SavedSimulationState` on disk with no envelope around it is a version-1 or version-2
 /// file; [`read`] detects that and migrates it forward.
 /// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
-pub const SCHEMA_VERSION: u32 = 4;
+/// | 5 | Adds the live experiment state: manifest/law/registry fingerprints, the multi-rate clock's tick, and the causal ledger. |
+pub const SCHEMA_VERSION: u32 = 5;
 
-/// Oldest schema this build can still read. N−2 per the G1.2 requirement.
+/// Oldest **enveloped** schema this build can still read. N−2 per the G1.2 requirement.
+///
+/// This bound applies only to files that carry a `schema_version`, which means version 3 and up.
+/// Versions 1 and 2 were written as a bare `SavedSimulationState` with no envelope at all, so they
+/// have no version to compare and are handled by [`from_bytes`]'s pre-envelope path regardless of
+/// this constant. Raising the current version therefore does *not* strand a v1/v2 save — a claim
+/// worth checking rather than assuming, and `a_bare_pre_envelope_state_still_loads_and_reports_its_schema`
+/// is what checks it.
 pub const MIN_SUPPORTED_SCHEMA: u32 = SCHEMA_VERSION - 2;
 
 /// What produced a snapshot. Not used to gate loading — it is here so that a run which cannot be
@@ -206,6 +214,17 @@ impl SnapshotEnvelope {
 /// flush, `sync_all`, then rename over the target. `sync_all` matters: without it the rename can
 /// land before the data does, and a power loss leaves a correctly-named empty file.
 pub fn write_atomic(path: &Path, envelope: &SnapshotEnvelope) -> Result<(), SnapshotError> {
+    let json = serde_json::to_vec_pretty(envelope)
+        .map_err(|e| SnapshotError::Malformed(format!("envelope is not serializable: {e}")))?;
+    write_bytes_atomic(path, &json)
+}
+
+/// The bytes-in half of [`write_atomic`], for callers that are not writing a snapshot envelope.
+///
+/// Extracted rather than duplicated because the property that matters — a failed write leaves the
+/// old file intact and no partial file behind — is easy to reimplement *almost* correctly. The tick
+/// capture's export writes through here for exactly that reason.
+pub fn write_bytes_atomic(path: &Path, json: &[u8]) -> Result<(), SnapshotError> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     if !dir.as_os_str().is_empty() {
         std::fs::create_dir_all(dir)
@@ -220,13 +239,10 @@ pub fn write_atomic(path: &Path, envelope: &SnapshotEnvelope) -> Result<(), Snap
     // file and interleave their bytes.
     let tmp_path = dir.join(format!(".{file_name}.{}.tmp", std::process::id()));
 
-    let json = serde_json::to_vec_pretty(envelope)
-        .map_err(|e| SnapshotError::Malformed(format!("envelope is not serializable: {e}")))?;
-
     {
         let mut file = std::fs::File::create(&tmp_path)
             .map_err(|e| SnapshotError::Io(format!("could not create temp file: {e}")))?;
-        file.write_all(&json)
+        file.write_all(json)
             .map_err(|e| SnapshotError::Io(format!("could not write temp file: {e}")))?;
         file.flush()
             .map_err(|e| SnapshotError::Io(format!("could not flush temp file: {e}")))?;
@@ -378,12 +394,15 @@ pub fn world_checksum(world: &mut bevy_ecs::world::World) -> u32 {
         }
     }
 
-    // Standing crop, cell by cell.
+    // Standing crop, cell by cell, plus which quarter of it the strided sweep visits next. The
+    // phase decides *which* cells grow on the following tick, so a world holding identical cells at
+    // a different phase is not the same world — see `ResourceField::regrowth_phase`.
     if let Some(field) = world.get_resource::<crate::core::ecology::ResourceField>() {
         bytes.extend_from_slice(&(field.r.len() as u32).to_le_bytes());
         for v in &field.r {
             bytes.extend_from_slice(&v.to_bits().to_le_bytes());
         }
+        bytes.extend_from_slice(&(field.regrowth_phase as u32).to_le_bytes());
     }
 
     // Detritus only — the one closed-energy compartment that is an authoritative store.

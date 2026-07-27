@@ -331,8 +331,17 @@ Thứ tự có chủ ý: mọi thứ không phụ thuộc G2 làm trước, đ�
    schedule và ghim **hệ con**, không phải engine — cùng phạm vi mà `SNAPSHOT_CONTRACT` §8 tự nhận
    về mình.
 
-   **Lưu trace vào save state: hoãn có lý do, không phải quên.** Nó cần bump `SCHEMA_VERSION` 4→5,
-   mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2` nên bump sẽ **mất khả năng đọc save v2**. Trả cái
+   **Lưu trace vào save state: hoãn có lý do, không phải quên.**
+
+   > **Sửa 2026-07-27 — lý do kỹ thuật bên dưới là SAI, lý do thứ tự thì vẫn đúng.** Câu gốc nói
+   > bump `SCHEMA_VERSION` 4→5 sẽ "mất khả năng đọc save v2". Không: `MIN_SUPPORTED_SCHEMA` chỉ áp
+   > cho file **có** `schema_version`, tức là v3 trở lên. Save v1/v2 được ghi **không có envelope**,
+   > nên `snapshot::from_bytes` nhận chúng ở nhánh pre-envelope bất kể hằng số đó. Gói live-adapter
+   > đã bump lên **5** và `a_bare_pre_envelope_state_still_loads_and_reports_its_schema` vẫn xanh —
+   > tức là bump không tốn gì. Cái vẫn đúng là phần còn lại của đoạn này: đừng thêm trường cho dữ
+   > liệu chưa mode nào tiêu thụ, và khi thêm thì phải vào **cả** hai chỗ một lượt.
+
+   Nó cần bump `SCHEMA_VERSION`; trả cái
    giá đó cho dữ liệu mà chưa có mode nào tiêu thụ là sai thứ tự; nó đi cùng lúc replay trở thành
    mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn `world_checksum` một lượt — đúng
    quy tắc `SNAPSHOT_CONTRACT` §8. Ghi chú kèm: khi *ghi*, trace là **đầu ra** và không lái thế giới

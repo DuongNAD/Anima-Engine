@@ -54,7 +54,8 @@ sau khi ADR-0002 được accepted.
 |---|---|---|
 | Scenario deterministic | `core::scenario::Scenario`, `run_scenario` | Chỉ cấu hình seed/duration/intervention |
 | Control/treatment | `control_treatment` | Một seed, model mặc định, chưa có world-law fork |
-| Mô hình thử | `ReferenceEcosystem` | Aggregate nhỏ; chưa phải live Bevy world |
+| Mô hình thử | `ReferenceEcosystem` | Aggregate nhỏ; không phải live Bevy world |
+| Live Bevy world qua cùng contract | `core::live_experiment::LiveExperimentAdapter` (`ExperimentModel`) | **Đã có, verified headless** (2026-07-27): cùng manifest/clock/intervention/ledger/registry, trên đúng lịch trình `simulation_schedule::build_tick_schedule` mà app chạy. **Từ chối** `laws.exotic_energy` (không có trường MU) và không có quần thể AE3; chưa chạy app desktop; **không** tuyên bố trùng số với reference — chỉ trùng hướng của luật chung |
 | Can thiệp | `InterventionKind`, `InterventionCommand` | Năm kind cố định; chưa có parameter map/version |
 | Giải thích nhân–quả | `CausalLedger`, `EffectRecord` | Một parent; multi-cause attribution còn thiếu |
 | Luật/đơn vị | `core::sim_rules::STATE_VARIABLES` | Closed EU; chưa có exotic-energy registry |

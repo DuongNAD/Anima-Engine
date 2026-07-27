@@ -51,6 +51,30 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 - `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
 - `get_lod_bands` -> `LodBands` — tier boundaries (`hot_radius`, `warm_radius`, `warm_interval`). The agent viewport asks for these rather than hardcoding them: it only sets a focus while everything on screen fits inside `hot_radius`, so that no agent the user is looking at is ever tiered down.
 
+#### Tick capture (in-process profiler)
+
+Operational evidence, never simulation state. A capture is opt-in, bounded by a pre-allocated ring,
+and cannot alter a trajectory: nothing it records enters `world_checksum`, an RNG stream or a
+snapshot. See `src-tauri/src/core/tick_capture.rs`, and `tests/tick_capture_tests.rs` for the gate
+that proves the disabled *and* the recording path both leave the world identical.
+
+- `start_tick_capture(config: CaptureConfig)` -> `()` — begins a capture, discarding the previous
+  one. A malformed configuration (zero capacity, zero sample rate, an empty phase set, a schedule
+  that overflows `u64`) is **refused with a reason** rather than clamped into a working one, because
+  a clamped capture reports a measurement it did not make.
+- `stop_tick_capture` -> `()` — stops recording and keeps what was captured. Idempotent.
+- `get_tick_capture_status` -> `CaptureStatusReport` — status, config, sample accounting
+  (ticks observed, warm-up discarded, rate-skipped, recorded, overwritten, dropped) and the workload
+  the capture measured.
+- `export_tick_capture(file_name: Option<String>)` -> `CaptureExport` — the summarised document.
+  With a name, it is also written atomically to `<app data>/captures/<name>.json` under the same
+  name contract as a save (see below). Percentiles are **nearest rank**; phases the build cannot
+  measure appear in `unavailable` with a reason rather than as a missing row; hardware fields this
+  package did not measure are listed in `hardware.not_measured` rather than guessed.
+
+`ANIMA_TICK_CAPTURE` starts one at engine boot for a run nobody is watching, e.g.
+`ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2`.
+
 #### Persistence
 
 `file_path` keeps its parameter name for IPC compatibility. **It is a save *name*, not a path.**

@@ -7,7 +7,47 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] OSS-071b — nối `simplify` vào tracker sống (2026-07-26)
+# ⏪ [MỚI NHẤT] Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
+
+`§3.3` và nửa còn lại của `§3.2` trong `STATE_OF_THE_PROJECT.md`. Ba mảnh khoá vào nhau:
+
+1. **Lịch trình sống có đúng một định nghĩa.** `core/simulation_schedule.rs::build_tick_schedule` là
+   khối `add_systems` đã nằm giữa closure 900 dòng của `SimulationEngine::start`, tách ra nguyên
+   trạng. Trước đó mọi test headless tự khai một `.chain()` khác — tức là ghim một lịch trình app
+   **không** chạy.
+2. **`LiveExperimentAdapter: ExperimentModel`** (`core/live_experiment.rs`) chạy lịch trình đó qua
+   **cùng** `experiment_runner` với `ReferenceEvolutionWorld`. `RefCell<World>` chứ không `unsafe`:
+   hai method của trait nhận `&self` còn mọi query Bevy cần `&mut World`, nên cách trung thực là
+   mượn động, không phải cache một giá trị sẽ ôi.
+3. **`core/tick_capture.rs`** đo một tick của lịch trình đó: ba pha kẹp **chính xác** bằng `Instant`
+   trong vòng lặp sim, bốn pha còn lại giới hạn bằng checkpoint và **nói ra** rằng chúng chỉ là
+   checkpoint (`PhaseSummary.exact`). Ring cấp phát sẵn, không kênh, không thread.
+
+## Gate checkpoint lộ ra hai lỗ persistence thật
+
+- **Pha stride của regrowth sống trong `Local<usize>`** — trạng thái quỹ đạo nằm ở chỗ không snapshot
+  nào với tới. `REGROWTH_STRIDE = 4` nên một lần resume mọc lại **một phần tư khác** của thế giới.
+  Gate cũ không bắt vì `K = 1500` chia hết cho 4. Nay là `ResourceField::regrowth_phase`, có trong
+  save (schema 5) **và** trong `world_checksum`.
+- **Một tick để lại suy luận đang bay.** App trả lời request ở tick *sau*, nên ở ranh giới checkpoint
+  hai batch khoá theo `Entity` đang nằm trong kênh — mà id entity không ổn định qua restore. Adapter
+  trả lời **trong chính tick đã hỏi** (`live_inference_pump_system`), nên tick là nguyên tử.
+
+## `MIN_SUPPORTED_SCHEMA` không chặn bump như tài liệu cũ nói
+
+ADR-0004 và mục "Hoãn có lý do" bên dưới đều viết rằng bump `SCHEMA_VERSION` 4→5 sẽ **mất khả năng
+đọc save v2**. Sai, và đã sửa cả hai chỗ: hằng số đó chỉ áp cho file **có** `schema_version` (v3+);
+v1/v2 được ghi không có envelope nên đi nhánh pre-envelope. Schema nay là 5 và test save v1/v2 vẫn xanh.
+
+**Chưa làm, nói thẳng:** chưa có lần chạy **app desktop** nào — số hiệu năng thật vẫn cần một con
+người bấm chạy với `ANIMA_TICK_CAPTURE`, thủ tục ở `docs/how-to/BENCHMARKING.md`.
+
+Đo: `841 pass · 0 fail · 4 ignored` (desktop) và `823 pass · 0 fail · 4 ignored` (mặc định), 0 target
+rỗng, fmt + clippy hai cấu hình sạch, frontend `109` + `432` pass, lint/ratchet 0, build pass.
+
+---
+
+# ⏪ OSS-071b — nối `simplify` vào tracker sống (2026-07-26)
 
 `LineageTracker::compact(samples)` thay thế **thật** bộ nhớ của `InMemoryLineageTracker`, gọi ở
 thread tiến hoá mỗi 50 epoch. `746 pass · 0 fail`, 75 target 0 rỗng, fmt + clippy (cả hai cấu hình
@@ -302,10 +342,15 @@ vi `SNAPSHOT_CONTRACT` §8 tự nhận. ADR-0004 tự dặn "không tuyên bố 
 
 ## Hoãn có lý do, không phải quên
 
-Lưu trace vào save state cần bump `SCHEMA_VERSION` 4→5, mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`
-nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ là sai
-thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn
-`world_checksum` một lượt (§8).
+Lưu trace vào save state cần bump `SCHEMA_VERSION`. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ
+là sai thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState`
+lẫn `world_checksum` một lượt (§8).
+
+> **Sửa 2026-07-27.** Câu cũ ở đây nói bump 4→5 sẽ "mất khả năng đọc save v2" vì
+> `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`. Sai: hằng số đó chỉ áp cho file **có** `schema_version`
+> (v3 trở lên); v1/v2 không có envelope nên đi nhánh pre-envelope của `snapshot::from_bytes` bất kể
+> nó. Schema nay là **5** (gói live-adapter) và test save v1/v2 vẫn xanh. Cái đúng còn lại là lý do
+> **thứ tự**, không phải lý do tương thích.
 
 Ghi lại một phân biệt đáng giá khi tới lúc đó: **khi ghi, trace là đầu ra** và không lái thế giới nên
 không thuộc checksum; **khi phát lại, phần trace còn lại là đầu vào** và thuộc. Cùng một dữ liệu, hai

@@ -765,6 +765,84 @@ impl ObservableRegistry {
         }
     }
 
+    /// The registry for the **live Bevy world** ([`crate::core::live_experiment`]).
+    ///
+    /// A separate registry rather than extra rows on [`reference_default`](Self::reference_default),
+    /// because the two worlds do not measure the same things: the reference world's `herbivores` is
+    /// a pool of EU, while the live world's herbivores are countable bodies whose energy is already
+    /// inside `live.animals_eu`. Giving both the id `herbivores` would put two different units under
+    /// one name, which is precisely the failure `ObservableSpec` exists to prevent.
+    ///
+    /// Two ids **are** deliberately shared with the reference registry — `plants` and `detritus` —
+    /// with the same unit (EU) and the same [`ConservationRole::ClosedEu`]. Those are the shared-law
+    /// quantities, and sharing the id is what lets a control/treatment result from one path be
+    /// compared, in direction and meaning, with the other. `live_and_reference_agree_on_shared_ids`
+    /// pins that they never drift apart.
+    pub fn live_default() -> Self {
+        use crate::core::sim_clock::{ECOLOGY_PERIOD, PHYSICS_PERIOD};
+        const LIVE_SOURCE: &str = "core::live_experiment::LiveExperimentAdapter";
+        let spec =
+            |id: &str, unit: &str, role: ConservationRole, max: f64, period: u64, cadence: &str| {
+                ObservableSpec {
+                    id: id.to_string(),
+                    display_name: id.to_string(),
+                    unit: unit.to_string(),
+                    scope: ObservableScope::World,
+                    cadence_name: cadence.to_string(),
+                    cadence_period: period,
+                    aggregation: Aggregation::Instant,
+                    valid_min: 0.0,
+                    valid_max: max,
+                    conservation: role,
+                    source: LIVE_SOURCE.to_string(),
+                }
+            };
+        let eu = |id: &str, role: ConservationRole| {
+            spec(
+                id,
+                EU_UNIT,
+                role,
+                Self::OPEN_UPPER_BOUND,
+                ECOLOGY_PERIOD,
+                "ecology",
+            )
+        };
+        let count = |id: &str| {
+            spec(
+                id,
+                "individuals",
+                ConservationRole::None,
+                Self::OPEN_UPPER_BOUND,
+                PHYSICS_PERIOD,
+                "physics",
+            )
+        };
+        let specs = vec![
+            eu("plants", ConservationRole::ClosedEu),
+            eu("detritus", ConservationRole::ClosedEu),
+            eu("live.animals_eu", ConservationRole::ClosedEu),
+            eu("live.closed_eu_total", ConservationRole::None),
+            count("live.agent_count"),
+            count("live.herbivore_count"),
+            count("live.predator_count"),
+            count("live.food_items"),
+            eu("live.standing_crop", ConservationRole::None),
+            eu("live.mean_agent_energy", ConservationRole::None),
+            spec(
+                "live.season_phase",
+                "fraction",
+                ConservationRole::None,
+                1.0,
+                ECOLOGY_PERIOD,
+                "ecology",
+            ),
+        ];
+        Self {
+            version: OBSERVABLE_REGISTRY_VERSION,
+            specs,
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<&ObservableSpec> {
         self.specs.iter().find(|s| s.id == id)
     }

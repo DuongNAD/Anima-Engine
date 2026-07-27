@@ -154,9 +154,20 @@ Hard rules:
   effective MU origin. Mixed-origin fields keep the conservative world-law/field parent until the
   ledger supports multiple parents.
 - `Scenario`/`ReferenceEcosystem` remains the legacy headless machinery;
-  `ReferenceEvolutionWorld` proves AE3 only for the opt-in aggregate reference population. Do not
-  claim the live Bevy world is experiment-ready until its deterministic adapter and persistence
-  gates pass.
+  `ReferenceEvolutionWorld` proves AE3 only for the opt-in aggregate reference population.
+- **The live Bevy world now has a deterministic experiment adapter, and its gates pass headlessly**
+  — `core/live_experiment.rs` (`LiveExperimentAdapter: ExperimentModel`) driven through the shared
+  `experiment_runner`, on the schedule `simulation_loop::start` itself runs
+  (`core/simulation_schedule.rs`). `tests/live_experiment_tests.rs` covers same-seed checksum
+  identity, exact-tick intervention firing, a checkpoint fork, and
+  `run N == run K → save to disk → load → run N−K`. State that as *headless adapter verified*, and
+  keep saying what is still **not** claimed: no full desktop-app run has been made under the
+  multi-threaded executor; the adapter refuses `laws.exotic_energy` (the live world has no MU field)
+  and has no AE3 reference population; and numerical agreement with `ReferenceEvolutionWorld` is
+  never claimed — only agreement on the *direction and meaning* of a shared law.
+- The live schedule is built in exactly one place, `core::simulation_schedule::build_tick_schedule`.
+  A headless test that declares its own `.chain()`ed subset is testing a schedule the app does not
+  run; call the builder instead.
 
 ## Code style
 

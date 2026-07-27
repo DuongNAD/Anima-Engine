@@ -333,6 +333,21 @@ pub struct AgentEpochStats {
 #[derive(Resource)]
 pub struct EvolutionSender(pub crossbeam_channel::Sender<Vec<AgentEpochStats>>);
 
+/// One offspring the evolution thread asks the world to spawn in place of a retired agent:
+/// `(retired entity, genotype, position, lineage id, generation, parent lineage ids)`.
+///
+/// A name for a tuple that was already spelled out in five places. Purely an alias — the channel,
+/// the queue and every existing call site keep their exact types — so a headless harness can build
+/// the same channel without copying the shape and quietly getting one field wrong.
+pub type EvolutionSpawn = (
+    Entity,
+    MorphologyGenotype,
+    glam::Vec3,
+    String,
+    u32,
+    Vec<String>,
+);
+
 #[derive(Resource, Clone, Debug, Default)]
 pub struct EvolutionQueue {
     pub pending_replacements: Vec<(
