@@ -210,6 +210,24 @@ export default defineConfig(({ mode }) => ({
   server: {
     strictPort: true,
     port: 5173,
+    // A fixed port is not enough: the *address* has to be fixed too, and this is the single place
+    // that decides it for every way the dev server gets started.
+    //
+    // Left unset, Vite binds whatever `localhost` resolves to. Node has resolved that verbatim since
+    // v17, so `::1` is first on Windows and Linux alike, while `tauri.conf.json` hands the webview a
+    // literal IPv4 `devUrl`. Two names for what everyone assumes is one address.
+    //
+    // Measured 2026-07-27: `[::1]:5173` was held by an unrelated project's Vite server — 5173 is
+    // Vite's default, so every Vite project on the machine wants it — and this one bound
+    // `127.0.0.1:5173` beside it, because the other had claimed only the v6 side. `strictPort` was
+    // satisfied. The webview asked for a hostname, got `::1`, and rendered *the other project's
+    // application* inside the Anima window: a blank page, no error anywhere. The server logged
+    // `ready in 190 ms`, the page returned 200, and the CSP allowed the origin, because both servers
+    // were that origin.
+    //
+    // Binding the literal address the client is configured to reach removes the resolution step
+    // entirely. A collision is then a real collision, which `strictPort` reports loudly.
+    host: "127.0.0.1",
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
