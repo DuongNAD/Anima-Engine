@@ -97,10 +97,13 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
       putImageData: vi.fn(),
     };
     const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    // `getContext` is an overload set, so the replacement is described by the property's own type
+    // rather than by `any`. The stub itself stays structural: it answers `'2d'` with the two
+    // methods the terrain path calls and everything else with `null`, which is what jsdom does.
     HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation((id: string) => {
       if (id === '2d') return mockContext;
       return null;
-    }) as any;
+    }) as typeof HTMLCanvasElement.prototype.getContext;
 
     render(
       <PixiViewport segments={[]} raycasts={[]} pheromoneGrid={null} projection="xz" />

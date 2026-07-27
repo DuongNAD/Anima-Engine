@@ -1,15 +1,7 @@
 import { test, expect } from '@playwright/test';
-
-declare global {
-  interface Window {
-    __mock_listeners: Record<string, number[]>;
-    __mock_callbacks: Map<number, (event: any) => void>;
-    __mock_callback_counter: number;
-    __mock_emit: (eventName: string, payload: any) => void;
-    __TAURI_INTERNALS__: any;
-    __TAURI_EVENT_PLUGIN_INTERNALS__: any;
-  }
-}
+// Declares the `window.__mock_*` and `window.__TAURI_*` globals this spec injects below.
+import './tauri-mock-types';
+import type { TauriEventEnvelope, TauriInvokeArgs } from './tauri-mock-types';
 
 test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
 
@@ -25,7 +17,7 @@ test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
       };
 
       window.__TAURI_INTERNALS__ = {
-        invoke: async (cmd: string, args: any) => {
+        invoke: async (cmd: string, args: TauriInvokeArgs) => {
           if (cmd === 'get_map_elites_grid') {
             return { grid: {}, grid_resolution: 50 };
           }
@@ -75,7 +67,7 @@ test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
           }
           throw new Error(`Unrecognized command mock: ${cmd}`);
         },
-        transformCallback: (callback: any) => {
+        transformCallback: (callback: (event: TauriEventEnvelope) => void) => {
           const id = ++window.__mock_callback_counter;
           window.__mock_callbacks.set(id, callback);
           return id;
@@ -87,7 +79,7 @@ test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
       };
 
       // Helper to trigger events
-      window.__mock_emit = (eventName: string, payload: any) => {
+      window.__mock_emit = (eventName: string, payload: unknown) => {
         const handlers = window.__mock_listeners[eventName] || [];
         handlers.forEach((handlerId: number) => {
           const cb = window.__mock_callbacks.get(handlerId);

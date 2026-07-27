@@ -19,7 +19,7 @@ Frontend (run from repo root):
 - `npm run build` — `tsc && vite build`; typechecks first, builds two entries (`index.html`, `landscape.html`).
 - `npm run test` — Vitest over `src/**`.
 - `npm run test:frontend` — Vitest over the dedicated `tests/` suite (`--root tests`). This is the suite handoff docs use.
-- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; legacy `any` and unused-var issues are warnings only. Pair with `node scripts/eslint_ratchet.mjs`, whose baseline (483) may only ever be **lowered**.
+- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; `any`, unused-var and React Compiler issues are warnings. There are currently **none of either**: `node scripts/eslint_ratchet.mjs` holds the baseline at **0**, so a warning means the commit in front of you introduced it. Fix it there; the baseline may only ever be lowered, and it is already at the floor.
 - `npm run check:csp` — validates the shipped `dist/` against the CSP declared in `tauri.conf.json`: no external origins, no inline `<script>` bodies, hardening directives present. It checks *artifacts against policy*; it cannot prove the app boots under that policy, which needs `npm run tauri:dev` and a human.
 - `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
 - `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.

@@ -38,7 +38,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
-  const makeCustomMock = (overrides: Record<string, any>) => {
+  const makeCustomMock = (overrides: Record<string, unknown>) => {
     vi.mocked(invoke).mockImplementation((cmd) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
@@ -87,13 +87,16 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       }
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       render(<App />);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -110,13 +113,16 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       }
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       render(<App />);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -130,12 +136,15 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', [null]);
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -149,12 +158,15 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('combat-event', null);
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -168,12 +180,15 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('migration-event', null);
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -187,12 +202,16 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       await act(async () => {
-        await emit('pheromone-update', { width: 10, height: 10 } as any);
+        // A pheromone grid with no `grid` field — the shape a partially-written payload has.
+        await emit('pheromone-update', { width: 10, height: 10 });
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 
@@ -206,12 +225,15 @@ describe('Phase 4 Front-end - Adversarial Crash & Vulnerability Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let error: Error | null = null;
+    // `unknown`, not `Error | null`: these tests exist because the payload is malformed, and a
+    // throw from deep inside React or a mock is under no obligation to be an `Error`. The
+    // assertion is `toBeNull()`, which needs no more than this.
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('raycast-update', [null]);
       });
-    } catch (e: any) {
+    } catch (e) {
       error = e;
     }
 

@@ -66,7 +66,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 import { App } from '../../src/App';
 
 describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
-  const setupDefaultInvokeMock = (overrides: Record<string, any> = {}) => {
+  const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
     vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
@@ -218,12 +218,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: {} });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();
@@ -245,12 +245,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       ]
     };
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();
@@ -264,12 +264,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: "corrupted_string" });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();

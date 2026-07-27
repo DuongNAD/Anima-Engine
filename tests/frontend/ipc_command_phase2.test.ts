@@ -78,7 +78,7 @@ describe('Tauri IPC Commands & Events - Phase 2', () => {
   it('should subscribe to map-elites-update event stream and trigger it via emit', async () => {
     let receivedPayload: MapElitesGridState | null = null;
 
-    const unlisten = await listen<MapElitesGridState>('map-elites-update', (event: any) => {
+    const unlisten = await listen<MapElitesGridState>('map-elites-update', (event) => {
       receivedPayload = event.payload;
     });
 

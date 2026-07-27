@@ -4,6 +4,7 @@ import React from 'react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
+import { makeCanvas2DStub, stubCanvas2D, type Canvas2DStub } from '../mocks/canvas-2d';
 
 // Mock Tauri Core
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
@@ -44,24 +45,12 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 5 Gemini Chronicle Timeline Logs UI', () => {
-  let mockCtx: any;
+  let mockCtx: Canvas2DStub;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockCtx = {
-      clearRect: vi.fn(),
-      beginPath: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      stroke: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      closePath: vi.fn(),
-      fillText: vi.fn(),
-      fillRect: vi.fn(),
-    };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx as any);
+    mockCtx = makeCanvas2DStub();
+    stubCanvas2D(mockCtx);
   });
 
   it('should query get_chronicle_history on mount and display chronicle history log', async () => {

@@ -78,6 +78,10 @@ export const LandscapeShowcase: React.FC = () => {
   const [terrain, setTerrain] = useState<TerrainData | null>(() =>
     typeof indexedDB === 'undefined' ? getMemoizedTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED) : null,
   );
+  // Load once. `terrain` is in the dependency list rather than suppressed out of it: the guard on
+  // the first line makes the re-run the loaded terrain triggers a no-op, so the honest list and the
+  // empty one do the same thing — and the honest one keeps saying so if the guard ever moves.
+  // (`WorldShowcase` has the identical shape for its world.)
   useEffect(() => {
     if (terrain) return;
     let alive = true;
@@ -87,8 +91,7 @@ export const LandscapeShowcase: React.FC = () => {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [terrain]);
 
   useEffect(() => {
     audioManager.initialize();

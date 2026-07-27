@@ -3,6 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
+import { makeCanvas2DStub, stubCanvas2D, type Canvas2DStub } from '../mocks/canvas-2d';
 import {
   mockRaycastTelemetry,
   mockPheromoneGridState,
@@ -90,31 +91,12 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 3 Front-end UI & Canvas Rendering', () => {
-  let mockCtx: any;
+  let mockCtx: Canvas2DStub;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockCtx = {
-      clearRect: vi.fn(),
-      beginPath: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      stroke: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      closePath: vi.fn(),
-      fillText: vi.fn(),
-      fillRect: vi.fn(),
-      fillStyle: '',
-      strokeStyle: '',
-      lineWidth: 1,
-      font: '',
-      textAlign: '',
-      textBaseline: '',
-    };
-
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx as any);
+    mockCtx = makeCanvas2DStub();
+    stubCanvas2D(mockCtx);
   });
 
   it('should call get_pheromone_grid and get_active_raycasts on mount and display them', async () => {

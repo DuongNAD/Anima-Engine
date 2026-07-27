@@ -41,7 +41,7 @@ describe('Phase 4 Front-end UI - Adversarial Stress Tests', () => {
     vi.clearAllMocks();
   });
 
-  const makeSafeMock = (overrides: Record<string, any>) => {
+  const makeSafeMock = (overrides: Record<string, unknown>) => {
     vi.mocked(invoke).mockImplementation((cmd) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {

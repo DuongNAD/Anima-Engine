@@ -24,6 +24,7 @@
 // An intersection with `HTMLElement` keeps every cast a single, ordinary downcast — not a trip
 // through `unknown`, which would be the same hole with more punctuation.
 
+import type { Mock } from 'vitest';
 import type * as THREE from 'three';
 
 /** A three vector, as the stubs model it. */
@@ -32,6 +33,28 @@ export interface StubVec3 {
   y: number;
   z: number;
 }
+
+/**
+ * Transform writes observed as spy calls rather than as resulting values.
+ *
+ * Two suites need the difference. Reading `position.x` after the fact answers "where did it end
+ * up"; `position.set` as a `Mock` answers "was it written at all, and with what" — which is the
+ * question when the assertion is `not.toHaveBeenCalled()` for a payload the component should have
+ * rejected.
+ */
+export interface StubSpiedTransform {
+  position: { set: Mock };
+  rotation: { set: Mock };
+  scale: { set: Mock };
+}
+
+/** Material colour writes, likewise observed as spy calls. */
+export interface StubSpiedMaterial {
+  material: { color: { setRGB: Mock; set: Mock } };
+}
+
+/** Both of the above: what an element standing in for a rendered `<mesh>` carries. */
+export type StubSpiedMesh = StubSpiedTransform & StubSpiedMaterial;
 
 /** Elements a component positions, rotates or scales. */
 export interface StubTransform {

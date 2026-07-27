@@ -22,8 +22,9 @@
     "noFallthroughCasesInSwitch": true,
 
     "paths": {
-      "@/*": ["../src/*"]
+      "@/*": ["../src/*"],
+      "@react-three/fiber": ["./mocks/react-three-fiber-mock.ts"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"]
+  "include": ["**/*.ts", "**/*.tsx", "../src/r3f-intrinsics.d.ts"]
 }

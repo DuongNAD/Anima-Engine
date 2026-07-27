@@ -58,7 +58,7 @@ trong bảng.
 | Lint backend (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | sạch |
 | Test frontend (src) | `npm run test` | 13 file · **90 pass** |
 | Test frontend (tests/) | `npm run test:frontend` | ⚠️ **CHƯA đo lại tại `d006f64`.** Số gần nhất trên máy rảnh: **243 pass**, 1 skip — xem cảnh báo dưới |
-| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error**, 491 warning (baseline 491) |
+| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**) — đo lại trên `feature-anima-completion`, 2026-07-27 |
 | Build | `npm run build` | pass |
 | Link tài liệu | `node scripts/check_docs_links.mjs` | 417 link trong 90 file, **0 gãy** |
 
@@ -532,7 +532,7 @@ vẫn trả đồ thị **đầy đủ**.
 |---|---|---|---|
 | 3.9 | Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`, hoặc bỏ nếu không còn cần | [`ai/model.rs:360`](../../src-tauri/src/ai/model.rs) | Đây là **2/2** khối unsafe của cả backend, và không cái nào có luận chứng. Type này ôm `WgpuDevice` |
 | 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
-| 3.11 | Giảm 491 warning ESLint | `scripts/eslint_ratchet.mjs` | Ratchet chặn tăng nhưng không ép giảm. Nợ đang đóng băng, không co lại |
+| ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |

@@ -6,7 +6,7 @@ describe('Tauri IPC Events - simulation-tick event stream', () => {
   it('F3: should successfully register listener and receive simulation-tick event payload', async () => {
     let receivedPayload: SegmentState[] | null = null;
 
-    const unlisten = await listen<SegmentState[]>('simulation-tick', (event: any) => {
+    const unlisten = await listen<SegmentState[]>('simulation-tick', (event) => {
       receivedPayload = event.payload;
     });
 

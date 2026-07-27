@@ -68,7 +68,7 @@ import { App } from '../../src/App';
 import PixiViewport from '../../src/PixiViewport';
 
 describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
-  const setupDefaultInvokeMock = (overrides: Record<string, any> = {}) => {
+  const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
     vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
@@ -116,8 +116,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     process.removeAllListeners('uncaughtException');
     process.removeAllListeners('unhandledRejection');
 
-    let caughtError: Error | null = null;
-    const onError = (err: any) => {
+    let caughtError: unknown = null;
+    const onError = (err: unknown) => {
       caughtError = err;
     };
     process.on('uncaughtException', onError);
@@ -276,13 +276,16 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       get_environmental_elements: new Error("DATABASE_OFFLINE")
     });
 
-    let renderError: Error | null = null;
+    // `unknown` throughout this file: the payloads are deliberately malformed, and a throw from
+    // inside React or a mock is under no obligation to be an `Error`. Every assertion is
+    // `toBeNull()`, which needs nothing more.
+    let renderError: unknown = null;
     try {
       render(<App />);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
-    } catch (e: any) {
+    } catch (e) {
       renderError = e;
     }
 
@@ -300,12 +303,12 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', null);
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
 
@@ -319,12 +322,12 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: {} });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
 
@@ -369,7 +372,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       ]
     };
 
-    let error: any = null;
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
@@ -400,7 +403,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
           yaw: 0.1,
           pitch: 0.0,
           roll: 0.0,
-          joint_anchor_x: "corrupted_string" as any, // Not a number
+          joint_anchor_x: "corrupted_string", // Not a number
           joint_anchor_y: 0,
           joint_anchor_z: 0,
           joint_axis_x: 0,
@@ -414,7 +417,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       head_directions: []
     };
 
-    let error: any = null;
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
@@ -429,7 +432,10 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const error = await runWithInterceptors(() => {
-      render(<PixiViewport raycasts={{} as any} />);
+      // An object where the viewport expects an array — what `get_active_raycasts` returns when the
+      // backend serialises an empty map instead of an empty list. `as never` states that this is
+      // outside the prop's type, which is the test's subject, rather than switching the check off.
+      render(<PixiViewport raycasts={{} as never} />);
     });
 
     expect(error).toBeNull();
@@ -441,7 +447,9 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const error = await runWithInterceptors(() => {
-      render(<PixiViewport segments={mockSimulationTickPayload as any} />);
+      // The whole tick payload handed to the prop that wants only its `segments` array — a
+      // plausible wiring mistake, and the thing this test is about.
+      render(<PixiViewport segments={mockSimulationTickPayload as never} />);
     });
 
     expect(error).toBeNull();
@@ -452,8 +460,11 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   // --- ADDITIONAL STRESS & ADVERSARIAL TESTS FOR MILESTONE T12 ---
 
   it('Verify production coordinate synchronization between segments and environmental elements', async () => {
-    const originalVitest = (globalThis as any).process?.env?.VITEST;
-    (globalThis as any).process.env.VITEST = 'false';
+    // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
+    // that path is what this test is about. `process` is a real global here — this file already
+    // calls `process.listeners` — so the detour through `globalThis as any` bought nothing.
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = 'false';
 
     try {
       mockGraphicsMethods.drawCircle.mockClear();
@@ -525,14 +536,16 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       expect(lakeCall[1]).toBeCloseTo(175);
 
     } finally {
-      (globalThis as any).process.env.VITEST = originalVitest;
+      process.env.VITEST = originalVitest;
     }
   });
 
   it('Verify app does not crash when environmentalState.elements is not an array', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const invalidEnvState = { elements: {} as any };
+    // `elements` as an object rather than an array: what serde produces for an empty map, and a
+    // shape the viewport must survive rather than iterate.
+    const invalidEnvState = { elements: {} as never };
 
     const error = await runWithInterceptors(async () => {
       render(<PixiViewport environmentalState={invalidEnvState} />);
@@ -546,8 +559,11 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   });
 
   it('Verify production coordinate mapping with NaN coordinates does not crash but results in NaN screen coordinates', async () => {
-    const originalVitest = (globalThis as any).process?.env?.VITEST;
-    (globalThis as any).process.env.VITEST = 'false';
+    // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
+    // that path is what this test is about. `process` is a real global here — this file already
+    // calls `process.listeners` — so the detour through `globalThis as any` bought nothing.
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = 'false';
 
     try {
       const nanSegments = [
@@ -581,7 +597,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       expect(isNaN(segmentCall[0]) || isNaN(segmentCall[1])).toBe(true);
 
     } finally {
-      (globalThis as any).process.env.VITEST = originalVitest;
+      process.env.VITEST = originalVitest;
     }
   });
 

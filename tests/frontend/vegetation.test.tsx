@@ -4,23 +4,29 @@ import { render } from '@testing-library/react';
 import * as THREE from 'three';
 import { Vegetation } from '../../src/components/Landscape/Vegetation';
 import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
+import type { FrameCallback } from '../mocks/r3f-frame-state';
+import {
+  removeStubbedProperties,
+  type StubAttributeCapture,
+  type StubUniforms,
+} from '../mocks/r3f-dom-stubs';
 
 // Mock react-three-fiber Canvas and useFrame
-let frameCallbacks: Array<(state: any, delta: number) => void> = [];
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
   };
 });
 
 describe('Vegetation Component Tests', () => {
-  let originalSetAttribute: any;
+  let originalSetAttribute: typeof HTMLElement.prototype.setAttribute | undefined;
   let capturedMaterials: THREE.MeshStandardMaterial[] = [];
-  let setMatrixCalls: Array<{ instanceId: number; matrix: THREE.Matrix4; element: any }> = [];
+  let setMatrixCalls: Array<{ instanceId: number; matrix: THREE.Matrix4; element: Element }> = [];
 
   beforeEach(() => {
     frameCallbacks = [];
@@ -41,7 +47,7 @@ describe('Vegetation Component Tests', () => {
 
     // Mock setMatrixAt to inspect positions
     HTMLElement.prototype.setMatrixAt = vi.fn().mockImplementation(function (
-      this: any,
+      this: HTMLElement,
       instanceId: number,
       matrix: THREE.Matrix4
     ) {
@@ -64,14 +70,14 @@ describe('Vegetation Component Tests', () => {
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
     HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: any,
+      this: HTMLElement & StubAttributeCapture,
       name: string,
-      value: any
+      value: string | THREE.BufferAttribute
     ) {
       if (value instanceof THREE.BufferAttribute) {
         this._capturedAttributes.set(name, value);
       } else {
-        originalSetAttribute.call(this, name, value);
+        originalSetAttribute?.call(this, name, value);
       }
     });
   });
@@ -80,11 +86,14 @@ describe('Vegetation Component Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (HTMLElement.prototype as any).setMatrixAt;
-    delete (HTMLElement.prototype as any).setIndex;
-    delete (HTMLElement.prototype as any).computeVertexNormals;
-    delete (HTMLElement.prototype as any)._capturedAttributes;
-    delete (THREE.MeshStandardMaterial.prototype as any).onBeforeCompile;
+    removeStubbedProperties(
+      HTMLElement.prototype,
+      'setMatrixAt',
+      'setIndex',
+      'computeVertexNormals',
+      '_capturedAttributes',
+    );
+    removeStubbedProperties(THREE.MeshStandardMaterial.prototype, 'onBeforeCompile');
   });
 
   it('should render instanced meshes for each flora type', () => {
@@ -192,9 +201,11 @@ describe('Vegetation Component Tests', () => {
 
     expect(capturedMaterials.length).toBeGreaterThan(0);
 
-    // Simulate compiling shader
-    const mockShader = {
-      uniforms: {} as any,
+    // Simulate compiling shader. `uniforms` starts empty: what is asserted below is that the
+    // material's `onBeforeCompile` puts the shared live objects into it, so declaring the block as
+    // the uniform map it becomes says more than `{} as any` did.
+    const mockShader: StubUniforms & { vertexShader: string; fragmentShader: string } = {
+      uniforms: {},
       vertexShader: '#include <common>\n#include <begin_vertex>',
       fragmentShader: '',
     };
