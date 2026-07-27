@@ -47,6 +47,21 @@ const CHUNK_BUDGET_KIB = {
   CanvasRenderer: 120,
   RenderTargetSystem: 110,
   LandscapeShowcase: 90,
+  // The shared-world scene. It became a chunk of the *dashboard's* graph when the Landscape button
+  // stopped opening the 160-cell `LandscapeShowcase` and started opening the 2048² world the
+  // simulation actually runs in — one world on screen instead of two, and the live population drawn
+  // on it.
+  //
+  // Measured at 106.2 KiB when that landed; 130 gives the same kind of headroom the entries above
+  // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
+  // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
+  WorldShowcase: 130,
+  // `react-dom/client`, which is why the chunk is called `client`. It appeared as a chunk of its own
+  // when both entries started rendering the same scene: rolldown hoisted the renderer into shared
+  // code instead of leaving a copy inside each entry. That is the split improving, not the bundle
+  // growing — `landscape` fell from 78.8 KiB to 429 bytes in the same build and the total dropped
+  // from 1711.3 to 1652.3 KiB. Measured at 130.4 KiB; 160 is the usual headroom.
+  client: 160,
   default: 80,
 };
 

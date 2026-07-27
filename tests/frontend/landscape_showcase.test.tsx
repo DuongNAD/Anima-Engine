@@ -31,8 +31,23 @@ vi.mock('@react-three/fiber', async () => {
         rotateY: vi.fn(),
         rotateX: vi.fn()
       },
-      scene: { add: vi.fn(), remove: vi.fn() },
-      gl: { setSize: vi.fn(), domElement: document.createElement('canvas') }
+      // `traverse` and `shadowMap` are what `applyShadowPass` reaches for when the quality preset
+      // changes. Both are on the shared `tests/mocks/` r3f stub already; this file predates it and
+      // mocks r3f locally, so the two have to be kept in step by hand.
+      scene: { add: vi.fn(), remove: vi.fn(), traverse: vi.fn() },
+      gl: {
+        setSize: vi.fn(),
+        domElement: document.createElement('canvas'),
+        shadowMap: { enabled: false, needsUpdate: false }
+      },
+      // `WorldShowcase`'s `QualityApplier` destructures this and calls it in an effect. Absent, the
+      // effect throws `setDpr is not a function`, React unmounts the tree, and the failure surfaces
+      // as "unable to find the showcase" — a missing element, which reads like a render bug rather
+      // than a mock that is one member short of the thing it stands in for.
+      //
+      // This file mocks r3f locally instead of using the shared `tests/mocks/` alias, so the shared
+      // mock's fuller state does not apply here.
+      setDpr: vi.fn()
     }),
     extend: vi.fn()
   };
@@ -371,7 +386,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         expect(document.getElementById('volume-slider')).toBeTruthy();
       });
 
-      it('F8.2: App.tsx mount toggle', async () => {
+      it('F8.2: App.tsx mount toggle opens the shared world, not the standalone scene', async () => {
         render(<App />);
         const toggleBtn = screen.getByText(/Landscape Showcase/i);
         expect(toggleBtn).toBeTruthy();
@@ -379,9 +394,17 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
           fireEvent.click(toggleBtn);
           await new Promise((resolve) => setTimeout(resolve, 100));
         });
-        const showcase = await screen.findByTestId('landscape-showcase');
+        // The lazy chunk behind this button is now the shared-world scene, which pulls in worldGen
+        // and the whole `World*` family — a far heavier import than the 160-cell scene it replaced.
+        // `findBy*` defaults to a 1 s window and that is no longer enough under jsdom.
+        // `world-showcase`, not `landscape-showcase`. The button used to open a separate 160-cell
+        // scene with its own terrain generator, so the app drew two different worlds and called both
+        // "the map" — while the agents lived in neither of the ones on screen. It now opens the
+        // 2048² shared world that `init_world` downsamples, which is the world the simulation is in.
+        const showcase = await screen.findByTestId('world-showcase', {}, { timeout: 20_000 });
         expect(showcase).toBeTruthy();
-      });
+        expect(screen.queryByTestId('landscape-showcase')).toBeNull();
+      }, 30_000);
 
       it('F8.3: UI event handler', () => {
         render(<LandscapeShowcase />);
@@ -640,15 +663,15 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
           fireEvent.click(landscapeBtn);
           await new Promise((resolve) => setTimeout(resolve, 100));
         });
-        const showcase = await screen.findByTestId('landscape-showcase');
+        const showcase = await screen.findByTestId('world-showcase');
         expect(showcase).toBeTruthy();
-        
+
         await act(async () => {
           fireEvent.click(rabbitBtn);
           await new Promise((resolve) => setTimeout(resolve, 100));
         });
         await waitFor(() => {
-          expect(screen.queryByTestId('landscape-showcase')).toBeNull();
+          expect(screen.queryByTestId('world-showcase')).toBeNull();
         });
       });
 

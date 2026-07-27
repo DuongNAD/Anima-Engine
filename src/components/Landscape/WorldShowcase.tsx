@@ -10,6 +10,7 @@ import WorldCaves from './WorldCaves';
 import WorldBirds from './WorldBirds';
 import WorldFish from './WorldFish';
 import WorldWildlife from './WorldWildlife';
+import LiveAgents from './LiveAgents';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
@@ -499,6 +500,16 @@ export const WorldShowcase: React.FC = () => {
         <WorldBirds renderSize={RENDER_SIZE} />
         <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
         <WorldWildlife
+          world={world}
+          renderSize={RENDER_SIZE}
+          heightRatio={HEIGHT_RATIO}
+          meshResolution={MESH_RES}
+        />
+
+        {/* The running simulation's population, on the world it is actually simulating in. Draws
+            nothing without a Tauri transport, which is what keeps the canonical capture — driven by
+            an ordinary Chromium — byte-identical. */}
+        <LiveAgents
           world={world}
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
