@@ -45,14 +45,14 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
 
-### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `068a750`
+### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `19e67fa`
 
 | Loại | Gate | Lệnh | Cấu hình | Kết quả |
 |---|---|---|---|---|
-| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **851 passed · 0 failed · 2 ignored**, 82 dòng `test result`, exit 0 |
-| 📏 | Backend test | `cargo test --no-default-features --no-fail-fast` | mặc định | **833 passed · 0 failed · 2 ignored**, 75 dòng `test result`, exit 0 |
-| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile desktop` | `desktop` | exit 0 — **82 target**, 3 rỗng *(có chủ ý, có trong allow-list)*, 2 ignore *(có chủ ý)*, **7/7 target feature-gated chạy** |
-| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile default` | mặc định | exit 0 — **75 target**, 3 rỗng *(có chủ ý)*, 2 ignore *(có chủ ý)*, **0 target feature-gated được lên lịch** |
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **877 passed · 0 failed · 2 ignored**, **87** dòng `test result`, exit 0 |
+| 📏 | Backend test | `cargo test --no-default-features --no-fail-fast` | mặc định | **859 passed · 0 failed · 2 ignored**, **80** dòng `test result`, exit 0 |
+| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile desktop` | `desktop` | exit 0 — **87 target**, 3 rỗng *(có chủ ý, có trong allow-list)*, 2 ignore *(có chủ ý)*, **7/7 target feature-gated chạy** |
+| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile default` | mặc định | exit 0 — **80 target**, 3 rỗng *(có chủ ý)*, 2 ignore *(có chủ ý)*, **0 target feature-gated được lên lịch** |
 | 📏 | Format | `cargo fmt --check` | — | exit 0 |
 | 📏 | Lint backend | `cargo clippy --all-targets --no-default-features -- -D warnings` | mặc định | exit 0 |
 | 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | `desktop` | exit 0 |
@@ -64,10 +64,15 @@ Ba target rỗng và hai test `#[ignore]` **là quyết định đã ghi**, khô
 trong [`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs), và gate fail với bất
 kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh sách đã hết hiệu lực.
 
-### 1.b Frontend / lint — chạy lại 2026-07-27 tại `068a750`
+### 1.b Frontend / lint — chạy lại 2026-07-27 tại `19e67fa`
+
+> 🔴 **`npm run check:licenses-complete` FAIL (exit 1) — đây là chặn phát hành, xem 1.c.**
+> Mọi hàng khác dưới đây xanh. Một hàng xanh không bù được hàng đỏ đó.
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
+| 📏 | **Case tham số IPC** | `npm run check:ipc` | **28 command · 22 call site · 8 key** — exit 0. Gate **mới**: trước khi có nó, **5 key sai trên 4 command** (`save_simulation_state`, `load_simulation_state`, `trigger_migration`, `import_legacy_save`) — save/load **chưa bao giờ chạy được trong app thật**, và 6 assertion trong 5 file test đã **đóng băng key sai** nên suite xanh *nhờ* có lỗi. Sửa ở `19e67fa` |
+| 📏 | Artifact thí nghiệm E2 | `npm run check:e2` | exit 0 — mọi digest tính lại bằng `node:crypto`, 132 + 11 delta theo seed |
 | 📏 | Lint frontend | `npm run lint` | exit 0 |
 | 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
 | 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
@@ -95,7 +100,23 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 > **exit 1** và nêu tên cả sáu thông điệp. Từ nay một hàng E2E chỉ được ghi là xanh khi **cả** exit
 > code **và** output thô đều sạch.
 
-### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `068a750`
+### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `19e67fa`
+
+> 🔴 **CHẶN PHÁT HÀNH — `npm run check:licenses-complete` exit 1.**
+> `hexf-parse 0.2.1` khai `CC0-1.0` nhưng artifact đã cài **không chứa file licence nào**, và
+> repository upstream tại đúng commit phát hành (`4225763`, tag `0.2.1`) cũng **không có**. File
+> `LICENSE` duy nhất từng được commit vào repo đó xuất hiện 2024-12-04 — **ba năm rưỡi sau** bản
+> phát hành này — và nội dung là **0BSD**, tức một licence *khác* với CC0-1.0 mà bản này khai; vendor
+> nó vào sẽ gán **sai điều khoản** cho code đang ship. Nó vào binary qua `naga` → wgpu → `ml-wgpu` →
+> `desktop`, nên **có phân phối**.
+>
+> Đây là **quyết định pháp lý**, không phải việc kỹ thuật — chính `licensing/UNRESOLVED.md` viết vậy:
+> *"Closing this row is a legal decision about whether the crates.io declaration alone suffices, not
+> an engineering one."* **Chưa có quyết định pháp lý nào được ghi ở đâu cả.** 31/32 hàng khác đã
+> đóng đúng cách (39 file vendor, 24 commit, 19 repository); hàng này thì không.
+>
+> Cho đến khi có một quyết định pháp lý thật được ghi lại, **dự án không ở trạng thái phát hành
+> được.** Gate đã nói đúng câu đó: *"This gate is what 'ready to distribute' means; it is failing."*
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
