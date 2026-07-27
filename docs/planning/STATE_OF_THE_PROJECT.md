@@ -28,7 +28,9 @@ gate chưa xanh.
 > trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
 >
 > **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
-> `feature-anima-completion`, tại commit **`2285a92`**.
+> `feature-anima-completion`, tại commit **`1cddeb5`** — một lượt chạy **toàn bộ** gate CI, không
+> phải chạy chọn lọc. Toolchain: rustc/cargo **1.95.0**, Playwright **1.62.0**. Mọi hàng dưới đây
+> đến từ **cùng một lượt chạy đó**, trừ đúng một hàng còn ⏳ và đã nói rõ lý do.
 
 Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và **loại khẳng định**:
 
@@ -37,37 +39,57 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
 
-### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `2285a92`
+### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `1cddeb5`
 
 | Loại | Gate | Lệnh | Cấu hình | Kết quả |
 |---|---|---|---|---|
-| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **851 passed · 0 failed · 2 ignored**, exit 0 |
-| 📏 | Backend test | `cargo test --no-default-features --no-fail-fast` | mặc định | **833 passed · 0 failed · 2 ignored**, exit 0 |
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **851 passed · 0 failed · 2 ignored**, 82 dòng `test result`, exit 0 |
+| 📏 | Backend test | `cargo test --no-default-features --no-fail-fast` | mặc định | **833 passed · 0 failed · 2 ignored**, 75 dòng `test result`, exit 0 |
 | 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile desktop` | `desktop` | exit 0 — **82 target**, 3 rỗng *(có chủ ý, có trong allow-list)*, 2 ignore *(có chủ ý)*, **7/7 target feature-gated chạy** |
 | 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile default` | mặc định | exit 0 — **75 target**, 3 rỗng *(có chủ ý)*, 2 ignore *(có chủ ý)*, **0 target feature-gated được lên lịch** |
 | 📏 | Format | `cargo fmt --check` | — | exit 0 |
 | 📏 | Lint backend | `cargo clippy --all-targets --no-default-features -- -D warnings` | mặc định | exit 0 |
 | 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | `desktop` | exit 0 |
+| 📏 | Advisory Rust | `cargo audit` | — | exit 0 — 1.169 advisory nạp, quét **773 crate** trong `Cargo.lock` |
+| 📏 | Tách feature (G2 #2) | `cargo tree --no-default-features -e normal` | mặc định | **0** kết quả cho `neo4rs\|tokio-tungstenite\|burn-wgpu\|naga`, và **0** cho `criterion` |
+| 📏 | Parity binding Rust↔TS (G1.4) | `cargo test` rồi `git diff --exit-code -- src/types/generated` | `desktop` | exit 0 — binding sinh lại **không đổi byte nào** |
 
 Ba target rỗng và hai test `#[ignore]` **là quyết định đã ghi**, không phải nợ: lý do từng mục nằm
 trong [`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs), và gate fail với bất
 kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh sách đã hết hiệu lực.
 
-### 1.b Frontend / lint — chạy lại 2026-07-27 tại `2285a92`
+### 1.b Frontend / lint — chạy lại 2026-07-27 tại `1cddeb5`
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
 | 📏 | Lint frontend | `npm run lint` | exit 0 |
 | 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
 | 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
-| ⏳ | Test frontend (`src/`) | `npm run test` | 14 file · **109 passed** — đo **2026-07-27 tại `bb8248e`**; gói tài liệu này không đổi mã nên không chạy lại |
-| ⏳ | Test frontend (`tests/`) | `npm run test:frontend -- --maxWorkers=4` | 38 file · **432 passed · 0 skip** — đo **2026-07-27 tại `bb8248e`**; xem §4 về nhiễu do tranh chấp CPU |
-| ⏳ | Build | `npm run build` | pass — **2026-07-27 tại `bb8248e`** |
-| ⏳ | E2E Playwright | `npm run test:e2e` | **9 passed · 0 failed · 5 skipped có lý do** — đo **2026-07-26 tại `d006f64`**; cần server riêng cổng 5177, chưa chạy lại |
-| ⏳ | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script — **2026-07-27 tại `bb8248e`**, đọc `dist/` đã build sẵn |
-| ⏳ | Ngân sách bundle | `npm run check:bundle` | 23 chunk · **1711,3 / 2000 KiB** — **2026-07-27 tại `bb8248e`**, đọc `dist/` đã build sẵn |
+| 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed · 0 fail · 0 skip**, exit 0 |
+| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | **38 file · 432 passed · 0 fail · 0 skip**, exit 0 — chạy khi máy rảnh; xem §4 về nhiễu do tranh chấp CPU |
+| 📏 | Build | `npm run build` | exit 0 — `tsc` sạch, 806 module transform |
+| 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped**, exit 0, **và 0 `console.error` / `pageerror` / `TypeError` trong toàn bộ output thô** — server riêng cổng 5177 + kiểm định danh trong `global-setup.ts`; `ANIMA_E2E_REQUIRE_BACKEND` **cố ý không đặt**, nên `real_backend.spec.ts` không khai test nào |
+| 📏 | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script · đủ directive hardening — đọc `dist/` **vừa build ở hàng trên** |
+| 📏 | Ngân sách bundle | `npm run check:bundle` | 23 chunk · **1711,3 / 2000 KiB**, mọi chunk trong ngân sách |
+| 📏 | Advisory npm (root) | `npm audit --audit-level=high` | **0 vulnerability**, exit 0 |
+| 📏 | Advisory npm (`tests/`) | `npm audit --audit-level=high --prefix tests` | **0 vulnerability**, exit 0 |
 
-### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `2285a92`
+> **Sửa một số cũ:** hàng E2E trước đây ghi *9 passed / 5 skipped* (đo 2026-07-26 tại `d006f64`).
+> Lượt chạy này cho **18 passed / 0 skipped** — năm spec skip cũ đã được thay bằng
+> `ipc_contract.spec.ts` chạy trên transport mock có kiểu sinh từ `ts-rs`, và `real_backend.spec.ts`
+> **không khai test nào** trừ khi `ANIMA_E2E_REQUIRE_BACKEND=1`. Không spec nào spawn binary desktop.
+>
+> ⚠️ **`18 passed` một mình từng KHÔNG phải một gate sạch, và đó là lý do hàng này nay ghi thêm vế
+> thứ hai.** Ở `e7bac09`, cùng một lượt chạy exit 0 vẫn in **bốn `TypeError`, mỗi cái hai lần**:
+> `global-setup.ts` hâm nóng module graph bằng cách mở dashboard **không cài transport Tauri**, nên
+> mọi `invoke`/`listen` ném lỗi — và không có gì theo dõi console của setup, vì `isOwned` nằm trong
+> `console_hygiene.spec.ts` nên chỉ quản đúng hai trang spec đó lái. Đã sửa ở **`1cddeb5`**:
+> global-setup cài đúng transport các spec dùng, tự kiểm console của chính nó, và bộ phân loại
+> chuyển sang `tests/e2e/console_policy.ts` để dùng chung. Kiểm ngược: bỏ transport ra thì lượt chạy
+> **exit 1** và nêu tên cả sáu thông điệp. Từ nay một hàng E2E chỉ được ghi là xanh khi **cả** exit
+> code **và** output thô đều sạch.
+
+### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `1cddeb5`
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
@@ -76,9 +98,10 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 | 📏 | SBOM | `npm run check:sbom` | up to date — **458 thành phần** · 440 phân phối · 459 bản ghi dependency |
 | 📏 | SBOM đúng schema | `npm run check:sbom-schema` | hợp lệ CycloneDX 1.5 — 458 thành phần · 458 purl duy nhất · **1 khoảng trống license đã ghi** · schema ghim ở `c320fc0f0b46` |
 | 📏 | Ranh giới bundle npm | `npm run check:bundle-closure` | **21 gói** có byte trong `dist/` (3 do toolchain nhúng), khớp ranh giới đã commit |
-| 📏 | Byte điều khiển trong source | `npm run check:text-hygiene` | **544 file** text được track, 0 byte điều khiển thô |
-| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **518 link tương đối trong 99 file**, **0 gãy** — chạy lại *sau* gói tài liệu này; con số 485 của lần chạy trước đó thấp hơn vì gói này thêm link trỏ về bảng §1 |
-| ⏳ | Kho license upstream đã vendor | `npm run verify:upstream-licenses` | **39 file · 24 commit · 19 repository** khớp byte-cho-byte — **2026-07-27 tại `b6a579e`**; cần mạng, chạy tay, chưa chạy lại |
+| 📏 | Dấu chân flora khớp hình học | `npm run check:flora-footprint` | mọi bán kính khai báo khớp geometry (drift lớn nhất 3,5e-5) |
+| 📏 | Byte điều khiển trong source | `npm run check:text-hygiene` | **545 file** text được track, 0 byte điều khiển thô |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **518 link tương đối trong 99 file**, **0 gãy** |
+| ⏳ | Kho license upstream đã vendor | `npm run verify:upstream-licenses` | **39 file · 24 commit · 19 repository** khớp byte-cho-byte — **2026-07-27 tại `b6a579e`**; cần mạng và chạy tay, **không** nằm trong lượt gate này |
 
 **"1 chưa có văn bản" là `hexf-parse` 0.2.1 (CC0-1.0), và nó vẫn đang chặn phát hành.** Upstream chưa
 bao giờ publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải việc
