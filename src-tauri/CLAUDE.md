@@ -12,6 +12,11 @@
 All three are read once, inside `SimulationEngine::start` — setting them after the window is open
 does nothing. Unset is always the legacy behaviour.
 
+- `ANIMA_AUTOSTART` — begin simulating at launch (`core/resources.rs`, `autostart_from_env`; wired in
+  `lib.rs`'s `setup`). Unset waits at the Start button, which is the interactive behaviour. Before
+  this existed the only engine that started without a click was one **resuming an autosave**, so a
+  run from zero and a run with nobody watching were mutually exclusive. Guarded on `engine.running`,
+  so resuming and autostarting cannot both fire.
 - `ANIMA_FOUNDING_POPULATION` — founders genesis creates (`core/resources.rs`, `FoundingPlan`).
   Unset is **10 on the legacy line and bit-identical to before the knob existed**; any value opts
   into a grid inset from `MapBounds`, because `x = i * 5.0` puts the twenty-first founder on the
