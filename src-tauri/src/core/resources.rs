@@ -293,6 +293,14 @@ impl BrainPolicy {
 pub mod sim_stream {
     pub const WORLD_INIT: u64 = 1;
     pub const EVOLUTION: u64 = 2;
+    /// Founder brains in a headless experiment run
+    /// ([`crate::core::live_experiment`]).
+    ///
+    /// Separate from the ecology stream on purpose: a controlled comparison of "brains on" against
+    /// "brains off" is only interpretable if the two arms make the *same* ecology draws, and a
+    /// founding population drawing ~5,769 f32 per agent out of `SimRng` would displace every later
+    /// draw in the run. See `live_experiment::genesis`.
+    pub const LIVE_GENESIS_BRAINS: u64 = 3;
 }
 
 /// An independent, reproducible stream for code that is not a Bevy system (setup paths and worker

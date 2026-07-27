@@ -166,7 +166,16 @@
       "smoke/": "the calibration run's outputs, kept separate and never merged into the analysis"
     }
   },
-  "reproduction_command": "cargo run --release --features desktop --example run_e2_brain_experiment -- --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+  "reproduction_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment; then execute src-tauri/target/release/examples/run_e2_brain_experiment.exe --ensemble --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+  "reproduction_command_correction": {
+    "corrected_on": "2026-07-27",
+    "corrected_by": "E2-B, before any smoke or experimental run",
+    "superseded_text": "cargo run --release --features desktop --example run_e2_brain_experiment -- --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+    "reason": "TRANSPORT AND SAFETY ONLY. The owner's standing rule on this machine forbids launching the app or the full backend by any route, and `cargo run` is one of those routes; the rule is categorical rather than a judgement about what this particular example does. The corrected form builds the example and then executes the compiled headless binary directly, which is the same program by the same code path.",
+    "scientific_parameters_changed": "none - the question, hypotheses, metrics, thresholds, seeds, N, smoke seed, duration ladder, sample period, failure handling and decision rule are untouched by this correction",
+    "enforced_by": "src-tauri/tests/e2_seam_tests.rs::the_preregistered_reproduction_never_launches_the_app"
+  },
+  "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment; then execute src-tauri/target/release/examples/run_e2_brain_experiment.exe --smoke --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
   "blocking_preconditions": [
     "P1: core::live_experiment::build_live_world hard-codes BrainPolicy::default(), so no manifest can request evolved=true.",
     "P2: core::live_experiment::genesis never inserts an AgentBrain, unlike the app genesis in core::simulation_loop, so the treatment arm has no brains even with the policy on.",

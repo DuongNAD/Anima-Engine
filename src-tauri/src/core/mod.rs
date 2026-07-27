@@ -21,6 +21,7 @@ pub mod observer;
 pub mod reference_world;
 pub mod resources;
 pub mod scenario;
+pub mod sha256;
 pub mod sim_clock;
 pub mod sim_rules;
 pub mod simulation_lifecycle;

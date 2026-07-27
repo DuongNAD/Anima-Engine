@@ -35,6 +35,13 @@ licensing/**                text eol=lf
 # source file, and "tidying" them would falsify a text whose exact reproduction is the obligation.
 licensing/THIRD_PARTY_LICENSES.txt  text eol=lf whitespace=-trailing-space
 
+# Published experiment artifacts — every file is listed with its SHA-256 in the `checksums.sha256`
+# beside it, and `scripts/verify_e2_artifacts.mjs` recomputes those digests with `node:crypto`. A
+# checkout that rewrote an LF would fire the verifier as a tampering alarm on an untouched result,
+# which is the same failure the schemas below are pinned against. `-text` so git converts in neither
+# direction; `diff` because a result must stay reviewable in a pull request.
+artifacts/experiments/**    -text diff
+
 # Vendored upstream schemas — hashed against PROVENANCE.json. `-text` rather than `text eol=lf`:
 # these must round-trip exactly as vendored, so git is told not to transform them in either
 # direction rather than told which transform to apply.

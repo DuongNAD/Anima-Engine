@@ -23,6 +23,7 @@
     "check:bundle": "node scripts/check_bundle_budget.mjs",
     "check:notice": "node scripts/gen_notice.mjs --check",
     "check:flora-footprint": "node scripts/check_flora_footprint.mjs",
+    "check:e2": "node scripts/verify_e2_artifacts.mjs",
     "capture:views": "npm run capture:views --prefix tests",
     "gen:sbom": "node scripts/gen_sbom.mjs",
     "check:sbom": "node scripts/gen_sbom.mjs --check",

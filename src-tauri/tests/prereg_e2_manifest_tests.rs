@@ -38,11 +38,15 @@ const SMOKE_SEED: u64 = 999983;
 
 /// Whether `core::live_experiment` can yet honour [`EVOLVED_KEY`].
 ///
-/// `false` at registration time, and that is a statement about the code rather than an oversight:
-/// `build_live_world` hard-codes `BrainPolicy::default()` and `live_experiment::genesis` never
-/// inserts an `AgentBrain`. E2-B's first task is to open that seam to the specification in the
-/// design doc; flipping this constant belongs in the same commit.
-const P1_SEAM_OPEN: bool = false;
+/// `false` at registration time, and that was a statement about the code rather than an oversight:
+/// `build_live_world` hard-coded `BrainPolicy::default()` and `live_experiment::genesis` never
+/// inserted an `AgentBrain`. E2-B opened that seam to the specification in the design doc and
+/// flipped this constant in the same commit, which is what the design asks for so the state of the
+/// precondition stays a machine-checked fact rather than a sentence somebody has to remember.
+///
+/// What the seam does is checked in `tests/e2_seam_tests.rs`, not here: this file is the frozen
+/// preregistration and never constructs a `LiveExperimentAdapter`.
+const P1_SEAM_OPEN: bool = true;
 
 fn load(name: &str) -> ExperimentManifest {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -333,8 +337,14 @@ fn the_preregistration_document_agrees_with_the_manifests_it_describes() {
 
 // ---- The seam ----------------------------------------------------------------------------------
 
+/// Renamed by E2-B, and that rename is the **only** edit in this file besides the mandated
+/// [`P1_SEAM_OPEN`] flip. The old name — `the_control_arm_is_runnable_today_and_the_treatment_arm_is_not`
+/// — was a true statement at registration and became a false one the moment the seam opened, and a
+/// test whose name asserts the opposite of what it checks is worse than no name. No hypothesis,
+/// metric, seed, threshold, duration or manifest changed; `git diff ce761d1` on this file shows
+/// exactly these two things.
 #[test]
-fn the_control_arm_is_runnable_today_and_the_treatment_arm_is_not() {
+fn the_seam_state_is_exactly_what_the_preregistration_recorded() {
     let c = control();
     for k in keys(&c) {
         assert!(
@@ -345,9 +355,9 @@ fn the_control_arm_is_runnable_today_and_the_treatment_arm_is_not() {
     }
 
     // The recorded state of blocking precondition P1. `LiveWorldConfig::from_initial_conditions`
-    // rejects every key it does not know, so today the treatment manifest is refused at model
-    // construction — the treatment arm does not exist yet, which is precisely why the experiment is
-    // registered now and run later.
+    // rejects every key it does not know, so before the seam existed the treatment manifest was
+    // refused at model construction — the treatment arm did not exist, which is precisely why the
+    // experiment was registered first and run later.
     assert_eq!(
         LIVE_KEYS.contains(&EVOLVED_KEY),
         P1_SEAM_OPEN,

@@ -94,14 +94,27 @@ pub const LIVE_KEY_TREES: &str = "live.trees";
 pub const LIVE_KEY_LAKES: &str = "live.lakes";
 /// Ceiling on spawned food items.
 pub const LIVE_KEY_FOOD_CAP: &str = "live.food_cap";
+/// Whether founders get their own heritable brain (ADR-0003), as a **declared** input.
+///
+/// `1.0` is on, `0.0` and **absent** are off. Absent meaning off is what keeps every live manifest
+/// written before this key existed — including the four in `live_experiment_tests.rs` and the E2
+/// control — bit-identical to what it was.
+///
+/// It exists because `BrainPolicy` was otherwise unreachable from a manifest:
+/// [`build_live_world`] deliberately replaces `init_world`'s `BrainPolicy::from_env()` so a run's
+/// trajectory cannot depend on `ANIMA_EVOLVED_BRAINS`, and that left `BrainPolicy::default()` as
+/// the only policy a live experiment could have. Taking the environment away was right; leaving no
+/// declared input in its place meant one arm of a controlled comparison could not be expressed.
+pub const LIVE_KEY_EVOLVED_BRAINS: &str = "live.evolved_brains";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 5] = [
+pub const LIVE_KEYS: [&str; 6] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
     LIVE_KEY_FOOD_CAP,
+    LIVE_KEY_EVOLVED_BRAINS,
 ];
 
 /// The genesis the manifest asked for.
@@ -112,12 +125,17 @@ pub struct LiveWorldConfig {
     pub trees: usize,
     pub lakes: usize,
     pub food_cap: usize,
+    /// ADR-0003's per-agent brains, off unless a manifest asks. `#[serde(default)]` so a config
+    /// serialized before this field existed reads back as the legacy path rather than failing —
+    /// the same direction of default the key itself takes.
+    #[serde(default)]
+    pub evolved_brains: bool,
 }
 
 impl Default for LiveWorldConfig {
     /// The engine's own genesis: ten founders, seven prey and three predators, and the stock
     /// environment-spawn settings — the population `SimulationEngine::start` builds when there is no
-    /// save to load.
+    /// save to load. Brains are off, which is `BrainPolicy::default()` and the ADR-0003 baseline.
     fn default() -> Self {
         Self {
             founders: 10,
@@ -125,6 +143,7 @@ impl Default for LiveWorldConfig {
             trees: 8,
             lakes: 2,
             food_cap: crate::core::ecs::FoodSpawnSettings::default().max_food_count,
+            evolved_brains: false,
         }
     }
 }
@@ -167,6 +186,21 @@ impl LiveWorldConfig {
                     }
                     config.predator_fraction = *value;
                 }
+                // A boolean carried in an `f64`, so the only honest reading is an exact one.
+                // Rounding 0.5 to *something* would run an arm nobody declared and then report it
+                // under the declared manifest's fingerprint.
+                LIVE_KEY_EVOLVED_BRAINS => match *value {
+                    0.0 => config.evolved_brains = false,
+                    1.0 => config.evolved_brains = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
                 _ => unreachable!("key membership was checked above"),
             }
         }
@@ -1123,8 +1157,16 @@ fn build_live_world(
     // `init_world` resolves these from the environment, which is exactly what a manifest cannot
     // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
     // silently change the trajectory of a run whose whole point is that its inputs are declared.
+    //
+    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
+    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
+    // flags answering separate questions, and folding them in here would turn one declared factor
+    // into a bundle no result could attribute.
     world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
-    world.insert_resource(crate::core::resources::BrainPolicy::default());
+    world.insert_resource(crate::core::resources::BrainPolicy {
+        evolved: config.evolved_brains,
+        ..Default::default()
+    });
 
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();
     world.insert_resource(bounds);
@@ -1202,7 +1244,7 @@ fn build_live_world(
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            genesis(&mut world, config, bounds);
+            genesis(&mut world, config, bounds, seed);
         }
     }
 
@@ -1215,7 +1257,29 @@ fn build_live_world(
 /// difference and it is the right one: the app picks lake and tree sites by shuffling every
 /// candidate cell of the terrain, so the founding layout depends on the terrain artifact present on
 /// the machine. An experiment's initial conditions have to come from its manifest.
-fn genesis(world: &mut World, config: &LiveWorldConfig, bounds: crate::core::ecs::MapBounds) {
+///
+/// # Brains come from a stream of their own
+///
+/// Genesis creates individuals, so it develops brains (ADR-0003 invariant D01) — the app's genesis
+/// in [`crate::core::simulation_loop`] does the same. It differs in **which** stream the weights
+/// come from, and that difference is the identifying assumption of experiment E2 rather than a
+/// detail: the app draws from `SimRng`, so turning brains on there consumes roughly
+/// `founders × 5,769` f32 out of the ecology stream **before the first tick** and displaces every
+/// later draw — every food position, every seed drop. Two arms compared that way would differ in the
+/// brain *and* in the realised random sequence, inseparably, at every seed.
+///
+/// [`derived_rng`](crate::core::resources::derived_rng) gives the brains an independent stream, so
+/// the ecology draw order is bit-identical whether or not the arm has brains and the only declared
+/// difference is the one the manifest declared. The cost, stated because it is real: this is not
+/// exactly what flipping the app's default would do. That shift carries no directional information —
+/// it is a reshuffle, not a treatment — but it does mean a comparison made here holds the stochastic
+/// trajectory fixed, which is the cleaner question and not quite the same one.
+fn genesis(
+    world: &mut World,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+    seed: u64,
+) {
     use crate::core::agent_systems::{
         AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId,
     };
@@ -1242,10 +1306,24 @@ fn genesis(world: &mut World, config: &LiveWorldConfig, bounds: crate::core::ecs
         });
     }
 
+    // Read once: the policy is the same resource the runtime systems read, so "the policy says
+    // evolved" and "the founders have brains" cannot disagree.
+    let policy = world
+        .get_resource::<crate::core::resources::BrainPolicy>()
+        .copied()
+        .unwrap_or_default();
+    let mut brain_rng = crate::core::resources::derived_rng(
+        seed,
+        crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
+    );
+
     let predators = config.predators();
     for i in 0..config.founders {
         let pos = lattice_point(i, config.founders.max(1), bounds, 0.35);
         let entity = decode_genotype(world, &genotype, pos, glam::Quat::IDENTITY);
+        if let Some(brain) = policy.new_brain(&mut brain_rng) {
+            world.entity_mut(entity).insert(brain);
+        }
         world.entity_mut(entity).insert((
             AgentGenotype(genotype.clone()),
             AgentEvaluation {

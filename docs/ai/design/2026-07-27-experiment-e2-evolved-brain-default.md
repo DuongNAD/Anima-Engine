@@ -281,9 +281,26 @@ Root `artifacts/experiments/e2-evolved-brain-default/` (`artifacts/` is delibera
 Reproduction command, preregistered so it is not invented afterwards:
 
 ```
-cargo run --release --features desktop --example run_e2_brain_experiment -- \
+cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop \
+  --example run_e2_brain_experiment
+
+src-tauri/target/release/examples/run_e2_brain_experiment.exe --ensemble \
   --manifest-dir src-tauri/tests/fixtures/experiments_e2 \
   --out artifacts/experiments/e2-evolved-brain-default
 ```
 
 `--release` is not a preference; see the planning doc §5.
+
+> **Transport correction, 2026-07-27, before any run.** This block originally read
+> `cargo run --release --features desktop --example run_e2_brain_experiment -- …`. The owner's
+> standing rule on this machine forbids launching the app or the full backend by any route, and
+> `cargo run` is one of those routes — the rule is categorical, not a judgement about what this
+> particular example does. Building the example and executing the compiled binary directly runs the
+> same program by the same code path.
+>
+> **No scientific parameter moved.** The question, hypotheses, metrics, thresholds, seed list, N,
+> smoke seed, duration ladder, sample period, failure handling and decision rule are untouched. The
+> machine-readable form is corrected identically in `e2-preregistration.json`, which also records the
+> superseded text verbatim, and
+> `tests/e2_seam_tests.rs::the_preregistered_reproduction_never_launches_the_app` pins it so the
+> command cannot drift back into one nobody is allowed to type.
