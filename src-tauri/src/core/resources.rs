@@ -417,6 +417,37 @@ impl Default for EnvironmentalSpawnSettings {
     }
 }
 
+// ---- Unattended start ---------------------------------------------------------------------
+
+/// Whether the engine should begin simulating the moment the app launches.
+///
+/// **Off unless `ANIMA_AUTOSTART` says otherwise**, which is the interactive behaviour: a fresh
+/// world waits at the Start button.
+///
+/// That wait is correct when someone is looking at the window and impossible when nobody is. A world
+/// meant to run for hours and be looked at later, or a measured run driven from a script, has no one
+/// to click — and the only path that started an engine without a click was *resuming an autosave*,
+/// which is precisely what a run "from zero" does not have.
+///
+/// Accepts anything except the three spellings of no, matching `ANIMA_TICK_CAPTURE`: an unset,
+/// empty, `0` or `false` value all mean the same thing, so a shell script that computes the value
+/// and comes up empty does not silently start a simulation.
+pub fn autostart_from_env() -> bool {
+    autostart_requested(std::env::var("ANIMA_AUTOSTART").ok().as_deref())
+}
+
+/// The decision behind [`autostart_from_env`], separated so it is testable without touching
+/// process-wide state.
+pub fn autostart_requested(raw: Option<&str>) -> bool {
+    match raw {
+        None => false,
+        Some(value) => {
+            let trimmed = value.trim();
+            !(trimmed.is_empty() || trimmed == "0" || trimmed.eq_ignore_ascii_case("false"))
+        }
+    }
+}
+
 // ---- Founding population ------------------------------------------------------------------
 
 /// Founders genesis creates when nothing says otherwise.
@@ -581,6 +612,36 @@ fn grid_side(count: usize) -> usize {
         side += 1;
     }
     side.max(1)
+}
+
+#[cfg(test)]
+mod autostart_tests {
+    use super::*;
+
+    /// Unset is the interactive behaviour, and it is the one that must not change.
+    #[test]
+    fn unset_does_not_start_anything() {
+        assert!(!autostart_requested(None));
+    }
+
+    /// A script that builds the value from another variable produces an empty string when that
+    /// variable is missing. Starting a simulation on that would be the worst possible reading.
+    #[test]
+    fn the_three_spellings_of_no() {
+        for off in ["", "  ", "0", "false", "FALSE", "False"] {
+            assert!(
+                !autostart_requested(Some(off)),
+                "{off:?} should not autostart"
+            );
+        }
+    }
+
+    #[test]
+    fn anything_else_is_yes() {
+        for on in ["1", "true", "yes", "on", " 1 "] {
+            assert!(autostart_requested(Some(on)), "{on:?} should autostart");
+        }
+    }
 }
 
 #[cfg(test)]

@@ -155,6 +155,28 @@ pub fn run() {
                     }
                 }
             }
+
+            // A fresh world starts running only when asked. Placed after the autosave branch and
+            // guarded on `running`, so resuming a save and starting from zero cannot both fire and
+            // spawn two engines over one world.
+            //
+            // The condition this closes: before it, the *only* way an engine started without a
+            // human clicking Start was resuming an autosave — so a run "from zero" and a run
+            // "unattended" were mutually exclusive.
+            if crate::core::resources::autostart_from_env()
+                && !app_state
+                    .engine
+                    .running
+                    .load(std::sync::atomic::Ordering::SeqCst)
+            {
+                eprintln!("[anima] ANIMA_AUTOSTART is set; simulating from genesis");
+                app_state.engine.start(
+                    Some(app.handle().clone()),
+                    Arc::clone(&app_state.evolution_settings),
+                    Arc::clone(&app_state.evolution_running),
+                    Arc::clone(&app_state.map_elites_grid),
+                );
+            }
             Ok(())
         })
         .build(tauri::generate_context!())
