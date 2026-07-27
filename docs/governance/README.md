@@ -22,9 +22,13 @@ và một thành phần bên thứ ba được nhận vào theo quy trình nào.
    reserved*. Hệ quả trực tiếp: thành phần copyleft (GPL/AGPL) bị **chặn cứng cho mọi đường tiếp xúc
    với code** — kể cả đọc source rồi viết lại. Xem
    [chính sách nguồn mở](OPEN_SOURCE_POLICY.md).
-2. **Repository chưa có `NOTICE`.** Một sản phẩm proprietary vẫn phải attribution cho các thành phần
-   permissive được phân phối. Đây là mục 3.16 trong
-   [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
+2. **Attribution đã có, văn bản license còn thiếu 32 chỗ.** Một sản phẩm proprietary vẫn phải
+   attribution cho các thành phần permissive được phân phối. [`NOTICE`](../../NOTICE) (inventory 458
+   thành phần) và [`licensing/`](../../licensing/) (văn bản license nguyên văn của 408/440 thành
+   phần được phân phối) đều đã sinh tự động và có gate CI. Phần **chưa đóng được** là 32 thành phần
+   mà artifact đã publish không kèm văn bản license —
+   [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) liệt kê chính xác từng cái và lý do.
+   Đây là mục 3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
 
 ## Liên kết
 

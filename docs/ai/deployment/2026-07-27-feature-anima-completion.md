@@ -30,8 +30,12 @@ is not a gate until something fails on it.
 | Feature split | `cargo tree` on a default build | Rust | Neo4j / WebSocket / Burn-WGPU staying out of headless |
 | Binding drift | `cargo test --lib export_bindings` + `git diff --exit-code` | Rust | a Rust IPC struct changing without the TS binding |
 | Rust advisories | `cargo audit` | Rust | two ignored entries, each with recorded verification |
-| **NOTICE freshness** | `npm run check:notice` | Rust | attribution for 419 crates + 45 npm packages |
-| **SBOM freshness** | `npm run check:sbom` | Rust | 464 components, CycloneDX 1.5 |
+| **Licence texts** | `npm run check:licenses` | Rust | 440 distributed components, 247 distinct texts, 32 recorded gaps |
+| **SBOM freshness** | `npm run check:sbom` | Rust | 458 components, 459 dependency records |
+| **SBOM validity** | `npm run check:sbom-schema` | Rust | official CycloneDX 1.5 schema, vendored and pinned by checksum |
+| **NOTICE freshness** | `npm run check:notice` | Rust | 419 crates + 21 distributed npm + 18 install-only |
+| **Bundle closure** | `npm run check:bundle-closure` | Frontend (post-build) | the npm distribution boundary drifting from a fresh build |
+| **Text hygiene** | `npm run check:text-hygiene` | Frontend | raw control bytes making a source file binary to git |
 | **Flora footprint** | `npm run check:flora-footprint` | Rust | declared canopy radii vs the real geometry |
 | npm advisories | `npm audit --audit-level=high` (both packages) | Frontend | — |
 | ESLint | `npm run lint` + ratchet | Frontend | 0 errors; warnings may not grow |
@@ -86,15 +90,34 @@ changes — all three invalidate every image — then regenerate the manifest an
 
 Neither can be closed by writing code, and neither is marked closed.
 
-### 3.1 Licence texts are not packaged
+### 3.1 Licence texts — packaged for 408 of 440, blocked on 32
 
-`NOTICE` attributes 464 components and states plainly that the licence *texts* are not reproduced and
-that copyright holders are not listed individually. MIT and BSD require the text to travel with the
-distribution.
+**Updated 2026-07-27.** This section previously read "Licence texts are not packaged", which was
+accurate then and is not now.
 
-An inventory is a prerequisite for discharging that obligation, not the discharge. **Release stays
-blocked on it**, and `tests/frontend/noticeInventory.test.ts` asserts the honest statement survives
-in the generated file so it cannot quietly disappear while the gap remains.
+`licensing/THIRD_PARTY_LICENSES.txt` reproduces the licence and copyright notices of the distributed
+components verbatim, from the exact installed versions, with a SHA-256 per source file in
+`licensing/third-party-index.json` so any entry can be re-verified against the package it came from.
+Coverage is **408 of 440** distributed components and **247** distinct texts.
+
+The residual **32** are components whose *published artifact contains no licence file at all* —
+`naga`, `webview2-com`, the five `unic-*` crates, `neo4rs`, `ts-rs`, `@react-three/fiber` and others,
+enumerated with the exact reason and upstream in `licensing/UNRESOLVED.md`.
+
+**Engineering cannot close these, and did not pretend to.** The canonical SPDX text of MIT contains
+no copyright holder, and reproducing the holder's notice is precisely what MIT requires; substituting
+a generic text would look like compliance and would not be it. Closing one means a human obtaining
+the licence file from the upstream repository at the tag matching the version, recording where it
+came from, and re-running the generator.
+
+**Release stays blocked for those 32 components.** The gate is `npm run check:licenses-complete`,
+which exits non-zero while any remain. It is deliberately **not** in CI: it fails by design today,
+and a permanently-red required check is a check people learn to ignore. It is a release-time step,
+run by whoever signs off the distribution.
+
+`npm run check:licenses` *is* in CI, and fails on any change to the artifacts — so a newly added
+dependency with no licence text turns the build red on the commit that introduces it, rather than
+being discovered at release.
 
 Two paths, and choosing between them is an owner call: package each component's licence file into the
 bundle at build time, or obtain a legal review that says the current form suffices.

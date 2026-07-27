@@ -241,13 +241,25 @@ write; startup adopts the old location once and never writes back.
 
 **Commit** `766609e`. **Finding 12.**
 
-npm attribution was the direct dependency list — eight names. Vite bundles the transitive graph, so
-what ships includes `scheduler`, `earcut`, `eventemitter3`, `zustand` and the rest, each carrying the
-same obligation. Now the production closure: **8 → 45**.
+npm attribution was the direct dependency list — eight names. The bundler pulls in the transitive
+graph, so what ships includes `scheduler`, `earcut`, `eventemitter3`, `zustand` and the rest, each
+carrying the same obligation. That was corrected first to the production **install** closure (36).
+
+**Superseded 2026-07-27.** The install closure is not the ship closure either, and using it as one
+was wrong in both directions at once. `node_modules` is never shipped — Tauri packages `dist/` — so
+18 installed packages contribute no bytes to the product and were being over-attributed, including
+type-only packages like `@types/react` that contain no runtime code at all. Meanwhile three
+components *are* compiled into the shipped chunks and appear in no production dependency list:
+`vite`, `rolldown` and `@oxc-project/runtime`, the last of which is not even installed. The boundary
+is now measured by the bundler itself (`licensing/bundle-closure.json`): **21 distributed npm
+components**, with the 18 install-only ones listed separately and marked `scope: excluded`.
 
 An inventory grouped by licence string is not an SBOM. `scripts/gen_sbom.mjs` emits CycloneDX 1.5
-over the same two graphs — 464 components, every one with a purl — deterministically, because a BOM
-that differs on every run cannot be diffed.
+over all three closures — **458 components**, every one with a purl, plus a dependency graph and a
+serial number derived from the document's own content — deterministically, because a BOM that
+differs on every run cannot be diffed. `scripts/check_sbom_schema.mjs` validates it against the
+official schema, vendored and pinned to a specification commit: emitting `"specVersion": "1.5"` was
+a claim until something checked it.
 
 The bundle gate checked a number where the property is a route. Measured with a real browser against
 `vite preview`: `/` fetches 17 JS files and **not** the three.js chunk; `/landscape.html` fetches it.

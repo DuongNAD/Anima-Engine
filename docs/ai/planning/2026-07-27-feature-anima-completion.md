@@ -72,7 +72,7 @@ the fix and its output recorded.
 | C2 | save/load accept an unconstrained path from the frontend | High | `save_paths` allow-list, 11 tests incl. traversal/UNC/ADS/device-name and the legacy-import resolver | **closed** | `378b4f6`, completed `ae1fb40` |
 | C3 | 2 `unsafe impl Send/Sync` with no proof | Medium | `backend` private + `from_backend` the only constructor; `brain_model_is_send_without_an_unsafe_impl`; the `Send` impl deleted as redundant | **closed** | `b27c28b`, completed `0d6b4b2` |
 | D1 | Lineage memory unbounded; compression off because the mutation count walks edges | High | count identical pre/post compression + negative control that compression is running | **closed** | `57a8246` |
-| D2 | No `NOTICE`; `LICENSE` has no scope split; `burn` absent from inventory | Medium | `NOTICE` from `cargo tree --features desktop` **and the npm production closure** (419 crates + 45 npm); CycloneDX SBOM; both `--check` gated in CI | **closed** as an *inventory*; **licence texts still not packaged** — release-blocking, owner/legal gate | `14d7abe`, completed `766609e` |
+| D2 | No `NOTICE`; `LICENSE` has no scope split; `burn` absent from inventory | Medium | `NOTICE` from `cargo tree --features desktop` and the npm graph; CycloneDX 1.5 SBOM **validated against the official pinned schema**; `licensing/THIRD_PARTY_LICENSES.txt` reproducing the texts; six `check:*` gates in CI | **closed** as an inventory **and** as text packaging for 408 of 440 distributed components; **32 remain unresolved** (upstream ships no licence file) and stay release-blocking; `LICENSE` scope split still open | `14d7abe`, `766609e`, extended this commit |
 | D3 | 491 ESLint warnings, frozen by a ratchet that only blocks growth | Medium | 0 warnings, baseline lowered | **open** — 491 → 472, from deletions rather than fixes; see §5 | — |
 
 ### 2.2 Supervisor addendum — the independent review after the first session
@@ -98,7 +98,7 @@ catch, which is why the rows above carry a second commit.
 | 9b | ESLint to 0/0 without relaxing rules | — | **open**, 472 warnings | — |
 | 10 | The save-path patch does not implement its own accepted migration contract; autosave and `saves/` contradict each other; `PROJECT.md` not updated | `legacy-import` drop directory (user-authorised, read-only, never a write target); autosave moved to `saves/autosave.json` under the same envelope with one-time adoption of the old file; `PROJECT.md` §Persistence; frontend label and placeholder corrected | **closed** | `ae1fb40` |
 | 11 | Feature lifecycle incomplete — implementation/deployment/monitoring docs absent; ledger rows all say `open`; DEC-2 obsolete | three docs written and reconciled with commits; `npx ai-devkit lint --feature anima-completion` → **All checks passed**; this table; DEC-2 superseded below | **closed** | this commit |
-| 12 | NOTICE is direct-only, not an SBOM, states an unmet obligation; bundle only budgeted; `check:*` not in CI | npm production closure 8 → 45 with a transitive regression test; CycloneDX 1.5 SBOM (464 components, deterministic); bundle gate asserts the **route split**, measured; four `check:*` gates wired into CI | **closed** as engineering; the licence-text obligation stays open and release-blocking | `766609e` |
+| 12 | NOTICE is direct-only, not an SBOM, states an unmet obligation; bundle only budgeted; `check:*` not in CI | npm closure 8 → 36 (install) → **21 measured ship closure** with a transitive regression test; CycloneDX 1.5 SBOM (458 components, dependency graph, deterministic serial, schema-validated); licence texts packaged; bundle gate asserts the **route split**, measured; six `check:*` gates wired into CI | **closed** as engineering, including the licence texts for 408 of 440; **32 unresolved** stay release-blocking and cannot be closed by engineering | `766609e`, extended this commit |
 
 ### 2.3 Findings raised by this pass, not in either brief
 
@@ -158,9 +158,14 @@ step attached.
   *and* a `tauri-driver` WebDriver session; neither exists here. It declares no test unless
   `ANIMA_E2E_REQUIRE_BACKEND=1` and fails on every missing precondition when set, so the gap is
   loud rather than amber. Deployment doc §2.2.
-- **Licence texts packaged.** **Release-blocking, owner/legal.** The inventory attributes 464
-  components and says plainly that the texts are not reproduced. An inventory is a prerequisite for
-  discharging the MIT/BSD obligation, not the discharge. Deployment doc §3.1.
+- **Licence texts packaged — 408 of 440; 32 blocked.** **Updated 2026-07-27; still release-blocking
+  for those 32.** `licensing/THIRD_PARTY_LICENSES.txt` now reproduces the texts verbatim from the
+  installed versions with a SHA-256 per source file, so the blanket statement that texts are not
+  reproduced no longer applies. What remains is specific: 32 distributed components whose *published
+  artifact contains no licence file*, enumerated in `licensing/UNRESOLVED.md`. Engineering cannot
+  invent a copyright holder's notice, and did not. **To close:** a human obtains each file from
+  upstream at the matching tag and re-runs the generator. Gate: `npm run check:licenses-complete`.
+  Deployment doc §3.1.
 - **Live-Bevy experiment readiness.** **Out of scope and unchanged.** Multi-session work requiring
   `WorldLawSet`, `ExperimentManifest`, `CausalLedger` and `SimClock` to become live-engine
   resources. CLAUDE.md's prohibition on claiming the live world is experiment-ready stays in force,

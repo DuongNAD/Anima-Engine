@@ -84,8 +84,12 @@ mid-pass measurement and is kept for its red-first evidence, not as the current 
 | Build | `npm run build` | pass (`tsc` strict + 2 Vite entries) | 0 |
 | CSP compatibility | `npm run check:csp` | 2 shipped HTML files, 0 external origins, 0 inline script bodies | 0 |
 | Bundle budget + split | `npm run check:bundle` | 1700.3 / 2000 KiB; **`index.html` 3D renderer: no**, `landscape.html`: yes | 0 |
-| NOTICE | `npm run check:notice` | up to date — **419 crates + 45 npm packages** | 0 |
-| SBOM | `npm run check:sbom` | up to date — **464 components** (CycloneDX 1.5) | 0 |
+| NOTICE | `npm run check:notice` | up to date — **419 crates + 21 distributed npm + 18 install-only** | 0 |
+| Licence texts | `npm run check:licenses` | up to date — **440 distributed, 247 distinct texts, 32 unresolved** | 0 |
+| SBOM | `npm run check:sbom` | up to date — **458 components, 459 dependency records** | 0 |
+| SBOM schema | `npm run check:sbom-schema` | valid CycloneDX 1.5 against the vendored official schema | 0 |
+| Bundle closure | `npm run check:bundle-closure` | **21 packages** with bytes in `dist/` (3 toolchain-injected) | 0 |
+| Text hygiene | `npm run check:text-hygiene` | 514 tracked text files, **0** raw control bytes | 0 |
 | Flora footprint | `npm run check:flora-footprint` | 7 solid types measured against real three, 0 drift | 0 |
 | Doc links | `node scripts/check_docs_links.mjs` | 436 links in 94 files, 0 broken | 0 |
 | E2E (browser) | `npm run test:e2e` | **17 passed · 0 failed · 0 skipped** | 0 |
@@ -137,7 +141,7 @@ attribution 8 → **45**; canonical views 0 → **8**.
 | Build | `npm run build` | pass | 0 |
 | CSP compatibility | `npm run check:csp` | 2 shipped HTML files, 0 external origins, 0 inline script bodies | 0 |
 | Bundle budget | `npm run check:bundle` | 23 chunks, **1695.8 / 2000 KiB**; largest `react-three-fiber.esm` 836.2/900 | 0 |
-| NOTICE | `node scripts/gen_notice.mjs --check` | 419 crates + 8 npm packages, **0 without a licence** | 0 |
+| NOTICE | `node scripts/gen_notice.mjs --check` | 419 crates + 8 npm packages, **0 without a licence** — _historical: the npm figure was the direct-dependency list, later corrected to the production closure (36) and then to the measured ship closure (21). See the current run above._ | 0 |
 | Doc links | `node scripts/check_docs_links.mjs` | 434 links in 94 files, 0 broken | 0 |
 | E2E | `npm run test:e2e` | **9 passed, 0 failed, 5 skipped** (each naming its reason) | 0 |
 | MCP manifest gate | `validate_map_manifest animal-map.manifest.json` | **pass, score 100/100, 0 issues**, 408 entities | — |
@@ -204,7 +208,7 @@ Stated plainly so no reader over-reads the green above.
 | The eight canonical map views | ~~not captured~~ → **captured** | Superseded. `npm run capture:views` renders all eight from the real scene on hardware GL; the manifest carries each PNG's SHA-256 and the evidence test verifies them. What remains external is *re-capturing*, which needs a GPU (0.27 fps on SwiftShader against 46.7) — a machine requirement, not an absent pipeline. |
 | Visual map quality | ~~not reviewable~~ → **reviewed** | Superseded. Eight canonical renders of the shipped world were inspected through the MCP in the mandatory order, and the review found real defects (§0.1). The deterministic gate is pass 100/100, 0 critical/high, against the *shipped* identity rather than a stand-in. |
 | Real-backend E2E | **not run** | Needs a release build and a `tauri-driver` session; neither exists here. `real_backend.spec.ts` fails closed under `ANIMA_E2E_REQUIRE_BACKEND=1` rather than skipping, so the gap is loud. |
-| Licence texts packaged | **not done** | `NOTICE` attributes 464 components and says so itself. An inventory is a prerequisite for discharging the MIT/BSD obligation, not the discharge. Release-blocking, owner/legal. |
+| Licence texts packaged | ~~not done~~ → **408 of 440 done; 32 blocked** | Superseded 2026-07-27. `licensing/THIRD_PARTY_LICENSES.txt` reproduces the texts verbatim from the installed versions, with a SHA-256 per file. The remaining 32 are components whose *published artifact ships no licence file*; they are enumerated in `licensing/UNRESOLVED.md` with the exact blocker. Engineering cannot generate a copyright holder's notice, so those stay open. Release-blocking for those components; the gate is `npm run check:licenses-complete`. |
 | ESLint at zero | **not reached** | 472 warnings remain, and the 483 → 472 movement came from deleting files rather than fixing warnings. No rule relaxed, no file excluded, baseline lowered to lock in what was gained. |
 | Live-Bevy experiment readiness | **out of scope** | §3.3/§3.6 of the status doc; multi-session. CLAUDE.md's prohibition stays in force, and this pass did not approach it. |
 | Per-agent evolved brains as default | **blocked on a decision** | DEC-1 in the planning doc. |

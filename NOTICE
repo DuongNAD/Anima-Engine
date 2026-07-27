@@ -11,18 +11,39 @@ remove that; it is why a proprietary product still ships a NOTICE.
 **This file is generated — do not edit by hand.** Regenerate with `node scripts/gen_notice.mjs`,
 and verify in CI with `node scripts/gen_notice.mjs --check`.
 
+## Where the licence texts are
+
+This file is the **inventory**. The licence texts themselves — the thing MIT and BSD actually
+require to accompany the distribution — are in
+[`licensing/THIRD_PARTY_LICENSES.txt`](licensing/THIRD_PARTY_LICENSES.txt), generated from the
+exact installed versions with a SHA-256 per source file recorded in
+[`licensing/third-party-index.json`](licensing/third-party-index.json).
+
+Coverage: **408 of 440** distributed components
+have their licence text packaged. The remaining **32** are enumerated with the
+reason in [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md); their published artifacts contain
+no licence file, and no text is invented to cover for that.
+
 ## What is counted, and why
 
-- **Rust:** every crate reachable by `cargo tree --features desktop -e normal`. `desktop` is the
-  feature set `npm run tauri:build` passes, so it is what ships. `-e normal` excludes
-  dev-dependencies (test-only, not distributed) and build-dependencies (run at build time, not
-  linked). The full lockfile is a superset and would over-attribute; `Cargo.toml`'s direct
-  dependencies are a subset and would under-attribute.
-- **npm:** the **production closure** — `npm ls --omit=dev --all` from the `dependencies` roots,
-  deduplicated on exact name+version. Vite bundles the transitive graph into `dist/` and `dist/`
-  is packaged into the desktop binary, so a component's obligation does not depend on whether a
-  human happened to name it in `package.json`. Listing only the direct dependencies attributed 8
-  packages and omitted everything they pull in. `devDependencies` are not distributed.
+Three closures, which are genuinely different sets. Conflating them is the error this section exists
+to prevent — the earlier version of this file did, in both directions at once.
+
+- **Rust — 419 crates.** Everything reachable by
+  `cargo tree --features desktop -e normal`. `desktop` is the feature set `npm run tauri:build`
+  passes, so it is what ships. `-e normal` excludes dev-dependencies (test-only) and
+  build-dependencies (run at build time, not linked). `cargo tree` resolves for the **host target**,
+  so this list describes a Windows build; another OS links a different set.
+- **npm, distributed — 21 components.** Packages with rendered bytes in
+  `dist/`, measured by the bundler during `npm run build` and recorded in
+  [`licensing/bundle-closure.json`](licensing/bundle-closure.json). This includes
+  3 components the toolchain
+  compiles into the output rather than resolving from `node_modules` — they are **not** production
+  dependencies and no reading of `package.json` can find them.
+- **npm, installed but not distributed — 18 components.** In the production
+  install closure, with no bytes in `dist/`. `node_modules` is not shipped, so these leave nothing
+  in the product; they are listed for completeness and clearly separated, not attributed as though
+  they were distributed.
 - **Excluded:** workspace members (`anima-engine`, `anima-domain`) — first-party, covered by
   `LICENSE`.
 
@@ -141,11 +162,11 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - naga 0.19.2 — https://github.com/gfx-rs/wgpu/tree/trunk/naga
 - ndarray 0.15.6 — https://github.com/rust-ndarray/ndarray
 - nonmax 0.5.5 — https://github.com/LPGhatguy/nonmax
-- num_cpus 1.17.0 — https://github.com/seanmonstar/num_cpus
 - num-complex 0.4.6 — https://github.com/rust-num/num-complex
 - num-conv 0.2.2 — https://github.com/jhpratt/num-conv
 - num-integer 0.1.46 — https://github.com/rust-num/num-integer
 - num-traits 0.2.19 — https://github.com/rust-num/num-traits
+- num_cpus 1.17.0 — https://github.com/seanmonstar/num_cpus
 - once_cell 1.21.4 — https://github.com/matklad/once_cell
 - parking_lot 0.12.5 — https://github.com/Amanieu/parking_lot
 - parking_lot_core 0.9.12 — https://github.com/Amanieu/parking_lot
@@ -177,6 +198,7 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - scopeguard 1.2.0 — https://github.com/bluss/scopeguard
 - semver 1.0.28 — https://github.com/dtolnay/semver
 - serde 1.0.229 — https://github.com/serde-rs/serde
+- serde-untagged 0.1.9 — https://github.com/dtolnay/serde-untagged
 - serde_core 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive_internals 0.29.1 — https://github.com/serde-rs/serde
@@ -185,7 +207,6 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - serde_spanned 1.1.1 — https://github.com/toml-rs/toml
 - serde_with 3.21.0 — https://github.com/jonasbb/serde_with/
 - serde_with_macros 3.21.0 — https://github.com/jonasbb/serde_with/
-- serde-untagged 0.1.9 — https://github.com/dtolnay/serde-untagged
 - serialize-to-javascript 0.1.2 — https://github.com/chippers/serialize-to-javascript
 - serialize-to-javascript-impl 0.1.2 — https://github.com/chippers/serialize-to-javascript
 - servo_arc 0.4.3 — https://github.com/servo/stylo
@@ -206,8 +227,8 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - thiserror 2.0.19 — https://github.com/dtolnay/thiserror
 - thiserror-impl 1.0.69 — https://github.com/dtolnay/thiserror
 - thiserror-impl 2.0.19 — https://github.com/dtolnay/thiserror
-- thread_local 1.1.10 — https://github.com/Amanieu/thread_local-rs
 - thread-tree 0.3.3 — https://github.com/bluss/thread-tree
+- thread_local 1.1.10 — https://github.com/Amanieu/thread_local-rs
 - time 0.3.54 — https://github.com/time-rs/time
 - time-core 0.1.9 — https://github.com/time-rs/time
 - time-macros 0.2.32 — https://github.com/time-rs/time
@@ -227,8 +248,8 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - ureq 2.12.1 — https://github.com/algesten/ureq
 - url 2.5.8 — https://github.com/servo/rust-url
 - utf-8 0.7.6 — https://github.com/SimonSapin/rust-utf8
-- web_atoms 0.2.5 — https://github.com/servo/html5ever
 - web-time 0.2.4 — https://github.com/daxpedda/web-time
+- web_atoms 0.2.5 — https://github.com/servo/html5ever
 - weezl 0.1.12 — https://github.com/image-rs/weezl
 - wgpu 0.19.4 — https://github.com/gfx-rs/wgpu
 - wgpu-core 0.19.4 — https://github.com/gfx-rs/wgpu
@@ -237,9 +258,6 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - widestring 1.2.1 — https://github.com/VoidStarKat/widestring-rs
 - windows 0.52.0 — https://github.com/microsoft/windows-rs
 - windows 0.61.3 — https://github.com/microsoft/windows-rs
-- windows_x86_64_msvc 0.48.5 — https://github.com/microsoft/windows-rs
-- windows_x86_64_msvc 0.52.6 — https://github.com/microsoft/windows-rs
-- windows_x86_64_msvc 0.53.1 — https://github.com/microsoft/windows-rs
 - windows-collections 0.2.0 — https://github.com/microsoft/windows-rs
 - windows-core 0.52.0 — https://github.com/microsoft/windows-rs
 - windows-core 0.61.2 — https://github.com/microsoft/windows-rs
@@ -261,6 +279,9 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - windows-targets 0.53.5 — https://github.com/microsoft/windows-rs
 - windows-threading 0.1.0 — https://github.com/microsoft/windows-rs
 - windows-version 0.1.7 — https://github.com/microsoft/windows-rs
+- windows_x86_64_msvc 0.48.5 — https://github.com/microsoft/windows-rs
+- windows_x86_64_msvc 0.52.6 — https://github.com/microsoft/windows-rs
+- windows_x86_64_msvc 0.53.1 — https://github.com/microsoft/windows-rs
 
 #### MIT (71)
 
@@ -277,9 +298,9 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - darling_core 0.23.0 — https://github.com/TedDriggs/darling
 - darling_macro 0.23.0 — https://github.com/TedDriggs/darling
 - data-encoding 2.11.0 — https://github.com/ia0/data-encoding
+- derive-new 0.6.0 — https://github.com/nrc/derive-new
 - derive_more 2.1.1 — https://github.com/JelteF/derive_more
 - derive_more-impl 2.1.1 — https://github.com/JelteF/derive_more
-- derive-new 0.6.0 — https://github.com/nrc/derive-new
 - dom_query 0.27.0 — https://github.com/niklak/dom_query
 - dotenvy 0.15.7 — https://github.com/allan2/dotenvy
 - generic-array 0.14.7 — https://github.com/fizyk20/generic-array.git
@@ -415,13 +436,13 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - zerovec 0.11.6 — https://github.com/unicode-org/icu4x
 - zerovec-derive 0.11.3 — https://github.com/unicode-org/icu4x
 
-#### Unlicense OR MIT (5)
+#### Apache-2.0/MIT (5)
 
-- aho-corasick 1.1.4 — https://github.com/BurntSushi/aho-corasick
-- byteorder 1.5.0 — https://github.com/BurntSushi/byteorder
-- memchr 2.8.3 — https://github.com/BurntSushi/memchr
-- termcolor 1.4.1 — https://github.com/BurntSushi/termcolor
-- winapi-util 0.1.11 — https://github.com/BurntSushi/winapi-util
+- bit_field 0.10.3 — https://github.com/phil-opp/rust-bit-field
+- md5 0.7.0 — https://github.com/stainless-steel/md5
+- noise 0.8.2 — https://github.com/razaekel/noise-rs
+- pollster 0.3.0 — https://github.com/zesterer/pollster
+- rustc-hash 1.1.0 — https://github.com/rust-lang-nursery/rustc-hash
 
 #### BSD-3-Clause (5)
 
@@ -431,14 +452,6 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - lebe 0.5.3 — https://github.com/johannesvollmer/lebe
 - subtle 2.6.1 — https://github.com/dalek-cryptography/subtle
 
-#### Apache-2.0/MIT (5)
-
-- bit_field 0.10.3 — https://github.com/phil-opp/rust-bit-field
-- md5 0.7.0 — https://github.com/stainless-steel/md5
-- noise 0.8.2 — https://github.com/razaekel/noise-rs
-- pollster 0.3.0 — https://github.com/zesterer/pollster
-- rustc-hash 1.1.0 — https://github.com/rust-lang-nursery/rustc-hash
-
 #### MPL-2.0 (5)
 
 - cssparser 0.36.0 — https://github.com/servo/rust-cssparser
@@ -446,6 +459,14 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - dtoa-short 0.3.5 — https://github.com/upsuper/dtoa-short
 - option-ext 0.2.0 — https://github.com/soc/option-ext.git
 - selectors 0.36.1 — https://github.com/servo/stylo
+
+#### Unlicense OR MIT (5)
+
+- aho-corasick 1.1.4 — https://github.com/BurntSushi/aho-corasick
+- byteorder 1.5.0 — https://github.com/BurntSushi/byteorder
+- memchr 2.8.3 — https://github.com/BurntSushi/memchr
+- termcolor 1.4.1 — https://github.com/BurntSushi/termcolor
+- winapi-util 0.1.11 — https://github.com/BurntSushi/winapi-util
 
 #### Apache-2.0 (4)
 
@@ -461,36 +482,56 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - rustls-webpki 0.103.13 — https://github.com/rustls/webpki
 - untrusted 0.9.0 — https://github.com/briansmith/untrusted
 
-#### MIT OR Apache-2.0 OR Zlib (3)
-
-- glow 0.13.1 — https://github.com/grovesNL/glow
-- raw-window-handle 0.6.2 — https://github.com/rust-windowing/raw-window-handle
-- zune-inflate 0.2.54
-
 #### Apache-2.0 OR ISC OR MIT (3)
 
 - rustls 0.23.42 — https://github.com/rustls/rustls
 - rustls-native-certs 0.7.3 — https://github.com/rustls/rustls-native-certs
 - rustls-pemfile 2.2.0 — https://github.com/rustls/pemfile
 
-#### Unlicense/MIT (2)
+#### MIT OR Apache-2.0 OR Zlib (3)
 
-- same-file 1.0.6 — https://github.com/BurntSushi/same-file
-- walkdir 2.5.0 — https://github.com/BurntSushi/walkdir
-
-#### CDLA-Permissive-2.0 (2)
-
-- webpki-roots 0.26.11 — https://github.com/rustls/webpki-roots
-- webpki-roots 1.0.9 — https://github.com/rustls/webpki-roots
+- glow 0.13.1 — https://github.com/grovesNL/glow
+- raw-window-handle 0.6.2 — https://github.com/rust-windowing/raw-window-handle
+- zune-inflate 0.2.54
 
 #### BSD-2-Clause OR Apache-2.0 OR MIT (2)
 
 - zerocopy 0.8.55 — https://github.com/google/zerocopy
 - zerocopy-derive 0.8.55 — https://github.com/google/zerocopy
 
+#### CDLA-Permissive-2.0 (2)
+
+- webpki-roots 0.26.11 — https://github.com/rustls/webpki-roots
+- webpki-roots 1.0.9 — https://github.com/rustls/webpki-roots
+
+#### Unlicense/MIT (2)
+
+- same-file 1.0.6 — https://github.com/BurntSushi/same-file
+- walkdir 2.5.0 — https://github.com/BurntSushi/walkdir
+
+#### (Apache-2.0 OR MIT) AND BSD-3-Clause (1)
+
+- encoding_rs 0.8.35 — https://github.com/hsivonen/encoding_rs
+
+#### (MIT OR Apache-2.0) AND Unicode-3.0 (1)
+
+- unicode-ident 1.0.24 — https://github.com/dtolnay/unicode-ident
+
 #### 0BSD OR MIT OR Apache-2.0 (1)
 
 - adler2 2.0.1 — https://github.com/oyvindln/adler2
+
+#### Apache-2.0 / MIT (1)
+
+- fnv 1.0.7 — https://github.com/servo/rust-fnv
+
+#### Apache-2.0 AND ISC (1)
+
+- ring 0.17.14 — https://github.com/briansmith/ring
+
+#### Apache-2.0 AND MIT (1)
+
+- dpi 0.1.2 — https://github.com/rust-windowing/winit
 
 #### BSD-3-Clause AND MIT (1)
 
@@ -500,56 +541,76 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 
 - brotli-decompressor 5.0.3 — https://github.com/dropbox/rust-brotli-decompressor
 
-#### Zlib OR Apache-2.0 OR MIT (1)
+#### CC0-1.0 (1)
 
-- bytemuck 1.25.2 — https://github.com/Lokathor/bytemuck
-
-#### Apache-2.0 AND MIT (1)
-
-- dpi 0.1.2 — https://github.com/rust-windowing/winit
+- hexf-parse 0.2.1 — https://github.com/lifthrasiir/hexf
 
 #### CC0-1.0 OR MIT-0 OR Apache-2.0 (1)
 
 - dunce 1.0.5 — https://gitlab.com/kornelski/dunce
 
-#### (Apache-2.0 OR MIT) AND BSD-3-Clause (1)
+#### MIT OR Zlib OR Apache-2.0 (1)
 
-- encoding_rs 0.8.35 — https://github.com/hsivonen/encoding_rs
-
-#### Apache-2.0 / MIT (1)
-
-- fnv 1.0.7 — https://github.com/servo/rust-fnv
+- miniz_oxide 0.8.9 — https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 
 #### Zlib (1)
 
 - foldhash 0.2.0 — https://github.com/orlp/foldhash
 
-#### CC0-1.0 (1)
+#### Zlib OR Apache-2.0 OR MIT (1)
 
-- hexf-parse 0.2.1 — https://github.com/lifthrasiir/hexf
-
-#### MIT OR Zlib OR Apache-2.0 (1)
-
-- miniz_oxide 0.8.9 — https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-
-#### Apache-2.0 AND ISC (1)
-
-- ring 0.17.14 — https://github.com/briansmith/ring
-
-#### (MIT OR Apache-2.0) AND Unicode-3.0 (1)
-
-- unicode-ident 1.0.24 — https://github.com/dtolnay/unicode-ident
+- bytemuck 1.25.2 — https://github.com/Lokathor/bytemuck
 
 
-## JavaScript components
+## JavaScript components — distributed
 
-### Packages bundled into dist/ — 36 component(s)
+### Packages with bytes in dist/ — 21 component(s)
 
-#### MIT (31)
+#### MIT (18)
 
-- @babel/runtime 7.29.7 — https://github.com/babel/babel.git
 - @pixi/colord 2.9.6 — omgovich/colord
 - @react-three/fiber 8.18.0 — git+https://github.com/pmndrs/react-three-fiber.git
+- eventemitter3 5.0.4 — git://github.com/primus/eventemitter3.git
+- ismobilejs 1.1.1 — https://github.com/kaimallea/isMobile.git
+- its-fine 1.2.5 — https://github.com/pmndrs/its-fine
+- parse-svg-path 0.2.0 — git://github.com/jkroso/parse-svg-path.git
+- pixi.js 8.19.0 — https://github.com/pixijs/pixijs.git
+- react 18.3.1 — https://github.com/facebook/react.git
+- react-dom 18.3.1 — https://github.com/facebook/react.git
+- react-reconciler 0.27.0 — https://github.com/facebook/react.git
+- react-use-measure 2.1.7 — https://github.com/pmndrs/react-use-measure
+- rolldown 1.1.5 — git+https://github.com/rolldown/rolldown.git
+- scheduler 0.21.0 — https://github.com/facebook/react.git
+- scheduler 0.23.2 — https://github.com/facebook/react.git
+- suspend-react 0.1.3 — pmndrs/suspend-react
+- three 0.184.0 — https://github.com/mrdoob/three.js
+- vite 8.1.5 — git+https://github.com/vitejs/vite.git
+- zustand 3.7.2 — git+https://github.com/pmndrs/zustand.git
+
+#### Apache-2.0 OR MIT (1)
+
+- @tauri-apps/api 2.11.0 — git+https://github.com/tauri-apps/tauri.git
+
+#### ISC (1)
+
+- earcut 3.0.2 — git://github.com/mapbox/earcut.git
+
+#### NOT DECLARED (1)
+
+- @oxc-project/runtime 0.139.0
+
+
+## JavaScript components — installed, not distributed
+
+These are resolved by `npm` for a production install but contribute no code to `dist/`. They are
+recorded so the difference between the install closure and the ship closure is visible rather than
+assumed.
+
+### Present in node_modules, absent from the product — 18 component(s)
+
+#### MIT (15)
+
+- @babel/runtime 7.29.7 — https://github.com/babel/babel.git
 - @types/earcut 3.0.0 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
 - @types/prop-types 15.7.15 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
 - @types/react 18.3.31 — https://github.com/DefinitelyTyped/DefinitelyTyped.git
@@ -560,24 +621,10 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - base64-js 1.5.1 — git://github.com/beatgammit/base64-js.git
 - buffer 6.0.3 — git://github.com/feross/buffer.git
 - csstype 3.2.3 — https://github.com/frenic/csstype
-- eventemitter3 5.0.4 — git://github.com/primus/eventemitter3.git
 - gifuct-js 2.1.2 — https://github.com/matt-way/gifuct-js.git
-- ismobilejs 1.1.1 — https://github.com/kaimallea/isMobile.git
-- its-fine 1.2.5 — https://github.com/pmndrs/its-fine
 - js-binary-schema-parser 2.0.3 — https://github.com/matt-way/jsBinarySchemaParser.git
 - js-tokens 4.0.0 — lydell/js-tokens
 - loose-envify 1.4.0 — git://github.com/zertosh/loose-envify.git
-- parse-svg-path 0.2.0 — git://github.com/jkroso/parse-svg-path.git
-- pixi.js 8.19.0 — https://github.com/pixijs/pixijs.git
-- react 18.3.1 — https://github.com/facebook/react.git
-- react-dom 18.3.1 — https://github.com/facebook/react.git
-- react-reconciler 0.27.0 — https://github.com/facebook/react.git
-- react-use-measure 2.1.7 — https://github.com/pmndrs/react-use-measure
-- scheduler 0.21.0 — https://github.com/facebook/react.git
-- scheduler 0.23.2 — https://github.com/facebook/react.git
-- suspend-react 0.1.3 — pmndrs/suspend-react
-- three 0.184.0 — https://github.com/mrdoob/three.js
-- zustand 3.7.2 — git+https://github.com/pmndrs/zustand.git
 
 #### BSD-3-Clause (3)
 
@@ -585,24 +632,26 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 - ieee754 1.2.1 — git://github.com/feross/ieee754.git
 - tiny-lru 11.4.7 — git://github.com/avoidwork/tiny-lru.git
 
-#### Apache-2.0 OR MIT (1)
-
-- @tauri-apps/api 2.11.0 — git+https://github.com/tauri-apps/tauri.git
-
-#### ISC (1)
-
-- earcut 3.0.2 — git://github.com/mapbox/earcut.git
-
 
 ## Gaps
 
-Every component above declares a licence. No gaps.
+The following ship but declare no machine-readable licence, and need a manual determination
+before any distribution:
+
+- @oxc-project/runtime 0.139.0
+
+32 distributed component(s) declare a licence whose text their published
+artifact does not contain. They are listed with the exact blocker in
+[`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) and remain open.
 
 ## What this file does NOT establish
 
 - It is an **inventory**, not a legal review. Compatibility of each licence with proprietary
-  distribution has not been assessed here.
-- Licence **texts** are not reproduced. MIT and BSD require the text to accompany the distribution;
-  the packaging step must copy each component's licence file, and it currently does not. That is an
-  open item, recorded rather than implied.
-- Copyright holders are not listed individually, only the components and their declared licences.
+  distribution has not been assessed, and nothing here constitutes legal sign-off. In particular the
+  components under MPL-2.0 and the copyleft-adjacent licences are flagged for review by
+  [`docs/governance/OPEN_SOURCE_POLICY.md`](docs/governance/OPEN_SOURCE_POLICY.md) and that review
+  has not been performed.
+- Copyright holders are not listed individually here. They appear in the reproduced texts in
+  `licensing/THIRD_PARTY_LICENSES.txt`, which is where MIT's requirement actually lands.
+- Coverage is asserted for the graph as generated on the host that ran the generator. A release
+  built for another platform must regenerate these artifacts on that platform.

@@ -44,7 +44,25 @@ Hàng thứ ba của bảng trên nay có hiệu lực thật, không còn là m
 - Ngược lại, hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Nhưng
   output không mặc nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
 - Dự án proprietary vẫn phải giữ **attribution/NOTICE** cho mọi thành phần permissive được phân
-  phối. Hiện repository **chưa có file `NOTICE`**; cần tạo trước lần phát hành đầu tiên.
+  phối.
+
+  > **Sửa 2026-07-27.** Bản trước viết *"Hiện repository **chưa có file `NOTICE`**"*. Câu đó **đã
+  > sai sự thật** kể từ `766609e`: [`NOTICE`](../../NOTICE) tồn tại và được sinh tự động. Trạng thái
+  > đo được hôm nay:
+  >
+  > - [`NOTICE`](../../NOTICE) — inventory 458 thành phần (419 crate Rust · 21 gói npm có byte
+  >   trong `dist/` · 18 gói cài nhưng **không** phân phối), sinh bởi `npm run gen:notice`.
+  > - [`licensing/THIRD_PARTY_LICENSES.txt`](../../licensing/THIRD_PARTY_LICENSES.txt) — **văn bản
+  >   license** của 408/440 thành phần được phân phối, lấy nguyên văn từ đúng phiên bản đã cài, kèm
+  >   SHA-256 từng file trong [`third-party-index.json`](../../licensing/third-party-index.json).
+  > - [`sbom.cdx.json`](../../sbom.cdx.json) — CycloneDX 1.5, đã **validate** với schema chính thức
+  >   được vendor và ghim theo commit.
+  >
+  > **Còn nợ và vẫn chặn phát hành:** 32 thành phần khai báo license nhưng artifact đã publish
+  > **không chứa** văn bản license; danh sách chính xác kèm lý do ở
+  > [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md). Không sinh văn bản thay thế: text
+  > SPDX chuẩn của MIT không chứa dòng copyright, mà tái tạo đúng dòng đó mới là điều MIT yêu cầu.
+  > Đây là việc của con người, không phải của generator.
 
 Một tool AGPL chạy tách biệt trong research có rủi ro khác với thư viện link vào ứng
 dụng, nhưng vẫn phải review cách triển khai, phân phối và đầu ra. Không suy luận từ
