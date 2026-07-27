@@ -1,4 +1,6 @@
 import { chromium } from '@playwright/test';
+import { isOwned, summarise, watchConsole } from './console_policy';
+import { installDeterministicTauri } from './tauri-mock';
 
 /**
  * Markers that identify the served app as Anima and not something else.
@@ -70,9 +72,23 @@ export default async function globalSetup() {
   }
 
   // ---- warm-up -------------------------------------------------------------------------------
+  //
+  // This page is held to the same console standard as a spec's, and for a concrete reason. It used
+  // to be the one dashboard load in the whole suite with no Tauri transport installed, so it threw
+  // on every `invoke` and every `listen` — six errors, twice each under StrictMode — while the run
+  // reported `18 passed`. Nothing was watching setup.
   const browser = await chromium.launch();
+  let warmUpNoise: ReturnType<typeof watchConsole> = [];
   try {
     const page = await browser.newPage();
+    warmUpNoise = watchConsole(page);
+    // The same transport every spec that opens `/` installs. The dashboard talks to Tauri from its
+    // first effect — `invoke('get_lineage_graph')`, `invoke('get_chronicle_history')`,
+    // `listen('chronicle-event')`, `listen('migration-event')` — and `@tauri-apps/api` reaches
+    // straight through `window.__TAURI_INTERNALS__`, so a page without it throws four times over
+    // (eight in dev, since StrictMode double-invokes effects). Warming the module graph is not a
+    // reason to open the app in a state no spec runs it in.
+    await installDeterministicTauri(page);
     await page.goto(url, { waitUntil: 'load', timeout: 120_000 });
     // The landscape entry is a second Vite input and a separate module graph; warm it too.
     await page.goto(`${url}/landscape.html`, { waitUntil: 'load', timeout: 120_000 });
@@ -84,5 +100,17 @@ export default async function globalSetup() {
     await browser.close();
   }
 
-  console.log(`[e2e global-setup] verified Anima Engine at ${url}`);
+  const owned = warmUpNoise.filter(isOwned);
+  if (owned.length > 0) {
+    throw new Error(
+      `[e2e global-setup] the warm-up navigation produced ${owned.length} Anima-owned console ` +
+        `message(s):\n${summarise(owned)}\n\n` +
+        `This is a hard failure for the same reason the identity check above is. A page this suite ` +
+        `opens is a page this suite is answerable for; letting setup shout while the specs stay ` +
+        `quiet is how four TypeErrors sat inside a green run. If the page needs the Tauri ` +
+        `transport, install it here the way the specs do — do not filter the message.`,
+    );
+  }
+
+  console.log(`[e2e global-setup] verified Anima Engine at ${url}, warm-up console clean`);
 }

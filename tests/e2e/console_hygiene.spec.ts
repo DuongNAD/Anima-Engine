@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { installDeterministicTauri } from './tauri-mock';
+import { isOwned, summarise, watchConsole } from './console_policy';
 
 // ---------------------------------------------------------------------------------------
 // The app must not shout at its own console.
@@ -24,81 +25,19 @@ import { installDeterministicTauri } from './tauri-mock';
 // performance messages, React advertises its devtools. Failing on all of it would make this gate
 // something people disable. `isOwned` keeps it to messages that name our own dependencies or come
 // from our own bundle, which is the set we can actually do something about.
+//
+// # Where the rule lives now
+//
+// `console_policy.ts`, because this spec was not the only page the suite opens. `global-setup.ts`
+// warms the module graph by loading the dashboard, and on 2026-07-27 that page was throwing four
+// `TypeError`s — it was the one dashboard load with no Tauri transport installed — while the run
+// reported `18 passed`. The classifier was never the problem; nothing was applying it to that page.
+// Sharing it is what makes "every browser-scope page is held to this standard" true rather than
+// true-of-the-two-pages-this-file-happens-to-drive.
 // ---------------------------------------------------------------------------------------
 
-/** Substrings that mark a console message as coming from Anima or a library Anima drives. */
-const OWNED_MARKERS = [
-  'THREE.',
-  'PixiJS',
-  'Graphics#',
-  'deprecated',
-  'Deprecation',
-  '/src/',
-  'anima',
-  'Anima',
-];
-
-/** Noise from the toolchain and the host, which this project does not control. */
-const NOT_OURS = [
-  '[vite]',
-  'React DevTools',
-  'Download the React DevTools',
-  'GL Driver Message',
-  'WebGL-0x',
-  'Slow network is detected',
-];
-
-/**
- * Third-party deprecations this project cannot fix from its own code.
- *
- * One entry, and it is listed individually rather than pattern-matched away so that adding to
- * this list is a visible act with a reason attached.
- *
- * `THREE.Clock` — constructed by `@react-three/fiber` itself
- * (`dist/events-776716bd.esm.js:1308`, and typed as `clock: THREE.Clock` on its store), not by
- * anything in `src/`. three 0.184 deprecated the class in favour of `THREE.Timer`. Silencing it
- * needs react-three-fiber 9, which requires React 19 — a framework upgrade, not a hardening step,
- * and exactly the kind of change CLAUDE.md records as out of scope for a pass like this. It fires
- * once per page rather than per frame, so it is not the log-spam class of problem the other two
- * were.
- */
-const ACCEPTED_THIRD_PARTY = [
-  'THREE.Clock: This module has been deprecated',
-];
-
-interface Captured {
-  type: string;
-  text: string;
-}
-
-function isOwned(msg: Captured): boolean {
-  if (NOT_OURS.some((n) => msg.text.includes(n))) return false;
-  if (ACCEPTED_THIRD_PARTY.some((a) => msg.text.includes(a))) return false;
-  return OWNED_MARKERS.some((m) => msg.text.includes(m));
-}
-
-function summarise(messages: Captured[]): string {
-  const counts = new Map<string, number>();
-  for (const m of messages) counts.set(m.text, (counts.get(m.text) ?? 0) + 1);
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([text, n]) => `  ${n}x [${text.slice(0, 160)}]`)
-    .join('\n');
-}
-
-function watch(page: import('@playwright/test').Page): Captured[] {
-  const seen: Captured[] = [];
-  page.on('console', (m) => {
-    const type = m.type();
-    if (type !== 'warning' && type !== 'error') return;
-    seen.push({ type, text: m.text() });
-  });
-  page.on('pageerror', (e) => seen.push({ type: 'pageerror', text: String(e) }));
-  return seen;
-}
-
 test('the 2D dashboard runs without warnings of its own', async ({ page }) => {
-  const seen = watch(page);
+  const seen = watchConsole(page);
   await installDeterministicTauri(page);
 
   await page.goto('/', { timeout: 30_000 });
@@ -114,7 +53,7 @@ test('the 2D dashboard runs without warnings of its own', async ({ page }) => {
 });
 
 test('the landscape scene runs without warnings of its own', async ({ page }) => {
-  const seen = watch(page);
+  const seen = watchConsole(page);
 
   await page.goto('/landscape.html', { timeout: 60_000 });
   // The world generates off-thread on a cold cache; wait for the scene, not a fixed delay.
