@@ -18,10 +18,15 @@ reconciled_in: ./2026-07-27-feature-anima-completion.md
 > Its reconciliation — which finding closed, under which gate, in which commit — lives in
 > [§2.2 of the plan](./2026-07-27-feature-anima-completion.md). That table was written when this
 > document held **twelve** items and covers 1–12; items 13–18 were appended to this file afterwards
-> and are not reconciled row by row. Most of them extend a finding already in the table. One
-> sub-point is **not** claimed closed anywhere and should be read as open: the capture-reproducibility
-> contract in items 13 and 14 — fixed animation time, seeded `WorldSky` star RNG, and the same view
-> captured twice from clean loads compared by SHA-256.
+> and are not reconciled row by row. Each of them extends a finding already in the table, and the
+> table's commit column is what went stale rather than the work: the capture-reproducibility contract
+> demanded by items 13 and 14 — fixed animation time, fixed frame delta, seeded `WorldSky` stars, the
+> same view captured twice from clean loads and compared by SHA-256 — is closed in `575c6dd`, which
+> row 3 does not cite because it landed after the row was written. It lives in
+> [`utils/sceneClock.ts`](../../../src/components/Landscape/utils/sceneClock.ts) and
+> [`utils/captureMode.ts`](../../../src/components/Landscape/utils/captureMode.ts), and its gate is
+> [`canonical_views.spec.ts`](../../../tests/e2e/canonical_views.spec.ts): every view is shot twice
+> from two fresh browser contexts and no PNG is written unless the two SHA-256s are equal.
 
 # Supervisor findings for the next Claude pass
 
