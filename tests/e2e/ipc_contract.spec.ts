@@ -161,7 +161,7 @@ test('a pre-confinement save can be found, chosen and imported from the UI', asy
         timeout: 15_000,
       },
     )
-    .toEqual({ legacy_name: 'second_world.json', save_as: 'restored' });
+    .toEqual({ legacyName: 'second_world.json', saveAs: 'restored' });
 
   // The name the backend says it wrote lands in the save field, so the next action — Load State —
   // works without the user retyping a name they were never shown.

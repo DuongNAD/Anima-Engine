@@ -110,8 +110,8 @@ describe('LegacyImportPanel', () => {
 
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('import_legacy_save', {
-        legacy_name: 'b.json',
-        save_as: 'restored',
+        legacyName: 'b.json',
+        saveAs: 'restored',
       }),
     );
     // The name the backend actually wrote, not the one that was typed: the backend normalises the

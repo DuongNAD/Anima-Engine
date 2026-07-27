@@ -942,7 +942,7 @@ export function App() {
                 }}
                 onClick={async () => {
                   try {
-                    await invoke("trigger_migration", { target_port: targetPort });
+                    await invoke("trigger_migration", { targetPort });
                   } catch (e) {
                     setError(String(e));
                   }
@@ -991,7 +991,7 @@ export function App() {
                   data-testid="save-state-button"
                   onClick={async () => {
                     try {
-                      await invoke("save_simulation_state", { file_path: filePath });
+                      await invoke("save_simulation_state", { filePath });
                     } catch (e) {
                       setError(String(e));
                     }
@@ -1004,7 +1004,7 @@ export function App() {
                   data-testid="load-state-button"
                   onClick={async () => {
                     try {
-                      await invoke("load_simulation_state", { file_path: filePath });
+                      await invoke("load_simulation_state", { filePath });
                     } catch (e) {
                       setError(String(e));
                     }

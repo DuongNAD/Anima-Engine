@@ -92,9 +92,12 @@ export function LegacyImportPanel({ onImported }: LegacyImportPanelProps) {
     setPhase({ kind: 'importing', name: selected });
     setError(null);
     try {
+      // camelCase keys: `#[tauri::command]` defaults to `ArgumentCase::Camel`, so the Rust
+      // parameters `legacy_name` / `save_as` arrive as `legacyName` / `saveAs`. Sending the Rust
+      // spelling means the arguments never arrive. `scripts/check_ipc_arg_case.mjs` pins this.
       const wrote = await invoke<string>('import_legacy_save', {
-        legacy_name: selected,
-        save_as: saveAs,
+        legacyName: selected,
+        saveAs,
       });
       setPhase({ kind: 'imported', wrote });
       onImported?.(wrote);

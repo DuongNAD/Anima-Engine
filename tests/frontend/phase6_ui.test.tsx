@@ -117,13 +117,13 @@ describe('Phase 6 UI, Persistence, Viewport, and Telemetry Tests', () => {
     await act(async () => {
       fireEvent.click(saveButton);
     });
-    expect(invoke).toHaveBeenCalledWith('save_simulation_state', { file_path: 'save_test.json' });
+    expect(invoke).toHaveBeenCalledWith('save_simulation_state', { filePath: 'save_test.json' });
 
     // Click Load State
     await act(async () => {
       fireEvent.click(loadButton);
     });
-    expect(invoke).toHaveBeenCalledWith('load_simulation_state', { file_path: 'save_test.json' });
+    expect(invoke).toHaveBeenCalledWith('load_simulation_state', { filePath: 'save_test.json' });
   });
 
   it('renders camera zoom and pan controls and updates viewport state/rendering', async () => {

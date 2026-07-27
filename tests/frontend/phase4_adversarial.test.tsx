@@ -200,18 +200,18 @@ describe('Phase 4 Front-end UI - Adversarial Stress Tests', () => {
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: 999999 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: 999999 });
 
     fireEvent.change(portInput, { target: { value: '-80' } });
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: -80 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: -80 });
 
     fireEvent.change(portInput, { target: { value: 'invalid_port' } });
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: 8081 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: 8081 });
   });
 });

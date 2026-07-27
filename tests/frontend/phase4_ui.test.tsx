@@ -248,7 +248,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
       fireEvent.click(button);
     });
 
-    expect(invoke).toHaveBeenCalledWith('trigger_migration', { target_port: 9000 });
+    expect(invoke).toHaveBeenCalledWith('trigger_migration', { targetPort: 9000 });
   });
 
   it('should color-code chronicle events based on event type and show the formatted time', async () => {
