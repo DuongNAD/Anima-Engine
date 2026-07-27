@@ -193,10 +193,10 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 | Khẳng định | Trạng thái thật |
 |---|---|
 | Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (đo lại 2026-07-27 tại `068a750`: `tests/live_experiment_tests.rs` chạy **17 test**, 0 fail). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
-| Hiệu năng tick trong app | 🔧 **Instrumentation đã ship** (`core/tick_capture.rs` + 4 lệnh IPC, có test). **Chưa có bất kỳ số đo phần cứng nào từ app desktop** — xem §3.2 và [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
+| Hiệu năng tick trong app | 📏 **Đã đo 2026-07-27** — `full_tick` p50 **1642,2 µs**, 1800 mẫu, bản **debug**, executor multi-threaded, 256², **10 agent**. Đóng 3 hàng `chưa đo`; hàng `Full-brain agents MVP` **vẫn mở** vì nó định nghĩa ở 1.000 agent. Chưa có lần chạy **release** nào — xem [BENCHMARK_BASELINE.md § Đo trong app](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug) |
 | Hạ tầng thí nghiệm | 🔧 Manifest/runner/fork/ledger **tồn tại và có test**. Đó **không phải** một kết quả khoa học — chưa có run nào được thiết kế, chạy và diễn giải như một thí nghiệm |
-| App khởi động dưới CSP mới | ❌ **Chưa ai mở app** dưới `csp`/`devCsp` mới. `npm run check:csp` chỉ kiểm **artifact đã build** so với chính sách đã khai; nó không chứng minh app boot được |
-| Ảnh chụp / bằng chứng thị giác của app | ❌ Không có. Không có ảnh chụp app desktop nào trong đợt này |
+| App khởi động dưới CSP mới | 📏 **Đã xác minh 2026-07-27.** Chủ dự án mở app, reload để Console phủ trọn một lần tải trang: **0 vi phạm CSP**, chỉ 4 cảnh báo `[TAURI] Couldn't find callback id …` (hệ quả bình thường của reload). IPC chạy thật từ webview — 4 lệnh capture đều trả giá trị. Xem [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
+| Ảnh chụp / bằng chứng thị giác của app | 📏 **Có, 2026-07-27** — một ảnh gồm tiêu đề cửa sổ, `Số Ticks 91 781` và Console sạch. **Ảnh do chủ dự án giữ; repo vẫn chưa có chỗ commit ảnh app** và BENCHMARKING.md cố ý không tạo ra một chỗ mới |
 | Map đã hoàn tất | ❌ **Không có review map nào trong gói này.** Đừng suy ra trạng thái map từ bảng trên |
 | `hexf-parse` | ❌ **Chưa giải quyết** — xem §1.c |
 
