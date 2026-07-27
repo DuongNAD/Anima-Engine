@@ -129,7 +129,7 @@ nhau rồi kết luận gì về tỷ lệ giữa chúng. Mỗi hàng đều ghi
 | UI telemetry | 1–5 Hz | **113,3 µs** (p50, in-app) | Cùng lần chạy, `exact: true` — nằm trọn giữa hai checkpoint có tên, nên là chi phí thật của pha chứ không phải phần dư |
 | Hot-loop allocation | 0 | **đạt** | Các test zero-alloc assert `allocs == 0` |
 | Terrain gen (256²) | — | **chưa đo** | `cargo test --release`; chưa vào bộ bench |
-| Full-brain agents MVP | 1.000 | **chưa đo** | Lần chạy in-app 2026-07-27 có **10 agent**, không phải 1.000, nên nó **không** đóng được hàng này. `full_tick` ở 10 agent là **1,642 ms** (p50, debug). Đừng nhân `mean_ns_per_agent` lên 1.000 — xem cảnh báo ở [§ Đo trong app](#đo-trong-app--2026-07-27-bản-debug). Tổng các system mỗi tick ở 1.000 agent ≈ **493 µs ≈ 3,0 %** khung hình vẫn là **cận dưới** Criterion, chưa gồm não |
+| Full-brain agents MVP | 1.000 | **chưa đo — nay chạy được** | Lần chạy in-app 2026-07-27 có **10 agent** nên **không** đóng được hàng này, và cho tới cùng ngày hôm đó nó **không thể** đóng: số founder là hằng số `10` trong `simulation_loop.rs`, bản release không có đường lấy dữ liệu ra. Cả hai đã gỡ (`ANIMA_FOUNDING_POPULATION`, `ANIMA_TICK_CAPTURE_OUT`) — thủ tục ở [BENCHMARKING.md § Checklist lần chạy release](docs/how-to/BENCHMARKING.md#checklist-lần-chạy-release--1000-agent). `full_tick` ở 10 agent là **1,642 ms** (p50, debug); đừng nhân `mean_ns_per_agent` lên 1.000 — xem cảnh báo ở [§ Đo trong app](#đo-trong-app--2026-07-27-bản-debug). Tổng các system mỗi tick ở 1.000 agent ≈ **493 µs ≈ 3,0 %** khung hình vẫn là **cận dưới** Criterion, chưa gồm não |
 
 ### Đo trong app — 2026-07-27, bản debug
 

@@ -84,9 +84,32 @@ pub fn export_tick_capture(
     capture.export_to(&target).map_err(|e| e.to_string())
 }
 
+/// Write a completed capture under the app data directory, from outside the IPC layer.
+///
+/// The engine thread calls this when `ANIMA_TICK_CAPTURE_OUT` is set and a capture reaches
+/// `Complete` — the only route out of a capture on a release build, which has no DevTools to invoke
+/// [`export_tick_capture`] from. Generic over the runtime because [`crate::core::simulation_loop`]
+/// is, and returns the path it wrote so the caller can say where the file went.
+///
+/// `name` goes through the same [`crate::commands::save_paths`] resolution as an IPC-supplied save
+/// name. The value arrives from the environment rather than a webview, which is a different threat
+/// model but not a licence to treat it as a path: the rule is the same so there is only one rule.
+pub(crate) fn export_capture_to_app_data<R: tauri::Runtime>(
+    capture: &crate::core::tick_capture::SharedTickCapture,
+    app_handle: Option<&tauri::AppHandle<R>>,
+    name: &str,
+) -> Result<std::path::PathBuf, String> {
+    let handle = app_handle.ok_or("no app handle: this engine was started headless")?;
+    let target = crate::commands::save_paths::resolve_save_path(&captures_dir(handle)?, name)?;
+    capture.export_to(&target).map_err(|e| e.to_string())?;
+    Ok(target)
+}
+
 /// Directory this app keeps capture exports in, created on demand. Beside `saves/` rather than
 /// inside it, so a profiler artefact never turns up in a save picker.
-fn captures_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+fn captures_dir<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+) -> Result<std::path::PathBuf, String> {
     use tauri::Manager;
     let dir = app_handle
         .path()

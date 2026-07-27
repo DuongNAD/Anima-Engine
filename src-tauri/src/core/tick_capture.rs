@@ -371,7 +371,34 @@ impl CaptureConfig {
         }
         Some(Self::parse(trimmed))
     }
+}
 
+/// File name a completed capture writes itself to, from `ANIMA_TICK_CAPTURE_OUT`.
+///
+/// # Why a capture needs to be able to write itself
+///
+/// Every route out of a capture is IPC: [`crate::commands::capture`] holds all four commands, no
+/// component in `src/` calls any of them, and a **release** binary has no DevTools to call them
+/// from — Tauri v2 only enables the inspector automatically in debug builds, and this app does not
+/// enable the `devtools` feature. So on the profile whose numbers are actually worth having,
+/// `ANIMA_TICK_CAPTURE` could fill its ring and the samples would die with the process.
+///
+/// This is the way out that needs no window and no console. Unset changes nothing: the capture is
+/// retrieved over IPC exactly as before.
+///
+/// The value is a **name**, not a path, and is resolved under the app data directory by the same
+/// [`crate::commands::save_paths`] rules a save name follows — a run started from a shell must not
+/// be able to aim an engine thread at an arbitrary file.
+pub fn auto_export_name_from_env() -> Option<String> {
+    let raw = std::env::var("ANIMA_TICK_CAPTURE_OUT").ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+impl CaptureConfig {
     /// The parsing half of [`from_env`](Self::from_env), separated so it is testable without
     /// touching process state.
     pub fn parse(spec: &str) -> Result<Self, CaptureConfigError> {
@@ -1718,5 +1745,86 @@ mod tests {
         // Committing twice cannot produce a second sample from one tick.
         assert!(!sink.commit(1, 10_000_000, 1_000));
         assert_eq!(shared.sample_count(), 1);
+    }
+}
+
+#[cfg(test)]
+mod auto_export_env_tests {
+    use super::*;
+
+    /// These tests write a process-wide environment variable, so they share a lock: Rust runs tests
+    /// in one process on many threads, and two of them racing on the same variable is the failure
+    /// that passes alone and fails in the suite.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct EnvGuard(Option<String>);
+
+    impl EnvGuard {
+        fn set(value: Option<&str>) -> Self {
+            let previous = std::env::var("ANIMA_TICK_CAPTURE_OUT").ok();
+            match value {
+                Some(v) => std::env::set_var("ANIMA_TICK_CAPTURE_OUT", v),
+                None => std::env::remove_var("ANIMA_TICK_CAPTURE_OUT"),
+            }
+            Self(previous)
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(v) => std::env::set_var("ANIMA_TICK_CAPTURE_OUT", v),
+                None => std::env::remove_var("ANIMA_TICK_CAPTURE_OUT"),
+            }
+        }
+    }
+
+    /// Unset is the whole compatibility story: no file, no path resolution, no behaviour change.
+    #[test]
+    fn unset_writes_nothing() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvGuard::set(None);
+        assert_eq!(auto_export_name_from_env(), None);
+    }
+
+    /// An empty or blank value reads as "not asked for" rather than as a file called "". A shell
+    /// script that builds the value from another variable produces exactly this when that other
+    /// variable is missing, and it must not become a filesystem error deep in the engine thread.
+    #[test]
+    fn blank_reads_as_unset() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for blank in ["", "   ", "\t"] {
+            let _guard = EnvGuard::set(Some(blank));
+            assert_eq!(auto_export_name_from_env(), None, "{blank:?} should read as unset");
+        }
+    }
+
+    #[test]
+    fn a_name_survives_surrounding_space() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvGuard::set(Some("  tick-capture-release  "));
+        assert_eq!(
+            auto_export_name_from_env().as_deref(),
+            Some("tick-capture-release")
+        );
+    }
+
+    /// The value is a name and stays a name. Rejecting a path is `save_paths`' job and it has its
+    /// own tests; what this asserts is that this function does not quietly pre-empt that decision
+    /// by trimming a traversal into something acceptable.
+    #[test]
+    fn a_path_shaped_value_is_passed_through_intact_for_save_paths_to_refuse() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = EnvGuard::set(Some("../../etc/passwd"));
+        assert_eq!(
+            auto_export_name_from_env().as_deref(),
+            Some("../../etc/passwd"),
+            "the traversal must reach save_paths, not be silently repaired here"
+        );
+        let dir = std::env::temp_dir().join("anima-auto-export-test");
+        assert!(
+            crate::commands::save_paths::resolve_save_path(&dir, "../../etc/passwd").is_err(),
+            "save_paths must refuse the value this function passes through"
+        );
     }
 }
