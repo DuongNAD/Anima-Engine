@@ -1,0 +1,81 @@
+{
+  "kind": "e2-execution-lock",
+  "locked_on": "2026-07-27",
+  "contains_experimental_data": false,
+  "statement": "The duration rung for the E2 twelve-seed ensemble, chosen ONCE from the excluded smoke calibration, BEFORE any experimental seed ran. Committed and pushed before seed 700001 was executed. It may never be changed now that experimental data exists.",
+
+  "selected_duration_ticks": 18000,
+  "selected_rung_index": 0,
+  "registered_ladder": [18000, 12000, 6000],
+  "rung_stepped_down": false,
+  "sample_period": 600,
+  "n_seeds": 12,
+  "n_never_lowered": true,
+
+  "why_this_rung": "The top rung was affordable by a factor of roughly thirty, so nothing had to be given up. Stepping down costs resolution and is only justified against the budget; the budget was not remotely threatened.",
+
+  "calibration": {
+    "seed": 999983,
+    "seed_is_excluded_from_every_analysis": true,
+    "arms": ["control", "treatment"],
+    "duration_ticks": 18000,
+    "measured_ensemble_seconds": 10.1557988,
+    "measured_external_wall_clock_seconds": 11.205,
+    "work_ratio_ensemble_to_smoke": 12,
+    "projection_basis": "the ensemble is 12 seeds x 2 arms x T against the smoke's 1 seed x 2 arms x T, so exactly 12x the tick work",
+    "projected_ensemble_seconds_from_ensemble_timer": 121.87,
+    "projected_ensemble_minutes_from_ensemble_timer": 2.03,
+    "projected_ensemble_minutes_from_external_clock": 2.24,
+    "projected_ensemble_minutes_from_24_run_mean": 3.16,
+    "conservative_projection_note": "The 24-run mean of 15.78 s per smoke includes process start, the integrity probe and artifact writing, none of which scale with seed count; it is quoted as the pessimistic bound rather than the expected one.",
+    "registered_max_wall_clock_minutes": 90,
+    "headroom_factor_against_ceiling": 28.5,
+    "registered_projection_before_any_run_minutes": [1.5, 7.4],
+    "measured_projection_falls_inside_registered_estimate": true
+  },
+
+  "cross_process_reproducibility_acceptance": {
+    "why": "Two schedule-ordering defects were found by this smoke and fixed before the lock. Both made a run reproducible WITHIN a process and not ACROSS processes, and every pre-existing determinism gate compares two runs inside one process - exactly the comparison that cannot see it. The lock therefore records an explicit cross-process acceptance rather than assuming reproducibility.",
+    "processes": 24,
+    "duration_ticks_per_process": 18000,
+    "arms_per_process": 2,
+    "compared": "both final checksums, all 11 final observables, and all 30 sampled series points per arm",
+    "distinct_outcomes": 1,
+    "control_final_checksum": 248377510,
+    "treatment_final_checksum": 150464771,
+    "official_smoke_identical_to_acceptance_set": true,
+    "defects_found_and_fixed_first": [
+      "993a587 - ecosystem_census_system took a snapshot of agent reserves with no order declared against the systems that move them, so it reported either this tick's metabolism or last tick's, 0.186 EU apart. Reached live.animals_eu (H3) and live.closed_eu_total (H5).",
+      "ec94933 - seven unordered conflicting pairs among the systems that move EU, so the world checksum AND live.mean_agent_energy (H1, the primary observable) moved with a per-process hash seed. Also un-rigged the ambiguity gate, which had been passing vacuously because ScheduleGraph::systems is empty after initialization."
+    ]
+  },
+
+  "build": {
+    "git_commit": "5f0383fe6c528e93b7120bcb0ad4b18fad05b02e",
+    "git_tree_clean_at_build": true,
+    "profile": "release",
+    "features": "desktop",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "binary_path": "src-tauri/target/release/examples/run_e2_brain_experiment.exe",
+    "binary_sha256": "3773a50113781a3728120a37c0c9be5ef5ba8eaa7bda3aeaf2eef8f8db8128d3"
+  },
+
+  "manifest_sha256": {
+    "e2-control-shared-brain.json": "b5c6820713f46389e0eea8b851c1e47e5033687338bcc7a3fa2508159c879426",
+    "e2-treatment-evolved-brain.json": "b5618a58f3c089ba4ebe302fcf6da3d0325a3deedc0ec89eeb66a41631e2c27e",
+    "e2-smoke-control-shared-brain.json": "9513382ff3bf1866b6fe672ff82f446aeb28e55b278e1238a6d809d1fbd7ab81",
+    "e2-smoke-treatment-evolved-brain.json": "03c9d4e522d6022a28f805400161866e093fdb0442215bd34f90d740cee1f6d1",
+    "e2-preregistration.json": "0dfdf6f8989ffb843ad8245e3d6a3b634f46151d8552d672463e3e1fce3e9c19"
+  },
+
+  "commands": {
+    "build": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment",
+    "smoke": "src-tauri/target/release/examples/run_e2_brain_experiment.exe --smoke --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+    "ensemble": "src-tauri/target/release/examples/run_e2_brain_experiment.exe --ensemble --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+    "never": "cargo run is forbidden on this machine by a standing owner rule; the example is built and its compiled binary executed directly"
+  },
+
+  "superseded_attempts": [
+    "superseded/2026-07-27-smoke-attempt-01-pre-energy-order-fix - the first calibration, kept with its original checksums.sha256. It was NOT used to choose this rung."
+  ]
+}
