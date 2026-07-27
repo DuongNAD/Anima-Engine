@@ -2,7 +2,7 @@
 title: Đo hiệu năng bằng Criterion
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-07-27
 review_cycle: per-release
 ---
 
@@ -11,6 +11,10 @@ review_cycle: per-release
 Tài liệu này là **cách làm**. Số đo cam kết nằm ở [§ Baseline](#baseline-2026-07-26); cách
 diễn giải một report và metadata bắt buộc vẫn ở
 [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
+
+> **Bạn là chủ dự án và chỉ có năm phút?** Bỏ qua phần Criterion. Việc duy nhất máy không làm được
+> là [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist) —
+> một lần mở app, thu cả ba thứ còn thiếu.
 
 ## Vì sao có bộ này
 
@@ -218,15 +222,243 @@ phải nội suy. `plant_soil_weather` xuất hiện trong `unavailable` kèm l�
 
 **Cái gói này chưa làm, nói thẳng:** chưa có lần chạy nào của **app desktop đầy đủ**. Bằng chứng
 hiện có là headless — cùng lịch trình (`simulation_schedule::build_tick_schedule`, đúng hàm
-`SimulationEngine::start` gọi), qua `tests/tick_capture_tests.rs`. Thủ tục đo còn thiếu, cần một
-con người:
+`SimulationEngine::start` gọi), qua `tests/tick_capture_tests.rs`.
 
-1. `npm run tauri:dev` (hoặc bản build release) với `ANIMA_TICK_CAPTURE` đặt sẵn;
-2. để chạy qua warm-up, rồi `export_tick_capture` với một tên file;
-3. đọc `<app data>/captures/<tên>.json` và điền các hàng `Physics tick` / `Brain/sensor` /
-   `Full-brain agents` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) từ `p50_ns`.
+Thủ tục đo cần **một con người mở app**, và nó nằm ở
+[§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist) bên dưới.
+CLAUDE.md cấm agent chạy full backend trên máy dev này, nên không phiên tự động nào được thực hiện
+bước đó — checklist tồn tại để chủ dự án chạy nó **một lần**, không phải để agent chạy hộ.
 
-CLAUDE.md cấm chạy full backend trên máy dev này, nên bước 1 **không** được thực hiện ở đây.
+## Checklist một lần chạy cho chủ dự án (one-run owner checklist)
+
+> **MỘT lần khởi động. MỘT phiên. Khoảng 5 phút.** Phiên này thu ba thứ mà không gate nào trong
+> repo lấy được vì cả ba đều cần một con người mở app:
+>
+> | # | Thu cái gì | Đóng phần nào |
+> |---|---|---|
+> | (a) | App có khởi động dưới CSP không, console có vi phạm không | [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
+> | (b) | Một file export tick capture | các hàng `chưa đo` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) |
+> | (c) | Một ảnh chụp màn hình | bằng chứng thị giác cho (a) |
+>
+> Đừng chạy ba lần cho ba việc — chúng nằm trong **cùng một cửa sổ app**.
+>
+> ⚠️ **Phiên này KHÔNG chứng minh sẵn sàng phát hành.** Nó chỉ điền bằng chứng còn thiếu. Xem
+> [§ Phiên này đóng gì và không đóng gì](#phiên-này-đóng-gì-và-không-đóng-gì) trước khi trích bất kỳ
+> con số nào.
+
+### Bước 0 — Chuẩn bị, làm TRƯỚC và **không** tính trong 5 phút
+
+Lần biên dịch đầu của backend (Bevy + Burn) mất hàng chục phút. Nếu chạy thẳng `npm run tauri:dev`
+trên `target/` nguội thì "5 phút" là sai. Hâm nóng trước, từ repo root rồi `src-tauri/`:
+
+```powershell
+npm install
+npm run build
+```
+
+```powershell
+cargo build --features desktop
+```
+
+`cargo build` ở đây **là biên dịch, không phải chạy app** — nó không vi phạm cảnh báo vận hành ở
+đầu [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Nó hâm nóng toàn bộ cây phụ thuộc; khi
+`tauri dev` chạy, chỉ crate `anima-engine` biên dịch lại (`generate_context!` đổi chế độ giữa
+production và dev), nên phần lớn thời gian đã trả xong.
+
+Cần thêm: cổng **5173** trống (`strictPort`), vì `beforeDevCommand` tự chạy `npm run dev`.
+
+### Bước 1 — Đặt biến môi trường, rồi mở app (PowerShell, cùng một cửa sổ)
+
+Biến này được đọc bởi **tiến trình Rust** ở `SimulationEngine::start`
+([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs)), nên phải đặt **trước
+khi** app khởi động — đặt sau khi cửa sổ đã mở là vô tác dụng.
+
+```powershell
+$env:ANIMA_TICK_CAPTURE = "warmup=300,capacity=1800,max_samples=1800"
+npm run tauri:dev
+```
+
+Vì sao đúng ba tham số đó: 300 tick warm-up ≈ **5 s** ở 60 Hz (bỏ tick lạnh), rồi 1800 mẫu liên
+tiếp ≈ **30 s**. Khi đủ 1800 mẫu, capture tự chuyển sang trạng thái `Complete` và **ngừng tiêu thụ
+tick** — một điểm dừng rõ ràng, không phải một con số bạn tự đoán là đã đủ. Tổng ≈ 2100 tick ≈ 35 s
+đồng hồ. Cú pháp và mọi khoá khác: `CaptureConfig::parse` trong
+[`core/tick_capture.rs`](../../src-tauri/src/core/tick_capture.rs).
+
+- ✅ **Đúng:** cửa sổ "Anima Engine - Evolution Simulator" mở ra.
+- ❌ **Sai:** terminal in `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture **tắt**,
+  app vẫn chạy bình thường và bạn sẽ thu được một file rỗng. Sửa chuỗi rồi mở lại.
+
+### Bước 2 — Mở DevTools và **reload** để bắt vi phạm CSP lúc tải trang
+
+`npm run tauri:dev` build ở chế độ debug, nên DevTools của webview luôn có: chuột phải trong cửa sổ
+app → **Inspect**.
+
+DevTools mở *sau* khi trang đã tải sẽ **không** có log của lần tải đó. Vì vậy, trong tab
+**Console**, gõ:
+
+```js
+location.reload()
+```
+
+Reload chỉ tải lại webview; tiến trình Rust và luồng mô phỏng **không** khởi động lại, nên capture
+không bị ảnh hưởng. Bây giờ Console đang mở trong suốt một lần tải trang đầy đủ.
+
+- ✅ **Đúng:** giao diện "Anima-Engine Control Center" hiện ra, Console **không** có dòng nào chứa
+  `Content Security Policy` / `Refused to …`.
+- ❌ **Sai:** bất kỳ `Refused to load/connect/execute …` nào → chép nguyên văn, đó chính là phát
+  hiện phiên này tồn tại để tìm.
+- ❌ **Sai:** `window.__TAURI_INTERNALS__ === undefined` → bạn đang xem `localhost:5173` trong một
+  trình duyệt thường, **không** phải webview Tauri. Mọi `invoke` sẽ reject; đây đúng là lỗi đã ghi
+  ở [implementation §9](../ai/implementation/2026-07-27-feature-anima-completion.md).
+
+### Bước 3 — Chạy mô phỏng (đây là lúc capture bắt đầu tiêu thụ tick)
+
+Nút lớn bên trái, dưới header:
+
+| Nhãn nút | Nghĩa | Làm gì |
+|---|---|---|
+| `Đang dựng thế giới chung…` (xám, disabled) | thế giới 2048² đang sinh (~7 s lần đầu) | **đợi** |
+| `Bắt đầu mô phỏng` (xanh) | sẵn sàng | **bấm** |
+| `Dừng mô phỏng` (đỏ) | đang chạy | không bấm |
+
+Bấm rồi để yên **~40 giây**. Theo dõi ô **`Số Ticks:`** trong bảng trạng thái — nó phải tăng đều và
+cần **tăng thêm ~2100** kể từ lúc bấm. (Đếm mức tăng, không đếm giá trị tuyệt đối: nếu app vừa nạp
+một autosave thì bộ đếm chạy tiếp từ số đã lưu.) Điều kiện dừng thật nằm ở bước 4.
+
+> Nếu app đã tự chạy ngay khi mở (có autosave ở `saves/autosave.json` thì
+> [`lib.rs`](../../src-tauri/src/lib.rs) khởi động engine ngay lúc setup), capture đã chạy từ đầu và
+> `Số Ticks` đã lớn. Không sao — sang bước 4 và đọc trạng thái.
+
+### Bước 4 — Xác nhận capture đã xong, trong Console
+
+Không có nút bấm nào cho tick capture: bốn lệnh là **IPC thuần**, chưa có UI gọi chúng (kiểm chứng:
+không file nào trong `src/` nhắc tới `tick_capture`). Đường duy nhất là Console. `@tauri-apps/api`
+định tuyến mọi `invoke` qua `window.__TAURI_INTERNALS__.invoke(cmd, args)` — cùng một mặt tiếp xúc
+mà webview thật cài đặt, ghi ở [`tests/e2e/tauri-mock.ts`](../../tests/e2e/tauri-mock.ts).
+
+```js
+await window.__TAURI_INTERNALS__.invoke('get_tick_capture_status')
+```
+
+- ✅ **Đúng:** `status: "Complete"` và `accounting.samples_recorded: 1800`.
+- 🟡 **Chấp nhận được:** `status: "Recording"` với `samples_recorded` vài trăm — đợi thêm rồi gọi
+  lại. Bất kỳ số mẫu nào > 0 cũng xuất được, chỉ là ít mẫu hơn.
+- ❌ **Sai:** `status: "Idle"` → biến môi trường không tới được tiến trình (xem bước 1).
+- ❌ **Sai:** `accounting.ticks_observed: 0` → engine chưa từng chạy; quay lại bước 3.
+- ❌ **Đáng ghi lại:** `dropped_out_of_order` > 0 → executor đa luồng đã xáo trộn các checkpoint.
+  Không phải lỗi của bạn; **chép con số đó lại**, nó là dữ liệu về chính executor.
+
+### Bước 5 — Xuất file (chú ý: tên khoá là `fileName`, KHÔNG phải `file_name`)
+
+```js
+await window.__TAURI_INTERNALS__.invoke('export_tick_capture', { fileName: 'tick-capture-2026-07-27' })
+```
+
+> ⚠️ **Bẫy im lặng, và nó là bẫy duy nhất nguy hiểm ở đây.** `#[tauri::command]` chuyển tên tham số
+> sang **camelCase** (mặc định `ArgumentCase::Camel`, `tauri-macros/src/command/wrapper.rs`), và
+> tham số là `Option<String>` — nên gõ `file_name` **không** báo lỗi: lệnh trả về đúng tài liệu
+> JSON, in đẹp ra Console, và **không ghi file nào cả**. Console xanh, ổ đĩa trống. Phải là
+> `fileName`.
+>
+> Tên file theo hợp đồng tên save trong [`commands/save_paths.rs`](../../src-tauri/src/commands/save_paths.rs):
+> chỉ `[A-Za-z0-9._-]`, không dấu gạch chéo, không đường dẫn; đuôi `.json` được tự thêm.
+
+File nằm ở thư mục app-data, **không** phải trong repo:
+
+```powershell
+Get-ChildItem "$env:APPDATA\com.anima.engine\captures"
+```
+
+- ✅ **Đúng:** thấy `tick-capture-2026-07-27.json`, kích thước vài KB.
+- ❌ **Sai:** thư mục trống hoặc không tồn tại → gần như chắc chắn là đã gõ `file_name`. Gọi lại
+  bước 5 với `fileName`.
+
+Xem nhanh các con số quan trọng mà không cần mở editor:
+
+```powershell
+(Get-Content "$env:APPDATA\com.anima.engine\captures\tick-capture-2026-07-27.json" -Raw | ConvertFrom-Json).phases | Format-Table phase, exact, count, p50_ns, p95_ns
+```
+
+`p50_ns` là cột điền vào [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md), theo ánh xạ ở
+[§ File này điền được hàng nào](#file-này-điền-được-hàng-nào).
+
+### Bước 6 — Chụp một ảnh, **trước khi** đóng app
+
+`Win`+`Shift`+`S`, chọn cả cửa sổ app **và** panel DevTools trong cùng một khung. Một ảnh phải thấy
+được cả ba: tiêu đề cửa sổ, `Số Ticks` > 2100, và tab Console không có vi phạm CSP.
+
+Lưu vào một đường dẫn bạn tự chọn, ví dụ `%USERPROFILE%\Desktop\anima-csp-boot-2026-07-27.png`.
+
+> **Repo chưa có chỗ chuẩn cho ảnh này** và checklist này không tạo ra một chỗ mới. Đừng để nó vào
+> [`map-views/`](../../map-views): tám PNG ở đó là artifact khác hẳn, bị `map_manifest.json` ghim
+> bằng SHA-256 và `tests/frontend/mapManifestEvidence.test.ts` kiểm — thêm file lạ vào đó là làm
+> nhiễu một gate đang xanh.
+
+### Bước 7 — Đóng app, rồi gửi lại bốn thứ
+
+Đóng cửa sổ bình thường (khi thoát, app tự ghi autosave — đó là hành vi bình thường, không phải lỗi).
+
+Gửi lại cho agent:
+
+1. **File** `%APPDATA%\com.anima.engine\captures\tick-capture-2026-07-27.json` — nguyên vẹn, đừng sửa tay.
+2. **Ảnh** ở bước 6.
+3. **Nội dung Console**: chép nguyên văn mọi dòng đỏ/vàng, hoặc câu "Console sạch, không có dòng nào
+   chứa `Content Security Policy`".
+4. **Kết quả `get_tick_capture_status`** ở bước 4 (chỉ cần `status` và khối `accounting`).
+
+Với bốn thứ đó, agent điền được bảng trong `BENCHMARK_BASELINE.md` và cập nhật
+[`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)
+kèm lệnh và ngày. Thiếu (1) thì không có số; thiếu (3) thì (a) chưa đóng.
+
+### File này điền được hàng nào
+
+| Hàng trong `BENCHMARK_BASELINE.md` | Đọc từ | `exact` |
+|---|---|---|
+| `Physics tick` | `phases[] .phase == "physics_movement"` → `p50_ns` | **false** — chặn bởi checkpoint |
+| `Brain/sensor` | `phases[] .phase == "sensor_brain"` → `p50_ns` | **false** — chặn bởi checkpoint |
+| `UI telemetry` | `phases[] .phase == "telemetry_publish"` → `p50_ns` | **true** |
+| `Full-brain agents MVP` | `phases[] .phase == "full_tick"` → `p50_ns` + `mean_ns_per_agent`, kèm `workload` | **true** |
+
+Ba điều phải ghi kèm, nếu không con số sẽ bị đọc sai:
+
+- **`exact: false` nghĩa là "phần việc executor làm giữa hai checkpoint"**, không phải chi phí của
+  một system. Chép cả cờ đó sang, đừng chỉ chép `p50_ns`.
+- **`profile` trong file sẽ là `"debug"`**, vì `tauri dev` build debug. Bảng Criterion ở trên là
+  **release**. Hai con số **không** so trực tiếp được với nhau; ghi rõ profile bên cạnh mỗi số.
+- **Não per-agent đang tắt mặc định** (`ANIMA_EVOLVED_BRAINS` không đặt, §3.1). Nên `sensor_brain`
+  đo **đường legacy**, không phải suy luận não. Điền hàng `Brain/sensor` như "đường mặc định, não
+  tắt" chứ không phải "chi phí não".
+
+### Phiên này đóng gì và không đóng gì
+
+**Đóng:** app khởi động thật, IPC thật trả lời, và một tick của lịch trình sống có số đo đầu tiên
+trên phần cứng mục tiêu.
+
+**Không đóng — và đây là giới hạn phải giữ nguyên văn:**
+
+- **CSP: đây là `devCsp`, không phải chính sách xuất xưởng.** `tauri dev` áp `app.security.devCsp`;
+  `npm run check:csp` kiểm `app.security.csp`. Hai khối trong
+  [`tauri.conf.json`](../../src-tauri/tauri.conf.json) khai cùng 13 directive, giống nhau ở **11**
+  và khác đúng **hai**: `script-src` (dev cho phép thêm `'unsafe-inline'` và
+  `http://localhost:5173`) và `connect-src` (dev thêm `ws://localhost:5173` +
+  `http://localhost:5173`). Nên phiên này xác minh 11 directive **đúng như bản ship**, và để lại
+  hai directive kia chỉ được xác minh ở dạng lỏng hơn.
+  **Finding đang mở:** [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md)
+  mô tả "một `npm run tauri:dev` bởi con người" là đủ để đóng gate CSP. Theo đo đạc trên thì chưa
+  đủ đúng như đã viết. Chưa sửa câu đó ở đây — theo quy tắc 6 của
+  [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding thay vì tự coi bên nào
+  đúng.
+- **Vì sao không dùng bản release để lấp hai directive đó:** bản release **không có DevTools**.
+  `tauri` trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) khai `features = ["test"]`,
+  không có `devtools` — mà DevTools là đường duy nhất để vừa đọc console vừa gọi
+  `export_tick_capture` (chưa có UI). Một lần chạy release sẽ mất **cả** (a-console) lẫn (b). Đây là
+  giới hạn thật của sản phẩm hôm nay, không phải một lựa chọn cho tiện.
+- **Không phải "60 FPS đã được chứng minh".** Một capture là phân bố của tick, trên một workload,
+  một profile, một máy.
+- **Không phải "live Bevy world experiment-ready".** Tuyên bố duy nhất được phép vẫn là
+  *headless adapter verified* — xem CLAUDE.md.
+- **`plant_soil_weather` sẽ nằm trong `unavailable` kèm lý do.** Đó là đúng, không phải thiếu sót:
+  `core::dynamic_fields` không nằm trong lịch trình sống.
 
 ## Cái vẫn còn thiếu
 
@@ -238,7 +470,8 @@ phải phần cứng:
   "Brain/sensor 10–20 Hz" trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi một
   **nhịp thực tế của app đang chạy**. Dụng cụ đo nay đã có (mục trên) và đã được kiểm bằng test;
   cái còn thiếu là **một lần chạy app thật** để lấy số — ràng buộc "không chạy full backend" trên
-  máy này vẫn còn hiệu lực.
+  máy này vẫn còn hiệu lực với agent. Thủ tục để một con người chạy nó một lần:
+  [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist).
 - **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
   chưa có gì để đo trên đường mặc định.
 - `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**,
