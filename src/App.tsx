@@ -46,6 +46,7 @@ import type { MapElitesGridState } from './types/generated/MapElitesGridState';
 import type { ChronicleEvent } from './types/generated/ChronicleEvent';
 import type { EcosystemState } from './types/generated/EcosystemState';
 import type { EnvironmentalState } from './types/generated/EnvironmentalState';
+import type { SimulationTickPayload } from './types/generated/SimulationTickPayload';
 import type { EnvironmentalElement } from './types/generated/EnvironmentalElement';
 
 export type {
@@ -101,7 +102,7 @@ export function App() {
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [filePath, setFilePath] = useState<string>("");
-  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] }>({ elements: [] });
+  const [environmentalState, setEnvironmentalState] = useState<EnvironmentalState>({ elements: [] });
 
   
   const latestSegmentsRef = useRef<SegmentState[]>([]);
@@ -281,7 +282,7 @@ export function App() {
         // Ignore
       }
       try {
-        const env = await invoke<any>("get_environmental_elements");
+        const env = await invoke<EnvironmentalState>("get_environmental_elements");
         if (env) setEnvironmentalState(env);
       } catch {
         // Ignore
@@ -429,7 +430,9 @@ export function App() {
   }, []);
 
   // Lắng nghe luồng dữ liệu tick phát từ luồng chạy ngầm của Rust (Tauri IPC Event)
-  useTauriEvent<any>(
+  // Either the bare segment array or the whole tick payload, depending on the emitter — which is
+  // why the handler narrows rather than trusting one shape.
+  useTauriEvent<SegmentState[] | SimulationTickPayload>(
     "simulation-tick",
     (event) => {
       let newSegments: SegmentState[] = [];
@@ -629,7 +632,7 @@ export function App() {
                   <p>No environmental elements loaded</p>
                 ) : (
                   <ul style={{ paddingLeft: "20px" }}>
-                    {environmentalState.elements.map((elem: any, idx: number) => (
+                    {environmentalState.elements.map((elem: EnvironmentalElement, idx: number) => (
                       <li key={idx}>
                         • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
                       </li>
@@ -676,7 +679,7 @@ export function App() {
                       <div data-testid="hydration-telemetry">
                         Hydration: {(() => {
                           const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
-                          return seg && (seg as any).hydration !== undefined ? `${safeToFixed((seg as any).hydration, 1)}%` : "75.0%";
+                          return seg && seg.hydration !== undefined ? `${safeToFixed(seg.hydration, 1)}%` : "75.0%";
                         })()}
                       </div>
                       <div data-testid="head-direction-telemetry">
@@ -684,8 +687,8 @@ export function App() {
                           const dir = headDirections[hierarchy.agent_id];
                           if (dir === undefined) {
                             const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
-                            if (seg && (seg as any).head_direction) {
-                              return `[${(seg as any).head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                            if (seg && seg.head_direction) {
+                              return `[${seg.head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
                             }
                             return "N/A";
                           }
@@ -1026,8 +1029,9 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
-const safeToFixed = (val: any, fractionDigits = 2) => {
-  const num = typeof val === 'number' ? val : parseFloat(val);
+/** Format a telemetry number, or `N/A` for anything that is not one. */
+const safeToFixed = (val: unknown, fractionDigits = 2) => {
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
   return isNaN(num) ? 'N/A' : num.toFixed(fractionDigits);
 };
 

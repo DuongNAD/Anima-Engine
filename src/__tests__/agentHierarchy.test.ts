@@ -5,6 +5,10 @@ import { buildAgentHierarchy, type SegmentState } from '../utils/agentHierarchy'
 // While the suite imported the copy in `tests/mocks/`, neither branch below was reachable from any
 // test, so both could have regressed silently.
 
+// The fixture now has to supply every field, because `SegmentState` comes from the generated
+// bindings rather than a hand-written copy that had made `hydration`, `head_direction` and
+// `agent_type` optional. Filling them in is the point: a fixture that omits what the backend always
+// sends is testing a shape nothing produces.
 function seg(over: Partial<SegmentState> & Pick<SegmentState, 'agent_id' | 'segment_id'>): SegmentState {
   return {
     parent_segment_id: null,
@@ -13,6 +17,9 @@ function seg(over: Partial<SegmentState> & Pick<SegmentState, 'agent_id' | 'segm
     joint_anchor_x: 0, joint_anchor_y: 0, joint_anchor_z: 0,
     joint_axis_x: 0, joint_axis_y: 0, joint_axis_z: 0,
     energy: 0,
+    hydration: 0,
+    head_direction: [0, 0, 0],
+    agent_type: null,
     ...over,
   };
 }

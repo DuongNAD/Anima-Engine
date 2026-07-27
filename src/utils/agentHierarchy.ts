@@ -7,30 +7,20 @@
 // guard and no null tolerance, so `agent_id: null` from a partially-written payload threw, and a
 // `parent_segment_id` cycle recursed until the stack blew. Neither was reachable from any test.
 //
-// Frontend-only view models: these are built in the browser from `SegmentState` and never cross IPC,
-// so there is no Rust counterpart and nothing for ts-rs to keep in sync.
+// `SegmentState` is an IPC payload and comes from the generated bindings. It was declared here by
+// hand as well, under a comment claiming these are all frontend-only view models — and it had
+// drifted: this copy said `agent_type?: 'predator' | 'prey'`, `hydration?: number` and
+// `head_direction?: [number, number, number]`, while the Rust struct has `agent_type: AgentType |
+// null` and both of the others required. Two of those differences change what a consumer must
+// handle: `null` is not `undefined`, and an optional field is not a required one.
+//
+// Re-exported rather than merely imported, because `App.tsx` and the frontend suite import the name
+// from here. An alias has no field list of its own to drift.
+export type { SegmentState } from '../types/generated/SegmentState';
+import type { SegmentState } from '../types/generated/SegmentState';
 
-export interface SegmentState {
-  agent_id: number;
-  segment_id: number;
-  parent_segment_id: number | null;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  roll: number;
-  joint_anchor_x: number;
-  joint_anchor_y: number;
-  joint_anchor_z: number;
-  joint_axis_x: number;
-  joint_axis_y: number;
-  joint_axis_z: number;
-  energy: number;
-  agent_type?: 'predator' | 'prey';
-  hydration?: number;
-  head_direction?: [number, number, number];
-}
+// The rest of this file IS frontend-only: these view models are built in the browser and never
+// cross IPC, so there is no Rust counterpart and nothing for ts-rs to keep in sync.
 
 export interface RenderSegment {
   segment_id: number;

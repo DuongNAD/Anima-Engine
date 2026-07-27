@@ -18,7 +18,8 @@ export const Weather: React.FC<WeatherProps> = ({
 }) => {
   const rainGeomRef = useRef<THREE.BufferGeometry>(null);
   const snowGeomRef = useRef<THREE.BufferGeometry>(null);
-  const pointsRef = useRef<any>(null); // For legacy compatibility with any tests expecting this ref
+  // Kept for tests that reach for it by name. `THREE.Points` is what it holds.
+  const pointsRef = useRef<THREE.Points>(null);
   const { scene } = useThree();
 
   // Maximum particle counts
