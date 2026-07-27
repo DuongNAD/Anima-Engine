@@ -416,3 +416,307 @@ impl Default for EnvironmentalSpawnSettings {
         }
     }
 }
+
+// ---- Founding population ------------------------------------------------------------------
+
+/// Founders genesis creates when nothing says otherwise.
+///
+/// Ten, laid out on a line, with the first seven [`crate::core::components::Prey`] and the rest
+/// [`crate::core::components::Predator`] — the shape every measurement in
+/// `BENCHMARK_BASELINE.md` before 2026-07-27 was taken against.
+pub const DEFAULT_FOUNDING_POPULATION: usize = 10;
+
+/// Prey share of the founding population, as a fraction. `7/10` reproduces the legacy split
+/// exactly at the default count and generalises without a second constant to keep in sync.
+const FOUNDING_PREY_NUMERATOR: usize = 7;
+const FOUNDING_PREY_DENOMINATOR: usize = 10;
+
+/// Upper bound on a requested founding population.
+///
+/// Not a physical limit — an honesty one. Every founder is a full ECS entity with segments, a
+/// spatial-hash cell and a lineage root, so a mistyped `100000` would hang the app somewhere
+/// unhelpful rather than fail. Rejecting the value names the problem at the moment it is made.
+pub const MAX_FOUNDING_POPULATION: usize = 10_000;
+
+/// Margin, in world units, between the grid layout and the map edge.
+const FOUNDING_GRID_MARGIN: f32 = 5.0;
+
+/// Why a requested founding population was refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FoundingPopulationError {
+    NotANumber(String),
+    Zero,
+    TooLarge { found: usize, limit: usize },
+}
+
+impl std::fmt::Display for FoundingPopulationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotANumber(raw) => write!(f, "`{raw}` is not a whole number"),
+            Self::Zero => write!(f, "a founding population of zero has nothing to evolve"),
+            Self::TooLarge { found, limit } => {
+                write!(f, "{found} founders exceeds the {limit} limit")
+            }
+        }
+    }
+}
+
+/// Where genesis puts its founders.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FoundingLayout {
+    /// `x = i * 5.0` along `z = 0`. The layout every pre-2026-07-27 run used, kept **exactly** so
+    /// that an unset `ANIMA_FOUNDING_POPULATION` is bit-identical to before this knob existed.
+    ///
+    /// It does not scale: the twenty-first founder is already at the `+100` map edge.
+    Line,
+    /// A square grid inset from the map edge by [`FOUNDING_GRID_MARGIN`], sized from the count.
+    /// Every position is inside [`MapBounds`] by construction, at any count.
+    Grid,
+}
+
+/// How many founders genesis creates, and how they are placed.
+///
+/// Split from the environment on purpose: [`FoundingPlan::parse`] is pure and carries every rule
+/// worth testing, so the tests never write a process-wide environment variable to reach them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FoundingPlan {
+    pub count: usize,
+    pub layout: FoundingLayout,
+}
+
+impl Default for FoundingPlan {
+    fn default() -> Self {
+        Self {
+            count: DEFAULT_FOUNDING_POPULATION,
+            layout: FoundingLayout::Line,
+        }
+    }
+}
+
+impl FoundingPlan {
+    /// Read `ANIMA_FOUNDING_POPULATION`.
+    ///
+    /// Unset means the default plan, which is the legacy run in full: ten founders on the legacy
+    /// line. A malformed value is refused loudly on stderr and the run continues at the default —
+    /// a benchmark that silently ran a different population than the one asked for is worse than
+    /// one that says it ignored you.
+    pub fn from_env() -> Self {
+        match std::env::var("ANIMA_FOUNDING_POPULATION") {
+            Err(_) => Self::default(),
+            Ok(raw) => match Self::parse(&raw) {
+                Ok(plan) => plan,
+                Err(e) => {
+                    eprintln!(
+                        "ANIMA_FOUNDING_POPULATION is not usable ({e}); genesis uses the default \
+                         {DEFAULT_FOUNDING_POPULATION}"
+                    );
+                    Self::default()
+                }
+            },
+        }
+    }
+
+    /// Parse a requested count.
+    ///
+    /// Any accepted value uses [`FoundingLayout::Grid`], **including** a request for exactly the
+    /// default count: the layout follows the request, not the number, so "I asked for something"
+    /// and "I asked for nothing" stay distinguishable in the resulting run.
+    pub fn parse(raw: &str) -> Result<Self, FoundingPopulationError> {
+        let trimmed = raw.trim();
+        let count = trimmed
+            .parse::<usize>()
+            .map_err(|_| FoundingPopulationError::NotANumber(trimmed.to_string()))?;
+        if count == 0 {
+            return Err(FoundingPopulationError::Zero);
+        }
+        if count > MAX_FOUNDING_POPULATION {
+            return Err(FoundingPopulationError::TooLarge {
+                found: count,
+                limit: MAX_FOUNDING_POPULATION,
+            });
+        }
+        Ok(Self {
+            count,
+            layout: FoundingLayout::Grid,
+        })
+    }
+
+    /// Whether founder `i` is prey. The first 70% are, matching the legacy `i < 7` of ten.
+    pub fn is_prey(&self, i: usize) -> bool {
+        i * FOUNDING_PREY_DENOMINATOR < self.count * FOUNDING_PREY_NUMERATOR
+    }
+
+    /// Where founder `i` starts.
+    ///
+    /// No randomness: invariant **D07** forbids `thread_rng()` anywhere in genesis, and arithmetic
+    /// that depends only on `(i, count, bounds)` satisfies it without needing a stream at all.
+    pub fn position(&self, i: usize, bounds: &MapBounds) -> Vec3 {
+        match self.layout {
+            FoundingLayout::Line => Vec3::new(i as f32 * 5.0, 0.0, 0.0),
+            FoundingLayout::Grid => {
+                let side = grid_side(self.count);
+                let col = (i % side) as f32;
+                let row = (i / side) as f32;
+                let last = (side - 1) as f32;
+                let span_x = (bounds.max.x - bounds.min.x) - 2.0 * FOUNDING_GRID_MARGIN;
+                let span_z = (bounds.max.z - bounds.min.z) - 2.0 * FOUNDING_GRID_MARGIN;
+                let step_x = if side > 1 { span_x / last } else { 0.0 };
+                let step_z = if side > 1 { span_z / last } else { 0.0 };
+                Vec3::new(
+                    bounds.min.x + FOUNDING_GRID_MARGIN + col * step_x,
+                    0.0,
+                    bounds.min.z + FOUNDING_GRID_MARGIN + row * step_z,
+                )
+            }
+        }
+    }
+}
+
+/// Side of the smallest square grid holding `count` founders.
+fn grid_side(count: usize) -> usize {
+    let mut side = (count as f64).sqrt().ceil() as usize;
+    // `sqrt` on a large perfect square can land one below it after rounding; step up rather than
+    // trust the float, because a side that is one too small silently drops the last row.
+    while side * side < count {
+        side += 1;
+    }
+    side.max(1)
+}
+
+#[cfg(test)]
+mod founding_population_tests {
+    use super::*;
+
+    /// The whole point of the default: a run that says nothing is the run that existed before this
+    /// knob did. Ten founders, on the exact legacy line, split 7/3.
+    #[test]
+    fn default_reproduces_the_legacy_genesis_exactly() {
+        let plan = FoundingPlan::default();
+        let bounds = MapBounds::default();
+        assert_eq!(plan.count, 10);
+        assert_eq!(plan.layout, FoundingLayout::Line);
+        for i in 0..plan.count {
+            assert_eq!(
+                plan.position(i, &bounds),
+                Vec3::new(i as f32 * 5.0, 0.0, 0.0),
+                "founder {i} moved off the legacy line"
+            );
+            assert_eq!(plan.is_prey(i), i < 7, "founder {i} changed role");
+        }
+    }
+
+    /// Asking for the default count is still *asking*, so it takes the scalable layout. Without
+    /// this the same number would mean two different runs depending on how it was reached.
+    #[test]
+    fn an_explicit_request_uses_the_grid_even_at_the_default_count() {
+        let plan = FoundingPlan::parse("10").expect("10 is a usable count");
+        assert_eq!(plan.count, 10);
+        assert_eq!(plan.layout, FoundingLayout::Grid);
+    }
+
+    /// The defect that made this knob necessary: `for i in 0..1000` on the legacy line puts founder
+    /// 20 on the map edge and founder 999 at x = 4995, fifty times outside the world.
+    #[test]
+    fn a_thousand_founders_all_land_inside_the_map() {
+        let plan = FoundingPlan::parse("1000").expect("1000 is a usable count");
+        let bounds = MapBounds::default();
+        for i in 0..plan.count {
+            let p = plan.position(i, &bounds);
+            assert!(
+                p.x >= bounds.min.x && p.x <= bounds.max.x,
+                "founder {i} at x={} is outside [{}, {}]",
+                p.x,
+                bounds.min.x,
+                bounds.max.x
+            );
+            assert!(
+                p.z >= bounds.min.z && p.z <= bounds.max.z,
+                "founder {i} at z={} is outside [{}, {}]",
+                p.z,
+                bounds.min.z,
+                bounds.max.z
+            );
+        }
+        // Positive control: the layout this replaces really does fail the assertion above, so the
+        // test is measuring the fix rather than a property both layouts happen to have.
+        let legacy = FoundingPlan {
+            count: 1000,
+            layout: FoundingLayout::Line,
+        };
+        assert!(legacy.position(999, &bounds).x > bounds.max.x);
+    }
+
+    /// Two founders on the same spot would be one collision pair the physics never resolves.
+    #[test]
+    fn grid_positions_are_distinct() {
+        let plan = FoundingPlan::parse("1000").expect("1000 is a usable count");
+        let bounds = MapBounds::default();
+        let mut seen = std::collections::HashSet::new();
+        for i in 0..plan.count {
+            let p = plan.position(i, &bounds);
+            assert!(
+                seen.insert((p.x.to_bits(), p.z.to_bits())),
+                "founder {i} shares a position with an earlier one"
+            );
+        }
+    }
+
+    /// The 7/3 split is the predator-prey premise of the whole ecology, so it has to survive the
+    /// generalisation rather than only holding at ten.
+    #[test]
+    fn the_prey_share_holds_at_every_size() {
+        for count in [1usize, 7, 10, 99, 1000, 9999] {
+            let plan = FoundingPlan {
+                count,
+                layout: FoundingLayout::Grid,
+            };
+            let prey = (0..count).filter(|i| plan.is_prey(*i)).count();
+            // `i * 10 < count * 7` admits exactly the first `ceil(7·count/10)` founders.
+            assert_eq!(
+                prey,
+                (count * 7).div_ceil(10),
+                "prey share drifted at {count}"
+            );
+            assert!(prey > 0, "no prey at {count}");
+            assert!(prey < count || count == 1, "no predator at {count}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_request_is_refused_rather_than_rounded_into_something_usable() {
+        assert!(matches!(
+            FoundingPlan::parse("0"),
+            Err(FoundingPopulationError::Zero)
+        ));
+        assert!(matches!(
+            FoundingPlan::parse("ten"),
+            Err(FoundingPopulationError::NotANumber(_))
+        ));
+        assert!(matches!(
+            FoundingPlan::parse("-5"),
+            Err(FoundingPopulationError::NotANumber(_))
+        ));
+        assert!(matches!(
+            FoundingPlan::parse(&(MAX_FOUNDING_POPULATION + 1).to_string()),
+            Err(FoundingPopulationError::TooLarge { .. })
+        ));
+        assert_eq!(
+            FoundingPlan::parse(" 250 ")
+                .expect("surrounding space is not a syntax error")
+                .count,
+            250
+        );
+    }
+
+    #[test]
+    fn grid_side_covers_the_count() {
+        for count in [1usize, 2, 4, 5, 9, 10, 100, 999, 1000, 10_000] {
+            let side = grid_side(count);
+            assert!(side * side >= count, "side {side} cannot hold {count}");
+            assert!(
+                side == 1 || (side - 1) * (side - 1) < count,
+                "side {side} is larger than {count} needs"
+            );
+        }
+    }
+}

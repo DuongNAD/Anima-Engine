@@ -517,15 +517,128 @@ trên phần cứng mục tiêu.
   đúng.
 - **Vì sao không dùng bản release để lấp hai directive đó:** bản release **không có DevTools**.
   `tauri` trong [`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) khai `features = ["test"]`,
-  không có `devtools` — mà DevTools là đường duy nhất để vừa đọc console vừa gọi
-  `export_tick_capture` (chưa có UI). Một lần chạy release sẽ mất **cả** (a-console) lẫn (b). Đây là
-  giới hạn thật của sản phẩm hôm nay, không phải một lựa chọn cho tiện.
+  không có `devtools` — mà DevTools là đường duy nhất để **đọc console**. Nên một lần chạy release
+  vẫn mất (a-console), và hai directive kia vẫn chỉ được xác minh ở dạng lỏng hơn.
+  **Cập nhật 2026-07-27:** phần (b) thì **không** mất nữa — `ANIMA_TICK_CAPTURE_OUT` để capture tự
+  ghi file khi xong, không cần console. Xem
+  [§ Checklist lần chạy release](#checklist-lần-chạy-release--1000-agent).
 - **Không phải "60 FPS đã được chứng minh".** Một capture là phân bố của tick, trên một workload,
   một profile, một máy.
 - **Không phải "live Bevy world experiment-ready".** Tuyên bố duy nhất được phép vẫn là
   *headless adapter verified* — xem CLAUDE.md.
 - **`plant_soil_weather` sẽ nằm trong `unavailable` kèm lý do.** Đó là đúng, không phải thiếu sót:
   `core::dynamic_fields` không nằm trong lịch trình sống.
+
+## Checklist lần chạy release — 1000 agent
+
+> **MỘT lần khởi động, khoảng 10 phút cộng thời gian build.** Phiên này thu **một** thứ mà checklist
+> dev ở trên không thu được: chi phí tick của **bản release** ở **1000 agent**, tức hàng
+> `Full-brain agents MVP` trong [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md).
+>
+> Không cần DevTools, không cần gõ một dòng JavaScript nào. Đó là điểm khác biệt duy nhất về thao
+> tác so với checklist dev, và là lý do phiên này tồn tại được.
+
+**Vì sao trước 2026-07-27 checklist này không viết được.** Ba thứ chặn, cả ba là code chứ không phải
+quy trình: bản release không có DevTools nên không gọi được `export_tick_capture`; không có đường
+nào khác để lấy dữ liệu ra; và số agent nền móng là hằng số `10` viết thẳng trong
+`simulation_loop.rs`, với vị trí sinh `x = i * 5.0` khiến founder thứ 21 đã nằm trên biên `+100`.
+Hai biến môi trường dưới đây và một cách rải theo lưới đã gỡ cả ba.
+
+### Bước 0 — Build, làm TRƯỚC và không tính vào 10 phút
+
+**Thứ tự quan trọng.** Bản release nhúng frontend vào binary lúc biên dịch, nên `npm run build` phải
+chạy **trước** `cargo build --release`, nếu không binary mang theo một `dist/` cũ.
+
+```powershell
+npm run build
+```
+
+```powershell
+cargo build --release --features desktop
+```
+
+`--features desktop` không bỏ được: thiếu nó là binary `default = []`, không Neo4j lineage, không
+cross-shard migration, learner CPU — và bạn sẽ đo một sản phẩm khác.
+
+Lần biên dịch release đầu tiên lâu hơn debug đáng kể. Cần cổng **5173** trống nếu bạn định mở kèm
+dev server; bản release thì không cần, nó tự phục vụ frontend đã nhúng.
+
+### Bước 1 — Ba biến môi trường, rồi chạy binary
+
+Cùng một cửa sổ PowerShell, đặt **trước** khi chạy — cả ba đều được đọc lúc engine khởi động:
+
+```powershell
+$env:ANIMA_FOUNDING_POPULATION = "1000"
+$env:ANIMA_TICK_CAPTURE = "warmup=300,capacity=1800,max_samples=1800"
+$env:ANIMA_TICK_CAPTURE_OUT = "tick-capture-release-1000"
+.\src-tauri\target\release\anima-engine.exe
+```
+
+| Biến | Việc nó làm | Bỏ trống thì sao |
+|---|---|---|
+| `ANIMA_FOUNDING_POPULATION` | 1000 founder, rải theo lưới trong `MapBounds` ±100, giữ tỷ lệ prey/predator 7/3 | 10 founder trên đường thẳng cũ — **giống hệt bit** với mọi lần chạy trước |
+| `ANIMA_TICK_CAPTURE` | Bật capture ngay lúc engine khởi động | Không capture; vẫn bật tay được qua IPC nếu có DevTools (bản release thì không) |
+| `ANIMA_TICK_CAPTURE_OUT` | **Tự ghi file khi capture xong.** Đường duy nhất lấy dữ liệu ra ở bản release | Không ghi gì; 1800 mẫu nằm trong RAM rồi chết theo tiến trình |
+
+Giá trị của `ANIMA_TICK_CAPTURE_OUT` là **tên**, không phải đường dẫn — cùng quy tắc với tên bản lưu
+(`[A-Za-z0-9._-]`, không gạch chéo). Một đường dẫn sẽ bị `save_paths` từ chối, và thông báo từ chối
+in ra stderr chứ không im lặng.
+
+### Bước 2 — Bấm `Bắt đầu mô phỏng`, rồi đợi
+
+Không có autosave thì engine **không** tự chạy. Bấm nút xanh, rồi để yên.
+
+**Đừng canh 35 giây như checklist dev.** Ở 1000 agent mỗi tick đắt hơn nhiều lần, nên 2100 tick mất
+lâu hơn hẳn — và con số đó chính là thứ bạn đang đo, nên đoán trước nó là vô nghĩa. Tín hiệu dừng
+nằm ở terminal:
+
+```
+tick capture complete; wrote C:\Users\...\com.anima.engine\captures\tick-capture-release-1000.json (1800 samples)
+```
+
+Dòng đó in ra **một lần**, đúng tick capture đầy. Thấy nó là xong.
+
+- ❌ **Sai:** `ANIMA_TICK_CAPTURE is not a usable configuration (...)` → capture tắt, sửa chuỗi rồi
+  chạy lại.
+- ❌ **Sai:** `ANIMA_FOUNDING_POPULATION is not usable (...)` → **genesis đã chạy với 10 founder**.
+  Đóng app, sửa, chạy lại; đừng đo tiếp, số sẽ là số của 10 agent.
+- ❌ **Sai:** `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written (...)` → capture
+  vẫn đủ 1800 mẫu nhưng không ra được file. Ở bản release không có đường cứu; sửa tên rồi chạy lại.
+
+### Bước 3 — Kiểm file nói đúng thứ bạn định đo
+
+```powershell
+$j = Get-Content "$env:APPDATA\com.anima.engine\captures\tick-capture-release-1000.json" -Raw | ConvertFrom-Json
+"profile  : " + $j.profile
+"executor : " + $j.executor
+"world    : {0} x {1} (measured={2})" -f $j.workload.world_width, $j.workload.world_height, $j.workload.dimensions_measured
+$ft = $j.phases | Where-Object { $_.phase -eq 'full_tick' }
+"agents   : {0:N2}" -f ($ft.mean_ns / $ft.mean_ns_per_agent)
+$j.phases | Format-Table phase, exact, count, p50_ns, p95_ns
+```
+
+Bốn thứ phải đúng, và **cả bốn** mới tính:
+
+- `profile` là **`release`**. Nếu là `debug` thì bạn vừa chạy nhầm binary — số sẽ không so được với
+  bảng Criterion.
+- `agents` ra **≈ 1000**. Đây là kiểm ngược quan trọng nhất: nó suy từ chính dữ liệu
+  (`mean_ns / mean_ns_per_agent`), nên nó bắt được trường hợp biến môi trường không tới được tiến
+  trình mà mọi thứ khác vẫn xanh.
+- `dimensions_measured` là `true`, world `256 × 256`.
+- `count` của mỗi pha là **1800**.
+
+> ⚠️ **Nếu `agents` tụt dần dưới 1000:** quần thể đang chết trong lúc đo. Lần chạy 2026-07-27 cho
+> thấy toàn bộ agent ở `Năng lượng: 0.0` — hiệu ứng sàn mà thí nghiệm E2 đã ghi. Nếu số agent không
+> ổn định thì `mean_ns_per_agent` là trung bình trên một quần thể đang đổi, và phải nói rõ điều đó
+> khi trích số. Kiểm thêm `samples_without_agents` — khác 0 nghĩa là có mẫu không có agent nào.
+
+### Bước 4 — Gửi lại
+
+File JSON nguyên vẹn, cộng dòng stderr ở bước 2. Không cần ảnh chụp: phiên này không đo CSP, phần
+đó đã đóng ở checklist dev.
+
+Số điền vào đâu: cùng ánh xạ ở [§ File này điền được hàng nào](#file-này-điền-được-hàng-nào), nhưng
+lần này hàng `Full-brain agents MVP` **mới thực sự đóng được**, vì nó được định nghĩa ở 1000 agent.
 
 ## Cái vẫn còn thiếu
 

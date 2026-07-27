@@ -595,6 +595,13 @@ impl SimulationEngine {
         // borrow the engine into the thread and the borrow escapes the method.
         let observer_actions_sim = self.observer_actions.clone();
         let tick_capture_shared = self.tick_capture.clone();
+        // A second handle on the same capture, kept out of the sink so the loop can notice the run
+        // finishing. Without it a release build has no way to retrieve a capture at all: the four
+        // capture commands are IPC-only, no UI calls them, and a release binary has no DevTools to
+        // call them from — so `ANIMA_TICK_CAPTURE` would fill 1800 samples that die with the
+        // process. See `ANIMA_TICK_CAPTURE_OUT` below.
+        let auto_export_capture = self.tick_capture.clone();
+        let app_handle_capture = app_handle.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
         let pending_load_state_clone = Arc::clone(&self.pending_load_state);
@@ -998,8 +1005,19 @@ impl SimulationEngine {
                     joint_axis: glam::Vec3::new(0.0, 0.0, 1.0),
                 });
 
-                for i in 0..10 {
-                    let initial_pos = glam::Vec3::new(i as f32 * 5.0, 0.0, 0.0);
+                // Ten on a line unless `ANIMA_FOUNDING_POPULATION` says otherwise, in which case a
+                // grid inset from the map edge. The knob exists because `BENCHMARK_BASELINE.md`
+                // asks for a tick cost at 1000 agents and this loop was the reason that row could
+                // not be measured: the count was a literal, and `x = i * 5.0` puts the twenty-first
+                // founder on the `+100` boundary. Unset is bit-identical to the literal it replaced
+                // — see `FoundingPlan` and its tests.
+                let founding = crate::core::resources::FoundingPlan::from_env();
+                let founding_bounds = world
+                    .get_resource::<MapBounds>()
+                    .copied()
+                    .unwrap_or_default();
+                for i in 0..founding.count {
+                    let initial_pos = founding.position(i, &founding_bounds);
                     let initial_rot = glam::Quat::IDENTITY;
                     let agent_entity =
                         decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
@@ -1181,6 +1199,11 @@ impl SimulationEngine {
             world.insert_resource(crate::core::tick_capture::TickCaptureSink::new(
                 tick_capture_shared,
             ));
+
+            // Where a completed capture writes itself, from `ANIMA_TICK_CAPTURE_OUT`. Unset means
+            // nothing is written and the capture is retrieved over IPC exactly as before.
+            let auto_export_name = crate::core::tick_capture::auto_export_name_from_env();
+            let mut auto_export_done = false;
 
             let mut schedule = crate::core::simulation_schedule::build_tick_schedule(deterministic);
             schedule.run(&mut world);
@@ -1454,6 +1477,35 @@ impl SimulationEngine {
                         world.get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
                     {
                         sink.commit(tick_count, schedule_ns, telemetry_ns);
+                    }
+                }
+
+                // Written once, on the tick the capture reaches `Complete`, and only when a name
+                // was asked for. Checked after `commit` so the sample that completes the run is in
+                // the file, and guarded by a flag so a finished capture is not rewritten every
+                // tick for the rest of the session.
+                if !auto_export_done {
+                    if let Some(name) = auto_export_name.as_deref() {
+                        if auto_export_capture.status()
+                            == crate::core::tick_capture::CaptureStatus::Complete
+                        {
+                            auto_export_done = true;
+                            match crate::commands::capture::export_capture_to_app_data(
+                                &auto_export_capture,
+                                app_handle_capture.as_ref(),
+                                name,
+                            ) {
+                                Ok(path) => eprintln!(
+                                    "tick capture complete; wrote {} ({} samples)",
+                                    path.display(),
+                                    auto_export_capture.sample_count()
+                                ),
+                                Err(e) => eprintln!(
+                                    "tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be \
+                                     written ({e}); the samples are still retrievable over IPC"
+                                ),
+                            }
+                        }
                     }
                 }
 
