@@ -3,6 +3,15 @@ import * as PIXI from 'pixi.js';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { TerrainMapState } from './types';
+// The IPC payloads this viewport draws, from the generated bindings rather than `any`. Each one was
+// `any` at both ends — the ref that holds it and the `invoke`/`listen` that fills it — so a renamed
+// Rust field would have surfaced as a blank canvas rather than a type error.
+import type { SegmentState } from './types/generated/SegmentState';
+import type { RaycastTelemetry } from './types/generated/RaycastTelemetry';
+import type { PheromoneGridState } from './types/generated/PheromoneGridState';
+import type { EnvironmentalState } from './types/generated/EnvironmentalState';
+import type { EnvironmentalElement } from './types/generated/EnvironmentalElement';
+import type { SimulationTickPayload } from './types/generated/SimulationTickPayload';
 import {
   fetchHotRadius,
   focusForViewport,
@@ -179,10 +188,10 @@ function generateTerrainCanvas(terrainMap: TerrainMapState): HTMLCanvasElement {
 
 export interface PixiViewportProps {
   projection?: 'xy' | 'xz';
-  segments?: any[] | null;
-  raycasts?: any[] | null;
+  segments?: SegmentState[] | null;
+  raycasts?: RaycastTelemetry[] | null;
   pheromoneGrid?: { grid: number[]; width: number; height: number } | null;
-  environmentalState?: { elements: any[] } | null;
+  environmentalState?: EnvironmentalState | null;
   zoom?: number;
   pan?: { x: number; y: number };
 }
@@ -214,31 +223,60 @@ export interface PixiViewportProps {
 type FillStyle = { color: number; alpha?: number };
 type StrokeStyle = { width: number; color: number; alpha?: number };
 
+/**
+ * The union of the two Graphics APIs this adapter bridges.
+ *
+ * Every method is optional because no single object has all of them: real pixi 8 has
+ * `fill`/`stroke`/`rect`/`circle`/`poly`, the v7-shaped test mock has
+ * `beginFill`/`endFill`/`lineStyle`/`drawRect`/`drawCircle`/`drawPolygon`, and the helpers below
+ * branch on which. That is exactly what `isModernGraphics` asks, so an optional-member interface is
+ * the honest shape — `any` said nothing and let a typo in either branch through.
+ */
+interface GraphicsLike {
+  // pixi 8
+  fill?: (style: FillStyle) => void;
+  stroke?: (style: StrokeStyle) => void;
+  rect?: (x: number, y: number, w: number, h: number) => void;
+  circle?: (x: number, y: number, r: number) => void;
+  poly?: (points: number[]) => void;
+  // pixi 7
+  beginFill?: (color: number, alpha?: number) => void;
+  endFill?: () => void;
+  lineStyle?: (width: number, color: number, alpha?: number) => void;
+  drawRect?: (x: number, y: number, w: number, h: number) => void;
+  drawCircle?: (x: number, y: number, r: number) => void;
+  drawPolygon?: (points: number[]) => void;
+  // both
+  moveTo?: (x: number, y: number) => void;
+  lineTo?: (x: number, y: number) => void;
+  clear?: () => void;
+}
+
 const pendingFill = new WeakMap<object, FillStyle>();
 const pendingStroke = new WeakMap<object, StrokeStyle>();
 /** Graphics with geometry recorded since the last style application. */
 const dirty = new WeakSet<object>();
 
 /** True for the real pixi 8 Graphics; false for the v7-shaped test mock. */
-const isModernGraphics = (g: any): boolean =>
+const isModernGraphics = (g: GraphicsLike): boolean =>
   typeof g?.fill === 'function' && typeof g?.rect === 'function';
 
 /** Apply whatever styles are pending to the geometry recorded so far. */
-const flushStyles = (g: any) => {
+const flushStyles = (g: GraphicsLike) => {
   const fill = pendingFill.get(g);
   if (fill) {
-    g.fill(fill);
+    g.fill?.(fill);
     pendingFill.delete(g);
   }
   const stroke = pendingStroke.get(g);
   if (stroke) {
-    g.stroke(stroke);
+    g.stroke?.(stroke);
     pendingStroke.delete(g);
   }
   dirty.delete(g);
 };
 
-const beginFill = (g: any, color: number, alpha?: number) => {
+const beginFill = (g: GraphicsLike, color: number, alpha?: number) => {
   if (isModernGraphics(g)) {
     if (dirty.has(g)) flushStyles(g);
     pendingFill.set(g, { color, alpha });
@@ -247,7 +285,7 @@ const beginFill = (g: any, color: number, alpha?: number) => {
   }
 };
 
-const lineStyle = (g: any, width: number, color: number, alpha?: number) => {
+const lineStyle = (g: GraphicsLike, width: number, color: number, alpha?: number) => {
   if (isModernGraphics(g)) {
     if (dirty.has(g)) flushStyles(g);
     pendingStroke.set(g, { width, color, alpha });
@@ -256,7 +294,7 @@ const lineStyle = (g: any, width: number, color: number, alpha?: number) => {
   }
 };
 
-const endFill = (g: any) => {
+const endFill = (g: GraphicsLike) => {
   if (isModernGraphics(g)) {
     flushStyles(g);
   } else if (typeof g.endFill === 'function') {
@@ -271,53 +309,53 @@ const endFill = (g: any) => {
  * that applies them, and without it the grid, the raycast beams and the segment linkages simply
  * would not appear.
  */
-const strokePath = (g: any) => {
+const strokePath = (g: GraphicsLike) => {
   if (isModernGraphics(g)) flushStyles(g);
 };
 
-const drawRect = (g: any, x: number, y: number, w: number, h: number) => {
+const drawRect = (g: GraphicsLike, x: number, y: number, w: number, h: number) => {
   if (isModernGraphics(g)) {
-    g.rect(x, y, w, h);
+    g.rect?.(x, y, w, h);
     dirty.add(g);
   } else {
-    g.drawRect(x, y, w, h);
+    g.drawRect?.(x, y, w, h);
   }
 };
 
-const drawCircle = (g: any, x: number, y: number, r: number) => {
+const drawCircle = (g: GraphicsLike, x: number, y: number, r: number) => {
   if (isModernGraphics(g)) {
-    g.circle(x, y, r);
+    g.circle?.(x, y, r);
     dirty.add(g);
   } else {
-    g.drawCircle(x, y, r);
+    g.drawCircle?.(x, y, r);
   }
 };
 
-const drawPolygon = (g: any, points: number[]) => {
+const drawPolygon = (g: GraphicsLike, points: number[]) => {
   if (isModernGraphics(g)) {
-    g.poly(points);
+    g.poly?.(points);
     dirty.add(g);
   } else {
-    g.drawPolygon(points);
+    g.drawPolygon?.(points);
   }
 };
 
-const moveTo = (g: any, x: number, y: number) => {
-  g.moveTo(x, y);
+const moveTo = (g: GraphicsLike, x: number, y: number) => {
+  g.moveTo?.(x, y);
   if (isModernGraphics(g)) dirty.add(g);
 };
 
-const lineTo = (g: any, x: number, y: number) => {
-  g.lineTo(x, y);
+const lineTo = (g: GraphicsLike, x: number, y: number) => {
+  g.lineTo?.(x, y);
   if (isModernGraphics(g)) dirty.add(g);
 };
 
 /** Clear the canvas and any style this adapter was holding for it. */
-const clearGraphics = (g: any) => {
+const clearGraphics = (g: GraphicsLike) => {
   pendingFill.delete(g);
   pendingStroke.delete(g);
   dirty.delete(g);
-  g.clear();
+  g.clear?.();
 };
 
 export const PixiViewport: React.FC<PixiViewportProps> = ({
@@ -336,11 +374,11 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
   const terrainMapRef = useRef<TerrainMapState | null>(null);
 
 
-  const segmentsRef = useRef<any[]>([]);
-  const raycastsRef = useRef<any[]>([]);
-  const pheromoneGridRef = useRef<any>(null);
+  const segmentsRef = useRef<SegmentState[]>([]);
+  const raycastsRef = useRef<RaycastTelemetry[]>([]);
+  const pheromoneGridRef = useRef<PheromoneGridState | null>(null);
   const projectionRef = useRef<'xy' | 'xz'>(projection);
-  const environmentalStateRef = useRef<any>({ elements: [] });
+  const environmentalStateRef = useRef<EnvironmentalState>({ elements: [] });
 
   const zoomRef = useRef<number>(zoom);
   const panRef = useRef<{ x: number; y: number }>(pan);
@@ -531,7 +569,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
     // 0.5. Draw POI markers on top of the background
     if (terrainMap && Array.isArray(terrainMap.pois)) {
-      terrainMap.pois.forEach((poi: any) => {
+      terrainMap.pois.forEach((poi: [number, number]) => {
         // Assume poi is [px, py] coordinate on the 1024x1024 map. 
         // We need to map [0, 1024] to [minX, maxX]
         const px = poi[0];
@@ -580,10 +618,14 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     // 2. Draw environmental elements (Lakes & Trees with animations)
     const time = performance.now();
     if (environmentalState && Array.isArray(environmentalState.elements)) {
-      environmentalState.elements.forEach((elem: any) => {
+      environmentalState.elements.forEach((elem: EnvironmentalElement) => {
         if (!elem) return;
-        const eyVal = proj === 'xy' ? elem.y : elem.z;
-        const [cx, cy] = getCoords(elem.x, eyVal);
+        // `proj === 'xy' ? elem.y : elem.z` — and `EnvironmentalElement` has no `z`. The Rust struct
+        // is `{ type, x, y, radius, resources }` with `y` commented "Maps to Bevy's z coordinate",
+        // so these are ground-plane features carrying no height at all. In the `xz` projection the
+        // old expression read `undefined`, `getCoords` returned NaN, and every lake and tree was
+        // drawn nowhere. The `any` on this callback is what let it compile.
+        const [cx, cy] = getCoords(elem.x, elem.y);
 
         if (elem.type === 'lake') {
           // Ripple wave effect
@@ -766,9 +808,9 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     };
 
     if (environmentalState && Array.isArray(environmentalState.elements)) {
-      environmentalState.elements.forEach((elem: any) => {
-        const ey = proj === 'xy' ? elem.y : elem.z;
-        const [mx, my] = getMinimapCoords(elem.x, ey);
+      environmentalState.elements.forEach((elem: EnvironmentalElement) => {
+        // Same as the main pass above: the payload has no `z`, and `y` already is the world z.
+        const [mx, my] = getMinimapCoords(elem.x, elem.y);
         beginFill(graphics, elem.type === 'lake' ? 0xcccccc : 0x888888, 0.9);
         drawCircle(graphics, mx, my, 3.5);
         endFill(graphics);
@@ -911,12 +953,15 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const mouseY = e.clientY - rect.top;
 
         const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
-        let nearestSegment: any = null;
+        let nearestSegment: SegmentState | null = null;
         let minDist = Infinity;
 
+        // A plain loop rather than `forEach`, so the assignment below is one TypeScript can see.
+        // Narrowing does not survive a callback: with `forEach`, `nearestSegment` stayed `null` as
+        // far as the checker was concerned and every read of it after this block was an error.
         if (Array.isArray(segments)) {
-          segments.forEach((s) => {
-            if (!s) return;
+          for (const s of segments) {
+            if (!s) continue;
             const yVal = projectionRef.current === 'xy' ? s.y : s.z;
             const [cx, cy] = getCoordsLocal(s.x, yVal);
             const dist = Math.hypot(mouseX - cx, mouseY - cy);
@@ -924,7 +969,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
               minDist = dist;
               nearestSegment = s;
             }
-          });
+          }
         }
 
         if (nearestSegment && minDist < 100) {
@@ -1003,44 +1048,45 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       };
 
       try {
-        const env = await invoke<any>('get_environmental_elements');
+        const env = await invoke<EnvironmentalState>('get_environmental_elements');
         if (active && env) environmentalStateRef.current = env;
       } catch {}
 
       try {
-        const grid = await invoke<any>('get_pheromone_grid');
+        const grid = await invoke<PheromoneGridState>('get_pheromone_grid');
         if (active && grid) pheromoneGridRef.current = grid;
       } catch {}
 
       try {
-        const raycasts = await invoke<any>('get_active_raycasts');
+        const raycasts = await invoke<RaycastTelemetry[]>('get_active_raycasts');
         if (active && raycasts) raycastsRef.current = raycasts;
       } catch {}
 
       try {
-        const uTick = await listen<any>('simulation-tick', (event) => {
-          if (active) {
-            if (Array.isArray(event.payload)) {
-              segmentsRef.current = event.payload;
-            } else if (event.payload && typeof event.payload === 'object') {
-              if (Array.isArray(event.payload.segments)) {
-                segmentsRef.current = event.payload.segments;
-              } else {
-                segmentsRef.current = [];
-              }
-              if (event.payload.environmental_state) {
-                environmentalStateRef.current = event.payload.environmental_state;
+        // `simulation-tick` carries either the bare segment array or the whole tick payload,
+        // depending on the emitter, which is why this narrows rather than trusting one shape.
+        const uTick = await listen<SegmentState[] | SimulationTickPayload>(
+          'simulation-tick',
+          (event) => {
+            if (!active) return;
+            const payload = event.payload;
+            if (Array.isArray(payload)) {
+              segmentsRef.current = payload;
+            } else if (payload && typeof payload === 'object') {
+              segmentsRef.current = Array.isArray(payload.segments) ? payload.segments : [];
+              if (payload.environmental_state) {
+                environmentalStateRef.current = payload.environmental_state;
               }
             } else {
               segmentsRef.current = [];
             }
             draw();
-          }
-        });
+          },
+        );
         if (!active) uTick();
         else unlistenTick = uTick;
 
-        const uRay = await listen<any>('raycast-update', (event) => {
+        const uRay = await listen<RaycastTelemetry[]>('raycast-update', (event) => {
           if (active) {
             raycastsRef.current = Array.isArray(event.payload) ? event.payload : [];
             draw();
@@ -1049,7 +1095,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         if (!active) uRay();
         else unlistenRaycast = uRay;
 
-        const uPheromone = await listen<any>('pheromone-update', (event) => {
+        const uPheromone = await listen<PheromoneGridState>('pheromone-update', (event) => {
           if (active && event.payload) {
             pheromoneGridRef.current = event.payload;
             draw();
@@ -1117,8 +1163,9 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             } else {
               app.stage.addChild(bgSprite);
             }
-          } catch (err: any) {
-            if (err && err.message && err.message.includes('No "Texture" export')) {
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (message.includes('No "Texture" export')) {
               // Suppress Vitest mock warning
             } else {
               console.error('Failed to initialize fallback terrain map texture:', err);
