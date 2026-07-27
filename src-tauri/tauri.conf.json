@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://127.0.0.1:5173",
     "frontendDist": "../dist"
   },
   "app": {
@@ -36,14 +36,14 @@
       },
       "devCsp": {
         "default-src": "'self'",
-        "script-src": "'self' 'unsafe-inline' 'wasm-unsafe-eval' http://localhost:5173",
+        "script-src": "'self' 'unsafe-inline' 'wasm-unsafe-eval' http://127.0.0.1:5173",
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' data: blob:",
         "media-src": "'self' data: blob:",
         "font-src": "'self' data:",
         "worker-src": "'self' blob:",
         "child-src": "'self' blob:",
-        "connect-src": "'self' ipc: http://ipc.localhost blob: data: ws://localhost:5173 http://localhost:5173",
+        "connect-src": "'self' ipc: http://ipc.localhost blob: data: ws://127.0.0.1:5173 http://127.0.0.1:5173",
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'none'",

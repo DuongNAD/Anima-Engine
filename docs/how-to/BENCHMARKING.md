@@ -274,23 +274,26 @@ production và dev), nên phần lớn thời gian đã trả xong.
 
 Cần thêm: cổng **5173** trống (`strictPort`), vì `beforeDevCommand` tự chạy `npm run dev`.
 
-> ⚠️ **"Trống" nghĩa là trống ở CẢ HAI địa chỉ, và đây là bẫy tốn nhiều thời gian nhất của lần chạy
-> 2026-07-27.** `devUrl` là `http://localhost:5173`, còn Node phân giải `localhost` theo thứ tự
-> *verbatim* từ v17 — `::1` trước, trên Windows lẫn Linux. Hôm đó `[::1]:5173` đang bị dev server
-> của **một project Vite khác** giữ (5173 là mặc định của Vite, nên mọi project đều muốn nó), còn
-> server của Anima bind được `127.0.0.1:5173`. Cả hai cùng sống, và webview mở **ứng dụng của project
-> kia bên trong cửa sổ Anima**: một trang trắng, không lỗi ở đâu cả — dev server báo `ready`, trang
-> trả 200, và CSP cho phép `http://localhost:5173` vì cả hai server đều là địa chỉ đó.
+> ⚠️ **Bẫy tốn nhiều thời gian nhất của lần chạy 2026-07-27, nay đã sửa ở tầng cấu hình — nhưng
+> vẫn phải kiểm cổng.** Hôm đó `devUrl` là `http://localhost:5173`, và Node phân giải `localhost`
+> theo thứ tự *verbatim* từ v17 — `::1` trước, trên Windows lẫn Linux. `[::1]:5173` đang bị dev
+> server của **một project Vite khác** giữ (5173 là mặc định của Vite, nên mọi project đều muốn nó),
+> còn server của Anima bind được `127.0.0.1:5173`. Cả hai cùng sống, và webview mở **ứng dụng của
+> project kia bên trong cửa sổ Anima**: một trang trắng, không lỗi ở đâu cả — dev server báo `ready`,
+> trang trả 200, và CSP cho phép `http://localhost:5173` vì cả hai server đều là địa chỉ đó.
 >
-> Kiểm trước khi mở app, và đọc **cả hai dòng**:
+> `devUrl` và `vite.config.ts` nay đều ghim `127.0.0.1`, nên không còn bước phân giải nào để một
+> project khác chen vào. Cái **chưa** biến mất là `strictPort`: cổng 5173 bận thì `npm run dev` chết
+> ngay từ `beforeDevCommand`. Kiểm trước, và đọc **cả cột địa chỉ**:
 >
 > ```powershell
 > Get-NetTCPConnection -LocalPort 5173 -State Listen | Select-Object LocalAddress, OwningProcess
 > ```
 >
-> Còn tiến trình nào thì tắt trước. Và ngay khi cửa sổ hiện, kiểm định danh trước khi tin bất cứ thứ
-> gì nó vẽ ra: `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và tiêu đề phải là
-> "Anima-Engine Control Center". Xem [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
+> Và ngay khi cửa sổ hiện, vẫn kiểm định danh trước khi tin bất cứ thứ gì nó vẽ ra:
+> `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và tiêu đề phải là "Anima-Engine Control
+> Center". Hai giây, và nó là thứ duy nhất phân biệt "app của bạn" với "một app nào đó ở đúng địa
+> chỉ đó". Xem [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
 
 ### Bước 1 — Đặt biến môi trường, rồi mở app (PowerShell, cùng một cửa sổ)
 

@@ -138,13 +138,31 @@ This is the third instance of the same fault in one day. The other two were
 `tests/e2e/playwright.config.ts` and `tests/e2e/capture.config.ts`, both fixed in `72a6e34` and
 `0f5b4d3` by binding the dev server to the literal address the client probes.
 
-**Not fixed here, deliberately.** Changing `devUrl` mid-session would have changed the thing §2.1 was
-measuring. The durable fix is the same shape as the other two — pin `devUrl` to `http://127.0.0.1:5173`,
-give `npm run dev` a matching `--host`, and update the two `http://localhost:5173` entries in
-`devCsp` — and it is a change to how the app boots, so it belongs in its own commit with its own
-verification run. Until then, a developer whose machine has another Vite project running must free
-5173 before `npm run tauri:dev`, and should confirm `window.__TAURI_INTERNALS__` is defined before
-trusting anything the window shows.
+**Fixed after the measuring run, in its own commit.** Changing `devUrl` during §2.1 would have
+changed the thing being measured, so it waited. The fix removes the resolution step rather than
+racing it:
+
+- `devUrl` is `http://127.0.0.1:5173` — a literal address, not a name with two answers.
+- `vite.config.ts` sets `server.host = "127.0.0.1"`. That is the single place every launch of the
+  dev server passes through, so `npm run dev`, `beforeDevCommand` and both Playwright configs agree
+  by construction rather than by each remembering a flag.
+- `devCsp` follows: `script-src` and `connect-src` name `http://127.0.0.1:5173` and
+  `ws://127.0.0.1:5173`, or the page loads and HMR's websocket is refused.
+- `.claude/launch.json` too, so the preview tooling opens the same address the app does.
+
+The production `csp` block is untouched — it names no dev origin and never did.
+
+**Verified, and the limit of that verification stated.** A dev server started from this config binds
+`127.0.0.1:5199` and nothing else: `Get-NetTCPConnection` lists one row, `http://127.0.0.1:5199/`
+returns 200 with `<title>Anima Engine</title>`, and `[::1]:5199` refuses the connection — so there is
+no v6 socket left for another project to answer on. A non-default port was used because the app under
+§2.1 still held 5173. `npm run check:csp`, `npm run build` and `npm run lint` + ratchet are green.
+
+What that does **not** prove is the webview end: no agent in this repository may run
+`npm run tauri:dev`, so *"the Tauri window loads Anima under the new `devCsp`"* is still a
+human-verified step. It is cheap to fold into the next owner run — the app either shows
+"Anima-Engine Control Center" or it does not — but until someone does it, this section claims a
+correctly bound dev server, not a correctly booted app.
 
 ## 3. Blockers that are not engineering
 
