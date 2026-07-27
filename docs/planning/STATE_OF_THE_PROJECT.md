@@ -28,9 +28,15 @@ gate chưa xanh.
 > trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
 >
 > **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
-> `feature-anima-completion`, tại commit **`1cddeb5`** — một lượt chạy **toàn bộ** gate CI, không
-> phải chạy chọn lọc. Toolchain: rustc/cargo **1.95.0**, Playwright **1.62.0**. Mọi hàng dưới đây
-> đến từ **cùng một lượt chạy đó**, trừ đúng một hàng còn ⏳ và đã nói rõ lý do.
+> `feature-anima-completion`, tại commit **`068a750`** — commit **merge** đưa
+> `feat/oss-071b-live-tracker` vào nhánh này. Đây là một lượt chạy **toàn bộ** gate CI **sau merge**,
+> không phải chạy chọn lọc, và **không** tái sử dụng kết quả nào từ trước merge. Toolchain:
+> rustc/cargo **1.95.0**, Playwright **1.62.0**. Mọi hàng dưới đây đến từ **cùng một lượt chạy đó**,
+> trừ đúng một hàng còn ⏳ và đã nói rõ lý do.
+>
+> Mọi con số ở lượt này **trùng với lượt đo tại `1cddeb5`**, và điều đó là kết quả mong đợi chứ không
+> phải dấu hiệu chép lại: merge chỉ đổi một file tài liệu, nên không có hành vi đo được nào thay đổi.
+> Số ở đây được **đo lại**, không mang sang.
 
 Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và **loại khẳng định**:
 
@@ -39,7 +45,7 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
 
-### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `1cddeb5`
+### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `068a750`
 
 | Loại | Gate | Lệnh | Cấu hình | Kết quả |
 |---|---|---|---|---|
@@ -58,7 +64,7 @@ Ba target rỗng và hai test `#[ignore]` **là quyết định đã ghi**, khô
 trong [`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs), và gate fail với bất
 kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh sách đã hết hiệu lực.
 
-### 1.b Frontend / lint — chạy lại 2026-07-27 tại `1cddeb5`
+### 1.b Frontend / lint — chạy lại 2026-07-27 tại `068a750`
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
@@ -89,7 +95,7 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 > **exit 1** và nêu tên cả sáu thông điệp. Từ nay một hàng E2E chỉ được ghi là xanh khi **cả** exit
 > code **và** output thô đều sạch.
 
-### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `1cddeb5`
+### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `068a750`
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
@@ -111,7 +117,7 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 
 | Khẳng định | Trạng thái thật |
 |---|---|
-| Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (2026-07-27, `bb8248e`, `tests/live_experiment_tests.rs` 17 test). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
+| Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (đo lại 2026-07-27 tại `068a750`: `tests/live_experiment_tests.rs` chạy **17 test**, 0 fail). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
 | Hiệu năng tick trong app | 🔧 **Instrumentation đã ship** (`core/tick_capture.rs` + 4 lệnh IPC, có test). **Chưa có bất kỳ số đo phần cứng nào từ app desktop** — xem §3.2 và [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
 | Hạ tầng thí nghiệm | 🔧 Manifest/runner/fork/ledger **tồn tại và có test**. Đó **không phải** một kết quả khoa học — chưa có run nào được thiết kế, chạy và diễn giải như một thí nghiệm |
 | App khởi động dưới CSP mới | ❌ **Chưa ai mở app** dưới `csp`/`devCsp` mới. `npm run check:csp` chỉ kiểm **artifact đã build** so với chính sách đã khai; nó không chứng minh app boot được |
@@ -217,7 +223,7 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Trần tài nguyên runner | Live integrated | G2 gate #3 — `MAX_ENSEMBLE_RESULT_BYTES`, ước lượng bão hoà thay vì tràn |
 | Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | 11/12 gate EB pass — xem §3.1 |
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
-| Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `2285a92` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
+| Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `068a750` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
 | Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
 
@@ -400,7 +406,8 @@ Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_PO
 `ReferenceEvolutionWorld` và trên **đúng** lịch trình app dùng —
 [`core/simulation_schedule.rs`](../../src-tauri/src/core/simulation_schedule.rs), hàm mà
 `SimulationEngine::start` gọi. Gate:
-[`tests/live_experiment_tests.rs`](../../src-tauri/tests/live_experiment_tests.rs) (15 test) —
+[`tests/live_experiment_tests.rs`](../../src-tauri/tests/live_experiment_tests.rs) (**17 test**, đo
+2026-07-27 tại `068a750`; con số **15** ở bản trước là số cũ, đã lạc hậu) —
 cùng seed + manifest ⇒ cùng checksum · can thiệp nổ **đúng tick khai báo** và không sớm hơn ·
 checkpoint fork từ tick 60 (nhánh control khớp bit với một run liền mạch) ·
 `run N == run K → ghi ra file → đọc lại → run N−K` · registry observable hợp lệ và trùng đơn vị với
