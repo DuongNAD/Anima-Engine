@@ -53,6 +53,21 @@ test('the 2D dashboard runs without warnings of its own', async ({ page }) => {
 });
 
 test('the landscape scene runs without warnings of its own', async ({ page }) => {
+  // The per-test timeout in `playwright.config.ts` is 30 s, and this test's own waits already
+  // declare that it needs far longer: 60 s to load, 180 s for a cold-cache world to generate
+  // off-thread, then 4 s of frames. Those numbers were unreachable — the global cap killed the test
+  // first — so what the spec asked for and what it got disagreed, and the disagreement was invisible
+  // on a machine fast enough to finish inside 30 s anyway.
+  //
+  // CI is not that machine: `ubuntu-latest` renders this scene in software. Measured on run
+  // 30282820349, twice: 31.6 s and 34.8 s against the 30 s cap, having passed at under 30 s on the
+  // run before. A threshold that a change in load can cross is not a gate, it is a coin toss.
+  //
+  // This is not a threshold raised until the test passes. It is the test's own declared budget,
+  // applied. A landscape that never renders still fails, on the 180 s wait below, and that failure
+  // means what it says.
+  test.setTimeout(240_000);
+
   const seen = watchConsole(page);
 
   await page.goto('/landscape.html', { timeout: 60_000 });

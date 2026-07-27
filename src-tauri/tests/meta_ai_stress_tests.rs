@@ -1,7 +1,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_ecs::prelude::*;
 use glam::Vec3;
@@ -224,34 +224,62 @@ fn test_non_blocking_event_trigger_processing() {
     let mut schedule = Schedule::default();
     schedule.add_systems(anima_engine_lib::core::engine::receive_environmental_events_system);
 
-    // 1. Confirm non-blocking try_recv on empty channel does not block
-    let start_empty = Instant::now();
-    schedule.run(&mut world);
-    let elapsed_empty = start_empty.elapsed();
-    assert!(
-        elapsed_empty < Duration::from_millis(1),
-        "Empty channel processing took too long: {:?}",
-        elapsed_empty
-    );
+    // 1. An empty channel must not block the schedule.
+    //
+    // This used to assert that one `schedule.run` finished in under a millisecond of wall clock,
+    // which measured the OS scheduler as much as the code: CI run 30282820349 failed it at
+    // 1.4974 ms on a shared runner with nothing wrong. A blocking `recv` does not take 1.5 ms, it
+    // takes forever — so the property is "does it return at all", and the honest way to assert that
+    // is a deadline far outside any contention, on a thread that cannot hang the suite when the
+    // answer is no.
+    let mut world = run_schedule_without_blocking(schedule, world, "an empty channel");
 
-    // 2. Queue up 1000 simultaneous adjustments (stress test)
+    // 2. One run drains everything queued, rather than one event per tick.
     for _ in 0..1000 {
         tx.send(EnvironmentalEvent::TemperatureSpike).unwrap();
     }
     tx.send(EnvironmentalEvent::ResourceDrought).unwrap(); // last one is ResourceDrought
 
-    let start_heavy = Instant::now();
-    schedule.run(&mut world);
-    let elapsed_heavy = start_heavy.elapsed();
+    let schedule = std::mem::take(&mut world.resource_mut::<ScheduleHolder>().0);
+    let world = run_schedule_without_blocking(schedule, world, "1001 queued events");
 
-    // Confirm last event was received and processed
+    // The last event wins, which is only true if the system kept calling `try_recv` until the
+    // channel was empty. The old test asserted 5 ms of wall clock alongside this; the drain below
+    // is the same claim without the timing noise, and it is stronger — a run that stopped early
+    // would still be fast.
     let active = world.resource::<ActiveEnvironmentEvent>();
     assert_eq!(active.0, EnvironmentalEvent::ResourceDrought);
     assert!(
-        elapsed_heavy < Duration::from_millis(5),
-        "Heavy event processing took too long: {:?}",
-        elapsed_heavy
+        tx.is_empty(),
+        "the system left {} event(s) in the channel, so it did not drain in one run",
+        tx.len()
     );
+}
+
+/// Bevy resource used only to carry a [`Schedule`] across the thread boundary in
+/// [`run_schedule_without_blocking`], so the caller keeps hold of it between runs.
+#[derive(bevy_ecs::prelude::Resource, Default)]
+struct ScheduleHolder(Schedule);
+
+/// Run `schedule` against `world` on a worker thread and return the world, or fail the test.
+///
+/// The deadline is deliberately enormous relative to the work — six orders of magnitude above the
+/// microseconds this actually takes. It is not a performance bound and must never be read as one:
+/// its only job is to turn "this system blocks" from a suite that hangs into a named failure.
+fn run_schedule_without_blocking(mut schedule: Schedule, mut world: World, what: &str) -> World {
+    const DEADLINE: Duration = Duration::from_secs(30);
+    let (done_tx, done_rx) = crossbeam_channel::bounded::<World>(1);
+    std::thread::spawn(move || {
+        schedule.run(&mut world);
+        world.insert_resource(ScheduleHolder(schedule));
+        let _ = done_tx.send(world);
+    });
+    done_rx.recv_timeout(DEADLINE).unwrap_or_else(|_| {
+        panic!(
+            "receive_environmental_events_system did not return within {DEADLINE:?} on {what}: it \
+             is blocking rather than using try_recv"
+        )
+    })
 }
 
 #[test]
