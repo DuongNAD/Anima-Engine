@@ -132,9 +132,12 @@ const manifest = {
     sourceSize: SOURCE_SIZE,
     worldGenVersion: world.version,
     note:
-      'Regenerate with `npm run gen:world-manifest`. The artifact is a build output and is ' +
-      'gitignored; this manifest is tracked because the coordinate contract and test S05 read it. ' +
-      'The identity above is the app identity from src/utils/sharedWorld.ts — it is not a knob.',
+      'Regenerate with `npm run gen:world-manifest`, and re-capture the views with ' +
+      '`npm run capture:views` whenever the world identity or the canonical poses change. Both ' +
+      'this manifest and the artifact it names are TRACKED: the manifest declares the artifact\'s ' +
+      'SHA-256 and each view\'s, and mapManifestEvidence.test.ts hashes the committed bytes, so a ' +
+      'clean checkout that lacked either would fail rather than skip. The identity above is the ' +
+      'app identity from src/utils/sharedWorld.ts — it is not a knob.',
   },
   worldArtifact: {
     path: artifactRel,

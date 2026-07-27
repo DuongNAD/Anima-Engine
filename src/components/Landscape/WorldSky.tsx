@@ -2,6 +2,7 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getSkyParams } from './utils/skyParams';
+import { makeSceneRandom, sceneDelta } from './utils/sceneClock';
 
 // Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
 // A flat single-colour dome is the single biggest "this is a tech demo" tell — the gradient
@@ -115,9 +116,13 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   const starPositions = useMemo(() => {
     const count = 700;
     const positions = new Float32Array(count * 3);
+    // Seeded under capture, `Math.random` otherwise. 700 stars scattered afresh on every page load
+    // are 700 pixels that differ between two shots of the same view — invisible to a reviewer and
+    // fatal to a byte-comparison reproducibility gate. See `sceneClock.ts`.
+    const rand = makeSceneRandom('sky.stars');
     for (let i = 0; i < count; i++) {
-      const u = Math.random();
-      const v = Math.random();
+      const u = rand();
+      const v = rand();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
       positions[i * 3] = STAR_R * Math.sin(phi) * Math.cos(theta);
@@ -154,7 +159,10 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     }));
   }, [worldScale, CLOUD_Y]);
 
-  useFrame((_state, delta) => {
+  useFrame((_state, rawDelta) => {
+    // Fixed under capture. Cloud drift below integrates this, and `speed = 0` happens to zero the
+    // product today — a coincidence of the canonical defaults, not a property worth relying on.
+    const delta = sceneDelta(rawDelta);
     const safeDelta = Math.min(delta, 0.1);
     // Background follows the sky colour so night actually goes dark beyond the dome.
     scene.background = new THREE.Color(params.skyColor);

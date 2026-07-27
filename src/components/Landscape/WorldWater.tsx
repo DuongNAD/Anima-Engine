@@ -3,6 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './utils/worldGen';
+import { sceneElapsed } from './utils/sceneClock';
+import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
 
 // ---------------------------------------------------------------------------------------
 // WorldWater — the ocean and inland lakes for the huge SoA world.
@@ -60,6 +62,9 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform sampler2D uHeightMap;
   uniform float uTerrainSize;   // world-space extent of the terrain (= renderSize)
+  // How far past the terrain footprint the sea floor takes to fall from the border height to
+  // abyssal. See the note in main(): this is what stops the world's edge being drawn in water.
+  uniform float uShelfBand;
   uniform float uSeaY;
   uniform vec3 uSunDir;
   uniform vec3 uSunColor;
@@ -98,13 +103,30 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     // Terrain world-Y under this fragment (heightmap stores world height directly).
-    // OUTSIDE the heightmap's footprint the floor is abyssal ocean (0), NOT the clamped
-    // border texel: where land touches the map border, the clamp used to smear that land
-    // height out to infinity, zeroing the water depth -> alpha 0 -> a sky-coloured hole
-    // fanning across the horizon.
+    //
+    // Outside the heightmap's footprint there is no terrain, and what the ocean does there decides
+    // whether the world has a visible edge. Two wrong answers, in order:
+    //
+    //   clamp alone      the border texel smears out to infinity. Where land touches the border
+    //                    that zeroes the water depth -> alpha 0 -> a sky-coloured hole fanning
+    //                    across the horizon.
+    //   times a step   the floor drops to abyssal in ONE TEXEL. Depth jumps from a shelf's few
+    //                    units to the full column, so depthN goes 0->1, the colour snaps from
+    //                    uShallow to uDeep and alpha from 0.32 to 0.92 — along a perfectly
+    //                    straight line, on all four sides. That is the hard cyan cut-plane
+    //                    independent review kept rejecting the canonical views for, and it was
+    //                    never a framing problem: any elevated camera in orbit or fly mode sees
+    //                    the world's square boundary drawn in water.
+    //
+    // The floor instead *descends* from the border height to abyssal across uShelfBand. The ramp
+    // is exactly 1 at the boundary, so the sea floor is continuous with the terrain it continues
+    // from, and reaches 0 well before the fog does — a continental shelf falling away into deep
+    // water, which is also what the world is. Land at the border keeps its height for a few units
+    // and then drops off, so the hole the clamp used to open never forms either.
     vec2 uv = (vWorldPos.xz + uTerrainSize * 0.5) / uTerrainSize;
-    float inMap = step(abs(uv.x - 0.5), 0.5) * step(abs(uv.y - 0.5), 0.5);
-    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * inMap;
+    float outside = max(max(abs(vWorldPos.x), abs(vWorldPos.z)) - uTerrainSize * 0.5, 0.0);
+    float shelf = 1.0 - smoothstep(0.0, uShelfBand, outside);
+    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * shelf;
     float depth = max(vWorldPos.y - floorY, 0.0);
 
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
@@ -218,6 +240,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     uWaveAmp: { value: waveAmp },
     uHeightMap: { value: heightTex },
     uTerrainSize: { value: renderSize },
+    uShelfBand: { value: renderSize * OCEAN_SHELF_BAND_FRACTION },
     uSeaY: { value: seaY },
     uSunDir: { value: new THREE.Vector3(...sunDir) },
     uSunColor: { value: new THREE.Color('#fff4d6') },
@@ -291,7 +314,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   }, [world, renderSize, heightUnits]);
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const fog = state.scene.fog as THREE.Fog | null; // WorldWeather owns scene.fog (linear)
     const mats = [oceanMat.current, lakeMaterial];
     for (const mat of mats) {

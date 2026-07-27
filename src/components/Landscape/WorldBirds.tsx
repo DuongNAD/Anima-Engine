@@ -1,6 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldBirds — a handful of birds gliding in slow circles over the world. One InstancedMesh
@@ -54,7 +55,7 @@ export const WorldBirds: React.FC<WorldBirdsProps> = ({ renderSize = 400, count 
   useFrame((state) => {
     const inst = ref.current;
     if (!inst || typeof inst.setMatrixAt !== 'function') return;
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const dummy = new THREE.Object3D();
     for (let i = 0; i < flights.length; i++) {
       const f = flights[i];

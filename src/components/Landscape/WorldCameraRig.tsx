@@ -3,8 +3,10 @@ import { extend, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from './utils/worldGen';
-import { sampleMeshHeight, biomeAt } from './utils/worldSample';
+import { biomeAt, surfaceHeight } from './utils/worldSample';
 import { buildFloraColliderIndex, resolveFloraOverlap } from './utils/floraClearance';
+import { clampToCameraBounds } from './utils/cameraBounds';
+import { sceneDelta } from './utils/sceneClock';
 import type { CameraView } from './WorldMinimap';
 
 extend({ OrbitControls });
@@ -92,21 +94,16 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   const physRef = useRef({ baseY: 0, vy: 0, grounded: true, jumpHeld: false, bobDist: 0 });
 
   const heightUnits = renderSize * heightRatio;
-  const seaY = world.seaLevel * heightUnits;
 
-  /** Terrain-or-water surface height under world (x, z) — what a walker stands on. */
-  const surfaceY = (x: number, z: number): number => {
-    const u = x / renderSize + 0.5;
-    const v = z / renderSize + 0.5;
-    if (u < 0 || u > 1 || v < 0 || v > 1) return seaY;
-    const groundY = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
-    // Lakes: stand on the still-water surface rather than the drowned lakebed.
-    const size = world.size;
-    const cx = Math.min(size - 1, Math.max(0, Math.round(u * (size - 1))));
-    const cz = Math.min(size - 1, Math.max(0, Math.round(v * (size - 1))));
-    const lake = world.water[cz * size + cx];
-    return Math.max(groundY, seaY, lake > 0 ? lake * heightUnits : 0);
-  };
+  /**
+   * Terrain-or-water surface height under world (x, z) — what a walker stands on.
+   *
+   * The rule lives in `utils/worldSample.surfaceHeight`; this is the rig's binding of it. The
+   * navigation-evidence graph asks the same question of the same function, so a published
+   * reachability claim cannot describe ground the rig disagrees about.
+   */
+  const surfaceY = (x: number, z: number): number =>
+    surfaceHeight(world, x, z, renderSize, heightRatio, meshResolution);
 
   // Static tree colliders for walk mode: trunked flora bucketed into an 8-unit grid, so the
   // player capsule can be pushed out of trunks with a local lookup instead of a 100k scan.
@@ -228,7 +225,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    // Fixed under capture. The capture branch below plants the pose and returns before any
+    // controller integrates, so nothing here reaches the image — but the rule that no `World*`
+    // component consumes r3f's delta unpinned is easier to keep than to keep checking.
+    const delta = sceneDelta(rawDelta);
     const dt = Math.min(delta, 0.1);
     const look = lookRef.current;
     const keys = keysRef.current;
@@ -403,19 +404,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       camera.position.z = nz;
     }
 
-    // Keep the camera over (or near) the map.
-    // Spectator cameras (orbit/top/fly/cine) may sit outside the terrain — framing the whole
-    // continent requires it. A WALKER may not.
-    //
-    // The single 0.75 * renderSize limit let one: the terrain mesh spans +/-renderSize/2 = 600
-    // units, the clamp allowed 900, and `surfaceY` returns sea level for anything off the mesh.
-    // So walking west past the shoreline carried on for another 300 units across open water with
-    // no ground beneath — the "boundary escape" the map-review rubric calls critical. Visible in
-    // the canonical captures as the bright sliver past the terrain edge in `water.png` and
-    // `biome_transition.png`; that edge is walkable in walk mode.
-    const lim = mode === 'walk' ? renderSize * 0.5 : renderSize * 0.75;
-    camera.position.x = Math.max(-lim, Math.min(lim, camera.position.x));
-    camera.position.z = Math.max(-lim, Math.min(lim, camera.position.z));
+    // Keep the camera over (or near) the map. One policy, in `utils/cameraBounds.ts`, shared with
+    // the tests that prove a walker stays on the mesh while a spectator may pull back off it.
+    const bounded = clampToCameraBounds(mode, renderSize, camera.position.x, camera.position.z);
+    camera.position.x = bounded.x;
+    camera.position.z = bounded.z;
 
     if (mode === 'walk') {
       // Gravity + jump on the eye BASE height; head-bob is a cosmetic offset on top so it

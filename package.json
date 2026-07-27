@@ -24,7 +24,8 @@
     "check:flora-footprint": "node scripts/check_flora_footprint.mjs",
     "capture:views": "npm run capture:views --prefix tests",
     "gen:sbom": "node scripts/gen_sbom.mjs",
-    "check:sbom": "node scripts/gen_sbom.mjs --check"
+    "check:sbom": "node scripts/gen_sbom.mjs --check",
+    "gen:map-evidence": "node scripts/run_ts.mjs scripts/gen_map_evidence.ts"
   },
   "dependencies": {
     "@playwright/test": "^1.61.0",

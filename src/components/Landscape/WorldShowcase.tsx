@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import WorldTerrain from './WorldTerrain';
@@ -23,6 +23,7 @@ import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
 import { CAPTURE_READY_FLAG, CAPTURE_SETTLE_FRAMES, readCaptureRequest } from './utils/captureMode';
 import type { CaptureRequest } from './utils/captureMode';
+import CaptureEvidenceOverlay, { readInjectedEvidence } from './CaptureEvidenceOverlay';
 import {
   SHARED_WORLD_SEED as WORLD_SEED,
   SHARED_WORLD_SIZE as WORLD_SIZE,
@@ -115,22 +116,39 @@ function isWorldRenderable(w: World): boolean {
 }
 
 /**
- * Signals the canonical-view capture harness that the scene has settled.
+ * Settles the scene, stops it, renders exactly one final frame, and only then says so.
  *
- * Rendered only in capture mode. "Loaded" is not the same as "settled": R3F suspends on textures
- * and geometry, `WorldTerrain` builds its mesh on first frame, and instanced flora uploads its
- * matrices in a layout effect. A screenshot on the first frame after `load` catches some of that
- * mid-flight, and which part varies with machine speed — the exact way a capture stops being
- * reproducible. Counting real rendered frames is the cheap, honest wait: by the time this many
- * have gone by, everything above has run.
+ * Rendered only in capture mode. Three separate jobs, in an order that matters:
+ *
+ * **Settle.** "Loaded" is not "settled": R3F suspends on textures and geometry, `WorldTerrain` builds
+ * its mesh on first frame, and instanced flora uploads its matrices in a layout effect. A screenshot
+ * on the first frame after `load` catches some of that mid-flight, and which part varies with machine
+ * speed. Counting real rendered frames is the cheap, honest wait.
+ *
+ * **Stop.** With the loop still running, the buffer the harness reads is whatever frame happened to
+ * be current when `readPixels` reached the GPU — a race between the harness and the render loop.
+ * Every frame is *supposed* to be identical by then, which is exactly the assumption a byte-identity
+ * gate exists to test rather than to rely on. `setFrameloop('never')` ends the race.
+ *
+ * **Render once.** After the loop stops, one explicit `gl.render`. The buffer the harness reads is
+ * then the product of a known number of renders — frame 91, every time — instead of "however many
+ * fitted in before the read". Combined with `preserveDrawingBuffer`, that content is still there when
+ * `readPixels` runs, however long afterwards.
+ *
+ * The flag is set last, so a harness that polls it can never observe a scene that is still moving.
  */
 const CaptureReadySignal: React.FC<{ frames: number }> = ({ frames }) => {
   const seen = useRef(0);
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const setFrameloop = useThree((s) => s.setFrameloop);
   useFrame(() => {
     seen.current += 1;
-    if (seen.current === frames) {
-      (window as unknown as Record<string, unknown>)[CAPTURE_READY_FLAG] = true;
-    }
+    if (seen.current !== frames) return;
+    setFrameloop('never');
+    gl.render(scene, camera);
+    (window as unknown as Record<string, unknown>)[CAPTURE_READY_FLAG] = true;
   });
   return null;
 };
@@ -151,16 +169,17 @@ export const WorldShowcase: React.FC = () => {
       : null,
   );
   // Deterministic capture of the canonical map views. `null` on every ordinary visit — see
-  // `captureMode.ts` for why this is a query parameter and nothing else. Read once: the request
-  // is fixed for the lifetime of the page, and re-reading it per render would let a history
-  // change move the camera mid-capture.
-  const captureRef = useRef<CaptureRequest | null>(null);
-  if (captureRef.current === null) {
-    captureRef.current = readCaptureRequest(
-      typeof window === 'undefined' ? '' : window.location.search,
-    );
-  }
-  const capture = captureRef.current;
+  // `captureMode.ts` for why this is a query parameter and nothing else.
+  //
+  // A lazy `useState` initialiser rather than a ref filled during render: both read once, and only
+  // one of them is a pure render. The request is fixed for the lifetime of the page, so re-reading it
+  // per render would additionally let a history change move the camera mid-capture.
+  const [capture] = useState<CaptureRequest | null>(() =>
+    readCaptureRequest(typeof window === 'undefined' ? '' : window.location.search),
+  );
+  // The navigation/collision evidence the capture harness injects, or `null`. See
+  // `CaptureEvidenceOverlay.tsx` for why the overlay draws a committed record and computes nothing.
+  const [evidence] = useState(() => readInjectedEvidence());
 
   const [timeOfDay, setTimeOfDay] = useState(capture?.timeOfDay ?? 11.0);
   const [speed, setSpeed] = useState(capture ? 0 : 1.0); // 0 = paused
@@ -179,21 +198,29 @@ export const WorldShowcase: React.FC = () => {
     (window as unknown as { __world?: World | null }).__world = world;
   }, [world]);
 
-  // Open the world on a scenic patch of LAND rather than the origin (usually open ocean).
-  // Runs once the world is ready; the rig applies the teleport on its first frame.
+  // The scenic patch of LAND the world opens on, rather than the origin (usually open ocean).
   //
-  // Kept in a ref as well, because Reset needs the *same* position — see the reset handler.
+  // Derived from the world, not remembered from an effect. It used to be computed in the effect
+  // below and stashed in a ref, and Reset read `homeRef.current ?? { x: 0, z: 0 }`. That fallback is
+  // the ocean origin this file warns about a few lines up: between the first render with a
+  // renderable world and the effect that follows it, Reset had exactly the destination it is
+  // documented never to use. Deriving `home` closes the window instead of narrowing it — it is
+  // available on the same render that first draws the Reset button — and `null` now means "no world
+  // yet", a state in which no button exists to press.
+  const home = useMemo(
+    () => (world && isWorldRenderable(world) ? findSpawn(world, RENDER_SIZE) : null),
+    [world],
+  );
+
+  // Apply it once, on arrival; the rig consumes the teleport on its first frame.
   const spawnedRef = useRef(false);
-  const homeRef = useRef<{ x: number; z: number } | null>(null);
   useEffect(() => {
-    if (!world || !isWorldRenderable(world) || spawnedRef.current) return;
+    if (!home || spawnedRef.current) return;
     spawnedRef.current = true;
-    const s = findSpawn(world, RENDER_SIZE);
-    homeRef.current = s;
-    viewRef.current.targetX = s.x;
-    viewRef.current.targetZ = s.z;
-    teleportRef.current = { x: s.x, z: s.z };
-  }, [world]);
+    viewRef.current.targetX = home.x;
+    viewRef.current.targetZ = home.z;
+    teleportRef.current = { x: home.x, z: home.z };
+  }, [home]);
 
   useEffect(() => {
     if (world) return;
@@ -343,7 +370,32 @@ export const WorldShowcase: React.FC = () => {
         // and changes no pixels.
         shadows="percentage"
         dpr={[1, 1.5]}
-        gl={{ powerPreference: 'high-performance' }}
+        gl={{
+          powerPreference: 'high-performance',
+          // ---- three capture-only context flags, each closing one source of frame variance -----
+          //
+          // All three are `capture !== null` / `capture === null`, so an ordinary visit gets exactly
+          // the context it got before: multisampled, alpha-composited, buffer discarded after
+          // compositing. Nobody browsing the world is comparing their frames byte for byte, and two
+          // of these cost real quality or performance.
+          //
+          // **preserveDrawingBuffer.** WebGL's default is that the drawing buffer's contents are
+          // *undefined* once the frame has been composited, and reading it afterwards is a read of
+          // undefined memory. It costs an extra copy of the frame and blocks compositor fast paths.
+          preserveDrawingBuffer: capture !== null,
+          // **antialias.** MSAA resolves samples in an implementation-defined order, and that is the
+          // documented suspect for the last-bit differences an earlier pass tried to absorb with a
+          // tolerance. Off, there is no resolve. The canonical views are aliased along high-contrast
+          // silhouettes as a result — a visible cost, paid deliberately, because an evidence image
+          // that cannot be reproduced is not evidence. See `captureMode.ts`.
+          antialias: capture === null,
+          // **alpha.** A context without an alpha channel cannot be composited against the page, and
+          // `readPixels` on one returns 1.0 for alpha by specification. With alpha on, three's
+          // blending writes `a = as² + ad(1 − as)` through transparent geometry, so water and
+          // precipitation would save as partly transparent pixels in an image nobody would think to
+          // check for transparency.
+          alpha: capture === null,
+        }}
         camera={{
           position: [0, RENDER_SIZE * 0.5, RENDER_SIZE * 0.8],
           // near must be SHORT for first-person walking: with near=2, looking up a steep
@@ -357,6 +409,15 @@ export const WorldShowcase: React.FC = () => {
           state.scene.background = new THREE.Color('#9fd0e8');
           // Debug/diagnostics hook (harmless in prod): lets tooling inspect the scene graph.
           (window as unknown as { __worldScene?: THREE.Scene }).__worldScene = state.scene;
+          if (capture) {
+            // Dithering is on by default and the spec leaves the pattern to the implementation. It
+            // exists to hide banding when a higher-precision colour is written to a lower-precision
+            // buffer, which is a thing to want when a human is looking and a thing to remove when the
+            // question is whether two frames are the same bytes. The three flags above are set at
+            // context creation; this one is state, so it is set here — once, before any frame.
+            const ctx = state.gl.getContext();
+            ctx.disable(ctx.DITHER);
+          }
         }}
       >
         <QualityApplier quality={quality} />
@@ -428,6 +489,18 @@ export const WorldShowcase: React.FC = () => {
           teleportRef={teleportRef}
           capturePose={capturePose}
         />
+        {/* Navigation route / collider rings, drawn from the committed evidence record the harness
+            injects. Nothing renders on an ordinary visit: no capture request, no injected record. */}
+        {capture && evidence ? (
+          <CaptureEvidenceOverlay
+            view={capture.view}
+            evidence={evidence}
+            world={world}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            meshResolution={MESH_RES}
+          />
+        ) : null}
         {capture ? <CaptureReadySignal frames={CAPTURE_SETTLE_FRAMES} /> : null}
       </Canvas>
 
@@ -534,16 +607,17 @@ export const WorldShowcase: React.FC = () => {
         onCamMode={setCamMode}
         onQuality={setQuality}
         onMute={() => setMuted((m) => !m)}
-        onReset={() => {
-          // Reset returns to the spawn the world opened on, not to the origin.
-          //
-          // `{ x: 0, z: 0 }` is the middle of the map, and this file's own comment two screens up
-          // says the middle of the map is usually open ocean — which is what a browser
-          // reproduction found: pressing Reset put the readout biome at "Đại dương" and dropped
-          // the camera into the sea. `findSpawn` had already computed a validated, flora-clear
-          // landing spot on load; Reset just has to use it.
-          teleportRef.current = homeRef.current ?? { x: 0, z: 0 };
-        }}
+        // Reset returns to the validated spawn, or does not exist. There is no third option and
+        // specifically no origin fallback: `{ x: 0, z: 0 }` is the middle of the map, the middle of
+        // this map is open ocean, and a browser reproduction of the old code put the readout biome
+        // at "Đại dương" with the camera in the sea.
+        onReset={
+          home
+            ? () => {
+                teleportRef.current = { x: home.x, z: home.z };
+              }
+            : null
+        }
       />
 
       <WorldMinimap
@@ -585,7 +659,8 @@ const WorldHud: React.FC<{
   onCamMode: (m: CameraMode) => void;
   onQuality: (q: Quality) => void;
   onMute: () => void;
-  onReset: () => void;
+  /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
+  onReset: (() => void) | null;
 }> = ({ timeOfDay, speed, weather, camMode, quality, coords, fps, muted, onSpeed, onWeather, onCamMode, onQuality, onMute, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
@@ -656,7 +731,14 @@ const WorldHud: React.FC<{
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.85 }}>
-        <button style={HUD_BTN(false)} onClick={onReset}>⟲ Reset</button>
+        <button
+          style={{ ...HUD_BTN(false), opacity: onReset ? 1 : 0.45, cursor: onReset ? 'pointer' : 'default' }}
+          disabled={onReset === null}
+          title={onReset ? 'Về điểm khởi đầu' : 'Chưa có điểm khởi đầu hợp lệ'}
+          onClick={onReset ?? undefined}
+        >
+          ⟲ Reset
+        </button>
         <button style={HUD_BTN(!muted)} onClick={onMute} title="Âm thanh môi trường">
           {muted ? '🔇' : '🔊'}
         </button>

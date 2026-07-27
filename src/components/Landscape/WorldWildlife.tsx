@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { World } from './utils/worldGen';
 import { Biome } from './utils/worldGen';
 import { sampleMeshHeight } from './utils/worldSample';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldWildlife — ambient creatures, with a bias toward FRESH WATER life:
@@ -269,7 +270,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
   const goatRef = useRef<THREE.InstancedMesh>(null);
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const dummy = new THREE.Object3D();
 
     // Ducks paddle a lazy little circle and bob on the swell.

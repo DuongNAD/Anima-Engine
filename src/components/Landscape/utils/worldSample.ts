@@ -152,6 +152,39 @@ export function findSpawn(world: World, renderSize: number): { x: number; z: num
 }
 
 /**
+ * Height of the surface a walker stands on at render-space `(x, z)`.
+ *
+ * Terrain, or still water where water is higher: a walker wades at the shore and stands on a lake's
+ * surface rather than its drowned bed. Off the mesh there is no terrain data, so the answer is sea
+ * level — which is exactly why walk mode is confined to the mesh footprint (`cameraBounds.ts`): off
+ * it, this function keeps returning a plausible height for ground that is not drawn.
+ *
+ * Extracted from `WorldCameraRig`'s closure because the navigation-evidence graph has to ask the same
+ * question. Two implementations of "what is the ground here" would let a published reachability
+ * record describe terrain the rig does not agree exists.
+ */
+export function surfaceHeight(
+  world: World,
+  x: number,
+  z: number,
+  renderSize: number,
+  heightRatio: number,
+  meshResolution: number,
+): number {
+  const heightUnits = renderSize * heightRatio;
+  const seaY = world.seaLevel * heightUnits;
+  const u = x / renderSize + 0.5;
+  const v = z / renderSize + 0.5;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return seaY;
+  const groundY = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
+  const size = world.size;
+  const cx = Math.min(size - 1, Math.max(0, Math.round(u * (size - 1))));
+  const cz = Math.min(size - 1, Math.max(0, Math.round(v * (size - 1))));
+  const lake = world.water ? world.water[cz * size + cx] : 0;
+  return Math.max(groundY, seaY, lake > 0 ? lake * heightUnits : 0);
+}
+
+/**
  * Biome index at a world-space (x, z) position, where the terrain spans
  * [-renderSize/2, renderSize/2] on both axes. Returns Ocean (0) when off-map or when the
  * world has no biome field. Nearest-cell lookup (biomes are categorical — no interpolation).

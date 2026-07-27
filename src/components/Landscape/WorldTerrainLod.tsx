@@ -15,6 +15,7 @@ import {
   updateActiveChunks,
   resForLod,
 } from './utils/chunkLod';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldTerrainLod — the chunked, distance-LOD, streamable terrain (M3), an opt-in alternative
@@ -186,7 +187,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
 
   useFrame((state) => {
     const sh = shaderRef.current;
-    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = state.clock.getElapsedTime();
+    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = sceneElapsed(state.clock);
 
     const cam = state.camera && state.camera.position;
     if (!cam || !Number.isFinite(cam.x) || !Number.isFinite(cam.z)) return; // (also skips test mocks)

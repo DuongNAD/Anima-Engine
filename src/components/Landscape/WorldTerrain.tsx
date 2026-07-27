@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { Biome, BIOME_RGB } from './utils/worldGen';
 import { sampleElevation, sampleMeshHeight } from './utils/worldSample';
+import { sceneElapsed } from './utils/sceneClock';
 
 export interface WorldTerrainProps {
   world: World;
@@ -449,7 +450,7 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
 
   useFrame((state) => {
     const sh = shaderRef.current;
-    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = state.clock.getElapsedTime();
+    if (sh && sh.uniforms.uTime) sh.uniforms.uTime.value = sceneElapsed(state.clock);
   });
 
   useEffect(() => {

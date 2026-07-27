@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
@@ -74,7 +75,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
   );
 
   useFrame((state) => {
-    curtainMat.uniforms.uTime.value = state.clock.getElapsedTime();
+    curtainMat.uniforms.uTime.value = sceneElapsed(state.clock);
   });
 
   useLayoutEffect(() => {

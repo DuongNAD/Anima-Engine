@@ -36,8 +36,11 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 export default defineConfig({
   testDir: './',
   testMatch: /canonical_views\.spec\.ts/,
-  // A cold capture pays for generating 2048² in the browser before the first shot.
-  timeout: 5 * 60 * 1000,
+  // Each view is captured twice, in two brand-new browser contexts, and every one of those pays for
+  // generating 2048² in the browser from an empty IndexedDB before it can render. Sharing a warm
+  // cache would be far quicker and would make the second load not a clean one, which is the property
+  // the whole test is about.
+  timeout: 12 * 60 * 1000,
   expect: { timeout: 10_000 },
   reporter: 'list',
   // One worker: the eight views share the IndexedDB world cache, and parallel workers would each
