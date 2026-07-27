@@ -20,7 +20,12 @@ import type { SegmentState, RenderSegment, AgentHierarchy } from "./utils/agentH
 export type { SegmentState, RenderSegment, AgentHierarchy };
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
-const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
+// The 2048² shared world — the one `init_world` downsamples and the agents actually live in, and
+// the one the eight canonical views are captured from. This button used to open
+// `LandscapeShowcase`, a separate 160-cell scene with its own terrain generator and no relationship
+// to the simulation's world: the app therefore showed two different worlds and called both "the
+// map". `WorldShowcase` also carries `LiveAgents`, so the population is drawn where it lives.
+const LandscapeShowcase = lazy(() => import("./components/Landscape/WorldShowcase"));
 
 
 // ---------------------------------------------------------------------------------------
@@ -617,8 +622,12 @@ export function App() {
           </Suspense>
         </div>
       ) : showLandscape ? (
-        <div style={{ marginBottom: "20px" }}>
-          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Landscape Showcase...</div>}>
+        // An explicit height, because the scene's root is `height: 100%` and a percentage against a
+        // parent of `height: auto` resolves to auto — the container collapses and the map renders
+        // into nothing. The previous scene had the same root style and the same container, so this
+        // button has been opening a zero-height canvas rather than a world.
+        <div style={{ marginBottom: "20px", height: "78vh", minHeight: "480px" }}>
+          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải bản đồ thế giới...</div>}>
             <LandscapeShowcase />
           </Suspense>
         </div>
