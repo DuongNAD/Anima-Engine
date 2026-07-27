@@ -436,10 +436,10 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
       const { rerender, unmount } = render(
         <PositionalAudio id="ambient-1" position={[0, 0, 0]} />
       );
-      expect(screen.getByText((content, element) => element?.getAttribute('name') === 'audio-group')).toBeTruthy();
+      expect(screen.getByText((_content, element) => element?.getAttribute('name') === 'audio-group')).toBeTruthy();
 
       rerender(<PositionalAudio id="ambient-2" position={[0, 0, 0]} />);
-      expect(screen.getByText((content, element) => element?.getAttribute('name') === 'audio-group')).toBeTruthy();
+      expect(screen.getByText((_content, element) => element?.getAttribute('name') === 'audio-group')).toBeTruthy();
       
       unmount();
     });
@@ -517,7 +517,8 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
           isMuted={false}
           onMuteToggle={vi.fn()}
           cameraMode="orbit"
-          onCameraModeToggle={vi.fn()}
+          onCameraModeChange={vi.fn()}
+          timeOfDay={12}
         />
       );
       const select = document.getElementById('weather-select') as HTMLSelectElement;

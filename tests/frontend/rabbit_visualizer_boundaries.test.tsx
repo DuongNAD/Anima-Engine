@@ -1,10 +1,10 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { render, act, screen, fireEvent } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import RabbitVisualizer from '../../playground/RabbitVisualizer';
 import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
-import { removeStubbedProperties, type StubSpiedMesh } from '../mocks/r3f-dom-stubs';
+import { getByName, removeStubbedProperties, type StubSpiedMesh } from '../mocks/r3f-dom-stubs';
 
 /** An element standing in for a rendered `<mesh>`: the spies its transform writes land on. */
 type MeshStub = HTMLElement & StubSpiedMesh;
@@ -23,7 +23,13 @@ const patchedCreateElement = function (
   ...children: React.ReactNode[]
 ) {
   if (props && typeof type === 'string' && (type === 'mesh' || type === 'group') && 'name' in props) {
-    props = { ...props, 'data-testid': (props as { name?: string }).name };
+    // Read and written through a record view. `data-testid` is a DOM data attribute, and React's
+    // `Attributes` — which is what `createElement`'s second parameter is typed as — declares only
+    // `key`, so neither the source `name` nor the added attribute is a member of it. The props of an
+    // unknown intrinsic element are string-keyed at runtime, which is exactly what this says.
+    const withName: Record<string, unknown> = { ...props };
+    withName['data-testid'] = withName.name;
+    props = withName;
   }
   return originalCreateElement(type, props, ...children);
 };
@@ -45,8 +51,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)', () => {
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn<Console, 'error'>>;
-  let consoleWarnSpy: ReturnType<typeof vi.spyOn<Console, 'warn'>>;
+  // Typed by the function each one replaces, so `mock.calls` below is a list of `console.error`
+  // arguments rather than an untyped list. The bare `ReturnType<typeof vi.spyOn>` this used to say
+  // resolves the generic to its default and loses that.
+  let consoleErrorSpy: MockInstance<typeof console.error>;
+  let consoleWarnSpy: MockInstance<typeof console.warn>;
 
   const getRealErrors = () => {
     return consoleErrorSpy.mock.calls.filter((call) => {
@@ -67,13 +76,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    screen.getByTestId = (id: string) => {
-      const el = document.querySelector(`[name="${id}"]`);
-      if (!el) {
-        throw new Error(`Unable to find element with name="${id}"`);
-      }
-      return el as HTMLElement;
-    };
+    // Elements are found by their `name` attribute — `getByName` in `tests/mocks/r3f-dom-stubs.ts`
+    // says why, and what overwriting `screen.getByTestId` here used to cost.
     
     // Inject mock properties for ref manipulations
     Object.defineProperty(HTMLElement.prototype, 'position', {
@@ -165,16 +169,16 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
-    const headEl = screen.getByTestId('rabbit-head') as MeshStub;
-    const leftEarEl = screen.getByTestId('rabbit-left-ear') as MeshStub;
-    const rightEarEl = screen.getByTestId('rabbit-right-ear') as MeshStub;
-    const frontLeftLegEl = screen.getByTestId('rabbit-front-left-leg') as MeshStub;
-    const frontRightLegEl = screen.getByTestId('rabbit-front-right-leg') as MeshStub;
-    const hindLeftLegEl = screen.getByTestId('rabbit-hind-left-leg') as MeshStub;
-    const hindRightLegEl = screen.getByTestId('rabbit-hind-right-leg') as MeshStub;
-    const tailEl = screen.getByTestId('rabbit-tail') as MeshStub;
-    const jawEl = screen.getByTestId('rabbit-jaw') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
+    const headEl = getByName('rabbit-head') as MeshStub;
+    const leftEarEl = getByName('rabbit-left-ear') as MeshStub;
+    const rightEarEl = getByName('rabbit-right-ear') as MeshStub;
+    const frontLeftLegEl = getByName('rabbit-front-left-leg') as MeshStub;
+    const frontRightLegEl = getByName('rabbit-front-right-leg') as MeshStub;
+    const hindLeftLegEl = getByName('rabbit-hind-left-leg') as MeshStub;
+    const hindRightLegEl = getByName('rabbit-hind-right-leg') as MeshStub;
+    const tailEl = getByName('rabbit-tail') as MeshStub;
+    const jawEl = getByName('rabbit-jaw') as MeshStub;
 
     // Verify Body (Offset 0)
     expect(bodyEl.position.set).toHaveBeenCalledWith(floatData[0], floatData[1], floatData[2]);
@@ -220,7 +224,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -235,7 +239,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -250,7 +254,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     
     const realWarnings = getRealWarnings();
@@ -275,8 +279,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
-    const headEl = screen.getByTestId('rabbit-head') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
+    const headEl = getByName('rabbit-head') as MeshStub;
 
     expect(bodyEl.position.set).toHaveBeenCalled();
     expect(headEl.position.set).not.toHaveBeenCalled();
@@ -290,7 +294,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -310,7 +314,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).toHaveBeenCalledWith(NaN, Infinity, -Infinity);
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -325,7 +329,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as MeshStub;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -351,7 +355,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   it('10. Chewing animation: updates jaw position/rotation cyclically in browser simulation', async () => {
     render(<RabbitVisualizer />);
 
-    const jawEl = screen.getByTestId('rabbit-jaw') as MeshStub;
+    const jawEl = getByName('rabbit-jaw') as MeshStub;
     expect(jawEl).toBeDefined();
 
     vi.clearAllMocks();
@@ -380,8 +384,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   it('11a. Hunger eye colors: toggling hunger changes eye mesh material colors to red', async () => {
     render(<RabbitVisualizer />);
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as MeshStub;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as MeshStub;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl).toBeDefined();
     expect(rightEyeEl).toBeDefined();
@@ -428,8 +432,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as MeshStub;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as MeshStub;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
     expect(rightEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
@@ -473,8 +477,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as MeshStub;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as MeshStub;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
     expect(rightEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);

@@ -86,7 +86,9 @@ describe('canonical PNG encoder', () => {
       rgba: Buffer.from([10, 20, 30, 255, 200, 210, 220, 255]),
     };
     const png = encodeCanonicalPng(fb);
-    let idat = Buffer.alloc(0);
+    // Sliced off `png` rather than allocated: `Buffer.alloc` is typed over `ArrayBuffer` while
+    // `subarray` answers the wider `ArrayBufferLike`, so the two could not be the same variable.
+    let idat = png.subarray(0, 0);
     let off = 8;
     while (off + 8 <= png.length) {
       const len = png.readUInt32BE(off);

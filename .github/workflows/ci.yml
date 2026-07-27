@@ -208,6 +208,19 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/eslint_ratchet.mjs
 
+      # `npm run build` typechecks `src/` and `playground/` — the root tsconfig's `include` — and
+      # nothing typechecked `tests/`. Vitest transpiles without checking, so the second npm package
+      # had drifted to 86 type errors that no command in the repository would report: fixture arrays
+      # missing fourteen required fields of `SegmentState`, three references to type names that do
+      # not exist, `screen.getByTestId` overwritten with a function of the wrong signature. A mock
+      # that does not typecheck is a mock that can disagree with the producer, which is the failure
+      # mode the generated bindings exist to prevent.
+      #
+      # It runs before the suites on purpose: a shape error here explains a red test below.
+      - name: Typecheck the tests/ package
+        if: ${{ !cancelled() }}
+        run: npm run typecheck:tests
+
       - name: npm run test (src suite)
         if: ${{ !cancelled() }}
         run: npm run test

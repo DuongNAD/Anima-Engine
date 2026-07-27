@@ -11,6 +11,7 @@ import { Minimap } from '../../src/components/Landscape/Minimap';
 import Water from '../../src/components/Landscape/Water';
 import type { FrameCallback } from '../mocks/r3f-frame-state';
 import {
+  installStubbedProperty,
   removeStubbedProperties,
   type StubAttributeCapture,
   type StubLod,
@@ -36,11 +37,7 @@ vi.mock('@react-three/fiber', async () => {
  * property to an object. `afterEach` takes them off again with `removeStubbedProperties`.
  */
 function defineStub(name: string, value: unknown): void {
-  Object.defineProperty(HTMLElement.prototype, name, {
-    value,
-    configurable: true,
-    writable: true,
-  });
+  installStubbedProperty(HTMLElement.prototype, name, value);
 }
 
 describe('New Biomes and Terrain Scaling Tests', () => {
@@ -270,7 +267,11 @@ describe('New Biomes and Terrain Scaling Tests', () => {
 
   describe('5. Minimap Cell Colors', () => {
     it('should draw correct colors on the minimap for the new biomes', () => {
-      let capturedImageData: ImageData | null = null;
+      // A holder rather than a bare `let`. The only assignment is inside the `putImageData` stub,
+      // which the compiler cannot prove ever runs, so it narrowed the variable to `null` for the
+      // whole test and made `capturedImageData.data` a read off `never`. Narrowing on a property is
+      // reset by the intervening `render`, which is exactly the fact the assertions rely on.
+      const captured: { imageData: ImageData | null } = { imageData: null };
       const originalGetContext = HTMLCanvasElement.prototype.getContext;
       
       HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function(type: string) {
@@ -278,7 +279,7 @@ describe('New Biomes and Terrain Scaling Tests', () => {
           return {
             createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
             putImageData: (imgData: ImageData) => {
-              capturedImageData = imgData;
+              captured.imageData = imgData;
             },
             fillRect: vi.fn(),
             beginPath: vi.fn(),
@@ -295,10 +296,10 @@ describe('New Biomes and Terrain Scaling Tests', () => {
         
         // Minimap computes canvas data in useMemo and updates in useEffect
         // We verify that the ImageData gets successfully captured
-        expect(capturedImageData).not.toBeNull();
-        
+        expect(captured.imageData).not.toBeNull();
+
         // Assert that the generated pixel data has been rendered
-        expect(capturedImageData.data.length).toBeGreaterThan(0);
+        expect(captured.imageData?.data.length ?? 0).toBeGreaterThan(0);
         
         unmount();
       } finally {

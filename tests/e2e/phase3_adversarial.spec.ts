@@ -40,7 +40,12 @@ test.describe('Phase 3 E2E - Adversarial Stress & Payload Tests', () => {
             return { is_enabled: false, current_shard: 0, total_shards: 1 };
           }
           if (cmd === 'plugin:event|listen') {
+            // Both are optional on `TauriInvokeArgs` because `invoke` carries whatever the caller
+            // sent, and a subscription with no event name has nothing to key a listener list on.
             const { event, handler } = args;
+            if (event === undefined || handler === undefined) {
+              throw new Error('plugin:event|listen was invoked without an event name or handler');
+            }
             if (!window.__mock_listeners[event]) {
               window.__mock_listeners[event] = [];
             }

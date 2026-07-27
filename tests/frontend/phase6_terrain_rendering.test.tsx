@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, act } from '@testing-library/react';
-import React from 'react';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
+import { segments } from '../mocks/segment_fixtures';
 
 // Mock pixi.js classes and systems
 const mockGraphicsMethods = {
@@ -147,10 +149,10 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
     });
 
     // We pass 1 segment so that hasSegments is true, enabling range-based scaling
-    const mockSegments = [
+    const mockSegments = segments(
       { agent_id: 1, segment_id: 0, x: -50, z: -20, agent_type: 'predator' },
       { agent_id: 1, segment_id: 1, x: 50, z: 20, agent_type: 'predator' },
-    ];
+    );
 
     render(
       <PixiViewport segments={mockSegments} raycasts={[]} pheromoneGrid={null} projection="xz" />

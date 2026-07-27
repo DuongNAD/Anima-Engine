@@ -130,3 +130,37 @@ export function removeStubbedProperty(prototype: object, name: string): void {
 export function removeStubbedProperties(prototype: object, ...names: string[]): void {
   for (const name of names) removeStubbedProperty(prototype, name);
 }
+
+/**
+ * Install a member on a prototype that the prototype's own type does not declare.
+ *
+ * The counterpart of {@link removeStubbedProperty}, and there for the same reason: assigning to
+ * `HTMLElement.prototype.addLevel` is not an assignment the DOM types describe, so writing it that
+ * way meant first claiming the prototype was something it is not. `Object.defineProperty` is the API
+ * for putting a property on an object, and it is already how the accessor-valued stubs are
+ * installed — this makes the value-valued ones match.
+ */
+export function installStubbedProperty(prototype: object, name: string, value: unknown): void {
+  Object.defineProperty(prototype, name, { value, configurable: true, writable: true });
+}
+
+/**
+ * The element the mocked reconciler rendered for `<something name="...">`.
+ *
+ * These suites do not look up `data-testid`. `@react-three/fiber` is replaced by an inline mock, so
+ * three's `name` prop lands as a plain DOM attribute and `name` is what identifies an element. Three
+ * files used to say that by overwriting `screen.getByTestId` in a `beforeEach` with a function that
+ * queried `[name=...]` — a global mutation of testing-library, never restored, that left every call
+ * site claiming to search for something it was not searching for.
+ *
+ * `instanceof` rather than a cast: `querySelector` answers `Element | null`, and the two cases it
+ * does not rule out — no match, and a match that is not an `HTMLElement` — are exactly the ones a
+ * test wants reported as a failure with a name in it.
+ */
+export function getByName(name: string): HTMLElement {
+  const el = document.querySelector(`[name="${name}"]`);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`Unable to find an element with name="${name}"`);
+  }
+  return el;
+}

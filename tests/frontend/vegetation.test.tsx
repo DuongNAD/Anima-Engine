@@ -6,6 +6,7 @@ import { Vegetation } from '../../src/components/Landscape/Vegetation';
 import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
 import type { FrameCallback } from '../mocks/r3f-frame-state';
 import {
+  installStubbedProperty,
   removeStubbedProperties,
   type StubAttributeCapture,
   type StubUniforms,
@@ -23,9 +24,30 @@ vi.mock('@react-three/fiber', async () => {
   };
 });
 
+/**
+ * The shader object the sway patches actually read.
+ *
+ * `makeWindSwayPatch` and `makeGrassSwayPatch` bind their uniforms and then string-replace the
+ * vertex shader; those three fields are the whole surface. Declaring it lets the test hand over a
+ * three-field stub instead of manufacturing a `WebGLProgramParametersWithUniforms`, which is a type
+ * with no constructor and forty members none of these patches look at.
+ */
+type SwayShaderTarget = StubUniforms & { vertexShader: string; fragmentShader: string };
+
+/**
+ * A material as this suite captures it: the `onBeforeCompile` hook the component installed.
+ *
+ * Not `THREE.MeshStandardMaterial`. The interceptor below pushes `this` from a property setter it
+ * defined on the prototype, and what the test then does with the result is call one hook with one
+ * argument — so the type that describes it is the hook, not the class.
+ */
+interface CapturedMaterial {
+  onBeforeCompile?: (shader: SwayShaderTarget) => void;
+}
+
 describe('Vegetation Component Tests', () => {
   let originalSetAttribute: typeof HTMLElement.prototype.setAttribute | undefined;
-  let capturedMaterials: THREE.MeshStandardMaterial[] = [];
+  let capturedMaterials: CapturedMaterial[] = [];
   let setMatrixCalls: Array<{ instanceId: number; matrix: THREE.Matrix4; element: Element }> = [];
 
   beforeEach(() => {
@@ -46,16 +68,16 @@ describe('Vegetation Component Tests', () => {
     });
 
     // Mock setMatrixAt to inspect positions
-    HTMLElement.prototype.setMatrixAt = vi.fn().mockImplementation(function (
-      this: HTMLElement,
-      instanceId: number,
-      matrix: THREE.Matrix4
-    ) {
-      setMatrixCalls.push({ instanceId, matrix: matrix.clone(), element: this });
-    });
+    installStubbedProperty(
+      HTMLElement.prototype,
+      'setMatrixAt',
+      vi.fn(function (this: HTMLElement, instanceId: number, matrix: THREE.Matrix4) {
+        setMatrixCalls.push({ instanceId, matrix: matrix.clone(), element: this });
+      })
+    );
 
-    HTMLElement.prototype.setIndex = vi.fn();
-    HTMLElement.prototype.computeVertexNormals = vi.fn();
+    installStubbedProperty(HTMLElement.prototype, 'setIndex', vi.fn());
+    installStubbedProperty(HTMLElement.prototype, 'computeVertexNormals', vi.fn());
 
     // Capture custom attributes
     Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
@@ -204,7 +226,7 @@ describe('Vegetation Component Tests', () => {
     // Simulate compiling shader. `uniforms` starts empty: what is asserted below is that the
     // material's `onBeforeCompile` puts the shared live objects into it, so declaring the block as
     // the uniform map it becomes says more than an untyped empty object did.
-    const mockShader: StubUniforms & { vertexShader: string; fragmentShader: string } = {
+    const mockShader: SwayShaderTarget = {
       uniforms: {},
       vertexShader: '#include <common>\n#include <begin_vertex>',
       fragmentShader: '',

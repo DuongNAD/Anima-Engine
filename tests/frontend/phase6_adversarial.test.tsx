@@ -1,12 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import React from 'react';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
   mockEnvironmentalState,
   mockSimulationTickPayload
 } from '../mocks/mock_ipc_payloads';
+import { segments } from '../mocks/segment_fixtures';
 import { setWholeTickPayloadDelivery } from '../mocks/tick-adaptation';
 
 // Mock pixi.js exactly like phase 5 and 6 test so rendering works in jsdom
@@ -172,8 +174,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 2.71) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(30);
-    expect(zoomedLake[1]).toBeCloseTo(12.5);
+    expect(zoomedLake?.[0]).toBeCloseTo(30);
+    expect(zoomedLake?.[1]).toBeCloseTo(12.5);
   });
 
   it('Verify Zoom In is unbounded and can reach extremely high scale values', async () => {
@@ -201,8 +203,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 81.37) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(900);
-    expect(zoomedLake[1]).toBeCloseTo(375);
+    expect(zoomedLake?.[0]).toBeCloseTo(900);
+    expect(zoomedLake?.[1]).toBeCloseTo(375);
   });
 
   // --- PAN LIMITS & STRESS CASES ---
@@ -233,8 +235,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = panCalls.slice(-8);
     const pannedLake = finalCalls.find(c => Math.abs(c[2] - 27.12) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(800);
-    expect(pannedLake[1]).toBeCloseTo(625);
+    expect(pannedLake?.[0]).toBeCloseTo(800);
+    expect(pannedLake?.[1]).toBeCloseTo(625);
   });
 
   // --- TAURI COMMAND CALLING ERRORS ---
@@ -491,18 +493,16 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     try {
       mockGraphicsMethods.drawCircle.mockClear();
 
-      const testSegments = [
-        {
-          agent_id: 1,
-          segment_id: 0,
-          parent_segment_id: null,
-          x: 10,
-          y: 20,
-          z: 0,
-          energy: 100,
-          agent_type: 'prey'
-        }
-      ];
+      const testSegments = segments({
+        agent_id: 1,
+        segment_id: 0,
+        parent_segment_id: null,
+        x: 10,
+        y: 20,
+        z: 0,
+        energy: 100,
+        agent_type: 'prey'
+      });
 
       const testEnv = {
         elements: [
@@ -552,10 +552,10 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       expect(lakeCall).toBeDefined();
 
       // Verify the coordinate synchronization: both segment and lake are mapped to centered/fit-to-screen coords
-      expect(segmentCall[0]).toBeCloseTo(250);
-      expect(segmentCall[1]).toBeCloseTo(175);
-      expect(lakeCall[0]).toBeCloseTo(250);
-      expect(lakeCall[1]).toBeCloseTo(175);
+      expect(segmentCall?.[0]).toBeCloseTo(250);
+      expect(segmentCall?.[1]).toBeCloseTo(175);
+      expect(lakeCall?.[0]).toBeCloseTo(250);
+      expect(lakeCall?.[1]).toBeCloseTo(175);
 
     } finally {
       process.env.VITEST = originalVitest;
@@ -590,18 +590,16 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     process.env.VITEST = 'false';
 
     try {
-      const nanSegments = [
-        {
-          agent_id: 1,
-          segment_id: 0,
-          parent_segment_id: null,
-          x: NaN,
-          y: NaN,
-          z: NaN,
-          energy: 100,
-          agent_type: 'prey'
-        }
-      ];
+      const nanSegments = segments({
+        agent_id: 1,
+        segment_id: 0,
+        parent_segment_id: null,
+        x: NaN,
+        y: NaN,
+        z: NaN,
+        energy: 100,
+        agent_type: 'prey'
+      });
 
       mockGraphicsMethods.drawCircle.mockClear();
 
@@ -618,7 +616,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       const drawCalls = mockGraphicsMethods.drawCircle.mock.calls;
       const segmentCall = drawCalls.find(c => Math.abs(c[2] - 10) < 0.1);
       expect(segmentCall).toBeDefined();
-      expect(isNaN(segmentCall[0]) || isNaN(segmentCall[1])).toBe(true);
+      expect(isNaN(segmentCall?.[0]) || isNaN(segmentCall?.[1])).toBe(true);
 
     } finally {
       process.env.VITEST = originalVitest;
@@ -663,7 +661,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const drawCalls = mockGraphicsMethods.drawCircle.mock.calls;
     const finalLake = drawCalls.find(c => Math.abs(c[2] - 271.2) < 0.1);
     expect(finalLake).toBeDefined();
-    expect(finalLake[0]).toBeCloseTo(4000);
-    expect(finalLake[1]).toBeCloseTo(250);
+    expect(finalLake?.[0]).toBeCloseTo(4000);
+    expect(finalLake?.[1]).toBeCloseTo(250);
   });
 });

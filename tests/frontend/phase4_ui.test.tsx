@@ -14,7 +14,9 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
   return {
     ...original,
-    invoke: vi.fn().mockImplementation((cmd, _args) => {
+    // `args`, not `_args`: the fall-through at the end of this table forwards them to the real
+    // `invoke`, so the underscore was naming a parameter as unused that the body reads.
+    invoke: vi.fn().mockImplementation((cmd, args) => {
       if (cmd === 'get_lineage_graph') {
         return Promise.resolve(mockLineageGraph);
       }

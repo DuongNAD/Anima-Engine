@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, screen } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import * as THREE from 'three';
 import Sky from '../../src/components/Landscape/Sky';
 import Weather from '../../src/components/Landscape/Weather';
@@ -36,14 +36,9 @@ describe('Sky and Weather Component Tests', () => {
     frameCallbacks = [];
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    // Custom screen.getByTestId to find elements in JSDOM mocks
-    screen.getByTestId = (id: string) => {
-      const el = document.querySelector(`[name="${id}"]`) || document.querySelector(`[data-testid="${id}"]`);
-      if (!el) {
-        throw new Error(`Unable to find element with testid/name="${id}"`);
-      }
-      return el as HTMLElement;
-    };
+    // No `screen.getByTestId` override here. This file had one — a global, never-restored mutation
+    // of testing-library — and called it nowhere: every assertion below queries the container it
+    // rendered. Removing it takes the mutation out of the suite rather than leaving it armed.
 
     // Mock position and rotation for JSDOM R3F elements
     Object.defineProperty(Element.prototype, 'position', {

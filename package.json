@@ -16,6 +16,7 @@
     "test:all": "npm run test && npm run test:frontend && npm run test:e2e",
     "gen:manifest": "node scripts/run_ts.mjs scripts/gen_map_manifest.ts",
     "lint": "eslint .",
+    "typecheck:tests": "tsc -p tests/tsconfig.json --noEmit",
     "check:csp": "node scripts/check_csp_compat.mjs",
     "gen:world-manifest": "node scripts/run_ts.mjs scripts/gen_world_manifest.ts",
     "gen:artifact-fixture": "node scripts/run_ts.mjs scripts/gen_artifact_fixture.ts",

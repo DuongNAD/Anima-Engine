@@ -56,9 +56,10 @@ trong bảng.
 | Format | `cargo fmt --check` | sạch |
 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | sạch |
 | Lint backend (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | sạch |
-| Test frontend (src) | `npm run test` | 13 file · **90 pass** |
-| Test frontend (tests/) | `npm run test:frontend` | ⚠️ **CHƯA đo lại tại `d006f64`.** Số gần nhất trên máy rảnh: **243 pass**, 1 skip — xem cảnh báo dưới |
+| Test frontend (src) | `npm run test` | 14 file · **109 pass**, 0 skip — đo trên `feature-anima-completion`, 2026-07-27 |
+| Test frontend (tests/) | `npm run test:frontend` | 36 file · **339 pass**, 0 skip — đo trên `feature-anima-completion`, 2026-07-27 (máy rảnh) |
 | Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**) — đo lại trên `feature-anima-completion`, 2026-07-27 |
+| Typecheck `tests/` | `npm run typecheck:tests` | **0 error** — gate mới, xem §3.18 |
 | Build | `npm run build` | pass |
 | Link tài liệu | `node scripts/check_docs_links.mjs` | 417 link trong 90 file, **0 gãy** |
 
@@ -533,6 +534,7 @@ vẫn trả đồ thị **đầy đủ**.
 | 3.9 | Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`, hoặc bỏ nếu không còn cần | [`ai/model.rs:360`](../../src-tauri/src/ai/model.rs) | Đây là **2/2** khối unsafe của cả backend, và không cái nào có luận chứng. Type này ôm `WgpuDevice` |
 | 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
 | ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
+| ~~3.18~~ | ~~Bỏ mọi lối thoát kiểu (`as any` / `as unknown as` / `as never` / `eslint-disable`) và bật typecheck cho `tests/`~~ **XONG** (2026-07-27, `feature-anima-completion`) | `npm run typecheck:tests` (gate mới trong CI) · [`src/window-globals.d.ts`](../../src/window-globals.d.ts) · [`tests/mocks/segment_fixtures.ts`](../../tests/mocks/segment_fixtures.ts) | Grep chính xác trên `src`/`tests`/`playground` **= 0** cho cả bốn mẫu, kể cả trong comment. Không suppress, không nới rule, không xoá test. Mỗi chỗ được gỡ bằng cách **làm cho điều đang bị khẳng định trở thành đúng**: các thuộc tính `window` được khai báo thật; `buildAgentHierarchy` nhận `readonly unknown[]` đúng như dữ liệu IPC nó vốn phòng thủ (lộ ra 2 lỗi thật: `segment_id` không phải số bị key bằng `undefined`, và `s.x \|\| 0` cho chuỗi lọt vào trường `number`); `biomeAt`/`findSpawn` nhận đúng các field chúng đọc; mock r3f dựng `THREE.Scene`/`PerspectiveCamera` thật. **Phát hiện phụ:** gói `tests/` chưa từng được typecheck — **86 lỗi** không lệnh nào báo, nay = 0 và có gate | |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
@@ -644,7 +646,7 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
 Chạy từ repo root, trừ chỗ ghi khác. Đây là đúng bộ CI chạy.
 
 ```bash
-npm run lint && node scripts/eslint_ratchet.mjs && npm run test && npm run test:frontend && npm run build && node scripts/check_docs_links.mjs
+npm run lint && node scripts/eslint_ratchet.mjs && npm run typecheck:tests && npm run test && npm run test:frontend && npm run build && node scripts/check_docs_links.mjs
 ```
 
 ```bash
