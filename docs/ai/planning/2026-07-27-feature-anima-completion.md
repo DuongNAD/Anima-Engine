@@ -96,8 +96,11 @@ the fix and its output recorded.
 
 ### 2.2 Supervisor addendum — the independent review after the first session
 
-[`.agents/anima-completion-supervisor-findings.md`](../../../.agents/anima-completion-supervisor-findings.md).
-Numbering is that document's. Several of these are defects the first session introduced or failed to
+[`2026-07-27-review-anima-completion-supervisor-findings.md`](./2026-07-27-review-anima-completion-supervisor-findings.md),
+tracked verbatim — it was cited at its `.agents/` scratch path until its own item 18 pointed out that
+an ignored path resolves for one machine and for nobody else.
+Numbering is that document's, and this table covers items 1–12, which is what it held when the table
+was written; see the note at the head of that file for what items 13–18 add. Several of these are defects the first session introduced or failed to
 catch, which is why the rows above carry a second commit.
 
 | # | Finding | Gate that proves it closed | Status | Commit |

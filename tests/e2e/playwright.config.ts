@@ -47,7 +47,15 @@ export default defineConfig({
   webServer: {
     // `--strictPort` so a busy port fails instead of Vite silently choosing another one and the
     // suite then testing nothing at the URL it believes in.
-    command: `npm run dev -- --port ${PORT} --strictPort`,
+    //
+    // `--host 127.0.0.1` so the server binds the exact interface `url` below probes. Left unset,
+    // Vite binds whatever `localhost` resolves to, and since Node 17 that is *verbatim* order —
+    // `::1` first wherever /etc/hosts lists it, which is every Linux runner. The failure that
+    // produces is silent on the server side: CI run 30269255861 printed `VITE v8.1.5 ready in
+    // 190 ms` on `[::1]:5177` and then sat there while Playwright polled `127.0.0.1:5177` and got
+    // ECONNREFUSED for the full 120 s. Windows binds dual-stack, so the two addresses are the same
+    // door here and this could only ever fail on CI.
+    command: `npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort`,
     cwd: REPO_ROOT,
     url: BASE_URL,
     // Never adopt a server this suite did not start. See the note at the top of this file.

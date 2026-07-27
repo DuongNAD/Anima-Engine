@@ -23,7 +23,7 @@ design: ../design/2026-07-27-feature-anima-completion.md
 
 
 Two sessions. The first landed twelve commits and left work explicitly unfinished; an independent
-browser/code review then produced [an acceptance addendum](../../../.agents/anima-completion-supervisor-findings.md)
+browser/code review then produced [an acceptance addendum](../planning/2026-07-27-review-anima-completion-supervisor-findings.md)
 of twelve numbered findings, several of which were defects the first session introduced or failed to
 catch. This document covers both, because a reader wants the state of the code, not the order it was
 arrived at.

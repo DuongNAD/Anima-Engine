@@ -31,7 +31,13 @@ export default defineConfig({
     // assertions still run. It trades ~7 s of wall clock for a suite whose red means red. If this
     // is ever raised, the thing to check is not the timeout — it is how many `render(<App />)`
     // calls are running at once.
-    maxWorkers: 4,
+    //
+    // The number therefore has to follow the machine, and 4 was measured on a 14-core desktop. A
+    // GitHub `ubuntu-latest` runner has **4 vCPU**, so 4 there is one worker per core with nothing
+    // left for the main thread — the same oversubscription the number was chosen to avoid. CI run
+    // 30269255861 reproduced the shape exactly: `phase3_ui` and `phase4_ui`, both `render(<App />)`
+    // files, hit `Test timed out in 15000ms` while the other 36 files passed, 430/432.
+    maxWorkers: process.env.CI ? 2 : 4,
   },
   resolve: {
     alias: {
