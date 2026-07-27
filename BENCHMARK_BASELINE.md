@@ -112,19 +112,72 @@ Ba nguồn số vẫn chưa có, và không cái nào bị chặn bởi phần c
 
 ## Kết quả
 
-Số dưới đây là **thật**, đo trên phần cứng mục tiêu (i5-14600KF), trung vị Criterion, build release.
-Bảng đầy đủ và các cảnh báo diễn giải: [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md).
+Số dưới đây là **thật**, đo trên phần cứng mục tiêu (i5-14600KF). Bảng đầy đủ và các cảnh báo diễn
+giải: [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md).
+
+⚠️ **Bảng này giờ trộn hai nguồn, và chúng không so trực tiếp được với nhau.** Hàng ghi
+*(p50, in-app)* đến từ một lần chạy app desktop **bản debug**; mọi hàng còn lại là trung vị
+Criterion **bản release**. Một tick debug chậm hơn release nhiều lần, nên đừng đặt hai con số cạnh
+nhau rồi kết luận gì về tỷ lệ giữa chúng. Mỗi hàng đều ghi rõ nguồn.
 
 | Hạng mục | Mục tiêu (plan §10.2) | Đo được | Ghi chú |
 |---|---|---|---|
-| Physics tick | 60 Hz cho active radius | **chưa đo** | Cần in-app tick capture; `integrate_physics_system` riêng nó là 4,9 µs @1.000 agent |
-| Brain/sensor | 10–20 Hz, batched | **chưa đo** | Não per-agent đang tắt mặc định (§3.1) |
+| Physics tick | 60 Hz cho active radius | **338,8 µs** (p50, in-app) | Đo trong app 2026-07-27 — **debug**, 10 agent, `exact: false`; xem [§ Đo trong app](#đo-trong-app--2026-07-27-bản-debug). `integrate_physics_system` riêng nó là 4,9 µs @1.000 agent (release, Criterion) |
+| Brain/sensor | 10–20 Hz, batched | **119,8 µs** (p50, in-app) | Cùng lần chạy, `exact: false`. Là **đường legacy**: não per-agent tắt mặc định (§3.1), nên đây **không** phải chi phí suy luận não |
 | Ecology local | 1 Hz | `step_regrowth_gated_strided` **55,0 µs** @256² | Đo được, nhưng ở mức system chứ không phải nhịp |
 | Plant/decomposition | 0.1–0.2 Hz | `step_soil` **47,2 µs**, `step_erosion` **20,1 µs** @256² | |
-| UI telemetry | 1–5 Hz | **chưa đo** | Thread emit không nằm trong bộ bench |
+| UI telemetry | 1–5 Hz | **113,3 µs** (p50, in-app) | Cùng lần chạy, `exact: true` — nằm trọn giữa hai checkpoint có tên, nên là chi phí thật của pha chứ không phải phần dư |
 | Hot-loop allocation | 0 | **đạt** | Các test zero-alloc assert `allocs == 0` |
 | Terrain gen (256²) | — | **chưa đo** | `cargo test --release`; chưa vào bộ bench |
-| Full-brain agents MVP | 1.000 | **chưa đo** | Tổng các system chạy mỗi tick ở 1.000 agent ≈ **493 µs ≈ 3,0 %** khung hình — **cận dưới**, chưa gồm não |
+| Full-brain agents MVP | 1.000 | **chưa đo** | Lần chạy in-app 2026-07-27 có **10 agent**, không phải 1.000, nên nó **không** đóng được hàng này. `full_tick` ở 10 agent là **1,642 ms** (p50, debug). Đừng nhân `mean_ns_per_agent` lên 1.000 — xem cảnh báo ở [§ Đo trong app](#đo-trong-app--2026-07-27-bản-debug). Tổng các system mỗi tick ở 1.000 agent ≈ **493 µs ≈ 3,0 %** khung hình vẫn là **cận dưới** Criterion, chưa gồm não |
+
+### Đo trong app — 2026-07-27, bản debug
+
+**Lần đầu tiên có số từ app desktop đang chạy.** Nguồn: `core/tick_capture.rs`, xuất qua
+`export_tick_capture` ra `%APPDATA%\com.anima.engine\captures\tick-capture-2026-07-27.json` (file
+nằm ở thư mục app-data, **không** trong repo). Mọi hàng dưới đây là 📏 **đo**, theo quy ước phân loại
+ở [`STATE_OF_THE_PROJECT.md` §1.1](docs/planning/STATE_OF_THE_PROJECT.md#11-phân-loại-mọi-con-số-trong-tài-liệu).
+
+Bối cảnh của lần chạy, và mọi con số dưới đây chỉ có nghĩa kèm nó:
+
+| | |
+|---|---|
+| Profile | **debug** (`npm run tauri:dev`) |
+| Executor | `multi-threaded` |
+| Thế giới | **256 × 256**, `dimensions_measured: true` — đọc từ thế giới đang chạy, không phải hằng số |
+| Số agent | **10** (suy ra từ `mean_ns / mean_ns_per_agent`, trùng 10,00 trên cả bảy pha) |
+| Não per-agent | **tắt** — `ANIMA_EVOLVED_BRAINS` không đặt, nên `sensor_brain` là đường legacy |
+| Mẫu | 1800, sau 300 tick warm-up · `ticks_observed` 2101 · tick 301 → 2101 |
+| Phần cứng ghi được | `x86_64` / `windows` / `available_parallelism: 20`; `cpu_model`, `clock_speed`, `installed_ram`, `gpu` **không đo được** |
+
+| Pha | `exact` | p50 | p95 | p99 | % của `full_tick` (p50) |
+|---|---|---|---|---|---|
+| `full_tick` | ✅ | **1642,2 µs** | 2344,5 µs | 2611,3 µs | 100% |
+| `schedule` | ✅ | 1504,6 µs | 2156,0 µs | 2348,2 µs | 91,6% |
+| `ecology_resources` | ❌ | **961,4 µs** | 1443,6 µs | 1584,2 µs | 58,5% |
+| `physics_movement` | ❌ | 338,8 µs | 550,9 µs | 645,1 µs | 20,6% |
+| `sensor_brain` | ❌ | 119,8 µs | 218,0 µs | 306,9 µs | 7,3% |
+| `telemetry_publish` | ✅ | 113,3 µs | 248,1 µs | 317,4 µs | 6,9% |
+| `schedule_tail` | ❌ | 32,6 µs | 68,4 µs | 106,3 µs | 2,0% |
+
+Ở 60 Hz ngân sách một khung là 16 667 µs, nên `full_tick` p50 dùng **9,9%** và p99 dùng **15,7%** —
+ở bản debug, với 10 agent.
+
+Bốn điều phải đọc kèm, nếu không con số sẽ bị hiểu sai:
+
+- **`exact: false` không phải chi phí của một system.** Nó là "phần việc executor làm giữa hai
+  checkpoint có tên". Một profiler đo được nhiều hơn thế; capture này thì không, và nói thẳng ra
+  điều đó thay vì gán nhãn đẹp cho một con số nó không sở hữu.
+- **Đừng ngoại suy theo số agent.** `mean_ns_per_agent` chỉ là `mean_ns / 10`. Pha đắt nhất,
+  `ecology_resources`, chạy trên lưới 256² và gần như **không** phụ thuộc số agent — nhân nó lên
+  1.000 cho ra 169 ms/tick, một con số không mô tả bất cứ thứ gì. Muốn đóng hàng
+  `Full-brain agents MVP` thì phải chạy lại **với 1.000 agent thật**.
+- **`dropped_out_of_order: 1`** trên 2101 tick. Executor đa luồng đã xáo trộn thứ tự checkpoint đúng
+  một lần và mẫu đó bị loại thay vì được ghi sai. Đây là dữ liệu về chính executor, không phải lỗi
+  của lần chạy.
+- **`plant_soil_weather` nằm trong `unavailable` kèm lý do**, không phải báo 0: `core::dynamic_fields`
+  không có trong lịch trình sống của build này — không resource nào chèn `DynamicFields` và không
+  system nào bước nó, nên không có việc thật để đo. Criterion đo trực tiếp các hàm đó.
 
 ## Trạng thái khoá số
 
@@ -139,8 +192,16 @@ ba hàng đắt nhất trong bảng trên (`Physics tick`, `Brain/sensor`, `Full
 nhịp thật của app đang chạy. Chừng nào chưa có, đừng trích một con số nào ở đây như thể nó là ngân
 sách khung hình.
 
-**Tính đến 2026-07-27, ba hàng đó vẫn `chưa đo`, và dụng cụ đo đã có.** Đó là hai câu khác nhau và
-phải giữ chúng khác nhau: `core/tick_capture.rs` tồn tại, có test, và đo đúng lịch trình sống — nhưng
-**chưa ai chạy app desktop**, nên không có mẫu nào. Khi có, số đọc từ `p50_ns` của file export và
-điền vào bảng trên **kèm lệnh và ngày**, theo quy ước phân loại ở
-[`STATE_OF_THE_PROJECT.md` §1.1](docs/planning/STATE_OF_THE_PROJECT.md#11-phân-loại-mọi-con-số-trong-tài-liệu).
+**Ngày 2026-07-27 app desktop đã được chạy một lần, và điều đó đóng hai trong ba hàng — không phải
+cả ba.** `Physics tick` và `Brain/sensor` nay có số in-app; `UI telemetry` cũng vậy. Xem
+[§ Đo trong app](#đo-trong-app--2026-07-27-bản-debug) để biết lần chạy đó là gì.
+
+`Full-brain agents MVP` **vẫn mở**, và lý do đáng ghi ra: lần chạy có **10 agent**, còn hàng đó được
+định nghĩa ở **1.000**. Một capture hợp lệ, đúng lịch trình sống, với `p50` thật — nhưng của một
+khối lượng công việc khác. Đóng hàng đó bằng cách nhân lên là biến một phép đo thành một phép đoán
+trông giống phép đo, và `ecology_resources` (58,5% của tick, chạy trên lưới 256²) là bằng chứng
+ngay tại chỗ rằng phép nhân đó sai.
+
+Cũng phải giữ nguyên: mọi số in-app là **bản debug**. Chúng chứng minh lịch trình sống chạy được và
+cho biết tiền đi đâu giữa các pha; chúng **không** phải ngân sách khung hình của sản phẩm. Một lần
+chạy release còn thiếu, và nó là việc tiếp theo của hàng này.
