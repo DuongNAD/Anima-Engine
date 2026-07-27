@@ -158,9 +158,39 @@ All `cargo` runs from PowerShell — Git Bash's `PATH` makes feature-gated targe
 | runner, end to end | the compiled example on **synthetic seeds 4242/4343** at 60 ticks, outside the repository | 2 complete pairs; integrity `control brains 0 / treatment brains 10 of 10`, ecology stream identical, world identity identical |
 | runner refusals | no mode; two modes; `--duration-rung 9999`; `--replay-seed 999983` against the experimental manifest; unknown flag | each refused with a structured reason, exit 2 |
 
-**No experimental seed was run.** The dry run used 4242 and 4343, which belong to no E2 manifest, and
-wrote outside the repository. No smoke run has happened yet either — that is the next step, and it is
-the first run of anything.
+**No experimental seed was run** *at the time this section was written*. The dry run used 4242 and
+4343, which belong to no E2 manifest, and wrote outside the repository.
+
+## 7. What happened next — the smoke, two defects, and the ensemble
+
+Added after the run. The section above is unchanged.
+
+The smoke calibration found two defects before any experimental seed executed, which is what a smoke
+run is for. Both made a run reproducible **within** a process and not **across** one — and every
+determinism gate this repository had compares two runs inside one process, which is exactly the
+comparison that cannot fail on a per-process ordering.
+
+| commit | defect |
+|---|---|
+| `993a587` | `ecosystem_census_system` snapshots `pool.animals` but declared no order against the systems that move agent reserves, so it reported either this tick's metabolism or last tick's — 0.186 EU apart, one tick of decay across ten agents. Reached `live.animals_eu` (H3) and `live.closed_eu_total` (H5). Red was empirical: a new invariant test failed in 3 of 16 processes; green is 24 of 24. |
+| `ec94933` | Bevy reported **seven** unordered conflicting pairs among the EU-moving systems, so the world checksum **and `live.mean_agent_energy`** — the primary observable — moved with a per-process hash seed. Fixed by declaring the pipeline `herbivore_grazing → resource_field_regrowth → detect_food_collisions → combat → metabolic_decay → ecosystem_census`. The gate meant to catch this was itself vacuous: `ScheduleGraph::systems` yields `inner.as_deref()?`, and initialization moves systems into `Schedule::executable`, so the name map was empty and every comparison silently failed to match. Rebuilt on `Schedule::systems`. |
+| `5f0383f` | Unrelated, found by the full suite: a lifecycle test asserted engine readiness after a blind 500 ms sleep. Measured readiness is 278–377 ms idle, so it had ~120–220 ms of headroom and lost it under load. Replaced with bounded polling that reports the latency. |
+
+Cross-process reproducibility was then **accepted by measurement**, not assumed: 24 independent
+processes at T = 18,000 produced one outcome — identical checksums, all eleven observables, all
+thirty series points per arm.
+
+The rung was locked at T = 18,000 (`9c57184`) and pushed **before** seed 700001 ran. The ensemble ran
+once: 12/12 complete pairs, 157.2 s, no failures, no warnings. Result and decision:
+[`RESULT.md`](../../../artifacts/experiments/e2-evolved-brain-default/RESULT.md), ADR-0003 decision 13.
+
+**A finding the implementation did not anticipate.** `live.agent_count` is 10 in every arm of every
+seed at every sample, and every arm reaches exactly zero energy between ticks 1,800 and 9,000. The
+engine has no starvation death — `update_agent_evaluation_system` meets `energy <= 0.0` with
+`continue` — and the adapter runs no replacement (E2-F3), so nothing removes a starved agent and
+nothing replaces it. E2-F3 was registered as a scope limit on *selection*; this run measured its
+second consequence, that it also flattens any long-horizon energy metric. Recorded, not fixed:
+changing either half invalidates a preregistration written against current behaviour.
 
 ### External validation limitation
 

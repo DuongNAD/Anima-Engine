@@ -167,14 +167,36 @@ enough**. It is not upgraded on appeal.
 
 ## 7. Ordered work packages for E2-B
 
-| # | package | done when |
-|---|---|---|
-| 1 | Open the seam to the design §3 specification (P1, P2), flip `P1_SEAM_OPEN`, add the brain-presence test | `cargo test --features desktop` green; a treatment manifest builds founders with `AgentBrain` and a control builds none |
-| 2 | Add `examples/run_e2_brain_experiment.rs` — load the four manifests, run the pair, write the artifact set of design §7 | the reproduction command runs end to end on the smoke manifests |
-| 3 | **Smoke calibration.** Seed 999983 only, both arms, at T. Time it, project ×12, pick the ladder rung, record it | `smoke/` written; the rung recorded in `provenance.json`; **nothing merged into the analysis** |
-| 4 | Run the twelve-seed paired ensemble, once | `paired-report.json` written with 12 pairs |
-| 5 | Analysis and `summary.md` per §6 | every observable tabled; failures listed; the §8 decision stated |
-| 6 | Record the outcome in ADR-0003 per §8, and update `STATE_OF_THE_PROJECT.md` §3.1 | ADR carries a dated decision item; the state doc's §3.0 row 2 closes |
+| # | package | done when | status |
+|---|---|---|---|
+| 1 | Open the seam to the design §3 specification (P1, P2), flip `P1_SEAM_OPEN`, add the brain-presence test | `cargo test --features desktop` green; a treatment manifest builds founders with `AgentBrain` and a control builds none | ✅ `f14941d` |
+| 2 | Add `examples/run_e2_brain_experiment.rs` — load the four manifests, run the pair, write the artifact set of design §7 | the reproduction command runs end to end on the smoke manifests | ✅ `f14941d`, `0bcb330` |
+| 3 | **Smoke calibration.** Seed 999983 only, both arms, at T. Time it, project ×12, pick the ladder rung, record it | `smoke/` written; the rung recorded in `provenance.json`; **nothing merged into the analysis** | ✅ `9c57184` — 10.16 s, ×12 = 2.03 min, **rung stays 18,000** |
+| 4 | Run the twelve-seed paired ensemble, once | `paired-report.json` written with 12 pairs | ✅ 12/12 complete, 157.2 s |
+| 5 | Analysis and `summary.md` per §6 | every observable tabled; failures listed; the §8 decision stated | ✅ `summary.md` + `RESULT.md` |
+| 6 | Record the outcome in ADR-0003 per §8, and update `STATE_OF_THE_PROJECT.md` §3.1 | ADR carries a dated decision item; the state doc's §3.0 row 2 closes | ✅ ADR decision 13 |
+
+### The smoke did the job a smoke run exists to do
+
+Packages 3 and 4 are separated by three commits that were not in this plan, and that is the plan
+working rather than failing. The calibration found two schedule-ordering defects — `993a587` and
+`ec94933` — that made a run reproducible *within* a process and not *across* one. Both reached
+registered metrics; the second reached the **primary** one. Each was fixed under §8.2 ("a defect is
+recorded and fixed as a defect"), the smoke was re-run from the top, and only then was the rung
+locked. Had the ensemble run on the original build, its primary metric would have been a function of
+a per-process hash seed and nobody reading the artifacts could have told.
+
+### The outcome, against §8
+
+**H1 is null** — `paired_mean_delta` is exactly `0.000000` on all twelve seeds, with zero paired
+variance, because both arms sit at exactly zero energy from roughly tick 9,000 onward. Twelve
+complete pairs clears the minimum of ten and the seam matches design §3, so the "insufficient
+evidence" branch does not apply. Per the table above: **the default stays opt-in.**
+
+The honest qualifier, which §8 did not anticipate and this run measured: the null says almost nothing
+about brains, because the registered endpoint has no resolving power. See
+[`RESULT.md`](../../../artifacts/experiments/e2-evolved-brain-default/RESULT.md) §4 and ADR-0003
+decision 13.
 
 Packages 1–2 are code and may be committed freely. Package 3 is the first run of anything.
 

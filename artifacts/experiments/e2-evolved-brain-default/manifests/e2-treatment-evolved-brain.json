@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "experiment_id": "e2-evolved-brain-default::treatment",
+  "name": "E2 treatment - per-agent evolved brain",
+  "world_identity": {
+    "seed": 0,
+    "generator_version": 0,
+    "width": 0,
+    "height": 0,
+    "checksum": 0
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": null
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "live.founders",
+        10.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.evolved_brains",
+        1.0
+      ]
+    ]
+  },
+  "interventions": [],
+  "seeds": [
+    700001,
+    701001,
+    702001,
+    703001,
+    704001,
+    705001,
+    706001,
+    707001,
+    708001,
+    709001,
+    710001,
+    711001
+  ],
+  "duration_ticks": 18000,
+  "sample_period": 600,
+  "observable_ids": [
+    "plants",
+    "detritus",
+    "live.animals_eu",
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.herbivore_count",
+    "live.predator_count",
+    "live.food_items",
+    "live.standing_crop",
+    "live.mean_agent_energy",
+    "live.season_phase"
+  ],
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
+}

@@ -221,7 +221,7 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Hợp đồng Rust↔TS | Live integrated | G1.4 — gate parity `ts-rs` trong CI |
 | Tách feature build | Live integrated | G2 gate #2 — CI kiểm bằng `cargo tree`, không chỉ "biên dịch được" |
 | Trần tài nguyên runner | Live integrated | G2 gate #3 — `MAX_ENSEMBLE_RESULT_BYTES`, ước lượng bão hoà thay vì tràn |
-| Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | **12/12** gate EB pass (2026-07-27, `2b61d07`) — EB-S04 đã re-baseline về bản dựng có seed; xem §3.1 |
+| Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **giữ tắt mặc định sau khi đo** | **12/12** gate EB pass (2026-07-27, `2b61d07`); **E2 đã chạy 2026-07-27 tại `9c57184`** — H1 null (delta đúng 0 trên 12/12 cặp, hiệu ứng sàn), mặc định giữ opt-in theo quy tắc đã đăng ký; xem §3.1 |
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
 | Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `068a750` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
@@ -262,7 +262,7 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 | # | Việc | Vì sao là việc này | Đọc |
 |---|---|---|---|
 | 1 | **Chạy app desktop một lần với `ANIMA_TICK_CAPTURE`** | Việc duy nhất còn lại của §3.2, và **máy không làm được** — cần một con người bấm chạy. Dụng cụ đã ship và đã test; thiếu đúng một lần chạy | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26), [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
-| 2 | ~~**Quyết định EB-S04**~~ **XONG 2026-07-27** → còn **chạy thí nghiệm E2** rồi mới bàn mặc định | Chủ dự án chọn DEC-1 phương án (1); EB-S04 đã re-baseline về bản dựng có seed và chuyển ✅ (12/12). Việc còn lại **không** phải lật cờ mà là chạy một đối chứng nhiều seed **đã tiền đăng ký** | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
+| 2 | ~~**Quyết định EB-S04**~~ ~~**chạy thí nghiệm E2**~~ **CẢ HAI XONG 2026-07-27** → việc còn lại là **thí nghiệm kế tiếp**, không phải quyết định | E2 đã chạy một lần tại `9c57184`: H1 **null** (delta đúng bằng 0 trên 12/12 cặp), mặc định **giữ opt-in** (ADR-0003 quyết định 13). Số 0 là **hiệu ứng sàn**, không phải bằng chứng về não — cần một điểm đo **trước sàn** (T ≈ 3.000–6.000) và một quần thể **có luân chuyển** | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
 | 3 | **OSS-072 MRCA** | Nửa khoa học còn lại của phả hệ. Nén đã xong nên `simplify` đã có sẵn cấu trúc cha/con để dùng lại | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
 | 4 | ~~**In-app tick capture**~~ **XONG 2026-07-27** | Đã ship kèm 4 lệnh IPC và gate "đo không làm đổi quỹ đạo" | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
 | 5 | ~~**§3.3 adapter thí nghiệm cho thế giới sống**~~ **XONG headless 2026-07-27** | `LiveExperimentAdapter` qua runner chung, trên đúng lịch trình app chạy | [§3.3](#33-đưa-thế-giới-bevy-sống-qua-gate-thí-nghiệm--adapter-headless-đã-xong-2026-07-27) |
@@ -341,7 +341,33 @@ van mở so với bố cục trước bước 4. Lý do bỏ mốc cũ và cái 
 (`evolved: true` hay giữ opt-in) cần **bằng chứng đối chứng nhiều seed được tiền đăng ký trước khi
 chạy**. Re-baseline chỉ trả lại một baseline có thật để so; nó không nói gì về hướng của treatment.
 
-**Tiền đăng ký E2 đã xong 2026-07-27, và CHƯA CHẠY GÌ.** Câu hỏi cố định, giả thuyết có hướng,
+> ### ✅ E2 ĐÃ CHẠY 2026-07-27 tại `9c57184` — H1 **null**, mặc định **giữ opt-in**
+>
+> Chạy **một lần**, 12/12 cặp hoàn chỉnh, 157,2 s (2,62 phút) trên trần 90 phút, T = 18.000 (bậc
+> trên cùng, không hạ bậc), 0 lỗi / 0 cảnh báo. `paired_mean_delta` của
+> `live.mean_agent_energy` = **đúng 0,000000** trên **cả 12 seed**, phương sai ghép = 0, `d_z` không
+> xác định ⇒ **không vật chất** theo quy tắc đã đăng ký ⇒ **`evolved` giữ opt-in**
+> (ADR-0003 quyết định 13).
+>
+> **Nhưng số 0 này gần như không mang bằng chứng về não.** Ở T = 18.000, cả hai nhánh trên cả 12
+> seed đều đã ở đúng 0 năng lượng hàng nghìn tick: engine **không có cái chết vì đói**
+> (`update_agent_evaluation_system` gặp `energy <= 0` thì `continue`) và adapter **không chạy thay
+> thế tiến hoá** (E2-F3), nên `live.agent_count` = 10 ở mọi mẫu và quần thể đóng băng. Điểm đo cuối
+> nằm **~9.000 tick sau khi** phép đo hết khả năng phân biệt.
+>
+> Thứ **duy nhất** mang thông tin: `live.closed_eu_total` lệch **−2,6 × 10⁻⁹ EU trên 1,5 × 10⁵ EU**
+> — não riêng theo cá thể **không** làm rò rỉ năng lượng ngoài sổ cái, đo trên 12 cặp.
+>
+> Smoke tìm ra **hai lỗi thứ tự lịch trình** trước khi khoá T (`993a587`, `ec94933`): một run tái lập
+> **trong** một tiến trình nhưng **không** giữa các tiến trình, và lỗi thứ hai chạm chính metric
+> **chính**. Đã sửa, đã chấp nhận lại bằng **24 tiến trình độc lập cho một kết quả trùng bit**, rồi
+> mới chạy ensemble. Chi tiết:
+> [`RESULT.md`](../../artifacts/experiments/e2-evolved-brain-default/RESULT.md).
+>
+> Trạng thái thế giới sống **không đổi**: **headless adapter verified**.
+
+**Tiền đăng ký E2 đã xong 2026-07-27 — đoạn dưới mô tả trạng thái LÚC ĐĂNG KÝ, giữ nguyên làm chứng
+cứ rằng bản đăng ký có trước lần chạy.** Câu hỏi cố định, giả thuyết có hướng,
 metric chính/phụ chọn từ đúng 11 observable mà `LiveExperimentAdapter` phát ra, N = 12 seed liệt kê
 tường minh, T = 18.000 tick, ngưỡng "khác đủ nhiều", ngữ nghĩa seed và ranh giới suy luận, ước lượng
 chi phí và quy tắc quyết định cho ADR-0003 — tất cả nằm ở
@@ -356,9 +382,17 @@ thiết kế lại): `build_live_world` chèn cứng `BrainPolicy::default()` n�
 `evolved = true`; và `live_experiment::genesis` **không** tạo `AgentBrain` kể cả khi cờ bật, khác
 genesis của app. **Nhánh treatment hiện chưa tồn tại.**
 
-**Định nghĩa hoàn thành:** ~~EB-S04 chuyển 🟡 → ✅~~ **xong** · quyết định mặc định được ghi thành
-mục quyết định trong ADR **sau** khi E2 chạy xong theo đúng tiền đăng ký · nếu bật mặc định thì
-`cargo test --features desktop` vẫn xanh và EB-S03 (`allocs == 0`) vẫn giữ.
+**Định nghĩa hoàn thành:** ~~EB-S04 chuyển 🟡 → ✅~~ **xong** · ~~quyết định mặc định được ghi thành
+mục quyết định trong ADR **sau** khi E2 chạy xong theo đúng tiền đăng ký~~ **xong — ADR-0003 quyết
+định 13, `evolved` giữ opt-in** · điều kiện "nếu bật mặc định thì `cargo test --features desktop` vẫn
+xanh và EB-S03 (`allocs == 0`) vẫn giữ" **không kích hoạt**, vì mặc định không bị lật.
+
+**§3.1 đóng lại như một quyết định, và mở ra như một câu hỏi.** Cái đã xong là *quy trình*: có
+baseline thật, có tiền đăng ký, có thí nghiệm chạy đúng một lần, có quyết định ghi theo quy tắc viết
+trước. Cái **chưa** có là câu trả lời khoa học — E2 đo được rằng ở T = 18.000 không có gì để đo, chứ
+không đo được rằng não riêng không quan trọng. Việc kế tiếp là một tiền đăng ký mới với điểm đo trước
+sàn và một quần thể có luân chuyển; xem
+[`RESULT.md` §11](../../artifacts/experiments/e2-evolved-brain-default/RESULT.md).
 
 #### 3.2 Thay số hiệu năng proxy bằng số đo thật — **một nửa đã xong (2026-07-26)**
 

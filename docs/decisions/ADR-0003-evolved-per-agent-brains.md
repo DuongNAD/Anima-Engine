@@ -492,7 +492,10 @@ nó không nói gì về việc treatment tốt hơn hay tệ hơn. Việc đó 
 được **tiền đăng ký trước khi chạy**, và kết quả của nó sẽ được ghi vào ADR này khi đã có — không
 sớm hơn.
 
-Bộ tiền đăng ký đó (E2) đã có, và **chưa chạy gì**:
+Bộ tiền đăng ký đó (E2) đã có. **Đã chạy một lần ngày 2026-07-27** — kết quả và quyết định ở
+[Cập nhật 2026-07-27 — E2](#cập-nhật-2026-07-27--e2-kết-quả-đo-được-và-quyết-định-mặc-định);
+câu dưới đây mô tả trạng thái *tại thời điểm DEC-1*, giữ nguyên làm chứng cứ rằng bản đăng ký có
+trước lần chạy:
 [requirements](../ai/requirements/2026-07-27-experiment-e2-evolved-brain-default.md) ·
 [design](../ai/design/2026-07-27-experiment-e2-evolved-brain-default.md) ·
 [planning](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) ·
@@ -506,6 +509,113 @@ manifest yêu cầu `evolved = true` (`build_live_world` chèn cứng `BrainPoli
 `live_experiment::genesis` **không** tạo `AgentBrain` kể cả khi cờ bật — khác genesis của app trong
 `simulation_loop.rs`. Nhánh treatment vì thế **chưa tồn tại**; đặc tả seam đã được chốt trước ở
 design §3 để nó không thể được chỉnh sau khi nhìn thấy số.
+
+## Cập nhật 2026-07-27 — E2: kết quả đo được và quyết định mặc định
+
+> Mục này ghi kết quả của thí nghiệm đối chứng đã **tiền đăng ký trước khi chạy** (`ce761d1`), chạy
+> **một lần** ngày 2026-07-27 tại commit `9c57184`. Quy tắc quyết định nằm ở
+> [planning §8](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) và được viết
+> **trước** khi có số. Kết quả đầy đủ:
+> [`artifacts/experiments/e2-evolved-brain-default/RESULT.md`](../../artifacts/experiments/e2-evolved-brain-default/RESULT.md).
+
+### Quyết định 13 — `evolved` **giữ nguyên opt-in**
+
+Theo đúng quy tắc đã đăng ký: **H1 null ⇒ giữ opt-in**, ghi là "không đo được hiệu ứng vật chất nào
+trong headless adapter ở N = 12, T = 18.000". Có **12/12 cặp hoàn chỉnh** (tối thiểu là 10) và seam
+được dựng đúng đặc tả design §3, nên "chưa đủ bằng chứng" — vốn chỉ dành cho dưới 10 cặp hoặc một
+tiền điều kiện được thoả mãn khác đặc tả — **không** áp dụng.
+
+Nói thẳng: mặc định giữ opt-in **không phải** vì đã chứng minh não riêng vô ích hay có hại, mà vì
+quy tắc chỉ cho phép lật mặc định khi có hiệu ứng dương **vật chất**, và không có gì vật chất được đo.
+
+### Số đo, và vì sao nó gần như không mang bằng chứng về não
+
+| đại lượng | giá trị |
+|---|---|
+| cặp hoàn chỉnh | 12/12 |
+| `control_mean` / `treatment_mean` | `0.000000` / `0.000000` EU |
+| `paired_mean_delta` | `0.000000` EU |
+| SD ghép / phương sai giữa các seed | `0.000000` / `0.000000` |
+| KTC 95 % | `[0.000000, 0.000000]` |
+| `d_z` | **không xác định** (SD ghép bằng 0) |
+| vật chất? | **không** — 1/3 điều kiện |
+
+Delta không "nhỏ"; nó **đúng bằng 0 trên cả 12 seed**.
+
+Lý do là **điểm đo cuối không có sức phân giải**. Ở T = 18.000, toàn bộ quần thể sáng lập — ở **cả
+hai** nhánh, trên **cả 12** seed — đang ở đúng 0 năng lượng và đã như vậy hàng nghìn tick. Hai sự
+kiện cộng lại:
+
+1. **Engine không có cái chết vì đói.** `update_agent_evaluation_system` gặp `homeo.energy <= 0.0`
+   thì `continue` — ngừng cộng fitness, **không** giết. Ba nơi gọi
+   `ReclaimAndDespawnAgentCommand` là thay thế tiến hoá, săn mồi, và can thiệp `RemovePredators`.
+   Trong **app** đây là lựa chọn thiết kế chứ không phải lỗi: luân chuyển quần thể đến từ thay thế
+   theo epoch.
+2. **Adapter không chạy thay thế tiến hoá** — chính là finding **E2-F3**, đã ghi trong bản tiền đăng
+   ký *trước* khi chạy.
+
+Cộng lại: không gì giết agent đã đói và không gì thay thế nó, nên `live.agent_count` = **10 ở mọi
+nhánh, mọi seed, mọi mẫu**, và quần thể đóng băng thành mười cơ thể bất động giữ 0 EU. E2-F3 được
+đăng ký như một giới hạn phạm vi về **chọn lọc**; lần chạy này đo được hệ quả thứ hai chưa từng được
+đăng ký của nó: nó cũng **phá huỷ mọi đại lượng năng lượng đo ở cuối một run dài**.
+
+**Đây không phải lỗi của đường não tiến hoá.** Cả hai nhánh làm y hệt nhau, và nguyên nhân có mặt cả
+khi `evolved = false`.
+
+### Điều DUY NHẤT mang thông tin thật: EB-S06 giữ vững dưới treatment
+
+`live.closed_eu_total` chênh lệch ghép **−2,6 × 10⁻⁹ EU trên tồn kho 1,5 × 10⁵ EU** (tương đối
+~1,7 × 10⁻¹⁴) — nhiễu dấu phẩy động, không phải rò rỉ. **Não riêng theo cá thể không làm dịch chuyển
+năng lượng nằm ngoài sổ cái.** Hợp đồng closed-EU đứng vững dưới treatment, đo trên 12 cặp.
+
+Dấu vết đo được duy nhất khác của treatment: **+0,505 EU vào detritus và −0,505 EU khỏi standing
+crop**, đối xứng chính xác, bảo toàn tới 1e−9, `d_z` = 0,11, dịch chuyển tương đối 0,05 % — **không
+vật chất** theo mọi ngưỡng đã đăng ký.
+
+### Quan sát CHƯA đăng ký — sinh giả thuyết, KHÔNG phải kết luận
+
+Bản tiền đăng ký cấm đổi metric sau khi thấy số. Hai quan sát dưới đây **không được trích dẫn như
+kết quả E2**:
+
+- **(a)** Treatment chạm sàn năng lượng **muộn hơn** control ở **10/12 seed** (tick trung bình 8.650
+  so với 5.250). Ngược chiều dự đoán của H1. "Thời gian tới sàn" không phải observable trong registry
+  và chưa bao giờ được đăng ký.
+- **(b)** Delta năng lượng ở tick 600: trung bình +7,32, SD 19,12, `d_z` 0,383, **âm ở chỉ 6/12
+  seed**. Nghĩa là bức tranh quỹ đạo sớm nhìn từ riêng seed 700001 **không** khái quát được.
+
+Cộng lại, (a) và (b) nói điều trung thực: **thí nghiệm này không đo được chiều của hiệu ứng não,
+theo bất kỳ chiều nào.**
+
+### Hai lỗi lịch trình do smoke tìm ra, sửa trước khi khoá T
+
+Cả hai đều **không** thuộc đường não, và cả hai đều đã làm hỏng kết quả nếu để nguyên:
+
+- `993a587` — `ecosystem_census_system` chụp ảnh `pool.animals` mà không khai báo thứ tự với các
+  system dịch chuyển dự trữ của agent, nên nó báo cáo hoặc metabolism của tick này hoặc của tick
+  trước, lệch 0,186 EU, do sort topo chọn **theo từng tiến trình**. Chạm `live.animals_eu` (H3) và
+  `live.closed_eu_total` (H5).
+- `ec94933` — **bảy** cặp system dịch chuyển EU không có thứ tự khai báo, nên checksum thế giới **và
+  `live.mean_agent_energy`** dịch chuyển theo hash seed của tiến trình. Gate lẽ ra bắt được điều này
+  thì **rỗng**: `ScheduleGraph::systems` trả về rỗng sau khi schedule đã khởi tạo.
+
+Chấp nhận tái lập xuyên tiến trình được ghi tường minh trước khi chạy: **24 tiến trình độc lập** ở
+T = 18.000 cho **một** kết quả duy nhất — checksum, cả 11 observable và cả 30 điểm chuỗi mẫu đều
+trùng bit.
+
+### Thí nghiệm tiếp theo cần gì (thay cho §8.1 chung chung)
+
+1. **Một điểm đo trước sàn.** T ≈ 3.000–6.000 với genesis này, hoặc một metric tích phân trên cửa sổ
+   còn thông tin thay vì lấy mẫu ở cuối. Chọn từ bằng chứng đã đo, và **đăng ký trước khi chạy**.
+2. **Một quần thể có luân chuyển.** Hoặc cái chết vì đói, hoặc luồng tiến hoá nằm trong hợp đồng thí
+   nghiệm, để `live.agent_count` có thể thay đổi và chọn lọc có cái để tác động.
+3. **"Thời gian tới sàn" như một observable được đăng ký**, vì đó là tín hiệu chưa đăng ký mạnh nhất
+   mà lần chạy này tạo ra.
+
+### Ngôn ngữ
+
+Trạng thái thế giới sống **không đổi**: **headless adapter verified**. Không có run desktop app nào,
+không Tauri handle, không cửa sổ, không GPU, không renderer, không luồng nền. Không dòng nào ở đây
+được trích dẫn thành "live world experiment-ready".
 
 ## Tài liệu bị ảnh hưởng
 

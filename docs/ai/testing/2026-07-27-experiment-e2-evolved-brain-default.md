@@ -112,5 +112,66 @@ the thing being registered.
 | **E2-F1** | `RunProvenance::derive` hard-codes `model_version = "reference-evolution-world/1"` for every run, so a live run's provenance names the wrong model. `LIVE_MODEL_VERSION = "live-bevy-world/1"` exists, documents exactly why it must be distinct, and is referenced nowhere in `src/` or `tests/` | Medium | Open — E2-B records the true version in `provenance.json` and files the fix separately |
 | **E2-F2** | `LiveExperimentAdapter` never checks the manifest's declared `world_identity` against the world `init_world` builds. The field enters the fingerprint and is otherwise inert, so a live manifest cannot pin the world it runs on | Medium | Open — mitigated for E2 by gate **E2-G6** |
 | **E2-F3** | The adapter runs no evolutionary replacement: `check_epoch_completion_system` feeds a channel the adapter drains and `apply_staggered_evolution_system` finds an empty queue. Brains are created at genesis and never selected | Informational — a scope limit, not a defect | Recorded in requirements §6 and in the decision rule so no E2 result is read as evidence about selection |
-| **E2-P1** | `build_live_world` hard-codes `BrainPolicy::default()`, so no manifest can request `evolved = true` | Blocking | Specified in design §3 for E2-B |
-| **E2-P2** | `live_experiment::genesis` never inserts an `AgentBrain`, unlike the app genesis in `simulation_loop` | Blocking | Specified in design §3 for E2-B |
+| **E2-P1** | `build_live_world` hard-codes `BrainPolicy::default()`, so no manifest can request `evolved = true` | Blocking | **Closed** in `f14941d` — `live.evolved_brains` |
+| **E2-P2** | `live_experiment::genesis` never inserts an `AgentBrain`, unlike the app genesis in `simulation_loop` | Blocking | **Closed** in `f14941d` — brains from a derived stream |
+
+---
+
+# Addendum — E2-B evidence, added after the run
+
+> Everything above this line is the **preregistration**, unchanged. Everything below is what the run
+> session measured. Written 2026-07-27, ensemble commit `9c57184`. The authoritative result document
+> is [`artifacts/experiments/e2-evolved-brain-default/RESULT.md`](../../../artifacts/experiments/e2-evolved-brain-default/RESULT.md).
+
+## A1. The gates of §3, answered
+
+| gate | evidence | verdict |
+|---|---|---|
+| **E2-G1** seam | control 0 `AgentBrain` of 10 founders; treatment 10 of 10. `P1_SEAM_OPEN` flipped in `f14941d` | ✅ |
+| **E2-G2** legacy untouched | `live_experiment_tests` 17/17; full `cargo test --features desktop` 87 targets / 877 passed / 0 failed | ✅ |
+| **E2-G3** stream isolation | `SimRng` seed, ChaCha word position and next eight draws identical across arms after genesis | ✅ |
+| **E2-G4** factor purity | `declared_factors == ["initial_conditions"]`; `prereg_e2_manifest_tests` 9/9 | ✅ |
+| **E2-G5** replay | seed 700001 treatment → `2643270831`; seed 711001 control → `207688652`; both exact in fresh processes, all 11 observables identical | ✅ |
+| **E2-G6** world identity | one identity observed in both arms: seed 1337, gen 1, 256×256, checksum 3152323152 | ✅ |
+| **E2-G7** budget | 157.2 s (2.62 min) of 90 min. Rung locked from the smoke, committed in `9c57184`, **before** seed 700001 | ✅ |
+| **E2-G8** completeness | 12/12 complete pairs, zero failures, zero warnings, no seed substituted | ✅ |
+| **E2-G9** suite | `cargo test --features desktop` green; `check_test_targets.mjs --profile desktop` clean | ✅ |
+| **E2-G10** allocation | **not triggered** — the default was not flipped, so EB-S03 was not a precondition of anything | n/a |
+
+## A2. Cross-process reproducibility, accepted explicitly
+
+Every determinism gate this repository had compares two runs *inside one process*, which is exactly
+the comparison a per-process schedule ordering cannot fail. Two such defects were found by the smoke
+and fixed before the lock (§A3), so reproducibility was **accepted by measurement** rather than
+assumed:
+
+**24 independent processes**, one release binary, seed 999983, T = 18,000 → **one outcome**:
+bit-identical control and treatment checksums, all eleven final observables, and all thirty sampled
+series points per arm. The official smoke is bit-identical to that set.
+
+## A3. Defects found, and where they went
+
+| found by | defect | disposition |
+|---|---|---|
+| smoke | `ecosystem_census_system` snapshots `pool.animals` with no order declared against the systems that move agent reserves → reported this tick's metabolism or last tick's, 0.186 EU apart, per process. Reached H3 and H5 | fixed, `993a587` |
+| smoke | seven unordered conflicting pairs among the EU-moving systems → world checksum **and the primary observable** moved with a hash seed. The gate meant to catch it was vacuous (`ScheduleGraph::systems` is empty post-initialization) | fixed, `ec94933` |
+| full suite | lifecycle test asserted readiness after a blind 500 ms sleep with ~120–220 ms real headroom | fixed, `5f0383f` |
+| **the ensemble** | **the endpoint is a floor** — no starvation death in the engine plus no replacement in the adapter (E2-F3) ⇒ all ten agents sit at exactly 0 EU from ~tick 9,000, so T = 18,000 measures a saturated state | **recorded, not fixed** — fixing it changes the engine's death model or the adapter's evolution handling, either of which invalidates a preregistration written against current behaviour |
+
+## A4. What E2-A did not run, revisited
+
+§2 of the preregistration listed the full `cargo test --features desktop` suite as deliberately not
+run. E2-B ran it, repeatedly, and it is green: **87 targets, 877 passed, 0 failed**. The suite is
+also what surfaced the readiness race in A3.
+
+## A5. Statement of record
+
+The experiment was run **once**, over the twelve preregistered seeds in the registered order, at the
+locked rung, with no substitution, no preview and no rerun of a completed seed. One earlier ensemble
+process was interrupted by an account switch before it wrote any root artifact; it produced no
+result, and the ensemble was restarted from the beginning rather than resumed. The first smoke
+calibration was superseded by the schedule fixes and is retained under `superseded/` with its
+original checksums.
+
+The live world's status is unchanged and is stated the only way it may be stated: **headless adapter
+verified**.
