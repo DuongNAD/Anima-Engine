@@ -140,6 +140,9 @@ trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều n�
 
 > ⚠️ **Đo lịch sử.** Mọi con số dưới đây là kết quả tại `d006f64` ngày 2026-07-26 và **không** mô tả
 > cây mã nguồn hôm nay. Trạng thái hiện tại ở [§1](#1-bảng-bằng-chứng-có-thẩm-quyền).
+>
+> **Toàn bộ bảng** — kể cả hàng `tests/`, vốn từng là hàng duy nhất chưa đo lại — đã được chạy tại
+> `d006f64` (nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge).
 
 | Gate | Lệnh | Kết quả lúc đó |
 |---|---|---|
@@ -148,16 +151,41 @@ trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều n�
 | Format | `cargo fmt --check` | sạch |
 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | sạch |
 | Lint backend (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | sạch |
-| Test frontend (src) | `npm run test` | 14 file · **109 pass**, 0 skip (đo 2026-07-27) |
-| Test frontend (tests/) | `npm run test:frontend` | 36 file · **339 pass**, 0 skip (đo 2026-07-27, máy rảnh) |
-| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**) |
-| Typecheck `tests/` | `npm run typecheck:tests` | **0 error** |
+| Test frontend (src) | `npm run test` | 13 file · **90 pass** |
+| Test frontend (tests/) | `npm run test:frontend -- --maxWorkers=2` | 26 file · **243 pass**, 1 skip — cần giới hạn worker, xem dưới |
+| Lint frontend | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error**, 491 warning (baseline 491) |
 | Build | `npm run build` | pass |
 | Link tài liệu | `node scripts/check_docs_links.mjs` | 417 link trong 90 file, **0 gãy** |
 
-> ⚠️ Suite `tests/` đã **đỏ giả** trong lần đo tại `d006f64` — **28 lỗi**, thời gian tường 45,25s
-> (so với ~19,5s lúc máy rảnh), với **4 tiến trình build của phiên khác** đang chạy. Con số **28** là
-> dấu hiệu nhận dạng lỗi giả; xem §4 trước khi kết luận suite này đỏ là hồi quy.
+> ⚠️ **Suite `tests/` cần `--maxWorkers=2` khi máy đang bận. Đây là cách khắc phục đã kiểm chứng,
+> không phải phỏng đoán.** Ba lần chạy liên tiếp tại `d006f64`, máy có phiên khác chạy `cargo` suốt:
+>
+> | Lần | Lệnh | Kết quả | Thời gian tường |
+> |---|---|---|---|
+> | 1 | mặc định | **28 lỗi** | 45,3s |
+> | 2 | mặc định (sau khi chờ 14 phút) | **61 lỗi** | 40,0s |
+> | 3 | `--maxWorkers=2` | ✅ **243 pass, 0 lỗi** | 85,3s |
+>
+> **Sửa một điều §4 và các bản trước của mục này ghi sai: con số KHÔNG phải dấu hiệu nhận dạng.** Nó
+> thay đổi theo tải — 28 rồi 61. Dấu hiệu thật là **hình dạng**:
+>
+> - mỗi file test mất **~25–28 giây** thay vì ~1 giây;
+> - tổng thời gian `tests` lớn hơn **nhiều lần** thời gian tường (327s so với 40s) — dấu hiệu tranh CPU;
+> - lỗi tập trung ở các file `render(<App />)`, vì lần render đầu phải trả cho cả đồ thị module lazy
+>   và `testTimeout` là 15.000ms. Đây là timeout, không phải khẳng định sai — nhưng nó **hiện ra như**
+>   "không tìm thấy DOM node", nên đọc thoáng sẽ tưởng là hồi quy.
+>
+> Giới hạn worker chữa được vì mỗi worker có đủ CPU để lần render đầu về dưới ngưỡng 15s. Nó **chậm
+> hơn** (85s so với ~20s lúc máy rảnh) nhưng cho ra một phép đo tin được, và đó là đánh đổi đúng khi
+> không kiểm soát được tải.
+>
+> **Trước khi gọi suite này là hồi quy, kiểm hai thứ:** máy lúc đó đang chạy gì, và
+> `git diff --name-only origin/main...HEAD` **có đụng file frontend nào không**. Ở `d006f64` câu trả
+> lời là 4 file Rust + 3 file Markdown, **không một file frontend** — suite này chạy React/jsdom, nên
+> không có đường nào để một thay đổi trong `evolution/lineage.rs` chạm tới nó.
+>
+> Bài học vẫn còn hiệu lực hôm nay và được nhắc lại ở §4. Số đo **hiện tại** của suite `tests/` nằm ở
+> §1.b — chạy trên máy rảnh, không cần giới hạn worker.
 
 </details>
 
@@ -715,9 +743,15 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   rồi dựng lại tái hiện đủ 15 crash y hệt. Và *không* phải hồi quy — cây mã nguồn khi đó giống hệt một
   `main` vừa đo xanh vài giờ trước.
 - **Chạy các suite tuần tự, đừng chồng nhau.** Một bản build `cargo` chạy song song làm suite Vitest
-  `tests/` báo ~28 lỗi giả: timeout render bị đọc thành "không tìm thấy DOM node", nên lỗi trông như
-  một khẳng định sai chứ không như một timeout. Chạy lại lúc máy rảnh: 243 pass, và thời gian tường
-  rơi từ 50,5s xuống 19,5s. Trước khi kết luận đỏ là hồi quy, hãy hỏi máy lúc đó đang chạy gì.
+  `tests/` báo hàng loạt lỗi giả: timeout render bị đọc thành "không tìm thấy DOM node", nên lỗi
+  trông như một khẳng định sai chứ không như một timeout. Chạy lại lúc máy rảnh: 243 pass, và thời
+  gian tường rơi từ 50,5s xuống 19,5s. Trước khi kết luận đỏ là hồi quy, hãy hỏi máy lúc đó đang
+  chạy gì.
+  > **Sửa 2026-07-26:** bản trước ghi "~28 lỗi" như thể đó là dấu hiệu nhận dạng. **Không phải** —
+  > số lỗi thay đổi theo tải; đo được 28 rồi 61 trong hai lần liên tiếp. Dấu hiệu thật là hình dạng
+  > (mỗi file ~25–28s thay vì ~1s; tổng thời gian `tests` lớn hơn nhiều lần thời gian tường). Và khi
+  > không thể chờ máy rảnh, **`npm run test:frontend -- --maxWorkers=2` chữa được** — đã kiểm: 243
+  > pass trên đúng cái máy vừa cho 61 lỗi. Chi tiết ở §1.
 - **Nhiều agent có thể cùng sửa cây này.** Một `cargo check` gãy giữa chừng có thể là bản ghi dở
   của phiên khác, không phải lỗi của bạn.
 - **Và hệ quả nặng hơn: công việc của phiên khác có thể đang nằm trên nhánh của bạn.** Đã xảy ra
