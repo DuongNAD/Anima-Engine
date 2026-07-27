@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { invoke } from '@tauri-apps/api/core';
@@ -140,7 +140,8 @@ interface SingleRabbitMeshProps {
     rotationSpeed: number;
     isEating: boolean;
     hungerState: boolean;
-    onError: (err: any) => void;
+    /** Called when the Tauri poll fails; the caller falls back to the browser simulation. */
+    onError: (err: unknown) => void;
 }
 
 function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hungerState, onError }: SingleRabbitMeshProps) {
@@ -161,7 +162,10 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
     const latestFloatArrayRef = useRef<Float32Array | null>(null);
     const fetchingRef = useRef<boolean>(false);
 
-    const updateRabbitTransformations = (floatArray: Float32Array, time: number) => {
+    // Memoised so the polling effect below can name it. It was a plain closure over `useMockAnimation`
+    // and `isEating`, rebuilt every render, so listing it honestly would have restarted the Tauri
+    // poll — and its own `requestAnimationFrame` chain — on every render.
+    const updateRabbitTransformations = useCallback((floatArray: Float32Array, time: number) => {
         const numParts = Math.floor(floatArray.length / 13);
         if (numParts === 0) return; // Gracefully handle empty buffers
 
@@ -230,7 +234,7 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
                 applyPartData(targetMesh, x, y, z, rotX, rotY, rotZ, scaleX, scaleY, scaleZ, r, g, b);
             }
         }
-    };
+    }, [useMockAnimation, isEating]);
 
     // Tauri-based continuous polling loop
     useEffect(() => {
@@ -248,7 +252,11 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
 
             fetchingRef.current = true;
             try {
-                const buffer = await invokeTauri<any>('get_test_rabbit_state');
+                // The command answers with a byte buffer, but which flavour depends on the Tauri
+                // version and the IPC transport: a `Uint8Array`, a raw `ArrayBuffer`, or a
+                // plain-array fallback. Each branch below narrows one; `unknown` is what forces the
+                // narrowing to happen, which is the difference from `any`.
+                const buffer = await invokeTauri<unknown>('get_test_rabbit_state');
                 if (!active) return;
                 if (!buffer) {
                     fetchingRef.current = false;
@@ -276,13 +284,21 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
                         return;
                     }
                     floatArray = new Float32Array(buffer);
-                } else {
-                    if (buffer.byteLength === 0) {
+                } else if (Array.isArray(buffer)) {
+                    if (buffer.length === 0) {
                         fetchingRef.current = false;
                         animationFrameId = requestAnimationFrame(fetchAndRenderRabbit);
                         return;
                     }
                     floatArray = new Float32Array(buffer);
+                } else {
+                    // Not a shape this can read. Treated as "no data this frame", the same as the
+                    // empty buffers above — the old `any` reached for `.byteLength` on whatever it
+                    // was and threw into the catch, which reported a transport failure that had not
+                    // happened.
+                    fetchingRef.current = false;
+                    animationFrameId = requestAnimationFrame(fetchAndRenderRabbit);
+                    return;
                 }
                 latestFloatArrayRef.current = floatArray;
                 updateRabbitTransformations(floatArray, 0);
@@ -303,23 +319,25 @@ function SingleRabbitMesh({ useMockAnimation, speed, rotationSpeed, isEating, hu
             active = false;
             cancelAnimationFrame(animationFrameId);
         };
-    }, [useMockAnimation, onError]);
+    }, [useMockAnimation, onError, updateRabbitTransformations]);
 
     // Handle hungerState eye colors
     useEffect(() => {
         const leftEye = leftEyeRef.current;
         const rightEye = rightEyeRef.current;
         const color = hungerState ? new THREE.Color(1.0, 0.0, 0.0) : new THREE.Color(0.118, 0.161, 0.231); // #EF4444 / #1E293B
+        // `MeshStandardMaterial` is what the eyes are declared with below; the `'color' in` guard is
+        // what makes the narrowing honest for the array case and for the jsdom stand-ins.
         if (leftEye && leftEye.material && 'color' in leftEye.material) {
-            (leftEye.material as any).color.setRGB(color.r, color.g, color.b);
+            (leftEye.material as THREE.MeshStandardMaterial).color.setRGB(color.r, color.g, color.b);
         }
         if (rightEye && rightEye.material && 'color' in rightEye.material) {
-            (rightEye.material as any).color.setRGB(color.r, color.g, color.b);
+            (rightEye.material as THREE.MeshStandardMaterial).color.setRGB(color.r, color.g, color.b);
         }
     }, [hungerState]);
 
     // Animation loop
-    useFrame((state: any) => {
+    useFrame((state) => {
         const time = state.clock.getElapsedTime();
 
         // Rotate the entire group mesh subtly

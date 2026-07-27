@@ -137,13 +137,15 @@ const TypedInstances: React.FC<{
     }
     if (inst.instanceMatrix) inst.instanceMatrix.needsUpdate = true;
     if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-  }, [indices, world, renderSize, heightRatio, meshResolution, baseSize, groundLift]);
+    // `type` chooses the tint palette a few lines up, so it belongs here: leaving it out meant a
+    // meadow re-rendered as coral kept its greens until something else invalidated the effect.
+  }, [indices, world, renderSize, heightRatio, meshResolution, baseSize, groundLift, type]);
 
   if (indices.length === 0) return null;
   return (
     <instancedMesh
       ref={ref}
-      args={[geometry, undefined as any, indices.length]}
+      args={[geometry, null, indices.length]}
       name={`flora-${type}`}
       castShadow={!lowQuality && CASTS_SHADOW.has(type)}
     >

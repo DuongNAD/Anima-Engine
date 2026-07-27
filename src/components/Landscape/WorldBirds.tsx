@@ -73,7 +73,7 @@ export const WorldBirds: React.FC<WorldBirdsProps> = ({ renderSize = 400, count 
   });
 
   return (
-    <instancedMesh ref={ref} args={[geom, undefined as any, count]} name="world-birds" frustumCulled={false}>
+    <instancedMesh ref={ref} args={[geom, null, count]} name="world-birds" frustumCulled={false}>
       <meshBasicMaterial color="#1d232b" side={THREE.DoubleSide} />
     </instancedMesh>
   );

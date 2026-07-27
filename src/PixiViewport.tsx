@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import * as PIXI from 'pixi.js';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -395,21 +395,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     }
   }, [propEnvironmentalState]);
 
-  useEffect(() => {
-    projectionRef.current = projection;
-  }, [projection]);
-
-  useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
-
-  useEffect(() => {
-    panRef.current = pan;
-  }, [pan]);
-
-
-
-  const draw = () => {
+  const draw = useCallback(() => {
     const graphics = graphicsRef.current;
     if (!graphics) return;
 
@@ -853,7 +839,50 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     lineStyle(graphics, 2.5, 0xffffff, 0.8); // Core thick border
     drawRect(graphics, bx, by, bw, bh);
     endFill(graphics);
-  };
+    // The four payload props, and nothing else. Everything else this reads is a ref — the Pixi
+    // objects, the live view, and the event-driven fallbacks each prop overrides when supplied.
+  }, [propSegments, propRaycasts, propPheromoneGrid, propEnvironmentalState]);
+
+  // Sync the refs `draw` reads from the props, then repaint.
+  //
+  // One effect rather than three ref-syncs and a separate repaint, because the order between them is
+  // the point. `draw` reads `projectionRef` / `zoomRef` / `panRef` rather than the props themselves,
+  // and that is not an oversight: the wheel and double-click handlers registered at mount write
+  // those refs directly and repaint immediately, without going through a React render. The refs are
+  // the live view; the props are one of the two things that change it.
+  //
+  // Doing both here makes the ordering explicit instead of a consequence of which `useEffect` was
+  // written first — and it gives this effect a dependency list where every entry is genuinely read,
+  // which the previous arrangement could not have (`draw` was rebuilt every render, so naming it
+  // would have repainted on every render, and the payload props it reads were named without being
+  // referenced).
+  useEffect(() => {
+    projectionRef.current = projection;
+    zoomRef.current = zoom;
+    panRef.current = pan;
+    draw();
+  }, [draw, projection, zoom, pan]);
+
+  // The latest `draw`, for the mount-only effect below.
+  //
+  // That effect creates the Pixi application, its canvas listeners and the Tauri subscriptions once;
+  // naming `draw` in its dependency list would tear the renderer down and rebuild it every time a
+  // payload arrived. But the listeners it registers still have to call the *current* `draw`, not the
+  // one that existed at mount — so the identity it needs is stable and the value it needs is fresh,
+  // which is exactly what a ref is for.
+  const drawRef = useRef(draw);
+  useEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+
+  // Same reasoning for the segments the hit-test reads. This one was also a live defect: the
+  // double-click handler closed over the segments the component was given at mount, so once a
+  // parent started supplying them, "centre on the nearest agent" aimed at where the agents were the
+  // first time the viewport rendered.
+  const propSegmentsRef = useRef(propSegments);
+  useEffect(() => {
+    propSegmentsRef.current = propSegments;
+  }, [propSegments]);
 
   useEffect(() => {
     let active = true;
@@ -899,7 +928,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const dx = e.clientX - startPos.x;
         const dy = e.clientY - startPos.y;
         panRef.current = { x: startPan.x + dx, y: startPan.y + dy };
-        draw();
+        drawRef.current();
       };
 
       const onPointerUp = (e: PointerEvent) => {
@@ -936,7 +965,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           x: mouseX - worldX * newZoom,
           y: mouseY - worldY * newZoom,
         };
-        draw();
+        drawRef.current();
       };
 
       canvasElement.addEventListener('wheel', onWheel, { passive: false });
@@ -952,7 +981,8 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
+        const segments =
+          propSegmentsRef.current !== undefined ? propSegmentsRef.current : segmentsRef.current;
         let nearestSegment: SegmentState | null = null;
         let minDist = Infinity;
 
@@ -979,13 +1009,14 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             x: 250 - cxNoPan * zoomRef.current,
             y: 175 - cyNoPan * zoomRef.current
           };
-          draw();
+          drawRef.current();
         }
       };
       canvasElement.addEventListener('dblclick', onDblClick);
 
       const getCoordsNoPan = (x: number, y: number): [number, number] => {
-        const segments = propSegments !== undefined ? propSegments : segmentsRef.current;
+        const segments =
+          propSegmentsRef.current !== undefined ? propSegmentsRef.current : segmentsRef.current;
         // Only these three escape the branches. The extents used to be declared out here with
         // fallback values that every branch immediately overwrote — `no-useless-assignment` flags
         // the dead initialisers, and scoping the extents to the branch that computes them says the
@@ -1080,7 +1111,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
             } else {
               segmentsRef.current = [];
             }
-            draw();
+            drawRef.current();
           },
         );
         if (!active) uTick();
@@ -1089,7 +1120,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const uRay = await listen<RaycastTelemetry[]>('raycast-update', (event) => {
           if (active) {
             raycastsRef.current = Array.isArray(event.payload) ? event.payload : [];
-            draw();
+            drawRef.current();
           }
         });
         if (!active) uRay();
@@ -1098,7 +1129,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const uPheromone = await listen<PheromoneGridState>('pheromone-update', (event) => {
           if (active && event.payload) {
             pheromoneGridRef.current = event.payload;
-            draw();
+            drawRef.current();
           }
         });
         if (!active) uPheromone();
@@ -1109,7 +1140,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
 
       const tick = () => {
         if (!active) return;
-        draw();
+        drawRef.current();
         animationFrameId = requestAnimationFrame(tick);
       };
       tick();
@@ -1173,7 +1204,7 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
           }
         }
 
-        if (active) draw();
+        if (active) drawRef.current();
       })();
     };
 
@@ -1191,9 +1222,6 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    draw();
-  }, [propSegments, propRaycasts, propPheromoneGrid, projection, propEnvironmentalState, zoom, pan]);
 
   // Simulation LOD: tell the backend where this viewport is looking, so it can spend its per-tick
   // brain inference there instead of uniformly (`core/simulation_lod.rs`).

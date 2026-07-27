@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, biomeColor, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
@@ -36,8 +36,10 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
   const geomRef1 = useRef<THREE.BufferGeometry>(null);
   const geomRef2 = useRef<THREE.BufferGeometry>(null);
 
-  // Helper to construct geometry arrays for a given LOD step size
-  const getGeometryData = (step: number) => {
+  // Helper to construct geometry arrays for a given LOD step size. Memoised on what it reads, so
+  // the layout effect below can name it: as a plain closure it was rebuilt on every render, and
+  // listing it honestly would have rebuilt all three LOD geometries every time.
+  const getGeometryData = useCallback((step: number) => {
     const w = Math.ceil(width / step);
     const h = Math.ceil(height / step);
 
@@ -92,7 +94,10 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     }
 
     return { positions, colors, indices };
-  };
+    // `wetnessRatio` is not read here. It was in the old effect's list, which is how a reader would
+    // have assumed the LOD geometry re-bakes when the ground gets wet; it does not, and never did —
+    // wetness is a material property, applied below.
+  }, [terrain, width, height]);
 
   useLayoutEffect(() => {
     // Initialize geometry for LOD 0 (High Detail - step 1)
@@ -121,7 +126,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
       geomRef2.current.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
       geomRef2.current.computeVertexNormals();
     }
-  }, [width, height, wetnessRatio]);
+  }, [getGeometryData]);
 
   useLayoutEffect(() => {
     // The `typeof` guards are not defensive noise: under jsdom the r3f mock backs these refs with

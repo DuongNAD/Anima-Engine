@@ -3,16 +3,10 @@ import { extend, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as THREE from 'three';
 import { audioManager } from './utils/audioManager';
-
-// Diagnostics handles the landscape tests and tooling read off . Typed rather than cast
-// per use: six  casts said nothing about what is actually published there.
-interface DiagnosticsWindow extends Window {
-  getTerrainHeight?: (x: number, z: number) => number;
-  globalTerrainHeightMap?: Float32Array;
-  teleportCameraTarget?: (wx: number, wz: number) => void;
-  activeCamera?: unknown;
-  activeScene?: unknown;
-}
+// Diagnostics handles the landscape tests and tooling read off `window`. Declared in one place and
+// imported, because `Minimap` reads the same two properties and used to do it through `any` — a
+// rename here would have been found by a user rather than by the compiler.
+import { diagnostics } from './utils/diagnosticsWindow';
 
 extend({ OrbitControls });
 
@@ -77,10 +71,10 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   // Expose helper globally and register teleport handler
   useEffect(() => {
-    (window as unknown as DiagnosticsWindow).getTerrainHeight = getTerrainHeight;
-    (window as unknown as DiagnosticsWindow).globalTerrainHeightMap = terrainHeightMap;
+    diagnostics().getTerrainHeight = getTerrainHeight;
+    diagnostics().globalTerrainHeightMap = terrainHeightMap;
 
-    (window as unknown as DiagnosticsWindow).teleportCameraTarget = (wx: number, wz: number) => {
+    diagnostics().teleportCameraTarget = (wx: number, wz: number) => {
       const th = getTerrainHeight(wx, wz);
       activeTarget.current.set(wx, th, wz);
 
@@ -100,7 +94,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 
   // Keep track of the active camera reference for Minimap
   useEffect(() => {
-    (window as unknown as DiagnosticsWindow).activeCamera = camera;
+    diagnostics().activeCamera = camera;
   }, [camera]);
 
   // Handle keyboard events
@@ -205,8 +199,8 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
     // r3f documents this one as the handle for imperative work.
     const { camera } = state;
     if (!camera) return;
-    (window as unknown as DiagnosticsWindow).activeScene = state.scene;
-    (window as unknown as DiagnosticsWindow).activeCamera = camera;
+    diagnostics().activeScene = state.scene;
+    diagnostics().activeCamera = camera;
 
     if (cameraMode === 'orbit') {
       if (orbitControlsRef.current && typeof orbitControlsRef.current.update === 'function') {

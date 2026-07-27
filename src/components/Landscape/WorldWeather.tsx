@@ -12,7 +12,10 @@ import { sceneElapsed, makeSceneRandom, sceneSmoothing, sceneDelta } from './uti
 // 400-unit one). This component OWNS scene.fog; WorldSky owns scene.background.
 // ---------------------------------------------------------------------------------------
 
-export type WeatherKind = 'clear' | 'rain' | 'snow' | 'fog';
+// One definition of the four weathers, in `utils/weatherKind`. Re-exported because the showcase,
+// the minimap HUD, the capture request and the tests all import the name from here.
+export type { WeatherKind } from './utils/weatherKind';
+import type { WeatherKind } from './utils/weatherKind';
 
 export interface WorldWeatherProps {
   weather: WeatherKind;

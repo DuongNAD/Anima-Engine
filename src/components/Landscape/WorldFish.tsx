@@ -169,7 +169,7 @@ export const WorldFish: React.FC<WorldFishProps> = ({
 
   if (count === 0) return null;
   return (
-    <instancedMesh ref={ref} args={[geom, undefined as any, count]} name="world-fish" frustumCulled={false}>
+    <instancedMesh ref={ref} args={[geom, null, count]} name="world-fish" frustumCulled={false}>
       <meshBasicMaterial side={THREE.DoubleSide} transparent opacity={0.6} />
     </instancedMesh>
   );

@@ -88,7 +88,7 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
     if (cloudsGroupRef.current && cloudsGroupRef.current.children) {
       const children = cloudsGroupRef.current.children;
       for (let i = 0; i < children.length; i++) {
-        const child = children[i] as any;
+        const child: THREE.Object3D | undefined = children[i];
         if (child && child.position) {
           const cloudSpeed = initialClouds[i]?.speed || 1.0;
           child.position.x += safeDelta * cloudSpeed * 3.0 * speed;
