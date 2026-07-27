@@ -1795,7 +1795,11 @@ mod auto_export_env_tests {
         let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for blank in ["", "   ", "\t"] {
             let _guard = EnvGuard::set(Some(blank));
-            assert_eq!(auto_export_name_from_env(), None, "{blank:?} should read as unset");
+            assert_eq!(
+                auto_export_name_from_env(),
+                None,
+                "{blank:?} should read as unset"
+            );
         }
     }
 
