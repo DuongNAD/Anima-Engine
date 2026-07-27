@@ -18,13 +18,44 @@ use tauri::Emitter;
 #[cfg(feature = "networking")]
 use tokio_tungstenite::accept_async;
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+/// Which way an agent crossed a shard boundary.
+///
+/// An enum rather than a `String`, and the reason is a drift the type system should have been
+/// holding: the field was `String` with `// "incoming" | "outgoing"` beside it, while `App.tsx`
+/// declared the union for real. The comment was the only thing keeping the two in agreement, and a
+/// comment cannot fail a build. `#[serde(rename_all = "lowercase")]` reproduces the exact strings
+/// this has always emitted, so the wire format is unchanged and old saves/logs still parse.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MigrationDirection {
+    Incoming,
+    Outgoing,
+}
+
+/// Whether the transfer completed.
+///
+/// Capitalised on the wire, unlike [`MigrationDirection`] — an inconsistency this preserves rather
+/// than tidies. Renaming it would be a silent IPC break for the sake of symmetry nobody consumes.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MigrationStatus {
+    Success,
+    Failed,
+}
+
+/// The `migration-event` payload.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct MigrationPayload {
     pub agent_id: u32,
-    pub direction: String, // "incoming" | "outgoing"
+    pub direction: MigrationDirection,
     pub source_port: u16,
     pub target_port: u16,
-    pub status: String, // "Success" | "Failed"
+    pub status: MigrationStatus,
     pub timestamp: u64,
 }
 
@@ -113,10 +144,10 @@ pub async fn run_websocket_server<R: tauri::Runtime>(
                                                 if let Some(ref handle) = app_handle {
                                                     let payload = MigrationPayload {
                                                         agent_id: hash_lineage_id(&data.lineage_id),
-                                                        direction: "incoming".to_string(),
+                                                        direction: MigrationDirection::Incoming,
                                                         source_port: data.source_port,
                                                         target_port: port,
-                                                        status: "Success".to_string(),
+                                                        status: MigrationStatus::Success,
                                                         timestamp: std::time::SystemTime::now()
                                                             .duration_since(std::time::SystemTime::UNIX_EPOCH)
                                                             .unwrap_or_default()
@@ -207,15 +238,15 @@ pub async fn run_websocket_client<R: tauri::Runtime>(
                 };
 
                 let status_str = if send_result.is_ok() {
-                    "Success".to_string()
+                    MigrationStatus::Success
                 } else {
-                    "Failed".to_string()
+                    MigrationStatus::Failed
                 };
 
                 if let Some(ref handle) = app_handle {
                     let payload = MigrationPayload {
                         agent_id: hash_lineage_id(&data.lineage_id),
-                        direction: "outgoing".to_string(),
+                        direction: MigrationDirection::Outgoing,
                         source_port: data.source_port,
                         target_port,
                         status: status_str,
@@ -231,10 +262,10 @@ pub async fn run_websocket_client<R: tauri::Runtime>(
                     if let Some(ref handle) = app_handle {
                         let payload = MigrationPayload {
                             agent_id: hash_lineage_id(&data.lineage_id),
-                            direction: "outgoing".to_string(),
+                            direction: MigrationDirection::Outgoing,
                             source_port: local_port,
                             target_port,
-                            status: "Failed".to_string(),
+                            status: MigrationStatus::Failed,
                             timestamp: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()

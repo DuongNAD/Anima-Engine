@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import type { ChronicleEvent } from '../../src/types/generated/ChronicleEvent';
 import type { EcosystemState } from '../../src/types/generated/EcosystemState';
 import type { EnvironmentalState } from '../../src/types/generated/EnvironmentalState';
+import type { LegacyImportListing } from '../../src/types/generated/LegacyImportListing';
 import type { MapElitesGridState } from '../../src/types/generated/MapElitesGridState';
 import type { PheromoneGridState } from '../../src/types/generated/PheromoneGridState';
 import type { RaycastTelemetry } from '../../src/types/generated/RaycastTelemetry';
@@ -116,6 +117,16 @@ const DETERMINISTIC_REPLIES: Record<string, unknown> = {
   save_simulation_state: null,
   load_simulation_state: null,
   save_world_artifact: null,
+  // The legacy-save migration. Typed by the generated binding for the same reason as the rest: the
+  // `ignored` field was added to `LegacyImportListing` to stop the listing hiding files it could not
+  // open, and a hand-written reply here would keep passing after a rename.
+  list_legacy_saves: {
+    directory: 'C:\\Users\\test\\AppData\\Roaming\\com.anima.engine\\legacy-import',
+    names: ['old_world.json', 'second_world.json'],
+    ignored: ['notes.txt'],
+  } satisfies LegacyImportListing,
+  // What the backend reports it wrote — the normalised name, not the one that was typed.
+  import_legacy_save: 'restored.json',
 };
 
 /**

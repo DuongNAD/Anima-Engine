@@ -162,6 +162,55 @@ pub struct LegacyImportListing {
     pub directory: String,
     /// Names present there now, each valid as an argument to `import_legacy_save`.
     pub names: Vec<String>,
+    /// Files that are present but cannot be imported, so the UI can say so instead of hiding them.
+    ///
+    /// A user who drops `My Save (old).sav` in and sees an empty list has been told nothing. The
+    /// listing is what the UI renders, so the reason a file is missing belongs in it.
+    pub ignored: Vec<String>,
+}
+
+/// List the importable saves in `dir`, and the files that are there but are not importable.
+///
+/// # Why a name is only listed when it is already canonical
+///
+/// `sanitize_save_name` *normalises*: it appends `.json` when the name lacks it, so `old.txt`
+/// sanitises to `old.txt.json`. Listing the raw directory entry for anything that merely *passes*
+/// sanitisation therefore produced names the importer could not resolve — the listing said
+/// `old.txt`, `import_legacy_save("old.txt")` looked for `legacy-import/old.txt.json`, and that file
+/// does not exist. The listing and the resolver disagreed about what a file was called.
+///
+/// The fix is the fixed point: a name is listed only when sanitising it returns the name itself. That
+/// is exactly the set of names for which "what the listing calls it" and "what the importer opens"
+/// are the same string, so the round trip cannot fail. In practice it means `*.json` — which is what
+/// the save command has always written — and everything else is reported as ignored rather than
+/// silently dropped.
+///
+/// Split from the command so it can be tested against a real directory without a Tauri app.
+pub fn list_legacy_saves_in(dir: &std::path::Path) -> Result<LegacyImportListing, String> {
+    let mut names = Vec::new();
+    let mut ignored = Vec::new();
+    for entry in
+        std::fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?
+    {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        match crate::commands::save_paths::sanitize_save_name(&name) {
+            Ok(canonical) if canonical == name => names.push(name),
+            _ => ignored.push(name),
+        }
+    }
+    names.sort();
+    ignored.sort();
+    Ok(LegacyImportListing {
+        directory: dir.to_string_lossy().into_owned(),
+        names,
+        ignored,
+    })
 }
 
 /// List the saves available for legacy import.
@@ -170,19 +219,52 @@ pub struct LegacyImportListing {
 /// there is nothing here for a compromised webview to aim.
 #[tauri::command]
 pub fn list_legacy_saves(app_handle: tauri::AppHandle) -> Result<LegacyImportListing, String> {
-    let dir = legacy_import_dir(&app_handle)?;
-    let mut names: Vec<String> = std::fs::read_dir(&dir)
-        .map_err(|e| format!("cannot read {}: {e}", dir.display()))?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .filter(|name| crate::commands::save_paths::sanitize_save_name(name).is_ok())
-        .collect();
-    names.sort();
-    Ok(LegacyImportListing {
-        directory: dir.to_string_lossy().into_owned(),
-        names,
-    })
+    list_legacy_saves_in(&legacy_import_dir(&app_handle)?)
+}
+
+/// Copy one legacy save forward from `import_dir` into `saves_dir`, reading only from the first.
+///
+/// The whole of `import_legacy_save` except for locating the two directories, so a test can supply
+/// two real temporary roots and assert what actually happened on disk: that the destination is a
+/// current [`SnapshotEnvelope`], and that the source file's bytes are unchanged.
+///
+/// Taking the two roots as separate parameters is the structural half of "the import never writes to
+/// its source". A single-root version could not express the property; with two, every write in the
+/// body demonstrably targets the one derived from `saves_dir`.
+pub fn import_legacy_save_into(
+    import_dir: &std::path::Path,
+    saves_dir: &std::path::Path,
+    legacy_name: &str,
+    save_as: &str,
+) -> Result<String, String> {
+    let source = crate::commands::save_paths::resolve_legacy_import_path(import_dir, legacy_name)?;
+    if !source.is_file() {
+        return Err(format!(
+            "no file named {legacy_name:?} in the legacy import directory. Copy the old save there \
+             first — this command cannot read from anywhere else."
+        ));
+    }
+
+    // Resolve the destination before reading, so an unusable `save_as` fails without having done any
+    // work — and, more to the point, so the destination is fixed by `saves_dir` and cannot be
+    // influenced by anything found inside the source file.
+    let target = crate::commands::save_paths::resolve_save_path(saves_dir, save_as)?;
+
+    // The same reader the load command uses: it verifies the checksum of an enveloped save and
+    // migrates a pre-envelope one (schema 1 or 2) forward. A legacy file is exactly the second case.
+    let state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
+
+    // Re-seal into the current envelope and write it where saves live. The import is a copy
+    // forward, so the imported world gets the checksum and versioning every other save has.
+    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(state)
+        .map_err(|e| format!("could not re-seal the imported save: {e}"))?;
+    crate::core::snapshot::write_atomic(&target, &envelope)
+        .map_err(|e| format!("could not write the imported save: {e}"))?;
+
+    Ok(target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| save_as.to_string()))
 }
 
 /// Import a save written before path confinement, **read-only**, into the app's save directory.
@@ -206,34 +288,12 @@ pub fn import_legacy_save(
     legacy_name: String,
     save_as: String,
 ) -> Result<String, String> {
-    let source = crate::commands::save_paths::resolve_legacy_import_path(
+    import_legacy_save_into(
         &legacy_import_dir(&app_handle)?,
+        &saves_dir(&app_handle)?,
         &legacy_name,
-    )?;
-    if !source.is_file() {
-        return Err(format!(
-            "no file named {legacy_name:?} in the legacy import directory. Copy the old save there \
-             first — this command cannot read from anywhere else."
-        ));
-    }
-
-    // The same reader the load command uses: it verifies the checksum of an enveloped save and
-    // migrates a pre-envelope one (schema 1 or 2) forward. A legacy file is exactly the second case.
-    let state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
-
-    // Re-seal into the current envelope and write it where saves live. The import is a copy
-    // forward, so the imported world gets the checksum and versioning every other save has.
-    let target =
-        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &save_as)?;
-    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(state)
-        .map_err(|e| format!("could not re-seal the imported save: {e}"))?;
-    crate::core::snapshot::write_atomic(&target, &envelope)
-        .map_err(|e| format!("could not write the imported save: {e}"))?;
-
-    Ok(target
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or(save_as))
+        &save_as,
+    )
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

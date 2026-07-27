@@ -11,4 +11,11 @@ directory: string,
 /**
  * Names present there now, each valid as an argument to `import_legacy_save`.
  */
-names: Array<string>, };
+names: Array<string>, 
+/**
+ * Files that are present but cannot be imported, so the UI can say so instead of hiding them.
+ *
+ * A user who drops `My Save (old).sav` in and sees an empty list has been told nothing. The
+ * listing is what the UI renders, so the reason a file is missing belongs in it.
+ */
+ignored: Array<string>, };

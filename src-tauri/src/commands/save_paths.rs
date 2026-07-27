@@ -338,22 +338,56 @@ mod legacy_import_tests {
         assert_ne!(p.parent(), Some(saves().as_path()));
     }
 
-    /// The import directory is never a write target.
+    /// Both resolvers contain, and neither of them is why the import is read-only.
     ///
-    /// Enforced structurally rather than by convention: `resolve_save_path` — the only resolver the
-    /// write paths use — cannot produce a path in the import directory, because it joins onto the
-    /// saves directory it is given and asserts containment.
+    /// This test used to be called `nothing_writes_into_the_legacy_import_directory` and was read as
+    /// proving that. It cannot: the second assertion below shows `resolve_save_path` producing a
+    /// perfectly good write path *inside* the import directory when handed it as the save root. What
+    /// keeps the migration read-only is that the importer is never handed that root — a property of
+    /// `import_legacy_save_into`, proved where it lives, by
+    /// `tests/legacy_import_tests.rs::the_import_writes_nothing_into_the_directory_it_read_from`,
+    /// which runs the real importer against two temporary roots and compares the source directory
+    /// byte for byte before and after.
+    ///
+    /// What is true here, and worth keeping, is that neither resolver escapes the root it is given.
     #[test]
-    fn nothing_writes_into_the_legacy_import_directory() {
+    fn each_resolver_contains_within_whatever_root_it_is_given() {
         let written = resolve_save_path(&saves(), "anything").unwrap();
         assert_eq!(written.parent(), Some(saves().as_path()));
         assert!(!written.starts_with(import_dir()));
 
-        // And the reverse: a caller who passes the import directory *as* the saves directory still
-        // gets containment, so there is no argument that makes one resolver write into the other's
-        // space by accident.
+        // The same function, a different root, a path in the import directory. Containment is all a
+        // resolver can offer; which root it is called with is the caller's decision.
         let contained = resolve_save_path(&import_dir(), "anything").unwrap();
         assert_eq!(contained.parent(), Some(import_dir().as_path()));
+    }
+
+    /// The listing and the resolver have to agree about what a file is called.
+    ///
+    /// `sanitize_save_name` normalises — it appends `.json` — so a name that merely *passes* it is
+    /// not necessarily a name that survives it. `list_legacy_saves_in` therefore lists only names
+    /// that sanitise to themselves, and this is the fixed-point property that makes that filter the
+    /// right one.
+    #[test]
+    fn a_name_is_listable_exactly_when_sanitising_it_changes_nothing() {
+        for canonical in ["old_world.json", "a.json", "World.1.json", "9.json"] {
+            assert_eq!(sanitize_save_name(canonical).unwrap(), canonical);
+            let p = resolve_legacy_import_path(&import_dir(), canonical).unwrap();
+            assert_eq!(
+                p.file_name().unwrap(),
+                canonical,
+                "a listed name must resolve to the file that was listed"
+            );
+        }
+        // The shapes that fail the fixed point, and why listing them was the defect: each is accepted
+        // by `sanitize_save_name` and comes back as a different file name.
+        for renamed in ["old.txt", "no-extension", "world1"] {
+            let canonical = sanitize_save_name(renamed).unwrap();
+            assert_ne!(
+                canonical, renamed,
+                "{renamed:?} would have been listed under a name the importer cannot open"
+            );
+        }
     }
 
     #[test]

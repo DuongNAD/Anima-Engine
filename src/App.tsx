@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { LegacyImportPanel } from "./components/LegacyImportPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
 import { useTauriEvent } from "./hooks/useTauriEvent";
@@ -68,33 +69,23 @@ export type {
 // `tests/frontend/ipcBindingAuthority.test.ts` names them, so the gap is counted rather than
 // forgotten, and shrinking that list is the only way to change the number it asserts.
 
-export interface LineageNode {
-  id: string;
-  generation: number;
-  parent_id: string | null;
-  fitness: number;
-  mutations_count: number;
-}
+// The last four hand-written mirrors, now generated.
+//
+// These were the ones F9 planned to leave alone because their Rust sources had no `ts_rs` derive —
+// which is the defect, not a reason. They have derives now, including real enums for
+// `MigrationPayload`'s `direction` and `status`: the Rust fields were `String` with the union written
+// in a comment, while these copies declared the union for real. Two mirrors of one struct, each
+// wrong in a different direction, neither compared to anything.
+//
+// Re-exported under the names the rest of the app already imports from `App`, so this is a change of
+// source rather than a rename sweep. `ipcBindingAuthority.test.ts` allows an alias and rejects a
+// re-declaration: an alias has no field list to drift.
+import type { LineageNodePayload as LineageNode } from './types/generated/LineageNodePayload';
+import type { LineageLinkPayload as LineageLink } from './types/generated/LineageLinkPayload';
+import type { LineageGraphPayload as LineageGraphState } from './types/generated/LineageGraphPayload';
+import type { MigrationPayload } from './types/generated/MigrationPayload';
 
-export interface LineageLink {
-  source: string;
-  target: string;
-}
-
-export interface LineageGraphState {
-  nodes: LineageNode[];
-  links: LineageLink[];
-  db_connected: boolean;
-}
-
-export interface MigrationPayload {
-  agent_id: number;
-  direction: 'incoming' | 'outgoing';
-  source_port: number;
-  target_port: number;
-  status: 'Success' | 'Failed';
-  timestamp: number;
-}
+export type { LineageNode, LineageLink, LineageGraphState, MigrationPayload };
 
 export function App() {
   const [status, setStatus] = useState<SimulationStatus>({
@@ -1013,6 +1004,12 @@ export function App() {
                   Load State
                 </button>
               </div>
+              {/* Saves written before path confinement used absolute paths and are no longer
+                  addressable by name. The backend can migrate one, read-only, from a directory the
+                  user copies it into; without this panel there was no way to reach that. Filling the
+                  save-name field on success is the difference between "the import ran" and "the old
+                  world is open" — the next step is Load State with exactly that name. */}
+              <LegacyImportPanel onImported={(savedAs) => setFilePath(savedAs)} />
             </div>
           </div>
 

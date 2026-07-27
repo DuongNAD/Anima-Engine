@@ -33,36 +33,21 @@ export type { EcosystemState } from './generated/EcosystemState';
 // they are frontend-only view models that never cross IPC. Each one that IS an IPC payload is a
 // remaining source of exactly the drift described above and should get a Rust struct plus a derive.
 
-/// IPC. Emitted by `migration-event`; assembled inline in `networking_systems.rs` rather than from a
-/// named struct, so there is nothing to derive from yet. TODO: give it one.
-export interface MigrationPayload {
-  agent_id: number;
-  direction: 'incoming' | 'outgoing';
-  source_port: number;
-  target_port: number;
-  status: string;
-  timestamp: number;
-}
-
-/// IPC. `get_lineage_graph` builds this from the Neo4j/in-memory tracker. TODO: derive.
-export interface LineageNodePayload {
-  id: string;
-  generation: number;
-  parent_id: string | null;
-  fitness: number;
-  mutations_count: number;
-}
-
-export interface LineageLinkPayload {
-  source: string;
-  target: string;
-}
-
-export interface LineageGraphPayload {
-  nodes: LineageNodePayload[];
-  links: LineageLinkPayload[];
-  db_connected: boolean;
-}
+// The migration and lineage payloads used to be hand-written here, with `TODO: derive` beside each.
+// They now have `ts_rs::TS` derives on their Rust sources, so they are re-exported from the generated
+// directory instead — `ipcBindingAuthority.test.ts` fails on a re-declaration, which is what makes
+// "re-export" the only option rather than the polite one.
+//
+// The copy `status: string` was carrying is the reason this mattered: the Rust field really was a
+// `String`, while `App.tsx`'s copy declared `'Success' | 'Failed'`. Two mirrors of one struct, each
+// wrong in a different direction, and nothing comparing either to the source. Both are now
+// `MigrationStatus`, generated from an enum.
+export type { MigrationPayload } from './generated/MigrationPayload';
+export type { MigrationDirection } from './generated/MigrationDirection';
+export type { MigrationStatus } from './generated/MigrationStatus';
+export type { LineageNodePayload } from './generated/LineageNodePayload';
+export type { LineageLinkPayload } from './generated/LineageLinkPayload';
+export type { LineageGraphPayload } from './generated/LineageGraphPayload';
 
 /// IPC. `get_terrain_map`. TODO: derive.
 export interface TerrainMapState {
@@ -99,6 +84,7 @@ export interface AgentHierarchy {
   root: RenderSegment;
 }
 
-// Aliases kept for existing call sites; identical to the *Payload forms above.
-export type LineageNode = LineageNodePayload;
-export type LineageLink = LineageLinkPayload;
+// Aliases kept for existing call sites; identical to the generated `*Payload` forms re-exported
+// above. An alias is not a re-declaration — it has no field list of its own to drift.
+export type { LineageNodePayload as LineageNode } from './generated/LineageNodePayload';
+export type { LineageLinkPayload as LineageLink } from './generated/LineageLinkPayload';

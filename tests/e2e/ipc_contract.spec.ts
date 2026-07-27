@@ -124,6 +124,51 @@ test('Phase 6: persistence, camera and environmental controls are present', asyn
   await expect(page.locator('[data-testid="environmental-elements-container"]')).toBeVisible();
 });
 
+test('a pre-confinement save can be found, chosen and imported from the UI', async ({ page }) => {
+  // The migration end to end, through the real frontend.
+  //
+  // `list_legacy_saves` and `import_legacy_save` were registered as commands with no caller: no way
+  // to learn where the drop directory is, no way to see what is in it, no way to name the result. A
+  // command nobody can invoke is not a feature, and nothing in the backend's own tests could say so.
+  const panel = page.locator('[data-testid="legacy-import-panel"]');
+  await expect(panel).toBeHidden();
+
+  await page.locator('[data-testid="legacy-import-open"]').click();
+  await expect(panel).toBeVisible();
+
+  // Where to put the old file. This is the whole reason the panel exists: the authorising act is a
+  // copy the page cannot perform, so the user has to be told the destination.
+  await expect(page.locator('[data-testid="legacy-import-dir"]')).toContainText('legacy-import');
+  await expect
+    .poll(async () => (await mock.invokedCommands()).includes('list_legacy_saves'), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+
+  // Files present but not importable are reported, not hidden.
+  await expect(page.locator('[data-testid="legacy-import-ignored"]')).toContainText('notes.txt');
+
+  await page.locator('[data-testid="legacy-import-select"]').selectOption('second_world.json');
+  await page.locator('[data-testid="legacy-import-save-as"]').fill('restored');
+  await page.locator('[data-testid="legacy-import-run"]').click();
+
+  await expect
+    .poll(
+      async () =>
+        (await mock.invocations()).find((c) => c.cmd === 'import_legacy_save')?.args ?? null,
+      {
+        message: 'the panel must invoke import_legacy_save with the chosen file and destination',
+        timeout: 15_000,
+      },
+    )
+    .toEqual({ legacy_name: 'second_world.json', save_as: 'restored' });
+
+  // The name the backend says it wrote lands in the save field, so the next action — Load State —
+  // works without the user retyping a name they were never shown.
+  await expect(page.locator('[data-testid="legacy-import-ok"]')).toContainText('restored.json');
+  await expect(page.locator('[data-testid="filepath-input"]')).toHaveValue('restored.json');
+});
+
 test('a chronicle event pushed over the event channel reaches the UI', async ({ page }) => {
   // The half a command-only test cannot reach: the app has to be *listening*, and it has to
   // render what arrives. The previous specs could not test this at all — their pages had no

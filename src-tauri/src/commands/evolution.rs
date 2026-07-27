@@ -27,25 +27,36 @@ pub struct MapElitesGridState {
     pub grid_resolution: u32,
 }
 
+/// One agent in the lineage graph, as `get_lineage_graph` publishes it.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageNodePayload {
     pub id: String,
     pub generation: u32,
     pub parent_id: Option<String>,
     pub fitness: f64,
+    /// Cumulative mutations along this agent's ancestry.
     pub mutations_count: u32,
 }
 
+/// A parent → child edge.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageLinkPayload {
     pub source: String,
     pub target: String,
 }
 
+/// The whole graph, plus whether it came from Neo4j or the in-memory fallback.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageGraphPayload {
     pub nodes: Vec<LineageNodePayload>,
     pub links: Vec<LineageLinkPayload>,
+    /// False when the tracker is running offline in memory, so the UI can say which it is showing.
     pub db_connected: bool,
 }
 
