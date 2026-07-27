@@ -6,12 +6,16 @@
 // landscape tests all live outside it. Rather than thread a camera reference back out through React,
 // `CameraControls` writes the live objects onto `window` each frame and everyone else reads them.
 //
-// # Why they are declared here
+// # Why they are declared centrally
 //
-// `CameraControls` declared this shape privately and `Minimap` read the same properties through
-// `(window as any)`, which is the arrangement where a rename on the writing side is discovered by a
-// user. One declaration, imported by both, makes the two sides the same contract — and `unknown` on
-// the two object-valued entries keeps a reader honest about narrowing what it got.
+// `CameraControls` declared this shape privately and `Minimap` read the same properties off an
+// untyped view of `window`, which is the arrangement where a rename on the writing side is
+// discovered by a user. The members now live in the one global declaration this app keeps for
+// window properties, `window-globals.d.ts`, so both sides compile against the same contract — and
+// `unknown` on the two object-valued entries keeps a reader honest about narrowing what it got.
+//
+// The function below is what everything calls; it exists so the intent reads at the call site
+// (`diagnostics().activeCamera`, not `window.activeCamera`) and so the surface has one doc comment.
 
 /** Terrain-height sampler, in the legacy landscape's grid coordinates. */
 export type TerrainHeightProbe = (x: number, z: number) => number;
@@ -20,19 +24,8 @@ export type TerrainHeightProbe = (x: number, z: number) => number;
 export type TeleportCameraTarget = (worldX: number, worldZ: number) => void;
 
 /** The scene's published diagnostics surface. Every member is absent until the scene mounts. */
-export interface DiagnosticsWindow extends Window {
-  getTerrainHeight?: TerrainHeightProbe;
-  globalTerrainHeightMap?: Float32Array;
-  teleportCameraTarget?: TeleportCameraTarget;
-  /** The live `THREE.Camera`. `unknown` because the readers here only need its `position`. */
-  activeCamera?: unknown;
-  /** The live `THREE.Scene`, for the Playwright harnesses. */
-  activeScene?: unknown;
-}
-
-/** The scene's diagnostics surface on the current window. */
-export function diagnostics(): DiagnosticsWindow {
-  return window as DiagnosticsWindow;
+export function diagnostics(): Window {
+  return window;
 }
 
 /** The minimum a reader needs off `activeCamera`: where it is. */

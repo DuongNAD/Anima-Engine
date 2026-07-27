@@ -546,7 +546,7 @@ export interface MapEvidenceRecord {
 /** Read the injected record, or `null`. Shape-checked, because a malformed global must not draw. */
 export function readInjectedEvidence(): MapEvidenceRecord | null {
   if (typeof window === 'undefined') return null;
-  const raw = (window as unknown as Record<string, unknown>)[MAP_EVIDENCE_GLOBAL];
+  const raw = window[MAP_EVIDENCE_GLOBAL];
   if (!raw || typeof raw !== 'object') return null;
   const rec = raw as Partial<MapEvidenceRecord>;
   if (!Array.isArray(rec.navigation?.route) || !Array.isArray(rec.collision?.colliders)) return null;

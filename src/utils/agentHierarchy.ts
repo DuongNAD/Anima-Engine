@@ -66,19 +66,66 @@ export function indexRootSegments(segments: SegmentState[]): Record<number, Segm
   return roots;
 }
 
-export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
-  const safeSegments = (Array.isArray(segments) ? segments : []).filter(
-    (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
-  );
-  const agentsMap = new Map<number, SegmentState[]>();
+// ---------------------------------------------------------------------------------------
+// Reading a tick payload
+//
+// `buildAgentHierarchy` was always written for untrusted input — it skipped nulls, non-objects and
+// segments with no `agent_id`, and it guards against a `parent_segment_id` cycle — but its parameter
+// said `SegmentState[]`, so the only way to reach any of those branches was to hold a cast. That is
+// the wrong way round: the tolerance is the feature, and the signature was hiding it.
+//
+// It is not hypothetical tolerance either. `App.tsx` fills this from the `simulation-tick` event,
+// whose `payload` crosses IPC as JSON; the array it hands over is *typed* `SegmentState[]` by a
+// predicate that only checks the elements are objects. Whatever the backend serialised is what
+// arrives, so every field below is read as `unknown` and coerced, rather than trusted.
+// ---------------------------------------------------------------------------------------
+
+/**
+ * `value` viewed as the bag of unchecked fields a parsed JSON object actually is.
+ *
+ * Sound as a type predicate, unlike a claim that some object *is* a `SegmentState`: reading any
+ * string key off a non-null object really does yield `unknown`, and `unknown` is what forces the
+ * coercions below.
+ */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * A numeric field, or `0`.
+ *
+ * `value || 0` on its own is what this file used to do, and it is right about numbers — it maps
+ * `NaN` and `-0` to `0`, which is what the render tree wants — but it passes a string straight
+ * through into a field typed `number`. The `typeof` is what closes that.
+ */
+function numField(value: unknown): number {
+  return typeof value === 'number' ? value || 0 : 0;
+}
+
+/** An id field, or `null` when the payload did not carry a usable one. */
+function idField(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+/** No parent link at all — the segment is its agent's root. Absent and explicit-null both count. */
+function hasNoParent(value: unknown): boolean {
+  return value === null || value === undefined;
+}
+
+export function buildAgentHierarchy(
+  segments: readonly unknown[] | null | undefined
+): AgentHierarchy[] {
+  const raw: readonly unknown[] = Array.isArray(segments) ? segments : [];
+  const safeSegments = raw.filter(isRecord);
+  const agentsMap = new Map<number, Record<string, unknown>[]>();
 
   // Group segments by agent_id
   safeSegments.forEach(seg => {
-    if (seg.agent_id === undefined || seg.agent_id === null) return;
-    if (!agentsMap.has(seg.agent_id)) {
-      agentsMap.set(seg.agent_id, []);
-    }
-    agentsMap.get(seg.agent_id)!.push(seg);
+    const agentId = idField(seg.agent_id);
+    if (agentId === null) return;
+    const existing = agentsMap.get(agentId);
+    if (existing) existing.push(seg);
+    else agentsMap.set(agentId, [seg]);
   });
 
   const hierarchies: AgentHierarchy[] = [];
@@ -90,43 +137,50 @@ export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] 
 
     // Initialize all render segments
     segs.forEach(s => {
-      if (!s) return;
+      const segmentId = idField(s.segment_id);
+      // A segment with no usable id has no place in a tree keyed by id: it used to be stored under
+      // `undefined` and to hand that on as `RenderSegment.segment_id`, which is declared `number`.
+      if (segmentId === null) return;
       const renderSeg: RenderSegment = {
-        segment_id: s.segment_id,
-        x: s.x || 0,
-        y: s.y || 0,
-        z: s.z || 0,
-        yaw: s.yaw || 0,
-        pitch: s.pitch || 0,
-        roll: s.roll || 0,
-        joint_anchor: [s.joint_anchor_x || 0, s.joint_anchor_y || 0, s.joint_anchor_z || 0],
-        joint_axis: [s.joint_axis_x || 0, s.joint_axis_y || 0, s.joint_axis_z || 0],
+        segment_id: segmentId,
+        x: numField(s.x),
+        y: numField(s.y),
+        z: numField(s.z),
+        yaw: numField(s.yaw),
+        pitch: numField(s.pitch),
+        roll: numField(s.roll),
+        joint_anchor: [
+          numField(s.joint_anchor_x),
+          numField(s.joint_anchor_y),
+          numField(s.joint_anchor_z),
+        ],
+        joint_axis: [numField(s.joint_axis_x), numField(s.joint_axis_y), numField(s.joint_axis_z)],
         children: []
       };
-      segmentMap.set(s.segment_id, renderSeg);
-      if (s.parent_segment_id === null || s.parent_segment_id === undefined) {
+      segmentMap.set(segmentId, renderSeg);
+      if (hasNoParent(s.parent_segment_id)) {
         rootSegment = renderSeg;
-        rootEnergy = s.energy || 0;
+        rootEnergy = numField(s.energy);
       }
     });
 
     // Wire up parent-child connections, preventing cycles
     segs.forEach(s => {
-      if (!s) return;
-      if (s.parent_segment_id !== null && s.parent_segment_id !== undefined) {
-        const parent = segmentMap.get(s.parent_segment_id);
-        const child = segmentMap.get(s.segment_id);
-        if (parent && child) {
-          const wouldCreateCycle = (node: RenderSegment, targetId: number): boolean => {
-            if (node.segment_id === targetId) return true;
-            for (const c of node.children) {
-              if (wouldCreateCycle(c, targetId)) return true;
-            }
-            return false;
-          };
-          if (!wouldCreateCycle(child, parent.segment_id)) {
-            parent.children.push(child);
+      const parentId = idField(s.parent_segment_id);
+      const segmentId = idField(s.segment_id);
+      if (parentId === null || segmentId === null) return;
+      const parent = segmentMap.get(parentId);
+      const child = segmentMap.get(segmentId);
+      if (parent && child) {
+        const wouldCreateCycle = (node: RenderSegment, targetId: number): boolean => {
+          if (node.segment_id === targetId) return true;
+          for (const c of node.children) {
+            if (wouldCreateCycle(c, targetId)) return true;
           }
+          return false;
+        };
+        if (!wouldCreateCycle(child, parent.segment_id)) {
+          parent.children.push(child);
         }
       }
     });

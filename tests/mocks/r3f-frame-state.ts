@@ -16,14 +16,17 @@
 // So the shape lives in one place, typed against the same `RootState` the aliased mock exports, and
 // a caller overrides only the fields its assertions are about.
 //
-// # Why the import is type-only
+// # Why the r3f import is type-only
 //
 // `tests/vitest.config.ts` aliases `@react-three/fiber` to `react-three-fiber-mock.ts`, so a suite
 // that calls `vi.mock('@react-three/fiber', factory)` replaces that module *by resolved path*. A
 // runtime import of the mock from here would get the suite's factory instead of the real thing. The
 // type import is erased before any of that can happen.
+//
+// `three` is a different module and is not mocked at all, so it is imported for its values: the
+// scene and camera below are real instances rather than literals impersonating them.
 
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { MockRenderer, RootState } from './react-three-fiber-mock';
 
 /** What `useFrame` hands its callback. */
@@ -32,31 +35,26 @@ export type FrameCallback = (state: RootState, delta: number) => void;
 /**
  * A frame state with every field r3f guarantees, overridable per test.
  *
- * The three objects are structural stand-ins, for the same reason the aliased mock's are: building
- * a real `THREE.Scene` drags the scene graph into every test that only wanted to advance a clock.
+ * The scene and camera are real three instances, for the same reason the aliased mock's are: a
+ * literal only ever carries the members production happened to read on the day it was written, and
+ * this file exists because that failed. Real instances cannot go out of date.
  */
 export function makeFrameState(overrides: Partial<RootState> = {}): RootState {
-  const canvas =
-    typeof document !== 'undefined' ? document.createElement('canvas') : ({} as HTMLCanvasElement);
   const gl: MockRenderer = {
     setSize: () => {},
-    domElement: canvas,
+    domElement: document.createElement('canvas'),
     render: () => {},
-    getContext: () => ({}) as WebGLRenderingContext,
-    shadowMap: { enabled: false, needsUpdate: false } as THREE.WebGLShadowMap,
+    getContext: () => {
+      throw new Error(
+        'the r3f frame state has no WebGL context: nothing running under jsdom should reach one',
+      );
+    },
+    shadowMap: { enabled: false, needsUpdate: false },
   };
   return {
     clock: { getElapsedTime: () => 0, elapsedTime: 0 },
-    scene: { fog: null, background: null, add: () => {}, remove: () => {} } as unknown as THREE.Scene,
-    camera: {
-      position: { set: () => {}, copy: () => {}, x: 0, y: 0, z: 0 },
-      lookAt: () => {},
-      rotation: { set: () => {} },
-      quaternion: { set: () => {} },
-      rotateX: () => {},
-      rotateY: () => {},
-      getWorldDirection: (v: THREE.Vector3) => v,
-    } as unknown as THREE.Camera,
+    scene: new THREE.Scene(),
+    camera: new THREE.PerspectiveCamera(),
     gl,
     size: { width: 800, height: 600 },
     setFrameloop: () => {},

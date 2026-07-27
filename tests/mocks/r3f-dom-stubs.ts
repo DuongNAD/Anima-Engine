@@ -9,10 +9,11 @@
 // in `beforeEach` and removes them again in `afterEach`.
 //
 // That much is reasonable — it is how you observe imperative three writes without a GPU. What was
-// not reasonable is that the observation was then done through `as any`: forty-odd of them across
-// four files, each one a place where a test could read a property no component ever writes and pass
-// anyway. The types here say exactly which grafted members exist, so a typo is a compile error and
-// the set of things the doubles pretend to be is written down in one place.
+// not reasonable is that the observation was then done through an untyped view of the element:
+// forty-odd of those across four files, each one a place where a test could read a property no
+// component ever writes and pass anyway. The types here say exactly which grafted members exist, so
+// a typo is a compile error and the set of things the doubles pretend to be is written down in one
+// place.
 //
 // # How to use them
 //
@@ -117,9 +118,9 @@ export interface StubUniforms {
 /**
  * Remove a property a suite grafted onto a prototype.
  *
- * `delete (Element.prototype as any).position` in an `afterEach` is the single most repeated `any`
- * in these files, and it is there only because `delete` demands an optional property. `Reflect`
- * asks the same question of the object rather than of its type.
+ * Deleting `position` off `Element.prototype` in an `afterEach` is the single most repeated untyped
+ * view in these files, and it is there only because `delete` demands an optional property.
+ * `Reflect` asks the same question of the object rather than of its type.
  */
 export function removeStubbedProperty(prototype: object, name: string): void {
   Reflect.deleteProperty(prototype, name);

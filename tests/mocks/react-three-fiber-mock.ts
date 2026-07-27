@@ -13,13 +13,26 @@
 //
 // # Why the types are real
 //
-// This file is what `tsc` sees for the whole app, so an `any` here is an unchecked call site in
+// This file is what `tsc` sees for the whole app, so a loose type here is an unchecked call site in
 // `src/`, not merely a loose test. `RootState` and `MockRenderer` name the members production code
 // actually reaches, typed against real three classes; the open-ended remainder is `unknown`, which
 // still forces a consumer to narrow.
+//
+// # Why `three` is imported for its values
+//
+// The scene and the camera below are real `THREE.Scene` and `THREE.PerspectiveCamera` instances,
+// not object literals describing them. Only the R3F reconciler is mocked — `three` itself runs
+// headless, its geometry and math classes need no GL context — so there was no reason to
+// impersonate two classes that were available. Impersonating them cost something real: the literals
+// carried whichever members production happened to read when each was written, and when a component
+// moved to `state.scene.background` three suites failed with `Cannot read properties of undefined`,
+// a crash the real renderer cannot produce.
+//
+// This file is only ever *typed* into the production build — `vite.config.ts` aliases
+// `@react-three/fiber` under `mode === 'test'` alone — so nothing here is bundled.
 
 import * as React from 'react';
-import type * as THREE from 'three';
+import * as THREE from 'three';
 
 /**
  * The slice of `THREE.WebGLRenderer` the app touches.
@@ -32,8 +45,15 @@ export interface MockRenderer {
   domElement: HTMLCanvasElement;
   render: (scene: THREE.Scene, camera: THREE.Camera) => void;
   getContext: () => WebGLRenderingContext;
-  /** Toggled live by the quality preset, without remounting the GL context. */
-  shadowMap: THREE.WebGLShadowMap;
+  /**
+   * Toggled live by the quality preset, without remounting the GL context.
+   *
+   * The two flags, not the whole `WebGLShadowMap`: that object is built by a `WebGLRenderer` against
+   * a live context and cannot be constructed on its own, so a mock claiming to be one could only
+   * ever be a cast. Naming what the app writes is the same policy the rest of this interface
+   * follows, and it means a component reaching for a third field is a compile error here.
+   */
+  shadowMap: Pick<THREE.WebGLShadowMap, 'enabled' | 'needsUpdate'>;
   [key: string]: unknown;
 }
 
@@ -66,33 +86,31 @@ export const useFrame = (_callback: (state: RootState, delta: number) => void): 
 /**
  * A fresh stub state. Built per call, so a test mutating one does not leak into the next.
  *
- * The three objects are structural stand-ins rather than real instances: constructing a real
- * `THREE.Scene` here would be honest too, but it drags the whole scene graph into every render of
- * every component that only wanted to read `size`. The casts are narrow and each one is a stub
- * standing in for a class jsdom cannot host.
+ * The scene and camera are real three instances. Building them costs a handful of small allocations
+ * and buys the thing a literal could not: every member the real classes have, behaving as they do,
+ * so a component that starts reading a new one keeps working instead of crashing on `undefined`.
  */
 function mockState(): RootState {
-  const canvas =
-    typeof document !== 'undefined' ? document.createElement('canvas') : ({} as HTMLCanvasElement);
   return {
     clock: { getElapsedTime: () => 0, elapsedTime: 0 },
-    scene: { fog: null, add: () => {}, remove: () => {} } as unknown as THREE.Scene,
-    camera: {
-      position: { set: () => {}, x: 0, y: 0, z: 0 },
-      lookAt: () => {},
-      rotation: { set: () => {} },
-      quaternion: { set: () => {} },
-      rotateX: () => {},
-      rotateY: () => {},
-    } as unknown as THREE.Camera,
+    scene: new THREE.Scene(),
+    camera: new THREE.PerspectiveCamera(),
     gl: {
       setSize: () => {},
-      domElement: canvas,
+      // A real element: both vitest configs run under jsdom, and the camera rig adds listeners to
+      // this and calls `requestPointerLock` on it.
+      domElement: document.createElement('canvas'),
       render: () => {},
       // jsdom has no WebGL, and nothing under jsdom reaches a path that uses the context: the
       // capture branch that calls this is gated on a `capture=1` URL the unit tests never set.
-      getContext: () => ({}) as WebGLRenderingContext,
-      shadowMap: { enabled: false, needsUpdate: false } as THREE.WebGLShadowMap,
+      // Throwing states that rather than handing back an empty object dressed as a context — if the
+      // assumption ever stops holding, this says so instead of failing several frames later.
+      getContext: () => {
+        throw new Error(
+          'the r3f mock has no WebGL context: nothing running under jsdom should reach one',
+        );
+      },
+      shadowMap: { enabled: false, needsUpdate: false },
     },
     size: { width: 800, height: 600 },
     setFrameloop: () => {},

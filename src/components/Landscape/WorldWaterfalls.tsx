@@ -136,8 +136,8 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
 
   if (count === 0) return null;
   // Both materials go through `args`, not a `material=` prop or a JSX child. `InstancedMesh`'s
-  // constructor takes (geometry, material, count) with none of them optional, so the old
-  // `undefined as any` was not a loose type on a value that could be undefined — it was a lie about
+  // constructor takes (geometry, material, count) with none of them optional, so the old cast on an
+  // `undefined` material was not a loose type on a value that could be absent — it was a lie about
   // a slot three requires. Passing the real material there is shorter *and* honest, and it gave the
   // foam a material this component owns and therefore disposes.
   return (

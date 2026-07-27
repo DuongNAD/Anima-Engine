@@ -92,7 +92,7 @@ const MIN_PLAUSIBLE_BYTES = 20_000;
  * in `dist/`, and injecting it is what binds the image to the record — the overlay draws this
  * polyline or it draws nothing.
  */
-const EVIDENCE = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8')) as unknown;
+const EVIDENCE: unknown = JSON.parse(readFileSync(EVIDENCE_PATH, 'utf8'));
 
 const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex');
 
@@ -100,12 +100,14 @@ const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex');
 async function preparePage(page: Page): Promise<string[]> {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  await page.addInitScript(
-    ([flag, record]) => {
-      (window as unknown as Record<string, unknown>)[flag as string] = record;
-    },
-    [MAP_EVIDENCE_GLOBAL, EVIDENCE] as [string, unknown],
-  );
+  // The property name travels with the record so the injection and the app's reader are the one
+  // exported constant. `MAP_EVIDENCE_GLOBAL` is a string literal type, so indexing `window` with it
+  // resolves to the member declared in `src/window-globals.d.ts` — a rename breaks this line rather
+  // than producing a capture with no route drawn on it.
+  const injection: [typeof MAP_EVIDENCE_GLOBAL, unknown] = [MAP_EVIDENCE_GLOBAL, EVIDENCE];
+  await page.addInitScript(([flag, record]) => {
+    window[flag] = record;
+  }, injection);
   return errors;
 }
 
@@ -164,8 +166,11 @@ async function shoot(page: Page, view: string, errors: string[]): Promise<Shot> 
   // Settled, stopped, and rendered once more. See `CaptureReadySignal` in `WorldShowcase.tsx`: the
   // flag is set last, after `setFrameloop('never')` and the final `gl.render`, so observing it means
   // the drawing buffer holds a frame nothing will overwrite.
-  await page.waitForFunction(
-    (flag) => (window as unknown as Record<string, unknown>)[flag] === true,
+  // The type arguments are given rather than inferred. Playwright widens an argument to `string`,
+  // and `window[someString]` is not a member of anything — naming the constant's own literal type is
+  // what lets the flag be looked up as the declared `Window` member it is.
+  await page.waitForFunction<boolean, typeof CAPTURE_READY_FLAG>(
+    (flag) => window[flag] === true,
     CAPTURE_READY_FLAG,
     { timeout: 120_000 },
   );
@@ -173,10 +178,13 @@ async function shoot(page: Page, view: string, errors: string[]): Promise<Shot> 
   // The world the manifest describes is in the page, and — for the two views that have one — so is
   // the evidence record the overlay draws. An injection that silently failed would produce a
   // `navigation` view with no route in it, which is the exact defect this overlay repairs.
-  const state = await page.evaluate((flag) => {
-    const w = window as unknown as { __world?: unknown } & Record<string, unknown>;
-    return { hasWorld: Boolean(w.__world), hasEvidence: Boolean(w[flag]) };
-  }, MAP_EVIDENCE_GLOBAL);
+  const state = await page.evaluate<
+    { hasWorld: boolean; hasEvidence: boolean },
+    typeof MAP_EVIDENCE_GLOBAL
+  >(
+    (flag) => ({ hasWorld: Boolean(window.__world), hasEvidence: Boolean(window[flag]) }),
+    MAP_EVIDENCE_GLOBAL,
+  );
   expect(state.hasWorld, 'the landscape page must expose the generated world').toBe(true);
   expect(state.hasEvidence, 'the evidence record must reach the page').toBe(true);
 

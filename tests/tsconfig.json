@@ -26,5 +26,10 @@
       "@react-three/fiber": ["./mocks/react-three-fiber-mock.ts"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "../src/r3f-intrinsics.d.ts"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "../src/r3f-intrinsics.d.ts",
+    "../src/window-globals.d.ts"
+  ]
 }

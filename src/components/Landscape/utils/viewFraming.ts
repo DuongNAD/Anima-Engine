@@ -215,7 +215,7 @@ export function solveInwardFraming(req: FramingRequest): FramingSolution | null 
  * An exact frustum test, not an approximation of one: project the point onto the camera basis and
  * require its normalised image coordinates to be within the rectangle. Used to bind the navigation
  * evidence to the navigation image — the published route's goal was previously chosen by graph
- * distance alone, so the route ran off the bottom-right corner and the goal marker was never in the
+ * distance alone, so the route ran off the bottom-right corner and the goal marker fell outside the
  * photograph. A reviewer could see a path and not where it ended, which is most of what a
  * reachability claim is.
  *

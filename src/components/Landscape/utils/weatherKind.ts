@@ -6,7 +6,7 @@
 // The overlay is not wrong to be permissive about what it *displays*: an adversarial test renders it
 // with a stale `weather="custom-weather"` and expects to see that value, which is what a corrupted
 // preference looks like. It was wrong to be permissive about what it *emits*, because the consumer
-// then had to write `setWeather(w as any)` to put a `string` into a union-typed state.
+// then had to cast inside `setWeather(w)` to put a `string` into a union-typed state.
 //
 // So: one union, and one narrowing function at the boundary where a `<select>`'s `string` becomes a
 // weather again.

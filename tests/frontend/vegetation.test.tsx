@@ -203,7 +203,7 @@ describe('Vegetation Component Tests', () => {
 
     // Simulate compiling shader. `uniforms` starts empty: what is asserted below is that the
     // material's `onBeforeCompile` puts the shared live objects into it, so declaring the block as
-    // the uniform map it becomes says more than `{} as any` did.
+    // the uniform map it becomes says more than an untyped empty object did.
     const mockShader: StubUniforms & { vertexShader: string; fragmentShader: string } = {
       uniforms: {},
       vertexShader: '#include <common>\n#include <begin_vertex>',

@@ -9,18 +9,39 @@ import {
 } from '../../src/components/Landscape/utils/terrainGenerator';
 import { Minimap } from '../../src/components/Landscape/Minimap';
 import Water from '../../src/components/Landscape/Water';
+import type { FrameCallback } from '../mocks/r3f-frame-state';
+import {
+  removeStubbedProperties,
+  type StubAttributeCapture,
+  type StubLod,
+} from '../mocks/r3f-dom-stubs';
 
 // Mock react-three-fiber Canvas and useFrame
-let frameCallbacks: FrameCb[] = [];
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
     Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: FrameCb) => {
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
   };
 });
+
+/**
+ * Install a member on `HTMLElement.prototype` that the DOM does not declare.
+ *
+ * The same reasoning as `tests/setup-vitest.ts`: assigning to `HTMLElement.prototype.addLevel` is
+ * not an assignment the DOM types describe, and `Object.defineProperty` is the API for adding a
+ * property to an object. `afterEach` takes them off again with `removeStubbedProperties`.
+ */
+function defineStub(name: string, value: unknown): void {
+  Object.defineProperty(HTMLElement.prototype, name, {
+    value,
+    configurable: true,
+    writable: true,
+  });
+}
 
 describe('New Biomes and Terrain Scaling Tests', () => {
   let originalSetAttribute: typeof HTMLElement.prototype.setAttribute;
@@ -42,16 +63,15 @@ describe('New Biomes and Terrain Scaling Tests', () => {
       configurable: true,
     });
 
-    HTMLElement.prototype.addLevel = vi.fn().mockImplementation(function (
-      this: MockLodElement,
-      mesh: unknown,
-      distance: number
-    ) {
-      this.levels.push({ object: mesh, distance });
-    });
+    defineStub(
+      'addLevel',
+      vi.fn(function (this: StubLod, mesh: unknown, distance: number) {
+        this.levels.push({ object: mesh, distance });
+      })
+    );
 
-    HTMLElement.prototype.setIndex = vi.fn();
-    HTMLElement.prototype.computeVertexNormals = vi.fn();
+    defineStub('setIndex', vi.fn());
+    defineStub('computeVertexNormals', vi.fn());
 
     // Capture custom attributes set on elements
     Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
@@ -65,15 +85,18 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     });
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
-    HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: MockAttrElement,
+    HTMLElement.prototype.setAttribute = vi.fn(function (
+      this: HTMLElement & StubAttributeCapture,
       name: string,
-      value: string
+      value: unknown
     ) {
+      // `unknown`, not `string`: r3f's `<bufferAttribute>` arrives here as a real
+      // `THREE.BufferAttribute`, which is the whole reason this interception exists. Declaring the
+      // DOM's `string` made the `instanceof` below a comparison the compiler knew could not hold.
       if (value instanceof THREE.BufferAttribute) {
         this._capturedAttributes.set(name, value);
       } else {
-        originalSetAttribute.call(this, name, value);
+        originalSetAttribute.call(this, name, String(value));
       }
     });
 
@@ -123,13 +146,19 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).levels;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).addLevel;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).setIndex;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).computeVertexNormals;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>)._capturedAttributes;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).uniforms;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).geometry;
+    // `Reflect.deleteProperty` asks the question of the object rather than of its type, which is
+    // what `delete` cannot do: the operator insists on an optional property, so removing one the
+    // DOM never declared meant first claiming the prototype was something else.
+    removeStubbedProperties(
+      HTMLElement.prototype,
+      'levels',
+      'addLevel',
+      'setIndex',
+      'computeVertexNormals',
+      '_capturedAttributes',
+      'uniforms',
+      'geometry',
+    );
   });
 
   describe('1. 1000x1000 Terrain Scaling', () => {

@@ -6,7 +6,7 @@
 //
 // This file used to hand-maintain all of these. That is how `head_directions` shipped broken: the
 // Rust side sends a `HashMap<u32, [f32; 3]>` (a JSON object), a stale `HeadDirectionTelemetry`
-// interface here described an array element that the backend has never sent, `App.tsx` was written
+// interface here described an array element the backend does not send and never did, `App.tsx` was written
 // against that array, and the test mocks agreed with `App.tsx` rather than with the backend. Three
 // hand-written mirrors all agreeing with each other and none with the producer — a generated type
 // makes that a compile error instead of a silently dead feature (G1.4).

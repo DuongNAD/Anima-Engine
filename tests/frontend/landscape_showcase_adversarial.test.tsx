@@ -12,6 +12,7 @@ import Weather from '../../src/components/Landscape/Weather';
 import PositionalAudio from '../../src/components/Landscape/PositionalAudio';
 import CameraControls from '../../src/components/Landscape/CameraControls';
 import { audioManager } from '../../src/components/Landscape/utils/audioManager';
+import { asWeatherKind } from '../../src/components/Landscape/utils/weatherKind';
 import {
   determineBiome,
   generateTerrain,
@@ -312,12 +313,22 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
     });
 
     it('should handle invalid weather types gracefully without crashing', () => {
-      // A value outside the union, which is what a stale saved preference or a hand-edited URL
-      // produces at runtime. `as never` rather than `as any`: it asserts the value is not one the
-      // prop accepts, which is precisely the claim this test is making, instead of switching the
-      // check off.
-      const { container } = render(<Weather weather={'invalid-weather-type' as never} />);
+      // A value outside the union — what a stale saved preference or a hand-edited URL produces —
+      // taken the way one actually reaches the scene.
+      //
+      // It does not reach it as itself. `asWeatherKind` is the narrowing every such string passes
+      // through (`LandscapeShowcase` holds `useState<WeatherKind>`), so the claim worth testing is
+      // that the boundary rejects the value *and* the scene still draws. Forcing the string past the
+      // prop's type, which is what this used to do, tested a state no code path can produce and said
+      // nothing about the boundary that makes that true.
+      const stale = 'invalid-weather-type';
+      expect(asWeatherKind(stale)).toBeNull();
+
+      const { container } = render(<Weather weather={asWeatherKind(stale) ?? 'clear'} />);
       expect(container.querySelector('[name="weather-group"]')).toBeTruthy();
+      expect(container.querySelector('[name="weather-group"]')?.getAttribute('data-weather')).toBe(
+        'clear',
+      );
     });
   });
 

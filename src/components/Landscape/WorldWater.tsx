@@ -208,7 +208,7 @@ interface WaterUniformInputs {
  * Build one water surface's uniform block.
  *
  * Module scope rather than a closure inside the component, because as a closure it captured five
- * values that its callers' dependency lists did not name — two `eslint-disable`d `useMemo`s whose
+ * values that its callers' dependency lists did not name — two lint-suppressed `useMemo`s whose
  * suppression was load-bearing, since listing `sunDir` honestly would have rebuilt the ocean's
  * uniforms on every render of a moving sun. Taking the inputs explicitly separates the two kinds:
  * what the block is *built* from (below) and what the frame loop *drives* (uTime, uSunDir, fog).

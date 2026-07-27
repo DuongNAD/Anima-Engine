@@ -61,18 +61,20 @@ describe('S04 — benchmark_report.json baseline validator', () => {
     expect(validateBenchmarkReport(report)).toEqual([]);
 
     // Spot-check the specific fields the contract names.
-    const r = report as unknown as Record<string, unknown>;
-    expect(typeof r.seed).toBe('number');
+    //
+    // Read straight off the import. `resolveJsonModule` types `report` from the committed file, so
+    // these paths are checked twice over: `tsc` fails if the report stops having a `config.gridDim`
+    // at all, and the assertion fails if it has one of the wrong type. Widening the import to
+    // `Record<string, unknown>` first, which is what this used to do, threw the first check away —
+    // and the whole point of naming the fields here is to notice when one goes missing.
+    expect(typeof report.seed).toBe('number');
 
-    const config = r.config as Record<string, unknown>;
-    expect(typeof config.gridDim).toBe('number');
-    expect(typeof config.tickHz).toBe('number');
+    expect(typeof report.config.gridDim).toBe('number');
+    expect(typeof report.config.tickHz).toBe('number');
 
-    const hardware = r.hardware as Record<string, unknown>;
-    expect(typeof hardware.cpuModel).toBe('string');
+    expect(typeof report.hardware.cpuModel).toBe('string');
 
-    const timings = r.timings as Record<string, unknown>;
-    expect(Object.keys(timings).length).toBeGreaterThan(0);
+    expect(Object.keys(report.timings).length).toBeGreaterThan(0);
   });
 
   it('rejects a report missing `seed`', () => {

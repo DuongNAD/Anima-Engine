@@ -33,15 +33,52 @@ export interface TauriEventEnvelope {
 
 /** The subset of `__TAURI_INTERNALS__` the frontend reaches for. */
 export interface TauriInternalsMock {
+  /** `args` is not optional: `@tauri-apps/api`'s `invoke` defaults it to `{}` before calling here. */
   invoke: (cmd: string, args: TauriInvokeArgs) => Promise<unknown>;
-  transformCallback: (callback: (event: TauriEventEnvelope) => void) => number;
+  /** `once` is real — `listen`'s one-shot form passes it — and a mock that drops it never unsubscribes. */
+  transformCallback: (callback: (event: TauriEventEnvelope) => void, once?: boolean) => number;
   unregisterCallback: (id: number) => void;
-  convertFileSrc: (filePath: string) => string;
+  convertFileSrc: (filePath: string, protocol?: string) => string;
 }
 
-/** The subset of `__TAURI_EVENT_PLUGIN_INTERNALS__` the frontend reaches for. */
+/**
+ * The subset of `__TAURI_EVENT_PLUGIN_INTERNALS__` the frontend reaches for.
+ *
+ * Both parameters are named. `unlisten()` calls this with the event name and the id it was given,
+ * and a declaration that took neither described a function that would have had to drop every
+ * listener for the event — which is the bug `tauri-mock.ts` documents having fixed at runtime while
+ * this type still said otherwise.
+ */
 export interface TauriEventPluginInternalsMock {
-  unregisterListener: () => void;
+  unregisterListener: (event: string, eventId: number) => void;
+}
+
+/**
+ * One command as the transport recorded it.
+ *
+ * `args` stays `unknown`: what a spec asserts about it varies per command, and narrowing is the
+ * spec's job.
+ */
+export interface RecordedInvocation {
+  cmd: string;
+  args: unknown;
+}
+
+/**
+ * The spec-facing side of the deterministic transport.
+ *
+ * Deliberately not part of `__TAURI_INTERNALS__`, so nothing the app can reach depends on it. It is
+ * declared here rather than described inline at each `page.evaluate` because it was described four
+ * times, three of them partially, and a `page.evaluate` returns whatever its callback claims —
+ * there is no runtime check on the other side of that boundary to catch a wrong one.
+ */
+export interface AnimaTauriMock {
+  /** Deliver `payload` to every listener registered for `name`; returns how many were called. */
+  emit(name: string, payload: unknown): number;
+  /** Every command invoked so far, in order. */
+  invocations(): RecordedInvocation[];
+  /** How many listeners are registered for `name`. */
+  listenerCount(name: string): number;
 }
 
 declare global {
@@ -55,5 +92,7 @@ declare global {
     __mock_emit: (eventName: string, payload: unknown) => void;
     __TAURI_INTERNALS__: TauriInternalsMock;
     __TAURI_EVENT_PLUGIN_INTERNALS__: TauriEventPluginInternalsMock;
+    /** Installed by `installDeterministicTauri`; absent on a page that did not ask for it. */
+    __animaTauriMock: AnimaTauriMock;
   }
 }

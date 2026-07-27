@@ -364,7 +364,7 @@ export interface EnvironmentalState {
 
 // `head_directions` mirrors a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON OBJECT
 // keyed by agent id. It was declared here as an ARRAY of {agent_id, direction} — a shape the
-// backend has never sent. App.tsx was written against that same fiction, so the real object payload
+// backend does not send and never did. App.tsx was written against that same fiction, so the real object payload
 // fell through its `Array.isArray` guard and head directions silently never updated. The mock
 // agreeing with the consumer instead of with the backend is precisely why 237 passing tests could
 // not see it (G1.4).

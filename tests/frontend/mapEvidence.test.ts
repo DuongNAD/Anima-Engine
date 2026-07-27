@@ -150,7 +150,7 @@ describe('map evidence — the committed record, recomputed', () => {
   it('publishes a route the navigation photograph can actually show', { timeout: TIMEOUT }, () => {
     // The defect this is the regression for: the goal was picked as the farthest reachable node
     // inside a 200-unit radius, with no reference to where the camera was pointing. The route ran off
-    // the bottom-right corner of `navigation.png` and the goal pillar was never in the image, so a
+    // the bottom-right corner of `navigation.png` and the goal pillar fell outside the image, so a
     // reviewer could see a path and not where it ended — which is most of what a reachability claim
     // is. Independent visual review caught it; nothing in this file would have.
     //

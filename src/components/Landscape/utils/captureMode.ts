@@ -131,7 +131,7 @@ export const CAPTURE_READY_FLAG = '__animaCaptureReady';
 // comparator that read them. The reasoning was wrong in a specific way worth recording, because it is
 // the reasoning any future measurement of a stubborn last-bit difference will suggest again:
 //
-//   * "the hardware is nondeterministic" was never established. What was established is that *this
+//   * "the hardware is nondeterministic" is a claim nobody established. What was established is that *this
 //     pipeline* was nondeterministic. MSAA resolve order is one candidate cause among several, and
 //     the others — an undefined drawing-buffer read, a compositor recomposite, a screenshot encoder —
 //     were all still in the path when the measurement was taken.

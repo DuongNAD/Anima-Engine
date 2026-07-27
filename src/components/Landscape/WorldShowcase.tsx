@@ -90,18 +90,25 @@ const CAM_MODES: Array<{ key: CameraMode; label: string }> = [
  * says what it does to what.
  */
 function applyShadowPass(
-  gl: { shadowMap: THREE.WebGLShadowMap },
+  gl: { shadowMap: Pick<THREE.WebGLShadowMap, 'enabled'> },
   scene: THREE.Scene,
   enabled: boolean,
 ): void {
   gl.shadowMap.enabled = enabled;
   // Shadow toggling only takes effect after materials recompile.
+  //
+  // Checked rather than asserted at each step. `traverse` visits every `Object3D` — groups, lights
+  // and the camera rig's helpers included — and only some of those carry a material at all, so
+  // calling each one a `Mesh` and reading `.material` off it was a claim that was false for most of
+  // the scene and merely happened to yield `undefined`.
   scene.traverse((o: THREE.Object3D) => {
-    const mesh = o as THREE.Mesh;
-    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-    if (!mat) return;
-    if (Array.isArray(mat)) mat.forEach((m) => (m.needsUpdate = true));
-    else mat.needsUpdate = true;
+    if (!('material' in o)) return;
+    const mat: unknown = o.material;
+    if (Array.isArray(mat)) {
+      for (const m of mat) if (m instanceof THREE.Material) m.needsUpdate = true;
+    } else if (mat instanceof THREE.Material) {
+      mat.needsUpdate = true;
+    }
   });
 }
 
@@ -165,7 +172,7 @@ const CaptureReadySignal: React.FC<{ frames: number }> = ({ frames }) => {
     if (seen.current !== frames) return;
     setFrameloop('never');
     gl.render(scene, camera);
-    (window as unknown as Record<string, unknown>)[CAPTURE_READY_FLAG] = true;
+    window[CAPTURE_READY_FLAG] = true;
   });
   return null;
 };
@@ -212,7 +219,7 @@ export const WorldShowcase: React.FC = () => {
 
   // Diagnostics hook (like __worldScene): lets tooling inspect the generated world data.
   useEffect(() => {
-    (window as unknown as { __world?: World | null }).__world = world;
+    window.__world = world;
   }, [world]);
 
   // The scenic patch of LAND the world opens on, rather than the origin (usually open ocean).
@@ -427,7 +434,7 @@ export const WorldShowcase: React.FC = () => {
         onCreated={(state) => {
           state.scene.background = new THREE.Color('#9fd0e8');
           // Debug/diagnostics hook (harmless in prod): lets tooling inspect the scene graph.
-          (window as unknown as { __worldScene?: THREE.Scene }).__worldScene = state.scene;
+          window.__worldScene = state.scene;
           if (capture) {
             // Dithering is on by default and the spec leaves the pattern to the implementation. It
             // exists to hide banding when a higher-precision colour is written to a lower-precision

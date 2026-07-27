@@ -7,6 +7,7 @@ import {
   mockEnvironmentalState,
   mockSimulationTickPayload
 } from '../mocks/mock_ipc_payloads';
+import { setWholeTickPayloadDelivery } from '../mocks/tick-adaptation';
 
 // Mock pixi.js exactly like phase 5 and 6 test so rendering works in jsdom
 const mockGraphicsMethods = {
@@ -431,11 +432,18 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   it('Verify that a non-array response for get_active_raycasts does not crash the viewport rendering', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
+    // An object where the viewport expects an array — what `get_active_raycasts` returns when the
+    // backend serialises an empty map instead of an empty list.
+    //
+    // Delivered over IPC rather than set as a prop. `PixiViewport` reads this command itself, with
+    // `invoke<RaycastTelemetry[]>`, and that type parameter is an assertion and not a check: the
+    // object lands in a variable typed as an array exactly as it would in the running app. Setting
+    // the prop instead needed a cast, and proved the `Array.isArray` guard against a value no code
+    // path produces.
+    setupDefaultInvokeMock({ get_active_raycasts: {} });
+
     const error = await runWithInterceptors(() => {
-      // An object where the viewport expects an array — what `get_active_raycasts` returns when the
-      // backend serialises an empty map instead of an empty list. `as never` states that this is
-      // outside the prop's type, which is the test's subject, rather than switching the check off.
-      render(<PixiViewport raycasts={{} as never} />);
+      render(<PixiViewport />);
     });
 
     expect(error).toBeNull();
@@ -443,16 +451,30 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     consoleSpy.mockRestore();
   });
 
-  it('Verify that emitting a Phase 6 simulation-tick event payload passed as segments prop does not crash PixiViewport rendering', async () => {
+  it('Verify that a whole simulation-tick payload delivered to the listener does not crash PixiViewport rendering', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const error = await runWithInterceptors(() => {
-      // The whole tick payload handed to the prop that wants only its `segments` array — a
-      // plausible wiring mistake, and the thing this test is about.
-      render(<PixiViewport segments={mockSimulationTickPayload as never} />);
-    });
+    // The backend emits `simulation-tick` in two shapes — a bare segment array, and the whole tick
+    // object carrying `segments` alongside `environmental_state`. The viewport's listener has to
+    // tell them apart, and this is the second one arriving intact.
+    //
+    // The mocked `emit` narrows an object payload to its `segments` for segment-shaped callbacks,
+    // which would hand this listener the array and test the wrong branch, so the adaptation is off
+    // for the duration.
+    setWholeTickPayloadDelivery(true);
+    try {
+      const mounted = await runWithInterceptors(() => {
+        render(<PixiViewport />);
+      });
+      expect(mounted).toBeNull();
 
-    expect(error).toBeNull();
+      const emitted = await runWithInterceptors(() => {
+        void emit('simulation-tick', mockSimulationTickPayload);
+      });
+      expect(emitted).toBeNull();
+    } finally {
+      setWholeTickPayloadDelivery(false);
+    }
 
     consoleSpy.mockRestore();
   });
@@ -462,7 +484,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   it('Verify production coordinate synchronization between segments and environmental elements', async () => {
     // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
     // that path is what this test is about. `process` is a real global here — this file already
-    // calls `process.listeners` — so the detour through `globalThis as any` bought nothing.
+    // calls `process.listeners` — so the detour through an untyped `globalThis` bought nothing.
     const originalVitest = process.env.VITEST;
     process.env.VITEST = 'false';
 
@@ -544,11 +566,13 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     // `elements` as an object rather than an array: what serde produces for an empty map, and a
-    // shape the viewport must survive rather than iterate.
-    const invalidEnvState = { elements: {} as never };
+    // shape the viewport must survive rather than iterate. Answered over IPC, because that is where
+    // it comes from — `PixiViewport` calls `invoke<EnvironmentalState>('get_environmental_elements')`
+    // and stores the reply, so the object reaches the same guard by the same route as in the app.
+    setupDefaultInvokeMock({ get_environmental_elements: { elements: {} } });
 
     const error = await runWithInterceptors(async () => {
-      render(<PixiViewport environmentalState={invalidEnvState} />);
+      render(<PixiViewport />);
       // Wait for async initPixi to complete
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -561,7 +585,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   it('Verify production coordinate mapping with NaN coordinates does not crash but results in NaN screen coordinates', async () => {
     // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
     // that path is what this test is about. `process` is a real global here — this file already
-    // calls `process.listeners` — so the detour through `globalThis as any` bought nothing.
+    // calls `process.listeners` — so the detour through an untyped `globalThis` bought nothing.
     const originalVitest = process.env.VITEST;
     process.env.VITEST = 'false';
 

@@ -11,9 +11,9 @@
 //
 // They used to be, all twenty-seven of them, with a comment saying so. That is not a small local
 // looseness: `IntrinsicElements` is what types *the entire 3D scene*, so every prop on every element
-// in every `World*` and `Landscape*` component was unchecked. It is also what forced the `null as any`
-// that appeared nineteen times in `Vegetation.tsx` alone — `args` was `any`, so nothing said what
-// belonged there, and the cast was people working around a type that had no content.
+// in every `World*` and `Landscape*` component was unchecked. It is also what forced the cast on
+// every `null` argument — nineteen of them in `Vegetation.tsx` alone. `args` had no declared
+// content, so nothing said what belonged there, and the casts were people working around that.
 //
 // The props below are the ones this codebase actually passes, typed against real three classes. That
 // is a smaller surface than r3f's own `ThreeElements` and a truthful one: it is checked, it is what
@@ -132,8 +132,8 @@ declare global {
      *
      * three accepts `null` for the first two and substitutes its own defaults, which is what lets a
      * component declare geometry and material as *children* and still put the count third. That is
-     * the shape the scene uses everywhere, and typing it is what removed nineteen `null as any`
-     * casts from `Vegetation.tsx`: the cast existed because `args` was `any` and said nothing.
+     * the shape the scene uses everywhere, and typing it is what removed nineteen casts on `null`
+     * arguments from `Vegetation.tsx`: they existed because `args` had no declared content.
      */
     instancedMesh: RenderableProps<THREE.InstancedMesh> & {
       args?: readonly [

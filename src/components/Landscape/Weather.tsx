@@ -3,9 +3,11 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { makeSceneRandom } from './utils/sceneClock';
 import { testAttrs } from './testAttrs';
+import type { WeatherKind } from './utils/weatherKind';
 
 interface WeatherProps {
-  weather: 'clear' | 'rain' | 'snow' | 'fog';
+  /** The shared union, not a fifth copy of it — see `utils/weatherKind.ts` for why there is one. */
+  weather: WeatherKind;
   precipitationRate?: number;
   fogDensity?: number;
   timeOfDay?: number;
@@ -85,7 +87,7 @@ export const Weather: React.FC<WeatherProps> = ({
 
   // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184).
   //
-  // Mount/unmount only, and the dependency list says so rather than an `eslint-disable-line`: the
+  // Mount/unmount only, and the dependency list says so rather than a per-line lint suppression: the
   // density this installs is the *initial* one, and `useFrame` below drives it every frame after.
   // Re-running on a density change would reinstall the fog mid-flight and discard whatever the
   // frame loop had eased it to. `INITIAL_FOG_DENSITY` is read once, on purpose.

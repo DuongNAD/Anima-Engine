@@ -1,4 +1,8 @@
 import type { Page } from '@playwright/test';
+// The `Window` augmentation this file installs against. Imported for the side effect so the
+// dependency is visible rather than ambient, exactly as the specs do.
+import './tauri-mock-types';
+import type { RecordedInvocation, TauriEventEnvelope, TauriInvokeArgs } from './tauri-mock-types';
 import type { ChronicleEvent } from '../../src/types/generated/ChronicleEvent';
 import type { EcosystemState } from '../../src/types/generated/EcosystemState';
 import type { EnvironmentalState } from '../../src/types/generated/EnvironmentalState';
@@ -46,7 +50,7 @@ export interface TauriMockHandle {
   /** Push an event to every listener registered for `name`. */
   emit(name: string, payload: unknown): Promise<void>;
   /** Every command invoked so far, in order. */
-  invocations(): Promise<Array<{ cmd: string; args: unknown }>>;
+  invocations(): Promise<RecordedInvocation[]>;
   /** Commands invoked at least once. */
   invokedCommands(): Promise<string[]>;
 }
@@ -143,9 +147,9 @@ export async function installDeterministicTauri(
 
   await page.addInitScript((table: Record<string, unknown>) => {
     interface MockState {
-      callbacks: Map<number, (payload: unknown) => void>;
+      callbacks: Map<number, (event: TauriEventEnvelope) => void>;
       listeners: Map<string, Array<{ handler: number; eventId: number }>>;
-      invocations: Array<{ cmd: string; args: unknown }>;
+      invocations: RecordedInvocation[];
       nextCallbackId: number;
       nextEventId: number;
     }
@@ -157,12 +161,12 @@ export async function installDeterministicTauri(
       nextEventId: 1,
     };
 
-    const internals = {
-      transformCallback(callback: (payload: unknown) => void, once?: boolean): number {
+    const internals: Window['__TAURI_INTERNALS__'] = {
+      transformCallback(callback: (event: TauriEventEnvelope) => void, once?: boolean): number {
         const id = state.nextCallbackId++;
-        state.callbacks.set(id, (payload: unknown) => {
+        state.callbacks.set(id, (event: TauriEventEnvelope) => {
           if (once) state.callbacks.delete(id);
-          callback(payload);
+          callback(event);
         });
         return id;
       },
@@ -172,7 +176,7 @@ export async function installDeterministicTauri(
       convertFileSrc(filePath: string, protocol = 'asset'): string {
         return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
       },
-      invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
+      invoke(cmd: string, args: TauriInvokeArgs): Promise<unknown> {
         state.invocations.push({ cmd, args: args ?? null });
 
         // The event plugin. `listen()` compiles to this; there is no separate channel.
@@ -206,7 +210,7 @@ export async function installDeterministicTauri(
       },
     };
 
-    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = internals;
+    window.__TAURI_INTERNALS__ = internals;
 
     // A second global, and not an optional one.
     //
@@ -215,7 +219,7 @@ export async function installDeterministicTauri(
     // teardown threw `Cannot read properties of undefined (reading 'unregisterListener')` — and
     // React 18 StrictMode mounts twice, so the very first render unsubscribed and threw. The
     // rejections took down the whole page.
-    (window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
       unregisterListener(event: string, eventId: number): void {
         const list = state.listeners.get(event);
         if (!list) return;
@@ -228,7 +232,7 @@ export async function installDeterministicTauri(
 
     // The spec-facing side. Kept separate from `__TAURI_INTERNALS__` so nothing the app can
     // reach depends on it.
-    (window as unknown as Record<string, unknown>).__animaTauriMock = {
+    window.__animaTauriMock = {
       emit(name: string, payload: unknown): number {
         const list = state.listeners.get(name) ?? [];
         for (const entry of list) {
@@ -243,33 +247,17 @@ export async function installDeterministicTauri(
 
   return {
     async emit(name: string, payload: unknown): Promise<void> {
-      await page.evaluate(
-        ([n, p]) =>
-          (
-            window as unknown as { __animaTauriMock: { emit(n: string, p: unknown): number } }
-          ).__animaTauriMock.emit(n as string, p),
-        [name, payload] as [string, unknown],
-      );
+      // A named tuple rather than an inline pair: `page.evaluate` takes exactly one argument, so
+      // the two have to travel together, and annotating the variable is what types the destructured
+      // halves inside the browser callback.
+      const call: [string, unknown] = [name, payload];
+      await page.evaluate(([n, p]) => window.__animaTauriMock.emit(n, p), call);
     },
-    async invocations(): Promise<Array<{ cmd: string; args: unknown }>> {
-      return page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __animaTauriMock: { invocations(): Array<{ cmd: string; args: unknown }> };
-            }
-          ).__animaTauriMock.invocations(),
-      );
+    async invocations(): Promise<RecordedInvocation[]> {
+      return page.evaluate(() => window.__animaTauriMock.invocations());
     },
     async invokedCommands(): Promise<string[]> {
-      const calls = await page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __animaTauriMock: { invocations(): Array<{ cmd: string; args: unknown }> };
-            }
-          ).__animaTauriMock.invocations(),
-      );
+      const calls = await page.evaluate(() => window.__animaTauriMock.invocations());
       return [...new Set(calls.map((c) => c.cmd))];
     },
   };

@@ -1,4 +1,5 @@
 import { vi, beforeEach } from 'vitest';
+import type { InvokeArgs } from '@tauri-apps/api/core';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import * as THREE from 'three';
 import {
@@ -11,6 +12,7 @@ import {
   mockChronicleHistory,
   mockEnvironmentalState
 } from './mocks/mock_ipc_payloads';
+import { tickPayloadIsAdapted } from './mocks/tick-adaptation';
 
 // Global canvas context mock setup.
 //
@@ -43,7 +45,20 @@ type MockCanvasContext = Pick<
 
 const mockContexts = new Map<HTMLCanvasElement, MockCanvasContext>();
 
-HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (this: HTMLCanvasElement, contextId: string) {
+/**
+ * The one `getContext` overload this file replaces.
+ *
+ * `HTMLCanvasElement` is assignable to the view below — its `'2d'` overload returns a
+ * `CanvasRenderingContext2D`, and that is a `MockCanvasContext` — so the line after it is an
+ * ordinary widening the compiler checks, not a cast. Writing the mock onto `prototype` directly
+ * needed one, because the DOM's `getContext` also has `'webgl'` and `'webgpu'` overloads that this
+ * mock cannot answer and that a cast said nothing about; naming the `'2d'` signature is what makes
+ * the returned stub checked against the members it claims.
+ */
+type Get2DContext = (this: HTMLCanvasElement, contextId: '2d') => MockCanvasContext | null;
+const canvasProto: { getContext: Get2DContext } = HTMLCanvasElement.prototype;
+
+canvasProto.getContext = vi.fn(function (this: HTMLCanvasElement, contextId: string) {
   if (contextId === '2d') {
     let ctx = mockContexts.get(this);
     if (!ctx) {
@@ -73,37 +88,63 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (th
     return ctx;
   }
   return null;
-}) as HTMLCanvasElement['getContext'];
+});
 
 // The r3f reconciler creates DOM elements for three objects under jsdom, so the methods a
 // three object would have get called on an `HTMLElement`. These stubs put them there.
 //
-// `HTMLElement.prototype` is typed with exactly the DOM's own members, so writing new ones needs a
-// view of it that admits them. `Record<string, unknown>` is that view — it says "an object with
-// string-keyed properties", which is true, and unlike `any` it still type-checks what is assigned.
-type Extensible = Record<string, unknown>;
-const htmlProto = HTMLElement.prototype as unknown as Extensible;
+// `HTMLElement.prototype` is typed with exactly the DOM's own members, so writing new ones onto it
+// is not an assignment the DOM types describe. The choice is between claiming the prototype is
+// something it is not and using the API that exists for adding a property to an object — and
+// `Object.defineProperty` is that API. It is already how the two accessors further down are
+// installed. Its descriptor would take any value at all, so `ThreeObjectStubs` is what keeps the
+// value checked: a stub with the wrong arity is a compile error here rather than a silent no-op in
+// a suite.
+
+/** The three-object members the r3f reconciler calls on the DOM elements it creates under jsdom. */
+interface ThreeObjectStubs {
+  /** `OrbitControls.update()`. */
+  update(): void;
+  /** `BufferGeometry.setIndex()`, which returns the geometry for chaining. */
+  setIndex(index: unknown): unknown;
+  computeVertexNormals(): void;
+  computeBoundingSphere(): void;
+}
+
+function defineThreeStub<K extends keyof ThreeObjectStubs>(
+  name: K,
+  value: ThreeObjectStubs[K],
+): void {
+  Object.defineProperty(HTMLElement.prototype, name, {
+    value,
+    configurable: true,
+    writable: true,
+  });
+}
 
 /** A three geometry with the one field these stubs record on it. */
-interface CapturingGeometry extends Extensible {
+interface CapturingGeometry {
   _capturedIndex?: unknown;
 }
 
 // Mock OrbitControls update method on HTMLElement to support JSDOM testing
-htmlProto.update = vi.fn();
+defineThreeStub('update', vi.fn());
 
 // Mock BufferGeometry methods and attributes on HTMLElement to support React Three Fiber under JSDOM
-htmlProto.setIndex = vi.fn().mockImplementation(function (this: CapturingGeometry, index: unknown) {
-  this._capturedIndex = index;
-  return this;
-});
+defineThreeStub(
+  'setIndex',
+  vi.fn(function (this: CapturingGeometry, index: unknown) {
+    this._capturedIndex = index;
+    return this;
+  }),
+);
 
-htmlProto.computeVertexNormals = vi.fn();
-htmlProto.computeBoundingSphere = vi.fn();
+defineThreeStub('computeVertexNormals', vi.fn());
+defineThreeStub('computeBoundingSphere', vi.fn());
 
 // Capture custom attributes set on elements (like BufferAttributes on bufferGeometry)
 /** An element that lazily grows the attribute map the vegetation tests read back. */
-interface CapturingElement extends Extensible {
+interface CapturingElement {
   __capturedAttributes?: Map<string, unknown>;
   _capturedAttributes: Map<string, unknown>;
 }
@@ -119,15 +160,17 @@ Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
 });
 
 const originalSetAttribute = HTMLElement.prototype.setAttribute;
-HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-  this: CapturingElement,
+HTMLElement.prototype.setAttribute = vi.fn(function (
+  this: HTMLElement & CapturingElement,
   name: string,
   value: unknown
 ) {
   if (value instanceof THREE.BufferAttribute) {
     this._capturedAttributes.set(name, value);
   } else {
-    originalSetAttribute.call(this, name, value);
+    // The real `setAttribute` takes a string and coerces anything else, which is what the DOM does
+    // to every value r3f passes through here. Saying so is what lets this call be checked.
+    originalSetAttribute.call(this, name, String(value));
   }
 });
 
@@ -143,7 +186,7 @@ interface MockGeometry {
 }
 
 /** An element standing in for a `Points`, lazily growing the geometry it is asked for. */
-interface GeometryHolder extends Extensible {
+interface GeometryHolder {
   _mockGeometry?: MockGeometry;
   _mockPositionAttr?: MockPositionAttribute;
 }
@@ -178,6 +221,46 @@ interface MockTauriEvent {
   payload: unknown;
 }
 
+/**
+ * One named argument from an `invoke` call.
+ *
+ * `InvokeArgs` is a union — a record of named arguments, but also `number[]`, `ArrayBuffer` and
+ * `Uint8Array` for the raw-payload form — so `args?.file_path` is not a property that exists on it.
+ * Every command mocked below uses the record form; this is where that is established rather than
+ * assumed.
+ */
+function invokeArg(args: InvokeArgs | undefined, name: string): unknown {
+  if (!args || Array.isArray(args) || args instanceof ArrayBuffer || ArrayBuffer.isView(args)) {
+    return undefined;
+  }
+  return args[name];
+}
+
+/** `value` seen as what a parsed IPC argument is: an object of unchecked fields. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+/**
+ * `value` as evolution settings, or `null`.
+ *
+ * Checked rather than asserted, because the validation below is the whole behaviour this command
+ * mocks: a caller that sends the wrong shape must reach "missing settings", not read `undefined`
+ * out of a value the types promised had numbers in it.
+ */
+function asEvolutionSettings(value: unknown): EvolutionSettings | null {
+  if (!isRecord(value)) return null;
+  const { mutation_rate, selection_bias, grid_resolution } = value;
+  if (
+    typeof mutation_rate !== 'number' ||
+    typeof selection_bias !== 'number' ||
+    typeof grid_resolution !== 'number'
+  ) {
+    return null;
+  }
+  return { mutation_rate, selection_bias, grid_resolution };
+}
+
 // Global event bus listeners for testing IPC events
 const listeners = new Map<string, Array<(event: MockTauriEvent) => void>>();
 
@@ -203,14 +286,13 @@ vi.mock('@tauri-apps/api/event', () => ({
     const list = listeners.get(eventName) || [];
     list.forEach(callback => {
       let finalPayload = payload;
-      if (eventName === 'simulation-tick' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      if (isRecord(payload) && eventName === 'simulation-tick' && !Array.isArray(payload)) {
         // Some consumers subscribe to the whole tick payload and some to just its `segments`. The
         // callback's source is the only thing that distinguishes them here, which is ugly and is
-        // what the tests were written against; the flag is the escape hatch for tests that want the
-        // whole payload regardless.
-        const flags = globalThis as typeof globalThis & { disableTickAdaptation?: boolean };
-        if (callback.toString().includes('segmentsRef.current') && !flags.disableTickAdaptation) {
-          finalPayload = (payload as { segments?: unknown }).segments;
+        // what the tests were written against; `tick-adaptation.ts` is the switch for a test whose
+        // subject is the whole-object shape.
+        if (tickPayloadIsAdapted() && callback.toString().includes('segmentsRef.current')) {
+          finalPayload = payload.segments;
         }
       }
       callback({ event: eventName, payload: finalPayload });
@@ -239,7 +321,7 @@ beforeEach(() => {
       case 'get_map_elites_grid':
         return mockMapElitesGridState;
       case 'update_evolution_settings': {
-        const settings = args?.settings as EvolutionSettings | undefined;
+        const settings = asEvolutionSettings(invokeArg(args, 'settings'));
         if (!settings) {
           throw new Error("Missing settings argument.");
         }
@@ -267,13 +349,13 @@ beforeEach(() => {
       case 'get_chronicle_history':
         return mockChronicleState;
       case 'save_simulation_state': {
-        if (typeof args?.file_path !== 'string') {
+        if (typeof invokeArg(args, 'file_path') !== 'string') {
           throw new Error("Missing or invalid file_path argument.");
         }
         return true;
       }
       case 'load_simulation_state': {
-        if (typeof args?.file_path !== 'string') {
+        if (typeof invokeArg(args, 'file_path') !== 'string') {
           throw new Error("Missing or invalid file_path argument.");
         }
         return true;

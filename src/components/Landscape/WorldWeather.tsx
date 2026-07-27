@@ -112,7 +112,7 @@ export const WorldWeather: React.FC<WorldWeatherProps> = ({
   // Own scene.fog with a linear fog; transitions are eased toward the target in useFrame.
   //
   // The profile installed here is the one the *first* render asked for, captured at mount. That is
-  // what the old empty dependency list meant, and it needed an `eslint-disable` to say it: with
+  // what the old empty dependency list meant, and it needed a lint suppression to say it: with
   // `weather`/`timeOfDay`/`worldScale` in the list the effect reinstalls the fog mid-flight on any
   // change and throws away whatever the frame loop had eased it to. Held in a ref, the effect's one
   // real dependency is the scene, and the list can be honest.

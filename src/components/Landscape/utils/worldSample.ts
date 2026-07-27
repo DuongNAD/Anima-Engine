@@ -1,5 +1,35 @@
 import type { World } from './worldGen';
+import type { FloraSource } from './floraClearance';
 import { buildFloraColliderIndex, floraOverlapAt, resolveFloraOverlap } from './floraClearance';
+
+/**
+ * The fields `biomeAt` reads.
+ *
+ * Declared narrow for the reason `FloraSource` is: `World` satisfies it structurally, and a caller
+ * that only wants a biome lookup — a test with a hand-drawn 2x2 grid, most of all — can hand in the
+ * two fields instead of manufacturing twenty typed arrays it will never read.
+ *
+ * `biome` is optional because the function guards for it. An older or partially-built world really
+ * can arrive without one, which is why the guard is there, and an optional field is how a caller
+ * gets to exercise that branch rather than assert its way around it.
+ */
+export interface BiomeSource {
+  size: number;
+  biome?: Uint8Array;
+}
+
+/**
+ * The fields `findSpawn` reads: a biome grid, the terrain it scores, and the flora it must clear.
+ *
+ * Optionality mirrors the guards in the function body exactly — `biome`/`elevation` short-circuit to
+ * the origin, `slope`/`shore` score as zero. Nothing here is optional that the code trusts.
+ */
+export interface SpawnSource extends FloraSource, BiomeSource {
+  elevation?: Float32Array;
+  slope?: Float32Array;
+  shore?: Float32Array;
+  seaLevel: number;
+}
 
 // ---------------------------------------------------------------------------------------
 // Shared sampling helpers for the SoA world. Keeping these in one place guarantees the
@@ -86,7 +116,7 @@ function spawnBiomeScore(b: number): number {
  * If no scored cell is clear at all — a fully forested world — the best cell is taken and stepped
  * out of the canopy deterministically rather than returned as-is.
  */
-export function findSpawn(world: World, renderSize: number): { x: number; z: number } {
+export function findSpawn(world: SpawnSource, renderSize: number): { x: number; z: number } {
   const { size, biome, elevation, slope, shore, seaLevel } = world;
   if (!biome || biome.length < size * size || !elevation) return { x: 0, z: 0 };
 
@@ -189,7 +219,7 @@ export function surfaceHeight(
  * [-renderSize/2, renderSize/2] on both axes. Returns Ocean (0) when off-map or when the
  * world has no biome field. Nearest-cell lookup (biomes are categorical — no interpolation).
  */
-export function biomeAt(world: World, x: number, z: number, renderSize: number): number {
+export function biomeAt(world: BiomeSource, x: number, z: number, renderSize: number): number {
   if (!world.biome || world.biome.length < world.size * world.size) return 0;
   const u = x / renderSize + 0.5;
   const v = z / renderSize + 0.5;
