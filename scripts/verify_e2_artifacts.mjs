@@ -79,7 +79,10 @@ function verifyNothingUncovered(dir, covered, label) {
       const child = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         // `smoke/` and `replay/` carry their own checksums file and are verified separately.
-        if (child === 'smoke' || child === 'replay') continue;
+        // `superseded/` holds failed attempts, kept deliberately: each retains the
+        // `checksums.sha256` it was written with, and none of it may feed the analysis, so it is
+        // neither re-verified against the current preregistration nor allowed to fail this walk.
+        if (child === 'smoke' || child === 'replay' || child === 'superseded') continue;
         walk(child);
       } else if (!skip.has(child)) {
         if (!covered.has(child)) fail(`${label}: ${child} exists but no checksum covers it`);

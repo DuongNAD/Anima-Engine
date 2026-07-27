@@ -69,19 +69,48 @@ fn built_adapter() -> LiveExperimentAdapter {
 
 /// Every ambiguous pair, as Bevy sees it. `(NodeId, NodeId, Vec<ComponentId>)`; an empty component
 /// list means the pair conflicts on `World` access rather than on a named component.
+///
+/// # The names must come from `Schedule::systems`, not `ScheduleGraph::systems`
+///
+/// This function got that wrong once, and the mistake is worth a comment because it is silent.
+/// `ScheduleGraph::systems` yields `system_node.inner.as_deref()?` — and initialization *moves*
+/// every system out of its graph node into `Schedule::executable`, leaving `inner` as `None`. After
+/// the schedule has run even once, that iterator is therefore **empty**: the name map came out
+/// empty, every lookup fell through to the `{id:?}` fallback, and a gate asserting that no pair of
+/// named energy systems is ambiguous passed by comparing `"System(13)"` against a list it could
+/// never match. It printed `System(0) <-> System(13)`, which was the visible evidence that nothing
+/// was being checked.
+///
+/// `Schedule::systems` reads `executable`, which is where the systems actually are, and returns
+/// `Err(ScheduleNotInitialized)` rather than an empty iterator if they are not — a failure that is
+/// loud instead of vacuous.
 fn ambiguous_pairs(a: &mut LiveExperimentAdapter) -> Vec<(String, String, usize)> {
-    let graph = a.schedule_mut().graph();
-    let names: std::collections::HashMap<_, _> = graph
+    let schedule: &bevy_ecs::schedule::Schedule = a.schedule_mut();
+    let names: std::collections::HashMap<_, _> = schedule
         .systems()
-        .map(|(id, system, _)| (id, short(&system.name())))
+        .expect("the schedule has been initialized by run_schedule_once")
+        .map(|(id, system)| (id, short(system.name().as_ref())))
         .collect();
-    let mut out: Vec<(String, String, usize)> = graph
+    assert!(
+        !names.is_empty(),
+        "no system names were resolved, so any assertion built on them would be vacuous"
+    );
+    let mut out: Vec<(String, String, usize)> = schedule
+        .graph()
         .conflicting_systems()
         .iter()
         .map(|(a, b, comps)| {
+            // No `unwrap_or_else` fallback: an unresolved id is the failure this function exists to
+            // never have again, so it panics rather than printing something that looks like data.
             let (x, y) = (
-                names.get(a).cloned().unwrap_or_else(|| format!("{a:?}")),
-                names.get(b).cloned().unwrap_or_else(|| format!("{b:?}")),
+                names
+                    .get(a)
+                    .unwrap_or_else(|| panic!("no name for {a:?}"))
+                    .clone(),
+                names
+                    .get(b)
+                    .unwrap_or_else(|| panic!("no name for {b:?}"))
+                    .clone(),
             );
             if x <= y {
                 (x, y, comps.len())

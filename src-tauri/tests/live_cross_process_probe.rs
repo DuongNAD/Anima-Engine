@@ -15,7 +15,9 @@
 
 use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
-use anima_engine_lib::core::live_experiment::{live_observables, LiveExperimentAdapter};
+use anima_engine_lib::core::live_experiment::{
+    live_observables, LiveExperimentAdapter, LIVE_OBSERVABLE_IDS,
+};
 
 const SEED: u64 = 999_983;
 const TICKS: u64 = 600;
@@ -46,18 +48,16 @@ fn print_one_runs_fingerprint_for_cross_process_comparison() {
         let mut world = a.world();
         live_observables(&mut world)
     };
-    let pick = |name: &str| -> String {
-        obs.iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| format!("{v:?}"))
-            .unwrap_or_default()
-    };
-    println!(
-        "PROBE checksum={checksum} mean_agent_energy={} animals_eu={} plants={} detritus={} agents={}",
-        pick("live.mean_agent_energy"),
-        pick("live.animals_eu"),
-        pick("plants"),
-        pick("detritus"),
-        pick("live.agent_count"),
+    // Every observable, printed to full `f64` precision — `{:?}` on an `f64` is shortest
+    // round-trip, so two processes agreeing on this line agree bit for bit. A subset would let a
+    // divergence hide in the observable nobody thought to print, which is how the census bug
+    // survived: the one gate that could have seen it compared a checksum that does not cover
+    // `EcosystemBiomass`.
+    assert_eq!(
+        obs.len(),
+        LIVE_OBSERVABLE_IDS.len(),
+        "the probe must cover every observable the adapter emits"
     );
+    let body: Vec<String> = obs.iter().map(|(k, v)| format!("{k}={v:?}")).collect();
+    println!("PROBE checksum={checksum} {}", body.join(" "));
 }

@@ -102,10 +102,37 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         wrap_coordinates_system.after(apply_deferred),
         rebuild_spatial_grid_system.after(wrap_coordinates_system),
         crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
-        metabolic_decay_system.after(integrate_physics_system),
+        // ---- The energy pipeline, declared end to end -------------------------------------------
+        //
+        // These four plus `herbivore_grazing_system`, `resource_field_regrowth_system` and
+        // `ecosystem_census_system` are every system that moves EU into or out of an agent reserve
+        // or a biomass compartment. Bevy reported **seven** unordered conflicting pairs among them,
+        // which meant the order was picked by topological sort — per process, not by this file — and
+        // the orders do not commute: whether an agent eats before or after it burns decides whether
+        // it starves, and `f32` reserves clamped at zero do not add associatively.
+        //
+        // Measured before this chain existed: twelve processes of one binary at one seed produced
+        // two different world checksums and two different `live.mean_agent_energy` values. That is
+        // the primary observable of experiment E2 moving because of a hash seed.
+        //
+        // The declared order is acquire → contest → spend → count:
+        //
+        //   herbivore_grazing → resource_field_regrowth → detect_food_collisions
+        //     → combat → metabolic_decay → ecosystem_census
+        //
+        // Any total order would remove the ambiguity; this one is chosen because it reads as a tick
+        // of an animal's day and because grazing-before-regrowth was already declared for its own
+        // reason (both consumers draw on the same standing field before it grows back).
+        metabolic_decay_system
+            .after(integrate_physics_system)
+            .after(combat_system),
         spawn_food_system.after(apply_environmental_effects_system),
-        detect_food_collisions_system.after(integrate_physics_system),
-        combat_system.after(integrate_physics_system),
+        detect_food_collisions_system
+            .after(integrate_physics_system)
+            .after(resource_field_regrowth_system),
+        combat_system
+            .after(integrate_physics_system)
+            .after(detect_food_collisions_system),
         hrrl_learning_system.after(metabolic_decay_system),
         // Runs after `hrrl_learning_system`, which is where `LastTransitionState` and the
         // homeostatic deviation this reads are refreshed. Returns immediately unless both
