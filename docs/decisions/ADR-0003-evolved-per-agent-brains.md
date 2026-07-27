@@ -492,6 +492,21 @@ nó không nói gì về việc treatment tốt hơn hay tệ hơn. Việc đó 
 được **tiền đăng ký trước khi chạy**, và kết quả của nó sẽ được ghi vào ADR này khi đã có — không
 sớm hơn.
 
+Bộ tiền đăng ký đó (E2) đã có, và **chưa chạy gì**:
+[requirements](../ai/requirements/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[design](../ai/design/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[planning](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[testing](../ai/testing/2026-07-27-experiment-e2-evolved-brain-default.md), manifest máy đọc được ở
+`src-tauri/tests/fixtures/experiments_e2/`. Quy tắc quyết định — bao gồm việc **kết quả âm hoặc null
+vẫn là kết quả**, và một lỗi thật của đường não tiến hoá phải được ghi là **lỗi** chứ không được
+giấu thành "chưa đủ bằng chứng" — nằm ở planning §8.
+
+Phiên tiền đăng ký cũng tìm ra hai điều kiện chặn: `LiveExperimentAdapter` **chưa có đường nào** để
+manifest yêu cầu `evolved = true` (`build_live_world` chèn cứng `BrainPolicy::default()`), và
+`live_experiment::genesis` **không** tạo `AgentBrain` kể cả khi cờ bật — khác genesis của app trong
+`simulation_loop.rs`. Nhánh treatment vì thế **chưa tồn tại**; đặc tả seam đã được chốt trước ở
+design §3 để nó không thể được chỉnh sau khi nhìn thấy số.
+
 ## Tài liệu bị ảnh hưởng
 
 - Contract: [`CREATURE_DEVELOPMENT_CONTRACT.md`](../reference/CREATURE_DEVELOPMENT_CONTRACT.md)

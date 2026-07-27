@@ -1,0 +1,182 @@
+{
+  "schema_version": 1,
+  "preregistration_id": "e2-evolved-brain-default",
+  "registered_on": "2026-07-27",
+  "registered_at_parent_commit": "96d54d9",
+  "contains_results": false,
+  "question": "Under the same world identity and the same seed, does a per-agent evolved brain (evolved=true) change outcomes relative to the default shared BrainModel (evolved=false), and in which direction?",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "harness": "core::experiment_runner::run_paired_ensemble_with_control",
+  "manifests": {
+    "control": "e2-control-shared-brain.json",
+    "treatment": "e2-treatment-evolved-brain.json",
+    "smoke_control": "e2-smoke-control-shared-brain.json",
+    "smoke_treatment": "e2-smoke-treatment-evolved-brain.json"
+  },
+  "declared_factor": {
+    "factor_diff_allowed_paths": [
+      "initial_conditions"
+    ],
+    "exact_initial_condition_difference": {
+      "key": "live.evolved_brains",
+      "control_value": null,
+      "treatment_value": 1.0
+    },
+    "every_other_initial_condition_must_match": true
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "role": "primary",
+      "observable": "live.mean_agent_energy",
+      "statistic": "paired_mean_delta",
+      "direction": "negative",
+      "rationale": "Treatment brains are randomly initialised and never selected (the adapter runs no evolution thread), and the actor head is a sigmoid, so gate outputs sit near 0.5 while ACTION_GATE_THRESHOLD is 0.5 and the legacy gates are pinned fully open at 1.0. Partially closing feed_intent should lower energy intake."
+    },
+    {
+      "id": "H2",
+      "role": "secondary",
+      "observable": "live.agent_count",
+      "statistic": "paired_mean_delta",
+      "direction": "non_positive"
+    },
+    {
+      "id": "H3",
+      "role": "secondary",
+      "observable": "live.animals_eu",
+      "statistic": "paired_mean_delta",
+      "direction": "negative"
+    },
+    {
+      "id": "H4",
+      "role": "secondary",
+      "observable": "live.predator_count",
+      "statistic": "paired_mean_delta",
+      "direction": "two_sided",
+      "rationale": "attack_intent closes in the same way feed_intent does, which relieves predation pressure on prey while also starving predators; the net sign is not predictable from the mechanism."
+    },
+    {
+      "id": "H5",
+      "role": "harness_integrity",
+      "observable": "live.closed_eu_total",
+      "statistic": "paired_mean_delta",
+      "direction": "two_sided",
+      "decision_effect": "none",
+      "rationale": "Reported for both arms as an implementation check, never as a treatment outcome. A paired difference past the materiality threshold is filed as a defect finding, not as evidence about brains."
+    }
+  ],
+  "seeds": {
+    "n_requested": 12,
+    "min_complete_pairs_for_a_decision": 10,
+    "execution_order": [
+      700001,
+      701001,
+      702001,
+      703001,
+      704001,
+      705001,
+      706001,
+      707001,
+      708001,
+      709001,
+      710001,
+      711001
+    ],
+    "rule": "seed_k = 700001 + 1000*k for k in 0..11, fixed before any run",
+    "smoke_seed": 999983,
+    "smoke_seed_is_excluded_from_analysis": true,
+    "smoke_seed_exclusion_is_mechanical": "999983 is absent from both experimental manifests' seed lists, and run_manifest_seed returns RunStatus::Failed{SeedNotInManifest} for a seed the manifest does not declare, so the smoke seed cannot enter the experimental ensemble even by mistake."
+  },
+  "duration": {
+    "duration_ticks": 18000,
+    "duration_ticks_ladder": [
+      18000,
+      12000,
+      6000
+    ],
+    "ladder_rule": "The rung is chosen ONCE, from the smoke calibration, before any experimental seed runs. It may never be changed after an experimental seed has run.",
+    "sample_period": 600,
+    "samples_per_run": 30,
+    "warmup_ticks": 3000,
+    "warmup_samples_excluded_from_time_averages": 5,
+    "tail_window_ticks": [
+      14400,
+      18000
+    ]
+  },
+  "thresholds": {
+    "materiality_rule": "all_of",
+    "conditions": [
+      "ci95 on paired_mean_delta excludes 0",
+      "abs(paired_dz) >= 0.8",
+      "abs(paired_mean_delta) >= 0.05 * abs(control_mean)"
+    ],
+    "null_result_rule": "ci95 includes 0, OR abs(paired_mean_delta) < 0.05 * abs(control_mean)",
+    "between_rule": "detectable but below the preregistered materiality threshold; counts as NOT different enough"
+  },
+  "reporting": {
+    "per_observable_fields": [
+      "n_requested",
+      "n_complete_pairs",
+      "control_mean",
+      "treatment_mean",
+      "paired_mean_delta",
+      "paired_sd",
+      "paired_se",
+      "ci95_low",
+      "ci95_high",
+      "paired_dz"
+    ],
+    "additional_derived": [
+      "median_of_per_seed_deltas",
+      "between_seed_variance_of_deltas",
+      "per_seed_delta_table"
+    ],
+    "failed_runs": "every failed run is reported with its seed and reason; none is dropped",
+    "negative_and_null_results_are_valid_results": true,
+    "metric_switching_after_results": "forbidden"
+  },
+  "cost": {
+    "total_ticks": 432000,
+    "measured_subset_us_per_tick_release": 68.9,
+    "measured_subset_source": "benchmark_report.json criterion medians on Intel Core i5-14600KF: step_regrowth_gated_strided 55.0 us + rebuild_spatial_grid_system@100 13.4 us + integrate_physics_system@100 0.49 us",
+    "full_tick_multiplier_estimate": [
+      3,
+      15
+    ],
+    "full_tick_multiplier_is_an_engineering_estimate_not_a_measurement": true,
+    "projected_wall_clock_minutes_release": [
+      1.5,
+      7.4
+    ],
+    "max_wall_clock_minutes": 90,
+    "build_profile_required": "release",
+    "on_budget_exceeded": "step down the preregistered duration ladder using the smoke calibration only, before any experimental seed runs; never lower N, and never change T after data exists"
+  },
+  "artifacts": {
+    "root": "artifacts/experiments/e2-evolved-brain-default/",
+    "files": {
+      "paired-report.json": "serde_json of core::experiment_runner::PairedEnsembleReport",
+      "effects.json": "the per-observable table named in reporting.per_observable_fields plus additional_derived",
+      "per-seed-deltas.csv": "seed,observable,control_final,treatment_final,delta",
+      "provenance.json": "build commit, cargo/rustc versions, host, profile, start/end timestamps, control+treatment manifest fingerprints, law fingerprint, registry fingerprint, the observed WorldIdentity resource from each arm, seed list, smoke seed, duration rung used",
+      "summary.md": "human-readable table plus the decision the rules below produce",
+      "smoke/": "the calibration run's outputs, kept separate and never merged into the analysis"
+    }
+  },
+  "reproduction_command": "cargo run --release --features desktop --example run_e2_brain_experiment -- --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+  "blocking_preconditions": [
+    "P1: core::live_experiment::build_live_world hard-codes BrainPolicy::default(), so no manifest can request evolved=true.",
+    "P2: core::live_experiment::genesis never inserts an AgentBrain, unlike the app genesis in core::simulation_loop, so the treatment arm has no brains even with the policy on.",
+    "P3: no runner binary exists for this experiment; the reproduction_command names one E2-B must add."
+  ],
+  "decision_rule": {
+    "flip_default_to_evolved_true_only_if": "H1 reaches materiality in the POSITIVE direction (treatment better) AND no harness-integrity finding is open AND cargo test --features desktop stays green AND EB-S03 allocs==0 still holds",
+    "keep_opt_in_if": "H1 is null, or reaches materiality in the negative direction",
+    "insufficient_evidence_if": "fewer than 10 complete pairs, or a blocking precondition was satisfied in a way that departs from this preregistration",
+    "additional_evidence_named_for_insufficient": "a run in which evolutionary replacement actually operates, so selection has something to act on; the adapter today drains epoch statistics and never applies a replacement, so E2 measures brains that are never selected",
+    "defects_are_not_insufficiency": "a real evolved-brain defect found during E2 is recorded and fixed as a defect; it may never be reported as insufficient evidence"
+  }
+}

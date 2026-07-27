@@ -341,6 +341,21 @@ van mở so với bố cục trước bước 4. Lý do bỏ mốc cũ và cái 
 (`evolved: true` hay giữ opt-in) cần **bằng chứng đối chứng nhiều seed được tiền đăng ký trước khi
 chạy**. Re-baseline chỉ trả lại một baseline có thật để so; nó không nói gì về hướng của treatment.
 
+**Tiền đăng ký E2 đã xong 2026-07-27, và CHƯA CHẠY GÌ.** Câu hỏi cố định, giả thuyết có hướng,
+metric chính/phụ chọn từ đúng 11 observable mà `LiveExperimentAdapter` phát ra, N = 12 seed liệt kê
+tường minh, T = 18.000 tick, ngưỡng "khác đủ nhiều", ngữ nghĩa seed và ranh giới suy luận, ước lượng
+chi phí và quy tắc quyết định cho ADR-0003 — tất cả nằm ở
+[planning E2](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) (kèm
+[requirements](../ai/requirements/2026-07-27-experiment-e2-evolved-brain-default.md),
+[design](../ai/design/2026-07-27-experiment-e2-evolved-brain-default.md),
+[testing](../ai/testing/2026-07-27-experiment-e2-evolved-brain-default.md)), manifest máy đọc được ở
+`src-tauri/tests/fixtures/experiments_e2/`, gate `tests/prereg_e2_manifest_tests.rs` **9/9**.
+
+**Hai điều kiện chặn phải mở trước khi chạy** (đặc tả chốt sẵn ở design §3, E2-B **không** được
+thiết kế lại): `build_live_world` chèn cứng `BrainPolicy::default()` nên không manifest nào xin được
+`evolved = true`; và `live_experiment::genesis` **không** tạo `AgentBrain` kể cả khi cờ bật, khác
+genesis của app. **Nhánh treatment hiện chưa tồn tại.**
+
 **Định nghĩa hoàn thành:** ~~EB-S04 chuyển 🟡 → ✅~~ **xong** · quyết định mặc định được ghi thành
 mục quyết định trong ADR **sau** khi E2 chạy xong theo đúng tiền đăng ký · nếu bật mặc định thì
 `cargo test --features desktop` vẫn xanh và EB-S03 (`allocs == 0`) vẫn giữ.

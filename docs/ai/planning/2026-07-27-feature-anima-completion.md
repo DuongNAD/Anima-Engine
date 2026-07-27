@@ -241,7 +241,13 @@ decision must be recorded as an ADR decision item. That is an owner's call, not 
 >
 > **The default decision is deliberately still open**, and is now a *scientific* task rather than a
 > flag flip: it requires a preregistered, multi-seed controlled comparison. That preregistration is
-> its own dated package — see the E2 lifecycle docs — and nothing has been run.
+> its own dated package —
+> [requirements](../requirements/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+> [design](../design/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+> [planning](./2026-07-27-experiment-e2-evolved-brain-default.md) ·
+> [testing](../testing/2026-07-27-experiment-e2-evolved-brain-default.md) — and **nothing has been
+> run**. The treatment arm does not yet exist in the code, which is recorded there as two blocking
+> preconditions rather than worked around.
 
 ### DEC-2 — Canonical map view capture — **SUPERSEDED, and it was not mine to defer**
 
