@@ -765,6 +765,84 @@ impl ObservableRegistry {
         }
     }
 
+    /// The registry for the **live Bevy world** ([`crate::core::live_experiment`]).
+    ///
+    /// A separate registry rather than extra rows on [`reference_default`](Self::reference_default),
+    /// because the two worlds do not measure the same things: the reference world's `herbivores` is
+    /// a pool of EU, while the live world's herbivores are countable bodies whose energy is already
+    /// inside `live.animals_eu`. Giving both the id `herbivores` would put two different units under
+    /// one name, which is precisely the failure `ObservableSpec` exists to prevent.
+    ///
+    /// Two ids **are** deliberately shared with the reference registry — `plants` and `detritus` —
+    /// with the same unit (EU) and the same [`ConservationRole::ClosedEu`]. Those are the shared-law
+    /// quantities, and sharing the id is what lets a control/treatment result from one path be
+    /// compared, in direction and meaning, with the other. `live_and_reference_agree_on_shared_ids`
+    /// pins that they never drift apart.
+    pub fn live_default() -> Self {
+        use crate::core::sim_clock::{ECOLOGY_PERIOD, PHYSICS_PERIOD};
+        const LIVE_SOURCE: &str = "core::live_experiment::LiveExperimentAdapter";
+        let spec =
+            |id: &str, unit: &str, role: ConservationRole, max: f64, period: u64, cadence: &str| {
+                ObservableSpec {
+                    id: id.to_string(),
+                    display_name: id.to_string(),
+                    unit: unit.to_string(),
+                    scope: ObservableScope::World,
+                    cadence_name: cadence.to_string(),
+                    cadence_period: period,
+                    aggregation: Aggregation::Instant,
+                    valid_min: 0.0,
+                    valid_max: max,
+                    conservation: role,
+                    source: LIVE_SOURCE.to_string(),
+                }
+            };
+        let eu = |id: &str, role: ConservationRole| {
+            spec(
+                id,
+                EU_UNIT,
+                role,
+                Self::OPEN_UPPER_BOUND,
+                ECOLOGY_PERIOD,
+                "ecology",
+            )
+        };
+        let count = |id: &str| {
+            spec(
+                id,
+                "individuals",
+                ConservationRole::None,
+                Self::OPEN_UPPER_BOUND,
+                PHYSICS_PERIOD,
+                "physics",
+            )
+        };
+        let specs = vec![
+            eu("plants", ConservationRole::ClosedEu),
+            eu("detritus", ConservationRole::ClosedEu),
+            eu("live.animals_eu", ConservationRole::ClosedEu),
+            eu("live.closed_eu_total", ConservationRole::None),
+            count("live.agent_count"),
+            count("live.herbivore_count"),
+            count("live.predator_count"),
+            count("live.food_items"),
+            eu("live.standing_crop", ConservationRole::None),
+            eu("live.mean_agent_energy", ConservationRole::None),
+            spec(
+                "live.season_phase",
+                "fraction",
+                ConservationRole::None,
+                1.0,
+                ECOLOGY_PERIOD,
+                "ecology",
+            ),
+        ];
+        Self {
+            version: OBSERVABLE_REGISTRY_VERSION,
+            specs,
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<&ObservableSpec> {
         self.specs.iter().find(|s| s.id == id)
     }
@@ -1006,6 +1084,95 @@ pub fn validate_intervention(
         });
     }
     Ok(())
+}
+
+// ---- AE-210 reference fixtures ----------------------------------------------------------------
+
+/// The three AE-210 reference manifests, built by the same constructors the engine uses.
+///
+/// These *define* what `tests/fixtures/experiments/*.json` must contain. Two consumers depend on
+/// that being one definition rather than two:
+///
+/// - `ae210_fixtures_match_the_serializer` asserts the committed bytes still equal what this
+///   produces, so a schema change cannot land with stale fixtures beside it;
+/// - `examples/gen_ae_fixtures.rs` writes them, which is how you regenerate after an *intentional*
+///   change.
+///
+/// This used to be the body of a `#[ignore]`d test — a writer that only ran when someone remembered
+/// to type `--ignored`, guarding nothing in between. A test that writes into the repository is not a
+/// regression test; the regression test is the comparison, and the writer is a tool.
+///
+/// The trio is deliberate: a baseline, a treatment differing only in the exotic regime (so the pair
+/// is a clean AE-S08 control/treatment), and one that must be **rejected** by validation.
+///
+/// This is the **only** item the fixture work adds to the public API. The directory layout and the
+/// trailing-newline convention deliberately stay in the two consumers: neither is a property of an
+/// experiment manifest, and exporting them would widen the surface for no one's benefit.
+pub fn ae210_reference_manifests() -> Vec<(&'static str, ExperimentManifest)> {
+    use crate::core::exotic_energy::{ExoticEnergyLaw, ExoticInterventionKind};
+
+    let base = ExperimentManifest {
+        schema_version: MANIFEST_SCHEMA_VERSION,
+        experiment_id: "exp-1".into(),
+        name: "baseline".into(),
+        observer: ObserverPolicy::default(),
+        world_identity: WorldIdentity {
+            seed: 1337,
+            generator_version: 20,
+            width: 128,
+            height: 128,
+            checksum: 0xDEAD_BEEF,
+        },
+        laws: WorldLawSet::baseline(),
+        initial_conditions: InitialConditionSet::new(vec![
+            ("precip".into(), 1.0),
+            ("temperature".into(), 0.5),
+            ("plants".into(), 100.0),
+            ("herbivores".into(), 40.0),
+            ("predators".into(), 8.0),
+            ("detritus".into(), 0.0),
+        ]),
+        interventions: vec![],
+        seeds: vec![1, 2, 3],
+        duration_ticks: 6000,
+        sample_period: 600,
+        observable_ids: vec!["plants".into(), "herbivores".into()],
+        exotic_interventions: Vec::new(),
+    };
+
+    let mut mana = base.clone();
+    mana.experiment_id = "ae-mana-patchy".into();
+    mana.name = "mana-patchy-renewable".into();
+    mana.laws = WorldLawSet::with_exotic(ExoticEnergyLaw::mana_patchy(150.0, 4));
+    // The observable list is deliberately IDENTICAL to the baseline's, so the two fixtures differ
+    // only in the exotic regime (law + forcings). The treatment still *emits* the `exotic.*`
+    // observables — emission is model-driven and `RunResult` attaches metadata for everything
+    // emitted — so nothing is lost by not requesting them here.
+    mana.exotic_interventions = vec![ExoticIntervention {
+        id: 1,
+        cause_id: 901,
+        kind: ExoticInterventionKind::RemoveSource,
+        region: Region::Global,
+        start_tick: 3000,
+        duration_ticks: 1200,
+        amount: 0.25,
+        curve: Curve::Step,
+    }];
+
+    // Invalid on purpose: a negative source rate must be rejected by the law validator.
+    let mut invalid = mana.clone();
+    invalid.experiment_id = "ae-invalid-negative-source".into();
+    invalid.name = "invalid-negative-source".into();
+    invalid.exotic_interventions.clear();
+    if let Some(law) = invalid.laws.exotic_energy.as_mut() {
+        law.source_rate = -0.05;
+    }
+
+    vec![
+        ("baseline-no-exotic.json", base),
+        ("mana-patchy-renewable.json", mana),
+        ("invalid-negative-source.json", invalid),
+    ]
 }
 
 // ---- Experiment manifest (AE-103) ------------------------------------------------------------
@@ -2058,56 +2225,55 @@ mod tests {
             .unwrap_or_else(|e| panic!("missing AE fixture {}: {e}", p.display()))
     }
 
-    /// Regenerate the committed AE fixtures from the *real* serializer, so they can never drift from
-    /// the schema. Ignored by default (it writes into the repo); run explicitly with:
-    /// `cargo test --lib ae210_regenerate_fixtures -- --ignored --nocapture`.
+    /// The committed fixtures are exactly what the serializer produces today.
+    ///
+    /// This replaces a `#[ignore]`d test that *wrote* the fixtures: a writer nobody runs guards
+    /// nothing, and a schema change could land with the fixtures describing the previous schema
+    /// while every other AE-210 test still passed — they only ever asserted that the committed
+    /// bytes parse and validate, which stale bytes do.
+    ///
+    /// Bytes, not parsed values, so a change to *how* a manifest serializes is caught too. `\r\n`
+    /// is normalised first because `core.autocrlf=true` is the default on this project's
+    /// development machine and on `windows-latest`, so the working-tree bytes of a text file are
+    /// not necessarily the committed bytes — see `.gitattributes` for the same problem solved by
+    /// pinning, and the reason it is not worth pinning a fixture whose content is compared
+    /// semantically anyway.
     #[test]
-    #[ignore = "writes fixture files; run explicitly after an intentional schema change"]
-    fn ae210_regenerate_fixtures() {
-        use crate::core::exotic_energy::{
-            ExoticEnergyLaw, ExoticIntervention, ExoticInterventionKind,
-        };
-        let dir = fixture_path("");
-        std::fs::create_dir_all(&dir).expect("fixture dir");
-
-        let base = base_manifest();
-        let mut mana = base_manifest();
-        mana.experiment_id = "ae-mana-patchy".into();
-        mana.name = "mana-patchy-renewable".into();
-        mana.laws = WorldLawSet::with_exotic(ExoticEnergyLaw::mana_patchy(150.0, 4));
-        // NOTE: the observable list is deliberately IDENTICAL to the baseline's, so the two fixtures
-        // differ only in the exotic regime (law + forcings) and form a clean AE-S08 control/treatment
-        // pair. The treatment still *emits* the `exotic.*` observables — emission is model-driven, and
-        // `RunResult` attaches metadata for everything emitted — so nothing is lost by not requesting
-        // them here.
-        mana.exotic_interventions = vec![ExoticIntervention {
-            id: 1,
-            cause_id: 901,
-            kind: ExoticInterventionKind::RemoveSource,
-            region: Region::Global,
-            start_tick: 3000,
-            duration_ticks: 1200,
-            amount: 0.25,
-            curve: Curve::Step,
-        }];
-
-        // Invalid on purpose: a negative source rate must be rejected by the law validator.
-        let mut invalid = mana.clone();
-        invalid.experiment_id = "ae-invalid-negative-source".into();
-        invalid.name = "invalid-negative-source".into();
-        invalid.exotic_interventions.clear();
-        if let Some(law) = invalid.laws.exotic_energy.as_mut() {
-            law.source_rate = -0.05;
+    fn ae210_fixtures_match_the_serializer() {
+        for (name, manifest) in ae210_reference_manifests() {
+            // Same two lines `examples/gen_ae_fixtures.rs` writes with. Kept here rather than
+            // exported from the library because the file format is a property of the fixture
+            // directory, not of a manifest.
+            let expected =
+                serde_json::to_string_pretty(&manifest).expect("serialize fixture") + "\n";
+            let committed = load_fixture(name);
+            assert_eq!(
+                committed.replace("\r\n", "\n"),
+                expected,
+                "fixture {name} no longer matches the serializer. If the schema changed on \
+                 purpose, regenerate with `cargo run --example gen_ae_fixtures`."
+            );
         }
+    }
 
-        for (file, m) in [
-            ("baseline-no-exotic.json", &base),
-            ("mana-patchy-renewable.json", &mana),
-            ("invalid-negative-source.json", &invalid),
-        ] {
-            let json = serde_json::to_string_pretty(m).expect("serialize fixture");
-            std::fs::write(dir.join(file), json + "\n").expect("write fixture");
-        }
+    /// The reference set is the three files that are committed — no more, no fewer.
+    #[test]
+    fn ae210_reference_manifests_cover_exactly_the_committed_files() {
+        use std::collections::BTreeSet;
+        let declared: BTreeSet<String> = ae210_reference_manifests()
+            .into_iter()
+            .map(|(n, _)| n.to_string())
+            .collect();
+        let on_disk: BTreeSet<String> = std::fs::read_dir(fixture_path(""))
+            .expect("fixture dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.ends_with(".json"))
+            .collect();
+        assert_eq!(
+            declared, on_disk,
+            "the committed fixture files and `ae210_reference_manifests` have drifted apart"
+        );
     }
 
     #[test]

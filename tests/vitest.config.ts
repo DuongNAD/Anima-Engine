@@ -11,6 +11,33 @@ export default defineConfig({
     include: ['frontend/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     testTimeout: 15000,
+    // Bounded on purpose, and this is the single highest-value line in this file.
+    //
+    // Every file here pays for a full `render(<App />)` — the whole lazy module graph plus world
+    // generation, under jsdom. That is CPU-bound and memory-hungry, so letting Vitest default to
+    // one worker per core makes 26 files fight for the machine, each one's 15 s budget ticking
+    // while it is descheduled.
+    //
+    // The failure that produces is **misleading, not merely slow**: a render that never completes
+    // surfaces as `Unable to find an element with the text …` — an assertion-shaped message with a
+    // real DOM dump attached — so it reads as a broken expectation rather than a starved one.
+    // Measured on this machine (i5-14600KF, 2026-07-27) with an unrelated project's Vitest run
+    // occupying a core and 1.4 GB:
+    //
+    //   default workers  → 28 failed | 215 passed | 1 skipped, 26 files, wall 40.3 s
+    //   maxWorkers: 4    →  0 failed | 243 passed | 1 skipped, 26 files, wall 47.5 s
+    //
+    // Same commit, same assertions, minutes apart. Nothing was relaxed to get there: all 243
+    // assertions still run. It trades ~7 s of wall clock for a suite whose red means red. If this
+    // is ever raised, the thing to check is not the timeout — it is how many `render(<App />)`
+    // calls are running at once.
+    //
+    // The number therefore has to follow the machine, and 4 was measured on a 14-core desktop. A
+    // GitHub `ubuntu-latest` runner has **4 vCPU**, so 4 there is one worker per core with nothing
+    // left for the main thread — the same oversubscription the number was chosen to avoid. CI run
+    // 30269255861 reproduced the shape exactly: `phase3_ui` and `phase4_ui`, both `render(<App />)`
+    // files, hit `Test timed out in 15000ms` while the other 36 files passed, 430/432.
+    maxWorkers: process.env.CI ? 2 : 4,
   },
   resolve: {
     alias: {
@@ -23,7 +50,7 @@ export default defineConfig({
       // for the same reason. Only the R3F reconciler is mocked — real three runs headless — and a
       // mocked reconciler talking to a *second* copy of three would be worse than either alone.
       'three': path.resolve(__dirname, '../node_modules/three'),
-      '@react-three/fiber': path.resolve(__dirname, './mocks/react-three-fiber-mock.tsx'),
+      '@react-three/fiber': path.resolve(__dirname, './mocks/react-three-fiber-mock.ts'),
     },
   },
 });

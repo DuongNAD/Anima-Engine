@@ -12,6 +12,10 @@ target_*/
 # Generated map-vision manifest — regenerate with `npm run gen:manifest`
 # (source of truth is scripts/gen_map_manifest.ts, which is tracked)
 animal-map.manifest.json
+# NOTE: `artifacts/` is deliberately NOT ignored. `map_manifest.json` declares the SHA-256 of
+# `artifacts/world_256.anmw`, and the whole finding this closed was a manifest pointing at a file
+# that did not exist. Ignoring the bytes would put the checksum gate back to unverifiable on a fresh
+# clone. Regenerate both together with `npm run gen:world-manifest`.
 
 # Logs
 *.log
@@ -52,6 +56,7 @@ out*.txt
 # Agent Workspace Temp files
 .agents/
 .gemini/
+.worktrees/
 # Machine-specific Claude Code MCP config (absolute server paths; regenerate per machine)
 .mcp.json
 /tests/test-results/

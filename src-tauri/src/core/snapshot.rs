@@ -50,9 +50,17 @@ use std::path::Path;
 /// A bare `SavedSimulationState` on disk with no envelope around it is a version-1 or version-2
 /// file; [`read`] detects that and migrates it forward.
 /// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
-pub const SCHEMA_VERSION: u32 = 4;
+/// | 5 | Adds the live experiment state: manifest/law/registry fingerprints, the multi-rate clock's tick, and the causal ledger. |
+pub const SCHEMA_VERSION: u32 = 5;
 
-/// Oldest schema this build can still read. N−2 per the G1.2 requirement.
+/// Oldest **enveloped** schema this build can still read. N−2 per the G1.2 requirement.
+///
+/// This bound applies only to files that carry a `schema_version`, which means version 3 and up.
+/// Versions 1 and 2 were written as a bare `SavedSimulationState` with no envelope at all, so they
+/// have no version to compare and are handled by [`from_bytes`]'s pre-envelope path regardless of
+/// this constant. Raising the current version therefore does *not* strand a v1/v2 save — a claim
+/// worth checking rather than assuming, and `a_bare_pre_envelope_state_still_loads_and_reports_its_schema`
+/// is what checks it.
 pub const MIN_SUPPORTED_SCHEMA: u32 = SCHEMA_VERSION - 2;
 
 /// What produced a snapshot. Not used to gate loading — it is here so that a run which cannot be
@@ -102,16 +110,22 @@ pub struct SnapshotEnvelope {
     pub checksum: u32,
     /// The complete simulation state, held as raw JSON.
     ///
-    /// Raw, rather than a typed `SavedSimulationState`, for a reason that cost an afternoon:
-    /// **serde_json's `f64` round trip is not bit-exact.** A saved `eco_animals` of
-    /// `990.5102615356445` reads back as `990.5102615356444`. A checksum computed by
-    /// *re-serializing* the parsed state therefore disagrees with the one computed before writing,
-    /// and a perfectly good file fails its own integrity check.
+    /// Raw, rather than a typed `SavedSimulationState`, so that the bytes that were hashed, the
+    /// bytes on disk and the bytes that get verified are all literally the same bytes. A checksum
+    /// computed by *re-serializing* the parsed state is a checksum of a different artefact, and
+    /// every difference between the two is a false integrity failure.
     ///
-    /// Holding the state as [`RawValue`] means the bytes that were hashed, the bytes on disk and
-    /// the bytes that get verified are all literally the same bytes. It also makes the checksum
-    /// immune to map iteration order, since whatever order was written is the order that is hashed.
-    /// The state still appears as a normal nested object in the file, not an escaped string.
+    /// The historical reason given here was that "serde_json's `f64` round trip is not bit-exact",
+    /// citing `990.5102615356445` reading back as `...444`. The observation was real and the blame
+    /// was misplaced: serde_json **writes** floats with `ryu`, which is shortest-round-trip, and it
+    /// wrote that value exactly. The default **parser** was the approximate half, and `Cargo.toml`
+    /// now enables `float_roundtrip` to fix it — see
+    /// `snapshot_checkpoint_tests::serde_json_round_trips_every_awkward_f64_bit_for_bit`.
+    ///
+    /// [`RawValue`] still earns its place, because the failures it rules out are the ones that
+    /// remain: map iteration order, and any future change to how the envelope is formatted. Both
+    /// would move the bytes without moving the state. The state still appears as a normal nested
+    /// object in the file, not an escaped string.
     pub state: Box<serde_json::value::RawValue>,
 }
 
@@ -206,6 +220,17 @@ impl SnapshotEnvelope {
 /// flush, `sync_all`, then rename over the target. `sync_all` matters: without it the rename can
 /// land before the data does, and a power loss leaves a correctly-named empty file.
 pub fn write_atomic(path: &Path, envelope: &SnapshotEnvelope) -> Result<(), SnapshotError> {
+    let json = serde_json::to_vec_pretty(envelope)
+        .map_err(|e| SnapshotError::Malformed(format!("envelope is not serializable: {e}")))?;
+    write_bytes_atomic(path, &json)
+}
+
+/// The bytes-in half of [`write_atomic`], for callers that are not writing a snapshot envelope.
+///
+/// Extracted rather than duplicated because the property that matters — a failed write leaves the
+/// old file intact and no partial file behind — is easy to reimplement *almost* correctly. The tick
+/// capture's export writes through here for exactly that reason.
+pub fn write_bytes_atomic(path: &Path, json: &[u8]) -> Result<(), SnapshotError> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     if !dir.as_os_str().is_empty() {
         std::fs::create_dir_all(dir)
@@ -220,13 +245,10 @@ pub fn write_atomic(path: &Path, envelope: &SnapshotEnvelope) -> Result<(), Snap
     // file and interleave their bytes.
     let tmp_path = dir.join(format!(".{file_name}.{}.tmp", std::process::id()));
 
-    let json = serde_json::to_vec_pretty(envelope)
-        .map_err(|e| SnapshotError::Malformed(format!("envelope is not serializable: {e}")))?;
-
     {
         let mut file = std::fs::File::create(&tmp_path)
             .map_err(|e| SnapshotError::Io(format!("could not create temp file: {e}")))?;
-        file.write_all(&json)
+        file.write_all(json)
             .map_err(|e| SnapshotError::Io(format!("could not write temp file: {e}")))?;
         file.flush()
             .map_err(|e| SnapshotError::Io(format!("could not flush temp file: {e}")))?;
@@ -378,12 +400,15 @@ pub fn world_checksum(world: &mut bevy_ecs::world::World) -> u32 {
         }
     }
 
-    // Standing crop, cell by cell.
+    // Standing crop, cell by cell, plus which quarter of it the strided sweep visits next. The
+    // phase decides *which* cells grow on the following tick, so a world holding identical cells at
+    // a different phase is not the same world — see `ResourceField::regrowth_phase`.
     if let Some(field) = world.get_resource::<crate::core::ecology::ResourceField>() {
         bytes.extend_from_slice(&(field.r.len() as u32).to_le_bytes());
         for v in &field.r {
             bytes.extend_from_slice(&v.to_bits().to_le_bytes());
         }
+        bytes.extend_from_slice(&(field.regrowth_phase as u32).to_le_bytes());
     }
 
     // Detritus only — the one closed-energy compartment that is an authoritative store.
@@ -472,15 +497,22 @@ mod tests {
 
     #[test]
     fn the_checksum_covers_the_bytes_on_disk_not_a_reserialization() {
-        // serde_json`s f64 round trip is not bit-exact, so a checksum recomputed from a parsed
-        // state can disagree with the one written beside it. Hashing the raw bytes makes a file
-        // that was written correctly always verify.
+        // Hashing the raw bytes makes a file that was written correctly always verify, whatever
+        // happens between the parser and the struct. `eco_animals` is the value that used to be
+        // cited as proof that serde_json could not round-trip a float; it round-trips exactly now
+        // (`float_roundtrip`), and this still has to hold for the reasons `RawValue` is really
+        // there — map order and formatting.
         let mut state = state_fixture();
         state.eco_animals = 990.5102615356445;
         let envelope = SnapshotEnvelope::seal(state).expect("seal");
-        let bytes = serde_json::to_vec_pretty(&envelope).unwrap();
-        let back: SnapshotEnvelope = serde_json::from_slice(&bytes).unwrap();
+        let bytes = serde_json::to_vec_pretty(&envelope).expect("serialize envelope");
+        let back: SnapshotEnvelope = serde_json::from_slice(&bytes).expect("parse envelope");
         back.verify().expect("a file written correctly must verify");
+        assert_eq!(
+            back.parse_state().expect("state parses").eco_animals,
+            990.5102615356445,
+            "the state inside a verified envelope must survive the read"
+        );
     }
 
     #[test]

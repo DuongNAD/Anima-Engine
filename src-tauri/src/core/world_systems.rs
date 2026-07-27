@@ -5,6 +5,7 @@ use glam::Vec3;
 
 pub fn apply_environmental_effects_system(
     active_event: Res<ActiveEnvironmentEvent>,
+    forcings: Option<Res<crate::core::live_experiment::LiveForcings>>,
     mut food_settings: ResMut<FoodSpawnSettings>,
     mut agent_query: Query<&mut crate::ai::hrrl::HomeostaticState, With<Agent>>,
 ) {
@@ -18,8 +19,12 @@ pub fn apply_environmental_effects_system(
 
     food_settings.max_food_count = (50.0 * max_food_multiplier) as usize;
 
+    // A declared temperature intervention shifts the same homeostatic target the engine's own
+    // environmental events shift, rather than writing body temperature directly — see
+    // `core::live_experiment`. Absent the resource the shift is 0.0 and this is the old line.
+    let declared_shift = forcings.map(|f| f.temp_target_shift_c).unwrap_or(0.0);
     for mut homeo in agent_query.iter_mut() {
-        homeo.temp_target = 37.0 + target_temp_shift;
+        homeo.temp_target = 37.0 + target_temp_shift + declared_shift;
     }
 }
 

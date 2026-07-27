@@ -57,5 +57,8 @@
     "plants",
     "herbivores"
   ],
-  "exotic_interventions": []
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
 }

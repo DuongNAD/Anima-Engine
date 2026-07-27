@@ -1,17 +1,23 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, screen } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import * as THREE from 'three';
 import Sky from '../../src/components/Landscape/Sky';
 import Weather from '../../src/components/Landscape/Weather';
+import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
+import {
+  removeStubbedProperties,
+  type StubAttributeCapture,
+  type StubTransform,
+} from '../mocks/r3f-dom-stubs';
 
-let originalSetAttribute: any;
-let frameCallbacks: Array<(state: any, delta: number) => void> = [];
+let originalSetAttribute: typeof HTMLElement.prototype.setAttribute | undefined;
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
     useThree: () => ({
@@ -24,20 +30,15 @@ vi.mock('@react-three/fiber', async () => {
 });
 
 describe('Sky and Weather Component Tests', () => {
-  let consoleErrorSpy: any;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     frameCallbacks = [];
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    // Custom screen.getByTestId to find elements in JSDOM mocks
-    screen.getByTestId = (id: string) => {
-      const el = document.querySelector(`[name="${id}"]`) || document.querySelector(`[data-testid="${id}"]`);
-      if (!el) {
-        throw new Error(`Unable to find element with testid/name="${id}"`);
-      }
-      return el as any;
-    };
+    // No `screen.getByTestId` override here. This file had one — a global, never-restored mutation
+    // of testing-library — and called it nowhere: every assertion below queries the container it
+    // rendered. Removing it takes the mutation out of the suite rather than leaving it armed.
 
     // Mock position and rotation for JSDOM R3F elements
     Object.defineProperty(Element.prototype, 'position', {
@@ -86,9 +87,9 @@ describe('Sky and Weather Component Tests', () => {
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
     HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: any,
+      this: HTMLElement & Partial<StubAttributeCapture>,
       name: string,
-      value: any
+      value: string | THREE.BufferAttribute
     ) {
       if (value instanceof THREE.BufferAttribute) {
         if (!this._capturedAttributes) {
@@ -96,7 +97,7 @@ describe('Sky and Weather Component Tests', () => {
         }
         this._capturedAttributes.set(name, value);
       } else {
-        originalSetAttribute.call(this, name, value);
+        originalSetAttribute?.call(this, name, value);
       }
     });
   });
@@ -106,10 +107,8 @@ describe('Sky and Weather Component Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (Element.prototype as any).position;
-    delete (Element.prototype as any).rotation;
-    delete (HTMLElement.prototype as any).geometry;
-    delete (HTMLElement.prototype as any)._capturedAttributes;
+    removeStubbedProperties(Element.prototype, 'position', 'rotation');
+    removeStubbedProperties(HTMLElement.prototype, 'geometry', '_capturedAttributes');
   });
 
   describe('Sky Component', () => {
@@ -147,26 +146,23 @@ describe('Sky and Weather Component Tests', () => {
 
     it('should rotate sky and drift clouds in the rendering frame loop', () => {
       const { container } = render(<Sky speed={2.0} timeOfDay={12.0} />);
-      const cloudsGroup = container.querySelector('[name="clouds-group"]') as any;
+      const cloudsGroup = container.querySelector('[name="clouds-group"]');
       expect(cloudsGroup).toBeTruthy();
+      const clouds = () =>
+        Array.from(cloudsGroup?.children ?? []).map(
+          (child) => (child as Element & StubTransform).position.x,
+        );
 
       // Record initial cloud X positions
-      const initialPositions = Array.from(cloudsGroup.children).map((child: any) => child.position.x);
-
-      // Simulate frame updates
-      const mockState = {
-        clock: {
-          getElapsedTime: () => 5.0,
-        },
-      };
+      const initialPositions = clouds();
 
       act(() => {
         // Run frameCallbacks multiple times
-        frameCallbacks.forEach((cb) => cb(mockState, 0.05));
+        frameCallbacks.forEach((cb) => cb(frameStateAt(5.0), 0.05));
       });
 
       // Verify at least one cloud position changed
-      const updatedPositions = Array.from(cloudsGroup.children).map((child: any) => child.position.x);
+      const updatedPositions = clouds();
       let changed = false;
       for (let i = 0; i < initialPositions.length; i++) {
         if (Math.abs(updatedPositions[i] - initialPositions[i]) > 0.001) {
@@ -228,14 +224,8 @@ describe('Sky and Weather Component Tests', () => {
       const intermediateFog = parseFloat(weatherGroup?.getAttribute('data-fog-density') || '0');
       
       // Let's run a frame update to animate transition
-      const mockState = {
-        clock: {
-          getElapsedTime: () => 1.0,
-        },
-      };
-
       act(() => {
-        frameCallbacks.forEach((cb) => cb(mockState, 0.05)); // 50ms step
+        frameCallbacks.forEach((cb) => cb(frameStateAt(1.0), 0.05)); // 50ms step
       });
 
       // The count and fog density should have progressed towards rain values

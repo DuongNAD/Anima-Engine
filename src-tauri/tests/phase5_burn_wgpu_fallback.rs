@@ -17,7 +17,7 @@ fn test_wgpu_fallback_to_ndarray_and_valid_actions() {
     let brain_model_cpu = BrainModel::new(15, 64, 4);
 
     // Assert that fallback chose NdArray CPU
-    match &brain_model_cpu.backend {
+    match brain_model_cpu.backend() {
         BrainModelBackend::NdArray(model, device) => {
             // Run inference to verify valid actions in [0.0, 1.0]
             let input_data = Data::new(vec![0.5; 15], Shape::new([1, 15]));
@@ -41,7 +41,7 @@ fn test_wgpu_fallback_to_ndarray_and_valid_actions() {
     std::env::set_var("ANIMA_USE_GPU", "true");
     let brain_model_gpu = BrainModel::new(15, 64, 4);
 
-    match &brain_model_gpu.backend {
+    match brain_model_gpu.backend() {
         BrainModelBackend::Wgpu(model, device) => {
             println!("Successfully initialized WGPU backend.");
             let input_data = Data::new(vec![0.5; 15], Shape::new([1, 15]));

@@ -11,6 +11,16 @@ plan: ../planning/2026-07-24-feature-alternate-evolution-world-lab.md
 
 # Implementation Notes — Alternate Evolution & World Lab
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 **Status update (2026-07-25):** AE1–AE2.5 and the opt-in AE3 pathway/selection slice are implemented
 for the **headless reference model**. AE4–AE7, live Bevy integration, persistence, species
 diagnostics, UI parity, and map review remain open. Current task and validation status live in

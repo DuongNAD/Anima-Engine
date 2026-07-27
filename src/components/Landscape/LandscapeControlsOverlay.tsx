@@ -1,8 +1,15 @@
 import React from 'react';
+import { asWeatherKind, type WeatherKind } from './utils/weatherKind';
 
 interface LandscapeControlsOverlayProps {
+  /**
+   * The weather to *display*, which is deliberately wider than the four the scene draws: a stale
+   * preference or a hand-edited URL can carry anything, and showing what is actually set is more
+   * useful than silently showing "clear".
+   */
   weather: string;
-  onWeatherChange: (w: string) => void;
+  /** Emitted only for a weather the scene knows; see `asWeatherKind`. */
+  onWeatherChange: (w: WeatherKind) => void;
   speed: number;
   onSpeedChange: (s: number) => void;
   volume: number;
@@ -295,7 +302,13 @@ export const LandscapeControlsOverlay: React.FC<LandscapeControlsOverlayProps> =
         <select
           id="weather-select"
           value={weather}
-          onChange={(e) => onWeatherChange(e.target.value)}
+          onChange={(e) => {
+            // The extra `<option>` below carries whatever out-of-union value was passed in, so a
+            // change event can genuinely produce a string that is not a weather. Narrowed here
+            // rather than cast away at the consumer, which is where it used to happen.
+            const kind = asWeatherKind(e.target.value);
+            if (kind) onWeatherChange(kind);
+          }}
           style={{ display: 'none' }}
         >
           <option value="clear">clear</option>

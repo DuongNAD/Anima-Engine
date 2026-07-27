@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 import {
   mockLineageGraph,
   mockChronicleHistory,
@@ -14,6 +14,8 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
   return {
     ...original,
+    // `args`, not `_args`: the fall-through at the end of this table forwards them to the real
+    // `invoke`, so the underscore was naming a parameter as unused that the body reads.
     invoke: vi.fn().mockImplementation((cmd, args) => {
       if (cmd === 'get_lineage_graph') {
         return Promise.resolve(mockLineageGraph);
@@ -77,7 +79,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
 
   // TIER 2: Assert rendering of empty states and Neo4j offline warning
   it('should render empty states and Neo4j offline warning banner', async () => {
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_lineage_graph') {
         return Promise.resolve({
           nodes: [],
@@ -125,7 +127,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
   // TIER 3: Verify interactive controls enable/disable based on simulation state
   it('should disable migration trigger button when simulation is not running', async () => {
     // 1. Simulation not running -> button disabled
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_simulation_status') {
         return Promise.resolve({
           running: false,
@@ -163,7 +165,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
 
   it('should enable migration trigger button when simulation is running', async () => {
     // 2. Simulation running -> button enabled
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_simulation_status') {
         return Promise.resolve({
           running: true,
@@ -246,11 +248,11 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
       fireEvent.click(button);
     });
 
-    expect(invoke).toHaveBeenCalledWith('trigger_migration', { target_port: 9000 });
+    expect(invoke).toHaveBeenCalledWith('trigger_migration', { targetPort: 9000 });
   });
 
   it('should color-code chronicle events based on event type and show the formatted time', async () => {
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_chronicle_history') {
         return Promise.resolve([
           {

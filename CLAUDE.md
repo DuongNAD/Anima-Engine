@@ -19,12 +19,19 @@ Frontend (run from repo root):
 - `npm run build` — `tsc && vite build`; typechecks first, builds two entries (`index.html`, `landscape.html`).
 - `npm run test` — Vitest over `src/**`.
 - `npm run test:frontend` — Vitest over the dedicated `tests/` suite (`--root tests`). This is the suite handoff docs use.
-- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; legacy `any` and unused-var issues are warnings only.
+- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; `any`, unused-var and React Compiler issues are warnings. `node scripts/eslint_ratchet.mjs` holds the baseline at **0** — measured `0 errors, 0 warnings (baseline 0)` on 2026-07-27 at `2285a92` — so a warning means the commit in front of you introduced it. Fix it there; the baseline may only ever be lowered, and it is already at the floor. Current status for every gate: [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền), which is the only place a live count is maintained.
+- `npm run check:csp` — validates the shipped `dist/` against the CSP declared in `tauri.conf.json`: no external origins, no inline `<script>` bodies, hardening directives present. It checks *artifacts against policy*; it cannot prove the app boots under that policy, which needs `npm run tauri:dev` and a human.
+- `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
+- `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
+- `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
+
+**`esbuild` is not installed** — Vite 8 bundles with rolldown/oxc (the same reason `build.minify` must stay `true`). Any script invoking `esbuild` fails with `'esbuild' is not recognized`; `gen:manifest` did, silently, for as long as it existed. Run TypeScript scripts with `node scripts/run_ts.mjs <file.ts> [args]`.
 
 - `npm run tauri:dev` / `npm run tauri:build` — the desktop app. **Use these, not bare `tauri dev`/`tauri build`:** they pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the bare commands ship a `default = []` binary with no Neo4j lineage, no cross-shard migration and the CPU learner. All three have fallbacks, so nothing fails loudly.
 
 Backend (run from `src-tauri/`):
-- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** seven test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]`, so a bare `cargo test` compiles them to empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `node scripts/check_test_targets.mjs <captured-output>` fails when any target runs zero tests.
+- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** seven test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
+- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture with `cmd /c "cargo test ... > out.txt 2>&1"`, not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
 
@@ -148,9 +155,20 @@ Hard rules:
   effective MU origin. Mixed-origin fields keep the conservative world-law/field parent until the
   ledger supports multiple parents.
 - `Scenario`/`ReferenceEcosystem` remains the legacy headless machinery;
-  `ReferenceEvolutionWorld` proves AE3 only for the opt-in aggregate reference population. Do not
-  claim the live Bevy world is experiment-ready until its deterministic adapter and persistence
-  gates pass.
+  `ReferenceEvolutionWorld` proves AE3 only for the opt-in aggregate reference population.
+- **The live Bevy world now has a deterministic experiment adapter, and its gates pass headlessly**
+  — `core/live_experiment.rs` (`LiveExperimentAdapter: ExperimentModel`) driven through the shared
+  `experiment_runner`, on the schedule `simulation_loop::start` itself runs
+  (`core/simulation_schedule.rs`). `tests/live_experiment_tests.rs` covers same-seed checksum
+  identity, exact-tick intervention firing, a checkpoint fork, and
+  `run N == run K → save to disk → load → run N−K`. State that as *headless adapter verified*, and
+  keep saying what is still **not** claimed: no full desktop-app run has been made under the
+  multi-threaded executor; the adapter refuses `laws.exotic_energy` (the live world has no MU field)
+  and has no AE3 reference population; and numerical agreement with `ReferenceEvolutionWorld` is
+  never claimed — only agreement on the *direction and meaning* of a shared law.
+- The live schedule is built in exactly one place, `core::simulation_schedule::build_tick_schedule`.
+  A headless test that declares its own `.chain()`ed subset is testing a schedule the app does not
+  run; call the builder instead.
 
 ## Code style
 

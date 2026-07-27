@@ -72,7 +72,7 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // tsc already enforces unused vars; let underscore-prefixed args through.
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      // Existing Tauri IPC payloads use `any` widely; surface it without failing the build.
+      // `any` is a warning, not an error — but there are none left. See below.
       '@typescript-eslint/no-explicit-any': 'warn',
 
       // The React Compiler rules, new in eslint-plugin-react-hooks 7 and errors by default.
@@ -81,15 +81,18 @@ export default tseslint.config(
       // brace-expansion advisory reachable only through eslint's pinned minimatch. Turning them on
       // as errors would have failed `npm run lint` on 53 pre-existing findings across the R3F and
       // Pixi components, none of them introduced by that upgrade — so the security fix would have
-      // been gated behind an unrelated refactor.
+      // been gated behind an unrelated refactor. They were set to `warn` instead, which put them
+      // under scripts/eslint_ratchet.mjs: the count could not grow, and lowering it was ordinary
+      // work rather than a prerequisite.
       //
-      // Warnings instead, which puts them under scripts/eslint_ratchet.mjs: the count cannot grow,
-      // and lowering it is a normal piece of work rather than a prerequisite. This is the same call
-      // the repo already made for `any` and unused vars above.
+      // That backlog is now empty. Every finding from these four rules, and every `any` and unused
+      // binding above, has been resolved in the code — the frame loops read `state.scene` and
+      // `state.camera` rather than closing over render values, the remaining imperative three.js
+      // writes are named operations that take their target as a parameter, and the six
+      // `eslint-disable-next-line` directives are gone. Three of the findings were live defects.
       //
-      // Three of them look like genuine defects rather than style, and are worth taking first:
-      //   src/App.tsx:681 and WorldTerrainLod.tsx:236  react-hooks/refs (ref read during render)
-      //   src/components/Landscape/WorldTerrainLod.tsx:132  react-hooks/set-state-in-effect
+      // The severities stay as they are and the ratchet baseline is 0, which enforces the same
+      // thing from the other side: a warning now means "this commit introduced it".
       'react-hooks/immutability': 'warn',
       'react-hooks/purity': 'warn',
       'react-hooks/refs': 'warn',

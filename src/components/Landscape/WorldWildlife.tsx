@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { World } from './utils/worldGen';
 import { Biome } from './utils/worldGen';
 import { sampleMeshHeight } from './utils/worldSample';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldWildlife — ambient creatures, with a bias toward FRESH WATER life:
@@ -269,7 +270,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
   const goatRef = useRef<THREE.InstancedMesh>(null);
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const dummy = new THREE.Object3D();
 
     // Ducks paddle a lazy little circle and bob on the swell.
@@ -338,19 +339,19 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
   return (
     <group name="world-wildlife">
       {spots.ducks.length > 0 && (
-        <instancedMesh ref={duckRef} args={[duckGeom, undefined as any, spots.ducks.length]} name="wildlife-ducks">
+        <instancedMesh ref={duckRef} args={[duckGeom, null, spots.ducks.length]} name="wildlife-ducks">
           <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
         </instancedMesh>
       )}
       {spots.herons.length > 0 && (
-        <instancedMesh ref={heronRef} args={[heronGeom, undefined as any, spots.herons.length]} name="wildlife-herons">
+        <instancedMesh ref={heronRef} args={[heronGeom, null, spots.herons.length]} name="wildlife-herons">
           <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
         </instancedMesh>
       )}
       {spots.butterflies.length > 0 && (
         <instancedMesh
           ref={butterflyRef}
-          args={[butterflyGeom, undefined as any, spots.butterflies.length]}
+          args={[butterflyGeom, null, spots.butterflies.length]}
           name="wildlife-butterflies"
           frustumCulled={false}
         >
@@ -358,12 +359,12 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
         </instancedMesh>
       )}
       {spots.deer.length > 0 && (
-        <instancedMesh ref={deerRef} args={[deerGeom, undefined as any, spots.deer.length]} name="wildlife-deer" castShadow>
+        <instancedMesh ref={deerRef} args={[deerGeom, null, spots.deer.length]} name="wildlife-deer" castShadow>
           <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
         </instancedMesh>
       )}
       {spots.goats.length > 0 && (
-        <instancedMesh ref={goatRef} args={[deerGeom, undefined as any, spots.goats.length]} name="wildlife-goats" castShadow>
+        <instancedMesh ref={goatRef} args={[deerGeom, null, spots.goats.length]} name="wildlife-goats" castShadow>
           <meshStandardMaterial color="#e8e4da" roughness={0.9} metalness={0} flatShading />
         </instancedMesh>
       )}

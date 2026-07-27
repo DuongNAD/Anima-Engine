@@ -33,9 +33,23 @@ với trạng thái thế giới có phiên bản, kết quả tái lập đư�
 | **Hành vi xã hội** | Raycast qua spatial hash, lưới pheromone 1D có khuếch tán/phân rã, động lực thú săn – con mồi, chiến đấu |
 | **Sinh thái** | Sổ cái năng lượng **đóng** (EU): thực vật → ăn cỏ → xác mục → thực vật; phản ứng chức năng Holling II/III; chuyển hoá Lindeman ~30%; trường NPP tái sinh logistic theo biome; chu kỳ mùa |
 | **Tiến hoá** | MAP-Elites trên trục **niche sinh thái** (khối lượng cơ thể × tầm kiếm ăn); thay thế theo thế hệ; phả hệ lưu Neo4j với fallback in-memory |
-| **Thí nghiệm** | Manifest thí nghiệm + runner headless, fork từ checkpoint, hàng đợi can thiệp + sổ nhân quả, năng lượng ngoại lai (“mana”) **mặc định tắt** |
+| **Thí nghiệm** | Manifest thí nghiệm + runner headless, fork từ checkpoint, hàng đợi can thiệp + sổ nhân quả, năng lượng ngoại lai (“mana”) **mặc định tắt**; thế giới Bevy sống có adapter thí nghiệm — **headless adapter verified**, xem cảnh báo bên dưới |
 | **Giao diện** | Viewport 2D PixiJS 8; cảnh quan 3D three + R3F (`landscape.html`) với chu kỳ ngày–đêm, thời tiết, thảm thực vật instanced, chế độ khám phá góc nhìn thứ nhất; bảng hệ sinh thái / tiến hoá / phả hệ / chronicle |
 | **Hạ tầng** | Vòng tick 60 FPS chạy nền, **không cấp phát heap trên hot path**, RNG có seed tách theo stream, snapshot có phiên bản dùng làm checkpoint (khôi phục cả vị trí draw), chế độ tất định để replay |
+
+> **Bảng trên liệt kê *cái gì có trong mã*, không phải *cái gì đã được đo hay chứng minh*.**
+> Trạng thái đo được — kèm lệnh, ngày chạy và cấu hình — chỉ ở một chỗ:
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+>
+> Bốn ranh giới đáng nhớ, tính đến **2026-07-27**:
+>
+> - Adapter thí nghiệm cho thế giới sống là **headless adapter verified** — **không** phải
+>   "experiment-ready". Chưa có lần chạy app desktop nào.
+> - Đo tick trong tiến trình là **instrumentation đã ship**, **không** phải "đã có số đo phần cứng".
+>   Chưa tồn tại số đo hiệu năng nào từ app đang chạy, và cũng chưa có ảnh chụp app.
+> - Hạ tầng thí nghiệm **tồn tại**; đó không phải một **kết quả khoa học**.
+> - Một văn bản license (`hexf-parse` 0.2.1) **vẫn chưa giải quyết** và vẫn chặn phát hành —
+>   [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
 
 ## Kiến trúc ở mức cao
 
@@ -168,6 +182,18 @@ Frontend nói chuyện với lõi Rust bằng lệnh và sự kiện Tauri — v
 `get_ecosystem_state`, `save_simulation_state` / `load_simulation_state`; sự kiện
 `simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`,
 `migration-event`.
+
+> **Đổi hành vi 2026-07-27 — save/load.** Tham số `file_path` giữ nguyên tên (tương thích IPC) nhưng
+> nay là **tên save**, không phải đường dẫn: nó được phân giải trong thư mục app-data
+> (`<app_data_dir>/saves/<tên>.json`). Trước đây chuỗi từ frontend đi thẳng vào `write_atomic` /
+> `read`, nên bất cứ thứ gì gọi được `invoke` đều ghi/đọc được **file bất kỳ** mà tiến trình có
+> quyền. Tên chỉ được chứa `[A-Za-z0-9._-]` (allow-list, không phải block-list — xem
+> [`commands/save_paths.rs`](src-tauri/src/commands/save_paths.rs) giải thích vì sao block-list thua
+> trước `..%2f`, UNC, ADS `save.json:evil`, và tên thiết bị `CON`/`NUL`).
+>
+> **Save cũ nằm ngoài thư mục đó sẽ không đọc được nữa.** Cách chuyển: copy file `.json` vào
+> `<app_data_dir>/saves/` rồi load bằng tên. Không có bước migrate tự động, vì tự động đọc một đường
+> dẫn tuỳ ý chính là lỗ hổng vừa đóng.
 
 Danh sách đầy đủ kèm payload nằm ở [PROJECT.md § Interface Contracts](PROJECT.md) — đọc trước
 khi đổi bề mặt IPC, và cập nhật nó trong cùng thay đổi.

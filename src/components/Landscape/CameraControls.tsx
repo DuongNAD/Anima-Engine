@@ -1,28 +1,19 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { extend, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import * as THREE from 'three';
 import { audioManager } from './utils/audioManager';
-
-// Diagnostics handles the landscape tests and tooling read off . Typed rather than cast
-// per use: six  casts said nothing about what is actually published there.
-interface DiagnosticsWindow extends Window {
-  getTerrainHeight?: (x: number, z: number) => number;
-  globalTerrainHeightMap?: Float32Array;
-  teleportCameraTarget?: (wx: number, wz: number) => void;
-  activeCamera?: unknown;
-  activeScene?: unknown;
-}
+// Diagnostics handles the landscape tests and tooling read off `window`. Declared in one place and
+// imported, because `Minimap` reads the same two properties and used to do it through `any` — a
+// rename here would have been found by a user rather than by the compiler.
+import { diagnostics } from './utils/diagnosticsWindow';
 
 extend({ OrbitControls });
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      orbitControls: any;
-    }
-  }
-}
+// The `orbitControls` intrinsic is declared once, in `src/r3f-intrinsics.d.ts`, alongside every
+// other three element this project uses. A second `declare global` here said `orbitControls: any`,
+// which is not a duplicate of that declaration so much as a hole in it — interface merging keeps
+// both, and `any` wins every check.
 
 interface CameraControlsProps {
   cameraMode: 'orbit' | 'fly' | 'cinematic' | 'map';
@@ -39,7 +30,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
 }) => {
   const { camera, gl } = useThree();
   const keysPressed = useRef<{ [key: string]: boolean }>({});
-  const orbitControlsRef = useRef<any>(null);
+  const orbitControlsRef = useRef<OrbitControls | null>(null);
   const rotation = useRef({ yaw: 0, pitch: 0 });
 
   // Persistent reference to the current look-at target across modes
@@ -52,32 +43,38 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
   // Fly mode parameters
   const flyPos = useRef<THREE.Vector3>(new THREE.Vector3(0, 80, 200));
 
-  const getTerrainHeight = (x: number, z: number): number => {
-    if (!terrainHeightMap) return 5.5;
-    const gx = x + gridWidth / 2;
-    const gy = z + gridHeight / 2;
-    if (gx >= 0 && gx < gridWidth && gy >= 0 && gy < gridHeight) {
-      const x0 = Math.floor(gx);
-      const y0 = Math.floor(gy);
-      const x1 = Math.min(gridWidth - 1, x0 + 1);
-      const y1 = Math.min(gridHeight - 1, y0 + 1);
-      const tx = gx - x0;
-      const ty = gy - y0;
-      const h00 = terrainHeightMap[y0 * gridWidth + x0] ?? 0;
-      const h10 = terrainHeightMap[y0 * gridWidth + x1] ?? 0;
-      const h01 = terrainHeightMap[y1 * gridWidth + x0] ?? 0;
-      const h11 = terrainHeightMap[y1 * gridWidth + x1] ?? 0;
-      return (h00 * (1 - tx) * (1 - ty) + h10 * tx * (1 - ty) + h01 * (1 - tx) * ty + h11 * tx * ty) * 1.8;
-    }
-    return 5.5;
-  };
+  // Memoised so the effect below can name it as a dependency. It was a plain closure, rebuilt every
+  // render, so listing it honestly would have re-registered the window globals on every render —
+  // which is why the dependency list omitted it and the rule complained.
+  const getTerrainHeight = useCallback(
+    (x: number, z: number): number => {
+      if (!terrainHeightMap) return 5.5;
+      const gx = x + gridWidth / 2;
+      const gy = z + gridHeight / 2;
+      if (gx >= 0 && gx < gridWidth && gy >= 0 && gy < gridHeight) {
+        const x0 = Math.floor(gx);
+        const y0 = Math.floor(gy);
+        const x1 = Math.min(gridWidth - 1, x0 + 1);
+        const y1 = Math.min(gridHeight - 1, y0 + 1);
+        const tx = gx - x0;
+        const ty = gy - y0;
+        const h00 = terrainHeightMap[y0 * gridWidth + x0] ?? 0;
+        const h10 = terrainHeightMap[y0 * gridWidth + x1] ?? 0;
+        const h01 = terrainHeightMap[y1 * gridWidth + x0] ?? 0;
+        const h11 = terrainHeightMap[y1 * gridWidth + x1] ?? 0;
+        return (h00 * (1 - tx) * (1 - ty) + h10 * tx * (1 - ty) + h01 * (1 - tx) * ty + h11 * tx * ty) * 1.8;
+      }
+      return 5.5;
+    },
+    [terrainHeightMap, gridWidth, gridHeight],
+  );
 
   // Expose helper globally and register teleport handler
   useEffect(() => {
-    (window as unknown as DiagnosticsWindow).getTerrainHeight = getTerrainHeight;
-    (window as unknown as DiagnosticsWindow).globalTerrainHeightMap = terrainHeightMap;
+    diagnostics().getTerrainHeight = getTerrainHeight;
+    diagnostics().globalTerrainHeightMap = terrainHeightMap;
 
-    (window as unknown as DiagnosticsWindow).teleportCameraTarget = (wx: number, wz: number) => {
+    diagnostics().teleportCameraTarget = (wx: number, wz: number) => {
       const th = getTerrainHeight(wx, wz);
       activeTarget.current.set(wx, th, wz);
 
@@ -93,11 +90,11 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
         tdTarget.current.copy(activeTarget.current);
       }
     };
-  }, [terrainHeightMap, gridWidth, gridHeight, cameraMode, camera]);
+  }, [terrainHeightMap, gridWidth, gridHeight, cameraMode, camera, getTerrainHeight]);
 
   // Keep track of the active camera reference for Minimap
   useEffect(() => {
-    (window as unknown as DiagnosticsWindow).activeCamera = camera;
+    diagnostics().activeCamera = camera;
   }, [camera]);
 
   // Handle keyboard events
@@ -195,9 +192,15 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
   }, [cameraMode, gl]);
 
   useFrame((state) => {
+    // The live camera comes from the frame callback's own state, deliberately shadowing the one
+    // `useThree` returned above. That one is a render value — this loop drives the camera every
+    // frame, and writing to a value React handed the component during render is exactly what
+    // `react-hooks/immutability` rejects. It is the same object; only the route to it differs, and
+    // r3f documents this one as the handle for imperative work.
+    const { camera } = state;
     if (!camera) return;
-    (window as unknown as DiagnosticsWindow).activeScene = state.scene;
-    (window as unknown as DiagnosticsWindow).activeCamera = camera;
+    diagnostics().activeScene = state.scene;
+    diagnostics().activeCamera = camera;
 
     if (cameraMode === 'orbit') {
       if (orbitControlsRef.current && typeof orbitControlsRef.current.update === 'function') {

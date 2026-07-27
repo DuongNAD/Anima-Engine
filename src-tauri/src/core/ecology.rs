@@ -281,6 +281,19 @@ pub struct ResourceField {
     pub r_max: Vec<f32>,
     /// Intrinsic regrowth rate.
     pub growth_rate: f32,
+    /// Which stride phase the next regrowth step visits.
+    ///
+    /// This lived in a `Local<usize>` inside `resource_field_regrowth_system` until a checkpoint
+    /// gate went looking for it. `REGROWTH_STRIDE` means a tick advances only one quarter of the
+    /// cells, so *which* quarter is trajectory state — and a `Local` is system-owned state that no
+    /// snapshot can read or restore. A resume therefore restarted the sweep at phase 0 and grew a
+    /// different quarter of the world than the run it was continuing, which is invisible until the
+    /// checksums disagree. It is a field of the thing it describes now, so it saves and restores
+    /// like every other piece of the field.
+    ///
+    /// A pre-schema-5 save carries no phase and restores `0`, which is the behaviour those saves
+    /// already had.
+    pub regrowth_phase: usize,
 }
 
 impl ResourceField {
@@ -312,6 +325,7 @@ impl ResourceField {
             r,
             r_max,
             growth_rate,
+            regrowth_phase: 0,
         }
     }
 

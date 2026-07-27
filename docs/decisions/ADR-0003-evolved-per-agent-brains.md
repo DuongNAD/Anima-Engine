@@ -2,7 +2,7 @@
 title: ADR-0003 — Não di truyền theo cá thể và mở rộng không gian hành động
 status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-07-25
+last_reviewed: 2026-07-27
 decision_date: 2026-07-25
 accepted_date: 2026-07-25
 supersedes: none
@@ -222,6 +222,20 @@ năng mà là **kết luận sai**: báo cáo "đồng tiến hoá" từ một h
     MAP-Elites mới **không phải** bằng chứng thích nghi. Áp gate chứng cứ như CM-S11/AE-S11
     trước mọi tuyên bố về "phân loài hành vi" hay "đồng tiến hoá".
 
+12. **[Bổ sung 2026-07-27 — DEC-1] Mốc so sánh của EB-S04 là bản dựng CÓ SEED.**
+    Mốc cũ — "trùng bit với bản dựng *trước* ADR-0003" — **bị bỏ**. Xem mục
+    [Cập nhật 2026-07-27](#cập-nhật-2026-07-27--dec-1-re-baseline-eb-s04) để biết vì sao mốc cũ
+    không tồn tại chứ không phải chỉ khó đo. Mốc mới, phát biểu tường minh:
+
+    > **Baseline EB-S04 = bản dựng có seed, `BrainPolicy::evolved = false`** (tương đương
+    > `brain_genotype = None`). Hai mệnh đề phải đúng và cả hai đều **trùng bit**:
+    > **(a)** cùng seed ⇒ cùng quỹ đạo, giữa hai lần chạy bất kỳ của cùng một bản dựng;
+    > **(b)** cài `ActionGates` mà để mở ⇒ quỹ đạo trùng với bố cục component *trước* bước 4.
+
+    Quyết định **mặc định** (`evolved: true` hay giữ opt-in) **không** nằm trong mục này và vẫn để
+    mở. Nó cần một thí nghiệm đối chứng được tiền đăng ký trước khi chạy; mốc EB-S04 mới chỉ là điều
+    kiện cần để thí nghiệm đó có một baseline thật để so.
+
 ## Hệ quả
 
 ### Tích cực
@@ -372,7 +386,7 @@ năng mà là **kết luận sai**: báo cáo "đồng tiến hoá" từ một h
 | **EB-S01** | Cùng seed ⇒ cùng `BrainGenotype` khởi tạo/đột biến/crossover | exact | ✅ pass — `evolution::brain_genotype::tests` 17/17 |
 | **EB-S02** | Forward pass thủ công vs `burn` `ActorCriticModel`, cùng trọng số | ≤ `1e-5` (đo được: actor `1.8e-7`, critic `8.0e-7`) | ✅ pass — `tests/brain_parity_tests.rs` 8/8 |
 | **EB-S03** | Tick path với não per-agent | `allocs == 0` | ✅ pass — `tests/brain_budget_tests.rs`: suy luận per-agent **0 alloc/tick**, bước gradient **0 alloc**; cài mạng đã học tốn **đúng 1** alloc (ngoại lệ có chủ ý, throttle bằng `interval`). Đường Burn dùng chung **không** zero-alloc và chưa bao giờ — đo và ghi lại thay vì giấu |
-| **EB-S04** | `brain_genotype = None` vs baseline | quỹ đạo **bit-identical** | 🟡 một phần — `installing_the_gates_changed_nothing_with_them_open` chứng minh van mở ⇒ quỹ đạo trùng bit; nhưng khởi tạo model dùng chung đã đổi từ ngẫu nhiên sang có seed, nên **không** trùng bản dựng trước ADR (xem bước 6) |
+| **EB-S04** | `brain_genotype = None` vs baseline **bản dựng có seed** (re-baseline 2026-07-27, quyết định 12) | quỹ đạo **bit-identical** ở cả (a) cùng seed hai lần chạy và (b) van mở vs bố cục trước bước 4 | ✅ pass — đo 2026-07-27 tại `2b61d07`: `tests/brain_controlled_comparison_tests.rs` 11/11, trong đó `the_run_is_reproducible_under_one_seed` là (a) và `installing_the_gates_changed_nothing_with_them_open` là (b). Mốc **cũ** ("trùng bản dựng trước ADR") đã bị bỏ vì bản dựng đó không có quỹ đạo tất định nào để mà trùng — xem [Cập nhật 2026-07-27](#cập-nhật-2026-07-27--dec-1-re-baseline-eb-s04) |
 | **EB-S05** | Mọi van hành động mở hoàn toàn | hành vi **không đổi** so với trước bước 4 | ✅ pass — `tests/action_gates_tests.rs` 13/13 |
 | **EB-S06** | Closed-EU với `brain_metabolic_cost > 0` | delta trong dung sai S01 (`1e-9`) | ✅ pass — `tests/brain_cost_and_coupling_tests.rs`: chi phí não gộp vào `total_cost` ⇒ chảy qua `respired` vào detritus, EU đóng; chi phí có thật và **tăng theo kích thước não**; mặc định `0.0` giữ baseline y hệt |
 | **EB-S07** | Restore + migration | `BrainGenotype` **và** trọng số đã học giữ nguyên | ✅ pass — `tests/brain_persistence_tests.rs` 14/14 |
@@ -386,8 +400,12 @@ năng mà là **kết luận sai**: báo cáo "đồng tiến hoá" từ một h
 
 Ghi lại đúng những gì đúng khi quyết định được khoá, để người đọc sau không phải suy ra từ lịch sử.
 
+> 📜 **Đo lịch sử.** Mọi con số trong mục này là kết quả **ngày 2026-07-25**, lúc ADR được accept.
+> Chúng cố ý **không** được cập nhật: một ADR ghi lại căn cứ của quyết định tại thời điểm đó. Số
+> hiện tại ở [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
 **Đã triển khai và đo:** cả 7 bước của kế hoạch. **11/12 gate pass.**
-`cargo test --no-fail-fast -j 2` → 470 passed. Cờ `ANIMA_EVOLVED_BRAINS` và
+`cargo test --no-fail-fast -j 2` → 470 passed *(đo 2026-07-25)*. Cờ `ANIMA_EVOLVED_BRAINS` và
 `ANIMA_LIFETIME_LEARNING` đều **mặc định tắt**, `brain_metabolic_cost` mặc định `0.0` — một run
 không khai báo gì chạy đúng đường legacy.
 
@@ -416,6 +434,188 @@ hạn, nhìn hợp lý":
 
 **Việc kế tiếp mà ADR này không bao trùm:** độ phủ MAP-Elites archive (cần luồng tiến hoá chạy
 headless), Simulation-LOD thật cho `active_radius`, và phương án D khi EB-S09 vượt ngưỡng.
+
+## Cập nhật 2026-07-27 — DEC-1: re-baseline EB-S04
+
+> Mục này **không** thuộc khối lịch sử phía trên. Nó ghi một quyết định lấy ngày 2026-07-27, sau khi
+> ADR được accept, theo đúng cơ chế DEC-1 trong
+> [`docs/ai/planning/2026-07-27-feature-anima-completion.md`](../ai/planning/2026-07-27-feature-anima-completion.md) §3.
+
+### Vì sao mốc cũ bị bỏ — nó không tồn tại, chứ không phải khó đo
+
+Yêu cầu gốc của EB-S04 là "quỹ đạo trùng bit với bản dựng **trước** ADR-0003". Bước 6 của kế hoạch
+đo được điều khiến yêu cầu đó vô nghĩa: bản dựng ấy **không có một quỹ đạo tất định nào**.
+`LinearConfig::init` trả `Param::uninitialized`, nên trọng số của model dùng chung được materialize
+**lười** từ một RNG tĩnh toàn tiến trình **tự tiến lên** mỗi lần rút — hai lần chạy cùng seed đã
+khác nhau, và đã khác nhau *trước* mọi thay đổi của ADR này.
+
+Ba hệ quả, và điều thứ ba mới là lý do phải xử lý chứ không phải để im:
+
+1. Mốc cũ không phải một mốc. Không có tập bit nào để so, nên "trùng bit với nó" là một mệnh đề
+   không có giá trị chân lý.
+2. Việc gieo hạt (`BrainModel::new_seeded`) là **sửa lỗi có chủ ý**, không phải hồi quy. Nó là thứ
+   *tạo ra* một baseline có thể so, chứ không phải thứ phá baseline.
+3. Một gate **không thể pass bằng cách viết code đúng** thì sớm muộn cũng bị ngừng đọc, và một gate
+   bị ngừng đọc còn tệ hơn không có gate — nó vẫn chiếm một dòng "🟡" mà không ai còn tin.
+
+Ba phương án đã cân nhắc và ghi ở DEC-1: (1) re-baseline tường minh; (2) để nguyên 🟡 vĩnh viễn;
+(3) dựng lại một baseline "tương đương-có-seed" trùng bit. Chủ dự án chọn **(1)**.
+
+### Mốc mới, và bằng chứng của nó
+
+Baseline là **bản dựng có seed với `BrainPolicy::evolved = false`**, và gate đòi hai mệnh đề trùng
+bit — xem quyết định 12 ở trên cho phát biểu chuẩn. Đo ngày **2026-07-27** tại commit `2b61d07`,
+`cargo test --features desktop --test brain_controlled_comparison_tests` → **11 passed; 0 failed**:
+
+| Mệnh đề | Test | Kết quả |
+|---|---|---|
+| (a) cùng seed ⇒ cùng quỹ đạo | `the_run_is_reproducible_under_one_seed` | ✅ |
+| (b) van mở ⇒ trùng bố cục trước bước 4 | `installing_the_gates_changed_nothing_with_them_open` | ✅ |
+| Đường legacy thật sự là legacy | `with_brains_off_no_agent_ever_gains_one`, `with_brains_off_no_gate_ever_closes`, `with_brains_off_every_agent_shares_one_policy` | ✅ |
+
+So sánh bằng `to_bits()` trên vị trí, năng lượng, tham số CPG và ba van — "không đổi" nghĩa là không
+đổi, không phải gần không đổi.
+
+### Cái gì bị mất khi bỏ mốc cũ — nói thẳng
+
+Mốc cũ, ngoài việc canh ADR-0003, còn **ngẫu nhiên** canh một thứ rộng hơn: "không có gì trong toàn
+bộ engine làm đổi quỹ đạo legacy". Mốc mới không canh được điều đó theo cùng cách: nó so hai lần
+chạy của **cùng một bản dựng**, nên một thay đổi nằm ngay trong chính commit gieo hạt sẽ không bị
+nó phát hiện. Đây là chi phí thật của phương án (1), đã biết trước khi chọn, và cách bù là các gate
+khác: `tests/sim_determinism_tests.rs` cho tầng live, `tests/energy_conservation_tests.rs` cho
+closed-EU, và checksum quỹ đạo của `LiveExperimentAdapter`.
+
+### Cái gì **không** được quyết ở đây
+
+Quyết định **bật `evolved` mặc định** vẫn để mở. Re-baseline chỉ trả lại một baseline có thật để so;
+nó không nói gì về việc treatment tốt hơn hay tệ hơn. Việc đó cần một chạy đối chứng nhiều seed
+được **tiền đăng ký trước khi chạy**, và kết quả của nó sẽ được ghi vào ADR này khi đã có — không
+sớm hơn.
+
+Bộ tiền đăng ký đó (E2) đã có. **Đã chạy một lần ngày 2026-07-27** — kết quả và quyết định ở
+[Cập nhật 2026-07-27 — E2](#cập-nhật-2026-07-27--e2-kết-quả-đo-được-và-quyết-định-mặc-định);
+câu dưới đây mô tả trạng thái *tại thời điểm DEC-1*, giữ nguyên làm chứng cứ rằng bản đăng ký có
+trước lần chạy:
+[requirements](../ai/requirements/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[design](../ai/design/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[planning](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) ·
+[testing](../ai/testing/2026-07-27-experiment-e2-evolved-brain-default.md), manifest máy đọc được ở
+`src-tauri/tests/fixtures/experiments_e2/`. Quy tắc quyết định — bao gồm việc **kết quả âm hoặc null
+vẫn là kết quả**, và một lỗi thật của đường não tiến hoá phải được ghi là **lỗi** chứ không được
+giấu thành "chưa đủ bằng chứng" — nằm ở planning §8.
+
+Phiên tiền đăng ký cũng tìm ra hai điều kiện chặn: `LiveExperimentAdapter` **chưa có đường nào** để
+manifest yêu cầu `evolved = true` (`build_live_world` chèn cứng `BrainPolicy::default()`), và
+`live_experiment::genesis` **không** tạo `AgentBrain` kể cả khi cờ bật — khác genesis của app trong
+`simulation_loop.rs`. Nhánh treatment vì thế **chưa tồn tại**; đặc tả seam đã được chốt trước ở
+design §3 để nó không thể được chỉnh sau khi nhìn thấy số.
+
+## Cập nhật 2026-07-27 — E2: kết quả đo được và quyết định mặc định
+
+> Mục này ghi kết quả của thí nghiệm đối chứng đã **tiền đăng ký trước khi chạy** (`ce761d1`), chạy
+> **một lần** ngày 2026-07-27 tại commit `9c57184`. Quy tắc quyết định nằm ở
+> [planning §8](../ai/planning/2026-07-27-experiment-e2-evolved-brain-default.md) và được viết
+> **trước** khi có số. Kết quả đầy đủ:
+> [`artifacts/experiments/e2-evolved-brain-default/RESULT.md`](../../artifacts/experiments/e2-evolved-brain-default/RESULT.md).
+
+### Quyết định 13 — `evolved` **giữ nguyên opt-in**
+
+Theo đúng quy tắc đã đăng ký: **H1 null ⇒ giữ opt-in**, ghi là "không đo được hiệu ứng vật chất nào
+trong headless adapter ở N = 12, T = 18.000". Có **12/12 cặp hoàn chỉnh** (tối thiểu là 10) và seam
+được dựng đúng đặc tả design §3, nên "chưa đủ bằng chứng" — vốn chỉ dành cho dưới 10 cặp hoặc một
+tiền điều kiện được thoả mãn khác đặc tả — **không** áp dụng.
+
+Nói thẳng: mặc định giữ opt-in **không phải** vì đã chứng minh não riêng vô ích hay có hại, mà vì
+quy tắc chỉ cho phép lật mặc định khi có hiệu ứng dương **vật chất**, và không có gì vật chất được đo.
+
+### Số đo, và vì sao nó gần như không mang bằng chứng về não
+
+| đại lượng | giá trị |
+|---|---|
+| cặp hoàn chỉnh | 12/12 |
+| `control_mean` / `treatment_mean` | `0.000000` / `0.000000` EU |
+| `paired_mean_delta` | `0.000000` EU |
+| SD ghép / phương sai giữa các seed | `0.000000` / `0.000000` |
+| KTC 95 % | `[0.000000, 0.000000]` |
+| `d_z` | **không xác định** (SD ghép bằng 0) |
+| vật chất? | **không** — 1/3 điều kiện |
+
+Delta không "nhỏ"; nó **đúng bằng 0 trên cả 12 seed**.
+
+Lý do là **điểm đo cuối không có sức phân giải**. Ở T = 18.000, toàn bộ quần thể sáng lập — ở **cả
+hai** nhánh, trên **cả 12** seed — đang ở đúng 0 năng lượng và đã như vậy hàng nghìn tick. Hai sự
+kiện cộng lại:
+
+1. **Engine không có cái chết vì đói.** `update_agent_evaluation_system` gặp `homeo.energy <= 0.0`
+   thì `continue` — ngừng cộng fitness, **không** giết. Ba nơi gọi
+   `ReclaimAndDespawnAgentCommand` là thay thế tiến hoá, săn mồi, và can thiệp `RemovePredators`.
+   Trong **app** đây là lựa chọn thiết kế chứ không phải lỗi: luân chuyển quần thể đến từ thay thế
+   theo epoch.
+2. **Adapter không chạy thay thế tiến hoá** — chính là finding **E2-F3**, đã ghi trong bản tiền đăng
+   ký *trước* khi chạy.
+
+Cộng lại: không gì giết agent đã đói và không gì thay thế nó, nên `live.agent_count` = **10 ở mọi
+nhánh, mọi seed, mọi mẫu**, và quần thể đóng băng thành mười cơ thể bất động giữ 0 EU. E2-F3 được
+đăng ký như một giới hạn phạm vi về **chọn lọc**; lần chạy này đo được hệ quả thứ hai chưa từng được
+đăng ký của nó: nó cũng **phá huỷ mọi đại lượng năng lượng đo ở cuối một run dài**.
+
+**Đây không phải lỗi của đường não tiến hoá.** Cả hai nhánh làm y hệt nhau, và nguyên nhân có mặt cả
+khi `evolved = false`.
+
+### Điều DUY NHẤT mang thông tin thật: EB-S06 giữ vững dưới treatment
+
+`live.closed_eu_total` chênh lệch ghép **−2,6 × 10⁻⁹ EU trên tồn kho 1,5 × 10⁵ EU** (tương đối
+~1,7 × 10⁻¹⁴) — nhiễu dấu phẩy động, không phải rò rỉ. **Não riêng theo cá thể không làm dịch chuyển
+năng lượng nằm ngoài sổ cái.** Hợp đồng closed-EU đứng vững dưới treatment, đo trên 12 cặp.
+
+Dấu vết đo được duy nhất khác của treatment: **+0,505 EU vào detritus và −0,505 EU khỏi standing
+crop**, đối xứng chính xác, bảo toàn tới 1e−9, `d_z` = 0,11, dịch chuyển tương đối 0,05 % — **không
+vật chất** theo mọi ngưỡng đã đăng ký.
+
+### Quan sát CHƯA đăng ký — sinh giả thuyết, KHÔNG phải kết luận
+
+Bản tiền đăng ký cấm đổi metric sau khi thấy số. Hai quan sát dưới đây **không được trích dẫn như
+kết quả E2**:
+
+- **(a)** Treatment chạm sàn năng lượng **muộn hơn** control ở **10/12 seed** (tick trung bình 8.650
+  so với 5.250). Ngược chiều dự đoán của H1. "Thời gian tới sàn" không phải observable trong registry
+  và chưa bao giờ được đăng ký.
+- **(b)** Delta năng lượng ở tick 600: trung bình +7,32, SD 19,12, `d_z` 0,383, **âm ở chỉ 6/12
+  seed**. Nghĩa là bức tranh quỹ đạo sớm nhìn từ riêng seed 700001 **không** khái quát được.
+
+Cộng lại, (a) và (b) nói điều trung thực: **thí nghiệm này không đo được chiều của hiệu ứng não,
+theo bất kỳ chiều nào.**
+
+### Hai lỗi lịch trình do smoke tìm ra, sửa trước khi khoá T
+
+Cả hai đều **không** thuộc đường não, và cả hai đều đã làm hỏng kết quả nếu để nguyên:
+
+- `993a587` — `ecosystem_census_system` chụp ảnh `pool.animals` mà không khai báo thứ tự với các
+  system dịch chuyển dự trữ của agent, nên nó báo cáo hoặc metabolism của tick này hoặc của tick
+  trước, lệch 0,186 EU, do sort topo chọn **theo từng tiến trình**. Chạm `live.animals_eu` (H3) và
+  `live.closed_eu_total` (H5).
+- `ec94933` — **bảy** cặp system dịch chuyển EU không có thứ tự khai báo, nên checksum thế giới **và
+  `live.mean_agent_energy`** dịch chuyển theo hash seed của tiến trình. Gate lẽ ra bắt được điều này
+  thì **rỗng**: `ScheduleGraph::systems` trả về rỗng sau khi schedule đã khởi tạo.
+
+Chấp nhận tái lập xuyên tiến trình được ghi tường minh trước khi chạy: **24 tiến trình độc lập** ở
+T = 18.000 cho **một** kết quả duy nhất — checksum, cả 11 observable và cả 30 điểm chuỗi mẫu đều
+trùng bit.
+
+### Thí nghiệm tiếp theo cần gì (thay cho §8.1 chung chung)
+
+1. **Một điểm đo trước sàn.** T ≈ 3.000–6.000 với genesis này, hoặc một metric tích phân trên cửa sổ
+   còn thông tin thay vì lấy mẫu ở cuối. Chọn từ bằng chứng đã đo, và **đăng ký trước khi chạy**.
+2. **Một quần thể có luân chuyển.** Hoặc cái chết vì đói, hoặc luồng tiến hoá nằm trong hợp đồng thí
+   nghiệm, để `live.agent_count` có thể thay đổi và chọn lọc có cái để tác động.
+3. **"Thời gian tới sàn" như một observable được đăng ký**, vì đó là tín hiệu chưa đăng ký mạnh nhất
+   mà lần chạy này tạo ra.
+
+### Ngôn ngữ
+
+Trạng thái thế giới sống **không đổi**: **headless adapter verified**. Không có run desktop app nào,
+không Tauri handle, không cửa sổ, không GPU, không renderer, không luồng nền. Không dòng nào ở đây
+được trích dẫn thành "live world experiment-ready".
 
 ## Tài liệu bị ảnh hưởng
 

@@ -1,13 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import React from 'react';
-import * as PIXI from 'pixi.js';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
   mockEnvironmentalState,
   mockSimulationTickPayload
 } from '../mocks/mock_ipc_payloads';
+import { segments } from '../mocks/segment_fixtures';
+import { setWholeTickPayloadDelivery } from '../mocks/tick-adaptation';
 
 // Mock pixi.js exactly like phase 5 and 6 test so rendering works in jsdom
 const mockGraphicsMethods = {
@@ -69,8 +71,8 @@ import { App } from '../../src/App';
 import PixiViewport from '../../src/PixiViewport';
 
 describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
-  const setupDefaultInvokeMock = (overrides: Record<string, any> = {}) => {
-    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+  const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
+    vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
           throw overrides[cmd];
@@ -117,8 +119,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     process.removeAllListeners('uncaughtException');
     process.removeAllListeners('unhandledRejection');
 
-    let caughtError: Error | null = null;
-    const onError = (err: any) => {
+    let caughtError: unknown = null;
+    const onError = (err: unknown) => {
       caughtError = err;
     };
     process.on('uncaughtException', onError);
@@ -172,8 +174,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 2.71) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(30);
-    expect(zoomedLake[1]).toBeCloseTo(12.5);
+    expect(zoomedLake?.[0]).toBeCloseTo(30);
+    expect(zoomedLake?.[1]).toBeCloseTo(12.5);
   });
 
   it('Verify Zoom In is unbounded and can reach extremely high scale values', async () => {
@@ -201,8 +203,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 81.37) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(900);
-    expect(zoomedLake[1]).toBeCloseTo(375);
+    expect(zoomedLake?.[0]).toBeCloseTo(900);
+    expect(zoomedLake?.[1]).toBeCloseTo(375);
   });
 
   // --- PAN LIMITS & STRESS CASES ---
@@ -233,8 +235,8 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const finalCalls = panCalls.slice(-8);
     const pannedLake = finalCalls.find(c => Math.abs(c[2] - 27.12) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(800);
-    expect(pannedLake[1]).toBeCloseTo(625);
+    expect(pannedLake?.[0]).toBeCloseTo(800);
+    expect(pannedLake?.[1]).toBeCloseTo(625);
   });
 
   // --- TAURI COMMAND CALLING ERRORS ---
@@ -277,13 +279,16 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       get_environmental_elements: new Error("DATABASE_OFFLINE")
     });
 
-    let renderError: Error | null = null;
+    // `unknown` throughout this file: the payloads are deliberately malformed, and a throw from
+    // inside React or a mock is under no obligation to be an `Error`. Every assertion is
+    // `toBeNull()`, which needs nothing more.
+    let renderError: unknown = null;
     try {
       render(<App />);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       });
-    } catch (e: any) {
+    } catch (e) {
       renderError = e;
     }
 
@@ -301,12 +306,12 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', null);
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
 
@@ -320,12 +325,12 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: {} });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
 
@@ -370,7 +375,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       ]
     };
 
-    let error: any = null;
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
@@ -401,7 +406,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
           yaw: 0.1,
           pitch: 0.0,
           roll: 0.0,
-          joint_anchor_x: "corrupted_string" as any, // Not a number
+          joint_anchor_x: "corrupted_string", // Not a number
           joint_anchor_y: 0,
           joint_anchor_z: 0,
           joint_axis_x: 0,
@@ -415,7 +420,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       head_directions: []
     };
 
-    let error: any = null;
+    let error: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
@@ -429,8 +434,18 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   it('Verify that a non-array response for get_active_raycasts does not crash the viewport rendering', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
+    // An object where the viewport expects an array — what `get_active_raycasts` returns when the
+    // backend serialises an empty map instead of an empty list.
+    //
+    // Delivered over IPC rather than set as a prop. `PixiViewport` reads this command itself, with
+    // `invoke<RaycastTelemetry[]>`, and that type parameter is an assertion and not a check: the
+    // object lands in a variable typed as an array exactly as it would in the running app. Setting
+    // the prop instead needed a cast, and proved the `Array.isArray` guard against a value no code
+    // path produces.
+    setupDefaultInvokeMock({ get_active_raycasts: {} });
+
     const error = await runWithInterceptors(() => {
-      render(<PixiViewport raycasts={{} as any} />);
+      render(<PixiViewport />);
     });
 
     expect(error).toBeNull();
@@ -438,14 +453,30 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     consoleSpy.mockRestore();
   });
 
-  it('Verify that emitting a Phase 6 simulation-tick event payload passed as segments prop does not crash PixiViewport rendering', async () => {
+  it('Verify that a whole simulation-tick payload delivered to the listener does not crash PixiViewport rendering', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const error = await runWithInterceptors(() => {
-      render(<PixiViewport segments={mockSimulationTickPayload as any} />);
-    });
+    // The backend emits `simulation-tick` in two shapes — a bare segment array, and the whole tick
+    // object carrying `segments` alongside `environmental_state`. The viewport's listener has to
+    // tell them apart, and this is the second one arriving intact.
+    //
+    // The mocked `emit` narrows an object payload to its `segments` for segment-shaped callbacks,
+    // which would hand this listener the array and test the wrong branch, so the adaptation is off
+    // for the duration.
+    setWholeTickPayloadDelivery(true);
+    try {
+      const mounted = await runWithInterceptors(() => {
+        render(<PixiViewport />);
+      });
+      expect(mounted).toBeNull();
 
-    expect(error).toBeNull();
+      const emitted = await runWithInterceptors(() => {
+        void emit('simulation-tick', mockSimulationTickPayload);
+      });
+      expect(emitted).toBeNull();
+    } finally {
+      setWholeTickPayloadDelivery(false);
+    }
 
     consoleSpy.mockRestore();
   });
@@ -453,24 +484,25 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   // --- ADDITIONAL STRESS & ADVERSARIAL TESTS FOR MILESTONE T12 ---
 
   it('Verify production coordinate synchronization between segments and environmental elements', async () => {
-    const originalVitest = (globalThis as any).process?.env?.VITEST;
-    (globalThis as any).process.env.VITEST = 'false';
+    // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
+    // that path is what this test is about. `process` is a real global here — this file already
+    // calls `process.listeners` — so the detour through an untyped `globalThis` bought nothing.
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = 'false';
 
     try {
       mockGraphicsMethods.drawCircle.mockClear();
 
-      const testSegments = [
-        {
-          agent_id: 1,
-          segment_id: 0,
-          parent_segment_id: null,
-          x: 10,
-          y: 20,
-          z: 0,
-          energy: 100,
-          agent_type: 'prey'
-        }
-      ];
+      const testSegments = segments({
+        agent_id: 1,
+        segment_id: 0,
+        parent_segment_id: null,
+        x: 10,
+        y: 20,
+        z: 0,
+        energy: 100,
+        agent_type: 'prey'
+      });
 
       const testEnv = {
         elements: [
@@ -520,23 +552,27 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       expect(lakeCall).toBeDefined();
 
       // Verify the coordinate synchronization: both segment and lake are mapped to centered/fit-to-screen coords
-      expect(segmentCall[0]).toBeCloseTo(250);
-      expect(segmentCall[1]).toBeCloseTo(175);
-      expect(lakeCall[0]).toBeCloseTo(250);
-      expect(lakeCall[1]).toBeCloseTo(175);
+      expect(segmentCall?.[0]).toBeCloseTo(250);
+      expect(segmentCall?.[1]).toBeCloseTo(175);
+      expect(lakeCall?.[0]).toBeCloseTo(250);
+      expect(lakeCall?.[1]).toBeCloseTo(175);
 
     } finally {
-      (globalThis as any).process.env.VITEST = originalVitest;
+      process.env.VITEST = originalVitest;
     }
   });
 
   it('Verify app does not crash when environmentalState.elements is not an array', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const invalidEnvState = { elements: {} as any };
+    // `elements` as an object rather than an array: what serde produces for an empty map, and a
+    // shape the viewport must survive rather than iterate. Answered over IPC, because that is where
+    // it comes from — `PixiViewport` calls `invoke<EnvironmentalState>('get_environmental_elements')`
+    // and stores the reply, so the object reaches the same guard by the same route as in the app.
+    setupDefaultInvokeMock({ get_environmental_elements: { elements: {} } });
 
     const error = await runWithInterceptors(async () => {
-      render(<PixiViewport environmentalState={invalidEnvState} />);
+      render(<PixiViewport />);
       // Wait for async initPixi to complete
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -547,22 +583,23 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   });
 
   it('Verify production coordinate mapping with NaN coordinates does not crash but results in NaN screen coordinates', async () => {
-    const originalVitest = (globalThis as any).process?.env?.VITEST;
-    (globalThis as any).process.env.VITEST = 'false';
+    // The viewport takes a different coordinate path outside Vitest (see `utils/runtimeEnv`), and
+    // that path is what this test is about. `process` is a real global here — this file already
+    // calls `process.listeners` — so the detour through an untyped `globalThis` bought nothing.
+    const originalVitest = process.env.VITEST;
+    process.env.VITEST = 'false';
 
     try {
-      const nanSegments = [
-        {
-          agent_id: 1,
-          segment_id: 0,
-          parent_segment_id: null,
-          x: NaN,
-          y: NaN,
-          z: NaN,
-          energy: 100,
-          agent_type: 'prey'
-        }
-      ];
+      const nanSegments = segments({
+        agent_id: 1,
+        segment_id: 0,
+        parent_segment_id: null,
+        x: NaN,
+        y: NaN,
+        z: NaN,
+        energy: 100,
+        agent_type: 'prey'
+      });
 
       mockGraphicsMethods.drawCircle.mockClear();
 
@@ -579,10 +616,10 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
       const drawCalls = mockGraphicsMethods.drawCircle.mock.calls;
       const segmentCall = drawCalls.find(c => Math.abs(c[2] - 10) < 0.1);
       expect(segmentCall).toBeDefined();
-      expect(isNaN(segmentCall[0]) || isNaN(segmentCall[1])).toBe(true);
+      expect(isNaN(segmentCall?.[0]) || isNaN(segmentCall?.[1])).toBe(true);
 
     } finally {
-      (globalThis as any).process.env.VITEST = originalVitest;
+      process.env.VITEST = originalVitest;
     }
   });
 
@@ -624,7 +661,7 @@ describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
     const drawCalls = mockGraphicsMethods.drawCircle.mock.calls;
     const finalLake = drawCalls.find(c => Math.abs(c[2] - 271.2) < 0.1);
     expect(finalLake).toBeDefined();
-    expect(finalLake[0]).toBeCloseTo(4000);
-    expect(finalLake[1]).toBeCloseTo(250);
+    expect(finalLake?.[0]).toBeCloseTo(4000);
+    expect(finalLake?.[1]).toBeCloseTo(250);
   });
 });

@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
-import React from 'react';
-import * as PIXI from 'pixi.js';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import {
   mockEnvironmentalState,
-  mockSimulationTickPayload
 } from '../mocks/mock_ipc_payloads';
 
 // Mock pixi.js exactly like phase 6 test so rendering works in jsdom
@@ -68,8 +67,8 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 import { App } from '../../src/App';
 
 describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
-  const setupDefaultInvokeMock = (overrides: Record<string, any> = {}) => {
-    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+  const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
+    vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
           throw overrides[cmd];
@@ -142,8 +141,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 271.2) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(3000);
-    expect(zoomedLake[1]).toBeCloseTo(1250);
+    expect(zoomedLake?.[0]).toBeCloseTo(3000);
+    expect(zoomedLake?.[1]).toBeCloseTo(1250);
   }, 60000);
 
   // --- ZOOM LOWER LIMIT VERIFICATION ---
@@ -172,8 +171,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = zoomCalls.slice(-8);
     const zoomedLake = finalCalls.find(c => Math.abs(c[2] - 2.71) < 0.1);
     expect(zoomedLake).toBeDefined();
-    expect(zoomedLake[0]).toBeCloseTo(30);
-    expect(zoomedLake[1]).toBeCloseTo(12.5);
+    expect(zoomedLake?.[0]).toBeCloseTo(30);
+    expect(zoomedLake?.[1]).toBeCloseTo(12.5);
   }, 60000);
 
   // --- PAN LIMITS AND COORDINATE TRANSFORMATION STRESS ---
@@ -208,8 +207,8 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
     const finalCalls = panCalls.slice(-8);
     const pannedLake = finalCalls.find(c => Math.abs(c[2] - 27.12) < 0.1);
     expect(pannedLake).toBeDefined();
-    expect(pannedLake[0]).toBeCloseTo(10300);
-    expect(pannedLake[1]).toBeCloseTo(10125);
+    expect(pannedLake?.[0]).toBeCloseTo(10300);
+    expect(pannedLake?.[1]).toBeCloseTo(10125);
   }, 60000);
 
   // --- PAYLOAD PARSING CRASHES: OBJ SEGMENTS ---
@@ -220,12 +219,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: {} });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();
@@ -247,12 +246,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       ]
     };
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', corruptedPayload);
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();
@@ -266,12 +265,12 @@ describe('Phase 6 Challenger Stress and Edge Case Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    let tickError: Error | null = null;
+    let tickError: unknown = null;
     try {
       await act(async () => {
         await emit('simulation-tick', { segments: "corrupted_string" });
       });
-    } catch (e: any) {
+    } catch (e) {
       tickError = e;
     }
     expect(tickError).toBeNull();

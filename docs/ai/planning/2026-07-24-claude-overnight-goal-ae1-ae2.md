@@ -11,6 +11,16 @@ owner: simulation-architecture
 
 # Overnight Goal — Headless Evolution Lab AE1–AE2
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 ## Mission
 
 Work continuously on the first safe, testable vertical foundation for the Alternate Evolution &

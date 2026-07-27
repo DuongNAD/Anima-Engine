@@ -1,13 +1,40 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { makeSceneRandom } from './utils/sceneClock';
 import { testAttrs } from './testAttrs';
+import type { WeatherKind } from './utils/weatherKind';
 
 interface WeatherProps {
-  weather: 'clear' | 'rain' | 'snow' | 'fog';
+  /** The shared union, not a fifth copy of it — see `utils/weatherKind.ts` for why there is one. */
+  weather: WeatherKind;
   precipitationRate?: number;
   fogDensity?: number;
   timeOfDay?: number;
+}
+
+/**
+ * Install this component's exponential fog on the scene, and hand back its removal.
+ *
+ * A named operation taking the scene explicitly, rather than two assignments written inline in the
+ * effect. `scene` is a value `useThree` handed the component, and writing to one of those is what
+ * `react-hooks/immutability` flags — the fog belongs to the scene and this component owns it only
+ * by convention, so the honest place to state that convention is a signature. Everything after
+ * mount is eased in `useFrame`, off the render path entirely.
+ */
+function installExpFog(scene: THREE.Scene, color: string, density: number): () => void {
+  scene.fog = new THREE.FogExp2(color, density);
+  return () => {
+    scene.fog = null;
+  };
+}
+
+/** The fog colour for a given sky/weather combination. Darker at night, greyer in weather. */
+function fogColorFor(weather: WeatherProps['weather'], timeOfDay: number): string {
+  if (timeOfDay < 5 || timeOfDay > 20) return '#020208'; // Night dark fog
+  if (weather === 'rain' || weather === 'fog') return '#8a9ba8'; // Rainy/foggy grayish blue
+  if (weather === 'snow') return '#d0dce5'; // Snowy cool white
+  return '#87ceeb'; // Clear day light blue
 }
 
 export const Weather: React.FC<WeatherProps> = ({
@@ -18,7 +45,8 @@ export const Weather: React.FC<WeatherProps> = ({
 }) => {
   const rainGeomRef = useRef<THREE.BufferGeometry>(null);
   const snowGeomRef = useRef<THREE.BufferGeometry>(null);
-  const pointsRef = useRef<any>(null); // For legacy compatibility with any tests expecting this ref
+  // Kept for tests that reach for it by name. `THREE.Points` is what it holds.
+  const pointsRef = useRef<THREE.Points>(null);
   const { scene } = useThree();
 
   // Maximum particle counts
@@ -33,33 +61,44 @@ export const Weather: React.FC<WeatherProps> = ({
   );
 
   // Generate initial particle positions
+  // Seeded under capture, `Math.random` otherwise — and `Math.random()` in a `useMemo` is a
+  // render-phase impurity the React Compiler rules reject regardless. `makeSceneRandom` answers both.
   const rainPositions = useMemo(() => {
     const arr = new Float32Array(maxRainCount * 3);
+    const rand = makeSceneRandom('weather.legacy.rain');
     for (let i = 0; i < maxRainCount; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 200;
-      arr[i * 3 + 1] = Math.random() * 80;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      arr[i * 3] = (rand() - 0.5) * 200;
+      arr[i * 3 + 1] = rand() * 80;
+      arr[i * 3 + 2] = (rand() - 0.5) * 200;
     }
     return arr;
-  }, []);
+  }, [maxRainCount]);
 
   const snowPositions = useMemo(() => {
     const arr = new Float32Array(maxSnowCount * 3);
+    const rand = makeSceneRandom('weather.legacy.snow');
     for (let i = 0; i < maxSnowCount; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 200;
-      arr[i * 3 + 1] = Math.random() * 80;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      arr[i * 3] = (rand() - 0.5) * 200;
+      arr[i * 3 + 1] = rand() * 80;
+      arr[i * 3 + 2] = (rand() - 0.5) * 200;
     }
     return arr;
-  }, []);
+  }, [maxSnowCount]);
 
-  // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184)
-  useEffect(() => {
-    scene.fog = new THREE.FogExp2('#87ceeb', currentFogDensity);
-    return () => {
-      scene.fog = null;
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184).
+  //
+  // Mount/unmount only, and the dependency list says so rather than a per-line lint suppression: the
+  // density this installs is the *initial* one, and `useFrame` below drives it every frame after.
+  // Re-running on a density change would reinstall the fog mid-flight and discard whatever the
+  // frame loop had eased it to. `INITIAL_FOG_DENSITY` is read once, on purpose.
+  const initialFogDensity = useRef(currentFogDensity);
+  useEffect(() => installExpFog(scene, '#87ceeb', initialFogDensity.current), [scene]);
+
+  // Fog colour follows time of day (darker at night, grey in storm/fog). Computed before the frame
+  // loop that reads it: `useFrame`'s callback runs long after render, but a `const` declared below
+  // it is still a temporal-dead-zone reference as far as the React Compiler is concerned, and it is
+  // right to object — the ordering is only safe by accident of when frames happen to fire.
+  const targetFogColor = fogColorFor(weather, timeOfDay);
 
   useFrame((state, delta) => {
     const time = state.clock.getElapsedTime();
@@ -138,10 +177,13 @@ export const Weather: React.FC<WeatherProps> = ({
       pointsRef.current.position.y = -((time * 5) % 10);
     }
 
-    // Update fog imperatively
-    if (scene.fog && scene.fog instanceof THREE.FogExp2) {
-      scene.fog.density = currentFogDensity;
-      scene.fog.color.set(targetFogColor);
+    // Update fog imperatively. Reached through `state.scene` rather than the closed-over `scene`:
+    // inside the frame loop the live scene is the callback's own argument, which is where r3f
+    // intends imperative work to read it from.
+    const fog = state.scene.fog;
+    if (fog instanceof THREE.FogExp2) {
+      fog.density = currentFogDensity;
+      fog.color.set(targetFogColor);
     }
   });
 
@@ -152,18 +194,6 @@ export const Weather: React.FC<WeatherProps> = ({
     (weather === 'rain' ? currentRainIntensity : 0) * maxRainCount +
     (weather === 'snow' ? currentSnowIntensity : 0) * maxSnowCount
   );
-
-  // Fog color changes based on time of day (darker at night, grayish in storm/fog)
-  let targetFogColor = '#cccccc';
-  if (timeOfDay < 5 || timeOfDay > 20) {
-    targetFogColor = '#020208'; // Night dark fog
-  } else if (weather === 'rain' || weather === 'fog') {
-    targetFogColor = '#8a9ba8'; // Rainy/foggy grayish blue
-  } else if (weather === 'snow') {
-    targetFogColor = '#d0dce5'; // Snowy cool white
-  } else {
-    targetFogColor = '#87ceeb'; // Clear day light blue
-  }
 
   return (
     <group

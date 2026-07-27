@@ -12,6 +12,7 @@ import CameraControls from './CameraControls';
 import Minimap from './Minimap';
 import { audioManager } from './utils/audioManager';
 import type { TerrainData } from './utils/terrainGenerator';
+import type { WeatherKind } from './utils/weatherKind';
 import { getMemoizedTerrain, loadOrGenerateTerrain, heightDataFromTerrain } from './utils/terrainCache';
 
 // World footprint (cells). Larger = bigger, more varied world; generation is cached so the
@@ -19,11 +20,26 @@ import { getMemoizedTerrain, loadOrGenerateTerrain, heightDataFromTerrain } from
 const WORLD_SIZE = 160;
 const WORLD_SEED = 'seed';
 
-// Patch THREE.Object3D to prevent R3F crash on data-* attributes in browser
-if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
-  const createRecursiveProxy = (): any => {
-    return new Proxy({}, {
-      get(target: any, prop: string | symbol) {
+// Patch THREE.Object3D to prevent R3F crash on data-* attributes in browser.
+//
+// r3f resolves a dashed prop by walking the object: `data-testid` becomes `object.data.testid`, and
+// `Object3D` has no `data`, so the walk dereferences `undefined` and throws. The proxy gives the
+// walk something to land on that keeps producing more of itself.
+//
+// `Record<string | symbol, unknown>` rather than `any` for the proxy target: every property really
+// is unknown — that is the point of the thing — and the difference is that a reader now has to say
+// so, where `any` let one be dereferenced further without a word.
+type RecursiveProxy = Record<string | symbol, unknown>;
+
+interface Object3DWithData {
+  data?: RecursiveProxy;
+  _r3fDataProxy?: RecursiveProxy;
+}
+
+if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as Object3DWithData).data) {
+  const createRecursiveProxy = (): RecursiveProxy => {
+    return new Proxy({} as RecursiveProxy, {
+      get(target: RecursiveProxy, prop: string | symbol) {
         if (prop === 'then') return undefined;
         if (prop === 'set' || prop === 'copy') return undefined;
         if (!(prop in target)) {
@@ -35,13 +51,13 @@ if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
   };
 
   Object.defineProperty(THREE.Object3D.prototype, 'data', {
-    get() {
+    get(this: Object3DWithData) {
       if (!this._r3fDataProxy) {
         this._r3fDataProxy = createRecursiveProxy();
       }
       return this._r3fDataProxy;
     },
-    set(val) {
+    set(this: Object3DWithData, val: RecursiveProxy) {
       this._r3fDataProxy = val;
     },
     configurable: true,
@@ -49,7 +65,7 @@ if (typeof window !== 'undefined' && !(THREE.Object3D.prototype as any).data) {
 }
 
 export const LandscapeShowcase: React.FC = () => {
-  const [weather, setWeather] = useState<'clear' | 'rain' | 'snow' | 'fog'>('clear');
+  const [weather, setWeather] = useState<WeatherKind>('clear');
   const [speed, setSpeed] = useState<number>(1.0);
   const [volume, setVolume] = useState<number>(0.5);
   const [isMuted, setIsMuted] = useState<boolean>(false);
@@ -62,6 +78,10 @@ export const LandscapeShowcase: React.FC = () => {
   const [terrain, setTerrain] = useState<TerrainData | null>(() =>
     typeof indexedDB === 'undefined' ? getMemoizedTerrain(WORLD_SIZE, WORLD_SIZE, WORLD_SEED) : null,
   );
+  // Load once. `terrain` is in the dependency list rather than suppressed out of it: the guard on
+  // the first line makes the re-run the loaded terrain triggers a no-op, so the honest list and the
+  // empty one do the same thing — and the honest one keeps saying so if the guard ever moves.
+  // (`WorldShowcase` has the identical shape for its world.)
   useEffect(() => {
     if (terrain) return;
     let alive = true;
@@ -71,8 +91,7 @@ export const LandscapeShowcase: React.FC = () => {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [terrain]);
 
   useEffect(() => {
     audioManager.initialize();
@@ -164,7 +183,7 @@ export const LandscapeShowcase: React.FC = () => {
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }} data-testid="landscape-showcase">
       <LandscapeControlsOverlay
         weather={weather}
-        onWeatherChange={(w) => setWeather(w as any)}
+        onWeatherChange={setWeather}
         speed={speed}
         onSpeedChange={setSpeed}
         volume={volume}

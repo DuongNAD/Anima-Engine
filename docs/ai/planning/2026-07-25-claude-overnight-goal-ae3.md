@@ -12,6 +12,16 @@ predecessor: 2026-07-25-claude-overnight-goal-ae25.md
 
 # Claude Overnight Goal — AE3 Headless Pathway and Selection Slice
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 **Status:** complete for the scoped headless reference slice; independent audit passed  
 **Date:** 2026-07-25  
 **Owner:** project owner  

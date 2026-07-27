@@ -28,11 +28,34 @@ pub fn toggle_simulation(
     }
 }
 
+/// Directory this app is allowed to keep saves in, created on demand.
+///
+/// Every save path is built from here plus a validated name — see [`crate::commands::save_paths`]
+/// for why a frontend-supplied string is never treated as a path.
+fn saves_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot locate the app data directory: {e}"))?
+        .join("saves");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("cannot create the save directory {}: {e}", dir.display()))?;
+    Ok(dir)
+}
+
 #[tauri::command]
 pub fn save_simulation_state(
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
+    // `file_path` keeps its name for IPC compatibility but is now a save *name*, not a path. It
+    // used to go straight to `write_atomic`, so anything that could reach `invoke` could write a
+    // file anywhere this process has permission.
+    let target =
+        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &file_path)?;
+
     let engine = &state.engine;
     if !engine.running.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("Simulation is not running".to_string());
@@ -57,7 +80,7 @@ pub fn save_simulation_state(
     // one.
     let envelope = crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
         .map_err(|e| format!("Serialization error: {e}"))?;
-    crate::core::snapshot::write_atomic(std::path::Path::new(&file_path), &envelope)
+    crate::core::snapshot::write_atomic(&target, &envelope)
         .map_err(|e| format!("File writing error: {e}"))?;
 
     Ok(true)
@@ -69,11 +92,17 @@ pub fn load_simulation_state(
     app_handle: tauri::AppHandle,
     file_path: String,
 ) -> Result<bool, String> {
+    // Same contract as save: a name resolved under app-data, never a path from the webview. Reading
+    // an arbitrary path was the more dangerous half of the old behaviour — it pulled attacker-chosen
+    // bytes into the running world, and surfaced parse failures containing file contents back to the
+    // caller.
+    let source =
+        crate::commands::save_paths::resolve_save_path(&saves_dir(&app_handle)?, &file_path)?;
+
     // Verifies the checksum and migrates a pre-envelope save (schema 1 or 2) forward. A corrupt or
     // truncated file is refused here with a message naming the problem, instead of deserializing
     // into a plausible-looking world.
-    let loaded_state =
-        crate::core::snapshot::read(std::path::Path::new(&file_path)).map_err(|e| e.to_string())?;
+    let loaded_state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
 
     let engine = &state.engine;
     let was_running = engine.running.load(std::sync::atomic::Ordering::SeqCst);
@@ -103,6 +132,168 @@ pub fn load_simulation_state(
     );
 
     Ok(true)
+}
+
+/// The directory a user drops a pre-confinement save into. See `save_paths::LEGACY_IMPORT_DIR`.
+fn legacy_import_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("cannot locate the app data directory: {e}"))?
+        .join(crate::commands::save_paths::LEGACY_IMPORT_DIR);
+    std::fs::create_dir_all(&dir).map_err(|e| {
+        format!(
+            "cannot create the legacy import directory {}: {e}",
+            dir.display()
+        )
+    })?;
+    Ok(dir)
+}
+
+/// What the user can import, and where to put it.
+#[derive(serde::Serialize, ts_rs::TS)]
+// Same target as every other generated type. `src/core/*.rs` and this file are at the same depth,
+// so the string is identical rather than re-derived — an `export_to` that resolves somewhere else
+// produces a binding nothing imports and a drift gate that never sees it.
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct LegacyImportListing {
+    /// Absolute path of the drop directory, so the UI can tell the user where to copy the file.
+    pub directory: String,
+    /// Names present there now, each valid as an argument to `import_legacy_save`.
+    pub names: Vec<String>,
+    /// Files that are present but cannot be imported, so the UI can say so instead of hiding them.
+    ///
+    /// A user who drops `My Save (old).sav` in and sees an empty list has been told nothing. The
+    /// listing is what the UI renders, so the reason a file is missing belongs in it.
+    pub ignored: Vec<String>,
+}
+
+/// List the importable saves in `dir`, and the files that are there but are not importable.
+///
+/// # Why a name is only listed when it is already canonical
+///
+/// `sanitize_save_name` *normalises*: it appends `.json` when the name lacks it, so `old.txt`
+/// sanitises to `old.txt.json`. Listing the raw directory entry for anything that merely *passes*
+/// sanitisation therefore produced names the importer could not resolve — the listing said
+/// `old.txt`, `import_legacy_save("old.txt")` looked for `legacy-import/old.txt.json`, and that file
+/// does not exist. The listing and the resolver disagreed about what a file was called.
+///
+/// The fix is the fixed point: a name is listed only when sanitising it returns the name itself. That
+/// is exactly the set of names for which "what the listing calls it" and "what the importer opens"
+/// are the same string, so the round trip cannot fail. In practice it means `*.json` — which is what
+/// the save command has always written — and everything else is reported as ignored rather than
+/// silently dropped.
+///
+/// Split from the command so it can be tested against a real directory without a Tauri app.
+pub fn list_legacy_saves_in(dir: &std::path::Path) -> Result<LegacyImportListing, String> {
+    let mut names = Vec::new();
+    let mut ignored = Vec::new();
+    for entry in
+        std::fs::read_dir(dir).map_err(|e| format!("cannot read {}: {e}", dir.display()))?
+    {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        match crate::commands::save_paths::sanitize_save_name(&name) {
+            Ok(canonical) if canonical == name => names.push(name),
+            _ => ignored.push(name),
+        }
+    }
+    names.sort();
+    ignored.sort();
+    Ok(LegacyImportListing {
+        directory: dir.to_string_lossy().into_owned(),
+        names,
+        ignored,
+    })
+}
+
+/// List the saves available for legacy import.
+///
+/// Reads a directory this app owns and returns names only. It cannot be pointed anywhere else, so
+/// there is nothing here for a compromised webview to aim.
+#[tauri::command]
+pub fn list_legacy_saves(app_handle: tauri::AppHandle) -> Result<LegacyImportListing, String> {
+    list_legacy_saves_in(&legacy_import_dir(&app_handle)?)
+}
+
+/// Copy one legacy save forward from `import_dir` into `saves_dir`, reading only from the first.
+///
+/// The whole of `import_legacy_save` except for locating the two directories, so a test can supply
+/// two real temporary roots and assert what actually happened on disk: that the destination is a
+/// current [`SnapshotEnvelope`], and that the source file's bytes are unchanged.
+///
+/// Taking the two roots as separate parameters is the structural half of "the import never writes to
+/// its source". A single-root version could not express the property; with two, every write in the
+/// body demonstrably targets the one derived from `saves_dir`.
+pub fn import_legacy_save_into(
+    import_dir: &std::path::Path,
+    saves_dir: &std::path::Path,
+    legacy_name: &str,
+    save_as: &str,
+) -> Result<String, String> {
+    let source = crate::commands::save_paths::resolve_legacy_import_path(import_dir, legacy_name)?;
+    if !source.is_file() {
+        return Err(format!(
+            "no file named {legacy_name:?} in the legacy import directory. Copy the old save there \
+             first — this command cannot read from anywhere else."
+        ));
+    }
+
+    // Resolve the destination before reading, so an unusable `save_as` fails without having done any
+    // work — and, more to the point, so the destination is fixed by `saves_dir` and cannot be
+    // influenced by anything found inside the source file.
+    let target = crate::commands::save_paths::resolve_save_path(saves_dir, save_as)?;
+
+    // The same reader the load command uses: it verifies the checksum of an enveloped save and
+    // migrates a pre-envelope one (schema 1 or 2) forward. A legacy file is exactly the second case.
+    let state = crate::core::snapshot::read(&source).map_err(|e| e.to_string())?;
+
+    // Re-seal into the current envelope and write it where saves live. The import is a copy
+    // forward, so the imported world gets the checksum and versioning every other save has.
+    let envelope = crate::core::snapshot::SnapshotEnvelope::seal(state)
+        .map_err(|e| format!("could not re-seal the imported save: {e}"))?;
+    crate::core::snapshot::write_atomic(&target, &envelope)
+        .map_err(|e| format!("could not write the imported save: {e}"))?;
+
+    Ok(target
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| save_as.to_string()))
+}
+
+/// Import a save written before path confinement, **read-only**, into the app's save directory.
+///
+/// # Why this is not "load an absolute path"
+///
+/// The accepted design promises pre-confinement saves stay loadable through an explicitly opt-in
+/// migration. Implementing that as a command taking an absolute path would hand back exactly the
+/// capability the confinement removed — a compromised webview would call it with an SSH key and
+/// read the parse error.
+///
+/// So the authorising act is one the page cannot perform: the user copies the old file into
+/// `<app data>/legacy-import/` with their own file manager. This command addresses it by name,
+/// through the same allow-list as every other save name, reads it, and copies it forward into
+/// `saves/` under a name the user chose. The legacy file is never written to, never truncated, and
+/// never deleted — if the import produces a world the user does not want, the original is still
+/// where they put it.
+#[tauri::command]
+pub fn import_legacy_save(
+    app_handle: tauri::AppHandle,
+    legacy_name: String,
+    save_as: String,
+) -> Result<String, String> {
+    import_legacy_save_into(
+        &legacy_import_dir(&app_handle)?,
+        &saves_dir(&app_handle)?,
+        &legacy_name,
+        &save_as,
+    )
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

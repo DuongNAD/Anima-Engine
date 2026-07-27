@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { sampleElevation } from './utils/worldSample';
+import { sceneElapsed } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldFish — schools of fish circling in the sunlit shallows, seen through the transparent
@@ -134,7 +135,7 @@ export const WorldFish: React.FC<WorldFishProps> = ({
   useFrame((state) => {
     const inst = ref.current;
     if (!inst || typeof inst.setMatrixAt !== 'function' || count === 0) return;
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const dummy = new THREE.Object3D();
     let k = 0;
     for (let s = 0; s < flights.length; s++) {
@@ -168,7 +169,7 @@ export const WorldFish: React.FC<WorldFishProps> = ({
 
   if (count === 0) return null;
   return (
-    <instancedMesh ref={ref} args={[geom, undefined as any, count]} name="world-fish" frustumCulled={false}>
+    <instancedMesh ref={ref} args={[geom, null, count]} name="world-fish" frustumCulled={false}>
       <meshBasicMaterial side={THREE.DoubleSide} transparent opacity={0.6} />
     </instancedMesh>
   );

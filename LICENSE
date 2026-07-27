@@ -33,6 +33,42 @@ remain governed by their respective licenses, which take precedence over this
 file with respect to those components. This file applies only to the portions
 of the Software owned by the Owner.
 
+SCOPE OF WHAT IS COVERED
+
+This file previously said only that third-party components keep their own
+licenses. That is true but not specific enough to act on, because "the Software"
+covers materials of four different kinds and they are not interchangeable. For
+the avoidance of doubt, the terms above apply to the following, all owned by the
+Owner:
+
+  (a) SOURCE CODE — the Rust workspace under src-tauri/ (including the
+      anima-domain crate), the TypeScript/React frontend under src/, the build
+      and verification scripts under scripts/, and the test suites.
+
+  (b) MODEL ARTIFACTS — trained or serialized network weights produced by this
+      project, including any brain genotype or checkpoint files. Note that no
+      pre-trained weights are distributed in this repository; weights are
+      generated at runtime from a seed.
+
+  (c) DATA FILES — generated world artifacts (.anmw), simulation save states,
+      benchmark reports, and manifests, together with the formats that define
+      them.
+
+  (d) ASSETS — images, icons, and any visual or audio material under public/
+      and src-tauri/icons/.
+
+THIRD-PARTY COMPONENTS
+
+The Software is distributed together with third-party components under
+permissive licenses. Those components are NOT covered by this file and remain
+governed by their own terms. They are inventoried in NOTICE, which is generated
+from the dependency graph that is actually distributed
+(`node scripts/gen_notice.mjs`) rather than hand-maintained.
+
+NOTICE is an inventory, not a legal review. In particular it does not reproduce
+the license texts that MIT and BSD require to accompany a distribution; the
+packaging step does not yet copy them. That is a known open item.
+
 NO WARRANTY
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR

@@ -1,18 +1,28 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, screen } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import * as THREE from 'three';
 import Terrain from '../../src/components/Landscape/Terrain';
 import Water from '../../src/components/Landscape/Water';
 import { generateTerrain, TERRAIN_HEIGHT_SCALE } from '../../src/components/Landscape/utils/terrainGenerator';
+import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
+import {
+  getByName,
+  installStubbedProperty,
+  removeStubbedProperties,
+  type StubAttributeCapture,
+  type StubGeometryHolder,
+  type StubLod,
+  type StubUniforms,
+} from '../mocks/r3f-dom-stubs';
 
-let originalSetAttribute: any;
-let frameCallbacks: Array<(state: any, delta: number) => void> = [];
+let originalSetAttribute: typeof HTMLElement.prototype.setAttribute | undefined;
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
     useThree: () => ({
@@ -25,20 +35,14 @@ vi.mock('@react-three/fiber', async () => {
 });
 
 describe('Terrain and Water Component Tests', () => {
-  let consoleErrorSpy: any;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     frameCallbacks = [];
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    // Override screen.getByTestId to look for elements with [name="..."] attribute in JSDOM
-    screen.getByTestId = (id: string) => {
-      const el = document.querySelector(`[name="${id}"]`);
-      if (!el) {
-        throw new Error(`Unable to find element with name="${id}"`);
-      }
-      return el as any;
-    };
+    // Elements are found by their `name` attribute — `getByName` in `tests/mocks/r3f-dom-stubs.ts`
+    // says why, and what overwriting `screen.getByTestId` here used to cost.
 
     // Mock LOD properties & methods on HTMLElement
     Object.defineProperty(HTMLElement.prototype, 'levels', {
@@ -54,17 +58,17 @@ describe('Terrain and Water Component Tests', () => {
       configurable: true,
     });
 
-    HTMLElement.prototype.addLevel = vi.fn().mockImplementation(function (
-      this: any,
-      mesh: any,
-      distance: number
-    ) {
-      this.levels.push({ object: mesh, distance });
-    });
+    installStubbedProperty(
+      HTMLElement.prototype,
+      'addLevel',
+      vi.fn(function (this: HTMLElement & StubLod, mesh: unknown, distance: number) {
+        this.levels.push({ object: mesh, distance });
+      })
+    );
 
     // Mock BufferGeometry methods
-    HTMLElement.prototype.setIndex = vi.fn();
-    HTMLElement.prototype.computeVertexNormals = vi.fn();
+    installStubbedProperty(HTMLElement.prototype, 'setIndex', vi.fn());
+    installStubbedProperty(HTMLElement.prototype, 'computeVertexNormals', vi.fn());
 
     // Capture custom attributes set on elements
     Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
@@ -79,14 +83,14 @@ describe('Terrain and Water Component Tests', () => {
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
     HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: any,
+      this: HTMLElement & StubAttributeCapture,
       name: string,
-      value: any
+      value: string | THREE.BufferAttribute
     ) {
       if (value instanceof THREE.BufferAttribute) {
         this._capturedAttributes.set(name, value);
       } else {
-        originalSetAttribute.call(this, name, value);
+        originalSetAttribute?.call(this, name, value);
       }
     });
 
@@ -136,13 +140,16 @@ describe('Terrain and Water Component Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (HTMLElement.prototype as any).levels;
-    delete (HTMLElement.prototype as any).addLevel;
-    delete (HTMLElement.prototype as any).setIndex;
-    delete (HTMLElement.prototype as any).computeVertexNormals;
-    delete (HTMLElement.prototype as any)._capturedAttributes;
-    delete (HTMLElement.prototype as any).uniforms;
-    delete (HTMLElement.prototype as any).geometry;
+    removeStubbedProperties(
+      HTMLElement.prototype,
+      'levels',
+      'addLevel',
+      'setIndex',
+      'computeVertexNormals',
+      '_capturedAttributes',
+      'uniforms',
+      'geometry',
+    );
   });
 
   describe('Terrain Component', () => {
@@ -154,12 +161,12 @@ describe('Terrain and Water Component Tests', () => {
       expect(lodEl).not.toBeNull();
 
       // Verify LOD levels were registered
-      expect((lodEl as any).levels.length).toBe(3);
+      expect((lodEl as Element & StubLod).levels.length).toBe(3);
 
       // Verify the detail meshes exist by name
-      const highMesh = screen.getByTestId('terrain-mesh');
-      const medMesh = screen.getByTestId('terrain-mesh-lod-1');
-      const lowMesh = screen.getByTestId('terrain-mesh-lod-2');
+      const highMesh = getByName('terrain-mesh');
+      const medMesh = getByName('terrain-mesh-lod-1');
+      const lowMesh = getByName('terrain-mesh-lod-2');
 
       expect(highMesh).toBeDefined();
       expect(medMesh).toBeDefined();
@@ -169,21 +176,24 @@ describe('Terrain and Water Component Tests', () => {
     it('should initialize geometry with heights deformed correctly based on elevation data', () => {
       const width = 64;
       const height = 64;
-      const { container } = render(<Terrain width={width} height={height} />);
+      render(<Terrain width={width} height={height} />);
 
       // Retrieve high-detail bufferGeometry
-      const highMesh = screen.getByTestId('terrain-mesh');
+      const highMesh = getByName('terrain-mesh');
       const geomEl = highMesh.querySelector('buffergeometry');
       expect(geomEl).not.toBeNull();
 
-      const posAttr = (geomEl as any)._capturedAttributes.get('position');
-      const colorAttr = (geomEl as any)._capturedAttributes.get('color');
+      const captured = (geomEl as Element & StubAttributeCapture)._capturedAttributes;
+      const posAttr = captured.get('position');
+      const colorAttr = captured.get('color');
 
       expect(posAttr).toBeDefined();
       expect(colorAttr).toBeDefined();
 
+      // A guard, not an assertion: `Map.get` answers `undefined` for a key it does not hold, and the
+      // rest of this test indexes into the array. Throwing here names what went missing.
+      if (!posAttr) throw new Error('the terrain geometry published no `position` attribute');
       const positions = posAttr.array;
-      const colors = colorAttr.array;
 
       // Height logic check: y coordinate is index i*3 + 1
       // Let's verify coordinates for (x=0, y=0) which is index 0
@@ -220,7 +230,7 @@ describe('Terrain and Water Component Tests', () => {
         />
       );
 
-      const waterMesh = screen.getByTestId('water-mesh') as any;
+      const waterMesh = getByName('water-mesh');
       expect(waterMesh).toBeDefined();
 
       // Check DOM properties mapping (using user-facing data-attributes)
@@ -232,22 +242,15 @@ describe('Terrain and Water Component Tests', () => {
     it('should update the shader material time uniform in the rendering frame loop', () => {
       render(<Water width={64} height={64} />);
 
-      const shaderEl = document.querySelector('shadermaterial') as any;
+      const shaderEl = document.querySelector('shadermaterial') as (Element & StubUniforms) | null;
       expect(shaderEl).not.toBeNull();
-      expect(shaderEl.uniforms).toBeDefined();
-
-      // Simulate clock advancement
-      const mockState = {
-        clock: {
-          getElapsedTime: () => 15.42,
-        },
-      };
+      expect(shaderEl?.uniforms).toBeDefined();
 
       act(() => {
-        frameCallbacks.forEach((cb) => cb(mockState, 0.016));
+        frameCallbacks.forEach((cb) => cb(frameStateAt(15.42), 0.016));
       });
 
-      expect(shaderEl.uniforms.time.value).toBe(15.42);
+      expect(shaderEl?.uniforms.time.value).toBe(15.42);
     });
 
     it('should update the positions of the waterfall particles over time', () => {
@@ -255,20 +258,18 @@ describe('Terrain and Water Component Tests', () => {
       render(<Water width={200} height={200} />);
 
       // Verify waterfall-particles points exist
-      const particlesEl = screen.getByTestId('waterfall-particles') as any;
+      const particlesEl = getByName('waterfall-particles') as HTMLElement & StubGeometryHolder;
       expect(particlesEl).toBeDefined();
 
-      const geom = particlesEl.geometry;
-      const posAttr = geom.getAttribute('position');
-      const posArray = posAttr.array;
+      const posAttr = particlesEl.geometry.getAttribute('position');
+      const posArray = posAttr?.array ?? new Float32Array();
 
       // Record initial particle Y coordinates (every 3rd element starting from index 1)
       const initialYs = Array.from(posArray.filter((_, idx) => idx % 3 === 1));
 
       // Advance frame
-      const mockState = { clock: { getElapsedTime: () => 1.0 } };
       act(() => {
-        frameCallbacks.forEach((cb) => cb(mockState, 0.05)); // 50ms delta
+        frameCallbacks.forEach((cb) => cb(frameStateAt(1.0), 0.05)); // 50ms delta
       });
 
       const updatedYs = Array.from(posArray.filter((_, idx) => idx % 3 === 1));

@@ -1,0 +1,1204 @@
+{
+  "$comment": "Provenance for the licence texts vendored under licensing/upstream/. Hand-maintained and reviewed; scripts/gen_third_party_licenses.mjs reads it fail-closed and scripts/verify_upstream_licenses.mjs re-fetches from the pinned URLs to confirm the bytes. Every file path under licensing/upstream/ is exactly the tail of its raw URL, so location and provenance cannot drift apart. `retrieved` is a committed constant recording when a file was fetched; it is not read by any generator whose output is byte-compared.",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "github.com/Aleph-Alpha/ts-rs/0ba56be43af1e438053af2b422a82fcff252f7ef/LICENSE",
+      "url": "https://raw.githubusercontent.com/Aleph-Alpha/ts-rs/0ba56be43af1e438053af2b422a82fcff252f7ef/LICENSE",
+      "repository": "https://github.com/Aleph-Alpha/ts-rs",
+      "commit": "0ba56be43af1e438053af2b422a82fcff252f7ef",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1073,
+      "sha256": "db7f7f8e7236a2d0b41b855b2501b7b913caebbcda6ce498637a304ad1706ce1",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+      "repository": "https://github.com/aclysma/profiling",
+      "commit": "8271551172eb6fa4cba47369aedd93790c623df9",
+      "pathInRepo": "LICENSE-APACHE",
+      "filename": "LICENSE-APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 10818,
+      "sha256": "10d30a673cd5e9349bdc02aeb48f14b3386d27d0da32df8f0a555d4aa16aa551",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT",
+      "repository": "https://github.com/aclysma/profiling",
+      "commit": "8271551172eb6fa4cba47369aedd93790c623df9",
+      "pathInRepo": "LICENSE-MIT",
+      "filename": "LICENSE-MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1093,
+      "sha256": "c8167fdeeed46d3f244d3f85c5bf998ce889343691c32be2c61a8bc4b5c08333",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/brendanzab/codespan/fd389a13f5bb6d625b71e2e4694b26e127f393f9/LICENSE",
+      "url": "https://raw.githubusercontent.com/brendanzab/codespan/fd389a13f5bb6d625b71e2e4694b26e127f393f9/LICENSE",
+      "repository": "https://github.com/brendanzab/codespan",
+      "commit": "fd389a13f5bb6d625b71e2e4694b26e127f393f9",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
+      "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+      "commit": "ae42d22078b98549e987d2f03d12df7b984fde47",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "BSD-3-Clause",
+      "bytes": 1483,
+      "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE-ZLIB",
+      "url": "https://raw.githubusercontent.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE-ZLIB",
+      "repository": "https://github.com/etemesi254/zune-image",
+      "commit": "69502ce83fdfecdd0beefd677e2abb3781b29d98",
+      "pathInRepo": "LICENSE-ZLIB",
+      "filename": "LICENSE-ZLIB",
+      "materialType": "licence-text",
+      "spdx": "Zlib",
+      "bytes": 818,
+      "sha256": "7fa429541e55b1509909e058f2d21a37467e4958ec713b357f6e0cf9dc4ee352",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE.md",
+      "url": "https://raw.githubusercontent.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE.md",
+      "repository": "https://github.com/etemesi254/zune-image",
+      "commit": "69502ce83fdfecdd0beefd677e2abb3781b29d98",
+      "pathInRepo": "LICENSE.md",
+      "filename": "LICENSE.md",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 384,
+      "sha256": "e870d7fd7819a9f0453c62798cb52ae95d148a8c91dc2de1d983f997143c72de",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/gfx-rs/rspirv/e91a5debc10c395b36db7721dfff6326d697a1e2/LICENSE",
+      "url": "https://raw.githubusercontent.com/gfx-rs/rspirv/e91a5debc10c395b36db7721dfff6326d697a1e2/LICENSE",
+      "repository": "https://github.com/gfx-rs/rspirv",
+      "commit": "e91a5debc10c395b36db7721dfff6326d697a1e2",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.APACHE",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.APACHE",
+      "repository": "https://github.com/gfx-rs/wgpu",
+      "commit": "61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4",
+      "pathInRepo": "LICENSE.APACHE",
+      "filename": "LICENSE.APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.MIT",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.MIT",
+      "repository": "https://github.com/gfx-rs/wgpu",
+      "commit": "61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4",
+      "pathInRepo": "LICENSE.MIT",
+      "filename": "LICENSE.MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1078,
+      "sha256": "c7fea58d1cfe49634cd92e54fc10a9d871f4b275321a4cd8c09e449122caaeb4",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.APACHE",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.APACHE",
+      "repository": "https://github.com/gfx-rs/wgpu",
+      "commit": "8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d",
+      "pathInRepo": "LICENSE.APACHE",
+      "filename": "LICENSE.APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 10173,
+      "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.MIT",
+      "url": "https://raw.githubusercontent.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.MIT",
+      "repository": "https://github.com/gfx-rs/wgpu",
+      "commit": "8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d",
+      "pathInRepo": "LICENSE.MIT",
+      "filename": "LICENSE.MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1078,
+      "sha256": "c7fea58d1cfe49634cd92e54fc10a9d871f4b275321a4cd8c09e449122caaeb4",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-APACHE",
+      "repository": "https://github.com/kobzol/rust-delegate",
+      "commit": "ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0",
+      "pathInRepo": "LICENSE-APACHE",
+      "filename": "LICENSE-APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 11357,
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-MIT",
+      "repository": "https://github.com/kobzol/rust-delegate",
+      "commit": "ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0",
+      "pathInRepo": "LICENSE-MIT",
+      "filename": "LICENSE-MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1078,
+      "sha256": "be7ee8aa49dc586023669a0c600a0536fce6a9f61264a53a67cdd842564ed899",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/microsoft/com-rs/5f6b2d444be909e45c1fc9fa1862777ce0bde0b5/LICENSE",
+      "url": "https://raw.githubusercontent.com/microsoft/com-rs/5f6b2d444be909e45c1fc9fa1862777ce0bde0b5/LICENSE",
+      "repository": "https://github.com/microsoft/com-rs",
+      "commit": "5f6b2d444be909e45c1fc9fa1862777ce0bde0b5",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1141,
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/neo4j-labs/neo4rs/5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc/README.md",
+      "url": "https://raw.githubusercontent.com/neo4j-labs/neo4rs/5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc/README.md",
+      "repository": "https://github.com/neo4j-labs/neo4rs",
+      "commit": "5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc",
+      "pathInRepo": "README.md",
+      "filename": "README.md",
+      "materialType": "licence-statement",
+      "spdx": null,
+      "bytes": 6481,
+      "sha256": "7c3cd5f02468e41b0ce58d588513c37fd84347a1665ebb9ba1084162d5ccf843",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/neo4j-labs/neo4rs/a57f1dffe99220f486eed86fc641575d7cd1ca1f/README.md",
+      "url": "https://raw.githubusercontent.com/neo4j-labs/neo4rs/a57f1dffe99220f486eed86fc641575d7cd1ca1f/README.md",
+      "repository": "https://github.com/neo4j-labs/neo4rs",
+      "commit": "a57f1dffe99220f486eed86fc641575d7cd1ca1f",
+      "pathInRepo": "README.md",
+      "filename": "README.md",
+      "materialType": "licence-statement",
+      "spdx": null,
+      "bytes": 6481,
+      "sha256": "7c3cd5f02468e41b0ce58d588513c37fd84347a1665ebb9ba1084162d5ccf843",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/omgovich/colord/5344fbf77b736f81cd33c21050021bc09bc9dd1d/LICENSE.md",
+      "url": "https://raw.githubusercontent.com/omgovich/colord/5344fbf77b736f81cd33c21050021bc09bc9dd1d/LICENSE.md",
+      "repository": "https://github.com/omgovich/colord",
+      "commit": "5344fbf77b736f81cd33c21050021bc09bc9dd1d",
+      "pathInRepo": "LICENSE.md",
+      "filename": "LICENSE.md",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1083,
+      "sha256": "7613d4594ee8b6163926af3435dae61c9e3d5a27cd137bd76a543ba40002d8fc",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "pathInRepo": "COPYRIGHT.md",
+      "filename": "COPYRIGHT.md",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 608,
+      "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "pathInRepo": "LICENSE-APACHE",
+      "filename": "LICENSE-APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 10847,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "5878605364af97a3358368a6eaef02104af2e016",
+      "pathInRepo": "LICENSE-MIT",
+      "filename": "LICENSE-MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1023,
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/COPYRIGHT.md",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/COPYRIGHT.md",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "pathInRepo": "COPYRIGHT.md",
+      "filename": "COPYRIGHT.md",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 608,
+      "sha256": "f5c342c49f3ac804f3e8e7bb62a8040a44c50d47bb36902b1abd13f66a1adf8b",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "pathInRepo": "LICENSE-APACHE",
+      "filename": "LICENSE-APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 10847,
+      "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+      "url": "https://raw.githubusercontent.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT",
+      "repository": "https://github.com/open-i18n/rust-unic",
+      "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+      "pathInRepo": "LICENSE-MIT",
+      "filename": "LICENSE-MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1023,
+      "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE",
+      "url": "https://raw.githubusercontent.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE",
+      "repository": "https://github.com/oxc-project/oxc",
+      "commit": "69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1119,
+      "sha256": "95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/pmndrs/react-three-fiber/f81bfe8cb29373d2687433c6130e0ce1daf7222c/LICENSE",
+      "url": "https://raw.githubusercontent.com/pmndrs/react-three-fiber/f81bfe8cb29373d2687433c6130e0ce1daf7222c/LICENSE",
+      "repository": "https://github.com/pmndrs/react-three-fiber",
+      "commit": "f81bfe8cb29373d2687433c6130e0ce1daf7222c",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1070,
+      "sha256": "ebd6a29bec64bdfcf8795388f2eceaf1479c14d343c0846de347ab8609d66139",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/sarah-quinones/pulp/5eb07fd7b68edf0a5e19f71737d315f72a510295/LICENSE",
+      "url": "https://raw.githubusercontent.com/sarah-quinones/pulp/5eb07fd7b68edf0a5e19f71737d315f72a510295/LICENSE",
+      "repository": "https://github.com/sarah-quinones/pulp",
+      "commit": "5eb07fd7b68edf0a5e19f71737d315f72a510295",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1062,
+      "sha256": "d64f878c89bd5f1e5ada7e4aad57690b122727cf5229b7b87ea1980c188da1d9",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/servo/servo/f5ab95786f9cbbf5804d87f265812325fc80ad7b/LICENSE",
+      "url": "https://raw.githubusercontent.com/servo/servo/f5ab95786f9cbbf5804d87f265812325fc80ad7b/LICENSE",
+      "repository": "https://github.com/servo/servo",
+      "commit": "f5ab95786f9cbbf5804d87f265812325fc80ad7b",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MPL-2.0",
+      "bytes": 15649,
+      "sha256": "1af2d2b02d9c86030d29ed77117ca7a1b0e4b6ff35bcf8eeb124867d0f5cb59e",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+      "url": "https://raw.githubusercontent.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE",
+      "repository": "https://github.com/wravery/webview2-rs",
+      "commit": "b74dc5e2b394044bea5191052868ce7a106c202c",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1067,
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+      "url": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+      "repository": "https://github.com/wravery/webview2-rs",
+      "commit": "dffa41a8a46d3f5565eefbff2de57d38d399f158",
+      "pathInRepo": "LICENSE",
+      "filename": "LICENSE",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1067,
+      "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/COPYING",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/COPYING",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "61020bdcb4eb04fca6bbf748aeb9570e859236e0",
+      "pathInRepo": "COPYING",
+      "filename": "COPYING",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 347,
+      "sha256": "12121dfa588677007848ab922a45a1e3248868f6ff063598fceb3141d7897314",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/APACHE",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/APACHE",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "61020bdcb4eb04fca6bbf748aeb9570e859236e0",
+      "pathInRepo": "license/APACHE",
+      "filename": "APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 569,
+      "sha256": "58317934bf818c379e4215fad7e8dfb6812edff32c9557b8b039343f69711e08",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/MIT",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/MIT",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "61020bdcb4eb04fca6bbf748aeb9570e859236e0",
+      "pathInRepo": "license/MIT",
+      "filename": "MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1075,
+      "sha256": "f774bf68151714985324d90adbd59e8f271b7ba518608d871b6ba16464692879",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/COPYING",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/COPYING",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "7ddd1fe576fcfc503347eb97e476a47581479f22",
+      "pathInRepo": "COPYING",
+      "filename": "COPYING",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 347,
+      "sha256": "12121dfa588677007848ab922a45a1e3248868f6ff063598fceb3141d7897314",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/APACHE",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/APACHE",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "7ddd1fe576fcfc503347eb97e476a47581479f22",
+      "pathInRepo": "license/APACHE",
+      "filename": "APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 569,
+      "sha256": "58317934bf818c379e4215fad7e8dfb6812edff32c9557b8b039343f69711e08",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/MIT",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/MIT",
+      "repository": "https://github.com/zakarumych/gpu-alloc",
+      "commit": "7ddd1fe576fcfc503347eb97e476a47581479f22",
+      "pathInRepo": "license/MIT",
+      "filename": "MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1075,
+      "sha256": "f774bf68151714985324d90adbd59e8f271b7ba518608d871b6ba16464692879",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/COPYING",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/COPYING",
+      "repository": "https://github.com/zakarumych/gpu-descriptor",
+      "commit": "706689f8be1621bd1bc6da363fca43aa1df11f8c",
+      "pathInRepo": "COPYING",
+      "filename": "COPYING",
+      "materialType": "notice",
+      "spdx": null,
+      "bytes": 352,
+      "sha256": "f72143f7e9d9fb8bd336b139fa22f825a299591c29f2f7338c5566347b137613",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/APACHE",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/APACHE",
+      "repository": "https://github.com/zakarumych/gpu-descriptor",
+      "commit": "706689f8be1621bd1bc6da363fca43aa1df11f8c",
+      "pathInRepo": "license/APACHE",
+      "filename": "APACHE",
+      "materialType": "licence-text",
+      "spdx": "Apache-2.0",
+      "bytes": 574,
+      "sha256": "6bec8c944a6d4251be50ac86bb4ca360bcce5aea472505dee2800e160bf1cdbf",
+      "retrieved": "2026-07-27"
+    },
+    {
+      "id": "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/MIT",
+      "url": "https://raw.githubusercontent.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/MIT",
+      "repository": "https://github.com/zakarumych/gpu-descriptor",
+      "commit": "706689f8be1621bd1bc6da363fca43aa1df11f8c",
+      "pathInRepo": "license/MIT",
+      "filename": "MIT",
+      "materialType": "licence-text",
+      "spdx": "MIT",
+      "bytes": 1080,
+      "sha256": "5226e27d5fbc683db56c52853cdb9d15b69abadb525a60f95c862c2dbd77cdc8",
+      "retrieved": "2026-07-27"
+    }
+  ],
+  "components": [
+    {
+      "purl": "pkg:cargo/alloc-stdlib@0.2.4",
+      "name": "alloc-stdlib",
+      "version": "0.2.4",
+      "ecosystem": "cargo",
+      "declaredSpdx": "BSD-3-Clause",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
+        "commit": "ae42d22078b98549e987d2f03d12df7b984fde47",
+        "tag": "0.2.4",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag 0.2.4 to ae42d22078b98549e987d2f03d12df7b984fde47."
+        ]
+      },
+      "sources": [
+        "github.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/codespan-reporting@0.11.1",
+      "name": "codespan-reporting",
+      "version": "0.11.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/brendanzab/codespan",
+        "commit": "fd389a13f5bb6d625b71e2e4694b26e127f393f9",
+        "tag": "v0.11.1",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v0.11.1 to fd389a13f5bb6d625b71e2e4694b26e127f393f9."
+        ]
+      },
+      "sources": [
+        "github.com/brendanzab/codespan/fd389a13f5bb6d625b71e2e4694b26e127f393f9/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/com_macros@0.6.0",
+      "name": "com_macros",
+      "version": "0.6.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/microsoft/com-rs",
+        "commit": "5f6b2d444be909e45c1fc9fa1862777ce0bde0b5",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "macros/Cargo.toml at this commit declares name = \"com_macros\", version = \"0.6.0\", license = \"MIT\"."
+        ]
+      },
+      "sources": [
+        "github.com/microsoft/com-rs/5f6b2d444be909e45c1fc9fa1862777ce0bde0b5/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/com_macros_support@0.6.0",
+      "name": "com_macros_support",
+      "version": "0.6.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/microsoft/com-rs",
+        "commit": "5f6b2d444be909e45c1fc9fa1862777ce0bde0b5",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "macros/support/Cargo.toml at this commit declares name = \"com_macros_support\", version = \"0.6.0\", license = \"MIT\"."
+        ]
+      },
+      "sources": [
+        "github.com/microsoft/com-rs/5f6b2d444be909e45c1fc9fa1862777ce0bde0b5/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/d3d12@0.19.0",
+      "name": "d3d12",
+      "version": "0.19.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/gfx-rs/wgpu",
+        "commit": "8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d",
+        "tag": "d3d12-v0.19.0",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag d3d12-v0.19.0 to 8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d."
+        ]
+      },
+      "sources": [
+        "github.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.APACHE",
+        "github.com/gfx-rs/wgpu/8b2098bd4eaf1a4e4793cd4684f7b2e4ec64b39d/LICENSE.MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/delegate@0.10.0",
+      "name": "delegate",
+      "version": "0.10.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/kobzol/rust-delegate",
+        "commit": "ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0",
+        "tag": "v0.10.0",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v0.10.0 to ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0."
+        ]
+      },
+      "sources": [
+        "github.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-APACHE",
+        "github.com/kobzol/rust-delegate/ac3d064ec74a9ac9c656d7cc04e217d97c5f00a0/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/gpu-alloc-types@0.3.1",
+      "name": "gpu-alloc-types",
+      "version": "0.3.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/zakarumych/gpu-alloc",
+        "commit": "7ddd1fe576fcfc503347eb97e476a47581479f22",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "types/Cargo.toml at this commit declares name = \"gpu-alloc-types\", version = \"0.3.1\", license = \"MIT OR Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/COPYING",
+        "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/APACHE",
+        "github.com/zakarumych/gpu-alloc/7ddd1fe576fcfc503347eb97e476a47581479f22/license/MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/gpu-alloc@0.6.2",
+      "name": "gpu-alloc",
+      "version": "0.6.2",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/zakarumych/gpu-alloc",
+        "commit": "61020bdcb4eb04fca6bbf748aeb9570e859236e0",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "gpu-alloc/Cargo.toml at this commit declares name = \"gpu-alloc\", version = \"0.6.2\", license = \"MIT OR Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/COPYING",
+        "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/APACHE",
+        "github.com/zakarumych/gpu-alloc/61020bdcb4eb04fca6bbf748aeb9570e859236e0/license/MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/gpu-descriptor-types@0.1.2",
+      "name": "gpu-descriptor-types",
+      "version": "0.1.2",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/zakarumych/gpu-descriptor",
+        "commit": "706689f8be1621bd1bc6da363fca43aa1df11f8c",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "types/Cargo.toml at this commit declares name = \"gpu-descriptor-types\", version = \"0.1.2\", license = \"MIT OR Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/COPYING",
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/APACHE",
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/gpu-descriptor@0.2.4",
+      "name": "gpu-descriptor",
+      "version": "0.2.4",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/zakarumych/gpu-descriptor",
+        "commit": "706689f8be1621bd1bc6da363fca43aa1df11f8c",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "gpu-descriptor/Cargo.toml at this commit declares name = \"gpu-descriptor\", version = \"0.2.4\", license = \"MIT OR Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/COPYING",
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/APACHE",
+        "github.com/zakarumych/gpu-descriptor/706689f8be1621bd1bc6da363fca43aa1df11f8c/license/MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/naga@0.19.2",
+      "name": "naga",
+      "version": "0.19.2",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/gfx-rs/wgpu",
+        "commit": "61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4",
+        "tag": "naga-v0.19.2",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag naga-v0.19.2 to 61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4."
+        ]
+      },
+      "sources": [
+        "github.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.APACHE",
+        "github.com/gfx-rs/wgpu/61d779d4d67111bcf34f4b3b8b59e0d2dc6147f4/LICENSE.MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/neo4rs-macros@0.3.0",
+      "name": "neo4rs-macros",
+      "version": "0.3.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/neo4j-labs/neo4rs",
+        "commit": "5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc",
+        "tag": "v0.7.0-rc.2",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v0.7.0-rc.2 to 5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc.",
+          "macros/Cargo.toml at this commit declares name = \"neo4rs-macros\", version = \"0.3.0\", license = \"MIT\". The tag names the workspace release, not the macro crate version, which the workspace versions separately."
+        ]
+      },
+      "sources": [
+        "github.com/neo4j-labs/neo4rs/5119ba78d6ebf06721cd7d28f7a351cf93cdc9cc/README.md"
+      ],
+      "material": "Same absence as neo4rs: the repository publishes no licence file at any revision, and README.md section \"License\" is vendored verbatim as the only grant upstream states."
+    },
+    {
+      "purl": "pkg:cargo/neo4rs@0.7.3",
+      "name": "neo4rs",
+      "version": "0.7.3",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/neo4j-labs/neo4rs",
+        "commit": "a57f1dffe99220f486eed86fc641575d7cd1ca1f",
+        "tag": "v0.7.3",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v0.7.3 to a57f1dffe99220f486eed86fc641575d7cd1ca1f.",
+          "lib/Cargo.toml at this commit declares name = \"neo4rs\", version = \"0.7.3\", license = \"MIT\"."
+        ]
+      },
+      "sources": [
+        "github.com/neo4j-labs/neo4rs/a57f1dffe99220f486eed86fc641575d7cd1ca1f/README.md"
+      ],
+      "material": "This project has never published a licence file: no LICENSE, LICENCE, COPYING, COPYRIGHT or NOTICE path exists at this commit, at any commit in the repository history, or on the default branch today. README.md section \"License\" is the only licence grant the project publishes, and it is vendored verbatim rather than replaced by a reconstructed MIT text with a guessed copyright holder. Note that it states dual Apache-2.0/MIT and links LICENSE-APACHE and LICENSE-MIT, neither of which exists upstream; Cargo.toml declares MIT alone. Both facts are upstream’s, reproduced unaltered."
+    },
+    {
+      "purl": "pkg:cargo/profiling@1.0.18",
+      "name": "profiling",
+      "version": "1.0.18",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/aclysma/profiling",
+        "commit": "8271551172eb6fa4cba47369aedd93790c623df9",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "profiling/Cargo.toml at this commit declares name = \"profiling\", version = \"1.0.18\", license = \"MIT OR Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-APACHE",
+        "github.com/aclysma/profiling/8271551172eb6fa4cba47369aedd93790c623df9/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/pulp-wasm-simd-flag@0.1.1",
+      "name": "pulp-wasm-simd-flag",
+      "version": "0.1.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/sarah-quinones/pulp",
+        "commit": "5eb07fd7b68edf0a5e19f71737d315f72a510295",
+        "tag": "pulp-wasm-simd-flag-v0.1.1",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag pulp-wasm-simd-flag-v0.1.1 to 5eb07fd7b68edf0a5e19f71737d315f72a510295."
+        ]
+      },
+      "sources": [
+        "github.com/sarah-quinones/pulp/5eb07fd7b68edf0a5e19f71737d315f72a510295/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/selectors@0.36.1",
+      "name": "selectors",
+      "version": "0.36.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MPL-2.0",
+      "provenance": {
+        "kind": "project-repository",
+        "repository": "https://github.com/servo/servo",
+        "commit": "f5ab95786f9cbbf5804d87f265812325fc80ad7b",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "selectors/Cargo.toml at servo/stylo@635e1a19d02960588a00e189bd4bd5bdb150ec3d declares name = \"selectors\", version = \"0.36.1\", license = \"MPL-2.0\", authors = [\"The Servo Project Developers\"]. That commit carries the tag v0.14.0, the stylo workspace release it was published from."
+        ],
+        "componentRepository": "https://github.com/servo/stylo",
+        "componentCommit": "635e1a19d02960588a00e189bd4bd5bdb150ec3d",
+        "componentTag": "v0.14.0",
+        "justification": "servo/stylo publishes no copy of the MPL at that commit: a recursive tree scan finds only malloc_size_of/LICENSE-{APACHE,MIT} and servo_arc/LICENSE-{APACHE,MIT} (Apache/MIT, for those crates) and style/properties/vendored_python/markupsafe/LICENSE.txt. README.md at that commit states \"Stylo is licensed under MPL 2.0\", and every selectors source file carries Mozilla’s Exhibit A header pointing at https://mozilla.org/MPL/2.0/. The text is therefore taken from the Servo Project’s own licence file in servo/servo, the primary repository of the same GitHub organisation and the project named in the crate’s authors field, pinned to the commit that last modified it. MPL-2.0 is a standard-form text with no copyright-holder field, so nothing is filled in on the owner’s behalf."
+      },
+      "sources": [
+        "github.com/servo/servo/f5ab95786f9cbbf5804d87f265812325fc80ad7b/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/spirv@0.3.0+sdk-1.3.268.0",
+      "name": "spirv",
+      "version": "0.3.0+sdk-1.3.268.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/gfx-rs/rspirv",
+        "commit": "e91a5debc10c395b36db7721dfff6326d697a1e2",
+        "tag": "spirv-0.3.0",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag spirv-0.3.0 to e91a5debc10c395b36db7721dfff6326d697a1e2."
+        ]
+      },
+      "sources": [
+        "github.com/gfx-rs/rspirv/e91a5debc10c395b36db7721dfff6326d697a1e2/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/ts-rs-macros@10.1.0",
+      "name": "ts-rs-macros",
+      "version": "10.1.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/Aleph-Alpha/ts-rs",
+        "commit": "0ba56be43af1e438053af2b422a82fcff252f7ef",
+        "tag": "v10.1.0",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v10.1.0 to 0ba56be43af1e438053af2b422a82fcff252f7ef."
+        ]
+      },
+      "sources": [
+        "github.com/Aleph-Alpha/ts-rs/0ba56be43af1e438053af2b422a82fcff252f7ef/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/ts-rs@10.1.0",
+      "name": "ts-rs",
+      "version": "10.1.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/Aleph-Alpha/ts-rs",
+        "commit": "0ba56be43af1e438053af2b422a82fcff252f7ef",
+        "tag": "v10.1.0",
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "git ls-remote --tags resolves the upstream tag v10.1.0 to 0ba56be43af1e438053af2b422a82fcff252f7ef."
+        ]
+      },
+      "sources": [
+        "github.com/Aleph-Alpha/ts-rs/0ba56be43af1e438053af2b422a82fcff252f7ef/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/unic-char-property@0.9.0",
+      "name": "unic-char-property",
+      "version": "0.9.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT/Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/open-i18n/rust-unic",
+        "commit": "5878605364af97a3358368a6eaef02104af2e016",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "unic/char/property/Cargo.toml at this commit declares name = \"unic-char-property\", version = \"0.9.0\", license = \"MIT/Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/unic-char-range@0.9.0",
+      "name": "unic-char-range",
+      "version": "0.9.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT/Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/open-i18n/rust-unic",
+        "commit": "5878605364af97a3358368a6eaef02104af2e016",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "unic/char/range/Cargo.toml at this commit declares name = \"unic-char-range\", version = \"0.9.0\", license = \"MIT/Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/unic-common@0.9.0",
+      "name": "unic-common",
+      "version": "0.9.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT/Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/open-i18n/rust-unic",
+        "commit": "5878605364af97a3358368a6eaef02104af2e016",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "unic/common/Cargo.toml at this commit declares name = \"unic-common\", version = \"0.9.0\", license = \"MIT/Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/unic-ucd-ident@0.9.0",
+      "name": "unic-ucd-ident",
+      "version": "0.9.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT/Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/open-i18n/rust-unic",
+        "commit": "8a6ce83063d90b91ae2ce59eddb803edd393fca9",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "unic/ucd/ident/Cargo.toml at this commit declares name = \"unic-ucd-ident\", version = \"0.9.0\", license = \"MIT/Apache-2.0\". This crate was published from a later commit than the other four unic crates in this graph, and is pinned separately rather than folded into theirs."
+        ]
+      },
+      "sources": [
+        "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/COPYRIGHT.md",
+        "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-APACHE",
+        "github.com/open-i18n/rust-unic/8a6ce83063d90b91ae2ce59eddb803edd393fca9/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/unic-ucd-version@0.9.0",
+      "name": "unic-ucd-version",
+      "version": "0.9.0",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT/Apache-2.0",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/open-i18n/rust-unic",
+        "commit": "5878605364af97a3358368a6eaef02104af2e016",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "unic/ucd/version/Cargo.toml at this commit declares name = \"unic-ucd-version\", version = \"0.9.0\", license = \"MIT/Apache-2.0\"."
+        ]
+      },
+      "sources": [
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/COPYRIGHT.md",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-APACHE",
+        "github.com/open-i18n/rust-unic/5878605364af97a3358368a6eaef02104af2e016/LICENSE-MIT"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/webview2-com-macros@0.8.1",
+      "name": "webview2-com-macros",
+      "version": "0.8.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/wravery/webview2-rs",
+        "commit": "dffa41a8a46d3f5565eefbff2de57d38d399f158",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "crates/callback-macros/Cargo.toml at this commit declares version = \"0.8.1\" and inherits license = \"MIT\" from the workspace. The macro crate is versioned separately from webview2-com and was published from an earlier commit, so it is pinned separately."
+        ]
+      },
+      "sources": [
+        "github.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/webview2-com-sys@0.38.2",
+      "name": "webview2-com-sys",
+      "version": "0.38.2",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/wravery/webview2-rs",
+        "commit": "b74dc5e2b394044bea5191052868ce7a106c202c",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "crates/bindings/Cargo.toml at this commit inherits version and licence from the workspace, whose Cargo.toml declares version = \"0.38.2\", license = \"MIT\"."
+        ]
+      },
+      "sources": [
+        "github.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/webview2-com@0.38.2",
+      "name": "webview2-com",
+      "version": "0.38.2",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/wravery/webview2-rs",
+        "commit": "b74dc5e2b394044bea5191052868ce7a106c202c",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "crates/webview2-com/Cargo.toml at this commit inherits version and licence from the workspace, whose Cargo.toml declares version = \"0.38.2\", license = \"MIT\"."
+        ]
+      },
+      "sources": [
+        "github.com/wravery/webview2-rs/b74dc5e2b394044bea5191052868ce7a106c202c/LICENSE"
+      ]
+    },
+    {
+      "purl": "pkg:cargo/zune-inflate@0.2.54",
+      "name": "zune-inflate",
+      "version": "0.2.54",
+      "ecosystem": "cargo",
+      "declaredSpdx": "MIT OR Apache-2.0 OR Zlib",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/etemesi254/zune-image",
+        "commit": "69502ce83fdfecdd0beefd677e2abb3781b29d98",
+        "tag": null,
+        "evidence": [
+          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
+          "No upstream tag points at this commit; the published .crate is the provenance of record.",
+          "zune-inflate/Cargo.toml at this commit declares name = \"zune-inflate\", version = \"0.2.54\", license = \"MIT OR Apache-2.0 OR Zlib\". The crate manifest declares no repository field; this repository is identified by the commit named in .cargo_vcs_info.json resolving there, and by the crate’s homepage field pointing at github.com/etemesi254/zune-image/tree/main/zune-inflate."
+        ]
+      },
+      "sources": [
+        "github.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE.md",
+        "github.com/etemesi254/zune-image/69502ce83fdfecdd0beefd677e2abb3781b29d98/LICENSE-ZLIB"
+      ],
+      "material": "Both licence-bearing files present at this commit are packaged rather than one option being chosen: LICENSE.md carries the copyright line and the tri-licence statement, LICENSE-ZLIB the Zlib text. The repository publishes no MIT or Apache-2.0 text at this commit, so none is supplied for those two options and none is reconstructed."
+    },
+    {
+      "purl": "pkg:npm/%40oxc-project/runtime@0.139.0",
+      "name": "@oxc-project/runtime",
+      "version": "0.139.0",
+      "ecosystem": "npm",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/oxc-project/oxc",
+        "commit": "69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d",
+        "tag": "crates_v0.139.0",
+        "evidence": [
+          "git ls-remote --tags resolves the upstream tag crates_v0.139.0 to 69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d.",
+          "The tag crates_v0.139.0 points at this commit, whose message is \"release(crates): oxc v0.139.0 (#24218)\" and which is the commit that set npm/runtime/package.json to version 0.139.0 (name \"@oxc-project/runtime\", license \"MIT\"). Proof that this revision produced the shipped helper code: the published tarball @oxc-project/runtime@0.139.0 has sha512 integrity WnuGdceWtRdqD7f3alOIDXN6bnGuGtFjtQf/dHjzgn2im7eKaYRJTEl2T1kFEWPhBWCDk+UDYgsTLUE5L6jc0w== as recorded by the registry, and its src/helpers/esm/{typeof,interopRequireDefault,defineProperty,objectSpread2}.js are byte-identical to npm/runtime/src/helpers/esm/ at this commit. The tarball’s own package/LICENSE is byte-identical to the repository-root LICENSE vendored here (sha256 95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3); npm/runtime/ itself contains no LICENSE, so the root file is what the publish tooling ships."
+        ]
+      },
+      "sources": [
+        "github.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE"
+      ],
+      "material": "This component is compiled into dist/ by rolldown and is not in the install tree, so its licence cannot be read from node_modules. licensing/bundle-closure.json records the version from the module id rolldown emits. The vendored text also supplies the SPDX expression the local manifest cannot: the registry publishes license \"MIT\" for this version."
+    },
+    {
+      "purl": "pkg:npm/%40pixi/colord@2.9.6",
+      "name": "@pixi/colord",
+      "version": "2.9.6",
+      "ecosystem": "npm",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/omgovich/colord",
+        "commit": "5344fbf77b736f81cd33c21050021bc09bc9dd1d",
+        "tag": null,
+        "evidence": [
+          "The npm registry records gitHead 5344fbf77b736f81cd33c21050021bc09bc9dd1d for @pixi/colord@2.9.6, written by npm from the working tree it published. That commit exists in omgovich/colord — the repository the package manifest names — and its message is \"2.9.6\", the release commit for that version. The repository carries no 2.x tags (its tags stop at v1.7), so the publisher-recorded gitHead is the provenance rather than a tag. The package is PixiJS’s scoped republication of colord; the root LICENSE.md at that commit is the upstream licence text, and the npm artifact ships none."
+        ]
+      },
+      "sources": [
+        "github.com/omgovich/colord/5344fbf77b736f81cd33c21050021bc09bc9dd1d/LICENSE.md"
+      ]
+    },
+    {
+      "purl": "pkg:npm/%40react-three/fiber@8.18.0",
+      "name": "@react-three/fiber",
+      "version": "8.18.0",
+      "ecosystem": "npm",
+      "declaredSpdx": "MIT",
+      "provenance": {
+        "kind": "release-tree",
+        "repository": "https://github.com/pmndrs/react-three-fiber",
+        "commit": "f81bfe8cb29373d2687433c6130e0ce1daf7222c",
+        "tag": "v8.18.0",
+        "evidence": [
+          "git ls-remote --tags resolves the upstream tag v8.18.0 to f81bfe8cb29373d2687433c6130e0ce1daf7222c.",
+          "The npm registry records gitHead f81bfe8cb29373d2687433c6130e0ce1daf7222c for @react-three/fiber@8.18.0, and the tag v8.18.0 points at that same commit — two independent records agreeing. packages/fiber/ at that commit contains no licence file, which is why the npm artifact has none; the monorepo root LICENSE at the exact release commit is the text, taken from that commit rather than from the default branch."
+        ]
+      },
+      "sources": [
+        "github.com/pmndrs/react-three-fiber/f81bfe8cb29373d2687433c6130e0ce1daf7222c/LICENSE"
+      ]
+    }
+  ],
+  "blocked": [
+    {
+      "purl": "pkg:cargo/hexf-parse@0.2.1",
+      "name": "hexf-parse",
+      "version": "0.2.1",
+      "ecosystem": "cargo",
+      "declaredSpdx": "CC0-1.0",
+      "repository": "https://github.com/lifthrasiir/hexf",
+      "commit": "4225763d744183d720f575ae96d04161b4d08ea0",
+      "tag": "0.2.1",
+      "investigated": "2026-07-27",
+      "evidence": [
+        "The published .crate carries .cargo_vcs_info.json naming commit 4225763d744183d720f575ae96d04161b4d08ea0, and git ls-remote resolves the tag 0.2.1 to that same commit. parse/Cargo.toml there declares name = \"hexf-parse\", version = \"0.2.1\", license = \"CC0-1.0\". The revision is not in doubt; the text is.",
+        "A recursive tree scan of the repository at that commit finds no path matching LICEN[CS]E, COPYING, COPYRIGHT, NOTICE or UNLICENSE anywhere — not at the root, not in parse/. The only match on the word is tests/example.rs.",
+        "README.md at that commit contains no licence section: a case-insensitive search for \"licen\", \"public domain\" and \"cc0\" returns nothing.",
+        "The only LICENSE ever committed to the repository arrived in 41f0018229c1ee3d6fd813b6808d1ad1f506554c on 2024-12-04, three and a half years after this release, and its text is the Zero-Clause BSD permission grant (\"Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted\") — a different licence from the CC0-1.0 this version declares. Vendoring it would attribute the wrong terms to the shipped code.",
+        "crates.io records license = \"CC0-1.0\" for all three published versions (0.1.0, 0.2.0, 0.2.1), so the declaration is consistent and the later file is a relicensing rather than a correction to this one.",
+        "No CC0-1.0 text is substituted from a licence list. CC0 imposes no attribution condition, so the omission carries no notice obligation — but engineering does not get to package a text this project has never published and record it as that project’s licence file. Closing this row is a legal decision about whether the crates.io declaration alone suffices, not an engineering one."
+      ]
+    }
+  ]
+}

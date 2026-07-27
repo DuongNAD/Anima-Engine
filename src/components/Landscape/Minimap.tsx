@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import type { TerrainCell } from './utils/terrainGenerator';
 import { getMemoizedTerrain } from './utils/terrainCache';
+import { activeCameraPosition, diagnostics } from './utils/diagnosticsWindow';
+import { isUnderVitest } from '../../utils/runtimeEnv';
 
 interface MinimapProps {
   gridWidth?: number;
@@ -11,7 +13,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   gridWidth = 64,
   gridHeight = 64,
 }) => {
-  const isVitest = typeof globalThis !== 'undefined' && !!(globalThis as any).process?.env?.VITEST;
+  const isVitest = isUnderVitest();
   const actualWidth = isVitest ? Math.min(gridWidth, 100) : gridWidth;
   const actualHeight = isVitest ? Math.min(gridHeight, 100) : gridHeight;
 
@@ -107,11 +109,11 @@ export const Minimap: React.FC<MinimapProps> = ({
       }
 
       // 2. Query active camera position
-      const camera = (window as any).activeCamera;
-      if (camera && camera.position) {
+      const cameraPosition = activeCameraPosition();
+      if (cameraPosition) {
         // Translate world XZ to minimap pixel space [0, 180]
-        const cx = ((camera.position.x + actualWidth / 2) / actualWidth) * 180;
-        const cz = ((camera.position.z + actualHeight / 2) / actualHeight) * 180;
+        const cx = ((cameraPosition.x + actualWidth / 2) / actualWidth) * 180;
+        const cz = ((cameraPosition.z + actualHeight / 2) / actualHeight) * 180;
 
         // Draw camera position dot (red)
         if (typeof ctx.beginPath === 'function') {
@@ -152,8 +154,9 @@ export const Minimap: React.FC<MinimapProps> = ({
     const wx = (mx - 0.5) * actualWidth;
     const wz = (my - 0.5) * actualHeight;
 
-    if (typeof (window as any).teleportCameraTarget === 'function') {
-      (window as any).teleportCameraTarget(wx, wz);
+    const teleport = diagnostics().teleportCameraTarget;
+    if (typeof teleport === 'function') {
+      teleport(wx, wz);
     }
   };
 

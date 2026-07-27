@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Mock } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
-import { invoke } from '@tauri-apps/api/core';
 import { listen, emit } from '@tauri-apps/api/event';
+import { makeCanvas2DStub, stubCanvas2D, type Canvas2DStub } from '../mocks/canvas-2d';
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
@@ -27,31 +28,12 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
-  let mockCtx: any;
+  let mockCtx: Canvas2DStub;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockCtx = {
-      clearRect: vi.fn(),
-      beginPath: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      stroke: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      closePath: vi.fn(),
-      fillText: vi.fn(),
-      fillRect: vi.fn(),
-      fillStyle: '',
-      strokeStyle: '',
-      lineWidth: 1,
-      font: '',
-      textAlign: '',
-      textBaseline: '',
-    };
-
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx as any);
+    mockCtx = makeCanvas2DStub();
+    stubCanvas2D(mockCtx);
   });
 
   it('CRASH 1: should cause infinite recursion (Stack Overflow) when cyclic segments are rendered', async () => {
@@ -104,15 +86,19 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
   it('CRASH 2: should crash the canvas rendering loop when a malformed raycast payload is received', async () => {
     render(<App />);
 
-    // Malformed raycast payload where direction is missing (causing undefined[0] TypeError)
-    const malformedRaycast = [
+    // Malformed raycast payload where direction is missing (causing undefined[0] TypeError).
+    //
+    // Typed as `unknown[]`, not as an array of casts: the point of the payload is that it does *not*
+    // satisfy `RaycastTelemetry`, and saying so once at the array is both shorter and closer to what
+    // arrives over IPC — bytes nothing has checked yet.
+    const malformedRaycast: unknown[] = [
       {
         origin: [0, 0, 0],
-        direction: undefined as any,
+        direction: undefined,
         hit_distance: 10.0,
         hit_entity_type: 'Prey',
         agent_id: 1
-      } as any
+      }
     ];
 
     // Emit the event
@@ -131,10 +117,10 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    const malformedCombat = {
+    const malformedCombat: unknown = {
       predator_id: 1,
       prey_id: 2,
-      damage: undefined as any, // Missing damage, handled by fallback
+      damage: undefined, // Missing damage, handled by fallback
       energy_transferred: 10
     };
 
@@ -150,13 +136,13 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
   });
 
   it('LEAK 1: should NOT leak Tauri event listeners if component is unmounted immediately after mounting (race condition)', async () => {
-    // Create an array of mock cleanup functions
-    const cleanupSpies: any[] = [];
+    // One record per `listen` call: the event it subscribed to, and the unlisten it handed back.
+    const cleanupSpies: Array<{ eventName: string; spy: Mock<() => void> }> = [];
 
     // Mock the listen function specifically for this test
-    vi.mocked(listen).mockImplementation(async (eventName: string, callback: any) => {
+    vi.mocked(listen).mockImplementation(async (eventName) => {
       const spy = vi.fn(() => {});
-      cleanupSpies.push({ eventName, spy });
+      cleanupSpies.push({ eventName: String(eventName), spy });
       return spy;
     });
 
@@ -172,7 +158,7 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
 
     // Check if the cleanup functions returned by listen were called.
     expect(cleanupSpies.length).toBeGreaterThan(0);
-    cleanupSpies.forEach(({ eventName, spy }) => {
+    cleanupSpies.forEach(({ spy }) => {
       expect(spy).toHaveBeenCalled(); // Confirms the listener was CLEANED UP!
     });
   });

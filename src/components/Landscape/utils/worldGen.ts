@@ -8,7 +8,11 @@ import { ImprovedNoise2D } from './terrainGenerator';
 // and can be persisted to IndexedDB as raw binary (see worldCache.ts).
 // ---------------------------------------------------------------------------------------
 
-export const WORLD_GEN_VERSION = 20;
+// 21: flora species is chosen from the cell an instance LANDS in, not the cell it was sampled
+//     from. See the note in pass 5 — the old order let a pine chosen in taiga come to rest in
+//     grassland, which the map-review ecology gate reported as three high findings the moment the
+//     manifest was generated from the shipped world instead of a stand-in.
+export const WORLD_GEN_VERSION = 21;
 
 export enum Biome {
   Ocean = 0,
@@ -171,7 +175,12 @@ export enum FloraType {
 
 // ---- Seeded helpers ------------------------------------------------------------------
 
-function hashSeed(seed: string | number): number {
+/**
+ * The seed a world identity actually generates under, as the u32 written into the World Artifact
+ * header. Exported so evidence tests can bind a committed artifact's bytes to `sharedWorld.ts`
+ * without regenerating a 2048² world to find out.
+ */
+export function hashSeed(seed: string | number): number {
   if (typeof seed === 'number') return seed >>> 0;
   let h = 2166136261;
   for (let i = 0; i < seed.length; i++) {
@@ -1505,8 +1514,32 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const waterBoost = 1 + shore[i] * 1.1 + Math.min(1, flow[i] * 1.6) * 0.9;
       const density = floraDensity(b) * (0.5 + moisture[i]) * waterBoost;
       if (rng() > density) continue;
+
+      // World coordinates centred on origin (1 cell = 1 unit).
+      //
+      // The jitter happens BEFORE the species is chosen, and that ordering is the fix for a real
+      // ecological contradiction. It used to run the other way: pick the type from the sampled
+      // cell `i`, then scatter the instance up to half a stride away and re-check only that the
+      // landing cell was not water. So a pine chosen in taiga could come to rest in the grassland
+      // next door, and the map-review gate reported exactly that once the manifest was generated
+      // from the shipped world rather than a stand-in:
+      //
+      //   high  conifer_pine is not plausible in biome "grassland"
+      //   high  conifer_pine is not plausible in biome "river"
+      //   high  broadleaf_tree is not plausible in biome "river"
+      //
+      // (River cells passed the old water guard because `classify` marks a cell River at a lower
+      // `riverAmt` than the 100 the guard used.) Deciding the landing cell first and reading every
+      // subsequent rule from it makes the mismatch unrepresentable rather than filtered.
+      const wx = x - size / 2 + (rng() - 0.5) * stride;
+      const wz = y - size / 2 + (rng() - 0.5) * stride;
+      const jx = Math.min(size - 1, Math.max(0, Math.round(wx + size / 2)));
+      const jz = Math.min(size - 1, Math.max(0, Math.round(wz + size / 2)));
+      const ji = jz * size + jx;
+      if (water[ji] > 0 || elevation[ji] <= seaLevel || riverAmt[ji] > 100) continue;
+
       // pickFlora returns -1 for ocean / beach / river / lake / snow / glacier.
-      let ft = pickFlora(b, rng());
+      let ft = pickFlora(biome[ji] as Biome, rng());
       if (ft === -1) continue;
       // Above the treeline nothing tall can root: any tree that would land in the bare-rock
       // band or colder (temp < T_ROCK — the same treeline classify() uses for the Rock cap)
@@ -1519,23 +1552,15 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
         ft === FloraType.Palm ||
         ft === FloraType.Cactus ||
         ft === FloraType.DeadTree;
-      if (isTallFlora && temperature[i] < T_ROCK) {
+      if (isTallFlora && temperature[ji] < T_ROCK) {
         ft = FloraType.Tuft;
       } else if (
         // Tall trees cannot root on steep faces either — scrub takes over near cliffs.
-        slope[i] > 0.55 &&
+        slope[ji] > 0.55 &&
         (ft === FloraType.Pine || ft === FloraType.Round || ft === FloraType.Jungle || ft === FloraType.Acacia || ft === FloraType.Palm)
       ) {
         ft = FloraType.Bush;
       }
-      // World coordinates centred on origin (1 cell = 1 unit).
-      const wx = x - size / 2 + (rng() - 0.5) * stride;
-      const wz = y - size / 2 + (rng() - 0.5) * stride;
-      // Re-check the jittered landing cell so nothing drifts onto water/sea.
-      const jx = Math.min(size - 1, Math.max(0, Math.round(wx + size / 2)));
-      const jz = Math.min(size - 1, Math.max(0, Math.round(wz + size / 2)));
-      const ji = jz * size + jx;
-      if (water[ji] > 0 || elevation[ji] <= seaLevel || riverAmt[ji] > 100) continue;
       fX.push(wx);
       fZ.push(wz);
       fS.push(0.6 + rng() * 0.8);

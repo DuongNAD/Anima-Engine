@@ -44,7 +44,42 @@ Hàng thứ ba của bảng trên nay có hiệu lực thật, không còn là m
 - Ngược lại, hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Nhưng
   output không mặc nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
 - Dự án proprietary vẫn phải giữ **attribution/NOTICE** cho mọi thành phần permissive được phân
-  phối. Hiện repository **chưa có file `NOTICE`**; cần tạo trước lần phát hành đầu tiên.
+  phối.
+
+  > **Sửa 2026-07-27.** Bản trước viết *"Hiện repository **chưa có file `NOTICE`**"*. Câu đó **đã
+  > sai sự thật** kể từ `766609e`: [`NOTICE`](../../NOTICE) tồn tại và được sinh tự động. Trạng thái
+  > đo được hôm nay:
+  >
+  > - [`NOTICE`](../../NOTICE) — inventory 458 thành phần (419 crate Rust · 21 gói npm có byte
+  >   trong `dist/` · 18 gói cài nhưng **không** phân phối), sinh bởi `npm run gen:notice`.
+  > - [`licensing/THIRD_PARTY_LICENSES.txt`](../../licensing/THIRD_PARTY_LICENSES.txt) — **văn bản
+  >   license** của 439/440 thành phần được phân phối, kèm SHA-256 từng file trong
+  >   [`third-party-index.json`](../../licensing/third-party-index.json).
+  > - [`sbom.cdx.json`](../../sbom.cdx.json) — CycloneDX 1.5, đã **validate** với schema chính thức
+  >   được vendor và ghim theo commit.
+  >
+  > **Cập nhật 2026-07-27 (đợt hai).** Bản trước ghi *"còn nợ 32 thành phần"*. Con số đo được hôm
+  > nay là **1**. 31 thành phần còn lại đã đóng bằng cách **vendor văn bản license từ đúng commit
+  > bất biến** mà bản phát hành đó được publish: 39 file, 24 commit, 19 repository, lưu nguyên byte
+  > ở [`licensing/upstream/`](../../licensing/upstream/) kèm manifest chứng cứ
+  > [`upstream/sources.json`](../../licensing/upstream/sources.json). Bằng chứng commit↔version lấy
+  > từ `.cargo_vcs_info.json` trong `.crate` đã publish (do chính `cargo publish` ghi) và `gitHead`
+  > của npm registry, không phải từ nhánh `main`. Generator đọc kho này **fail-closed**: sai hash,
+  > sai commit, sai purl, symlink thoát thư mục, file không được git track, hoặc mapping thừa đều
+  > làm dừng chạy. `npm run verify:upstream-licenses` tải lại từ URL đã ghim để đối chiếu byte —
+  > chạy tay, không nằm trong CI.
+  >
+  > **Còn nợ và vẫn chặn phát hành:** **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — không có
+  > văn bản license ở artifact **lẫn** repository tại commit phát hành, và file `LICENSE` duy nhất
+  > mà dự án từng commit xuất hiện muộn hơn 3,5 năm với **license khác**. Chứng cứ tìm kiếm ghi đầy
+  > đủ ở [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md). Không sinh văn bản thay thế từ
+  > danh sách SPDX: đóng dòng này là **quyết định pháp lý**, không phải việc của generator.
+  >
+  > Hai điểm cần pháp lý đọc kỹ, đã ghi rõ trong
+  > [`licensing/README.md`](../../licensing/README.md): `neo4rs`/`neo4rs-macros` chỉ có **tuyên bố
+  > license trong README** (dự án chưa từng publish file license), và `zune-inflate` khai
+  > `MIT OR Apache-2.0 OR Zlib` nhưng upstream chỉ publish văn bản Zlib — đóng gói **mọi** file có
+  > tại bản phát hành, không tự chọn hộ chủ sở hữu.
 
 Một tool AGPL chạy tách biệt trong research có rủi ro khác với thư viện link vào ứng
 dụng, nhưng vẫn phải review cách triển khai, phân phối và đầu ra. Không suy luận từ

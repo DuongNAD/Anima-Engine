@@ -1,21 +1,20 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { extend, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { World } from './utils/worldGen';
-import { FloraType } from './utils/worldGen';
-import { sampleMeshHeight, biomeAt } from './utils/worldSample';
+import { biomeAt, surfaceHeight } from './utils/worldSample';
+import { buildFloraColliderIndex, resolveFloraOverlap } from './utils/floraClearance';
+import { clampToCameraBounds } from './utils/cameraBounds';
+import { sceneDelta } from './utils/sceneClock';
 import type { CameraView } from './WorldMinimap';
 
 extend({ OrbitControls });
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      orbitControls: any;
-    }
-  }
-}
+// The `orbitControls` intrinsic is declared once, in `src/r3f-intrinsics.d.ts`, alongside every
+// other three element this project uses. A second `declare global` here said `orbitControls: any`,
+// which is not a duplicate of that declaration so much as a hole in it — interface merging keeps
+// both, and `any` wins every check.
 
 // ---------------------------------------------------------------------------------------
 // WorldCameraRig — five ways to see the world:
@@ -42,6 +41,16 @@ export interface WorldCameraRigProps {
   meshResolution: number;
   viewRef: React.MutableRefObject<CameraView>;
   teleportRef: React.MutableRefObject<{ x: number; z: number } | null>;
+  /**
+   * A fixed camera pose, in render space, for deterministic canonical-view capture.
+   *
+   * `null` on every ordinary visit — see `utils/captureMode.ts`. When set, the rig stops being a
+   * camera *controller*: it plants the camera on this pose every frame and takes no input. That
+   * is the point. Orbit damping, walk momentum and head-bob all mean the camera is still settling
+   * for some time after it arrives, so a screenshot taken "once the scene has loaded" would
+   * differ run to run by however much smoothing was left.
+   */
+  capturePose?: { position: [number, number, number]; target: [number, number, number] } | null;
 }
 
 const EYE = 2.1; // walking eye height (world units)
@@ -59,6 +68,19 @@ const NAV_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRi
 
 const clampPitch = (p: number) => Math.max(-1.35, Math.min(1.35, p));
 
+/**
+ * Set a perspective camera's field of view and refresh the matrix that depends on it.
+ *
+ * Named, and taking the camera explicitly, for two reasons. The mode-entry effect writes `fov` on
+ * the camera `useThree` handed the component, which is the value `react-hooks/immutability` forbids
+ * writing to; and `fov` without `updateProjectionMatrix()` is a silent no-op, so the pair is worth
+ * being one thing that cannot be half-done.
+ */
+function applyFov(cam: THREE.PerspectiveCamera, fov: number): void {
+  cam.fov = fov;
+  cam.updateProjectionMatrix();
+}
+
 export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   mode,
   world,
@@ -67,9 +89,10 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   meshResolution,
   viewRef,
   teleportRef,
+  capturePose = null,
 }) => {
   const { camera, gl } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
   const keysRef = useRef<Set<string>>(new Set());
   const lookRef = useRef({ yaw: 0, pitch: -0.4, dragging: false, locked: false, lastX: 0, lastY: 0 });
@@ -81,47 +104,27 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   const physRef = useRef({ baseY: 0, vy: 0, grounded: true, jumpHeld: false, bobDist: 0 });
 
   const heightUnits = renderSize * heightRatio;
-  const seaY = world.seaLevel * heightUnits;
 
-  /** Terrain-or-water surface height under world (x, z) — what a walker stands on. */
-  const surfaceY = (x: number, z: number): number => {
-    const u = x / renderSize + 0.5;
-    const v = z / renderSize + 0.5;
-    if (u < 0 || u > 1 || v < 0 || v > 1) return seaY;
-    const groundY = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
-    // Lakes: stand on the still-water surface rather than the drowned lakebed.
-    const size = world.size;
-    const cx = Math.min(size - 1, Math.max(0, Math.round(u * (size - 1))));
-    const cz = Math.min(size - 1, Math.max(0, Math.round(v * (size - 1))));
-    const lake = world.water[cz * size + cx];
-    return Math.max(groundY, seaY, lake > 0 ? lake * heightUnits : 0);
-  };
+  /**
+   * Terrain-or-water surface height under world (x, z) — what a walker stands on.
+   *
+   * The rule lives in `utils/worldSample.surfaceHeight`; this is the rig's binding of it. The
+   * navigation-evidence graph asks the same question of the same function, so a published
+   * reachability claim cannot describe ground the rig disagrees about.
+   */
+  const surfaceY = useCallback(
+    (x: number, z: number): number =>
+      surfaceHeight(world, x, z, renderSize, heightRatio, meshResolution),
+    [world, renderSize, heightRatio, meshResolution],
+  );
 
   // Static tree colliders for walk mode: trunked flora bucketed into an 8-unit grid, so the
-  // player capsule can be pushed out of trunks with a 9-cell lookup instead of a 100k scan.
-  const treeGrid = useMemo(() => {
-    const TALL = new Set<number>([
-      FloraType.Pine,
-      FloraType.Round,
-      FloraType.Jungle,
-      FloraType.Cactus,
-      FloraType.Acacia,
-      FloraType.Palm,
-      FloraType.DeadTree,
-    ]);
-    const grid = new Map<number, number[]>();
-    const toWorld = renderSize / world.size;
-    for (let i = 0; i < world.floraCount; i++) {
-      if (!TALL.has(world.floraType[i])) continue;
-      const x = world.floraX[i] * toWorld;
-      const z = world.floraZ[i] * toWorld;
-      const key = Math.floor((x + renderSize) / 8) * 2048 + Math.floor((z + renderSize) / 8);
-      let arr = grid.get(key);
-      if (!arr) grid.set(key, (arr = []));
-      arr.push(i);
-    }
-    return grid;
-  }, [world, renderSize]);
+  // player capsule can be pushed out of trunks with a local lookup instead of a 100k scan.
+  //
+  // The set of solid types and the radius rule used to live inline here, and `findSpawn` had no
+  // copy of either — which is how the opening camera ended up inside foliage. Both now come from
+  // `floraClearance.ts`, which the spawn picker and the canonical-view capture also import.
+  const floraIndex = useMemo(() => buildFloraColliderIndex(world, renderSize), [world, renderSize]);
 
   // Keyboard state (fly / walk). Codes, not chars, so layout doesn't matter.
   useEffect(() => {
@@ -147,6 +150,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     if (mode !== 'fly' && mode !== 'walk') return;
     const el = gl.domElement;
     const look = lookRef.current;
+    // The HUD's view record, read once here rather than through `viewRef.current` in the cleanup.
+    // `viewRef` is a prop, and a cleanup that dereferences it runs after the component that owns it
+    // may have swapped the object — so the cleanup could clear the lock flag on a record nobody is
+    // reading while the one the HUD *is* reading stays stuck at `locked: true`.
+    const view = viewRef.current;
     const SENS_LOCK = 0.0022;
 
     const onDown = (e: PointerEvent) => {
@@ -173,7 +181,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     };
     const onLockChange = () => {
       look.locked = document.pointerLockElement === el;
-      viewRef.current.locked = look.locked;
+      view.locked = look.locked;
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
@@ -185,13 +193,23 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       window.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointerlockchange', onLockChange);
       look.locked = false;
-      viewRef.current.locked = false;
+      view.locked = false;
       if (document.pointerLockElement === el) document.exitPointerLock?.();
     };
   }, [mode, gl, viewRef]);
 
   // Mode entry: seed the new controller from wherever the camera currently is.
+  //
+  // Only an actual change of mode may do this — re-seeding on, say, a `renderSize` change would
+  // snap a walking player back to the orbit target mid-session. That used to be said by omitting
+  // every other dependency and suppressing the rule; it is now said by the guard on the first line,
+  // which is both explicit and still true if a future edit adds a read. (`CameraControls` has used
+  // this exact `lastMode` shape all along.)
+  const lastModeRef = useRef<CameraMode | null>(null);
   useEffect(() => {
+    if (lastModeRef.current === mode) return;
+    lastModeRef.current = mode;
+
     const look = lookRef.current;
     velRef.current.x = 0;
     velRef.current.z = 0;
@@ -204,10 +222,8 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
         // Walking starts AT the point being looked at (orbit target / minimap teleport),
         // not at the orbit camera's pulled-back position — which often floats off-shore.
         const v = viewRef.current;
-        camera.position.x = v.targetX;
-        camera.position.z = v.targetZ;
-        const gy = surfaceY(camera.position.x, camera.position.z) + EYE;
-        camera.position.y = gy;
+        const gy = surfaceY(v.targetX, v.targetZ) + EYE;
+        camera.position.set(v.targetX, gy, v.targetZ);
         physRef.current.baseY = gy;
         physRef.current.vy = 0;
         physRef.current.grounded = true;
@@ -227,15 +243,20 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     // Non-explorer modes always use the base field of view.
     if (mode !== 'fly' && mode !== 'walk') {
       const cam = camera as THREE.PerspectiveCamera;
-      if (cam.isPerspectiveCamera && cam.fov !== BASE_FOV) {
-        cam.fov = BASE_FOV;
-        cam.updateProjectionMatrix();
-      }
+      if (cam.isPerspectiveCamera && cam.fov !== BASE_FOV) applyFov(cam, BASE_FOV);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, camera, renderSize, surfaceY, viewRef]);
 
-  useFrame((_, delta) => {
+  useFrame((state, rawDelta) => {
+    // The live camera, from the frame callback's own state rather than the `useThree` value above.
+    // This loop *drives* the camera, and writing to a value React handed the component during
+    // render is what `react-hooks/immutability` rejects; `state.camera` is the same object by the
+    // route r3f documents for imperative work.
+    const { camera } = state;
+    // Fixed under capture. The capture branch below plants the pose and returns before any
+    // controller integrates, so nothing here reaches the image — but the rule that no `World*`
+    // component consumes r3f's delta unpinned is easier to keep than to keep checking.
+    const delta = sceneDelta(rawDelta);
     const dt = Math.min(delta, 0.1);
     const look = lookRef.current;
     const keys = keysRef.current;
@@ -245,6 +266,20 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     // Smoothed FPS readout (uses the raw frame delta, not the movement-clamped dt).
     const rawFps = delta > 0 ? 1 / delta : 0;
     v.fps = v.fps ? v.fps * 0.9 + rawFps * 0.1 : rawFps;
+
+    // Capture: plant the camera and return before any controller runs. Assigning the pose and
+    // then letting orbit/walk continue would let damping drag it off over the following frames.
+    if (capturePose) {
+      camera.position.set(capturePose.position[0], capturePose.position[1], capturePose.position[2]);
+      camera.lookAt(capturePose.target[0], capturePose.target[1], capturePose.target[2]);
+      v.targetX = capturePose.target[0];
+      v.targetZ = capturePose.target[2];
+      v.camX = camera.position.x;
+      v.camZ = camera.position.z;
+      v.biome = biomeAt(world, v.targetX, v.targetZ, renderSize);
+      v.locked = false;
+      return;
+    }
 
     if (mode === 'orbit' || mode === 'top') {
       const controls = controlsRef.current;
@@ -380,30 +415,13 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
             nz = cz0;
           }
         }
-        // Push the player capsule out of tree trunks (9 surrounding grid cells).
-        const toWorld = renderSize / world.size;
-        const gcx = Math.floor((nx + renderSize) / 8);
-        const gcz = Math.floor((nz + renderSize) / 8);
-        for (let dxc = -1; dxc <= 1; dxc++) {
-          for (let dzc = -1; dzc <= 1; dzc++) {
-            const arr = treeGrid.get((gcx + dxc) * 2048 + (gcz + dzc));
-            if (!arr) continue;
-            for (let kk = 0; kk < arr.length; kk++) {
-              const ti = arr[kk];
-              const tx = world.floraX[ti] * toWorld;
-              const tz = world.floraZ[ti] * toWorld;
-              const r = 0.45 + world.floraScale[ti] * 0.25;
-              const ddx = nx - tx;
-              const ddz = nz - tz;
-              const d2 = ddx * ddx + ddz * ddz;
-              if (d2 < r * r && d2 > 1e-6) {
-                const d = Math.sqrt(d2);
-                nx = tx + (ddx / d) * r;
-                nz = tz + (ddz / d) * r;
-              }
-            }
-          }
-        }
+        // Push the player capsule out of tree trunks. `resolveFloraOverlap` is the shared policy;
+        // it also resolves the case this loop used to skip — a player exactly on a trunk centre,
+        // where the old `d2 > 1e-6` guard meant the one position that most needed pushing out was
+        // the only one never pushed.
+        const pushed = resolveFloraOverlap(floraIndex, nx, nz);
+        nx = pushed.x;
+        nz = pushed.z;
       }
       // Reconcile velocity with what actually happened (a wall/slope zeroes that component,
       // so momentum doesn't build up against it and the head-bob doesn't fake a stride).
@@ -413,10 +431,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       camera.position.z = nz;
     }
 
-    // Keep the camera over (or near) the map.
-    const lim = renderSize * 0.75;
-    camera.position.x = Math.max(-lim, Math.min(lim, camera.position.x));
-    camera.position.z = Math.max(-lim, Math.min(lim, camera.position.z));
+    // Keep the camera over (or near) the map. One policy, in `utils/cameraBounds.ts`, shared with
+    // the tests that prove a walker stays on the mesh while a spectator may pull back off it.
+    const bounded = clampToCameraBounds(mode, renderSize, camera.position.x, camera.position.z);
+    camera.position.x = bounded.x;
+    camera.position.z = bounded.z;
 
     if (mode === 'walk') {
       // Gravity + jump on the eye BASE height; head-bob is a cosmetic offset on top so it
@@ -455,8 +474,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     const cam = camera as THREE.PerspectiveCamera;
     if (cam.isPerspectiveCamera) {
       const targetFov = BASE_FOV + (sprinting && moving ? 7 : 0);
-      cam.fov += (targetFov - cam.fov) * (1 - Math.exp(-6 * dt));
-      cam.updateProjectionMatrix();
+      applyFov(cam, cam.fov + (targetFov - cam.fov) * (1 - Math.exp(-6 * dt)));
     }
 
     v.camX = camera.position.x;

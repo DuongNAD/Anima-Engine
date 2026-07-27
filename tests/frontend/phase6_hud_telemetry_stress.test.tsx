@@ -1,13 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import React from 'react';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
 import { StatusPanel } from '../../src/components/StatusPanel';
 import { SimulationStatus } from '../../src/types';
 
 describe('HUD Telemetry StatusPanel Stress and Verification Tests', () => {
 
-  const getElementStyle = (element: HTMLElement) => {
-    return (element as any).style || {};
+  // jsdom gives every `HTMLElement` a `style`, but the panel is also queried through
+  // `Element`-typed results in places; the fallback is what keeps a missing one from throwing
+  // mid-assertion rather than reporting which element was missing.
+  const getElementStyle = (element: HTMLElement): Partial<CSSStyleDeclaration> => {
+    return element.style ?? {};
   };
 
   it('Verify that the status bar layout groups latency and FPS and is responsive', () => {

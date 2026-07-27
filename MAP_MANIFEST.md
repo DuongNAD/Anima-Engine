@@ -53,6 +53,21 @@ Thiếu **bất kỳ** field bắt buộc nào ở dưới đây làm manifest *
 | `seaLevel` | number | bắt buộc — sea level chuẩn hóa `[0,1]`. |
 | `checksum` | string | **tùy chọn** — ví dụ `sha256:...` của artifact bytes. |
 
+> **`map_manifest.json` là file SINH RA, đừng sửa tay.** Chạy `npm run gen:world-manifest`: nó chạy
+> `generateWorld` thật, mã hoá bằng `worldToArtifact` thật, ghi `artifacts/world_256.anmw`, rồi ghi
+> manifest với **SHA-256 của đúng các byte vừa ghi**.
+>
+> Vì sao phải sinh ra: bản viết tay trước đây trỏ tới `artifacts/world_128.anmw` (không tồn tại,
+> thư mục `artifacts/` cũng không), mang `sha256:` + 64 số 0, và liệt kê 8 ảnh `map-views/*.png`
+> không có thật. Test S05 khi đó dựng một bản sao inline rồi kiểm bản sao đó, nên file thật mục nát
+> tuỳ ý mà không có gate nào đỏ. Nay `src/__tests__/mapManifestEvidence.test.ts` mở **chính file đã
+> commit**, băm **chính các byte** artifact trỏ tới, và đối chiếu header ANMW.
+>
+> **`captured`**: mỗi view mang cờ này. Repo **chưa có** pipeline chụp ảnh 3D, nên cả 8 view đều
+> `captured: false` và **không ảnh nào được tuyên bố**. Gate cưỡng chế mệnh đề đúng chiều — bất kỳ
+> view nào `captured: true` thì file phải có trên đĩa. Bịa 8 ảnh PNG để một dấu tick chuyển xanh
+> chính là kiểu sai mà toàn bộ đợt này tồn tại để loại bỏ.
+
 ### 2.3. `coordinateSystem`
 
 Các giá trị cố định theo [SIMULATION_RULES.md](SIMULATION_RULES.md) / `MapBounds::default` trong [resources.rs](src-tauri/src/core/resources.rs).
@@ -63,7 +78,7 @@ Các giá trị cố định theo [SIMULATION_RULES.md](SIMULATION_RULES.md) / `
 | `worldMaxXZ` | `100` | max world X và Z. |
 | `worldMinY` | `0` | `WORLD_MIN_Y`. |
 | `worldMaxY` | `10` | `WORLD_MAX_Y` (= `elevation * 10`). |
-| `gridDim` | integer ≥ 1 | grid backend (`DEFAULT_GRID_DIM = 128`). |
+| `gridDim` | integer ≥ 1 | grid backend (`DEFAULT_GRID_DIM = 256`, khớp `MapSettings::default()`). |
 
 > Hai coordinate convention cùng tồn tại và **khác nhau** (xem `sim_rules.rs`):
 > - **cell-bucket** (`get_map_indices`): `u=(x-min.x)/(max.x-min.x)`, `ix=floor(u*W).min(W-1)`; ngoài `[0,1]` → không có cell. Round-trip: tâm cell luôn bucket về đúng cell đó (property S03).

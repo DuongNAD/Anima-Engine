@@ -293,6 +293,14 @@ impl BrainPolicy {
 pub mod sim_stream {
     pub const WORLD_INIT: u64 = 1;
     pub const EVOLUTION: u64 = 2;
+    /// Founder brains in a headless experiment run
+    /// ([`crate::core::live_experiment`]).
+    ///
+    /// Separate from the ecology stream on purpose: a controlled comparison of "brains on" against
+    /// "brains off" is only interpretable if the two arms make the *same* ecology draws, and a
+    /// founding population drawing ~5,769 f32 per agent out of `SimRng` would displace every later
+    /// draw in the run. See `live_experiment::genesis`.
+    pub const LIVE_GENESIS_BRAINS: u64 = 3;
 }
 
 /// An independent, reproducible stream for code that is not a Bevy system (setup paths and worker
@@ -332,6 +340,21 @@ pub struct AgentEpochStats {
 
 #[derive(Resource)]
 pub struct EvolutionSender(pub crossbeam_channel::Sender<Vec<AgentEpochStats>>);
+
+/// One offspring the evolution thread asks the world to spawn in place of a retired agent:
+/// `(retired entity, genotype, position, lineage id, generation, parent lineage ids)`.
+///
+/// A name for a tuple that was already spelled out in five places. Purely an alias — the channel,
+/// the queue and every existing call site keep their exact types — so a headless harness can build
+/// the same channel without copying the shape and quietly getting one field wrong.
+pub type EvolutionSpawn = (
+    Entity,
+    MorphologyGenotype,
+    glam::Vec3,
+    String,
+    u32,
+    Vec<String>,
+);
 
 #[derive(Resource, Clone, Debug, Default)]
 pub struct EvolutionQueue {

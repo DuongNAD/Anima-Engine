@@ -49,27 +49,14 @@ export const mockAgentStates: AgentState[] = [
   },
 ];
 
-export interface SegmentState {
-  agent_id: number;
-  segment_id: number;
-  parent_segment_id: number | null;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  roll: number;
-  joint_anchor_x: number;
-  joint_anchor_y: number;
-  joint_anchor_z: number;
-  joint_axis_x: number;
-  joint_axis_y: number;
-  joint_axis_z: number;
-  energy: number;
-  agent_type?: 'predator' | 'prey';
-  hydration?: number;
-  head_direction?: [number, number, number];
-}
+// Re-exported from the generated binding, not restated. The copy that used to live here had already
+// drifted three ways — `hydration`, `head_direction` and `agent_type` were optional, and
+// `agent_type` was a two-value string union where the Rust struct has `AgentType | null` — and a
+// mock type that disagrees with the producer is how a consumer written against the mock passes its
+// tests and fails in the app. Same reasoning as the `buildAgentHierarchy` re-export above.
+export type { SegmentState } from '../../src/types/generated/SegmentState';
+import type { SegmentState } from '../../src/types/generated/SegmentState';
+import { segments } from './segment_fixtures';
 
 
 export interface AgentHierarchy {
@@ -98,7 +85,11 @@ export interface RenderSegment {
 // could reach. Mocks belong to payloads; behaviour under test must come from the source.
 export { buildAgentHierarchy } from '../../src/utils/agentHierarchy';
 
-export const mockSegmentStates: SegmentState[] = [
+// A three-segment predator, built over a complete segment so the fields nothing here cares about —
+// `hydration`, `head_direction` — are present rather than missing. They are not decoration: the
+// telemetry panel reads both, and a fixture without them describes a payload the backend never
+// sends.
+export const mockSegmentStates: SegmentState[] = segments(
   {
     agent_id: 1,
     segment_id: 0,
@@ -107,14 +98,6 @@ export const mockSegmentStates: SegmentState[] = [
     y: 1.5,
     z: -5.0,
     yaw: 0.1,
-    pitch: 0.0,
-    roll: 0.0,
-    joint_anchor_x: 0,
-    joint_anchor_y: 0,
-    joint_anchor_z: 0,
-    joint_axis_x: 0,
-    joint_axis_y: 0,
-    joint_axis_z: 0,
     energy: 95.5,
     agent_type: 'predator',
   },
@@ -127,12 +110,7 @@ export const mockSegmentStates: SegmentState[] = [
     z: -5.0,
     yaw: 0.2,
     pitch: 0.1,
-    roll: 0.0,
     joint_anchor_x: 1.0,
-    joint_anchor_y: 0.0,
-    joint_anchor_z: 0.0,
-    joint_axis_x: 0.0,
-    joint_axis_y: 0.0,
     joint_axis_z: 1.0,
     energy: 95.5,
     agent_type: 'predator',
@@ -146,17 +124,12 @@ export const mockSegmentStates: SegmentState[] = [
     z: -5.0,
     yaw: 0.3,
     pitch: 0.2,
-    roll: 0.0,
     joint_anchor_x: 1.0,
-    joint_anchor_y: 0.0,
-    joint_anchor_z: 0.0,
-    joint_axis_x: 0.0,
-    joint_axis_y: 0.0,
     joint_axis_z: 1.0,
     energy: 95.5,
     agent_type: 'predator',
   },
-];
+);
 
 export interface EvolutionSettings {
   mutation_rate: number;
@@ -364,7 +337,7 @@ export interface EnvironmentalState {
 
 // `head_directions` mirrors a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON OBJECT
 // keyed by agent id. It was declared here as an ARRAY of {agent_id, direction} — a shape the
-// backend has never sent. App.tsx was written against that same fiction, so the real object payload
+// backend does not send and never did. App.tsx was written against that same fiction, so the real object payload
 // fell through its `Array.isArray` guard and head directions silently never updated. The mock
 // agreeing with the consumer instead of with the backend is precisely why 237 passing tests could
 // not see it (G1.4).

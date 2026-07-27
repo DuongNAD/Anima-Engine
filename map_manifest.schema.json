@@ -123,7 +123,12 @@
         },
         "imagePath": {
           "type": "string",
-          "description": "Path to the rendered image for this view."
+          "description": "Path the rendered image for this view WILL occupy. A path here is a destination, not a claim that a file exists — see `captured`."
+        },
+        "captured": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether `imagePath` has actually been rendered and written. False (or absent) means the camera block is a specification for a future capture. src/__tests__/mapManifestEvidence.test.ts enforces the implication: any view with captured=true must have the file on disk. This field exists because the manifest previously listed eight images that did not exist, and nothing failed."
         },
         "camera": { "$ref": "#/definitions/camera" }
       }

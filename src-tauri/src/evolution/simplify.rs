@@ -152,7 +152,32 @@ impl EdgeStat {
     }
 }
 
-/// Reduce `nodes`/`relations` to the ancestry of `samples`.
+/// How much of the graph a caller is willing to lose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SimplifyOptions {
+    /// Splice out retained non-sample nodes that have exactly one parent and one child.
+    ///
+    /// This is the step that reaches the O(alive) bound — pruning alone keeps every trunk back to
+    /// genesis. It also removes nodes a consumer can still see, so it was gated behind persisting a
+    /// per-node cumulative mutation count: `commands/evolution.rs` used to derive the UI's mutation
+    /// figure by walking per-edge `RelationType`s, which a compressed edge cannot carry.
+    ///
+    /// That count now exists ([`super::lineage::LineageNode::cumulative_mutations`]), so the
+    /// **live tracker compacts with this on** ([`super::lineage::LineageTracker::compact`]).
+    /// A caller that still needs per-event resolution between two nodes must read the graph before
+    /// compaction — [`SimplifiedEdge::events`] reports how many events an edge stands for.
+    pub compress_unary_paths: bool,
+}
+
+impl Default for SimplifyOptions {
+    fn default() -> Self {
+        Self {
+            compress_unary_paths: true,
+        }
+    }
+}
+
+/// Reduce `nodes`/`relations` to the ancestry of `samples`, compressing unary paths.
 ///
 /// `samples` are the individuals whose ancestry must survive — normally the living population. They
 /// are never pruned and never compressed away, so a caller can always find them in the result.
@@ -164,6 +189,16 @@ pub fn simplify(
     nodes: &[LineageNode],
     relations: &[LineageRelation],
     samples: &[String],
+) -> Result<SimplifiedLineage, SimplifyError> {
+    simplify_with(nodes, relations, samples, SimplifyOptions::default())
+}
+
+/// [`simplify`] with the compression step under the caller's control.
+pub fn simplify_with(
+    nodes: &[LineageNode],
+    relations: &[LineageRelation],
+    samples: &[String],
+    options: SimplifyOptions,
 ) -> Result<SimplifiedLineage, SimplifyError> {
     // ---- index, rejecting duplicates ---------------------------------------------------------
     let mut index: BTreeMap<&str, usize> = BTreeMap::new();
@@ -267,9 +302,13 @@ pub fn simplify(
 
     // ---- step 2: splice out unary non-sample nodes ---------------------------------------------
     let mut compressed = vec![false; nodes.len()];
-    let mut work: VecDeque<usize> = (0..nodes.len())
-        .filter(|&i| retained[i] && !is_sample[i])
-        .collect();
+    let mut work: VecDeque<usize> = if options.compress_unary_paths {
+        (0..nodes.len())
+            .filter(|&i| retained[i] && !is_sample[i])
+            .collect()
+    } else {
+        VecDeque::new()
+    };
 
     while let Some(v) = work.pop_front() {
         if !retained[v] || compressed[v] || is_sample[v] {
@@ -398,6 +437,7 @@ mod tests {
             id: id.to_string(),
             generation,
             genotype: None,
+            cumulative_mutations: None,
         }
     }
 
@@ -406,6 +446,7 @@ mod tests {
             source_id: source.to_string(),
             target_id: target.to_string(),
             relation_type: kind,
+            path_events: None,
         }
     }
 

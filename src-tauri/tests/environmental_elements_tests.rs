@@ -18,12 +18,58 @@ use anima_engine_lib::core::ecs::{
 use anima_engine_lib::core::simulation_lifecycle::{
     SavedSimulationState, SerializedPheromoneGrid, SimulationEngine,
 };
+use anima_engine_lib::core::simulation_state::SimulationStatus;
 
 #[global_allocator]
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// How long the engine may take to be running and to have produced its first tick.
+///
+/// Generous on purpose: this is a *liveness* deadline, not a performance budget. Ten seconds of
+/// slack costs nothing when the condition is normally met in milliseconds, and it is the difference
+/// between a test that fails when the engine is broken and one that fails when the machine is busy.
+const READY_DEADLINE: Duration = Duration::from_secs(5);
+
+/// How often to re-check. Short enough that the reported latency is meaningful, long enough not to
+/// spin a core that the engine being measured is trying to use.
+const READY_POLL: Duration = Duration::from_millis(10);
+
+/// Wait until the engine is running and has ticked at least once, returning how long that took.
+///
+/// # Why this exists rather than a `sleep`
+///
+/// This replaces `thread::sleep(Duration::from_millis(500))` followed by an immediate assertion.
+/// That form asserts a *deadline nobody chose*: 500 ms is ample on an idle machine and is not ample
+/// when the rest of the suite is saturating the same cores, and this test hands the engine 10,000
+/// trees to deserialize before it can reach its first tick. It failed exactly that way under suite
+/// load — `Simulation should be running` — and passed on an immediate isolated rerun, which is the
+/// signature of a readiness race rather than a broken engine.
+///
+/// Polling makes the requirement **stronger**, not looser. The old form accepted an engine that
+/// took 1 ms and one that took 499 ms identically and looked exactly once, at an arbitrary instant;
+/// this one measures the latency and prints it, so a regression that makes startup ten times slower
+/// is visible in the output instead of invisible until the day it crosses 500 ms. The condition
+/// asserted — `running && tick_count > 0` — is unchanged.
+fn await_running_and_ticking(
+    engine: &SimulationEngine,
+    deadline: Duration,
+) -> Result<(Duration, SimulationStatus), (Duration, SimulationStatus)> {
+    let start = std::time::Instant::now();
+    loop {
+        let status = engine.get_status();
+        if status.running && status.tick_count > 0 {
+            return Ok((start.elapsed(), status));
+        }
+        let waited = start.elapsed();
+        if waited >= deadline {
+            return Err((waited, status));
+        }
+        thread::sleep(READY_POLL);
+    }
+}
 
 #[test]
 fn test_fruit_growth_and_lake_replenishment() {
@@ -398,13 +444,27 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
         Arc::clone(&map_elites_grid),
     );
 
-    // Let it run for 500ms to verify that 10k entities do not block/lock or leak threads
-    thread::sleep(Duration::from_millis(500));
-
-    // Verify it is running and ticking
-    let status = engine.get_status();
-    assert!(status.running, "Simulation should be running");
-    assert!(status.tick_count > 0, "Simulation should have ticked");
+    // Wait for the engine to be running and ticking — 10k entities must not block, lock or leak.
+    let (ready_in, ready_status) = match await_running_and_ticking(&engine, READY_DEADLINE) {
+        Ok(ok) => ok,
+        Err((waited, status)) => {
+            // Stop before panicking. A test that panics with the engine still running leaks its
+            // threads into the rest of the target, and the *next* test's failure would then be
+            // this one's fault — which is how one race becomes an unreadable cascade.
+            engine.stop();
+            panic!(
+                "the simulation never became ready within {waited:?} (deadline {READY_DEADLINE:?}): \
+                 running={}, tick_count={}, avg_tick_time_ms={}, fps={}. With 10,000 trees to \
+                 restore this is a liveness failure of the engine, not a slow machine — the \
+                 deadline is {READY_DEADLINE:?}, not the 500 ms this test used to assume.",
+                status.running, status.tick_count, status.avg_tick_time_ms, status.fps
+            );
+        }
+    };
+    println!(
+        "10k trees: engine ready in {ready_in:?} ({} ticks at first observation)",
+        ready_status.tick_count
+    );
 
     // Stop engine
     engine.stop();

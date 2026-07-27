@@ -1,0 +1,56 @@
+# Line endings for artifacts whose BYTES are the contract.
+#
+# `core.autocrlf=true` is the Git-for-Windows installer default, it is set on this project's
+# development machine, and it is the default on GitHub's `windows-latest` runners — which is the
+# runner the licensing gates run on. With no attributes declared, git converts LF to CRLF on
+# checkout for every file it detects as text. Measured on a simulated fresh checkout of this
+# repository:
+#
+#   NOTICE                                  657 CRLF pairs  -> `npm run check:notice` fails
+#   sbom.cdx.json                        17,452 CRLF pairs  -> `npm run check:sbom` fails
+#   licensing/THIRD_PARTY_LICENSES.txt   22,478 CRLF pairs  -> `npm run check:licenses` fails
+#   schemas/cyclonedx/bom-1.5.schema.json          sha256 067f7824... -> e03d2164...
+#
+# Every one of those is a false failure telling the developer to regenerate a file that is already
+# correct, and regenerating would produce LF again and leave the tree permanently dirty. The last is
+# worse than a false failure: the SHA-256 in `schemas/cyclonedx/PROVENANCE.json` exists to detect a
+# schema someone edited, so a checkout would fire it as a **tampering alarm** on an untouched file.
+#
+# The generators emit LF unconditionally, on every platform, and the `--check` gates compare bytes.
+# So these paths are pinned rather than left to autodetection.
+#
+# Scoped deliberately. A repository-wide `* text=auto eol=lf` would renormalise every tracked file
+# and is a separate decision with a much larger diff; this fixes the paths where the byte sequence
+# is load-bearing, and `tests/frontend/thirdPartyLicenses.test.ts` asserts the pinning is still here.
+
+# Generated compliance artifacts — byte-compared by `--check` gates.
+NOTICE                      text eol=lf
+sbom.cdx.json               text eol=lf
+licensing/**                text eol=lf
+
+# `THIRD_PARTY_LICENSES.txt` reproduces third-party licence texts verbatim, and some of them contain
+# trailing spaces — `ring`'s BoringSSL notice, `image`'s exrs attribution, several npm MIT texts that
+# were hard-wrapped by hand. `git diff --check` reports each one as a whitespace error, which it is
+# not: the bytes are quoted material, `licensing/third-party-index.json` records the SHA-256 of the
+# source file, and "tidying" them would falsify a text whose exact reproduction is the obligation.
+licensing/THIRD_PARTY_LICENSES.txt  text eol=lf whitespace=-trailing-space
+
+# Published experiment artifacts — every file is listed with its SHA-256 in the `checksums.sha256`
+# beside it, and `scripts/verify_e2_artifacts.mjs` recomputes those digests with `node:crypto`. A
+# checkout that rewrote an LF would fire the verifier as a tampering alarm on an untouched result,
+# which is the same failure the schemas below are pinned against. `-text` so git converts in neither
+# direction; `diff` because a result must stay reviewable in a pull request.
+artifacts/experiments/**    -text diff
+
+# Vendored upstream schemas — hashed against PROVENANCE.json. `-text` rather than `text eol=lf`:
+# these must round-trip exactly as vendored, so git is told not to transform them in either
+# direction rather than told which transform to apply.
+schemas/**                  -text
+
+# Vendored upstream licence texts — verbatim bytes, hashed in sources.json, and byte-compared by
+# every gate that reads them. `-text` so git performs no eol conversion in either direction: the
+# SHA-256 in the manifest is of the upstream file as fetched, and a checkout that rewrote a CRLF
+# would fire as a tampering alarm on an untouched file. `diff` because they must stay reviewable as
+# text despite `-text`; `whitespace=-trailing-space` because several carry trailing spaces that
+# "tidying" would falsify.
+licensing/upstream/**       -text diff whitespace=-trailing-space

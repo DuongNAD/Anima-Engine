@@ -1,0 +1,367 @@
+//! OSS-071 on the live path — `LineageTracker::compact`.
+//!
+//! `simplify` was a pure function returning a value; nothing shrank. This is the part where the
+//! tracker's own storage is replaced and memory actually drops.
+//!
+//! The dangerous half is not the pruning, it is **the sample set**. The tracker never learns who is
+//! alive; a caller tells it. And "alive" is the wrong answer: every `lineage_id` in the MAP-Elites
+//! archive can be selected as a parent by a later epoch, and an elite need not be an ancestor of
+//! anyone currently alive. Prune by liveness alone and the very next reproduction names a node that
+//! is gone.
+//!
+//! That used to be silent corruption — `add_reproduction` wrote the edge anyway, producing an orphan
+//! edge, and an orphan edge makes the WHOLE graph unusable because both `to_newick` and `simplify`
+//! refuse to process one. So a single missed sample would have poisoned export and every future
+//! compaction. `add_reproduction` now refuses the edge instead, which is what makes compaction safe
+//! to switch on at all; `a_missed_future_parent_costs_a_link_not_the_graph` is that guarantee.
+
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
+use anima_engine_lib::evolution::lineage::{InMemoryLineageTracker, LineageTracker, RelationType};
+use anima_engine_lib::evolution::newick::to_newick;
+
+/// A genotype with real content, so a dropped node frees something worth freeing.
+fn genotype(size: usize) -> MorphologyGenotype {
+    MorphologyGenotype {
+        nodes: (0..size)
+            .map(|i| MorphologyNode {
+                id: i as u32,
+                length: 1.0,
+                radius: 0.5,
+                mass: 1.0,
+            })
+            .collect(),
+        edges: Vec::new(),
+    }
+}
+
+fn tracker_with_two_branches() -> InMemoryLineageTracker {
+    let tracker = InMemoryLineageTracker::new();
+    tracker
+        .add_root("founder".into(), genotype(4))
+        .expect("root recorded");
+
+    // The surviving line.
+    let mut previous = "founder".to_string();
+    for g in 1..=4u32 {
+        let id = format!("alive{g}");
+        tracker
+            .add_reproduction(
+                id.clone(),
+                g,
+                genotype(4),
+                vec![previous.clone()],
+                RelationType::Mutate,
+            )
+            .expect("reproduction recorded");
+        previous = id;
+    }
+
+    // A line that died out.
+    let mut previous = "founder".to_string();
+    for g in 1..=4u32 {
+        let id = format!("extinct{g}");
+        tracker
+            .add_reproduction(
+                id.clone(),
+                g,
+                genotype(4),
+                vec![previous.clone()],
+                RelationType::Clone,
+            )
+            .expect("reproduction recorded");
+        previous = id;
+    }
+    tracker
+}
+
+#[test]
+fn compaction_drops_extinct_branches() {
+    let tracker = tracker_with_two_branches();
+    let (before, _) = tracker.get_lineage_graph().expect("readable");
+    assert_eq!(before.len(), 9);
+
+    let report = tracker
+        .compact(&["alive4".to_string()])
+        .expect("a well-formed graph compacts");
+
+    assert_eq!(report.nodes_before, 9);
+
+    let (after, relations) = tracker.get_lineage_graph().expect("readable");
+    let ids: Vec<&str> = after.iter().map(|n| n.id.as_str()).collect();
+
+    // Assert by IDENTITY, not by count. This test used to assert `nodes_after == 5` — "founder +
+    // the four survivors" — which silently encoded the assumption that compaction never compresses.
+    // When compression was switched on the number became 2 and the test failed for a reason that
+    // had nothing to do with what it was named after. Naming the branch that must be gone survives
+    // any future change to how hard the trunk is squeezed.
+    assert!(
+        !ids.iter().any(|id| id.starts_with("extinct")),
+        "every extinct-branch node should be gone, got {ids:?}"
+    );
+    assert!(
+        relations
+            .iter()
+            .all(|r| !r.source_id.starts_with("extinct") && !r.target_id.starts_with("extinct")),
+        "edges into a removed branch would be orphan edges"
+    );
+    // The sample and its root are the two things compaction is never allowed to drop.
+    assert!(ids.contains(&"alive4"), "the sample must survive");
+    assert!(ids.contains(&"founder"), "the root must survive");
+    assert!(
+        report.nodes_removed() >= 4,
+        "the four extinct nodes at least"
+    );
+}
+
+#[test]
+fn the_surviving_trunk_is_compressed_but_its_endpoints_and_totals_are_not() {
+    // Replaces `the_surviving_trunk_is_kept_whole_because_compaction_does_not_compress`, whose
+    // premise stopped being true when the per-node mutation count made compression safe. It is not
+    // a weaker test: it pins what compression is allowed to cost (intermediate nodes, and their
+    // genotypes) against what it is never allowed to cost (the endpoints, the connectivity, and
+    // the mutation total the UI shows).
+    let tracker = tracker_with_two_branches();
+
+    let (before_nodes, before_rels) = tracker.get_lineage_graph().expect("readable");
+    let before_count = before_nodes
+        .iter()
+        .find(|n| n.id == "alive4")
+        .and_then(|n| n.cumulative_mutations)
+        .expect("the live tracker records a count");
+    assert_eq!(before_count, 4, "four Mutate events down the alive trunk");
+    assert_eq!(before_rels.len(), 8);
+
+    tracker.compact(&["alive4".to_string()]).expect("compacts");
+    let (after, relations) = tracker.get_lineage_graph().expect("readable");
+    let ids: Vec<&str> = after.iter().map(|n| n.id.as_str()).collect();
+
+    // Endpoints are inviolable.
+    assert!(ids.contains(&"founder"), "the root must survive");
+    assert!(ids.contains(&"alive4"), "the sample must survive");
+
+    // Intermediates are what compression is allowed to spend.
+    assert!(
+        relations.len() < before_rels.len(),
+        "nothing was compressed: {} edges before, {} after",
+        before_rels.len(),
+        relations.len()
+    );
+
+    // The total is preserved exactly — this is the whole justification for compressing at all.
+    let after_count = after
+        .iter()
+        .find(|n| n.id == "alive4")
+        .and_then(|n| n.cumulative_mutations)
+        .expect("a survivor keeps its recorded count");
+    assert_eq!(
+        after_count, before_count,
+        "compression changed the mutation total"
+    );
+
+    // A summarised edge must admit that it is one, or a reader cannot tell a path from an event.
+    let spliced: Vec<_> = relations
+        .iter()
+        .filter(|r| r.path_events.is_some_and(|n| n > 1))
+        .collect();
+    assert!(!spliced.is_empty(), "expected at least one summarised edge");
+    for r in spliced {
+        assert_eq!(
+            r.relation_type,
+            RelationType::Mutate,
+            "a path of Mutate events summarises as Mutate"
+        );
+    }
+}
+
+// ---- the archive hazard ---------------------------------------------------------------------------
+
+#[test]
+fn an_archive_elite_who_is_nobody_s_ancestor_survives_when_it_is_sampled() {
+    // `extinct2` stands for a MAP-Elites elite: no living descendant, but still selectable as a
+    // parent. Sampling it is what the live caller does, and it is why the sample set is not simply
+    // "the living".
+    let tracker = tracker_with_two_branches();
+    let report = tracker
+        .compact(&["alive4".to_string(), "extinct2".to_string()])
+        .expect("compacts");
+
+    let (after, relations) = tracker.get_lineage_graph().expect("readable");
+    let ids: Vec<&str> = after.iter().map(|n| n.id.as_str()).collect();
+    assert!(ids.contains(&"extinct2"), "a sampled elite must survive");
+    assert!(
+        !ids.contains(&"extinct3"),
+        "its descendants are still extinct and should go"
+    );
+
+    // This used to require `extinct1` — the elite's immediate parent — to survive, on the reasoning
+    // that otherwise "its own lineage would dangle". With compression on, `extinct1` is exactly the
+    // kind of unary intermediate that gets spliced, and the lineage does NOT dangle: the edge that
+    // replaced it connects the elite to the root directly.
+    //
+    // So assert the property that was actually meant — the elite is still *reachable from a root* —
+    // instead of the implementation detail that used to imply it.
+    let parent_of: std::collections::HashMap<&str, &str> = relations
+        .iter()
+        .map(|r| (r.target_id.as_str(), r.source_id.as_str()))
+        .collect();
+    let mut cursor = "extinct2";
+    let mut hops = 0;
+    while let Some(&p) = parent_of.get(cursor) {
+        cursor = p;
+        hops += 1;
+        assert!(hops < 100, "cycle while walking the elite's ancestry");
+    }
+    assert_eq!(
+        cursor, "founder",
+        "a sampled elite must still trace back to its root, not dangle"
+    );
+    assert!(
+        report.nodes_after >= 3,
+        "founder, the elite and the alive sample at minimum, got {}",
+        report.nodes_after
+    );
+}
+
+#[test]
+fn a_missed_future_parent_costs_a_link_not_the_graph() {
+    // The failure this guard exists for. `extinct2` is pruned because the caller forgot to sample
+    // it, and then a later epoch selects it as a parent anyway.
+    let tracker = tracker_with_two_branches();
+    tracker.compact(&["alive4".to_string()]).expect("compacts");
+
+    let err = tracker
+        .add_reproduction(
+            "orphan-child".into(),
+            5,
+            genotype(4),
+            vec!["extinct2".into()],
+            RelationType::Mutate,
+        )
+        .expect_err("naming a pruned parent must be refused");
+    assert!(
+        err.contains("extinct2"),
+        "the error names the parent: {err}"
+    );
+
+    // The point of refusing: the graph is still exportable. Had the edge been written, `to_newick`
+    // and every future `compact` would reject the whole lineage from then on.
+    let (nodes, relations) = tracker.get_lineage_graph().expect("readable");
+    to_newick(&nodes, &relations).expect("the graph must remain valid after a refused edge");
+
+    // The offspring itself is kept, as a new root. Losing the ancestry link is the cost; losing the
+    // individual would be a second, larger error.
+    assert!(nodes.iter().any(|n| n.id == "orphan-child"));
+    assert!(
+        !relations.iter().any(|r| r.target_id == "orphan-child"),
+        "no edge should have been written"
+    );
+}
+
+#[test]
+fn a_partially_known_parent_list_keeps_the_edges_it_can() {
+    // Crossover names two parents. One known, one pruned: the known edge is worth keeping, and
+    // dropping both would lose ancestry the graph still has every right to record.
+    let tracker = tracker_with_two_branches();
+    tracker.compact(&["alive4".to_string()]).expect("compacts");
+
+    let err = tracker
+        .add_reproduction(
+            "hybrid".into(),
+            5,
+            genotype(4),
+            vec!["alive4".into(), "extinct2".into()],
+            RelationType::Crossover,
+        )
+        .expect_err("the unknown parent is still reported");
+    assert!(err.contains("extinct2"));
+    assert!(!err.contains("alive4"), "the known parent is not at fault");
+
+    let (_, relations) = tracker.get_lineage_graph().expect("readable");
+    let parents: Vec<&str> = relations
+        .iter()
+        .filter(|r| r.target_id == "hybrid")
+        .map(|r| r.source_id.as_str())
+        .collect();
+    assert_eq!(parents, vec!["alive4"], "the known edge survives");
+}
+
+// ---- shape and stability --------------------------------------------------------------------------
+
+#[test]
+fn compacting_twice_changes_nothing_the_second_time() {
+    let tracker = tracker_with_two_branches();
+    let first = tracker.compact(&["alive4".to_string()]).expect("compacts");
+    let second = tracker.compact(&["alive4".to_string()]).expect("compacts");
+
+    assert_eq!(second.nodes_before, first.nodes_after);
+    assert_eq!(second.nodes_removed(), 0, "compaction is idempotent");
+    assert_eq!(second.relations_before, second.relations_after);
+}
+
+#[test]
+fn a_compacted_graph_is_still_exportable() {
+    // Cheap structural validation for free: `to_newick` refuses cycles, orphan edges, duplicate ids
+    // and generation inversions, so a successful export says the rewrite left the graph well formed.
+    let tracker = tracker_with_two_branches();
+    tracker.compact(&["alive4".to_string()]).expect("compacts");
+
+    let (nodes, relations) = tracker.get_lineage_graph().expect("readable");
+    let exported = to_newick(&nodes, &relations).expect("compaction must leave a valid graph");
+    assert_eq!(exported.roots, 1);
+
+    // The expected string was `((((alive4:1)alive3:1)alive2:1)alive1:1)founder;` — the uncompressed
+    // chain. Compression collapses it, and the branch length is a *generation delta*, so the four
+    // 1-generation hops become one 4-generation branch. That is the correct Newick for the compacted
+    // tree, and pinning it keeps the export honest about total elapsed generations rather than just
+    // asserting "some string came out".
+    assert_eq!(exported.trees, vec!["(alive4:4)founder;".to_string()]);
+}
+
+#[test]
+fn compacting_against_every_node_removes_nothing() {
+    // Negative control: if `compact` removed things regardless of the sample set, every assertion
+    // above would still pass while the method quietly destroyed data.
+    let tracker = tracker_with_two_branches();
+    let (before, _) = tracker.get_lineage_graph().expect("readable");
+    let all: Vec<String> = before.iter().map(|n| n.id.clone()).collect();
+
+    let report = tracker.compact(&all).expect("compacts");
+    assert_eq!(report.nodes_removed(), 0);
+    assert_eq!(report.relations_before, report.relations_after);
+}
+
+#[test]
+fn compaction_refuses_a_malformed_graph_rather_than_rewriting_it() {
+    // A graph with a cycle cannot be compacted meaningfully, and silently rewriting one would
+    // destroy the evidence of how it got that way. The live caller logs and carries on.
+    let tracker = InMemoryLineageTracker::new();
+    tracker.add_root("a".into(), genotype(2)).expect("root");
+    tracker
+        .add_reproduction(
+            "b".into(),
+            1,
+            genotype(2),
+            vec!["a".into()],
+            RelationType::Clone,
+        )
+        .expect("recorded");
+    // Re-parenting `a` onto `b` closes a loop. Written through the public API, so this is a shape
+    // the tracker can genuinely end up in.
+    tracker
+        .add_reproduction(
+            "a".into(),
+            0,
+            genotype(2),
+            vec!["b".into()],
+            RelationType::Clone,
+        )
+        .expect("recorded");
+
+    let err = tracker
+        .compact(&["b".to_string()])
+        .expect_err("a malformed graph must not be silently rewritten");
+    assert!(
+        err.contains("duplicate") || err.contains("cycle") || err.contains("id"),
+        "the error should name the defect: {err}"
+    );
+}

@@ -12,6 +12,16 @@ predecessor: 2026-07-25-claude-overnight-goal-ae3.md
 
 # Claude Overnight Goal — G0–G4 Remediation Program (post-audit)
 
+> ## 📜 Historical package record — not current status
+>
+> This document belongs to **one dated work package**. Every count in it (test totals, warning
+> counts, target counts, coverage numbers) is a **historical measurement**: true when the command
+> ran during that package, and not a description of the tree today.
+>
+> **Current measured status lives in exactly one place:**
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+
 > **Cập nhật frontmatter 2026-07-26.** Dòng `**Status:**` bên dưới ghi *"proposed; no goal in this
 > file has started"* và điều đó **không còn đúng**: G1.1–G1.4 và G2 gate #2/#3 đã được
 > [`STATE_OF_THE_PROJECT.md`](../../planning/STATE_OF_THE_PROJECT.md) §2 ghi nhận là *Live

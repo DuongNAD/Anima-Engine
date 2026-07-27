@@ -2,101 +2,96 @@ import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { LegacyImportPanel } from "./components/LegacyImportPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
 import { useTauriEvent } from "./hooks/useTauriEvent";
-import { buildAgentHierarchy } from "./utils/agentHierarchy";
+import { buildAgentHierarchy, indexRootSegments } from "./utils/agentHierarchy";
 import type { SegmentState, RenderSegment, AgentHierarchy } from "./utils/agentHierarchy";
 
-// Re-exported so existing importers keep working; the implementation and the view-model types now
-// live in one place instead of being copied per consumer.
-export { buildAgentHierarchy };
+// The view-model types are re-exported so existing importers keep working; the implementation and
+// the types now live in one place instead of being copied per consumer.
+//
+// `buildAgentHierarchy` itself is NOT re-exported. It is a plain function, and a module that
+// exports both a component and a function is one Fast Refresh cannot hot-swap — an edit anywhere in
+// this file would full-reload the app. Nothing imported it from here in any case: the two consumers
+// (`src/__tests__/agentHierarchy.test.ts` and `tests/mocks/mock_ipc_payloads.ts`) both already go to
+// `src/utils/agentHierarchy` directly. Types are exempt, because they are erased before the bundle.
 export type { SegmentState, RenderSegment, AgentHierarchy };
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 const LandscapeShowcase = lazy(() => import("./components/Landscape/LandscapeShowcase"));
 
 
-export interface RaycastTelemetry {
-  origin: [number, number, number];
-  direction: [number, number, number];
-  hit_distance: number;
-  hit_entity_type: 'Food' | 'Predator' | 'Prey' | 'Obstacle' | 'None';
-  agent_id: number;
-}
+// ---------------------------------------------------------------------------------------
+// IPC payload types: imported from the generated bindings, not re-declared here.
+//
+// Nine of these were hand-written copies of Rust structs. They were *correct* copies, which is
+// what made the arrangement dangerous: nothing compared them to their source, so the day a Rust
+// field was renamed the frontend would keep compiling against a shape the backend had stopped
+// sending, and the failure would arrive as an `undefined` at runtime instead of a type error at
+// build time.
+//
+// `src/types/generated/` is written by ts-rs from the structs themselves, and CI runs
+// `cargo test --lib export_bindings` followed by `git diff --exit-code` over that directory — so
+// drift there fails the build. A hand-written mirror sits outside that gate by construction.
+//
+// Re-exported as well as imported because the rest of the app and the frontend suite import these
+// names from `App`; the alternative is a rename sweep across call sites that buys nothing.
+// ---------------------------------------------------------------------------------------
 
-export interface PheromoneGridState {
-  grid: number[];
-  width: number;
-  height: number;
-}
+import type { RaycastTelemetry } from './types/generated/RaycastTelemetry';
+import type { HitEntityType } from './types/generated/HitEntityType';
+import type { PheromoneGridState } from './types/generated/PheromoneGridState';
+import type { CombatEvent } from './types/generated/CombatEvent';
+import type { SimulationStatus } from './types/generated/SimulationStatus';
+import type { EvolutionSettings } from './types/generated/EvolutionSettings';
+import type { EliteIndividualState } from './types/generated/EliteIndividualState';
+import type { MapElitesGridState } from './types/generated/MapElitesGridState';
+import type { ChronicleEvent } from './types/generated/ChronicleEvent';
+import type { EcosystemState } from './types/generated/EcosystemState';
+import type { EnvironmentalState } from './types/generated/EnvironmentalState';
+import type { SimulationTickPayload } from './types/generated/SimulationTickPayload';
+import type { EnvironmentalElement } from './types/generated/EnvironmentalElement';
 
-export interface CombatEvent {
-  predator_id: number;
-  prey_id: number;
-  damage: number;
-  energy_transferred: number;
-}
+export type {
+  RaycastTelemetry,
+  HitEntityType,
+  PheromoneGridState,
+  CombatEvent,
+  SimulationStatus,
+  EvolutionSettings,
+  EliteIndividualState,
+  MapElitesGridState,
+  ChronicleEvent,
+  EcosystemState,
+  EnvironmentalState,
+  EnvironmentalElement,
+};
 
-export interface SimulationStatus {
-  running: boolean;
-  tick_count: number;
-  avg_tick_time_ms: number;
-  fps: number;
-}
+// The three below have no ts-rs source, so they stay hand-written — and that is a gap, not a
+// decision. `get_lineage_graph` and the `migration-event` payload cross the same bridge as
+// everything above with none of the same protection. Deriving `TS` on the Rust side is the fix;
+// `tests/frontend/ipcBindingAuthority.test.ts` names them, so the gap is counted rather than
+// forgotten, and shrinking that list is the only way to change the number it asserts.
 
-export interface EvolutionSettings {
-  mutation_rate: number;
-  selection_bias: number;
-  grid_resolution: number;
-}
+// The last four hand-written mirrors, now generated.
+//
+// These were the ones F9 planned to leave alone because their Rust sources had no `ts_rs` derive —
+// which is the defect, not a reason. They have derives now, including real enums for
+// `MigrationPayload`'s `direction` and `status`: the Rust fields were `String` with the union written
+// in a comment, while these copies declared the union for real. Two mirrors of one struct, each
+// wrong in a different direction, neither compared to anything.
+//
+// Re-exported under the names the rest of the app already imports from `App`, so this is a change of
+// source rather than a rename sweep. `ipcBindingAuthority.test.ts` allows an alias and rejects a
+// re-declaration: an alias has no field list to drift.
+import type { LineageNodePayload as LineageNode } from './types/generated/LineageNodePayload';
+import type { LineageLinkPayload as LineageLink } from './types/generated/LineageLinkPayload';
+import type { LineageGraphPayload as LineageGraphState } from './types/generated/LineageGraphPayload';
+import type { MigrationPayload } from './types/generated/MigrationPayload';
 
-export interface EliteIndividualState {
-  fitness: number;
-  features: number[];
-}
-
-export interface MapElitesGridState {
-  grid: Record<string, EliteIndividualState>;
-  grid_resolution: number;
-}
-
-export interface LineageNode {
-  id: string;
-  generation: number;
-  parent_id: string | null;
-  fitness: number;
-  mutations_count: number;
-}
-
-export interface LineageLink {
-  source: string;
-  target: string;
-}
-
-export interface LineageGraphState {
-  nodes: LineageNode[];
-  links: LineageLink[];
-  db_connected: boolean;
-}
-
-export interface ChronicleEvent {
-  id: string;
-  event_type: 'Drought' | 'TemperatureSpike' | 'PredatorWave' | 'Abundance';
-  timestamp: number;
-  title: string;
-  description: string;
-  parameter_delta: Record<string, number>;
-}
-
-export interface MigrationPayload {
-  agent_id: number;
-  direction: 'incoming' | 'outgoing';
-  source_port: number;
-  target_port: number;
-  status: 'Success' | 'Failed';
-  timestamp: number;
-}
+export type { LineageNode, LineageLink, LineageGraphState, MigrationPayload };
 
 export function App() {
   const [status, setStatus] = useState<SimulationStatus>({
@@ -106,16 +101,17 @@ export function App() {
     fps: 0,
   });
   const [hierarchies, setHierarchies] = useState<AgentHierarchy[]>([]);
+  /** Root segment per agent, from the same tick as `hierarchies`. Carries the panel's telemetry. */
+  const [rootSegments, setRootSegments] = useState<Record<number, SegmentState>>({});
   const [headDirections, setHeadDirections] = useState<Record<number, [number, number, number] | undefined>>({});
   const [error, setError] = useState<string | null>(null);
   const [projection, setProjection] = useState<"xy" | "xz">("xy");
   const [zoom, setZoom] = useState<number>(1.0);
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [filePath, setFilePath] = useState<string>("");
-  const [environmentalState, setEnvironmentalState] = useState<{ elements: any[] }>({ elements: [] });
+  const [environmentalState, setEnvironmentalState] = useState<EnvironmentalState>({ elements: [] });
 
-  
-  const latestSegmentsRef = useRef<SegmentState[]>([]);
+
   const lastHierarchiesUpdateRef = useRef<number>(0);
   const projectionRef = useRef<"xy" | "xz">("xy");
 
@@ -282,19 +278,19 @@ export function App() {
       try {
         const grid = await invoke<PheromoneGridState>("get_pheromone_grid");
         setPheromoneGrid(grid);
-      } catch (err) {
+      } catch {
         // Ignore
       }
       try {
         const raycasts = await invoke<RaycastTelemetry[]>("get_active_raycasts");
         setActiveRaycasts(raycasts);
-      } catch (err) {
+      } catch {
         // Ignore
       }
       try {
-        const env = await invoke<any>("get_environmental_elements");
+        const env = await invoke<EnvironmentalState>("get_environmental_elements");
         if (env) setEnvironmentalState(env);
-      } catch (err) {
+      } catch {
         // Ignore
       }
     };
@@ -440,7 +436,9 @@ export function App() {
   }, []);
 
   // Lắng nghe luồng dữ liệu tick phát từ luồng chạy ngầm của Rust (Tauri IPC Event)
-  useTauriEvent<any>(
+  // Either the bare segment array or the whole tick payload, depending on the emitter — which is
+  // why the handler narrows rather than trusting one shape.
+  useTauriEvent<SegmentState[] | SimulationTickPayload>(
     "simulation-tick",
     (event) => {
       let newSegments: SegmentState[] = [];
@@ -475,12 +473,13 @@ export function App() {
       const safeSegments = newSegments.filter(
         (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
       );
-      latestSegmentsRef.current = safeSegments;
-
       const now = Date.now();
       if (now - lastHierarchiesUpdateRef.current >= 200) {
         const newHierarchies = buildAgentHierarchy(safeSegments);
         setHierarchies(newHierarchies);
+        // Indexed from the same array, in the same batch: the panel's rows and the telemetry
+        // printed inside them are then always one tick, never two.
+        setRootSegments(indexRootSegments(safeSegments));
         lastHierarchiesUpdateRef.current = now;
       }
     },
@@ -640,7 +639,7 @@ export function App() {
                   <p>No environmental elements loaded</p>
                 ) : (
                   <ul style={{ paddingLeft: "20px" }}>
-                    {environmentalState.elements.map((elem: any, idx: number) => (
+                    {environmentalState.elements.map((elem: EnvironmentalElement, idx: number) => (
                       <li key={idx}>
                         • {elem.type} at ({elem.x}, {elem.y}), radius {elem.radius}
                       </li>
@@ -686,17 +685,17 @@ export function App() {
                     <div style={{ fontSize: "12px", marginBottom: "8px", color: "#4a5568" }}>
                       <div data-testid="hydration-telemetry">
                         Hydration: {(() => {
-                          const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
-                          return seg && (seg as any).hydration !== undefined ? `${safeToFixed((seg as any).hydration, 1)}%` : "75.0%";
+                          const seg = rootSegments[hierarchy.agent_id];
+                          return seg && seg.hydration !== undefined ? `${safeToFixed(seg.hydration, 1)}%` : "75.0%";
                         })()}
                       </div>
                       <div data-testid="head-direction-telemetry">
                         Head Direction: {(() => {
                           const dir = headDirections[hierarchy.agent_id];
                           if (dir === undefined) {
-                            const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
-                            if (seg && (seg as any).head_direction) {
-                              return `[${(seg as any).head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
+                            const seg = rootSegments[hierarchy.agent_id];
+                            if (seg && seg.head_direction) {
+                              return `[${seg.head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
                             }
                             return "N/A";
                           }
@@ -896,7 +895,15 @@ export function App() {
                       <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
                       {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
                         <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
-                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
+                          {/* `v` is `number | undefined` under the generated type and was `number`
+                              under the hand-written mirror — the first real drift the switch
+                              exposed. The Rust side is a `HashMap<String, f64>`, so a lookup can
+                              miss, and `undefined >= 0` is false: a missing delta rendered as
+                              "rate: undefined" with no plus sign, silently. */}
+                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta)
+                            .filter((entry): entry is [string, number] => typeof entry[1] === 'number')
+                            .map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`)
+                            .join(', ')}
                         </div>
                       )}
                     </div>
@@ -935,7 +942,7 @@ export function App() {
                 }}
                 onClick={async () => {
                   try {
-                    await invoke("trigger_migration", { target_port: targetPort });
+                    await invoke("trigger_migration", { targetPort });
                   } catch (e) {
                     setError(String(e));
                   }
@@ -959,14 +966,24 @@ export function App() {
 
           {/* Persistence Panel */}
           <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h3>Lưu & Tải Trạng thái (Save/Load State)</h3>
+            <h3>Lưu &amp; Tải Trạng thái (Save/Load State)</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {/* A save NAME, not a path.
+                  The backend resolves it inside this app's own data directory and refuses anything
+                  path-shaped (`commands/save_paths.rs`). The label and placeholder used to imply a
+                  filesystem path, which is what the old backend accepted — so a user who typed one
+                  now gets a refusal they have no way to interpret. Say what the field is. */}
+              <label htmlFor="save-name-input" style={{ fontSize: 12, color: "#4a5568" }}>
+                Tên bản lưu (save name) — chữ, số, <code>. _ -</code>. Không phải đường dẫn; tệp
+                luôn nằm trong thư mục dữ liệu của ứng dụng.
+              </label>
               <input
+                id="save-name-input"
                 type="text"
                 data-testid="filepath-input"
                 value={filePath}
                 onChange={(e) => setFilePath(e.target.value)}
-                placeholder="save_state.json"
+                placeholder="the_ol_world"
                 style={{ padding: "4px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
               />
               <div style={{ display: "flex", gap: "8px" }}>
@@ -974,7 +991,7 @@ export function App() {
                   data-testid="save-state-button"
                   onClick={async () => {
                     try {
-                      await invoke("save_simulation_state", { file_path: filePath });
+                      await invoke("save_simulation_state", { filePath });
                     } catch (e) {
                       setError(String(e));
                     }
@@ -987,7 +1004,7 @@ export function App() {
                   data-testid="load-state-button"
                   onClick={async () => {
                     try {
-                      await invoke("load_simulation_state", { file_path: filePath });
+                      await invoke("load_simulation_state", { filePath });
                     } catch (e) {
                       setError(String(e));
                     }
@@ -997,6 +1014,12 @@ export function App() {
                   Load State
                 </button>
               </div>
+              {/* Saves written before path confinement used absolute paths and are no longer
+                  addressable by name. The backend can migrate one, read-only, from a directory the
+                  user copies it into; without this panel there was no way to reach that. Filling the
+                  save-name field on success is the difference between "the import ran" and "the old
+                  world is open" — the next step is Load State with exactly that name. */}
+              <LegacyImportPanel onImported={(savedAs) => setFilePath(savedAs)} />
             </div>
           </div>
 
@@ -1013,8 +1036,9 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
-const safeToFixed = (val: any, fractionDigits = 2) => {
-  const num = typeof val === 'number' ? val : parseFloat(val);
+/** Format a telemetry number, or `N/A` for anything that is not one. */
+const safeToFixed = (val: unknown, fractionDigits = 2) => {
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
   return isNaN(num) ? 'N/A' : num.toFixed(fractionDigits);
 };
 

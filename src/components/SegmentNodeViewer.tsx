@@ -7,8 +7,16 @@ interface SegmentNodeViewerProps {
   visited?: Set<number>;
 }
 
-const safeToFixed = (val: any, fractionDigits = 2) => {
-  const num = typeof val === 'number' ? val : parseFloat(val);
+/**
+ * Format a value that is *supposed* to be a number.
+ *
+ * `unknown` rather than `any`: the whole point is that a live IPC payload has been seen to carry a
+ * string, `null` or nothing at all in a numeric field, so the parameter must be a type that forces
+ * this function to check — which is exactly what it does. `any` said the same thing while also
+ * promising the caller that whatever they passed had a `.toFixed`.
+ */
+const safeToFixed = (val: unknown, fractionDigits = 2) => {
+  const num = typeof val === 'number' ? val : parseFloat(String(val));
   return isNaN(num) ? 'N/A' : num.toFixed(fractionDigits);
 };
 

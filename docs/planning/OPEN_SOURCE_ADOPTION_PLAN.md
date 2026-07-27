@@ -23,8 +23,8 @@ trong khảo sát.
 
 | Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data + `NOTICE` |
-| OSS-004 inventory | Tạo inventory ban đầu | Chưa có; và `burn`/`burn-wgpu` bị **bỏ sót** khỏi khảo sát | Đã thêm dòng vào khảo sát; inventory tự động vẫn nợ |
+| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary; `NOTICE` + văn bản license **đã sinh tự động** (2026-07-27) | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data, và **1 thành phần** chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)); 31/32 đã đóng bằng kho vendor `licensing/upstream/` (2026-07-27) |
+| OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), 458 thành phần, CycloneDX 1.5 đã validate schema | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
 | OSS-012 cargo-deny | Adopt sau khi chọn license | ⬜ Advisory **đã được phủ** bởi `cargo audit` + `npm audit` | Thu hẹp phạm vi còn licenses/bans/sources |
@@ -90,8 +90,8 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 |---|---|---|
 | OSS-001 | Dùng `README.md` và `docs/README.md` làm hai điểm vào duy nhất | Mọi tài liệu chuẩn có đường đi ≤ 2 lần nhấp |
 | OSS-002 | Ban hành quy tắc Diátaxis, metadata, ADR và deprecation | Link nội bộ hợp lệ; không có hai nguồn sự thật |
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong một phần (2026-07-26).** `LICENSE` proprietary đã có. **Còn nợ:** phạm vi riêng cho code/model/dataset/asset, và `NOTICE` cho thành phần permissive được phân phối |
-| OSS-004 | Tạo inventory dependency ban đầu | ⬜ Chưa. Đã lộ một lỗ hổng thật: `burn`/`burn-wgpu` là runtime dep nhưng vắng khỏi khảo sát cho tới 2026-07-26 |
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong một phần (2026-07-27).** `LICENSE` proprietary đã có; `NOTICE` (458 thành phần) và `licensing/THIRD_PARTY_LICENSES.txt` (văn bản của **439/440** thành phần được phân phối — 408 đọc từ artifact đã cài, 31 vendor từ commit upstream đã ghim) đã sinh tự động và có gate CI. **Còn nợ:** phạm vi riêng cho code/model/dataset/asset, và **1** thành phần mà upstream chưa từng publish văn bản license |
+| OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, 458 thành phần, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
 khi thêm. Với `LICENSE` proprietary, thành phần copyleft (GPL/AGPL) là **chặn cứng cho mọi đường
@@ -118,8 +118,9 @@ trong [`benchmark_report.json`](../../benchmark_report.json) dưới tiền tố
 
 **Gate đã xác minh:** `cargo tree --no-default-features -e normal` cho **0 kết quả** cho `criterion`
 — nó là `dev-dependency` nên vô hình với đồ thị mà gate tách feature (G2 #2) thật sự kiểm. `fmt`,
-`clippy --all-targets` ở cả hai cấu hình feature, và `cargo test --features desktop` (673 pass /
-0 fail) đều xanh. Cách gỡ ghi ở [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) §"Tắt / gỡ".
+`clippy --all-targets` ở cả hai cấu hình feature, và `cargo test --features desktop` đều xanh —
+**673 pass / 0 fail, đo lịch sử ngày 2026-07-26**, tức lúc OSS-010 land. Số hiện tại ở
+[`STATE_OF_THE_PROJECT.md` §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền). Cách gỡ ghi ở [`BENCHMARKING.md`](../how-to/BENCHMARKING.md) §"Tắt / gỡ".
 
 **Một guard được thêm cùng lúc, vì nó chặn đúng loại hỏng im lặng repo này quan tâm:** `target/` bị
 gitignore, nên chạy `bench_baseline.mjs` trên một clone mới sẽ thay report đầy số thật bằng proxy —
@@ -242,7 +243,7 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 | ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất | Trạng thái |
 |---|---|---|---|---|
 | OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
-| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ✅ **XONG 2026-07-26** — 13 + 6 test; **chưa nối vào tracker sống** |
+| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | 🟡 **Thuật toán + đã nối vào tracker sống (2026-07-26)**; chạy **prune-only**, nên bộ nhớ chưa đạt cận O(alive) — xem OSS-071b |
 | OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ⬜ |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
@@ -336,10 +337,35 @@ chúng nối tiếp).
 `the_simplified_lineage_is_still_a_tree_a_newick_parser_would_accept` dùng nó để chốt kết quả vẫn
 không chu trình, không cạnh mồ côi, không đảo generation.
 
-**Chưa nối vào tracker sống.** `simplify` là hàm thuần trả về một *giá trị*; chưa gì thay thế bộ nhớ
-của `InMemoryLineageTracker`, nên bộ nhớ thực tế **chưa giảm**. Bước đó cần một chính sách về *khi
-nào* chạy và ai cung cấp danh sách cá thể sống, cộng tương tác với `load_state`/Neo4j — việc riêng,
-không gộp vào đây.
+#### OSS-071b — đã nối vào tracker sống (2026-07-26)
+
+`LineageTracker::compact(samples)` thay thế thật bộ nhớ của `InMemoryLineageTracker`, và được gọi ở
+thread tiến hoá mỗi `COMPACT_EVERY_EPOCHS` (50) epoch.
+
+**Chạy với nén TẮT.** Đây là giới hạn có chủ ý, không phải làm dở. Nén là bước đạt cận O(alive),
+nhưng nó xoá những node mà consumer hiện tại **vẫn đang đọc**: đồ thị lineage UI vẽ lấy thẳng từ
+tracker, và `get_mutations_count` trong `commands/evolution.rs` đi qua `RelationType` **từng cạnh** —
+thứ một cạnh đã nén không thể mang. Bật nén cho tầng lưu trữ đòi lưu trước một **số đếm đột biến
+tích luỹ theo node**, tức đổi `LineageNode`, mà kiểu đó nằm trong save state. Trong lúc chờ, compaction
+bỏ các nhánh tuyệt chủng — **đúng chỗ genotype nằm** — và giữ nguyên thân cây.
+
+**Tập sample là phần phải đúng, và nó KHÔNG phải "ai đang sống".** Mọi `lineage_id` trong archive
+MAP-Elites đều có thể được chọn làm cha ở epoch sau, và một elite không nhất thiết là tổ tiên của ai
+đang sống. Prune theo liveness sẽ xoá đúng node mà lần sinh sản kế tiếp gọi tên.
+
+**Hazard đó từng là hỏng âm thầm; nay thì không.** `add_reproduction` trước đây ghi cạnh vô điều
+kiện, nên một sample bị sót sẽ tạo **cạnh mồ côi** — và cạnh mồ côi làm hỏng **toàn bộ** đồ thị, vì
+cả `to_newick` lẫn `simplify` đều từ chối xử lý một đồ thị chứa nó. Một lần ghi sai là đầu độc export
+và mọi lần compaction sau. Nay nó **từ chối ghi** cạnh có cha không tồn tại và báo lỗi nêu tên cha đó:
+mất một liên kết tổ tiên thay vì mất cả đồ thị. Đó chính là thứ khiến compaction an toàn để bật.
+
+**Neo4j không bị đụng.** Chỉ bộ nhớ trong co lại. Hệ quả cần biết: khi Neo4j online,
+`get_lineage_graph` đọc từ database nên vẫn trả **đồ thị đầy đủ** — compaction đổi thứ bản fallback
+giữ, không đổi thứ một run online báo cáo.
+
+Gate: [`tests/lineage_compaction_tests.rs`](../../src-tauri/tests/lineage_compaction_tests.rs) (9
+test), gồm control âm `compacting_against_every_node_removes_nothing` — nếu `compact` xoá bất kể tập
+sample thì mọi khẳng định khác vẫn xanh trong khi nó âm thầm phá dữ liệu.
 
 **Thứ tự là bắt buộc, không phải gợi ý:** không có MRCA thì không có gì để xuất ra một cây có
 nghĩa, nên OSS-073 không thể đi trước OSS-072.
@@ -379,15 +405,19 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 > **Cập nhật 2026-07-26 (lần 4).** ~~OSS-010 Criterion~~, ~~OSS-070 Newick~~ và ~~OSS-071 thuật toán
 > `simplify`~~ đều đã **xong** trong cùng ngày. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.
 
-1. **Nối `simplify` vào tracker sống.** Đây là chỗ bộ nhớ **thực sự** giảm — hiện `simplify` mới là
-   một hàm thuần trả về giá trị, chưa gì thay thế bộ nhớ của `InMemoryLineageTracker`, nên đường
-   tăng không trần trong `lineage.rs` **vẫn còn nguyên**. Cần một chính sách về *khi nào* chạy, ai
-   cung cấp danh sách cá thể sống, và tương tác với `load_state`/Neo4j.
+1. **Lưu số đếm đột biến tích luỹ theo node**, để bật được nén trên tầng lưu trữ. Đây là thứ duy
+   nhất còn chặn cận O(alive): `get_mutations_count` hiện suy ra con số bằng cách đi qua
+   `RelationType` từng cạnh, nên một cạnh đã nén phá nó. Lưu sẵn số đếm làm phép đi đó thành thừa
+   **và** nhanh hơn. Cần thêm một trường vào `LineageNode` (nằm trong save state) — dùng
+   `Option<u32>` chứ không phải `u32`, vì mặc định `0` sẽ đọc thành "không có đột biến" cho mọi
+   save cũ, đúng kiểu sai âm thầm mà cả chuỗi việc này đi tránh.
 2. **OSS-072 — truy vấn MRCA.** Phụ thuộc OSS-071, nay đã mở khoá. Đây là thứ mở đường cho OSS-073
    (giao thức đo "line of descent" kiểu Avida), và là thứ hiện **không trả lời được** câu "hai cá
    thể này rẽ nhánh ở đâu".
-3. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset, và
-   tạo `NOTICE` cho các thành phần permissive đang được phân phối.
+3. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset.
+   (`NOTICE` và văn bản license đã xong 2026-07-27; đợt hai cùng ngày đóng 31/32 bằng kho vendor
+   [`licensing/upstream/`](../../licensing/upstream/), còn lại **1** thành phần trong
+   [`UNRESOLVED.md`](../../licensing/UNRESOLVED.md) — quyết định pháp lý, không phải của generator.)
 
 Ngoài ba việc trên: **OSS-011 (`tracing`)** vẫn mở nhưng đã bị hạ ưu tiên — nó là observability kỹ
 thuật, không sinh bằng chứng khoa học nào. Và **nối `to_newick`/`simplify` vào IPC** cần một thay đổi

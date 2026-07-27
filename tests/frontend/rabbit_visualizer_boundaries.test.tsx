@@ -1,24 +1,46 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { render, act, screen, fireEvent } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import RabbitVisualizer from '../../playground/RabbitVisualizer';
+import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
+import { getByName, removeStubbedProperties, type StubSpiedMesh } from '../mocks/r3f-dom-stubs';
 
+/** An element standing in for a rendered `<mesh>`: the spies its transform writes land on. */
+type MeshStub = HTMLElement & StubSpiedMesh;
+
+// Inject data-testid using name attribute for R3F compatibility in JSDOM.
+//
+// `React.createElement` is typed as a large overload set, and the runtime patch below only cares
+// about the first two arguments — so it is described by the loosest signature that is still
+// checked, rather than by `any` four times over. The assignment itself needs the module's own
+// property type, which `typeof React.createElement` names exactly.
 const originalCreateElement = React.createElement;
-// Inject data-testid using name attribute for R3F compatibility in JSDOM
-(React as any).createElement = function (type: any, props: any, ...children: any[]) {
-  if (props && typeof type === 'string' && (type === 'mesh' || type === 'group') && props.name) {
-    props = { ...props, 'data-testid': props.name };
+type CreateElementArgs = Parameters<typeof React.createElement>;
+const patchedCreateElement = function (
+  type: CreateElementArgs[0],
+  props: CreateElementArgs[1],
+  ...children: React.ReactNode[]
+) {
+  if (props && typeof type === 'string' && (type === 'mesh' || type === 'group') && 'name' in props) {
+    // Read and written through a record view. `data-testid` is a DOM data attribute, and React's
+    // `Attributes` — which is what `createElement`'s second parameter is typed as — declares only
+    // `key`, so neither the source `name` nor the added attribute is a member of it. The props of an
+    // unknown intrinsic element are string-keyed at runtime, which is exactly what this says.
+    const withName: Record<string, unknown> = { ...props };
+    withName['data-testid'] = withName.name;
+    props = withName;
   }
-  return originalCreateElement.apply(this, [type, props, ...children]);
-} as any;
+  return originalCreateElement(type, props, ...children);
+};
+React.createElement = patchedCreateElement as typeof React.createElement;
 
-let frameCallbacks: Array<(state: any) => void> = [];
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks = [cb];
     }
   };
@@ -29,12 +51,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)', () => {
-  let consoleErrorSpy: any;
-  let consoleWarnSpy: any;
+  // Typed by the function each one replaces, so `mock.calls` below is a list of `console.error`
+  // arguments rather than an untyped list. The bare `ReturnType<typeof vi.spyOn>` this used to say
+  // resolves the generic to its default and loses that.
+  let consoleErrorSpy: MockInstance<typeof console.error>;
+  let consoleWarnSpy: MockInstance<typeof console.warn>;
 
   const getRealErrors = () => {
-    return consoleErrorSpy.mock.calls.filter((call: any) => {
-      const msg = call[0] ? call[0].toString() : '';
+    return consoleErrorSpy.mock.calls.filter((call) => {
+      const msg = call[0] ? String(call[0]) : '';
       return !msg.includes("incorrect casing") && 
              !msg.includes("unrecognized in this browser") &&
              !msg.includes("React does not recognize the");
@@ -51,13 +76,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    screen.getByTestId = (id: string) => {
-      const el = document.querySelector(`[name="${id}"]`);
-      if (!el) {
-        throw new Error(`Unable to find element with name="${id}"`);
-      }
-      return el as any;
-    };
+    // Elements are found by their `name` attribute — `getByName` in `tests/mocks/r3f-dom-stubs.ts`
+    // says why, and what overwriting `screen.getByTestId` here used to cost.
     
     // Inject mock properties for ref manipulations
     Object.defineProperty(HTMLElement.prototype, 'position', {
@@ -109,10 +129,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   afterEach(() => {
     consoleErrorSpy.mockRestore();
     consoleWarnSpy.mockRestore();
-    delete (HTMLElement.prototype as any).position;
-    delete (HTMLElement.prototype as any).rotation;
-    delete (HTMLElement.prototype as any).scale;
-    delete (HTMLElement.prototype as any).material;
+    removeStubbedProperties(HTMLElement.prototype, 'position', 'rotation', 'scale', 'material');
   });
 
   it('1. Correct memory alignment: aligns 13 floats returned from Rust correctly', async () => {
@@ -152,16 +169,16 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
-    const headEl = screen.getByTestId('rabbit-head') as any;
-    const leftEarEl = screen.getByTestId('rabbit-left-ear') as any;
-    const rightEarEl = screen.getByTestId('rabbit-right-ear') as any;
-    const frontLeftLegEl = screen.getByTestId('rabbit-front-left-leg') as any;
-    const frontRightLegEl = screen.getByTestId('rabbit-front-right-leg') as any;
-    const hindLeftLegEl = screen.getByTestId('rabbit-hind-left-leg') as any;
-    const hindRightLegEl = screen.getByTestId('rabbit-hind-right-leg') as any;
-    const tailEl = screen.getByTestId('rabbit-tail') as any;
-    const jawEl = screen.getByTestId('rabbit-jaw') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
+    const headEl = getByName('rabbit-head') as MeshStub;
+    const leftEarEl = getByName('rabbit-left-ear') as MeshStub;
+    const rightEarEl = getByName('rabbit-right-ear') as MeshStub;
+    const frontLeftLegEl = getByName('rabbit-front-left-leg') as MeshStub;
+    const frontRightLegEl = getByName('rabbit-front-right-leg') as MeshStub;
+    const hindLeftLegEl = getByName('rabbit-hind-left-leg') as MeshStub;
+    const hindRightLegEl = getByName('rabbit-hind-right-leg') as MeshStub;
+    const tailEl = getByName('rabbit-tail') as MeshStub;
+    const jawEl = getByName('rabbit-jaw') as MeshStub;
 
     // Verify Body (Offset 0)
     expect(bodyEl.position.set).toHaveBeenCalledWith(floatData[0], floatData[1], floatData[2]);
@@ -207,13 +224,13 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
 
   it('3. Boundary check: Null response does not throw or crash, behaves as empty buffer', async () => {
-    vi.mocked(invoke).mockResolvedValue(null as any);
+    vi.mocked(invoke).mockResolvedValue(null);
     render(<RabbitVisualizer />);
     const tauriButton = screen.getByText('Live Tauri State');
     fireEvent.click(tauriButton);
@@ -222,7 +239,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -237,7 +254,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     
     const realWarnings = getRealWarnings();
@@ -262,8 +279,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
-    const headEl = screen.getByTestId('rabbit-head') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
+    const headEl = getByName('rabbit-head') as MeshStub;
 
     expect(bodyEl.position.set).toHaveBeenCalled();
     expect(headEl.position.set).not.toHaveBeenCalled();
@@ -273,17 +290,11 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   it('6. Browser animation: triggers useFrame and updates mesh positions using JS simulation', async () => {
     render(<RabbitVisualizer />);
 
-    const stateMock = {
-      clock: {
-        getElapsedTime: () => 1.0,
-      },
-    };
-    
     act(() => {
-      frameCallbacks.forEach(cb => cb(stateMock));
+      frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -303,7 +314,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).toHaveBeenCalledWith(NaN, Infinity, -Infinity);
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -318,7 +329,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const bodyEl = screen.getByTestId('rabbit-body') as any;
+    const bodyEl = getByName('rabbit-body') as MeshStub;
     expect(bodyEl.position.set).not.toHaveBeenCalled();
     expect(getRealErrors()).toHaveLength(0);
   });
@@ -344,7 +355,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   it('10. Chewing animation: updates jaw position/rotation cyclically in browser simulation', async () => {
     render(<RabbitVisualizer />);
 
-    const jawEl = screen.getByTestId('rabbit-jaw') as any;
+    const jawEl = getByName('rabbit-jaw') as MeshStub;
     expect(jawEl).toBeDefined();
 
     vi.clearAllMocks();
@@ -355,13 +366,13 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
 
     // Trigger frame 1 (t = 0.0)
     act(() => {
-      frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 0.0 } }));
+      frameCallbacks.forEach(cb => cb(frameStateAt(0.0), 0));
     });
     const firstCallY = jawEl.position.set.mock.calls[0]?.[1];
 
     // Trigger frame 2 (t = 0.25)
     act(() => {
-      frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 0.25 } }));
+      frameCallbacks.forEach(cb => cb(frameStateAt(0.25), 0));
     });
     const secondCallY = jawEl.position.set.mock.calls[1]?.[1];
 
@@ -373,8 +384,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
   it('11a. Hunger eye colors: toggling hunger changes eye mesh material colors to red', async () => {
     render(<RabbitVisualizer />);
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as any;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as any;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl).toBeDefined();
     expect(rightEyeEl).toBeDefined();
@@ -387,7 +398,7 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
 
     // Apply frame tick to render
     act(() => {
-      frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+      frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
     });
 
     // Check that eye materials were set to Red
@@ -421,8 +432,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as any;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as any;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
     expect(rightEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
@@ -466,8 +477,8 @@ describe('RabbitVisualizer Boundary and Memory Alignment Tests (13-Float Layout)
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    const leftEyeEl = screen.getByTestId('rabbit-eye-left') as any;
-    const rightEyeEl = screen.getByTestId('rabbit-eye-right') as any;
+    const leftEyeEl = getByName('rabbit-eye-left') as MeshStub;
+    const rightEyeEl = getByName('rabbit-eye-right') as MeshStub;
 
     expect(leftEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);
     expect(rightEyeEl.material.color.setRGB).toHaveBeenCalledWith(1.0, 0.0, 0.0);

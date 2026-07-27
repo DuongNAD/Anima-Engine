@@ -137,7 +137,15 @@ export function shouldSend(
   return Math.hypot(dx, dz) >= minMove;
 }
 
-type InvokeFn = (cmd: string, args: unknown) => Promise<unknown>;
+/**
+ * `invoke`'s own type, taken from the module rather than restated.
+ *
+ * A hand-written `(cmd: string, args: unknown) => Promise<unknown>` is not the same function — its
+ * `args` is wider than `InvokeArgs` — so caching the real `invoke` in a variable of that type needed
+ * a widening cast, and the cast is what would have hidden a signature change in `@tauri-apps/api`.
+ * `typeof import(...)` tracks the dependency instead of describing it.
+ */
+type InvokeFn = typeof import('@tauri-apps/api/core').invoke;
 
 /** Resolved once, then reused — see {@link sendLodFocusNow} for why the caching is load-bearing
  * rather than an optimisation. */
@@ -154,7 +162,7 @@ export async function sendLodFocus(focus: LodFocusPayload): Promise<boolean> {
   try {
     if (!cachedInvoke) {
       const { invoke } = await import('@tauri-apps/api/core');
-      cachedInvoke = invoke as unknown as InvokeFn;
+      cachedInvoke = invoke;
     }
     await cachedInvoke('set_lod_focus', { focus });
     return true;
@@ -174,10 +182,16 @@ export async function fetchHotRadius(): Promise<number | null> {
   try {
     if (!cachedInvoke) {
       const { invoke } = await import('@tauri-apps/api/core');
-      cachedInvoke = invoke as unknown as InvokeFn;
+      cachedInvoke = invoke;
     }
-    const bands = (await cachedInvoke('get_lod_bands', {})) as { hot_radius?: number } | null;
-    const r = bands?.hot_radius;
+    // `invoke` resolves to `unknown` without a type argument, and supplying one would only assert
+    // the shape rather than establish it — the backend is free to answer anything. Reading the one
+    // field through `in` narrows it for real, and the `typeof` below is what decides.
+    const bands: unknown = await cachedInvoke('get_lod_bands', {});
+    const r =
+      typeof bands === 'object' && bands !== null && 'hot_radius' in bands
+        ? bands.hot_radius
+        : undefined;
     return typeof r === 'number' && Number.isFinite(r) && r > 0 ? r : null;
   } catch {
     return null;

@@ -3,7 +3,6 @@ import {
   ImprovedNoise2D,
   determineBiome,
   generateTerrain,
-  hashString,
 } from '../../src/components/Landscape/utils/terrainGenerator';
 
 describe('Terrain Generator - Seeded Noise', () => {

@@ -3,9 +3,22 @@
 import { generateWorld } from './worldGen';
 import type { WorldGenOptions } from './worldGen';
 
-const ctx: any = self;
+/** What the main thread asks for. */
+interface WorldGenRequest {
+  seed: string | number;
+  opts: WorldGenOptions;
+}
 
-ctx.onmessage = (e: MessageEvent<{ seed: string | number; opts: WorldGenOptions }>) => {
+// `self` here is a `DedicatedWorkerGlobalScope`, but this project's `tsconfig` loads only the DOM
+// libs (adding "WebWorker" makes the two collide on `self`, `postMessage` and half the event map),
+// so TypeScript sees a `Window`. That is why this used to open with `const ctx: any = self`.
+//
+// It does not need to. Both calls below are spelled the way that is valid in *both* scopes:
+// `addEventListener('message', ...)` rather than assigning `onmessage`, and the options form of
+// `postMessage`, whose `{ transfer }` is `StructuredSerializeOptions` in a worker and
+// `WindowPostMessageOptions` in a window. No cast, and the payload type is checked.
+
+self.addEventListener('message', (e: MessageEvent<WorldGenRequest>) => {
   const { seed, opts } = e.data;
   const world = generateWorld(seed, opts);
   // Transfer the large ArrayBuffers (zero-copy) — the worker is done with them.
@@ -33,5 +46,5 @@ ctx.onmessage = (e: MessageEvent<{ seed: string | number; opts: WorldGenOptions 
     world.caveE.buffer,
     world.caveYaw.buffer,
   ];
-  ctx.postMessage(world, transfer);
-};
+  self.postMessage(world, { transfer });
+});

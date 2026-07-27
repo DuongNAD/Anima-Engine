@@ -38,11 +38,30 @@ import {
   DEFAULT_XZ_BOUNDS,
   cellCenterToWorldXz,
 } from '../src/components/Landscape/utils/coordinate';
+import {
+  buildFloraColliderIndex,
+  convertFloraRadius,
+  floraColliderRadius,
+  floraOverlapAt,
+  FLORA_RADIUS_REFERENCE_EXTENT,
+} from '../src/components/Landscape/utils/floraClearance';
+import {
+  SHARED_WORLD_SEED,
+  SHARED_WORLD_SHAPE,
+  SHARED_WORLD_SIZE,
+} from '../src/utils/sharedWorld';
 
 // ---- config (CLI-overridable) -------------------------------------------------------------
-const SEED = process.argv[2] ?? '1337';
-const SIZE = Number(process.argv[3] ?? 128); // backend working resolution
-const SHAPE = 'continent' as const;
+//
+// The identity comes from `sharedWorld.ts`, which is what the app renders. It used to be
+// hard-coded here as seed "1337" at 128², so every deterministic gate the map-review MCP ran —
+// biome bboxes, flora ecology, navigation reachability — scored a world **nobody ever sees**. A
+// validator returning 100/100 for an unrelated world is not evidence about this one.
+const SEED = process.argv[2] ?? SHARED_WORLD_SEED;
+const SIZE = Number(process.argv[3] ?? SHARED_WORLD_SIZE);
+const SHAPE = SHARED_WORLD_SHAPE;
+/** Span of the canonical coordinate bounds this manifest publishes positions in. */
+const MANIFEST_EXTENT = DEFAULT_XZ_BOUNDS.maxX - DEFAULT_XZ_BOUNDS.minX;
 const WORLD_MAX_Y = 10; // COORDINATE_CONTRACT: y = elevation * 10, y ∈ [0, 10]
 const MAX_FLORA_ENTITIES = 400; // sample cap so the manifest stays reviewable
 const WALKABLE_SLOPE = 0.6; // slope above this is a cliff / non-walkable
@@ -170,9 +189,18 @@ for (let k = 0; k < world.floraCount; k += floraStride) {
       ...(prof.temperatureC ? { temperatureC: prof.temperatureC } : {}),
     };
     if (prof.solid) {
-      // Real walk-mode trunk collider: WorldCameraRig treeGrid uses r = 0.45 + floraScale*0.25.
+      // Real walk-mode trunk collider, from the shared policy in `floraClearance.ts` — the same
+      // rule `WorldCameraRig` pushes the player out of and `findSpawn` keeps clear of.
+      //
+      // Converted into THIS manifest's coordinate span. The radii are calibrated for the 1200-unit
+      // landscape scene; positions here are published in the canonical 200-unit [-100, 100] bounds.
+      // Emitting the render-space number unconverted declared every trunk six times too wide.
       e.solid = true;
-      e.collider = { enabled: true, shape: 'cylinder', radius: r2(0.45 + world.floraScale[k] * 0.25) };
+      e.collider = {
+        enabled: true,
+        shape: 'cylinder',
+        radius: r2(convertFloraRadius(floraColliderRadius(world.floraScale[k]), MANIFEST_EXTENT)),
+      };
     }
   }
   entities.push(e);
@@ -183,7 +211,6 @@ for (let k = 0; k < world.floraCount; k += floraStride) {
 world.lakeBasins.forEach((lk, idx) => {
   const cx = Math.round((lk.minX + lk.maxX) / 2);
   const cy = Math.round((lk.minY + lk.maxY) / 2);
-  const ci = Math.min(SIZE * SIZE - 1, Math.max(0, cy * SIZE + cx));
   entities.push({
     id: `lake-${idx}`,
     kind: 'water',
@@ -196,16 +223,41 @@ world.lakeBasins.forEach((lk, idx) => {
 const isLand = (i: number) => elevation[i] > seaLevel && water[i] === 0;
 const walkable = (i: number) => isLand(i) && slope[i] < WALKABLE_SLOPE && riverAmt[i] < 100;
 
-// spawn = walkable cell closest to map centre.
+// spawn = walkable, FLORA-CLEAR cell closest to map centre.
+//
+// "Walkable" alone is what put the app's opening camera inside a canopy: a cell can be flat, dry
+// and off-slope while a broadleaf stands in it. The manifest publishes this cell as the navigation
+// spawn, so it has to answer the same question `findSpawn` does — via the same policy, not a
+// second copy of it. `floraClearance` works in the 1200-unit landscape span, so candidates are
+// converted into that span to be tested.
+const floraIndex = buildFloraColliderIndex(world, FLORA_RADIUS_REFERENCE_EXTENT);
+const cellToFloraSpace = (ix: number, iy: number): { x: number; z: number } => ({
+  x: (ix / (SIZE - 1) - 0.5) * FLORA_RADIUS_REFERENCE_EXTENT,
+  z: (iy / (SIZE - 1) - 0.5) * FLORA_RADIUS_REFERENCE_EXTENT,
+});
+const floraClear = (ix: number, iy: number): boolean => {
+  const p = cellToFloraSpace(ix, iy);
+  return floraOverlapAt(floraIndex, p.x, p.z, 0, 'spawn') === null;
+};
+
 const c = Math.floor(SIZE / 2);
 let spawnCell = -1; let bestD = Infinity;
+let anyWalkable = -1;
 for (let iy = 0; iy < SIZE; iy++) {
   for (let ix = 0; ix < SIZE; ix++) {
     const i = iy * SIZE + ix;
     if (!walkable(i)) continue;
+    if (anyWalkable < 0) anyWalkable = i;
+    if (!floraClear(ix, iy)) continue;
     const d = (ix - c) * (ix - c) + (iy - c) * (iy - c);
     if (d < bestD) { bestD = d; spawnCell = i; }
   }
+}
+if (spawnCell < 0 && anyWalkable >= 0) {
+  throw new Error(
+    'every walkable cell is inside flora clearance — the spawn rule and the world disagree, ' +
+      'which is a finding, not something to publish a spawn through',
+  );
 }
 if (spawnCell < 0) throw new Error('no walkable land cell found — cannot place a spawn');
 

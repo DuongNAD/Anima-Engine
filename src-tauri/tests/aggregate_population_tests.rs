@@ -696,6 +696,7 @@ fn with_field(world: &mut World) {
         r: vec![4.0; side * side],
         r_max: vec![4.0; side * side],
         growth_rate: 0.0,
+        regrowth_phase: 0,
     });
 }
 

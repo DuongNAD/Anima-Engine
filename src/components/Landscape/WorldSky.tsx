@@ -1,7 +1,8 @@
 import React, { useRef, useMemo } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getSkyParams } from './utils/skyParams';
+import { getSkyParams, type SkyParams } from './utils/skyParams';
+import { makeSceneRandom, sceneDelta } from './utils/sceneClock';
 
 // Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
 // A flat single-colour dome is the single biggest "this is a tech demo" tell — the gradient
@@ -61,27 +62,83 @@ interface CloudDescriptor {
   speed: number;
 }
 
+/**
+ * The dome shader's inputs. Live objects: three reads `.value` at draw time, every frame.
+ *
+ * A type alias rather than an interface so it keeps the implicit index signature `<shaderMaterial
+ * uniforms=...>` needs — an interface would have to declare `[k: string]` explicitly and lose the
+ * exact member list that makes `applySkyUniforms` checkable.
+ */
+type SkyUniforms = {
+  uZenith: { value: THREE.Color };
+  uHorizon: { value: THREE.Color };
+  uSunDir: { value: THREE.Vector3 };
+  uSunColor: { value: THREE.Color };
+  uGlow: { value: number };
+  uMoonDir: { value: THREE.Vector3 };
+  uMoonGlow: { value: number };
+};
+
+function createSkyUniforms(): SkyUniforms {
+  return {
+    uZenith: { value: new THREE.Color('#3f7fd0') },
+    uHorizon: { value: new THREE.Color('#cfe6f2') },
+    uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+    uSunColor: { value: new THREE.Color('#fff2cc') },
+    uGlow: { value: 1 },
+    uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
+    uMoonGlow: { value: 0 },
+  };
+}
+
+/** One frame of the day/night palette, as the dome's shader wants it. */
+interface SkyFrame {
+  params: SkyParams;
+  sunPosition: [number, number, number];
+  moonPosition: [number, number, number];
+  moonGlow: number;
+}
+
+/**
+ * Pack a frame's palette and orbit into the dome's uniforms.
+ *
+ * A named operation over the uniform object rather than eight assignments inside `useFrame`: the
+ * object is built by `useMemo` and therefore belongs to render, and a frame callback writing
+ * straight into it is the "modified after render completes" hazard `react-hooks/immutability`
+ * names. Gathering the whole update behind one call keeps the writes in one place — and makes the
+ * packing itself something that can be called without a renderer.
+ *
+ * `scratch` and `haze` are caller-owned colours so this allocates nothing per frame.
+ */
+function applySkyUniforms(
+  u: SkyUniforms,
+  frame: SkyFrame,
+  scratch: THREE.Color,
+  haze: THREE.Color,
+): void {
+  // The horizon pales toward haze by day but stays dark at night, scaled by the sky's luminance.
+  scratch.set(frame.params.skyColor);
+  const lum = (scratch.r + scratch.g + scratch.b) / 3;
+  u.uZenith.value.copy(scratch).multiplyScalar(0.62);
+  u.uHorizon.value.copy(scratch).lerp(haze, 0.15 + 0.4 * Math.min(1, lum * 2.2));
+  u.uSunDir.value.set(frame.sunPosition[0], frame.sunPosition[1], frame.sunPosition[2]).normalize();
+  u.uSunColor.value.set(frame.params.sunColor);
+  u.uGlow.value = frame.params.sunIntensity;
+  u.uMoonDir.value
+    .set(frame.moonPosition[0], frame.moonPosition[1], frame.moonPosition[2])
+    .normalize();
+  u.uMoonGlow.value = frame.moonGlow;
+}
+
 export const WorldSky: React.FC<WorldSkyProps> = ({
   timeOfDay = 12,
   speed = 1.0,
   worldScale = 400,
 }) => {
-  const { scene } = useThree();
   const cloudsRef = useRef<THREE.Group>(null);
   const tmpColor = useMemo(() => new THREE.Color(), []);
   const HAZE = useMemo(() => new THREE.Color('#eef6fb'), []);
-  const skyUniforms = useMemo(
-    () => ({
-      uZenith: { value: new THREE.Color('#3f7fd0') },
-      uHorizon: { value: new THREE.Color('#cfe6f2') },
-      uSunDir: { value: new THREE.Vector3(0, 1, 0) },
-      uSunColor: { value: new THREE.Color('#fff2cc') },
-      uGlow: { value: 1 },
-      uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
-      uMoonGlow: { value: 0 },
-    }),
-    [],
-  );
+  const skyUniforms = useMemo(() => createSkyUniforms(), []);
 
   const DOME_R = worldScale * 6.5; // 2600 @400 — beyond camera maxDistance (1200)
   const ORBIT_R = worldScale * 4.5; // 1800
@@ -115,9 +172,13 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   const starPositions = useMemo(() => {
     const count = 700;
     const positions = new Float32Array(count * 3);
+    // Seeded under capture, `Math.random` otherwise. 700 stars scattered afresh on every page load
+    // are 700 pixels that differ between two shots of the same view — invisible to a reviewer and
+    // fatal to a byte-comparison reproducibility gate. See `sceneClock.ts`.
+    const rand = makeSceneRandom('sky.stars');
     for (let i = 0; i < count; i++) {
-      const u = Math.random();
-      const v = Math.random();
+      const u = rand();
+      const v = rand();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
       positions[i * 3] = STAR_R * Math.sin(phi) * Math.cos(theta);
@@ -154,22 +215,22 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     }));
   }, [worldScale, CLOUD_Y]);
 
-  useFrame((_state, delta) => {
+  useFrame((state, rawDelta) => {
+    // Fixed under capture. Cloud drift below integrates this, and `speed = 0` happens to zero the
+    // product today — a coincidence of the canonical defaults, not a property worth relying on.
+    const delta = sceneDelta(rawDelta);
     const safeDelta = Math.min(delta, 0.1);
-    // Background follows the sky colour so night actually goes dark beyond the dome.
-    scene.background = new THREE.Color(params.skyColor);
+    // Background follows the sky colour so night actually goes dark beyond the dome. Reached
+    // through `state.scene`, the handle r3f gives the frame loop for imperative work.
+    state.scene.background = new THREE.Color(params.skyColor);
 
-    // Drive the gradient + halo from the day/night palette. The horizon pales toward haze
-    // by day but stays dark at night (scaled by the sky's own luminance).
-    tmpColor.set(params.skyColor);
-    const lum = (tmpColor.r + tmpColor.g + tmpColor.b) / 3;
-    skyUniforms.uZenith.value.copy(tmpColor).multiplyScalar(0.62);
-    skyUniforms.uHorizon.value.copy(tmpColor).lerp(HAZE, 0.15 + 0.4 * Math.min(1, lum * 2.2));
-    skyUniforms.uSunDir.value.set(sunPosition[0], sunPosition[1], sunPosition[2]).normalize();
-    skyUniforms.uSunColor.value.set(params.sunColor);
-    skyUniforms.uGlow.value = params.sunIntensity;
-    skyUniforms.uMoonDir.value.set(moonPosition[0], moonPosition[1], moonPosition[2]).normalize();
-    skyUniforms.uMoonGlow.value = showMoon ? moonDirY : 0;
+    // Drive the gradient + halo from the day/night palette.
+    applySkyUniforms(
+      skyUniforms,
+      { params, sunPosition, moonPosition, moonGlow: showMoon ? moonDirY : 0 },
+      tmpColor,
+      HAZE,
+    );
 
     if (cloudsRef.current) {
       const children = cloudsRef.current.children;

@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
+import { driveTimeUniform } from './utils/sceneClock';
 
 // ---------------------------------------------------------------------------------------
 // WorldWaterfalls — foam curtains hung over the steep river drops the generator detected
@@ -73,8 +74,19 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
     [],
   );
 
+  const foamMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: '#ffffff',
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+      }),
+    [],
+  );
+
   useFrame((state) => {
-    curtainMat.uniforms.uTime.value = state.clock.getElapsedTime();
+    driveTimeUniform(curtainMat, state.clock);
   });
 
   useLayoutEffect(() => {
@@ -118,21 +130,24 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       curtainGeom.dispose();
       foamGeom.dispose();
       curtainMat.dispose();
+      foamMat.dispose();
     };
-  }, [curtainGeom, foamGeom, curtainMat]);
+  }, [curtainGeom, foamGeom, curtainMat, foamMat]);
 
   if (count === 0) return null;
+  // Both materials go through `args`, not a `material=` prop or a JSX child. `InstancedMesh`'s
+  // constructor takes (geometry, material, count) with none of them optional, so the old cast on an
+  // `undefined` material was not a loose type on a value that could be absent — it was a lie about
+  // a slot three requires. Passing the real material there is shorter *and* honest, and it gave the
+  // foam a material this component owns and therefore disposes.
   return (
     <group name="world-waterfalls">
       <instancedMesh
         ref={curtainRef}
-        args={[curtainGeom, undefined as any, count]}
-        material={curtainMat}
+        args={[curtainGeom, curtainMat, count]}
         name="waterfall-curtains"
       />
-      <instancedMesh ref={foamRef} args={[foamGeom, undefined as any, count]} name="waterfall-foam">
-        <meshBasicMaterial color="#ffffff" transparent opacity={0.38} depthWrite={false} />
-      </instancedMesh>
+      <instancedMesh ref={foamRef} args={[foamGeom, foamMat, count]} name="waterfall-foam" />
     </group>
   );
 };

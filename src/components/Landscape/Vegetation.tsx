@@ -1,14 +1,154 @@
-import React, { useMemo, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useLayoutEffect, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, mulberry32, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
-import type { TerrainData } from './utils/terrainGenerator';
+import type { TerrainData, FloraPlacement } from './utils/terrainGenerator';
+
+/**
+ * The fields `setupInstances` reads off a placement.
+ *
+ * Structural rather than `FloraPlacement`, because two different lists are passed to it: the flora
+ * placements, which carry a `type`, and the grass placements, which are generated locally and have
+ * no species. Naming the intersection is what lets both be checked; `any[]` accepted both by
+ * accepting everything, including the shapes that would have thrown.
+ */
+type InstancePlacement = Pick<FloraPlacement, 'x' | 'y' | 'scale'>;
 import { testAttrs } from './testAttrs';
 
 // Tree/rock geometries were authored for the legacy tall terrain; shrink their instances so
 // they read as trees (not mountain-sized) on the current, much flatter terrain. Grass keeps
 // its own (already small) scale.
 const TREE_SCALE = 0.35;
+
+/**
+ * The sway shaders' inputs.
+ *
+ * Each quantity appears twice under two spellings. That is not redundancy anybody chose: the two
+ * injected shaders below declare `uTime`/`uWindSpeed`/`uWindDirection` and then use
+ * `time`/`windSpeed`/`windAngle` in the body, so both names have to be live uniform objects or the
+ * sway silently reads zero. The setters keep the pairs in step, which is the whole reason they are
+ * setters and not six assignments at each call site.
+ *
+ * A type alias rather than an interface, for the implicit index signature `shader.uniforms` wants.
+ */
+type WindUniforms = {
+  uTime: { value: number };
+  uWindSpeed: { value: number };
+  uWindDirection: { value: number };
+  time: { value: number };
+  windSpeed: { value: number };
+  windAngle: { value: number };
+};
+
+function createWindUniforms(speed: number, angle: number): WindUniforms {
+  return {
+    uTime: { value: 0 },
+    uWindSpeed: { value: speed },
+    uWindDirection: { value: angle },
+    time: { value: 0 },
+    windSpeed: { value: speed },
+    windAngle: { value: angle },
+  };
+}
+
+/** Set the scene time both sway shaders read. */
+function setWindTime(u: WindUniforms, t: number): void {
+  u.uTime.value = t;
+  u.time.value = t;
+}
+
+/** Set the wind strength both sway shaders read. */
+function setWindSpeed(u: WindUniforms, speed: number): void {
+  u.uWindSpeed.value = speed;
+  u.windSpeed.value = speed;
+}
+
+/** Set the wind bearing (radians) both sway shaders read. */
+function setWindAngle(u: WindUniforms, angle: number): void {
+  u.uWindDirection.value = angle;
+  u.windAngle.value = angle;
+}
+
+/** The shared uniform declarations both injected vertex shaders need in scope. */
+const WIND_UNIFORM_DECLS = `
+       uniform float uTime;
+       uniform float uWindSpeed;
+       uniform float uWindDirection;
+       uniform float time;
+       uniform float windSpeed;
+       uniform float windAngle;
+      `;
+
+/** Point a compiling shader's wind uniforms at the shared live objects. */
+function bindWindUniforms(
+  shader: THREE.WebGLProgramParametersWithUniforms,
+  uniforms: WindUniforms,
+): void {
+  shader.uniforms.uTime = uniforms.uTime;
+  shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
+  shader.uniforms.uWindDirection = uniforms.uWindDirection;
+  shader.uniforms.time = uniforms.time;
+  shader.uniforms.windSpeed = uniforms.windSpeed;
+  shader.uniforms.windAngle = uniforms.windAngle;
+}
+
+/**
+ * `onBeforeCompile` for foliage: a height-weighted sway, strongest at the canopy.
+ *
+ * A factory at module scope rather than a closure inside the component. As a closure it was rebuilt
+ * every render and captured `uniforms`, so the `useMemo` that builds the materials could not name it
+ * as a dependency without recompiling every shader on every render — which is what the suppressed
+ * `exhaustive-deps` warning there was really about. The GLSL is unchanged, character for character:
+ * these shaders decide what the canonical views look like, and those are compared byte for byte.
+ */
+function makeWindSwayPatch(
+  uniforms: WindUniforms,
+): (shader: THREE.WebGLProgramParametersWithUniforms) => void {
+  return (shader) => {
+    bindWindUniforms(shader, uniforms);
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>${WIND_UNIFORM_DECLS}`,
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       float heightFactor = max(0.0, position.y);
+       float sway = sin(time * windSpeed * 2.5 + position.x * 0.4 + position.z * 0.4) * (heightFactor * heightFactor * 0.04) * windSpeed;
+       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
+       transformed.x += windDirVec.x * sway;
+       transformed.z += windDirVec.y * sway;
+      `
+    );
+  };
+}
+
+/** `onBeforeCompile` for grass: faster, finer, and linear in height rather than squared. */
+function makeGrassSwayPatch(
+  uniforms: WindUniforms,
+): (shader: THREE.WebGLProgramParametersWithUniforms) => void {
+  return (shader) => {
+    bindWindUniforms(shader, uniforms);
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>${WIND_UNIFORM_DECLS}`,
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       float heightFactor = max(0.0, position.y);
+       float sway = sin(time * windSpeed * 3.5 + position.x * 0.8 + position.z * 0.8) * (heightFactor * 0.15) * windSpeed;
+       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
+       transformed.x += windDirVec.x * sway;
+       transformed.z += windDirVec.y * sway;
+      `
+    );
+  };
+}
 
 interface VegetationProps {
   width?: number;
@@ -266,111 +406,18 @@ export const Vegetation: React.FC<VegetationProps> = ({
     };
   }, []);
 
-  // Shared Wind uniforms
-  const uniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uWindSpeed: { value: windSpeed },
-    uWindDirection: { value: currentWindDirection },
-    time: { value: 0 },
-    windSpeed: { value: windSpeed },
-    windAngle: { value: currentWindDirection },
-  }), []);
-
-  // Sync prop changes reactively
-  useEffect(() => {
-    uniforms.uWindSpeed.value = windSpeed;
-    uniforms.windSpeed.value = windSpeed;
-  }, [windSpeed, uniforms]);
-
-  useEffect(() => {
-    uniforms.uWindDirection.value = currentWindDirection;
-    uniforms.windAngle.value = currentWindDirection;
-  }, [currentWindDirection, uniforms]);
-
-  // Update clock time on frame ticks
-  useFrame((state) => {
-    const elapsed = state.clock.getElapsedTime();
-    if (uniforms) {
-      if (uniforms.uTime) uniforms.uTime.value = elapsed;
-      if (uniforms.time) uniforms.time.value = elapsed;
-    }
-    // Update all materials' uniforms if they exist on the material
-    Object.values(materials).forEach((mat) => {
-      if (mat.userData.uniforms) {
-        if (mat.userData.uniforms.uTime) mat.userData.uniforms.uTime.value = elapsed;
-        if (mat.userData.uniforms.time) mat.userData.uniforms.time.value = elapsed;
-        if (mat.userData.uniforms.uWindSpeed) mat.userData.uniforms.uWindSpeed.value = windSpeed;
-        if (mat.userData.uniforms.windSpeed) mat.userData.uniforms.windSpeed.value = windSpeed;
-        if (mat.userData.uniforms.uWindDirection) mat.userData.uniforms.uWindDirection.value = currentWindDirection;
-        if (mat.userData.uniforms.windAngle) mat.userData.uniforms.windAngle.value = currentWindDirection;
-      }
-    });
-  });
-
-  // Shader customization function to inject wind sway warp
-  const customizeWindSwayShader = (shader: any) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
-    shader.uniforms.uWindDirection = uniforms.uWindDirection;
-    shader.uniforms.time = uniforms.time;
-    shader.uniforms.windSpeed = uniforms.windSpeed;
-    shader.uniforms.windAngle = uniforms.windAngle;
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform float uTime;
-       uniform float uWindSpeed;
-       uniform float uWindDirection;
-       uniform float time;
-       uniform float windSpeed;
-       uniform float windAngle;
-      `
-    );
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-       float heightFactor = max(0.0, position.y);
-       float sway = sin(time * windSpeed * 2.5 + position.x * 0.4 + position.z * 0.4) * (heightFactor * heightFactor * 0.04) * windSpeed;
-       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
-       transformed.x += windDirVec.x * sway;
-       transformed.z += windDirVec.y * sway;
-      `
-    );
-  };
-
-  const customizeGrassSwayShader = (shader: any) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
-    shader.uniforms.uWindDirection = uniforms.uWindDirection;
-    shader.uniforms.time = uniforms.time;
-    shader.uniforms.windSpeed = uniforms.windSpeed;
-    shader.uniforms.windAngle = uniforms.windAngle;
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform float uTime;
-       uniform float uWindSpeed;
-       uniform float uWindDirection;
-       uniform float time;
-       uniform float windSpeed;
-       uniform float windAngle;
-      `
-    );
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-       float heightFactor = max(0.0, position.y);
-       float sway = sin(time * windSpeed * 3.5 + position.x * 0.8 + position.z * 0.8) * (heightFactor * 0.15) * windSpeed;
-       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
-       transformed.x += windDirVec.x * sway;
-       transformed.z += windDirVec.y * sway;
-      `
-    );
-  };
+  // Shared wind uniforms, built once and mutated thereafter — the shaders hold these exact objects.
+  //
+  // The seed values are the first render's props, captured by a lazy `useState` initialiser. That is
+  // what the old empty dependency list meant, and it needed the rule suppressed to say it: naming
+  // `windSpeed`/`currentWindDirection` there would rebuild the uniform objects — and with them every
+  // material below — each time the wind changed, which is the one thing this arrangement exists to
+  // avoid. The two effects underneath own the values from mount onward.
+  const [initialWind] = useState(() => ({ speed: windSpeed, angle: currentWindDirection }));
+  const uniforms = useMemo(
+    () => createWindUniforms(initialWind.speed, initialWind.angle),
+    [initialWind],
+  );
 
   // Materials setup
   const materials = useMemo(() => {
@@ -381,7 +428,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         metalness: 0.1,
       });
       mat.userData.uniforms = uniforms;
-      mat.onBeforeCompile = customizeWindSwayShader;
+      mat.onBeforeCompile = makeWindSwayPatch(uniforms);
       return mat;
     };
 
@@ -401,7 +448,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         side: THREE.DoubleSide,
       });
       mat.userData.uniforms = uniforms;
-      mat.onBeforeCompile = customizeGrassSwayShader;
+      mat.onBeforeCompile = makeGrassSwayPatch(uniforms);
       return mat;
     };
 
@@ -425,6 +472,32 @@ export const Vegetation: React.FC<VegetationProps> = ({
       Grass: createGrassMat('#4ade80'),
     };
   }, [uniforms]);
+
+  // Sync prop changes reactively.
+  useEffect(() => {
+    setWindSpeed(uniforms, windSpeed);
+  }, [windSpeed, uniforms]);
+
+  useEffect(() => {
+    setWindAngle(uniforms, currentWindDirection);
+  }, [currentWindDirection, uniforms]);
+
+  // Update clock time on frame ticks. `materials` is declared above rather than below: a `const`
+  // read from a callback declared before it is a temporal-dead-zone reference, safe today only
+  // because frames happen to fire after the whole body has run.
+  useFrame((state) => {
+    const elapsed = state.clock.getElapsedTime();
+    setWindTime(uniforms, elapsed);
+    // Every material carries the same object, but say so through the setters rather than assuming
+    // it: `userData` is untyped storage and a material assembled elsewhere may hold its own.
+    for (const mat of Object.values(materials)) {
+      const matUniforms = mat.userData.uniforms as WindUniforms | undefined;
+      if (!matUniforms) continue;
+      setWindTime(matUniforms, elapsed);
+      setWindSpeed(matUniforms, windSpeed);
+      setWindAngle(matUniforms, currentWindDirection);
+    }
+  });
 
   // Instance refs
   const oakTRef = useRef<THREE.InstancedMesh>(null);
@@ -451,7 +524,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
   useLayoutEffect(() => {
     const setupInstances = (
       ref: React.RefObject<THREE.InstancedMesh>,
-      placementsArray: any[],
+      placementsArray: readonly InstancePlacement[],
       yOffset: number,
       rotType: 'y' | 'all' | 'none',
       seedOffset: number
@@ -566,7 +639,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={oakTRef}
         name="vegetation-instanced-mesh-oak"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Oak)]}
+        args={[null, null, Math.max(1, speciesCounts.Oak)]}
       >
         <primitive object={geometries.OakTrunk} attach="geometry" />
         <primitive object={materials.OakTrunk} attach="material" />
@@ -574,7 +647,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={oakLRef}
         name="vegetation-instanced-mesh-oak-leaves"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Oak)]}
+        args={[null, null, Math.max(1, speciesCounts.Oak)]}
       >
         <primitive object={geometries.OakLeaves} attach="geometry" />
         <primitive object={materials.OakLeaves} attach="material" />
@@ -583,7 +656,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={pineTRef}
         name="vegetation-instanced-mesh-pine"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Pine)]}
+        args={[null, null, Math.max(1, speciesCounts.Pine)]}
       >
         <primitive object={geometries.PineTrunk} attach="geometry" />
         <primitive object={materials.PineTrunk} attach="material" />
@@ -591,7 +664,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={pineL1Ref}
         name="vegetation-instanced-mesh-pine-leaves-1"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Pine)]}
+        args={[null, null, Math.max(1, speciesCounts.Pine)]}
       >
         <primitive object={geometries.PineLeaves1} attach="geometry" />
         <primitive object={materials.PineLeaves1} attach="material" />
@@ -599,7 +672,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={pineL2Ref}
         name="vegetation-instanced-mesh-pine-leaves-2"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Pine)]}
+        args={[null, null, Math.max(1, speciesCounts.Pine)]}
       >
         <primitive object={geometries.PineLeaves2} attach="geometry" />
         <primitive object={materials.PineLeaves2} attach="material" />
@@ -607,7 +680,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={pineL3Ref}
         name="vegetation-instanced-mesh-pine-leaves-3"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Pine)]}
+        args={[null, null, Math.max(1, speciesCounts.Pine)]}
       >
         <primitive object={geometries.PineLeaves3} attach="geometry" />
         <primitive object={materials.PineLeaves3} attach="material" />
@@ -616,7 +689,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={bushRef}
         name="vegetation-instanced-mesh-bush"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Bush)]}
+        args={[null, null, Math.max(1, speciesCounts.Bush)]}
       >
         <primitive object={geometries.Bush} attach="geometry" />
         <primitive object={materials.Bush} attach="material" />
@@ -625,7 +698,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={rockRef}
         name="vegetation-instanced-mesh-rock"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Rock)]}
+        args={[null, null, Math.max(1, speciesCounts.Rock)]}
       >
         <primitive object={geometries.Rock} attach="geometry" />
         <primitive object={materials.Rock} attach="material" />
@@ -634,7 +707,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={palmTRef}
         name="vegetation-instanced-mesh-palm"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Palm)]}
+        args={[null, null, Math.max(1, speciesCounts.Palm)]}
       >
         <primitive object={geometries.PalmTrunk} attach="geometry" />
         <primitive object={materials.PalmTrunk} attach="material" />
@@ -642,7 +715,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={palmLRef}
         name="vegetation-instanced-mesh-palm-leaves"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Palm)]}
+        args={[null, null, Math.max(1, speciesCounts.Palm)]}
       >
         <primitive object={geometries.PalmLeaves} attach="geometry" />
         <primitive object={materials.PalmLeaves} attach="material" />
@@ -651,7 +724,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={cactusRef}
         name="vegetation-instanced-mesh-cactus"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Cactus)]}
+        args={[null, null, Math.max(1, speciesCounts.Cactus)]}
       >
         <primitive object={geometries.Cactus} attach="geometry" />
         <primitive object={materials.Cactus} attach="material" />
@@ -660,7 +733,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={jungleTRef}
         name="vegetation-instanced-mesh-jungle"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Jungle)]}
+        args={[null, null, Math.max(1, speciesCounts.Jungle)]}
       >
         <primitive object={geometries.JungleTrunk} attach="geometry" />
         <primitive object={materials.JungleTrunk} attach="material" />
@@ -668,7 +741,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={jungleLRef}
         name="vegetation-instanced-mesh-jungle-leaves"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Jungle)]}
+        args={[null, null, Math.max(1, speciesCounts.Jungle)]}
       >
         <primitive object={geometries.JungleLeaves} attach="geometry" />
         <primitive object={materials.JungleLeaves} attach="material" />
@@ -677,7 +750,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={birchTRef}
         name="vegetation-instanced-mesh-birch"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Birch)]}
+        args={[null, null, Math.max(1, speciesCounts.Birch)]}
       >
         <primitive object={geometries.BirchTrunk} attach="geometry" />
         <primitive object={materials.BirchTrunk} attach="material" />
@@ -685,7 +758,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={birchLRef}
         name="vegetation-instanced-mesh-birch-leaves"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Birch)]}
+        args={[null, null, Math.max(1, speciesCounts.Birch)]}
       >
         <primitive object={geometries.BirchLeaves} attach="geometry" />
         <primitive object={materials.BirchLeaves} attach="material" />
@@ -694,7 +767,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={flowersRef}
         name="vegetation-instanced-mesh-flowers"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Flowers)]}
+        args={[null, null, Math.max(1, speciesCounts.Flowers)]}
       >
         <primitive object={geometries.Flowers} attach="geometry" />
         <primitive object={materials.Flowers} attach="material" />
@@ -703,7 +776,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
       <instancedMesh
         ref={grassRef}
         name="vegetation-instanced-mesh-grass"
-        args={[null as any, null as any, Math.max(1, speciesCounts.Grass)]}
+        args={[null, null, Math.max(1, speciesCounts.Grass)]}
       >
         <primitive object={geometries.Grass} attach="geometry" />
         <primitive object={materials.Grass} attach="material" />

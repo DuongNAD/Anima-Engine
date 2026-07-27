@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
-import React, { useEffect, useRef } from 'react';
-import * as PIXI from 'pixi.js';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
+import { segments } from '../mocks/segment_fixtures';
+import type { RaycastTelemetry } from '../../src/types/generated/RaycastTelemetry';
 
 // 1. Mock pixi.js
 const mockGraphicsMethods = {
@@ -67,7 +69,7 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
   });
 
   it('should mount successfully and handle empty/null agent telemetry payloads without errors', async () => {
-    const { container } = render(
+    render(
       <PixiViewport segments={null} raycasts={null} pheromoneGrid={null} />
     );
 
@@ -82,11 +84,13 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
   });
 
   it('should render overlay geometries correctly on non-empty telemetry payload updates', async () => {
-    const mockSegments = [
+    const mockSegments = segments(
       { agent_id: 1, segment_id: 0, x: 100, y: 100, agent_type: 'predator' },
       { agent_id: 2, segment_id: 0, x: 200, y: 200, agent_type: 'prey' },
-    ];
-    const mockRaycasts = [
+    );
+    // Annotated, so the tuple fields stay tuples: an unannotated `[100, 100, 0]` widens to
+    // `number[]`, which is not the fixed-length `origin` the contract declares.
+    const mockRaycasts: RaycastTelemetry[] = [
       { origin: [100, 100, 0], direction: [1, 0, 0], hit_distance: 50, hit_entity_type: 'Prey', agent_id: 1 },
     ];
     const mockPheromones = {
@@ -109,7 +113,7 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
       return coords && Math.abs(coords[0] - 140) < 0.1 && Math.abs(coords[1] - 300) < 0.1;
     });
     expect(predatorPolygonCall).toBeDefined();
-    const coords = predatorPolygonCall[0];
+    const coords = predatorPolygonCall?.[0];
     expect(coords[2]).toBeCloseTo(118.0);
     expect(coords[3]).toBeCloseTo(307.83);
     expect(coords[4]).toBeCloseTo(118.0);

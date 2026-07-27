@@ -1,8 +1,10 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { World } from './utils/worldGen';
+import { sceneElapsed } from './utils/sceneClock';
+import { OCEAN_SHELF_BAND_FRACTION } from './utils/oceanShelf';
 
 // ---------------------------------------------------------------------------------------
 // WorldWater — the ocean and inland lakes for the huge SoA world.
@@ -60,6 +62,9 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform sampler2D uHeightMap;
   uniform float uTerrainSize;   // world-space extent of the terrain (= renderSize)
+  // How far past the terrain footprint the sea floor takes to fall from the border height to
+  // abyssal. See the note in main(): this is what stops the world's edge being drawn in water.
+  uniform float uShelfBand;
   uniform float uSeaY;
   uniform vec3 uSunDir;
   uniform vec3 uSunColor;
@@ -98,13 +103,30 @@ const fragmentShader = /* glsl */ `
 
   void main() {
     // Terrain world-Y under this fragment (heightmap stores world height directly).
-    // OUTSIDE the heightmap's footprint the floor is abyssal ocean (0), NOT the clamped
-    // border texel: where land touches the map border, the clamp used to smear that land
-    // height out to infinity, zeroing the water depth -> alpha 0 -> a sky-coloured hole
-    // fanning across the horizon.
+    //
+    // Outside the heightmap's footprint there is no terrain, and what the ocean does there decides
+    // whether the world has a visible edge. Two wrong answers, in order:
+    //
+    //   clamp alone      the border texel smears out to infinity. Where land touches the border
+    //                    that zeroes the water depth -> alpha 0 -> a sky-coloured hole fanning
+    //                    across the horizon.
+    //   times a step   the floor drops to abyssal in ONE TEXEL. Depth jumps from a shelf's few
+    //                    units to the full column, so depthN goes 0->1, the colour snaps from
+    //                    uShallow to uDeep and alpha from 0.32 to 0.92 — along a perfectly
+    //                    straight line, on all four sides. That is the hard cyan cut-plane
+    //                    independent review kept rejecting the canonical views for, and it was
+    //                    never a framing problem: any elevated camera in orbit or fly mode sees
+    //                    the world's square boundary drawn in water.
+    //
+    // The floor instead *descends* from the border height to abyssal across uShelfBand. The ramp
+    // is exactly 1 at the boundary, so the sea floor is continuous with the terrain it continues
+    // from, and reaches 0 well before the fog does — a continental shelf falling away into deep
+    // water, which is also what the world is. Land at the border keeps its height for a few units
+    // and then drops off, so the hole the clamp used to open never forms either.
     vec2 uv = (vWorldPos.xz + uTerrainSize * 0.5) / uTerrainSize;
-    float inMap = step(abs(uv.x - 0.5), 0.5) * step(abs(uv.y - 0.5), 0.5);
-    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * inMap;
+    float outside = max(max(abs(vWorldPos.x), abs(vWorldPos.z)) - uTerrainSize * 0.5, 0.0);
+    float shelf = 1.0 - smoothstep(0.0, uShelfBand, outside);
+    float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * shelf;
     float depth = max(vWorldPos.y - floorY, 0.0);
 
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
@@ -172,6 +194,53 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+/** The parts of the water uniforms that come from the world and the frame, not the palette. */
+interface WaterUniformInputs {
+  heightTex: THREE.Texture;
+  lakeMaskTex: THREE.Texture;
+  renderSize: number;
+  seaY: number;
+  /** Seed only: `useFrame` writes `uSunDir` every frame from the live prop. */
+  sunDir: [number, number, number];
+}
+
+/**
+ * Build one water surface's uniform block.
+ *
+ * Module scope rather than a closure inside the component, because as a closure it captured five
+ * values that its callers' dependency lists did not name — two lint-suppressed `useMemo`s whose
+ * suppression was load-bearing, since listing `sunDir` honestly would have rebuilt the ocean's
+ * uniforms on every render of a moving sun. Taking the inputs explicitly separates the two kinds:
+ * what the block is *built* from (below) and what the frame loop *drives* (uTime, uSunDir, fog).
+ */
+function makeWaterUniforms(
+  inputs: WaterUniformInputs,
+  shallow: string,
+  deep: string,
+  opacity: number,
+  waveAmp: number,
+  maskOn = 0,
+) {
+  return {
+    uTime: { value: 0 },
+    uWaveAmp: { value: waveAmp },
+    uHeightMap: { value: inputs.heightTex },
+    uTerrainSize: { value: inputs.renderSize },
+    uShelfBand: { value: inputs.renderSize * OCEAN_SHELF_BAND_FRACTION },
+    uSeaY: { value: inputs.seaY },
+    uSunDir: { value: new THREE.Vector3(...inputs.sunDir) },
+    uSunColor: { value: new THREE.Color('#fff4d6') },
+    uShallow: { value: new THREE.Color(shallow) },
+    uDeep: { value: new THREE.Color(deep) },
+    uOpacity: { value: opacity },
+    uFogColor: { value: new THREE.Color('#cfe4f2') },
+    uFogNear: { value: inputs.renderSize * 0.8 },
+    uFogFar: { value: inputs.renderSize * 3.2 },
+    uLakeMask: { value: inputs.lakeMaskTex },
+    uMaskOn: { value: maskOn },
+  };
+}
+
 export const WorldWater: React.FC<WorldWaterProps> = ({
   world,
   renderSize = 400,
@@ -213,30 +282,20 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world]);
 
-  const makeUniforms = (shallow: string, deep: string, opacity: number, waveAmp: number, maskOn = 0) => ({
-    uTime: { value: 0 },
-    uWaveAmp: { value: waveAmp },
-    uHeightMap: { value: heightTex },
-    uTerrainSize: { value: renderSize },
-    uSeaY: { value: seaY },
-    uSunDir: { value: new THREE.Vector3(...sunDir) },
-    uSunColor: { value: new THREE.Color('#fff4d6') },
-    uShallow: { value: new THREE.Color(shallow) },
-    uDeep: { value: new THREE.Color(deep) },
-    uOpacity: { value: opacity },
-    uFogColor: { value: new THREE.Color('#cfe4f2') },
-    uFogNear: { value: renderSize * 0.8 },
-    uFogFar: { value: renderSize * 3.2 },
-    uLakeMask: { value: lakeMaskTex },
-    uMaskOn: { value: maskOn },
-  });
+  // The sun direction the uniform blocks are *seeded* with, captured at mount. `useFrame` writes
+  // `uSunDir` from the live prop every frame, so this is an initial condition — pinning it is what
+  // lets the two memos below list every value they read instead of suppressing the rule.
+  const [uniformInputSunDir] = useState<[number, number, number]>(() => sunDir);
+  const uniformInputs = useMemo<WaterUniformInputs>(
+    () => ({ heightTex, lakeMaskTex, renderSize, seaY, sunDir: uniformInputSunDir }),
+    [heightTex, lakeMaskTex, renderSize, seaY, uniformInputSunDir],
+  );
 
   const oceanUniforms = useMemo(
     // Turquoise shallows -> deep blue. Shallow water is transparent so the sandy sea floor
     // tints it turquoise near the shore (see WorldTerrain's Beach-coloured coastal shelf).
-    () => makeUniforms('#48ddca', '#05203f', 0.9, 1.0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [heightTex, renderSize, seaY],
+    () => makeWaterUniforms(uniformInputs, '#48ddca', '#05203f', 0.9, 1.0),
+    [uniformInputs],
   );
 
   // One shared material for every lake plane (uniforms updated once per frame).
@@ -245,13 +304,12 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       new THREE.ShaderMaterial({
         vertexShader,
         fragmentShader,
-        uniforms: makeUniforms('#57c7e8', '#134a76', 0.86, 0.4, 1),
+        uniforms: makeWaterUniforms(uniformInputs, '#57c7e8', '#134a76', 0.86, 0.4, 1),
         transparent: true,
         depthWrite: false,
         fog: false,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [heightTex, renderSize, seaY],
+    [uniformInputs],
   );
 
   // Lakes & ponds: one bbox quad per basin at its spill level, merged into (up to) TWO
@@ -291,7 +349,7 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
   }, [world, renderSize, heightUnits]);
 
   useFrame((state) => {
-    const t = state.clock.getElapsedTime();
+    const t = sceneElapsed(state.clock);
     const fog = state.scene.fog as THREE.Fog | null; // WorldWeather owns scene.fog (linear)
     const mats = [oceanMat.current, lakeMaterial];
     for (const mat of mats) {

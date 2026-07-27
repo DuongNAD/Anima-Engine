@@ -27,25 +27,36 @@ pub struct MapElitesGridState {
     pub grid_resolution: u32,
 }
 
+/// One agent in the lineage graph, as `get_lineage_graph` publishes it.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageNodePayload {
     pub id: String,
     pub generation: u32,
     pub parent_id: Option<String>,
     pub fitness: f64,
+    /// Cumulative mutations along this agent's ancestry.
     pub mutations_count: u32,
 }
 
+/// A parent → child edge.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageLinkPayload {
     pub source: String,
     pub target: String,
 }
 
+/// The whole graph, plus whether it came from Neo4j or the in-memory fallback.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct LineageGraphPayload {
     pub nodes: Vec<LineageNodePayload>,
     pub links: Vec<LineageLinkPayload>,
+    /// False when the tracker is running offline in memory, so the UI can say which it is showing.
     pub db_connected: bool,
 }
 
@@ -105,48 +116,29 @@ pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPaylo
         parent_map
             .entry(rel.target_id.clone())
             .or_insert_with(Vec::new)
-            .push((rel.source_id.clone(), rel.relation_type));
+            .push(rel.source_id.clone());
     }
 
-    let mut mutations_map = std::collections::HashMap::new();
-
-    fn get_mutations_count(
-        node_id: &str,
-        parent_map: &std::collections::HashMap<
-            String,
-            Vec<(String, crate::evolution::lineage::RelationType)>,
-        >,
-        memo: &mut std::collections::HashMap<String, u32>,
-    ) -> u32 {
-        if let Some(&val) = memo.get(node_id) {
-            return val;
-        }
-        let mut count = 0;
-        if let Some(parents) = parent_map.get(node_id) {
-            let mut max_parent_mutations = 0;
-            let mut is_mutation = false;
-            for (parent_id, rel_type) in parents {
-                let parent_mut = get_mutations_count(parent_id, parent_map, memo);
-                if parent_mut > max_parent_mutations {
-                    max_parent_mutations = parent_mut;
-                }
-                if *rel_type == crate::evolution::lineage::RelationType::Mutate {
-                    is_mutation = true;
-                }
-            }
-            count = max_parent_mutations + if is_mutation { 1 } else { 0 };
-        }
-        memo.insert(node_id.to_string(), count);
-        count
-    }
+    // The edge walk is now the **fallback**, not the source of truth, and it lives in
+    // `evolution::lineage` so exactly one implementation of the rule exists. It is still correct
+    // for any graph that has not been compacted — which is every pre-field save, and everything
+    // Neo4j returns.
+    //
+    // It is wrong for a compacted graph, and that is the whole reason the stored field exists: a
+    // spliced edge stands for a path, so walking it counts one mutation where five happened. So a
+    // node that recorded its own total is believed, and only a node that never did gets walked.
+    let derived = crate::evolution::lineage::cumulative_mutations_from_edges(&nodes, &relations);
 
     for node in &nodes {
         let parent_id = parent_map
             .get(&node.id)
             .and_then(|parents| parents.first())
-            .map(|(p_id, _)| p_id.clone());
+            .cloned();
 
-        let mutations_count = get_mutations_count(&node.id, &parent_map, &mut mutations_map);
+        let mutations_count = node
+            .cumulative_mutations
+            .or_else(|| derived.get(&node.id).copied())
+            .unwrap_or(0);
         let fitness = node
             .genotype
             .as_ref()

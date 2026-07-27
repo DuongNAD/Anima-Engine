@@ -24,6 +24,120 @@ export const CANONICAL_VIEW_IDS = [
 /** A canonical view identifier. */
 export type CanonicalViewId = (typeof CANONICAL_VIEW_IDS)[number];
 
+/** A world-space point, in the canonical coordinate bounds. */
+export interface CanonicalPoint {
+  position: [number, number, number];
+  target: [number, number, number];
+}
+
+// ---- the canonical camera poses ----------------------------------------------------------
+//
+// One definition, two consumers: `scripts/gen_world_manifest.ts` publishes these as the manifest's
+// `views[].camera`, and `tests/e2e/canonical_views.spec.ts` flies exactly them to produce
+// `map-views/*.png`. They lived only in the generator while no capture existed, which meant the
+// manifest could specify one shot and a harness take another and nothing would notice.
+//
+// Expressed in the CANONICAL bounds from COORDINATE_CONTRACT.md — x, z ∈ [-100, 100], y ∈ [0, 10]
+// — because that is the space the manifest publishes and the map-review gates read. The landscape
+// scene is a different span (1200 units wide, y exaggerated); `canonicalCameraToRender` is the
+// only conversion, so a capture cannot quietly use a different one.
+
+/** Span of the canonical XZ bounds (COORDINATE_CONTRACT.md §4: -100..100). */
+export const CANONICAL_XZ_EXTENT = 200;
+/** Top of the canonical Y range (elevation 1.0). */
+export const CANONICAL_MAX_Y = 10;
+
+/**
+ * Where each canonical view looks from, and at what.
+ *
+ * Fixed poses, deliberately: a canonical view is a *repeatable* shot, so that a before/after pair
+ * differs by the change under review and nothing else. A pose derived from world state at capture
+ * time would move whenever the world moved, and two images that frame different places cannot be
+ * compared.
+ */
+// Derived by `scripts/derive_view_cameras.ts` against the shipped world identity at worldgen v21.
+//
+// # Two things went wrong the first time, and both are structural
+//
+// **Stale.** The poses were derived at `WORLD_GEN_VERSION` 20 and then worldgen changed to 21 — a
+// flora-species fix that moved every instance's biome. The committed `spawn` comment still claimed
+// `findSpawn` returned render (-100.5, -86.5) when v21 returns (-128.7, -93.5), and the `ecosystem`
+// subject had moved by 53 canonical units. Camera evidence describing a superseded world version is
+// worse than none, because it looks current. Re-derive after **any** change to worldgen, the world
+// identity, or these poses; re-run the capture; regenerate both manifests.
+//
+// **Outward-facing.** Every pose was `subject - (d, d)`: a fixed south-west offset that aims the
+// lens north-east, which for a subject in the north-east is straight at the two nearest edges of a
+// finite square of terrain. Independent review rejected `collision`, `water`, `biome_transition` and
+// `ecosystem` for exactly that. The offset is now a constraint solver (`utils/viewFraming.ts`) that
+// projects the image rectangle onto the ground and requires it to land inside the world;
+// `viewFraming.test.ts` asserts that property of these literals, not of the solver.
+export const CANONICAL_VIEW_CAMERAS: Record<CanonicalViewId, CanonicalPoint> = {
+  // Whole map from 45°. 950 render units out; 815 is the minimum that frames a 1200-unit map at
+  // the scene's 55° vertical FOV and 16:9, and the previous pose sat at 806 and clipped two edges.
+  // Exempt from inward framing: the subject IS the whole bounded world.
+  overview: { position: [0, 112, 112], target: [0, 0, 0] },
+  // Open grassland inside the largest connected walkable component, 9/16 open samples. The route
+  // overlay starts at this target — see `utils/mapEvidence.ts`. Two filters had to be added to get
+  // here: the openness score counts open cells *around* a centre and never asks whether the centre is
+  // inside a trunk (the first pick was), and being walkable does not mean being connected (the second
+  // pick was a swamp clearing with seven reachable nodes out of fifty thousand).
+  //
+  // Further out and much steeper than every other view (68 units at 64° against the usual 26 at 42°),
+  // because its subject is a *route* and the frame has to hold the whole of one. At the standard pose
+  // the farthest goal whose path stayed in shot was a 60-unit stub along a shoreline, half of it
+  // occluded by the ridge it crossed and its goal pillar out of frame. See `derive_view_cameras.ts`.
+  navigation: { position: [7.9, 72.9, -38.1], target: [2.1, 11.8, -8.8] },
+  // 302 solid trunks in one 24-unit bucket, jungle. The third-densest bucket, and that substitution
+  // is the point: the densest two sit within six canonical units of the terrain edge, where no camera
+  // frames them without the cut plane in shot. Framed inward (inwardness 1.00, azimuth 174°).
+  collision: { position: [-62.1, 16.9, 6.8], target: [-54, 11.1, 6] },
+  // Highest relief in the world (elevation 0.88, slope 1.00 — glacier), lit from the side so the
+  // shadow pass has something to cast against. Horizon in frame by design: a lighting view has to
+  // reach far enough for the sun's direction to read, and at 55° FOV a frame that reaches that far
+  // spreads wider than this world. What it shows past the terrain is a mountain against sky.
+  lighting: { position: [-95.6, 59.5, -32.2], target: [-59.9, 30.7, -17.4] },
+  // The position `findSpawn` actually returns at the shipped identity: render (-128.7, -93.5),
+  // grassland. The pose it replaced targeted canonical (10, 1, 10) — the middle of the map, which
+  // on this world is open ocean, so the "spawn" view was a photograph of the sea.
+  spawn: { position: [-29.5, 23.1, -21], target: [-21.4, 15.4, -15.6] },
+  // Largest lake basin, 344 cells across. Shot from its shore at 34 canonical units rather than
+  // framed whole: a distance that fits a 34-unit basin in frame spreads wider than the world.
+  water: { position: [-85.2, 34.9, 81.9], target: [-67.3, 13.1, 64] },
+  // Five distinct land biomes within ten cells, centred on alpine. The sharpest boundary in the world
+  // has six, and the five sharpest are all too close to the edge to photograph.
+  biome_transition: { position: [-64.8, 38.2, -34.5], target: [-45.1, 18.1, -24] },
+  // Densest flora of any kind: 251 instances in one 20-unit bucket, swamp.
+  ecosystem: { position: [-52.5, 22.6, -1.7], target: [-38.3, 10.9, -1.7] },
+};
+
+/**
+ * Convert a canonical-bounds camera pose into the landscape scene's own span.
+ *
+ * **Uniform scale, including Y.** The tempting alternative is to scale `y` by the terrain's own
+ * factor — `renderSize * heightRatio / CANONICAL_MAX_Y` — since `CANONICAL_MAX_Y` is 10 and the
+ * render column is `renderSize * heightRatio` tall. That is wrong, and the first capture run shows
+ * why: `overview` is authored at `[0, 95, 95]`, a 45° look at the origin, and the terrain factor
+ * (16.8 at the shipped settings) lifted it to y=1596 over a 1200-wide map. The result was a
+ * near-vertical shot of a small distant square.
+ *
+ * `CANONICAL_MAX_Y` describes how high *terrain* goes, not where a camera may sit. A pose is a
+ * point in space and an angle; only a uniform scale preserves the angle, which is the whole
+ * content of a camera specification.
+ *
+ * `heightRatio` is therefore unused, and kept in the signature deliberately: it is the number a
+ * future reader will reach for, and its absence from the body is where they should find out why.
+ */
+export function canonicalCameraToRender(
+  cam: CanonicalPoint,
+  renderSize: number,
+  _heightRatio?: number,
+): CanonicalPoint {
+  const k = renderSize / CANONICAL_XZ_EXTENT;
+  const map = (p: [number, number, number]): [number, number, number] => [p[0] * k, p[1] * k, p[2] * k];
+  return { position: map(cam.position), target: map(cam.target) };
+}
+
 /** Result of validating a manifest: `ok` is true only when `errors` is empty. */
 export interface MapManifestValidationResult {
   ok: boolean;

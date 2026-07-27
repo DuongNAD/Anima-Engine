@@ -193,6 +193,14 @@ pub struct SavedSimulationState {
     /// field keeps whatever `init_world` generated.
     #[serde(default)]
     pub resource_field_r: Vec<f32>,
+    /// Which stride phase the regrowth sweep visits next.
+    ///
+    /// Schema 5. `REGROWTH_STRIDE` means one tick advances a quarter of the cells, so *which*
+    /// quarter is trajectory state; a save that forgot it resumed the sweep at phase 0 and grew a
+    /// different quarter of the world than the run it was continuing. Zero on an older save, which
+    /// is what those saves already did.
+    #[serde(default)]
+    pub resource_field_phase: usize,
 
     // ---- G1.2: the rest of what makes this a checkpoint rather than a picture ----------------
     /// Seed of the run's RNG stream.
@@ -231,6 +239,20 @@ pub struct SavedSimulationState {
     /// that does not set `ANIMA_AGGREGATE_LOD`.
     #[serde(default)]
     pub dormant_cohorts: Option<crate::core::aggregate_population::SavedDormantCohorts>,
+
+    // ---- Schema 5: the declared experiment, if this world is part of one ----------------------
+    /// Manifest identity, world laws, the multi-rate clock's tick and the causal ledger.
+    ///
+    /// `None` on every ordinary run and on every schema-4-or-older save, which is what makes the
+    /// field additive: a world that is not part of a declared experiment has no laws to pin and no
+    /// clock band to be on.
+    ///
+    /// This is the block that turns a save into a resumable *experiment* rather than a resumable
+    /// world. Without the clock tick a resumed run applies band-gated forcings on the wrong ticks;
+    /// without the law fingerprint a snapshot can be resumed under laws it never ran under, which
+    /// ER01 forbids and which nothing else would notice.
+    #[serde(default)]
+    pub experiment: Option<crate::core::live_experiment::LiveExperimentState>,
 
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
@@ -280,12 +302,14 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         eco_plants: 0.0,
         eco_animals: 0.0,
         resource_field_r: Vec::new(),
+        resource_field_phase: 0,
         sim_rng_seed: 0,
         sim_rng_pos: 0,
         season_phase: 0.0,
         season_rate: 0.0,
         energy_baseline: None,
         dormant_cohorts: None,
+        experiment: None,
         loaded_from_schema: 0,
     }
 }
@@ -306,6 +330,9 @@ pub fn restore_energy_state(world: &mut World, state: &SavedSimulationState) {
             // resizing here would turn that warning into corrupted energy accounting.
             if field.r.len() == state.resource_field_r.len() {
                 field.r.copy_from_slice(&state.resource_field_r);
+                // The stride phase belongs to the field it describes: restoring the cells without
+                // it resumes the sweep on a different quarter of the world.
+                field.regrowth_phase = state.resource_field_phase;
             } else {
                 eprintln!(
                     "saved resource field has {} cells but this world has {}; \
@@ -497,6 +524,10 @@ pub fn serialize_world_state(
         .get_resource::<crate::core::ecology::ResourceField>()
         .map(|f| f.r.clone())
         .unwrap_or_default();
+    let resource_field_phase = world
+        .get_resource::<crate::core::ecology::ResourceField>()
+        .map(|f| f.regrowth_phase)
+        .unwrap_or(0);
     // G1.2: the rest of the trajectory-relevant state. The RNG's *draw position* is the field that
     // makes this a checkpoint — with only the seed, a resumed run restarts the stream and diverges
     // on its next draw.
@@ -520,6 +551,11 @@ pub fn serialize_world_state(
     let dormant_cohorts = world
         .get_resource::<crate::core::aggregate_population::DormantCohorts>()
         .map(|c| c.to_saved());
+    // Schema 5. Present only when this world is running a declared experiment, which is what the
+    // resource's absence means on every ordinary run.
+    let experiment = world
+        .get_resource::<crate::core::live_experiment::LiveExperimentState>()
+        .cloned();
     // World identity so the save is pinned to the world it belongs to (S08); default if a world was
     // built before this resource existed.
     let world_identity = world
@@ -733,12 +769,14 @@ pub fn serialize_world_state(
         eco_plants,
         eco_animals,
         resource_field_r,
+        resource_field_phase,
         sim_rng_seed,
         sim_rng_pos,
         season_phase,
         season_rate,
         energy_baseline,
         dormant_cohorts,
+        experiment,
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

@@ -5,7 +5,8 @@
   "scripts": {
     "test:frontend": "vitest run --config vitest.config.ts",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "test:all": "npm run test:frontend && npm run test:e2e"
+    "test:all": "npm run test:frontend && npm run test:e2e",
+    "capture:views": "playwright test --config e2e/capture.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

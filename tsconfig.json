@@ -23,7 +23,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@react-three/fiber": ["tests/mocks/react-three-fiber-mock.tsx"]
+      "@react-three/fiber": ["tests/mocks/react-three-fiber-mock.ts"]
     }
   },
   "include": ["src", "playground"]

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 import { useFrame, extend } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, biomeColor, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
@@ -8,13 +8,9 @@ import { testAttrs } from './testAttrs';
 // Register THREE.LOD with R3F so <lod> JSX element works
 extend({ Lod: THREE.LOD });
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      lod: any;
-    }
-  }
-}
+// `lod` used to be declared here as `any`. It is now in `src/r3f-intrinsics.d.ts` with the rest of
+// the intrinsics, typed as `Object3DProps<THREE.LOD>`, so a second declaration here would only be a
+// place for the two to disagree.
 
 interface TerrainProps {
   width?: number;
@@ -40,8 +36,10 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
   const geomRef1 = useRef<THREE.BufferGeometry>(null);
   const geomRef2 = useRef<THREE.BufferGeometry>(null);
 
-  // Helper to construct geometry arrays for a given LOD step size
-  const getGeometryData = (step: number) => {
+  // Helper to construct geometry arrays for a given LOD step size. Memoised on what it reads, so
+  // the layout effect below can name it: as a plain closure it was rebuilt on every render, and
+  // listing it honestly would have rebuilt all three LOD geometries every time.
+  const getGeometryData = useCallback((step: number) => {
     const w = Math.ceil(width / step);
     const h = Math.ceil(height / step);
 
@@ -96,11 +94,14 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     }
 
     return { positions, colors, indices };
-  };
+    // `wetnessRatio` is not read here. It was in the old effect's list, which is how a reader would
+    // have assumed the LOD geometry re-bakes when the ground gets wet; it does not, and never did —
+    // wetness is a material property, applied below.
+  }, [terrain, width, height]);
 
   useLayoutEffect(() => {
     // Initialize geometry for LOD 0 (High Detail - step 1)
-    if (geomRef0.current && typeof (geomRef0.current as any).setIndex === 'function') {
+    if (geomRef0.current && typeof geomRef0.current.setIndex === 'function') {
       const { positions, colors, indices } = getGeometryData(1);
       geomRef0.current.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geomRef0.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -109,7 +110,7 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     }
 
     // Initialize geometry for LOD 1 (Medium Detail - step 4)
-    if (geomRef1.current && typeof (geomRef1.current as any).setIndex === 'function') {
+    if (geomRef1.current && typeof geomRef1.current.setIndex === 'function') {
       const { positions, colors, indices } = getGeometryData(4);
       geomRef1.current.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geomRef1.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -118,24 +119,28 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     }
 
     // Initialize geometry for LOD 2 (Low Detail - step 16)
-    if (geomRef2.current && typeof (geomRef2.current as any).setIndex === 'function') {
+    if (geomRef2.current && typeof geomRef2.current.setIndex === 'function') {
       const { positions, colors, indices } = getGeometryData(16);
       geomRef2.current.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geomRef2.current.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       geomRef2.current.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
       geomRef2.current.computeVertexNormals();
     }
-  }, [width, height, wetnessRatio]);
+  }, [getGeometryData]);
 
   useLayoutEffect(() => {
-    if (lodRef.current && typeof (lodRef.current as any).addLevel === 'function' && meshRef0.current && meshRef1.current && meshRef2.current) {
+    // The `typeof` guards are not defensive noise: under jsdom the r3f mock backs these refs with
+    // plain DOM elements, which have neither `addLevel` nor `setIndex`. The casts that used to wrap
+    // them were, though — `lodRef` is a `THREE.LOD` and `geomRef*` are `THREE.BufferGeometry`, both
+    // of which declare exactly these members.
+    if (lodRef.current && typeof lodRef.current.addLevel === 'function' && meshRef0.current && meshRef1.current && meshRef2.current) {
       // Clear levels to support clean re-mounting/updates
-      while ((lodRef.current as any).levels && (lodRef.current as any).levels.length > 0) { (lodRef.current as any).levels.pop(); }
-      
+      while (lodRef.current.levels && lodRef.current.levels.length > 0) { lodRef.current.levels.pop(); }
+
       // Setup LOD thresholds
-      (lodRef.current as any).addLevel(meshRef0.current, 0);      // High detail close up
-      (lodRef.current as any).addLevel(meshRef1.current, 150);    // Medium detail mid range
-      (lodRef.current as any).addLevel(meshRef2.current, 400);    // Low detail far away
+      lodRef.current.addLevel(meshRef0.current, 0);      // High detail close up
+      lodRef.current.addLevel(meshRef1.current, 150);    // Medium detail mid range
+      lodRef.current.addLevel(meshRef2.current, 400);    // Low detail far away
     }
   }, []);
 

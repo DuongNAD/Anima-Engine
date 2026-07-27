@@ -140,6 +140,59 @@ jobs:
         if: ${{ !cancelled() }}
         run: node ../scripts/check_test_targets.mjs ../cargo-test-output.txt
 
+      # The licensing artifacts run on THIS job, not the frontend one, because all of them read the
+      # Rust graph with `cargo tree --features desktop` — and this is the job that has a toolchain
+      # and a warm cargo cache. They also need `node_modules` to read each npm package's own
+      # manifest and licence files, hence the install step below.
+      #
+      # `cargo tree` resolves for the HOST target, so these artifacts describe a Windows build. That
+      # is why they run here and not on the ubuntu job: regenerating them there would produce a
+      # different, equally correct, inventory and the freshness gates would report the runner rather
+      # than the dependency graph.
+      #
+      # Measured 2026-07-27: 419 crates, 21 npm components with bytes in `dist/`, 18 installed but
+      # not distributed — 458 total. (This comment previously said "419 crates and 45 npm packages";
+      # 45 was never a measured number, and the npm figure was in any case counting the install
+      # closure as though it were the ship closure.) The counts in the artifacts are derived, so
+      # they cannot go stale the way this sentence did — but a stale artifact under-attributes
+      # silently, which is what these four steps exist to prevent.
+      - name: Install root dependencies (for the npm inventory)
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm ci --no-audit --no-fund
+
+      # Ordered so the most specific failure is reported first. The licence bundle is the artifact
+      # that carries the actual obligation; NOTICE reports that bundle's coverage and would be
+      # regenerated from a stale index if this ran second.
+      - name: Third-party licence texts are current and complete
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:licenses
+
+      - name: SBOM is current with the shipped dependency graph
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:sbom
+
+      # Validates against the official CycloneDX 1.5 schema, vendored in `schemas/cyclonedx/` and
+      # pinned to a specification commit with a SHA-256 per file. Nothing is fetched: a release gate
+      # must not depend on a network round-trip, and a schema that can change without a commit here
+      # is a gate whose meaning can change without review.
+      - name: SBOM validates against the official CycloneDX 1.5 schema
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:sbom-schema
+
+      - name: NOTICE is current with the shipped dependency graph
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:notice
+
+      - name: Declared flora footprints match the real geometry
+        if: ${{ !cancelled() }}
+        working-directory: .
+        run: npm run check:flora-footprint
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -172,6 +225,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm audit --audit-level=high --prefix tests
 
+      # `scripts/gen_sbom.mjs` joined a package name to its version with a **literal NUL byte** typed
+      # into the source. It worked, and it made git classify the file as binary — `git diff` showed
+      # `Bin 7983 -> 7984 bytes` and nothing else, so every change to the licence and SBOM generator
+      # was unreviewable and `grep` skipped it. It is invisible on screen too, because editors render
+      # a control byte as a space.
+      #
+      # Cheap and near the top, because it explains a diff that otherwise looks empty.
+      - name: No raw control bytes in tracked source
+        if: ${{ !cancelled() }}
+        run: npm run check:text-hygiene
+
       - name: npm run lint
         if: ${{ !cancelled() }}
         run: npm run lint
@@ -179,6 +243,19 @@ jobs:
       - name: ESLint warning ratchet
         if: ${{ !cancelled() }}
         run: node scripts/eslint_ratchet.mjs
+
+      # `npm run build` typechecks `src/` and `playground/` — the root tsconfig's `include` — and
+      # nothing typechecked `tests/`. Vitest transpiles without checking, so the second npm package
+      # had drifted to 86 type errors that no command in the repository would report: fixture arrays
+      # missing fourteen required fields of `SegmentState`, three references to type names that do
+      # not exist, `screen.getByTestId` overwritten with a function of the wrong signature. A mock
+      # that does not typecheck is a mock that can disagree with the producer, which is the failure
+      # mode the generated bindings exist to prevent.
+      #
+      # It runs before the suites on purpose: a shape error here explains a red test below.
+      - name: Typecheck the tests/ package
+        if: ${{ !cancelled() }}
+        run: npm run typecheck:tests
 
       - name: npm run test (src suite)
         if: ${{ !cancelled() }}
@@ -192,10 +269,65 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run build
 
-      # The seven specs under tests/e2e existed but nothing ran them: there was no `test:e2e` script
-      # at the root, no step here, and their Playwright config started no dev server, so each spec
-      # hit its own `catch` and called `test.skip()`. They drive the UI through a page-level Tauri
-      # IPC stub, so a Rust release build is not needed — `webServer` + a warm-up navigation is.
+      # These read `dist/`, so they run after the build and not before it. They existed as package
+      # scripts and nothing invoked them — a script is not a gate until something fails on it.
+
+      # The build writes `licensing/bundle-closure.json` from the real module graph, and that file
+      # decides which npm components the licence artifacts treat as distributed. It is the one input
+      # whose staleness is invisible: `check:notice`, `check:sbom` and `check:licenses` would all
+      # keep passing against a boundary that had stopped being true, because each only compares
+      # itself to itself.
+      #
+      # It runs on ubuntu while the licence artifacts are generated on Windows, which is deliberate:
+      # the npm module graph does not depend on the OS, so agreement across the two runners is
+      # additional evidence rather than a coincidence. If it ever does diverge — the most plausible
+      # cause is rolldown embedding a different `@oxc-project/runtime` in a different platform
+      # binding — this fails loudly and names the file, which is the outcome to want.
+      - name: The committed npm distribution boundary matches a fresh build
+        if: ${{ !cancelled() }}
+        run: npm run check:bundle-closure
+
+      - name: CSP compatibility of the shipped artifacts
+        if: ${{ !cancelled() }}
+        run: npm run check:csp
+
+      # Byte budgets *and* the route split: `index.html` must not statically load the three.js
+      # chunk. Measured with a real browser against `vite preview` (2026-07-27): the dashboard
+      # fetches 17 JS files and none of them is that chunk; the landscape entry fetches it. A byte
+      # ceiling alone would still pass if someone imported three into `App.tsx`.
+      - name: Bundle budget and route split
+        if: ${{ !cancelled() }}
+        run: npm run check:bundle
+
+      # Browser-scope E2E: zero fail, zero skip.
+      #
+      # This comment used to describe the specs as driving "a page-level Tauri IPC stub" needing no
+      # release build, while the specs themselves spawned `target/release/anima-engine` and skipped
+      # when it was absent. Both statements were in the repository at once and neither was checkable,
+      # because the run was always green. It was the second that matched the code, and it did not
+      # matter: the spawned process rendered into its own webview and Playwright drove an unrelated
+      # Vite page, so nothing connected them and no IPC was exercised in either direction.
+      #
+      # What runs here now is the first description, made true. `tests/e2e/tauri-mock.ts` implements
+      # the three functions `@tauri-apps/api` routes through, with fixed replies typed by the
+      # generated `ts-rs` bindings, so the real frontend runs against a real transport. No binary,
+      # no spawn, no skips — absent UI is a failure.
+      #
+      # The suite starts its own server on port 5177 (not 5173) with `reuseExistingServer: false`,
+      # and `global-setup.ts` refuses to run unless the served page is actually Anima. That is not
+      # hypothetical: on 2026-07-27 port 5173 on the development machine was held by an unrelated
+      # project's Vite server, and the old config would have adopted it and reported the mismatch
+      # as skips.
+      #
+      # Real-backend coverage is `tests/e2e/real_backend.spec.ts`, which declares no test unless
+      # ANIMA_E2E_REQUIRE_BACKEND=1 and fails closed when it is set. Set it on this step only after
+      # adding a `cargo build --release --features desktop` step AND a tauri-driver WebDriver
+      # session; it fails, by design, without both.
+      #
+      # The canonical map view capture (`npm run capture:views`) is deliberately NOT here: it needs
+      # a GPU, and on this runner it would fall back to SwiftShader — 0.27 fps against 46.7, and a
+      # different rasteriser, so a different picture. CI verifies the committed PNGs instead, via
+      # the checksums in map_manifest.json (tests/frontend/mapManifestEvidence.test.ts).
       - name: Install Playwright browsers
         if: ${{ !cancelled() }}
         run: npx playwright install --with-deps chromium

@@ -1,9 +1,65 @@
+/**
+ * The window as browsers that predate the unprefixed constructor expose it.
+ *
+ * Safari shipped `webkitAudioContext` for years and iOS kept it long after; the DOM lib has no
+ * declaration for it because it is not standard. Naming it here is the difference between "this
+ * property may not exist" and `any`, which also silently permitted calling it with anything.
+ */
+export interface LegacyAudioWindow extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
+/**
+ * The parts of a panner the spatial update path reads.
+ *
+ * Structural rather than `PannerNode`, because the cache legitimately holds two different things.
+ * A modern node positions through `AudioParam`s; a pre-`AudioParam` browser (Safari, older Chrome)
+ * only has the deprecated `setPosition`, which the current DOM lib no longer declares at all. Under
+ * jsdom there is a third: a stand-in, because jsdom implements no Web Audio whatsoever, so the
+ * legacy branch cannot be reached through the real API. Naming the union structurally is what lets
+ * a test put a legacy-shaped node in the cache without casting its way past the type system.
+ */
+export interface SpatialPanner {
+  positionX?: AudioParam;
+  positionY?: AudioParam;
+  positionZ?: AudioParam;
+  /** Pre-`AudioParam` browsers only. */
+  setPosition?(x: number, y: number, z: number): void;
+}
+
+/**
+ * The listener's pre-`AudioParam` API.
+ *
+ * Same deprecation as `SpatialPanner.setPosition`, but the listener is never injected — it is
+ * always `ctx.listener` — so this stays a plain widening of the real type rather than a structural
+ * stand-in.
+ */
+interface LegacySpatialListener extends AudioListener {
+  setPosition(x: number, y: number, z: number): void;
+  setOrientation(
+    forwardX: number,
+    forwardY: number,
+    forwardZ: number,
+    upX: number,
+    upY: number,
+    upZ: number,
+  ): void;
+}
+
 export class AudioManager {
   public ctx: AudioContext | null = null;
   public masterGain: GainNode | null = null;
   private currentVolume: number = 1.0;
   private isMuted: boolean = false;
-  private panners: Map<string, PannerNode> = new Map();
+  /**
+   * Spatial sources by id.
+   *
+   * Public because the legacy-`setPosition` branch of `updateSpatialSource` has no other way to be
+   * reached under jsdom, which implements no Web Audio: a test seeds this map with a legacy-shaped
+   * node. The alternative was a test that cast the manager to `any` to reach a private field, which
+   * is the same access with the type checking removed.
+   */
+  public readonly panners: Map<string, SpatialPanner> = new Map();
 
   // Procedural wind synthesizer elements
   private windGain: GainNode | null = null;
@@ -18,7 +74,7 @@ export class AudioManager {
   public initialize(): void {
     if (this.ctx) return;
 
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = window.AudioContext || (window as LegacyAudioWindow).webkitAudioContext;
     if (AudioContextClass) {
       try {
         this.ctx = new AudioContextClass();
@@ -109,13 +165,12 @@ export class AudioManager {
     }
   }
 
-  public createSpatialSource(id: string): PannerNode | null {
+  public createSpatialSource(id: string): SpatialPanner | null {
     this.initialize();
     if (!this.ctx) return null;
 
-    if (this.panners.has(id)) {
-      return this.panners.get(id)!;
-    }
+    const cached = this.panners.get(id);
+    if (cached) return cached;
 
     const panner = this.ctx.createPanner();
     panner.panningModel = 'HRTF';
@@ -181,12 +236,13 @@ export class AudioManager {
     const panner = this.panners.get(id) || this.createSpatialSource(id);
     if (panner && this.ctx) {
       const time = this.ctx.currentTime;
-      if (panner.positionX && panner.positionX.setValueAtTime) {
-        panner.positionX.setValueAtTime(x, time);
-        panner.positionY.setValueAtTime(y, time);
-        panner.positionZ.setValueAtTime(z, time);
+      const { positionX, positionY, positionZ } = panner;
+      if (positionX?.setValueAtTime && positionY && positionZ) {
+        positionX.setValueAtTime(x, time);
+        positionY.setValueAtTime(y, time);
+        positionZ.setValueAtTime(z, time);
       } else {
-        (panner as any).setPosition(x, y, z);
+        panner.setPosition?.(x, y, z);
       }
     }
   }
@@ -212,8 +268,9 @@ export class AudioManager {
       listener.upY.setValueAtTime(upY, time);
       listener.upZ.setValueAtTime(upZ, time);
     } else {
-      (listener as any).setPosition(x, y, z);
-      (listener as any).setOrientation(forwardX, forwardY, forwardZ, upX, upY, upZ);
+      const legacy = listener as LegacySpatialListener;
+      legacy.setPosition(x, y, z);
+      legacy.setOrientation(forwardX, forwardY, forwardZ, upX, upY, upZ);
     }
   }
 }

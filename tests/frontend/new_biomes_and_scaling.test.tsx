@@ -9,18 +9,36 @@ import {
 } from '../../src/components/Landscape/utils/terrainGenerator';
 import { Minimap } from '../../src/components/Landscape/Minimap';
 import Water from '../../src/components/Landscape/Water';
+import type { FrameCallback } from '../mocks/r3f-frame-state';
+import {
+  installStubbedProperty,
+  removeStubbedProperties,
+  type StubAttributeCapture,
+  type StubLod,
+} from '../mocks/r3f-dom-stubs';
 
 // Mock react-three-fiber Canvas and useFrame
-let frameCallbacks: FrameCb[] = [];
+let frameCallbacks: FrameCallback[] = [];
 
 vi.mock('@react-three/fiber', async () => {
   return {
     Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: FrameCb) => {
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
   };
 });
+
+/**
+ * Install a member on `HTMLElement.prototype` that the DOM does not declare.
+ *
+ * The same reasoning as `tests/setup-vitest.ts`: assigning to `HTMLElement.prototype.addLevel` is
+ * not an assignment the DOM types describe, and `Object.defineProperty` is the API for adding a
+ * property to an object. `afterEach` takes them off again with `removeStubbedProperties`.
+ */
+function defineStub(name: string, value: unknown): void {
+  installStubbedProperty(HTMLElement.prototype, name, value);
+}
 
 describe('New Biomes and Terrain Scaling Tests', () => {
   let originalSetAttribute: typeof HTMLElement.prototype.setAttribute;
@@ -42,16 +60,15 @@ describe('New Biomes and Terrain Scaling Tests', () => {
       configurable: true,
     });
 
-    HTMLElement.prototype.addLevel = vi.fn().mockImplementation(function (
-      this: MockLodElement,
-      mesh: unknown,
-      distance: number
-    ) {
-      this.levels.push({ object: mesh, distance });
-    });
+    defineStub(
+      'addLevel',
+      vi.fn(function (this: StubLod, mesh: unknown, distance: number) {
+        this.levels.push({ object: mesh, distance });
+      })
+    );
 
-    HTMLElement.prototype.setIndex = vi.fn();
-    HTMLElement.prototype.computeVertexNormals = vi.fn();
+    defineStub('setIndex', vi.fn());
+    defineStub('computeVertexNormals', vi.fn());
 
     // Capture custom attributes set on elements
     Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
@@ -65,15 +82,18 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     });
 
     originalSetAttribute = HTMLElement.prototype.setAttribute;
-    HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-      this: MockAttrElement,
+    HTMLElement.prototype.setAttribute = vi.fn(function (
+      this: HTMLElement & StubAttributeCapture,
       name: string,
-      value: string
+      value: unknown
     ) {
+      // `unknown`, not `string`: r3f's `<bufferAttribute>` arrives here as a real
+      // `THREE.BufferAttribute`, which is the whole reason this interception exists. Declaring the
+      // DOM's `string` made the `instanceof` below a comparison the compiler knew could not hold.
       if (value instanceof THREE.BufferAttribute) {
         this._capturedAttributes.set(name, value);
       } else {
-        originalSetAttribute.call(this, name, value);
+        originalSetAttribute.call(this, name, String(value));
       }
     });
 
@@ -123,13 +143,19 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     if (originalSetAttribute) {
       HTMLElement.prototype.setAttribute = originalSetAttribute;
     }
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).levels;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).addLevel;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).setIndex;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).computeVertexNormals;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>)._capturedAttributes;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).uniforms;
-    delete (HTMLElement.prototype as unknown as Record<string, unknown>).geometry;
+    // `Reflect.deleteProperty` asks the question of the object rather than of its type, which is
+    // what `delete` cannot do: the operator insists on an optional property, so removing one the
+    // DOM never declared meant first claiming the prototype was something else.
+    removeStubbedProperties(
+      HTMLElement.prototype,
+      'levels',
+      'addLevel',
+      'setIndex',
+      'computeVertexNormals',
+      '_capturedAttributes',
+      'uniforms',
+      'geometry',
+    );
   });
 
   describe('1. 1000x1000 Terrain Scaling', () => {
@@ -241,7 +267,11 @@ describe('New Biomes and Terrain Scaling Tests', () => {
 
   describe('5. Minimap Cell Colors', () => {
     it('should draw correct colors on the minimap for the new biomes', () => {
-      let capturedImageData: ImageData | null = null;
+      // A holder rather than a bare `let`. The only assignment is inside the `putImageData` stub,
+      // which the compiler cannot prove ever runs, so it narrowed the variable to `null` for the
+      // whole test and made `capturedImageData.data` a read off `never`. Narrowing on a property is
+      // reset by the intervening `render`, which is exactly the fact the assertions rely on.
+      const captured: { imageData: ImageData | null } = { imageData: null };
       const originalGetContext = HTMLCanvasElement.prototype.getContext;
       
       HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function(type: string) {
@@ -249,7 +279,7 @@ describe('New Biomes and Terrain Scaling Tests', () => {
           return {
             createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
             putImageData: (imgData: ImageData) => {
-              capturedImageData = imgData;
+              captured.imageData = imgData;
             },
             fillRect: vi.fn(),
             beginPath: vi.fn(),
@@ -266,10 +296,10 @@ describe('New Biomes and Terrain Scaling Tests', () => {
         
         // Minimap computes canvas data in useMemo and updates in useEffect
         // We verify that the ImageData gets successfully captured
-        expect(capturedImageData).not.toBeNull();
-        
+        expect(captured.imageData).not.toBeNull();
+
         // Assert that the generated pixel data has been rendered
-        expect(capturedImageData.data.length).toBeGreaterThan(0);
+        expect(captured.imageData?.data.length ?? 0).toBeGreaterThan(0);
         
         unmount();
       } finally {
@@ -278,35 +308,46 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     });
   });
 
-  describe('6. Custom Water Properties for Lava Rivers and Ice Sheets', () => {
-    // SKIPPED BY THE MERGE, not by a failure. `main` shipped these meshes in a Water.tsx that
-    // generated its own terrain per component and used a local `* 1.8` height scale; this branch
-    // had since replaced that with one cached terrain passed down and one TERRAIN_HEIGHT_SCALE, so
-    // that side was not carried and the meshes do not exist. The biomes it depends on DO — the
-    // `volcanic` and `glacier` cases are merged into BiomeType, determineBiome and biomeColor, and
-    // the tests above cover them.
+  describe('6. Lava rivers and ice sheets are biomes, not yet water meshes', () => {
+    // This was an `it.skip` asserting that `Water` renders `lava-river-mesh` and `ice-sheet-mesh`.
+    // It had never passed on this branch and could not: `main` shipped those meshes in a `Water.tsx`
+    // that generated its own terrain per component with a local `* 1.8` height scale, this branch
+    // had already replaced that with one cached terrain passed down and one `TERRAIN_HEIGHT_SCALE`,
+    // and the merge did not carry that side over.
     //
-    // Left here rather than deleted: the coverage is wanted, and rendering lava/ice on top of the
-    // shared-terrain Water is real work with a real design question (a data texture carrying
-    // temperature, as `main` did, versus per-biome meshes). Deleting it would hide that.
-    it.skip('should render lava rivers with volcanic properties and ice sheets with glacier properties', () => {
-      const { container } = render(
-        <Water
-          width={100}
-          height={100}
-          timeOfDay={12}
-        />
-      );
+    // A disabled assertion is not coverage. It reports as a skip, which reads as "environment
+    // problem" rather than "feature absent", and it pins the reviewer's attention on a mesh name
+    // instead of on the thing that is actually true.
+    //
+    // So it is inverted into a characterisation test. What is true is asserted; what is missing is
+    // asserted as missing, so adding it turns this red and sends whoever does it to the design
+    // question — a data texture carrying temperature, as `main` did, versus per-biome meshes.
 
-      // Check for lava river mesh and its attributes
-      const lavaRiverMesh = container.querySelector('[name="lava-river-mesh"], [data-testid="lava-river-mesh"]');
-      expect(lavaRiverMesh).not.toBeNull();
-      expect(lavaRiverMesh?.getAttribute('data-lava-river')).toBe('true');
-      
-      // Check for ice sheet mesh and its attributes
-      const iceSheetMesh = container.querySelector('[name="ice-sheet-mesh"], [data-testid="ice-sheet-mesh"]');
-      expect(iceSheetMesh).not.toBeNull();
-      expect(iceSheetMesh?.getAttribute('data-ice-sheet')).toBe('true');
+    it('supports both biomes in the taxonomy the renderer colours from', () => {
+      // The half that did land, and the half the skipped test actually depended on.
+      // `(temperature, moisture, elevation)` — same calls as section 2 above.
+      expect(determineBiome(40, 20, 0.98)).toBe('volcanic');
+      expect(determineBiome(45, 50, -0.6)).toBe('glacier');
+    });
+
+    it('renders no lava or ice water mesh yet, and this test is how that stays visible', () => {
+      const { container } = render(<Water width={100} height={100} timeOfDay={12} />);
+
+      // Not `toBeNull()` phrased as an expectation of absence for its own sake: these two queries are
+      // the exact selectors the disabled test used, so the day someone implements the meshes this
+      // fails and names the file to update.
+      expect(
+        container.querySelector('[name="lava-river-mesh"], [data-testid="lava-river-mesh"]'),
+        'lava rivers now render — implement the volcanic water contract and re-point this test',
+      ).toBeNull();
+      expect(
+        container.querySelector('[name="ice-sheet-mesh"], [data-testid="ice-sheet-mesh"]'),
+        'ice sheets now render — implement the glacier water contract and re-point this test',
+      ).toBeNull();
+
+      // And the component does render its own water, so the two nulls above are a statement about
+      // lava and ice rather than about `Water` having failed to mount.
+      expect(container.querySelector('[data-testid="mock-canvas"], mesh, group')).not.toBeNull();
     });
   });
 });

@@ -18,6 +18,17 @@
 > khung hình: nó chưa gồm suy luận não, lập lịch ECS, thread emit, va chạm và trao đổi chất. Các
 > hàng "Physics tick" / "Brain/sensor" dưới đây vẫn đòi một in-app tick capture, và ràng buộc "không
 > chạy full backend" vẫn còn hiệu lực. Xem [§ Trạng thái khoá số](#trạng-thái-khoá-số).
+>
+> **Cập nhật 2026-07-27 — dụng cụ đã có, số thì chưa.** In-app tick capture đã ship
+> ([`src-tauri/src/core/tick_capture.rs`](src-tauri/src/core/tick_capture.rs) + bốn lệnh IPC, có
+> test ở `tick_capture_tests.rs`, xanh trong lần chạy 2026-07-27 ghi ở
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)).
+>
+> 🔧 **"Instrumentation đã ship" KHÔNG phải "đã có một phép đo phần cứng".** Tính đến 2026-07-27
+> **chưa có lần chạy app desktop nào**, nên **không tồn tại** một số đo tick nào từ app đang chạy —
+> mọi hàng "Physics tick" / "Brain/sensor" / "Full-brain agents" dưới đây vẫn trống hoặc là proxy.
+> Thủ tục ba bước để lấy số nằm ở [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md); nó
+> cần một con người mở app, việc mà CLAUDE.md cấm tự động hoá trên máy này.
 
 Tài liệu này mô tả *reproducible benchmark scaffold* của Anima-Engine: cách capture
 seed + config + hardware + timings một cách **rẻ và trung thực**, và cách thay các số
@@ -72,10 +83,12 @@ Các biến môi trường tuỳ chọn (đều có default, không bắt buộc
    [`src-tauri/src/core/sim_rules.rs`](src-tauri/src/core/sim_rules.rs)) và `hardware`
    (`platform`/`release`/`arch`/`cpuModel`/`cpuCount`/`totalMemMB` lấy từ `os.*`).
    Đây là phần bắt buộc để một số đo có thể tái lập.
-   > **Finding đang mở:** `gridDim=128` khớp `DEFAULT_GRID_DIM` trong `sim_rules.rs`, nhưng hằng số
-   > đó **không được đọc ở đâu trong `src/`**, còn thế giới thật chạy **256²**
-   > (`MapSettings::default()`). Bộ Criterion dùng 256². Chưa sửa ở đây vì nó chạm vào
-   > [`COORDINATE_CONTRACT.md`](COORDINATE_CONTRACT.md) §"Backend sim".
+   > **Finding đã đóng 2026-07-27.** Trước đây `gridDim=128` khớp `DEFAULT_GRID_DIM`, nhưng hằng số
+   > đó **không được đọc ở đâu trong `src/`** còn thế giới thật chạy **256²**
+   > (`MapSettings::default()`). `DEFAULT_GRID_DIM` nay là **256**, và
+   > `s03_default_grid_dim_tracks_map_settings_default` buộc nó bằng `MapSettings::default().width`.
+   > `COORDINATE_CONTRACT.md` §4 cùng `SIMULATION_RULES.md` §5 đã sửa theo (0.78125 thay vì 1.5625).
+   > Bộ Criterion vốn đã dùng 256², nên **số đo không đổi** — chỉ nhãn `config.gridDim` mới đúng.
 2. **Timings — hai loại, ghi nhãn khác nhau.**
    - `criterion/*` là **số đo thật**: trung vị Criterion, build release, một system mỗi entry, đọc
      từ `src-tauri/target/criterion/**/new/estimates.json`. Mỗi entry mang thêm `medianNs`,
@@ -125,3 +138,9 @@ Cái còn thiếu không phải phần cứng mà là **phạm vi**: những gì
 ba hàng đắt nhất trong bảng trên (`Physics tick`, `Brain/sensor`, `Full-brain agents MVP`) đòi một
 nhịp thật của app đang chạy. Chừng nào chưa có, đừng trích một con số nào ở đây như thể nó là ngân
 sách khung hình.
+
+**Tính đến 2026-07-27, ba hàng đó vẫn `chưa đo`, và dụng cụ đo đã có.** Đó là hai câu khác nhau và
+phải giữ chúng khác nhau: `core/tick_capture.rs` tồn tại, có test, và đo đúng lịch trình sống — nhưng
+**chưa ai chạy app desktop**, nên không có mẫu nào. Khi có, số đọc từ `p50_ns` của file export và
+điền vào bảng trên **kèm lệnh và ngày**, theo quy ước phân loại ở
+[`STATE_OF_THE_PROJECT.md` §1.1](docs/planning/STATE_OF_THE_PROJECT.md#11-phân-loại-mọi-con-số-trong-tài-liệu).

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
-import React from 'react';
-import * as PIXI from 'pixi.js';
+import { render, act } from '@testing-library/react';
+// No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
+// this file names `React` itself.
+import { segments } from '../mocks/segment_fixtures';
 
 // Mock pixi.js classes and systems
 const mockGraphicsMethods = {
@@ -98,10 +99,13 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
       putImageData: vi.fn(),
     };
     const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    // `getContext` is an overload set, so the replacement is described by the property's own type
+    // rather than by `any`. The stub itself stays structural: it answers `'2d'` with the two
+    // methods the terrain path calls and everything else with `null`, which is what jsdom does.
     HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation((id: string) => {
       if (id === '2d') return mockContext;
       return null;
-    }) as any;
+    }) as typeof HTMLCanvasElement.prototype.getContext;
 
     render(
       <PixiViewport segments={[]} raycasts={[]} pheromoneGrid={null} projection="xz" />
@@ -121,7 +125,6 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
     // Biome 0: DeepOcean (0x0a1450) -> R=10, G=20, B=80
     // Biome 2: Beach (0xdcd38c) -> R=220, G=210, B=140
     // Biome 10: Snow (0xf0f0f5) -> R=240, G=240, B=245
-    const imgData = mockContext.createImageData.mock.results[0].value;
     
     // Restore getContext
     HTMLCanvasElement.prototype.getContext = originalGetContext;
@@ -146,10 +149,10 @@ describe('PixiViewport Gen 2 Terrain Integration', () => {
     });
 
     // We pass 1 segment so that hasSegments is true, enabling range-based scaling
-    const mockSegments = [
+    const mockSegments = segments(
       { agent_id: 1, segment_id: 0, x: -50, z: -20, agent_type: 'predator' },
       { agent_id: 1, segment_id: 1, x: 50, z: 20, agent_type: 'predator' },
-    ];
+    );
 
     render(
       <PixiViewport segments={mockSegments} raycasts={[]} pheromoneGrid={null} projection="xz" />

@@ -18,9 +18,19 @@ tauri-plugin-shell = "2.0.0"
 anima-domain = { path = "crates/anima-domain", features = ["bevy"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 # `raw_value` lets the snapshot envelope hold the state as the exact bytes written to disk, so the
-# checksum covers those bytes instead of a re-serialization. serde_json's f64 round trip is not
-# bit-exact (observed: 990.5102615356445 reads back as ...444), so re-hashing cannot be trusted.
-serde_json = { version = "1.0", features = ["raw_value"] }
+# checksum covers those bytes instead of a re-serialization. It still earns its place after
+# `float_roundtrip`: it also makes the hash immune to map iteration order and to any future change
+# in how the envelope is formatted, which are different failures from the float one.
+#
+# `float_roundtrip` fixes the float one at its actual source. The old comment here blamed the
+# *writer* — "serde_json's f64 round trip is not bit-exact (observed: 990.5102615356445 reads back
+# as ...444)". The observation was real and the attribution was wrong: serde_json writes floats with
+# `ryu`, which is shortest-round-trip and exact, and that exact text was written. It is the default
+# **parser** that is a fast approximation and may land 1 ULP away. This feature switches it to a
+# correctly-rounded one. It adds no crate — the parser lives inside serde_json — and it turns a
+# lossy save/load boundary into an exact one; see
+# `snapshot_checkpoint_tests::serde_json_round_trips_every_awkward_f64_bit_for_bit`.
+serde_json = { version = "1.0", features = ["raw_value", "float_roundtrip"] }
 # Generates the TypeScript IPC types from the Rust structs (G1.4). The hand-written mirrors in
 # src/types/ drifted from the backend and a dead feature shipped for it (`head_directions`); a
 # generated type makes that a compile error instead of a silent no-op. Exports run under `cargo test`.
@@ -110,6 +120,52 @@ criterion = { version = "0.5", default-features = false, features = [
 [[bench]]
 name = "tick_systems"
 harness = false
+
+# Integration targets that cannot exist without an optional subsystem.
+#
+# Each of these files is a crate-level `#![cfg(feature = "...")]`. Without `required-features` Cargo
+# still *builds* them under `--no-default-features`, producing seven binaries that report
+# `running 0 tests` and exit 0 — a passing gate over 1,877 lines that never ran. `required-features`
+# tells Cargo not to schedule the target at all, which is the honest state: the target does not
+# exist in that configuration, rather than existing and being empty.
+#
+# The crate-level `#![cfg(...)]` stays as a second line of defence, and
+# `feature_gated_targets_tests.rs` pins the two halves together so neither can drift away from the
+# other in silence.
+[[test]]
+name = "adversarial_challenger_tests"
+path = "tests/adversarial_challenger_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_tests"
+path = "tests/migration_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_high_throughput_tests"
+path = "tests/migration_high_throughput_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_narrow_bounds_loop_tests"
+path = "tests/migration_narrow_bounds_loop_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_panic_tests"
+path = "tests/migration_panic_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_stress_tests"
+path = "tests/migration_stress_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "phase5_burn_wgpu_fallback"
+path = "tests/phase5_burn_wgpu_fallback.rs"
+required-features = ["ml-wgpu"]
 
 [features]
 # G2 gate: a DEFAULT build must not compile the heavy optional subsystems. The desktop app turns

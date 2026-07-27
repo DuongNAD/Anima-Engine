@@ -1,38 +1,65 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
-// Every spec here navigates to the Vite dev server on 5173, and until this config grew a `webServer`
-// block nothing started one — so each spec hit its `catch` and called `test.skip()`. Combined with
-// there being no `test:e2e` script at the repo root and no CI step, the whole directory was inert.
+// # The port this suite runs on, and why it is not 5173
 //
-// Two of the seven specs (phase3_adversarial, phase6_adversarial_stress) stub the Tauri IPC inside
-// the page via `addInitScript` and need nothing but this server; they are real gates now. The other
-// five spawn `src-tauri/target/release/anima-engine` and skip themselves when it is absent, which is
-// what happens on a machine that has not run `cargo build --release --features desktop`. That is
-// reported as a skip rather than a pass — see the note in the CI workflow.
+// This config used to hard-code 5173 with `reuseExistingServer: !process.env.CI`, i.e. "locally,
+// adopt whatever is already listening". That is not a theoretical hazard. Measured on this machine
+// on 2026-07-27: port 5173 was held by a **Vite dev server belonging to `E:\Project\LIVA`**, an
+// unrelated project. A local `npm run test:e2e` at that moment would have driven LIVA's app,
+// navigated successfully, found none of Anima's DOM, and reported the mismatch as skips — a green
+// wall that tested nothing.
+//
+// Two changes close it:
+//
+//   1. **Own port, never adopted.** `reuseExistingServer` is false everywhere, not just in CI, so
+//      Playwright always starts the server it tests. The port defaults to 5177 rather than 5173 so
+//      an ordinary `npm run dev` session can keep running alongside the suite; `strictPort` means a
+//      collision is a loud failure rather than a silent hop to another port.
+//   2. **Identity is proven, not assumed.** `global-setup.ts` fetches the served page and refuses to
+//      continue unless it is Anima. A wrong app is a hard failure. It must never be a skip: a skip
+//      is what let this go unnoticed.
+//
+// Override with `ANIMA_E2E_PORT` if 5177 is taken.
+const PORT = Number(process.env.ANIMA_E2E_PORT ?? 5177);
+const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+// The repo root: `tests/` is its own npm package and has no dev server of its own.
+const REPO_ROOT = path.resolve(__dirname, '../..');
+
 export default defineConfig({
   testDir: './',
+  // The canonical view capture is a GPU-bound producer with its own config; see capture.config.ts.
+  testIgnore: ['**/canonical_views.spec.ts'],
   timeout: 30 * 1000,
   expect: {
     timeout: 5000,
   },
   reporter: 'list',
-  // Pays for Vite's cold compile once, before any spec's 5 s navigation timeout starts. See the
-  // file for why the specs otherwise skipped themselves claiming the server was unreachable.
+  // Pays for Vite's cold compile once, before any spec's navigation timeout starts, AND asserts the
+  // server is serving Anima. See the file for both.
   globalSetup: path.resolve(__dirname, './global-setup.ts'),
   use: {
     headless: true,
-    baseURL: 'http://localhost:5173',
+    // Specs navigate with a relative path so the port lives in exactly one place.
+    baseURL: BASE_URL,
   },
   webServer: {
-    command: 'npm run dev',
-    // The repo root: `tests/` is its own npm package and has no dev server of its own.
-    cwd: path.resolve(__dirname, '../..'),
-    url: 'http://localhost:5173',
-    // vite.config.ts sets strictPort on 5173, so a second server cannot come up alongside a running
-    // one. Locally that means reuse; in CI there is never one to reuse and a stray listener on 5173
-    // should fail loudly rather than be silently adopted.
-    reuseExistingServer: !process.env.CI,
+    // `--strictPort` so a busy port fails instead of Vite silently choosing another one and the
+    // suite then testing nothing at the URL it believes in.
+    //
+    // `--host 127.0.0.1` so the server binds the exact interface `url` below probes. Left unset,
+    // Vite binds whatever `localhost` resolves to, and since Node 17 that is *verbatim* order —
+    // `::1` first wherever /etc/hosts lists it, which is every Linux runner. The failure that
+    // produces is silent on the server side: CI run 30269255861 printed `VITE v8.1.5 ready in
+    // 190 ms` on `[::1]:5177` and then sat there while Playwright polled `127.0.0.1:5177` and got
+    // ECONNREFUSED for the full 120 s. Windows binds dual-stack, so the two addresses are the same
+    // door here and this could only ever fail on CI.
+    command: `npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort`,
+    cwd: REPO_ROOT,
+    url: BASE_URL,
+    // Never adopt a server this suite did not start. See the note at the top of this file.
+    reuseExistingServer: false,
     timeout: 120 * 1000,
     stdout: 'pipe',
     stderr: 'pipe',
@@ -46,3 +73,5 @@ export default defineConfig({
     },
   ],
 });
+
+export { BASE_URL, PORT };

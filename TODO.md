@@ -4,10 +4,110 @@
 > [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md)** — đó là tài liệu
 > một phiên mới đọc đầu tiên. File này giữ **nhật ký công việc** theo thứ tự thời gian ngược, để tra
 > cứu "việc đó đã làm khi nào và vì sao". Phần "Mô hình Thỏ Papercraft" cũ được giữ ở cuối file như lưu trữ.
+>
+> ## 📜 Mọi con số trong file này là **đo lịch sử**
+>
+> Mỗi mục ghi kết quả *tại commit của mục đó*, kể cả mục trên cùng. Một mục mới hơn ở nhánh khác,
+> hoặc một lần chạy lại sau đó, sẽ cho số khác — và điều đó **không** làm mục cũ sai, nó chỉ làm mục
+> cũ không còn là hiện tại. **Trạng thái hôm nay chỉ ở một chỗ:**
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ---
 
-# ⏪ [MỚI NHẤT] OSS-071 — `simplify()`, và chỗ nó suýt nói dối (2026-07-26)
+# ⏪ [MỚI NHẤT] Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
+
+`§3.3` và nửa còn lại của `§3.2` trong `STATE_OF_THE_PROJECT.md`. Ba mảnh khoá vào nhau:
+
+1. **Lịch trình sống có đúng một định nghĩa.** `core/simulation_schedule.rs::build_tick_schedule` là
+   khối `add_systems` đã nằm giữa closure 900 dòng của `SimulationEngine::start`, tách ra nguyên
+   trạng. Trước đó mọi test headless tự khai một `.chain()` khác — tức là ghim một lịch trình app
+   **không** chạy.
+2. **`LiveExperimentAdapter: ExperimentModel`** (`core/live_experiment.rs`) chạy lịch trình đó qua
+   **cùng** `experiment_runner` với `ReferenceEvolutionWorld`. `RefCell<World>` chứ không `unsafe`:
+   hai method của trait nhận `&self` còn mọi query Bevy cần `&mut World`, nên cách trung thực là
+   mượn động, không phải cache một giá trị sẽ ôi.
+3. **`core/tick_capture.rs`** đo một tick của lịch trình đó: ba pha kẹp **chính xác** bằng `Instant`
+   trong vòng lặp sim, bốn pha còn lại giới hạn bằng checkpoint và **nói ra** rằng chúng chỉ là
+   checkpoint (`PhaseSummary.exact`). Ring cấp phát sẵn, không kênh, không thread.
+
+## Gate checkpoint lộ ra hai lỗ persistence thật
+
+- **Pha stride của regrowth sống trong `Local<usize>`** — trạng thái quỹ đạo nằm ở chỗ không snapshot
+  nào với tới. `REGROWTH_STRIDE = 4` nên một lần resume mọc lại **một phần tư khác** của thế giới.
+  Gate cũ không bắt vì `K = 1500` chia hết cho 4. Nay là `ResourceField::regrowth_phase`, có trong
+  save (schema 5) **và** trong `world_checksum`.
+- **Một tick để lại suy luận đang bay.** App trả lời request ở tick *sau*, nên ở ranh giới checkpoint
+  hai batch khoá theo `Entity` đang nằm trong kênh — mà id entity không ổn định qua restore. Adapter
+  trả lời **trong chính tick đã hỏi** (`live_inference_pump_system`), nên tick là nguyên tử.
+
+## `MIN_SUPPORTED_SCHEMA` không chặn bump như tài liệu cũ nói
+
+ADR-0004 và mục "Hoãn có lý do" bên dưới đều viết rằng bump `SCHEMA_VERSION` 4→5 sẽ **mất khả năng
+đọc save v2**. Sai, và đã sửa cả hai chỗ: hằng số đó chỉ áp cho file **có** `schema_version` (v3+);
+v1/v2 được ghi không có envelope nên đi nhánh pre-envelope. Schema nay là 5 và test save v1/v2 vẫn xanh.
+
+**Chưa làm, nói thẳng:** chưa có lần chạy **app desktop** nào — số hiệu năng thật vẫn cần một con
+người bấm chạy với `ANIMA_TICK_CAPTURE`, thủ tục ở `docs/how-to/BENCHMARKING.md`.
+
+**Đo lịch sử tại `bb8248e` (2026-07-27)** — `cargo test --features desktop --no-fail-fast`
+**843 pass · 0 fail · 4 ignored** (79 target, 0 rỗng) và `cargo test --no-default-features
+--no-fail-fast` **825 pass · 0 fail · 4 ignored**; `cargo fmt --check` + clippy hai cấu hình exit 0;
+`npm run test` 109 pass, `npm run test:frontend` 432 pass, lint/ratchet 0/0, `npm run build` pass.
+
+> Bản ghi đầu tiên của mục này viết `841`/`823`, lấy từ một lần chạy **trước** lần cuối cùng của
+> chính commit đó — đúng loại "chậm một lần chạy" mà quy ước ở đầu file tồn tại để chặn. Số trên là
+> số cuối cùng đã ghi trong commit message của `bb8248e`. Số **hiện tại** (khác, vì `2285a92` đã
+> thêm test và đổi allow-list) ở
+> [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+---
+
+# ⏪ OSS-071b — nối `simplify` vào tracker sống (2026-07-26)
+
+`LineageTracker::compact(samples)` thay thế **thật** bộ nhớ của `InMemoryLineageTracker`, gọi ở
+thread tiến hoá mỗi 50 epoch. `746 pass · 0 fail`, 75 target 0 rỗng, fmt + clippy (cả hai cấu hình
+feature) sạch, docs link 416/0 gãy.
+
+## Tập sample KHÔNG phải "ai đang sống"
+
+Mọi `lineage_id` trong archive MAP-Elites đều có thể được chọn làm cha ở epoch sau, và một elite
+**không nhất thiết là tổ tiên của ai đang sống**. Prune theo liveness sẽ xoá đúng node mà lần sinh
+sản kế tiếp gọi tên.
+
+Hazard đó **từng là hỏng âm thầm**: `add_reproduction` ghi cạnh vô điều kiện, nên một sample bị sót
+tạo ra **cạnh mồ côi** — và cạnh mồ côi làm hỏng **toàn bộ** đồ thị, vì cả `to_newick` lẫn `simplify`
+đều từ chối xử lý đồ thị chứa nó. Một lần ghi sai đầu độc export và mọi lần compaction sau.
+
+Nay `add_reproduction` **từ chối ghi** cạnh có cha không tồn tại, báo lỗi nêu tên cha đó, và giữ lại
+những cạnh hợp lệ khác trong cùng lần gọi. Mất một liên kết tổ tiên thay vì mất cả đồ thị. Đó chính
+là thứ khiến compaction an toàn để bật — và nó là cải thiện độc lập, vì trước đây không gì chặn một
+cạnh mồ côi cả.
+
+## Chạy với nén TẮT, có chủ ý
+
+Nén là bước đạt cận O(alive), nhưng nó xoá node mà consumer **vẫn đang đọc**: đồ thị UI vẽ lấy thẳng
+từ tracker, và `get_mutations_count` đi qua `RelationType` **từng cạnh** — thứ một cạnh đã nén không
+mang được. Nên compaction sống chỉ bỏ nhánh tuyệt chủng, **đúng chỗ genotype nằm**, và giữ nguyên
+thân cây.
+
+**Việc kế tiếp để mở khoá phần còn lại:** lưu số đếm đột biến tích luỹ theo node, kiểu `Option<u32>`
+chứ không phải `u32` — mặc định `0` sẽ đọc thành "không có đột biến" cho mọi save cũ.
+
+## Neo4j không bị đụng
+
+Chỉ bộ nhớ trong co lại. Hệ quả cần biết: khi Neo4j online, `get_lineage_graph` đọc từ database nên
+vẫn trả **đồ thị đầy đủ**. Xoá khỏi database là thao tác phá huỷ từ xa, cần quyết định riêng.
+
+## Control âm
+
+`compacting_against_every_node_removes_nothing` — nếu `compact` xoá bất kể tập sample thì mọi khẳng
+định khác vẫn xanh trong khi nó âm thầm phá dữ liệu. Và
+`compaction_refuses_a_malformed_graph_rather_than_rewriting_it`: đồ thị có chu trình thì bỏ lần
+compaction, không im lặng viết lại — viết lại sẽ **xoá bằng chứng** về cách nó hỏng.
+
+---
+
+# ⏪ OSS-071 — `simplify()`, và chỗ nó suýt nói dối (2026-07-26)
 
 `src-tauri/src/evolution/simplify.rs` + `tests/lineage_simplify_tests.rs` (13 test) + 6 unit test.
 `726 pass · 0 fail`, 73 target 0 rỗng, fmt + clippy sạch, docs link 412/0 gãy.
@@ -182,8 +282,10 @@ Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
 1. **`OPEN_SOURCE_POLICY.md` nói "repository hiện chưa có `LICENSE`".** File tồn tại, và là
    **proprietary, all rights reserved**. Blocker quản trị OSS-003 vì thế đã gỡ — nhưng theo hướng
    **thắt chặt**: thành phần copyleft (GPL/AGPL) nay là chặn cứng cho mọi đường tiếp xúc với code,
-   áp cho ít nhất SLiM, Avida, ALIEN và Thrive. Hệ quả phụ chưa xử lý: chưa có `NOTICE` cho các
-   thành phần permissive đang được phân phối (mục 3.16 mới).
+   áp cho ít nhất SLiM, Avida, ALIEN và Thrive. Hệ quả phụ **đã xử lý 2026-07-27:** `NOTICE` và
+   `licensing/THIRD_PARTY_LICENSES.txt` đều đã sinh tự động và có gate CI; sau đợt vendor
+   `licensing/upstream/` (2026-07-27) chỉ còn **1** thành phần mà upstream chưa từng publish văn bản
+   license, liệt kê kèm chứng cứ tìm kiếm ở `licensing/UNRESOLVED.md` (mục 3.16).
 2. **`three-mesh-bvh` được xếp "Pilot ưu tiên cao" trên một tiền đề code đã bác bỏ.** Không có
    `THREE.Raycaster` nào trong `src/`; cao độ địa hình lấy giải tích qua `sampleElevation`; LOD theo
    khoảng cách đã có ở `chunkLod.ts`. Còn `raycasts` trong `PixiViewport.tsx` là telemetry cảm biến
@@ -222,7 +324,8 @@ Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
 ## Ba việc tiếp theo, theo thứ tự
 
 1. OSS-010 Criterion (P0, chặn §3.2) · 2. OSS-070 xuất Newick (~40 dòng, 0 dependency) ·
-3. Phần còn nợ của OSS-003: tách phạm vi license và tạo `NOTICE`.
+3. Phần còn nợ của OSS-003: tách phạm vi license. (`NOTICE` xong 2026-07-27; xem
+   `licensing/UNRESOLVED.md` cho 1 mục còn chặn phát hành.)
 
 ---
 
@@ -254,10 +357,15 @@ vi `SNAPSHOT_CONTRACT` §8 tự nhận. ADR-0004 tự dặn "không tuyên bố 
 
 ## Hoãn có lý do, không phải quên
 
-Lưu trace vào save state cần bump `SCHEMA_VERSION` 4→5, mà `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`
-nên bump sẽ **mất khả năng đọc save v2**. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ là sai
-thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState` lẫn
-`world_checksum` một lượt (§8).
+Lưu trace vào save state cần bump `SCHEMA_VERSION`. Trả cái giá đó cho dữ liệu chưa mode nào tiêu thụ
+là sai thứ tự. Nó đi cùng lúc replay thành mode sống, và khi đó phải vào **cả** `SavedSimulationState`
+lẫn `world_checksum` một lượt (§8).
+
+> **Sửa 2026-07-27.** Câu cũ ở đây nói bump 4→5 sẽ "mất khả năng đọc save v2" vì
+> `MIN_SUPPORTED_SCHEMA = SCHEMA_VERSION - 2`. Sai: hằng số đó chỉ áp cho file **có** `schema_version`
+> (v3 trở lên); v1/v2 không có envelope nên đi nhánh pre-envelope của `snapshot::from_bytes` bất kể
+> nó. Schema nay là **5** (gói live-adapter) và test save v1/v2 vẫn xanh. Cái đúng còn lại là lý do
+> **thứ tự**, không phải lý do tương thích.
 
 Ghi lại một phân biệt đáng giá khi tới lúc đó: **khi ghi, trace là đầu ra** và không lái thế giới nên
 không thuộc checksum; **khi phát lại, phần trace còn lại là đầu vào** và thuộc. Cùng một dữ liệu, hai
