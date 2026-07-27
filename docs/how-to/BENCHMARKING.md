@@ -220,14 +220,21 @@ Quy ước phân vị là **nearest rank** (`ceil(p/100·n) − 1`), nên mọi 
 phải nội suy. `plant_soil_weather` xuất hiện trong `unavailable` kèm lý do, vì `core::dynamic_fields`
 **không** nằm trong lịch trình sống — báo 0 cho nó sẽ là bịa.
 
-**Cái gói này chưa làm, nói thẳng:** chưa có lần chạy nào của **app desktop đầy đủ**. Bằng chứng
-hiện có là headless — cùng lịch trình (`simulation_schedule::build_tick_schedule`, đúng hàm
-`SimulationEngine::start` gọi), qua `tests/tick_capture_tests.rs`.
+**Đã chạy một lần trên app desktop đầy đủ — 2026-07-27.** Chủ dự án chạy checklist dưới đây và thu
+được 1800 mẫu: `full_tick` p50 **1642,2 µs**, bản **debug**, executor multi-threaded, 256², **10
+agent**. Số và toàn bộ bối cảnh ở
+[`BENCHMARK_BASELINE.md` § Đo trong app](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug).
+
+**Cái vẫn chưa có:** một lần chạy **release**, và một lần chạy ở **1.000 agent**. Lần chạy trên là
+debug với 10 agent, nên nó đóng ba hàng của bảng baseline và **không** đóng hàng
+`Full-brain agents MVP`. Bằng chứng headless vẫn nguyên giá trị của nó — cùng lịch trình
+(`simulation_schedule::build_tick_schedule`, đúng hàm `SimulationEngine::start` gọi), qua
+`tests/tick_capture_tests.rs`.
 
 Thủ tục đo cần **một con người mở app**, và nó nằm ở
 [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist) bên dưới.
 CLAUDE.md cấm agent chạy full backend trên máy dev này, nên không phiên tự động nào được thực hiện
-bước đó — checklist tồn tại để chủ dự án chạy nó **một lần**, không phải để agent chạy hộ.
+bước đó — checklist tồn tại để chủ dự án chạy nó, không phải để agent chạy hộ.
 
 ## Checklist một lần chạy cho chủ dự án (one-run owner checklist)
 
@@ -266,6 +273,24 @@ cargo build --features desktop
 production và dev), nên phần lớn thời gian đã trả xong.
 
 Cần thêm: cổng **5173** trống (`strictPort`), vì `beforeDevCommand` tự chạy `npm run dev`.
+
+> ⚠️ **"Trống" nghĩa là trống ở CẢ HAI địa chỉ, và đây là bẫy tốn nhiều thời gian nhất của lần chạy
+> 2026-07-27.** `devUrl` là `http://localhost:5173`, còn Node phân giải `localhost` theo thứ tự
+> *verbatim* từ v17 — `::1` trước, trên Windows lẫn Linux. Hôm đó `[::1]:5173` đang bị dev server
+> của **một project Vite khác** giữ (5173 là mặc định của Vite, nên mọi project đều muốn nó), còn
+> server của Anima bind được `127.0.0.1:5173`. Cả hai cùng sống, và webview mở **ứng dụng của project
+> kia bên trong cửa sổ Anima**: một trang trắng, không lỗi ở đâu cả — dev server báo `ready`, trang
+> trả 200, và CSP cho phép `http://localhost:5173` vì cả hai server đều là địa chỉ đó.
+>
+> Kiểm trước khi mở app, và đọc **cả hai dòng**:
+>
+> ```powershell
+> Get-NetTCPConnection -LocalPort 5173 -State Listen | Select-Object LocalAddress, OwningProcess
+> ```
+>
+> Còn tiến trình nào thì tắt trước. Và ngay khi cửa sổ hiện, kiểm định danh trước khi tin bất cứ thứ
+> gì nó vẽ ra: `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và tiêu đề phải là
+> "Anima-Engine Control Center". Xem [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
 
 ### Bước 1 — Đặt biến môi trường, rồi mở app (PowerShell, cùng một cửa sổ)
 
@@ -343,10 +368,49 @@ await window.__TAURI_INTERNALS__.invoke('get_tick_capture_status')
 - ✅ **Đúng:** `status: "Complete"` và `accounting.samples_recorded: 1800`.
 - 🟡 **Chấp nhận được:** `status: "Recording"` với `samples_recorded` vài trăm — đợi thêm rồi gọi
   lại. Bất kỳ số mẫu nào > 0 cũng xuất được, chỉ là ít mẫu hơn.
-- ❌ **Sai:** `status: "Idle"` → biến môi trường không tới được tiến trình (xem bước 1).
-- ❌ **Sai:** `accounting.ticks_observed: 0` → engine chưa từng chạy; quay lại bước 3.
+- ❌ **Sai:** `status: "Idle"` → **hai nguyên nhân, phân biệt bằng `accounting.ticks_observed`.** Khối
+  đọc `ANIMA_TICK_CAPTURE` nằm **bên trong** luồng engine
+  ([`core/simulation_loop.rs`](../../src-tauri/src/core/simulation_loop.rs), tại
+  `CaptureConfig::from_env()`), nên nó chỉ chạy khi engine khởi động:
+  - `ticks_observed: 0` → **engine chưa từng chạy**. Bạn chưa bấm `Bắt đầu mô phỏng`, không phải
+    biến môi trường sai. Quay lại bước 3. *(Đo được 2026-07-27: đây là trường hợp thực tế xảy ra, và
+    bản trước của dòng này chỉ ghi nguyên nhân kia nên người chạy tưởng mình gõ sai chuỗi.)*
+  - `ticks_observed` > 0 → engine đã chạy nhưng **biến môi trường không tới được tiến trình**; xem
+    bước 1. Không cần khởi động lại app — dùng đường IPC ở dưới.
+- ❌ **Sai:** `workload.dimensions_measured: false` → chưa tick nào đi qua, cùng nghĩa với
+  `ticks_observed: 0`.
 - ❌ **Đáng ghi lại:** `dropped_out_of_order` > 0 → executor đa luồng đã xáo trộn các checkpoint.
-  Không phải lỗi của bạn; **chép con số đó lại**, nó là dữ liệu về chính executor.
+  Không phải lỗi của bạn; **chép con số đó lại**, nó là dữ liệu về chính executor. *(Đo được
+  2026-07-27: **1** trên 2101 tick.)*
+
+#### Đường IPC — không cần biến môi trường, không cần khởi động lại
+
+Biến môi trường ở bước 1 chỉ tiện khi bạn nhớ đặt nó **trước** khi app mở. Nếu quên, hoặc muốn đo
+lại với tham số khác, `start_tick_capture` làm đúng việc đó **giữa lúc đang chạy** — sink được chèn
+vô điều kiện chính vì lý do này, nên không phải dựng lại thế giới:
+
+```js
+await window.__TAURI_INTERNALS__.invoke('start_tick_capture', { config: { warmup_ticks: 300, capacity: 1800, max_samples: 1800, sample_every: 1, groups: 127 } })
+```
+
+Trả về `null` là thành công (`Result<(), String>`); một chuỗi là thông báo từ chối của
+`CaptureConfig::validate`, không phải giá trị bị làm tròn cho hợp lệ.
+
+Hai chỗ dễ sai trong object đó, cả hai đều **im lặng** nếu gõ sai:
+
+- **Khoá là `snake_case`.** `CaptureConfig` không khai `#[serde(rename_all)]`, nên `warmupTicks`
+  không phải tên nó — khác với `fileName` ở bước 5, vốn là **tham số lệnh** nên bị đổi sang camelCase.
+  Cùng một lệnh gọi có thể có cả hai quy ước, và đó không phải nhầm lẫn.
+- **`groups` là một số, không phải mảng.** `PhaseMask(pub u16)` là newtype nên qua JSON là số trần.
+  `127` = đủ bảy pha (`TickPhase::ALL`, index 0–6). Mask rỗng bị `validate` từ chối; một mask hẹp
+  **không** làm đổi con số của mask rộng, nó chỉ đổi cái được xuất ra.
+
+Engine chưa chạy thì bật bằng chính console, `toggle_simulation` không nhận tham số nào và trả `true`
+khi vừa khởi động:
+
+```js
+await window.__TAURI_INTERNALS__.invoke('toggle_simulation')
+```
 
 ### Bước 5 — Xuất file (chú ý: tên khoá là `fileName`, KHÔNG phải `file_name`)
 

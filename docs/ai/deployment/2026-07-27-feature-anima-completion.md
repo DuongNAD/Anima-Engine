@@ -69,8 +69,31 @@ no inline `<script>` bodies, hardening directives present. It cannot prove the a
 policy, because that needs the Tauri webview, and CLAUDE.md records that running the full backend on
 the development machine has crashed it.
 
-**Missing step:** one `npm run tauri:dev` by a human, confirming the app renders and IPC works with
-no CSP violation in the webview console. Until that happens the policy is *validated*, not *verified*.
+**Done — 2026-07-27.** The project owner ran `npm run tauri:dev` from
+`.worktrees/feature-anima-completion` at `0f5b4d3`, opened the webview's DevTools, reloaded so the
+console covered a full page load, and drove IPC from it. The policy is now *verified*, not merely
+validated:
+
+- The app renders. "Anima-Engine Control Center" mounted, the status panel updated live, and the
+  window reached **91 781 ticks**.
+- **No CSP violation.** Across a full page load the console held four
+  `[TAURI] Couldn't find callback id …` warnings — the expected consequence of reloading a webview
+  while Rust holds promises from the previous page — and the React DevTools notice. Nothing matching
+  `Refused to …` or `Content Security Policy`.
+- **IPC works from the webview.** `window.__TAURI_INTERNALS__` was defined, and
+  `toggle_simulation`, `start_tick_capture`, `get_tick_capture_status` and `export_tick_capture` all
+  returned real values — which is also how the tick-capture evidence in
+  [`BENCHMARK_BASELINE.md`](../../../BENCHMARK_BASELINE.md) was produced.
+
+The screenshot is held by the project owner; this repository still has no committed location for
+app screenshots, and [BENCHMARKING.md](../../how-to/BENCHMARKING.md) declines to invent one because
+`map-views/` is byte-pinned by a manifest and a stray file there disturbs a green gate.
+
+**One defect this found, and it was not the one being looked for.** The first launch showed a blank
+window: `devUrl` is `http://localhost:5173`, Node has resolved `localhost` verbatim since v17, and
+`::1` came first — which on that machine was a Vite dev server belonging to an unrelated project.
+The webview loaded *that* application inside the Anima window. CSP was never the problem; two
+projects sharing Vite's default port were. See §2.4.
 
 ### 2.2 Real-backend E2E
 
@@ -95,6 +118,33 @@ hardware; checking that the committed bytes are the described bytes does not.
 
 Re-run the capture whenever `WORLD_GEN_VERSION`, the world identity, or a canonical camera pose
 changes — all three invalidate every image — then regenerate the manifest and commit both.
+
+### 2.4 `devUrl` names a hostname, and a hostname is not an address
+
+**Found by running §2.1, and it cost the first launch.** `tauri.conf.json` sets
+`devUrl: "http://localhost:5173"`. Vite's dev server binds whatever `localhost` resolves to; since
+Node 17 that resolution is *verbatim*, so `::1` is tried first on Windows and Linux alike. Nothing in
+the app pins which of the two addresses it gets, and 5173 is Vite's default — which every other Vite
+project on the machine also wants.
+
+What that produced, measured on 2026-07-27: `[::1]:5173` was held by an unrelated project's dev
+server while Anima's own beforeDevCommand server bound `127.0.0.1:5173`. Both succeeded, because one
+had claimed only the v6 side. The webview asked for `localhost`, got `::1`, and rendered **the other
+project's application inside the Anima window** — a blank page with a foreign widget in the corner.
+No error anywhere: the dev server logged `ready in 190 ms`, Tauri loaded a page that returned 200,
+and the CSP permits `http://localhost:5173`, which is what both servers were.
+
+This is the third instance of the same fault in one day. The other two were
+`tests/e2e/playwright.config.ts` and `tests/e2e/capture.config.ts`, both fixed in `72a6e34` and
+`0f5b4d3` by binding the dev server to the literal address the client probes.
+
+**Not fixed here, deliberately.** Changing `devUrl` mid-session would have changed the thing §2.1 was
+measuring. The durable fix is the same shape as the other two — pin `devUrl` to `http://127.0.0.1:5173`,
+give `npm run dev` a matching `--host`, and update the two `http://localhost:5173` entries in
+`devCsp` — and it is a change to how the app boots, so it belongs in its own commit with its own
+verification run. Until then, a developer whose machine has another Vite project running must free
+5173 before `npm run tauri:dev`, and should confirm `window.__TAURI_INTERNALS__` is defined before
+trusting anything the window shows.
 
 ## 3. Blockers that are not engineering
 
