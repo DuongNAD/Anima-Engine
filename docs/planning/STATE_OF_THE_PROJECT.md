@@ -37,6 +37,12 @@ gate chưa xanh.
 > Mọi con số ở lượt này **trùng với lượt đo tại `1cddeb5`**, và điều đó là kết quả mong đợi chứ không
 > phải dấu hiệu chép lại: merge chỉ đổi một file tài liệu, nên không có hành vi đo được nào thay đổi.
 > Số ở đây được **đo lại**, không mang sang.
+>
+> **Sau `068a750`, PR #21 nhận thêm ba commit và đã merge vào `main` tại `a053083`.** Không commit nào
+> chạm mã Rust hay mã ứng dụng: hai commit sửa **cấu hình chạy test** (`72a6e34`, `0f5b4d3`) và một
+> commit sửa tài liệu (`b744df0`). Vì vậy §1.a–§1.c vẫn mô tả đúng cây mã hôm nay; cái đổi là **cách
+> gate được chạy**, và cái đó được đo riêng ở [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3). Đọc
+> §1.e trước khi trích một hàng frontend hay E2E ở §1.b.
 
 Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và **loại khẳng định**:
 
@@ -85,7 +91,7 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 | 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
 | 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
 | 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed · 0 fail · 0 skip**, exit 0 |
-| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | **38 file · 432 passed · 0 fail · 0 skip**, exit 0 — chạy khi máy rảnh; xem §4 về nhiễu do tranh chấp CPU |
+| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | **38 file · 432 passed · 0 fail · 0 skip**, exit 0 — chạy khi máy rảnh; xem §4 về nhiễu do tranh chấp CPU. Số worker do `tests/vitest.config.ts` ghim (4 ở máy này, **2 khi `CI` được đặt**) — xem §1.e |
 | 📏 | Build | `npm run build` | exit 0 — `tsc` sạch, 806 module transform |
 | 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped**, exit 0, **và 0 `console.error` / `pageerror` / `TypeError` trong toàn bộ output thô** — server riêng cổng 5177 + kiểm định danh trong `global-setup.ts`; `ANIMA_E2E_REQUIRE_BACKEND` **cố ý không đặt**, nên `real_backend.spec.ts` không khai test nào |
 | 📏 | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script · đủ directive hardening — đọc `dist/` **vừa build ở hàng trên** |
@@ -146,6 +152,41 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 **"1 chưa có văn bản" là `hexf-parse` 0.2.1 (CC0-1.0), và nó vẫn đang chặn phát hành.** Upstream chưa
 bao giờ publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải việc
 kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và §3.16.
+
+### 1.e Sau PR #21 — đo 2026-07-27 tại `0f5b4d3`
+
+> Ba commit sau `068a750` đều là **hạ tầng test**, và cả ba sửa cùng một loại lỗi: một gate xanh trên
+> máy này và đỏ — hoặc không chạy nổi — ở nơi khác. Vì vậy mục này không lặp lại §1.a–§1.c; nó ghi
+> những gì §1 chưa từng có: **một lượt CI hoàn chỉnh trên runner GitHub**, và **một lần đo lại khả
+> năng tái lập của tám view chuẩn**.
+
+| Loại | Gate | Lệnh / nguồn | Kết quả |
+|---|---|---|---|
+| 📏 | **CI đầy đủ, runner GitHub** | Actions run `30271127942` tại `0f5b4d3` | Rust (`windows-latest`) **success, 15m03s** · Frontend (`ubuntu-latest`) **success, 4m15s** · GitGuardian success. **Lần đầu tiên cả hai job cùng xanh** trên nhánh này — hai lượt trước đó: một lượt Frontend đỏ ba bước, một lượt bị cancel giữa chừng |
+| 📏 | Test frontend (`tests/`) dưới cấu hình CI | `CI=1 npm run test:frontend` | **38 file · 432 passed · 0 fail**, 78,7s — worker do config chọn, không truyền cờ tay |
+| 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped** |
+| 📏 | **Tái lập view chuẩn** | `npm run capture:views` | **8/8 view byte-identical**, 3,0 phút — mỗi view chụp hai lần từ hai browser context sạch, hai SHA-256 bằng nhau; `git status` **sạch** sau cả 16 lần chụp, nên byte sinh lại **trùng ảnh đã commit** |
+| 📏 | Lint frontend + ratchet | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **562 link trong 110 file**, 0 gãy (§1.c ghi 518/99 tại `e4eff6c`; chênh lệch là tài liệu thêm ở PR #21) |
+| 📏 | Lifecycle lint | `npx ai-devkit lint --feature anima-completion` | All checks passed |
+
+> **Ba lỗi đã sửa, và điều đáng nhớ ở mỗi lỗi không phải bản vá.**
+>
+> 1. `tests/vitest.config.ts` ghim `maxWorkers: 4`, đo trên desktop 14 nhân. Runner `ubuntu-latest`
+>    có **4 vCPU**, nên 4 ở đó là một worker mỗi nhân — đúng cái tranh chấp mà dòng đó sinh ra để
+>    tránh, và hai file `render(<App />)` chết ở `Test timed out in 15000ms`. Nay là
+>    `process.env.CI ? 2 : 4`. **Một hằng số điều chỉnh theo phần cứng không được ghim cứng khi nó
+>    phải chạy trên hai loại máy.**
+> 2. `playwright.config.ts` dò `http://127.0.0.1:<port>` còn lệnh `npm run dev` không đặt host, nên
+>    Vite bind theo cái `localhost` phân giải ra — từ Node 17 là thứ tự *verbatim*, `::1` đứng trước.
+>    Server lên khoẻ (`ready in 190 ms`) và Playwright gõ cửa khác suốt 120 giây. Nay có
+>    `--host 127.0.0.1`.
+> 3. `capture.config.ts` **cùng lỗi đó**, và nó hỏng **ngay trên Windows** — nên "lỗi này chỉ xảy ra
+>    trên Linux" là sai, Node phân giải verbatim trên mọi nền tảng. Hệ quả nặng hơn hai lỗi trên:
+>    `npm run capture:views` là **producer duy nhất** của tám view chuẩn, và nó **không khởi động
+>    được**. Không gate nào đỏ, vì gate CI (`mapManifestEvidence.test.ts`) **hash ảnh đã commit** chứ
+>    không sinh lại chúng. **Một gate đặt trên artifact không thể phát hiện producer của artifact đó
+>    đã chết** — hàng `capture:views` ở bảng trên tồn tại để lần sau có người thực sự chạy nó.
 
 ### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
 
@@ -288,6 +329,10 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 
 ### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
 
+> **PR #21 đã merge vào `main` tại `a053083`** (2026-07-27), sau ba commit sửa hạ tầng test mà
+> `068a750` chưa có. Bảng §1 vẫn đúng; cái mới nằm ở [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3)
+> — lượt CI đầy đủ đầu tiên xanh trên runner GitHub, và tám view chuẩn đo lại byte-identical.
+
 > **Việc #1 của bàn giao trước đã XONG.** Số đếm đột biến theo node đã ship và nén lưu trữ đã bật —
 > xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước), nay chỉ còn OSS-072 (MRCA). Chi tiết cả đợt
 > ở [`docs/ai/planning/2026-07-27-feature-anima-completion.md`](../ai/planning/2026-07-27-feature-anima-completion.md)
@@ -306,7 +351,13 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 đã build** so với chính sách đã khai; nó **không** chứng minh app khởi động được dưới chính sách đó,
 vì CLAUDE.md cấm chạy full backend trên máy này.
 
-**Ba cái bẫy mới, trả giá ngày 2026-07-27:**
+**Bốn cái bẫy mới, trả giá ngày 2026-07-27:**
+
+- **Một gate đặt trên artifact không thể thấy producer của artifact đó đã chết.** `npm run
+  capture:views` — producer duy nhất của tám view chuẩn — **không khởi động được** vì webServer dò
+  `127.0.0.1` còn Vite bind `::1`, và **không gate nào đỏ**: CI chỉ hash tám PNG đã commit. Ảnh vẫn
+  xanh trong lúc khả năng tái tạo chúng đã mất. Sửa ở `0f5b4d3`, đo lại **8/8 byte-identical** ở
+  [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3).
 
 - **`compact` lọc quan hệ GỐC theo tập node sống sót — đúng khi chưa nén, phá đồ thị ngay khi nén.**
   Đường `A → B → C` có cả hai cạnh đều nhắc `B`; `B` bị cắt thì cả hai cạnh bị loại và `C` **âm thầm
@@ -850,6 +901,11 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   > (mỗi file ~25–28s thay vì ~1s; tổng thời gian `tests` lớn hơn nhiều lần thời gian tường). Và khi
   > không thể chờ máy rảnh, **`npm run test:frontend -- --maxWorkers=2` chữa được** — đã kiểm: 243
   > pass trên đúng cái máy vừa cho 61 lỗi. Chi tiết ở §1.
+  >
+  > **Cập nhật 2026-07-27 (`72a6e34`):** config đã tự ghim số worker — 4 ở máy này, **2 khi biến
+  > `CI` được đặt** — nên mặc định không còn là "một worker mỗi nhân". Cờ tay ở trên vẫn là cách
+  > chữa khi máy đang bận; cái nó không chữa được là **một máy có ít nhân hơn máy đã đo**, và đó
+  > đúng là cách runner `ubuntu-latest` (4 vCPU) làm hai file `render(<App />)` timeout. Xem §1.e.
 - **Nhiều agent có thể cùng sửa cây này.** Một `cargo check` gãy giữa chừng có thể là bản ghi dở
   của phiên khác, không phải lỗi của bạn.
 - **Và hệ quả nặng hơn: công việc của phiên khác có thể đang nằm trên nhánh của bạn.** Đã xảy ra
