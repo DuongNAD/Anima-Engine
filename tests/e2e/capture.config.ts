@@ -60,7 +60,14 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: `npm run dev -- --port ${PORT} --strictPort`,
+    // `--host 127.0.0.1` for the same reason as in `playwright.config.ts`, and this config is where
+    // the cost of omitting it is highest: left unset, Vite binds whatever `localhost` resolves to,
+    // Node has resolved that verbatim since v17, and `::1` comes first. `url` below is literal
+    // IPv4, so Playwright polls a port nothing is listening on and gives up after 120 s — with
+    // `VITE ready in 293 ms` sitting in the log above the failure. Measured here on 2026-07-27:
+    // that is what `npm run capture:views` did on Windows, so this was never a Linux-only fault,
+    // and the producer for the canonical views could not be run at all.
+    command: `npm run dev -- --host 127.0.0.1 --port ${PORT} --strictPort`,
     cwd: REPO_ROOT,
     url: BASE_URL,
     reuseExistingServer: false,
