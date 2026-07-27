@@ -1,6 +1,7 @@
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { makeSceneRandom } from './utils/sceneClock';
 import { testAttrs } from './testAttrs';
 
 interface WeatherProps {
@@ -34,33 +35,43 @@ export const Weather: React.FC<WeatherProps> = ({
   );
 
   // Generate initial particle positions
+  // Seeded under capture, `Math.random` otherwise — and `Math.random()` in a `useMemo` is a
+  // render-phase impurity the React Compiler rules reject regardless. `makeSceneRandom` answers both.
   const rainPositions = useMemo(() => {
     const arr = new Float32Array(maxRainCount * 3);
+    const rand = makeSceneRandom('weather.legacy.rain');
     for (let i = 0; i < maxRainCount; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 200;
-      arr[i * 3 + 1] = Math.random() * 80;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      arr[i * 3] = (rand() - 0.5) * 200;
+      arr[i * 3 + 1] = rand() * 80;
+      arr[i * 3 + 2] = (rand() - 0.5) * 200;
     }
     return arr;
-  }, []);
+  }, [maxRainCount]);
 
   const snowPositions = useMemo(() => {
     const arr = new Float32Array(maxSnowCount * 3);
+    const rand = makeSceneRandom('weather.legacy.snow');
     for (let i = 0; i < maxSnowCount; i++) {
-      arr[i * 3] = (Math.random() - 0.5) * 200;
-      arr[i * 3 + 1] = Math.random() * 80;
-      arr[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      arr[i * 3] = (rand() - 0.5) * 200;
+      arr[i * 3 + 1] = rand() * 80;
+      arr[i * 3 + 2] = (rand() - 0.5) * 200;
     }
     return arr;
-  }, []);
+  }, [maxSnowCount]);
 
-  // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184)
+  // Imperatively manage scene.fog (replaces <fogExp2> which crashes in Three.js 0.184).
+  //
+  // Mount/unmount only, and the dependency list says so rather than an `eslint-disable-line`: the
+  // density this installs is the *initial* one, and `useFrame` below drives it every frame after.
+  // Re-running on a density change would reinstall the fog mid-flight and discard whatever the
+  // frame loop had eased it to. `INITIAL_FOG_DENSITY` is read once, on purpose.
+  const initialFogDensity = useRef(currentFogDensity);
   useEffect(() => {
-    scene.fog = new THREE.FogExp2('#87ceeb', currentFogDensity);
+    scene.fog = new THREE.FogExp2('#87ceeb', initialFogDensity.current);
     return () => {
       scene.fog = null;
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [scene]);
 
   useFrame((state, delta) => {
     const time = state.clock.getElapsedTime();

@@ -2,6 +2,7 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getSkyParams } from './utils/skyParams';
+import { makeSceneRandom } from './utils/sceneClock';
 import { testAttrs } from './testAttrs';
 
 interface SkyProps {
@@ -45,10 +46,14 @@ export const Sky: React.FC<SkyProps> = ({ speed = 1.0, timeOfDay = 12 }) => {
   const starPositions = useMemo(() => {
     const count = 500;
     const positions = new Float32Array(count * 3);
+    // Seeded under capture, `Math.random` otherwise — and, separately, `Math.random()` in a `useMemo`
+    // is a render-phase impurity the React Compiler rules reject. `makeSceneRandom` answers both:
+    // the stream is a value, drawn from inside the memo, and it is stable per page under capture.
+    const rand = makeSceneRandom('sky.legacy.stars');
     for (let i = 0; i < count; i++) {
       // Uniform distribution on a hemisphere
-      const u = Math.random();
-      const v = Math.random();
+      const u = rand();
+      const v = rand();
       const theta = u * 2.0 * Math.PI;
       const phi = Math.acos(2.0 * v - 1.0);
       const r = 450;
