@@ -47,6 +47,9 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 
 ### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `19e67fa`
 
+> `19e67fa` là commit **mã nguồn** cuối cùng; `e4eff6c` sau nó **chỉ đổi tài liệu**, nên số ở mục
+> này vẫn là số của cây mã hiện tại. Nhãn ghi đúng commit mà lệnh đã chạy, không phải HEAD.
+
 | Loại | Gate | Lệnh | Cấu hình | Kết quả |
 |---|---|---|---|---|
 | 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | `desktop` | **877 passed · 0 failed · 2 ignored**, **87** dòng `test result`, exit 0 |
@@ -64,10 +67,15 @@ Ba target rỗng và hai test `#[ignore]` **là quyết định đã ghi**, khô
 trong [`scripts/test_target_policy.mjs`](../../scripts/test_target_policy.mjs), và gate fail với bất
 kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh sách đã hết hiệu lực.
 
-### 1.b Frontend / lint — chạy lại 2026-07-27 tại `19e67fa`
+### 1.b Frontend / lint — chạy lại 2026-07-27 tại `e4eff6c`
 
 > 🔴 **`npm run check:licenses-complete` FAIL (exit 1) — đây là chặn phát hành, xem 1.c.**
 > Mọi hàng khác dưới đây xanh. Một hàng xanh không bù được hàng đỏ đó.
+>
+> **E2E, typecheck và cả hai `npm audit` được chạy LẠI tại `e4eff6c`, tức SAU khi sửa IPC** — vì bản
+> sửa đó đụng cả `src/App.tsx`, `src/components/LegacyImportPanel.tsx` và 5 file test, nên số cũ
+> không còn hiệu lực. Spec `ipc_contract.spec.ts:127` (đường import save cũ, chính đường có key bị
+> sửa) **pass**.
 
 | Loại | Gate | Lệnh | Kết quả |
 |---|---|---|---|
@@ -84,6 +92,8 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 | 📏 | Ngân sách bundle | `npm run check:bundle` | 23 chunk · **1711,3 / 2000 KiB**, mọi chunk trong ngân sách |
 | 📏 | Advisory npm (root) | `npm audit --audit-level=high` | **0 vulnerability**, exit 0 |
 | 📏 | Advisory npm (`tests/`) | `npm audit --audit-level=high --prefix tests` | **0 vulnerability**, exit 0 |
+| 📏 | Bản đồ — gate tất định | MCP `animal-map-vision::validate_map_manifest` | **pass, 100/100**, **0 critical · 0 high · 0 medium · 0 low** trên **429 entity**, `animal-map.manifest.json` |
+| 📏 | Bản đồ — 8 view chuẩn | MCP `inspect_map_views` (overview, navigation, collision, spawn, lighting, water, biome_transition, ecosystem) | `missingViewKinds: []`; tuyến navigation liền mạch từ marker xuất phát tới đích; **không** tìm thấy mâu thuẫn sinh thái. **Kiểm tra chỉ-đọc** — nhánh này **không đổi** file nguồn bản đồ nào, nên **không** có cặp before/after để so và **không** tuyên bố "map hoàn thành" |
 
 > **Sửa một số cũ:** hàng E2E trước đây ghi *9 passed / 5 skipped* (đo 2026-07-26 tại `d006f64`).
 > Lượt chạy này cho **18 passed / 0 skipped** — năm spec skip cũ đã được thay bằng
@@ -100,7 +110,10 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 > **exit 1** và nêu tên cả sáu thông điệp. Từ nay một hàng E2E chỉ được ghi là xanh khi **cả** exit
 > code **và** output thô đều sạch.
 
-### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `19e67fa`
+### 1.c Licensing / SBOM / vệ sinh — chạy lại 2026-07-27 tại `e4eff6c`
+
+> `cargo audit`, cả hai `npm audit`, `check:compliance` và tách feature mặc định đều chạy tại
+> `e4eff6c`; các gate licence khác chạy tại `19e67fa` và `e4eff6c` không đụng dependency nào.
 
 > 🔴 **CHẶN PHÁT HÀNH — `npm run check:licenses-complete` exit 1.**
 > `hexf-parse 0.2.1` khai `CC0-1.0` nhưng artifact đã cài **không chứa file licence nào**, và
