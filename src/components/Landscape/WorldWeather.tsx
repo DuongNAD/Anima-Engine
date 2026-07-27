@@ -36,6 +36,28 @@ function fogProfile(weather: WeatherKind, timeOfDay: number, s: number): FogProf
   return { near: s * 2.0, far: s * 8.0, color: night ? '#05060f' : '#bfe2f2' };
 }
 
+/**
+ * Install this component's linear fog on the scene, and hand back its removal.
+ *
+ * Named, and taking the scene explicitly, because `scene` is a value `useThree` handed the
+ * component and writing to one of those is what `react-hooks/immutability` flags. The fog is the
+ * scene's own state; this component owns it by convention (see the header), and a signature is
+ * where a convention like that can be read.
+ */
+function installLinearFog(scene: THREE.Scene, p: FogProfile): () => void {
+  scene.fog = new THREE.Fog(p.color, p.near, p.far);
+  return () => {
+    scene.fog = null;
+  };
+}
+
+/** Ease an installed linear fog one frame toward `target`. */
+function easeLinearFog(fog: THREE.Fog, target: FogProfile, k: number): void {
+  fog.near = THREE.MathUtils.lerp(fog.near, target.near, k);
+  fog.far = THREE.MathUtils.lerp(fog.far, target.far, k);
+  fog.color.lerp(new THREE.Color(target.color), k);
+}
+
 export const WorldWeather: React.FC<WorldWeatherProps> = ({
   weather,
   precipitationRate = 0.8,
@@ -85,14 +107,14 @@ export const WorldWeather: React.FC<WorldWeatherProps> = ({
   }, [SPREAD, TOP]);
 
   // Own scene.fog with a linear fog; transitions are eased toward the target in useFrame.
-  useEffect(() => {
-    const p = fogProfile(weather, timeOfDay, worldScale);
-    scene.fog = new THREE.Fog(p.color, p.near, p.far);
-    return () => {
-      scene.fog = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  //
+  // The profile installed here is the one the *first* render asked for, captured at mount. That is
+  // what the old empty dependency list meant, and it needed an `eslint-disable` to say it: with
+  // `weather`/`timeOfDay`/`worldScale` in the list the effect reinstalls the fog mid-flight on any
+  // change and throws away whatever the frame loop had eased it to. Held in a ref, the effect's one
+  // real dependency is the scene, and the list can be honest.
+  const initialFogProfile = useRef(fogProfile(weather, timeOfDay, worldScale));
+  useEffect(() => installLinearFog(scene, initialFogProfile.current), [scene]);
 
   useFrame((state, rawDelta) => {
     const time = sceneElapsed(state.clock);
@@ -101,15 +123,15 @@ export const WorldWeather: React.FC<WorldWeatherProps> = ({
     const delta = sceneDelta(rawDelta);
     const safeDelta = Math.min(delta, 0.1);
 
-    // Ease fog toward the current weather/time profile.
+    // Ease fog toward the current weather/time profile. Reached through `state.scene`: inside the
+    // frame loop the live scene is the callback's own argument, which is where r3f intends
+    // imperative work to read it from.
     const target = fogProfile(weather, timeOfDay, worldScale);
-    if (scene.fog && scene.fog instanceof THREE.Fog) {
+    const fog = state.scene.fog;
+    if (fog instanceof THREE.Fog) {
       // Snapped rather than eased under capture: see `sceneSmoothing`. Easing integrates frame
       // deltas, so a fixed frame count converges by a machine-speed-dependent amount.
-      const k = sceneSmoothing(Math.min(1, safeDelta * 2.0));
-      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, target.near, k);
-      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, target.far, k);
-      scene.fog.color.lerp(new THREE.Color(target.color), k);
+      easeLinearFog(fog, target, sceneSmoothing(Math.min(1, safeDelta * 2.0)));
     }
 
     if (weather === 'rain' && rainGeomRef.current) {

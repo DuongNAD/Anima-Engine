@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { extend, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -11,13 +11,10 @@ import type { CameraView } from './WorldMinimap';
 
 extend({ OrbitControls });
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      orbitControls: any;
-    }
-  }
-}
+// The `orbitControls` intrinsic is declared once, in `src/r3f-intrinsics.d.ts`, alongside every
+// other three element this project uses. A second `declare global` here said `orbitControls: any`,
+// which is not a duplicate of that declaration so much as a hole in it — interface merging keeps
+// both, and `any` wins every check.
 
 // ---------------------------------------------------------------------------------------
 // WorldCameraRig — five ways to see the world:
@@ -71,6 +68,19 @@ const NAV_KEYS = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRi
 
 const clampPitch = (p: number) => Math.max(-1.35, Math.min(1.35, p));
 
+/**
+ * Set a perspective camera's field of view and refresh the matrix that depends on it.
+ *
+ * Named, and taking the camera explicitly, for two reasons. The mode-entry effect writes `fov` on
+ * the camera `useThree` handed the component, which is the value `react-hooks/immutability` forbids
+ * writing to; and `fov` without `updateProjectionMatrix()` is a silent no-op, so the pair is worth
+ * being one thing that cannot be half-done.
+ */
+function applyFov(cam: THREE.PerspectiveCamera, fov: number): void {
+  cam.fov = fov;
+  cam.updateProjectionMatrix();
+}
+
 export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   mode,
   world,
@@ -82,7 +92,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
   capturePose = null,
 }) => {
   const { camera, gl } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
 
   const keysRef = useRef<Set<string>>(new Set());
   const lookRef = useRef({ yaw: 0, pitch: -0.4, dragging: false, locked: false, lastX: 0, lastY: 0 });
@@ -102,8 +112,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
    * navigation-evidence graph asks the same question of the same function, so a published
    * reachability claim cannot describe ground the rig disagrees about.
    */
-  const surfaceY = (x: number, z: number): number =>
-    surfaceHeight(world, x, z, renderSize, heightRatio, meshResolution);
+  const surfaceY = useCallback(
+    (x: number, z: number): number =>
+      surfaceHeight(world, x, z, renderSize, heightRatio, meshResolution),
+    [world, renderSize, heightRatio, meshResolution],
+  );
 
   // Static tree colliders for walk mode: trunked flora bucketed into an 8-unit grid, so the
   // player capsule can be pushed out of trunks with a local lookup instead of a 100k scan.
@@ -137,6 +150,11 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     if (mode !== 'fly' && mode !== 'walk') return;
     const el = gl.domElement;
     const look = lookRef.current;
+    // The HUD's view record, read once here rather than through `viewRef.current` in the cleanup.
+    // `viewRef` is a prop, and a cleanup that dereferences it runs after the component that owns it
+    // may have swapped the object — so the cleanup could clear the lock flag on a record nobody is
+    // reading while the one the HUD *is* reading stays stuck at `locked: true`.
+    const view = viewRef.current;
     const SENS_LOCK = 0.0022;
 
     const onDown = (e: PointerEvent) => {
@@ -163,7 +181,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     };
     const onLockChange = () => {
       look.locked = document.pointerLockElement === el;
-      viewRef.current.locked = look.locked;
+      view.locked = look.locked;
     };
     el.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
@@ -175,13 +193,23 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       window.removeEventListener('pointerup', onUp);
       document.removeEventListener('pointerlockchange', onLockChange);
       look.locked = false;
-      viewRef.current.locked = false;
+      view.locked = false;
       if (document.pointerLockElement === el) document.exitPointerLock?.();
     };
   }, [mode, gl, viewRef]);
 
   // Mode entry: seed the new controller from wherever the camera currently is.
+  //
+  // Only an actual change of mode may do this — re-seeding on, say, a `renderSize` change would
+  // snap a walking player back to the orbit target mid-session. That used to be said by omitting
+  // every other dependency and suppressing the rule; it is now said by the guard on the first line,
+  // which is both explicit and still true if a future edit adds a read. (`CameraControls` has used
+  // this exact `lastMode` shape all along.)
+  const lastModeRef = useRef<CameraMode | null>(null);
   useEffect(() => {
+    if (lastModeRef.current === mode) return;
+    lastModeRef.current = mode;
+
     const look = lookRef.current;
     velRef.current.x = 0;
     velRef.current.z = 0;
@@ -194,10 +222,8 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
         // Walking starts AT the point being looked at (orbit target / minimap teleport),
         // not at the orbit camera's pulled-back position — which often floats off-shore.
         const v = viewRef.current;
-        camera.position.x = v.targetX;
-        camera.position.z = v.targetZ;
-        const gy = surfaceY(camera.position.x, camera.position.z) + EYE;
-        camera.position.y = gy;
+        const gy = surfaceY(v.targetX, v.targetZ) + EYE;
+        camera.position.set(v.targetX, gy, v.targetZ);
         physRef.current.baseY = gy;
         physRef.current.vy = 0;
         physRef.current.grounded = true;
@@ -217,15 +243,16 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     // Non-explorer modes always use the base field of view.
     if (mode !== 'fly' && mode !== 'walk') {
       const cam = camera as THREE.PerspectiveCamera;
-      if (cam.isPerspectiveCamera && cam.fov !== BASE_FOV) {
-        cam.fov = BASE_FOV;
-        cam.updateProjectionMatrix();
-      }
+      if (cam.isPerspectiveCamera && cam.fov !== BASE_FOV) applyFov(cam, BASE_FOV);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, camera, renderSize, surfaceY, viewRef]);
 
-  useFrame((_, rawDelta) => {
+  useFrame((state, rawDelta) => {
+    // The live camera, from the frame callback's own state rather than the `useThree` value above.
+    // This loop *drives* the camera, and writing to a value React handed the component during
+    // render is what `react-hooks/immutability` rejects; `state.camera` is the same object by the
+    // route r3f documents for imperative work.
+    const { camera } = state;
     // Fixed under capture. The capture branch below plants the pose and returns before any
     // controller integrates, so nothing here reaches the image — but the rule that no `World*`
     // component consumes r3f's delta unpinned is easier to keep than to keep checking.
@@ -447,8 +474,7 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
     const cam = camera as THREE.PerspectiveCamera;
     if (cam.isPerspectiveCamera) {
       const targetFov = BASE_FOV + (sprinting && moving ? 7 : 0);
-      cam.fov += (targetFov - cam.fov) * (1 - Math.exp(-6 * dt));
-      cam.updateProjectionMatrix();
+      applyFov(cam, cam.fov + (targetFov - cam.fov) * (1 - Math.exp(-6 * dt)));
     }
 
     v.camX = camera.position.x;

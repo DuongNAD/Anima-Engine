@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useLayoutEffect, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useLayoutEffect, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, mulberry32, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
@@ -19,6 +19,136 @@ import { testAttrs } from './testAttrs';
 // they read as trees (not mountain-sized) on the current, much flatter terrain. Grass keeps
 // its own (already small) scale.
 const TREE_SCALE = 0.35;
+
+/**
+ * The sway shaders' inputs.
+ *
+ * Each quantity appears twice under two spellings. That is not redundancy anybody chose: the two
+ * injected shaders below declare `uTime`/`uWindSpeed`/`uWindDirection` and then use
+ * `time`/`windSpeed`/`windAngle` in the body, so both names have to be live uniform objects or the
+ * sway silently reads zero. The setters keep the pairs in step, which is the whole reason they are
+ * setters and not six assignments at each call site.
+ *
+ * A type alias rather than an interface, for the implicit index signature `shader.uniforms` wants.
+ */
+type WindUniforms = {
+  uTime: { value: number };
+  uWindSpeed: { value: number };
+  uWindDirection: { value: number };
+  time: { value: number };
+  windSpeed: { value: number };
+  windAngle: { value: number };
+};
+
+function createWindUniforms(speed: number, angle: number): WindUniforms {
+  return {
+    uTime: { value: 0 },
+    uWindSpeed: { value: speed },
+    uWindDirection: { value: angle },
+    time: { value: 0 },
+    windSpeed: { value: speed },
+    windAngle: { value: angle },
+  };
+}
+
+/** Set the scene time both sway shaders read. */
+function setWindTime(u: WindUniforms, t: number): void {
+  u.uTime.value = t;
+  u.time.value = t;
+}
+
+/** Set the wind strength both sway shaders read. */
+function setWindSpeed(u: WindUniforms, speed: number): void {
+  u.uWindSpeed.value = speed;
+  u.windSpeed.value = speed;
+}
+
+/** Set the wind bearing (radians) both sway shaders read. */
+function setWindAngle(u: WindUniforms, angle: number): void {
+  u.uWindDirection.value = angle;
+  u.windAngle.value = angle;
+}
+
+/** The shared uniform declarations both injected vertex shaders need in scope. */
+const WIND_UNIFORM_DECLS = `
+       uniform float uTime;
+       uniform float uWindSpeed;
+       uniform float uWindDirection;
+       uniform float time;
+       uniform float windSpeed;
+       uniform float windAngle;
+      `;
+
+/** Point a compiling shader's wind uniforms at the shared live objects. */
+function bindWindUniforms(
+  shader: THREE.WebGLProgramParametersWithUniforms,
+  uniforms: WindUniforms,
+): void {
+  shader.uniforms.uTime = uniforms.uTime;
+  shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
+  shader.uniforms.uWindDirection = uniforms.uWindDirection;
+  shader.uniforms.time = uniforms.time;
+  shader.uniforms.windSpeed = uniforms.windSpeed;
+  shader.uniforms.windAngle = uniforms.windAngle;
+}
+
+/**
+ * `onBeforeCompile` for foliage: a height-weighted sway, strongest at the canopy.
+ *
+ * A factory at module scope rather than a closure inside the component. As a closure it was rebuilt
+ * every render and captured `uniforms`, so the `useMemo` that builds the materials could not name it
+ * as a dependency without recompiling every shader on every render — which is what the suppressed
+ * `exhaustive-deps` warning there was really about. The GLSL is unchanged, character for character:
+ * these shaders decide what the canonical views look like, and those are compared byte for byte.
+ */
+function makeWindSwayPatch(
+  uniforms: WindUniforms,
+): (shader: THREE.WebGLProgramParametersWithUniforms) => void {
+  return (shader) => {
+    bindWindUniforms(shader, uniforms);
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>${WIND_UNIFORM_DECLS}`,
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       float heightFactor = max(0.0, position.y);
+       float sway = sin(time * windSpeed * 2.5 + position.x * 0.4 + position.z * 0.4) * (heightFactor * heightFactor * 0.04) * windSpeed;
+       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
+       transformed.x += windDirVec.x * sway;
+       transformed.z += windDirVec.y * sway;
+      `
+    );
+  };
+}
+
+/** `onBeforeCompile` for grass: faster, finer, and linear in height rather than squared. */
+function makeGrassSwayPatch(
+  uniforms: WindUniforms,
+): (shader: THREE.WebGLProgramParametersWithUniforms) => void {
+  return (shader) => {
+    bindWindUniforms(shader, uniforms);
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <common>',
+      `#include <common>${WIND_UNIFORM_DECLS}`,
+    );
+
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+       float heightFactor = max(0.0, position.y);
+       float sway = sin(time * windSpeed * 3.5 + position.x * 0.8 + position.z * 0.8) * (heightFactor * 0.15) * windSpeed;
+       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
+       transformed.x += windDirVec.x * sway;
+       transformed.z += windDirVec.y * sway;
+      `
+    );
+  };
+}
 
 interface VegetationProps {
   width?: number;
@@ -276,111 +406,18 @@ export const Vegetation: React.FC<VegetationProps> = ({
     };
   }, []);
 
-  // Shared Wind uniforms
-  const uniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uWindSpeed: { value: windSpeed },
-    uWindDirection: { value: currentWindDirection },
-    time: { value: 0 },
-    windSpeed: { value: windSpeed },
-    windAngle: { value: currentWindDirection },
-  }), []);
-
-  // Sync prop changes reactively
-  useEffect(() => {
-    uniforms.uWindSpeed.value = windSpeed;
-    uniforms.windSpeed.value = windSpeed;
-  }, [windSpeed, uniforms]);
-
-  useEffect(() => {
-    uniforms.uWindDirection.value = currentWindDirection;
-    uniforms.windAngle.value = currentWindDirection;
-  }, [currentWindDirection, uniforms]);
-
-  // Update clock time on frame ticks
-  useFrame((state) => {
-    const elapsed = state.clock.getElapsedTime();
-    if (uniforms) {
-      if (uniforms.uTime) uniforms.uTime.value = elapsed;
-      if (uniforms.time) uniforms.time.value = elapsed;
-    }
-    // Update all materials' uniforms if they exist on the material
-    Object.values(materials).forEach((mat) => {
-      if (mat.userData.uniforms) {
-        if (mat.userData.uniforms.uTime) mat.userData.uniforms.uTime.value = elapsed;
-        if (mat.userData.uniforms.time) mat.userData.uniforms.time.value = elapsed;
-        if (mat.userData.uniforms.uWindSpeed) mat.userData.uniforms.uWindSpeed.value = windSpeed;
-        if (mat.userData.uniforms.windSpeed) mat.userData.uniforms.windSpeed.value = windSpeed;
-        if (mat.userData.uniforms.uWindDirection) mat.userData.uniforms.uWindDirection.value = currentWindDirection;
-        if (mat.userData.uniforms.windAngle) mat.userData.uniforms.windAngle.value = currentWindDirection;
-      }
-    });
-  });
-
-  // Shader customization function to inject wind sway warp
-  const customizeWindSwayShader = (shader: THREE.WebGLProgramParametersWithUniforms) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
-    shader.uniforms.uWindDirection = uniforms.uWindDirection;
-    shader.uniforms.time = uniforms.time;
-    shader.uniforms.windSpeed = uniforms.windSpeed;
-    shader.uniforms.windAngle = uniforms.windAngle;
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform float uTime;
-       uniform float uWindSpeed;
-       uniform float uWindDirection;
-       uniform float time;
-       uniform float windSpeed;
-       uniform float windAngle;
-      `
-    );
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-       float heightFactor = max(0.0, position.y);
-       float sway = sin(time * windSpeed * 2.5 + position.x * 0.4 + position.z * 0.4) * (heightFactor * heightFactor * 0.04) * windSpeed;
-       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
-       transformed.x += windDirVec.x * sway;
-       transformed.z += windDirVec.y * sway;
-      `
-    );
-  };
-
-  const customizeGrassSwayShader = (shader: THREE.WebGLProgramParametersWithUniforms) => {
-    shader.uniforms.uTime = uniforms.uTime;
-    shader.uniforms.uWindSpeed = uniforms.uWindSpeed;
-    shader.uniforms.uWindDirection = uniforms.uWindDirection;
-    shader.uniforms.time = uniforms.time;
-    shader.uniforms.windSpeed = uniforms.windSpeed;
-    shader.uniforms.windAngle = uniforms.windAngle;
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <common>',
-      `#include <common>
-       uniform float uTime;
-       uniform float uWindSpeed;
-       uniform float uWindDirection;
-       uniform float time;
-       uniform float windSpeed;
-       uniform float windAngle;
-      `
-    );
-
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <begin_vertex>',
-      `#include <begin_vertex>
-       float heightFactor = max(0.0, position.y);
-       float sway = sin(time * windSpeed * 3.5 + position.x * 0.8 + position.z * 0.8) * (heightFactor * 0.15) * windSpeed;
-       vec2 windDirVec = vec2(cos(windAngle), sin(windAngle));
-       transformed.x += windDirVec.x * sway;
-       transformed.z += windDirVec.y * sway;
-      `
-    );
-  };
+  // Shared wind uniforms, built once and mutated thereafter — the shaders hold these exact objects.
+  //
+  // The seed values are the first render's props, captured by a lazy `useState` initialiser. That is
+  // what the old empty dependency list meant, and it needed the rule suppressed to say it: naming
+  // `windSpeed`/`currentWindDirection` there would rebuild the uniform objects — and with them every
+  // material below — each time the wind changed, which is the one thing this arrangement exists to
+  // avoid. The two effects underneath own the values from mount onward.
+  const [initialWind] = useState(() => ({ speed: windSpeed, angle: currentWindDirection }));
+  const uniforms = useMemo(
+    () => createWindUniforms(initialWind.speed, initialWind.angle),
+    [initialWind],
+  );
 
   // Materials setup
   const materials = useMemo(() => {
@@ -391,7 +428,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         metalness: 0.1,
       });
       mat.userData.uniforms = uniforms;
-      mat.onBeforeCompile = customizeWindSwayShader;
+      mat.onBeforeCompile = makeWindSwayPatch(uniforms);
       return mat;
     };
 
@@ -411,7 +448,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         side: THREE.DoubleSide,
       });
       mat.userData.uniforms = uniforms;
-      mat.onBeforeCompile = customizeGrassSwayShader;
+      mat.onBeforeCompile = makeGrassSwayPatch(uniforms);
       return mat;
     };
 
@@ -435,6 +472,32 @@ export const Vegetation: React.FC<VegetationProps> = ({
       Grass: createGrassMat('#4ade80'),
     };
   }, [uniforms]);
+
+  // Sync prop changes reactively.
+  useEffect(() => {
+    setWindSpeed(uniforms, windSpeed);
+  }, [windSpeed, uniforms]);
+
+  useEffect(() => {
+    setWindAngle(uniforms, currentWindDirection);
+  }, [currentWindDirection, uniforms]);
+
+  // Update clock time on frame ticks. `materials` is declared above rather than below: a `const`
+  // read from a callback declared before it is a temporal-dead-zone reference, safe today only
+  // because frames happen to fire after the whole body has run.
+  useFrame((state) => {
+    const elapsed = state.clock.getElapsedTime();
+    setWindTime(uniforms, elapsed);
+    // Every material carries the same object, but say so through the setters rather than assuming
+    // it: `userData` is untyped storage and a material assembled elsewhere may hold its own.
+    for (const mat of Object.values(materials)) {
+      const matUniforms = mat.userData.uniforms as WindUniforms | undefined;
+      if (!matUniforms) continue;
+      setWindTime(matUniforms, elapsed);
+      setWindSpeed(matUniforms, windSpeed);
+      setWindAngle(matUniforms, currentWindDirection);
+    }
+  });
 
   // Instance refs
   const oakTRef = useRef<THREE.InstancedMesh>(null);

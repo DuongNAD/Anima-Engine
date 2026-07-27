@@ -12,13 +12,14 @@ import Weather from '../../src/components/Landscape/Weather';
 import CameraControls from '../../src/components/Landscape/CameraControls';
 import { audioManager } from '../../src/components/Landscape/utils/audioManager';
 import { generateTerrainData, determineBiome, generateTerrain, generateFloraPlacements } from '../../src/components/Landscape/utils/terrainGenerator';
+import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
 
 // Mock Canvas and useFrame for R3F compatibility
-let frameCallbacks: Array<(state: any) => void> = [];
+let frameCallbacks: FrameCallback[] = [];
 vi.mock('@react-three/fiber', async () => {
   return {
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
     useThree: () => ({
@@ -174,7 +175,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         expect(mesh).toBeTruthy();
         
         act(() => {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
         });
         expect(frameCallbacks.length).toBeGreaterThan(0);
       });
@@ -255,7 +256,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         const { container } = render(<Sky speed={2.0} />);
         expect(container.querySelector('[name="cloud-mesh"]')).toBeTruthy();
         act(() => {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 2.0 } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(2.0), 0));
         });
       });
 
@@ -337,7 +338,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         expect(container.querySelector('[name="camera-controls"]')).toBeTruthy();
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
         act(() => {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
         });
         window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }));
       });
@@ -356,7 +357,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
       it('F7.5: cinematic flight', () => {
         const { container } = render(<CameraControls cameraMode="cinematic" />);
         act(() => {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 10.0 } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(10.0), 0));
         });
         expect(container).toBeTruthy();
       });
@@ -566,15 +567,16 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
       });
 
       it('F6.4: web audio startup error fallback', () => {
-        const oldAudioContext = window.AudioContext;
-        const oldWebkitAudioContext = (window as any).webkitAudioContext;
-        window.AudioContext = undefined as any;
-        (window as any).webkitAudioContext = undefined as any;
+        // Both constructors have to be absent, and neither can simply be assigned `undefined`: the
+        // DOM lib types `window.AudioContext` as always present, which is a claim about a browser
+        // that has one. `vi.stubGlobal` states the absence without a cast, and `unstubAllGlobals`
+        // puts back whatever was there — including the prefixed one jsdom does not define at all.
+        vi.stubGlobal('AudioContext', undefined);
+        vi.stubGlobal('webkitAudioContext', undefined);
         audioManager.ctx = null;
         audioManager.initialize();
         expect(audioManager.ctx).toBeNull();
-        window.AudioContext = oldAudioContext;
-        (window as any).webkitAudioContext = oldWebkitAudioContext;
+        vi.unstubAllGlobals();
       });
 
       it('F6.5: layer transitions', () => {
@@ -607,7 +609,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }));
         act(() => {
           for (let i = 0; i < 500; i++) {
-            frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => i } }));
+            frameCallbacks.forEach(cb => cb(frameStateAt(i), 0));
           }
         });
         expect(container).toBeTruthy();
@@ -748,7 +750,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
       audioManager.createSpatialSource('wind-ambient');
       
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 10.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(10.0), 0));
       });
       
       expect(skyCont.querySelector('[name="sky-group"]')).toBeTruthy();
@@ -762,13 +764,13 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
       
       rerender(<Weather weather="rain" precipitationRate={0.8} />);
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }, 0.5));
+        frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0.5));
       });
       expect(container.querySelector('[name="weather-particles"]')).toBeTruthy();
       
       rerender(<Weather weather="clear" />);
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 2.0 } }, 0.5));
+        frameCallbacks.forEach(cb => cb(frameStateAt(2.0), 0.5));
       });
       await waitFor(() => {
         expect(container.querySelector('[name="weather-particles"]')).toBeNull();
@@ -801,7 +803,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
       
       act(() => {
         for (let i = 0; i < 20; i++) {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => i } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(i), 0));
         }
       });
       

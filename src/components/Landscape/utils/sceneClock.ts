@@ -84,6 +84,28 @@ export function sceneElapsed(clock: ElapsedClock): number {
   return isSceneTimeFrozen() ? CAPTURE_FIXED_ELAPSED : clock.getElapsedTime();
 }
 
+/** The slice of a shader material this module drives: a `uTime` uniform, if the shader declares one. */
+export interface TimeUniformHolder {
+  uniforms?: { uTime?: { value: number } };
+}
+
+/**
+ * Advance a shader material's `uTime` to the scene clock.
+ *
+ * The same three lines appeared in every component with an animated shader, and in the ones whose
+ * material comes from `useMemo` they were also a render-owned value being written from the frame
+ * loop — the `react-hooks/immutability` hazard. One named operation, taking the material explicitly,
+ * removes both copies of the problem: the write lives in a function whose whole job is that write,
+ * and the components stop restating what "the scene's time" means.
+ *
+ * A material with no `uTime` is left alone, which is what a `<meshStandardMaterial>` that has not yet
+ * been through `onBeforeCompile` looks like.
+ */
+export function driveTimeUniform(material: TimeUniformHolder | null | undefined, clock: ElapsedClock): void {
+  const u = material?.uniforms?.uTime;
+  if (u) u.value = sceneElapsed(clock);
+}
+
 /**
  * A per-frame smoothing factor, or `1` under capture — snap instead of ease.
  *

@@ -96,6 +96,12 @@ describe('the ocean shader matches this reference', () => {
   });
 
   it('feeds the band from the shared constant rather than a second literal', () => {
-    expect(WATER_SRC).toMatch(/uShelfBand:\s*\{\s*value:\s*renderSize\s*\*\s*OCEAN_SHELF_BAND_FRACTION\s*\}/);
+    // The claim is that the uniform is the render size scaled by the *shared* constant — not that
+    // the render size is reached by any particular expression. It has been both a bare `renderSize`
+    // and, since the uniform block moved to a module-scope factory, `inputs.renderSize`; a regex
+    // pinned to one spelling would fail on a refactor that changes nothing about the guarantee.
+    expect(WATER_SRC).toMatch(
+      /uShelfBand:\s*\{\s*value:\s*[\w.]*renderSize\s*\*\s*OCEAN_SHELF_BAND_FRACTION\s*\}/,
+    );
   });
 });

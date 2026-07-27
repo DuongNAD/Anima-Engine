@@ -35,19 +35,6 @@ import {
 // An ordinary visit has neither, so nothing here runs.
 // ---------------------------------------------------------------------------------------
 
-/** Global the capture harness writes before the page loads. Absent on every ordinary visit. */
-export const MAP_EVIDENCE_GLOBAL = '__animaMapEvidence';
-
-/** Read the injected record, or `null`. Shape-checked, because a malformed global must not draw. */
-export function readInjectedEvidence(): MapEvidenceRecord | null {
-  if (typeof window === 'undefined') return null;
-  const raw = (window as unknown as Record<string, unknown>)[MAP_EVIDENCE_GLOBAL];
-  if (!raw || typeof raw !== 'object') return null;
-  const rec = raw as Partial<MapEvidenceRecord>;
-  if (!Array.isArray(rec.navigation?.route) || !Array.isArray(rec.collision?.colliders)) return null;
-  return rec as MapEvidenceRecord;
-}
-
 /** Deliberately unnatural colours: a reviewer must never mistake an overlay for scenery. */
 const ROUTE_COLOUR = '#ff2fd0';
 const START_COLOUR = '#22ff88';

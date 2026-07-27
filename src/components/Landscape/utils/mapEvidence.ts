@@ -478,6 +478,16 @@ export function verifyRoute(
   return { ok: failures.length === 0, samples, failures, lengthRenderUnits: length };
 }
 
+/**
+ * Global the capture harness writes before the page loads. Absent on every ordinary visit.
+ *
+ * Declared beside the record it names rather than in the overlay component: the harness, the e2e
+ * spec and the overlay all need it, and a module that exports a component plus a constant plus a
+ * reader is three things wearing one hat — Fast Refresh cannot hot-swap such a file, so an edit to
+ * the overlay's JSX would reload the whole page mid-capture.
+ */
+export const MAP_EVIDENCE_GLOBAL = '__animaMapEvidence';
+
 /** A trunk drawn in the collision overlay. */
 export interface ColliderCircle {
   x: number;
@@ -531,6 +541,16 @@ export interface MapEvidenceRecord {
     colliders: ColliderCircle[];
     pushOutCases: PushOutCase[];
   };
+}
+
+/** Read the injected record, or `null`. Shape-checked, because a malformed global must not draw. */
+export function readInjectedEvidence(): MapEvidenceRecord | null {
+  if (typeof window === 'undefined') return null;
+  const raw = (window as unknown as Record<string, unknown>)[MAP_EVIDENCE_GLOBAL];
+  if (!raw || typeof raw !== 'object') return null;
+  const rec = raw as Partial<MapEvidenceRecord>;
+  if (!Array.isArray(rec.navigation?.route) || !Array.isArray(rec.collision?.colliders)) return null;
+  return rec as MapEvidenceRecord;
 }
 
 /**

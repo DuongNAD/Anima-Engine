@@ -13,7 +13,7 @@ import {
   CAPTURE_DEFAULT_WEATHER,
   CAPTURE_READY_FLAG,
 } from '../../src/components/Landscape/utils/captureMode';
-import { MAP_EVIDENCE_GLOBAL } from '../../src/components/Landscape/CaptureEvidenceOverlay';
+import { MAP_EVIDENCE_GLOBAL } from '../../src/components/Landscape/utils/mapEvidence';
 import { encodeCanonicalPng, type RawFramebuffer } from './canonicalImage';
 
 // ---------------------------------------------------------------------------------------

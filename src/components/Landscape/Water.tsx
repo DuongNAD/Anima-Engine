@@ -1,8 +1,9 @@
-import React, { useRef, useMemo, useEffect } from 'react';
+import React, { useCallback, useRef, useMemo, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, getBilinearInterpolatedElevation, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
 import type { TerrainData } from './utils/terrainGenerator';
+import { makeSceneRandom } from './utils/sceneClock';
 import { testAttrs } from './testAttrs';
 import { getSkyParams } from './utils/skyParams'; // Assumes the refactored shared utility path
 
@@ -240,6 +241,48 @@ const fragmentShader = `
   }
 `;
 
+/** What a water surface's uniform block is built from. Everything else the frame loop drives. */
+interface BaseUniformInputs {
+  windSpeed: number;
+  reflectionColor: string;
+  depthTransparency: number;
+  heightMapTexture: THREE.Texture;
+  width: number;
+  height: number;
+}
+
+/**
+ * Build the uniform block shared by the ocean, river and lake surfaces.
+ *
+ * Module scope rather than a closure inside the component, because as a closure it captured three
+ * props its callers' dependency lists did not name — two `useMemo`s the rule flagged. The lighting
+ * fields start empty on purpose: `useFrame` fills them from `getSkyParams` before the first draw.
+ */
+function createBaseUniforms(inputs: BaseUniformInputs) {
+  return {
+    time: { value: 0 },
+    windSpeed: { value: inputs.windSpeed },
+    reflectionColor: { value: new THREE.Color(inputs.reflectionColor) },
+    depthTransparency: { value: inputs.depthTransparency },
+
+    // Heightmap
+    tHeightMap: { value: inputs.heightMapTexture },
+    terrainSize: { value: new THREE.Vector2(inputs.width, inputs.height) },
+
+    // Lighting values updated on frame
+    sunDirection: { value: new THREE.Vector3() },
+    sunColor: { value: new THREE.Color() },
+    sunIntensity: { value: 0 },
+
+    moonDirection: { value: new THREE.Vector3() },
+    moonColor: { value: new THREE.Color() },
+    moonIntensity: { value: 0 },
+
+    ambientColor: { value: new THREE.Color() },
+    ambientIntensity: { value: 0 },
+  };
+}
+
 export const Water: React.FC<WaterProps> = ({
   windSpeed = 1.0,
   reflectionColor = '#0055ff',
@@ -362,8 +405,10 @@ export const Water: React.FC<WaterProps> = ({
     return list;
   }, [terrain, width, height]);
 
-  // River Vertex Height Resolver (unchanged)
-  const getRiverVertexHeight = (cx: number, cy: number): number => {
+  // River Vertex Height Resolver. Memoised on the terrain it reads, so the geometry `useMemo` below
+  // can name it as a dependency: as a plain closure it was rebuilt every render, which is why that
+  // list omitted it and the rule objected.
+  const getRiverVertexHeight = useCallback((cx: number, cy: number): number => {
     let minD = Infinity;
     let nearestLakeCell = null;
     const startX = Math.max(0, Math.floor(cx - 2));
@@ -398,7 +443,7 @@ export const Water: React.FC<WaterProps> = ({
     }
 
     return targetHeight;
-  };
+  }, [terrain, width, height]);
 
   // Static River BufferGeometry Setup (Waves are offloaded to GPU vertex shader)
   const riverData = useMemo(() => {
@@ -449,7 +494,7 @@ export const Water: React.FC<WaterProps> = ({
     }
 
     return { geom, positions };
-  }, [terrain, width, height]);
+  }, [terrain, width, height, getRiverVertexHeight]);
 
   // Waterfall Points and Particles setup (remains unchanged)
   const waterfallPoints = useMemo(() => {
@@ -475,13 +520,17 @@ export const Water: React.FC<WaterProps> = ({
     const positions = new Float32Array(count * 3);
     const velocities = new Float32Array(count * 3);
     const initialPositions = new Float32Array(count * 3);
+    // Seeded under capture, `Math.random` otherwise — and, separately, `Math.random()` inside a
+    // `useMemo` is a render-phase impurity the React Compiler rules reject outright. The same
+    // `makeSceneRandom` call the legacy sky and weather already use answers both.
+    const rand = makeSceneRandom('water.legacy.waterfallParticles');
 
     let idx = 0;
     waterfallPoints.forEach((pt) => {
       for (let i = 0; i < pPerPoint; i++) {
-        const px = pt.x + (Math.random() - 0.5) * 0.5;
+        const px = pt.x + (rand() - 0.5) * 0.5;
         const py = pt.y;
-        const pz = pt.z + (Math.random() - 0.5) * 0.5;
+        const pz = pt.z + (rand() - 0.5) * 0.5;
 
         positions[idx * 3] = px;
         positions[idx * 3 + 1] = py;
@@ -491,9 +540,9 @@ export const Water: React.FC<WaterProps> = ({
         initialPositions[idx * 3 + 1] = py;
         initialPositions[idx * 3 + 2] = pz;
 
-        velocities[idx * 3] = (Math.random() - 0.5) * 0.5;
-        velocities[idx * 3 + 1] = -1.0 - Math.random() * 2.0;
-        velocities[idx * 3 + 2] = (Math.random() - 0.5) * 0.5;
+        velocities[idx * 3] = (rand() - 0.5) * 0.5;
+        velocities[idx * 3 + 1] = -1.0 - rand() * 2.0;
+        velocities[idx * 3 + 2] = (rand() - 0.5) * 0.5;
 
         idx++;
       }
@@ -502,41 +551,27 @@ export const Water: React.FC<WaterProps> = ({
     return { positions, velocities, initialPositions, count };
   }, [waterfallPoints]);
 
-  // Create base uniforms structure
-  const createBaseUniforms = () => ({
-    time: { value: 0 },
-    windSpeed: { value: windSpeed },
-    reflectionColor: { value: new THREE.Color(reflectionColor) },
-    depthTransparency: { value: depthTransparency },
-    
-    // Heightmap
-    tHeightMap: { value: heightMapTexture },
-    terrainSize: { value: new THREE.Vector2(width, height) },
-    
-    // Lighting values updated on frame
-    sunDirection: { value: new THREE.Vector3() },
-    sunColor: { value: new THREE.Color() },
-    sunIntensity: { value: 0 },
-    
-    moonDirection: { value: new THREE.Vector3() },
-    moonColor: { value: new THREE.Color() },
-    moonIntensity: { value: 0 },
-    
-    ambientColor: { value: new THREE.Color() },
-    ambientIntensity: { value: 0 },
-  });
+  // The palette values the uniform blocks are *seeded* with, captured at mount by a lazy `useState`
+  // initialiser. `useFrame` writes all three every frame from the live props, so these are initial
+  // conditions rather than a second source of truth — pinning them is what lets the two memos below
+  // name everything they read instead of leaving `createBaseUniforms` out of the list.
+  const [uniformSeed] = useState(() => ({ windSpeed, reflectionColor, depthTransparency }));
+  const baseUniformInputs = useMemo<BaseUniformInputs>(
+    () => ({ ...uniformSeed, heightMapTexture, width, height }),
+    [uniformSeed, heightMapTexture, width, height],
+  );
 
   const oceanUniforms = useMemo(() => ({
-    ...createBaseUniforms(),
+    ...createBaseUniforms(baseUniformInputs),
     uWaterType: { value: 0.0 },
     uFlowDirection: { value: new THREE.Vector2(0, 0) },
-  }), [heightMapTexture, width, height]);
+  }), [baseUniformInputs]);
 
   const riverUniforms = useMemo(() => ({
-    ...createBaseUniforms(),
+    ...createBaseUniforms(baseUniformInputs),
     uWaterType: { value: 2.0 },
     uFlowDirection: { value: new THREE.Vector2(1.0, 0.0) }, // Flows in +X direction
-  }), [heightMapTexture, width, height]);
+  }), [baseUniformInputs]);
 
   // Frame Loop updates
   useFrame((state, delta) => {
@@ -597,13 +632,18 @@ export const Water: React.FC<WaterProps> = ({
 
     // 4. Update Lakes
     if (lakesGroupRef.current && lakesGroupRef.current.children) {
-      Array.from(lakesGroupRef.current.children).forEach((child: any, index) => {
+      // `children` is `Object3D[]`; the lake planes are meshes, and the guards below are what
+      // distinguish them. `any` said the same thing by saying nothing — and it silently accepted a
+      // `child.material` that was an array, which `syncUniforms` would then have read `.uniforms`
+      // off and found undefined.
+      Array.from(lakesGroupRef.current.children).forEach((child: THREE.Object3D, index) => {
         const lake = lakesList[index];
         if (lake && child.position) {
           const px = child.position.x || 0;
           child.position.y = lake.waterY + Math.sin(time * 1.2 + px * 0.01) * 0.15; // Lake bobbing
-          if (child.material) {
-            syncUniforms(child.material);
+          const material = (child as THREE.Mesh).material;
+          if (material && !Array.isArray(material)) {
+            syncUniforms(material as THREE.ShaderMaterial);
           }
         }
       });
@@ -684,7 +724,7 @@ export const Water: React.FC<WaterProps> = ({
         {lakesList.map((lake) => {
           // Lake-specific uniforms
           const lakeUniforms = {
-            ...createBaseUniforms(),
+            ...createBaseUniforms(baseUniformInputs),
             uWaterType: { value: 1.0 },
             uFlowDirection: { value: new THREE.Vector2(0, 0) },
           };

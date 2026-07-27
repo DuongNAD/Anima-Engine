@@ -23,7 +23,8 @@ import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
 import { CAPTURE_READY_FLAG, CAPTURE_SETTLE_FRAMES, readCaptureRequest } from './utils/captureMode';
 import type { CaptureRequest } from './utils/captureMode';
-import CaptureEvidenceOverlay, { readInjectedEvidence } from './CaptureEvidenceOverlay';
+import CaptureEvidenceOverlay from './CaptureEvidenceOverlay';
+import { readInjectedEvidence } from './utils/mapEvidence';
 import {
   SHARED_WORLD_SEED as WORLD_SEED,
   SHARED_WORLD_SIZE as WORLD_SIZE,
@@ -80,20 +81,36 @@ const CAM_MODES: Array<{ key: CameraMode; label: string }> = [
   { key: 'cine', label: '🎬 Cine' },
 ];
 
+/**
+ * Turn the renderer's shadow pass on or off, and mark every material in the scene for recompile.
+ *
+ * A named operation taking the two objects explicitly, because both come from `useThree` and
+ * writing to a value React handed the component is what `react-hooks/immutability` flags. The
+ * parameter type is the one field this touches rather than the whole renderer, so the signature
+ * says what it does to what.
+ */
+function applyShadowPass(
+  gl: { shadowMap: THREE.WebGLShadowMap },
+  scene: THREE.Scene,
+  enabled: boolean,
+): void {
+  gl.shadowMap.enabled = enabled;
+  // Shadow toggling only takes effect after materials recompile.
+  scene.traverse((o: THREE.Object3D) => {
+    const mesh = o as THREE.Mesh;
+    const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+    if (!mat) return;
+    if (Array.isArray(mat)) mat.forEach((m) => (m.needsUpdate = true));
+    else mat.needsUpdate = true;
+  });
+}
+
 /** Applies the quality preset LIVE (no GL-context remount): render scale + shadow pass. */
 const QualityApplier: React.FC<{ quality: Quality }> = ({ quality }) => {
   const { gl, scene, setDpr } = useThree();
   useEffect(() => {
     setDpr(quality === 'high' ? Math.min(window.devicePixelRatio || 1, 1.5) : 1);
-    gl.shadowMap.enabled = quality === 'high';
-    // Shadow toggling only takes effect after materials recompile.
-    scene.traverse((o: THREE.Object3D) => {
-      const mesh = o as THREE.Mesh;
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
-      if (!mat) return;
-      if (Array.isArray(mat)) mat.forEach((m) => (m.needsUpdate = true));
-      else mat.needsUpdate = true;
-    });
+    applyShadowPass(gl, scene, quality === 'high');
   }, [quality, gl, scene, setDpr]);
   return null;
 };
@@ -222,6 +239,9 @@ export const WorldShowcase: React.FC = () => {
     teleportRef.current = { x: home.x, z: home.z };
   }, [home]);
 
+  // Load once. `world` is in the dependency list rather than suppressed out of it: the guard on the
+  // first line makes the re-run the loaded world triggers a no-op, so the honest list and the empty
+  // one do exactly the same thing — and the honest one keeps saying so if the guard ever moves.
   useEffect(() => {
     if (world) return;
     let alive = true;
@@ -231,8 +251,7 @@ export const WorldShowcase: React.FC = () => {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [world]);
 
   // Advance the day/night clock (24h) at `speed`. Paused when speed is 0.
   useEffect(() => {

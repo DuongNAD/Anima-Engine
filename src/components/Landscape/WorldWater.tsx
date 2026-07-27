@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -194,6 +194,53 @@ const fragmentShader = /* glsl */ `
   }
 `;
 
+/** The parts of the water uniforms that come from the world and the frame, not the palette. */
+interface WaterUniformInputs {
+  heightTex: THREE.Texture;
+  lakeMaskTex: THREE.Texture;
+  renderSize: number;
+  seaY: number;
+  /** Seed only: `useFrame` writes `uSunDir` every frame from the live prop. */
+  sunDir: [number, number, number];
+}
+
+/**
+ * Build one water surface's uniform block.
+ *
+ * Module scope rather than a closure inside the component, because as a closure it captured five
+ * values that its callers' dependency lists did not name — two `eslint-disable`d `useMemo`s whose
+ * suppression was load-bearing, since listing `sunDir` honestly would have rebuilt the ocean's
+ * uniforms on every render of a moving sun. Taking the inputs explicitly separates the two kinds:
+ * what the block is *built* from (below) and what the frame loop *drives* (uTime, uSunDir, fog).
+ */
+function makeWaterUniforms(
+  inputs: WaterUniformInputs,
+  shallow: string,
+  deep: string,
+  opacity: number,
+  waveAmp: number,
+  maskOn = 0,
+) {
+  return {
+    uTime: { value: 0 },
+    uWaveAmp: { value: waveAmp },
+    uHeightMap: { value: inputs.heightTex },
+    uTerrainSize: { value: inputs.renderSize },
+    uShelfBand: { value: inputs.renderSize * OCEAN_SHELF_BAND_FRACTION },
+    uSeaY: { value: inputs.seaY },
+    uSunDir: { value: new THREE.Vector3(...inputs.sunDir) },
+    uSunColor: { value: new THREE.Color('#fff4d6') },
+    uShallow: { value: new THREE.Color(shallow) },
+    uDeep: { value: new THREE.Color(deep) },
+    uOpacity: { value: opacity },
+    uFogColor: { value: new THREE.Color('#cfe4f2') },
+    uFogNear: { value: inputs.renderSize * 0.8 },
+    uFogFar: { value: inputs.renderSize * 3.2 },
+    uLakeMask: { value: inputs.lakeMaskTex },
+    uMaskOn: { value: maskOn },
+  };
+}
+
 export const WorldWater: React.FC<WorldWaterProps> = ({
   world,
   renderSize = 400,
@@ -235,31 +282,20 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
     return tex;
   }, [world]);
 
-  const makeUniforms = (shallow: string, deep: string, opacity: number, waveAmp: number, maskOn = 0) => ({
-    uTime: { value: 0 },
-    uWaveAmp: { value: waveAmp },
-    uHeightMap: { value: heightTex },
-    uTerrainSize: { value: renderSize },
-    uShelfBand: { value: renderSize * OCEAN_SHELF_BAND_FRACTION },
-    uSeaY: { value: seaY },
-    uSunDir: { value: new THREE.Vector3(...sunDir) },
-    uSunColor: { value: new THREE.Color('#fff4d6') },
-    uShallow: { value: new THREE.Color(shallow) },
-    uDeep: { value: new THREE.Color(deep) },
-    uOpacity: { value: opacity },
-    uFogColor: { value: new THREE.Color('#cfe4f2') },
-    uFogNear: { value: renderSize * 0.8 },
-    uFogFar: { value: renderSize * 3.2 },
-    uLakeMask: { value: lakeMaskTex },
-    uMaskOn: { value: maskOn },
-  });
+  // The sun direction the uniform blocks are *seeded* with, captured at mount. `useFrame` writes
+  // `uSunDir` from the live prop every frame, so this is an initial condition — pinning it is what
+  // lets the two memos below list every value they read instead of suppressing the rule.
+  const [uniformInputSunDir] = useState<[number, number, number]>(() => sunDir);
+  const uniformInputs = useMemo<WaterUniformInputs>(
+    () => ({ heightTex, lakeMaskTex, renderSize, seaY, sunDir: uniformInputSunDir }),
+    [heightTex, lakeMaskTex, renderSize, seaY, uniformInputSunDir],
+  );
 
   const oceanUniforms = useMemo(
     // Turquoise shallows -> deep blue. Shallow water is transparent so the sandy sea floor
     // tints it turquoise near the shore (see WorldTerrain's Beach-coloured coastal shelf).
-    () => makeUniforms('#48ddca', '#05203f', 0.9, 1.0),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [heightTex, renderSize, seaY],
+    () => makeWaterUniforms(uniformInputs, '#48ddca', '#05203f', 0.9, 1.0),
+    [uniformInputs],
   );
 
   // One shared material for every lake plane (uniforms updated once per frame).
@@ -268,13 +304,12 @@ export const WorldWater: React.FC<WorldWaterProps> = ({
       new THREE.ShaderMaterial({
         vertexShader,
         fragmentShader,
-        uniforms: makeUniforms('#57c7e8', '#134a76', 0.86, 0.4, 1),
+        uniforms: makeWaterUniforms(uniformInputs, '#57c7e8', '#134a76', 0.86, 0.4, 1),
         transparent: true,
         depthWrite: false,
         fog: false,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [heightTex, renderSize, seaY],
+    [uniformInputs],
   );
 
   // Lakes & ponds: one bbox quad per basin at its spill level, merged into (up to) TWO

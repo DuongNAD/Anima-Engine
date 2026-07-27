@@ -7,7 +7,8 @@ import {
   buildNormalTexture,
   buildRoughnessTexture,
   buildDetailTexture,
-} from './WorldTerrain';
+  buildRiverMaskTexture,
+} from './utils/worldTerrainTextures';
 import {
   makeChunkGrid,
   buildChunkGeometry,
@@ -80,18 +81,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
   );
   const roughnessMap = useMemo(() => buildRoughnessTexture(world), [world]);
   const detailMap = useMemo(() => buildDetailTexture(), []);
-  const riverMaskMap = useMemo(() => {
-    const { size, riverAmt } = world;
-    const data = new Uint8Array(size * size);
-    if (riverAmt) data.set(riverAmt);
-    const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
-    tex.minFilter = THREE.LinearFilter;
-    tex.magFilter = THREE.LinearFilter;
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.needsUpdate = true;
-    return tex;
-  }, [world]);
+  const riverMaskMap = useMemo(() => buildRiverMaskTexture(world), [world]);
 
   const grid = useMemo(() => makeChunkGrid(chunksPerSide), [chunksPerSide]);
 
@@ -121,16 +111,27 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
     if (!streamingOn) return new Set<number>(grid.map((_, i) => i));
     return updateActiveChunks(grid, 0, 0, renderSize, loadRadius, unload, new Set<number>()).active;
   }, [grid, streamingOn, renderSize, loadRadius, unload]);
-  const [activeChunks, setActiveChunks] = useState<Set<number>>(initialActive);
+
+  // Residency is state, but state that only means anything relative to the window it grew out of —
+  // so the window it was computed from is stored with it. A new world / grid / radius then falls
+  // back to the fresh window *during render*, rather than through the effect-then-setState round
+  // trip this used to do: that rendered one frame of the previous world's residency before
+  // correcting itself, which is exactly the cascading render `set-state-in-effect` names.
+  const [stream, setStream] = useState<{ basis: Set<number>; active: Set<number> }>(() => ({
+    basis: initialActive,
+    active: initialActive,
+  }));
+  const activeChunks = stream.basis === initialActive ? stream.active : initialActive;
 
   const meshRefs = useRef<Array<THREE.Mesh | null>>([]);
   const lodState = useRef<number[]>([]);
+  // useFrame's copy of the residency: written synchronously so two frames between renders compound
+  // rather than both starting from the last committed set.
   const activeRef = useRef<Set<number>>(initialActive);
   const lastCam = useRef<{ x: number; z: number }>({ x: Infinity, z: Infinity });
   useEffect(() => {
     lodState.current = initialLods.slice();
     activeRef.current = initialActive;
-    setActiveChunks(initialActive);
     lastCam.current = { x: Infinity, z: Infinity }; // force a recompute next frame
   }, [initialLods, initialActive, cacheBundle]);
 
@@ -213,7 +214,7 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
       const { active, changed } = updateActiveChunks(grid, cam.x, cam.z, renderSize, loadRadius, unload, activeRef.current);
       if (changed) {
         activeRef.current = active;
-        setActiveChunks(active);
+        setStream({ basis: initialActive, active });
       }
     }
   });
@@ -239,8 +240,14 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
           key={i}
           ref={(m: THREE.Mesh | null) => {
             meshRefs.current[i] = m;
+            // Geometry is attached here rather than passed as a prop. The authoritative LOD level
+            // lives in a ref that useFrame swaps, and reading a ref during render is both what the
+            // React Compiler's `refs` rule forbids and a real hazard: the rendered geometry would
+            // depend on when the camera last moved. A ref callback runs during commit, which is
+            // where that ref may legitimately be read — and before anything is drawn, so no frame
+            // ever shows the default geometry three's Mesh constructor supplies.
+            if (m) m.geometry = cacheBundle.get(i, lodState.current[i] ?? initialLods[i]);
           }}
-          geometry={cacheBundle.get(i, lodState.current[i] ?? initialLods[i])}
           material={material}
           receiveShadow
         />

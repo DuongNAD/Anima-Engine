@@ -19,14 +19,15 @@ import {
   hashString,
   poissonDiskSampling
 } from '../../src/components/Landscape/utils/terrainGenerator';
+import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
 
 // Mock Canvas and useFrame for R3F compatibility
-let frameCallbacks: Array<(state: any) => void> = [];
+let frameCallbacks: FrameCallback[] = [];
 vi.mock('@react-three/fiber', async () => {
   return {
     extend: vi.fn(),
-    Canvas: ({ children }: any) => <div data-testid="mock-canvas">{children}</div>,
-    useFrame: (cb: any) => {
+    Canvas: ({ children }: { children?: React.ReactNode }) => <div data-testid="mock-canvas">{children}</div>,
+    useFrame: (cb: FrameCallback) => {
       frameCallbacks.push(cb);
     },
     useThree: () => {
@@ -243,11 +244,11 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
       
       // Force frame update with negative delta
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 2.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(2.0), 0));
       });
       // Try again with negative delta
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 2.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(2.0), 0));
       });
       expect(container.querySelector('[name="water-mesh"]')).toBeTruthy();
     });
@@ -301,17 +302,21 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
     it('should handle negative delta in weather animation (moving rain/snow particles)', () => {
       const { container } = render(<Weather weather="rain" />);
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
       });
       // pass negative delta
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
       });
       expect(container.querySelector('[name="weather-group"]')).toBeTruthy();
     });
 
     it('should handle invalid weather types gracefully without crashing', () => {
-      const { container } = render(<Weather weather={"invalid-weather-type" as any} />);
+      // A value outside the union, which is what a stale saved preference or a hand-edited URL
+      // produces at runtime. `as never` rather than `as any`: it asserts the value is not one the
+      // prop accepts, which is precisely the claim this test is making, instead of switching the
+      // check off.
+      const { container } = render(<Weather weather={'invalid-weather-type' as never} />);
       expect(container.querySelector('[name="weather-group"]')).toBeTruthy();
     });
   });
@@ -378,8 +383,10 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
         setPosition: vi.fn(),
       };
       
-      // Inject mock panner
-      (audioManager as any).panners.set('legacy-panner', mockPanner);
+      // Seed the cache directly. jsdom implements no Web Audio, so a panner without `positionX`
+      // cannot be obtained through `createSpatialSource` — and the cache is typed as the structural
+      // `SpatialPanner`, which this mock satisfies, so no cast is needed to say so.
+      audioManager.panners.set('legacy-panner', mockPanner);
       
       expect(() => {
         audioManager.updateSpatialSource('legacy-panner', 5, 10, 15);
@@ -434,7 +441,7 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp' }));
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift' }));
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Space' }));
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
       }).not.toThrow();
     });
 
@@ -448,7 +455,7 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
       // Let's trigger movement to force elevation lookup
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'w' }));
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 1.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(1.0), 0));
       });
 
       // map with NaNs
@@ -457,7 +464,7 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
         <CameraControls cameraMode="fly" terrainHeightMap={nanMap} gridWidth={64} gridHeight={64} />
       );
       act(() => {
-        frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => 2.0 } }));
+        frameCallbacks.forEach(cb => cb(frameStateAt(2.0), 0));
       });
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 'w' }));
     });
@@ -469,7 +476,7 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd' }));
       act(() => {
         for (let i = 0; i < 5; i++) {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => i } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(i), 0));
         }
       });
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 'd' }));
@@ -478,7 +485,7 @@ describe('Landscape Showcase Adversarial Test Suite (Tier 5)', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 's' }));
       act(() => {
         for (let i = 0; i < 5; i++) {
-          frameCallbacks.forEach(cb => cb({ clock: { getElapsedTime: () => i } }));
+          frameCallbacks.forEach(cb => cb(frameStateAt(i), 0));
         }
       });
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 's' }));

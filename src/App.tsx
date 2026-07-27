@@ -6,12 +6,17 @@ import { LegacyImportPanel } from "./components/LegacyImportPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
 import { useTauriEvent } from "./hooks/useTauriEvent";
-import { buildAgentHierarchy } from "./utils/agentHierarchy";
+import { buildAgentHierarchy, indexRootSegments } from "./utils/agentHierarchy";
 import type { SegmentState, RenderSegment, AgentHierarchy } from "./utils/agentHierarchy";
 
-// Re-exported so existing importers keep working; the implementation and the view-model types now
-// live in one place instead of being copied per consumer.
-export { buildAgentHierarchy };
+// The view-model types are re-exported so existing importers keep working; the implementation and
+// the types now live in one place instead of being copied per consumer.
+//
+// `buildAgentHierarchy` itself is NOT re-exported. It is a plain function, and a module that
+// exports both a component and a function is one Fast Refresh cannot hot-swap — an edit anywhere in
+// this file would full-reload the app. Nothing imported it from here in any case: the two consumers
+// (`src/__tests__/agentHierarchy.test.ts` and `tests/mocks/mock_ipc_payloads.ts`) both already go to
+// `src/utils/agentHierarchy` directly. Types are exempt, because they are erased before the bundle.
 export type { SegmentState, RenderSegment, AgentHierarchy };
 
 const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
@@ -96,6 +101,8 @@ export function App() {
     fps: 0,
   });
   const [hierarchies, setHierarchies] = useState<AgentHierarchy[]>([]);
+  /** Root segment per agent, from the same tick as `hierarchies`. Carries the panel's telemetry. */
+  const [rootSegments, setRootSegments] = useState<Record<number, SegmentState>>({});
   const [headDirections, setHeadDirections] = useState<Record<number, [number, number, number] | undefined>>({});
   const [error, setError] = useState<string | null>(null);
   const [projection, setProjection] = useState<"xy" | "xz">("xy");
@@ -104,8 +111,7 @@ export function App() {
   const [filePath, setFilePath] = useState<string>("");
   const [environmentalState, setEnvironmentalState] = useState<EnvironmentalState>({ elements: [] });
 
-  
-  const latestSegmentsRef = useRef<SegmentState[]>([]);
+
   const lastHierarchiesUpdateRef = useRef<number>(0);
   const projectionRef = useRef<"xy" | "xz">("xy");
 
@@ -467,12 +473,13 @@ export function App() {
       const safeSegments = newSegments.filter(
         (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
       );
-      latestSegmentsRef.current = safeSegments;
-
       const now = Date.now();
       if (now - lastHierarchiesUpdateRef.current >= 200) {
         const newHierarchies = buildAgentHierarchy(safeSegments);
         setHierarchies(newHierarchies);
+        // Indexed from the same array, in the same batch: the panel's rows and the telemetry
+        // printed inside them are then always one tick, never two.
+        setRootSegments(indexRootSegments(safeSegments));
         lastHierarchiesUpdateRef.current = now;
       }
     },
@@ -678,7 +685,7 @@ export function App() {
                     <div style={{ fontSize: "12px", marginBottom: "8px", color: "#4a5568" }}>
                       <div data-testid="hydration-telemetry">
                         Hydration: {(() => {
-                          const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                          const seg = rootSegments[hierarchy.agent_id];
                           return seg && seg.hydration !== undefined ? `${safeToFixed(seg.hydration, 1)}%` : "75.0%";
                         })()}
                       </div>
@@ -686,7 +693,7 @@ export function App() {
                         Head Direction: {(() => {
                           const dir = headDirections[hierarchy.agent_id];
                           if (dir === undefined) {
-                            const seg = latestSegmentsRef.current.find(s => s.agent_id === hierarchy.agent_id && (s.parent_segment_id === null || s.parent_segment_id === undefined));
+                            const seg = rootSegments[hierarchy.agent_id];
                             if (seg && seg.head_direction) {
                               return `[${seg.head_direction.map((v: number) => safeToFixed(v, 1)).join(", ")}]`;
                             }

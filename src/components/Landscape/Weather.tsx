@@ -11,6 +11,30 @@ interface WeatherProps {
   timeOfDay?: number;
 }
 
+/**
+ * Install this component's exponential fog on the scene, and hand back its removal.
+ *
+ * A named operation taking the scene explicitly, rather than two assignments written inline in the
+ * effect. `scene` is a value `useThree` handed the component, and writing to one of those is what
+ * `react-hooks/immutability` flags — the fog belongs to the scene and this component owns it only
+ * by convention, so the honest place to state that convention is a signature. Everything after
+ * mount is eased in `useFrame`, off the render path entirely.
+ */
+function installExpFog(scene: THREE.Scene, color: string, density: number): () => void {
+  scene.fog = new THREE.FogExp2(color, density);
+  return () => {
+    scene.fog = null;
+  };
+}
+
+/** The fog colour for a given sky/weather combination. Darker at night, greyer in weather. */
+function fogColorFor(weather: WeatherProps['weather'], timeOfDay: number): string {
+  if (timeOfDay < 5 || timeOfDay > 20) return '#020208'; // Night dark fog
+  if (weather === 'rain' || weather === 'fog') return '#8a9ba8'; // Rainy/foggy grayish blue
+  if (weather === 'snow') return '#d0dce5'; // Snowy cool white
+  return '#87ceeb'; // Clear day light blue
+}
+
 export const Weather: React.FC<WeatherProps> = ({
   weather,
   precipitationRate = 1.0,
@@ -66,12 +90,13 @@ export const Weather: React.FC<WeatherProps> = ({
   // Re-running on a density change would reinstall the fog mid-flight and discard whatever the
   // frame loop had eased it to. `INITIAL_FOG_DENSITY` is read once, on purpose.
   const initialFogDensity = useRef(currentFogDensity);
-  useEffect(() => {
-    scene.fog = new THREE.FogExp2('#87ceeb', initialFogDensity.current);
-    return () => {
-      scene.fog = null;
-    };
-  }, [scene]);
+  useEffect(() => installExpFog(scene, '#87ceeb', initialFogDensity.current), [scene]);
+
+  // Fog colour follows time of day (darker at night, grey in storm/fog). Computed before the frame
+  // loop that reads it: `useFrame`'s callback runs long after render, but a `const` declared below
+  // it is still a temporal-dead-zone reference as far as the React Compiler is concerned, and it is
+  // right to object — the ordering is only safe by accident of when frames happen to fire.
+  const targetFogColor = fogColorFor(weather, timeOfDay);
 
   useFrame((state, delta) => {
     const time = state.clock.getElapsedTime();
@@ -150,10 +175,13 @@ export const Weather: React.FC<WeatherProps> = ({
       pointsRef.current.position.y = -((time * 5) % 10);
     }
 
-    // Update fog imperatively
-    if (scene.fog && scene.fog instanceof THREE.FogExp2) {
-      scene.fog.density = currentFogDensity;
-      scene.fog.color.set(targetFogColor);
+    // Update fog imperatively. Reached through `state.scene` rather than the closed-over `scene`:
+    // inside the frame loop the live scene is the callback's own argument, which is where r3f
+    // intends imperative work to read it from.
+    const fog = state.scene.fog;
+    if (fog instanceof THREE.FogExp2) {
+      fog.density = currentFogDensity;
+      fog.color.set(targetFogColor);
     }
   });
 
@@ -164,18 +192,6 @@ export const Weather: React.FC<WeatherProps> = ({
     (weather === 'rain' ? currentRainIntensity : 0) * maxRainCount +
     (weather === 'snow' ? currentSnowIntensity : 0) * maxSnowCount
   );
-
-  // Fog color changes based on time of day (darker at night, grayish in storm/fog)
-  let targetFogColor = '#cccccc';
-  if (timeOfDay < 5 || timeOfDay > 20) {
-    targetFogColor = '#020208'; // Night dark fog
-  } else if (weather === 'rain' || weather === 'fog') {
-    targetFogColor = '#8a9ba8'; // Rainy/foggy grayish blue
-  } else if (weather === 'snow') {
-    targetFogColor = '#d0dce5'; // Snowy cool white
-  } else {
-    targetFogColor = '#87ceeb'; // Clear day light blue
-  }
 
   return (
     <group

@@ -41,6 +41,31 @@ export interface AgentHierarchy {
   root: RenderSegment;
 }
 
+/**
+ * The root segment (the one with no parent) of each agent, keyed by agent id.
+ *
+ * The telemetry panel needs two fields — `hydration` and `head_direction` — that the render tree
+ * deliberately does not carry, so it used to reach for the newest raw segment array held in a ref
+ * and search it *during render*. That is the pattern `react-hooks/refs` rejects, and the reason is
+ * visible in this exact case: the ref held a newer tick than the throttled `hierarchies` state the
+ * panel was iterating, so the row for an agent and the hydration printed inside it could come from
+ * two different ticks. Indexing here, from the same array `buildAgentHierarchy` is given, makes the
+ * whole panel one snapshot.
+ *
+ * First match wins, matching the `find` this replaced: a payload with two parentless segments for
+ * one agent is malformed, and picking the earlier one is what the panel already showed.
+ */
+export function indexRootSegments(segments: SegmentState[]): Record<number, SegmentState> {
+  const roots: Record<number, SegmentState> = {};
+  for (const seg of Array.isArray(segments) ? segments : []) {
+    if (!seg || typeof seg !== 'object') continue;
+    if (seg.agent_id === undefined || seg.agent_id === null) continue;
+    if (seg.parent_segment_id !== null && seg.parent_segment_id !== undefined) continue;
+    if (roots[seg.agent_id] === undefined) roots[seg.agent_id] = seg;
+  }
+  return roots;
+}
+
 export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
   const safeSegments = (Array.isArray(segments) ? segments : []).filter(
     (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
