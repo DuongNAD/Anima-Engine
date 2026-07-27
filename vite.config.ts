@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => ({
       ...(mode === 'test' ? {
         // Only the R3F reconciler is mocked under jsdom; real three runs headless
         // (geometry/math classes need no WebGL context).
-        "@react-three/fiber": path.resolve(__dirname, "tests/mocks/react-three-fiber-mock.tsx"),
+        "@react-three/fiber": path.resolve(__dirname, "tests/mocks/react-three-fiber-mock.ts"),
       } : {}),
       "@": path.resolve(__dirname, "./src"),
     },

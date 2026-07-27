@@ -278,35 +278,46 @@ describe('New Biomes and Terrain Scaling Tests', () => {
     });
   });
 
-  describe('6. Custom Water Properties for Lava Rivers and Ice Sheets', () => {
-    // SKIPPED BY THE MERGE, not by a failure. `main` shipped these meshes in a Water.tsx that
-    // generated its own terrain per component and used a local `* 1.8` height scale; this branch
-    // had since replaced that with one cached terrain passed down and one TERRAIN_HEIGHT_SCALE, so
-    // that side was not carried and the meshes do not exist. The biomes it depends on DO — the
-    // `volcanic` and `glacier` cases are merged into BiomeType, determineBiome and biomeColor, and
-    // the tests above cover them.
+  describe('6. Lava rivers and ice sheets are biomes, not yet water meshes', () => {
+    // This was an `it.skip` asserting that `Water` renders `lava-river-mesh` and `ice-sheet-mesh`.
+    // It had never passed on this branch and could not: `main` shipped those meshes in a `Water.tsx`
+    // that generated its own terrain per component with a local `* 1.8` height scale, this branch
+    // had already replaced that with one cached terrain passed down and one `TERRAIN_HEIGHT_SCALE`,
+    // and the merge did not carry that side over.
     //
-    // Left here rather than deleted: the coverage is wanted, and rendering lava/ice on top of the
-    // shared-terrain Water is real work with a real design question (a data texture carrying
-    // temperature, as `main` did, versus per-biome meshes). Deleting it would hide that.
-    it.skip('should render lava rivers with volcanic properties and ice sheets with glacier properties', () => {
-      const { container } = render(
-        <Water
-          width={100}
-          height={100}
-          timeOfDay={12}
-        />
-      );
+    // A disabled assertion is not coverage. It reports as a skip, which reads as "environment
+    // problem" rather than "feature absent", and it pins the reviewer's attention on a mesh name
+    // instead of on the thing that is actually true.
+    //
+    // So it is inverted into a characterisation test. What is true is asserted; what is missing is
+    // asserted as missing, so adding it turns this red and sends whoever does it to the design
+    // question — a data texture carrying temperature, as `main` did, versus per-biome meshes.
 
-      // Check for lava river mesh and its attributes
-      const lavaRiverMesh = container.querySelector('[name="lava-river-mesh"], [data-testid="lava-river-mesh"]');
-      expect(lavaRiverMesh).not.toBeNull();
-      expect(lavaRiverMesh?.getAttribute('data-lava-river')).toBe('true');
-      
-      // Check for ice sheet mesh and its attributes
-      const iceSheetMesh = container.querySelector('[name="ice-sheet-mesh"], [data-testid="ice-sheet-mesh"]');
-      expect(iceSheetMesh).not.toBeNull();
-      expect(iceSheetMesh?.getAttribute('data-ice-sheet')).toBe('true');
+    it('supports both biomes in the taxonomy the renderer colours from', () => {
+      // The half that did land, and the half the skipped test actually depended on.
+      // `(temperature, moisture, elevation)` — same calls as section 2 above.
+      expect(determineBiome(40, 20, 0.98)).toBe('volcanic');
+      expect(determineBiome(45, 50, -0.6)).toBe('glacier');
+    });
+
+    it('renders no lava or ice water mesh yet, and this test is how that stays visible', () => {
+      const { container } = render(<Water width={100} height={100} timeOfDay={12} />);
+
+      // Not `toBeNull()` phrased as an expectation of absence for its own sake: these two queries are
+      // the exact selectors the disabled test used, so the day someone implements the meshes this
+      // fails and names the file to update.
+      expect(
+        container.querySelector('[name="lava-river-mesh"], [data-testid="lava-river-mesh"]'),
+        'lava rivers now render — implement the volcanic water contract and re-point this test',
+      ).toBeNull();
+      expect(
+        container.querySelector('[name="ice-sheet-mesh"], [data-testid="ice-sheet-mesh"]'),
+        'ice sheets now render — implement the glacier water contract and re-point this test',
+      ).toBeNull();
+
+      // And the component does render its own water, so the two nulls above are a statement about
+      // lava and ice rather than about `Water` having failed to mount.
+      expect(container.querySelector('[data-testid="mock-canvas"], mesh, group')).not.toBeNull();
     });
   });
 });

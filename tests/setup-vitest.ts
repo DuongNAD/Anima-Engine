@@ -12,8 +12,36 @@ import {
   mockEnvironmentalState
 } from './mocks/mock_ipc_payloads';
 
-// Global canvas context mock setup
-const mockContexts = new Map<HTMLCanvasElement, any>();
+// Global canvas context mock setup.
+//
+// jsdom implements no canvas context at all, so the HUD widgets that draw with Canvas 2D — the
+// compass ribbon and the minimap — would throw on `getContext('2d')`. This is the subset of
+// `CanvasRenderingContext2D` they call; a component reaching for anything else fails loudly here
+// rather than silently drawing nothing.
+type MockCanvasContext = Pick<
+  CanvasRenderingContext2D,
+  | 'canvas'
+  | 'clearRect'
+  | 'beginPath'
+  | 'arc'
+  | 'fill'
+  | 'stroke'
+  | 'moveTo'
+  | 'lineTo'
+  | 'fillText'
+  | 'rect'
+  | 'fillRect'
+  | 'strokeRect'
+  | 'closePath'
+  | 'fillStyle'
+  | 'strokeStyle'
+  | 'lineWidth'
+  | 'font'
+  | 'textAlign'
+  | 'textBaseline'
+>;
+
+const mockContexts = new Map<HTMLCanvasElement, MockCanvasContext>();
 
 HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (this: HTMLCanvasElement, contextId: string) {
   if (contextId === '2d') {
@@ -45,23 +73,43 @@ HTMLCanvasElement.prototype.getContext = vi.fn().mockImplementation(function (th
     return ctx;
   }
   return null;
-}) as any;
+}) as HTMLCanvasElement['getContext'];
+
+// The r3f reconciler creates DOM elements for three objects under jsdom, so the methods a
+// three object would have get called on an `HTMLElement`. These stubs put them there.
+//
+// `HTMLElement.prototype` is typed with exactly the DOM's own members, so writing new ones needs a
+// view of it that admits them. `Record<string, unknown>` is that view — it says "an object with
+// string-keyed properties", which is true, and unlike `any` it still type-checks what is assigned.
+type Extensible = Record<string, unknown>;
+const htmlProto = HTMLElement.prototype as unknown as Extensible;
+
+/** A three geometry with the one field these stubs record on it. */
+interface CapturingGeometry extends Extensible {
+  _capturedIndex?: unknown;
+}
 
 // Mock OrbitControls update method on HTMLElement to support JSDOM testing
-(HTMLElement.prototype as any).update = vi.fn();
+htmlProto.update = vi.fn();
 
 // Mock BufferGeometry methods and attributes on HTMLElement to support React Three Fiber under JSDOM
-(HTMLElement.prototype as any).setIndex = vi.fn().mockImplementation(function (this: any, index: any) {
+htmlProto.setIndex = vi.fn().mockImplementation(function (this: CapturingGeometry, index: unknown) {
   this._capturedIndex = index;
   return this;
 });
 
-(HTMLElement.prototype as any).computeVertexNormals = vi.fn();
-(HTMLElement.prototype as unknown as Record<string, unknown>).computeBoundingSphere = vi.fn();
+htmlProto.computeVertexNormals = vi.fn();
+htmlProto.computeBoundingSphere = vi.fn();
 
 // Capture custom attributes set on elements (like BufferAttributes on bufferGeometry)
+/** An element that lazily grows the attribute map the vegetation tests read back. */
+interface CapturingElement extends Extensible {
+  __capturedAttributes?: Map<string, unknown>;
+  _capturedAttributes: Map<string, unknown>;
+}
+
 Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
-  get() {
+  get(this: CapturingElement) {
     if (!this.__capturedAttributes) {
       this.__capturedAttributes = new Map();
     }
@@ -72,9 +120,9 @@ Object.defineProperty(HTMLElement.prototype, '_capturedAttributes', {
 
 const originalSetAttribute = HTMLElement.prototype.setAttribute;
 HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
-  this: any,
+  this: CapturingElement,
   name: string,
-  value: any
+  value: unknown
 ) {
   if (value instanceof THREE.BufferAttribute) {
     this._capturedAttributes.set(name, value);
@@ -83,9 +131,26 @@ HTMLElement.prototype.setAttribute = vi.fn().mockImplementation(function (
   }
 });
 
+/** The position attribute the precipitation systems write into each frame. */
+interface MockPositionAttribute {
+  array: Float32Array;
+  needsUpdate: boolean;
+}
+
+/** The slice of `BufferGeometry` a particle system reaches for. */
+interface MockGeometry {
+  getAttribute(name: string): MockPositionAttribute | null;
+}
+
+/** An element standing in for a `Points`, lazily growing the geometry it is asked for. */
+interface GeometryHolder extends Extensible {
+  _mockGeometry?: MockGeometry;
+  _mockPositionAttr?: MockPositionAttribute;
+}
+
 // Mock geometry getter (used by particle systems/points)
 Object.defineProperty(HTMLElement.prototype, 'geometry', {
-  get() {
+  get(this: GeometryHolder) {
     if (!this._mockGeometry) {
       this._mockGeometry = {
         getAttribute: vi.fn().mockImplementation((name: string) => {
@@ -107,10 +172,14 @@ Object.defineProperty(HTMLElement.prototype, 'geometry', {
   configurable: true,
 });
 
-
+/** A Tauri event as `@tauri-apps/api`'s `listen` delivers it. */
+interface MockTauriEvent {
+  event: string;
+  payload: unknown;
+}
 
 // Global event bus listeners for testing IPC events
-const listeners = new Map<string, Array<(event: any) => void>>();
+const listeners = new Map<string, Array<(event: MockTauriEvent) => void>>();
 
 let mockSimulationStatus = { ...originalStatus };
 let mockMapElitesGridState = JSON.parse(JSON.stringify(originalMapElitesGridState));
@@ -119,7 +188,7 @@ let mockLineageState = { ...mockLineageGraph };
 let mockChronicleState = [...mockChronicleHistory];
 
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn(async (eventName: string, callback: (event: any) => void) => {
+  listen: vi.fn(async (eventName: string, callback: (event: MockTauriEvent) => void) => {
     if (!listeners.has(eventName)) {
       listeners.set(eventName, []);
     }
@@ -130,13 +199,18 @@ vi.mock('@tauri-apps/api/event', () => ({
       listeners.set(eventName, current.filter(cb => cb !== callback));
     };
   }),
-  emit: vi.fn(async (eventName: string, payload: any) => {
+  emit: vi.fn(async (eventName: string, payload: unknown) => {
     const list = listeners.get(eventName) || [];
     list.forEach(callback => {
       let finalPayload = payload;
       if (eventName === 'simulation-tick' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
-        if (callback.toString().includes('segmentsRef.current') && !(globalThis as any).disableTickAdaptation) {
-          finalPayload = (payload as any).segments;
+        // Some consumers subscribe to the whole tick payload and some to just its `segments`. The
+        // callback's source is the only thing that distinguishes them here, which is ugly and is
+        // what the tests were written against; the flag is the escape hatch for tests that want the
+        // whole payload regardless.
+        const flags = globalThis as typeof globalThis & { disableTickAdaptation?: boolean };
+        if (callback.toString().includes('segmentsRef.current') && !flags.disableTickAdaptation) {
+          finalPayload = (payload as { segments?: unknown }).segments;
         }
       }
       callback({ event: eventName, payload: finalPayload });
