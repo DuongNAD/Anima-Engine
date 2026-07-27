@@ -12917,6 +12917,13 @@
       "name": "@oxc-project/runtime",
       "version": "0.139.0",
       "scope": "required",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
       "purl": "pkg:npm/%40oxc-project/runtime@0.139.0",
       "properties": [
         {
@@ -17448,5 +17455,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:c8f715e6-f5c7-5de8-8fa2-1734183a5020"
+  "serialNumber": "urn:uuid:d42edd2f-fd8f-5e91-9072-c31f72b12d55"
 }

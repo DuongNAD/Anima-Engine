@@ -32,6 +32,7 @@
     "check:licenses-complete": "node scripts/gen_third_party_licenses.mjs --check --require-complete",
     "check:bundle-closure": "node scripts/check_bundle_closure.mjs",
     "check:text-hygiene": "node scripts/check_text_hygiene.mjs",
+    "verify:upstream-licenses": "node scripts/verify_upstream_licenses.mjs",
     "gen:compliance": "npm run gen:licenses && npm run gen:sbom && npm run gen:notice",
     "gen:notice": "node scripts/gen_notice.mjs",
     "check:compliance": "npm run check:licenses && npm run check:sbom && npm run check:sbom-schema && npm run check:notice && npm run check:text-hygiene",

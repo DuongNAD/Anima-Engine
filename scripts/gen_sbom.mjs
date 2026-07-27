@@ -55,8 +55,27 @@ const ROOT = process.cwd();
 const CHECK = process.argv.includes('--check');
 const OUT = join(ROOT, 'sbom.cdx.json');
 
+// The SPDX expression the licence index settled on, keyed by purl.
+//
+// Almost always the component's own `declaredLicense`; the exception is a component the toolchain
+// compiles into the output and never installs, which has no local manifest to read one from.
+// `@oxc-project/runtime` is that case, and its expression comes from the registry via
+// `licensing/upstream/sources.json`. Read back from the index rather than recomputed, so the SBOM
+// and the licence bundle cannot disagree about the same component — three artifacts that describe
+// the graph differently is the failure `scripts/lib/licensing.mjs` exists to prevent.
+const INDEX = join(ROOT, 'licensing', 'third-party-index.json');
+if (!existsSync(INDEX)) {
+  throw new Error(
+    'licensing/third-party-index.json is missing. Run `node scripts/gen_third_party_licenses.mjs` ' +
+      'first: the SBOM reports the licence expressions that artifact resolved.',
+  );
+}
+const spdxByPurl = new Map(
+  JSON.parse(readFileSync(INDEX, 'utf8')).components.map((c) => [c.purl, c.spdx]),
+);
+
 function toComponent(c, closure) {
-  const licenses = licenseNode(c.declaredLicense);
+  const licenses = licenseNode(spdxByPurl.has(c.purl) ? spdxByPurl.get(c.purl) : c.declaredLicense);
   return {
     type: 'library',
     'bom-ref': c.purl,

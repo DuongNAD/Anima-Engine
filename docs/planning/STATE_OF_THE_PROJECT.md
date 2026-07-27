@@ -29,17 +29,18 @@ gate chưa xanh.
 | Backend test | `cargo test --features desktop --no-fail-fast` | **765 pass · 0 fail · 4 ignored**, 78 dòng kết quả, 0 warning biên dịch |
 | Target rỗng | `node scripts/check_test_targets.mjs` | **76 target, 0 rỗng** |
 | Format + clippy (cả 2 cấu hình) | `cargo fmt --check`, `cargo clippy --all-targets {--features desktop, --no-default-features} -- -D warnings` | sạch |
-| Test frontend (src) | `npm run test` | 14 file · **97 pass** |
-| Test frontend (tests/) | `npm run test:frontend` | **26 file · 243 pass · 1 skip** — nay ổn định nhờ `maxWorkers: 4`, xem §4 |
+| Test frontend (src) | `npm run test` | 14 file · **109 pass** |
+| Test frontend (tests/) | `npm run test:frontend` | **38 file · 432 pass · 0 skip** — ổn định nhờ `maxWorkers: 4`, xem §4 |
 | E2E Playwright | `npm run test:e2e` | **9 pass · 0 fail · 5 skip có lý do**, server riêng cổng 5177 + kiểm định danh |
 | CSP | `npm run check:csp` | 2 file HTML ship, 0 origin ngoài, 0 inline script |
 | Ngân sách bundle | `npm run check:bundle` | 23 chunk, **1695,8 / 2000 KiB** |
 | NOTICE | `npm run check:notice` | 419 crate + **21 gói npm được phân phối** + 18 gói cài-nhưng-không-ship |
-| Văn bản license bên thứ ba | `npm run check:licenses` | 440 thành phần phân phối · **247 văn bản khác nhau** · **32 chưa có văn bản** |
+| Văn bản license bên thứ ba | `npm run check:licenses` | 440 thành phần phân phối · **266 văn bản khác nhau** · **1 chưa có văn bản** (408 đọc từ artifact + 31 vendor từ commit upstream đã ghim) |
+| Kho license upstream đã vendor | `npm run verify:upstream-licenses` (cần mạng, chạy tay) | **39 file · 24 commit · 19 repository**, khớp byte-cho-byte với URL đã ghim |
 | SBOM | `npm run check:sbom` | **458 thành phần**, 459 bản ghi dependency, CycloneDX 1.5 |
 | SBOM đúng schema | `npm run check:sbom-schema` | hợp lệ với schema chính thức, ghim ở commit `c320fc0f0b46` |
 | Ranh giới bundle npm | `npm run check:bundle-closure` | 21 gói có byte trong `dist/` (3 do toolchain nhúng) |
-| Byte điều khiển trong source | `npm run check:text-hygiene` | 514 file, **0** byte điều khiển thô |
+| Byte điều khiển trong source | `npm run check:text-hygiene` | 525 file, **0** byte điều khiển thô |
 | Link tài liệu | `node scripts/check_docs_links.mjs` | 0 gãy |
 
 **Cái đã đổi so với 2026-07-26, và đáng đọc nhất:** hàng `tests/` **không phải hồi quy**. 28 lỗi là
@@ -543,7 +544,7 @@ vẫn trả đồ thị **đầy đủ**.
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
-| 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE`](../../LICENSE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Còn nợ, vẫn chặn phát hành:** (a) 32 thành phần được phân phối mà artifact publish không kèm văn bản license — engineering không tự sinh được, xem `UNRESOLVED.md`; (b) `LICENSE` vẫn không tách phạm vi code / model / dataset / asset |
+| 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE`](../../LICENSE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) `LICENSE` vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
 | 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
 
 ---

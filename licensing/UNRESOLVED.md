@@ -9,45 +9,36 @@ cannot close these by generating text: the canonical SPDX text of MIT contains n
 copyright holder, and reproducing the holder’s notice is exactly what MIT requires. A
 substituted text would look like compliance and would not be it.
 
-Resolving one means obtaining the licence file from the upstream repository **at the tag
-matching the version below**, recording where it came from, and re-running the
-generator. That is a human decision about a legal artifact; this file names the work,
-it does not do it.
+Resolving one means obtaining the licence file from the upstream repository **at the
+immutable commit the release was published from**, vendoring it under
+[`upstream/`](upstream/) with its provenance in
+[`upstream/sources.json`](upstream/sources.json), and re-running the generator. A row
+survives here only when no such file exists upstream at all.
 
-**32 component(s) unresolved.** Distribution of the affected components
+**31 of the original 32 have been closed that way**, from 39 vendored file(s)
+across 24 commit(s) in 19 repositories.
+
+**1 component(s) unresolved.** Distribution of the affected components
 is blocked until each is closed.
 
 | Component | Version | Ecosystem | Declared | Reason | Upstream |
 |---|---|---|---|---|---|
-| `alloc-stdlib` | 0.2.4 | cargo | BSD-3-Clause | declares BSD-3-Clause but the installed artifact contains no licence file | https://github.com/dropbox/rust-alloc-no-stdlib |
-| `codespan-reporting` | 0.11.1 | cargo | Apache-2.0 | declares Apache-2.0 but the installed artifact contains no licence file | https://github.com/brendanzab/codespan |
-| `com_macros` | 0.6.0 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/microsoft/com-rs |
-| `com_macros_support` | 0.6.0 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/microsoft/com-rs |
-| `d3d12` | 0.19.0 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/gfx-rs/wgpu/tree/trunk/d3d12 |
-| `delegate` | 0.10.0 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/kobzol/rust-delegate |
-| `gpu-alloc-types` | 0.3.1 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/zakarumych/gpu-alloc |
-| `gpu-alloc` | 0.6.2 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/zakarumych/gpu-alloc |
-| `gpu-descriptor-types` | 0.1.2 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/zakarumych/gpu-descriptor |
-| `gpu-descriptor` | 0.2.4 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/zakarumych/gpu-descriptor |
 | `hexf-parse` | 0.2.1 | cargo | CC0-1.0 | declares CC0-1.0 but the installed artifact contains no licence file | https://github.com/lifthrasiir/hexf |
-| `naga` | 0.19.2 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/gfx-rs/wgpu/tree/trunk/naga |
-| `neo4rs-macros` | 0.3.0 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/neo4j-labs/neo4rs |
-| `neo4rs` | 0.7.3 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/neo4j-labs/neo4rs |
-| `profiling` | 1.0.18 | cargo | MIT OR Apache-2.0 | declares MIT OR Apache-2.0 but the installed artifact contains no licence file | https://github.com/aclysma/profiling |
-| `pulp-wasm-simd-flag` | 0.1.1 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/sarah-quinones/pulp/ |
-| `selectors` | 0.36.1 | cargo | MPL-2.0 | declares MPL-2.0 but the installed artifact contains no licence file | https://github.com/servo/stylo |
-| `spirv` | 0.3.0+sdk-1.3.268.0 | cargo | Apache-2.0 | declares Apache-2.0 but the installed artifact contains no licence file | https://github.com/gfx-rs/rspirv |
-| `ts-rs-macros` | 10.1.0 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/Aleph-Alpha/ts-rs |
-| `ts-rs` | 10.1.0 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/Aleph-Alpha/ts-rs |
-| `unic-char-property` | 0.9.0 | cargo | MIT/Apache-2.0 | declares MIT/Apache-2.0 but the installed artifact contains no licence file | https://github.com/open-i18n/rust-unic/ |
-| `unic-char-range` | 0.9.0 | cargo | MIT/Apache-2.0 | declares MIT/Apache-2.0 but the installed artifact contains no licence file | https://github.com/open-i18n/rust-unic/ |
-| `unic-common` | 0.9.0 | cargo | MIT/Apache-2.0 | declares MIT/Apache-2.0 but the installed artifact contains no licence file | https://github.com/open-i18n/rust-unic/ |
-| `unic-ucd-ident` | 0.9.0 | cargo | MIT/Apache-2.0 | declares MIT/Apache-2.0 but the installed artifact contains no licence file | https://github.com/open-i18n/rust-unic/ |
-| `unic-ucd-version` | 0.9.0 | cargo | MIT/Apache-2.0 | declares MIT/Apache-2.0 but the installed artifact contains no licence file | https://github.com/open-i18n/rust-unic/ |
-| `webview2-com-macros` | 0.8.1 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/wravery/webview2-rs |
-| `webview2-com-sys` | 0.38.2 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/wravery/webview2-rs |
-| `webview2-com` | 0.38.2 | cargo | MIT | declares MIT but the installed artifact contains no licence file | https://github.com/wravery/webview2-rs |
-| `zune-inflate` | 0.2.54 | cargo | MIT OR Apache-2.0 OR Zlib | declares MIT OR Apache-2.0 OR Zlib but the installed artifact contains no licence file | _none declared_ |
-| `@oxc-project/runtime` | 0.139.0 | npm | _none_ | declares no licence in its own manifest; is compiled into the output by the toolchain and is not present in the install tree | _none declared_ |
-| `@pixi/colord` | 2.9.6 | npm | MIT | declares MIT but the installed artifact contains no licence file | omgovich/colord |
-| `@react-three/fiber` | 8.18.0 | npm | MIT | declares MIT but the installed artifact contains no licence file | git+https://github.com/pmndrs/react-three-fiber.git |
+
+## What was searched
+
+Recorded in [`upstream/sources.json`](upstream/sources.json) under `blocked`, and
+re-checked on every run: a component may not be listed there and resolved at the same
+time.
+
+### `hexf-parse` 0.2.1 — declares CC0-1.0
+
+Searched at `https://github.com/lifthrasiir/hexf` commit `4225763d744183d720f575ae96d04161b4d08ea0`
+(tag `0.2.1`), 2026-07-27.
+
+- The published .crate carries .cargo_vcs_info.json naming commit 4225763d744183d720f575ae96d04161b4d08ea0, and git ls-remote resolves the tag 0.2.1 to that same commit. parse/Cargo.toml there declares name = "hexf-parse", version = "0.2.1", license = "CC0-1.0". The revision is not in doubt; the text is.
+- A recursive tree scan of the repository at that commit finds no path matching LICEN[CS]E, COPYING, COPYRIGHT, NOTICE or UNLICENSE anywhere — not at the root, not in parse/. The only match on the word is tests/example.rs.
+- README.md at that commit contains no licence section: a case-insensitive search for "licen", "public domain" and "cc0" returns nothing.
+- The only LICENSE ever committed to the repository arrived in 41f0018229c1ee3d6fd813b6808d1ad1f506554c on 2024-12-04, three and a half years after this release, and its text is the Zero-Clause BSD permission grant ("Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted") — a different licence from the CC0-1.0 this version declares. Vendoring it would attribute the wrong terms to the shipped code.
+- crates.io records license = "CC0-1.0" for all three published versions (0.1.0, 0.2.0, 0.2.1), so the declaration is consistent and the later file is a relicensing rather than a correction to this one.
+- No CC0-1.0 text is substituted from a licence list. CC0 imposes no attribution condition, so the omission carries no notice obligation — but engineering does not get to package a text this project has never published and record it as that project’s licence file. Closing this row is a legal decision about whether the crates.io declaration alone suffices, not an engineering one.

@@ -42,7 +42,7 @@ const npmInstallOnly = npm.components.filter((c) => !c.distributed);
 function group(items) {
   const byLicense = new Map();
   for (const it of items) {
-    const key = it.declaredLicense ?? 'NOT DECLARED';
+    const key = spdxOf(it) ?? 'NOT DECLARED';
     if (!byLicense.has(key)) byLicense.set(key, []);
     byLicense.get(key).push(it);
   }
@@ -61,8 +61,6 @@ function section(title, items) {
   return out;
 }
 
-const undeclared = [...cargo.components, ...npmDistributed].filter((c) => !c.declaredLicense);
-
 // The residual gap is read from the licence bundle's own index rather than restated here, so this
 // file cannot claim a smaller number than the artifact that would have to back it up.
 const indexPath = join(ROOT, 'licensing', 'third-party-index.json');
@@ -75,6 +73,23 @@ if (!existsSync(indexPath)) {
 const index = JSON.parse(readFileSync(indexPath, 'utf8'));
 const unresolved = index.unresolved;
 const covered = cargo.components.length + npmDistributed.length - unresolved.length;
+
+/**
+ * The SPDX expression the licence index settled on, not a second opinion computed here.
+ *
+ * `@oxc-project/runtime` is why this is not just `c.declaredLicense`: rolldown compiles its helpers
+ * into `dist/` and it is never installed, so there is no local manifest to read, and the expression
+ * comes from the registry via `licensing/upstream/sources.json`. Reading it back from the index is
+ * what keeps NOTICE and the licence bundle from disagreeing about the same component — the failure
+ * this whole set of generators was consolidated to prevent.
+ */
+const spdxByPurl = new Map(index.components.map((c) => [c.purl, c.spdx]));
+function spdxOf(component) {
+  return spdxByPurl.has(component.purl) ? spdxByPurl.get(component.purl) : component.declaredLicense;
+}
+
+const undeclared = [...cargo.components, ...npmDistributed].filter((c) => !spdxOf(c));
+const vendored = index.counts.fromVendoredUpstream;
 
 const body = `# NOTICE
 
@@ -93,14 +108,20 @@ and verify in CI with \`node scripts/gen_notice.mjs --check\`.
 
 This file is the **inventory**. The licence texts themselves — the thing MIT and BSD actually
 require to accompany the distribution — are in
-[\`licensing/THIRD_PARTY_LICENSES.txt\`](licensing/THIRD_PARTY_LICENSES.txt), generated from the
-exact installed versions with a SHA-256 per source file recorded in
+[\`licensing/THIRD_PARTY_LICENSES.txt\`](licensing/THIRD_PARTY_LICENSES.txt), taken from the exact
+installed versions with a SHA-256 per source file recorded in
 [\`licensing/third-party-index.json\`](licensing/third-party-index.json).
 
 Coverage: **${covered} of ${cargo.components.length + npmDistributed.length}** distributed components
-have their licence text packaged. The remaining **${unresolved.length}** are enumerated with the
-reason in [\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md); their published artifacts contain
-no licence file, and no text is invented to cover for that.
+have their licence text packaged. **${vendored}** of those publish no licence file in their artifact
+at all; for them the text is taken from the upstream repository at the immutable commit the release
+was published from, vendored verbatim under [\`licensing/upstream/\`](licensing/upstream/) and hashed,
+with the evidence tying each commit to each released version in
+[\`licensing/upstream/sources.json\`](licensing/upstream/sources.json). Text read out of the installed
+artifact is always preferred to a vendored copy.
+
+The remaining **${unresolved.length}** are enumerated with the reason, and with what was searched, in
+[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md). No text is invented to cover for that.
 
 ## What is counted, and why
 
@@ -126,8 +147,12 @@ to prevent — the earlier version of this file did, in both directions at once.
   \`LICENSE\`.
 
 Version numbers are the resolved ones from the lockfiles at generation time. Licence strings are the
-SPDX expressions each component declares in its own manifest; where a component declares a dual
-licence (commonly \`MIT OR Apache-2.0\` in the Rust ecosystem) the choice is the distributor's.
+SPDX expressions each component declares in its own manifest — or, for a component the toolchain
+compiles in and never installs, the expression its registry publishes for that exact version, taken
+from [\`licensing/upstream/sources.json\`](licensing/upstream/sources.json) with the evidence. Where a
+component declares a dual licence (commonly \`MIT OR Apache-2.0\` in the Rust ecosystem) the choice is
+the distributor's, and this repository makes none on the owner's behalf: every licence file present
+at the pinned release is packaged, not one option out of several.
 
 ## Rust components
 
@@ -157,8 +182,8 @@ ${
 
 ${
   unresolved.length === 0
-    ? 'Every distributed component supplies its licence text.'
-    : `${unresolved.length} distributed component(s) declare a licence whose text their published\nartifact does not contain. They are listed with the exact blocker in\n[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md) and remain open.`
+    ? 'Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision.'
+    : `${unresolved.length} distributed component(s) declare a licence whose text neither their\npublished artifact nor their upstream repository contains at the released revision. They are listed\nwith the exact blocker, and with the search that failed, in\n[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md) and remain open.`
 }
 
 ## What this file does NOT establish

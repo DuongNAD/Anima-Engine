@@ -228,8 +228,9 @@ Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
    **proprietary, all rights reserved**. Blocker quản trị OSS-003 vì thế đã gỡ — nhưng theo hướng
    **thắt chặt**: thành phần copyleft (GPL/AGPL) nay là chặn cứng cho mọi đường tiếp xúc với code,
    áp cho ít nhất SLiM, Avida, ALIEN và Thrive. Hệ quả phụ **đã xử lý 2026-07-27:** `NOTICE` và
-   `licensing/THIRD_PARTY_LICENSES.txt` đều đã sinh tự động và có gate CI; còn lại **32** thành phần
-   mà upstream không kèm văn bản license, liệt kê ở `licensing/UNRESOLVED.md` (mục 3.16).
+   `licensing/THIRD_PARTY_LICENSES.txt` đều đã sinh tự động và có gate CI; sau đợt vendor
+   `licensing/upstream/` (2026-07-27) chỉ còn **1** thành phần mà upstream chưa từng publish văn bản
+   license, liệt kê kèm chứng cứ tìm kiếm ở `licensing/UNRESOLVED.md` (mục 3.16).
 2. **`three-mesh-bvh` được xếp "Pilot ưu tiên cao" trên một tiền đề code đã bác bỏ.** Không có
    `THREE.Raycaster` nào trong `src/`; cao độ địa hình lấy giải tích qua `sampleElevation`; LOD theo
    khoảng cách đã có ở `chunkLod.ts`. Còn `raycasts` trong `PixiViewport.tsx` là telemetry cảm biến
@@ -269,7 +270,7 @@ Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
 
 1. OSS-010 Criterion (P0, chặn §3.2) · 2. OSS-070 xuất Newick (~40 dòng, 0 dependency) ·
 3. Phần còn nợ của OSS-003: tách phạm vi license. (`NOTICE` xong 2026-07-27; xem
-   `licensing/UNRESOLVED.md` cho 32 mục còn chặn phát hành.)
+   `licensing/UNRESOLVED.md` cho 1 mục còn chặn phát hành.)
 
 ---
 

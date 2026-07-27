@@ -30,7 +30,7 @@ is not a gate until something fails on it.
 | Feature split | `cargo tree` on a default build | Rust | Neo4j / WebSocket / Burn-WGPU staying out of headless |
 | Binding drift | `cargo test --lib export_bindings` + `git diff --exit-code` | Rust | a Rust IPC struct changing without the TS binding |
 | Rust advisories | `cargo audit` | Rust | two ignored entries, each with recorded verification |
-| **Licence texts** | `npm run check:licenses` | Rust | 440 distributed components, 247 distinct texts, 32 recorded gaps |
+| **Licence texts** | `npm run check:licenses` | Rust | 440 distributed components, 266 distinct texts, 1 recorded gap |
 | **SBOM freshness** | `npm run check:sbom` | Rust | 458 components, 459 dependency records |
 | **SBOM validity** | `npm run check:sbom-schema` | Rust | official CycloneDX 1.5 schema, vendored and pinned by checksum |
 | **NOTICE freshness** | `npm run check:notice` | Rust | 419 crates + 21 distributed npm + 18 install-only |
@@ -90,30 +90,45 @@ changes — all three invalidate every image — then regenerate the manifest an
 
 Neither can be closed by writing code, and neither is marked closed.
 
-### 3.1 Licence texts — packaged for 408 of 440, blocked on 32
+### 3.1 Licence texts — packaged for 439 of 440, blocked on 1
 
-**Updated 2026-07-27.** This section previously read "Licence texts are not packaged", which was
-accurate then and is not now.
+**Updated 2026-07-27 (second pass).** This section first read "Licence texts are not packaged", then
+"packaged for 408 of 440, blocked on 32". Both were accurate when written. Neither is now.
 
 `licensing/THIRD_PARTY_LICENSES.txt` reproduces the licence and copyright notices of the distributed
-components verbatim, from the exact installed versions, with a SHA-256 per source file in
-`licensing/third-party-index.json` so any entry can be re-verified against the package it came from.
-Coverage is **408 of 440** distributed components and **247** distinct texts.
+components verbatim, with a SHA-256 per source file in `licensing/third-party-index.json` so any
+entry can be re-verified. Coverage is **439 of 440** distributed components and **266** distinct
+texts: **408** read out of the installed artifact, **31** vendored from upstream.
 
-The residual **32** are components whose *published artifact contains no licence file at all* —
-`naga`, `webview2-com`, the five `unic-*` crates, `neo4rs`, `ts-rs`, `@react-three/fiber` and others,
-enumerated with the exact reason and upstream in `licensing/UNRESOLVED.md`.
+**How the 31 were closed.** Their published artifacts contain no licence file at all, so the text was
+taken from the upstream repository at the **immutable commit that release was published from** —
+never from a branch. 39 files, 24 commits, 19 repositories, stored byte-for-byte under
+`licensing/upstream/` with the evidence in `licensing/upstream/sources.json`. The commit↔version link
+is the publisher's own record: `.cargo_vcs_info.json` inside the published `.crate` for Rust, the
+registry's `gitHead` for npm, corroborated by a resolved release tag where one exists and by reading
+the crate manifest back at that commit where one does not. `scripts/lib/upstream_licenses.mjs` reads
+the store fail-closed — hash, length, commit, ref, purl, traversal, symlink escape, untracked files,
+unused mappings — and `npm run verify:upstream-licenses` re-fetches every pinned URL and compares
+bytes. Nothing in CI touches the network.
 
-**Engineering cannot close these, and did not pretend to.** The canonical SPDX text of MIT contains
-no copyright holder, and reproducing the holder's notice is precisely what MIT requires; substituting
-a generic text would look like compliance and would not be it. Closing one means a human obtaining
-the licence file from the upstream repository at the tag matching the version, recording where it
-came from, and re-running the generator.
+**The residual 1** is `hexf-parse` 0.2.1. It declares CC0-1.0, and neither its artifact nor its
+repository contains a licence file at the release commit or at any commit before it; the only
+`LICENSE` that project has ever committed arrived three and a half years later and is the Zero-Clause
+BSD text — a *different* licence. `licensing/UNRESOLVED.md` records the whole search. No CC0-1.0 text
+is substituted from a licence list: engineering does not get to package a text a project has never
+published and record it as that project's licence file.
 
-**Release stays blocked for those 32 components.** The gate is `npm run check:licenses-complete`,
-which exits non-zero while any remain. It is deliberately **not** in CI: it fails by design today,
-and a permanently-red required check is a check people learn to ignore. It is a release-time step,
-run by whoever signs off the distribution.
+**Release stays blocked for that component.** The gate is `npm run check:licenses-complete`, which
+exits non-zero while any remain. It is deliberately **not** in CI: it fails by design today, and a
+permanently-red required check is a check people learn to ignore. It is a release-time step, run by
+whoever signs off the distribution. Closing it is a legal decision about whether the crates.io
+declaration alone suffices for a public-domain dedication that imposes no attribution condition.
+
+Two further rows are packaged but warrant a legal read, and are flagged in `licensing/README.md`:
+`neo4rs`/`neo4rs-macros`, whose project has never published a licence file and whose README statement
+is vendored verbatim in its place; and `zune-inflate`, which declares `MIT OR Apache-2.0 OR Zlib`
+while upstream publishes only the Zlib text plus a copyright notice — every file present at the
+pinned release is packaged, and no option is chosen on the owner's behalf.
 
 `npm run check:licenses` *is* in CI, and fails on any change to the artifacts — so a newly added
 dependency with no licence text turns the build red on the commit that introduces it, rather than

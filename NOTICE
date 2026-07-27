@@ -15,14 +15,20 @@ and verify in CI with `node scripts/gen_notice.mjs --check`.
 
 This file is the **inventory**. The licence texts themselves — the thing MIT and BSD actually
 require to accompany the distribution — are in
-[`licensing/THIRD_PARTY_LICENSES.txt`](licensing/THIRD_PARTY_LICENSES.txt), generated from the
-exact installed versions with a SHA-256 per source file recorded in
+[`licensing/THIRD_PARTY_LICENSES.txt`](licensing/THIRD_PARTY_LICENSES.txt), taken from the exact
+installed versions with a SHA-256 per source file recorded in
 [`licensing/third-party-index.json`](licensing/third-party-index.json).
 
-Coverage: **408 of 440** distributed components
-have their licence text packaged. The remaining **32** are enumerated with the
-reason in [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md); their published artifacts contain
-no licence file, and no text is invented to cover for that.
+Coverage: **439 of 440** distributed components
+have their licence text packaged. **31** of those publish no licence file in their artifact
+at all; for them the text is taken from the upstream repository at the immutable commit the release
+was published from, vendored verbatim under [`licensing/upstream/`](licensing/upstream/) and hashed,
+with the evidence tying each commit to each released version in
+[`licensing/upstream/sources.json`](licensing/upstream/sources.json). Text read out of the installed
+artifact is always preferred to a vendored copy.
+
+The remaining **1** are enumerated with the reason, and with what was searched, in
+[`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md). No text is invented to cover for that.
 
 ## What is counted, and why
 
@@ -48,8 +54,12 @@ to prevent — the earlier version of this file did, in both directions at once.
   `LICENSE`.
 
 Version numbers are the resolved ones from the lockfiles at generation time. Licence strings are the
-SPDX expressions each component declares in its own manifest; where a component declares a dual
-licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the distributor's.
+SPDX expressions each component declares in its own manifest — or, for a component the toolchain
+compiles in and never installs, the expression its registry publishes for that exact version, taken
+from [`licensing/upstream/sources.json`](licensing/upstream/sources.json) with the evidence. Where a
+component declares a dual licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is
+the distributor's, and this repository makes none on the owner's behalf: every licence file present
+at the pinned release is packaged, not one option out of several.
 
 ## Rust components
 
@@ -566,8 +576,9 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 
 ### Packages with bytes in dist/ — 21 component(s)
 
-#### MIT (18)
+#### MIT (19)
 
+- @oxc-project/runtime 0.139.0
 - @pixi/colord 2.9.6 — omgovich/colord
 - @react-three/fiber 8.18.0 — git+https://github.com/pmndrs/react-three-fiber.git
 - eventemitter3 5.0.4 — git://github.com/primus/eventemitter3.git
@@ -594,10 +605,6 @@ licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is the d
 #### ISC (1)
 
 - earcut 3.0.2 — git://github.com/mapbox/earcut.git
-
-#### NOT DECLARED (1)
-
-- @oxc-project/runtime 0.139.0
 
 
 ## JavaScript components — installed, not distributed
@@ -635,13 +642,11 @@ assumed.
 
 ## Gaps
 
-The following ship but declare no machine-readable licence, and need a manual determination
-before any distribution:
+Every distributed component declares a licence in its own manifest.
 
-- @oxc-project/runtime 0.139.0
-
-32 distributed component(s) declare a licence whose text their published
-artifact does not contain. They are listed with the exact blocker in
+1 distributed component(s) declare a licence whose text neither their
+published artifact nor their upstream repository contains at the released revision. They are listed
+with the exact blocker, and with the search that failed, in
 [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) and remain open.
 
 ## What this file does NOT establish

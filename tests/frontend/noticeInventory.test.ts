@@ -14,7 +14,12 @@ function notice(): string {
 }
 
 interface LicenseIndex {
-  counts: { cargo: number; npmDistributed: number; npmInstallOnly: number };
+  counts: {
+    cargo: number;
+    npmDistributed: number;
+    npmInstallOnly: number;
+    fromVendoredUpstream: number;
+  };
   components: { purl: string; name: string; version: string; distributed: boolean; spdx: string | null }[];
   unresolved: { purl: string; name: string }[];
 }
@@ -98,12 +103,12 @@ describe('NOTICE — the attribution inventory of what actually ships', () => {
     // does not". That sentence was true and load-bearing when it was written: it kept an honest
     // admission of a release blocker from being quietly dropped while the gap remained.
     //
-    // The gap no longer remains in that form. `licensing/THIRD_PARTY_LICENSES.txt` now packages the
-    // text of 408 of the 440 distributed components, so keeping the old sentence would have made
-    // NOTICE false in the opposite direction. What still must not be droppable is the **residual**
-    // gap, so the guard moves rather than disappears — and it is now stronger, because the number in
-    // the prose has to equal the number in the machine-readable artifact behind it rather than
-    // merely being a sentence someone remembered to leave in.
+    // The gap no longer remains in that form. `licensing/THIRD_PARTY_LICENSES.txt` packages the text
+    // of all but a handful of the distributed components, so keeping the old sentence would have
+    // made NOTICE false in the opposite direction. What still must not be droppable is the
+    // **residual** gap, so the guard moves rather than disappears — and it is now stronger, because
+    // every number in the prose has to equal the number in the machine-readable artifact behind it
+    // rather than merely being a sentence someone remembered to leave in.
     const text = notice();
     const idx = index();
 
@@ -111,11 +116,20 @@ describe('NOTICE — the attribution inventory of what actually ships', () => {
     expect(text).toContain('licensing/third-party-index.json');
     expect(text).toContain(`The remaining **${idx.unresolved.length}** are enumerated`);
     expect(text).toContain('licensing/UNRESOLVED.md');
-    expect(text).toContain('no text is invented to cover for that');
+    expect(text).toContain('No text is invented to cover for that.');
+
+    // Where a text was not in the artifact it must say so, with the count the store actually holds.
+    // The claim being guarded here is the one a reader would most reasonably misread: that every
+    // packaged text came out of the thing that was installed. Some did not, and NOTICE says which.
+    expect(text).toContain(`**${idx.counts.fromVendoredUpstream}** of those publish no licence file`);
+    expect(text).toContain('licensing/upstream/sources.json');
+    expect(text).toContain('the immutable commit the release');
+    expect(text).toContain('Text read out of the installed\nartifact is always preferred to a vendored copy.');
 
     // And it still refuses to claim what it has not done.
     expect(text).toContain('It is an **inventory**, not a legal review.');
     expect(text).toContain('nothing here constitutes legal sign-off');
+    expect(text).not.toContain('legal sign-off has been');
   });
 
   it('reports counts that match the inventory rather than a remembered number', () => {

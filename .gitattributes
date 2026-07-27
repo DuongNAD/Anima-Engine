@@ -39,3 +39,11 @@ licensing/THIRD_PARTY_LICENSES.txt  text eol=lf whitespace=-trailing-space
 # these must round-trip exactly as vendored, so git is told not to transform them in either
 # direction rather than told which transform to apply.
 schemas/**                  -text
+
+# Vendored upstream licence texts — verbatim bytes, hashed in sources.json, and byte-compared by
+# every gate that reads them. `-text` so git performs no eol conversion in either direction: the
+# SHA-256 in the manifest is of the upstream file as fetched, and a checkout that rewrote a CRLF
+# would fire as a tampering alarm on an untouched file. `diff` because they must stay reviewable as
+# text despite `-text`; `whitespace=-trailing-space` because several carry trailing spaces that
+# "tidying" would falsify.
+licensing/upstream/**       -text diff whitespace=-trailing-space

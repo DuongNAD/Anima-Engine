@@ -19,7 +19,13 @@ const files = execFileSync('git', ['ls-files', '*.md'], { encoding: 'utf8' })
   .map((l) => l.trim())
   .filter(Boolean)
   // Superseded drafts are kept verbatim as a record of past decisions; their links are historical.
-  .filter((f) => !f.startsWith('docs/archive/'));
+  .filter((f) => !f.startsWith('docs/archive/'))
+  // Vendored upstream licence and notice text, stored byte-for-byte as fetched from a pinned
+  // commit. Their links are the upstream project's, not this repository's, and several are broken
+  // upstream — neo4rs's README points at LICENSE-APACHE and LICENSE-MIT files that project has
+  // never had, which is precisely the fact `licensing/upstream/sources.json` records. Editing a
+  // vendored licence to satisfy a link check would falsify the bytes every gate hashes.
+  .filter((f) => !f.startsWith('licensing/upstream/'));
 
 // [text](target) -- skip images (![...]) by requiring the char before '[' to not be '!'.
 const LINK = /(^|[^!])\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
