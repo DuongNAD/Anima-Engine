@@ -435,6 +435,15 @@ fn epoch_replacement_does_not_create_energy() {
 
 /// Diagnostic: run each energy system in isolation for many ticks and report which one moves the
 /// closed total. Ignored by default — it is a bisector for conservation bugs, not a gate.
+///
+/// Run it with `cargo test --features desktop diagnose_which_system_moves_the_closed_total --
+/// --ignored --nocapture` when `live_world_conserves_energy_across_births_deaths_and_a_save_load_cycle`
+/// goes red and you need to know *which* system leaked.
+///
+/// The ignore is a recorded decision, not a parked test: it is named with this reasoning in
+/// `scripts/test_target_policy.mjs`, and `check_test_targets.mjs` fails on any `#[ignore]` that is
+/// not. Turning a print-only bisector into an always-pass assertion would buy a slow test that
+/// proves nothing; the invariant itself is gated by the aggregate test named above.
 #[test]
 #[ignore]
 fn diagnose_which_system_moves_the_closed_total() {

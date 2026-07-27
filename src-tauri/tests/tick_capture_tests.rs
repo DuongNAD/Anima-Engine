@@ -310,43 +310,23 @@ fn an_export_of_a_live_capture_round_trips_through_a_file() {
     let bytes = std::fs::read(&path).expect("read");
     let back: anima_engine_lib::core::tick_capture::CaptureExport =
         serde_json::from_slice(&bytes).expect("parse");
-    // Everything discrete must survive the file byte for byte. The means are compared with a
-    // tolerance instead, and deliberately: **serde_json's f64 round trip is not bit-exact** — the
-    // same property that made `SnapshotEnvelope` hash raw bytes rather than a re-serialization. A
-    // mean of 184889.58333333337 reads back as 184889.58333333334, which is a JSON limitation and
-    // not a capture that lost data.
-    assert_eq!(back.schema_version, written.schema_version);
-    assert_eq!(back.engine_version, written.engine_version);
-    assert_eq!(back.profile, written.profile);
-    assert_eq!(back.hardware, written.hardware);
-    assert_eq!(back.workload, written.workload);
-    assert_eq!(back.executor, written.executor);
-    assert_eq!(back.status, written.status);
-    assert_eq!(back.config, written.config);
-    assert_eq!(back.accounting, written.accounting);
-    assert_eq!(back.unavailable, written.unavailable);
-    assert_eq!(back.first_tick, written.first_tick);
-    assert_eq!(back.last_tick, written.last_tick);
-    assert_eq!(back.phases.len(), written.phases.len());
-    for (a, b) in back.phases.iter().zip(written.phases.iter()) {
-        assert_eq!(a.phase, b.phase);
-        assert_eq!(a.exact, b.exact);
-        assert_eq!(a.boundary_system, b.boundary_system);
-        assert_eq!(a.count, b.count);
-        assert_eq!(
-            (a.p50_ns, a.p95_ns, a.p99_ns, a.max_ns, a.min_ns),
-            (b.p50_ns, b.p95_ns, b.p99_ns, b.max_ns, b.min_ns),
-            "{} percentiles are integers and must round-trip exactly",
-            a.phase
-        );
-        assert!((a.mean_ns - b.mean_ns).abs() <= b.mean_ns.abs() * 1e-12);
-        match (a.mean_ns_per_agent, b.mean_ns_per_agent) {
-            (Some(x), Some(y)) => assert!((x - y).abs() <= y.abs() * 1e-12),
-            (None, None) => {}
-            other => panic!("{} per-agent presence changed: {other:?}", a.phase),
-        }
-    }
+    // The file must be *exactly* what `export_to` returned — no tolerance.
+    //
+    // This assertion was briefly weakened to a relative tolerance on the means, on the belief that
+    // serde_json could not round-trip an f64. It could: it writes with `ryu`, which is exact. The
+    // lossy half was the default **parser**, and `Cargo.toml` now enables `float_roundtrip`. The
+    // difference is worth stating because a tolerance here would also have hidden the other
+    // candidate cause — an `export_to` that summarised twice and returned a document that was never
+    // the one it wrote.
+    assert_eq!(back, written, "the file is not what export_to returned");
     assert_eq!(back.accounting.samples_recorded, 12);
+    // Two exports of an unchanged capture are identical, which is what makes the assertion above a
+    // statement about serialization rather than about timing.
+    assert_eq!(
+        shared.export(),
+        written,
+        "export is not a pure function of the capture"
+    );
     assert!(back
         .hardware
         .not_measured

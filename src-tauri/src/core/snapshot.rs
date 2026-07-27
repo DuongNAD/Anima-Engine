@@ -110,16 +110,22 @@ pub struct SnapshotEnvelope {
     pub checksum: u32,
     /// The complete simulation state, held as raw JSON.
     ///
-    /// Raw, rather than a typed `SavedSimulationState`, for a reason that cost an afternoon:
-    /// **serde_json's `f64` round trip is not bit-exact.** A saved `eco_animals` of
-    /// `990.5102615356445` reads back as `990.5102615356444`. A checksum computed by
-    /// *re-serializing* the parsed state therefore disagrees with the one computed before writing,
-    /// and a perfectly good file fails its own integrity check.
+    /// Raw, rather than a typed `SavedSimulationState`, so that the bytes that were hashed, the
+    /// bytes on disk and the bytes that get verified are all literally the same bytes. A checksum
+    /// computed by *re-serializing* the parsed state is a checksum of a different artefact, and
+    /// every difference between the two is a false integrity failure.
     ///
-    /// Holding the state as [`RawValue`] means the bytes that were hashed, the bytes on disk and
-    /// the bytes that get verified are all literally the same bytes. It also makes the checksum
-    /// immune to map iteration order, since whatever order was written is the order that is hashed.
-    /// The state still appears as a normal nested object in the file, not an escaped string.
+    /// The historical reason given here was that "serde_json's `f64` round trip is not bit-exact",
+    /// citing `990.5102615356445` reading back as `...444`. The observation was real and the blame
+    /// was misplaced: serde_json **writes** floats with `ryu`, which is shortest-round-trip, and it
+    /// wrote that value exactly. The default **parser** was the approximate half, and `Cargo.toml`
+    /// now enables `float_roundtrip` to fix it — see
+    /// `snapshot_checkpoint_tests::serde_json_round_trips_every_awkward_f64_bit_for_bit`.
+    ///
+    /// [`RawValue`] still earns its place, because the failures it rules out are the ones that
+    /// remain: map iteration order, and any future change to how the envelope is formatted. Both
+    /// would move the bytes without moving the state. The state still appears as a normal nested
+    /// object in the file, not an escaped string.
     pub state: Box<serde_json::value::RawValue>,
 }
 
@@ -491,15 +497,22 @@ mod tests {
 
     #[test]
     fn the_checksum_covers_the_bytes_on_disk_not_a_reserialization() {
-        // serde_json`s f64 round trip is not bit-exact, so a checksum recomputed from a parsed
-        // state can disagree with the one written beside it. Hashing the raw bytes makes a file
-        // that was written correctly always verify.
+        // Hashing the raw bytes makes a file that was written correctly always verify, whatever
+        // happens between the parser and the struct. `eco_animals` is the value that used to be
+        // cited as proof that serde_json could not round-trip a float; it round-trips exactly now
+        // (`float_roundtrip`), and this still has to hold for the reasons `RawValue` is really
+        // there — map order and formatting.
         let mut state = state_fixture();
         state.eco_animals = 990.5102615356445;
         let envelope = SnapshotEnvelope::seal(state).expect("seal");
-        let bytes = serde_json::to_vec_pretty(&envelope).unwrap();
-        let back: SnapshotEnvelope = serde_json::from_slice(&bytes).unwrap();
+        let bytes = serde_json::to_vec_pretty(&envelope).expect("serialize envelope");
+        let back: SnapshotEnvelope = serde_json::from_slice(&bytes).expect("parse envelope");
         back.verify().expect("a file written correctly must verify");
+        assert_eq!(
+            back.parse_state().expect("state parses").eco_animals,
+            990.5102615356445,
+            "the state inside a verified envelope must survive the read"
+        );
     }
 
     #[test]

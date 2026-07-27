@@ -451,13 +451,21 @@ fn restore_reproduces_the_world_with_zero_further_ticks() {
     }
 }
 
-/// Diagnostic, not a gate: shows which field of a saved state fails to survive a JSON round trip.
-/// It is expected to FAIL on `eco_animals` — serde_json`s f64 round trip is not bit-exact, which is
-/// exactly why `SnapshotEnvelope` hashes raw bytes instead of re-serializing. Run it with
-/// `--ignored` if you need to check whether that is still true.
+/// A saved state survives a JSON round trip **exactly**, field for field.
+///
+/// This was a `#[ignore]`d diagnostic that documented itself as *expected to fail* on `eco_animals`,
+/// with the explanation "serde_json's f64 round trip is not bit-exact". Half of that was right and
+/// the wrong half mattered: serde_json **writes** floats with `ryu`, which is shortest-round-trip
+/// and exact. It was the **reader** that was lossy — without the `float_roundtrip` feature,
+/// serde_json's float parser is a fast approximation that may land 1 ULP away from the decimal it
+/// was given. Enabling that feature (see `Cargo.toml`) makes the round trip exact and turns a
+/// diagnostic that was allowed to fail into a gate that is not.
+///
+/// The envelope still hashes the raw bytes rather than a re-serialization, and still should: that
+/// protects against map iteration order and formatting choices, which are a different failure from
+/// this one.
 #[test]
-#[ignore]
-fn diagnose_round_trip_fidelity() {
+fn a_saved_state_round_trips_through_json_exactly() {
     let (mut world, _tx) = with_genesis();
     let mut sched = deterministic_schedule();
     for _ in 0..300 {
@@ -465,25 +473,77 @@ fn diagnose_round_trip_fidelity() {
     }
     let deps = SaveDeps::new();
     let before = save(&mut world, 300, &deps);
-    let text = serde_json::to_string_pretty(&before).unwrap();
-    let after: SavedSimulationState = serde_json::from_str(&text).unwrap();
 
-    let va = serde_json::to_value(&before).unwrap();
-    let vb = serde_json::to_value(&after).unwrap();
+    // A float that is awkward for an approximate parser, planted so the gate does not depend on the
+    // run happening to produce one. This exact value is the one the old diagnostic named.
+    let mut before = before;
+    before.eco_animals = 990.5102615356445;
+
+    let text = serde_json::to_string_pretty(&before).expect("serialize");
+    let after: SavedSimulationState = serde_json::from_str(&text).expect("deserialize");
+
+    let va = serde_json::to_value(&before).expect("value before");
+    let vb = serde_json::to_value(&after).expect("value after");
     if va != vb {
-        let (oa, ob) = (va.as_object().unwrap(), vb.as_object().unwrap());
+        let (oa, ob) = (
+            va.as_object().expect("object"),
+            vb.as_object().expect("object"),
+        );
+        let mut report = String::new();
         for (k, v) in oa {
             if ob.get(k) != Some(v) {
-                let sa = serde_json::to_string(v).unwrap();
-                let sb = serde_json::to_string(ob.get(k).unwrap()).unwrap();
-                println!(
-                    "FIELD `{k}` differs:\n  before: {}\n  after:  {}",
+                let sa = serde_json::to_string(v).expect("field before");
+                let sb = serde_json::to_string(ob.get(k).expect("field present")).expect("field");
+                report.push_str(&format!(
+                    "\n  FIELD `{k}`\n    before: {}\n    after:  {}",
                     &sa[..sa.len().min(220)],
                     &sb[..sb.len().min(220)]
-                );
+                ));
             }
         }
-        panic!("round trip is lossy");
+        panic!("a saved state did not survive a JSON round trip:{report}");
     }
-    println!("round trip is exact");
+
+    // And the bit pattern specifically, not just the serde_json `Value` comparison.
+    assert_eq!(
+        before.eco_animals.to_bits(),
+        after.eco_animals.to_bits(),
+        "an f64 changed bit pattern across a JSON round trip"
+    );
+    assert_eq!(before.sim_rng_pos, after.sim_rng_pos);
+    assert_eq!(before.resource_field_phase, after.resource_field_phase);
+}
+
+/// The narrow property the test above rests on, isolated so a regression names the cause instead of
+/// pointing at a 20-field struct: `f64 -> JSON -> f64` is the identity for every bit pattern.
+#[test]
+fn serde_json_round_trips_every_awkward_f64_bit_for_bit() {
+    let awkward: [f64; 12] = [
+        // The two values that actually turned up in this repository: the `eco_animals` the old
+        // diagnostic named, and a capture mean that differed by 1 ULP across a file.
+        990.5102615356445,
+        184_889.583_333_333_37,
+        0.1,
+        1.0 / 3.0,
+        f64::MIN_POSITIVE,
+        f64::MAX,
+        -f64::MAX,
+        1e308,
+        1e-308,
+        123_456_789.123_456_79,
+        // Built from bits rather than written as decimals: the extremes are exactly where an
+        // approximate parser is most likely to land on the wrong side, and a decimal literal for
+        // them is both unreadable and something clippy rightly objects to.
+        f64::from_bits(1),                     // smallest positive subnormal
+        f64::from_bits(0x000F_FFFF_FFFF_FFFF), // largest subnormal
+    ];
+    for v in awkward {
+        let text = serde_json::to_string(&v).expect("serialize");
+        let back: f64 = serde_json::from_str(&text).expect("deserialize");
+        assert_eq!(
+            v.to_bits(),
+            back.to_bits(),
+            "{v:?} serialized to {text} and read back as {back:?}"
+        );
+    }
 }

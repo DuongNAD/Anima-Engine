@@ -328,7 +328,12 @@ fn checksum_from_child(role: &str, deterministic: bool) -> u32 {
 }
 
 /// The child's entry point. `#[ignore]` so a normal `cargo test` never runs it directly — it exists
-/// only to be invoked by name from a parent test.
+/// only to be invoked by name from a parent test, under the private `ANIMA_G13_ROLE` contract.
+///
+/// The ignore is a recorded decision, not a parked test: it is named with this reasoning in
+/// `scripts/test_target_policy.mjs`, and `check_test_targets.mjs` fails on any `#[ignore]` that is
+/// not. The real subprocess behaviour is proven by the two parent tests below, which fail loudly if
+/// a child prints no checksum.
 #[test]
 #[ignore]
 fn child_entry_point() {

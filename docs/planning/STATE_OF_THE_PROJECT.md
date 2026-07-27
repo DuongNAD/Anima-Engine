@@ -31,9 +31,9 @@ gate chưa xanh.
 
 | Gate | Lệnh | Kết quả |
 |---|---|---|
-| Backend test (desktop) | `cargo test --features desktop --no-fail-fast` | **841 pass · 0 fail · 4 ignored**, 81 dòng kết quả, exit 0 |
-| Backend test (mặc định) | `cargo test --no-default-features --no-fail-fast` | **823 pass · 0 fail · 4 ignored**, 81 dòng kết quả, exit 0 |
-| Target rỗng | `node scripts/check_test_targets.mjs` | **0 rỗng** — ba target `running 0 tests` đúng là `src/main.rs` + hai target doc-test, đều nằm trong allow-list |
+| Backend test (desktop) | `cargo test --features desktop --no-fail-fast` | **851 pass · 0 fail · 2 ignored**, exit 0 |
+| Backend test (mặc định) | `cargo test --no-default-features --no-fail-fast` | **833 pass · 0 fail · 2 ignored**, exit 0 |
+| Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile {default,desktop}` | exit 0 cả hai. desktop: 82 target, 3 rỗng (đủ 3 trong allow-list), 2 ignore (đủ 2), **7 target feature-gated chạy**. default: 75 target, 3 rỗng, 2 ignore, **0 feature-gated được lên lịch** |
 | Format + clippy (cả 2 cấu hình) | `cargo fmt --check`, `cargo clippy --all-targets {--features desktop, --no-default-features} -- -D warnings` | sạch |
 | Test frontend (src) | `npm run test` | 14 file · **109 pass** |
 | Test frontend (tests/) | `npm run test:frontend -- --maxWorkers=4` | **38 file · 432 pass · 0 skip** — xem §4 |
