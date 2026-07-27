@@ -221,7 +221,7 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Hợp đồng Rust↔TS | Live integrated | G1.4 — gate parity `ts-rs` trong CI |
 | Tách feature build | Live integrated | G2 gate #2 — CI kiểm bằng `cargo tree`, không chỉ "biên dịch được" |
 | Trần tài nguyên runner | Live integrated | G2 gate #3 — `MAX_ENSEMBLE_RESULT_BYTES`, ước lượng bão hoà thay vì tràn |
-| Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | 11/12 gate EB pass — xem §3.1 |
+| Não tiến hoá per-agent (ADR-0003) | Đã triển khai, **tắt mặc định** | **12/12** gate EB pass (2026-07-27, `2b61d07`) — EB-S04 đã re-baseline về bản dựng có seed; xem §3.1 |
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
 | Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `068a750` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
@@ -262,7 +262,7 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 | # | Việc | Vì sao là việc này | Đọc |
 |---|---|---|---|
 | 1 | **Chạy app desktop một lần với `ANIMA_TICK_CAPTURE`** | Việc duy nhất còn lại của §3.2, và **máy không làm được** — cần một con người bấm chạy. Dụng cụ đã ship và đã test; thiếu đúng một lần chạy | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26), [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
-| 2 | **Quyết định EB-S04, rồi mới bàn mặc định não per-agent** | P0 lâu nhất chưa nhúc nhích. Việc thật là **re-baseline một gate không thể pass bằng cách sửa code đúng**, không phải lật cờ. Đã ghi thành quyết định DEC-1 kèm 3 phương án và khuyến nghị | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
+| 2 | ~~**Quyết định EB-S04**~~ **XONG 2026-07-27** → còn **chạy thí nghiệm E2** rồi mới bàn mặc định | Chủ dự án chọn DEC-1 phương án (1); EB-S04 đã re-baseline về bản dựng có seed và chuyển ✅ (12/12). Việc còn lại **không** phải lật cờ mà là chạy một đối chứng nhiều seed **đã tiền đăng ký** | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
 | 3 | **OSS-072 MRCA** | Nửa khoa học còn lại của phả hệ. Nén đã xong nên `simplify` đã có sẵn cấu trúc cha/con để dùng lại | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
 | 4 | ~~**In-app tick capture**~~ **XONG 2026-07-27** | Đã ship kèm 4 lệnh IPC và gate "đo không làm đổi quỹ đạo" | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
 | 5 | ~~**§3.3 adapter thí nghiệm cho thế giới sống**~~ **XONG headless 2026-07-27** | `LiveExperimentAdapter` qua runner chung, trên đúng lịch trình app chạy | [§3.3](#33-đưa-thế-giới-bevy-sống-qua-gate-thí-nghiệm--adapter-headless-đã-xong-2026-07-27) |
@@ -319,23 +319,31 @@ trên đường mặc định**.
 chính là gap mà [`docs/research/MAP_AND_ML_UPGRADE_RESEARCH.md`](../research/MAP_AND_ML_UPGRADE_RESEARCH.md)
 gọi là lớn nhất. Toàn bộ máy móc đã có và đã test — nó chỉ đang tắt.
 
-**Trạng thái thật:** 11/12 gate EB pass (bảng gate trong
-[ADR-0003](../decisions/ADR-0003-evolved-per-agent-brains.md)). Chỉ **EB-S04** là 🟡 một phần.
+**Trạng thái thật (cập nhật 2026-07-27):** **12/12 gate EB pass** (bảng gate trong
+[ADR-0003](../decisions/ADR-0003-evolved-per-agent-brains.md)). EB-S04 đã **hết** 🟡: chủ dự án
+chọn phương án (1) của DEC-1 và gate được **re-baseline tường minh** về bản dựng có seed
+(ADR-0003 quyết định 12 + mục "Cập nhật 2026-07-27"). Đo tại `2b61d07`:
+`cargo test --features desktop --test brain_controlled_comparison_tests` → **11 passed; 0 failed**.
 
 **Điểm neo:** `BrainPolicy::default()` tại
 [`src-tauri/src/core/resources.rs`](../../src-tauri/src/core/resources.rs) — `evolved: false`,
 `lifetime_learning` tắt, `brain_metabolic_cost: 0.0`. Cờ `ANIMA_EVOLVED_BRAINS`,
 `ANIMA_LIFETIME_LEARNING`.
 
-**Việc thật cần làm trước tiên là quyết định về EB-S04, không phải lật cờ.** EB-S04 đòi
-quỹ đạo *bit-identical* với baseline. Nó fail vì khởi tạo model dùng chung đã đổi từ
-ngẫu nhiên sang **có seed** — tức là fail vì một **cải tiến có chủ ý**, không phải vì hồi quy.
-Một gate không thể pass bằng cách sửa code đúng thì phải được **re-baseline một cách tường minh**:
-đặt lại mốc so sánh về bản dựng có seed, ghi vào ADR *vì sao* mốc cũ bị bỏ, rồi mới bàn đến mặc định.
+~~**Việc thật cần làm trước tiên là quyết định về EB-S04, không phải lật cờ.**~~ **XONG
+2026-07-27.** Mốc cũ đòi trùng bit với bản dựng *trước* ADR-0003, và bản dựng ấy **không có quỹ
+đạo tất định nào** để mà trùng (RNG tĩnh toàn tiến trình, materialize lười). Mốc mới là **bản dựng
+có seed, `BrainPolicy::evolved = false`**, với hai mệnh đề trùng bit — cùng seed hai lần chạy, và
+van mở so với bố cục trước bước 4. Lý do bỏ mốc cũ và cái bị mất khi bỏ nó nằm ở ADR-0003 mục
+"Cập nhật 2026-07-27".
 
-**Định nghĩa hoàn thành:** EB-S04 chuyển 🟡 → ✅ với mốc mới ghi rõ trong ADR-0003 · quyết định
-mặc định (`evolved: true` hay giữ opt-in) được ghi thành mục quyết định trong ADR · nếu bật mặc định
-thì `cargo test --features desktop` vẫn xanh và EB-S03 (`allocs == 0`) vẫn giữ.
+**Còn lại của §3.1 — và nó là việc khoa học, không phải lật cờ.** Quyết định mặc định
+(`evolved: true` hay giữ opt-in) cần **bằng chứng đối chứng nhiều seed được tiền đăng ký trước khi
+chạy**. Re-baseline chỉ trả lại một baseline có thật để so; nó không nói gì về hướng của treatment.
+
+**Định nghĩa hoàn thành:** ~~EB-S04 chuyển 🟡 → ✅~~ **xong** · quyết định mặc định được ghi thành
+mục quyết định trong ADR **sau** khi E2 chạy xong theo đúng tiền đăng ký · nếu bật mặc định thì
+`cargo test --features desktop` vẫn xanh và EB-S03 (`allocs == 0`) vẫn giữ.
 
 #### 3.2 Thay số hiệu năng proxy bằng số đo thật — **một nửa đã xong (2026-07-26)**
 

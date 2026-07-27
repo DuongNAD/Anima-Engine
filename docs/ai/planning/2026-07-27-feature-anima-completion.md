@@ -228,6 +228,21 @@ repair is an explicit re-baseline with the reason written down.
 **Why I am not taking it:** it discards a scientific reference point, and §3.1 states the default
 decision must be recorded as an ADR decision item. That is an owner's call, not an implementer's.
 
+> **UPDATE 2026-07-27 — RESOLVED, option (1).** The owner chose the explicit re-baseline. EB-S04's
+> reference point is now *the seeded build with `BrainPolicy::evolved = false`*, requiring two
+> bit-identical statements: same seed across two runs, and gates-open versus the pre-step-4
+> component layout. Recorded in
+> [ADR-0003](../../decisions/ADR-0003-evolved-per-agent-brains.md) as decision 12 plus a dated
+> "Cập nhật 2026-07-27" section that states why the old marker was abandoned — it was not merely
+> hard to measure, it never existed, because the pre-ADR build materialised its weights lazily from
+> a self-advancing process-global RNG and so had no deterministic trajectory to match. Measured at
+> `2b61d07`: `cargo test --features desktop --test brain_controlled_comparison_tests` → 11 passed,
+> 0 failed. The gate moves 🟡 → ✅ and the EB tally becomes 12/12.
+>
+> **The default decision is deliberately still open**, and is now a *scientific* task rather than a
+> flag flip: it requires a preregistered, multi-seed controlled comparison. That preregistration is
+> its own dated package — see the E2 lifecycle docs — and nothing has been run.
+
 ### DEC-2 — Canonical map view capture — **SUPERSEDED, and it was not mine to defer**
 
 **Original position:** declare the eight views uncaptured, gate the invariant
