@@ -64,9 +64,16 @@ function verifyChecksums(dir, label) {
   return covered;
 }
 
-/** Every artifact in the directory must be covered by a checksum — silence is not coverage. */
+/**
+ * Every artifact in the directory must be covered by a checksum — silence is not coverage.
+ *
+ * Two files are written by hand rather than by the runner and so cannot appear in a checksum file
+ * the runner produced: `execution-lock.json`, which records the duration rung chosen from the smoke
+ * calibration *before* the ensemble existed, and `RESULT.md`. Both are cross-checked on content
+ * instead, below.
+ */
 function verifyNothingUncovered(dir, covered, label) {
-  const skip = new Set(['checksums.sha256']);
+  const skip = new Set(['checksums.sha256', 'execution-lock.json', 'RESULT.md']);
   const walk = (rel) => {
     for (const entry of readdirSync(join(dir, rel), { withFileTypes: true })) {
       const child = rel ? `${rel}/${entry.name}` : entry.name;
@@ -210,6 +217,49 @@ function verifyDeltasAreArithmetic(dir, label) {
   note(`${label}: recomputed ${checked} per-seed deltas`);
 }
 
+/**
+ * The duration rung must have been locked from the smoke calibration BEFORE the ensemble ran, and
+ * the ensemble must have used the rung that was locked.
+ *
+ * This is the check that stops the one deviation the preregistration permits from becoming a knob:
+ * a lock committed after the fact, or an ensemble that quietly ran at a different T, both show up
+ * here rather than in a sentence somebody has to be trusted on.
+ */
+function verifyDurationLock(dir) {
+  const lockPath = join(dir, 'execution-lock.json');
+  if (!existsSync(lockPath)) {
+    note('analysis: no execution-lock.json — the duration rung was not locked from a smoke calibration');
+    return;
+  }
+  const lock = readJson(lockPath);
+  const prereg = readJson(join(committedManifestDir, 'e2-preregistration.json'));
+  if (!prereg.duration.duration_ticks_ladder.includes(lock.selected_duration_ticks)) {
+    fail(
+      `lock: the selected rung ${lock.selected_duration_ticks} is not on the registered ladder ` +
+        `${JSON.stringify(prereg.duration.duration_ticks_ladder)}`,
+    );
+  }
+  const provPath = join(dir, 'provenance.json');
+  if (existsSync(provPath)) {
+    const ran = readJson(provPath).duration.duration_ticks_as_run;
+    if (ran !== lock.selected_duration_ticks) {
+      fail(
+        `lock: the ensemble ran at ${ran} ticks but the rung locked before it was ` +
+          `${lock.selected_duration_ticks}. T may never change once experimental data exists.`,
+      );
+    }
+  }
+  const smokeProv = join(dir, 'smoke', 'provenance.json');
+  if (existsSync(smokeProv)) {
+    const smokeCommit = readJson(smokeProv).build.git_commit;
+    if (lock.build_commit && smokeCommit && lock.build_commit !== smokeCommit) {
+      fail(
+        `lock: locked against commit ${lock.build_commit}, but the smoke ran at ${smokeCommit}`,
+      );
+    }
+  }
+}
+
 function verifyDirectory(dir, label, opts) {
   if (!existsSync(dir)) {
     fail(`${label}: ${dir} does not exist`);
@@ -229,7 +279,14 @@ if (!existsSync(artifactDir)) {
   process.exit(1);
 }
 
-verifyDirectory(artifactDir, 'analysis', { isSmoke: false });
+// The analysis may legitimately not exist yet: between the smoke calibration and the ensemble there
+// is a committed state where only `smoke/` and `execution-lock.json` are present, and that state has
+// to verify too — it is the state the lock commit is made in.
+if (existsSync(join(artifactDir, 'paired-report.json'))) {
+  verifyDirectory(artifactDir, 'analysis', { isSmoke: false });
+} else {
+  note('analysis: no ensemble has been run yet (no paired-report.json at the artifact root)');
+}
 
 const smokeDir = join(artifactDir, 'smoke');
 if (existsSync(smokeDir)) {
@@ -237,6 +294,8 @@ if (existsSync(smokeDir)) {
 } else {
   note('smoke: no smoke/ directory present');
 }
+
+verifyDurationLock(artifactDir);
 
 for (const line of notes) console.log(`note  ${line}`);
 if (failures.length === 0) {

@@ -1091,7 +1091,7 @@ fn summary_md(w: &WriteInput<'_>) -> String {
             num(e.paired_sd),
             num(e.paired_se),
             match (e.ci95_low, e.ci95_high) {
-                (Some(a), Some(b)) => format!("[{a:.6}, {b:.6}]"),
+                (Some(a), Some(b)) => format!("[{}, {}]", fmt_f64(a), fmt_f64(b)),
                 _ => "n/a".into(),
             },
             num(e.paired_dz),
@@ -1118,7 +1118,7 @@ fn summary_md(w: &WriteInput<'_>) -> String {
              | \\|delta\\| ≥ 5% of \\|control mean\\| | relative shift | {} | {} |\n\n\
              **Material: {}.**\n\n",
             match (p.ci95_low, p.ci95_high) {
-                (Some(a), Some(b)) => format!("[{a:.6}, {b:.6}]"),
+                (Some(a), Some(b)) => format!("[{}, {}]", fmt_f64(a), fmt_f64(b)),
                 _ => "undefined".into(),
             },
             yes_no(ci),
@@ -1213,8 +1213,22 @@ fn role_of(observable: &str) -> &'static str {
     }
 }
 
+/// Six decimal places, except for magnitudes too small to survive them.
+///
+/// `live.closed_eu_total` is the harness-integrity metric, and its paired difference lives around
+/// `1e-9` on a stock of `1.5e5` — fixed-point formatting renders both the delta and its SD as
+/// `0.000000` and hides the one quantity H5 exists to look at. A reader cannot tell "conserved to a
+/// billionth" from "we printed zeroes".
 fn num(v: Option<f64>) -> String {
-    v.map(|x| format!("{x:.6}")).unwrap_or_else(|| "n/a".into())
+    v.map(fmt_f64).unwrap_or_else(|| "n/a".into())
+}
+
+fn fmt_f64(x: f64) -> String {
+    if x != 0.0 && x.abs() < 1e-4 {
+        format!("{x:.3e}")
+    } else {
+        format!("{x:.6}")
+    }
 }
 
 fn yes_no(b: bool) -> &'static str {
