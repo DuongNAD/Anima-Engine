@@ -1181,6 +1181,7 @@ pub fn ae210_reference_manifests() -> Vec<(&'static str, ExperimentManifest)> {
 /// seeds, duration, sampling and requested observables. Its [`fingerprint`](Self::fingerprint) is the
 /// run's canonical identity.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExperimentManifest {
     pub schema_version: u16,
     pub experiment_id: String,
@@ -1963,6 +1964,21 @@ mod tests {
     fn validator_accepts_a_well_formed_manifest() {
         let reg = ObservableRegistry::reference_default();
         assert!(base_manifest().validate(&reg).is_ok());
+    }
+
+    #[test]
+    fn manifest_deserialization_rejects_unknown_declared_inputs() {
+        let mut json = serde_json::to_value(base_manifest()).expect("manifest serializes");
+        json.as_object_mut()
+            .expect("manifest is a JSON object")
+            .insert(
+                "exotic_intervention".into(),
+                serde_json::json!([{"kind": "inject", "tick": 1, "amount": 5.0}]),
+            );
+
+        let err = serde_json::from_value::<ExperimentManifest>(json)
+            .expect_err("a misspelled scientific input must not be ignored");
+        assert!(err.to_string().contains("unknown field"), "{err}");
     }
 
     #[test]
