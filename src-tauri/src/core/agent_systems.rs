@@ -457,6 +457,22 @@ pub struct InferenceRequestBatch {
 /// growing memory.
 pub const INFERENCE_POOL_BATCHES: usize = 16;
 
+/// Requests per batch handed to an inference worker.
+///
+/// The unit of parallelism, not a performance knob: a worker takes a whole batch, so a population
+/// that arrives as one batch is answered by one thread no matter how many are waiting. 256 keeps a
+/// four-thousand-agent tick spread across sixteen chunks — enough to reach every worker — while
+/// staying large enough that the hand-off is not most of the cost.
+pub const INFERENCE_BATCH_CHUNK: usize = 256;
+
+/// How far an agent looks for a target, in world units.
+///
+/// `MapBounds::default()` spans 200, so 60 is a generous but finite horizon — an agent scans a
+/// meaningful slice of its world without the index having to walk all of it. Before the index
+/// existed this was effectively infinite, not by design but because scanning everything was what
+/// the code did.
+pub const SENSE_RADIUS: f32 = 60.0;
+
 #[derive(Debug, Clone)]
 pub struct InferenceResponseBatch {
     pub responses: Vec<AgentInferenceResponse>,
@@ -552,30 +568,75 @@ pub fn sensory_system(
         }
 
         let is_predator = opt_predator.is_some();
-        let target_pos = if is_predator {
-            let mut nearest_prey = None;
-            let mut min_dist_sq = f32::MAX;
-            for (prey_pos, prey_homeo) in prey_query.iter() {
-                if prey_homeo.energy > 0.0 {
-                    let dist_sq = agent_pos.0.distance_squared(prey_pos.0);
-                    if dist_sq < min_dist_sq {
-                        min_dist_sq = dist_sq;
-                        nearest_prey = Some(prey_pos.0);
+        // Nearest target through the spatial index rather than a scan of the whole population.
+        //
+        // The scan was O(N²) on the tick thread: measured 2026-07-28 at 4000 agents, over eleven
+        // million distance checks per tick, one core pinned at 98% while the other nineteen sat
+        // idle. It is why the population stood still — ticks were too slow to hand agents new
+        // actions — and why adding inference workers changed nothing twice over: the whole cost is
+        // paid before a single batch is sent.
+        //
+        // `SENSE_RADIUS` is a change in behaviour, not only in speed: a predator with no prey inside
+        // it now has no target, where before it locked onto one across the entire map. Sensing the
+        // whole world was never the intent — it was what a full scan happened to give for free.
+        //
+        // The index is optional because a bare test harness builds a world without it, and it is
+        // checked for *contents* because it is derived state: `rebuild_spatial_grid_system` fills it
+        // at the end of a tick, so a world restored from a snapshot meets this code with an empty
+        // one. Reading "no targets" from an unbuilt index is how a resumed run diverges from an
+        // uninterrupted one — `live_experiment_tests` caught exactly that.
+        //
+        // The fallback scan applies the same `SENSE_RADIUS`, so both paths answer identically and
+        // which one runs cannot change a trajectory. That equivalence is asserted directly in
+        // `spatial_nearest_tests`.
+        let indexed = spatial_grid
+            .as_deref()
+            .filter(|g| g.is_populated())
+            .zip(bounds.as_deref());
+        let target_pos = match indexed {
+            Some((grid, map_bounds)) if is_predator => grid
+                .nearest(agent_pos.0, SENSE_RADIUS, map_bounds, |candidate| {
+                    prey_query
+                        .get(candidate)
+                        .ok()
+                        .filter(|(_, homeo)| homeo.energy > 0.0)
+                        .map(|(pos, _)| pos.0)
+                })
+                .map(|(_, pos)| pos),
+            Some((grid, map_bounds)) => grid
+                .nearest(agent_pos.0, SENSE_RADIUS, map_bounds, |candidate| {
+                    food_query.get(candidate).ok().map(|pos| pos.0)
+                })
+                .map(|(_, pos)| pos),
+            _ if is_predator => {
+                let mut nearest = None;
+                // Seeded with the radius, not with infinity: the scan has to answer the same
+                // question the index does, or the two paths disagree and the disagreement lands in
+                // whichever runs after a restore.
+                let mut min_dist_sq = SENSE_RADIUS * SENSE_RADIUS;
+                for (prey_pos, prey_homeo) in prey_query.iter() {
+                    if prey_homeo.energy > 0.0 {
+                        let dist_sq = agent_pos.0.distance_squared(prey_pos.0);
+                        if dist_sq < min_dist_sq {
+                            min_dist_sq = dist_sq;
+                            nearest = Some(prey_pos.0);
+                        }
                     }
                 }
+                nearest
             }
-            nearest_prey
-        } else {
-            let mut nearest_food = None;
-            let mut min_dist_sq = f32::MAX;
-            for food_pos in food_query.iter() {
-                let dist_sq = agent_pos.0.distance_squared(food_pos.0);
-                if dist_sq < min_dist_sq {
-                    min_dist_sq = dist_sq;
-                    nearest_food = Some(food_pos.0);
+            _ => {
+                let mut nearest = None;
+                let mut min_dist_sq = SENSE_RADIUS * SENSE_RADIUS;
+                for food_pos in food_query.iter() {
+                    let dist_sq = agent_pos.0.distance_squared(food_pos.0);
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                        nearest = Some(food_pos.0);
+                    }
                 }
+                nearest
             }
-            nearest_food
         };
 
         let local_target_vec = if let Some(t_pos) = target_pos {
@@ -674,6 +735,30 @@ pub fn sensory_system(
             // replaces the whole network on an interval instead of mutating weights every tick.
             brain: opt_brain.map(|b| std::sync::Arc::clone(b.live())),
         });
+
+        // Flush in chunks, because **the batch is the unit of work a worker takes**.
+        //
+        // This used to accumulate the whole population into one batch and send it once per tick.
+        // One batch means one worker: measured 2026-07-28 with 4000 agents, adding fifteen more
+        // inference threads changed the machine's load by nothing at all — 263% of one core before
+        // and after, three busy threads before and after — because fourteen of them had nothing to
+        // take. The parallelism was at the wrong granularity, and more workers could never have
+        // fixed it.
+        //
+        // Chunking is what makes the workers reachable. It costs nothing when the population is
+        // small: a hundred agents still produce one batch and behave exactly as before.
+        if batch.requests.len() >= INFERENCE_BATCH_CHUNK {
+            let Some(next) = channels.recycle_req_rx.try_recv().ok() else {
+                // Pool empty mid-tick: send what is built and let the rest of the population wait a
+                // tick, for the same reason the entry check does — memory is bounded, and an agent
+                // that misses a think keeps its last CPG parameters and goes on living.
+                let _ = channels.req_tx.send(batch);
+                return;
+            };
+            let full = std::mem::replace(&mut batch, next);
+            batch.requests.clear();
+            let _ = channels.req_tx.send(full);
+        }
     }
 
     if !batch.requests.is_empty() {

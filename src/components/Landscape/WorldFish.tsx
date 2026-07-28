@@ -46,8 +46,8 @@ export const WorldFish: React.FC<WorldFishProps> = ({
   world,
   renderSize = 400,
   heightRatio = 0.13,
-  schools = 12,
-  fishPerSchool = 20,
+  schools = 26,
+  fishPerSchool = 34,
 }) => {
   const ref = useRef<THREE.InstancedMesh>(null);
   const geom = useMemo(() => makeFishGeometry(), []);

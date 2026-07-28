@@ -132,6 +132,121 @@ impl SpatialHashGrid {
         }
     }
 
+    /// Cell coordinates a world position falls in, under the same wrapping `insert` uses.
+    ///
+    /// Shared so a lookup can never disagree with the placement it is looking up. The two used to be
+    /// the same twenty lines written twice, which is how a query starts silently missing the cell
+    /// its target is actually in.
+    fn cell_of(&self, position: Vec3, bounds: &MapBounds) -> (i32, i32) {
+        let x_range = bounds.max.x - bounds.min.x;
+        let z_range = bounds.max.z - bounds.min.z;
+
+        let mut wrapped_x = position.x;
+        if x_range > 0.0 {
+            wrapped_x = bounds.min.x + (position.x - bounds.min.x).rem_euclid(x_range);
+            wrapped_x = wrapped_x.clamp(bounds.min.x, bounds.max.x - 1e-4);
+        }
+        let mut wrapped_z = position.z;
+        if z_range > 0.0 {
+            wrapped_z = bounds.min.z + (position.z - bounds.min.z).rem_euclid(z_range);
+            wrapped_z = wrapped_z.clamp(bounds.min.z, bounds.max.z - 1e-4);
+        }
+
+        let cx_start = (bounds.min.x / self.cell_size).floor() as i32;
+        let cx_end = (bounds.max.x / self.cell_size).floor() as i32;
+        let cy_start = (bounds.min.z / self.cell_size).floor() as i32;
+        let cy_end = (bounds.max.z / self.cell_size).floor() as i32;
+
+        (
+            ((wrapped_x / self.cell_size).floor() as i32).clamp(cx_start, cx_end),
+            ((wrapped_z / self.cell_size).floor() as i32).clamp(cy_start, cy_end),
+        )
+    }
+
+    /// Whether the index holds anything at all.
+    ///
+    /// The grid is derived state: `rebuild_spatial_grid_system` fills it at the *end* of a tick, so
+    /// a world restored from a snapshot starts with it empty — the snapshot does not carry a cache.
+    /// A caller that would otherwise read "no targets exist" from an unbuilt index asks this first
+    /// and falls back to a scan, which is why restoring a checkpoint does not change a trajectory.
+    ///
+    /// Short-circuits on the first occupied cell.
+    pub fn is_populated(&self) -> bool {
+        self.cells.values().any(|cell| !cell.is_empty())
+    }
+
+    /// The nearest accepted entity to `from`, searching outward ring by ring.
+    ///
+    /// # Why this exists
+    ///
+    /// `sensory_system` used to find each predator's nearest prey by scanning **every** prey, and
+    /// each prey's nearest food by scanning **every** food. That is O(N²) on the tick thread:
+    /// measured 2026-07-28 at 4000 agents, more than eleven million distance checks per tick, one
+    /// thread pinned at 98% while the other nineteen sat idle and the population stood still because
+    /// ticks were too slow to deliver it new actions. Adding inference workers changed nothing,
+    /// twice, because the cost is paid before a single batch is sent.
+    ///
+    /// # The early exit is the whole point
+    ///
+    /// Rings are searched from the centre out, and the loop stops as soon as the best hit so far is
+    /// closer than the *nearest possible* point in the next ring — `(ring - 1) * cell_size`. Without
+    /// that test this would visit every cell in `max_radius` and be a slower way to lose.
+    ///
+    /// `accept` decides what counts: prey with energy left, an uneaten food. It is called only for
+    /// entities in the cells actually visited, which is the saving.
+    ///
+    /// Allocation-free: it walks the existing cell vectors and keeps two scalars. The tick path's
+    /// zero-allocation rule holds.
+    pub fn nearest(
+        &self,
+        from: Vec3,
+        max_radius: f32,
+        bounds: &MapBounds,
+        mut accept: impl FnMut(Entity) -> Option<Vec3>,
+    ) -> Option<(Entity, Vec3)> {
+        // Spelled out rather than negated: `!(r > 0.0)` is true for NaN by accident, and clippy is
+        // right that reading it that way is a coin toss. A NaN radius is refused because
+        // `is_finite` says so, not because a comparison happened to fall the useful way.
+        if !from.is_finite() || !max_radius.is_finite() || max_radius <= 0.0 {
+            return None;
+        }
+        let (cx, cy) = self.cell_of(from, bounds);
+        let max_ring = (max_radius / self.cell_size).ceil() as i32;
+
+        let mut best: Option<(Entity, Vec3)> = None;
+        let mut best_dist_sq = max_radius * max_radius;
+
+        for ring in 0..=max_ring {
+            // Everything in this ring is at least this far away. Once the best hit beats that, no
+            // later ring can improve on it and the search is done.
+            let ring_floor = ((ring - 1).max(0) as f32) * self.cell_size;
+            if best.is_some() && ring_floor * ring_floor > best_dist_sq {
+                break;
+            }
+
+            for dy in -ring..=ring {
+                for dx in -ring..=ring {
+                    // Only the shell: the interior was covered by an earlier ring.
+                    if ring > 0 && dx.abs() != ring && dy.abs() != ring {
+                        continue;
+                    }
+                    let Some(cell) = self.cells.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
+                    for &entity in cell.iter() {
+                        let Some(pos) = accept(entity) else { continue };
+                        let d = from.distance_squared(pos);
+                        if d < best_dist_sq {
+                            best_dist_sq = d;
+                            best = Some((entity, pos));
+                        }
+                    }
+                }
+            }
+        }
+        best
+    }
+
     pub fn raycast(
         &self,
         ray: &Ray3D,

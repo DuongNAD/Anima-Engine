@@ -197,9 +197,7 @@ impl SimulationEngine {
         let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
 
-        let use_gpu = std::env::var("ANIMA_USE_GPU")
-            .map(|val| val != "false" && val != "0")
-            .unwrap_or(true);
+        let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
         let mut has_wgpu = false;
@@ -762,7 +760,9 @@ impl SimulationEngine {
             // `sensory_system` returns rather than allocating when the pool is empty, so the number
             // of batches in flight can never exceed it. Before that, an empty pool allocated a new
             // batch which was then recycled into the pool for good — 8.5 MB/min headless, measured.
-            for _ in 0..crate::core::agent_systems::INFERENCE_POOL_BATCHES {
+            for _ in 0..(crate::core::agent_systems::INFERENCE_POOL_BATCHES
+                * crate::core::resources::inference_worker_count())
+            {
                 let req_batch = InferenceRequestBatch {
                     requests: Vec::with_capacity(128),
                 };
@@ -781,74 +781,112 @@ impl SimulationEngine {
             };
             world.insert_resource(channels);
 
-            let running_inference = Arc::clone(&running_clone);
-            let model_rx_inference = model_rx;
-            let old_model_tx_inference = old_model_tx;
-
             let inference_seed = run_seed;
-            // Retained, not dropped. This worker was spawned and its JoinHandle thrown away, so a
-            // stopped simulation left an inference thread running until the process happened to
-            // exit — and a restart spawned a second one alongside it. It is joined at the end of
-            // this thread, below, once `running` is false and the batch channel has closed.
-            let inference_handle = thread::spawn(move || {
-                // The same seed the world's copy used. These are two separately-constructed models
-                // that are meant to be the same network until the training thread starts sending
-                // updates; with unseeded initialisation they never were.
-                let mut brain_model = BrainModel::new_seeded(15, 64, 4, inference_seed);
-                // Allocated once and reused every batch: the worker runs on the tick path's critical
-                // chain, so per-batch allocation here would show up as frame jitter.
-                let mut inference_scratch = crate::ai::model::InferenceScratch::with_capacity(256);
+            let worker_count = crate::core::resources::inference_worker_count();
 
-                while running_inference.load(Ordering::SeqCst) {
-                    // Check for model update
-                    if let Ok(new_model) = model_rx_inference.try_recv() {
-                        // Through `BrainModel`'s own API rather than by reaching into its backend.
-                        // A swapped-in model carries the same lazy `Param` cells a fresh one does,
-                        // and the replace methods re-materialise them; the field is private now
-                        // precisely so this cannot be done any other way.
-                        match new_model {
-                            ModelUpdate::NdArray(new_m) => {
-                                if let Some(old) = brain_model.replace_ndarray_model(new_m) {
-                                    let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
-                                }
-                            }
-                            #[cfg(feature = "ml-wgpu")]
-                            ModelUpdate::Wgpu(new_m) => {
-                                if let Some(old) = brain_model.replace_wgpu_model(new_m) {
-                                    let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
-                                }
+            // Model updates have one receiver and now many consumers, so they are fanned out here:
+            // this thread takes each update and hands every worker its own copy. Letting the workers
+            // share `model_rx` directly would deliver an update to exactly one of them, and the rest
+            // would go on answering with a network the learner had already replaced — a divergence
+            // that produces plausible actions and no error anywhere.
+            let mut worker_model_rx = Vec::with_capacity(worker_count);
+            let mut worker_model_tx = Vec::with_capacity(worker_count);
+            for _ in 0..worker_count {
+                let (tx, rx) = crossbeam_channel::unbounded::<ModelUpdate>();
+                worker_model_tx.push(tx);
+                worker_model_rx.push(rx);
+            }
+            let running_fanout = Arc::clone(&running_clone);
+            let fanout_handle = thread::spawn(move || {
+                while running_fanout.load(Ordering::SeqCst) {
+                    match model_rx.recv_timeout(Duration::from_millis(50)) {
+                        Ok(update) => {
+                            for tx in &worker_model_tx {
+                                let _ = tx.send(crate::core::training::clone_model_update(&update));
                             }
                         }
-                    }
-
-                    // Receive request batch
-                    if let Ok(req_batch) = req_rx.recv_timeout(Duration::from_millis(2)) {
-                        if !req_batch.requests.is_empty() {
-                            let mut res_batch = recycle_res_rx.try_recv().unwrap_or_else(|_| {
-                                InferenceResponseBatch {
-                                    responses: Vec::with_capacity(128),
-                                }
-                            });
-                            res_batch.responses.clear();
-
-                            // Same function the tests drive synchronously — see
-                            // `ai::model::run_inference_batch`. Keeping the worker a thin shell
-                            // around it means the logic that decides every agent's action each tick
-                            // is reachable by a test instead of sealed inside a spawned closure.
-                            crate::ai::model::run_inference_batch(
-                                &brain_model,
-                                &req_batch.requests,
-                                &mut res_batch.responses,
-                                &mut inference_scratch,
-                            );
-
-                            let _ = res_tx.send(res_batch);
-                        }
-
-                        let _ = recycle_req_tx.send(req_batch);
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
                     }
                 }
             });
+
+            // Retained, not dropped. These workers were spawned and their JoinHandles thrown away,
+            // so a stopped simulation left inference threads running until the process happened to
+            // exit — and a restart spawned another set alongside them. They are joined at the end of
+            // this thread, below, once `running` is false and the batch channel has closed.
+            let mut inference_handles = Vec::with_capacity(worker_count);
+            for worker_model_rx in worker_model_rx {
+                let running_inference = Arc::clone(&running_clone);
+                let model_rx_inference = worker_model_rx;
+                let old_model_tx_inference = old_model_tx.clone();
+                let req_rx = req_rx.clone();
+                let res_tx = res_tx.clone();
+                let recycle_res_rx = recycle_res_rx.clone();
+                let recycle_req_tx = recycle_req_tx.clone();
+                inference_handles.push(thread::spawn(move || {
+                    // The same seed the world's copy used. These are two separately-constructed models
+                    // that are meant to be the same network until the training thread starts sending
+                    // updates; with unseeded initialisation they never were.
+                    let mut brain_model = BrainModel::new_seeded(15, 64, 4, inference_seed);
+                    // Allocated once and reused every batch: the worker runs on the tick path's critical
+                    // chain, so per-batch allocation here would show up as frame jitter.
+                    let mut inference_scratch =
+                        crate::ai::model::InferenceScratch::with_capacity(256);
+
+                    while running_inference.load(Ordering::SeqCst) {
+                        // Check for model update
+                        if let Ok(new_model) = model_rx_inference.try_recv() {
+                            // Through `BrainModel`'s own API rather than by reaching into its backend.
+                            // A swapped-in model carries the same lazy `Param` cells a fresh one does,
+                            // and the replace methods re-materialise them; the field is private now
+                            // precisely so this cannot be done any other way.
+                            match new_model {
+                                ModelUpdate::NdArray(new_m) => {
+                                    if let Some(old) = brain_model.replace_ndarray_model(new_m) {
+                                        let _ =
+                                            old_model_tx_inference.send(ModelUpdate::NdArray(old));
+                                    }
+                                }
+                                #[cfg(feature = "ml-wgpu")]
+                                ModelUpdate::Wgpu(new_m) => {
+                                    if let Some(old) = brain_model.replace_wgpu_model(new_m) {
+                                        let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Receive request batch
+                        if let Ok(req_batch) = req_rx.recv_timeout(Duration::from_millis(2)) {
+                            if !req_batch.requests.is_empty() {
+                                let mut res_batch =
+                                    recycle_res_rx.try_recv().unwrap_or_else(|_| {
+                                        InferenceResponseBatch {
+                                            responses: Vec::with_capacity(128),
+                                        }
+                                    });
+                                res_batch.responses.clear();
+
+                                // Same function the tests drive synchronously — see
+                                // `ai::model::run_inference_batch`. Keeping the worker a thin shell
+                                // around it means the logic that decides every agent's action each tick
+                                // is reachable by a test instead of sealed inside a spawned closure.
+                                crate::ai::model::run_inference_batch(
+                                    &brain_model,
+                                    &req_batch.requests,
+                                    &mut res_batch.responses,
+                                    &mut inference_scratch,
+                                );
+
+                                let _ = res_tx.send(res_batch);
+                            }
+
+                            let _ = recycle_req_tx.send(req_batch);
+                        }
+                    }
+                }));
+            }
 
             let loaded_food_settings = state_to_load
                 .as_ref()
@@ -1537,10 +1575,15 @@ impl SimulationEngine {
                 }
             }
 
-            // The inference worker watches the same `running` flag, so it is already winding down;
+            // The inference workers watch the same `running` flag, so they are already winding down;
             // joining makes that ordering explicit instead of leaving it to process exit.
-            if let Err(e) = inference_handle.join() {
-                eprintln!("inference thread panicked: {e:?}");
+            for handle in inference_handles {
+                if let Err(e) = handle.join() {
+                    eprintln!("inference thread panicked: {e:?}");
+                }
+            }
+            if let Err(e) = fanout_handle.join() {
+                eprintln!("model fan-out thread panicked: {e:?}");
             }
 
             let mut stat = status_clone.lock().unwrap_or_else(|e| e.into_inner());

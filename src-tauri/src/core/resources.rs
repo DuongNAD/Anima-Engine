@@ -417,6 +417,72 @@ impl Default for EnvironmentalSpawnSettings {
     }
 }
 
+// ---- Inference workers --------------------------------------------------------------------
+
+/// How many threads run agent inference.
+///
+/// **This was one, and one was the ceiling on the whole simulation.** Measured 2026-07-28 with 4000
+/// agents on a 20-thread machine: the process used 263% of one core — 13% of the box — while a
+/// single thread sat pinned at 97%. Everything else waited on it.
+///
+/// The visible symptom was not slowness. `sensory_system` skips a tick's inference when the recycle
+/// pool is empty, and with one worker behind 4000 agents the pool is *always* empty, so agents
+/// almost never got a new action and stood still holding their last CPG parameters. A population
+/// that does not move is the same defect as a saturated core, seen from the other end.
+///
+/// Defaults to the machine's parallelism less four — the tick loop, the emit thread, the learner and
+/// the UI all need somewhere to run — clamped to a sane range. `ANIMA_INFERENCE_WORKERS` overrides
+/// it, which is how a benchmark pins the number it measured.
+pub fn inference_worker_count() -> usize {
+    if let Ok(raw) = std::env::var("ANIMA_INFERENCE_WORKERS") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            if n >= 1 {
+                return n.min(MAX_INFERENCE_WORKERS);
+            }
+        }
+        eprintln!("ANIMA_INFERENCE_WORKERS is not a positive number; using the default");
+    }
+    std::thread::available_parallelism()
+        .map(|p| p.get().saturating_sub(4))
+        .unwrap_or(1)
+        .clamp(1, MAX_INFERENCE_WORKERS)
+}
+
+/// Upper bound on inference workers. Past this the batches are too small to pay for the hand-off.
+pub const MAX_INFERENCE_WORKERS: usize = 12;
+
+// ---- ML backend ---------------------------------------------------------------------------
+
+/// Whether the learner and inference should run on the wgpu GPU backend.
+///
+/// **Off by default since 2026-07-28, and the default is the point.** The GPU path leaks: burn-wgpu
+/// asks a compute pipeline for its bind group layout on every dispatch, and wgpu-core 0.19.4 assigns
+/// a fresh id into a registry `Vec` that only ever grows. Measured headless over three minutes with
+/// ten agents: **+5.8 MB/min of live heap, unbounded**, against **0.00 MB/min** on the CPU backend —
+/// and 29 MB of RSS instead of ~200 MB. In the desktop app it was 14 MB/min, which is 19 GB after a
+/// day. See `STATE_OF_THE_PROJECT.md` §3.17.
+///
+/// A simulator whose whole purpose is to run for a long time cannot default to the backend that
+/// cannot. `ANIMA_USE_GPU=1` opts back in for a short session where inference speed is what matters.
+///
+/// This lives here, in one function, because the decision used to be written out three times —
+/// `simulation_loop::start` and both `ai::model` constructors — each with its own `unwrap_or(true)`.
+/// Three copies of a default is three chances for them to disagree the next time one is changed.
+pub fn gpu_backend_requested() -> bool {
+    gpu_backend_from(std::env::var("ANIMA_USE_GPU").ok().as_deref())
+}
+
+/// The decision behind [`gpu_backend_requested`], pure so the tests never write process state.
+pub fn gpu_backend_from(raw: Option<&str>) -> bool {
+    match raw {
+        None => false,
+        Some(value) => {
+            let trimmed = value.trim();
+            !(trimmed.is_empty() || trimmed == "0" || trimmed.eq_ignore_ascii_case("false"))
+        }
+    }
+}
+
 // ---- Unattended start ---------------------------------------------------------------------
 
 /// Whether the engine should begin simulating the moment the app launches.
@@ -586,8 +652,18 @@ impl FoundingPlan {
             FoundingLayout::Line => Vec3::new(i as f32 * 5.0, 0.0, 0.0),
             FoundingLayout::Grid => {
                 let side = grid_side(self.count);
-                let col = (i % side) as f32;
-                let row = (i / side) as f32;
+                // Jitter inside the cell, or the founding population is visibly planted in rows —
+                // which is exactly how it looked on screen at 1000: a farm, not an ecosystem. Hashed
+                // from the index rather than drawn from a stream, so **D07** still holds: no RNG is
+                // consulted anywhere in genesis, and the same index always lands in the same spot.
+                let jitter = |salt: u32| -> f32 {
+                    let mut h = (i as u32).wrapping_add(salt).wrapping_mul(2_654_435_761);
+                    h ^= h >> 15;
+                    h = h.wrapping_mul(2_246_822_519);
+                    ((h >> 8) as f32 / 16_777_216.0) - 0.5
+                };
+                let col = (i % side) as f32 + jitter(0x9E37) * 0.8;
+                let row = (i / side) as f32 + jitter(0x85EB) * 0.8;
                 let last = (side - 1) as f32;
                 let span_x = (bounds.max.x - bounds.min.x) - 2.0 * FOUNDING_GRID_MARGIN;
                 let span_z = (bounds.max.z - bounds.min.z) - 2.0 * FOUNDING_GRID_MARGIN;
@@ -612,6 +688,37 @@ fn grid_side(count: usize) -> usize {
         side += 1;
     }
     side.max(1)
+}
+
+#[cfg(test)]
+mod gpu_backend_tests {
+    use super::*;
+
+    /// The whole reason this changed: a run that says nothing must not pick the backend that grows
+    /// 5.8 MB every minute forever.
+    #[test]
+    fn unset_means_cpu() {
+        assert!(!gpu_backend_from(None));
+    }
+
+    #[test]
+    fn the_three_spellings_of_no_still_mean_no() {
+        for off in ["", "  ", "0", "false", "FALSE"] {
+            assert!(
+                !gpu_backend_from(Some(off)),
+                "{off:?} must not select the GPU"
+            );
+        }
+    }
+
+    /// Opting in is still one variable away, for a short session where inference speed is the thing
+    /// that matters.
+    #[test]
+    fn anything_else_opts_back_in() {
+        for on in ["1", "true", "yes", " 1 "] {
+            assert!(gpu_backend_from(Some(on)), "{on:?} must select the GPU");
+        }
+    }
 }
 
 #[cfg(test)]

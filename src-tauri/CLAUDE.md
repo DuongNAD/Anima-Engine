@@ -2,7 +2,17 @@
 
 ## Environment (loaded via dotenvy from `.env`, gitignored)
 
-- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (`ai/model.rs`).
+- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback. **Defaults to CPU since 2026-07-28**, and
+  the decision lives in one place (`core::resources::gpu_backend_requested`) rather than the three
+  copies of `unwrap_or(true)` it replaced. Set it to `1` for a short session where inference speed
+  matters. **The GPU path leaks.** Measured 2026-07-28, headless, 10 agents, three minutes: with wgpu the live heap
+  (alloc − free) grows **5.8 MB/min** indefinitely; with `ANIMA_USE_GPU=0` it is **flat at
+  0.00 MB/min**, RSS 29 MB instead of ~200 MB, and 33 k allocations/s instead of 254 k. A backtrace on
+  the growing allocation names it: `wgpu_core::storage::Storage::insert::<BindGroupLayout>` under
+  `compute_pipeline_get_bind_group_layout`, called per dispatch by burn-wgpu. wgpu-core 0.19.4 hands
+  out a fresh id each time and its registry `Vec` only ever grows — nothing in this repository owns
+  that memory. Set `ANIMA_USE_GPU=0` for any run meant to last hours; see
+  [`STATE_OF_THE_PROJECT.md` §3.17](../docs/planning/STATE_OF_THE_PROJECT.md).
 - `GEMINI_API_KEY` — Gemini REST in `evolution/meta_ai.rs`; absent → mock fallback.
 - `GEMINI_WEBSESSION_ENDPOINT` — Gemini Web-Session endpoint for `GeminiWebSessionClient`.
 - Neo4j credentials (`evolution/lineage.rs`) — falls back to in-memory offline mode when Neo4j is unavailable.

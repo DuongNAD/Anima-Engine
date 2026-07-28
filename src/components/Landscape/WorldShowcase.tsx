@@ -11,6 +11,7 @@ import WorldBirds from './WorldBirds';
 import WorldFish from './WorldFish';
 import WorldWildlife from './WorldWildlife';
 import LiveAgents from './LiveAgents';
+import WorldFauna from './WorldFauna';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
@@ -500,6 +501,14 @@ export const WorldShowcase: React.FC = () => {
         <WorldBirds renderSize={RENDER_SIZE} />
         <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
         <WorldWildlife
+          world={world}
+          renderSize={RENDER_SIZE}
+          heightRatio={HEIGHT_RATIO}
+          meshResolution={MESH_RES}
+        />
+        {/* Camels, musk oxen, boar, rabbits, turtles and frogs — the biomes `WorldWildlife` leaves
+            empty. Table-driven, one instanced mesh per species. */}
+        <WorldFauna
           world={world}
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
