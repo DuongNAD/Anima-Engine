@@ -17,7 +17,7 @@ use anima_engine_lib::evolution::brain_genotype::{
 use bevy_ecs::prelude::Entity;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::sync::Mutex;
+use std::any::Any;
 
 #[global_allocator]
 static ALLOCATOR: common::allocator::TrackingAllocator =
@@ -25,7 +25,51 @@ static ALLOCATOR: common::allocator::TrackingAllocator =
 
 /// The allocator is process-global and its counter is not per-test, so the suites that measure it
 /// must not run concurrently — the same interference that makes the terrain allocation test flaky.
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+type PanicPayload = Box<dyn Any + Send + 'static>;
+type ContractResult = Result<(), PanicPayload>;
+
+/// Disarms the process-wide counter during unwinding and stops it exactly once on success.
+#[must_use = "dropping the guard immediately closes the allocation measurement window"]
+struct AllocationTrackingGuard {
+    active: bool,
+}
+
+impl AllocationTrackingGuard {
+    fn start() -> Self {
+        ALLOCATOR.start_tracking();
+        Self { active: true }
+    }
+
+    #[must_use = "the measured allocation count must be asserted"]
+    fn stop(mut self) -> usize {
+        self.active = false;
+        ALLOCATOR.stop_tracking()
+    }
+}
+
+impl Drop for AllocationTrackingGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = ALLOCATOR.stop_tracking();
+        }
+    }
+}
+
+/// Report every failed contract, then preserve libtest's non-zero result by resuming the first one.
+fn finish_contracts<const N: usize>(results: [(&str, ContractResult); N]) {
+    let mut first_failure = None;
+    for (name, result) in results {
+        if let Err(payload) = result {
+            eprintln!("contract failed: {name}");
+            if first_failure.is_none() {
+                first_failure = Some(payload);
+            }
+        }
+    }
+    if let Some(payload) = first_failure {
+        std::panic::resume_unwind(payload);
+    }
+}
 
 const AGENTS: usize = 64;
 
@@ -46,28 +90,35 @@ fn requests(count: usize, with_brains: bool) -> Vec<AgentInferenceRequest> {
 
 // --- EB-S03: allocation on the tick path ---------------------------------------------------------
 
-/// The four EB-S03 measurements run under one `#[test]`, and the reason is not style.
+/// The four EB-S03 measurements run as one contract, and the reason is not style.
 ///
-/// `TEST_LOCK` serialises the test *bodies*, but libtest still gives each `#[test]` its own thread,
-/// and spawning those threads allocates outside the lock. The allocator is a `#[global_allocator]`
-/// counting the whole process, so a sibling's start-up landing inside a measured window is counted
-/// as if the code under test had allocated. On an idle machine the threads are all up before the
-/// first body runs and nothing is seen; under the load of a full `cargo test --features desktop` they
-/// interleave, and `a_learning_step_allocates_nothing` fails claiming 4 allocations in a function
-/// that makes none. Observed roughly one run in three.
+/// A mutex can serialise test *bodies*, but libtest still gives each `#[test]` its own thread and
+/// spawning those threads allocates outside the lock. The allocator counts the whole process, so a
+/// sibling's start-up landing inside a measured window is counted as if the code under test had
+/// allocated. Under the load of a full desktop suite this made
+/// `a_learning_step_allocates_nothing` claim four allocations in a function that makes none.
 ///
-/// One `#[test]` means one thread and no siblings, which makes the measurement deterministic rather
-/// than load-dependent. Counting stays process-wide, which matters: `terrain.rs` erosion runs on
-/// rayon workers, so a per-thread counter would silently stop measuring the very allocations
-/// `map_generation_zero_alloc_tests` exists to catch.
-#[test]
+/// The aggregate test at the end is the only `#[test]` in this binary, which removes sibling-test
+/// startup noise while preserving process-wide coverage of any delegated worker-thread work.
 fn eb_s03_allocation_on_the_tick_path() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
-    evolved_inference_allocates_nothing_per_tick();
-    a_learning_step_allocates_nothing();
-    installing_a_learned_network_costs_one_allocation();
-    the_shared_model_path_is_not_allocation_free_and_never_was();
+    finish_contracts([
+        (
+            "evolved inference",
+            std::panic::catch_unwind(evolved_inference_allocates_nothing_per_tick),
+        ),
+        (
+            "learning step",
+            std::panic::catch_unwind(a_learning_step_allocates_nothing),
+        ),
+        (
+            "learned-network install",
+            std::panic::catch_unwind(installing_a_learned_network_costs_one_allocation),
+        ),
+        (
+            "shared model",
+            std::panic::catch_unwind(the_shared_model_path_is_not_allocation_free_and_never_was),
+        ),
+    ]);
 }
 
 fn evolved_inference_allocates_nothing_per_tick() {
@@ -82,11 +133,11 @@ fn evolved_inference_allocates_nothing_per_tick() {
     // being measured is the steady state, not one-off setup.
     run_inference_batch(&model, &reqs, &mut responses, &mut scratch);
 
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
     for _ in 0..8 {
         run_inference_batch(&model, &reqs, &mut responses, &mut scratch);
     }
-    let allocs = ALLOCATOR.stop_tracking();
+    let allocs = tracking_guard.stop();
 
     assert_eq!(
         allocs, 0,
@@ -115,7 +166,7 @@ fn a_learning_step_allocates_nothing() {
     )
     .unwrap();
 
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
     for _ in 0..16 {
         anima_engine_lib::evolution::brain_genotype::learn_step(
             &mut genotype,
@@ -129,7 +180,7 @@ fn a_learning_step_allocates_nothing() {
         )
         .unwrap();
     }
-    let allocs = ALLOCATOR.stop_tracking();
+    let allocs = tracking_guard.stop();
 
     assert_eq!(
         allocs, 0,
@@ -146,9 +197,9 @@ fn installing_a_learned_network_costs_one_allocation() {
     let mut agent = AgentBrain::from_genotype(brain(11));
     let updated = (*agent.genotype).clone();
 
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
     agent.set_learned(updated);
-    let allocs = ALLOCATOR.stop_tracking();
+    let allocs = tracking_guard.stop();
 
     assert_eq!(
         allocs, 1,
@@ -169,9 +220,9 @@ fn the_shared_model_path_is_not_allocation_free_and_never_was() {
     let mut responses = Vec::with_capacity(AGENTS);
     run_inference_batch(&model, &reqs, &mut responses, &mut scratch);
 
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
     run_inference_batch(&model, &reqs, &mut responses, &mut scratch);
-    let shared_allocs = ALLOCATOR.stop_tracking();
+    let shared_allocs = tracking_guard.stop();
 
     assert!(
         shared_allocs > 0,
@@ -191,12 +242,8 @@ const BRAIN_BUDGET_BYTES: usize = 24 * 1024;
 /// Ceiling for an agent that has also learned: it carries genome **and** learned network.
 const LEARNING_BRAIN_BUDGET_BYTES: usize = 48 * 1024;
 
-#[test]
 fn a_brains_memory_stays_within_the_published_budget() {
-    // Holds the lock despite measuring memory rather than allocations: this test *allocates*, and
-    // the counter used by the tests above is process-global, so running unlocked would inflate their
-    // numbers. Everything in a file with a tracking allocator has to take part.
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // This allocates its fixtures, which is why the aggregate runs it after every EB-S03 window.
     let genome = brain(3);
     assert_eq!(
         genome.heap_bytes(),
@@ -221,13 +268,11 @@ fn a_brains_memory_stays_within_the_published_budget() {
     assert!(agent.heap_bytes() <= LEARNING_BRAIN_BUDGET_BYTES);
 }
 
-#[test]
 fn the_population_cost_is_stated_not_discovered() {
     // ADR-0003 records that per-agent weights are what stands between this design and the project's
     // scale target. The arithmetic is pinned here so the claim in the ADR cannot drift away from the
     // code: at ~22.5 KiB each, a million agents would need ~21 GiB of weights alone, which is why
     // Simulation-LOD is a precondition for scale rather than an optimisation.
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let per_agent = brain(5).heap_bytes();
 
     let for_population = |n: usize| n * per_agent;
@@ -248,12 +293,10 @@ fn the_population_cost_is_stated_not_discovered() {
     );
 }
 
-#[test]
 fn a_smaller_architecture_is_the_lever_that_actually_moves_the_budget() {
     // The mitigations ADR-0003 lists are: fewer hidden units, quantisation, or sharing weights along
     // a lineage. Only the first is available today, so this records what it buys — halving the
     // hidden width is roughly a quarter of the memory, because the trunk-to-trunk matrix dominates.
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let full = ArchSpec::new(15, 64, action_index::COUNT).param_count();
     let half = ArchSpec::new(15, 32, action_index::COUNT).param_count();
 
@@ -262,4 +305,31 @@ fn a_smaller_architecture_is_the_lever_that_actually_moves_the_budget() {
         (3.0..4.5).contains(&ratio),
         "halving hidden width changed the parameter ratio to {ratio}; the memory note needs review"
     );
+}
+
+/// Run allocation contracts before memory fixtures allocate, with one libtest thread for the whole
+/// binary. Every contract executes on a red suite; helper names are intentionally not independently
+/// filterable. Multi-failure reporting depends on Cargo's test profile retaining unwind panics.
+#[test]
+fn brain_budget_contracts() {
+    finish_contracts([
+        (
+            "EB-S03 tick-path allocation",
+            std::panic::catch_unwind(eb_s03_allocation_on_the_tick_path),
+        ),
+        (
+            "per-brain memory ceiling",
+            std::panic::catch_unwind(a_brains_memory_stays_within_the_published_budget),
+        ),
+        (
+            "population memory statement",
+            std::panic::catch_unwind(the_population_cost_is_stated_not_discovered),
+        ),
+        (
+            "smaller architecture leverage",
+            std::panic::catch_unwind(
+                a_smaller_architecture_is_the_lever_that_actually_moves_the_budget,
+            ),
+        ),
+    ]);
 }
