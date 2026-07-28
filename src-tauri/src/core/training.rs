@@ -38,6 +38,19 @@ const LEARNING_RATE: f64 = 1e-3;
 /// Discount applied to the bootstrapped next-state value in the TD target.
 pub const DISCOUNT: f32 = 0.99;
 
+/// Copy an update so every inference worker can be given the same new network.
+///
+/// The learner publishes one update; there are now several workers. Handing it to whichever worker
+/// happens to receive first would leave the others answering with a network the learner had already
+/// replaced — plausible actions, no error, and a divergence nothing would report.
+pub fn clone_model_update(update: &ModelUpdate) -> ModelUpdate {
+    match update {
+        ModelUpdate::NdArray(m) => ModelUpdate::NdArray(m.clone()),
+        #[cfg(feature = "ml-wgpu")]
+        ModelUpdate::Wgpu(m) => ModelUpdate::Wgpu(m.clone()),
+    }
+}
+
 pub enum ModelUpdate {
     NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
     #[cfg(feature = "ml-wgpu")]

@@ -287,6 +287,18 @@ pub fn combat_system(
     segment_query: Query<(&Position, &ParentAgent)>,
     mut combat_events: Option<ResMut<CombatEvents>>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    // Where each agent's centroid lives: `(is_predator, index)`.
+    //
+    // This system accumulates segment positions into per-agent centroids, and it used to find the
+    // right one with `Vec::iter_mut().find(..)` — a linear scan of the whole population, per
+    // segment. At 4000 agents that is twelve thousand segments against four thousand entries:
+    // **roughly 48 million comparisons a tick**, to add some vectors up. `ecology_resources`, the
+    // phase this system sits in, was measured at 55% of a 4.65 **second** tick.
+    //
+    // `Local` rather than a field on `CombatEvents`: the resource is built by struct literal in
+    // several tests, and a new public field would break every one of them for a private cache.
+    // Cleared rather than reallocated, so the tick path still allocates nothing once warm.
+    mut centroid_index: Local<std::collections::HashMap<Entity, (bool, usize)>>,
 ) {
     if let Some(ref mut events_res) = combat_events {
         events_res.events.clear();
@@ -306,22 +318,38 @@ pub fn combat_system(
                 .push((entity, pos.0, Vec3::ZERO, 0));
         }
 
+        // One pass to record where each agent's centroid lives, then one lookup per segment.
+        //
+        // This was `iter_mut().find(..)` per segment — a linear scan of the population to add three
+        // vectors. Twelve thousand segments against four thousand entries is ~48 million comparisons
+        // a tick, and `ecology_resources` (this phase) was 55% of a 4.65 **second** tick at 4000
+        // agents. The map is cleared, not rebuilt, so nothing is allocated once it is warm.
+        // Split the borrows: the map is written while the two vectors are read, and again while they
+        // are written, so the compiler needs them as distinct fields rather than through `events_res`.
+        let CombatEvents {
+            predator_centroids,
+            prey_centroids,
+            ..
+        } = &mut **events_res;
+        let centroid_index = &mut *centroid_index;
+        centroid_index.clear();
+        for (i, entry) in predator_centroids.iter().enumerate() {
+            centroid_index.insert(entry.0, (true, i));
+        }
+        for (i, entry) in prey_centroids.iter().enumerate() {
+            centroid_index.insert(entry.0, (false, i));
+        }
         for (seg_pos, parent_agent) in segment_query.iter() {
-            if let Some(entry) = events_res
-                .predator_centroids
-                .iter_mut()
-                .find(|e| e.0 == parent_agent.0)
-            {
-                entry.2 += seg_pos.0;
-                entry.3 += 1;
-            } else if let Some(entry) = events_res
-                .prey_centroids
-                .iter_mut()
-                .find(|e| e.0 == parent_agent.0)
-            {
-                entry.2 += seg_pos.0;
-                entry.3 += 1;
-            }
+            let Some(&(is_predator, idx)) = centroid_index.get(&parent_agent.0) else {
+                continue;
+            };
+            let entry = if is_predator {
+                &mut predator_centroids[idx]
+            } else {
+                &mut prey_centroids[idx]
+            };
+            entry.2 += seg_pos.0;
+            entry.3 += 1;
         }
 
         for entry in events_res.predator_centroids.iter_mut() {

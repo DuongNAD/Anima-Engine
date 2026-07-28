@@ -417,6 +417,40 @@ impl Default for EnvironmentalSpawnSettings {
     }
 }
 
+// ---- Inference workers --------------------------------------------------------------------
+
+/// How many threads run agent inference.
+///
+/// **This was one, and one was the ceiling on the whole simulation.** Measured 2026-07-28 with 4000
+/// agents on a 20-thread machine: the process used 263% of one core — 13% of the box — while a
+/// single thread sat pinned at 97%. Everything else waited on it.
+///
+/// The visible symptom was not slowness. `sensory_system` skips a tick's inference when the recycle
+/// pool is empty, and with one worker behind 4000 agents the pool is *always* empty, so agents
+/// almost never got a new action and stood still holding their last CPG parameters. A population
+/// that does not move is the same defect as a saturated core, seen from the other end.
+///
+/// Defaults to the machine's parallelism less four — the tick loop, the emit thread, the learner and
+/// the UI all need somewhere to run — clamped to a sane range. `ANIMA_INFERENCE_WORKERS` overrides
+/// it, which is how a benchmark pins the number it measured.
+pub fn inference_worker_count() -> usize {
+    if let Ok(raw) = std::env::var("ANIMA_INFERENCE_WORKERS") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            if n >= 1 {
+                return n.min(MAX_INFERENCE_WORKERS);
+            }
+        }
+        eprintln!("ANIMA_INFERENCE_WORKERS is not a positive number; using the default");
+    }
+    std::thread::available_parallelism()
+        .map(|p| p.get().saturating_sub(4))
+        .unwrap_or(1)
+        .clamp(1, MAX_INFERENCE_WORKERS)
+}
+
+/// Upper bound on inference workers. Past this the batches are too small to pay for the hand-off.
+pub const MAX_INFERENCE_WORKERS: usize = 12;
+
 // ---- ML backend ---------------------------------------------------------------------------
 
 /// Whether the learner and inference should run on the wgpu GPU backend.
