@@ -23,6 +23,69 @@ use crate::core::world_artifact::fnv1a_32;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
+/// JSON representation for named scalar observations.
+///
+/// JSON has no native NaN or infinity values. Serde JSON otherwise emits those values as `null`,
+/// which cannot deserialize back into `f64` and erases the value that explains a failed run.
+/// Finite values remain ordinary JSON numbers; the three non-finite classes use explicit tags.
+pub(crate) mod json_f64_pairs {
+    use serde::{de::Error as _, Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    #[serde(untagged)]
+    enum JsonFloat {
+        Number(f64),
+        Tag(String),
+    }
+
+    pub fn serialize<S>(values: &[(String, f64)], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let safe: Vec<(&str, JsonFloat)> = values
+            .iter()
+            .map(|(name, value)| {
+                let encoded = if value.is_nan() {
+                    JsonFloat::Tag("NaN".into())
+                } else if *value == f64::INFINITY {
+                    JsonFloat::Tag("+Infinity".into())
+                } else if *value == f64::NEG_INFINITY {
+                    JsonFloat::Tag("-Infinity".into())
+                } else {
+                    JsonFloat::Number(*value)
+                };
+                (name.as_str(), encoded)
+            })
+            .collect();
+        safe.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<(String, f64)>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::<(String, JsonFloat)>::deserialize(deserializer)?
+            .into_iter()
+            .map(|(name, value)| {
+                let decoded = match value {
+                    JsonFloat::Number(value) => value,
+                    JsonFloat::Tag(tag) => match tag.as_str() {
+                        "NaN" => f64::NAN,
+                        "+Infinity" => f64::INFINITY,
+                        "-Infinity" => f64::NEG_INFINITY,
+                        _ => {
+                            return Err(D::Error::custom(format!(
+                                "unknown non-finite float tag '{tag}'"
+                            )))
+                        }
+                    },
+                };
+                Ok((name, decoded))
+            })
+            .collect()
+    }
+}
+
 /// A deterministic simulation the scenario runner can drive. Implementations must be reproducible:
 /// given the same initial state, tick sequence, interventions and RNG stream, they produce the same
 /// checksum every run.
@@ -378,6 +441,7 @@ impl Scenario {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct StateSample {
     pub tick: u64,
+    #[serde(with = "json_f64_pairs")]
     pub observables: Vec<(String, f64)>,
 }
 
@@ -387,6 +451,7 @@ pub struct ScenarioResult {
     pub scenario_name: String,
     pub seed: u64,
     pub final_checksum: u32,
+    #[serde(with = "json_f64_pairs")]
     pub final_observables: Vec<(String, f64)>,
     pub ledger: CausalLedger,
     pub series: Vec<StateSample>,
@@ -494,6 +559,31 @@ pub fn control_treatment<M: SimModel>(
 mod tests {
     use super::*;
     use crate::core::intervention::{Curve, Region};
+
+    #[test]
+    fn observable_json_preserves_every_non_finite_class_without_null() {
+        let sample = StateSample {
+            tick: 7,
+            observables: vec![
+                ("finite".into(), 1.25),
+                ("nan".into(), f64::NAN),
+                ("positive".into(), f64::INFINITY),
+                ("negative".into(), f64::NEG_INFINITY),
+            ],
+        };
+
+        let json = serde_json::to_string(&sample).expect("sample serializes");
+        assert!(!json.contains("null"), "{json}");
+        assert!(json.contains("\"NaN\""), "{json}");
+        assert!(json.contains("\"+Infinity\""), "{json}");
+        assert!(json.contains("\"-Infinity\""), "{json}");
+
+        let back: StateSample = serde_json::from_str(&json).expect("sample deserializes");
+        assert_eq!(back.observables[0], ("finite".into(), 1.25));
+        assert!(back.observables[1].1.is_nan());
+        assert_eq!(back.observables[2].1, f64::INFINITY);
+        assert_eq!(back.observables[3].1, f64::NEG_INFINITY);
+    }
 
     fn drought_scenario(seed: u64) -> Scenario {
         // A sustained −30% rainfall drought that begins early and holds through the end of the run,

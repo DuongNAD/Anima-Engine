@@ -1,4 +1,5 @@
 use anima_engine_lib::core::experiment::ExperimentManifest;
+use anima_engine_lib::core::experiment_runner::EnsembleSummary;
 use serde_json::Value;
 use std::path::PathBuf;
 use std::process::Command;
@@ -61,6 +62,15 @@ fn a_preserved_runtime_failure_is_json_and_a_nonzero_process_exit() {
 
     let report: Value =
         serde_json::from_slice(&output.stdout).expect("stdout remains a machine-readable report");
+    let typed = serde_json::from_slice::<EnsembleSummary>(&output.stdout)
+        .expect("the emitted report must round-trip through its public Rust schema");
+    assert!(
+        typed.runs[0]
+            .final_observables
+            .iter()
+            .any(|(_, value)| !value.is_finite()),
+        "the value that caused the runtime failure must remain explicit"
+    );
     assert_eq!(report["completed_runs"], 0);
     assert_eq!(report["failed"].as_array().map(Vec::len), Some(1));
     assert!(
