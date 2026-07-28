@@ -45,6 +45,7 @@ export type { EcosystemState } from './generated/EcosystemState';
 export type { MigrationPayload } from './generated/MigrationPayload';
 export type { MigrationDirection } from './generated/MigrationDirection';
 export type { MigrationStatus } from './generated/MigrationStatus';
+export type { MigrationHandoffSnapshot } from './generated/MigrationHandoffSnapshot';
 export type { LineageNodePayload } from './generated/LineageNodePayload';
 export type { LineageLinkPayload } from './generated/LineageLinkPayload';
 export type { LineageGraphPayload } from './generated/LineageGraphPayload';

@@ -5,6 +5,7 @@ use crate::evolution::genotype::MorphologyGenotype;
 use crate::evolution::meta_ai::EnvironmentalEvent;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 #[derive(Resource, Default)]
@@ -385,6 +386,87 @@ pub struct ShardingResource(pub Arc<RwLock<ShardingConfig>>);
 
 #[derive(Resource)]
 pub struct InboundMigrationReceiver(pub crossbeam_channel::Receiver<AgentMigrationData>);
+
+/// Maximum number of complete agents waiting for the networking worker.
+///
+/// A fixed bound makes memory use independent of how many agents cross a shard boundary in one
+/// tick. `256` is over twenty-five times the default ten-agent founding population, so ordinary
+/// whole-population moves fit while adversarial bursts remain bounded. A slot owns one morphology,
+/// lineage metadata and homeostatic state; evolved brain weights stay behind `Arc`, so the queue
+/// does not deep-copy the ~23 KiB network per agent. Morphology size is variable, therefore this is
+/// a count bound rather than a false byte-perfect claim.
+///
+/// The migration systems use `try_send`, so saturation reflects excess agents back into the local
+/// shard instead of blocking the simulation or deleting scientific state.
+pub const OUTBOUND_MIGRATION_QUEUE_CAPACITY: usize = 256;
+
+pub fn outbound_migration_channel() -> (
+    crossbeam_channel::Sender<OutboundMigration>,
+    crossbeam_channel::Receiver<OutboundMigration>,
+) {
+    crossbeam_channel::bounded(OUTBOUND_MIGRATION_QUEUE_CAPACITY)
+}
+
+#[derive(Default)]
+struct MigrationHandoffCounters {
+    queued: AtomicU64,
+    full_rejections: AtomicU64,
+    disconnected_rejections: AtomicU64,
+}
+
+/// Auditable totals for the process-local migration handoff boundary.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MigrationHandoffSnapshot {
+    #[ts(type = "number")]
+    pub queued: u64,
+    #[ts(type = "number")]
+    pub full_rejections: u64,
+    #[ts(type = "number")]
+    pub disconnected_rejections: u64,
+}
+
+/// Shared, allocation-free migration handoff counters.
+///
+/// Clones share the same atomics, allowing the simulation world to record failures while an IPC
+/// command reads a coherent-enough monotonic snapshot without locking or perturbing the tick.
+#[derive(Resource, Clone, Default)]
+pub struct MigrationHandoffDiagnostics(Arc<MigrationHandoffCounters>);
+
+impl MigrationHandoffDiagnostics {
+    fn increment(counter: &AtomicU64) {
+        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            Some(value.saturating_add(1))
+        });
+    }
+
+    pub fn record_queued(&self) {
+        Self::increment(&self.0.queued);
+    }
+
+    pub fn record_full_rejection(&self) {
+        Self::increment(&self.0.full_rejections);
+    }
+
+    pub fn record_disconnected_rejection(&self) {
+        Self::increment(&self.0.disconnected_rejections);
+    }
+
+    pub fn snapshot(&self) -> MigrationHandoffSnapshot {
+        MigrationHandoffSnapshot {
+            queued: self.0.queued.load(Ordering::Relaxed),
+            full_rejections: self.0.full_rejections.load(Ordering::Relaxed),
+            disconnected_rejections: self.0.disconnected_rejections.load(Ordering::Relaxed),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.0.queued.store(0, Ordering::Relaxed);
+        self.0.full_rejections.store(0, Ordering::Relaxed);
+        self.0.disconnected_rejections.store(0, Ordering::Relaxed);
+    }
+}
 
 #[derive(Resource)]
 pub struct OutboundMigrationSender(pub crossbeam_channel::Sender<OutboundMigration>);

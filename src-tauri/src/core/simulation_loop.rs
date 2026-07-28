@@ -105,6 +105,8 @@ pub struct SimulationEngine {
     /// simulation's world. Idle until something starts it, and a capture never touches simulation
     /// state — see [`crate::core::tick_capture`].
     pub tick_capture: crate::core::tick_capture::SharedTickCapture,
+    /// Monotonic counters for the current run's process-local migration handoff boundary.
+    pub migration_handoff_diagnostics: crate::core::resources::MigrationHandoffDiagnostics,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
 
@@ -170,6 +172,8 @@ impl SimulationEngine {
             lod_focus: crate::core::simulation_lod::SharedLodFocus::new_disabled(),
             observer_actions: crate::core::observer::SharedObserverActions::new(),
             tick_capture: crate::core::tick_capture::SharedTickCapture::new(),
+            migration_handoff_diagnostics:
+                crate::core::resources::MigrationHandoffDiagnostics::default(),
             manual_migration_trigger,
             manual_migration_receiver,
             save_request_tx,
@@ -201,6 +205,7 @@ impl SimulationEngine {
         {
             return;
         }
+        self.migration_handoff_diagnostics.reset();
 
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
@@ -611,6 +616,7 @@ impl SimulationEngine {
         // borrow the engine into the thread and the borrow escapes the method.
         let observer_actions_sim = self.observer_actions.clone();
         let tick_capture_shared = self.tick_capture.clone();
+        let migration_handoff_diagnostics_sim = self.migration_handoff_diagnostics.clone();
         // A second handle on the same capture, kept out of the sink so the loop can notice the run
         // finishing. Without it a release build has no way to retrieve a capture at all: the four
         // capture commands are IPC-only, no UI calls them, and a release binary has no DevTools to
@@ -630,8 +636,7 @@ impl SimulationEngine {
 
         let (inbound_tx, inbound_rx) =
             crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
-        let (outbound_tx, outbound_rx) =
-            crossbeam_channel::unbounded::<crate::core::ecs::OutboundMigration>();
+        let (outbound_tx, outbound_rx) = crate::core::resources::outbound_migration_channel();
 
         let sim_exit = self.supervisor.token(sup::SIM);
         let sim_handle = thread::spawn(move || {
@@ -944,6 +949,7 @@ impl SimulationEngine {
 
             world.insert_resource(crate::core::ecs::InboundMigrationReceiver(inbound_rx));
             world.insert_resource(crate::core::ecs::OutboundMigrationSender(outbound_tx));
+            world.insert_resource(migration_handoff_diagnostics_sim);
             world.insert_resource(crate::core::ecs::ShardingResource(sharding_config_sim));
             world.insert_resource(crate::core::ecs::BevyMigrationTrigger(
                 manual_migration_receiver_clone,

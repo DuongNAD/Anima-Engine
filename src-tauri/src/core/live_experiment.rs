@@ -1479,6 +1479,9 @@ fn install_runtime_resources(
 
     let (inbound_tx, inbound_rx) =
         crossbeam_channel::unbounded::<crate::core::components::AgentMigrationData>();
+    // The headless adapter has no networking worker and must remain a pure deterministic model.
+    // Keeping its inert channel unbounded means no wall-clock consumer timing can decide which
+    // agents a seeded experiment retains. The bounded production channel lives in SimulationEngine.
     let (outbound_tx, outbound_rx) =
         crossbeam_channel::unbounded::<crate::core::components::OutboundMigration>();
     let (migration_tx, migration_rx) = crossbeam_channel::unbounded::<u16>();

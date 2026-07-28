@@ -75,6 +75,7 @@ pub fn run() {
             commands::get_lod_bands,
             commands::set_sharding_config,
             commands::get_sharding_config,
+            commands::get_migration_handoff_diagnostics,
             commands::trigger_migration,
             commands::get_test_rabbit_state,
             commands::save_simulation_state,
