@@ -1,6 +1,33 @@
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::simulation_lifecycle::{SavedSimulationState, SimulationEngine};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::time::Duration;
+
+// A liveness deadline, not a performance budget: `start` spawns four threads before the first tick,
+// so the `sleep(200ms)` + assert this replaced bet on a start-up latency nobody chose.
+const READY_DEADLINE: Duration = Duration::from_secs(10);
+const READY_POLL: Duration = Duration::from_millis(5);
+
+/// Wait until the engine is running and has ticked past `tick_floor` — the count the caller's own
+/// assertion uses — or panic at `deadline` naming the last status seen.
+fn await_running_past_tick(engine: &SimulationEngine, tick_floor: u64, deadline: Duration) {
+    let start = std::time::Instant::now();
+    loop {
+        let status = engine.get_status();
+        if status.running && status.tick_count > tick_floor {
+            return;
+        }
+        let waited = start.elapsed();
+        assert!(
+            waited < deadline,
+            "timed out after {waited:.2?} waiting for the engine to tick past {tick_floor}; \
+             last status: running={}, tick_count={}",
+            status.running,
+            status.tick_count
+        );
+        std::thread::sleep(READY_POLL);
+    }
+}
 
 #[test]
 fn test_saved_simulation_state_serialization() {
@@ -92,8 +119,8 @@ fn test_engine_save_load_lifecycle() {
         Arc::clone(&map_elites_grid),
     );
 
-    // Wait a short moment for ticks to happen
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    // The save below asserts `tick_count > 0`; genesis spawns the 10 agents before that tick.
+    await_running_past_tick(&engine, 0, READY_DEADLINE);
 
     // Perform save request
     let (tx, rx) = std::sync::mpsc::channel();
@@ -128,7 +155,8 @@ fn test_engine_save_load_lifecycle() {
         Arc::clone(&map_elites_grid),
     );
 
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    // The assertion below is `tick_count >= 1000`, i.e. "the pending load was applied".
+    await_running_past_tick(&engine, 999, READY_DEADLINE);
 
     // Perform save again to verify loading was successful
     let (tx2, rx2) = std::sync::mpsc::channel();

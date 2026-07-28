@@ -195,16 +195,23 @@ fn test_real_simulation_engine_start_stop() {
         map_elites_grid,
     );
 
-    // Wait briefly for the simulation thread to start and tick
+    // Wait for the tick too, not just for `running`: the flag is set by `start` before the sim
+    // thread has run a single tick, so polling on it alone falls through to the `tick_count > 0`
+    // assertion below and fails it on a busy machine.
     let mut started = false;
     for _ in 0..200 {
-        if engine.get_status().running {
+        let status = engine.get_status();
+        if status.running && status.tick_count > 0 {
             started = true;
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!(started, "Simulation failed to start within 2 seconds");
+    assert!(
+        started,
+        "Simulation failed to start and tick within 2 seconds; last status: {:?}",
+        engine.get_status()
+    );
 
     // Verify it runs
     assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst));

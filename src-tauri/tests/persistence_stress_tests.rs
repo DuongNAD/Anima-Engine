@@ -102,6 +102,36 @@ fn phase(p: u64) {
     WATCHDOG_PHASE.store(p, Ordering::SeqCst);
 }
 
+// ---- Readiness gate ---------------------------------------------------------------------------
+//
+// A liveness deadline, not a performance budget: `start` spawns four threads before the first tick,
+// so the `sleep(200ms)` + assert this replaced bet on a start-up latency nobody chose and lost it
+// whenever the machine was busy. Local rather than shared through `common/`, which is compiled into
+// every zero-allocation suite here; `environmental_elements_tests.rs` keeps its own copy likewise.
+const READY_DEADLINE: Duration = Duration::from_secs(10);
+const READY_POLL: Duration = Duration::from_millis(5);
+
+/// Wait until the engine is running and has ticked past `tick_floor` — the count the caller's own
+/// assertion uses — or panic at `deadline` naming the last status seen.
+fn await_running_past_tick(engine: &SimulationEngine, tick_floor: u64, deadline: Duration) {
+    let start = std::time::Instant::now();
+    loop {
+        let status = engine.get_status();
+        if status.running && status.tick_count > tick_floor {
+            return;
+        }
+        let waited = start.elapsed();
+        assert!(
+            waited < deadline,
+            "timed out after {waited:.2?} waiting for the engine to tick past {tick_floor}; \
+             last status: running={}, tick_count={}",
+            status.running,
+            status.tick_count
+        );
+        thread::sleep(READY_POLL);
+    }
+}
+
 /// Kill the process with diagnostics if the cycle loop stops making progress.
 fn spawn_watchdog() {
     let budget = watchdog_budget();
@@ -241,10 +271,8 @@ fn test_load_zero_agents() {
         Arc::clone(&map_elites_grid),
     );
 
-    // Wait a short moment for ticks to happen
-    thread::sleep(Duration::from_millis(200));
-
-    // Verify it is running and tick count increased
+    // The loaded state starts at tick 500, so this waits for a tick that happened after the load.
+    await_running_past_tick(&engine, 500, READY_DEADLINE);
     let status = engine.get_status();
     assert!(status.running);
     assert!(status.tick_count > 500);
@@ -324,8 +352,8 @@ fn test_100_save_load_cycles() {
         Arc::clone(&map_elites_grid),
     );
 
-    // Let it run to spawn initial 10 agents and food
-    thread::sleep(Duration::from_millis(150));
+    // The save below asserts `tick_count > 0`; wait for that rather than betting 150 ms on it.
+    await_running_past_tick(&engine, 0, READY_DEADLINE);
 
     // Save initial state
     let (tx, rx) = std::sync::mpsc::channel();
