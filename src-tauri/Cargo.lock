@@ -108,6 +108,7 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "smallvec",
  "socket2 0.5.10",
  "tauri",
  "tauri-build",
