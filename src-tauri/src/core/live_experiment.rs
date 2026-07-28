@@ -655,6 +655,8 @@ pub struct LiveInferencePump {
     recycle_res_rx: crossbeam_channel::Receiver<crate::core::agent_systems::InferenceResponseBatch>,
     /// Allocated once and reused, for the same reason the worker thread's copy is.
     scratch: crate::ai::model::InferenceScratch,
+    /// Monotonic evidence that the real schedule exercised the pump, exposed only inside the world.
+    completed_batches: u64,
 }
 
 /// Answer the tick's inference requests, in the tick.
@@ -672,11 +674,25 @@ pub fn live_inference_pump_system(
     let pump = &mut *pump;
     while let Ok(mut req_batch) = pump.req_rx.try_recv() {
         if !req_batch.requests.is_empty() {
-            let mut res_batch = pump.recycle_res_rx.try_recv().unwrap_or_else(|_| {
-                crate::core::agent_systems::InferenceResponseBatch {
-                    responses: Vec::with_capacity(128),
-                }
-            });
+            // A live experiment is single-threaded and explicitly scheduled
+            // sensory -> pump -> action resolution. Sensory publishes at most one batch per tick,
+            // and action resolution returns that tick's response batch before the boundary, so the
+            // preloaded pool cannot be empty in a valid run. Allocating here would hide a broken
+            // atomic-tick invariant and permanently raise the recycled pool's memory ceiling.
+            let mut res_batch = match pump.recycle_res_rx.try_recv() {
+                Ok(batch) => batch,
+                Err(crossbeam_channel::TryRecvError::Empty) => panic!(
+                    "live inference response pool invariant violated: every response buffer is \
+                     outstanding while {} requests need one; a deterministic experiment must not \
+                     allocate an undeclared response batch",
+                    req_batch.requests.len()
+                ),
+                Err(crossbeam_channel::TryRecvError::Disconnected) => panic!(
+                    "live inference response pool disconnected with {} requests still queued; \
+                     the deterministic inference pipeline was torn down during a tick",
+                    req_batch.requests.len()
+                ),
+            };
             res_batch.responses.clear();
             crate::ai::model::run_inference_batch(
                 &brain,
@@ -684,10 +700,15 @@ pub fn live_inference_pump_system(
                 &mut res_batch.responses,
                 &mut pump.scratch,
             );
-            let _ = pump.res_tx.send(res_batch);
+            pump.res_tx
+                .send(res_batch)
+                .expect("live inference response channel disconnected during a tick");
+            pump.completed_batches = pump.completed_batches.saturating_add(1);
         }
         req_batch.requests.clear();
-        let _ = pump.recycle_req_tx.send(req_batch);
+        pump.recycle_req_tx
+            .send(req_batch)
+            .expect("live inference request recycle channel disconnected during a tick");
     }
 }
 
@@ -1435,6 +1456,7 @@ fn install_runtime_resources(
         recycle_req_tx,
         recycle_res_rx,
         scratch: crate::ai::model::InferenceScratch::with_capacity(256),
+        completed_batches: 0,
     });
 
     // Unbounded, and drained every tick by `pump_inference`. The app uses a bounded channel with a
@@ -1524,3 +1546,148 @@ fn install_runtime_resources(
 /// A cause id a live manifest may use for its own forcings without colliding with the engine's
 /// reserved ids.
 pub const CAUSE_LIVE_MANIFEST: CauseId = 1;
+
+#[cfg(test)]
+mod inference_pump_tests {
+    use super::*;
+    use crate::core::agent_systems::{
+        AgentInferenceRequest, InferenceRequestBatch, InferenceResponseBatch,
+    };
+    use bevy_ecs::prelude::{Schedule, World};
+
+    fn pump_world(
+        response_buffers: usize,
+    ) -> (
+        World,
+        crossbeam_channel::Sender<InferenceRequestBatch>,
+        crossbeam_channel::Receiver<InferenceResponseBatch>,
+        crossbeam_channel::Receiver<InferenceRequestBatch>,
+        crossbeam_channel::Sender<InferenceResponseBatch>,
+    ) {
+        let (req_tx, req_rx) = crossbeam_channel::unbounded();
+        let (res_tx, res_rx) = crossbeam_channel::unbounded();
+        let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded();
+        let (recycle_res_tx, recycle_res_rx) = crossbeam_channel::unbounded();
+        for _ in 0..response_buffers {
+            recycle_res_tx
+                .send(InferenceResponseBatch {
+                    responses: Vec::with_capacity(1),
+                })
+                .unwrap();
+        }
+
+        let mut world = World::new();
+        world.insert_resource(crate::ai::model::BrainModel::new_seeded(15, 64, 4, 7));
+        world.insert_resource(LiveInferencePump {
+            req_rx,
+            res_tx,
+            recycle_req_tx,
+            recycle_res_rx,
+            scratch: crate::ai::model::InferenceScratch::with_capacity(1),
+            completed_batches: 0,
+        });
+        (world, req_tx, res_rx, recycle_req_rx, recycle_res_tx)
+    }
+
+    fn one_request() -> InferenceRequestBatch {
+        InferenceRequestBatch {
+            requests: vec![AgentInferenceRequest {
+                entity: bevy_ecs::entity::Entity::from_raw(1),
+                sensory_input: [0.0; 15],
+                request_id: 11,
+                brain: None,
+            }],
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "live inference response pool invariant violated")]
+    fn empty_response_pool_fails_loudly_instead_of_allocating() {
+        // Holding the sender is intentional: this must exercise `Empty`, not `Disconnected`.
+        let (mut world, req_tx, _res_rx, _recycle_req_rx, _recycle_res_tx) = pump_world(0);
+        req_tx.send(one_request()).unwrap();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(live_inference_pump_system);
+        schedule.run(&mut world);
+    }
+
+    #[test]
+    #[should_panic(expected = "live inference response pool disconnected")]
+    fn disconnected_response_pool_is_diagnosed_separately() {
+        let (mut world, req_tx, _res_rx, _recycle_req_rx, recycle_res_tx) = pump_world(0);
+        drop(recycle_res_tx);
+        req_tx.send(one_request()).unwrap();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(live_inference_pump_system);
+        schedule.run(&mut world);
+    }
+
+    #[test]
+    fn a_recycled_response_buffer_completes_and_returns_the_request_batch() {
+        let (mut world, req_tx, res_rx, recycle_req_rx, _recycle_res_tx) = pump_world(1);
+        req_tx.send(one_request()).unwrap();
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(live_inference_pump_system);
+        schedule.run(&mut world);
+
+        let response = res_rx.try_recv().expect("pump must publish one response");
+        assert_eq!(response.responses.len(), 1);
+        assert_eq!(response.responses[0].request_id, 11);
+        assert_eq!(world.resource::<LiveInferencePump>().completed_batches, 1);
+        assert!(recycle_req_rx
+            .try_recv()
+            .expect("request batch must be recycled")
+            .requests
+            .is_empty());
+    }
+
+    #[test]
+    fn real_tick_schedule_restores_the_complete_pool_at_every_boundary() {
+        let initial = InitialConditionSet::new(vec![("live.founders".to_string(), 6.0)]);
+        let mut adapter =
+            LiveExperimentAdapter::build(&WorldLawSet::baseline(), &initial, 7, None, 0, 0)
+                .expect("live experiment must build");
+
+        for expected_tick in 1..=64 {
+            adapter.run_schedule_once();
+            let mut world = adapter.world.borrow_mut();
+            let response_pool_len = world.resource::<LiveInferencePump>().recycle_res_rx.len();
+            let request_queue_empty = world.resource::<LiveInferencePump>().req_rx.is_empty();
+            let completed_batches = world.resource::<LiveInferencePump>().completed_batches;
+            let response_queue_empty = world
+                .resource::<crate::core::agent_systems::InferenceChannels>()
+                .res_rx
+                .is_empty();
+            assert_eq!(
+                response_pool_len,
+                crate::core::agent_systems::INFERENCE_POOL_BATCHES,
+                "response pool leaked at tick {expected_tick}"
+            );
+            assert!(
+                request_queue_empty,
+                "request queue crossed tick {expected_tick}"
+            );
+            assert!(
+                response_queue_empty,
+                "response queue crossed tick {expected_tick}"
+            );
+            assert_eq!(
+                completed_batches, expected_tick,
+                "the real schedule must exercise exactly one inference batch per tick"
+            );
+
+            let mut cognition = world.query::<&crate::core::ecs::CognitiveState>();
+            let states: Vec<_> = cognition.iter(&world).copied().collect();
+            assert!(!states.is_empty(), "fixture must contain live agents");
+            assert!(
+                states
+                    .iter()
+                    .all(|state| matches!(state, crate::core::ecs::CognitiveState::Ready)),
+                "all requests must be resolved by tick boundary {expected_tick}"
+            );
+        }
+    }
+}
