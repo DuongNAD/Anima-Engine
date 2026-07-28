@@ -115,6 +115,27 @@ mod tests {
             .join(name)
     }
 
+    /// Adding a second binary makes both Cargo's implicit `run` target and Tauri's package target
+    /// ambiguous. Keep the desktop executable explicit so the headless tool cannot make the app
+    /// unbuildable again.
+    #[test]
+    fn adding_the_lab_binary_keeps_the_desktop_binary_unambiguous() {
+        let manifest =
+            std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+                .expect("Cargo.toml is readable");
+        let package = manifest
+            .split("\n[lib]")
+            .next()
+            .expect("Cargo.toml starts with [package]");
+
+        assert!(
+            package
+                .lines()
+                .any(|line| line.trim() == r#"default-run = "anima-engine""#),
+            "Cargo.toml must set package.default-run to the desktop binary when anima-lab exists"
+        );
+    }
+
     /// Help wins even alongside a path, so `--help` never accidentally runs an experiment.
     #[test]
     fn a_path_is_the_only_argument_and_help_beats_it() {

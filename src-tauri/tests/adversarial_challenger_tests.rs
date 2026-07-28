@@ -3,12 +3,14 @@
 #![cfg(feature = "networking")]
 
 mod common;
+#[path = "support/network_ready.rs"]
+mod network_ready;
 
 use glam::Vec3;
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
@@ -84,12 +86,9 @@ async fn test_adversarial_silent_client_shutdown() {
                 .await;
     });
 
-    // Give server time to bind
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // Connect a silent client using tokio TcpStream
-    let client_stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{}", port)).await;
-    assert!(client_stream.is_ok(), "Client failed to connect to server");
+    // Keep the connection open and silent after the server is observably listening. A one-shot
+    // connect after 100 ms made server scheduling latency part of the assertion.
+    let _client_stream = network_ready::connect_when_ready(port).await;
 
     // Do NOT send any data, and then signal the server to stop.
     running.store(false, Ordering::SeqCst);
@@ -143,7 +142,8 @@ async fn test_adversarial_stale_connection_cache() {
         .await;
     });
 
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // Do not let server scheduling latency decide whether the first migration is deliverable.
+    drop(network_ready::connect_when_ready(port).await);
 
     let genotype = MorphologyGenotype::new();
     let agent = AgentMigrationData {
@@ -196,8 +196,6 @@ async fn test_adversarial_stale_connection_cache() {
     server_running_1.store(false, Ordering::SeqCst);
     let _ = server_handle_1.await;
 
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
     // Start Server 2 on the same port
     let (server_inbound_tx_2, server_inbound_rx_2) = crossbeam_channel::unbounded();
     let server_running_2 = Arc::new(AtomicBool::new(true));
@@ -210,7 +208,8 @@ async fn test_adversarial_stale_connection_cache() {
                 .await;
     });
 
-    tokio::time::sleep(Duration::from_millis(150)).await;
+    // The old test guessed that 150 ms was enough for the replacement server to bind.
+    drop(network_ready::connect_when_ready(port).await);
 
     let agent2 = AgentMigrationData {
         lineage_id: "stale-cache-agent-2".to_string(),
@@ -228,11 +227,8 @@ async fn test_adversarial_stale_connection_cache() {
         })
         .unwrap();
 
-    // Sleep to allow OS TCP stack to process the send and receive a TCP RST from the closed port
-    tokio::time::sleep(Duration::from_millis(200)).await;
-
-    // Send third migration (agent 3). Since agent 2 sent on a dead socket, the socket should now be marked broken,
-    // and sending agent 3 should fail, triggering a bounce back and clearing the cache.
+    // Queue another migration immediately. The result channels below are the readiness signal; an
+    // arbitrary pause between sends only made the test slower without proving either delivery.
     println!("Sending third migration (agent 3) targeting port {}", port);
     let agent3 = AgentMigrationData {
         lineage_id: "stale-cache-agent-3".to_string(),
@@ -247,36 +243,49 @@ async fn test_adversarial_stale_connection_cache() {
         })
         .unwrap();
 
-    // Verify if any bounce back is received.
-    println!("Waiting for bounce backs...");
+    // Poll until both migrations arrive or the liveness deadline expires. Keep bounce-backs for
+    // diagnostics: either agent returning locally means replacement-server recovery failed.
     let mut bounced_agents = Vec::new();
-    let start_wait = std::time::Instant::now();
+    let mut received_by_server2 = Vec::new();
+    let start_wait = Instant::now();
     while start_wait.elapsed() < Duration::from_secs(3) {
-        if let Ok(data) = client_inbound_rx.try_recv() {
+        while let Ok(data) = client_inbound_rx.try_recv() {
             println!("Received bounce back for: {}", data.lineage_id);
             bounced_agents.push(data.lineage_id);
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    // Verify if Server 2 received agent 2 or agent 3.
-    let mut received_by_server2 = Vec::new();
-    while let Ok(data) = server_inbound_rx_2.try_recv() {
-        println!("Server 2 received: {}", data.lineage_id);
-        received_by_server2.push(data.lineage_id);
+        while let Ok(data) = server_inbound_rx_2.try_recv() {
+            println!("Server 2 received: {}", data.lineage_id);
+            received_by_server2.push(data.lineage_id);
+        }
+        if received_by_server2
+            .iter()
+            .any(|id| id == "stale-cache-agent-2")
+            && received_by_server2
+                .iter()
+                .any(|id| id == "stale-cache-agent-3")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
 
     // Assertions for corrected robust behavior:
     // 1. Agent 2 was NOT lost and was successfully received by Server 2.
     assert!(
-        received_by_server2.contains(&"stale-cache-agent-2".to_string()),
-        "Agent 2 must be received by Server 2"
+        received_by_server2
+            .iter()
+            .any(|id| id == "stale-cache-agent-2"),
+        "Agent 2 must be received by Server 2; received={received_by_server2:?}, \
+         bounced={bounced_agents:?}"
     );
 
     // 2. Agent 3 was NOT lost and was successfully received by Server 2.
     assert!(
-        received_by_server2.contains(&"stale-cache-agent-3".to_string()),
-        "Agent 3 must be received by Server 2"
+        received_by_server2
+            .iter()
+            .any(|id| id == "stale-cache-agent-3"),
+        "Agent 3 must be received by Server 2; received={received_by_server2:?}, \
+         bounced={bounced_agents:?}"
     );
 
     // Cleanup

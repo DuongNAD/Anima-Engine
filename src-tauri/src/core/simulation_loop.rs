@@ -53,6 +53,24 @@ fn elapsed_ns(since: Instant) -> u64 {
     since.elapsed().as_nanos().min(u64::MAX as u128) as u64
 }
 
+/// Mean wall-clock milliseconds per tick **this run has measured**.
+///
+/// The denominator is not the world's `tick_count`. A restored world starts at whatever tick the
+/// save carried, while the accumulated duration starts at zero — so dividing by `tick_count`
+/// charged this run's work against every tick the world had ever run. Resume a world saved at a
+/// million ticks and the status panel reads ~0.001 ms per tick, and it never recovers, because the
+/// denominator keeps its head start forever. Both UI readouts of this number colour anything under
+/// 2 ms as healthy, so the failure is silent and always in the reassuring direction.
+///
+/// Zero measured ticks is `0.0` rather than `NaN`: the field is serialised over IPC and rendered
+/// with `toFixed(2)`, where a NaN would reach the panel as text.
+fn mean_tick_time_ms(total: Duration, measured_ticks: u64) -> f64 {
+    if measured_ticks == 0 {
+        return 0.0;
+    }
+    total.as_secs_f64() * 1000.0 / measured_ticks as f64
+}
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -1224,6 +1242,9 @@ impl SimulationEngine {
             let mut tick_count = state_to_load.as_ref().map(|s| s.tick_count).unwrap_or(0);
             let target_frame_duration = Duration::from_secs_f64(1.0 / 60.0);
             let mut total_tick_duration = Duration::ZERO;
+            // Counted separately from `tick_count`, which a restored world seeds from its save —
+            // see `mean_tick_time_ms`. This is the number of ticks *this* thread has timed.
+            let mut measured_ticks: u64 = 0;
 
             let mut state_buffer = Vec::with_capacity(1000);
             let mut state_raycast_buffer = Vec::with_capacity(1000);
@@ -1514,8 +1535,9 @@ impl SimulationEngine {
 
                 let elapsed = start_time.elapsed();
                 total_tick_duration += elapsed;
+                measured_ticks += 1;
 
-                let avg_tick_time = total_tick_duration.as_secs_f64() * 1000.0 / tick_count as f64;
+                let avg_tick_time = mean_tick_time_ms(total_tick_duration, measured_ticks);
                 let actual_fps = 1.0 / elapsed.as_secs_f64();
 
                 {
@@ -1685,5 +1707,47 @@ impl SimulationEngine {
     pub fn get_status(&self) -> SimulationStatus {
         let stat = self.status.lock().unwrap_or_else(|e| e.into_inner());
         *stat
+    }
+}
+
+/// The arithmetic half of the tick-time readout. The behavioural half — that a resumed run reports
+/// its own speed rather than one divided by the tick the save happened to carry — is
+/// `tests/tick_measurement_tests.rs`, because this function cannot see which counter it was given.
+#[cfg(test)]
+mod mean_tick_time_tests {
+    use super::*;
+
+    #[test]
+    fn the_mean_is_the_total_over_the_ticks_that_were_timed() {
+        let total = Duration::from_millis(120);
+        assert!((mean_tick_time_ms(total, 60) - 2.0).abs() < 1e-9);
+        assert!((mean_tick_time_ms(total, 1) - 120.0).abs() < 1e-9);
+    }
+
+    /// Before any tick has been timed there is no mean. `NaN` would be serialised over IPC and
+    /// rendered into the status panel by `toFixed(2)`.
+    #[test]
+    fn no_measured_tick_reads_as_zero_not_nan() {
+        let mean = mean_tick_time_ms(Duration::from_millis(5), 0);
+        assert!(mean.is_finite(), "must not be NaN or infinite");
+        assert_eq!(mean, 0.0);
+    }
+
+    /// The defect this replaced, stated as arithmetic: the same measured work divided by a world
+    /// tick count that a restored save started high reads as a fraction of the real cost. Thirty
+    /// ticks of 2 ms resumed at a million ticks reported 0.00006 ms, which both UI readouts colour
+    /// as healthy.
+    #[test]
+    fn a_resumed_worlds_tick_offset_cannot_dilute_the_mean() {
+        let measured = 30;
+        let total = Duration::from_millis(60);
+        let honest = mean_tick_time_ms(total, measured);
+        assert!((honest - 2.0).abs() < 1e-9);
+
+        let diluted = total.as_secs_f64() * 1000.0 / (1_000_000.0 + measured as f64);
+        assert!(
+            diluted < honest / 1000.0,
+            "the old expression has to be wrong by orders of magnitude, or this test proves nothing"
+        );
     }
 }

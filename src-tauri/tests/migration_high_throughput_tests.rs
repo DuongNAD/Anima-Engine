@@ -2,6 +2,10 @@
 // suite has nothing to exercise, so the whole file compiles away rather than failing to link.
 #![cfg(feature = "networking")]
 
+#[path = "support/network_ready.rs"]
+mod network_ready;
+
+use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,7 +17,9 @@ use anima_engine_lib::evolution::genotype::MorphologyGenotype;
 
 #[tokio::test]
 async fn test_high_throughput_websocket_transfers() {
-    let port = 8093;
+    let reservation = TcpListener::bind("127.0.0.1:0").expect("reserve a test port");
+    let port = reservation.local_addr().expect("reserved address").port();
+    drop(reservation);
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
     let (client_inbound_tx, _client_inbound_rx) = crossbeam_channel::unbounded();
     let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded();
@@ -45,8 +51,7 @@ async fn test_high_throughput_websocket_transfers() {
         .await;
     });
 
-    // Let the server start
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    drop(network_ready::connect_when_ready(port).await);
 
     // Send 500 parallel migrations
     let count = 500;

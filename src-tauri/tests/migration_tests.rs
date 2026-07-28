@@ -2,8 +2,12 @@
 // suite has nothing to exercise, so the whole file compiles away rather than failing to link.
 #![cfg(feature = "networking")]
 
+#[path = "support/network_ready.rs"]
+mod network_ready;
+
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -139,6 +143,10 @@ async fn test_agent_migration_serialization_and_resilience() {
 
 #[tokio::test]
 async fn test_migration_tier1_ports_8080_to_8081() {
+    let reservation = TcpListener::bind("127.0.0.1:0").expect("reserve a test port");
+    let target_port = reservation.local_addr().expect("reserved address").port();
+    drop(reservation);
+
     let genotype = {
         let mut g = MorphologyGenotype::new();
         g.add_node(MorphologyNode {
@@ -185,7 +193,7 @@ async fn test_migration_tier1_ports_8080_to_8081() {
         // The server returns a Result on exit; the test asserts on the channel traffic instead, so
         // discard it explicitly rather than leaving a must_use dangling.
         let _ = run_websocket_server::<tauri::test::MockRuntime>(
-            8091,
+            target_port,
             server_inbound_tx,
             running_server,
             None,
@@ -205,13 +213,12 @@ async fn test_migration_tier1_ports_8080_to_8081() {
         .await;
     });
 
-    // Give server a bit of time to start up
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    drop(network_ready::connect_when_ready(target_port).await);
 
     // Send the agent to the client
     outbound_tx
         .send(OutboundMigration {
-            target_port: 8091,
+            target_port,
             data: agent.clone(),
             bounds_min_x: -100.0,
             bounds_max_x: 100.0,
@@ -396,7 +403,9 @@ fn test_migration_tier3_lineage_integration() {
 
 #[tokio::test]
 async fn test_migration_tier4_parallel_workload() {
-    let port = 8092;
+    let reservation = TcpListener::bind("127.0.0.1:0").expect("reserve a test port");
+    let port = reservation.local_addr().expect("reserved address").port();
+    drop(reservation);
     let (server_inbound_tx, server_inbound_rx) = crossbeam_channel::unbounded();
     let (client_inbound_tx, _client_inbound_rx) = crossbeam_channel::unbounded();
     let (outbound_tx, outbound_rx) = crossbeam_channel::unbounded();
@@ -428,8 +437,7 @@ async fn test_migration_tier4_parallel_workload() {
         .await;
     });
 
-    // Let the server start
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    drop(network_ready::connect_when_ready(port).await);
 
     // Send 10 parallel migrations
     let count = 10;
