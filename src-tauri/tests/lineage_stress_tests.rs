@@ -2,7 +2,7 @@ mod common;
 
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
@@ -31,12 +31,32 @@ use anima_engine_lib::evolution::lineage::{FallbackLineageTracker, LineageTracke
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+/// Disarms the process-wide counter if a measured system panics before the explicit read.
+struct AllocationTrackingGuard {
+    active: bool,
+}
 
-#[test]
+impl AllocationTrackingGuard {
+    fn start() -> Self {
+        ALLOCATOR.start_tracking();
+        Self { active: true }
+    }
+
+    fn stop(mut self) -> usize {
+        self.active = false;
+        ALLOCATOR.stop_tracking()
+    }
+}
+
+impl Drop for AllocationTrackingGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = ALLOCATOR.stop_tracking();
+        }
+    }
+}
+
 fn test_lineage_tracker_concurrency_and_fallback() {
-    let _lock = TEST_LOCK.lock().unwrap();
-
     // Start with an offline address. Graces fallback to offline immediately without crash.
     let tracker = Arc::new(FallbackLineageTracker::new(
         "bolt://localhost:9999",
@@ -141,10 +161,7 @@ fn test_lineage_tracker_concurrency_and_fallback() {
     assert_eq!(relations.len(), num_threads * (ops_per_thread - 1));
 }
 
-#[test]
 fn test_ecs_hot_path_zero_heap_allocations() {
-    let _lock = TEST_LOCK.lock().unwrap();
-
     let mut world = init_world();
 
     // Insert spatial hash grid resources
@@ -301,7 +318,7 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     }
 
     // Start tracking allocations
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
 
     // Run active hot tick loop (no epoch completions, no spawn queues)
     for _ in 0..100 {
@@ -309,7 +326,7 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     }
 
     // Stop tracking
-    let allocations = ALLOCATOR.stop_tracking();
+    let allocations = tracking_guard.stop();
 
     // Assert zero heap allocations on the hot path (conforming to Phase 4 zero-alloc spec)
     assert_eq!(
@@ -317,4 +334,27 @@ fn test_ecs_hot_path_zero_heap_allocations() {
         "Expected 0 allocations on hot path ticks, but recorded {}",
         allocations
     );
+}
+
+/// Keep the process-wide allocation window in a binary with one libtest thread. The allocation gate
+/// runs before the deliberately concurrent lineage contract, and both helpers still execute if one
+/// fails. Helper names are intentionally not independently filterable.
+#[test]
+fn lineage_stress_contracts() {
+    eprintln!("allocation gate: ECS hot path");
+    let allocation_result = std::panic::catch_unwind(test_ecs_hot_path_zero_heap_allocations);
+
+    eprintln!("concurrency gate: lineage fallback");
+    let concurrency_result =
+        std::panic::catch_unwind(test_lineage_tracker_concurrency_and_fallback);
+
+    if let Err(payload) = allocation_result {
+        if concurrency_result.is_err() {
+            eprintln!("lineage concurrency gate also failed; see the panic above");
+        }
+        std::panic::resume_unwind(payload);
+    }
+    if let Err(payload) = concurrency_result {
+        std::panic::resume_unwind(payload);
+    }
 }
