@@ -417,6 +417,38 @@ impl Default for EnvironmentalSpawnSettings {
     }
 }
 
+// ---- ML backend ---------------------------------------------------------------------------
+
+/// Whether the learner and inference should run on the wgpu GPU backend.
+///
+/// **Off by default since 2026-07-28, and the default is the point.** The GPU path leaks: burn-wgpu
+/// asks a compute pipeline for its bind group layout on every dispatch, and wgpu-core 0.19.4 assigns
+/// a fresh id into a registry `Vec` that only ever grows. Measured headless over three minutes with
+/// ten agents: **+5.8 MB/min of live heap, unbounded**, against **0.00 MB/min** on the CPU backend —
+/// and 29 MB of RSS instead of ~200 MB. In the desktop app it was 14 MB/min, which is 19 GB after a
+/// day. See `STATE_OF_THE_PROJECT.md` §3.17.
+///
+/// A simulator whose whole purpose is to run for a long time cannot default to the backend that
+/// cannot. `ANIMA_USE_GPU=1` opts back in for a short session where inference speed is what matters.
+///
+/// This lives here, in one function, because the decision used to be written out three times —
+/// `simulation_loop::start` and both `ai::model` constructors — each with its own `unwrap_or(true)`.
+/// Three copies of a default is three chances for them to disagree the next time one is changed.
+pub fn gpu_backend_requested() -> bool {
+    gpu_backend_from(std::env::var("ANIMA_USE_GPU").ok().as_deref())
+}
+
+/// The decision behind [`gpu_backend_requested`], pure so the tests never write process state.
+pub fn gpu_backend_from(raw: Option<&str>) -> bool {
+    match raw {
+        None => false,
+        Some(value) => {
+            let trimmed = value.trim();
+            !(trimmed.is_empty() || trimmed == "0" || trimmed.eq_ignore_ascii_case("false"))
+        }
+    }
+}
+
 // ---- Unattended start ---------------------------------------------------------------------
 
 /// Whether the engine should begin simulating the moment the app launches.
@@ -612,6 +644,37 @@ fn grid_side(count: usize) -> usize {
         side += 1;
     }
     side.max(1)
+}
+
+#[cfg(test)]
+mod gpu_backend_tests {
+    use super::*;
+
+    /// The whole reason this changed: a run that says nothing must not pick the backend that grows
+    /// 5.8 MB every minute forever.
+    #[test]
+    fn unset_means_cpu() {
+        assert!(!gpu_backend_from(None));
+    }
+
+    #[test]
+    fn the_three_spellings_of_no_still_mean_no() {
+        for off in ["", "  ", "0", "false", "FALSE"] {
+            assert!(
+                !gpu_backend_from(Some(off)),
+                "{off:?} must not select the GPU"
+            );
+        }
+    }
+
+    /// Opting in is still one variable away, for a short session where inference speed is the thing
+    /// that matters.
+    #[test]
+    fn anything_else_opts_back_in() {
+        for on in ["1", "true", "yes", " 1 "] {
+            assert!(gpu_backend_from(Some(on)), "{on:?} must select the GPU");
+        }
+    }
 }
 
 #[cfg(test)]

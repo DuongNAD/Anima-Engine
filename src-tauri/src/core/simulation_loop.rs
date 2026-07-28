@@ -197,9 +197,7 @@ impl SimulationEngine {
         let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
 
-        let use_gpu = std::env::var("ANIMA_USE_GPU")
-            .map(|val| val != "false" && val != "0")
-            .unwrap_or(true);
+        let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
         let mut has_wgpu = false;
