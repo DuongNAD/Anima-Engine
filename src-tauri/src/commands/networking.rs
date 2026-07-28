@@ -27,3 +27,10 @@ pub fn get_sharding_config(
         .map_err(|e| e.to_string())?;
     Ok(sharding_config.clone())
 }
+
+#[tauri::command]
+pub fn get_migration_handoff_diagnostics(
+    state: State<'_, AppState>,
+) -> Result<crate::core::resources::MigrationHandoffSnapshot, String> {
+    Ok(state.engine.migration_handoff_diagnostics.snapshot())
+}

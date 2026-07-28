@@ -140,7 +140,11 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         crate::ai::model::lifetime_learning_system.after(hrrl_learning_system),
         check_epoch_completion_system.after(metabolic_decay_system),
         apply_staggered_evolution_system.after(check_epoch_completion_system),
-        crate::core::ecs::manual_migration_system.after(integrate_physics_system),
+        // An explicit observer request wins a contested queue slot over automatic boundary traffic.
+        // The order also makes the two producers deterministic with respect to each other.
+        crate::core::ecs::manual_migration_system
+            .after(integrate_physics_system)
+            .before(crate::core::ecs::check_migration_boundaries_system),
         fruit_growth_system.after(apply_environmental_effects_system),
         lake_replenishment_system.after(apply_environmental_effects_system),
         seed_dropping_system.after(apply_environmental_effects_system),
