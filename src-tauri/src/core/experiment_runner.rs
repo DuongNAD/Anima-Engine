@@ -434,6 +434,25 @@ impl ForkReport {
     }
 }
 
+/// Compare only observables measured on both sides.
+///
+/// A missing control observation is not a measured zero. Treatment-only channels remain available
+/// in the treatment [`RunResult`], but cannot support a control/treatment delta.
+fn matched_final_deltas(control: &RunResult, treatment: &RunResult) -> Vec<TargetDelta> {
+    treatment
+        .final_observables
+        .iter()
+        .filter_map(|(target, treatment_final)| {
+            control.observable(target).map(|control_final| TargetDelta {
+                target: target.clone(),
+                control_final,
+                treatment_final: *treatment_final,
+                delta: treatment_final - control_final,
+            })
+        })
+        .collect()
+}
+
 /// Run a genesis fork: the `treatment` manifest and its [`control_variant`](ExperimentManifest::control_variant)
 /// under the same (first) seed, after checking their difference lies entirely within `allowed`
 /// (AE-S08). Both runs are genesis runs (no parent); only the declared factor differs.
@@ -455,19 +474,7 @@ pub fn genesis_fork<M: ExperimentModel>(
     let treatment_res = run_manifest_seed::<M>(treatment, registry, seed, None, None);
 
     // Per-observable final delta (treatment − control), matched by name.
-    let delta = treatment_res
-        .final_observables
-        .iter()
-        .map(|(target, tv)| {
-            let cv = control_res.observable(target).unwrap_or(0.0);
-            TargetDelta {
-                target: target.clone(),
-                control_final: cv,
-                treatment_final: *tv,
-                delta: tv - cv,
-            }
-        })
-        .collect();
+    let delta = matched_final_deltas(&control_res, &treatment_res);
 
     Ok(ForkReport {
         control: control_res,
@@ -858,19 +865,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
         )
         .collect();
 
-    let delta = treatment
-        .final_observables
-        .iter()
-        .map(|(target, tv)| {
-            let cv = control.observable(target).unwrap_or(0.0);
-            TargetDelta {
-                target: target.clone(),
-                control_final: cv,
-                treatment_final: *tv,
-                delta: tv - cv,
-            }
-        })
-        .collect();
+    let delta = matched_final_deltas(&control, &treatment);
 
     Ok(CheckpointForkReport {
         prefix,
@@ -2020,6 +2015,28 @@ mod tests {
         let mut m = baseline_manifest(seeds);
         m.laws = WorldLawSet::with_exotic(ExoticEnergyLaw::mana_patchy(150.0, 4));
         m
+    }
+
+    #[test]
+    fn genesis_fork_does_not_fabricate_zero_for_a_treatment_only_observable() {
+        let reg = ObservableRegistry::reference_default();
+        let treatment = mana_treatment(vec![7]);
+        let report = genesis_fork::<ReferenceEvolutionWorld>(
+            &treatment,
+            &reg,
+            &FactorDiff::genesis_exotic(),
+        )
+        .expect("fork runs");
+
+        assert!(report.control.observable("exotic.density_total").is_none());
+        assert!(report
+            .treatment
+            .observable("exotic.density_total")
+            .is_some());
+        assert!(
+            report.delta_of("exotic.density_total").is_none(),
+            "a missing control observation is not a measured zero"
+        );
     }
 
     #[test]
