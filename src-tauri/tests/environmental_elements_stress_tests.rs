@@ -47,6 +47,15 @@ impl Drop for EngineGuard<'_> {
     }
 }
 
+/// Disarms the process-wide counter if a measured system panics before the explicit read.
+struct AllocationTrackingGuard;
+
+impl Drop for AllocationTrackingGuard {
+    fn drop(&mut self) {
+        let _ = ALLOCATOR.stop_tracking();
+    }
+}
+
 /// Polls until the background thread publishes a running status that has ticked, or the timeout
 /// expires. Returns the last status seen either way, so the caller's assertions produce the message.
 ///
@@ -70,7 +79,6 @@ fn wait_until_ticking(engine: &SimulationEngine, timeout: Duration) -> Simulatio
     }
 }
 
-#[test]
 fn test_10000_trees_spawning_and_lifecycle() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -191,7 +199,6 @@ fn test_10000_trees_spawning_and_lifecycle() {
     }
 }
 
-#[test]
 fn test_collision_logic_maximum_limits_zero_allocations() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -302,6 +309,7 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
 
     // Measure allocations on the hot path
     ALLOCATOR.start_tracking();
+    let _tracking_guard = AllocationTrackingGuard;
     for _ in 0..10 {
         schedule.run(&mut world);
     }
@@ -316,4 +324,30 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
         "Environmental element systems hot path should make 0 heap allocations, but made {}",
         allocs
     );
+}
+
+/// One test thread keeps libtest's own thread startup outside the process-wide allocation window.
+/// The allocation gate runs first so the lifecycle contract's simulation/backend threads cannot
+/// contaminate it; the lifecycle helper owns an [`EngineGuard`] and joins those threads on return.
+/// The helper names are intentionally not independently filterable.
+#[test]
+fn environmental_elements_stress_contracts() {
+    eprintln!("allocation gate: maximum environmental load");
+    let allocation_result =
+        std::panic::catch_unwind(test_collision_logic_maximum_limits_zero_allocations);
+
+    eprintln!("lifecycle gate: 10k trees");
+    let lifecycle_result = std::panic::catch_unwind(test_10000_trees_spawning_and_lifecycle);
+
+    // Run both contracts even on a red gate. The panic hook has already printed each failure; resume
+    // the first one so libtest still marks the aggregate test failed with its original payload.
+    if let Err(payload) = allocation_result {
+        if lifecycle_result.is_err() {
+            eprintln!("lifecycle gate also failed; see the panic above");
+        }
+        std::panic::resume_unwind(payload);
+    }
+    if let Err(payload) = lifecycle_result {
+        std::panic::resume_unwind(payload);
+    }
 }
