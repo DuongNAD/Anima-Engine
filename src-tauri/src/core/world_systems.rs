@@ -486,11 +486,11 @@ pub fn combat_system(
 
 pub fn check_migration_boundaries_system(
     mut commands: Commands,
-    agent_query: Query<
+    mut agent_query: Query<
         (
             Entity,
-            &Position,
-            &Velocity,
+            &mut Position,
+            &mut Velocity,
             &crate::ai::hrrl::HomeostaticState,
             &crate::core::agent_systems::AgentGenotype,
             &crate::core::agent_systems::AgentLineageId,
@@ -525,8 +525,8 @@ pub fn check_migration_boundaries_system(
 
     for (
         entity,
-        pos,
-        vel,
+        mut pos,
+        mut vel,
         homeo,
         genotype,
         lineage_id,
@@ -537,7 +537,7 @@ pub fn check_migration_boundaries_system(
         opt_tracker,
         opt_last_transition,
         opt_brain,
-    ) in agent_query.iter()
+    ) in agent_query.iter_mut()
     {
         let x = pos.0.x;
         let mut target_port = None;
@@ -582,12 +582,36 @@ pub fn check_migration_boundaries_system(
                 brain: opt_brain.cloned(),
             };
 
-            let _ = sender.0.send(OutboundMigration {
-                target_port: port,
-                data: migration_data,
-                bounds_min_x: x_min,
-                bounds_max_x: x_max,
-            });
+            if sender
+                .0
+                .send(OutboundMigration {
+                    target_port: port,
+                    data: migration_data,
+                    bounds_min_x: x_min,
+                    bounds_max_x: x_max,
+                })
+                .is_err()
+            {
+                // A disconnected worker cannot recover this channel. Keep the complete entity tree
+                // authoritative locally and reflect it back into the shard so the hot tick path
+                // does not rebuild and drop this allocation-heavy payload forever. Peer-delivery
+                // failures after a successful enqueue are handled by the worker's inbound bounce.
+                let width = (x_max - x_min).max(0.0);
+                let offset = 1.0_f32.min(0.1 * width);
+                if x < x_min {
+                    pos.0.x = x_min + offset;
+                    vel.0.x = vel.0.x.abs();
+                } else {
+                    pos.0.x = x_max - offset;
+                    vel.0.x = -vel.0.x.abs();
+                }
+                eprintln!(
+                    "automatic migration for agent {} could not enter the outbound queue; \
+                     retaining it on shard {}",
+                    lineage_id.0, config.local_port
+                );
+                continue;
+            }
 
             let mut stack = [entity; 64];
             let mut stack_len = 1;
@@ -694,12 +718,26 @@ pub fn manual_migration_system(
                 brain: opt_brain.cloned(),
             };
 
-            let _ = sender.0.send(OutboundMigration {
-                target_port,
-                data: migration_data,
-                bounds_min_x: x_min,
-                bounds_max_x: x_max,
-            });
+            if sender
+                .0
+                .send(OutboundMigration {
+                    target_port,
+                    data: migration_data,
+                    bounds_min_x: x_min,
+                    bounds_max_x: x_max,
+                })
+                .is_err()
+            {
+                // Preserve local ownership and surface the failed one-shot request. The observer
+                // trace already records that the human requested this migration; this diagnostic
+                // distinguishes a rejected handoff from a request that was never made.
+                eprintln!(
+                    "manual migration for agent {} to shard {target_port} could not enter the \
+                     outbound queue; retaining it on shard {}",
+                    lineage_id.0, config.local_port
+                );
+                continue;
+            }
 
             let mut stack = [entity; 64];
             let mut stack_len = 1;
