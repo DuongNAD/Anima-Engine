@@ -33,7 +33,7 @@ function hash01(n: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-export const WorldBirds: React.FC<WorldBirdsProps> = ({ renderSize = 400, count = 18 }) => {
+export const WorldBirds: React.FC<WorldBirdsProps> = ({ renderSize = 400, count = 42 }) => {
   const ref = useRef<THREE.InstancedMesh>(null);
   const geom = useMemo(() => makeBirdGeometry(), []);
 

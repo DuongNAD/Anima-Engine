@@ -6,6 +6,7 @@ import type { World } from './utils/worldGen';
 import { Biome } from './utils/worldGen';
 import { sampleMeshHeight } from './utils/worldSample';
 import { sceneElapsed } from './utils/sceneClock';
+import { grazePosition, grazeYaw } from './utils/grazing';
 
 // ---------------------------------------------------------------------------------------
 // WorldWildlife — ambient creatures, with a bias toward FRESH WATER life:
@@ -108,6 +109,16 @@ interface Spot {
   yaw: number;
   s: number;
   seed: number;
+  /**
+   * How far this animal may graze from where it was placed, in render units.
+   *
+   * Measured once, here, by probing the ground around the spot — the frame loop has the world's
+   * height field but not its water, slope or biome arrays, and giving it them would mean re-deciding
+   * habitat sixty times a second in a second place. A deer whose surroundings are all shoreline gets
+   * a radius of zero and stands where it was put, which is the honest answer for that deer rather
+   * than a herd that wades into the lake because the anchor happened to be dry.
+   */
+  r: number;
 }
 
 export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
@@ -130,9 +141,41 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
     const groundY = (gx: number, gy: number) =>
       sampleMeshHeight(world, gx / (size - 1), gy / (size - 1), meshResolution) * heightUnits;
 
+    /** Is the ground at this render-space point somewhere a grazing animal could stand? */
+    const walkable = (wx: number, wz: number) => {
+      const u = wx / renderSize + 0.5;
+      const v = wz / renderSize + 0.5;
+      if (u < 0 || u > 1 || v < 0 || v > 1) return false;
+      const gx = Math.min(size - 1, Math.max(0, Math.round(u * (size - 1))));
+      const gy = Math.min(size - 1, Math.max(0, Math.round(v * (size - 1))));
+      const gi = gy * size + gx;
+      if (elevation[gi] <= seaLevel) return false;
+      if ((water?.[gi] ?? 0) > 0 || (riverAmt?.[gi] ?? 0) > 0) return false;
+      return (slope?.[gi] ?? 1) <= 0.3;
+    };
+
+    /**
+     * The largest radius around a spot whose whole circle is walkable, in render units.
+     *
+     * Probed on eight compass points at shrinking radii, so an animal beside a shoreline gets a
+     * small circle and one in open grassland gets the full one. Testing the circle rather than the
+     * destination is what keeps a path from cutting through the water between two dry points.
+     */
+    const grazeRadius = (wx: number, wz: number, max: number) => {
+      for (let r = max; r >= 1.5; r -= 1.5) {
+        let ok = true;
+        for (let k = 0; k < 8 && ok; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          ok = walkable(wx + Math.cos(a) * r, wz + Math.sin(a) * r);
+        }
+        if (ok) return r;
+      }
+      return 0;
+    };
+
     // Ducks: a few per sizeable unfrozen basin, floating at the spill level.
     const ducks: Spot[] = [];
-    for (let bi = 0; bi < (lakeBasins?.length ?? 0) && ducks.length < 48; bi++) {
+    for (let bi = 0; bi < (lakeBasins?.length ?? 0) && ducks.length < 90; bi++) {
       const b = lakeBasins[bi];
       if ((b.maxX - b.minX) * (b.maxY - b.minY) < 40) continue;
       const ci = Math.round((b.minY + b.maxY) / 2) * size + Math.round((b.minX + b.maxX) / 2);
@@ -152,6 +195,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
             yaw: hash01(bi * 131 + d) * Math.PI * 2,
             s: 0.9 + hash01(bi * 61 + d) * 0.4,
             seed: bi * 100 + d,
+            r: 0, // ducks have their own paddling circle
           });
           break;
         }
@@ -160,7 +204,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
 
     // Herons: statue-still at lake shores and river banks.
     const herons: Spot[] = [];
-    for (let probe = 0; probe < 30000 && herons.length < 32; probe++) {
+    for (let probe = 0; probe < 30000 && herons.length < 60; probe++) {
       const gx = 2 + Math.floor(hash01(probe * 3 + 11) * (size - 4));
       const gy = 2 + Math.floor(hash01(probe * 3 + 12) * (size - 4));
       const gi = gy * size + gx;
@@ -180,12 +224,13 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
         yaw: hash01(probe * 7) * Math.PI * 2,
         s: 1.1 + hash01(probe * 11) * 0.35,
         seed: probe,
+        r: 0,
       });
     }
 
     // Butterflies: over riverbanks and warm flower meadows.
     const butterflies: Spot[] = [];
-    for (let probe = 0; probe < 30000 && butterflies.length < 52; probe++) {
+    for (let probe = 0; probe < 30000 && butterflies.length < 120; probe++) {
       const gx = 2 + Math.floor(hash01(probe * 5 + 71) * (size - 4));
       const gy = 2 + Math.floor(hash01(probe * 5 + 72) * (size - 4));
       const gi = gy * size + gx;
@@ -202,12 +247,13 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
         yaw: 0,
         s: 0.8 + hash01(probe * 17) * 0.5,
         seed: probe,
+        r: 0,
       });
     }
 
     // Deer herds on open ground; goats up on the alpine slopes.
     const deer: Spot[] = [];
-    for (let probe = 0; probe < 30000 && deer.length < 46; probe++) {
+    for (let probe = 0; probe < 30000 && deer.length < 150; probe++) {
       const gx = 4 + Math.floor(hash01(probe * 9 + 313) * (size - 8));
       const gy = 4 + Math.floor(hash01(probe * 9 + 314) * (size - 8));
       const gi = gy * size + gx;
@@ -216,7 +262,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
       const graze = bio === Biome.Grassland || bio === Biome.Shrubland || bio === Biome.Savanna || bio === Biome.Forest;
       if (!graze || (slope?.[gi] ?? 1) > 0.25) continue;
       const herdN = 2 + Math.floor(hash01(probe * 11) * 3);
-      for (let d = 0; d < herdN && deer.length < 46; d++) {
+      for (let d = 0; d < herdN && deer.length < 150; d++) {
         const ox = (hash01(probe * 41 + d * 3) - 0.5) * 9;
         const oz = (hash01(probe * 43 + d * 5) - 0.5) * 9;
         const wx = toWorld(gx) + ox;
@@ -238,12 +284,13 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
           yaw: hash01(probe * 51 + d) * Math.PI * 2,
           s: 1.0 + hash01(probe * 53 + d) * 0.35,
           seed: probe * 10 + d,
+          r: grazeRadius(wx, wz, 7),
         });
       }
       probe += 220; // spread herds apart
     }
     const goats: Spot[] = [];
-    for (let probe = 0; probe < 30000 && goats.length < 16; probe++) {
+    for (let probe = 0; probe < 30000 && goats.length < 54; probe++) {
       const gx = 4 + Math.floor(hash01(probe * 15 + 977) * (size - 8));
       const gy = 4 + Math.floor(hash01(probe * 15 + 978) * (size - 8));
       const gi = gy * size + gx;
@@ -257,6 +304,9 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
         yaw: hash01(probe * 19) * Math.PI * 2,
         s: 0.75 + hash01(probe * 23) * 0.2,
         seed: probe,
+        // Goats keep a tighter circle than deer: they are placed on alpine slopes, where the
+        // walkable ground around a spot runs out much sooner.
+        r: grazeRadius(toWorld(gx), toWorld(gy), 4),
       });
     }
 
@@ -331,9 +381,43 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
       }
       if (inst.instanceMatrix) inst.instanceMatrix.needsUpdate = true;
     };
+    /**
+     * Grazing: a slow wander inside the animal's own safe circle, facing where it is going.
+     *
+     * Deer and goats used to be handed to `still` with a bob of 0.04 render units — a fortieth of a
+     * unit of vertical breathing and nothing else. At the scale a walking player sees them that is
+     * indistinguishable from scenery, which is what they looked like.
+     *
+     * The path is two sine pairs at incommensurable rates, so it drifts rather than repeating a
+     * visible orbit, and it is a pure function of `(t, seed)` — the same property `sceneElapsed`
+     * relies on. Under capture the clock is frozen, so the herd freezes with it and the canonical
+     * views stay reproducible.
+     *
+     * Height is re-sampled from the mesh each frame rather than kept from placement, or an animal
+     * walking a slope would slide through the hillside it is standing on.
+     */
+    const graze = (ref: React.RefObject<THREE.InstancedMesh>, arr: Spot[], speed: number, bob: number) => {
+      const inst = ref.current;
+      if (!inst || typeof inst.setMatrixAt !== 'function') return;
+      for (let i = 0; i < arr.length; i++) {
+        const p = arr[i];
+        const { x, z } = grazePosition(p, p.r, p.seed, t, speed);
+        const yaw = grazeYaw(p, p.r, p.seed, t, speed, p.yaw);
+        const u = x / renderSize + 0.5;
+        const v = z / renderSize + 0.5;
+        const y = sampleMeshHeight(world, u, v, meshResolution) * heightUnits;
+        dummy.position.set(x, y + Math.abs(Math.sin(t * 0.7 + p.seed)) * bob, z);
+        dummy.rotation.set(0, yaw, 0);
+        dummy.scale.setScalar(p.s);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+      }
+      if (inst.instanceMatrix) inst.instanceMatrix.needsUpdate = true;
+    };
+
     still(heronRef, spots.herons, 0);
-    still(deerRef, spots.deer, 0.04);
-    still(goatRef, spots.goats, 0.03);
+    graze(deerRef, spots.deer, 0.11, 0.04);
+    graze(goatRef, spots.goats, 0.08, 0.03);
   });
 
   return (
