@@ -756,8 +756,13 @@ impl SimulationEngine {
             let (recycle_res_tx, recycle_res_rx) =
                 crossbeam_channel::unbounded::<InferenceResponseBatch>();
 
-            // Pre-populate recycle pools to ensure zero heap allocations in the hot path
-            for _ in 0..16 {
+            // Pre-populate recycle pools to ensure zero heap allocations in the hot path.
+            //
+            // This count is the memory bound of the inference path, not a starting point:
+            // `sensory_system` returns rather than allocating when the pool is empty, so the number
+            // of batches in flight can never exceed it. Before that, an empty pool allocated a new
+            // batch which was then recycled into the pool for good — 8.5 MB/min headless, measured.
+            for _ in 0..crate::core::agent_systems::INFERENCE_POOL_BATCHES {
                 let req_batch = InferenceRequestBatch {
                     requests: Vec::with_capacity(128),
                 };

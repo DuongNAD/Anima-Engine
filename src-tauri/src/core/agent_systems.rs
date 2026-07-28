@@ -448,6 +448,15 @@ pub struct InferenceRequestBatch {
     pub requests: Vec<AgentInferenceRequest>,
 }
 
+/// Batches circulating between the tick loop and the inference worker.
+///
+/// A hard ceiling rather than an initial size: `sensory_system` skips a tick's inference when the
+/// pool is empty instead of allocating, so this bounds the memory the inference path can ever hold.
+/// Sixteen is deep enough that the worker has to fall sixteen batches behind before any agent skips
+/// a think, and shallow enough that falling behind is felt as a lower think rate rather than as
+/// growing memory.
+pub const INFERENCE_POOL_BATCHES: usize = 16;
+
 #[derive(Debug, Clone)]
 pub struct InferenceResponseBatch {
     pub responses: Vec<AgentInferenceResponse>,
@@ -497,14 +506,32 @@ pub fn sensory_system(
     // One snapshot for the whole population, so every agent is tiered against the same focus.
     let lod = lod.begin_tick();
 
-    let mut batch = local_batch.take().unwrap_or_else(|| {
-        channels
-            .recycle_req_rx
-            .try_recv()
-            .unwrap_or_else(|_| InferenceRequestBatch {
-                requests: Vec::with_capacity(128),
-            })
-    });
+    // The recycle pool is the memory bound of the whole inference path, and this is where it was
+    // being broken.
+    //
+    // `simulation_loop` pre-fills the pool with `INFERENCE_POOL_BATCHES` batches and says why: "to
+    // ensure zero heap allocations in the hot path". Nothing enforced the number. When the worker
+    // had not yet returned a batch, this allocated a fresh one — and because every batch is
+    // recycled rather than dropped, that allocation joined the pool permanently. A tick loop that
+    // outruns the inference worker therefore grew the pool without limit, one batch per tick, for
+    // as long as the run lasted.
+    //
+    // Measured on 2026-07-28, headless (no webview, no emit, no evolution, 10 agents): **8.5 MB/min,
+    // indefinitely** — and the same shape in the desktop app at 14 MB/min, which is 19 GB after a
+    // day. It was not the unbounded lineage growth `STATE_OF_THE_PROJECT.md` §3.15 predicts: that
+    // path writes nothing unless evolution is running, and it was not.
+    //
+    // An empty pool now means "the worker is behind", and the answer to that is to skip this tick's
+    // inference rather than to buy more memory. The system is already built for it: an agent that
+    // does not think keeps its last CPG parameters and goes on moving, eating and metabolising —
+    // the same tolerance the LOD tiering above relies on. Degrading the think rate under load is
+    // what a real-time simulation is supposed to do; growing without bound is not.
+    let Some(mut batch) = local_batch
+        .take()
+        .or_else(|| channels.recycle_req_rx.try_recv().ok())
+    else {
+        return;
+    };
     batch.requests.clear();
 
     for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state, opt_brain) in

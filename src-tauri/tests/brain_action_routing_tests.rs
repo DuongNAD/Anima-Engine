@@ -31,6 +31,10 @@ struct Harness {
     req_rx: Receiver<InferenceRequestBatch>,
     res_tx: Sender<InferenceResponseBatch>,
     recycle_res_rx: Receiver<InferenceResponseBatch>,
+    /// Kept so a test can put a batch back. Without a live sender the pool would also read as
+    /// *disconnected* once drained, which is a different condition from *empty* and would let a
+    /// test pass for the wrong reason.
+    recycle_req_tx: Sender<InferenceRequestBatch>,
 }
 
 fn harness() -> Harness {
@@ -63,6 +67,7 @@ fn harness() -> Harness {
         req_rx,
         res_tx,
         recycle_res_rx,
+        recycle_req_tx,
     }
 }
 
@@ -331,5 +336,55 @@ fn two_brains_produce_different_gate_decisions() {
     assert_ne!(
         out_a, out_b,
         "different genomes must be able to act differently on identical input"
+    );
+}
+
+// --- the pool is a ceiling, not a starting size --------------------------------------------------
+
+/// The inference recycle pool bounds how much memory the inference path can ever hold, and until
+/// 2026-07-28 nothing enforced it: an empty pool made `sensory_system` allocate a fresh batch, which
+/// was then recycled into the pool for good. A tick loop outrunning the inference worker grew the
+/// pool by one batch per tick, forever — measured headless at 8.5 MB/min with ten agents, and in the
+/// desktop app at 14 MB/min, which is 19 GB after a day.
+///
+/// This asserts the invariant rather than a memory figure. A byte threshold would depend on the
+/// allocator and the machine's mood; "the pool never grows" does not.
+#[test]
+fn an_empty_recycle_pool_skips_the_tick_instead_of_allocating_another_batch() {
+    let mut h = harness();
+    spawn_agent(&mut h.world, None);
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(sensory_system);
+
+    // Drain the pool the way a lagging inference worker does: take every batch and hold it.
+    let pool = h.world.resource::<InferenceChannels>().clone();
+    let mut held = Vec::new();
+    while let Ok(batch) = pool.recycle_req_rx.try_recv() {
+        held.push(batch);
+    }
+    assert!(!held.is_empty(), "the harness pre-fills the pool");
+
+    // Many ticks against an empty pool. On the leaking version each of these allocated and sent a
+    // new batch; the count below was unbounded.
+    for _ in 0..50 {
+        schedule.run(&mut h.world);
+    }
+
+    let sent = std::iter::from_fn(|| h.req_rx.try_recv().ok()).count();
+    assert_eq!(
+        sent, 0,
+        "an empty pool must cost a tick of inference, not a new allocation: {sent} batch(es) were \
+         created out of nothing"
+    );
+
+    // And the skip is not permanent damage: returning one batch resumes thinking on the next tick.
+    h.recycle_req_tx
+        .send(held.pop().expect("the pool was pre-filled"))
+        .expect("the pool receiver is alive");
+    schedule.run(&mut h.world);
+    assert!(
+        h.req_rx.try_recv().is_ok(),
+        "a returned batch must let the next tick think again"
     );
 }
