@@ -3,15 +3,15 @@
 //
 // Three failures are silent by construction, and this catches all three.
 //
-//  1. **A target that runs nothing passes.** `src-tauri/tests/` holds seven files carrying a
+//  1. **A target that runs nothing passes.** `src-tauri/tests/` holds eight files carrying a
 //     crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]`. Before they
 //     carried `required-features`, a default build compiled every one of them into an empty binary
-//     that reported `running 0 tests` and exited 0 — 1,877 lines of migration, cross-shard and
+//     that reported `running 0 tests` and exited 0 — 2,040 lines of migration, cross-shard and
 //     GPU-fallback coverage, and the command the docs told you to run never executed a line of it.
 //  2. **An `#[ignore]` passes.** libtest reports an ignored test as neither a pass nor a failure, so
 //     a test quietly parked with `#[ignore]` costs nothing and says nothing.
 //  3. **A feature-gated target that stops being scheduled passes.** Delete a `required-features`
-//     line and seven empty targets come back; mistype the feature name and the targets vanish from
+//     line and eight empty targets come back; mistype the feature name and the targets vanish from
 //     *every* configuration without a word.
 //
 // The policy is an allow-list with a reason per entry, and it is checked in both directions: an item

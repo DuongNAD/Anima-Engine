@@ -173,6 +173,11 @@ path = "tests/migration_stress_tests.rs"
 required-features = ["networking"]
 
 [[test]]
+name = "phase5_websocket_reuse"
+path = "tests/phase5_websocket_reuse.rs"
+required-features = ["networking"]
+
+[[test]]
 name = "phase5_burn_wgpu_fallback"
 path = "tests/phase5_burn_wgpu_fallback.rs"
 required-features = ["ml-wgpu"]

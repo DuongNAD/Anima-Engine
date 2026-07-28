@@ -109,6 +109,7 @@ export const FEATURE_GATED_TARGETS = [
   { name: 'tests/migration_narrow_bounds_loop_tests.rs', feature: 'networking' },
   { name: 'tests/migration_panic_tests.rs', feature: 'networking' },
   { name: 'tests/migration_stress_tests.rs', feature: 'networking' },
+  { name: 'tests/phase5_websocket_reuse.rs', feature: 'networking' },
   { name: 'tests/phase5_burn_wgpu_fallback.rs', feature: 'ml-wgpu' },
 ];
 
