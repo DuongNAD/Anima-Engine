@@ -2,8 +2,10 @@
 
 ## Environment (loaded via dotenvy from `.env`, gitignored)
 
-- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (`ai/model.rs`). **Defaults to GPU, and the
-  GPU path leaks.** Measured 2026-07-28, headless, 10 agents, three minutes: with wgpu the live heap
+- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback. **Defaults to CPU since 2026-07-28**, and
+  the decision lives in one place (`core::resources::gpu_backend_requested`) rather than the three
+  copies of `unwrap_or(true)` it replaced. Set it to `1` for a short session where inference speed
+  matters. **The GPU path leaks.** Measured 2026-07-28, headless, 10 agents, three minutes: with wgpu the live heap
   (alloc − free) grows **5.8 MB/min** indefinitely; with `ANIMA_USE_GPU=0` it is **flat at
   0.00 MB/min**, RSS 29 MB instead of ~200 MB, and 33 k allocations/s instead of 254 k. A backtrace on
   the growing allocation names it: `wgpu_core::storage::Storage::insert::<BindGroupLayout>` under

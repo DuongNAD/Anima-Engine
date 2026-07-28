@@ -557,9 +557,7 @@ impl BrainModel {
         draw(1, hidden_dim, &mut rng); // critic bias
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
-        let use_gpu = std::env::var("ANIMA_USE_GPU")
-            .map(|val| val != "false" && val != "0")
-            .unwrap_or(true);
+        let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg(feature = "ml-wgpu")]
         if use_gpu {
@@ -603,9 +601,7 @@ impl BrainModel {
 
     pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize) -> Self {
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
-        let use_gpu = std::env::var("ANIMA_USE_GPU")
-            .map(|val| val != "false" && val != "0")
-            .unwrap_or(true);
+        let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg(feature = "ml-wgpu")]
         if use_gpu {

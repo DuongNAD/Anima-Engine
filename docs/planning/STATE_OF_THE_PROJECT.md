@@ -878,11 +878,12 @@ câu cảnh báo trong `CLAUDE.md` rằng chạy full backend "đã từng làm 
 **Cách chữa tạm, dùng được ngay:** đặt `ANIMA_USE_GPU=0` cho mọi lần chạy dài. Đổi lại là learner
 chạy trên ndarray thay vì GPU.
 
-**Ba đường sửa thật, chưa chọn — đây là quyết định về sản phẩm, không phải về kỹ thuật:**
+**Ba đường sửa thật — chủ dự án đã chọn (1) ngày 2026-07-28:**
 
-1. **Đổi mặc định sang CPU.** Một dòng (`unwrap_or(true)` → `false` ở `simulation_loop.rs`). Đánh đổi
-   tốc độ suy luận lấy một tiến trình không phình. Với một simulator chạy dài, đây là hướng tôi
-   nghiêng về.
+1. ✅ **Đổi mặc định sang CPU. ĐÃ LÀM.** Quyết định nay nằm ở **một** chỗ,
+   `core::resources::gpu_backend_requested`, thay cho ba bản sao `unwrap_or(true)` ở
+   `simulation_loop::start` và hai constructor của `ai::model` — ba bản sao của một mặc định là ba
+   cơ hội để chúng lệch nhau. `ANIMA_USE_GPU=1` bật lại cho phiên ngắn cần tốc độ suy luận.
 2. **Nâng burn/wgpu.** `CLAUDE.md` đã ghi rõ 0.14 phá `ai/model.rs` và `core/training.rs`, và không
    xoá được advisory nào — nhưng nó có thể xoá được cái này. Cần kiểm chứ đừng giả định.
 3. **Vá phía burn** để cache bind group layout thay vì hỏi lại mỗi dispatch. Đúng chỗ nhất, đắt nhất,
