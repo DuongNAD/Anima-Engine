@@ -21,6 +21,9 @@ use anima_engine_lib::core::simulation_lifecycle::{
 use anima_engine_lib::core::simulation_state::SimulationStatus;
 
 #[global_allocator]
+// Process-wide on purpose: this also catches allocations that a measured system delegates to a
+// worker thread. Every contract below is called from one aggregate `#[test]`, so libtest cannot
+// create sibling test threads whose startup would contaminate the measurement windows.
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
@@ -71,7 +74,6 @@ fn await_running_and_ticking(
     }
 }
 
-#[test]
 fn test_fruit_growth_and_lake_replenishment() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -120,7 +122,6 @@ fn test_fruit_growth_and_lake_replenishment() {
     assert_eq!(lake.current_water, 100.0);
 }
 
-#[test]
 fn test_seed_dropping_limits_and_bounds() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -184,7 +185,6 @@ fn test_seed_dropping_limits_and_bounds() {
     assert_eq!(count, 3);
 }
 
-#[test]
 fn test_eating_and_drinking() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -277,7 +277,6 @@ fn test_eating_and_drinking() {
     assert!(tree.current_fruit < 100.0);
 }
 
-#[test]
 fn test_environmental_collisions_zero_allocations() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -355,7 +354,6 @@ fn test_environmental_collisions_zero_allocations() {
     );
 }
 
-#[test]
 fn test_spawning_10k_trees_performance_and_thread_leaks() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -483,7 +481,6 @@ fn test_spawning_10k_trees_performance_and_thread_leaks() {
     );
 }
 
-#[test]
 fn test_environmental_collisions_zero_allocations_heavy_load() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
@@ -567,4 +564,31 @@ fn test_environmental_collisions_zero_allocations_heavy_load() {
         "Environmental collision hot path under heavy load should make 0 heap allocations, but made {}",
         allocs
     );
+}
+
+/// Keep every contract in one libtest thread. `TrackingAllocator` is process-wide so a measured
+/// system cannot hide allocations on worker threads; multiple `#[test]` bodies would let libtest's
+/// own thread startup race with the two measurement windows under suite load.
+///
+/// The helper names are intentionally not independently filterable, and the first failure stops the
+/// remaining contracts. Phase labels preserve triage context; restoring separate test attributes
+/// would restore the allocation race this gate exists to prevent.
+#[test]
+fn environmental_elements_contracts() {
+    eprintln!("allocation gate: representative collision load");
+    test_environmental_collisions_zero_allocations();
+    eprintln!("allocation gate: heavy collision load");
+    test_environmental_collisions_zero_allocations_heavy_load();
+
+    eprintln!("functional gate: fruit growth and lake replenishment");
+    test_fruit_growth_and_lake_replenishment();
+    eprintln!("functional gate: seed dropping limits and bounds");
+    test_seed_dropping_limits_and_bounds();
+    eprintln!("functional gate: eating and drinking");
+    test_eating_and_drinking();
+
+    // Run the engine-owning contract last. Its background threads are joined before return, but
+    // placing it after the allocation windows makes those gates independent of backend startup.
+    eprintln!("lifecycle gate: 10k trees");
+    test_spawning_10k_trees_performance_and_thread_leaks();
 }
