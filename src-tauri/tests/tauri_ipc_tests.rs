@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct AgentState {
@@ -198,20 +199,19 @@ fn test_real_simulation_engine_start_stop() {
     // Wait for the tick too, not just for `running`: the flag is set by `start` before the sim
     // thread has run a single tick, so polling on it alone falls through to the `tick_count > 0`
     // assertion below and fails it on a busy machine.
-    let mut started = false;
-    for _ in 0..200 {
+    let start = Instant::now();
+    loop {
         let status = engine.get_status();
         if status.running && status.tick_count > 0 {
-            started = true;
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        let waited = start.elapsed();
+        assert!(
+            waited < Duration::from_secs(10),
+            "Simulation failed to start and tick within {waited:.2?}; last status: {status:?}"
+        );
+        std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(
-        started,
-        "Simulation failed to start and tick within 2 seconds; last status: {:?}",
-        engine.get_status()
-    );
 
     // Verify it runs
     assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst));

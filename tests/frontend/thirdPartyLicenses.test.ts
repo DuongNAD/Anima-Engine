@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { TEXT_EXTENSIONS, findControlByteOffsets } from '../../scripts/check_text_hygiene.mjs';
+import { TEXT_EXTENSIONS, findControlByteOffsets } from '../../scripts/lib/text_hygiene.mjs';
 import {
   isLicenseFileName,
   byteCompare,

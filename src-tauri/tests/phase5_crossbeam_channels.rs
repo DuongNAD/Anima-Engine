@@ -1,7 +1,6 @@
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::engine::SimulationEngine;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 
 #[test]
@@ -42,8 +41,22 @@ fn test_engine_toggle_stress_channels() {
             i
         );
 
-        // Sleep briefly to let threads spawn, execute channel requests
-        thread::sleep(Duration::from_millis(50));
+        // A real roundtrip proves both that the simulation thread has ticked and that its request
+        // channel is serviced. A fixed sleep could expire before either happened — or pass without
+        // exercising the channel this test is named after.
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        engine
+            .save_request_tx
+            .send(reply_tx)
+            .expect("simulation save channel must stay connected while running");
+        let saved = reply_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("simulation channel did not answer before the liveness deadline")
+            .expect("a default world must be serialisable");
+        assert!(
+            saved.tick_count > 0,
+            "a channel reply must come from a tick the simulation actually ran"
+        );
 
         // Stop the engine (joins threads and drains channels)
         engine.stop();

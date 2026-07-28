@@ -28,33 +28,9 @@ import { readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { argv } from 'node:process';
 import { pathToFileURL } from 'node:url';
+import { TEXT_EXTENSIONS, findControlByteOffsets } from './lib/text_hygiene.mjs';
 
 const ROOT = process.cwd();
-export const TEXT_EXTENSIONS = new Set([
-  '.mjs', '.js', '.cjs', '.ts', '.tsx', '.rs', '.json', '.md', '.yml', '.yaml', '.toml', '.html',
-  '.css', '.txt', '.sh', '.ps1', '.py',
-]);
-
-const ALLOWED = new Set([0x09, 0x0a, 0x0d]); // TAB, LF, CR
-
-/**
- * Byte offsets of the disallowed control characters in a buffer, up to `limit`.
- *
- * Separated from the file walk so it can be tested directly. A detector that is only ever exercised
- * by "the repository happens to be clean today" is a detector nobody would notice breaking — and
- * the way it breaks is by finding nothing, which looks exactly like success.
- */
-export function findControlByteOffsets(bytes, limit = 5) {
-  const offsets = [];
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if ((b < 0x20 && !ALLOWED.has(b)) || b === 0x7f) {
-      offsets.push(i);
-      if (offsets.length >= limit) break;
-    }
-  }
-  return offsets;
-}
 
 function main() {
   // `--others --exclude-standard` as well as `--cached`: a gate that only sees committed files

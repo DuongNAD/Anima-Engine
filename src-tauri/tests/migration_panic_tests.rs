@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
@@ -18,6 +18,26 @@ use anima_engine_lib::core::ecs::{
 use anima_engine_lib::core::engine::AgentGenotype;
 use anima_engine_lib::core::engine::{run_websocket_client, AgentGeneration, AgentLineageId};
 use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
+
+async fn await_bounce_back(world: &World) {
+    let start = Instant::now();
+    loop {
+        let inbound_ready = !world
+            .get_resource::<InboundMigrationReceiver>()
+            .expect("inbound receiver")
+            .0
+            .is_empty();
+        if inbound_ready {
+            return;
+        }
+        let waited = start.elapsed();
+        assert!(
+            waited < Duration::from_secs(10),
+            "migration did not bounce back within the liveness deadline ({waited:.2?})"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
 
 #[test]
 #[should_panic(expected = "min > max, or either was NaN")]
@@ -186,7 +206,7 @@ async fn test_high_velocity_migration_loop_under_narrow_bounds() {
             .collect::<Vec<_>>()
     );
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    await_bounce_back(&world).await;
 
     println!("--- TICK 1 BOUNCE-BACK SPAWN ---");
     // Bounce-back yields: agent spawned at x = 0.45, velocity = -10.0.
@@ -219,7 +239,7 @@ async fn test_high_velocity_migration_loop_under_narrow_bounds() {
             .collect::<Vec<_>>()
     );
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    await_bounce_back(&world).await;
 
     println!("--- TICK 2 BOUNCE-BACK SPAWN ---");
     // Bounce-back yields: agent spawned at x = 0.05, velocity = 10.0.
@@ -252,7 +272,7 @@ async fn test_high_velocity_migration_loop_under_narrow_bounds() {
             .collect::<Vec<_>>()
     );
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    await_bounce_back(&world).await;
 
     println!("--- TICK 3 BOUNCE-BACK SPAWN ---");
     // Bounce-back yields: agent spawned at x = 0.45, velocity = -10.0.

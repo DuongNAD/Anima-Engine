@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
@@ -105,8 +105,24 @@ async fn test_migration_narrow_bounds_infinite_loop() {
     // It should despawn the agent and send outbound migration.
     schedule.run(&mut world);
 
-    // Let tokio scheduler yield so that websocket client can process the outbound migration, fail, and bounce back.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Wait for the observable bounce-back, not for a guessed scheduler interval.
+    let bounce_started = Instant::now();
+    loop {
+        let inbound_ready = !world
+            .get_resource::<InboundMigrationReceiver>()
+            .expect("inbound receiver")
+            .0
+            .is_empty();
+        if inbound_ready {
+            break;
+        }
+        let waited = bounce_started.elapsed();
+        assert!(
+            waited < Duration::from_secs(10),
+            "migration did not bounce back within the liveness deadline ({waited:.2?})"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 
     // After bounce back, inbound channel should have the bounced agent, and process_inbound_migrations_system should spawn it.
     schedule.run(&mut world);
@@ -122,8 +138,6 @@ async fn test_migration_narrow_bounds_infinite_loop() {
     // Tick 2: check_migration_boundaries_system runs. It should detect that the agent is inside boundaries (0.45).
     // It should not despawn or re-migrate the agent.
     schedule.run(&mut world);
-
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Verify the agent remains inside boundaries at 0.45, was not despawned, and inbound queue is empty.
     let results: Vec<_> = query.iter(&world).collect();
@@ -147,8 +161,6 @@ async fn test_migration_narrow_bounds_infinite_loop() {
 
     // Tick 3: check_migration_boundaries_system runs again.
     schedule.run(&mut world);
-
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Verify again that the agent remains inside boundaries at 0.45 and inbound queue is empty.
     let results: Vec<_> = query.iter(&world).collect();
