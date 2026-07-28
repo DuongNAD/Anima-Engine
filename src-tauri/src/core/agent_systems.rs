@@ -462,6 +462,85 @@ pub struct InferenceResponseBatch {
     pub responses: Vec<AgentInferenceResponse>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponsePoolWaitError {
+    Shutdown,
+    Disconnected,
+    Stalled,
+}
+
+/// Length of one missing-response warning window.
+///
+/// The measured 4,000-agent tick is under five seconds. Thirty seconds permits several such ticks
+/// before the worker starts treating the absence as suspicious. Two consecutive windows are
+/// required below, so machine suspend/resume or one unusually slow tick cannot stop a healthy run.
+pub const INFERENCE_RESPONSE_STALL_TIMEOUT: std::time::Duration =
+    std::time::Duration::from_secs(30);
+
+/// Wait for a response buffer without violating the inference pool's memory bound.
+///
+/// A slow `action_resolution_system` temporarily owns every response batch. Allocating another one
+/// here would make overload permanent heap growth because every batch is recycled. Holding the
+/// request until a response buffer returns instead propagates backpressure to the already-bounded
+/// request pool. Short polls keep shutdown observable even when the pool is empty.
+pub fn wait_for_recycled_response_batch(
+    running: &std::sync::atomic::AtomicBool,
+    recycle_res_rx: &crossbeam_channel::Receiver<InferenceResponseBatch>,
+) -> Result<InferenceResponseBatch, ResponsePoolWaitError> {
+    wait_for_recycled_response_batch_until(
+        running,
+        recycle_res_rx,
+        INFERENCE_RESPONSE_STALL_TIMEOUT,
+    )
+}
+
+/// Deadline-parameterized form used by the worker and deterministic regression tests.
+pub fn wait_for_recycled_response_batch_until(
+    running: &std::sync::atomic::AtomicBool,
+    recycle_res_rx: &crossbeam_channel::Receiver<InferenceResponseBatch>,
+    max_wait: std::time::Duration,
+) -> Result<InferenceResponseBatch, ResponsePoolWaitError> {
+    let mut window_started = std::time::Instant::now();
+    let mut expired_windows = 0u8;
+    while running.load(std::sync::atomic::Ordering::SeqCst) {
+        let remaining = max_wait
+            .checked_sub(window_started.elapsed())
+            .unwrap_or_default();
+        if remaining.is_zero() {
+            match recycle_res_rx.try_recv() {
+                Ok(batch) => return Ok(batch),
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    return if running.load(std::sync::atomic::Ordering::SeqCst) {
+                        Err(ResponsePoolWaitError::Disconnected)
+                    } else {
+                        Err(ResponsePoolWaitError::Shutdown)
+                    };
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => {}
+            }
+            expired_windows += 1;
+            if expired_windows >= 2 {
+                return Err(ResponsePoolWaitError::Stalled);
+            }
+            window_started = std::time::Instant::now();
+            continue;
+        }
+        let poll_interval = remaining.min(std::time::Duration::from_millis(10));
+        match recycle_res_rx.recv_timeout(poll_interval) {
+            Ok(batch) => return Ok(batch),
+            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                return if running.load(std::sync::atomic::Ordering::SeqCst) {
+                    Err(ResponsePoolWaitError::Disconnected)
+                } else {
+                    Err(ResponsePoolWaitError::Shutdown)
+                };
+            }
+        }
+    }
+    Err(ResponsePoolWaitError::Shutdown)
+}
+
 #[derive(Resource, Clone)]
 pub struct InferenceChannels {
     pub req_tx: crossbeam_channel::Sender<InferenceRequestBatch>,

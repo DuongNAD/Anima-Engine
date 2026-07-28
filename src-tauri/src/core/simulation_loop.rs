@@ -840,11 +840,28 @@ impl SimulationEngine {
                     // Receive request batch
                     if let Ok(req_batch) = req_rx.recv_timeout(Duration::from_millis(2)) {
                         if !req_batch.requests.is_empty() {
-                            let mut res_batch = recycle_res_rx.try_recv().unwrap_or_else(|_| {
-                                InferenceResponseBatch {
-                                    responses: Vec::with_capacity(128),
-                                }
-                            });
+                            let mut res_batch =
+                                match crate::core::agent_systems::wait_for_recycled_response_batch(
+                                    &running_inference,
+                                    &recycle_res_rx,
+                                ) {
+                                    Ok(batch) => batch,
+                                    Err(
+                                        crate::core::agent_systems::ResponsePoolWaitError::Shutdown,
+                                    ) => {
+                                        let _ = recycle_req_tx.try_send(req_batch);
+                                        break;
+                                    }
+                                    Err(reason) => {
+                                        eprintln!(
+                                            "inference response pool failed ({reason:?}); stopping \
+                                             the simulation instead of allocating or hanging"
+                                        );
+                                        running_inference.store(false, Ordering::SeqCst);
+                                        let _ = recycle_req_tx.try_send(req_batch);
+                                        break;
+                                    }
+                                };
                             res_batch.responses.clear();
 
                             // Same function the tests drive synchronously — see
