@@ -189,6 +189,7 @@ pub struct RunResult {
     pub provenance: RunProvenance,
     pub status: RunStatus,
     pub final_checksum: u32,
+    #[serde(with = "crate::core::scenario::json_f64_pairs")]
     pub final_observables: Vec<(String, f64)>,
     pub series: Vec<StateSample>,
     pub ledger: CausalLedger,
