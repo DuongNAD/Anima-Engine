@@ -1,12 +1,12 @@
 //! The Cargo target metadata and the crate-level feature gates say the same thing.
 //!
-//! Seven integration targets cannot exist without an optional subsystem, and that fact is written
+//! Eight integration targets cannot exist without an optional subsystem, and that fact is written
 //! down twice: once as `#![cfg(feature = "...")]` at the top of the file, and once as
 //! `required-features` in `Cargo.toml`. Neither alone is enough.
 //!
 //! - **Without `required-features`**, Cargo still builds the target under `--no-default-features`.
-//!   The `#![cfg]` empties it, so the binary compiles, reports `running 0 tests`, and exits 0. Seven
-//!   green targets over 1,877 lines that never ran — the exact failure `check_test_targets.mjs`
+//!   The `#![cfg]` empties it, so the binary compiles, reports `running 0 tests`, and exits 0. Eight
+//!   green targets over 2,040 lines that never ran — the exact failure `check_test_targets.mjs`
 //!   exists to catch, and the reason it was written.
 //! - **Without the `#![cfg]`**, a `required-features` entry that someone deletes or mistypes turns
 //!   the file into a compile error under the wrong feature set rather than an empty pass. Louder,

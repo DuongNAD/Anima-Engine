@@ -1,3 +1,5 @@
+#![cfg(feature = "networking")]
+
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::engine::SimulationEngine;
 use std::net::{SocketAddr, TcpListener, TcpStream};
