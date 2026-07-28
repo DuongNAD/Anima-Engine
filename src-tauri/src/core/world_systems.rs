@@ -287,6 +287,10 @@ pub fn combat_system(
     segment_query: Query<(&Position, &ParentAgent)>,
     mut combat_events: Option<ResMut<CombatEvents>>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    // Maps each root agent to its centroid vector and preserves the mutually-exclusive predator/prey
+    // classification enforced by the queries above. Reused between ticks to keep the warm path
+    // allocation-free.
+    mut centroid_index: Local<bevy_ecs::entity::EntityHashMap<(bool, usize)>>,
 ) {
     if let Some(ref mut events_res) = combat_events {
         events_res.events.clear();
@@ -306,22 +310,33 @@ pub fn combat_system(
                 .push((entity, pos.0, Vec3::ZERO, 0));
         }
 
+        let CombatEvents {
+            predator_centroids,
+            prey_centroids,
+            ..
+        } = &mut **events_res;
+        let centroid_index = &mut *centroid_index;
+        centroid_index.clear();
+        for (index, entry) in predator_centroids.iter().enumerate() {
+            centroid_index.insert(entry.0, (true, index));
+        }
+        for (index, entry) in prey_centroids.iter().enumerate() {
+            // `prey_query` is `Without<Predator>`, so an entity cannot overwrite a predator entry.
+            let previous = centroid_index.insert(entry.0, (false, index));
+            debug_assert!(previous.is_none());
+        }
+
         for (seg_pos, parent_agent) in segment_query.iter() {
-            if let Some(entry) = events_res
-                .predator_centroids
-                .iter_mut()
-                .find(|e| e.0 == parent_agent.0)
-            {
-                entry.2 += seg_pos.0;
-                entry.3 += 1;
-            } else if let Some(entry) = events_res
-                .prey_centroids
-                .iter_mut()
-                .find(|e| e.0 == parent_agent.0)
-            {
-                entry.2 += seg_pos.0;
-                entry.3 += 1;
-            }
+            let Some(&(is_predator, index)) = centroid_index.get(&parent_agent.0) else {
+                continue;
+            };
+            let entry = if is_predator {
+                &mut predator_centroids[index]
+            } else {
+                &mut prey_centroids[index]
+            };
+            entry.2 += seg_pos.0;
+            entry.3 += 1;
         }
 
         for entry in events_res.predator_centroids.iter_mut() {
