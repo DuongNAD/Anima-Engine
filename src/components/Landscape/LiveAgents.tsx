@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { surfaceHeight } from './utils/worldSample';
 import { isInsideSimBounds, simToRender } from './utils/liveAgentTransform';
+import { makeDeer, makeLion, makeRabbit, makeWildcat } from './utils/creatureBodies';
 import type { SegmentState } from '../../types/generated/SegmentState';
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 
@@ -15,8 +16,14 @@ import type { SimulationTickPayload } from '../../types/generated/SimulationTick
 // The backend has always simulated inside the shared world: `init_world` loads the same World
 // Artifact the frontend generates and downsamples it. But the only view of the population was the
 // dashboard's 2D canvas — a black grid with dots — while the 3D scene that draws the terrain,
-// water, flora and wildlife had no idea the simulation existed. Two renderings of one world, and
-// the good one was empty.
+// water, flora and wildlife had no idea the simulation existed.
+//
+// # Why bodies and not spheres
+//
+// The first version drew every published segment as a sphere, which proved the positions crossed
+// the IPC boundary and landed on the terrain. It also told a viewer nothing: a thousand identical
+// red balls in a grid is a debug overlay, not a population. Each agent is now one animal — prey read
+// as prey, predators as predators, and two prey of different builds as two kinds of animal.
 //
 // # Why this renders nothing outside the desktop app
 //
@@ -34,22 +41,32 @@ export interface LiveAgentsProps {
 }
 
 /**
- * Instances allocated up front. Three segments per creature at the moment, so this holds a founding
- * population of ~1300 before it has to grow — comfortably past the 10 a default genesis creates and
- * past the 1000 the benchmark asks for at three segments each... which it is not, so it grows.
+ * Instances allocated per body type up front, grown by doubling when a population exceeds it.
+ *
+ * 1024 covers the 1000-agent benchmark workload spread across four bodies with room to spare, and
+ * the growth path means a bigger world costs a remount rather than a dropped animal.
  */
-const INITIAL_CAPACITY = 4096;
+const INITIAL_CAPACITY = 1024;
 
-/** Radius of a drawn segment, in render units. Small enough to read as a creature at map scale. */
-const SEGMENT_RADIUS = 1.6;
+/** Model scale. The bodies are authored around one render unit; the world spans 1200. */
+const BODY_SCALE = 3.2;
 
-/** Lifts a creature clear of the ground so it reads as standing on the terrain, not embedded in it. */
-const GROUND_OFFSET = SEGMENT_RADIUS * 0.9;
+/** Lifts a creature clear of the ground so it stands on the terrain rather than in it. */
+const GROUND_OFFSET = 0.2;
 
-const PREY_COLOR = new THREE.Color('#5ad67d');
-const PREDATOR_COLOR = new THREE.Color('#e2554f');
-/** Neither prey nor predator: a creature whose role the payload did not carry. */
-const UNTYPED_COLOR = new THREE.Color('#cfd6dd');
+/**
+ * The bodies a live agent can wear, and which role each belongs to.
+ *
+ * Two per role rather than one: a population where every prey is the same silhouette reads as one
+ * species cloned, which is the opposite of what an evolution simulator is trying to show. The choice
+ * is by `agent_id`, so an agent keeps its body for its whole life and across a reload.
+ */
+const BODIES = [
+  { id: 'deer', role: 'prey' as const, make: makeDeer, tint: '#cdb894' },
+  { id: 'rabbit', role: 'prey' as const, make: makeRabbit, tint: '#d8cdb8' },
+  { id: 'lion', role: 'predator' as const, make: makeLion, tint: '#e0b45f' },
+  { id: 'wildcat', role: 'predator' as const, make: makeWildcat, tint: '#c9b79c' },
+];
 
 /** Round up to the next power of two, so capacity growth is a handful of remounts, not one per tick. */
 function nextCapacity(needed: number): number {
@@ -58,30 +75,44 @@ function nextCapacity(needed: number): number {
   return capacity;
 }
 
+/** Which body an agent wears: fixed by its id, so it does not change shape between frames. */
+function bodyIndexFor(seg: SegmentState): number {
+  const predator = seg.agent_type === 'predator';
+  // Two candidates per role, picked by the low bit of a cheap hash of the id.
+  const h = Math.imul(seg.agent_id + 1, 2654435761) >>> 0;
+  return (predator ? 2 : 0) + (h & 1);
+}
+
 export const LiveAgents: React.FC<LiveAgentsProps> = ({
   world,
   renderSize,
   heightRatio,
   meshResolution,
 }) => {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([]);
   // The payload lands in a ref rather than state: the emit thread publishes far faster than a React
   // render is worth paying for, and `useFrame` is already the place that reads it.
   const segmentsRef = useRef<SegmentState[]>([]);
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
   const [connected, setConnected] = useState(false);
 
-  // Scratch objects, allocated once. `useFrame` runs every frame over every segment, so anything
+  // Scratch objects, allocated once. `useFrame` runs every frame over every agent, so anything
   // constructed inside it would be garbage at 60 Hz.
   const scratch = useMemo(() => ({ dummy: new THREE.Object3D(), color: new THREE.Color() }), []);
-  const geometry = useMemo(() => new THREE.SphereGeometry(SEGMENT_RADIUS, 10, 8), []);
-  const material = useMemo(
-    () => new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.05 }),
+  const geometries = useMemo(() => BODIES.map((b) => b.make()), []);
+  const materials = useMemo(
+    () => BODIES.map(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, flatShading: true })),
     [],
   );
+  const tints = useMemo(() => BODIES.map((b) => new THREE.Color(b.tint)), []);
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
-  useEffect(() => () => material.dispose(), [material]);
+  useEffect(
+    () => () => {
+      geometries.forEach((g) => g.dispose());
+      materials.forEach((m) => m.dispose());
+    },
+    [geometries, materials],
+  );
 
   useEffect(() => {
     // No Tauri transport means no simulation to draw. Checked rather than caught: an ordinary
@@ -115,23 +146,23 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   }, []);
 
   useFrame(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
     const segments = segmentsRef.current;
-
-    if (segments.length > capacity) {
-      setCapacity(nextCapacity(segments.length));
-      return;
-    }
-
     const { dummy, color } = scratch;
-    let drawn = 0;
+    const drawn = [0, 0, 0, 0];
 
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
+      // One body per agent, not one per segment: the root carries the agent's position and facing,
+      // and drawing the other segments too would stack three animals inside each other.
+      if (seg.parent_segment_id !== null && seg.segment_id !== 0) continue;
       // A coordinate outside the simulation's own bounds means this consumer and the publisher
       // disagree about the space. Skipping says so; clamping would draw a tidy lie at the map edge.
       if (!isInsideSimBounds(seg.x, seg.z)) continue;
+
+      const b = bodyIndexFor(seg);
+      const mesh = meshRefs.current[b];
+      if (!mesh) continue;
+      if (drawn[b] >= capacity) continue;
 
       const rx = simToRender(seg.x, renderSize);
       const rz = simToRender(seg.z, renderSize);
@@ -143,40 +174,51 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
 
       dummy.position.set(rx, ry, rz);
       dummy.rotation.set(0, seg.yaw, 0);
+      dummy.scale.setScalar(BODY_SCALE);
       dummy.updateMatrix();
-      mesh.setMatrixAt(drawn, dummy.matrix);
+      mesh.setMatrixAt(drawn[b], dummy.matrix);
 
-      const source =
-        seg.agent_type === 'prey'
-          ? PREY_COLOR
-          : seg.agent_type === 'predator'
-            ? PREDATOR_COLOR
-            : UNTYPED_COLOR;
       // Energy dims a creature toward its silhouette as it starves, so a population at the floor
       // reads as one at a glance rather than looking identical to a thriving one.
-      color.copy(source).multiplyScalar(0.45 + 0.55 * Math.min(1, Math.max(0, seg.energy / 100)));
-      mesh.setColorAt(drawn, color);
-      drawn++;
+      color.copy(tints[b]).multiplyScalar(0.45 + 0.55 * Math.min(1, Math.max(0, seg.energy / 100)));
+      mesh.setColorAt(drawn[b], color);
+      drawn[b]++;
     }
 
-    mesh.count = drawn;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    let needed = 0;
+    for (let b = 0; b < BODIES.length; b++) {
+      const mesh = meshRefs.current[b];
+      if (!mesh) continue;
+      mesh.count = drawn[b];
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      needed = Math.max(needed, drawn[b]);
+    }
+    // Grown only when a bucket actually filled: the population is split across four bodies, so the
+    // trigger is the busiest bucket rather than the headcount.
+    if (needed >= capacity) setCapacity(nextCapacity(needed + 1));
   });
 
-  // Nothing at all until a tick has arrived: an empty InstancedMesh still costs a draw call, and a
+  // Nothing at all until a tick has arrived: empty InstancedMeshes still cost draw calls, and a
   // scene with no backend should be exactly the scene it was before this component existed.
   if (!connected) return null;
 
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-      castShadow
-      receiveShadow
-    />
+    <group name="live-agents">
+      {BODIES.map((b, i) => (
+        <instancedMesh
+          key={`${b.id}-${capacity}`}
+          ref={(m) => {
+            meshRefs.current[i] = m;
+          }}
+          args={[geometries[i], materials[i], capacity]}
+          name={`live-${b.id}`}
+          frustumCulled={false}
+          castShadow
+          receiveShadow
+        />
+      ))}
+    </group>
   );
 };
 

@@ -618,8 +618,18 @@ impl FoundingPlan {
             FoundingLayout::Line => Vec3::new(i as f32 * 5.0, 0.0, 0.0),
             FoundingLayout::Grid => {
                 let side = grid_side(self.count);
-                let col = (i % side) as f32;
-                let row = (i / side) as f32;
+                // Jitter inside the cell, or the founding population is visibly planted in rows —
+                // which is exactly how it looked on screen at 1000: a farm, not an ecosystem. Hashed
+                // from the index rather than drawn from a stream, so **D07** still holds: no RNG is
+                // consulted anywhere in genesis, and the same index always lands in the same spot.
+                let jitter = |salt: u32| -> f32 {
+                    let mut h = (i as u32).wrapping_add(salt).wrapping_mul(2_654_435_761);
+                    h ^= h >> 15;
+                    h = h.wrapping_mul(2_246_822_519);
+                    ((h >> 8) as f32 / 16_777_216.0) - 0.5
+                };
+                let col = (i % side) as f32 + jitter(0x9E37) * 0.8;
+                let row = (i / side) as f32 + jitter(0x85EB) * 0.8;
                 let last = (side - 1) as f32;
                 let span_x = (bounds.max.x - bounds.min.x) - 2.0 * FOUNDING_GRID_MARGIN;
                 let span_z = (bounds.max.z - bounds.min.z) - 2.0 * FOUNDING_GRID_MARGIN;
