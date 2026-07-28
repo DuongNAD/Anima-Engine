@@ -57,6 +57,10 @@ burn-wgpu = { version = "0.13.2", optional = true }
 socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"
+# Migration normally traverses fewer than 64 body segments and must stay allocation-free, but
+# crossover/imported peers can legally produce wider morphologies. SmallVec keeps the common path
+# inline and spills only when correctness requires more space instead of silently orphaning limbs.
+smallvec = "1.15"
 rand = "0.8"
 # Direct dependency so `SimRng` can save and restore its exact stream position. `StdRng` IS
 # ChaCha12Rng in rand 0.8 but does not expose `get_word_pos`/`set_word_pos`, and a snapshot that

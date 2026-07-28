@@ -2,6 +2,7 @@ use crate::core::components::*;
 use crate::core::resources::*;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use smallvec::SmallVec;
 
 pub fn apply_environmental_effects_system(
     active_event: Res<ActiveEnvironmentEvent>,
@@ -484,6 +485,33 @@ pub fn combat_system(
     }
 }
 
+type AgentTraversal = SmallVec<[Entity; 64]>;
+
+fn despawn_agent_tree(
+    commands: &mut Commands,
+    children_query: &Query<&ChildrenLinks>,
+    root: Entity,
+) {
+    let mut stack = AgentTraversal::new();
+    let mut visited = AgentTraversal::new();
+    stack.push(root);
+
+    while let Some(current) = stack.pop() {
+        // Production genotypes decode to trees, but ChildrenLinks is a public ECS component and
+        // restored/imported worlds can be corrupt. A cycle or shared child must not hang a tick or
+        // enqueue the same deferred despawn repeatedly.
+        if visited.contains(&current) {
+            continue;
+        }
+        visited.push(current);
+
+        if let Ok(children) = children_query.get(current) {
+            stack.extend(children.0.iter().copied());
+        }
+        commands.entity(current).despawn();
+    }
+}
+
 pub fn check_migration_boundaries_system(
     mut commands: Commands,
     mut agent_query: Query<
@@ -632,21 +660,7 @@ pub fn check_migration_boundaries_system(
                 diagnostics.record_queued();
             }
 
-            let mut stack = [entity; 64];
-            let mut stack_len = 1;
-            while stack_len > 0 {
-                stack_len -= 1;
-                let current = stack[stack_len];
-                commands.entity(current).despawn();
-                if let Ok(children) = children_query.get(current) {
-                    for &child in &children.0 {
-                        if stack_len < 64 {
-                            stack[stack_len] = child;
-                            stack_len += 1;
-                        }
-                    }
-                }
-            }
+            despawn_agent_tree(&mut commands, &children_query, entity);
         }
     }
 }
@@ -777,21 +791,7 @@ pub fn manual_migration_system(
                 diagnostics.record_queued();
             }
 
-            let mut stack = [entity; 64];
-            let mut stack_len = 1;
-            while stack_len > 0 {
-                stack_len -= 1;
-                let current = stack[stack_len];
-                commands.entity(current).despawn();
-                if let Ok(children) = children_query.get(current) {
-                    for &child in &children.0 {
-                        if stack_len < 64 {
-                            stack[stack_len] = child;
-                            stack_len += 1;
-                        }
-                    }
-                }
-            }
+            despawn_agent_tree(&mut commands, &children_query, entity);
         }
     }
 }
@@ -868,11 +868,16 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
         }
 
         let velocity = self.data.velocity;
-        let mut stack = [root_entity; 64];
-        let mut stack_len = 1;
-        while stack_len > 0 {
-            stack_len -= 1;
-            let current = stack[stack_len];
+        let mut stack = AgentTraversal::new();
+        let mut visited = AgentTraversal::new();
+        stack.push(root_entity);
+        while let Some(current) = stack.pop() {
+            // Decode currently builds a tree; keep the inbound boundary total even if a future
+            // importer or restore path hands it a shared child or cycle.
+            if visited.contains(&current) {
+                continue;
+            }
+            visited.push(current);
 
             if let Some(mut vel) = world.get_mut::<Velocity>(current) {
                 vel.0 = velocity;
@@ -882,12 +887,7 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
             }
 
             if let Some(children) = world.get::<ChildrenLinks>(current) {
-                for &child in &children.0 {
-                    if stack_len < 64 {
-                        stack[stack_len] = child;
-                        stack_len += 1;
-                    }
-                }
+                stack.extend(children.0.iter().copied());
             }
         }
     }

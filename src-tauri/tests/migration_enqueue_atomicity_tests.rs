@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
-    check_migration_boundaries_system, manual_migration_system, Agent, AgentBrain,
-    BevyMigrationTrigger, ChildrenLinks, MapBounds, OutboundMigration, OutboundMigrationSender,
-    Position, Prey, ShardingConfig, ShardingResource, Velocity,
+    check_migration_boundaries_system, manual_migration_system, Agent, AgentBrain, AgentClass,
+    AgentMigrationData, BevyMigrationTrigger, ChildrenLinks, MapBounds, OutboundMigration,
+    OutboundMigrationSender, Position, Prey, Segment, ShardingConfig, ShardingResource,
+    SpawnMigrationCommand, Velocity,
 };
 use anima_engine_lib::core::engine::{AgentGeneration, AgentGenotype, AgentLineageId};
 use anima_engine_lib::core::resources::{
@@ -13,8 +14,9 @@ use anima_engine_lib::core::resources::{
     OUTBOUND_MIGRATION_QUEUE_CAPACITY,
 };
 use anima_engine_lib::evolution::brain_genotype::{ArchSpec, BrainGenotype};
-use anima_engine_lib::evolution::genotype::MorphologyGenotype;
+use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::Command;
 use glam::Vec3;
 
 fn spawn_agent_tree(world: &mut World, position: Vec3) -> (Entity, Entity) {
@@ -46,6 +48,127 @@ fn spawn_agent_tree(world: &mut World, position: Vec3) -> (Entity, Entity) {
         ))
         .id();
     (agent, child)
+}
+
+fn spawn_wide_agent_tree(world: &mut World, position: Vec3) -> (Entity, Vec<Entity>) {
+    const CHILDREN: usize = 65;
+
+    let (agent, first_child) = spawn_agent_tree(world, position);
+    let mut children = Vec::with_capacity(CHILDREN);
+    children.push(first_child);
+    for _ in 1..CHILDREN {
+        children.push(world.spawn(ChildrenLinks(Vec::new())).id());
+    }
+    world.get_mut::<ChildrenLinks>(agent).unwrap().0 = children.clone();
+    (agent, children)
+}
+
+fn wide_star_genotype() -> MorphologyGenotype {
+    const CHILDREN: u32 = 65;
+
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    for id in 1..=CHILDREN {
+        genotype.add_node(MorphologyNode {
+            id,
+            length: 0.5,
+            radius: 0.1,
+            mass: 0.25,
+        });
+        genotype.add_edge(MorphologyEdge {
+            source_node: 0,
+            target_node: id,
+            joint_anchor: Vec3::ZERO,
+            joint_axis: Vec3::Y,
+        });
+    }
+    genotype
+}
+
+fn deep_wide_frontier_genotype() -> MorphologyGenotype {
+    const DEPTH: usize = 5;
+    const LEAVES_PER_LEVEL: usize = 14;
+
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+
+    let mut next_id = 1_u32;
+    let mut spine = 0_u32;
+    for _ in 0..DEPTH {
+        // Leaves are inserted first and the continuation last. A depth-first LIFO traversal keeps
+        // the leaves pending while it follows the spine, growing the frontier past 64 without any
+        // single node having an extreme fan-out.
+        for _ in 0..LEAVES_PER_LEVEL {
+            let leaf = next_id;
+            next_id += 1;
+            genotype.add_node(MorphologyNode {
+                id: leaf,
+                length: 0.25,
+                radius: 0.05,
+                mass: 0.1,
+            });
+            genotype.add_edge(MorphologyEdge {
+                source_node: spine,
+                target_node: leaf,
+                joint_anchor: Vec3::ZERO,
+                joint_axis: Vec3::Y,
+            });
+        }
+
+        let continuation = next_id;
+        next_id += 1;
+        genotype.add_node(MorphologyNode {
+            id: continuation,
+            length: 0.5,
+            radius: 0.1,
+            mass: 0.25,
+        });
+        genotype.add_edge(MorphologyEdge {
+            source_node: spine,
+            target_node: continuation,
+            joint_anchor: Vec3::ZERO,
+            joint_axis: Vec3::Y,
+        });
+        spine = continuation;
+    }
+
+    genotype
+}
+
+fn migration_data(genotype: MorphologyGenotype, velocity: Vec3) -> AgentMigrationData {
+    AgentMigrationData {
+        genotype,
+        homeostatic_state: HomeostaticState {
+            energy: 73.0,
+            energy_target: 100.0,
+            hydration: 61.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+        },
+        position: Vec3::ZERO,
+        velocity,
+        lineage_id: "wide-inbound".to_owned(),
+        generation: 7,
+        agent_class: AgentClass::Prey,
+        parent_ids: Vec::new(),
+        evaluation: None,
+        feature_tracker: None,
+        last_transition_state: None,
+        source_port: 8081,
+        brain: None,
+    }
 }
 
 fn insert_sharding_resources(world: &mut World) {
@@ -380,4 +503,100 @@ fn migration_handoff_diagnostics_reset_between_runs() {
     diagnostics.reset();
 
     assert_eq!(diagnostics.snapshot(), Default::default());
+}
+
+#[test]
+fn automatic_migration_despawns_every_segment_of_a_wide_agent() {
+    let mut world = World::new();
+    let outbound_rx = insert_migration_resources(&mut world);
+    let (agent, children) = spawn_wide_agent_tree(&mut world, Vec3::new(101.0, 0.0, 0.0));
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(check_migration_boundaries_system);
+    schedule.run(&mut world);
+
+    outbound_rx
+        .try_recv()
+        .expect("the wide agent must enter the outbound queue");
+    assert!(world.get_entity(agent).is_none());
+    assert!(
+        children
+            .iter()
+            .all(|&child| world.get_entity(child).is_none()),
+        "migration must not leave a segment orphaned when one node has more than 64 children"
+    );
+}
+
+#[test]
+fn manual_migration_despawns_every_segment_of_a_wide_agent() {
+    let mut world = World::new();
+    let outbound_rx = insert_migration_resources(&mut world);
+    world.insert_resource(SimRng::from_seed(0xA70C));
+    let (trigger_tx, trigger_rx) = crossbeam_channel::unbounded();
+    trigger_tx.send(8090).unwrap();
+    world.insert_resource(BevyMigrationTrigger(trigger_rx));
+    let (agent, children) = spawn_wide_agent_tree(&mut world, Vec3::ZERO);
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(manual_migration_system);
+    schedule.run(&mut world);
+
+    outbound_rx
+        .try_recv()
+        .expect("the wide agent must enter the outbound queue");
+    assert!(world.get_entity(agent).is_none());
+    assert!(
+        children
+            .iter()
+            .all(|&child| world.get_entity(child).is_none()),
+        "manual migration must not leave a segment orphaned past the fixed-stack boundary"
+    );
+}
+
+#[test]
+fn inbound_migration_applies_velocity_to_every_segment_of_a_wide_agent() {
+    let mut world = World::new();
+    let velocity = Vec3::new(3.0, -2.0, 1.0);
+    SpawnMigrationCommand {
+        data: migration_data(wide_star_genotype(), velocity),
+    }
+    .apply(&mut world);
+
+    let mut segments = world.query_filtered::<&Velocity, With<Segment>>();
+    let velocities = segments.iter(&world).map(|v| v.0).collect::<Vec<_>>();
+    assert_eq!(velocities.len(), 66);
+    assert!(
+        velocities.iter().all(|&actual| actual == velocity),
+        "every reconstructed segment must inherit the migrating creature's velocity"
+    );
+}
+
+#[test]
+fn inbound_then_outbound_migration_leaves_no_segment_past_a_deep_wide_frontier() {
+    let mut world = World::new();
+    SpawnMigrationCommand {
+        data: migration_data(deep_wide_frontier_genotype(), Vec3::X),
+    }
+    .apply(&mut world);
+
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let root = agents
+        .get_single(&world)
+        .expect("the decoded morphology must have one agent root");
+    world.get_mut::<Position>(root).unwrap().0.x = 101.0;
+
+    let outbound_rx = insert_migration_resources(&mut world);
+    let mut schedule = Schedule::default();
+    schedule.add_systems(check_migration_boundaries_system);
+    schedule.run(&mut world);
+
+    outbound_rx
+        .try_recv()
+        .expect("the reconstructed agent must enter the outbound queue");
+    let mut segments = world.query_filtered::<Entity, With<Segment>>();
+    assert_eq!(
+        segments.iter(&world).count(),
+        0,
+        "a production-decoded hierarchy must not leave residual segments after migrating out"
+    );
 }
