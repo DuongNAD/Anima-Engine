@@ -14,6 +14,12 @@ import { audioManager } from '../../src/components/Landscape/utils/audioManager'
 import { generateTerrainData, determineBiome, generateTerrain, generateFloraPlacements } from '../../src/components/Landscape/utils/terrainGenerator';
 import { frameStateAt, type FrameCallback } from '../mocks/r3f-frame-state';
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
 // Mock Canvas and useFrame for R3F compatibility
 let frameCallbacks: FrameCallback[] = [];
 vi.mock('@react-three/fiber', async () => {

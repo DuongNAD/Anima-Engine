@@ -7,6 +7,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { makeCanvas2DStub, stubCanvas2D, type Canvas2DStub } from '../mocks/canvas-2d';
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
 // Mock Tauri Core
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();

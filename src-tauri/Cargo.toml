@@ -121,6 +121,15 @@ criterion = { version = "0.5", default-features = false, features = [
 name = "tick_systems"
 harness = false
 
+# The headless experiment CLI. Declared explicitly rather than left to `src/bin` auto-discovery so
+# the target has a written-down identity: it builds under `default` features (no Neo4j, no
+# WebSocket stack, no wgpu), which is what makes it usable as a plain `cargo run --bin anima-lab`
+# without dragging in the desktop feature set. The path matches the auto-discovered one, so the two
+# describe the same target rather than competing for it.
+[[bin]]
+name = "anima-lab"
+path = "src/bin/anima-lab.rs"
+
 # Integration targets that cannot exist without an optional subsystem.
 #
 # Each of these files is a crate-level `#![cfg(feature = "...")]`. Without `required-features` Cargo
