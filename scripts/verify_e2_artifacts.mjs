@@ -18,13 +18,14 @@
 // class, printing every failure it found rather than only the first.
 
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const artifactDir = resolve(process.argv[2] ?? join(repoRoot, 'artifacts/experiments/e2-evolved-brain-default'));
-const committedManifestDir = join(repoRoot, 'src-tauri/tests/fixtures/experiments_e2');
+const committedManifestDir = 'src-tauri/tests/fixtures/experiments_e2';
 
 const failures = [];
 const notes = [];
@@ -33,6 +34,34 @@ const note = (msg) => notes.push(msg);
 
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8'));
+
+/**
+ * Read the bytes Git has committed, not the platform-dependent working-tree representation.
+ *
+ * Git for Windows commonly checks text files out with CRLF. The E2 artifacts intentionally retain
+ * their original bytes because they are covered by SHA-256, so comparing those artifacts with a
+ * CRLF checkout produces a false tampering alarm. `git cat-file` reads the canonical blob and also
+ * makes "committed manifest" mean exactly what the verifier says.
+ */
+function readCommittedManifest(name) {
+  try {
+    return execFileSync(
+      'git',
+      ['cat-file', 'blob', `HEAD:${committedManifestDir}/${name}`],
+      { cwd: repoRoot, stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+  } catch {
+    return null;
+  }
+}
+
+function readCommittedPreregistration() {
+  const bytes = readCommittedManifest('e2-preregistration.json');
+  if (bytes === null) {
+    throw new Error(`HEAD has no ${committedManifestDir}/e2-preregistration.json`);
+  }
+  return JSON.parse(bytes.toString('utf8'));
+}
 
 /** Recompute every digest in a `checksums.sha256` file with node:crypto. */
 function verifyChecksums(dir, label) {
@@ -100,13 +129,13 @@ function verifyManifestsAreTheCommittedOnes(dir, label) {
     return;
   }
   for (const entry of readdirSync(copied)) {
-    const committed = join(committedManifestDir, entry);
-    if (!existsSync(committed)) {
+    const committed = readCommittedManifest(entry);
+    if (committed === null) {
       fail(`${label}: manifests/${entry} has no counterpart in ${committedManifestDir}`);
       continue;
     }
     const a = sha256(readFileSync(join(copied, entry)));
-    const b = sha256(readFileSync(committed));
+    const b = sha256(committed);
     if (a !== b) {
       fail(
         `${label}: manifests/${entry} (${a}) is not the committed file (${b}). The run used a ` +
@@ -118,7 +147,7 @@ function verifyManifestsAreTheCommittedOnes(dir, label) {
 
 /** The registered plan, and what the run says it did, must be the same thing. */
 function verifyAgainstPreregistration(dir, label, { isSmoke }) {
-  const prereg = readJson(join(committedManifestDir, 'e2-preregistration.json'));
+  const prereg = readCommittedPreregistration();
   const prov = readJson(join(dir, 'provenance.json'));
   const report = readJson(join(dir, 'paired-report.json'));
   const effects = readJson(join(dir, 'effects.json'));
@@ -235,7 +264,7 @@ function verifyDurationLock(dir) {
     return;
   }
   const lock = readJson(lockPath);
-  const prereg = readJson(join(committedManifestDir, 'e2-preregistration.json'));
+  const prereg = readCommittedPreregistration();
   if (!prereg.duration.duration_ticks_ladder.includes(lock.selected_duration_ticks)) {
     fail(
       `lock: the selected rung ${lock.selected_duration_ticks} is not on the registered ladder ` +
