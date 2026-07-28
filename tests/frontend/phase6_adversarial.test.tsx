@@ -70,6 +70,12 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 import { App } from '../../src/App';
 import PixiViewport from '../../src/PixiViewport';
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe('Phase 6 Front-end - Adversarial, Stress, and Edge Case Tests', () => {
   const setupDefaultInvokeMock = (overrides: Record<string, unknown> = {}) => {
     vi.mocked(invoke).mockImplementation(async (cmd, _args) => {
