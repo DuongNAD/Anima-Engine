@@ -747,6 +747,11 @@ và không nói gì — nhưng đó là đánh đổi, không phải bản sửa
 
 #### 3.15 Phả hệ: bộ nhớ không có trần, và không truy được dòng dõi
 
+> ⚠️ **Đừng dùng mục này để giải thích một tiến trình đang phình.** Ngày 2026-07-28 một thế giới chạy
+> thật tăng 14 MB/phút và mục này là nghi phạm đầu tiên — sai. Tiến hoá **tắt** suốt lượt đo, nên
+> `add_reproduction` không ghi một node nào; nguồn thật nằm ở [§3.17](#317-đường-gpu-rò-bộ-nhớ-vô-hạn-và-nó-là-mặc-định)
+> và ở pool inference (`1c1f8e3`). Mục này vẫn đúng về phả hệ — nó chỉ không phải thứ đang xảy ra.
+
 > **Số thứ tự là append-only.** Mục này thuộc **P1** nhưng mang số 3.15 vì 3.9–3.14 đã được bảng P2
 > dùng, và `CLAUDE.md` cùng các kế hoạch khác tham chiếu chéo theo số. Đổi số sẽ làm gãy các tham
 > chiếu đó — đắt hơn nhiều so với một số thứ tự trông lệch.
@@ -844,6 +849,52 @@ Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) �
 vẫn trả đồ thị **đầy đủ**.
 
 ---
+
+#### 3.17 Đường GPU rò bộ nhớ vô hạn, và nó là mặc định
+
+**Đo được 2026-07-28**, headless (không webview, không emit, không tiến hoá), 10 agent, ba phút, bằng
+một global allocator đếm `alloc − dealloc` — RSS **không** phân biệt được rò với phân mảnh, `live`
+thì có:
+
+| Backend | live (byte sống) | RSS | cấp phát/giây |
+|---|---|---|---|
+| wgpu (mặc định) | **+5,8 MB/phút, không dừng** | ~200 MB và tăng | 254.000 |
+| `ANIMA_USE_GPU=0` | **0,00 MB/phút** | 29 MB, phẳng | 33.000 |
+
+Phân loại theo kích thước chỉ vào **một** khối 16–32 MB lớn dần bằng cách nhân đôi (2→4→8→16 MB), và
+backtrace của chính lần realloc đó đặt tên cho nó:
+
+```
+wgpu_core::storage::Storage::insert<BindGroupLayout>
+  ← wgpu_core::global::Global::compute_pipeline_get_bind_group_layout
+  ← burn-wgpu … ActorCriticModel::forward / core::training::run_training_loop
+```
+
+**Không phải mã của dự án này.** burn-wgpu hỏi `get_bind_group_layout` mỗi lần dispatch; wgpu-core
+0.19.4 cấp một id mới và nhét vào registry toàn cục, một `Vec` chỉ lớn lên. Trong app desktop tốc độ
+là **14 MB/phút** — 2 GB sau 75 phút, chiếu ra 19 GB một ngày. Nhiều khả năng đây là cơ chế đằng sau
+câu cảnh báo trong `CLAUDE.md` rằng chạy full backend "đã từng làm treo máy này".
+
+**Cách chữa tạm, dùng được ngay:** đặt `ANIMA_USE_GPU=0` cho mọi lần chạy dài. Đổi lại là learner
+chạy trên ndarray thay vì GPU.
+
+**Ba đường sửa thật, chưa chọn — đây là quyết định về sản phẩm, không phải về kỹ thuật:**
+
+1. **Đổi mặc định sang CPU.** Một dòng (`unwrap_or(true)` → `false` ở `simulation_loop.rs`). Đánh đổi
+   tốc độ suy luận lấy một tiến trình không phình. Với một simulator chạy dài, đây là hướng tôi
+   nghiêng về.
+2. **Nâng burn/wgpu.** `CLAUDE.md` đã ghi rõ 0.14 phá `ai/model.rs` và `core/training.rs`, và không
+   xoá được advisory nào — nhưng nó có thể xoá được cái này. Cần kiểm chứ đừng giả định.
+3. **Vá phía burn** để cache bind group layout thay vì hỏi lại mỗi dispatch. Đúng chỗ nhất, đắt nhất,
+   và nằm ngoài repo này.
+
+**Cách tái lập** (công cụ là đồ nháp, không commit): một `#[global_allocator]` đếm `LIVE` và
+`LIVE_BY_CLASS` theo lớp luỹ thừa hai, cộng một `Backtrace::force_capture()` trong `realloc` khi
+`new_size >= 4 MB` với một cờ thread-local chống đệ quy. Khối lớn thì hiếm, nên backtrace gần như
+miễn phí; và chính lớp kích thước là thứ biến "rò ở đâu đó" thành "một `Vec` 16 MB".
+
+**Đã sửa riêng, không liên quan:** nguồn rò thứ nhất là pool recycle của inference — xem `1c1f8e3`.
+Nó chiếm khoảng một phần ba tổng lượng rò.
 
 ### P2 — Vệ sinh, làm được lẻ
 
