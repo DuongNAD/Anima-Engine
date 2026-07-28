@@ -236,6 +236,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run check:text-hygiene
 
+      - name: E2 artifacts match the committed preregistration
+        if: ${{ !cancelled() }}
+        run: npm run check:e2
+
       - name: npm run lint
         if: ${{ !cancelled() }}
         run: npm run lint

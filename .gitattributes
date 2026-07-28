@@ -41,6 +41,7 @@ licensing/THIRD_PARTY_LICENSES.txt  text eol=lf whitespace=-trailing-space
 # which is the same failure the schemas below are pinned against. `-text` so git converts in neither
 # direction; `diff` because a result must stay reviewable in a pull request.
 artifacts/experiments/**    -text diff
+src-tauri/tests/fixtures/experiments_e2/**  text eol=lf
 
 # Vendored upstream schemas — hashed against PROVENANCE.json. `-text` rather than `text eol=lf`:
 # these must round-trip exactly as vendored, so git is told not to transform them in either
