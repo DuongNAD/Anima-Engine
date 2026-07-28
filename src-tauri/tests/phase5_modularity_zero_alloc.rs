@@ -1,7 +1,7 @@
 mod common;
 
 use bevy_ecs::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 // Verify modular submodules compile cleanly
 #[allow(unused_imports)]
@@ -27,15 +27,11 @@ use anima_engine_lib::core::simulation_lifecycle::{
 use anima_engine_lib::physics::{integrate_physics_system, resolve_joints_system};
 
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator =
-    common::allocator::TrackingAllocator::new();
-
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+static ALLOCATOR: common::allocator::ThreadTrackingAllocator =
+    common::allocator::ThreadTrackingAllocator::new();
 
 #[test]
 fn test_modularity_zero_allocations_in_tick_loop() {
-    let _lock = TEST_LOCK.lock().unwrap();
-
     let mut world = init_world();
     world.insert_resource(anima_engine_lib::ai::pheromone::PheromoneGrid::default());
     world.insert_resource(BrainModel::new(15, 64, 4));
