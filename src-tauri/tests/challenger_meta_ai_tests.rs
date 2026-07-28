@@ -3,7 +3,6 @@ mod common;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use anima_engine_lib::ai::cpg::TimeStep;
@@ -22,14 +21,19 @@ use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, GeminiMetaAiClien
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
 
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+#[test]
+fn challenger_meta_ai_contracts() {
+    eprintln!("phase: Gemini fallback");
+    gemini_client_fallback_robustness();
+    eprintln!("phase: non-blocking environmental systems");
+    environmental_systems_non_blocking_performance();
+    eprintln!("phase: zero-allocation ECS hot path");
+    ecs_hot_path_zero_allocations_i22();
+}
 
 /// Verify that GeminiMetaAiClient falls back to MockMetaAiClient when API key is invalid
 /// or connection times out, and handles boundaries properly.
-#[test]
-fn test_gemini_client_fallback_robustness() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
+fn gemini_client_fallback_robustness() {
     // 1. Invalid API Key test
     std::env::set_var("GEMINI_API_KEY", "invalid_api_key");
     let client = GeminiMetaAiClient::new(Duration::from_millis(50));
@@ -73,10 +77,7 @@ fn test_gemini_client_fallback_robustness() {
 
 /// Verify that the environmental triggers and channel processing are non-blocking and do not
 /// cause frame lag, even if the background meta-AI client is extremely slow (e.g. 100ms delay).
-#[test]
-fn test_environmental_systems_non_blocking_performance() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
+fn environmental_systems_non_blocking_performance() {
     let (env_tx, env_rx) = crossbeam_channel::bounded::<EnvironmentalEvent>(32);
 
     // Simulate background thread generating events slowly (e.g. network latency)
@@ -141,10 +142,7 @@ fn test_environmental_systems_non_blocking_performance() {
 }
 
 /// Verify that I22 hot path systems preserve the zero-dynamic-allocations contract.
-#[test]
-fn test_ecs_hot_path_zero_allocations_i22() {
-    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
+fn ecs_hot_path_zero_allocations_i22() {
     let mut world = World::new();
     world.insert_resource(TimeStep(1.0 / 60.0));
     world.insert_resource(MapBounds::default());
