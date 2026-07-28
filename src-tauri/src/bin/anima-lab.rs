@@ -3,7 +3,8 @@
 //! Parses arguments, loads a manifest, hands it to [`run_ensemble`] over [`ReferenceEvolutionWorld`]
 //! and serialises the [`EnsembleSummary`] it returns; the science stays in `core::experiment_runner`.
 //! stdout carries JSON and nothing else. Errors go to stderr and exit non-zero — a run that fails
-//! *inside* a valid ensemble is reported in the JSON, not on stderr.
+//! *inside* a valid ensemble is reported in the JSON, not on stderr, and still makes the process
+//! exit non-zero so automation cannot mistake a partial result for success.
 //!
 //! Reference manifests only (`tests/fixtures/experiments/`). The live-Bevy manifests in
 //! `experiments_e2/` need `LiveExperimentAdapter` and `ObservableRegistry::live_default`, which is a
@@ -24,7 +25,8 @@ anima-lab — run an experiment manifest headlessly and print JSON to stdout
     anima-lab --help
 
 Every seed the manifest declares is run, in the declared order, against ReferenceEvolutionWorld.
-Exit 0 with JSON on stdout, or 1 with a reason on stderr.
+Exit 0 when every run completes. Exit 1 with JSON on stdout for preserved runtime failures, or with
+a reason on stderr when no report can be produced.
 ";
 
 /// Parse `argv` (without the program name). `Ok(None)` means help was requested.
@@ -52,6 +54,12 @@ struct Report<'a> {
     summary: &'a EnsembleSummary,
 }
 
+#[derive(Debug)]
+struct CommandOutput {
+    json: String,
+    exit_code: ExitCode,
+}
+
 fn load_manifest(path: &PathBuf) -> Result<ExperimentManifest, String> {
     let raw = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read manifest {}: {e}", path.display()))?;
@@ -59,22 +67,31 @@ fn load_manifest(path: &PathBuf) -> Result<ExperimentManifest, String> {
 }
 
 /// Takes the manifest rather than a path so a test can drive the whole pipeline on a shortened one.
-fn render(manifest: &ExperimentManifest, label: &str) -> Result<String, String> {
+fn render(manifest: &ExperimentManifest, label: &str) -> Result<CommandOutput, String> {
     let registry = ObservableRegistry::reference_default();
     let summary = run_ensemble::<ReferenceEvolutionWorld>(manifest, &registry)
         .map_err(|e| format!("ensemble rejected: {e}"))?;
 
-    serde_json::to_string_pretty(&Report {
+    let json = serde_json::to_string_pretty(&Report {
         tool: "anima-lab",
         manifest: label,
         model: "reference",
         summary: &summary,
     })
-    .map_err(|e| format!("cannot serialise report: {e}"))
+    .map_err(|e| format!("cannot serialise report: {e}"))?;
+
+    Ok(CommandOutput {
+        json,
+        exit_code: if summary.failed.is_empty() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        },
+    })
 }
 
 /// Split from `main` so the error path is a value, not a process exit.
-fn run(path: &PathBuf) -> Result<String, String> {
+fn run(path: &PathBuf) -> Result<CommandOutput, String> {
     render(&load_manifest(path)?, &path.display().to_string())
 }
 
@@ -86,9 +103,9 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Some(path)) => match run(&path) {
-            Ok(json) => {
-                println!("{json}");
-                ExitCode::SUCCESS
+            Ok(output) => {
+                println!("{}", output.json);
+                output.exit_code
             }
             Err(why) => fail(&why),
         },
@@ -180,14 +197,19 @@ mod tests {
         m.duration_ticks = 600;
         m.sample_period = 600;
 
-        let json = render(&m, "baseline-no-exotic.json").expect("must run");
-        let v: serde_json::Value = serde_json::from_str(&json).expect("stdout must be JSON");
+        let output = render(&m, "baseline-no-exotic.json").expect("must run");
+        assert_eq!(output.exit_code, ExitCode::SUCCESS);
+        let v: serde_json::Value = serde_json::from_str(&output.json).expect("stdout must be JSON");
         assert_eq!(v["tool"], "anima-lab");
         assert_eq!(v["model"], "reference");
         assert_eq!(v["experiment_id"], "exp-1");
         assert_eq!(v["completed_runs"], 1);
         assert_eq!(v["runs"].as_array().map(Vec::len), Some(1));
-        assert!(v["failed"].as_array().unwrap().is_empty(), "{json}");
+        assert!(
+            v["failed"].as_array().unwrap().is_empty(),
+            "{}",
+            output.json
+        );
         assert!(v["runs"][0]["series"].is_array(), "the series survives");
     }
 }
