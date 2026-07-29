@@ -34,6 +34,17 @@ static ALLOCATOR: common::allocator::TrackingAllocator =
 // clippy flags as `await_holding_lock`. Tokio.s mutex is built for exactly this.
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+fn one_node_genotype() -> MorphologyGenotype {
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    genotype
+}
+
 #[tokio::test]
 async fn test_stress_high_throughput_websocket_transfers() {
     let _lock = TEST_LOCK.lock().await;
@@ -314,7 +325,7 @@ fn test_migration_systems_zero_heap_allocations_on_hot_path() {
             ))
             .id();
 
-        let genotype = MorphologyGenotype::new();
+        let genotype = one_node_genotype();
         let agent_entity = world
             .spawn((
                 Agent,

@@ -617,6 +617,7 @@ impl SimulationEngine {
         let observer_actions_sim = self.observer_actions.clone();
         let tick_capture_shared = self.tick_capture.clone();
         let migration_handoff_diagnostics_sim = self.migration_handoff_diagnostics.clone();
+        let migration_handoff_diagnostics_net = self.migration_handoff_diagnostics.clone();
         // A second handle on the same capture, kept out of the sink so the loop can notice the run
         // finishing. Without it a release build has no way to retrieve a capture at all: the four
         // capture commands are IPC-only, no UI calls them, and a release binary has no DevTools to
@@ -634,8 +635,7 @@ impl SimulationEngine {
         let map_elites_grid_clone_save = Arc::clone(&map_elites_grid);
         let terrain_map_clone = Arc::clone(&self.terrain_map);
 
-        let (inbound_tx, inbound_rx) =
-            crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
+        let (inbound_tx, inbound_rx) = crate::core::resources::inbound_migration_channel();
         let (outbound_tx, outbound_rx) = crate::core::resources::outbound_migration_channel();
 
         let sim_exit = self.supervisor.token(sup::SIM);
@@ -1649,15 +1649,17 @@ impl SimulationEngine {
                         outbound_rx,
                         inbound_tx,
                         app_handle,
+                        migration_handoff_diagnostics_net,
                     );
                 }
                 #[cfg(feature = "networking")]
                 {
-                    let server_fut = run_websocket_server(
+                    let server_fut = run_websocket_server_with_diagnostics(
                         local_port,
                         inbound_tx_clone,
                         running_clone_net.clone(),
                         app_handle_net,
+                        migration_handoff_diagnostics_net,
                     );
                     let client_fut = run_websocket_client(
                         outbound_rx,
