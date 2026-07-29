@@ -297,6 +297,22 @@ pub struct SerializedTree {
     pub seed_spread_radius: f32,
 }
 
+/// State owned exclusively by the evolution worker.
+///
+/// None of these cursors lives in the Bevy world, so a world-only snapshot cannot continue the
+/// same scientific trajectory. Schema 6 checkpoints this block at a worker quiescence barrier.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SavedEvolutionWorkerState {
+    pub rng_seed: u64,
+    pub rng_pos: u128,
+    pub node_id_counter: u32,
+    pub meta_ai_epoch: u32,
+    pub meta_ai_history: Vec<crate::evolution::meta_ai::EnvironmentalEvent>,
+    pub chronicle_ids_issued: u64,
+    pub offspring_ids_issued: u64,
+    pub archive: crate::evolution::map_elites::SavedMapElitesArchive,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct SavedSimulationState {
     pub tick_count: u64,
@@ -397,6 +413,10 @@ pub struct SavedSimulationState {
     #[serde(default)]
     pub experiment: Option<crate::core::live_experiment::LiveExperimentState>,
 
+    // ---- Schema 6: exact continuation of the evolution worker -------------------------------
+    #[serde(default)]
+    pub evolution_worker: Option<SavedEvolutionWorkerState>,
+
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
     /// envelope that carries the real version.
@@ -453,6 +473,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         energy_baseline: None,
         dormant_cohorts: None,
         experiment: None,
+        evolution_worker: None,
         loaded_from_schema: 0,
     }
 }
@@ -471,8 +492,11 @@ pub fn startup_run_seed(state: Option<&SavedSimulationState>, fallback_seed: u64
 
 /// Worker-local counters that can be reconstructed from a snapshot written before they were
 /// carried explicitly.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct EvolutionWorkerResumeState {
+    pub rng_seed: u64,
+    pub rng_pos: u128,
+    pub archive: Option<crate::evolution::map_elites::SavedMapElitesArchive>,
     pub chronicle_ids_issued: u64,
     pub offspring_ids_issued: u64,
     pub node_id_counter: u32,
@@ -513,6 +537,12 @@ pub fn evolution_worker_resume_state(
 ) -> Result<EvolutionWorkerResumeState, String> {
     let Some(state) = state else {
         return Ok(EvolutionWorkerResumeState {
+            rng_seed: crate::core::resources::derived_seed(
+                run_id,
+                crate::core::resources::sim_stream::EVOLUTION,
+            ),
+            rng_pos: 0,
+            archive: None,
             chronicle_ids_issued: 0,
             offspring_ids_issued: 0,
             node_id_counter: 3,
@@ -569,7 +599,51 @@ pub fn evolution_worker_resume_state(
         .filter_map(chronicle_environmental_event)
         .collect();
 
+    if let Some(saved) = state.evolution_worker.as_ref() {
+        let expected_seed = crate::core::resources::derived_seed(
+            run_id,
+            crate::core::resources::sim_stream::EVOLUTION,
+        );
+        if saved.rng_seed != expected_seed {
+            return Err(format!(
+                "evolution RNG seed {} does not belong to run {run_id}",
+                saved.rng_seed
+            ));
+        }
+        crate::evolution::map_elites::MapElitesArchive::from_saved(saved.archive.clone())
+            .map_err(|error| format!("saved MAP-Elites archive is invalid: {error}"))?;
+        if saved.chronicle_ids_issued < chronicle_ids_issued {
+            return Err("evolution chronicle identity cursor precedes saved history".into());
+        }
+        if saved.offspring_ids_issued < offspring_ids_issued {
+            return Err("evolution offspring identity cursor precedes saved lineage".into());
+        }
+        if saved.node_id_counter < node_id_counter {
+            return Err("evolution morphology-node cursor precedes saved genotypes".into());
+        }
+        if saved.meta_ai_history.len() > saved.meta_ai_epoch as usize {
+            return Err("evolution Meta-AI history is longer than its epoch cursor".into());
+        }
+
+        return Ok(EvolutionWorkerResumeState {
+            rng_seed: saved.rng_seed,
+            rng_pos: saved.rng_pos,
+            archive: Some(saved.archive.clone()),
+            chronicle_ids_issued: saved.chronicle_ids_issued,
+            offspring_ids_issued: saved.offspring_ids_issued,
+            node_id_counter: saved.node_id_counter,
+            meta_ai_epoch: saved.meta_ai_epoch,
+            meta_ai_history: saved.meta_ai_history.clone(),
+        });
+    }
+
     Ok(EvolutionWorkerResumeState {
+        rng_seed: crate::core::resources::derived_seed(
+            run_id,
+            crate::core::resources::sim_stream::EVOLUTION,
+        ),
+        rng_pos: 0,
+        archive: None,
         chronicle_ids_issued,
         offspring_ids_issued,
         node_id_counter,
@@ -1037,6 +1111,7 @@ pub fn serialize_world_state(
         energy_baseline,
         dormant_cohorts,
         experiment,
+        evolution_worker: None,
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

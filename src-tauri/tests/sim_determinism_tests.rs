@@ -8,14 +8,18 @@
 //! process-random source — `thread_rng()`, or a container whose iteration order is not defined.
 
 use anima_engine_lib::core::resources::{
-    derived_rng, resolve_run_seed, sim_seed_override_from_env, sim_stream, SimRng, DEFAULT_SIM_SEED,
+    derived_rng, derived_sim_rng, resolve_run_seed, sim_seed_override_from_env, sim_stream, SimRng,
+    DEFAULT_SIM_SEED,
 };
 use anima_engine_lib::core::simulation_state::{
     empty_saved_state_for_tests, evolution_worker_resume_state, startup_run_seed, ChronicleEvent,
+    SavedEvolutionWorkerState,
 };
 use anima_engine_lib::evolution::crossover::crossover_genotypes;
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
+use anima_engine_lib::evolution::map_elites::{
+    EliteIndividual, MapElitesArchive, SavedMapElitesArchive,
+};
 use anima_engine_lib::evolution::mutation::mutate_genotype;
 use glam::Vec3;
 use rand::Rng;
@@ -120,6 +124,82 @@ fn named_substreams_are_independent_and_reproducible() {
     assert_ne!(
         world_a, evolution,
         "concurrent substreams must not draw the same numbers"
+    );
+}
+
+#[test]
+fn checkpointable_substream_matches_the_legacy_derived_stream() {
+    for (run_seed, stream) in [
+        (0, sim_stream::EVOLUTION),
+        (1, sim_stream::WORLD_INIT),
+        (9_001, sim_stream::EVOLUTION),
+        (u64::MAX, u64::MAX),
+    ] {
+        let mut legacy = derived_rng(run_seed, stream);
+        let mut checkpointable = derived_sim_rng(run_seed, stream);
+        assert_eq!(
+            draws(&mut legacy, 256),
+            draws(checkpointable.rng(), 256),
+            "changing the RNG wrapper must not change the established substream"
+        );
+    }
+}
+
+#[test]
+fn checkpointable_substream_resumes_at_its_exact_position() {
+    let mut original = derived_sim_rng(9_001, sim_stream::EVOLUTION);
+    let _ = draws(original.rng(), 137);
+    let mut resumed = SimRng::restore(original.seed(), original.stream_pos());
+    assert_eq!(draws(original.rng(), 256), draws(resumed.rng(), 256));
+}
+
+#[test]
+fn exact_evolution_worker_checkpoint_takes_precedence_over_legacy_reconstruction() {
+    let mut state = empty_saved_state_for_tests();
+    let rng = derived_sim_rng(9_001, sim_stream::EVOLUTION);
+    state.evolution_worker = Some(SavedEvolutionWorkerState {
+        rng_seed: rng.seed(),
+        rng_pos: 42,
+        node_id_counter: 77,
+        meta_ai_epoch: 9,
+        meta_ai_history: vec![anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::Stable],
+        chronicle_ids_issued: 12,
+        offspring_ids_issued: 34,
+        archive: SavedMapElitesArchive {
+            grid_resolution: 0.25,
+            elites: Vec::new(),
+        },
+    });
+
+    let resumed = evolution_worker_resume_state(Some(&state), 9_001).expect("checkpoint is valid");
+    assert_eq!(resumed.rng_seed, rng.seed());
+    assert_eq!(resumed.rng_pos, 42);
+    assert_eq!(resumed.node_id_counter, 77);
+    assert_eq!(resumed.chronicle_ids_issued, 12);
+    assert_eq!(resumed.offspring_ids_issued, 34);
+    assert_eq!(resumed.archive.expect("full archive").grid_resolution, 0.25);
+}
+
+#[test]
+fn evolution_worker_checkpoint_rejects_a_stream_from_another_run() {
+    let mut state = empty_saved_state_for_tests();
+    state.evolution_worker = Some(SavedEvolutionWorkerState {
+        rng_seed: 123,
+        rng_pos: 0,
+        node_id_counter: 3,
+        meta_ai_epoch: 0,
+        meta_ai_history: Vec::new(),
+        chronicle_ids_issued: 0,
+        offspring_ids_issued: 0,
+        archive: SavedMapElitesArchive {
+            grid_resolution: 0.25,
+            elites: Vec::new(),
+        },
+    });
+
+    assert!(
+        evolution_worker_resume_state(Some(&state), 9_001).is_err(),
+        "a foreign evolution stream must not silently join this run"
     );
 }
 

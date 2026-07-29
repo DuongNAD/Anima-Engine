@@ -1,6 +1,8 @@
 use anima_engine_lib::evolution::crossover::crossover_genotypes;
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
+use anima_engine_lib::evolution::map_elites::{
+    EliteIndividual, MapElitesArchive, SavedMapElitesArchive,
+};
 use anima_engine_lib::evolution::mutation::mutate_genotype;
 use glam::Vec3;
 use rand::rngs::StdRng;
@@ -121,6 +123,72 @@ fn test_map_elites_archive_replace() {
     // Add B (better, should replace)
     assert!(archive.add_individual(ind_b));
     assert_eq!(archive.grid.get(&(0, 0)).unwrap().fitness, 8.2);
+}
+
+#[test]
+fn full_archive_checkpoint_round_trips_selection_state() {
+    let mut archive = MapElitesArchive::new(0.25);
+    for (id, fitness, features) in [
+        ("lineage-a", 5.5, vec![0.2, 0.4]),
+        ("lineage-b", 8.2, vec![1.2, 0.1]),
+    ] {
+        let mut genotype = MorphologyGenotype::new();
+        genotype.add_node(MorphologyNode {
+            id: fitness as u32,
+            length: fitness,
+            radius: 0.3,
+            mass: 1.0,
+        });
+        assert!(archive.add_individual(EliteIndividual {
+            genotype,
+            fitness,
+            features,
+            lineage_id: id.into(),
+            generation: 7,
+        }));
+    }
+
+    let json = serde_json::to_string(&archive.to_saved()).expect("archive must serialize");
+    let saved: SavedMapElitesArchive =
+        serde_json::from_str(&json).expect("archive must deserialize");
+    let restored = MapElitesArchive::from_saved(saved).expect("valid archive must restore");
+
+    assert_eq!(restored.grid_resolution.to_bits(), 0.25f32.to_bits());
+    assert_eq!(restored.grid.len(), archive.grid.len());
+    for (coords, before) in &archive.grid {
+        let after = restored.grid.get(coords).expect("saved niche must survive");
+        assert_eq!(after.lineage_id, before.lineage_id);
+        assert_eq!(after.generation, before.generation);
+        assert_eq!(after.fitness.to_bits(), before.fitness.to_bits());
+        assert_eq!(after.features, before.features);
+        assert_eq!(after.genotype.nodes[0].id, before.genotype.nodes[0].id);
+    }
+}
+
+#[test]
+fn full_archive_checkpoint_rejects_duplicate_niches() {
+    let mut archive = MapElitesArchive::new(0.25);
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 1,
+        length: 1.0,
+        radius: 0.3,
+        mass: 1.0,
+    });
+    assert!(archive.add_individual(EliteIndividual {
+        genotype,
+        fitness: 1.0,
+        features: vec![0.2, 0.4],
+        lineage_id: "lineage-a".into(),
+        generation: 1,
+    }));
+    let mut saved = archive.to_saved();
+    saved.elites.push(saved.elites[0].clone());
+
+    assert!(
+        MapElitesArchive::from_saved(saved).is_err(),
+        "a duplicate niche is corrupt state, not a last-write-wins archive"
+    );
 }
 
 #[test]

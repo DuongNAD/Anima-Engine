@@ -61,10 +61,21 @@ pub struct EnvironmentalEventReceiver(
     pub crossbeam_channel::Receiver<crate::evolution::meta_ai::EnvironmentalEvent>,
 );
 
+/// An event removed from the worker channel only to unblock a checkpoint barrier.
+///
+/// It is consumed by the ordinary schedule on its next run, preserving the same one-tick boundary
+/// it would have had if the operator had never requested a save.
+#[derive(Resource, Default)]
+pub struct DeferredEnvironmentalEvent(pub Option<crate::evolution::meta_ai::EnvironmentalEvent>);
+
 pub fn receive_environmental_events_system(
     receiver: Res<EnvironmentalEventReceiver>,
+    mut deferred: Option<ResMut<DeferredEnvironmentalEvent>>,
     mut active_event: ResMut<ActiveEnvironmentEvent>,
 ) {
+    if let Some(event) = deferred.as_mut().and_then(|deferred| deferred.0.take()) {
+        active_event.0 = event;
+    }
     while let Ok(event) = receiver.0.try_recv() {
         active_event.0 = event;
     }

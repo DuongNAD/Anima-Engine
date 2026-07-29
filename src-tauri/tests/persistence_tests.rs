@@ -135,6 +135,10 @@ fn test_engine_save_load_lifecycle() {
 
     assert!(saved_state.tick_count > 0);
     assert_eq!(saved_state.agents.len(), 10);
+    assert!(
+        saved_state.evolution_worker.is_some(),
+        "a live schema-6 save must include its evolution worker checkpoint"
+    );
 
     // Stop engine
     engine.stop();
