@@ -4,7 +4,7 @@ use glam::{Quat, Vec3};
 
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::{
-    HomeostaticState, LastTransitionState, Transition, TransitionSender,
+    HomeostaticState, LastTransitionState, LearningQueueDiagnostics, Transition, TransitionSender,
 };
 use anima_engine_lib::ai::model::hrrl_learning_system;
 use anima_engine_lib::core::ecs::{
@@ -222,4 +222,117 @@ fn test_transition_collection_and_sending() {
     let last = world.get::<LastTransitionState>(agent_entity).unwrap();
     assert_eq!(last.state[3], 90.0); // energy index
     assert_eq!(last.state[5], 90.0); // hydration index
+}
+
+#[test]
+fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
+    let mut world = World::new();
+    let (tx, rx) = bounded::<Transition>(1);
+    tx.send(Transition {
+        state: [0.0; 15],
+        action: [0.0; 4],
+        reward: 0.0,
+        next_state: [0.0; 15],
+    })
+    .expect("the queue starts connected and empty");
+    world.insert_resource(TransitionSender(tx));
+    world.insert_resource(LearningQueueDiagnostics::default());
+    world.spawn((
+        Agent,
+        Position(Vec3::ZERO),
+        Rotation(Quat::IDENTITY),
+        HomeostaticState {
+            energy: 90.0,
+            energy_target: 100.0,
+            hydration: 90.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 1.0,
+        },
+        LastTransitionState {
+            state: [0.1; 15],
+            action: [0.2; 4],
+            has_last: true,
+        },
+    ));
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(hrrl_learning_system);
+    let started = std::time::Instant::now();
+    schedule.run(&mut world);
+
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(100),
+        "a saturated learner must not stall the simulation thread"
+    );
+    let snapshot = world.resource::<LearningQueueDiagnostics>().snapshot();
+    assert_eq!(snapshot.queued, 0);
+    assert_eq!(snapshot.full_rejections, 1);
+    assert_eq!(snapshot.disconnected_rejections, 0);
+    assert_eq!(snapshot.backpressure_skipped, 0);
+
+    drop(rx);
+    schedule.run(&mut world);
+    let snapshot = world.resource::<LearningQueueDiagnostics>().snapshot();
+    assert_eq!(snapshot.queued, 0);
+    assert_eq!(snapshot.full_rejections, 1);
+    assert_eq!(snapshot.disconnected_rejections, 1);
+    assert_eq!(snapshot.backpressure_skipped, 0);
+}
+
+#[test]
+fn available_learning_slots_rotate_fairly_across_agents() {
+    let mut world = World::new();
+    let (tx, rx) = bounded::<Transition>(1);
+    world.insert_resource(TransitionSender(tx));
+    world.insert_resource(LearningQueueDiagnostics::default());
+    for marker in [1.0, 2.0, 3.0] {
+        let mut state = [0.0; 15];
+        state[0] = marker;
+        world.spawn((
+            Agent,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            HomeostaticState {
+                energy: 90.0,
+                energy_target: 100.0,
+                hydration: 90.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 1.0,
+            },
+            LastTransitionState {
+                state,
+                action: [0.2; 4],
+                has_last: true,
+            },
+        ));
+    }
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(hrrl_learning_system);
+    schedule.run(&mut world);
+    let first = rx.try_recv().expect("one free slot accepts one transition");
+
+    for (index, mut last) in world
+        .query::<&mut LastTransitionState>()
+        .iter_mut(&mut world)
+        .enumerate()
+    {
+        last.state[0] = (index + 1) as f32;
+    }
+    schedule.run(&mut world);
+    let second = rx
+        .try_recv()
+        .expect("the free slot on the next tick accepts one transition");
+
+    assert_ne!(
+        first.state[0], second.state[0],
+        "a perpetually saturated learner must not always train on the first ECS agent"
+    );
+    let snapshot = world.resource::<LearningQueueDiagnostics>().snapshot();
+    assert_eq!(snapshot.queued, 2);
+    assert_eq!(snapshot.backpressure_skipped, 4);
 }

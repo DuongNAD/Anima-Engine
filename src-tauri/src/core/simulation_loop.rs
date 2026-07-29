@@ -897,6 +897,7 @@ impl SimulationEngine {
             world.insert_resource(EnvironmentalSpawnSettings::default());
 
             world.insert_resource(TransitionSender(trans_tx));
+            world.insert_resource(crate::ai::hrrl::LearningQueueDiagnostics::default());
 
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
             world.insert_resource(BevyEvolutionRunning(evolution_running));
@@ -1540,9 +1541,15 @@ impl SimulationEngine {
 
                 let telemetry_ns = elapsed_ns(telemetry_started);
                 if capturing {
+                    let learning_queue = world
+                        .get_resource::<crate::ai::hrrl::LearningQueueDiagnostics>()
+                        .map(|diagnostics| diagnostics.snapshot());
                     if let Some(mut sink) =
                         world.get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
                     {
+                        if let Some(snapshot) = learning_queue {
+                            sink.note_learning_queue(snapshot);
+                        }
                         sink.commit(tick_count, schedule_ns, telemetry_ns);
                     }
                 }

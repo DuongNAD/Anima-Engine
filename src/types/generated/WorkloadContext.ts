@@ -20,16 +20,34 @@ world_height: number,
  * Whether the two dimensions above were read from a live `ResourceField`. `false` means no
  * field was present and the dimensions are unknown rather than zero-sized.
  */
-dimensions_measured: boolean,
+dimensions_measured: boolean, 
 /**
  * Smallest live population among the samples retained in this export's window.
  *
  * `None` means the capture retained no samples. This field was added compatibly: older
  * exports deserialize with an unknown population rather than inventing zero.
  */
-agent_count_min: number | null,
+agent_count_min: number | null, 
 /**
  * Largest live population among the samples retained in this export's window.
  */
-agent_count_max: number | null,
-};
+agent_count_max: number | null, 
+/**
+ * Transitions accepted by the learner queue since this run started, observed after the latest
+ * schedule processed while the capture was active. For a completed `max_samples` capture this
+ * is the final retained schedule. `None` means this build/run did not expose diagnostics.
+ */
+learning_transitions_queued_total: number | null, 
+/**
+ * Transitions rejected because the bounded learner queue was full, cumulative since run start.
+ */
+learning_transitions_full_rejections_total: number | null, 
+/**
+ * Transitions rejected because the learner had disconnected, cumulative since run start.
+ */
+learning_transitions_disconnected_rejections_total: number | null, 
+/**
+ * Eligible transitions not attempted because the bounded learner queue had no room, cumulative
+ * since run start. A rotating window makes this load shedding fair across agents.
+ */
+learning_transitions_backpressure_skipped_total: number | null, };

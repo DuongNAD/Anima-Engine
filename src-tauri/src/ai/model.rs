@@ -1032,6 +1032,21 @@ pub fn lifetime_learning_system(
     }
 }
 
+fn cyclic_window_contains(index: usize, start: usize, len: usize, total: usize) -> bool {
+    if len == 0 || total == 0 {
+        return false;
+    }
+    if len >= total {
+        return true;
+    }
+    let end = start + len;
+    if end <= total {
+        index >= start && index < end
+    } else {
+        index >= start || index < end - total
+    }
+}
+
 pub fn hrrl_learning_system(
     mut agent_set: ParamSet<(
         Query<(&Position, &HomeostaticState), (With<crate::core::ecs::Agent>, With<Prey>)>,
@@ -1047,6 +1062,7 @@ pub fn hrrl_learning_system(
     )>,
     food_query: Query<&Position, With<Food>>,
     transition_sender: Option<Res<crate::ai::hrrl::TransitionSender>>,
+    queue_diagnostics: Option<Res<crate::ai::hrrl::LearningQueueDiagnostics>>,
     spatial_grid: Option<Res<crate::physics::SpatialHashGrid>>,
     bounds: Option<Res<crate::core::ecs::MapBounds>>,
     collider_query: Query<(&Position, &crate::physics::SpatialCollider)>,
@@ -1054,6 +1070,7 @@ pub fn hrrl_learning_system(
     predator_tag_query: Query<(), With<Predator>>,
     prey_tag_query: Query<(), With<Prey>>,
     parent_agent_query: Query<&ParentAgent>,
+    mut learning_cursor: Local<usize>,
 ) {
     let mut prey_data = [(glam::Vec3::ZERO, 0.0f32); 256];
     let mut prey_count = 0;
@@ -1064,6 +1081,40 @@ pub fn hrrl_learning_system(
         }
     }
 
+    let eligible_count = {
+        let mut agent_query = agent_set.p1();
+        agent_query
+            .iter_mut()
+            .filter(|(_, _, _, _, last, _, _)| last.has_last)
+            .count()
+    };
+    let (window_start, attempt_budget) = if let Some(ref sender) = transition_sender {
+        let free_slots = sender
+            .0
+            .capacity()
+            .map(|capacity| capacity.saturating_sub(sender.0.len()))
+            .unwrap_or(eligible_count);
+        // Even a full bounded queue gets one non-blocking probe. It distinguishes saturation from
+        // a dead learner without retrying once per agent; the rotating cursor makes that probe fair.
+        let attempts = if eligible_count > 0 && free_slots == 0 {
+            1
+        } else {
+            free_slots.min(eligible_count)
+        };
+        let start = if eligible_count == 0 {
+            0
+        } else {
+            *learning_cursor % eligible_count
+        };
+        if let Some(ref diagnostics) = queue_diagnostics {
+            diagnostics.record_backpressure_skipped(eligible_count.saturating_sub(attempts));
+        }
+        (start, attempts)
+    } else {
+        (0, 0)
+    };
+
+    let mut eligible_index = 0usize;
     let mut agent_query = agent_set.p1();
     for (entity, agent_pos, rotation, mut homeo, mut last, opt_predator, opt_sensors) in
         agent_query.iter_mut()
@@ -1164,19 +1215,48 @@ pub fn hrrl_learning_system(
 
         if last.has_last {
             let reward = homeo.previous_deviation - current_deviation;
-            if let Some(ref sender) = transition_sender {
+            let should_attempt = cyclic_window_contains(
+                eligible_index,
+                window_start,
+                attempt_budget,
+                eligible_count,
+            );
+            eligible_index += 1;
+            if should_attempt {
+                let sender = transition_sender
+                    .as_ref()
+                    .expect("an attempt budget exists only with a transition sender");
                 let transition = crate::ai::hrrl::Transition {
                     state: last.state,
                     action: last.action,
                     reward,
                     next_state: current_state,
                 };
-                let _ = sender.0.send(transition);
+                match sender.0.try_send(transition) {
+                    Ok(()) => {
+                        if let Some(ref diagnostics) = queue_diagnostics {
+                            diagnostics.record_queued();
+                        }
+                    }
+                    Err(crossbeam_channel::TrySendError::Full(_)) => {
+                        if let Some(ref diagnostics) = queue_diagnostics {
+                            diagnostics.record_full_rejection();
+                        }
+                    }
+                    Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                        if let Some(ref diagnostics) = queue_diagnostics {
+                            diagnostics.record_disconnected_rejection();
+                        }
+                    }
+                }
             }
         }
 
         homeo.previous_deviation = current_deviation;
         last.state = current_state;
+    }
+    if eligible_count > 0 {
+        *learning_cursor = (window_start + attempt_budget) % eligible_count;
     }
 }
 
