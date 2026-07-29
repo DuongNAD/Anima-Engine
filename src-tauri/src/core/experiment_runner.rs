@@ -1008,6 +1008,19 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
 
 // ---- Ensemble (AE-108 / AE-S14) --------------------------------------------------------------
 
+/// The inferential procedure used to produce a report's two-sided 95% confidence interval.
+///
+/// This travels with JSON artifacts so a result remains interpretable without knowing which
+/// executable version produced it. Enclosing reports use `Option<ConfidenceIntervalMethod>` so
+/// legacy artifacts that predate this metadata continue to deserialize as `None`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfidenceIntervalMethod {
+    StudentTConservativeTable,
+    PairedStudentTConservativeTable,
+    WelchStudentTConservativeTable,
+}
+
 /// A per-observable statistical summary over an ensemble's completed runs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MetricSummary {
@@ -1018,9 +1031,11 @@ pub struct MetricSummary {
     pub std: Option<f64>,
     pub min: f64,
     pub max: f64,
-    /// 95% normal-approx confidence interval on the mean (`mean ± 1.96·std/√n`).
+    /// 95% Student-*t* confidence interval on the mean (`df = n − 1`).
     pub ci95_low: Option<f64>,
     pub ci95_high: Option<f64>,
+    /// Procedure used for the interval; `None` in legacy or non-estimable artifacts.
+    pub ci95_method: Option<ConfidenceIntervalMethod>,
 }
 
 /// The result of a seed-set ensemble: every requested run preserved (including failures), a
@@ -1135,8 +1150,11 @@ pub struct PairedEffect {
     pub paired_sd: Option<f64>,
     /// Standard error of the mean paired delta (`sd / √n`).
     pub paired_se: Option<f64>,
+    /// 95% paired Student-*t* interval on `paired_mean_delta` (`df = n − 1`).
     pub ci95_low: Option<f64>,
     pub ci95_high: Option<f64>,
+    /// Procedure used for the interval; `None` in legacy or non-estimable artifacts.
+    pub ci95_method: Option<ConfidenceIntervalMethod>,
     /// Cohen's *d_z* = `paired_mean_delta / paired_sd`; `None` when the paired SD is 0 or n < 2.
     pub paired_dz: Option<f64>,
 }
@@ -1283,6 +1301,72 @@ pub fn run_paired_ensemble_with_control<M: ExperimentModel>(
     })
 }
 
+/// Two-sided 95% Student-*t* critical value, selected conservatively.
+///
+/// The exact NIST 0.975 quantiles are used for integer degrees of freedom 1–30, which covers the
+/// experiment contract's normal 5–30-seed range. For fractional Welch degrees of freedom, flooring
+/// the value selects a wider interval than rounding upward. Above 30, the next-lowest tabulated
+/// anchor is retained; this stays deterministic and conservative without adding a statistical
+/// distribution dependency to the simulation runtime.
+fn conservative_student_t_critical_95(df: f64) -> f64 {
+    const T_975_DF_1_TO_30: [f64; 30] = [
+        12.706_204_736_432_095,
+        4.302_652_729_696_142,
+        3.182_446_305_284_264,
+        2.776_445_105_197_798_7,
+        2.570_581_835_636_314,
+        2.446_911_848_791_681,
+        2.364_624_251_010_299_3,
+        2.306_004_135_204_166,
+        2.262_157_162_854_099_3,
+        2.228_138_851_964_938_5,
+        2.200_985_160_082_949,
+        2.178_812_829_663_417_7,
+        2.160_368_656_461_012_7,
+        2.144_786_687_916_927_3,
+        2.131_449_545_559_323,
+        2.119_905_299_221_011_2,
+        2.109_815_577_833_181,
+        2.100_922_040_240_96,
+        2.093_024_054_408_263,
+        2.085_963_447_265_836_4,
+        2.079_613_844_727_662,
+        2.073_873_067_904_015,
+        2.068_657_610_419_041,
+        2.063_898_561_628_021,
+        2.059_538_552_753_294,
+        2.055_529_438_642_871,
+        2.051_830_516_480_289,
+        2.048_407_141_795_244,
+        2.045_229_642_132_703,
+        2.042_272_456_301_238,
+    ];
+
+    if !df.is_finite() || df < 1.0 {
+        return f64::NAN;
+    }
+    let lower_df = df.floor();
+    if lower_df <= 30.0 {
+        return T_975_DF_1_TO_30[lower_df as usize - 1];
+    }
+    if lower_df < 40.0 {
+        return T_975_DF_1_TO_30[29];
+    }
+    if lower_df < 60.0 {
+        return 2.021_075_390_306_273_3;
+    }
+    if lower_df < 80.0 {
+        return 2.000_297_821_058_262;
+    }
+    if lower_df < 100.0 {
+        return 1.990_063_421_071_4;
+    }
+    if lower_df < 120.0 {
+        return 1.983_971_518_449_633_4;
+    }
+    1.979_930_405_052_777
+}
+
 /// Build a [`PairedEffect`], honouring the defined-ness contract documented on that type.
 fn paired_effect(
     name: &str,
@@ -1303,6 +1387,7 @@ fn paired_effect(
         paired_se: None,
         ci95_low: None,
         ci95_high: None,
+        ci95_method: None,
         paired_dz: None,
     };
     if n == 0 {
@@ -1322,7 +1407,12 @@ fn paired_effect(
     }
     let sd = delta_stats.sample_sd.expect("n >= 2 has a sample SD");
     let se = require_finite_aggregate(name, "paired standard error", sd / nf.sqrt())?;
-    let half = require_finite_aggregate(name, "paired 95% confidence half-width", 1.96 * se)?;
+    let critical = require_finite_aggregate(
+        name,
+        "paired 95% Student-t critical value",
+        conservative_student_t_critical_95(nf - 1.0),
+    )?;
+    let half = require_finite_aggregate(name, "paired 95% confidence half-width", critical * se)?;
     e.paired_sd = Some(sd);
     e.paired_se = Some(se);
     e.ci95_low = Some(require_finite_aggregate(
@@ -1335,6 +1425,7 @@ fn paired_effect(
         "paired 95% confidence upper bound",
         dm + half,
     )?);
+    e.ci95_method = Some(ConfidenceIntervalMethod::PairedStudentTConservativeTable);
     // Zero paired variance ⇒ d_z is undefined (division by zero), never ±inf.
     if sd > 0.0 {
         e.paired_dz = Some(require_finite_aggregate(
@@ -1352,8 +1443,8 @@ fn paired_effect(
 ///
 /// Reports the raw **mean difference** (treatment − control, in the observable's own unit), a
 /// **standardized** effect size (Hedges' *g* — Cohen's *d* with the small-sample correction), and a
-/// 95% normal-approximation interval on the mean difference. Sample counts are the *completed* runs
-/// on each side; failed runs are never silently folded in (they are listed on
+/// 95% Welch–Student-*t* interval on the mean difference. Sample counts are the *completed* runs on
+/// each side; failed runs are never silently folded in (they are listed on
 /// [`EnsembleComparison`]).
 ///
 /// This is a descriptive statistic over a seed ensemble, **not** a significance test and **not**
@@ -1373,9 +1464,11 @@ pub struct EffectSize {
     /// Hedges' *g*: the mean difference in pooled-SD units, small-sample corrected. `None` when
     /// either group has fewer than two samples or the pooled SD is zero.
     pub hedges_g: Option<f64>,
-    /// 95% normal-approximation interval on the **mean difference**.
+    /// 95% Welch–Student-*t* interval on the **mean difference**.
     pub ci95_low: Option<f64>,
     pub ci95_high: Option<f64>,
+    /// Procedure used for the interval; `None` in legacy or non-estimable artifacts.
+    pub ci95_method: Option<ConfidenceIntervalMethod>,
 }
 
 /// A control-vs-treatment ensemble comparison: per-observable effect sizes over the observables both
@@ -1530,15 +1623,39 @@ fn effect_size(
         _ => None,
     };
 
-    // 95% normal-approx interval on the mean difference (independent samples).
+    // 95% Welch-Student-t interval on the mean difference (independent samples). Scaling both
+    // standard deviations before calculating SE and Satterthwaite df avoids overflow for otherwise
+    // finite extreme-valued experiments.
     let (ci95_low, ci95_high) = if can_estimate_spread {
-        let se = require_finite_aggregate(
-            name,
-            "independent standard error",
-            (control_sd / nc.sqrt()).hypot(treatment_sd / nt.sqrt()),
-        )?;
-        let half =
-            require_finite_aggregate(name, "independent 95% confidence half-width", 1.96 * se)?;
+        let sd_scale = control_sd.max(treatment_sd);
+        let half = if sd_scale > 0.0 {
+            let control_scaled = control_sd / sd_scale;
+            let treatment_scaled = treatment_sd / sd_scale;
+            let control_se_variance = control_scaled * control_scaled / nc;
+            let treatment_se_variance = treatment_scaled * treatment_scaled / nt;
+            let se_scaled = control_se_variance
+                .max(0.0)
+                .sqrt()
+                .hypot(treatment_se_variance.max(0.0).sqrt());
+            let se =
+                require_finite_aggregate(name, "independent standard error", se_scaled * sd_scale)?;
+            let numerator = (control_se_variance + treatment_se_variance).powi(2);
+            let denominator = control_se_variance.powi(2) / (nc - 1.0)
+                + treatment_se_variance.powi(2) / (nt - 1.0);
+            let welch_df = require_finite_aggregate(
+                name,
+                "Welch-Satterthwaite degrees of freedom",
+                numerator / denominator,
+            )?;
+            let critical = require_finite_aggregate(
+                name,
+                "independent 95% Student-t critical value",
+                conservative_student_t_critical_95(welch_df),
+            )?;
+            require_finite_aggregate(name, "independent 95% confidence half-width", critical * se)?
+        } else {
+            0.0
+        };
         (
             Some(require_finite_aggregate(
                 name,
@@ -1565,6 +1682,8 @@ fn effect_size(
         hedges_g,
         ci95_low,
         ci95_high,
+        ci95_method: can_estimate_spread
+            .then_some(ConfidenceIntervalMethod::WelchStudentTConservativeTable),
     })
 }
 
@@ -1702,10 +1821,15 @@ fn summarize_metrics(completed: &[&RunResult]) -> Result<Vec<MetricSummary>, Exp
         let min = samples.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
         let (ci95_low, ci95_high) = if let Some(std) = std {
+            let critical = require_finite_aggregate(
+                name,
+                "95% Student-t critical value",
+                conservative_student_t_critical_95((n - 1) as f64),
+            )?;
             let half = require_finite_aggregate(
                 name,
                 "95% confidence half-width",
-                std / (n as f64).sqrt() * 1.96,
+                std / (n as f64).sqrt() * critical,
             )?;
             (
                 Some(require_finite_aggregate(
@@ -1722,6 +1846,7 @@ fn summarize_metrics(completed: &[&RunResult]) -> Result<Vec<MetricSummary>, Exp
         } else {
             (None, None)
         };
+        let ci95_method = std.map(|_| ConfidenceIntervalMethod::StudentTConservativeTable);
         out.push(MetricSummary {
             observable: name.to_owned(),
             n,
@@ -1731,6 +1856,7 @@ fn summarize_metrics(completed: &[&RunResult]) -> Result<Vec<MetricSummary>, Exp
             max,
             ci95_low,
             ci95_high,
+            ci95_method,
         });
     }
     Ok(out)
@@ -2119,6 +2245,82 @@ mod tests {
     }
 
     #[test]
+    fn student_t_critical_values_follow_the_nist_95_percent_table() {
+        assert!((conservative_student_t_critical_95(1.0) - 12.706_204_736_432_095).abs() < 1e-12);
+        assert!((conservative_student_t_critical_95(2.0) - 4.302_652_729_696_142).abs() < 1e-12);
+        assert!((conservative_student_t_critical_95(30.0) - 2.042_272_456_301_238).abs() < 1e-12);
+
+        let mut previous = f64::INFINITY;
+        for df in 1..=30 {
+            let current = conservative_student_t_critical_95(df as f64);
+            assert!(current < previous, "critical values must fall as df grows");
+            previous = current;
+        }
+
+        assert_eq!(
+            conservative_student_t_critical_95(1.99),
+            conservative_student_t_critical_95(1.0),
+            "fractional Welch df uses the conservative lower integer"
+        );
+        assert!(
+            conservative_student_t_critical_95(1_000_000.0) > 1.96,
+            "large-df fallback remains conservative relative to the normal limit"
+        );
+        assert!(conservative_student_t_critical_95(0.0).is_nan());
+        assert!(conservative_student_t_critical_95(f64::NAN).is_nan());
+    }
+
+    #[test]
+    fn small_sample_metric_ci_uses_student_t_not_normal_cutoff() {
+        let registry = ObservableRegistry::reference_default();
+        let manifest = baseline_manifest(vec![10, 11]);
+        let mut first =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 10, None, None);
+        let mut second =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 11, None, None);
+        first.final_observables = vec![("pilot".into(), 0.0)];
+        second.final_observables = vec![("pilot".into(), 2.0)];
+
+        let metrics = summarize_metrics(&[&first, &second]).expect("two-sample summary");
+        let pilot = metrics.first().expect("pilot summary");
+        // For [0, 2], mean=1, sample SD=sqrt(2), SE=1 and df=1. NIST t(0.975, 1).
+        let critical = 12.706_204_736_432_095;
+        assert!((pilot.ci95_low.expect("lower bound") - (1.0 - critical)).abs() < 1e-12);
+        assert!((pilot.ci95_high.expect("upper bound") - (1.0 + critical)).abs() < 1e-12);
+        let encoded = serde_json::to_value(pilot).expect("summary JSON");
+        assert_eq!(encoded["ci95_method"], "student_t_conservative_table");
+    }
+
+    #[test]
+    fn small_sample_paired_ci_uses_student_t_not_normal_cutoff() {
+        let effect = paired_effect("pilot", 2, &[0.0, 0.0], &[0.0, 2.0], &[0.0, 2.0])
+            .expect("paired effect");
+
+        // The paired deltas [0, 2] have mean=1, SE=1 and df=1.
+        let critical = 12.706_204_736_432_095;
+        assert!((effect.ci95_low.expect("lower bound") - (1.0 - critical)).abs() < 1e-12);
+        assert!((effect.ci95_high.expect("upper bound") - (1.0 + critical)).abs() < 1e-12);
+        let encoded = serde_json::to_value(&effect).expect("paired JSON");
+        assert_eq!(
+            encoded["ci95_method"],
+            "paired_student_t_conservative_table"
+        );
+    }
+
+    #[test]
+    fn independent_ci_uses_welch_degrees_of_freedom() {
+        let effect = effect_size("pilot", &[0.0, 2.0], &[2.0, 6.0]).expect("independent effect");
+
+        // SE² = 1 + 4 = 5 and Welch df = 25/17 ≈ 1.47. The deterministic table uses the
+        // conservative lower integer df=1, rather than the pooled df=2 or a normal cutoff.
+        let half = 12.706_204_736_432_095 * 5.0_f64.sqrt();
+        assert!((effect.ci95_low.expect("lower bound") - (3.0 - half)).abs() < 1e-12);
+        assert!((effect.ci95_high.expect("upper bound") - (3.0 + half)).abs() < 1e-12);
+        let encoded = serde_json::to_value(&effect).expect("independent JSON");
+        assert_eq!(encoded["ci95_method"], "welch_student_t_conservative_table");
+    }
+
+    #[test]
     fn optional_inference_fields_read_existing_numeric_artifacts() {
         let metric: MetricSummary = serde_json::from_value(serde_json::json!({
             "observable": "legacy",
@@ -2134,6 +2336,7 @@ mod tests {
         assert_eq!(metric.std, Some(2.0));
         assert_eq!(metric.ci95_low, Some(8.0));
         assert_eq!(metric.ci95_high, Some(12.0));
+        assert_eq!(metric.ci95_method, None);
 
         let effect: EffectSize = serde_json::from_value(serde_json::json!({
             "observable": "legacy",
@@ -2152,6 +2355,7 @@ mod tests {
         assert_eq!(effect.hedges_g, Some(1.2));
         assert_eq!(effect.ci95_low, Some(0.5));
         assert_eq!(effect.ci95_high, Some(3.5));
+        assert_eq!(effect.ci95_method, None);
     }
 
     // A test-double model that fails to construct for one poisoned seed, proving the ensemble keeps
