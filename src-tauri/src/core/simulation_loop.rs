@@ -17,7 +17,10 @@ use crate::core::thread_supervisor as sup;
 // The shared learner — its objective, loop and backend threads — lives in `core::training`.
 #[cfg(feature = "ml-wgpu")]
 use crate::core::training::spawn_wgpu_learner;
-use crate::core::training::{spawn_ndarray_learner, ModelUpdate};
+use crate::core::training::{
+    spawn_ndarray_learner, try_send_without_blocking, ModelUpdate, ModelUpdateDiagnostics,
+    MODEL_UPDATE_QUEUE_CAPACITY,
+};
 use crate::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
@@ -217,8 +220,10 @@ impl SimulationEngine {
         let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
 
         let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
-        let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
+        let (model_tx, model_rx) =
+            crossbeam_channel::bounded::<ModelUpdate>(MODEL_UPDATE_QUEUE_CAPACITY);
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
+        let model_update_diagnostics = ModelUpdateDiagnostics::default();
         let learner_seed = crate::core::resources::resolve_run_seed(
             crate::core::world_artifact::world_seed_from_disk(),
         );
@@ -249,6 +254,7 @@ impl SimulationEngine {
             trans_rx.clone(),
             model_tx.clone(),
             old_model_rx.clone(),
+            model_update_diagnostics.clone(),
             learner_seed,
         );
 
@@ -835,13 +841,19 @@ impl SimulationEngine {
                         match new_model {
                             ModelUpdate::NdArray(new_m) => {
                                 if let Some(old) = brain_model.replace_ndarray_model(new_m) {
-                                    let _ = old_model_tx_inference.send(ModelUpdate::NdArray(old));
+                                    let _ = try_send_without_blocking(
+                                        &old_model_tx_inference,
+                                        ModelUpdate::NdArray(old),
+                                    );
                                 }
                             }
                             #[cfg(feature = "ml-wgpu")]
                             ModelUpdate::Wgpu(new_m) => {
                                 if let Some(old) = brain_model.replace_wgpu_model(new_m) {
-                                    let _ = old_model_tx_inference.send(ModelUpdate::Wgpu(old));
+                                    let _ = try_send_without_blocking(
+                                        &old_model_tx_inference,
+                                        ModelUpdate::Wgpu(old),
+                                    );
                                 }
                             }
                         }
@@ -902,6 +914,7 @@ impl SimulationEngine {
 
             world.insert_resource(TransitionSender(trans_tx));
             world.insert_resource(crate::ai::hrrl::LearningQueueDiagnostics::default());
+            world.insert_resource(model_update_diagnostics);
 
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
             world.insert_resource(BevyEvolutionRunning(evolution_running));
@@ -1548,11 +1561,17 @@ impl SimulationEngine {
                     let learning_queue = world
                         .get_resource::<crate::ai::hrrl::LearningQueueDiagnostics>()
                         .map(|diagnostics| diagnostics.snapshot());
+                    let model_updates = world
+                        .get_resource::<ModelUpdateDiagnostics>()
+                        .map(|diagnostics| diagnostics.snapshot());
                     if let Some(mut sink) =
                         world.get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
                     {
                         if let Some(snapshot) = learning_queue {
                             sink.note_learning_queue(snapshot);
+                        }
+                        if let Some(snapshot) = model_updates {
+                            sink.note_model_updates(snapshot);
                         }
                         sink.commit(tick_count, schedule_ns, telemetry_ns);
                     }

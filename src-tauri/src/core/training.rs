@@ -6,11 +6,12 @@
 //!
 //! The part worth reading before changing anything is the sign discussion on [`a2c_loss`].
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use bevy_ecs::prelude::Resource;
 use burn::backend::Autodiff;
 use burn::module::AutodiffModule;
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
@@ -33,6 +34,13 @@ pub const HIDDEN_DIM: usize = 64;
 pub const ACTION_DIM: usize = 4;
 /// Transitions accumulated before one optimiser step.
 pub const BATCH_SIZE: usize = 32;
+/// At most one trained policy may wait for inference.
+///
+/// Model snapshots are replaceable intermediate results, not an event log. A deeper queue makes
+/// inference replay stale policies and lets a slow consumer stop the learner. The producer uses
+/// [`try_send_without_blocking`], and the learner waits before taking another batch while this slot
+/// is occupied, so every completed optimiser step normally reaches inference.
+pub(crate) const MODEL_UPDATE_QUEUE_CAPACITY: usize = 1;
 /// Adam step size for the shared model.
 const LEARNING_RATE: f64 = 1e-3;
 /// Discount applied to the bootstrapped next-state value in the TD target.
@@ -44,13 +52,84 @@ pub enum ModelUpdate {
     Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
 }
 
-/// The four handles a learner thread needs: the running flag, the transition receiver, the model
-/// sender and the old-model receiver.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ModelUpdateDelivery {
+    Published,
+    Backpressured,
+    Disconnected,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ModelUpdateSnapshot {
+    pub published: u64,
+    pub backpressured: u64,
+    pub disconnected: u64,
+}
+
+#[derive(Default)]
+struct ModelUpdateCounters {
+    published: AtomicU64,
+    backpressured: AtomicU64,
+    disconnected: AtomicU64,
+}
+
+/// Monotonic accounting for trained-policy delivery to the inference worker.
+///
+/// Publishing is nonblocking because a policy snapshot must never strand either worker. The learner
+/// normally paces itself before training while one snapshot is pending; these counters make any
+/// raced backpressure or disconnect visible and disclose how many optimiser steps reached inference.
+#[derive(Resource, Clone, Default)]
+pub struct ModelUpdateDiagnostics(Arc<ModelUpdateCounters>);
+
+impl ModelUpdateDiagnostics {
+    fn increment(counter: &AtomicU64) {
+        let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            Some(value.saturating_add(1))
+        });
+    }
+
+    pub(crate) fn record(&self, outcome: ModelUpdateDelivery) {
+        match outcome {
+            ModelUpdateDelivery::Published => Self::increment(&self.0.published),
+            ModelUpdateDelivery::Backpressured => Self::increment(&self.0.backpressured),
+            ModelUpdateDelivery::Disconnected => Self::increment(&self.0.disconnected),
+        }
+    }
+
+    pub fn snapshot(&self) -> ModelUpdateSnapshot {
+        ModelUpdateSnapshot {
+            published: self.0.published.load(Ordering::Relaxed),
+            backpressured: self.0.backpressured.load(Ordering::Relaxed),
+            disconnected: self.0.disconnected.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Deliver a replaceable model snapshot without ever waiting for the consumer.
+///
+/// The returned value is intentionally explicit so callers choose how to react to backpressure and
+/// can stop once the consumer has disconnected. The same primitive returns retired models to the
+/// learner for off-path destruction; when that recycle queue is full, dropping on the inference
+/// thread is still safer than blocking the simulation's response path.
+pub(crate) fn try_send_without_blocking<T>(
+    sender: &crossbeam_channel::Sender<T>,
+    value: T,
+) -> ModelUpdateDelivery {
+    match sender.try_send(value) {
+        Ok(()) => ModelUpdateDelivery::Published,
+        Err(crossbeam_channel::TrySendError::Full(_)) => ModelUpdateDelivery::Backpressured,
+        Err(crossbeam_channel::TrySendError::Disconnected(_)) => ModelUpdateDelivery::Disconnected,
+    }
+}
+
+/// The handles a learner thread needs: liveness, transition/model channels, delivery accounting and
+/// the run seed.
 pub type LearnArgs = (
     Arc<AtomicBool>,
     crossbeam_channel::Receiver<Transition>,
     crossbeam_channel::Sender<ModelUpdate>,
     crossbeam_channel::Receiver<ModelUpdate>,
+    ModelUpdateDiagnostics,
     u64,
 );
 
@@ -60,7 +139,7 @@ pub fn spawn_ndarray_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx, seed) = args;
+    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed) = args;
     thread::spawn(move || {
         // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
         // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
@@ -71,6 +150,7 @@ pub fn spawn_ndarray_learner(
             trans_rx,
             model_tx,
             old_model_rx,
+            model_diagnostics,
             device,
             seed,
             ModelUpdate::NdArray,
@@ -84,7 +164,7 @@ pub fn spawn_wgpu_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx, seed) = args;
+    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed) = args;
     thread::spawn(move || {
         let _exit = exit;
         let device = burn_wgpu::WgpuDevice::default();
@@ -93,6 +173,7 @@ pub fn spawn_wgpu_learner(
             trans_rx,
             model_tx,
             old_model_rx,
+            model_diagnostics,
             device,
             seed,
             ModelUpdate::Wgpu,
@@ -169,6 +250,7 @@ fn run_training_loop<B>(
     trans_rx: crossbeam_channel::Receiver<Transition>,
     model_tx: crossbeam_channel::Sender<ModelUpdate>,
     old_model_rx: crossbeam_channel::Receiver<ModelUpdate>,
+    model_diagnostics: ModelUpdateDiagnostics,
     device: B::Device,
     seed: u64,
     to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
@@ -189,6 +271,20 @@ fn run_training_loop<B>(
 
     let mut batch = Vec::new();
     while running.load(Ordering::SeqCst) {
+        while let Ok(old_model) = old_model_rx.try_recv() {
+            drop(old_model);
+        }
+
+        // An optimiser step is useful only if inference can eventually observe its policy. The
+        // previous blocking `send` accidentally enforced that pacing after a 32-model backlog, but
+        // could strand the learner forever. Waiting here keeps a single published policy in flight
+        // without consuming more transitions or burning CPU on snapshots that would be discarded.
+        // The sleep is off the tick path and bounds shutdown latency to one millisecond.
+        if model_tx.is_full() {
+            thread::sleep(Duration::from_millis(1));
+            continue;
+        }
+
         match trans_rx.recv_timeout(Duration::from_millis(10)) {
             Ok(transition) => {
                 batch.push(transition);
@@ -235,7 +331,12 @@ fn run_training_loop<B>(
                     train_model = optim.step(LEARNING_RATE, train_model, grads_params);
 
                     let eval_model = train_model.valid();
-                    let _ = model_tx.send(to_model_update(eval_model));
+                    let delivery =
+                        try_send_without_blocking(&model_tx, to_model_update(eval_model));
+                    model_diagnostics.record(delivery);
+                    if delivery == ModelUpdateDelivery::Disconnected {
+                        break;
+                    }
                     batch.clear();
                 }
             }
@@ -243,9 +344,6 @@ fn run_training_loop<B>(
             Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
                 break;
             }
-        }
-        while let Ok(old_model) = old_model_rx.try_recv() {
-            drop(old_model);
         }
     }
 }
@@ -334,6 +432,59 @@ mod tests {
         assert_eq!(
             learner_critic.into_data().value,
             inference_critic.into_data().value
+        );
+    }
+
+    #[test]
+    fn a_full_model_mailbox_never_blocks_its_producer() {
+        let (model_tx, model_rx) = crossbeam_channel::bounded(MODEL_UPDATE_QUEUE_CAPACITY);
+        model_tx.send(1_u8).expect("seed the one-slot mailbox");
+
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let outcome = try_send_without_blocking(&model_tx, 2_u8);
+            done_tx.send(outcome).expect("report delivery outcome");
+        });
+
+        assert_eq!(
+            done_rx.recv_timeout(Duration::from_secs(1)),
+            Ok(ModelUpdateDelivery::Backpressured),
+            "a slow inference worker must not stall the learner"
+        );
+        assert_eq!(
+            model_rx.recv().expect("the pending model is retained"),
+            1,
+            "a bounded mailbox keeps its already-published model until inference consumes it"
+        );
+        worker.join().expect("delivery worker must exit");
+    }
+
+    #[test]
+    fn a_disconnected_model_mailbox_is_reported_without_blocking() {
+        let (model_tx, model_rx) = crossbeam_channel::bounded::<u8>(1);
+        drop(model_rx);
+
+        assert_eq!(
+            try_send_without_blocking(&model_tx, 1),
+            ModelUpdateDelivery::Disconnected
+        );
+    }
+
+    #[test]
+    fn model_delivery_diagnostics_make_policy_backpressure_observable() {
+        let diagnostics = ModelUpdateDiagnostics::default();
+        diagnostics.record(ModelUpdateDelivery::Published);
+        diagnostics.record(ModelUpdateDelivery::Backpressured);
+        diagnostics.record(ModelUpdateDelivery::Backpressured);
+        diagnostics.record(ModelUpdateDelivery::Disconnected);
+
+        assert_eq!(
+            diagnostics.snapshot(),
+            ModelUpdateSnapshot {
+                published: 1,
+                backpressured: 2,
+                disconnected: 1,
+            }
         );
     }
 }
