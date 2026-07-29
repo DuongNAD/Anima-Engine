@@ -75,7 +75,7 @@
         "gridDim": {
           "type": "integer",
           "minimum": 1,
-          "description": "Backend simulation grid dimension (DEFAULT_GRID_DIM = 128)."
+          "description": "Backend simulation grid dimension (DEFAULT_GRID_DIM = 256)."
         }
       }
     },

@@ -198,11 +198,12 @@ phải phần cứng:
   capture, và ràng buộc "không chạy full backend" vẫn còn hiệu lực.
 - **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
   chưa có gì để đo trên đường mặc định.
-- `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**
-  (`DEFAULT_GRID_DIM` trong `sim_rules.rs`), trong khi thế giới thật chạy **256²**
-  (`MapSettings::default()`) và hằng số 128 kia **không được đọc ở đâu trong `src/`**. Bộ bench này
-  dùng 256². Đây là một finding riêng đang mở, không sửa ở đây vì nó chạm vào
-  `COORDINATE_CONTRACT.md`.
+- ~~`config.gridDim` ghi **128** trong khi bộ bench chạy 256².~~ **Đã sửa 2026-07-29.**
+  `DEFAULT_GRID_DIM` nay là **256**, khớp `MapSettings::default()`, và
+  [`benchmark_report.json`](../../benchmark_report.json) mô tả đúng độ phân giải nó thật sự đo. Trước
+  đó `config` — tức *reproducibility envelope*, lý do duy nhất khối đó tồn tại — nêu một độ phân giải
+  không có phép đo nào dùng. Chi tiết và phạm vi lan toả: ghi chú sửa ở
+  [`COORDINATE_CONTRACT.md`](../../COORDINATE_CONTRACT.md) §4.
 
 ## Cách thêm một benchmark
 

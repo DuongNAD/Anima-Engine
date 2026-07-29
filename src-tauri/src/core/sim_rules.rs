@@ -31,7 +31,18 @@ pub use anima_domain::laws::{
 
 /// Default working resolution of the backend simulation grid, cells per side
 /// (`MapSettings::default`, `core/terrain.rs`).
-pub const DEFAULT_GRID_DIM: usize = 128;
+///
+/// **Was `128`, and wrong.** `MapSettings::default` moved to 256² when the shared World Artifact
+/// started arriving at that size (`SIM_ARTIFACT_SIZE` in `worldCache.ts`), and this constant — which
+/// names that very function as its source — stayed behind. Nothing in `src/` reads it, so nothing
+/// broke and nothing complained; what it did instead was propagate. `COORDINATE_CONTRACT.md`
+/// derived `200 / 128 = 1.5625` world-units per cell from it, which was off by exactly 2×, and the
+/// figure reached two JSON schemas, the benchmark harness and the sample map manifest.
+///
+/// A resolution-derived scale factor is the worst kind of wrong: it runs, it returns finite numbers,
+/// and everything it places lands in a plausible spot that is not the right one. Kept honest by
+/// `default_grid_dim_matches_the_real_default_map` below rather than by this comment.
+pub const DEFAULT_GRID_DIM: usize = 256;
 
 /// Horizontal world-space bounds per axis, in world-units, from `MapBounds::default`
 /// (`min.xz = -100`, `max.xz = +100` → a 200×200 unit square).
@@ -340,7 +351,14 @@ mod tests {
     #[test]
     fn s03_cell_center_round_trips_through_world() {
         let bounds = MapBounds::default();
-        for &(w, h) in &[(16usize, 16usize), (128, 128), (200, 137)] {
+        // `DEFAULT_GRID_DIM` (256²) is in the sweep because it is the resolution the contract names
+        // and the live world runs; it was absent while that constant still said 128.
+        for &(w, h) in &[
+            (16usize, 16usize),
+            (128, 128),
+            (DEFAULT_GRID_DIM, DEFAULT_GRID_DIM),
+            (200, 137),
+        ] {
             for iy in 0..h {
                 for ix in 0..w {
                     let (x, z) = cell_center_to_world_xz(ix, iy, w, h, &bounds);
@@ -369,6 +387,42 @@ mod tests {
         assert_eq!(
             world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, 128, 128, &bounds),
             Some((127, 127))
+        );
+    }
+
+    /// The check that would have caught this constant going stale, and now will.
+    ///
+    /// `DEFAULT_GRID_DIM` documents `MapSettings::default` but is read by nothing, so for as long as
+    /// the two disagreed there was no compile error, no failing test and no wrong pixel — only
+    /// documents and schemas quoting a number the engine had stopped using. A contract constant that
+    /// nothing reads needs a test, or it is a comment wearing a `pub const`.
+    #[test]
+    fn default_grid_dim_matches_the_real_default_map() {
+        let settings = crate::core::terrain::MapSettings::default();
+        assert_eq!(
+            settings.width, DEFAULT_GRID_DIM,
+            "MapSettings::default().width is {} but DEFAULT_GRID_DIM says {DEFAULT_GRID_DIM}; \
+             COORDINATE_CONTRACT.md and both JSON schemas derive units-per-cell from this constant, \
+             so they are now all wrong by a factor of {}",
+            settings.width,
+            DEFAULT_GRID_DIM as f32 / settings.width as f32
+        );
+        assert_eq!(
+            settings.height, DEFAULT_GRID_DIM,
+            "the default map is not square: {}x{}",
+            settings.width, settings.height
+        );
+    }
+
+    /// The derived figure the coordinate contract publishes, pinned to the constant it comes from.
+    #[test]
+    fn published_world_units_per_cell_follows_from_the_grid_dim() {
+        let span = WORLD_MAX_XZ - WORLD_MIN_XZ;
+        let per_cell = span / DEFAULT_GRID_DIM as f32;
+        assert!(
+            (per_cell - 0.78125).abs() < 1e-6,
+            "COORDINATE_CONTRACT.md section 4 publishes {span} / {DEFAULT_GRID_DIM} = 0.78125 \
+             world-units per cell; this build computes {per_cell}"
         );
     }
 

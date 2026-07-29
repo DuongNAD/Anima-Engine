@@ -68,14 +68,15 @@ Các biến môi trường tuỳ chọn (đều có default, không bắt buộc
 ## Phương pháp (methodology)
 
 1. **Reproducibility envelope.** Report luôn ghi lại `seed`, `config`
-   (`gridDim=128`, `tickHz=60`, `ticksPerEpoch=1000` — trùng hằng số trong
+   (`gridDim=256`, `tickHz=60`, `ticksPerEpoch=1000` — trùng hằng số trong
    [`src-tauri/src/core/sim_rules.rs`](src-tauri/src/core/sim_rules.rs)) và `hardware`
    (`platform`/`release`/`arch`/`cpuModel`/`cpuCount`/`totalMemMB` lấy từ `os.*`).
    Đây là phần bắt buộc để một số đo có thể tái lập.
-   > **Finding đang mở:** `gridDim=128` khớp `DEFAULT_GRID_DIM` trong `sim_rules.rs`, nhưng hằng số
-   > đó **không được đọc ở đâu trong `src/`**, còn thế giới thật chạy **256²**
-   > (`MapSettings::default()`). Bộ Criterion dùng 256². Chưa sửa ở đây vì nó chạm vào
-   > [`COORDINATE_CONTRACT.md`](COORDINATE_CONTRACT.md) §"Backend sim".
+   > **Finding đã đóng 2026-07-29.** `gridDim` trước ghi **128** vì `DEFAULT_GRID_DIM` ghi 128, còn
+   > thế giới thật — và chính bộ Criterion này — chạy **256²** (`MapSettings::default()`). Hằng số
+   > nay là 256 và được ghim bằng `default_grid_dim_matches_the_real_default_map` trong
+   > `sim_rules.rs`. Một envelope nêu sai độ phân giải thì vẫn validate được, vẫn trông như baseline,
+   > và mô tả một phép đo không tồn tại.
 2. **Timings — hai loại, ghi nhãn khác nhau.**
    - `criterion/*` là **số đo thật**: trung vị Criterion, build release, một system mỗi entry, đọc
      từ `src-tauri/target/criterion/**/new/estimates.json`. Mỗi entry mang thêm `medianNs`,

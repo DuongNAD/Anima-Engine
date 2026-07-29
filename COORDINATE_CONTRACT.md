@@ -114,11 +114,24 @@ world-units ([resources.rs](src-tauri/src/core/resources.rs), `MapBounds::defaul
 
 | Nguồn | Lưới | Phủ world | units / ô (ngang) |
 |---|---|---|---|
-| Backend sim (mặc định) | 128 × 128 (`DEFAULT_GRID_DIM`) | 200 × 200 | 200 / 128 = **1.5625** |
+| Backend sim (mặc định) | 256 × 256 (`DEFAULT_GRID_DIM`) | 200 × 200 | 200 / 256 = **0.78125** |
 | Frontend worldGen | 128 | (theo bounds khi map sang world) | 200 / 128 = 1.5625 |
 | Frontend worldGen | 256 | " | 200 / 256 = 0.78125 |
 | Frontend worldGen | 1024 | " | 200 / 1024 = 0.1953125 |
 | Frontend worldGen | 2048 | " | 200 / 2048 = 0.09765625 |
+
+> **Sửa 2026-07-29 — hàng đầu tiên trước đây ghi `128 × 128` và `1.5625`, sai đúng 2×.**
+> `MapSettings::default` đã chuyển sang 256² từ khi World Artifact dùng chung tới ở kích thước đó
+> (`SIM_ARTIFACT_SIZE`, `worldCache.ts`), nhưng `DEFAULT_GRID_DIM` — hằng số **tự khai** là lấy từ
+> chính hàm ấy — thì không. Không có gì trong `src/` đọc hằng số đó, nên không có test nào đỏ và
+> không có pixel nào lệch; nó chỉ **lan ra**: bảng này, `SIMULATION_RULES.md`, `MAP_MANIFEST.md`,
+> hai JSON-Schema, `scripts/bench_baseline.mjs` và manifest mẫu.
+>
+> Đáng ghi lại vì hình dạng của lỗi, không vì con số: một hệ số tỉ lệ suy ra từ độ phân giải **chạy
+> được, ra số hữu hạn, và đặt mọi thứ vào một chỗ hợp lý nhưng sai**. Nay có
+> `published_world_units_per_cell_follows_from_the_grid_dim` trong
+> [`sim_rules.rs`](src-tauri/src/core/sim_rules.rs) ghim con số 0.78125 vào đúng hằng số nó suy ra
+> từ đó, nên bảng này không thể lệch khỏi engine mà vẫn xanh lần nữa.
 
 **`world_scale` trong World Artifact v2**: header dài **36 byte**
 (`magic, version=2, width, height, seaLevel, seed, generator_version, world_scale, checksum` — xem
@@ -138,7 +151,7 @@ Trường `y` (độ cao): `elevation ∈ [0,1]` chuẩn hoá → `y = elevation
 
 **Không gian:**
 
-- Lưới backend mặc định 128 × 128, seed 1337 (`MapSettings::default`, terrain.rs).
+- Lưới backend mặc định 256 × 256, seed 1337 (`MapSettings::default`, terrain.rs).
 - Ngang: `x, z ∈ [-100, 100]` (200 × 200 world-units). Dọc: `y ∈ [0, 10]` từ `elevation·10`.
 - Frontend: các trường chuẩn hoá `[0,1]`, `seaLevel: f32` theo từng world; kích thước ∈ {128, 256,
   1024, 2048}.

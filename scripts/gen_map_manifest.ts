@@ -41,7 +41,10 @@ import {
 
 // ---- config (CLI-overridable) -------------------------------------------------------------
 const SEED = process.argv[2] ?? '1337';
-const SIZE = Number(process.argv[3] ?? 128); // backend working resolution
+// Backend working resolution — `DEFAULT_GRID_DIM` / `MapSettings::default`. Was 128, which made
+// every generated manifest declare a resolution the engine stopped using; this is the exporter that
+// feeds the map-vision review, so the wrong number reached a consumer rather than only a document.
+const SIZE = Number(process.argv[3] ?? 256);
 const SHAPE = 'continent' as const;
 const WORLD_MAX_Y = 10; // COORDINATE_CONTRACT: y = elevation * 10, y ∈ [0, 10]
 const MAX_FLORA_ENTITIES = 400; // sample cap so the manifest stays reviewable

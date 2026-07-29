@@ -3,7 +3,7 @@
   "timestampNote": "set on capture",
   "seed": 1337,
   "config": {
-    "gridDim": 128,
+    "gridDim": 256,
     "tickHz": 60,
     "ticksPerEpoch": 1000
   },

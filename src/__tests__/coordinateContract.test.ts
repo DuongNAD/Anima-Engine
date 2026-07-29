@@ -13,13 +13,16 @@ import {
   type XZBounds,
 } from '../components/Landscape/utils/coordinate';
 
-// Same resolutions the Rust S03 test sweeps, plus the backend default 128² and a couple of tiny
-// grids so the whole space is enumerated cheaply.
+// Same resolutions the Rust S03 test sweeps, plus a couple of tiny grids so the whole space is
+// enumerated cheaply. 256² is the backend default (`DEFAULT_GRID_DIM` / `MapSettings::default`) and
+// was missing from both sweeps while the documented default said 128 — so the one resolution the
+// contract actually names was the one neither side round-tripped.
 const GRIDS: Array<[number, number]> = [
   [1, 1],
   [4, 4],
   [16, 16],
   [128, 128],
+  [256, 256], // the backend default
   [200, 137], // non-square, matches the Rust sweep
 ];
 
