@@ -46,6 +46,73 @@ const SHUTDOWN_GRACE_SECS: u64 = 30;
 /// genotypes between passes. It is not tuned against a measurement, and the honest reason is that
 /// the memory it bounds has never been profiled on a long run — if that changes, tune it then.
 const COMPACT_EVERY_EPOCHS: u32 = 50;
+const EVOLUTION_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(30);
+
+struct EvolutionCheckpointRequest {
+    reply: crossbeam_channel::Sender<SavedEvolutionWorkerState>,
+    resume: crossbeam_channel::Receiver<()>,
+}
+
+/// Move worker outputs into the world while a checkpoint request waits.
+///
+/// The worker's spawn channel is bounded. If the simulation thread simply blocked waiting for the
+/// worker, a full channel could leave each thread waiting on the other forever. Draining here frees
+/// that capacity without applying replacements outside the schedule; the resulting non-empty queue
+/// makes this save refuse and the next ticks apply the work normally.
+fn drain_evolution_outputs_for_checkpoint(world: &mut World) -> bool {
+    let spawn_rx = world
+        .get_resource::<EvolutionReceiver>()
+        .map(|receiver| receiver.0.clone());
+    let mut spawns = Vec::new();
+    if let Some(receiver) = spawn_rx {
+        while let Ok(spawn) = receiver.try_recv() {
+            spawns.push(spawn);
+        }
+    }
+    let observed_spawn = !spawns.is_empty();
+    if observed_spawn {
+        world
+            .resource_mut::<EvolutionQueue>()
+            .pending_replacements
+            .extend(spawns);
+    }
+
+    let env_rx = world
+        .get_resource::<EnvironmentalEventReceiver>()
+        .map(|receiver| receiver.0.clone());
+    let mut last_event = None;
+    if let Some(receiver) = env_rx {
+        while let Ok(event) = receiver.try_recv() {
+            last_event = Some(event);
+        }
+    }
+    let observed_environment = last_event.is_some();
+    if let Some(event) = last_event {
+        world.resource_mut::<DeferredEnvironmentalEvent>().0 = Some(event);
+    }
+
+    observed_spawn || observed_environment
+}
+
+fn evolution_checkpoint_quiescence(
+    world: &World,
+    observed_inflight_output: bool,
+) -> Result<(), String> {
+    let replacements = world
+        .get_resource::<EvolutionQueue>()
+        .map_or(0, |queue| queue.pending_replacements.len());
+    let stats_batches = world
+        .get_resource::<EvolutionSender>()
+        .map_or(0, |sender| sender.0.len());
+    if replacements != 0 || stats_batches != 0 || observed_inflight_output {
+        return Err(format!(
+            "evolution is not at a checkpoint boundary \
+             ({replacements} replacements, {stats_batches} statistics batches, \
+             inflight_output={observed_inflight_output}); retry after the queues drain"
+        ));
+    }
+    Ok(())
+}
 
 /// Nanoseconds since `since`, saturated into a `u64`.
 ///
@@ -225,6 +292,26 @@ impl SimulationEngine {
                 crate::core::world_artifact::world_seed_from_disk(),
             ),
         );
+        let deterministic_mode = crate::core::determinism::DeterministicMode::from_env();
+        let evolution_worker_resume =
+            match crate::core::simulation_state::evolution_worker_resume_state(
+                state_to_load.as_ref(),
+                startup_run_seed,
+            ) {
+                Ok(resume) => resume,
+                Err(error) => {
+                    eprintln!(
+                        "ERROR: snapshot restore aborted before workers started: evolution worker \
+                         state is unsafe to resume ({error})"
+                    );
+                    *self
+                        .pending_load_state
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = state_to_load;
+                    self.running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
 
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
@@ -293,6 +380,8 @@ impl SimulationEngine {
         )>(128);
         let (env_tx, env_rx) =
             crossbeam_channel::bounded::<crate::evolution::meta_ai::EnvironmentalEvent>(32);
+        let (evolution_checkpoint_tx, evolution_checkpoint_rx) =
+            crossbeam_channel::bounded::<EvolutionCheckpointRequest>(1);
 
         let running_clone_evo = Arc::clone(&self.running);
         let evolution_running_clone = Arc::clone(&evolution_running);
@@ -302,6 +391,7 @@ impl SimulationEngine {
         let lineage_tracker_evo = Arc::clone(&self.lineage_tracker);
         let chronicle_history_clone = Arc::clone(&self.chronicle_history);
         let evolution_run_seed = startup_run_seed;
+        let evo_deterministic = deterministic_mode;
 
         let evo_exit = self.supervisor.token(sup::EVO);
         let evo_handle = thread::spawn(move || {
@@ -313,31 +403,40 @@ impl SimulationEngine {
                     .unwrap_or_else(|e| e.into_inner());
                 settings.grid_resolution
             };
-            let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
-                1.0 / (initial_resolution as f32),
-            );
-            let mut node_id_counter = 3u32;
+            let mut archive = match evolution_worker_resume.archive.clone() {
+                Some(saved) => crate::evolution::map_elites::MapElitesArchive::from_saved(saved)
+                    .expect("evolution checkpoint was validated before worker startup"),
+                None => crate::evolution::map_elites::MapElitesArchive::new(
+                    1.0 / (initial_resolution as f32),
+                ),
+            };
+            let mut node_id_counter = evolution_worker_resume.node_id_counter;
             // Selection, recombination and mutation all draw from this one stream, so the same run
             // seed reproduces the same offspring — see `resources::sim_stream`.
             //
             // This thread is spawned *before* the ECS world exists, so it cannot read `SimRng` off
             // the world. `start` selected one seed before any worker was spawned, including the
             // checkpoint seed on resume.
-            let mut evo_rng = crate::core::resources::derived_rng(
-                evolution_run_seed,
-                crate::core::resources::sim_stream::EVOLUTION,
+            let mut evo_rng = crate::core::resources::SimRng::restore(
+                evolution_worker_resume.rng_seed,
+                evolution_worker_resume.rng_pos,
             );
             // G1.3. This thread mints lineage and chronicle ids and stamps chronicle entries, all of
             // which end up in saved state — so in a deterministic run they must come from the run,
             // not from OS entropy and the wall clock. It resolves the mode and the run id from the
             // same sources the world will use, for the same reason `evo_rng` above does: the thread
             // is spawned before the ECS world exists.
-            let evo_deterministic = crate::core::determinism::DeterministicMode::from_env();
             // Separate namespaces so two id sources on one thread cannot collide.
-            let chronicle_ids =
-                crate::core::determinism::RunIdentity::new(evolution_run_seed, "chronicle");
-            let offspring_ids =
-                crate::core::determinism::RunIdentity::new(evolution_run_seed, "lineage");
+            let chronicle_ids = crate::core::determinism::RunIdentity::with_issued(
+                evolution_run_seed,
+                "chronicle",
+                evolution_worker_resume.chronicle_ids_issued,
+            );
+            let offspring_ids = crate::core::determinism::RunIdentity::with_issued(
+                evolution_run_seed,
+                "lineage",
+                evolution_worker_resume.offspring_ids_issued,
+            );
             let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
                 match std::env::var("GEMINI_SESSION_TOKEN") {
                     Ok(token) if !token.trim().is_empty() => Box::new(
@@ -347,12 +446,39 @@ impl SimulationEngine {
                         Duration::from_secs(5),
                     )),
                 };
-            let mut meta_ai_history = Vec::new();
-            let mut meta_ai_epoch = 0u32;
+            let mut meta_ai_history = evolution_worker_resume.meta_ai_history;
+            let mut meta_ai_epoch = evolution_worker_resume.meta_ai_epoch;
             // Reused across epochs so the hot path does not allocate a fresh Vec per batch.
             let mut new_offspring_ids: Vec<String> = Vec::new();
 
             while running_clone_evo.load(Ordering::SeqCst) {
+                if let Ok(request) = evolution_checkpoint_rx.try_recv() {
+                    let checkpoint = SavedEvolutionWorkerState {
+                        rng_seed: evo_rng.seed(),
+                        rng_pos: evo_rng.stream_pos(),
+                        node_id_counter,
+                        meta_ai_epoch,
+                        meta_ai_history: meta_ai_history.clone(),
+                        chronicle_ids_issued: chronicle_ids.issued(),
+                        offspring_ids_issued: offspring_ids.issued(),
+                        archive: archive.to_saved(),
+                    };
+                    if request.reply.send(checkpoint).is_ok() {
+                        loop {
+                            if !running_clone_evo.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            match request.resume.recv_timeout(Duration::from_millis(10)) {
+                                Ok(()) | Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                                    break;
+                                }
+                                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                            }
+                        }
+                    }
+                    continue;
+                }
+
                 if let Ok(stats_batch) = stats_rx.recv_timeout(Duration::from_millis(10)) {
                     if !evolution_running_clone.load(Ordering::SeqCst) {
                         continue;
@@ -504,8 +630,8 @@ impl SimulationEngine {
                     }
 
                     for stats in stats_batch {
-                        let parent_a = archive.select_parent(selection_bias, &mut evo_rng);
-                        let parent_b = archive.select_parent(selection_bias, &mut evo_rng);
+                        let parent_a = archive.select_parent(selection_bias, evo_rng.rng());
+                        let parent_b = archive.select_parent(selection_bias, evo_rng.rng());
 
                         let (mut offspring, parent_ids, max_parent_gen, relation_type) =
                             if let Some(elite_a) = parent_a {
@@ -514,7 +640,7 @@ impl SimulationEngine {
                                         &elite_a.genotype,
                                         &elite_b.genotype,
                                         &mut node_id_counter,
-                                        &mut evo_rng,
+                                        evo_rng.rng(),
                                     );
                                     (
                                         child,
@@ -551,7 +677,7 @@ impl SimulationEngine {
                                 &mut offspring,
                                 &mut node_id_counter,
                                 mutation_rate,
-                                &mut evo_rng,
+                                evo_rng.rng(),
                             );
                         }
 
@@ -959,6 +1085,7 @@ impl SimulationEngine {
             world.insert_resource(EvolutionSender(stats_tx));
             world.insert_resource(EvolutionReceiver(spawn_rx));
             world.insert_resource(EnvironmentalEventReceiver(env_rx));
+            world.insert_resource(DeferredEnvironmentalEvent::default());
 
             let loaded_epoch =
                 state_to_load
@@ -1104,12 +1231,14 @@ impl SimulationEngine {
                     .get_resource::<MapBounds>()
                     .copied()
                     .unwrap_or_default();
+                let founder_ids = crate::core::determinism::RunIdentity::new(run_seed, "founder");
                 for i in 0..founding.count {
                     let initial_pos = founding.position(i, &founding_bounds);
                     let initial_rot = glam::Quat::IDENTITY;
                     let agent_entity =
                         decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
-                    let lineage_id = uuid::Uuid::new_v4().to_string();
+                    let lineage_id =
+                        crate::core::determinism::next_entity_id(deterministic_mode, &founder_ids);
                     let _ = lineage_tracker_sim.add_root(lineage_id.clone(), genotype.clone());
 
                     world.entity_mut(agent_entity).insert((
@@ -1335,19 +1464,73 @@ impl SimulationEngine {
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
-                    // No longer refused while anything is dormant: schema 4 carries the cohorts,
-                    // their archived genomes and the dormancy RNG position, so a world holding a
-                    // sleeping herd is one this format can describe. The `Result` stays because a
-                    // save that cannot fail is a claim, not a fact — restore already has one
-                    // failure mode (a grid whose chunk count disagrees with its side).
-                    let answer = Ok(serialize_world_state(
-                        &mut world,
-                        tick_count,
-                        &chronicle_history_clone_save,
-                        &lineage_tracker_sim_save,
-                        &evolution_settings_clone_save,
-                        &map_elites_grid_clone_save,
-                    ));
+                    // Schema 4 carries dormant cohorts; schema 6 carries the evolution worker.
+                    // The remaining refusal is deliberate: replacements are ECS commands whose
+                    // target `Entity` is process-local, so a checkpoint may only cut the run after
+                    // that queue and every worker channel are empty.
+                    let answer = (|| -> Result<SavedSimulationState, String> {
+                        evolution_checkpoint_quiescence(&world, false)?;
+
+                        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+                        let (resume_tx, resume_rx) = crossbeam_channel::bounded(1);
+                        evolution_checkpoint_tx
+                            .try_send(EvolutionCheckpointRequest {
+                                reply: reply_tx,
+                                resume: resume_rx,
+                            })
+                            .map_err(|error| {
+                                format!(
+                                    "evolution checkpoint worker is unavailable ({error}); \
+                                     snapshot was not written"
+                                )
+                            })?;
+
+                        let deadline = Instant::now() + EVOLUTION_CHECKPOINT_TIMEOUT;
+                        let mut observed_inflight_output = false;
+                        let worker_checkpoint = loop {
+                            observed_inflight_output |=
+                                drain_evolution_outputs_for_checkpoint(&mut world);
+                            match reply_rx.recv_timeout(Duration::from_millis(10)) {
+                                Ok(checkpoint) => break checkpoint,
+                                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                                    return Err(
+                                        "evolution checkpoint worker disconnected before replying"
+                                            .into(),
+                                    );
+                                }
+                                Err(crossbeam_channel::RecvTimeoutError::Timeout)
+                                    if Instant::now() >= deadline =>
+                                {
+                                    return Err(format!(
+                                        "evolution checkpoint worker did not reach a batch boundary \
+                                         within {} seconds",
+                                        EVOLUTION_CHECKPOINT_TIMEOUT.as_secs()
+                                    ));
+                                }
+                                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                            }
+                        };
+
+                        observed_inflight_output |=
+                            drain_evolution_outputs_for_checkpoint(&mut world);
+                        let quiescence =
+                            evolution_checkpoint_quiescence(&world, observed_inflight_output);
+                        let result = quiescence.map(|()| {
+                            let mut state = serialize_world_state(
+                                &mut world,
+                                tick_count,
+                                &chronicle_history_clone_save,
+                                &lineage_tracker_sim_save,
+                                &evolution_settings_clone_save,
+                                &map_elites_grid_clone_save,
+                            );
+                            state.evolution_worker = Some(worker_checkpoint);
+                            state
+                        });
+
+                        let _ = resume_tx.try_send(());
+                        result
+                    })();
                     let _ = tx.send(answer);
                 }
 
@@ -1540,8 +1723,14 @@ impl SimulationEngine {
                         0.0
                     };
                     let archive_coverage = world
-                        .get_resource::<crate::core::agent_systems::BevyMapElitesArchive>()
-                        .map(|a| a.archive.grid.len() as u32)
+                        .get_resource::<crate::core::agent_systems::BevyMapElitesGrid>()
+                        .map(|grid| {
+                            grid.0
+                                .lock()
+                                .unwrap_or_else(|error| error.into_inner())
+                                .grid
+                                .len() as u32
+                        })
                         .unwrap_or(0);
                     let counts = [prey_count, predator_count];
                     let mut shared = ecosystem_state_clone
@@ -1797,6 +1986,71 @@ impl SimulationEngine {
 #[cfg(test)]
 mod mean_tick_time_tests {
     use super::*;
+
+    #[test]
+    fn evolution_checkpoint_requires_empty_world_and_channel_boundaries() {
+        let mut world = World::new();
+        world.insert_resource(EvolutionQueue::default());
+        let (stats_tx, stats_rx) = crossbeam_channel::bounded(2);
+        world.insert_resource(EvolutionSender(stats_tx.clone()));
+
+        assert!(evolution_checkpoint_quiescence(&world, false).is_ok());
+        assert!(evolution_checkpoint_quiescence(&world, true).is_err());
+
+        stats_tx.send(Vec::new()).expect("statistics queue is open");
+        assert!(evolution_checkpoint_quiescence(&world, false).is_err());
+        stats_rx.recv().expect("queued statistics remain intact");
+
+        world
+            .resource_mut::<EvolutionQueue>()
+            .pending_replacements
+            .push((
+                Entity::PLACEHOLDER,
+                MorphologyGenotype::new(),
+                glam::Vec3::ZERO,
+                "queued-lineage".into(),
+                1,
+                Vec::new(),
+            ));
+        assert!(evolution_checkpoint_quiescence(&world, false).is_err());
+    }
+
+    #[test]
+    fn checkpoint_drain_defers_environment_changes_until_the_next_schedule() {
+        use crate::evolution::meta_ai::EnvironmentalEvent;
+
+        let mut world = World::new();
+        world.insert_resource(EvolutionQueue::default());
+        let (_spawn_tx, spawn_rx) = crossbeam_channel::bounded(2);
+        world.insert_resource(EvolutionReceiver(spawn_rx));
+        let (env_tx, env_rx) = crossbeam_channel::bounded(2);
+        world.insert_resource(EnvironmentalEventReceiver(env_rx));
+        world.insert_resource(DeferredEnvironmentalEvent::default());
+        world.insert_resource(ActiveEnvironmentEvent(EnvironmentalEvent::Stable));
+
+        env_tx
+            .send(EnvironmentalEvent::ResourceDrought)
+            .expect("environment channel is open");
+        assert!(drain_evolution_outputs_for_checkpoint(&mut world));
+        assert_eq!(
+            world.resource::<ActiveEnvironmentEvent>().0,
+            EnvironmentalEvent::Stable,
+            "a failed save attempt must not apply an event outside the schedule"
+        );
+        assert_eq!(
+            world.resource::<DeferredEnvironmentalEvent>().0,
+            Some(EnvironmentalEvent::ResourceDrought)
+        );
+
+        let mut schedule = Schedule::default();
+        schedule.add_systems(receive_environmental_events_system);
+        schedule.run(&mut world);
+        assert_eq!(
+            world.resource::<ActiveEnvironmentEvent>().0,
+            EnvironmentalEvent::ResourceDrought
+        );
+        assert_eq!(world.resource::<DeferredEnvironmentalEvent>().0, None);
+    }
 
     #[test]
     fn the_mean_is_the_total_over_the_ticks_that_were_timed() {

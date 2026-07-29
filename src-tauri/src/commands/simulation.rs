@@ -70,8 +70,12 @@ pub fn save_simulation_state(
     // Two different failures, kept apart: the sim thread never answered, versus it answered that
     // this world cannot be saved. The second is a refusal with a reason the user can act on, so it
     // is passed through verbatim rather than flattened into a generic save error.
+    // The simulation may be finishing a bounded Meta-AI/evolution batch before it can freeze the
+    // worker at a consistent checkpoint boundary. The worker's own deadline is 30 seconds; this
+    // outer wait must be longer or the UI could time out while the engine is still completing a
+    // valid request.
     let saved_state = rx
-        .recv_timeout(std::time::Duration::from_secs(5))
+        .recv_timeout(std::time::Duration::from_secs(35))
         .map_err(|_| "Timeout waiting for simulation thread to serialize".to_string())??;
 
     // G1.2: wrap in a versioned, checksummed envelope and write it atomically. The old path was

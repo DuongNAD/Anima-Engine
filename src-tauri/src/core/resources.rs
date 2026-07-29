@@ -309,11 +309,23 @@ pub mod sim_stream {
 ///
 /// `run_seed` is a parameter rather than something read from the environment inside, so the caller's
 /// choice of seed is visible at the call site and testable without touching process state.
+pub fn derived_seed(run_seed: u64, stream: u64) -> u64 {
+    // Golden-ratio odd constant, same mixing trick `terrain.rs` uses to decorrelate noise seeds.
+    run_seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
+
 pub fn derived_rng(run_seed: u64, stream: u64) -> rand::rngs::StdRng {
     use rand::SeedableRng;
-    // Golden-ratio odd constant, same mixing trick `terrain.rs` uses to decorrelate noise seeds.
-    let mixed = run_seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    rand::rngs::StdRng::seed_from_u64(mixed)
+    rand::rngs::StdRng::seed_from_u64(derived_seed(run_seed, stream))
+}
+
+/// The checkpointable form of [`derived_rng`].
+///
+/// `StdRng` and `SimRng` both use ChaCha12 under rand 0.8, so this starts at the same byte stream
+/// while also exposing its word position. Evolution uses it because its worker owns an independent
+/// named stream that must continue rather than restart after a snapshot.
+pub fn derived_sim_rng(run_seed: u64, stream: u64) -> SimRng {
+    SimRng::from_seed(derived_seed(run_seed, stream))
 }
 
 #[derive(Resource, serde::Serialize, serde::Deserialize, Clone, Copy, Debug, Default)]

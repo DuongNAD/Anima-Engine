@@ -51,7 +51,8 @@ use std::path::Path;
 /// file; [`read`] detects that and migrates it forward.
 /// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
 /// | 5 | Adds the live experiment state: manifest/law/registry fingerprints, the multi-rate clock's tick, and the causal ledger. |
-pub const SCHEMA_VERSION: u32 = 5;
+/// | 6 | Adds the exact evolution-worker RNG, MAP-Elites archive, identity cursors and Meta-AI state. |
+pub const SCHEMA_VERSION: u32 = 6;
 
 /// Oldest **enveloped** schema this build can still read. N−2 per the G1.2 requirement.
 ///
@@ -598,6 +599,25 @@ fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
             .validate()
             .map_err(|error| invalid(format!("dormant population: {error}")))?;
     }
+    if let Some(worker) = &state.evolution_worker {
+        if worker.archive.elites.len() > MAX_SNAPSHOT_MAP_ELITES_CELLS
+            || worker.meta_ai_history.len() > MAX_SNAPSHOT_HISTORY_EVENTS
+            || worker
+                .archive
+                .elites
+                .iter()
+                .any(|elite| elite.features.len() > MAX_SNAPSHOT_MAP_ELITES_FEATURES)
+        {
+            return Err(invalid(
+                "evolution worker checkpoint exceeds snapshot collection limits".to_owned(),
+            ));
+        }
+        crate::core::simulation_state::evolution_worker_resume_state(
+            Some(state),
+            state.sim_rng_seed,
+        )
+        .map_err(|error| invalid(format!("evolution worker checkpoint: {error}")))?;
+    }
 
     let ecosystem = [state.eco_detritus, state.eco_plants, state.eco_animals];
     if ecosystem
@@ -910,6 +930,42 @@ mod tests {
         assert_eq!(back.sim_rng_seed, 1337);
         assert_eq!(back.sim_rng_pos, 99);
         assert_eq!(back.loaded_from_schema, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn evolution_worker_checkpoint_round_trips_and_is_validated() {
+        let mut state = state_fixture();
+        state.sim_rng_seed = 1_337;
+        let rng_seed = crate::core::resources::derived_seed(
+            state.sim_rng_seed,
+            crate::core::resources::sim_stream::EVOLUTION,
+        );
+        state.evolution_worker = Some(crate::core::simulation_state::SavedEvolutionWorkerState {
+            rng_seed,
+            rng_pos: 123,
+            node_id_counter: 3,
+            meta_ai_epoch: 0,
+            meta_ai_history: Vec::new(),
+            chronicle_ids_issued: 0,
+            offspring_ids_issued: 0,
+            archive: crate::evolution::map_elites::SavedMapElitesArchive {
+                grid_resolution: 0.25,
+                elites: Vec::new(),
+            },
+        });
+
+        let envelope = SnapshotEnvelope::seal(state.clone()).expect("valid worker checkpoint");
+        let back = from_bytes(&serde_json::to_vec(&envelope).unwrap()).expect("read back");
+        let worker = back.evolution_worker.expect("schema 6 worker state");
+        assert_eq!(worker.rng_seed, rng_seed);
+        assert_eq!(worker.rng_pos, 123);
+        assert_eq!(worker.archive.grid_resolution, 0.25);
+
+        state.evolution_worker.as_mut().unwrap().rng_seed ^= 1;
+        assert!(matches!(
+            SnapshotEnvelope::seal(state),
+            Err(SnapshotError::InvalidState(_))
+        ));
     }
 
     #[test]

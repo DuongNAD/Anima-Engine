@@ -1,4 +1,5 @@
 use crate::evolution::genotype::MorphologyGenotype;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
@@ -8,6 +9,23 @@ pub struct EliteIndividual {
     pub features: Vec<f32>,
     pub lineage_id: String,
     pub generation: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SavedEliteIndividual {
+    pub bin_x: i32,
+    pub bin_y: i32,
+    pub genotype: MorphologyGenotype,
+    pub fitness: f32,
+    pub features: Vec<f32>,
+    pub lineage_id: String,
+    pub generation: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SavedMapElitesArchive {
+    pub grid_resolution: f32,
+    pub elites: Vec<SavedEliteIndividual>,
 }
 
 pub struct MapElitesArchive {
@@ -25,6 +43,80 @@ impl MapElitesArchive {
             grid: BTreeMap::new(),
             grid_resolution,
         }
+    }
+
+    pub fn to_saved(&self) -> SavedMapElitesArchive {
+        SavedMapElitesArchive {
+            grid_resolution: self.grid_resolution,
+            elites: self
+                .grid
+                .iter()
+                .map(|(&(bin_x, bin_y), elite)| SavedEliteIndividual {
+                    bin_x,
+                    bin_y,
+                    genotype: elite.genotype.clone(),
+                    fitness: elite.fitness,
+                    features: elite.features.clone(),
+                    lineage_id: elite.lineage_id.clone(),
+                    generation: elite.generation,
+                })
+                .collect(),
+        }
+    }
+
+    pub fn from_saved(saved: SavedMapElitesArchive) -> Result<Self, String> {
+        if !saved.grid_resolution.is_finite() || saved.grid_resolution <= 0.0 {
+            return Err("MAP-Elites grid resolution must be finite and positive".into());
+        }
+
+        let mut grid = BTreeMap::new();
+        for saved_elite in saved.elites {
+            if !saved_elite.fitness.is_finite()
+                || saved_elite.features.iter().any(|value| !value.is_finite())
+            {
+                return Err(format!(
+                    "MAP-Elites niche ({}, {}) contains non-finite scientific values",
+                    saved_elite.bin_x, saved_elite.bin_y
+                ));
+            }
+            crate::core::components::validate_morphology_payload(&saved_elite.genotype).map_err(
+                |error| {
+                    format!(
+                        "MAP-Elites niche ({}, {}) has invalid morphology: {error}",
+                        saved_elite.bin_x, saved_elite.bin_y
+                    )
+                },
+            )?;
+            if saved_elite.lineage_id.trim().is_empty()
+                || saved_elite.lineage_id.len() > 1_024
+                || saved_elite.lineage_id.chars().any(char::is_control)
+            {
+                return Err(format!(
+                    "MAP-Elites niche ({}, {}) has an invalid lineage id",
+                    saved_elite.bin_x, saved_elite.bin_y
+                ));
+            }
+
+            let coords = (saved_elite.bin_x, saved_elite.bin_y);
+            let elite = EliteIndividual {
+                genotype: saved_elite.genotype,
+                fitness: saved_elite.fitness,
+                features: saved_elite.features,
+                lineage_id: saved_elite.lineage_id,
+                generation: saved_elite.generation,
+            };
+            if grid.insert(coords, elite).is_some() {
+                return Err(format!(
+                    "MAP-Elites checkpoint contains duplicate niche ({}, {})",
+                    coords.0, coords.1
+                ));
+            }
+        }
+
+        Ok(Self {
+            grid,
+            grid_resolution: saved.grid_resolution,
+        })
     }
 
     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)
