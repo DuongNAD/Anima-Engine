@@ -536,7 +536,7 @@ impl BrainModel {
     /// [`ActorCriticModel::from_flat_weights`] — the same loader the EB-S02 parity gate exercises.
     /// The distribution is unchanged: Burn's `LinearConfig` default is `U(-k, k)` with
     /// `k = sqrt(1/fan_in)` for both weights and biases, and that is what is reproduced below.
-    fn seeded_weights(
+    pub(crate) fn seeded_weights(
         input_dim: usize,
         hidden_dim: usize,
         action_dim: usize,
