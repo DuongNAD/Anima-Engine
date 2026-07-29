@@ -548,6 +548,25 @@ pub struct WorkloadContext {
     #[serde(default)]
     #[ts(type = "number | null")]
     pub agent_count_max: Option<u32>,
+    /// Transitions accepted by the learner queue since this run started, observed after the latest
+    /// schedule processed while the capture was active. For a completed `max_samples` capture this
+    /// is the final retained schedule. `None` means this build/run did not expose diagnostics.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_transitions_queued_total: Option<u64>,
+    /// Transitions rejected because the bounded learner queue was full, cumulative since run start.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_transitions_full_rejections_total: Option<u64>,
+    /// Transitions rejected because the learner had disconnected, cumulative since run start.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_transitions_disconnected_rejections_total: Option<u64>,
+    /// Eligible transitions not attempted because the bounded learner queue had no room, cumulative
+    /// since run start. A rotating window makes this load shedding fair across agents.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_transitions_backpressure_skipped_total: Option<u64>,
 }
 
 /// The live state of a capture. Held behind [`SharedTickCapture`]'s mutex.
@@ -1201,9 +1220,27 @@ impl TickCaptureSink {
                 dimensions_measured: true,
                 agent_count_min: None,
                 agent_count_max: None,
+                learning_transitions_queued_total: None,
+                learning_transitions_full_rejections_total: None,
+                learning_transitions_disconnected_rejections_total: None,
+                learning_transitions_backpressure_skipped_total: None,
             },
             None => WorkloadContext::default(),
         };
+    }
+
+    /// Record learner-queue accounting after the schedule has finished.
+    pub fn note_learning_queue(&mut self, snapshot: crate::ai::hrrl::LearningQueueSnapshot) {
+        if !self.measuring {
+            return;
+        }
+        self.workload.learning_transitions_queued_total = Some(snapshot.queued);
+        self.workload.learning_transitions_full_rejections_total = Some(snapshot.full_rejections);
+        self.workload
+            .learning_transitions_disconnected_rejections_total =
+            Some(snapshot.disconnected_rejections);
+        self.workload
+            .learning_transitions_backpressure_skipped_total = Some(snapshot.backpressure_skipped);
     }
 
     /// Close the tick, handing its measurements to the shared capture.
@@ -1286,6 +1323,10 @@ mod tests {
                 dimensions_measured: true,
                 agent_count_min: None,
                 agent_count_max: None,
+                learning_transitions_queued_total: None,
+                learning_transitions_full_rejections_total: None,
+                learning_transitions_disconnected_rejections_total: None,
+                learning_transitions_backpressure_skipped_total: None,
             },
         )
     }
@@ -1647,6 +1688,10 @@ mod tests {
                 dimensions_measured: true,
                 agent_count_min: None,
                 agent_count_max: None,
+                learning_transitions_queued_total: None,
+                learning_transitions_full_rejections_total: None,
+                learning_transitions_disconnected_rejections_total: None,
+                learning_transitions_backpressure_skipped_total: None,
             },
         );
         let doc = shared.export();
@@ -1704,6 +1749,16 @@ mod tests {
 
         assert_eq!(workload.agent_count_min, None);
         assert_eq!(workload.agent_count_max, None);
+        assert_eq!(workload.learning_transitions_queued_total, None);
+        assert_eq!(workload.learning_transitions_full_rejections_total, None);
+        assert_eq!(
+            workload.learning_transitions_disconnected_rejections_total,
+            None
+        );
+        assert_eq!(
+            workload.learning_transitions_backpressure_skipped_total,
+            None
+        );
     }
 
     #[test]
@@ -1799,10 +1854,30 @@ mod tests {
         sink.stamp(1);
         sink.stamp(2);
         sink.note_workload(7, Some((256, 256)));
+        sink.note_learning_queue(crate::ai::hrrl::LearningQueueSnapshot {
+            queued: 90,
+            full_rejections: 10,
+            disconnected_rejections: 0,
+            backpressure_skipped: 900,
+        });
         assert!(sink.commit(1, 10_000_000, 1_000));
         assert_eq!(shared.sample_count(), 1);
         assert_eq!(shared.samples()[0].agent_count, 7);
-        assert!(shared.export().workload.dimensions_measured);
+        let workload = shared.export().workload;
+        assert!(workload.dimensions_measured);
+        assert_eq!(workload.learning_transitions_queued_total, Some(90));
+        assert_eq!(
+            workload.learning_transitions_full_rejections_total,
+            Some(10)
+        );
+        assert_eq!(
+            workload.learning_transitions_disconnected_rejections_total,
+            Some(0)
+        );
+        assert_eq!(
+            workload.learning_transitions_backpressure_skipped_total,
+            Some(900)
+        );
 
         // Committing twice cannot produce a second sample from one tick.
         assert!(!sink.commit(1, 10_000_000, 1_000));
