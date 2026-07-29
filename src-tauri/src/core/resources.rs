@@ -603,6 +603,47 @@ pub fn autostart_from_env() -> bool {
 /// The decision behind [`autostart_from_env`], separated so it is testable without touching
 /// process-wide state.
 pub fn autostart_requested(raw: Option<&str>) -> bool {
+    env_flag_requested(raw)
+}
+
+// ---- Ephemeral fresh launch ---------------------------------------------------------------
+
+/// Persistence policy for one desktop process.
+///
+/// A fresh benchmark launch must be fresh in both directions: skipping an existing autosave on
+/// startup but replacing it on exit would still destroy the user's resumable world. Keeping these
+/// decisions in one value prevents the startup and shutdown paths from drifting apart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LaunchPersistencePolicy {
+    pub resume_autosave: bool,
+    pub write_exit_autosave: bool,
+}
+
+impl LaunchPersistencePolicy {
+    pub fn from_env() -> Self {
+        Self::for_fresh_start(fresh_start_from_env())
+    }
+
+    pub const fn for_fresh_start(fresh_start: bool) -> Self {
+        Self {
+            resume_autosave: !fresh_start,
+            write_exit_autosave: !fresh_start,
+        }
+    }
+}
+
+/// Whether this process should run against an ephemeral world, leaving the user's autosave
+/// untouched on both startup and exit.
+pub fn fresh_start_from_env() -> bool {
+    fresh_start_requested(std::env::var("ANIMA_FRESH_START").ok().as_deref())
+}
+
+/// Pure parser behind [`fresh_start_from_env`].
+pub fn fresh_start_requested(raw: Option<&str>) -> bool {
+    env_flag_requested(raw)
+}
+
+fn env_flag_requested(raw: Option<&str>) -> bool {
     match raw {
         None => false,
         Some(value) => {
@@ -835,6 +876,40 @@ mod autostart_tests {
     fn anything_else_is_yes() {
         for on in ["1", "true", "yes", "on", " 1 "] {
             assert!(autostart_requested(Some(on)), "{on:?} should autostart");
+        }
+    }
+}
+
+#[cfg(test)]
+mod fresh_start_tests {
+    use super::*;
+
+    #[test]
+    fn unset_and_explicit_no_preserve_normal_persistence() {
+        for off in [None, Some(""), Some("  "), Some("0"), Some("false")] {
+            assert!(!fresh_start_requested(off), "{off:?} must resume normally");
+            let policy = LaunchPersistencePolicy::for_fresh_start(fresh_start_requested(off));
+            assert!(policy.resume_autosave);
+            assert!(policy.write_exit_autosave);
+        }
+    }
+
+    #[test]
+    fn fresh_start_is_ephemeral_in_both_directions() {
+        for on in ["1", "true", "yes", "on", " 1 "] {
+            assert!(
+                fresh_start_requested(Some(on)),
+                "{on:?} must request a fresh world"
+            );
+            let policy = LaunchPersistencePolicy::for_fresh_start(fresh_start_requested(Some(on)));
+            assert!(
+                !policy.resume_autosave,
+                "fresh launch must not read autosave"
+            );
+            assert!(
+                !policy.write_exit_autosave,
+                "fresh launch must not overwrite autosave on exit"
+            );
         }
     }
 }

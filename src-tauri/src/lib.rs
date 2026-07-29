@@ -29,6 +29,7 @@ pub struct AppState {
 }
 pub fn run() {
     let initial_grid = std::collections::HashMap::new();
+    let launch_persistence = core::resources::LaunchPersistencePolicy::from_env();
 
     // Hoisted out of the `manage(..)` literal so the seam can be handed the same handles the rest of
     // the app reads through, rather than a second set that would drift from them.
@@ -90,9 +91,14 @@ pub fn run() {
             commands::get_tick_capture_status,
             commands::export_tick_capture
         ])
-        .setup(|app| {
+        .setup(move |app| {
             let app_state = app.state::<AppState>();
-            if let Ok(app_data_dir) = app.path().app_data_dir() {
+            if !launch_persistence.resume_autosave {
+                eprintln!(
+                    "[anima] ANIMA_FRESH_START is set; starting from genesis and leaving the \
+                     existing autosave untouched"
+                );
+            } else if let Ok(app_data_dir) = app.path().app_data_dir() {
                 // One autosave, under the same contract as every other save.
                 //
                 // This used to read `app_data_dir/default_save.json` — a bare `serde_json` dump,
@@ -183,12 +189,18 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|app_handle, event| {
+    app.run(move |app_handle, event| {
         if let tauri::RunEvent::ExitRequested { .. } = event {
             let state = app_handle.state::<AppState>();
             let engine = &state.engine;
 
             if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
+                if !launch_persistence.write_exit_autosave {
+                    eprintln!("[anima] fresh-start process is exiting; autosave remains untouched");
+                    engine.stop();
+                    return;
+                }
+
                 let (tx, rx) = std::sync::mpsc::channel();
                 if engine.save_request_tx.send(tx).is_ok() {
                     // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
