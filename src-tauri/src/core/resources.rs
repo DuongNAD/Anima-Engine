@@ -387,6 +387,25 @@ pub struct ShardingResource(pub Arc<RwLock<ShardingConfig>>);
 #[derive(Resource)]
 pub struct InboundMigrationReceiver(pub crossbeam_channel::Receiver<AgentMigrationData>);
 
+/// Maximum number of validated agents waiting to enter the simulation world.
+///
+/// This matches the outbound capacity so neither side of the transport can accumulate an
+/// unbounded number of complete scientific payloads while a shard is stalled.
+pub const INBOUND_MIGRATION_QUEUE_CAPACITY: usize = 256;
+
+/// Maximum number of inbound agents reconstructed in one simulation tick.
+///
+/// Rebuilding one agent creates its complete rigid-body/joint hierarchy. Budgeting that work keeps
+/// a full queue from turning one frame into a 256-agent spawn spike.
+pub const INBOUND_MIGRATIONS_PER_TICK: usize = 16;
+
+pub fn inbound_migration_channel() -> (
+    crossbeam_channel::Sender<AgentMigrationData>,
+    crossbeam_channel::Receiver<AgentMigrationData>,
+) {
+    crossbeam_channel::bounded(INBOUND_MIGRATION_QUEUE_CAPACITY)
+}
+
 /// Maximum number of complete agents waiting for the networking worker.
 ///
 /// A fixed bound makes memory use independent of how many agents cross a shard boundary in one
@@ -412,6 +431,9 @@ struct MigrationHandoffCounters {
     queued: AtomicU64,
     full_rejections: AtomicU64,
     disconnected_rejections: AtomicU64,
+    invalid_rejections: AtomicU64,
+    inbound_backpressure_events: AtomicU64,
+    connection_limit_rejections: AtomicU64,
 }
 
 /// Auditable totals for the process-local migration handoff boundary.
@@ -425,6 +447,12 @@ pub struct MigrationHandoffSnapshot {
     pub full_rejections: u64,
     #[ts(type = "number")]
     pub disconnected_rejections: u64,
+    #[ts(type = "number")]
+    pub invalid_rejections: u64,
+    #[ts(type = "number")]
+    pub inbound_backpressure_events: u64,
+    #[ts(type = "number")]
+    pub connection_limit_rejections: u64,
 }
 
 /// Shared, allocation-free migration handoff counters.
@@ -453,11 +481,26 @@ impl MigrationHandoffDiagnostics {
         Self::increment(&self.0.disconnected_rejections);
     }
 
+    pub fn record_invalid_rejection(&self) {
+        Self::increment(&self.0.invalid_rejections);
+    }
+
+    pub fn record_inbound_backpressure(&self) {
+        Self::increment(&self.0.inbound_backpressure_events);
+    }
+
+    pub fn record_connection_limit_rejection(&self) {
+        Self::increment(&self.0.connection_limit_rejections);
+    }
+
     pub fn snapshot(&self) -> MigrationHandoffSnapshot {
         MigrationHandoffSnapshot {
             queued: self.0.queued.load(Ordering::Relaxed),
             full_rejections: self.0.full_rejections.load(Ordering::Relaxed),
             disconnected_rejections: self.0.disconnected_rejections.load(Ordering::Relaxed),
+            invalid_rejections: self.0.invalid_rejections.load(Ordering::Relaxed),
+            inbound_backpressure_events: self.0.inbound_backpressure_events.load(Ordering::Relaxed),
+            connection_limit_rejections: self.0.connection_limit_rejections.load(Ordering::Relaxed),
         }
     }
 
@@ -465,6 +508,13 @@ impl MigrationHandoffDiagnostics {
         self.0.queued.store(0, Ordering::Relaxed);
         self.0.full_rejections.store(0, Ordering::Relaxed);
         self.0.disconnected_rejections.store(0, Ordering::Relaxed);
+        self.0.invalid_rejections.store(0, Ordering::Relaxed);
+        self.0
+            .inbound_backpressure_events
+            .store(0, Ordering::Relaxed);
+        self.0
+            .connection_limit_rejections
+            .store(0, Ordering::Relaxed);
     }
 }
 

@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
 use anima_engine_lib::core::engine::{run_websocket_client, run_websocket_server};
-use anima_engine_lib::evolution::genotype::MorphologyGenotype;
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
 use anima_engine_lib::evolution::lineage::FallbackLineageTracker;
 use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, GeminiMetaAiClient, MetaAiClient};
 
@@ -23,6 +23,17 @@ use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, GeminiMetaAiClien
 // `std::sync::Mutex` is the wrong tool for that — its guard is not `Send` across an await, which
 // clippy flags as `await_holding_lock`. Tokio.s mutex is built for exactly this.
 static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn one_node_genotype() -> MorphologyGenotype {
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    genotype
+}
 
 /// 1. Test port binding failure: Ensure the server handles bind errors gracefully and exits cleanly.
 #[tokio::test]
@@ -145,7 +156,7 @@ async fn test_adversarial_stale_connection_cache() {
     // Do not let server scheduling latency decide whether the first migration is deliverable.
     drop(network_ready::connect_when_ready(port).await);
 
-    let genotype = MorphologyGenotype::new();
+    let genotype = one_node_genotype();
     let agent = AgentMigrationData {
         genotype: genotype.clone(),
         homeostatic_state: HomeostaticState {

@@ -84,11 +84,29 @@ impl ArchSpec {
     /// Total scalar parameters: two trunk layers, an actor head and a scalar critic head, each with
     /// a bias vector.
     pub fn param_count(&self) -> usize {
-        let trunk1 = self.inputs * self.hidden + self.hidden;
-        let trunk2 = self.hidden * self.hidden + self.hidden;
-        let actor = self.hidden * self.outputs + self.outputs;
-        let critic = self.hidden + 1;
-        trunk1 + trunk2 + actor + critic
+        self.checked_param_count()
+            .expect("brain architecture parameter count overflow")
+    }
+
+    /// Parameter count for untrusted/deserialized architecture data.
+    pub fn checked_param_count(&self) -> Option<usize> {
+        let trunk1 = self
+            .inputs
+            .checked_mul(self.hidden)?
+            .checked_add(self.hidden)?;
+        let trunk2 = self
+            .hidden
+            .checked_mul(self.hidden)?
+            .checked_add(self.hidden)?;
+        let actor = self
+            .hidden
+            .checked_mul(self.outputs)?
+            .checked_add(self.outputs)?;
+        let critic = self.hidden.checked_add(1)?;
+        trunk1
+            .checked_add(trunk2)?
+            .checked_add(actor)?
+            .checked_add(critic)
     }
 
     /// A shape with a zero dimension has no meaningful forward pass; reject it at construction
@@ -150,13 +168,17 @@ pub struct BrainGenotype {
     pub weights: Vec<f32>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BrainGenotypeError {
     InvalidArch(ArchSpec),
     /// Weight vector length disagrees with what the architecture requires.
     WeightCountMismatch {
         expected: usize,
         found: usize,
+    },
+    /// A NaN or infinity would make every downstream action scientifically uninterpretable.
+    NonFiniteWeight {
+        index: usize,
     },
     UnsupportedVersion(u16),
 }
@@ -167,6 +189,9 @@ impl std::fmt::Display for BrainGenotypeError {
             Self::InvalidArch(a) => write!(f, "invalid brain architecture {a:?}"),
             Self::WeightCountMismatch { expected, found } => {
                 write!(f, "brain expects {expected} weights, found {found}")
+            }
+            Self::NonFiniteWeight { index } => {
+                write!(f, "brain weight {index} is NaN or infinite")
             }
             Self::UnsupportedVersion(v) => write!(
                 f,
@@ -193,15 +218,17 @@ fn standard_normal(rng: &mut impl Rng) -> f32 {
 impl BrainGenotype {
     /// Build from explicit weights, validating shape.
     pub fn from_weights(arch: ArchSpec, weights: Vec<f32>) -> Result<Self, BrainGenotypeError> {
-        if !arch.is_valid() {
+        let Some(expected) = arch.checked_param_count().filter(|_| arch.is_valid()) else {
             return Err(BrainGenotypeError::InvalidArch(arch));
-        }
-        let expected = arch.param_count();
+        };
         if weights.len() != expected {
             return Err(BrainGenotypeError::WeightCountMismatch {
                 expected,
                 found: weights.len(),
             });
+        }
+        if let Some(index) = weights.iter().position(|weight| !weight.is_finite()) {
+            return Err(BrainGenotypeError::NonFiniteWeight { index });
         }
         Ok(Self {
             version: BRAIN_GENOTYPE_VERSION,
@@ -223,10 +250,10 @@ impl BrainGenotype {
     /// `U(-k, k)` with `k = sqrt(1/d_input)` — so an EB-S02 parity run must copy weights across
     /// rather than assume the two initialisers agree. They are only required to agree on shape.
     pub fn random(arch: ArchSpec, rng: &mut impl Rng) -> Result<Self, BrainGenotypeError> {
-        if !arch.is_valid() {
+        let Some(expected) = arch.checked_param_count().filter(|_| arch.is_valid()) else {
             return Err(BrainGenotypeError::InvalidArch(arch));
-        }
-        let mut weights = vec![0.0f32; arch.param_count()];
+        };
+        let mut weights = vec![0.0f32; expected];
 
         let he = |fan_in: usize| (2.0 / fan_in as f32).sqrt();
         let xavier = |fan_in: usize| (1.0 / fan_in as f32).sqrt();
@@ -256,15 +283,21 @@ impl BrainGenotype {
         if self.version != BRAIN_GENOTYPE_VERSION {
             return Err(BrainGenotypeError::UnsupportedVersion(self.version));
         }
-        if !self.arch.is_valid() {
+        let Some(expected) = self
+            .arch
+            .checked_param_count()
+            .filter(|_| self.arch.is_valid())
+        else {
             return Err(BrainGenotypeError::InvalidArch(self.arch));
-        }
-        let expected = self.arch.param_count();
+        };
         if self.weights.len() != expected {
             return Err(BrainGenotypeError::WeightCountMismatch {
                 expected,
                 found: self.weights.len(),
             });
+        }
+        if let Some(index) = self.weights.iter().position(|weight| !weight.is_finite()) {
+            return Err(BrainGenotypeError::NonFiniteWeight { index });
         }
         Ok(())
     }
@@ -737,6 +770,18 @@ mod tests {
                 expected: ArchSpec::LEGACY.param_count(),
                 found: 3,
             })
+        );
+        let mut non_finite = vec![0.0; ArchSpec::LEGACY.param_count()];
+        non_finite[7] = f32::NAN;
+        assert_eq!(
+            BrainGenotype::from_weights(ArchSpec::LEGACY, non_finite),
+            Err(BrainGenotypeError::NonFiniteWeight { index: 7 })
+        );
+
+        let overflow = ArchSpec::new(usize::MAX, usize::MAX, usize::MAX);
+        assert_eq!(
+            BrainGenotype::from_weights(overflow, Vec::new()),
+            Err(BrainGenotypeError::InvalidArch(overflow))
         );
 
         let mut stale = BrainGenotype::random(ArchSpec::LEGACY, &mut rng(1)).unwrap();

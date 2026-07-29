@@ -3,4 +3,4 @@
 /**
  * Auditable totals for the process-local migration handoff boundary.
  */
-export type MigrationHandoffSnapshot = { queued: number, full_rejections: number, disconnected_rejections: number, };
+export type MigrationHandoffSnapshot = { queued: number, full_rejections: number, disconnected_rejections: number, invalid_rejections: number, inbound_backpressure_events: number, connection_limit_rejections: number, };

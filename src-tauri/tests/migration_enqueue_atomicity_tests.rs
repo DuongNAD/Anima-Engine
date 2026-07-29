@@ -3,21 +3,37 @@ use std::time::Duration;
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
-    check_migration_boundaries_system, manual_migration_system, Agent, AgentBrain, AgentClass,
-    AgentMigrationData, BevyMigrationTrigger, ChildrenLinks, MapBounds, OutboundMigration,
+    check_migration_boundaries_system, manual_migration_system, process_inbound_migrations_system,
+    Agent, AgentBrain, AgentClass, AgentMigrationData, BevyMigrationTrigger, ChildrenLinks,
+    FeatureTracker, InboundMigrationReceiver, MapBounds, OutboundMigration,
     OutboundMigrationSender, Position, Prey, Segment, ShardingConfig, ShardingResource,
-    SpawnMigrationCommand, Velocity,
+    SpawnMigrationCommand, Velocity, MAX_MIGRATION_BRAIN_PARAMETERS,
+    MAX_MIGRATION_MORPHOLOGY_NODES,
 };
 use anima_engine_lib::core::engine::{AgentGeneration, AgentGenotype, AgentLineageId};
 use anima_engine_lib::core::resources::{
-    outbound_migration_channel, MigrationHandoffDiagnostics, SimRng,
+    inbound_migration_channel, outbound_migration_channel, MigrationHandoffDiagnostics, SimRng,
+    INBOUND_MIGRATIONS_PER_TICK, INBOUND_MIGRATION_QUEUE_CAPACITY,
     OUTBOUND_MIGRATION_QUEUE_CAPACITY,
 };
-use anima_engine_lib::evolution::brain_genotype::{ArchSpec, BrainGenotype};
+use anima_engine_lib::evolution::brain_genotype::{
+    ArchSpec, BrainGenotype, BRAIN_GENOTYPE_VERSION,
+};
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::Command;
 use glam::Vec3;
+
+fn one_node_genotype() -> MorphologyGenotype {
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    genotype
+}
 
 fn spawn_agent_tree(world: &mut World, position: Vec3) -> (Entity, Entity) {
     let child = world.spawn(ChildrenLinks(Vec::new())).id();
@@ -40,7 +56,7 @@ fn spawn_agent_tree(world: &mut World, position: Vec3) -> (Entity, Entity) {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
             },
-            AgentGenotype(MorphologyGenotype::new()),
+            AgentGenotype(one_node_genotype()),
             AgentLineageId("enqueue-atomicity".to_owned()),
             AgentGeneration(7),
             brain,
@@ -64,8 +80,11 @@ fn spawn_wide_agent_tree(world: &mut World, position: Vec3) -> (Entity, Vec<Enti
 }
 
 fn wide_star_genotype() -> MorphologyGenotype {
-    const CHILDREN: u32 = 65;
+    star_genotype(66)
+}
 
+fn star_genotype(nodes: usize) -> MorphologyGenotype {
+    assert!(nodes > 0);
     let mut genotype = MorphologyGenotype::new();
     genotype.add_node(MorphologyNode {
         id: 0,
@@ -73,7 +92,7 @@ fn wide_star_genotype() -> MorphologyGenotype {
         radius: 0.2,
         mass: 1.0,
     });
-    for id in 1..=CHILDREN {
+    for id in 1..nodes as u32 {
         genotype.add_node(MorphologyNode {
             id,
             length: 0.5,
@@ -455,6 +474,45 @@ fn production_outbound_migration_queue_has_a_finite_capacity() {
 }
 
 #[test]
+fn production_inbound_migration_queue_has_a_finite_capacity() {
+    let (sender, receiver) = inbound_migration_channel();
+    for index in 0..INBOUND_MIGRATION_QUEUE_CAPACITY {
+        sender
+            .try_send(migration_data(one_node_genotype(), Vec3::X))
+            .unwrap_or_else(|_| panic!("slot {index} must fit"));
+    }
+    assert!(matches!(
+        sender.try_send(migration_data(one_node_genotype(), Vec3::X)),
+        Err(crossbeam_channel::TrySendError::Full(_))
+    ));
+    assert_eq!(receiver.len(), INBOUND_MIGRATION_QUEUE_CAPACITY);
+}
+
+#[test]
+fn inbound_reconstruction_obeys_the_per_tick_budget() {
+    let mut world = World::new();
+    world.insert_resource(MigrationHandoffDiagnostics::default());
+    let (sender, receiver) = inbound_migration_channel();
+    world.insert_resource(InboundMigrationReceiver(receiver));
+    for index in 0..(INBOUND_MIGRATIONS_PER_TICK + 3) {
+        let mut data = migration_data(one_node_genotype(), Vec3::X);
+        data.lineage_id = format!("budgeted-inbound-{index}");
+        sender.try_send(data).unwrap();
+    }
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(process_inbound_migrations_system);
+    schedule.run(&mut world);
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    assert_eq!(agents.iter(&world).count(), INBOUND_MIGRATIONS_PER_TICK);
+    assert_eq!(world.resource::<InboundMigrationReceiver>().0.len(), 3);
+
+    schedule.run(&mut world);
+    assert_eq!(agents.iter(&world).count(), INBOUND_MIGRATIONS_PER_TICK + 3);
+    assert!(world.resource::<InboundMigrationReceiver>().0.is_empty());
+}
+
+#[test]
 fn migration_burst_is_capped_and_excess_agents_remain_local() {
     const EXCESS: usize = 9;
 
@@ -479,6 +537,9 @@ fn migration_burst_is_capped_and_excess_agents_remain_local() {
             queued: OUTBOUND_MIGRATION_QUEUE_CAPACITY as u64,
             full_rejections: EXCESS as u64,
             disconnected_rejections: 0,
+            invalid_rejections: 0,
+            inbound_backpressure_events: 0,
+            connection_limit_rejections: 0,
         }
     );
     let mut remaining = world.query_filtered::<(&Position, &Velocity), With<Agent>>();
@@ -498,6 +559,7 @@ fn migration_handoff_diagnostics_reset_between_runs() {
     diagnostics.record_queued();
     diagnostics.record_full_rejection();
     diagnostics.record_disconnected_rejection();
+    diagnostics.record_invalid_rejection();
     assert_ne!(diagnostics.snapshot(), Default::default());
 
     diagnostics.reset();
@@ -599,4 +661,175 @@ fn inbound_then_outbound_migration_leaves_no_segment_past_a_deep_wide_frontier()
         0,
         "a production-decoded hierarchy must not leave residual segments after migrating out"
     );
+}
+
+#[test]
+fn automatic_migration_rejects_an_invalid_genotype_without_losing_local_ownership() {
+    let mut world = World::new();
+    let outbound_rx = insert_migration_resources(&mut world);
+    let (agent, child) = spawn_agent_tree(&mut world, Vec3::new(101.0, 0.0, 0.0));
+    world.get_mut::<AgentGenotype>(agent).unwrap().0 = MorphologyGenotype::new();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(check_migration_boundaries_system);
+    schedule.run(&mut world);
+
+    assert!(
+        outbound_rx.try_recv().is_err(),
+        "an invalid scientific payload must never cross the ownership boundary"
+    );
+    assert_complete_agent_state_is_preserved(&world, agent, child);
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1
+    );
+    let reflected_position = world.get::<Position>(agent).unwrap().0;
+    let reflected_velocity = world.get::<Velocity>(agent).unwrap().0;
+    schedule.run(&mut world);
+    assert_eq!(world.get::<Position>(agent).unwrap().0, reflected_position);
+    assert_eq!(world.get::<Velocity>(agent).unwrap().0, reflected_velocity);
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1,
+        "one rejected ownership attempt must be counted once, not once per tick"
+    );
+}
+
+#[test]
+fn automatic_invalid_kinematics_are_made_finite_before_ownership_is_retained() {
+    let mut world = World::new();
+    let outbound_rx = insert_migration_resources(&mut world);
+    let (agent, child) = spawn_agent_tree(&mut world, Vec3::new(f32::NAN, f32::NAN, 0.0));
+    world.get_mut::<Velocity>(agent).unwrap().0 = Vec3::new(f32::NAN, 1.0, 2.0);
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(check_migration_boundaries_system);
+    schedule.run(&mut world);
+
+    assert!(outbound_rx.try_recv().is_err());
+    assert_complete_agent_state_is_preserved(&world, agent, child);
+    assert!(world.get::<Position>(agent).unwrap().0.is_finite());
+    assert!(world.get::<Velocity>(agent).unwrap().0.is_finite());
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1
+    );
+}
+
+#[test]
+fn manual_migration_rejects_an_invalid_genotype_without_losing_local_ownership() {
+    let mut world = World::new();
+    let outbound_rx = insert_migration_resources(&mut world);
+    world.insert_resource(SimRng::from_seed(0xA70C));
+    let (trigger_tx, trigger_rx) = crossbeam_channel::unbounded();
+    trigger_tx.send(8090).unwrap();
+    world.insert_resource(BevyMigrationTrigger(trigger_rx));
+    let (agent, child) = spawn_agent_tree(&mut world, Vec3::ZERO);
+    world.get_mut::<AgentGenotype>(agent).unwrap().0 = MorphologyGenotype::new();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(manual_migration_system);
+    schedule.run(&mut world);
+
+    assert!(
+        outbound_rx.try_recv().is_err(),
+        "manual migration must not hand an invalid payload to the network worker"
+    );
+    assert_complete_agent_state_is_preserved(&world, agent, child);
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1
+    );
+    schedule.run(&mut world);
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1,
+        "the consumed manual request must not become a rejection rate"
+    );
+}
+
+#[test]
+fn inbound_migration_rejects_an_empty_genotype_instead_of_panicking() {
+    let mut world = World::new();
+    world.insert_resource(MigrationHandoffDiagnostics::default());
+    SpawnMigrationCommand {
+        data: migration_data(MorphologyGenotype::new(), Vec3::X),
+    }
+    .apply(&mut world);
+
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    assert_eq!(agents.iter(&world).count(), 0);
+    assert_eq!(
+        world
+            .resource::<MigrationHandoffDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1
+    );
+}
+
+#[test]
+fn migration_validation_rejects_an_overflowing_brain_architecture_without_panicking() {
+    let mut data = migration_data(one_node_genotype(), Vec3::X);
+    data.brain = Some(AgentBrain::from_genotype(BrainGenotype {
+        version: BRAIN_GENOTYPE_VERSION,
+        arch: ArchSpec::new(usize::MAX, usize::MAX, usize::MAX),
+        weights: Vec::new(),
+    }));
+
+    assert!(data.validate().is_err());
+}
+
+#[test]
+fn migration_validation_rejects_nonfinite_derived_state_and_negative_accumulators() {
+    let mut overflowing_deviation = migration_data(one_node_genotype(), Vec3::X);
+    overflowing_deviation.homeostatic_state.energy = f32::MAX;
+    assert!(overflowing_deviation.validate().is_err());
+
+    let mut impossible_history = migration_data(one_node_genotype(), Vec3::X);
+    impossible_history.homeostatic_state.previous_deviation = -1.0;
+    assert!(impossible_history.validate().is_err());
+
+    let mut negative_accumulator = migration_data(one_node_genotype(), Vec3::X);
+    negative_accumulator.feature_tracker = Some(FeatureTracker {
+        cumulative_distance: -1.0,
+        cumulative_energy_decay: 0.0,
+        tick_count: 1,
+    });
+    assert!(negative_accumulator.validate().is_err());
+}
+
+#[test]
+fn migration_validation_pins_morphology_and_brain_size_limits() {
+    let at_limit = migration_data(star_genotype(MAX_MIGRATION_MORPHOLOGY_NODES), Vec3::X);
+    assert!(at_limit.validate().is_ok());
+
+    let over_limit = migration_data(star_genotype(MAX_MIGRATION_MORPHOLOGY_NODES + 1), Vec3::X);
+    assert!(over_limit.validate().is_err());
+
+    let mut oversized_brain = migration_data(one_node_genotype(), Vec3::X);
+    let arch = ArchSpec::new(128, 128, 8);
+    let parameters = arch.checked_param_count().unwrap();
+    assert!(parameters > MAX_MIGRATION_BRAIN_PARAMETERS);
+    oversized_brain.brain = Some(AgentBrain::from_genotype(BrainGenotype {
+        version: BRAIN_GENOTYPE_VERSION,
+        arch,
+        weights: Vec::new(),
+    }));
+    assert!(oversized_brain.validate().is_err());
 }

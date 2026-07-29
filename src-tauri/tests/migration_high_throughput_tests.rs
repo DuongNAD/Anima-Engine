@@ -13,7 +13,18 @@ use std::time::Duration;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{AgentClass, AgentMigrationData, OutboundMigration};
 use anima_engine_lib::core::engine::{run_websocket_client, run_websocket_server};
-use anima_engine_lib::evolution::genotype::MorphologyGenotype;
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
+
+fn one_node_genotype() -> MorphologyGenotype {
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    genotype
+}
 
 #[tokio::test]
 async fn test_high_throughput_websocket_transfers() {
@@ -59,7 +70,7 @@ async fn test_high_throughput_websocket_transfers() {
     for i in 0..count {
         let tx = outbound_tx.clone();
         let handle = tokio::spawn(async move {
-            let genotype = MorphologyGenotype::new();
+            let genotype = one_node_genotype();
             let agent = AgentMigrationData {
                 genotype,
                 homeostatic_state: HomeostaticState {

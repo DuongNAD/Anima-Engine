@@ -569,6 +569,33 @@ pub fn check_migration_boundaries_system(
         opt_brain,
     ) in agent_query.iter_mut()
     {
+        if !pos.0.is_finite() || !vel.0.is_finite() {
+            if let Some(ref diagnostics) = diagnostics {
+                diagnostics.record_invalid_rejection();
+            }
+            let center_x = x_min + 0.5 * x_range;
+            pos.0 = glam::Vec3::new(
+                if pos.0.x.is_finite() {
+                    pos.0.x
+                } else {
+                    center_x
+                },
+                if pos.0.y.is_finite() { pos.0.y } else { 0.0 },
+                if pos.0.z.is_finite() { pos.0.z } else { 0.0 },
+            );
+            if !vel.0.is_finite() {
+                vel.0 = glam::Vec3::ZERO;
+            }
+            if *reported_handoff_failures & 0b100 == 0 {
+                eprintln!(
+                    "automatic migration boundary repaired non-finite kinematics for agent {}; \
+                     retaining it on shard {} (further invalid-payload reports are suppressed)",
+                    lineage_id.0, config.local_port
+                );
+                *reported_handoff_failures |= 0b100;
+            }
+            continue;
+        }
         let x = pos.0.x;
         let mut target_port = None;
         let mut target_x = pos.0.x;
@@ -611,6 +638,39 @@ pub fn check_migration_boundaries_system(
                 source_port: config.local_port,
                 brain: opt_brain.cloned(),
             };
+
+            if let Err(reason) = migration_data.validate() {
+                if let Some(ref diagnostics) = diagnostics {
+                    diagnostics.record_invalid_rejection();
+                }
+                let width = (x_max - x_min).max(0.0);
+                let offset = 1.0_f32.min(0.1 * width);
+                // A non-finite vector is contagious in integration/collision. Keep ownership, but
+                // restore a finite local state before the corrupt payload can re-enter the tick.
+                if !pos.0.is_finite() {
+                    pos.0 = glam::Vec3::ZERO;
+                }
+                if !vel.0.is_finite() {
+                    vel.0 = glam::Vec3::ZERO;
+                }
+                if x < x_min {
+                    pos.0.x = x_min + offset;
+                    vel.0.x = vel.0.x.abs();
+                } else {
+                    pos.0.x = x_max - offset;
+                    vel.0.x = -vel.0.x.abs();
+                }
+                if *reported_handoff_failures & 0b100 == 0 {
+                    eprintln!(
+                        "automatic migration rejected invalid scientific state ({reason}); \
+                         retaining the agent on shard {} (further invalid-payload reports are \
+                         suppressed)",
+                        config.local_port
+                    );
+                    *reported_handoff_failures |= 0b100;
+                }
+                continue;
+            }
 
             if let Err(error) = sender.0.try_send(OutboundMigration {
                 target_port: port,
@@ -753,6 +813,22 @@ pub fn manual_migration_system(
                 brain: opt_brain.cloned(),
             };
 
+            if let Err(reason) = migration_data.validate() {
+                if let Some(ref diagnostics) = diagnostics {
+                    diagnostics.record_invalid_rejection();
+                }
+                if *reported_handoff_failures & 0b100 == 0 {
+                    eprintln!(
+                        "manual migration to shard {target_port} rejected invalid scientific state \
+                         ({reason}); retaining the agent on shard {} (further invalid-payload \
+                         reports are suppressed)",
+                        config.local_port
+                    );
+                    *reported_handoff_failures |= 0b100;
+                }
+                continue;
+            }
+
             if let Err(error) = sender.0.try_send(OutboundMigration {
                 target_port,
                 data: migration_data,
@@ -807,6 +883,14 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
         };
         use crate::evolution::genotype::decode_genotype;
         use crate::physics::dynamics::RigidBody;
+
+        if let Err(reason) = self.data.validate() {
+            if let Some(diagnostics) = world.get_resource::<MigrationHandoffDiagnostics>() {
+                diagnostics.record_invalid_rejection();
+            }
+            eprintln!("inbound migration rejected invalid scientific state ({reason})");
+            return;
+        }
 
         let initial_pos = self.data.position;
         let initial_rot = glam::Quat::IDENTITY;
@@ -896,13 +980,31 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
 pub fn process_inbound_migrations_system(
     mut commands: Commands,
     inbound_receiver: Option<Res<InboundMigrationReceiver>>,
+    diagnostics: Option<Res<MigrationHandoffDiagnostics>>,
+    mut reported_invalid: Local<bool>,
 ) {
     let receiver = match inbound_receiver {
         Some(r) => r,
         None => return,
     };
 
-    while let Ok(data) = receiver.0.try_recv() {
+    for _ in 0..crate::core::resources::INBOUND_MIGRATIONS_PER_TICK {
+        let Ok(data) = receiver.0.try_recv() else {
+            break;
+        };
+        if let Err(reason) = data.validate() {
+            if let Some(ref diagnostics) = diagnostics {
+                diagnostics.record_invalid_rejection();
+            }
+            if !*reported_invalid {
+                eprintln!(
+                    "inbound migration rejected invalid scientific state ({reason}) \
+                     (further reports are suppressed)"
+                );
+                *reported_invalid = true;
+            }
+            continue;
+        }
         commands.add(SpawnMigrationCommand { data });
     }
 }

@@ -178,6 +178,207 @@ pub struct AgentMigrationData {
     pub brain: Option<AgentBrain>,
 }
 
+/// Hard ceiling for untrusted/imported morphology payloads.
+///
+/// The live mutation operator stops at 15 nodes. A ceiling of 128 preserves more than eightfold
+/// research and legacy headroom (including the 66-node traversal regression fixture) while
+/// bounding topology validation and rigid-body reconstruction to a practical per-agent cost.
+pub const MAX_MIGRATION_MORPHOLOGY_NODES: usize = 128;
+/// Today's evolved network has 5,769 parameters. This ceiling leaves almost threefold architecture
+/// headroom while keeping both the inherited and learned networks, plus metadata, inside the
+/// transport's one-mebibyte limit even with long finite float spellings.
+pub const MAX_MIGRATION_BRAIN_PARAMETERS: usize = 16_384;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MigrationValidationError {
+    EmptyMorphology,
+    TooManyNodes { found: usize },
+    TooManyEdges { found: usize },
+    InvalidTopology,
+    InvalidBodyDimension,
+    InvalidJoint,
+    NonFiniteKinematics,
+    NonFiniteHomeostasis,
+    InvalidLineageId,
+    InvalidParentMetadata,
+    NonFiniteEvaluation,
+    NonFiniteFeatureTracker,
+    NonFiniteTransition,
+    BrainTooLarge { found: usize },
+    InvalidBrain(crate::evolution::brain_genotype::BrainGenotypeError),
+}
+
+impl std::fmt::Display for MigrationValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EmptyMorphology => write!(f, "morphology has no root node"),
+            Self::TooManyNodes { found } => write!(
+                f,
+                "morphology has {found} nodes; migration limit is \
+                 {MAX_MIGRATION_MORPHOLOGY_NODES}"
+            ),
+            Self::TooManyEdges { found } => write!(
+                f,
+                "morphology has {found} edges; a migration tree may have at most {}",
+                MAX_MIGRATION_MORPHOLOGY_NODES - 1
+            ),
+            Self::InvalidTopology => write!(f, "morphology is not one connected acyclic tree"),
+            Self::InvalidBodyDimension => write!(
+                f,
+                "morphology contains a non-finite or non-positive body dimension"
+            ),
+            Self::InvalidJoint => write!(f, "morphology contains an unreadable joint"),
+            Self::NonFiniteKinematics => write!(f, "position or velocity is non-finite"),
+            Self::NonFiniteHomeostasis => write!(f, "homeostatic state is non-finite"),
+            Self::InvalidLineageId => write!(f, "lineage id is empty or exceeds 1,024 bytes"),
+            Self::InvalidParentMetadata => {
+                write!(f, "parent lineage metadata exceeds migration limits")
+            }
+            Self::NonFiniteEvaluation => write!(f, "agent evaluation is non-finite"),
+            Self::NonFiniteFeatureTracker => write!(f, "feature tracker is non-finite"),
+            Self::NonFiniteTransition => write!(f, "last transition state is non-finite"),
+            Self::BrainTooLarge { found } => write!(
+                f,
+                "brain has {found} parameters; migration limit is \
+                 {MAX_MIGRATION_BRAIN_PARAMETERS}"
+            ),
+            Self::InvalidBrain(error) => write!(f, "brain is unreadable: {error}"),
+        }
+    }
+}
+
+impl AgentMigrationData {
+    /// Validate scientific state before it crosses or enters an ownership boundary.
+    pub fn validate(&self) -> Result<(), MigrationValidationError> {
+        let nodes = self.genotype.nodes.len();
+        if nodes == 0 {
+            return Err(MigrationValidationError::EmptyMorphology);
+        }
+        if nodes > MAX_MIGRATION_MORPHOLOGY_NODES {
+            return Err(MigrationValidationError::TooManyNodes { found: nodes });
+        }
+        if self.genotype.edges.len() >= MAX_MIGRATION_MORPHOLOGY_NODES {
+            return Err(MigrationValidationError::TooManyEdges {
+                found: self.genotype.edges.len(),
+            });
+        }
+        if !crate::evolution::mutation::is_valid_genotype(&self.genotype) {
+            return Err(MigrationValidationError::InvalidTopology);
+        }
+        if self.genotype.nodes.iter().any(|node| {
+            !node.length.is_finite()
+                || !node.radius.is_finite()
+                || !node.mass.is_finite()
+                || node.length <= 0.0
+                || node.radius <= 0.0
+                || node.mass <= 0.0
+        }) {
+            return Err(MigrationValidationError::InvalidBodyDimension);
+        }
+        if self.genotype.edges.iter().any(|edge| {
+            let length_squared = edge.joint_axis.length_squared();
+            !edge.joint_anchor.is_finite()
+                || !edge.joint_axis.is_finite()
+                || !length_squared.is_finite()
+                || length_squared <= f32::EPSILON
+        }) {
+            return Err(MigrationValidationError::InvalidJoint);
+        }
+        if !self.position.is_finite() || !self.velocity.is_finite() {
+            return Err(MigrationValidationError::NonFiniteKinematics);
+        }
+        let homeostasis = [
+            self.homeostatic_state.energy,
+            self.homeostatic_state.energy_target,
+            self.homeostatic_state.hydration,
+            self.homeostatic_state.hydration_target,
+            self.homeostatic_state.temperature,
+            self.homeostatic_state.temp_target,
+            self.homeostatic_state.previous_deviation,
+        ];
+        if homeostasis.iter().any(|value| !value.is_finite()) {
+            return Err(MigrationValidationError::NonFiniteHomeostasis);
+        }
+        if self.homeostatic_state.energy_target <= 0.0
+            || self.homeostatic_state.hydration_target <= 0.0
+            || self.homeostatic_state.previous_deviation < 0.0
+            || !self.homeostatic_state.compute_deviation().is_finite()
+        {
+            return Err(MigrationValidationError::NonFiniteHomeostasis);
+        }
+        if self.lineage_id.trim().is_empty()
+            || self.lineage_id.len() > 1_024
+            || self.lineage_id.chars().any(char::is_control)
+        {
+            return Err(MigrationValidationError::InvalidLineageId);
+        }
+        if self.parent_ids.len() > 64
+            || self.parent_ids.iter().any(|id| {
+                id.trim().is_empty() || id.len() > 1_024 || id.chars().any(char::is_control)
+            })
+        {
+            return Err(MigrationValidationError::InvalidParentMetadata);
+        }
+        if let Some(evaluation) = &self.evaluation {
+            if !evaluation.start_position.is_finite()
+                || !evaluation.last_position.is_finite()
+                || !evaluation.total_distance.is_finite()
+                || !evaluation.total_energy_expended.is_finite()
+                || evaluation.total_distance < 0.0
+                || evaluation.total_energy_expended < 0.0
+            {
+                return Err(MigrationValidationError::NonFiniteEvaluation);
+            }
+        }
+        if let Some(tracker) = &self.feature_tracker {
+            if !tracker.cumulative_distance.is_finite()
+                || !tracker.cumulative_energy_decay.is_finite()
+                || tracker.cumulative_distance < 0.0
+                || tracker.cumulative_energy_decay < 0.0
+            {
+                return Err(MigrationValidationError::NonFiniteFeatureTracker);
+            }
+        }
+        if let Some(last) = &self.last_transition_state {
+            if last.state.iter().any(|value| !value.is_finite())
+                || last.action.iter().any(|value| !value.is_finite())
+            {
+                return Err(MigrationValidationError::NonFiniteTransition);
+            }
+        }
+        if let Some(brain) = &self.brain {
+            let parameters = brain.genotype.arch.checked_param_count().ok_or(
+                MigrationValidationError::InvalidBrain(
+                    crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(
+                        brain.genotype.arch,
+                    ),
+                ),
+            )?;
+            if parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
+                return Err(MigrationValidationError::BrainTooLarge { found: parameters });
+            }
+            if let Some(learned) = &brain.learned {
+                let learned_parameters = learned.arch.checked_param_count().ok_or(
+                    MigrationValidationError::InvalidBrain(
+                        crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(
+                            learned.arch,
+                        ),
+                    ),
+                )?;
+                if learned_parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
+                    return Err(MigrationValidationError::BrainTooLarge {
+                        found: learned_parameters,
+                    });
+                }
+            }
+            brain
+                .validate()
+                .map_err(MigrationValidationError::InvalidBrain)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct OutboundMigration {
     pub target_port: u16,
@@ -373,7 +574,10 @@ impl AgentBrain {
         if !cost_per_1k.is_finite() || cost_per_1k <= 0.0 {
             return 0.0;
         }
-        (self.genotype.arch.param_count() as f32 / 1000.0) * cost_per_1k
+        let Some(parameters) = self.genotype.arch.checked_param_count() else {
+            return 0.0;
+        };
+        (parameters as f32 / 1000.0) * cost_per_1k
     }
 
     /// Heap bytes this agent's brain occupies: its genome, plus the learned network when it has one.
