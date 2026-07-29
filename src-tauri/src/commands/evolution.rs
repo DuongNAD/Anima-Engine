@@ -2,6 +2,14 @@ use crate::evolution::lineage::LineageTracker;
 use crate::AppState;
 use tauri::State;
 
+// Every lineage-analysis command below takes a SINGLE-WORD parameter name on purpose.
+//
+// `#[tauri::command]` defaults to `ArgumentCase::Camel`, so a Rust parameter `file_path` arrives
+// from JS as `filePath`, and a call site spelling it `file_path` silently never delivers the
+// argument. That is the bug class `scripts/check_ipc_arg_case.mjs` exists for, and it had four
+// commands broken in the real app while every mocked test stayed green. A name with no underscore
+// has one spelling in both languages, so here the class is unreachable rather than merely caught.
+
 #[derive(ts_rs::TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -58,6 +66,90 @@ pub struct LineageGraphPayload {
     pub links: Vec<LineageLinkPayload>,
     /// False when the tracker is running offline in memory, so the UI can say which it is showing.
     pub db_connected: bool,
+}
+
+/// One maximal common ancestor, as `get_lineage_mrca` publishes it.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LineageMrcaAncestor {
+    pub id: String,
+    pub generation: u32,
+    /// Graph edges down to the closest queried individual. **Edges, not reproduction events** — on
+    /// a compacted graph one edge stands for a spliced path, so this is a lower bound. Generation
+    /// deltas stay exact.
+    pub nearest_edges: u32,
+    /// The same measure for the farthest queried individual.
+    pub farthest_edges: u32,
+}
+
+/// Where a set of individuals last shared an ancestor.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LineageMrcaPayload {
+    /// Most recent first. **Empty is an answer**, not a failure: genesis creates one root per
+    /// founder, so two individuals from different founding lines genuinely never coalesce.
+    pub ancestors: Vec<LineageMrcaAncestor>,
+    /// Nodes ancestral to every queried individual, maximal or not — the shared trunk above the
+    /// coalescence point.
+    pub common_ancestors: usize,
+    /// **More than one answer.** Crossover gives an individual two parents, so the lineage is a DAG
+    /// and its common ancestors can be incomparable — none of them "more recent" than the rest.
+    /// A consumer rendering a single value must not just take `ancestors[0]`; see
+    /// `evolution/mrca.rs` for the shape that produces this.
+    pub ambiguous: bool,
+}
+
+/// The lineage as a Newick forest, ready to hand to any phylogenetics reader.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LineageNewickPayload {
+    /// One `;`-terminated tree per root. A forest is the normal case here, not an edge case.
+    pub trees: Vec<String>,
+    /// Parent edges Newick could not represent, because it is a tree format and crossover gives a
+    /// node two parents. **Non-zero means `trees` is a view of the lineage, not the lineage.**
+    pub dropped_parent_edges: usize,
+    pub roots: usize,
+}
+
+/// One node of a simplified lineage.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SimplifiedLineageNode {
+    pub id: String,
+    pub generation: u32,
+    pub mutations_count: u32,
+}
+
+/// One edge of a simplified lineage. May stand for a whole path of reproductions, which is why it
+/// carries counts instead of a relation type.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SimplifiedLineageEdge {
+    pub parent_id: String,
+    pub child_id: String,
+    /// Reproductions this edge replaced. `1` when nothing was compressed.
+    pub events: u32,
+    pub mutations: u32,
+    pub crossovers: u32,
+}
+
+/// The lineage reduced to the ancestry of a chosen set of individuals.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SimplifiedLineagePayload {
+    pub nodes: Vec<SimplifiedLineageNode>,
+    pub edges: Vec<SimplifiedLineageEdge>,
+    /// Removed for having no queried descendant.
+    pub dropped_nodes: usize,
+    /// Spliced out of a unary path. Their ancestry survives in the edge that replaced them; their
+    /// genotype does not.
+    pub compressed_nodes: usize,
 }
 
 #[tauri::command]
@@ -158,5 +250,116 @@ pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPaylo
         nodes: payload_nodes,
         links: payload_links,
         db_connected,
+    })
+}
+
+/// Where `individuals` last shared an ancestor (OSS-072).
+///
+/// # Why the caller has to name them
+///
+/// There is no "the living population" default, and that is deliberate. The tracker only ever sees
+/// writes, so it does not know who is alive — the same reason `LineageTracker::compact` makes the
+/// caller supply its sample set. Defaulting to the graph's childless nodes would look like an
+/// answer about the population and be an answer about the graph.
+///
+/// # Reading the result
+///
+/// [`LineageMrcaPayload::ancestors`] is a **set**: empty means no shared ancestor (ordinary in a
+/// founder forest), and more than one means the lineage branched and rejoined through crossover.
+/// See `evolution/mrca.rs` for the conventions, including that a node counts as its own ancestor.
+#[tauri::command]
+pub fn get_lineage_mrca(
+    state: State<'_, AppState>,
+    individuals: Vec<String>,
+) -> Result<LineageMrcaPayload, String> {
+    let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
+    let result = crate::evolution::mrca::mrca(&nodes, &relations, &individuals)
+        .map_err(|e| e.to_string())?;
+
+    Ok(LineageMrcaPayload {
+        ambiguous: result.is_ambiguous(),
+        common_ancestors: result.common_ancestors,
+        ancestors: result
+            .ancestors
+            .into_iter()
+            .map(|a| LineageMrcaAncestor {
+                id: a.id,
+                generation: a.generation,
+                nearest_edges: a.nearest_edges,
+                farthest_edges: a.farthest_edges,
+            })
+            .collect(),
+    })
+}
+
+/// The lineage as a Newick forest (OSS-070).
+///
+/// Returns the text rather than writing a file: the save-path name contract exists for state the
+/// app owns, and an export the user asked for is the webview's to place. A caller that wants a file
+/// joins [`LineageNewickPayload::trees`] with newlines — that is exactly the multi-tree file layout
+/// `ape::read.tree` and `dendropy.TreeList.get` expect.
+///
+/// Fails on a malformed lineage — a cycle, an orphan edge, a duplicate id, or a generation that
+/// disagrees with the edges — which is most of this command's value. Those defects can sit in an
+/// in-memory graph indefinitely without anything else noticing.
+#[tauri::command]
+pub fn export_lineage_newick(state: State<'_, AppState>) -> Result<LineageNewickPayload, String> {
+    let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
+    let export =
+        crate::evolution::newick::to_newick(&nodes, &relations).map_err(|e| e.to_string())?;
+    Ok(LineageNewickPayload {
+        trees: export.trees,
+        dropped_parent_edges: export.dropped_parent_edges,
+        roots: export.roots,
+    })
+}
+
+/// The lineage reduced to the ancestry of `samples` (OSS-071).
+///
+/// **Read-only.** This shows what a compaction of the same sample set would keep; it does not
+/// perform one. `LineageTracker::compact` is the mutating path, and the engine drives it on its own
+/// schedule.
+#[tauri::command]
+pub fn get_simplified_lineage(
+    state: State<'_, AppState>,
+    samples: Vec<String>,
+) -> Result<SimplifiedLineagePayload, String> {
+    let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
+
+    // Derived from the FULL graph, before anything is spliced. This ordering is the same one
+    // `compact` documents and depends on: a compressed edge stands for a path, so deriving mutation
+    // counts from the simplified graph would walk one edge where five reproductions happened and
+    // return a smaller, entirely plausible, wrong number.
+    let derived = crate::evolution::lineage::cumulative_mutations_from_edges(&nodes, &relations);
+
+    let plan = crate::evolution::simplify::simplify(&nodes, &relations, &samples)
+        .map_err(|e| e.to_string())?;
+
+    Ok(SimplifiedLineagePayload {
+        nodes: plan
+            .nodes
+            .iter()
+            .map(|n| SimplifiedLineageNode {
+                id: n.id.clone(),
+                generation: n.generation,
+                mutations_count: n
+                    .cumulative_mutations
+                    .or_else(|| derived.get(&n.id).copied())
+                    .unwrap_or(0),
+            })
+            .collect(),
+        edges: plan
+            .edges
+            .iter()
+            .map(|e| SimplifiedLineageEdge {
+                parent_id: e.parent_id.clone(),
+                child_id: e.child_id.clone(),
+                events: e.events,
+                mutations: e.mutations,
+                crossovers: e.crossovers,
+            })
+            .collect(),
+        dropped_nodes: plan.dropped_nodes,
+        compressed_nodes: plan.compressed_nodes,
     })
 }

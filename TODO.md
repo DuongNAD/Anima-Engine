@@ -14,7 +14,122 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
+# ⏪ [MỚI NHẤT] OSS-072 MRCA + nối phả hệ vào IPC (2026-07-29)
+
+Việc #3 của bàn giao 2026-07-27. `§3.15.1` trong `STATE_OF_THE_PROJECT.md`; số đo ở
+[§1.f](docs/planning/STATE_OF_THE_PROJECT.md#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac).
+
+## MRCA của một DAG không phải một node, và đó là toàn bộ nội dung của việc này
+
+`evolution/mrca.rs`. Trong một cây có gốc, MRCA của hai cá thể là **một** node, và mọi thư viện
+phylogenetics trả về đúng một. Phả hệ này **không phải cây**: `RelationType::Crossover` cho một cá
+thể hai cha, nên `LineageRelation` mô tả một **DAG**, và một DAG có thể có nhiều tổ tiên chung
+**không so sánh được với nhau** — không cái nào là tổ tiên của cái kia, nên không cái nào "gần hơn".
+
+Trường hợp nhỏ nhất là thứ engine này sinh ra có chủ đích — hai anh em, mỗi đứa là crossover của
+cùng một cặp:
+
+```text
+      r
+     / \
+    a   b
+    |\ /|
+    | X |
+    |/ \|
+    x   y
+```
+
+`a` và `b` đều là tổ tiên chung của `x` và `y`; `r` cũng là, nhưng **kém gần hơn cả hai**. Đáp án
+trung thực cho `mrca(x, y)` là **tập** `{a, b}`.
+
+Trả về một cái là đúng chế độ hỏng mà cả hệ con này liên tục gặp: một đáp án hữu hạn, hợp lý, cho
+một câu hỏi không có đáp án duy nhất. Và nó sẽ không bị bắt — **một cài đặt trả về một node sẽ pass
+mọi test cây trong file gate.** `LineageMrcaPayload.ambiguous` là chỗ nói điều đó ra cho phía tiêu
+thụ, vì một `ancestors[0]` trông vẫn hoàn toàn đúng.
+
+## Ba quy ước được khai báo, vì cái nào cũng có một lựa chọn ngược nghe hợp lý
+
+- **Tổ tiên có tính phản xạ:** `mrca(x, x) = {x}`. Quy ước "tổ tiên thực sự" trả về **cha** của `x`,
+  đọc như một lỗi ở mọi call site.
+- **Không có tổ tiên chung = tập rỗng, không phải `Err`.** Genesis gọi `add_root` mỗi founder một
+  lần, nên rừng nhiều gốc là hình dạng **bình thường**; trả `Err` biến trường hợp thường thành đường
+  lỗi và ép mọi caller coi "không họ hàng" là thất bại.
+- **Truy vấn rỗng = `Err`.** Mọi node đều là tổ tiên chung của tập rỗng, nên đáp án đúng về mặt toán
+  là *cả đồ thị* — thứ trông như kết quả mà không ai hỏi.
+
+Thứ tự trả về là generation giảm dần rồi id, nhưng **mọi phần tử đều không so sánh được với nhau**,
+nên thứ tự là cách trình bày còn **tập** mới là đáp án. `mrca` cố ý **không** kiểm generation: bất
+đồng giữa generation và cạnh không làm tập tổ tiên sai, chỉ làm thứ tự sai — và `to_newick` mới là
+chỗ từ chối đồ thị đó.
+
+## Gate mạnh nhất không phải cây biết trước đáp án
+
+Nó là một **cài đặt thứ hai, cố tình ngây thơ**: giao tập hợp + reachability từng cặp, `O(|C|²·E)`,
+không dùng chung một hàm nào với bản chính. Chạy trên một DAG sinh từ LCG cố định (không `rand` —
+`sim_determinism_tests` quét mã nguồn chặn `thread_rng()`, và một fixture đổi mỗi lượt sẽ báo một lỗi
+khác nhau mỗi lần nó fail), so **36 cặp** cộng cả hàng lá cùng lúc — đúng truy vấn OSS-073 sẽ làm.
+
+Kèm hai thứ giữ cho nó không xanh rỗng: `the_oracle_can_actually_disagree` (control âm), và một
+assertion bắt fixture **phải thực sự** sinh ra ít nhất một MRCA nhiều đáp án — nếu không, lượt chạy
+đó không kiểm trường hợp DAG chút nào, và test **nói ra** điều đó.
+
+## Bất biến liên hệ thống: nén không làm xê dịch MRCA
+
+`compaction_leaves_the_mrca_where_it_was`. MRCA của một tập sample có **ít nhất hai con** được giữ
+lại — nếu chỉ một, con đó đã là tổ tiên chung gần hơn — nên nén đường unary không bao giờ với tới nó.
+Lý do cấu trúc, không phải may mắn. Nếu nó thôi đúng thì phần khoa học dựng trên phả hệ **âm thầm**
+đổi đáp án sau epoch 50.
+
+## Phả hệ đã có mặt trên IPC, và một gate mới cho chỗ không ai canh
+
+`get_lineage_mrca(individuals)` · `export_lineage_newick` · `get_simplified_lineage(samples)`, đều
+**chỉ đọc**; `compact` vẫn là đường ghi duy nhất. Đóng đúng khoảng trống §3.15.1 ghi: `to_newick` và
+`simplify` không lệnh Tauri nào gọi tới. **"Nối vào IPC" không phải "UI đã dùng"** — chưa component
+nào gọi.
+
+`tests/ipc_registration_tests.rs` chốt rằng **mọi** `#[tauri::command]` đều có trong
+`generate_handler!`. Một lệnh thiếu ở đó vẫn biên dịch (nó là API công khai, không phải dead code),
+vẫn sinh binding `ts-rs`, vẫn được ghi trong `PROJECT.md`, và trả `Unknown command` khi app gọi.
+Clippy không thấy, `check_ipc_arg_case` không thấy (nó kiểm **cách viết** ở call site đã tồn tại), và
+test frontend không thấy — chúng mock `invoke`, mà mock thì trả lời mọi cái tên.
+
+**Gate đó bắt được một lỗi trong parser của chính nó ngay lần chạy đầu**, và đó là phần đáng nhớ: nó
+tách danh sách theo dấu phẩy nên mục **đầu tiên** còn dính `generate_handler![` ở trước và trượt
+`strip_prefix`, khiến nó báo `get_simulation_status` chưa đăng ký — một lệnh chưa bao giờ thiếu.
+Control âm khi đó **đang pass rỗng**: nó chỉ khẳng định "hiệu hai tập khác rỗng", mà hiệu với một tập
+rỗng thì **luôn** khác rỗng, nên nó đồng ý với một parser không parse được gì. Nay parser quét mọi
+`commands::` thay vì tách dấu phẩy, và control ghim **giá trị** parser trả về.
+
+(Số 32 lệnh trong một lượt đếm tay hoá ra là 31: cái thứ 32 là một **comment** trích
+`#[tauri::command]` khi giải thích chính quy tắc camelCase. Scanner vì thế đòi attribute **mở đầu**
+dòng, và có control âm cho đúng ca đó.)
+
+## 🔴 Finding mở ra từ chính lượt chạy gate: `test:frontend` đỏ trên **checkout Windows**, vì CRLF
+
+Không phải do nhánh này, và không phải do mã. `frontend/thirdPartyLicenses.test.ts` **không nạp
+được** vì `scripts/check_text_hygiene.mjs` mở đầu bằng shebang `#!/usr/bin/env node` **và** export
+symbol mà test import — Vite dồn shim CJS lên đầu dòng 1 và đẩy shebang ra giữa dòng, chỗ `#!` là lỗi
+cú pháp.
+
+**Cái quyết định là dòng kết thúc.** Cùng một commit, chỉ đổi dòng kết thúc của **một** file:
+
+| `scripts/check_text_hygiene.mjs` | Kết quả |
+|---|---|
+| **CRLF** (git checkout ra như vậy — `core.autocrlf=true`, `scripts/**` chưa ghim) | 38 file passed · **1 FAILED** · exit 1 |
+| **LF**, không đổi gì khác | ✅ **39 file passed · 440 test · exit 0** |
+
+Nên **hàng CI trên runner GitHub vẫn đúng**: job `Frontend` chạy `ubuntu-latest`, checkout LF, xanh
+thật — và cũng vì thế CI **không** thấy được lỗi này. Cái không tái lập được là hai hàng **chạy tay
+trên Windows** ở §1.b/§1.e ghi `0 fail`; trên checkout CRLF chúng không thể xanh.
+
+Bản sửa là **một dòng ghim trong `.gitattributes`**, đúng họ với các dòng đã có ở đó — việc riêng,
+không gộp vào nhánh phả hệ. Điều đáng ghi lại: file `.gitattributes` ấy được viết với luận chứng
+rằng autocrlf phá các artifact **so sánh byte**; ca này CRLF không làm sai một phép so byte mà làm
+**một parser không parse được**, nên phạm vi cần ghim rộng hơn cái file đó tự mô tả.
+
+---
+
+# ⏪ Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
 
 `§3.3` và nửa còn lại của `§3.2` trong `STATE_OF_THE_PROJECT.md`. Ba mảnh khoá vào nhau:
 

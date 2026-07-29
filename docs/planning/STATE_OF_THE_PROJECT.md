@@ -27,6 +27,14 @@ gate chưa xanh.
 > pass/fail/warning/target ở file khác mà không kèm lệnh + ngày, nó là **lịch sử**, không phải
 > trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
 >
+> 🔴 **ĐỌC [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) TRƯỚC KHI TRÍCH MỘT HÀNG
+> `test:frontend` CHẠY TAY.** Đo lại 2026-07-29 với `npm ci` sạch: suite đó **đỏ trên checkout
+> Windows** — ở `origin/main` *và* ở đúng commit mà §1.e ghi là "0 fail". Nguyên nhân là **CRLF**
+> (`scripts/**` chưa được ghim trong `.gitattributes`), không phải mã: chuyển đúng một file sang LF
+> thì thành **39 file · 440 test · exit 0**. Vì vậy **hàng CI trên runner GitHub vẫn đúng** — job đó
+> chạy `ubuntu-latest`, checkout LF. Hai hàng chạy tay đã được đánh dấu tại chỗ; mọi hàng còn lại của
+> §1.a–§1.e không bị ảnh hưởng.
+>
 > **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
 > `feature-anima-completion`, tại commit **`068a750`** — commit **merge** đưa
 > `feat/oss-071b-live-tracker` vào nhánh này. Đây là một lượt chạy **toàn bộ** gate CI **sau merge**,
@@ -91,7 +99,7 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 | 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
 | 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
 | 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed · 0 fail · 0 skip**, exit 0 |
-| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | **38 file · 432 passed · 0 fail · 0 skip**, exit 0 — chạy khi máy rảnh; xem §4 về nhiễu do tranh chấp CPU. Số worker do `tests/vitest.config.ts` ghim (4 ở máy này, **2 khi `CI` được đặt**) — xem §1.e |
+| 🔴 | Test frontend (`tests/`) | `npm run test:frontend` | ~~**38 file · 432 passed · 0 fail · 0 skip**, exit 0~~ — **KHÔNG TÁI LẬP ĐƯỢC TRÊN CHECKOUT WINDOWS.** Đo lại 2026-07-29: **1 file FAILED** ở cả `0f5b4d3`, `origin/main` và nhánh sau đó, vì `scripts/check_text_hygiene.mjs` checkout ra **CRLF**. Chuyển đúng file đó sang LF ⇒ xanh. Xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) |
 | 📏 | Build | `npm run build` | exit 0 — `tsc` sạch, 806 module transform |
 | 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped**, exit 0, **và 0 `console.error` / `pageerror` / `TypeError` trong toàn bộ output thô** — server riêng cổng 5177 + kiểm định danh trong `global-setup.ts`; `ANIMA_E2E_REQUIRE_BACKEND` **cố ý không đặt**, nên `real_backend.spec.ts` không khai test nào |
 | 📏 | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script · đủ directive hardening — đọc `dist/` **vừa build ở hàng trên** |
@@ -163,7 +171,7 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 | Loại | Gate | Lệnh / nguồn | Kết quả |
 |---|---|---|---|
 | 📏 | **CI đầy đủ, runner GitHub** | Actions run `30271127942` tại `0f5b4d3` | Rust (`windows-latest`) **success, 15m03s** · Frontend (`ubuntu-latest`) **success, 4m15s** · GitGuardian success. **Lần đầu tiên cả hai job cùng xanh** trên nhánh này — hai lượt trước đó: một lượt Frontend đỏ ba bước, một lượt bị cancel giữa chừng |
-| 📏 | Test frontend (`tests/`) dưới cấu hình CI | `CI=1 npm run test:frontend` | **38 file · 432 passed · 0 fail**, 78,7s — worker do config chọn, không truyền cờ tay |
+| 🔴 | Test frontend (`tests/`) dưới cấu hình CI | `CI=1 npm run test:frontend` | ~~**38 file · 432 passed · 0 fail**, 78,7s~~ — **KHÔNG TÁI LẬP ĐƯỢC TRÊN CHECKOUT WINDOWS.** Chạy lại đúng commit `0f5b4d3` này ngày 2026-07-29, `npm ci` sạch: **37 file passed · 1 file FAILED · 385 test**. Nguyên nhân là CRLF, xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac). **Hàng "CI đầy đủ, runner GitHub" ngay trên KHÔNG bị ảnh hưởng** — job đó chạy `ubuntu-latest`, checkout LF, nên nó xanh thật |
 | 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped** |
 | 📏 | **Tái lập view chuẩn** | `npm run capture:views` | **8/8 view byte-identical**, 3,0 phút — mỗi view chụp hai lần từ hai browser context sạch, hai SHA-256 bằng nhau; `git status` **sạch** sau cả 16 lần chụp, nên byte sinh lại **trùng ảnh đã commit** |
 | 📏 | Lint frontend + ratchet | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
@@ -187,6 +195,82 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 >    được**. Không gate nào đỏ, vì gate CI (`mapManifestEvidence.test.ts`) **hash ảnh đã commit** chứ
 >    không sinh lại chúng. **Một gate đặt trên artifact không thể phát hiện producer của artifact đó
 >    đã chết** — hàng `capture:views` ở bảng trên tồn tại để lần sau có người thực sự chạy nó.
+
+### 1.f OSS-072 + IPC phả hệ — đo 2026-07-29 tại `a6d06ac`
+
+> Nhánh `feat/oss-072-mrca`, worktree riêng dựng từ `origin/main` (`1c1f8e3`), toolchain nạp bằng
+> `npm ci` từ đúng lockfile đã commit. Mọi lệnh chạy từ **PowerShell** (xem §4), và **tuần tự** —
+> không lượt nào chồng lên lượt nào.
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | **929 passed · 0 failed · 2 ignored**, **89** dòng `test result`, exit 0 |
+| 📏📋 | Chính sách target/ignore | `node scripts/check_test_targets.mjs <capture> --profile desktop` | exit 0 — 89 target, 3 rỗng *(allow-list)*, 2 ignore *(allow-list)*, **7/7** target feature-gated chạy |
+| 📏 | Format | `cargo fmt --check` | exit 0 |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | exit 0 — xác nhận có in `Checking anima-engine` sau khi chạm lại 3 file, chứ không phải exit 0 nhờ cache |
+| 📏 | Parity binding Rust↔TS (G1.4) | `cargo test … export_bindings` rồi `git diff --exit-code -- src/types/generated` | exit 0 — 6 file mới, 32 file cũ **không đổi byte nào** |
+| 📏 | **Case tham số IPC** | `npm run check:ipc` | **31 command**, 22 call site, 8 key — exit 0 |
+| 📏 | Lint frontend + ratchet | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
+| 📏 | Build | `npm run build` | exit 0 |
+| 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed · 0 fail** |
+| 🔴 | Test frontend (`tests/`) | `npm run test:frontend` | **38 file passed · 1 file FAILED · 393 test passed** — **không phải do nhánh này**, xem dưới |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **573 link trong 110 file**, 0 gãy |
+
+Trong 929 test có **37 test mới của nhánh này**: 7 unit test của `evolution::mrca`, 19 ở
+`lineage_mrca_tests.rs`, 5 ở `ipc_registration_tests.rs`, và 6 test `export_bindings` do 6 kiểu
+`ts-rs` mới sinh ra. Con số **877** ở [§1.a](#1a-backend-rust--chạy-lại-2026-07-27-tại-19e67fa) đo tại
+`19e67fa`, **trước** khi PR #22–#29 vào `main`, nên hiệu 929 − 877 **không** quy về một mình nhánh này.
+
+#### 🔴 Finding — `test:frontend` đỏ trên **checkout Windows**, và nguyên nhân là CRLF chứ không phải mã
+
+Suite này hỏng ở cả `0f5b4d3`, `origin/main` và nhánh này, đo lại ngày 2026-07-29 với `npm ci` sạch:
+
+| Commit | CRLF (checkout mặc định ở máy này) |
+|---|---|
+| `0f5b4d3` — đúng commit §1.e nêu tên | **37 file passed · 1 file FAILED · 385 test** |
+| `1c1f8e3` — `origin/main` | **38 file passed · 1 file FAILED · 393 test** |
+| `a6d06ac` — nhánh này | **38 file passed · 1 file FAILED · 393 test** |
+
+`frontend/thirdPartyLicenses.test.ts` **không nạp được** (báo `0 test`) với
+`RolldownError: Parse failure: Invalid Character` `` `!` `` tại `scripts/check_text_hygiene.mjs:1`.
+File đó mở đầu bằng shebang `#!/usr/bin/env node` **và** export hai symbol mà test import; Vite viết
+lại các import `node:*` thành shim CJS, dồn chúng lên đầu dòng 1 và **đẩy shebang ra giữa dòng**, chỗ
+mà `#!` là lỗi cú pháp — shebang chỉ hợp lệ ở byte 0.
+
+**Nhưng cái quyết định là dòng kết thúc, và đây là phép đo chứng minh:**
+
+| Cùng commit `a6d06ac`, chỉ đổi dòng kết thúc của **một** file | Kết quả |
+|---|---|
+| `scripts/check_text_hygiene.mjs` giữ **CRLF** (như git checkout ra) | 38 file passed · **1 FAILED** · 393 test · exit 1 |
+| cùng file chuyển sang **LF**, **không đổi gì khác** | ✅ **39 file passed · 440 test · exit 0** |
+
+`core.autocrlf=true` ở máy này (và trên `windows-latest`). [`.gitattributes`](../../.gitattributes)
+ghim `NOTICE`, `sbom.cdx.json`, `licensing/**`, `schemas/**` và `artifacts/experiments/**` — nhưng
+**không** ghim `scripts/**`. Nên file đó được checkout ra CRLF, và bộ transform của Vite xử lý sai
+shebang khi dòng kết thúc là CRLF.
+
+**Hệ quả cho việc đọc bảng — sửa lại một điều bản trước của mục này ghi sai.** Bản trước nói hàng đó
+"không tái lập được" và ngụ ý số cũ sai. Chính xác hơn:
+
+- **Hàng CI ở §1.e vẫn ĐÚNG.** Job `Frontend` chạy `ubuntu-latest`, nơi checkout là LF, nên nó xanh
+  thật. CI **không** bị ảnh hưởng, và cũng vì thế **không** phát hiện được lỗi này.
+- **Cái không tái lập được là hai hàng chạy TAY trên Windows** ở §1.b và §1.e ghi `0 fail`: trên một
+  checkout CRLF chúng không thể xanh. Lượt đo đó hẳn đã chạy trên một cây mà file này là LF —
+  `node_modules` của `.worktrees/feature-anima-completion` và `.worktrees/main` nay đã khuyết nên
+  không dựng lại được để xác nhận.
+- **Bản sửa là một dòng ghim trong `.gitattributes`**, đúng họ với những dòng đã có ở đó — không phải
+  tái cấu trúc script. Vẫn là việc riêng, không gộp vào nhánh phả hệ.
+
+> **Bài học không phải về shebang, và cũng không phải về số liệu.** `.gitattributes` ở đây được viết
+> với luận chứng rằng autocrlf phá các artifact **so sánh byte** — gate `--check`, checksum SHA-256.
+> Ca này là một biểu hiện **khác hẳn**: CRLF không làm sai một phép so byte, nó làm **một parser
+> không parse được**. Phạm vi cần ghim vì thế rộng hơn cái file đó tự mô tả.
+>
+> Và một chế độ hỏng nữa đáng ghi riêng: **CI xanh trên Linux trong khi mọi máy dev Windows đỏ.** Đó
+> là chiều ngược của cái bẫy §1.e ghi cho `capture:views` — ở đó gate xanh trong khi producer đã
+> chết; ở đây CI xanh trong khi cái mà con người thật sự chạy thì đỏ, nên không có gì báo động và
+> hai lượt ghi `0 fail` vẫn vào được bảng.
 
 ### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
 
@@ -334,15 +418,20 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 > — lượt CI đầy đủ đầu tiên xanh trên runner GitHub, và tám view chuẩn đo lại byte-identical.
 
 > **Việc #1 của bàn giao trước đã XONG.** Số đếm đột biến theo node đã ship và nén lưu trữ đã bật —
-> xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước), nay chỉ còn OSS-072 (MRCA). Chi tiết cả đợt
+> xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước). Chi tiết cả đợt
 > ở [`docs/ai/planning/2026-07-27-feature-anima-completion.md`](../ai/planning/2026-07-27-feature-anima-completion.md)
 > và bảng bằng chứng ở [`docs/ai/testing/2026-07-27-feature-anima-completion.md`](../ai/testing/2026-07-27-feature-anima-completion.md).
+
+> **Việc #3 của bàn giao trước cũng đã XONG (2026-07-29).** OSS-072 MRCA đã ship, và phả hệ nay có
+> mặt trên IPC — xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) và
+> [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac). Việc kế tiếp của nhánh phả hệ là **OSS-073**
+> (line of descent kiểu Avida), thứ MRCA vừa mở khoá.
 
 | # | Việc | Vì sao là việc này | Đọc |
 |---|---|---|---|
 | 1 | **Chạy app desktop một lần với `ANIMA_TICK_CAPTURE`** | Việc duy nhất còn lại của §3.2, và **máy không làm được** — cần một con người bấm chạy. Dụng cụ đã ship và đã test; thiếu đúng một lần chạy | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26), [BENCHMARKING.md](../how-to/BENCHMARKING.md) |
 | 2 | ~~**Quyết định EB-S04**~~ ~~**chạy thí nghiệm E2**~~ **CẢ HAI XONG 2026-07-27** → việc còn lại là **thí nghiệm kế tiếp**, không phải quyết định | E2 đã chạy một lần tại `9c57184`: H1 **null** (delta đúng bằng 0 trên 12/12 cặp), mặc định **giữ opt-in** (ADR-0003 quyết định 13). Số 0 là **hiệu ứng sàn**, không phải bằng chứng về não — cần một điểm đo **trước sàn** (T ≈ 3.000–6.000) và một quần thể **có luân chuyển** | [§3.1](#31-bật-não-tiến-hoá-per-agent-trên-đường-mặc-định) |
-| 3 | **OSS-072 MRCA** | Nửa khoa học còn lại của phả hệ. Nén đã xong nên `simplify` đã có sẵn cấu trúc cha/con để dùng lại | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
+| 3 | ~~**OSS-072 MRCA**~~ **XONG 2026-07-29** → kế tiếp là **OSS-073**, giao thức đo *line of descent* | MRCA trả về một **tập** (crossover ⇒ DAG ⇒ nhiều tổ tiên cực đại không so sánh được), có oracle vét cạn đối chứng. OSS-073 là thứ biến phả hệ từ "kể lại" thành "đo được" | [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) |
 | 4 | ~~**In-app tick capture**~~ **XONG 2026-07-27** | Đã ship kèm 4 lệnh IPC và gate "đo không làm đổi quỹ đạo" | [§3.2](#32-thay-số-hiệu-năng-proxy-bằng-số-đo-thật--một-nửa-đã-xong-2026-07-26) |
 | 5 | ~~**§3.3 adapter thí nghiệm cho thế giới sống**~~ **XONG headless 2026-07-27** | `LiveExperimentAdapter` qua runner chung, trên đúng lịch trình app chạy | [§3.3](#33-đưa-thế-giới-bevy-sống-qua-gate-thí-nghiệm--adapter-headless-đã-xong-2026-07-27) |
 
@@ -772,6 +861,8 @@ một dự án mà §3.3 đang cố chứng minh thế giới sống là experim
 | OSS-070 xuất Newick | ✅ DendroPy 5.0.10 đọc được; gate hai nửa cùng một fixture | `evolution/newick.rs`, `scripts/verify_newick.py` |
 | OSS-071 thuật toán `simplify` | ✅ 2.047 node / 16 sống → **31 node**, đúng cận `2·samples` | `evolution/simplify.rs` |
 | OSS-071b nối vào tracker sống | ✅ **2026-07-27** — `compact()` chạy mỗi 50 epoch, **nén BẬT**; số đột biến lưu theo node | `lineage.rs`, `simulation_loop.rs` |
+| OSS-072 truy vấn MRCA | ✅ **2026-07-29** — trả về **tập** tổ tiên cực đại, vì DAG có thể có nhiều đáp án; đối chứng với oracle vét cạn | `evolution/mrca.rs` |
+| Nối phả hệ vào IPC | ✅ **2026-07-29** — ba lệnh chỉ-đọc + gate "mọi lệnh đều có trong `generate_handler!`" | `commands/evolution.rs`, `tests/ipc_registration_tests.rs` |
 
 **Đường đi không tốn dependency nào**, và điều đó vẫn đúng: lấy **thuật toán** `simplify()` của
 tskit chứ không lấy crate, lấy **định dạng** Newick chứ không lấy code R. Chi tiết ở OS7 trong
@@ -817,16 +908,51 @@ kia thành thừa **và** nhanh hơn.
 một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
 fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 
-**(2) OSS-072 — truy vấn MRCA.**
+**(2) OSS-072 — truy vấn MRCA.** ✅ **ĐÃ XONG 2026-07-29**
 
-*Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
+*Neo:* [`evolution/mrca.rs`](../../src-tauri/src/evolution/mrca.rs) · gate
+[`tests/lineage_mrca_tests.rs`](../../src-tauri/tests/lineage_mrca_tests.rs) + 7 unit test của
+module. Không dùng lại `simplify.rs` như kế hoạch phác: cấu trúc kề ở đó gắn với kiểu thống kê cạnh
+của nó, và nới nó ra để phục vụ cả hai sẽ đẩy một khái niệm chỉ-để-phân-tích vào đúng cái kiểu mà
+compaction phụ thuộc.
 
-*Định nghĩa hoàn thành:* MRCA tất định, có test trên cây biết trước đáp án · xử lý đúng trường hợp
-**DAG** (crossover cho hai cha, nên MRCA không nhất thiết duy nhất — phải quyết định trả về gì và
-**ghi rõ**, đừng chọn bừa một nhánh) · trường hợp không có tổ tiên chung trả về gì cũng phải khai
-báo, vì rừng nhiều gốc là chuyện bình thường ở đây.
+*Quyết định về trường hợp **DAG**, ghi ra vì định nghĩa hoàn thành đòi ghi:* `mrca` trả về **tập** tổ
+tiên chung cực đại, không phải một node. Crossover cho hai cha, nên hai anh em cùng một cặp cha mẹ có
+**hai** tổ tiên chung mà không cái nào là tổ tiên của cái kia — "gần nhất" không phân biệt được
+chúng. Trả về một cái là đúng chế độ hỏng mà cả hệ con này liên tục gặp: một đáp án hữu hạn, hợp lý,
+cho một câu hỏi không có đáp án duy nhất. `LineageMrcaPayload.ambiguous` nói thẳng điều đó ra cho
+phía tiêu thụ, vì một `ancestors[0]` trông vẫn đúng.
 
-Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) — nó cần MRCA.
+*Ba quy ước, khai báo chứ không ngầm định:*
+
+- **Tổ tiên có tính phản xạ** — một cá thể là tổ tiên của chính nó, nên `mrca(x, x) = {x}` và nếu `x`
+  là tổ tiên của `y` thì `mrca(x, y) = {x}`. Đây là quy ước của `dendropy`/`ape`; quy ước ngược lại
+  làm `mrca(x, x)` trả về **cha** của `x`, đọc như một lỗi ở mọi call site.
+- **Không có tổ tiên chung là một ĐÁP ÁN, không phải lỗi** — trả về tập rỗng. Genesis gọi `add_root`
+  một lần mỗi founder, nên rừng nhiều gốc là hình dạng bình thường ở đây; trả `Err` sẽ biến trường
+  hợp thường thành đường lỗi.
+- **Truy vấn rỗng bị từ chối** — mọi node đều là tổ tiên chung của tập rỗng, nên đáp án đúng về mặt
+  toán là *cả đồ thị*. Đó là thứ trông như kết quả mà không ai hỏi, nên `MrcaError::NoIndividuals`.
+
+*Thứ tự trả về là **generation giảm dần**, rồi id.* Nhưng mọi phần tử trong tập đều **không so sánh
+được** với nhau — đó chính là nghĩa của "cực đại" — nên thứ tự là cách trình bày, còn **tập** mới là
+đáp án. `mrca` cố ý **không** kiểm generation: một bất đồng giữa generation và cạnh không làm tập tổ
+tiên sai, chỉ làm thứ tự trình bày sai, và `to_newick` mới là chỗ từ chối đồ thị đó.
+
+*Bất biến liên hệ thống, có gate — `compaction_leaves_the_mrca_where_it_was`.* MRCA của một tập
+sample có **ít nhất hai con** được giữ lại (nếu chỉ có một, con đó đã là tổ tiên chung gần hơn), nên
+nén đường unary không bao giờ với tới nó. Đây là lý do cấu trúc chứ không phải may mắn. Nếu nó thôi
+đúng, phần khoa học dựng trên phả hệ sẽ âm thầm đổi đáp án sau epoch 50.
+
+*Gate mạnh nhất không phải cây biết trước đáp án.* Nó là
+`the_implementation_agrees_with_a_brute_force_oracle_across_a_dag`: một cài đặt **thứ hai**, cố tình
+ngây thơ (giao tập hợp + reachability từng cặp, `O(|C|²·E)`), không dùng chung hàm nào với bản chính,
+chạy trên một DAG sinh từ LCG cố định. So **36 cặp** cộng cả hàng lá cùng lúc — đúng truy vấn mà
+OSS-073 sẽ làm. Kèm `the_oracle_can_actually_disagree` làm control âm, và một assertion bắt fixture
+phải **thực sự** sinh ra ít nhất một MRCA nhiều đáp án: nếu không, lượt chạy đó không kiểm trường hợp
+DAG chút nào, và test nói ra điều đó thay vì xanh im lặng.
+
+Nay mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) — nó cần MRCA, và giờ đã có.
 
 **Hai cái bẫy đã trả giá rồi, đừng đạp lại:**
 
@@ -837,8 +963,33 @@ Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) �
   MAP-Elites, vì một elite có thể được chọn làm cha ở epoch sau mà không phải tổ tiên của ai đang
   sống.
 
-**Chưa nối vào IPC.** `to_newick` và `simplify` đều chưa có lệnh Tauri nào gọi. Cần sửa hợp đồng ở
-[`PROJECT.md`](../../PROJECT.md) §"Interface Contracts".
+**Đã nối vào IPC (2026-07-29).** Ba lệnh chỉ-đọc — `get_lineage_mrca(individuals)`,
+`export_lineage_newick`, `get_simplified_lineage(samples)` — hợp đồng đầy đủ ở
+[`PROJECT.md`](../../PROJECT.md) §"Interface Contracts". `compact` vẫn là đường ghi **duy nhất**.
+
+Hai điều ghi ra vì chúng dễ bị đọc quá lên:
+
+- **"Nối vào IPC" không phải "UI đã dùng".** Chưa component frontend nào gọi ba lệnh này. Cái đã đóng
+  là đúng khoảng trống mục này từng ghi — `to_newick` và `simplify` không có lệnh Tauri nào gọi tới.
+- **Tên tham số là một từ đơn, có chủ đích.** `#[tauri::command]` mặc định camelCase, nên `file_path`
+  bên Rust tới từ JS là `filePath`. Một tên không có gạch dưới chỉ có **một** cách viết ở cả hai
+  phía, nên cả lớp lỗi mà `scripts/check_ipc_arg_case.mjs` canh là **không với tới được** ở đây, chứ
+  không phải "được bắt".
+
+Và một gate mới cho một chế độ hỏng chưa ai canh:
+[`tests/ipc_registration_tests.rs`](../../src-tauri/tests/ipc_registration_tests.rs) chốt rằng **mọi**
+`#[tauri::command]` đều có mặt trong `generate_handler!`. Một lệnh thiếu ở đó vẫn biên dịch (nó là
+API công khai, không phải dead code), vẫn sinh binding `ts-rs`, vẫn được ghi trong `PROJECT.md`, và
+trả `Unknown command` khi app gọi. Không gate nào trước đây thấy được: clippy không, `check_ipc_arg_case`
+không (nó kiểm **cách viết** ở các call site đã tồn tại), và test frontend không — chúng mock `invoke`,
+mà mock thì trả lời mọi cái tên.
+
+> **Gate đó bắt được một lỗi trong parser của chính nó ở lần chạy đầu**, và đó là phần đáng đọc:
+> nó tách danh sách theo dấu phẩy nên mục **đầu tiên** vẫn dính chữ `generate_handler![` ở trước và
+> trượt `strip_prefix`, khiến nó báo `get_simulation_status` chưa đăng ký — một lệnh chưa bao giờ
+> thiếu. Control âm khi đó **đang pass rỗng**: nó chỉ khẳng định "hiệu hai tập khác rỗng", mà hiệu
+> với một tập rỗng thì luôn khác rỗng, nên nó đồng ý với một parser không parse được gì. Nay parser
+> quét mọi `commands::` thay vì tách dấu phẩy, và control ghim **giá trị** parser trả về.
 
 **Neo4j:** `compact` chỉ co bộ nhớ trong. Khi Neo4j online, `get_lineage_graph` đọc từ database nên
 vẫn trả đồ thị **đầy đủ**.
