@@ -27,10 +27,13 @@ gate chưa xanh.
 > pass/fail/warning/target ở file khác mà không kèm lệnh + ngày, nó là **lịch sử**, không phải
 > trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
 >
-> 🔴 **ĐỌC [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) TRƯỚC KHI TRÍCH BẤT KỲ HÀNG
-> `test:frontend` NÀO.** Đo lại ngày 2026-07-29 với `npm ci` sạch cho thấy suite đó **đỏ** — ở
-> `origin/main` *và* ở đúng commit mà §1.e ghi là "0 fail". Hai hàng liên quan đã được đánh dấu tại
-> chỗ; các hàng còn lại của §1.a–§1.e không bị ảnh hưởng.
+> 🔴 **ĐỌC [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) TRƯỚC KHI TRÍCH MỘT HÀNG
+> `test:frontend` CHẠY TAY.** Đo lại 2026-07-29 với `npm ci` sạch: suite đó **đỏ trên checkout
+> Windows** — ở `origin/main` *và* ở đúng commit mà §1.e ghi là "0 fail". Nguyên nhân là **CRLF**
+> (`scripts/**` chưa được ghim trong `.gitattributes`), không phải mã: chuyển đúng một file sang LF
+> thì thành **39 file · 440 test · exit 0**. Vì vậy **hàng CI trên runner GitHub vẫn đúng** — job đó
+> chạy `ubuntu-latest`, checkout LF. Hai hàng chạy tay đã được đánh dấu tại chỗ; mọi hàng còn lại của
+> §1.a–§1.e không bị ảnh hưởng.
 >
 > **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
 > `feature-anima-completion`, tại commit **`068a750`** — commit **merge** đưa
@@ -96,7 +99,7 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 | 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline **0**), exit 0 |
 | 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
 | 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed · 0 fail · 0 skip**, exit 0 |
-| 🔴 | Test frontend (`tests/`) | `npm run test:frontend` | ~~**38 file · 432 passed · 0 fail · 0 skip**, exit 0~~ — **HÀNG NÀY KHÔNG TÁI LẬP ĐƯỢC.** Đo lại 2026-07-29 cho **1 file FAILED** ở cả `0f5b4d3`, `origin/main` và nhánh sau đó. Xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) trước khi trích số này |
+| 🔴 | Test frontend (`tests/`) | `npm run test:frontend` | ~~**38 file · 432 passed · 0 fail · 0 skip**, exit 0~~ — **KHÔNG TÁI LẬP ĐƯỢC TRÊN CHECKOUT WINDOWS.** Đo lại 2026-07-29: **1 file FAILED** ở cả `0f5b4d3`, `origin/main` và nhánh sau đó, vì `scripts/check_text_hygiene.mjs` checkout ra **CRLF**. Chuyển đúng file đó sang LF ⇒ xanh. Xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) |
 | 📏 | Build | `npm run build` | exit 0 — `tsc` sạch, 806 module transform |
 | 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped**, exit 0, **và 0 `console.error` / `pageerror` / `TypeError` trong toàn bộ output thô** — server riêng cổng 5177 + kiểm định danh trong `global-setup.ts`; `ANIMA_E2E_REQUIRE_BACKEND` **cố ý không đặt**, nên `real_backend.spec.ts` không khai test nào |
 | 📏 | CSP (artifact) | `npm run check:csp` | 2 file HTML ship · 0 origin ngoài · 0 inline script · đủ directive hardening — đọc `dist/` **vừa build ở hàng trên** |
@@ -168,7 +171,7 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 | Loại | Gate | Lệnh / nguồn | Kết quả |
 |---|---|---|---|
 | 📏 | **CI đầy đủ, runner GitHub** | Actions run `30271127942` tại `0f5b4d3` | Rust (`windows-latest`) **success, 15m03s** · Frontend (`ubuntu-latest`) **success, 4m15s** · GitGuardian success. **Lần đầu tiên cả hai job cùng xanh** trên nhánh này — hai lượt trước đó: một lượt Frontend đỏ ba bước, một lượt bị cancel giữa chừng |
-| 🔴 | Test frontend (`tests/`) dưới cấu hình CI | `CI=1 npm run test:frontend` | ~~**38 file · 432 passed · 0 fail**, 78,7s~~ — **KHÔNG TÁI LẬP ĐƯỢC.** Chạy lại đúng commit `0f5b4d3` này ngày 2026-07-29, `npm ci` sạch: **37 file passed · 1 file FAILED · 385 test**. Xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac) |
+| 🔴 | Test frontend (`tests/`) dưới cấu hình CI | `CI=1 npm run test:frontend` | ~~**38 file · 432 passed · 0 fail**, 78,7s~~ — **KHÔNG TÁI LẬP ĐƯỢC TRÊN CHECKOUT WINDOWS.** Chạy lại đúng commit `0f5b4d3` này ngày 2026-07-29, `npm ci` sạch: **37 file passed · 1 file FAILED · 385 test**. Nguyên nhân là CRLF, xem [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac). **Hàng "CI đầy đủ, runner GitHub" ngay trên KHÔNG bị ảnh hưởng** — job đó chạy `ubuntu-latest`, checkout LF, nên nó xanh thật |
 | 📏 | E2E Playwright | `npm run test:e2e` | **18 passed · 0 failed · 0 skipped** |
 | 📏 | **Tái lập view chuẩn** | `npm run capture:views` | **8/8 view byte-identical**, 3,0 phút — mỗi view chụp hai lần từ hai browser context sạch, hai SHA-256 bằng nhau; `git status` **sạch** sau cả 16 lần chụp, nên byte sinh lại **trùng ảnh đã commit** |
 | 📏 | Lint frontend + ratchet | `npm run lint` + `node scripts/eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
@@ -219,44 +222,55 @@ Trong 929 test có **37 test mới của nhánh này**: 7 unit test của `evolu
 `ts-rs` mới sinh ra. Con số **877** ở [§1.a](#1a-backend-rust--chạy-lại-2026-07-27-tại-19e67fa) đo tại
 `19e67fa`, **trước** khi PR #22–#29 vào `main`, nên hiệu 929 − 877 **không** quy về một mình nhánh này.
 
-#### 🔴 Finding — hàng `tests/` ở §1.b và §1.e **không tái lập được**
+#### 🔴 Finding — `test:frontend` đỏ trên **checkout Windows**, và nguyên nhân là CRLF chứ không phải mã
 
-§1.b (tại `e4eff6c`) và §1.e (tại `0f5b4d3`) đều ghi **"38 file · 432 passed · 0 fail"**. Đo lại
-ngày 2026-07-29, `npm ci` sạch từ đúng lockfile đã commit, trong worktree mới:
+Suite này hỏng ở cả `0f5b4d3`, `origin/main` và nhánh này, đo lại ngày 2026-07-29 với `npm ci` sạch:
 
-| Commit | Kết quả đo 2026-07-29 |
+| Commit | CRLF (checkout mặc định ở máy này) |
 |---|---|
 | `0f5b4d3` — đúng commit §1.e nêu tên | **37 file passed · 1 file FAILED · 385 test** |
 | `1c1f8e3` — `origin/main` | **38 file passed · 1 file FAILED · 393 test** |
 | `a6d06ac` — nhánh này | **38 file passed · 1 file FAILED · 393 test** |
 
-Cùng một suite hỏng ở cả ba: `frontend/thirdPartyLicenses.test.ts` **không nạp được** (báo `0 test`)
-với `RolldownError: Parse failure: Invalid Character `!`` tại
-`scripts/check_text_hygiene.mjs:1`. Nguyên nhân: file đó mở đầu bằng shebang `#!/usr/bin/env node`
-**và** export hai symbol mà test import; khi Vite viết lại các import `node:*` thành shim CJS, nó dồn
-chúng lên đầu dòng 1 và **đẩy shebang ra giữa dòng**, chỗ mà `#!` là lỗi cú pháp. Shebang chỉ hợp lệ
-ở byte 0.
+`frontend/thirdPartyLicenses.test.ts` **không nạp được** (báo `0 test`) với
+`RolldownError: Parse failure: Invalid Character` `` `!` `` tại `scripts/check_text_hygiene.mjs:1`.
+File đó mở đầu bằng shebang `#!/usr/bin/env node` **và** export hai symbol mà test import; Vite viết
+lại các import `node:*` thành shim CJS, dồn chúng lên đầu dòng 1 và **đẩy shebang ra giữa dòng**, chỗ
+mà `#!` là lỗi cú pháp — shebang chỉ hợp lệ ở byte 0.
 
-**Vì sao đây là finding chứ không phải hồi quy của nhánh này** — ba mệnh đề, mỗi cái đo được:
+**Nhưng cái quyết định là dòng kết thúc, và đây là phép đo chứng minh:**
 
-1. `origin/main` hỏng **y hệt**, cùng test, cùng thông điệp.
-2. Nhánh này **không** đụng `scripts/`, `tests/`, `vite.config.ts`, `tsconfig.json`, `package.json`
-   hay `package-lock.json` — `git diff origin/main --` trên đúng các đường dẫn đó **rỗng**.
-3. `package-lock.json` **giống hệt byte** suốt từ `0f5b4d3` tới `origin/main`, và cả
-   `check_text_hygiene.mjs` lẫn `thirdPartyLicenses.test.ts` **không có commit nào** chạm vào trong
-   khoảng đó. Nên toolchain không đổi, mã không đổi — mà số đo thì khác.
+| Cùng commit `a6d06ac`, chỉ đổi dòng kết thúc của **một** file | Kết quả |
+|---|---|
+| `scripts/check_text_hygiene.mjs` giữ **CRLF** (như git checkout ra) | 38 file passed · **1 FAILED** · 393 test · exit 1 |
+| cùng file chuyển sang **LF**, **không đổi gì khác** | ✅ **39 file passed · 440 test · exit 0** |
 
-**Lượt đo cũ đã lấy ở đâu ra số xanh thì chưa giải thích được**, và không dựng lại được:
-`node_modules` của `.worktrees/feature-anima-completion` và `.worktrees/main` hiện **khuyết** (có thư
-mục `@rolldown` nhưng không có `vite`/`rolldown`/`vitest` ở cấp trên). Theo quy tắc 6 của
-[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mục này được mở làm **finding** chứ
-không tự coi số nào là đúng. Bản sửa — tách hai symbol sang `scripts/lib/text_hygiene.mjs` không
-shebang, đúng quy ước `scripts/lib/licensing.mjs` đã có — là việc riêng, không gộp vào nhánh phả hệ.
+`core.autocrlf=true` ở máy này (và trên `windows-latest`). [`.gitattributes`](../../.gitattributes)
+ghim `NOTICE`, `sbom.cdx.json`, `licensing/**`, `schemas/**` và `artifacts/experiments/**` — nhưng
+**không** ghim `scripts/**`. Nên file đó được checkout ra CRLF, và bộ transform của Vite xử lý sai
+shebang khi dòng kết thúc là CRLF.
 
-> **Bài học chung, và nó không phải về shebang.** Một suite **exit 1** đã sống qua ít nhất hai lượt
-> ghi "0 fail" trong bảng có thẩm quyền của chính dự án. Đây đúng hình dạng bẫy mà §1.e đã ghi cho
-> `capture:views` — chỉ khác chiều: ở đó *gate xanh trong khi producer đã chết*, ở đây *tài liệu
-> xanh trong khi gate đã đỏ*. Một con số chỉ đáng tin bằng lần cuối có người thật sự chạy lại nó.
+**Hệ quả cho việc đọc bảng — sửa lại một điều bản trước của mục này ghi sai.** Bản trước nói hàng đó
+"không tái lập được" và ngụ ý số cũ sai. Chính xác hơn:
+
+- **Hàng CI ở §1.e vẫn ĐÚNG.** Job `Frontend` chạy `ubuntu-latest`, nơi checkout là LF, nên nó xanh
+  thật. CI **không** bị ảnh hưởng, và cũng vì thế **không** phát hiện được lỗi này.
+- **Cái không tái lập được là hai hàng chạy TAY trên Windows** ở §1.b và §1.e ghi `0 fail`: trên một
+  checkout CRLF chúng không thể xanh. Lượt đo đó hẳn đã chạy trên một cây mà file này là LF —
+  `node_modules` của `.worktrees/feature-anima-completion` và `.worktrees/main` nay đã khuyết nên
+  không dựng lại được để xác nhận.
+- **Bản sửa là một dòng ghim trong `.gitattributes`**, đúng họ với những dòng đã có ở đó — không phải
+  tái cấu trúc script. Vẫn là việc riêng, không gộp vào nhánh phả hệ.
+
+> **Bài học không phải về shebang, và cũng không phải về số liệu.** `.gitattributes` ở đây được viết
+> với luận chứng rằng autocrlf phá các artifact **so sánh byte** — gate `--check`, checksum SHA-256.
+> Ca này là một biểu hiện **khác hẳn**: CRLF không làm sai một phép so byte, nó làm **một parser
+> không parse được**. Phạm vi cần ghim vì thế rộng hơn cái file đó tự mô tả.
+>
+> Và một chế độ hỏng nữa đáng ghi riêng: **CI xanh trên Linux trong khi mọi máy dev Windows đỏ.** Đó
+> là chiều ngược của cái bẫy §1.e ghi cho `capture:views` — ở đó gate xanh trong khi producer đã
+> chết; ở đây CI xanh trong khi cái mà con người thật sự chạy thì đỏ, nên không có gì báo động và
+> hai lượt ghi `0 fail` vẫn vào được bảng.
 
 ### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
 

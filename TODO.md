@@ -104,16 +104,28 @@ rỗng thì **luôn** khác rỗng, nên nó đồng ý với một parser khôn
 `#[tauri::command]` khi giải thích chính quy tắc camelCase. Scanner vì thế đòi attribute **mở đầu**
 dòng, và có control âm cho đúng ca đó.)
 
-## 🔴 Một finding mở ra từ chính lượt chạy gate: `npm run test:frontend` đang đỏ trên `main`
+## 🔴 Finding mở ra từ chính lượt chạy gate: `test:frontend` đỏ trên **checkout Windows**, vì CRLF
 
-Không phải do nhánh này. `frontend/thirdPartyLicenses.test.ts` **không nạp được** vì
-`scripts/check_text_hygiene.mjs` mở đầu bằng shebang `#!/usr/bin/env node` **và** export symbol mà
-test import — Vite dồn shim CJS lên đầu dòng 1 và đẩy shebang ra giữa dòng, chỗ `#!` là lỗi cú pháp.
+Không phải do nhánh này, và không phải do mã. `frontend/thirdPartyLicenses.test.ts` **không nạp
+được** vì `scripts/check_text_hygiene.mjs` mở đầu bằng shebang `#!/usr/bin/env node` **và** export
+symbol mà test import — Vite dồn shim CJS lên đầu dòng 1 và đẩy shebang ra giữa dòng, chỗ `#!` là lỗi
+cú pháp.
 
-Đáng ghi vì §1.b và §1.e đều ghi hàng này là **"432 passed · 0 fail"**. Chạy lại đúng commit `0f5b4d3`
-mà §1.e nêu tên, `npm ci` sạch từ đúng lockfile: **1 file FAILED**. Lockfile giống hệt byte suốt
-khoảng đó và hai file liên quan không có commit nào chạm vào — nên toolchain không đổi, mã không đổi,
-mà số đo thì khác. Chi tiết và ba mệnh đề đo được ở §1.f; bản sửa là việc riêng.
+**Cái quyết định là dòng kết thúc.** Cùng một commit, chỉ đổi dòng kết thúc của **một** file:
+
+| `scripts/check_text_hygiene.mjs` | Kết quả |
+|---|---|
+| **CRLF** (git checkout ra như vậy — `core.autocrlf=true`, `scripts/**` chưa ghim) | 38 file passed · **1 FAILED** · exit 1 |
+| **LF**, không đổi gì khác | ✅ **39 file passed · 440 test · exit 0** |
+
+Nên **hàng CI trên runner GitHub vẫn đúng**: job `Frontend` chạy `ubuntu-latest`, checkout LF, xanh
+thật — và cũng vì thế CI **không** thấy được lỗi này. Cái không tái lập được là hai hàng **chạy tay
+trên Windows** ở §1.b/§1.e ghi `0 fail`; trên checkout CRLF chúng không thể xanh.
+
+Bản sửa là **một dòng ghim trong `.gitattributes`**, đúng họ với các dòng đã có ở đó — việc riêng,
+không gộp vào nhánh phả hệ. Điều đáng ghi lại: file `.gitattributes` ấy được viết với luận chứng
+rằng autocrlf phá các artifact **so sánh byte**; ca này CRLF không làm sai một phép so byte mà làm
+**một parser không parse được**, nên phạm vi cần ghim rộng hơn cái file đó tự mô tả.
 
 ---
 
