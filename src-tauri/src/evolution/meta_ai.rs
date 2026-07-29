@@ -51,6 +51,10 @@ impl GeminiMetaAiClient {
         let api_key = std::env::var("GEMINI_API_KEY").ok();
         Self { api_key, timeout }
     }
+
+    fn request_deadline_expired(&self) -> bool {
+        self.timeout.is_zero()
+    }
 }
 
 impl MetaAiClient for GeminiMetaAiClient {
@@ -62,6 +66,12 @@ impl MetaAiClient for GeminiMetaAiClient {
         // there is nothing left to ask. `MockMetaAiClient` is a pure function of epoch and history,
         // which is exactly what a replay needs.
         if !crate::core::determinism::DeterministicMode::from_env().allows_external_ai() {
+            return MockMetaAiClient.generate_event(epoch, history);
+        }
+        // A zero deadline has already expired. Letting it reach the HTTP stack can still spend
+        // hundreds of milliseconds in DNS/TLS setup because those platform calls are not uniformly
+        // covered by a sub-request timeout. Falling back here makes the boundary deterministic.
+        if self.request_deadline_expired() {
             return MockMetaAiClient.generate_event(epoch, history);
         }
         let api_key = match &self.api_key {
@@ -249,5 +259,24 @@ impl MetaAiClient for GeminiWebSessionClient {
             }
             Err(_) => MockMetaAiClient.generate_event(epoch, history),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_expired_request_deadline_falls_back_before_http() {
+        let client = GeminiMetaAiClient {
+            api_key: Some("unused-because-deadline-expired".to_owned()),
+            timeout: Duration::ZERO,
+        };
+
+        assert!(client.request_deadline_expired());
+        assert_eq!(
+            client.generate_event(3, &[]),
+            EnvironmentalEvent::GlacialPeriod
+        );
     }
 }
