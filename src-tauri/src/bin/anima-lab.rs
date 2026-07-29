@@ -8,7 +8,7 @@
 //!
 //! `reference` remains the default; `--model live` selects [`LiveExperimentAdapter`].
 
-use std::io::Read;
+use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -130,12 +130,6 @@ struct Report<'a> {
     summary: &'a EnsembleSummary,
 }
 
-#[derive(Debug)]
-struct CommandOutput {
-    json: String,
-    exit_code: ExitCode,
-}
-
 fn manifest_too_large(path: &Path, found: u64, limit: usize) -> String {
     format!(
         "manifest is too large {}: at least {found} bytes (limit {limit} bytes)",
@@ -189,11 +183,14 @@ fn load_manifest(path: &Path) -> Result<ExperimentManifest, String> {
 }
 
 /// Takes the manifest rather than a path so a test can drive the whole pipeline on a shortened one.
-fn render(
+/// Serialising into a writer avoids retaining a second, JSON-sized copy of a potentially large
+/// ensemble in memory.
+fn render_to_writer<W: Write>(
     manifest: &ExperimentManifest,
     label: &str,
     model: Model,
-) -> Result<CommandOutput, String> {
+    writer: &mut W,
+) -> Result<ExitCode, String> {
     let summary = match model {
         Model::Reference => run_ensemble::<ReferenceEvolutionWorld>(
             manifest,
@@ -205,31 +202,38 @@ fn render(
     }
     .map_err(|e| format!("ensemble rejected: {e}"))?;
 
-    let json = serde_json::to_string_pretty(&Report {
-        tool: "anima-lab",
-        manifest: label,
-        model: model.label(),
-        registry: model.registry_label(),
-        summary: &summary,
-    })
-    .map_err(|e| format!("cannot serialise report: {e}"))?;
-
-    Ok(CommandOutput {
-        json,
-        exit_code: if summary.failed.is_empty() {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::FAILURE
+    serde_json::to_writer_pretty(
+        &mut *writer,
+        &Report {
+            tool: "anima-lab",
+            manifest: label,
+            model: model.label(),
+            registry: model.registry_label(),
+            summary: &summary,
         },
+    )
+    .map_err(|e| format!("cannot serialise report: {e}"))?;
+    writer
+        .write_all(b"\n")
+        .map_err(|e| format!("cannot write report terminator: {e}"))?;
+    writer
+        .flush()
+        .map_err(|e| format!("cannot flush report: {e}"))?;
+
+    Ok(if summary.failed.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     })
 }
 
 /// Split from `main` so the error path is a value, not a process exit.
-fn run(args: &Arguments) -> Result<CommandOutput, String> {
-    render(
+fn run<W: Write>(args: &Arguments, writer: &mut W) -> Result<ExitCode, String> {
+    render_to_writer(
         &load_manifest(&args.manifest)?,
         &args.manifest.display().to_string(),
         args.model,
+        writer,
     )
 }
 
@@ -240,13 +244,14 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Ok(Some(args)) => match run(&args) {
-            Ok(output) => {
-                println!("{}", output.json);
-                output.exit_code
+        Ok(Some(args)) => {
+            let stdout = std::io::stdout();
+            let mut writer = BufWriter::new(stdout.lock());
+            match run(&args, &mut writer) {
+                Ok(exit_code) => exit_code,
+                Err(why) => fail(&why),
             }
-            Err(why) => fail(&why),
-        },
+        }
         Err(why) => fail(&format!("{why}\n\n{USAGE}")),
     }
 }
@@ -259,6 +264,7 @@ fn fail(why: &str) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io;
 
     fn parse(parts: &[&str]) -> Result<Option<Arguments>, String> {
         parse_args(&parts.iter().map(|s| s.to_string()).collect::<Vec<_>>())
@@ -342,18 +348,22 @@ mod tests {
     /// Unreadable, unparseable, or refused by the runner — each an error, never an empty report.
     #[test]
     fn a_manifest_that_cannot_be_run_is_an_error() {
-        let missing = run(&arguments(PathBuf::from("no/such.json"), Model::Reference)).unwrap_err();
+        let missing = run(
+            &arguments(PathBuf::from("no/such.json"), Model::Reference),
+            &mut Vec::new(),
+        )
+        .unwrap_err();
         assert!(missing.contains("cannot read manifest"), "{missing}");
         // The tool's own source is a file that exists and is not a manifest.
         let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/anima-lab.rs");
-        assert!(run(&arguments(src, Model::Reference))
+        assert!(run(&arguments(src, Model::Reference), &mut Vec::new())
             .unwrap_err()
             .contains("cannot parse"));
         // Committed precisely because it is invalid; refused before the first tick.
-        let refused = run(&arguments(
-            fixture("invalid-negative-source.json"),
-            Model::Reference,
-        ))
+        let refused = run(
+            &arguments(fixture("invalid-negative-source.json"), Model::Reference),
+            &mut Vec::new(),
+        )
         .unwrap_err();
         assert!(refused.contains("ensemble rejected"), "{refused}");
     }
@@ -401,6 +411,42 @@ mod tests {
         assert!(error.contains("limit 32 bytes"), "{error}");
     }
 
+    #[derive(Default)]
+    struct RefusesOutput;
+
+    impl io::Write for RefusesOutput {
+        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "downstream closed",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_closed_stdout_is_a_reported_error_not_a_panic() {
+        let mut manifest =
+            load_manifest(&fixture("baseline-no-exotic.json")).expect("fixture parses");
+        manifest.seeds.truncate(1);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+
+        let error = render_to_writer(
+            &manifest,
+            "baseline-no-exotic.json",
+            Model::Reference,
+            &mut RefusesOutput,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("cannot serialise report"), "{error}");
+        assert!(error.contains("downstream closed"), "{error}");
+    }
+
     /// End to end through the real runner, shortened to one seed and one sample window: 600 ticks
     /// establishes the report's shape, and the numbers are the runner's tests to make.
     #[test]
@@ -410,9 +456,12 @@ mod tests {
         m.duration_ticks = 600;
         m.sample_period = 600;
 
-        let output = render(&m, "baseline-no-exotic.json", Model::Reference).expect("must run");
-        assert_eq!(output.exit_code, ExitCode::SUCCESS);
-        let v: serde_json::Value = serde_json::from_str(&output.json).expect("stdout must be JSON");
+        let mut json = Vec::new();
+        let exit_code =
+            render_to_writer(&m, "baseline-no-exotic.json", Model::Reference, &mut json)
+                .expect("must run");
+        assert_eq!(exit_code, ExitCode::SUCCESS);
+        let v: serde_json::Value = serde_json::from_slice(&json).expect("stdout must be JSON");
         assert_eq!(v["tool"], "anima-lab");
         assert_eq!(v["model"], "reference");
         assert_eq!(
@@ -425,7 +474,7 @@ mod tests {
         assert!(
             v["failed"].as_array().unwrap().is_empty(),
             "{}",
-            output.json
+            String::from_utf8_lossy(&json)
         );
         assert!(v["runs"][0]["series"].is_array(), "the series survives");
     }
