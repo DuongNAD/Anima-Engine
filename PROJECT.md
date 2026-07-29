@@ -46,6 +46,53 @@ Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1
 - `get_active_raycasts` -> `Vec<RaycastTelemetry>`
 - `get_lineage_graph` -> `LineageGraphState`
 - `get_chronicle_history` -> `Vec<ChronicleEvent>`
+
+#### Lineage analysis
+
+Read-only views over the lineage the tracker holds. None of them mutates it — `LineageTracker::compact`
+is the only writer, and the engine drives that on its own schedule. All three refuse a malformed
+graph (cycle, orphan edge, duplicate id) rather than answering from it, which is most of their value:
+those defects can sit in an in-memory graph indefinitely without anything else noticing. See
+`src-tauri/src/evolution/{mrca,newick,simplify}.rs`.
+
+- `get_lineage_mrca(individuals: Vec<String>)` -> `LineageMrcaPayload` — where those individuals last
+  shared an ancestor (OSS-072).
+
+  **The answer is a set, and both degenerate cases are answers rather than errors.** Empty means no
+  shared ancestor, which is ordinary: genesis calls `add_root` once per founder, so the lineage is
+  normally a forest. More than one (`ambiguous: true`) means the lineage branched and rejoined —
+  `RelationType::Crossover` gives an individual two parents, so this is a DAG, and a DAG's common
+  ancestors can be incomparable with none of them "most recent". A consumer that renders a single
+  value must check `ambiguous` rather than taking `ancestors[0]`.
+
+  Ancestry is **reflexive**: an individual is its own ancestor, so `mrca([x, x]) == [x]` and an
+  ancestor queried alongside its own descendant is the answer. `ancestors` is ordered most recent
+  first by `generation`, then by id — but every entry is incomparable with every other, so the order
+  is presentation and the set is the answer.
+
+  There is no "the living population" default and the parameter is required. The tracker only ever
+  sees writes, so it does not know who is alive — the same reason `compact` makes its caller supply a
+  sample set. `nearest_edges`/`farthest_edges` count **graph edges, not reproduction events**: after
+  compaction one edge can stand for a spliced path (see `LineageRelation::path_events`), so they are
+  a lower bound. Generation deltas stay exact.
+
+- `export_lineage_newick` -> `LineageNewickPayload` — the lineage as a Newick forest (OSS-070), one
+  `;`-terminated tree per root. Returns text rather than writing a file; joining `trees` with
+  newlines is the multi-tree file layout `ape::read.tree` and `dendropy.TreeList.get` expect.
+  `dropped_parent_edges > 0` means Newick could not represent every parent edge — it is a tree
+  format and crossover gives two parents — so `trees` is then a **view** of the lineage, not the
+  lineage.
+- `get_simplified_lineage(samples: Vec<String>)` -> `SimplifiedLineagePayload` — the lineage reduced
+  to the ancestry of `samples` (OSS-071), with unary paths compressed. This is the O(alive) view;
+  `events`/`mutations`/`crossovers` on an edge say how many reproductions it stands for, and
+  `mutations_count` on a node is the cumulative total, which stays exact across compression.
+
+Parameter names here are deliberately **single words**. `#[tauri::command]` defaults to camelCase, so
+a Rust `file_path` arrives from JS as `filePath`; a name with no underscore has one spelling in both
+languages, putting it out of reach of the bug class `scripts/check_ipc_arg_case.mjs` gates.
+`src-tauri/tests/ipc_registration_tests.rs` separately gates that every `#[tauri::command]` reaches
+`generate_handler!` — a command can otherwise be complete, typed and documented and still answer
+`Unknown command`.
 - `get_ecosystem_state` -> `EcosystemState` (closed-energy ledger: detritus/plants/animals/total, prey/predator counts, Shannon/Simpson) — published each tick, polled by the frontend `EcosystemPanel`
 - `set_lod_focus(focus: LodFocus)` -> `()` — where simulation detail is centred, i.e. the observer's world position. `{ enabled: false, center: [0,0,0] }` is the default and the rollback: every agent `Hot`, thinking every tick, exactly as before simulation LOD existed. Applied on the next tick by `sync_lod_focus_system`, not immediately — the world belongs to the simulation thread.
 - `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
