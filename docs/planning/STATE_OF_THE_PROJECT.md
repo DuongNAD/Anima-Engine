@@ -424,7 +424,7 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 
 > **Việc #3 của bàn giao trước cũng đã XONG (2026-07-29).** OSS-072 MRCA đã ship, và phả hệ nay có
 > mặt trên IPC — xem [§3.15.1](#3151-việc-còn-lại--đọc-mục-này-trước) và
-> [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29). Việc kế tiếp của nhánh phả hệ là **OSS-073**
+> [§1.f](#1f-oss-072--ipc-phả-hệ--đo-2026-07-29-tại-a6d06ac). Việc kế tiếp của nhánh phả hệ là **OSS-073**
 > (line of descent kiểu Avida), thứ MRCA vừa mở khoá.
 
 | # | Việc | Vì sao là việc này | Đọc |
