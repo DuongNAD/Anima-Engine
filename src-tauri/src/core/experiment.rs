@@ -139,6 +139,14 @@ pub enum ExperimentError {
     CheckpointPrefixFailed { tick: u64, reason: String },
     /// A non-finite value where a finite one is required.
     NotFinite { field: String },
+    /// Finite samples produced an aggregate statistic that cannot be represented as a finite `f64`.
+    ///
+    /// Reporting this explicitly prevents `serde_json` from silently encoding NaN or infinity as
+    /// `null`, which would make a scientific artifact look complete while losing its value.
+    AggregateNotFinite {
+        observable: String,
+        statistic: String,
+    },
     /// The AE3 reference population is impossible, mis-declared, or absent while an AE3 observable
     /// was requested (which would otherwise report a fabricated zero).
     InvalidPopulation { reason: String },
@@ -218,6 +226,13 @@ impl std::fmt::Display for ExperimentError {
                 write!(f, "checkpoint prefix failed at tick {tick}: {reason}")
             }
             ExperimentError::NotFinite { field } => write!(f, "{field} must be finite"),
+            ExperimentError::AggregateNotFinite {
+                observable,
+                statistic,
+            } => write!(
+                f,
+                "aggregate {statistic} for observable '{observable}' is not representable as a finite f64"
+            ),
             ExperimentError::InvalidPopulation { reason } => {
                 write!(f, "invalid AE3 reference population: {reason}")
             }

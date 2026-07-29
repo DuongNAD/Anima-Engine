@@ -1066,7 +1066,7 @@ pub fn run_ensemble<M: ExperimentModel>(
     }
 
     let completed: Vec<&RunResult> = runs.iter().filter(|r| r.status.is_completed()).collect();
-    let metrics = summarize_metrics(&completed);
+    let metrics = summarize_metrics(&completed)?;
 
     Ok(EnsembleSummary {
         experiment_id: manifest.experiment_id.clone(),
@@ -1259,10 +1259,10 @@ pub fn run_paired_ensemble_with_control<M: ExperimentModel>(
             {
                 cs.push(cv);
                 ts.push(tv);
-                deltas.push(tv - cv);
+                deltas.push(require_finite_aggregate(name, "paired delta", tv - cv)?);
             }
         }
-        effects.push(paired_effect(name, seed_order.len(), &cs, &ts, &deltas));
+        effects.push(paired_effect(name, seed_order.len(), &cs, &ts, &deltas)?);
     }
     effects.sort_by(|a, b| a.observable.cmp(&b.observable));
 
@@ -1289,7 +1289,7 @@ fn paired_effect(
     control: &[f64],
     treatment: &[f64],
     deltas: &[f64],
-) -> PairedEffect {
+) -> Result<PairedEffect, ExperimentError> {
     let n = deltas.len();
     let mut e = PairedEffect {
         observable: name.to_string(),
@@ -1305,34 +1305,44 @@ fn paired_effect(
         paired_dz: None,
     };
     if n == 0 {
-        return e;
+        return Ok(e);
     }
     let nf = n as f64;
-    let cm = control.iter().sum::<f64>() / nf;
-    let tm = treatment.iter().sum::<f64>() / nf;
-    let dm = deltas.iter().sum::<f64>() / nf;
+    let cm = finite_sample_stats(name, control)?.mean;
+    let tm = finite_sample_stats(name, treatment)?.mean;
+    let delta_stats = finite_sample_stats(name, deltas)?;
+    let dm = delta_stats.mean;
     e.control_mean = Some(cm);
     e.treatment_mean = Some(tm);
     e.paired_mean_delta = Some(dm);
     if n < 2 {
         // One pair: the delta is known, but no spread is estimable.
-        return e;
+        return Ok(e);
     }
-    let var = deltas.iter().map(|d| (d - dm).powi(2)).sum::<f64>() / (nf - 1.0);
-    let sd = if var > 0.0 { var.sqrt() } else { 0.0 };
-    let se = sd / nf.sqrt();
+    let sd = delta_stats.sample_sd.expect("n >= 2 has a sample SD");
+    let se = require_finite_aggregate(name, "paired standard error", sd / nf.sqrt())?;
+    let half = require_finite_aggregate(name, "paired 95% confidence half-width", 1.96 * se)?;
     e.paired_sd = Some(sd);
     e.paired_se = Some(se);
-    e.ci95_low = Some(dm - 1.96 * se);
-    e.ci95_high = Some(dm + 1.96 * se);
+    e.ci95_low = Some(require_finite_aggregate(
+        name,
+        "paired 95% confidence lower bound",
+        dm - half,
+    )?);
+    e.ci95_high = Some(require_finite_aggregate(
+        name,
+        "paired 95% confidence upper bound",
+        dm + half,
+    )?);
     // Zero paired variance ⇒ d_z is undefined (division by zero), never ±inf.
     if sd > 0.0 {
-        let dz = dm / sd;
-        if dz.is_finite() {
-            e.paired_dz = Some(dz);
-        }
+        e.paired_dz = Some(require_finite_aggregate(
+            name,
+            "paired Cohen's dz",
+            dm / sd,
+        )?);
     }
-    e
+    Ok(e)
 }
 
 // ---- Independent-sample effect size (descriptive helper; NOT the AE-S14 gate) ------------------
@@ -1413,7 +1423,7 @@ impl EnsembleComparison {
 pub fn compare_ensembles(
     control: &EnsembleSummary,
     treatment: &EnsembleSummary,
-) -> EnsembleComparison {
+) -> Result<EnsembleComparison, ExperimentError> {
     let samples = |e: &EnsembleSummary, name: &str| -> Vec<f64> {
         e.runs
             .iter()
@@ -1443,7 +1453,7 @@ pub fn compare_ensembles(
         if cs.is_empty() || ts.is_empty() {
             continue;
         }
-        effects.push(effect_size(name, &cs, &ts));
+        effects.push(effect_size(name, &cs, &ts)?);
     }
     let control_only: Vec<String> = c_names
         .iter()
@@ -1456,7 +1466,7 @@ pub fn compare_ensembles(
         .cloned()
         .collect();
 
-    EnsembleComparison {
+    Ok(EnsembleComparison {
         control_experiment_id: control.experiment_id.clone(),
         treatment_experiment_id: treatment.experiment_id.clone(),
         control_manifest_fingerprint: control.manifest_fingerprint,
@@ -1468,34 +1478,37 @@ pub fn compare_ensembles(
         effects,
         control_only,
         treatment_only,
-    }
+    })
 }
 
-/// Mean and (sample) variance of a slice; variance is 0 for n < 2.
-fn mean_var(xs: &[f64]) -> (f64, f64) {
-    let n = xs.len() as f64;
-    let mean = xs.iter().sum::<f64>() / n;
-    let var = if xs.len() > 1 {
-        xs.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n - 1.0)
-    } else {
-        0.0
-    };
-    (mean, var)
-}
-
-fn effect_size(name: &str, control: &[f64], treatment: &[f64]) -> EffectSize {
-    let (cm, cv) = mean_var(control);
-    let (tm, tv) = mean_var(treatment);
+fn effect_size(
+    name: &str,
+    control: &[f64],
+    treatment: &[f64],
+) -> Result<EffectSize, ExperimentError> {
+    let control_stats = finite_sample_stats(name, control)?;
+    let treatment_stats = finite_sample_stats(name, treatment)?;
+    let cm = control_stats.mean;
+    let tm = treatment_stats.mean;
+    let control_sd = control_stats.sample_sd.unwrap_or(0.0);
+    let treatment_sd = treatment_stats.sample_sd.unwrap_or(0.0);
     let nc = control.len() as f64;
     let nt = treatment.len() as f64;
-    let diff = tm - cm;
+    let diff = require_finite_aggregate(name, "independent mean difference", tm - cm)?;
 
     // Pooled SD (Cohen). With n < 2 on both sides, or zero variance, this is 0 — a degenerate
     // comparison, reported as g = 0 rather than a NaN/inf blow-up.
     let df = (nc + nt - 2.0).max(1.0);
-    let pooled_var = ((nc - 1.0).max(0.0) * cv + (nt - 1.0).max(0.0) * tv) / df;
-    let pooled_sd = if pooled_var > 0.0 {
-        pooled_var.sqrt()
+    let sd_scale = control_sd.max(treatment_sd);
+    let pooled_sd = if sd_scale > 0.0 {
+        let control_scaled = control_sd / sd_scale;
+        let treatment_scaled = treatment_sd / sd_scale;
+        let pooled_scaled = (((nc - 1.0).max(0.0) * control_scaled * control_scaled
+            + (nt - 1.0).max(0.0) * treatment_scaled * treatment_scaled)
+            / df)
+            .max(0.0)
+            .sqrt();
+        require_finite_aggregate(name, "pooled standard deviation", pooled_scaled * sd_scale)?
     } else {
         0.0
     };
@@ -1504,20 +1517,23 @@ fn effect_size(name: &str, control: &[f64], treatment: &[f64]) -> EffectSize {
     let hedges_g = if pooled_sd > 0.0 {
         let d = diff / pooled_sd;
         let j = 1.0 - 3.0 / (4.0 * df - 1.0);
-        let g = d * j;
-        if g.is_finite() {
-            g
-        } else {
-            0.0
-        }
+        require_finite_aggregate(name, "Hedges' g", d * j)?
     } else {
         0.0
     };
 
     // 95% normal-approx interval on the mean difference (independent samples).
-    let se = (cv / nc + tv / nt).max(0.0).sqrt();
-    let half = 1.96 * se;
-    EffectSize {
+    let se = require_finite_aggregate(
+        name,
+        "independent standard error",
+        (control_sd / nc.sqrt()).hypot(treatment_sd / nt.sqrt()),
+    )?;
+    let half = require_finite_aggregate(name, "independent 95% confidence half-width", 1.96 * se)?;
+    let ci95_low =
+        require_finite_aggregate(name, "independent 95% confidence lower bound", diff - half)?;
+    let ci95_high =
+        require_finite_aggregate(name, "independent 95% confidence upper bound", diff + half)?;
+    Ok(EffectSize {
         observable: name.to_string(),
         n_control: control.len(),
         n_treatment: treatment.len(),
@@ -1526,9 +1542,111 @@ fn effect_size(name: &str, control: &[f64], treatment: &[f64]) -> EffectSize {
         mean_difference: diff,
         pooled_sd,
         hedges_g,
-        ci95_low: diff - half,
-        ci95_high: diff + half,
+        ci95_low,
+        ci95_high,
+    })
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FiniteSampleStats {
+    mean: f64,
+    sample_sd: Option<f64>,
+}
+
+fn aggregate_not_finite(observable: &str, statistic: &str) -> ExperimentError {
+    ExperimentError::AggregateNotFinite {
+        observable: observable.to_owned(),
+        statistic: statistic.to_owned(),
     }
+}
+
+fn require_finite_aggregate(
+    observable: &str,
+    statistic: &str,
+    value: f64,
+) -> Result<f64, ExperimentError> {
+    value
+        .is_finite()
+        .then_some(value)
+        .ok_or_else(|| aggregate_not_finite(observable, statistic))
+}
+
+/// Compute a finite mean and sample SD without overflowing intermediate sums.
+///
+/// Scaling by a power of two is exact for normal values and bounds every normalized sample below
+/// 2.0 in magnitude. The online mean therefore cannot overflow, and the second pass uses compensated
+/// accumulation for squared deviations. A genuinely unrepresentable final statistic is reported as
+/// structured data instead of being allowed to reach JSON as `null`.
+fn finite_sample_stats(
+    observable: &str,
+    samples: &[f64],
+) -> Result<FiniteSampleStats, ExperimentError> {
+    debug_assert!(!samples.is_empty());
+    if samples.is_empty() {
+        return Err(aggregate_not_finite(observable, "empty sample"));
+    }
+    if samples.iter().any(|value| !value.is_finite()) {
+        return Err(aggregate_not_finite(observable, "input sample"));
+    }
+
+    let max_abs = samples
+        .iter()
+        .map(|value| value.abs())
+        .fold(0.0_f64, f64::max);
+    if max_abs == 0.0 {
+        return Ok(FiniteSampleStats {
+            mean: 0.0,
+            sample_sd: (samples.len() > 1).then_some(0.0),
+        });
+    }
+
+    const EXPONENT_MASK: u64 = 0x7ff0_0000_0000_0000;
+    let exponent = max_abs.to_bits() & EXPONENT_MASK;
+    let scale = if exponent == 0 {
+        f64::MIN_POSITIVE
+    } else {
+        f64::from_bits(exponent)
+    };
+
+    let mut mean_scaled = 0.0;
+    for (index, value) in samples.iter().enumerate() {
+        let normalized = value / scale;
+        mean_scaled += (normalized - mean_scaled) / (index + 1) as f64;
+    }
+    let mean = require_finite_aggregate(observable, "mean", mean_scaled * scale)?;
+
+    if samples.len() == 1 {
+        return Ok(FiniteSampleStats {
+            mean,
+            sample_sd: None,
+        });
+    }
+
+    let mut squared_sum = 0.0;
+    let mut correction = 0.0;
+    for value in samples {
+        let deviation = value / scale - mean_scaled;
+        let term = deviation * deviation;
+        let adjusted = term - correction;
+        let updated = squared_sum + adjusted;
+        correction = (updated - squared_sum) - adjusted;
+        squared_sum = updated;
+    }
+    let variance_scaled = require_finite_aggregate(
+        observable,
+        "sample variance",
+        (squared_sum / (samples.len() - 1) as f64).max(0.0),
+    )?;
+    let sample_sd = require_finite_aggregate(
+        observable,
+        "sample standard deviation",
+        variance_scaled.sqrt() * scale,
+    )?;
+
+    Ok(FiniteSampleStats {
+        mean,
+        sample_sd: Some(sample_sd),
+    })
 }
 
 /// Summarize the deterministic union of observables across completed runs.
@@ -1536,7 +1654,7 @@ fn effect_size(name: &str, control: &[f64], treatment: &[f64]) -> EffectSize {
 /// Names retain first-appearance order across the manifest's seed order. A model may legitimately
 /// emit a seed-dependent final observable, so using only the first completed run as the name source
 /// would silently discard later evidence.
-fn summarize_metrics(completed: &[&RunResult]) -> Vec<MetricSummary> {
+fn summarize_metrics(completed: &[&RunResult]) -> Result<Vec<MetricSummary>, ExperimentError> {
     let mut seen = std::collections::BTreeSet::new();
     let mut names = Vec::new();
     for run in completed {
@@ -1557,20 +1675,18 @@ fn summarize_metrics(completed: &[&RunResult]) -> Vec<MetricSummary> {
         if n == 0 {
             continue;
         }
-        let mean = samples.iter().sum::<f64>() / n as f64;
-        let var = if n > 1 {
-            samples.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / (n as f64 - 1.0)
-        } else {
-            0.0
-        };
-        let std = var.sqrt();
+        let stats = finite_sample_stats(name, &samples)?;
+        let mean = stats.mean;
+        let std = stats.sample_sd.unwrap_or(0.0);
         let min = samples.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let half = if n > 0 {
-            1.96 * std / (n as f64).sqrt()
-        } else {
-            0.0
-        };
+        let half = require_finite_aggregate(
+            name,
+            "95% confidence half-width",
+            std / (n as f64).sqrt() * 1.96,
+        )?;
+        let ci95_low = require_finite_aggregate(name, "95% confidence lower bound", mean - half)?;
+        let ci95_high = require_finite_aggregate(name, "95% confidence upper bound", mean + half)?;
         out.push(MetricSummary {
             observable: name.to_owned(),
             n,
@@ -1578,11 +1694,11 @@ fn summarize_metrics(completed: &[&RunResult]) -> Vec<MetricSummary> {
             std,
             min,
             max,
-            ci95_low: mean - half,
-            ci95_high: mean + half,
+            ci95_low,
+            ci95_high,
         });
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1767,7 +1883,7 @@ mod tests {
         first.final_observables = vec![("shared".into(), 1.0), ("first-only".into(), 10.0)];
         second.final_observables = vec![("shared".into(), 3.0), ("later-only".into(), 20.0)];
 
-        let metrics = summarize_metrics(&[&first, &second]);
+        let metrics = summarize_metrics(&[&first, &second]).expect("finite metric summaries");
         let names: Vec<&str> = metrics
             .iter()
             .map(|metric| metric.observable.as_str())
@@ -1778,6 +1894,122 @@ mod tests {
         assert_eq!(metrics[0].mean, 2.0);
         assert_eq!(metrics[1].n, 1);
         assert_eq!(metrics[2].n, 1);
+    }
+
+    #[test]
+    fn ensemble_metrics_keep_finite_extreme_samples_json_safe() {
+        let registry = ObservableRegistry::reference_default();
+        let manifest = baseline_manifest(vec![10, 11]);
+        let mut first =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 10, None, None);
+        let mut second =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 11, None, None);
+        first.final_observables = vec![("extreme".into(), f64::MAX)];
+        second.final_observables = vec![("extreme".into(), f64::MAX)];
+
+        let metrics = summarize_metrics(&[&first, &second]).expect("finite extreme summary");
+        let extreme = metrics.first().expect("extreme metric");
+
+        assert_eq!(extreme.mean, f64::MAX);
+        assert_eq!(extreme.std, 0.0);
+        assert!(extreme.ci95_low.is_finite() && extreme.ci95_high.is_finite());
+        let encoded = serde_json::to_string(&metrics).expect("metric summary must serialize");
+        assert!(
+            !encoded.contains("null"),
+            "finite samples must not become JSON null: {encoded}"
+        );
+    }
+
+    #[test]
+    fn paired_effect_keeps_finite_extreme_samples_json_safe() {
+        let effect = paired_effect(
+            "extreme",
+            2,
+            &[f64::MAX, f64::MAX],
+            &[f64::MAX, f64::MAX],
+            &[0.0, 0.0],
+        )
+        .expect("finite paired effect");
+
+        assert_eq!(effect.control_mean, Some(f64::MAX));
+        assert_eq!(effect.treatment_mean, Some(f64::MAX));
+        assert_eq!(effect.paired_mean_delta, Some(0.0));
+        assert_eq!(effect.paired_sd, Some(0.0));
+        assert!(
+            [
+                effect.control_mean,
+                effect.treatment_mean,
+                effect.paired_mean_delta,
+                effect.paired_sd,
+                effect.paired_se,
+                effect.ci95_low,
+                effect.ci95_high,
+                effect.paired_dz,
+            ]
+            .into_iter()
+            .flatten()
+            .all(f64::is_finite),
+            "every defined paired statistic must be finite"
+        );
+        let encoded = serde_json::to_value(&effect).expect("paired effect must serialize");
+        for field in [
+            "control_mean",
+            "treatment_mean",
+            "paired_mean_delta",
+            "paired_sd",
+            "paired_se",
+            "ci95_low",
+            "ci95_high",
+        ] {
+            assert!(
+                encoded[field].as_f64().is_some(),
+                "defined field {field} must remain numeric JSON: {encoded}"
+            );
+        }
+        assert!(
+            encoded["paired_dz"].is_null(),
+            "zero paired variance makes dz undefined"
+        );
+    }
+
+    #[test]
+    fn independent_effect_keeps_large_finite_variance_and_interval() {
+        let effect = effect_size("large", &[1.0e200, 3.0e200], &[2.0e200, 4.0e200])
+            .expect("finite independent effect");
+
+        assert_eq!(effect.control_mean, 2.0e200);
+        assert_eq!(effect.treatment_mean, 3.0e200);
+        assert!(effect.pooled_sd.is_finite() && effect.pooled_sd > 0.0);
+        assert!(effect.hedges_g.is_finite());
+        assert!(effect.ci95_low.is_finite() && effect.ci95_high.is_finite());
+        let encoded = serde_json::to_string(&effect).expect("effect size must serialize");
+        assert!(
+            !encoded.contains("null"),
+            "finite effect statistics must not become JSON null: {encoded}"
+        );
+    }
+
+    #[test]
+    fn aggregate_reports_unrepresentable_finite_result_as_structured_error() {
+        let error = finite_sample_stats("opposite-extremes", &[-f64::MAX, f64::MAX])
+            .expect_err("sample SD exceeds finite f64");
+
+        assert_eq!(
+            error,
+            ExperimentError::AggregateNotFinite {
+                observable: "opposite-extremes".into(),
+                statistic: "sample standard deviation".into(),
+            }
+        );
+        let encoded = serde_json::to_value(&error).expect("structured error must serialize");
+        assert_eq!(
+            encoded["AggregateNotFinite"]["observable"],
+            "opposite-extremes"
+        );
+        assert_eq!(
+            encoded["AggregateNotFinite"]["statistic"],
+            "sample standard deviation"
+        );
     }
 
     // A test-double model that fails to construct for one poisoned seed, proving the ensemble keeps
@@ -2679,7 +2911,7 @@ mod tests {
         let treatment =
             run_ensemble::<ReferenceEvolutionWorld>(&treatment_m, &reg).expect("treatment");
 
-        let cmp = compare_ensembles(&control, &treatment);
+        let cmp = compare_ensembles(&control, &treatment).expect("finite comparison");
 
         // N is reported per side and failures are preserved (none here).
         assert_eq!(cmp.control_n, 5);
@@ -2724,7 +2956,7 @@ mod tests {
         let control = run_ensemble::<ReferenceEvolutionWorld>(&control_m, &reg).expect("control");
         let treatment =
             run_ensemble::<ReferenceEvolutionWorld>(&treatment_m, &reg).expect("treatment");
-        let cmp = compare_ensembles(&control, &treatment);
+        let cmp = compare_ensembles(&control, &treatment).expect("finite comparison");
 
         let plants = cmp.effect_of("plants").expect("plants compared");
         assert!(
@@ -2748,7 +2980,7 @@ mod tests {
         let m = baseline_manifest(seeds.clone());
         let control = run_ensemble::<FlakyModel>(&m, &reg).expect("control");
         let treatment = run_ensemble::<FlakyModel>(&m, &reg).expect("treatment");
-        let cmp = compare_ensembles(&control, &treatment);
+        let cmp = compare_ensembles(&control, &treatment).expect("finite comparison");
 
         // Failures are surfaced, never dropped; N counts only completed runs.
         assert_eq!(cmp.control_failed.len(), 1);
