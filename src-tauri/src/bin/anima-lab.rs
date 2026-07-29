@@ -8,7 +8,8 @@
 //!
 //! `reference` remains the default; `--model live` selects [`LiveExperimentAdapter`].
 
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anima_engine_lib::core::experiment::{ExperimentManifest, ObservableRegistry};
@@ -28,6 +29,11 @@ Every seed the manifest declares is run in order. The default model is `referenc
 Exit 0 when every run completes. Exit 1 with JSON on stdout for preserved runtime failures, or with
 a reason on stderr when no report can be produced.
 ";
+
+/// A manifest is control-plane input, not a data container. Eight MiB leaves ample room for the
+/// schema's thousands of bounded seed/observable/intervention entries at normal identifier sizes
+/// while preventing an untrusted path from turning JSON parsing into an unbounded allocation.
+const MAX_MANIFEST_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Model {
@@ -130,10 +136,56 @@ struct CommandOutput {
     exit_code: ExitCode,
 }
 
-fn load_manifest(path: &PathBuf) -> Result<ExperimentManifest, String> {
-    let raw = std::fs::read_to_string(path)
+fn manifest_too_large(path: &Path, found: u64, limit: usize) -> String {
+    format!(
+        "manifest is too large {}: at least {found} bytes (limit {limit} bytes)",
+        path.display()
+    )
+}
+
+fn read_manifest_with_limit<R: Read>(
+    reader: R,
+    path: &Path,
+    declared_size: u64,
+    limit: usize,
+) -> Result<Vec<u8>, String> {
+    if declared_size > limit as u64 {
+        return Err(manifest_too_large(path, declared_size, limit));
+    }
+
+    let requested = declared_size as usize;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(requested).map_err(|e| {
+        format!(
+            "cannot allocate {requested} bytes for manifest {}: {e}",
+            path.display()
+        )
+    })?;
+
+    reader
+        .take((limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes)
         .map_err(|e| format!("cannot read manifest {}: {e}", path.display()))?;
-    serde_json::from_str(&raw).map_err(|e| format!("cannot parse manifest {}: {e}", path.display()))
+    if bytes.len() > limit {
+        return Err(manifest_too_large(path, bytes.len() as u64, limit));
+    }
+    Ok(bytes)
+}
+
+fn load_manifest_with_limit(path: &Path, limit: usize) -> Result<ExperimentManifest, String> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("cannot read manifest {}: {e}", path.display()))?;
+    let size = file
+        .metadata()
+        .map_err(|e| format!("cannot inspect manifest {}: {e}", path.display()))?
+        .len();
+    let bytes = read_manifest_with_limit(file, path, size, limit)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|e| format!("cannot parse manifest {}: {e}", path.display()))
+}
+
+fn load_manifest(path: &Path) -> Result<ExperimentManifest, String> {
+    load_manifest_with_limit(path, MAX_MANIFEST_BYTES)
 }
 
 /// Takes the manifest rather than a path so a test can drive the whole pipeline on a shortened one.
@@ -304,6 +356,49 @@ mod tests {
         ))
         .unwrap_err();
         assert!(refused.contains("ensemble rejected"), "{refused}");
+    }
+
+    #[test]
+    fn an_oversized_manifest_is_rejected_before_it_can_be_allocated() {
+        let path = std::env::temp_dir().join(format!(
+            "anima-lab-oversized-manifest-{}.json",
+            std::process::id()
+        ));
+        let file = std::fs::File::create(&path).expect("create sparse manifest");
+        file.set_len(MAX_MANIFEST_BYTES as u64 + 1)
+            .expect("extend sparse manifest");
+        drop(file);
+
+        let error = load_manifest(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(error.contains("manifest is too large"), "{error}");
+        assert!(error.contains(&path.display().to_string()), "{error}");
+        assert!(
+            error.contains(&format!("{} bytes", MAX_MANIFEST_BYTES + 1)),
+            "{error}"
+        );
+        assert!(
+            error.contains(&format!("limit {MAX_MANIFEST_BYTES} bytes")),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_grows_after_inspection_is_still_bounded() {
+        const TEST_LIMIT: usize = 32;
+        let path = Path::new("growing.json");
+        let error = read_manifest_with_limit(
+            std::io::Cursor::new(vec![b' '; TEST_LIMIT + 1]),
+            path,
+            1,
+            TEST_LIMIT,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("manifest is too large"), "{error}");
+        assert!(error.contains("33 bytes"), "{error}");
+        assert!(error.contains("limit 32 bytes"), "{error}");
     }
 
     /// End to end through the real runner, shortened to one seed and one sample window: 600 ticks
