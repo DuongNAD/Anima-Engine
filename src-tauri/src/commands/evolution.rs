@@ -11,6 +11,29 @@ pub struct EvolutionSettings {
     pub grid_resolution: u32,
 }
 
+pub const MAX_EVOLUTION_GRID_RESOLUTION: u32 = 10_000;
+pub const MAX_SELECTION_BIAS: f64 = 1_024.0;
+
+impl EvolutionSettings {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.mutation_rate.is_finite()
+            || !(0.0..=1.0).contains(&self.mutation_rate)
+            || !self.selection_bias.is_finite()
+            || self.selection_bias <= 0.0
+            || self.selection_bias > MAX_SELECTION_BIAS
+            || self.grid_resolution == 0
+            || self.grid_resolution > MAX_EVOLUTION_GRID_RESOLUTION
+        {
+            return Err(format!(
+                "invalid evolution settings: mutation_rate must be finite in [0, 1], \
+                 selection_bias must be finite in (0, {MAX_SELECTION_BIAS}], and grid_resolution \
+                 must be in [1, {MAX_EVOLUTION_GRID_RESOLUTION}]"
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(ts_rs::TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -74,12 +97,7 @@ pub fn update_evolution_settings(
     state: State<'_, AppState>,
     settings: EvolutionSettings,
 ) -> Result<bool, String> {
-    if settings.mutation_rate < 0.0
-        || settings.mutation_rate > 1.0
-        || settings.selection_bias <= 0.0
-    {
-        return Err("Invalid settings".to_string());
-    }
+    settings.validate()?;
     // ADR-0004 C3. One call that records and writes; this command no longer has a path that does one
     // without the other.
     state.seam.set_evolution_settings(settings)?;
@@ -159,4 +177,44 @@ pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPaylo
         links: payload_links,
         db_connected,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EvolutionSettings;
+
+    #[test]
+    fn evolution_settings_reject_values_that_can_panic_or_destabilize_the_worker() {
+        let valid = EvolutionSettings {
+            mutation_rate: 0.2,
+            selection_bias: 1.2,
+            grid_resolution: 30,
+        };
+        assert!(valid.validate().is_ok());
+
+        for invalid in [
+            EvolutionSettings {
+                mutation_rate: f64::NAN,
+                ..valid.clone()
+            },
+            EvolutionSettings {
+                selection_bias: f64::INFINITY,
+                ..valid.clone()
+            },
+            EvolutionSettings {
+                selection_bias: 1_025.0,
+                ..valid.clone()
+            },
+            EvolutionSettings {
+                grid_resolution: 0,
+                ..valid.clone()
+            },
+            EvolutionSettings {
+                grid_resolution: 10_001,
+                ..valid
+            },
+        ] {
+            assert!(invalid.validate().is_err(), "{invalid:?}");
+        }
+    }
 }

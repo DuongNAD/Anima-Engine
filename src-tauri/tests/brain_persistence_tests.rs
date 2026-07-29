@@ -119,7 +119,7 @@ fn a_restored_agent_keeps_the_brain_it_was_saved_with() {
     let payload = serialized_agent(Some(original.clone()));
 
     let mut world = World::new();
-    spawn_serialized_agent(&mut world, &payload);
+    spawn_serialized_agent(&mut world, &payload).expect("valid saved agent");
 
     let entity = world
         .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
@@ -137,7 +137,7 @@ fn restore_carries_the_brain_rather_than_rolling_a_new_one() {
     let payload = serialized_agent(Some(brain(21)));
 
     let read_back = |world: &mut World| {
-        spawn_serialized_agent(world, &payload);
+        spawn_serialized_agent(world, &payload).expect("valid saved agent");
         let e = world
             .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
             .iter(world)
@@ -156,7 +156,7 @@ fn restore_carries_the_brain_rather_than_rolling_a_new_one() {
 fn a_legacy_agent_restores_without_a_brain() {
     // `None` must stay `None`: restoring must not quietly upgrade an agent onto the evolved path.
     let mut world = World::new();
-    spawn_serialized_agent(&mut world, &serialized_agent(None));
+    spawn_serialized_agent(&mut world, &serialized_agent(None)).expect("valid legacy agent");
 
     let entity = world
         .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
@@ -167,7 +167,7 @@ fn a_legacy_agent_restores_without_a_brain() {
 }
 
 #[test]
-fn an_unreadable_brain_falls_back_instead_of_running_noise() {
+fn an_unreadable_brain_refuses_the_individual_instead_of_changing_its_identity() {
     // Learned weights whose length no longer matches the architecture mean the save came from a
     // build with a different layout. Loading them anyway would produce finite, meaningless output.
     let mut corrupt = brain(31);
@@ -179,16 +179,36 @@ fn an_unreadable_brain_falls_back_instead_of_running_noise() {
     assert!(corrupt.validate().is_err());
 
     let mut world = World::new();
-    spawn_serialized_agent(&mut world, &serialized_agent(Some(corrupt)));
+    let error = spawn_serialized_agent(&mut world, &serialized_agent(Some(corrupt)))
+        .expect_err("corrupt identity must be refused");
+    assert!(error.to_string().contains("brain is unreadable"));
 
-    let entity = world
-        .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
-        .iter(&world)
-        .next()
-        .unwrap();
-    assert!(
-        world.entity(entity).get::<AgentBrain>().is_none(),
-        "a corrupt brain must drop the agent to the shared model, not be installed"
+    assert_eq!(
+        world
+            .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
+            .iter(&world)
+            .count(),
+        0,
+        "dropping a corrupt evolved brain to the shared model would create a different individual"
+    );
+}
+
+#[test]
+fn an_empty_saved_body_is_refused_before_decode_can_panic() {
+    let mut payload = serialized_agent(None);
+    payload.genotype = MorphologyGenotype::new();
+    let mut world = World::new();
+
+    let error =
+        spawn_serialized_agent(&mut world, &payload).expect_err("empty body must be refused");
+    assert!(error.to_string().contains("root node"));
+
+    assert_eq!(
+        world
+            .query_filtered::<Entity, With<anima_engine_lib::core::ecs::Agent>>()
+            .iter(&world)
+            .count(),
+        0
     );
 }
 

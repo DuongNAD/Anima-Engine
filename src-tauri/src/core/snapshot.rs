@@ -36,7 +36,7 @@
 use crate::core::simulation_state::SavedSimulationState;
 use crate::core::world_artifact::fnv1a_32;
 use serde::{Deserialize, Serialize};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 /// Current snapshot schema version.
@@ -62,6 +62,32 @@ pub const SCHEMA_VERSION: u32 = 5;
 /// worth checking rather than assuming, and `a_bare_pre_envelope_state_still_loads_and_reports_its_schema`
 /// is what checks it.
 pub const MIN_SUPPORTED_SCHEMA: u32 = SCHEMA_VERSION - 2;
+/// Hard bound applied before a snapshot file is read into memory.
+///
+/// A thousand evolved agents with both inherited and learned networks fit below this ceiling in
+/// JSON, while a malformed local file can no longer ask the desktop process to allocate without
+/// limit.
+pub const MAX_SNAPSHOT_BYTES: usize = 256 * 1024 * 1024;
+const MAX_SNAPSHOT_AGENTS: usize = 100_000;
+const MAX_SNAPSHOT_WORLD_OBJECTS: usize = 1_000_000;
+const MAX_SNAPSHOT_HISTORY_EVENTS: usize = 1_000_000;
+const MAX_SNAPSHOT_LINEAGE_RECORDS: usize = 2_000_000;
+const MAX_SNAPSHOT_FOOD_CAP: usize = 1_000_000;
+const MAX_SNAPSHOT_MAP_ELITES_CELLS: usize = 1_000_000;
+const MAX_SNAPSHOT_MAP_ELITES_FEATURES: usize = 64;
+const MAX_SNAPSHOT_SCALAR_MAGNITUDE: f32 = 1.0e9;
+// Closed-resource arithmetic can land a few ULPs below zero before the next clamp. Preserve those
+// checkpoints exactly while still rejecting materially impossible negative stores.
+const SNAPSHOT_NEGATIVE_TOLERANCE: f64 = 1.0e-3;
+
+fn exceeds_snapshot_upper_bound(current: f32, maximum: f32) -> bool {
+    let tolerance = (SNAPSHOT_NEGATIVE_TOLERANCE as f32).max(maximum.abs() * 8.0 * f32::EPSILON);
+    current > maximum + tolerance
+}
+
+fn exceeds_numeric_safety_envelope(value: glam::Vec3) -> bool {
+    value.abs().max_element() > MAX_SNAPSHOT_SCALAR_MAGNITUDE
+}
 
 /// What produced a snapshot. Not used to gate loading — it is here so that a run which cannot be
 /// reproduced can at least be *explained*, which is the difference between a scientific record and
@@ -143,6 +169,12 @@ pub enum SnapshotError {
     TooNew { found: u32, current: u32 },
     /// The state does not hash to the checksum recorded beside it.
     ChecksumMismatch { expected: u32, actual: u32 },
+    /// The file exceeds the allocation budget before parsing begins.
+    TooLarge { found: u64, limit: usize },
+    /// The JSON is structurally readable but contains state the simulation cannot safely execute.
+    InvalidState(String),
+    /// The bounded input could not be reserved without aborting the process.
+    AllocationFailed { requested: usize, reason: String },
 }
 
 impl std::fmt::Display for SnapshotError {
@@ -165,6 +197,17 @@ impl std::fmt::Display for SnapshotError {
                 "snapshot checksum mismatch (recorded {expected:#010x}, computed {actual:#010x}); \
                  the file is corrupt or was modified"
             ),
+            Self::TooLarge { found, limit } => write!(
+                f,
+                "snapshot is {found} bytes; the maximum supported size is {limit} bytes"
+            ),
+            Self::InvalidState(error) => {
+                write!(f, "snapshot contains invalid scientific state: {error}")
+            }
+            Self::AllocationFailed { requested, reason } => write!(
+                f,
+                "snapshot needs a {requested}-byte input buffer that could not be reserved: {reason}"
+            ),
         }
     }
 }
@@ -182,8 +225,15 @@ pub fn checksum_bytes(state_json: &str) -> u32 {
 impl SnapshotEnvelope {
     /// Wrap a state for writing, computing its checksum and stamping the current build.
     pub fn seal(state: SavedSimulationState) -> Result<Self, SnapshotError> {
+        validate_state(&state)?;
         let text = serde_json::to_string(&state)
             .map_err(|e| SnapshotError::Malformed(format!("state is not serializable: {e}")))?;
+        if text.len() > MAX_SNAPSHOT_BYTES {
+            return Err(SnapshotError::TooLarge {
+                found: text.len() as u64,
+                limit: MAX_SNAPSHOT_BYTES,
+            });
+        }
         let checksum = checksum_bytes(&text);
         let raw = serde_json::value::RawValue::from_string(text)
             .map_err(|e| SnapshotError::Malformed(format!("state json is not valid: {e}")))?;
@@ -222,6 +272,12 @@ impl SnapshotEnvelope {
 pub fn write_atomic(path: &Path, envelope: &SnapshotEnvelope) -> Result<(), SnapshotError> {
     let json = serde_json::to_vec_pretty(envelope)
         .map_err(|e| SnapshotError::Malformed(format!("envelope is not serializable: {e}")))?;
+    if json.len() > MAX_SNAPSHOT_BYTES {
+        return Err(SnapshotError::TooLarge {
+            found: json.len() as u64,
+            limit: MAX_SNAPSHOT_BYTES,
+        });
+    }
     write_bytes_atomic(path, &json)
 }
 
@@ -280,13 +336,47 @@ pub fn write_bytes_atomic(path: &Path, json: &[u8]) -> Result<(), SnapshotError>
 ///   existed then, so there is nothing to verify and `#[serde(default)]` supplies the fields those
 ///   files predate.
 pub fn read(path: &Path) -> Result<SavedSimulationState, SnapshotError> {
-    let bytes = std::fs::read(path)
+    read_with_limit(path, MAX_SNAPSHOT_BYTES)
+}
+
+fn read_with_limit(path: &Path, limit: usize) -> Result<SavedSimulationState, SnapshotError> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| SnapshotError::Io(format!("could not open {}: {e}", path.display())))?;
+    let size = file
+        .metadata()
+        .map_err(|e| SnapshotError::Io(format!("could not inspect {}: {e}", path.display())))?
+        .len();
+    if size > limit as u64 {
+        return Err(SnapshotError::TooLarge { found: size, limit });
+    }
+    let requested = size as usize;
+    let mut bytes = Vec::new();
+    bytes
+        .try_reserve_exact(requested)
+        .map_err(|error| SnapshotError::AllocationFailed {
+            requested,
+            reason: error.to_string(),
+        })?;
+    file.take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
         .map_err(|e| SnapshotError::Io(format!("could not read {}: {e}", path.display())))?;
+    if bytes.len() > limit {
+        return Err(SnapshotError::TooLarge {
+            found: bytes.len() as u64,
+            limit,
+        });
+    }
     from_bytes(&bytes)
 }
 
 /// The parsing half of [`read`], separated so it can be tested without touching a filesystem.
 pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
+    if bytes.len() > MAX_SNAPSHOT_BYTES {
+        return Err(SnapshotError::TooLarge {
+            found: bytes.len() as u64,
+            limit: MAX_SNAPSHOT_BYTES,
+        });
+    }
     // Peek at just the version so a newer file produces a clear message instead of a confusing
     // field-level deserialization error.
     #[derive(Deserialize)]
@@ -310,8 +400,9 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
         let envelope: SnapshotEnvelope = serde_json::from_slice(bytes)
             .map_err(|e| SnapshotError::Malformed(format!("envelope did not parse: {e}")))?;
         envelope.verify()?;
-        let state = envelope.parse_state()?;
-        return Ok(migrate(envelope.schema_version, state));
+        let state = migrate(envelope.schema_version, envelope.parse_state()?);
+        validate_state(&state)?;
+        return Ok(state);
     }
 
     // No `schema_version` key: a pre-envelope file, so schema 1 or 2. Schema 1 is now outside the
@@ -323,7 +414,211 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
             "not an envelope and not a bare saved state either: {e}"
         ))
     })?;
-    Ok(migrate(legacy_schema_of(&state), state))
+    let state = migrate(legacy_schema_of(&state), state);
+    validate_state(&state)?;
+    Ok(state)
+}
+
+fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
+    let invalid = |message: String| SnapshotError::InvalidState(message);
+
+    let food_settings = state.food_spawn_settings;
+    if food_settings.max_food_count > MAX_SNAPSHOT_FOOD_CAP
+        || !food_settings.default_energy.is_finite()
+        || !food_settings.default_hydration.is_finite()
+        || food_settings.default_energy < 0.0
+        || food_settings.default_hydration < 0.0
+        || food_settings.default_energy > MAX_SNAPSHOT_SCALAR_MAGNITUDE
+        || food_settings.default_hydration > MAX_SNAPSHOT_SCALAR_MAGNITUDE
+    {
+        return Err(invalid(format!(
+            "food spawn settings exceed the supported cap of {MAX_SNAPSHOT_FOOD_CAP} or contain \
+             invalid resource values"
+        )));
+    }
+    let evolution = &state.evolution_settings;
+    evolution
+        .validate()
+        .map_err(|error| invalid(format!("evolution settings: {error}")))?;
+    let map_elites = &state.map_elites_grid;
+    if map_elites.grid_resolution == 0
+        || map_elites.grid_resolution > crate::commands::MAX_EVOLUTION_GRID_RESOLUTION
+        || map_elites.grid.len() > MAX_SNAPSHOT_MAP_ELITES_CELLS
+        || map_elites.grid.iter().any(|(key, elite)| {
+            key.is_empty()
+                || key.len() > 1_024
+                || key.chars().any(char::is_control)
+                || !elite.fitness.is_finite()
+                || elite.features.len() > MAX_SNAPSHOT_MAP_ELITES_FEATURES
+                || elite.features.iter().any(|value| !value.is_finite())
+        })
+    {
+        return Err(invalid(
+            "MAP-Elites archive shape or scientific values are invalid".to_owned(),
+        ));
+    }
+
+    if state.agents.len() > MAX_SNAPSHOT_AGENTS {
+        return Err(invalid(format!(
+            "{} agents exceed the snapshot limit of {MAX_SNAPSHOT_AGENTS}",
+            state.agents.len()
+        )));
+    }
+    for (index, agent) in state.agents.iter().enumerate() {
+        agent
+            .validate()
+            .map_err(|error| invalid(format!("agent {index}: {error}")))?;
+        if exceeds_numeric_safety_envelope(agent.root_position)
+            || exceeds_numeric_safety_envelope(agent.root_velocity)
+            || exceeds_numeric_safety_envelope(agent.evaluation.start_position)
+            || exceeds_numeric_safety_envelope(agent.evaluation.last_position)
+            || agent.segments.iter().any(|segment| {
+                exceeds_numeric_safety_envelope(segment.position)
+                    || exceeds_numeric_safety_envelope(segment.velocity)
+            })
+        {
+            return Err(invalid(format!(
+                "agent {index} kinematics exceed the snapshot numeric safety envelope"
+            )));
+        }
+    }
+
+    let bounds = state.map_bounds;
+    if !bounds.min.is_finite()
+        || !bounds.max.is_finite()
+        || exceeds_numeric_safety_envelope(bounds.min)
+        || exceeds_numeric_safety_envelope(bounds.max)
+        || bounds.min.x >= bounds.max.x
+        || bounds.min.y > bounds.max.y
+        || bounds.min.z >= bounds.max.z
+    {
+        return Err(invalid("map bounds are non-finite or inverted".to_owned()));
+    }
+
+    if state.pheromone_grid.values.len() != crate::ai::pheromone::CELL_COUNT
+        || state
+            .pheromone_grid
+            .values
+            .iter()
+            .any(|value| !value.is_finite())
+        || !state.pheromone_grid.diffusion_rate.is_finite()
+        || !state.pheromone_grid.decay_rate.is_finite()
+        || state.pheromone_grid.diffusion_rate < 0.0
+        || state.pheromone_grid.decay_rate < 0.0
+    {
+        return Err(invalid(
+            "pheromone grid shape or scalar state is invalid".to_owned(),
+        ));
+    }
+
+    let object_counts = [
+        ("foods", state.foods.len()),
+        ("lakes", state.lakes.len()),
+        ("trees", state.trees.len()),
+    ];
+    if let Some((kind, found)) = object_counts
+        .into_iter()
+        .find(|(_, found)| *found > MAX_SNAPSHOT_WORLD_OBJECTS)
+    {
+        return Err(invalid(format!(
+            "{found} {kind} exceed the snapshot limit of {MAX_SNAPSHOT_WORLD_OBJECTS}"
+        )));
+    }
+    for (index, food) in state.foods.iter().enumerate() {
+        if !food.position.is_finite()
+            || exceeds_numeric_safety_envelope(food.position)
+            || !food.energy_value.is_finite()
+            || !food.hydration_value.is_finite()
+            || food.energy_value < 0.0
+            || food.hydration_value < 0.0
+        {
+            return Err(invalid(format!("food {index} has invalid state")));
+        }
+    }
+    for (index, lake) in state.lakes.iter().enumerate() {
+        let values = [
+            lake.radius,
+            lake.current_water,
+            lake.max_water,
+            lake.replenishment_rate,
+        ];
+        if !lake.position.is_finite()
+            || exceeds_numeric_safety_envelope(lake.position)
+            || values.iter().any(|value| !value.is_finite())
+            || lake.radius <= 0.0
+            || lake.current_water < -(SNAPSHOT_NEGATIVE_TOLERANCE as f32)
+            || lake.max_water < 0.0
+            || exceeds_snapshot_upper_bound(lake.current_water, lake.max_water)
+            || lake.replenishment_rate < 0.0
+        {
+            return Err(invalid(format!("lake {index} has invalid state")));
+        }
+    }
+    for (index, tree) in state.trees.iter().enumerate() {
+        let values = [
+            tree.radius,
+            tree.current_fruit,
+            tree.max_fruit,
+            tree.fruit_growth_rate,
+            tree.time_since_last_drop,
+            tree.seed_drop_cooldown,
+            tree.seed_spread_radius,
+        ];
+        if !tree.position.is_finite()
+            || exceeds_numeric_safety_envelope(tree.position)
+            || values.iter().any(|value| !value.is_finite())
+            || tree.radius <= 0.0
+            || tree.current_fruit < -(SNAPSHOT_NEGATIVE_TOLERANCE as f32)
+            || tree.max_fruit < 0.0
+            || exceeds_snapshot_upper_bound(tree.current_fruit, tree.max_fruit)
+            || tree.fruit_growth_rate < 0.0
+            || tree.time_since_last_drop < 0.0
+            || tree.seed_drop_cooldown < 0.0
+            || tree.seed_spread_radius < 0.0
+        {
+            return Err(invalid(format!("tree {index} has invalid state")));
+        }
+    }
+
+    if state.chronicle_history.len() > MAX_SNAPSHOT_HISTORY_EVENTS {
+        return Err(invalid(format!(
+            "{} chronicle events exceed the snapshot limit of {MAX_SNAPSHOT_HISTORY_EVENTS}",
+            state.chronicle_history.len()
+        )));
+    }
+    if state.lineage_nodes.len() > MAX_SNAPSHOT_LINEAGE_RECORDS
+        || state.lineage_relations.len() > MAX_SNAPSHOT_LINEAGE_RECORDS
+    {
+        return Err(invalid(format!(
+            "lineage records exceed the snapshot limit of {MAX_SNAPSHOT_LINEAGE_RECORDS}"
+        )));
+    }
+    if let Some(cohorts) = &state.dormant_cohorts {
+        cohorts
+            .validate()
+            .map_err(|error| invalid(format!("dormant population: {error}")))?;
+    }
+
+    let ecosystem = [state.eco_detritus, state.eco_plants, state.eco_animals];
+    if ecosystem
+        .iter()
+        .any(|value| !value.is_finite() || *value < -SNAPSHOT_NEGATIVE_TOLERANCE)
+        || state
+            .resource_field_r
+            .iter()
+            .any(|value| !value.is_finite() || *value < -(SNAPSHOT_NEGATIVE_TOLERANCE as f32))
+        || !state.season_phase.is_finite()
+        || !state.season_rate.is_finite()
+        || state.season_rate < 0.0
+        || state
+            .energy_baseline
+            .is_some_and(|value| !value.is_finite() || value < 0.0)
+    {
+        return Err(invalid(
+            "ecosystem, season, or energy ledger state is invalid".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 /// Which pre-envelope schema a bare state came from. Version 2 introduced the closed-energy
@@ -472,6 +767,93 @@ mod tests {
         crate::core::simulation_state::empty_saved_state_for_tests()
     }
 
+    fn unchecked_envelope(state: SavedSimulationState) -> SnapshotEnvelope {
+        let text = serde_json::to_string(&state).expect("serialize adversarial fixture");
+        SnapshotEnvelope {
+            schema_version: SCHEMA_VERSION,
+            build_provenance: BuildProvenance::current(),
+            checksum: checksum_bytes(&text),
+            state: serde_json::value::RawValue::from_string(text).expect("raw state"),
+        }
+    }
+
+    fn agent_fixture() -> crate::core::simulation_state::SerializedAgent {
+        use crate::evolution::genotype::{MorphologyGenotype, MorphologyNode};
+        let mut genotype = MorphologyGenotype::new();
+        genotype.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.25,
+            mass: 1.0,
+        });
+        crate::core::simulation_state::SerializedAgent {
+            genotype,
+            class: crate::core::components::AgentClass::Prey,
+            lineage_id: "snapshot-agent".to_owned(),
+            generation: 1,
+            parent_ids: Vec::new(),
+            evaluation: crate::core::agent_systems::AgentEvaluation {
+                start_position: glam::Vec3::ZERO,
+                total_distance: 0.0,
+                total_energy_expended: 0.0,
+                survival_ticks: 1,
+                last_position: glam::Vec3::ZERO,
+            },
+            feature_tracker: Default::default(),
+            root_position: glam::Vec3::ZERO,
+            root_rotation: glam::Quat::IDENTITY,
+            root_velocity: glam::Vec3::ZERO,
+            homeostatic_state: crate::ai::hrrl::HomeostaticState {
+                energy: 50.0,
+                energy_target: 100.0,
+                hydration: 50.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+            last_transition_state: crate::ai::hrrl::LastTransitionState {
+                state: [0.0; 15],
+                action: [0.0; 4],
+                has_last: false,
+            },
+            segments: Vec::new(),
+            brain: None,
+        }
+    }
+
+    fn two_segment_agent_fixture() -> crate::core::simulation_state::SerializedAgent {
+        use crate::evolution::genotype::{MorphologyEdge, MorphologyNode};
+        let mut agent = agent_fixture();
+        agent.genotype.add_node(MorphologyNode {
+            id: 1,
+            length: 0.75,
+            radius: 0.2,
+            mass: 0.5,
+        });
+        agent.genotype.add_edge(MorphologyEdge {
+            source_node: 0,
+            target_node: 1,
+            joint_anchor: glam::Vec3::Z,
+            joint_axis: glam::Vec3::Y,
+        });
+        agent
+            .segments
+            .push(crate::core::simulation_state::SerializedSegmentState {
+                segment_id: 1,
+                position: glam::Vec3::Z,
+                rotation: glam::Quat::IDENTITY,
+                velocity: glam::Vec3::ZERO,
+                oscillator: Some(crate::core::simulation_state::CpgOscillatorState {
+                    phase: 0.0,
+                    frequency: 1.0,
+                    amplitude: 1.0,
+                    output: 0.0,
+                }),
+            });
+        agent
+    }
+
     #[test]
     fn seal_then_verify_round_trips() {
         let envelope = SnapshotEnvelope::seal(state_fixture()).expect("seal");
@@ -548,6 +930,32 @@ mod tests {
     }
 
     #[test]
+    fn every_supported_envelope_schema_still_loads() {
+        for schema in MIN_SUPPORTED_SCHEMA..=SCHEMA_VERSION {
+            let mut state = serde_json::to_value(state_fixture()).expect("state value");
+            let object = state.as_object_mut().expect("state object");
+            if schema < 4 {
+                object.remove("dormant_cohorts");
+            }
+            if schema < 5 {
+                object.remove("experiment");
+                object.remove("resource_field_phase");
+            }
+            let text = serde_json::to_string(&state).expect("state text");
+            let envelope = SnapshotEnvelope {
+                schema_version: schema,
+                build_provenance: BuildProvenance::current(),
+                checksum: checksum_bytes(&text),
+                state: serde_json::value::RawValue::from_string(text).expect("raw state"),
+            };
+            let bytes = serde_json::to_vec(&envelope).expect("serialize");
+
+            let loaded = from_bytes(&bytes).expect("supported schema");
+            assert_eq!(loaded.loaded_from_schema, schema);
+        }
+    }
+
+    #[test]
     fn a_newer_schema_is_refused_with_a_useful_message() {
         let mut envelope = SnapshotEnvelope::seal(state_fixture()).expect("seal");
         envelope.schema_version = SCHEMA_VERSION + 1;
@@ -584,6 +992,221 @@ mod tests {
             Err(SnapshotError::Malformed(_)) => {}
             other => panic!("expected Malformed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_checksummed_snapshot_with_an_empty_agent_body_is_rejected_before_restore() {
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.genotype = Default::default();
+        state.agents.push(agent);
+        let bytes = serde_json::to_vec(&unchecked_envelope(state)).unwrap();
+
+        match from_bytes(&bytes) {
+            Err(SnapshotError::InvalidState(message)) => {
+                assert!(message.contains("agent 0"), "{message}");
+                assert!(message.contains("root node"), "{message}");
+            }
+            other => panic!("expected invalid agent rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_checksummed_snapshot_with_overflowing_homeostasis_is_rejected() {
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.homeostatic_state.energy = f32::MAX;
+        state.agents.push(agent);
+        let bytes = serde_json::to_vec(&unchecked_envelope(state)).unwrap();
+
+        match from_bytes(&bytes) {
+            Err(SnapshotError::InvalidState(message)) => {
+                assert!(message.contains("homeostatic"), "{message}");
+            }
+            other => panic!("expected invalid homeostasis, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_checksummed_snapshot_with_a_degenerate_root_rotation_is_rejected() {
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.root_rotation = glam::Quat::from_xyzw(0.0, 0.0, 0.0, 0.0);
+        state.agents.push(agent);
+        let bytes = serde_json::to_vec(&unchecked_envelope(state)).unwrap();
+
+        match from_bytes(&bytes) {
+            Err(SnapshotError::InvalidState(message)) => {
+                assert!(message.contains("root rotation"), "{message}");
+            }
+            other => panic!("expected invalid rotation, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_checksummed_snapshot_with_overflow_prone_kinematics_is_rejected() {
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.root_position = glam::Vec3::new(f32::MAX, 0.0, 0.0);
+        state.agents.push(agent);
+        let bytes = serde_json::to_vec(&unchecked_envelope(state)).unwrap();
+
+        match from_bytes(&bytes) {
+            Err(SnapshotError::InvalidState(message)) => {
+                assert!(message.contains("numeric safety"), "{message}");
+            }
+            other => panic!("expected unsafe kinematics rejection, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn serialized_agent_rejects_a_missing_child_state() {
+        let mut agent = two_segment_agent_fixture();
+        agent.segments.clear();
+        assert!(matches!(
+            agent.validate(),
+            Err(
+                crate::core::simulation_state::SerializedAgentError::SegmentStateCount {
+                    found: 0,
+                    expected: 1
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn serialized_agent_rejects_duplicate_child_states() {
+        use crate::evolution::genotype::{MorphologyEdge, MorphologyNode};
+        let mut agent = two_segment_agent_fixture();
+        agent.genotype.add_node(MorphologyNode {
+            id: 2,
+            length: 0.75,
+            radius: 0.2,
+            mass: 0.5,
+        });
+        agent.genotype.add_edge(MorphologyEdge {
+            source_node: 0,
+            target_node: 2,
+            joint_anchor: glam::Vec3::X,
+            joint_axis: glam::Vec3::Y,
+        });
+        agent.segments.push(agent.segments[0].clone());
+        assert!(matches!(
+            agent.validate(),
+            Err(crate::core::simulation_state::SerializedAgentError::DuplicateSegment { id: 1 })
+        ));
+    }
+
+    #[test]
+    fn serialized_agent_rejects_the_root_repeated_as_a_child() {
+        let mut agent = two_segment_agent_fixture();
+        agent.segments[0].segment_id = 0;
+        assert!(matches!(
+            agent.validate(),
+            Err(crate::core::simulation_state::SerializedAgentError::RootRepeatedAsChild { id: 0 })
+        ));
+    }
+
+    #[test]
+    fn serialized_agent_rejects_an_unknown_child() {
+        let mut agent = two_segment_agent_fixture();
+        agent.segments[0].segment_id = 99;
+        assert!(matches!(
+            agent.validate(),
+            Err(crate::core::simulation_state::SerializedAgentError::UnknownSegment { id: 99 })
+        ));
+    }
+
+    #[test]
+    fn serialized_agent_rejects_invalid_child_kinematics() {
+        let mut agent = two_segment_agent_fixture();
+        agent.segments[0].rotation = glam::Quat::from_xyzw(0.0, 0.0, 0.0, 0.0);
+        assert!(matches!(
+            agent.validate(),
+            Err(
+                crate::core::simulation_state::SerializedAgentError::InvalidSegmentKinematics {
+                    id: 1
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn serialized_agent_rejects_a_non_finite_oscillator() {
+        let mut agent = two_segment_agent_fixture();
+        agent.segments[0]
+            .oscillator
+            .as_mut()
+            .expect("oscillator")
+            .phase = f32::NAN;
+        assert!(matches!(
+            agent.validate(),
+            Err(crate::core::simulation_state::SerializedAgentError::InvalidOscillator { id: 1 })
+        ));
+    }
+
+    #[test]
+    fn read_rejects_an_oversized_sparse_file_before_allocating_it() {
+        let path = std::env::temp_dir().join(format!(
+            "anima_oversized_snapshot_{}.json",
+            std::process::id()
+        ));
+        const TEST_LIMIT: usize = 1024;
+        let file = std::fs::File::create(&path).expect("create sparse fixture");
+        file.set_len(TEST_LIMIT as u64 + 1)
+            .expect("extend sparse fixture");
+        drop(file);
+
+        let result = read_with_limit(&path, TEST_LIMIT);
+        let _ = std::fs::remove_file(path);
+        assert!(matches!(result, Err(SnapshotError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn seal_rejects_a_dormant_grid_whose_dimensions_overflow() {
+        let mut state = state_fixture();
+        state.dormant_cohorts = Some(crate::core::aggregate_population::SavedDormantCohorts {
+            chunks: Vec::new(),
+            grid: usize::MAX,
+            min_x: -100.0,
+            min_z: -100.0,
+            max_x: 100.0,
+            max_z: 100.0,
+            dwell_ticks: 1,
+            archive_cap: 1,
+            rehydrate_per_tick: 1,
+            rng_seed: 1,
+            rng_pos: 0,
+            dehydrated: 0,
+            rehydrated: 0,
+            genomes_dropped: 0,
+            spilled: 0.0,
+        });
+
+        assert!(matches!(
+            SnapshotEnvelope::seal(state),
+            Err(SnapshotError::InvalidState(_))
+        ));
+    }
+
+    #[test]
+    fn seal_rejects_a_food_cap_that_would_create_an_unbounded_spawn_burst() {
+        let mut state = state_fixture();
+        state.food_spawn_settings.max_food_count = usize::MAX;
+        assert!(matches!(
+            SnapshotEnvelope::seal(state),
+            Err(SnapshotError::InvalidState(_))
+        ));
+    }
+
+    #[test]
+    fn seal_rejects_evolution_settings_that_would_panic_the_rng() {
+        let mut state = state_fixture();
+        state.evolution_settings.mutation_rate = f64::NAN;
+        assert!(matches!(
+            SnapshotEnvelope::seal(state),
+            Err(SnapshotError::InvalidState(_))
+        ));
     }
 
     #[test]

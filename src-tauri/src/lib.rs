@@ -204,12 +204,27 @@ pub fn run() {
                             // order to fail at producing a new one. It also wrote a bare state with
                             // no schema version, which the load command could not read back.
                             let saves = app_data_dir.join("saves");
-                            if std::fs::create_dir_all(&saves).is_ok() {
+                            if let Err(error) = std::fs::create_dir_all(&saves) {
+                                eprintln!(
+                                    "exit autosave failed: could not create {}: {error}",
+                                    saves.display()
+                                );
+                            } else {
                                 let target = saves.join(crate::commands::save_paths::AUTOSAVE_NAME);
-                                if let Ok(envelope) =
-                                    crate::core::snapshot::SnapshotEnvelope::seal(saved_state)
-                                {
-                                    let _ = crate::core::snapshot::write_atomic(&target, &envelope);
+                                match crate::core::snapshot::SnapshotEnvelope::seal(saved_state) {
+                                    Ok(envelope) => {
+                                        if let Err(error) =
+                                            crate::core::snapshot::write_atomic(&target, &envelope)
+                                        {
+                                            eprintln!(
+                                                "exit autosave failed while writing {}: {error}",
+                                                target.display()
+                                            );
+                                        }
+                                    }
+                                    Err(error) => eprintln!(
+                                        "exit autosave refused invalid checkpoint state: {error}"
+                                    ),
                                 }
                             }
                         }

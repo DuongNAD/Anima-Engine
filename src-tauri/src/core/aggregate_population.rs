@@ -375,6 +375,102 @@ pub struct SavedDormantCohorts {
     pub spilled: f64,
 }
 
+impl SavedDormantCohorts {
+    /// Validate the whole aggregate population before any runtime resource is reconstructed.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.grid == 0 {
+            return Err("dormant cohorts: grid side must be positive".to_owned());
+        }
+        let expected_chunks = self.grid.checked_mul(self.grid).ok_or_else(|| {
+            format!(
+                "dormant cohorts: grid side {} cannot be squared safely",
+                self.grid
+            )
+        })?;
+        if self.chunks.len() != expected_chunks {
+            return Err(format!(
+                "dormant cohorts: {} chunks for a {}×{} grid",
+                self.chunks.len(),
+                self.grid,
+                self.grid
+            ));
+        }
+        if !self.min_x.is_finite()
+            || !self.min_z.is_finite()
+            || !self.max_x.is_finite()
+            || !self.max_z.is_finite()
+            || self.min_x >= self.max_x
+            || self.min_z >= self.max_z
+        {
+            return Err("dormant cohorts: bounds are non-finite or inverted".to_owned());
+        }
+        if self.archive_cap == 0 {
+            return Err("dormant cohorts: archive capacity must be positive".to_owned());
+        }
+        if !self.spilled.is_finite() || self.spilled < -1.0e-3 {
+            return Err("dormant cohorts: spilled energy is invalid".to_owned());
+        }
+
+        for (index, cohort) in self.chunks.iter().enumerate() {
+            let totals = [
+                cohort.energy,
+                cohort.hydration,
+                cohort.energy_cap,
+                cohort.burn_rate,
+            ];
+            if totals
+                .iter()
+                .any(|value| !value.is_finite() || *value < -1.0e-3)
+                || cohort.prey_count > cohort.count
+                || cohort.archive.len() > self.archive_cap
+                || cohort.archive.len() > cohort.count as usize
+                || (cohort.count > 0 && cohort.archive.is_empty())
+            {
+                return Err(format!("dormant cohort {index} has invalid pooled state"));
+            }
+            for (archive_index, individual) in cohort.archive.iter().enumerate() {
+                crate::core::components::validate_morphology_payload(&individual.morphology)
+                    .map_err(|error| {
+                        format!(
+                            "dormant cohort {index} archive {archive_index} has invalid \
+                             morphology: {error}"
+                        )
+                    })?;
+                if individual.lineage_id.trim().is_empty()
+                    || individual.lineage_id.len() > 1_024
+                    || individual.lineage_id.chars().any(char::is_control)
+                {
+                    return Err(format!(
+                        "dormant cohort {index} archive {archive_index} has an invalid lineage id"
+                    ));
+                }
+                if let Some(brain) = &individual.brain {
+                    let parameters = brain.arch.checked_param_count().ok_or_else(|| {
+                        format!(
+                            "dormant cohort {index} archive {archive_index} has an invalid brain \
+                             architecture"
+                        )
+                    })?;
+                    if parameters > crate::core::components::MAX_MIGRATION_BRAIN_PARAMETERS {
+                        return Err(format!(
+                            "dormant cohort {index} archive {archive_index} brain has {parameters} \
+                             parameters; limit is {}",
+                            crate::core::components::MAX_MIGRATION_BRAIN_PARAMETERS
+                        ));
+                    }
+                    brain.validate().map_err(|error| {
+                        format!(
+                            "dormant cohort {index} archive {archive_index} brain is unreadable: \
+                             {error}"
+                        )
+                    })?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Per-chunk dormant populations, and the policy for entering and leaving dormancy.
 ///
 /// Insert this resource to switch the aggregate tier on. Absent it, nothing here runs.
@@ -526,14 +622,7 @@ impl DormantCohorts {
     /// pointing back at the file.
     pub fn from_saved(saved: &SavedDormantCohorts) -> Result<Self, String> {
         use rand::SeedableRng;
-        if saved.grid == 0 || saved.chunks.len() != saved.grid * saved.grid {
-            return Err(format!(
-                "dormant cohorts: {} chunks for a {}×{} grid",
-                saved.chunks.len(),
-                saved.grid,
-                saved.grid
-            ));
-        }
+        saved.validate()?;
         let mut rng = rand_chacha::ChaCha12Rng::seed_from_u64(saved.rng_seed);
         rng.set_word_pos(saved.rng_pos);
         Ok(Self {
@@ -691,6 +780,12 @@ impl DormantCohorts {
         if vitals.is_prey {
             chunk.prey_count = chunk.prey_count.saturating_sub(1);
         }
+        // Above the archive cap the returned class is a reservoir sample with replacement, not
+        // an identity-preserving draw from the pooled census. Repeated predator samples can
+        // therefore exhaust the cohort's estimated predator count before `count` reaches the cap.
+        // Keep the lossy estimate inside its only hard invariant so runtime-produced checkpoints
+        // remain valid and grazing never observes a herbivore fraction above one.
+        chunk.prey_count = chunk.prey_count.min(chunk.count);
         chunk.energy -= vitals.energy;
         chunk.hydration -= vitals.hydration;
         chunk.energy_cap -= vitals.energy_cap;
@@ -1689,6 +1784,38 @@ mod tests {
             "the cohort keeps exactly one member's rate"
         );
         assert_eq!(chunk.prey_count, 1);
+    }
+
+    #[test]
+    fn sampled_mixed_cohorts_never_report_more_prey_than_members() {
+        // Above ARCHIVE_CAP, release samples the archive with replacement. A predator can therefore
+        // be sampled more often than the one predator represented by the pooled census. The census
+        // must remain a valid bounded estimate after every draw, because snapshots validate it.
+        for seed in 0..128 {
+            let mut c = DormantCohorts::new(seed, -100.0, -100.0, 100.0, 100.0);
+            let idx = c.chunk_index(0.0, 0.0).unwrap();
+            for tag in 0..20 {
+                let is_prey = tag != 0;
+                let mut archived = individual(tag);
+                archived.class = if is_prey {
+                    AgentClass::Prey
+                } else {
+                    AgentClass::Predator
+                };
+                c.absorb(0.0, 0.0, burning(10.0, 0.0, is_prey), archived);
+            }
+
+            for _ in 0..12 {
+                c.release(idx).unwrap();
+                let chunk = c.cohort(idx).unwrap();
+                assert!(
+                    chunk.prey_count <= chunk.count,
+                    "seed {seed} produced prey_count={} with count={}",
+                    chunk.prey_count,
+                    chunk.count
+                );
+            }
+        }
     }
 
     #[test]

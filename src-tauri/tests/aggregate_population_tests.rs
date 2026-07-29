@@ -24,7 +24,7 @@ use anima_engine_lib::core::aggregate_population::{
 };
 use anima_engine_lib::core::components::AgentBrain;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
-use anima_engine_lib::core::ecs::{init_world, Agent, FeatureTracker, MapBounds, Prey};
+use anima_engine_lib::core::ecs::{init_world, Agent, FeatureTracker, MapBounds, Predator, Prey};
 use anima_engine_lib::core::energy_ledger::closed_total_eu;
 use anima_engine_lib::core::environmental_systems::{
     ecosystem_census_system, herbivore_grazing_system, resource_field_regrowth_system,
@@ -933,12 +933,25 @@ fn a_sleeping_herd_survives_a_save_and_load_with_its_energy_intact() {
     use anima_engine_lib::core::aggregate_population::SavedDormantCohorts;
 
     let spawn = glam::Vec3::new(0.0, 0.0, 0.0);
-    let mut world = build_world(6, spawn, true);
+    let herd_size = ARCHIVE_CAP + 6;
+    let mut world = build_world(herd_size, spawn, true);
+    // Exercise the class census as well as the body/archive count. Above ARCHIVE_CAP, releases
+    // sample with replacement, so a one-class fixture cannot detect census drift.
+    let predators: Vec<Entity> = {
+        let mut query = world.query_filtered::<Entity, With<Prey>>();
+        query.iter(&world).take(herd_size / 2).collect()
+    };
+    for entity in predators {
+        world.entity_mut(entity).remove::<Prey>().insert(Predator);
+    }
     enable_dormancy(&mut world, 3, Some(glam::Vec3::new(80.0, 0.0, 80.0)));
 
     let mut schedule = dormancy_schedule();
     run(&mut world, &mut schedule, 12);
-    assert_eq!(world.resource::<DormantCohorts>().total_dormant(), 6);
+    assert_eq!(
+        world.resource::<DormantCohorts>().total_dormant(),
+        herd_size as u64
+    );
 
     let before = world.resource::<DormantCohorts>();
     let dormant_energy = before.total_energy();
@@ -958,9 +971,49 @@ fn a_sleeping_herd_survives_a_save_and_load_with_its_energy_intact() {
     let saved = before.to_saved();
     let json = serde_json::to_string(&saved).expect("cohorts must serialize");
     let parsed: SavedDormantCohorts = serde_json::from_str(&json).expect("and deserialize");
+
+    // Above the cap, releases sample with replacement until count reaches archive length; only
+    // then do count and archive shrink together. Pin an intermediate checkpoint so validation
+    // cannot accidentally assume either that all members are archived or that a partial wake
+    // drains the archive ahead of the pooled population.
+    let mut partially_awake =
+        DormantCohorts::from_saved(&parsed).expect("build partial-wake fixture");
+    let occupied = (0..partially_awake.chunk_count())
+        .find(|&index| {
+            partially_awake
+                .cohort(index)
+                .is_some_and(|cohort| !cohort.is_empty())
+        })
+        .expect("occupied cohort");
+    let mut released_prey = 0;
+    for _ in 0..ARCHIVE_CAP {
+        let (_, vitals) = partially_awake
+            .release(occupied)
+            .expect("partial wake must have an archived sample");
+        released_prey += usize::from(vitals.is_prey);
+    }
+    assert!(
+        released_prey > 0 && released_prey < ARCHIVE_CAP,
+        "the partial checkpoint must exercise both prey and predator samples"
+    );
+    assert_eq!(
+        partially_awake.total_dormant(),
+        (herd_size - ARCHIVE_CAP) as u64
+    );
+    let partial_json =
+        serde_json::to_string(&partially_awake.to_saved()).expect("save partial wake");
+    let partial_saved: SavedDormantCohorts =
+        serde_json::from_str(&partial_json).expect("parse partial wake");
+    let partial_back =
+        DormantCohorts::from_saved(&partial_saved).expect("restore partial wake checkpoint");
+    assert_eq!(
+        partial_back.total_dormant(),
+        (herd_size - ARCHIVE_CAP) as u64
+    );
+
     let restored = DormantCohorts::from_saved(&parsed).expect("and rebuild");
 
-    assert_eq!(restored.total_dormant(), 6);
+    assert_eq!(restored.total_dormant(), herd_size as u64);
     assert_eq!(
         restored.total_energy().to_bits(),
         dormant_energy.to_bits(),

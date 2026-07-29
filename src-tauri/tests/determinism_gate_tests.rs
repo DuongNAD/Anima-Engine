@@ -243,7 +243,7 @@ fn run_role(role: &str) {
 
             let (mut resumed, _tx2) = harness::build(false);
             for agent in &state.agents {
-                spawn_serialized_agent(&mut resumed, agent);
+                spawn_serialized_agent(&mut resumed, agent).expect("validated checkpoint agent");
             }
             for food in &state.foods {
                 resumed.spawn((
