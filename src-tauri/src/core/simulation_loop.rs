@@ -225,6 +225,26 @@ impl SimulationEngine {
                 crate::core::world_artifact::world_seed_from_disk(),
             ),
         );
+        let deterministic_mode = crate::core::determinism::DeterministicMode::from_env();
+        let evolution_worker_resume =
+            match crate::core::simulation_state::evolution_worker_resume_state(
+                state_to_load.as_ref(),
+                startup_run_seed,
+            ) {
+                Ok(resume) => resume,
+                Err(error) => {
+                    eprintln!(
+                        "ERROR: snapshot restore aborted before workers started: evolution worker \
+                         state is unsafe to resume ({error})"
+                    );
+                    *self
+                        .pending_load_state
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner()) = state_to_load;
+                    self.running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
 
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
@@ -302,6 +322,7 @@ impl SimulationEngine {
         let lineage_tracker_evo = Arc::clone(&self.lineage_tracker);
         let chronicle_history_clone = Arc::clone(&self.chronicle_history);
         let evolution_run_seed = startup_run_seed;
+        let evo_deterministic = deterministic_mode;
 
         let evo_exit = self.supervisor.token(sup::EVO);
         let evo_handle = thread::spawn(move || {
@@ -316,7 +337,7 @@ impl SimulationEngine {
             let mut archive = crate::evolution::map_elites::MapElitesArchive::new(
                 1.0 / (initial_resolution as f32),
             );
-            let mut node_id_counter = 3u32;
+            let mut node_id_counter = evolution_worker_resume.node_id_counter;
             // Selection, recombination and mutation all draw from this one stream, so the same run
             // seed reproduces the same offspring — see `resources::sim_stream`.
             //
@@ -332,12 +353,17 @@ impl SimulationEngine {
             // not from OS entropy and the wall clock. It resolves the mode and the run id from the
             // same sources the world will use, for the same reason `evo_rng` above does: the thread
             // is spawned before the ECS world exists.
-            let evo_deterministic = crate::core::determinism::DeterministicMode::from_env();
             // Separate namespaces so two id sources on one thread cannot collide.
-            let chronicle_ids =
-                crate::core::determinism::RunIdentity::new(evolution_run_seed, "chronicle");
-            let offspring_ids =
-                crate::core::determinism::RunIdentity::new(evolution_run_seed, "lineage");
+            let chronicle_ids = crate::core::determinism::RunIdentity::with_issued(
+                evolution_run_seed,
+                "chronicle",
+                evolution_worker_resume.chronicle_ids_issued,
+            );
+            let offspring_ids = crate::core::determinism::RunIdentity::with_issued(
+                evolution_run_seed,
+                "lineage",
+                evolution_worker_resume.offspring_ids_issued,
+            );
             let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
                 match std::env::var("GEMINI_SESSION_TOKEN") {
                     Ok(token) if !token.trim().is_empty() => Box::new(
@@ -347,8 +373,8 @@ impl SimulationEngine {
                         Duration::from_secs(5),
                     )),
                 };
-            let mut meta_ai_history = Vec::new();
-            let mut meta_ai_epoch = 0u32;
+            let mut meta_ai_history = evolution_worker_resume.meta_ai_history;
+            let mut meta_ai_epoch = evolution_worker_resume.meta_ai_epoch;
             // Reused across epochs so the hot path does not allocate a fresh Vec per batch.
             let mut new_offspring_ids: Vec<String> = Vec::new();
 
@@ -1104,12 +1130,14 @@ impl SimulationEngine {
                     .get_resource::<MapBounds>()
                     .copied()
                     .unwrap_or_default();
+                let founder_ids = crate::core::determinism::RunIdentity::new(run_seed, "founder");
                 for i in 0..founding.count {
                     let initial_pos = founding.position(i, &founding_bounds);
                     let initial_rot = glam::Quat::IDENTITY;
                     let agent_entity =
                         decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
-                    let lineage_id = uuid::Uuid::new_v4().to_string();
+                    let lineage_id =
+                        crate::core::determinism::next_entity_id(deterministic_mode, &founder_ids);
                     let _ = lineage_tracker_sim.add_root(lineage_id.clone(), genotype.clone());
 
                     world.entity_mut(agent_entity).insert((

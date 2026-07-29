@@ -142,10 +142,19 @@ pub struct RunIdentity {
 impl RunIdentity {
     /// A fresh id source for `run_id`, minting ids under `prefix`.
     pub fn new(run_id: u64, prefix: impl Into<String>) -> Self {
+        Self::with_issued(run_id, prefix, 0)
+    }
+
+    /// Resume an id source after `issued` identifiers have already been minted.
+    ///
+    /// A checkpoint owns the namespace history just as it owns the RNG position. Starting its
+    /// counter at zero would deterministically reproduce ids that already exist in the restored
+    /// lineage or chronicle instead of continuing the run.
+    pub fn with_issued(run_id: u64, prefix: impl Into<String>, issued: u64) -> Self {
         Self {
             run_id,
             prefix: prefix.into(),
-            counter: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            counter: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(issued)),
         }
     }
 
@@ -174,6 +183,45 @@ impl RunIdentity {
     /// minted a different number of ids did not do the same thing.
     pub fn issued(&self) -> u64 {
         self.counter.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Return the first unused counter after deterministic ids already present in a checkpoint.
+///
+/// Other namespaces, other run ids, and legacy UUIDs are ignored. An id that claims this exact
+/// namespace/run but has a malformed counter is refused: ignoring it could mint a collision, while
+/// a refusal keeps the corrupted history visible.
+pub fn issued_after_existing_ids<I, S>(run_id: u64, prefix: &str, ids: I) -> Result<u64, String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let stem = format!("{prefix}-{run_id:016x}-");
+    let mut greatest = None;
+
+    for id in ids {
+        let id = id.as_ref();
+        let Some(counter) = id.strip_prefix(&stem) else {
+            continue;
+        };
+        if counter.is_empty() || counter.len() > 16 {
+            return Err(format!(
+                "deterministic id {id:?} has an invalid counter for namespace {prefix:?}"
+            ));
+        }
+        let parsed = u64::from_str_radix(counter, 16).map_err(|_| {
+            format!("deterministic id {id:?} has a non-hex counter for namespace {prefix:?}")
+        })?;
+        greatest = Some(greatest.map_or(parsed, |current: u64| current.max(parsed)));
+    }
+
+    match greatest {
+        Some(counter) => counter.checked_add(1).ok_or_else(|| {
+            format!(
+                "deterministic id namespace {prefix:?} for run {run_id:016x} exhausted its counter"
+            )
+        }),
+        None => Ok(0),
     }
 }
 

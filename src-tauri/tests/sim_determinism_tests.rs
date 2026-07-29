@@ -10,7 +10,9 @@
 use anima_engine_lib::core::resources::{
     derived_rng, resolve_run_seed, sim_seed_override_from_env, sim_stream, SimRng, DEFAULT_SIM_SEED,
 };
-use anima_engine_lib::core::simulation_state::{empty_saved_state_for_tests, startup_run_seed};
+use anima_engine_lib::core::simulation_state::{
+    empty_saved_state_for_tests, evolution_worker_resume_state, startup_run_seed, ChronicleEvent,
+};
 use anima_engine_lib::evolution::crossover::crossover_genotypes;
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
 use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
@@ -258,6 +260,22 @@ fn no_process_random_source_in_backend_sources() {
 }
 
 #[test]
+fn live_simulation_does_not_bypass_the_deterministic_id_gate() {
+    let simulation_loop = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("core")
+            .join("simulation_loop.rs"),
+    )
+    .expect("simulation loop source must be readable");
+
+    assert!(
+        !simulation_loop.contains("Uuid::new_v4"),
+        "live founders and offspring must go through determinism::next_entity_id"
+    );
+}
+
+#[test]
 fn run_seed_comes_from_the_world_not_from_ambient_state() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // Invariant D07: the world the agents live in is the authority for the run's randomness.
@@ -330,6 +348,75 @@ fn zero_seed_with_a_nonzero_position_is_valid_saved_rng_state() {
         startup_run_seed(Some(&state), 12_345),
         0,
         "seed zero is valid when the saved stream position proves RNG state was recorded"
+    );
+}
+
+#[test]
+fn resumed_identity_source_continues_after_existing_ids() {
+    let existing = [
+        "lineage-000000000000002a-00000000",
+        "unrelated-000000000000002a-ffffffff",
+        "lineage-000000000000002b-ffffffff",
+        "lineage-000000000000002a-00000007",
+    ];
+    let issued =
+        anima_engine_lib::core::determinism::issued_after_existing_ids(0x2a, "lineage", existing)
+            .expect("valid deterministic ids");
+    let resumed =
+        anima_engine_lib::core::determinism::RunIdentity::with_issued(0x2a, "lineage", issued);
+
+    assert_eq!(
+        resumed.next_id(),
+        "lineage-000000000000002a-00000008",
+        "resume must not mint an id already present in the checkpoint"
+    );
+}
+
+#[test]
+fn evolution_worker_resume_state_recovers_counters_and_history() {
+    let mut state = empty_saved_state_for_tests();
+    state.chronicle_history = vec![
+        ChronicleEvent {
+            id: "chronicle-000000000000002a-00000000".into(),
+            event_type: "Drought".into(),
+            timestamp: 0,
+            title: "Resource Drought".into(),
+            description: String::new(),
+            parameter_delta: Default::default(),
+        },
+        ChronicleEvent {
+            id: "chronicle-000000000000002a-00000003".into(),
+            event_type: "TemperatureSpike".into(),
+            timestamp: 0,
+            title: "Glacial Period".into(),
+            description: String::new(),
+            parameter_delta: Default::default(),
+        },
+    ];
+    let mut high_node_genotype = chain_genotype(2);
+    high_node_genotype.nodes[1].id = 91;
+    high_node_genotype.edges[0].target_node = 91;
+    state
+        .lineage_nodes
+        .push(anima_engine_lib::evolution::lineage::LineageNode {
+            id: "lineage-000000000000002a-0000000b".into(),
+            generation: 1,
+            genotype: Some(high_node_genotype),
+            cumulative_mutations: Some(0),
+        });
+
+    let resume = evolution_worker_resume_state(Some(&state), 0x2a)
+        .expect("ordinary checkpoint counters must be recoverable");
+    assert_eq!(resume.chronicle_ids_issued, 4);
+    assert_eq!(resume.offspring_ids_issued, 12);
+    assert_eq!(resume.node_id_counter, 92);
+    assert_eq!(resume.meta_ai_epoch, 2);
+    assert_eq!(
+        resume.meta_ai_history,
+        vec![
+            anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::ResourceDrought,
+            anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::GlacialPeriod,
+        ]
     );
 }
 

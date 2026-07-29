@@ -469,6 +469,115 @@ pub fn startup_run_seed(state: Option<&SavedSimulationState>, fallback_seed: u64
         .map_or(fallback_seed, |state| state.sim_rng_seed)
 }
 
+/// Worker-local counters that can be reconstructed from a snapshot written before they were
+/// carried explicitly.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EvolutionWorkerResumeState {
+    pub chronicle_ids_issued: u64,
+    pub offspring_ids_issued: u64,
+    pub node_id_counter: u32,
+    pub meta_ai_epoch: u32,
+    pub meta_ai_history: Vec<crate::evolution::meta_ai::EnvironmentalEvent>,
+}
+
+fn chronicle_environmental_event(
+    event: &ChronicleEvent,
+) -> Option<crate::evolution::meta_ai::EnvironmentalEvent> {
+    use crate::evolution::meta_ai::EnvironmentalEvent;
+
+    // Titles distinguish the two pairs that intentionally share a UI event type. Fall back to the
+    // broader type for older/imported chronicles that did not use the current titles.
+    match event.title.as_str() {
+        "Resource Drought" => Some(EnvironmentalEvent::ResourceDrought),
+        "Temperature Spike" => Some(EnvironmentalEvent::TemperatureSpike),
+        "Glacial Period" => Some(EnvironmentalEvent::GlacialPeriod),
+        "Toxic Deluge" => Some(EnvironmentalEvent::ToxicDeluge),
+        "Stable Climate" => Some(EnvironmentalEvent::Stable),
+        _ => match event.event_type.as_str() {
+            "Drought" => Some(EnvironmentalEvent::ResourceDrought),
+            "TemperatureSpike" => Some(EnvironmentalEvent::TemperatureSpike),
+            "Abundance" => Some(EnvironmentalEvent::Stable),
+            _ => None,
+        },
+    }
+}
+
+/// Recover the evolution worker's non-ECS cursors from a pending checkpoint.
+///
+/// Schema-5 saves did not carry a worker checkpoint. The deterministic ids and morphology node ids
+/// are nevertheless present in the saved lineage, so continuing after their maxima prevents a
+/// resume from overwriting history. Chronicle entries also reconstruct the Meta-AI epoch/history.
+pub fn evolution_worker_resume_state(
+    state: Option<&SavedSimulationState>,
+    run_id: u64,
+) -> Result<EvolutionWorkerResumeState, String> {
+    let Some(state) = state else {
+        return Ok(EvolutionWorkerResumeState {
+            chronicle_ids_issued: 0,
+            offspring_ids_issued: 0,
+            node_id_counter: 3,
+            meta_ai_epoch: 0,
+            meta_ai_history: Vec::new(),
+        });
+    };
+
+    let chronicle_ids_issued = crate::core::determinism::issued_after_existing_ids(
+        run_id,
+        "chronicle",
+        state
+            .chronicle_history
+            .iter()
+            .map(|event| event.id.as_str()),
+    )?;
+    let offspring_ids_issued =
+        crate::core::determinism::issued_after_existing_ids(
+            run_id,
+            "lineage",
+            state
+                .lineage_nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .chain(state.agents.iter().map(|agent| agent.lineage_id.as_str()))
+                .chain(state.lineage_relations.iter().flat_map(|relation| {
+                    [relation.source_id.as_str(), relation.target_id.as_str()]
+                })),
+        )?;
+
+    let greatest_node_id = state
+        .agents
+        .iter()
+        .flat_map(|agent| agent.genotype.nodes.iter().map(|node| node.id))
+        .chain(
+            state
+                .lineage_nodes
+                .iter()
+                .filter_map(|node| node.genotype.as_ref())
+                .flat_map(|genotype| genotype.nodes.iter().map(|node| node.id)),
+        )
+        .max()
+        .unwrap_or(2);
+    let node_id_counter = greatest_node_id.checked_add(1).ok_or_else(|| {
+        "checkpoint exhausted the u32 morphology-node id space; evolution cannot resume safely"
+            .to_string()
+    })?;
+    let meta_ai_epoch = u32::try_from(state.chronicle_history.len()).map_err(|_| {
+        "checkpoint chronicle has more events than the u32 Meta-AI epoch can represent".to_string()
+    })?;
+    let meta_ai_history = state
+        .chronicle_history
+        .iter()
+        .filter_map(chronicle_environmental_event)
+        .collect();
+
+    Ok(EvolutionWorkerResumeState {
+        chronicle_ids_issued,
+        offspring_ids_issued,
+        node_id_counter,
+        meta_ai_epoch,
+        meta_ai_history,
+    })
+}
+
 /// Put the saved closed-energy state back into the world (G1.1).
 ///
 /// Call this on the restore path *after* agents have been respawned, so the `animals` compartment
