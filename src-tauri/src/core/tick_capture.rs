@@ -537,6 +537,17 @@ pub struct WorkloadContext {
     /// Whether the two dimensions above were read from a live `ResourceField`. `false` means no
     /// field was present and the dimensions are unknown rather than zero-sized.
     pub dimensions_measured: bool,
+    /// Smallest live population among the samples retained in this export's window.
+    ///
+    /// `None` means the capture retained no samples. This field was added compatibly: older
+    /// exports deserialize with an unknown population rather than inventing zero.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub agent_count_min: Option<u32>,
+    /// Largest live population among the samples retained in this export's window.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub agent_count_max: Option<u32>,
 }
 
 /// The live state of a capture. Held behind [`SharedTickCapture`]'s mutex.
@@ -1059,7 +1070,7 @@ impl SharedTickCapture {
     /// Build the export document. The lock is held only long enough to copy the samples out, so a
     /// slow serialization never stalls the simulation thread.
     pub fn export(&self) -> CaptureExport {
-        let (samples, status, config, accounting, workload, executor) = {
+        let (samples, status, config, accounting, mut workload, executor) = {
             let state = self.lock();
             (
                 state.samples(),
@@ -1070,6 +1081,8 @@ impl SharedTickCapture {
                 state.executor(),
             )
         };
+        workload.agent_count_min = samples.iter().map(|sample| sample.agent_count).min();
+        workload.agent_count_max = samples.iter().map(|sample| sample.agent_count).max();
         let phases = summarise(&samples, config.groups);
         CaptureExport {
             schema_version: CAPTURE_SCHEMA_VERSION,
@@ -1186,6 +1199,8 @@ impl TickCaptureSink {
                 world_width: w as u32,
                 world_height: h as u32,
                 dimensions_measured: true,
+                agent_count_min: None,
+                agent_count_max: None,
             },
             None => WorkloadContext::default(),
         };
@@ -1269,6 +1284,8 @@ mod tests {
                 world_width: 256,
                 world_height: 256,
                 dimensions_measured: true,
+                agent_count_min: None,
+                agent_count_max: None,
             },
         )
     }
@@ -1628,12 +1645,16 @@ mod tests {
                 world_width: 256,
                 world_height: 256,
                 dimensions_measured: true,
+                agent_count_min: None,
+                agent_count_max: None,
             },
         );
         let doc = shared.export();
         assert_eq!(doc.schema_version, CAPTURE_SCHEMA_VERSION);
         assert_eq!(doc.workload.world_width, 256);
         assert!(doc.workload.dimensions_measured);
+        assert_eq!(doc.workload.agent_count_min, Some(3));
+        assert_eq!(doc.workload.agent_count_max, Some(3));
         assert_eq!(doc.executor, "single-threaded");
         assert_eq!(doc.first_tick, Some(5));
         assert_eq!(doc.last_tick, Some(5));
@@ -1642,6 +1663,47 @@ mod tests {
             "a phase this build cannot measure must be named, not omitted"
         );
         assert!(doc.hardware.not_measured.contains(&"cpu_model".to_string()));
+    }
+
+    #[test]
+    fn exported_population_range_describes_the_retained_sample_window() {
+        let shared = SharedTickCapture::new();
+        shared
+            .start(CaptureConfig {
+                capacity: 2,
+                ..ok_config()
+            })
+            .expect("valid config");
+        for (tick, agents) in [(1, 7), (2, 11), (3, 13)] {
+            shared.observe_tick(
+                tick,
+                agents,
+                [10, 20, 30],
+                40,
+                5,
+                WorkloadContext::default(),
+            );
+        }
+
+        let doc = shared.export();
+        assert_eq!((doc.first_tick, doc.last_tick), (Some(2), Some(3)));
+        assert_eq!(doc.workload.agent_count_min, Some(11));
+        assert_eq!(doc.workload.agent_count_max, Some(13));
+    }
+
+    #[test]
+    fn legacy_workload_json_keeps_population_unknown() {
+        let workload: WorkloadContext = serde_json::from_str(
+            r#"{
+                "world_width": 256,
+                "world_height": 256,
+                "dimensions_measured": true
+            }"#,
+        )
+        .expect("schema-1 workload must remain readable");
+
+        assert_eq!(workload.agent_count_min, None);
+        assert_eq!(workload.agent_count_max, None);
     }
 
     #[test]
