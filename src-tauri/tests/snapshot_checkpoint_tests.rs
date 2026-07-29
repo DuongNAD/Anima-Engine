@@ -216,7 +216,7 @@ fn save(world: &mut World, tick: u64, deps: &SaveDeps) -> SavedSimulationState {
 fn restore(state: &SavedSimulationState) -> (World, crossbeam_channel::Sender<EvolutionMsg>) {
     let (mut world, tx) = bare_world();
     for agent in &state.agents {
-        spawn_serialized_agent(&mut world, agent);
+        spawn_serialized_agent(&mut world, agent).expect("validated checkpoint agent");
     }
     for food in &state.foods {
         world.spawn((

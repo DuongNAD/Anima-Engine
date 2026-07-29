@@ -750,13 +750,14 @@ impl SimulationEngine {
                 Some(saved) => {
                     match crate::core::aggregate_population::DormantCohorts::from_saved(saved) {
                         Ok(cohorts) => world.insert_resource(cohorts),
-                        // Refused rather than silently dropped: the alternative is a world whose
-                        // animal compartment counts EU held by cohorts that were never restored.
-                        Err(why) => eprintln!(
-                            "WARNING: dormant cohorts in the snapshot are unusable and were not \
-                             restored — {why}. The closed-EU total will read short by whatever \
-                             they were holding."
-                        ),
+                        Err(why) => {
+                            eprintln!(
+                                "ERROR: snapshot restore aborted before the simulation started: \
+                                 dormant cohorts are unusable ({why})"
+                            );
+                            running_clone.store(false, Ordering::SeqCst);
+                            return;
+                        }
                     }
                 }
                 None if crate::core::aggregate_population::aggregate_lod_enabled_from_env() => {
@@ -962,14 +963,33 @@ impl SimulationEngine {
             world.insert_resource(loaded_env);
 
             if let Some(ref state) = state_to_load {
+                if let Some((index, error)) =
+                    state.agents.iter().enumerate().find_map(|(index, agent)| {
+                        agent.validate().err().map(|error| (index, error))
+                    })
+                {
+                    eprintln!(
+                        "ERROR: snapshot restore aborted before shared lineage or ECS state was \
+                         changed: agent {index} is invalid ({error})"
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    return;
+                }
                 lineage_tracker_sim
                     .load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
                 if let Ok(mut history) = chronicle_history_clone_save.write() {
                     *history = state.chronicle_history.clone();
                 }
 
-                for agent in &state.agents {
-                    spawn_serialized_agent(&mut world, agent);
+                for (index, agent) in state.agents.iter().enumerate() {
+                    if let Err(error) = spawn_serialized_agent(&mut world, agent) {
+                        eprintln!(
+                            "ERROR: snapshot restore aborted: validated agent {index} could not be \
+                             reconstructed ({error})"
+                        );
+                        running_clone.store(false, Ordering::SeqCst);
+                        return;
+                    }
                 }
                 // G1.1: the closed-energy compartments and the standing crop come back with the
                 // agents. Without this a load rebuilt detritus at zero and plants at full capacity,

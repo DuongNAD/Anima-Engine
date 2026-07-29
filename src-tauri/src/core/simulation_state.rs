@@ -119,6 +119,149 @@ pub struct SerializedAgent {
     pub brain: Option<crate::core::components::AgentBrain>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SerializedAgentError {
+    Scientific(crate::core::components::MigrationValidationError),
+    InvalidRootRotation,
+    SegmentStateCount { found: usize, expected: usize },
+    DuplicateSegment { id: u32 },
+    RootRepeatedAsChild { id: u32 },
+    UnknownSegment { id: u32 },
+    InvalidSegmentKinematics { id: u32 },
+    InvalidOscillator { id: u32 },
+}
+
+impl std::fmt::Display for SerializedAgentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Scientific(error) => write!(f, "{error}"),
+            Self::InvalidRootRotation => write!(f, "root rotation is non-finite or degenerate"),
+            Self::SegmentStateCount { found, expected } => write!(
+                f,
+                "snapshot contains {found} child segment states; morphology requires {expected}"
+            ),
+            Self::DuplicateSegment { id } => write!(f, "snapshot repeats child segment id {id}"),
+            Self::RootRepeatedAsChild { id } => {
+                write!(f, "snapshot repeats root segment id {id} as a child")
+            }
+            Self::UnknownSegment { id } => {
+                write!(
+                    f,
+                    "snapshot child segment id {id} is absent from the morphology"
+                )
+            }
+            Self::InvalidSegmentKinematics { id } => {
+                write!(f, "snapshot child segment {id} has invalid kinematics")
+            }
+            Self::InvalidOscillator { id } => {
+                write!(f, "snapshot child segment {id} has a non-finite oscillator")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SerializedAgentError {}
+
+impl SerializedAgent {
+    /// Validate a restored individual before `decode_genotype` can assert or build any ECS state.
+    pub fn validate(&self) -> Result<(), SerializedAgentError> {
+        crate::core::components::validate_scientific_agent_state(
+            &self.genotype,
+            &self.homeostatic_state,
+            self.root_position,
+            self.root_velocity,
+            &self.lineage_id,
+            &self.parent_ids,
+            Some(&self.evaluation),
+            Some(&self.feature_tracker),
+            Some(&self.last_transition_state),
+            self.brain.as_ref(),
+        )
+        .map_err(SerializedAgentError::Scientific)?;
+
+        let rotation_len = self.root_rotation.length_squared();
+        if !self.root_rotation.is_finite()
+            || !rotation_len.is_finite()
+            || rotation_len <= f32::EPSILON
+            || (rotation_len - 1.0).abs() > 1.0e-3
+        {
+            return Err(SerializedAgentError::InvalidRootRotation);
+        }
+        let expected_segments = self.genotype.nodes.len().saturating_sub(1);
+        if self.segments.len() != expected_segments {
+            return Err(SerializedAgentError::SegmentStateCount {
+                found: self.segments.len(),
+                expected: expected_segments,
+            });
+        }
+        let root_id = self
+            .genotype
+            .nodes
+            .iter()
+            .find(|node| {
+                !self
+                    .genotype
+                    .edges
+                    .iter()
+                    .any(|edge| edge.target_node == node.id)
+            })
+            .map(|node| node.id)
+            .ok_or(SerializedAgentError::Scientific(
+                crate::core::components::MigrationValidationError::InvalidTopology,
+            ))?;
+
+        let mut seen = std::collections::HashSet::with_capacity(self.segments.len());
+        for segment in &self.segments {
+            if !seen.insert(segment.segment_id) {
+                return Err(SerializedAgentError::DuplicateSegment {
+                    id: segment.segment_id,
+                });
+            }
+            if segment.segment_id == root_id {
+                return Err(SerializedAgentError::RootRepeatedAsChild {
+                    id: segment.segment_id,
+                });
+            }
+            if !self
+                .genotype
+                .nodes
+                .iter()
+                .any(|node| node.id == segment.segment_id)
+            {
+                return Err(SerializedAgentError::UnknownSegment {
+                    id: segment.segment_id,
+                });
+            }
+            let rotation_len = segment.rotation.length_squared();
+            if !segment.position.is_finite()
+                || !segment.velocity.is_finite()
+                || !segment.rotation.is_finite()
+                || !rotation_len.is_finite()
+                || rotation_len <= f32::EPSILON
+                || (rotation_len - 1.0).abs() > 1.0e-3
+            {
+                return Err(SerializedAgentError::InvalidSegmentKinematics {
+                    id: segment.segment_id,
+                });
+            }
+            if let Some(oscillator) = &segment.oscillator {
+                let values = [
+                    oscillator.phase,
+                    oscillator.frequency,
+                    oscillator.amplitude,
+                    oscillator.output,
+                ];
+                if values.iter().any(|value| !value.is_finite()) {
+                    return Err(SerializedAgentError::InvalidOscillator {
+                        id: segment.segment_id,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct SerializedFood {
     pub position: glam::Vec3,
@@ -377,7 +520,10 @@ pub fn restore_energy_state(world: &mut World, state: &SavedSimulationState) {
     }
 }
 
-pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
+pub fn spawn_serialized_agent(
+    world: &mut World,
+    agent: &SerializedAgent,
+) -> Result<Entity, SerializedAgentError> {
     use crate::ai::cpg::CpgOscillator;
     use crate::core::ecs::{
         AgentClass, AgentParentLineageIds, ParentAgent, Position, Predator, Prey, Rotation,
@@ -385,6 +531,8 @@ pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
     };
     use crate::evolution::genotype::decode_genotype;
     use crate::physics::dynamics::RigidBody;
+
+    agent.validate()?;
 
     let root_entity = decode_genotype(
         world,
@@ -410,17 +558,7 @@ pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
     // wearing the same lineage id. A `None` here is a legacy agent and correctly stays on the
     // shared model rather than being upgraded behind the user's back.
     if let Some(brain) = &agent.brain {
-        match brain.validate() {
-            Ok(()) => {
-                world.entity_mut(root_entity).insert(brain.clone());
-            }
-            Err(e) => {
-                eprintln!(
-                    "agent {} has an unreadable brain ({e}); restoring it on the shared model",
-                    agent.lineage_id
-                );
-            }
-        }
+        world.entity_mut(root_entity).insert(brain.clone());
     }
 
     match agent.class {
@@ -483,6 +621,7 @@ pub fn spawn_serialized_agent(world: &mut World, agent: &SerializedAgent) {
             }
         }
     }
+    Ok(root_entity)
 }
 
 pub fn serialize_world_state(

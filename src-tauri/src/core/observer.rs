@@ -514,6 +514,7 @@ impl ObserverSeam {
         &self,
         settings: crate::commands::EvolutionSettings,
     ) -> Result<(), String> {
+        settings.validate()?;
         // Recorded before the write, always. The reverse order leaves a window in which the world has
         // already changed and nothing says who changed it.
         self.actions.push(ObserverAction::EvolutionSettingsChanged {

@@ -1210,7 +1210,14 @@ fn build_live_world(
                 state.active_environment_event,
             ));
             for agent in &state.agents {
-                crate::core::simulation_state::spawn_serialized_agent(&mut world, agent);
+                crate::core::simulation_state::spawn_serialized_agent(&mut world, agent).map_err(
+                    |error| ExperimentError::InvalidPopulation {
+                        reason: format!(
+                            "snapshot agent {} could not be restored: {error}",
+                            agent.lineage_id
+                        ),
+                    },
+                )?;
             }
             crate::core::simulation_state::restore_energy_state(&mut world, state);
             for food in &state.foods {

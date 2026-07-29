@@ -247,135 +247,167 @@ impl std::fmt::Display for MigrationValidationError {
     }
 }
 
+pub(crate) fn validate_morphology_payload(
+    genotype: &MorphologyGenotype,
+) -> Result<(), MigrationValidationError> {
+    let nodes = genotype.nodes.len();
+    if nodes == 0 {
+        return Err(MigrationValidationError::EmptyMorphology);
+    }
+    if nodes > MAX_MIGRATION_MORPHOLOGY_NODES {
+        return Err(MigrationValidationError::TooManyNodes { found: nodes });
+    }
+    if genotype.edges.len() >= MAX_MIGRATION_MORPHOLOGY_NODES {
+        return Err(MigrationValidationError::TooManyEdges {
+            found: genotype.edges.len(),
+        });
+    }
+    if !crate::evolution::mutation::is_valid_genotype(genotype) {
+        return Err(MigrationValidationError::InvalidTopology);
+    }
+    if genotype.nodes.iter().any(|node| {
+        !node.length.is_finite()
+            || !node.radius.is_finite()
+            || !node.mass.is_finite()
+            || node.length <= 0.0
+            || node.radius <= 0.0
+            || node.mass <= 0.0
+    }) {
+        return Err(MigrationValidationError::InvalidBodyDimension);
+    }
+    if genotype.edges.iter().any(|edge| {
+        let length_squared = edge.joint_axis.length_squared();
+        !edge.joint_anchor.is_finite()
+            || !edge.joint_axis.is_finite()
+            || !length_squared.is_finite()
+            || length_squared <= f32::EPSILON
+    }) {
+        return Err(MigrationValidationError::InvalidJoint);
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn validate_scientific_agent_state(
+    genotype: &MorphologyGenotype,
+    homeostatic_state: &crate::ai::hrrl::HomeostaticState,
+    position: glam::Vec3,
+    velocity: glam::Vec3,
+    lineage_id: &str,
+    parent_ids: &[String],
+    evaluation: Option<&crate::core::engine::AgentEvaluation>,
+    feature_tracker: Option<&FeatureTracker>,
+    last_transition_state: Option<&crate::ai::hrrl::LastTransitionState>,
+    brain: Option<&AgentBrain>,
+) -> Result<(), MigrationValidationError> {
+    validate_morphology_payload(genotype)?;
+    if !position.is_finite() || !velocity.is_finite() {
+        return Err(MigrationValidationError::NonFiniteKinematics);
+    }
+    let homeostasis = [
+        homeostatic_state.energy,
+        homeostatic_state.energy_target,
+        homeostatic_state.hydration,
+        homeostatic_state.hydration_target,
+        homeostatic_state.temperature,
+        homeostatic_state.temp_target,
+        homeostatic_state.previous_deviation,
+    ];
+    if homeostasis.iter().any(|value| !value.is_finite()) {
+        return Err(MigrationValidationError::NonFiniteHomeostasis);
+    }
+    if homeostatic_state.energy_target <= 0.0
+        || homeostatic_state.hydration_target <= 0.0
+        || homeostatic_state.previous_deviation < 0.0
+        || !homeostatic_state.compute_deviation().is_finite()
+    {
+        return Err(MigrationValidationError::NonFiniteHomeostasis);
+    }
+    if lineage_id.trim().is_empty()
+        || lineage_id.len() > 1_024
+        || lineage_id.chars().any(char::is_control)
+    {
+        return Err(MigrationValidationError::InvalidLineageId);
+    }
+    if parent_ids.len() > 64
+        || parent_ids
+            .iter()
+            .any(|id| id.trim().is_empty() || id.len() > 1_024 || id.chars().any(char::is_control))
+    {
+        return Err(MigrationValidationError::InvalidParentMetadata);
+    }
+    if let Some(evaluation) = evaluation {
+        if !evaluation.start_position.is_finite()
+            || !evaluation.last_position.is_finite()
+            || !evaluation.total_distance.is_finite()
+            || !evaluation.total_energy_expended.is_finite()
+            || evaluation.total_distance < 0.0
+            || evaluation.total_energy_expended < 0.0
+        {
+            return Err(MigrationValidationError::NonFiniteEvaluation);
+        }
+    }
+    if let Some(tracker) = feature_tracker {
+        if !tracker.cumulative_distance.is_finite()
+            || !tracker.cumulative_energy_decay.is_finite()
+            || tracker.cumulative_distance < 0.0
+            || tracker.cumulative_energy_decay < 0.0
+        {
+            return Err(MigrationValidationError::NonFiniteFeatureTracker);
+        }
+    }
+    if let Some(last) = last_transition_state {
+        if last.state.iter().any(|value| !value.is_finite())
+            || last.action.iter().any(|value| !value.is_finite())
+        {
+            return Err(MigrationValidationError::NonFiniteTransition);
+        }
+    }
+    if let Some(brain) = brain {
+        let parameters = brain.genotype.arch.checked_param_count().ok_or(
+            MigrationValidationError::InvalidBrain(
+                crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(
+                    brain.genotype.arch,
+                ),
+            ),
+        )?;
+        if parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
+            return Err(MigrationValidationError::BrainTooLarge { found: parameters });
+        }
+        if let Some(learned) = &brain.learned {
+            let learned_parameters = learned.arch.checked_param_count().ok_or(
+                MigrationValidationError::InvalidBrain(
+                    crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(learned.arch),
+                ),
+            )?;
+            if learned_parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
+                return Err(MigrationValidationError::BrainTooLarge {
+                    found: learned_parameters,
+                });
+            }
+        }
+        brain
+            .validate()
+            .map_err(MigrationValidationError::InvalidBrain)?;
+    }
+    Ok(())
+}
+
 impl AgentMigrationData {
     /// Validate scientific state before it crosses or enters an ownership boundary.
     pub fn validate(&self) -> Result<(), MigrationValidationError> {
-        let nodes = self.genotype.nodes.len();
-        if nodes == 0 {
-            return Err(MigrationValidationError::EmptyMorphology);
-        }
-        if nodes > MAX_MIGRATION_MORPHOLOGY_NODES {
-            return Err(MigrationValidationError::TooManyNodes { found: nodes });
-        }
-        if self.genotype.edges.len() >= MAX_MIGRATION_MORPHOLOGY_NODES {
-            return Err(MigrationValidationError::TooManyEdges {
-                found: self.genotype.edges.len(),
-            });
-        }
-        if !crate::evolution::mutation::is_valid_genotype(&self.genotype) {
-            return Err(MigrationValidationError::InvalidTopology);
-        }
-        if self.genotype.nodes.iter().any(|node| {
-            !node.length.is_finite()
-                || !node.radius.is_finite()
-                || !node.mass.is_finite()
-                || node.length <= 0.0
-                || node.radius <= 0.0
-                || node.mass <= 0.0
-        }) {
-            return Err(MigrationValidationError::InvalidBodyDimension);
-        }
-        if self.genotype.edges.iter().any(|edge| {
-            let length_squared = edge.joint_axis.length_squared();
-            !edge.joint_anchor.is_finite()
-                || !edge.joint_axis.is_finite()
-                || !length_squared.is_finite()
-                || length_squared <= f32::EPSILON
-        }) {
-            return Err(MigrationValidationError::InvalidJoint);
-        }
-        if !self.position.is_finite() || !self.velocity.is_finite() {
-            return Err(MigrationValidationError::NonFiniteKinematics);
-        }
-        let homeostasis = [
-            self.homeostatic_state.energy,
-            self.homeostatic_state.energy_target,
-            self.homeostatic_state.hydration,
-            self.homeostatic_state.hydration_target,
-            self.homeostatic_state.temperature,
-            self.homeostatic_state.temp_target,
-            self.homeostatic_state.previous_deviation,
-        ];
-        if homeostasis.iter().any(|value| !value.is_finite()) {
-            return Err(MigrationValidationError::NonFiniteHomeostasis);
-        }
-        if self.homeostatic_state.energy_target <= 0.0
-            || self.homeostatic_state.hydration_target <= 0.0
-            || self.homeostatic_state.previous_deviation < 0.0
-            || !self.homeostatic_state.compute_deviation().is_finite()
-        {
-            return Err(MigrationValidationError::NonFiniteHomeostasis);
-        }
-        if self.lineage_id.trim().is_empty()
-            || self.lineage_id.len() > 1_024
-            || self.lineage_id.chars().any(char::is_control)
-        {
-            return Err(MigrationValidationError::InvalidLineageId);
-        }
-        if self.parent_ids.len() > 64
-            || self.parent_ids.iter().any(|id| {
-                id.trim().is_empty() || id.len() > 1_024 || id.chars().any(char::is_control)
-            })
-        {
-            return Err(MigrationValidationError::InvalidParentMetadata);
-        }
-        if let Some(evaluation) = &self.evaluation {
-            if !evaluation.start_position.is_finite()
-                || !evaluation.last_position.is_finite()
-                || !evaluation.total_distance.is_finite()
-                || !evaluation.total_energy_expended.is_finite()
-                || evaluation.total_distance < 0.0
-                || evaluation.total_energy_expended < 0.0
-            {
-                return Err(MigrationValidationError::NonFiniteEvaluation);
-            }
-        }
-        if let Some(tracker) = &self.feature_tracker {
-            if !tracker.cumulative_distance.is_finite()
-                || !tracker.cumulative_energy_decay.is_finite()
-                || tracker.cumulative_distance < 0.0
-                || tracker.cumulative_energy_decay < 0.0
-            {
-                return Err(MigrationValidationError::NonFiniteFeatureTracker);
-            }
-        }
-        if let Some(last) = &self.last_transition_state {
-            if last.state.iter().any(|value| !value.is_finite())
-                || last.action.iter().any(|value| !value.is_finite())
-            {
-                return Err(MigrationValidationError::NonFiniteTransition);
-            }
-        }
-        if let Some(brain) = &self.brain {
-            let parameters = brain.genotype.arch.checked_param_count().ok_or(
-                MigrationValidationError::InvalidBrain(
-                    crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(
-                        brain.genotype.arch,
-                    ),
-                ),
-            )?;
-            if parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
-                return Err(MigrationValidationError::BrainTooLarge { found: parameters });
-            }
-            if let Some(learned) = &brain.learned {
-                let learned_parameters = learned.arch.checked_param_count().ok_or(
-                    MigrationValidationError::InvalidBrain(
-                        crate::evolution::brain_genotype::BrainGenotypeError::InvalidArch(
-                            learned.arch,
-                        ),
-                    ),
-                )?;
-                if learned_parameters > MAX_MIGRATION_BRAIN_PARAMETERS {
-                    return Err(MigrationValidationError::BrainTooLarge {
-                        found: learned_parameters,
-                    });
-                }
-            }
-            brain
-                .validate()
-                .map_err(MigrationValidationError::InvalidBrain)?;
-        }
-        Ok(())
+        validate_scientific_agent_state(
+            &self.genotype,
+            &self.homeostatic_state,
+            self.position,
+            self.velocity,
+            &self.lineage_id,
+            &self.parent_ids,
+            self.evaluation.as_ref(),
+            self.feature_tracker.as_ref(),
+            self.last_transition_state.as_ref(),
+            self.brain.as_ref(),
+        )
     }
 }
 
