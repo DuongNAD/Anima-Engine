@@ -199,6 +199,10 @@ impl ReferenceEvolutionWorld {
 }
 
 impl ExperimentModel for ReferenceEvolutionWorld {
+    fn model_version() -> &'static str {
+        crate::core::experiment_runner::MODEL_VERSION
+    }
+
     fn from_manifest(
         laws: &WorldLawSet,
         initial: &InitialConditionSet,

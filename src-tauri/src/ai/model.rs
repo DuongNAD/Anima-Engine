@@ -536,7 +536,12 @@ impl BrainModel {
     /// [`ActorCriticModel::from_flat_weights`] — the same loader the EB-S02 parity gate exercises.
     /// The distribution is unchanged: Burn's `LinearConfig` default is `U(-k, k)` with
     /// `k = sqrt(1/fan_in)` for both weights and biases, and that is what is reproduced below.
-    pub fn new_seeded(input_dim: usize, hidden_dim: usize, action_dim: usize, seed: u64) -> Self {
+    fn seeded_weights(
+        input_dim: usize,
+        hidden_dim: usize,
+        action_dim: usize,
+        seed: u64,
+    ) -> Vec<f32> {
         use rand::{Rng, SeedableRng};
 
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
@@ -555,6 +560,44 @@ impl BrainModel {
         draw(action_dim, hidden_dim, &mut rng); // actor bias
         draw(hidden_dim, hidden_dim, &mut rng); // critic weight
         draw(1, hidden_dim, &mut rng); // critic bias
+        weights
+    }
+
+    fn from_seeded_ndarray(
+        input_dim: usize,
+        hidden_dim: usize,
+        action_dim: usize,
+        weights: &[f32],
+    ) -> Self {
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+            input_dim, hidden_dim, action_dim, weights, &device,
+        )
+        .expect("weights were built for exactly this architecture");
+        Self::from_backend(
+            BrainModelBackend::NdArray(model, device),
+            input_dim,
+            action_dim,
+        )
+    }
+
+    /// Build the reproducibly seeded model on the CPU backend regardless of process environment.
+    ///
+    /// Scientific runs use this constructor so `ANIMA_USE_GPU`, adapter availability and fallback
+    /// timing cannot become undeclared inputs to a trajectory. The interactive app keeps using
+    /// [`Self::new_seeded`], where an explicit GPU opt-in is allowed.
+    pub fn new_seeded_cpu(
+        input_dim: usize,
+        hidden_dim: usize,
+        action_dim: usize,
+        seed: u64,
+    ) -> Self {
+        let weights = Self::seeded_weights(input_dim, hidden_dim, action_dim, seed);
+        Self::from_seeded_ndarray(input_dim, hidden_dim, action_dim, &weights)
+    }
+
+    pub fn new_seeded(input_dim: usize, hidden_dim: usize, action_dim: usize, seed: u64) -> Self {
+        let weights = Self::seeded_weights(input_dim, hidden_dim, action_dim, seed);
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
         let use_gpu = crate::core::resources::gpu_backend_requested();
@@ -584,19 +627,7 @@ impl BrainModel {
             eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
         }
 
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
-            input_dim, hidden_dim, action_dim, &weights, &device,
-        )
-        .expect("weights were built for exactly this architecture");
-        // The CPU path needs this for the same reason the GPU path does, and only the GPU path had
-        // it: draining lazy `Param` initialization here is what makes `unsafe impl Sync` sound.
-        materialize_params(&model, &device, input_dim);
-        Self::from_backend(
-            BrainModelBackend::NdArray(model, device),
-            input_dim,
-            action_dim,
-        )
+        Self::from_seeded_ndarray(input_dim, hidden_dim, action_dim, &weights)
     }
 
     pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize) -> Self {

@@ -55,6 +55,19 @@ pub const MAX_ENSEMBLE_RESULT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 /// refuse the catastrophic case, and under-charging would defeat it.
 pub const BYTES_PER_SAMPLED_OBSERVABLE: u64 = 64;
 
+/// Conservative retained bytes per causal effect: the record itself, two `String` headers and
+/// their typical heap payloads. The budget is a refusal boundary, so rounding upward is safer than
+/// pretending the append-only ledger is free.
+pub const BYTES_PER_CAUSAL_EFFECT: u64 = 256;
+
+/// One ordinary forcing can root the reference world's abiotic-to-predator chain. The live adapter
+/// records fewer effects, so this remains an upper bound for both built-in experiment models.
+const MAX_EFFECTS_PER_INTERVENTION_FIRING: u64 = 7;
+
+/// An enabled AE3 population can record uptake, performance, births and a frequency change on one
+/// ecology firing. Not every firing emits all four; budgeting the maximum keeps the bound simple.
+const MAX_AE3_EFFECTS_PER_ECOLOGY_FIRING: u64 = 4;
+
 // ---- Structured errors (AE-101) --------------------------------------------------------------
 
 /// Every way validation can fail, as structured data (never a bare string) so callers — and the
@@ -1435,16 +1448,75 @@ impl ExperimentManifest {
 
     /// Upper bound on the bytes an ensemble of this manifest will hold in memory.
     ///
-    /// `seeds x samples_per_run x observables x BYTES_PER_SAMPLED_OBSERVABLE`, saturating so an
-    /// absurd manifest reports `u64::MAX` rather than wrapping to a small number and sailing
+    /// Includes both sampled series and the append-only causal ledger. Every product saturates so
+    /// an absurd manifest reports `u64::MAX` rather than wrapping to a small number and sailing
     /// through the very check it should fail. The observable count is the larger of what the
     /// manifest asks for and what the registry can emit, because a run records whatever it emits.
     pub fn estimated_result_bytes(&self, registry: &ObservableRegistry) -> u64 {
         let observables = self.observable_ids.len().max(registry.specs.len()) as u64;
-        (self.seeds.len() as u64)
-            .saturating_mul(self.samples_per_run())
+        let series_per_run = self
+            .samples_per_run()
             .saturating_mul(observables)
-            .saturating_mul(BYTES_PER_SAMPLED_OBSERVABLE)
+            .saturating_mul(BYTES_PER_SAMPLED_OBSERVABLE);
+        let ledger_per_run = self
+            .estimated_ledger_records_per_run()
+            .saturating_mul(BYTES_PER_CAUSAL_EFFECT);
+        (self.seeds.len() as u64).saturating_mul(series_per_run.saturating_add(ledger_per_run))
+    }
+
+    /// Upper bound on causal records retained by one built-in-model run.
+    ///
+    /// Ordinary and exotic intervention windows are charged only for ecology-band firings they can
+    /// actually cover. The exotic world law and AE3 population are persistent causal producers, so
+    /// they are charged for every ecology firing. This intentionally over-counts overlapping
+    /// ordinary chains; an up-front RAM ceiling must not under-count the hostile case.
+    pub fn estimated_ledger_records_per_run(&self) -> u64 {
+        use crate::core::evolution_pathway::AE3_KEY_POPULATION_TOTAL;
+        use crate::core::sim_clock::ECOLOGY_PERIOD;
+
+        let ordinary = self.interventions.iter().fold(0_u64, |total, command| {
+            total.saturating_add(
+                ecology_firings_in_window(
+                    command.start_tick,
+                    command.effective_duration(),
+                    self.duration_ticks,
+                    ECOLOGY_PERIOD,
+                )
+                .saturating_mul(MAX_EFFECTS_PER_INTERVENTION_FIRING),
+            )
+        });
+
+        let persistent_firings = self.duration_ticks / ECOLOGY_PERIOD;
+        let exotic_law = if self.laws.exotic_energy.is_some() {
+            persistent_firings
+        } else {
+            0
+        };
+        let exotic_forcings = self
+            .exotic_interventions
+            .iter()
+            .fold(0_u64, |total, command| {
+                total.saturating_add(ecology_firings_in_window(
+                    command.start_tick,
+                    command.effective_duration(),
+                    self.duration_ticks,
+                    ECOLOGY_PERIOD,
+                ))
+            });
+        let ae3 = if self
+            .initial_conditions
+            .get(AE3_KEY_POPULATION_TOTAL)
+            .is_some()
+        {
+            persistent_firings.saturating_mul(MAX_AE3_EFFECTS_PER_ECOLOGY_FIRING)
+        } else {
+            0
+        };
+
+        ordinary
+            .saturating_add(exotic_law)
+            .saturating_add(exotic_forcings)
+            .saturating_add(ae3)
     }
 
     /// The control variant of this manifest for a genesis fork: identical in every shared input, with
@@ -1544,6 +1616,27 @@ impl ExperimentManifest {
     }
 }
 
+/// Count multiples of `period` in the intersection of the run's `1..=run_ticks` clock and an
+/// intervention's half-open `[start_tick, start_tick + duration)` window.
+fn ecology_firings_in_window(start_tick: u64, duration: u64, run_ticks: u64, period: u64) -> u64 {
+    if period == 0 || duration == 0 || run_ticks == 0 {
+        return 0;
+    }
+    let lo = start_tick.max(1);
+    let end_exclusive = start_tick
+        .saturating_add(duration)
+        .min(run_ticks.saturating_add(1));
+    if lo >= end_exclusive {
+        return 0;
+    }
+    let first = lo.div_ceil(period).saturating_mul(period);
+    if first >= end_exclusive {
+        0
+    } else {
+        (end_exclusive - 1 - first) / period + 1
+    }
+}
+
 fn canonicalize_intervention(c: &mut Canon, cmd: &InterventionCommand) {
     c.u32(cmd.id).u32(cmd.cause_id);
     c.tag(intervention_kind_tag(cmd.kind));
@@ -1631,6 +1724,9 @@ impl FactorDiff {
     /// (`name`, `experiment_id`) are excluded — they are not experimental factors.
     pub fn diff_paths(control: &ExperimentManifest, treatment: &ExperimentManifest) -> Vec<String> {
         let mut paths = Vec::new();
+        if control.observer != treatment.observer {
+            paths.push("observer".to_string());
+        }
         if control.world_identity != treatment.world_identity {
             paths.push("world_identity".to_string());
         }
@@ -2392,7 +2488,9 @@ mod tests {
 
 #[cfg(test)]
 mod ensemble_budget_tests {
+    use super::tests::base_manifest;
     use super::*;
+    use crate::core::intervention::{Curve, InterventionCommand, InterventionKind, Region};
 
     /// G2 gate #3. A manifest at the documented maxima is individually legal on every axis, and
     /// before this check it was accepted — then the runner tried to hold the result set in RAM.
@@ -2435,6 +2533,32 @@ mod ensemble_budget_tests {
     fn never_sampling_costs_nothing_in_series_memory() {
         assert_eq!(samples_for(0, MAX_DURATION_TICKS), 0);
         assert_eq!(samples_for(1000, 100_000), 100);
+    }
+
+    #[test]
+    fn never_sampling_still_budgets_the_causal_ledger() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = base_manifest();
+        manifest.seeds = (0..MAX_SEEDS as u64).collect();
+        manifest.duration_ticks = MAX_DURATION_TICKS;
+        manifest.sample_period = 0;
+        manifest.interventions = vec![InterventionCommand {
+            id: 1,
+            cause_id: 7,
+            kind: InterventionKind::RainfallDelta,
+            region: Region::Global,
+            start_tick: 0,
+            duration_ticks: MAX_DURATION_TICKS,
+            intensity: 0.1,
+            signed_negative: false,
+            curve: Curve::Step,
+            reversible: true,
+        }];
+
+        assert!(matches!(
+            manifest.validate(&registry),
+            Err(ExperimentError::EnsembleTooLarge { .. })
+        ));
     }
 
     fn samples_for(sample_period: u64, duration_ticks: u64) -> u64 {
@@ -2495,6 +2619,26 @@ mod observer_policy_manifest_tests {
         assert_ne!(a, s, "Absent and Spectate must not share a run identity");
         assert_ne!(a, i, "Absent and Inhabit must not share a run identity");
         assert_ne!(s, i, "Spectate and Inhabit must not share a run identity");
+    }
+
+    #[test]
+    fn an_observer_change_is_an_experimental_factor() {
+        let control = base_manifest();
+        let treatment = ExperimentManifest {
+            observer: ObserverPolicy::Inhabit { cause_id: 9 },
+            ..control.clone()
+        };
+
+        assert_eq!(
+            FactorDiff::diff_paths(&control, &treatment),
+            vec!["observer".to_string()]
+        );
+        assert_eq!(
+            FactorDiff::genesis_exotic().validate(&control, &treatment),
+            Err(ExperimentError::UndeclaredFactorDifference {
+                path: "observer".to_string()
+            })
+        );
     }
 
     /// **ER01.** The observer is state, not law. If it reached the world-law fingerprint, a
