@@ -1531,13 +1531,24 @@ fn effect_size(name: &str, control: &[f64], treatment: &[f64]) -> EffectSize {
     }
 }
 
-/// Summarize each observable across the completed runs (in the observable order of the first run).
+/// Summarize the deterministic union of observables across completed runs.
+///
+/// Names retain first-appearance order across the manifest's seed order. A model may legitimately
+/// emit a seed-dependent final observable, so using only the first completed run as the name source
+/// would silently discard later evidence.
 fn summarize_metrics(completed: &[&RunResult]) -> Vec<MetricSummary> {
-    let Some(first) = completed.first() else {
-        return Vec::new();
-    };
+    let mut seen = std::collections::BTreeSet::new();
+    let mut names = Vec::new();
+    for run in completed {
+        for (name, _) in &run.final_observables {
+            if seen.insert(name.as_str()) {
+                names.push(name.as_str());
+            }
+        }
+    }
+
     let mut out = Vec::new();
-    for (name, _) in &first.final_observables {
+    for name in names {
         let samples: Vec<f64> = completed
             .iter()
             .filter_map(|r| r.observable(name))
@@ -1561,7 +1572,7 @@ fn summarize_metrics(completed: &[&RunResult]) -> Vec<MetricSummary> {
             0.0
         };
         out.push(MetricSummary {
-            observable: name.clone(),
+            observable: name.to_owned(),
             n,
             mean,
             std,
@@ -1743,6 +1754,30 @@ mod tests {
             .expect("plants metric");
         assert_eq!(plants.n, 5);
         assert!(plants.ci95_low <= plants.mean && plants.mean <= plants.ci95_high);
+    }
+
+    #[test]
+    fn ensemble_metrics_include_observables_first_emitted_by_later_seeds() {
+        let registry = ObservableRegistry::reference_default();
+        let manifest = baseline_manifest(vec![10, 11]);
+        let mut first =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 10, None, None);
+        let mut second =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 11, None, None);
+        first.final_observables = vec![("shared".into(), 1.0), ("first-only".into(), 10.0)];
+        second.final_observables = vec![("shared".into(), 3.0), ("later-only".into(), 20.0)];
+
+        let metrics = summarize_metrics(&[&first, &second]);
+        let names: Vec<&str> = metrics
+            .iter()
+            .map(|metric| metric.observable.as_str())
+            .collect();
+
+        assert_eq!(names, ["shared", "first-only", "later-only"]);
+        assert_eq!(metrics[0].n, 2);
+        assert_eq!(metrics[0].mean, 2.0);
+        assert_eq!(metrics[1].n, 1);
+        assert_eq!(metrics[2].n, 1);
     }
 
     // A test-double model that fails to construct for one poisoned seed, proving the ensemble keeps
