@@ -423,6 +423,23 @@ lại **chỉ** ở `config.gridDim` trong `benchmark_report.json` (file kết q
   > **Mã nguồn thì đúng** — các hàm toạ độ nhận `width`/`height` làm tham số, không đọc hằng số này.
   > Đây là lỗi **hợp đồng**, không phải lỗi runtime. Nhưng nó là hợp đồng mà bên thứ ba đọc để đặt
   > ô, nên vẫn cần sửa một lượt trên cả bảy chỗ, và phải sửa cả test đang khoá con số sai.
+  >
+  > **✅ ĐÃ ĐÓNG 2026-07-29.** `DEFAULT_GRID_DIM = 256`, và **chín** chỗ đã sửa — nhiều hơn bảy chỗ
+  > liệt kê ở trên. Hai chỗ chỉ lộ ra khi quét lại, và một trong hai đắt hơn tất cả phần còn lại:
+  > `scripts/gen_map_manifest.ts` mặc định `SIZE = 128`, tức **bộ xuất thật** (`npm run gen:manifest`,
+  > cấp dữ liệu cho MCP map-vision) khai sai độ phân giải trên mọi manifest nó sinh ra — con số sai
+  > tới được một *consumer*, không chỉ một tài liệu. Chỗ còn lại là bảng trạng thái ở
+  > `WORLD_SIMULATION_PLAN.md`.
+  >
+  > Ba gate mới giữ nó không lệch lại: `default_grid_dim_matches_the_real_default_map` (hằng số vs
+  > `MapSettings::default`), `published_world_units_per_cell_follows_from_the_grid_dim` (ghim con số
+  > 0.78125 mà `COORDINATE_CONTRACT.md` công bố), và 256² nay có trong sweep round-trip S03 của **cả
+  > hai** phía — trước đó độ phân giải duy nhất mà hợp đồng nêu tên lại là độ phân giải không phía
+  > nào round-trip.
+  >
+  > **Không sửa `WORLD_DESIGN.md`**, dù nó cũng ghi 128². Chỗ đó là văn bản *phê bình* mô tả tình
+  > trạng khi thế giới còn tách đôi — nó đúng tại thời điểm viết, và sửa số trong một bản ghi lịch sử
+  > là viết lại lịch sử.
 
 ### P0 — Đóng vòng lặp khoa học
 
@@ -952,6 +969,24 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
 - **`terrain_challenger_tests` zero-alloc từng flaky** khi bốn test trong file chạy song song
   (lệch đúng 1 allocation). Lần chạy 2026-07-26 xanh; nếu thấy đỏ, chạy riêng file trước khi
   kết luận là hồi quy.
+- **`challenger_meta_ai_tests` nay là flake ĐÃ QUAN SÁT ĐƯỢC, không còn latent** (2026-07-29). File
+  có **3 `#[test]` trong một binary** và một trong số đó **spawn thread nền** — đúng tổ hợp mà
+  [`tests/common/allocator.rs`](../../src-tauri/tests/common/allocator.rs) mô tả. Khi máy bận, hai
+  test cùng đỏ:
+  - `test_ecs_hot_path_zero_allocations_i22` → "got 4" (thread nền của test anh em cấp phát giữa
+    cửa sổ đo);
+  - `test_environmental_systems_non_blocking_performance` → 1,2587s so với trần 1,2s. Test này
+    **cộng dồn `thread::sleep(16ms)`** rồi khẳng định tổng < 1200ms; hạt thời gian mặc định của
+    Windows là ~15,6ms, nên biên an toàn mỏng theo thiết kế chứ không do hồi quy.
+
+  Chạy riêng: **3/3 pass, ba lần liên tiếp.** Cách sửa đúng là gộp về một `#[test]` (nửa zero-alloc)
+  và cho test thời gian một trần rộng hơn hoặc bỏ `sleep` khỏi phép đo — **chưa làm**.
+- **Hỏi máy đang chạy gì, bằng lệnh, trước khi gọi một lần đỏ là hồi quy.** Lúc hai test trên đỏ,
+  máy có **2 `cargo` + 1 `rustc` + 6 `MSBuild` + 17 `node`** của phiên khác, và 3 worktree vừa được
+  ghi trong 2 giờ. Suite `tests/` cùng lúc đó cho 6 lỗi — 3 lỗi là `Test timed out in 15000ms` thật,
+  3 lỗi còn lại đội lốt khẳng định sai (`expected null not to be null`, `expected 0 to be greater
+  than 0`). `Get-Process | Where-Object { $_.ProcessName -match 'cargo|rustc|node' }` là một câu hỏi
+  rẻ hơn nhiều so với một cuộc điều tra hồi quy không có gì để tìm.
 - **Chạy `cargo` từ PowerShell, không phải Git Bash.** Đo 2026-07-26: cùng một lệnh, cùng một cây mã
   nguồn — qua Git Bash cho `587 passed, 0 failed` với **15 target chết ở `STATUS_ENTRYPOINT_NOT_FOUND`
   (0xc0000139)** trước khi chạy nổi một test; qua PowerShell cho **629 passed, 0 failed, exit 0**.

@@ -10,11 +10,11 @@ function validManifest(): Record<string, unknown> {
   return {
     schemaVersion: 1,
     worldArtifact: {
-      path: 'artifacts/world_128.anmw',
+      path: 'artifacts/world_256.anmw',
       magic: 'ANMW',
       version: 1,
-      width: 128,
-      height: 128,
+      width: 256,
+      height: 256,
       seaLevel: 0.42,
       checksum: 'sha256:00',
     },
@@ -23,7 +23,7 @@ function validManifest(): Record<string, unknown> {
       worldMaxXZ: 100,
       worldMinY: 0,
       worldMaxY: 10,
-      gridDim: 128,
+      gridDim: 256,
     },
     biomeTaxonomy: { canonicalCount: 22, legacyCount: 11 },
     views: [

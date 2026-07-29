@@ -48,7 +48,11 @@ const seed = Number.isFinite(parsedSeed) ? parsedSeed : DEFAULT_SEED;
 // ANIMA_BENCH_TIMESTAMP (e.g. an ISO date), otherwise it reads "set on capture".
 const timestampNote = process.env.ANIMA_BENCH_TIMESTAMP ?? 'set on capture';
 
-const GRID_DIM = 128; // DEFAULT_GRID_DIM (sim_rules.rs)
+// DEFAULT_GRID_DIM (sim_rules.rs). Was 128, which made the report misdescribe its own measurement:
+// the Criterion benches this script reads run at 256² (`MapSettings::default`), so `config` — the
+// reproducibility envelope, the whole reason this block exists — named a resolution nothing here
+// used. `default_grid_dim_matches_the_real_default_map` now pins the Rust side.
+const GRID_DIM = 256;
 const TICK_HZ = 60; // TICK_HZ (sim_rules.rs)
 const TICKS_PER_EPOCH = 1000; // TICKS_PER_EPOCH (sim_rules.rs)
 

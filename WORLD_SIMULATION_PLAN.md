@@ -73,7 +73,7 @@ Chặt 40% rừng đầu nguồn
 | Mùa vụ | `SeasonClock` điều khiển độ màu mỡ theo chu kỳ |
 | Quan sát | Dashboard sinh khối, quần thể, Shannon, Simpson, niche divergence |
 | World 3D | World generator 22 biome, thủy văn, hồ, sông, bờ biển, thực vật và wildlife trang trí |
-| World backend | Terrain 128×128, 11 biome; phần cache ra đĩa đang được bổ sung |
+| World backend | Terrain 256×256 (`MapSettings::default`), 11 biome; phần cache ra đĩa đang được bổ sung |
 | Kiểm thử | Rust unit/integration tests, Vitest và Playwright |
 
 ### 1.2. Khoảng trống cần giải quyết

@@ -14,7 +14,48 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] Sửa ba gate tự nói dối (2026-07-29)
+# ⏪ [MỚI NHẤT] `DEFAULT_GRID_DIM` — hằng số hợp đồng mà không gì đọc (2026-07-29)
+
+`sim_rules.rs` ghi `DEFAULT_GRID_DIM = 128` và **tự khai** là lấy từ `MapSettings::default`. Hàm đó
+là **256**, và đã là 256 từ khi World Artifact dùng chung tới ở kích thước ấy.
+
+Không có gì trong `src/` đọc hằng số đó. Nên không test nào đỏ, không pixel nào lệch — nó chỉ **lan
+ra**, tới **chín** chỗ. `COORDINATE_CONTRACT.md` §4 rút ra `200 / 128 = 1.5625` world-unit mỗi ô;
+giá trị đúng là **0.78125**. Sai đúng 2× trong một hợp đồng đã công bố.
+
+## Chỗ đắt nhất không phải tài liệu
+
+`scripts/gen_map_manifest.ts` mặc định `SIZE = 128`. Đó là **bộ xuất thật** (`npm run gen:manifest`,
+cấp dữ liệu cho MCP map-vision), nên mọi manifest nó sinh ra đều khai sai độ phân giải — con số sai
+tới được một **consumer**, không chỉ một tài liệu. Chỗ này lẫn `WORLD_SIMULATION_PLAN.md` chỉ lộ ra
+khi quét lại **sau** khi đã sửa bảy chỗ ban đầu.
+
+## Hình dạng của lỗi đáng nhớ hơn con số
+
+Một hệ số tỉ lệ suy ra từ độ phân giải thì **chạy được, ra số hữu hạn, và đặt mọi thứ vào một chỗ
+hợp lý nhưng sai**. Không có gì để đỏ.
+
+Nên bản sửa không dừng ở việc đổi số. Ba gate mới:
+
+- `default_grid_dim_matches_the_real_default_map` — hằng số vs `MapSettings::default()`;
+- `published_world_units_per_cell_follows_from_the_grid_dim` — ghim đúng `0.78125` mà contract công bố;
+- **256² vào sweep round-trip S03 của cả hai phía** (Rust + Vitest). Trước đó độ phân giải duy nhất
+  mà hợp đồng nêu tên lại đúng là độ phân giải không phía nào round-trip: cả hai sweep dừng ở 128²
+  và 200×137.
+
+Một hằng số hợp đồng mà không gì đọc thì cần một test, nếu không nó chỉ là comment đội lốt `pub const`.
+
+## Không sửa `WORLD_DESIGN.md`
+
+Chỗ đó cũng ghi 128², nhưng là văn bản **phê bình** mô tả lúc thế giới còn tách đôi. Nó đúng tại thời
+điểm viết; sửa số trong một bản ghi lịch sử là viết lại lịch sử.
+
+`benchmark_report.json` chỉ sửa `config.gridDim` — regenerate đòi chạy lại `cargo bench` và sẽ churn
+toàn bộ số đo thật chỉ để sửa một trường metadata.
+
+---
+
+# ⏪ Sửa ba gate tự nói dối (2026-07-29)
 
 Một lượt kiểm toán độc lập chạy lại toàn bộ bảng gate tại `8b3d91a`. Ba gate cho kết quả **không
 tái lập được** — và không cái nào là hồi quy mã nguồn. Cả ba đều hỏng theo đúng cái kiểu mà bộ gate

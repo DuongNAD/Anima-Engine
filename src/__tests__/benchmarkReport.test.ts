@@ -79,7 +79,7 @@ describe('S04 — benchmark_report.json baseline validator', () => {
 
   it('rejects a report missing `seed`', () => {
     const invalid = {
-      config: { gridDim: 128, tickHz: 60, ticksPerEpoch: 1000 },
+      config: { gridDim: 256, tickHz: 60, ticksPerEpoch: 1000 },
       hardware: { cpuModel: 'Test CPU' },
       timings: { probe: { ms: 1, iterations: 1, note: 'x' } },
       // seed intentionally omitted
@@ -92,7 +92,7 @@ describe('S04 — benchmark_report.json baseline validator', () => {
   it('rejects a report missing `hardware`', () => {
     const invalid = {
       seed: 1337,
-      config: { gridDim: 128, tickHz: 60, ticksPerEpoch: 1000 },
+      config: { gridDim: 256, tickHz: 60, ticksPerEpoch: 1000 },
       timings: { probe: { ms: 1, iterations: 1, note: 'x' } },
       // hardware intentionally omitted
     };
@@ -104,7 +104,7 @@ describe('S04 — benchmark_report.json baseline validator', () => {
   it('rejects an empty timings block', () => {
     const invalid = {
       seed: 1337,
-      config: { gridDim: 128, tickHz: 60, ticksPerEpoch: 1000 },
+      config: { gridDim: 256, tickHz: 60, ticksPerEpoch: 1000 },
       hardware: { cpuModel: 'Test CPU' },
       timings: {},
     };
