@@ -9,9 +9,10 @@ src-tauri/target_test/
 src-tauri/target_*/
 target_*/
 
-# Generated map-vision manifest — regenerate with `npm run gen:manifest`
-# (source of truth is scripts/gen_map_manifest.ts, which is tracked)
-animal-map.manifest.json
+# Generated map-vision manifest — regenerate with `npm run gen:manifest`.
+# This file is deliberately tracked: the MCP discovers it by name, and reviewing an ignored
+# manifest from another checkout can produce a valid score for the wrong world.
+
 # NOTE: `artifacts/` is deliberately NOT ignored. `map_manifest.json` declares the SHA-256 of
 # `artifacts/world_256.anmw`, and the whole finding this closed was a manifest pointing at a file
 # that did not exist. Ignoring the bytes would put the checksum gate back to unverifiable on a fresh

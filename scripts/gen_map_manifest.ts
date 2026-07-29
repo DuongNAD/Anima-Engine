@@ -25,8 +25,10 @@
 //   npx esbuild scripts/gen_map_manifest.ts --bundle --platform=node --format=cjs \
 //     --outfile=<tmp>/g.cjs && node <tmp>/g.cjs [seed] [size]
 // or, if tsx is available:  npx tsx scripts/gen_map_manifest.ts [seed] [size]
+// Verify that the committed artifact is byte-current without rewriting it:
+//   npm run check:map-vision-manifest
 
-import { writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
 import {
   generateWorld,
@@ -57,8 +59,11 @@ import {
 // hard-coded here as seed "1337" at 128², so every deterministic gate the map-review MCP ran —
 // biome bboxes, flora ecology, navigation reachability — scored a world **nobody ever sees**. A
 // validator returning 100/100 for an unrelated world is not evidence about this one.
-const SEED = process.argv[2] ?? SHARED_WORLD_SEED;
-const SIZE = Number(process.argv[3] ?? SHARED_WORLD_SIZE);
+const args = process.argv.slice(2);
+const CHECK = args.includes('--check');
+const positional = args.filter((arg) => arg !== '--check');
+const SEED = positional[0] ?? SHARED_WORLD_SEED;
+const SIZE = Number(positional[1] ?? SHARED_WORLD_SIZE);
 const SHAPE = SHARED_WORLD_SHAPE;
 /** Span of the canonical coordinate bounds this manifest publishes positions in. */
 const MANIFEST_EXTENT = DEFAULT_XZ_BOUNDS.maxX - DEFAULT_XZ_BOUNDS.minX;
@@ -364,9 +369,23 @@ const manifest = {
 };
 
 const out = resolve(process.cwd(), 'animal-map.manifest.json');
-writeFileSync(out, JSON.stringify(manifest, null, 2));
-console.log(
-  `wrote ${out}\n  biomes=${biomes.length} entities=${entities.length} ` +
-    `(flora=${emitted}/${world.floraCount}, lakes=${world.lakeBasins.length}) ` +
-    `navmeshCoverage=${navmeshCoverage} reachLand=${reachCount}/${totalLand}`,
-);
+const serialized = JSON.stringify(manifest, null, 2);
+const summary =
+  `biomes=${biomes.length} entities=${entities.length} ` +
+  `(flora=${emitted}/${world.floraCount}, lakes=${world.lakeBasins.length}) ` +
+  `navmeshCoverage=${navmeshCoverage} reachLand=${reachCount}/${totalLand}`;
+
+if (CHECK) {
+  if (!existsSync(out)) {
+    console.error(`animal-map manifest is missing at ${out}; run \`npm run gen:manifest\``);
+    process.exitCode = 1;
+  } else if (readFileSync(out, 'utf8') !== serialized) {
+    console.error(`animal-map manifest is stale at ${out}; run \`npm run gen:manifest\``);
+    process.exitCode = 1;
+  } else {
+    console.log(`animal-map manifest is current at ${out}\n  ${summary}`);
+  }
+} else {
+  writeFileSync(out, serialized);
+  console.log(`wrote ${out}\n  ${summary}`);
+}
