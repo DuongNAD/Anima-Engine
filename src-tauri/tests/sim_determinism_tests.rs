@@ -10,6 +10,7 @@
 use anima_engine_lib::core::resources::{
     derived_rng, resolve_run_seed, sim_seed_override_from_env, sim_stream, SimRng, DEFAULT_SIM_SEED,
 };
+use anima_engine_lib::core::simulation_state::{empty_saved_state_for_tests, startup_run_seed};
 use anima_engine_lib::evolution::crossover::crossover_genotypes;
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
 use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
@@ -295,9 +296,46 @@ fn env_seed_override_is_honoured() {
     }
 }
 
-/// The evolution thread is spawned before the ECS world exists, so it resolves the run seed from
-/// disk instead of reading `SimRng`. If those two paths ever disagree, the evolution stream silently
-/// stops belonging to the world it is evolving in — which no other test would notice.
+#[test]
+fn resumed_snapshot_seed_is_the_startup_authority() {
+    let mut state = empty_saved_state_for_tests();
+    state.sim_rng_seed = 98_765;
+    state.sim_rng_pos = 42;
+
+    assert_eq!(
+        startup_run_seed(Some(&state), 12_345),
+        98_765,
+        "every worker started for a resumed run must use the snapshot's RNG seed"
+    );
+}
+
+#[test]
+fn legacy_snapshot_without_rng_state_uses_the_fallback_seed() {
+    let state = empty_saved_state_for_tests();
+
+    assert_eq!(
+        startup_run_seed(Some(&state), 12_345),
+        12_345,
+        "a pre-G1.2 snapshot has no saved RNG authority and must preserve legacy startup behaviour"
+    );
+}
+
+#[test]
+fn zero_seed_with_a_nonzero_position_is_valid_saved_rng_state() {
+    let mut state = empty_saved_state_for_tests();
+    state.sim_rng_seed = 0;
+    state.sim_rng_pos = 1;
+
+    assert_eq!(
+        startup_run_seed(Some(&state), 12_345),
+        0,
+        "seed zero is valid when the saved stream position proves RNG state was recorded"
+    );
+}
+
+/// The evolution thread is spawned before the ECS world exists, so it receives the same startup
+/// seed that the world uses. If those two paths ever disagree, the evolution stream silently stops
+/// belonging to the world it is evolving in — which no other test would notice.
 #[test]
 fn evolution_thread_and_world_agree_on_seed() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());

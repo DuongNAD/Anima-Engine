@@ -457,6 +457,18 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
     }
 }
 
+/// Select the seed every worker must use while starting a simulation run.
+///
+/// A G1.2-or-newer checkpoint owns the run's RNG trajectory, so its seed must take precedence over
+/// the current environment and world artifact. Older saves deserialize both RNG fields as zero and
+/// retain the historical fallback behaviour. A zero seed is still valid when a non-zero stream
+/// position proves that the checkpoint carried RNG state.
+pub fn startup_run_seed(state: Option<&SavedSimulationState>, fallback_seed: u64) -> u64 {
+    state
+        .filter(|state| state.sim_rng_seed != 0 || state.sim_rng_pos != 0)
+        .map_or(fallback_seed, |state| state.sim_rng_seed)
+}
+
 /// Put the saved closed-energy state back into the world (G1.1).
 ///
 /// Call this on the restore path *after* agents have been respawned, so the `animals` compartment
