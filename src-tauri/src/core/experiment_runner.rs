@@ -1014,12 +1014,13 @@ pub struct MetricSummary {
     pub observable: String,
     pub n: usize,
     pub mean: f64,
-    pub std: f64,
+    /// Sample standard deviation; `None` when fewer than two samples completed.
+    pub std: Option<f64>,
     pub min: f64,
     pub max: f64,
     /// 95% normal-approx confidence interval on the mean (`mean ± 1.96·std/√n`).
-    pub ci95_low: f64,
-    pub ci95_high: f64,
+    pub ci95_low: Option<f64>,
+    pub ci95_high: Option<f64>,
 }
 
 /// The result of a seed-set ensemble: every requested run preserved (including failures), a
@@ -1367,14 +1368,14 @@ pub struct EffectSize {
     pub treatment_mean: f64,
     /// `treatment_mean − control_mean`, in the observable's unit.
     pub mean_difference: f64,
-    /// Pooled standard deviation of the two samples (0 when both are degenerate).
-    pub pooled_sd: f64,
-    /// Hedges' *g*: the mean difference in pooled-SD units, small-sample corrected. `0.0` when the
-    /// pooled SD is zero (a degenerate comparison), never `NaN`/`±inf`.
-    pub hedges_g: f64,
+    /// Pooled standard deviation; `None` unless both groups contain at least two samples.
+    pub pooled_sd: Option<f64>,
+    /// Hedges' *g*: the mean difference in pooled-SD units, small-sample corrected. `None` when
+    /// either group has fewer than two samples or the pooled SD is zero.
+    pub hedges_g: Option<f64>,
     /// 95% normal-approximation interval on the **mean difference**.
-    pub ci95_low: f64,
-    pub ci95_high: f64,
+    pub ci95_low: Option<f64>,
+    pub ci95_high: Option<f64>,
 }
 
 /// A control-vs-treatment ensemble comparison: per-observable effect sizes over the observables both
@@ -1496,43 +1497,63 @@ fn effect_size(
     let nt = treatment.len() as f64;
     let diff = require_finite_aggregate(name, "independent mean difference", tm - cm)?;
 
-    // Pooled SD (Cohen). With n < 2 on both sides, or zero variance, this is 0 — a degenerate
-    // comparison, reported as g = 0 rather than a NaN/inf blow-up.
+    // Pooled SD (Cohen). Both groups need their own estimable sample variance; treating an absent
+    // variance as zero would falsely make a singleton arm look perfectly measured.
+    let can_estimate_spread = control.len() >= 2 && treatment.len() >= 2;
     let df = (nc + nt - 2.0).max(1.0);
-    let sd_scale = control_sd.max(treatment_sd);
-    let pooled_sd = if sd_scale > 0.0 {
-        let control_scaled = control_sd / sd_scale;
-        let treatment_scaled = treatment_sd / sd_scale;
-        let pooled_scaled = (((nc - 1.0).max(0.0) * control_scaled * control_scaled
-            + (nt - 1.0).max(0.0) * treatment_scaled * treatment_scaled)
-            / df)
-            .max(0.0)
-            .sqrt();
-        require_finite_aggregate(name, "pooled standard deviation", pooled_scaled * sd_scale)?
+    let pooled_sd = if can_estimate_spread {
+        let sd_scale = control_sd.max(treatment_sd);
+        let value = if sd_scale > 0.0 {
+            let control_scaled = control_sd / sd_scale;
+            let treatment_scaled = treatment_sd / sd_scale;
+            let pooled_scaled = (((nc - 1.0) * control_scaled * control_scaled
+                + (nt - 1.0) * treatment_scaled * treatment_scaled)
+                / df)
+                .max(0.0)
+                .sqrt();
+            require_finite_aggregate(name, "pooled standard deviation", pooled_scaled * sd_scale)?
+        } else {
+            0.0
+        };
+        Some(value)
     } else {
-        0.0
+        None
     };
 
     // Hedges' g = Cohen's d × small-sample correction J ≈ 1 − 3/(4·df − 1).
-    let hedges_g = if pooled_sd > 0.0 {
-        let d = diff / pooled_sd;
-        let j = 1.0 - 3.0 / (4.0 * df - 1.0);
-        require_finite_aggregate(name, "Hedges' g", d * j)?
-    } else {
-        0.0
+    let hedges_g = match pooled_sd {
+        Some(sd) if sd > 0.0 => {
+            let d = diff / sd;
+            let j = 1.0 - 3.0 / (4.0 * df - 1.0);
+            Some(require_finite_aggregate(name, "Hedges' g", d * j)?)
+        }
+        _ => None,
     };
 
     // 95% normal-approx interval on the mean difference (independent samples).
-    let se = require_finite_aggregate(
-        name,
-        "independent standard error",
-        (control_sd / nc.sqrt()).hypot(treatment_sd / nt.sqrt()),
-    )?;
-    let half = require_finite_aggregate(name, "independent 95% confidence half-width", 1.96 * se)?;
-    let ci95_low =
-        require_finite_aggregate(name, "independent 95% confidence lower bound", diff - half)?;
-    let ci95_high =
-        require_finite_aggregate(name, "independent 95% confidence upper bound", diff + half)?;
+    let (ci95_low, ci95_high) = if can_estimate_spread {
+        let se = require_finite_aggregate(
+            name,
+            "independent standard error",
+            (control_sd / nc.sqrt()).hypot(treatment_sd / nt.sqrt()),
+        )?;
+        let half =
+            require_finite_aggregate(name, "independent 95% confidence half-width", 1.96 * se)?;
+        (
+            Some(require_finite_aggregate(
+                name,
+                "independent 95% confidence lower bound",
+                diff - half,
+            )?),
+            Some(require_finite_aggregate(
+                name,
+                "independent 95% confidence upper bound",
+                diff + half,
+            )?),
+        )
+    } else {
+        (None, None)
+    };
     Ok(EffectSize {
         observable: name.to_string(),
         n_control: control.len(),
@@ -1677,16 +1698,30 @@ fn summarize_metrics(completed: &[&RunResult]) -> Result<Vec<MetricSummary>, Exp
         }
         let stats = finite_sample_stats(name, &samples)?;
         let mean = stats.mean;
-        let std = stats.sample_sd.unwrap_or(0.0);
+        let std = stats.sample_sd;
         let min = samples.iter().cloned().fold(f64::INFINITY, f64::min);
         let max = samples.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-        let half = require_finite_aggregate(
-            name,
-            "95% confidence half-width",
-            std / (n as f64).sqrt() * 1.96,
-        )?;
-        let ci95_low = require_finite_aggregate(name, "95% confidence lower bound", mean - half)?;
-        let ci95_high = require_finite_aggregate(name, "95% confidence upper bound", mean + half)?;
+        let (ci95_low, ci95_high) = if let Some(std) = std {
+            let half = require_finite_aggregate(
+                name,
+                "95% confidence half-width",
+                std / (n as f64).sqrt() * 1.96,
+            )?;
+            (
+                Some(require_finite_aggregate(
+                    name,
+                    "95% confidence lower bound",
+                    mean - half,
+                )?),
+                Some(require_finite_aggregate(
+                    name,
+                    "95% confidence upper bound",
+                    mean + half,
+                )?),
+            )
+        } else {
+            (None, None)
+        };
         out.push(MetricSummary {
             observable: name.to_owned(),
             n,
@@ -1869,7 +1904,9 @@ mod tests {
             .find(|m| m.observable == "plants")
             .expect("plants metric");
         assert_eq!(plants.n, 5);
-        assert!(plants.ci95_low <= plants.mean && plants.mean <= plants.ci95_high);
+        let low = plants.ci95_low.expect("n=5 estimates a lower bound");
+        let high = plants.ci95_high.expect("n=5 estimates an upper bound");
+        assert!(low <= plants.mean && plants.mean <= high);
     }
 
     #[test]
@@ -1911,8 +1948,9 @@ mod tests {
         let extreme = metrics.first().expect("extreme metric");
 
         assert_eq!(extreme.mean, f64::MAX);
-        assert_eq!(extreme.std, 0.0);
-        assert!(extreme.ci95_low.is_finite() && extreme.ci95_high.is_finite());
+        assert_eq!(extreme.std, Some(0.0));
+        assert!(extreme.ci95_low.is_some_and(f64::is_finite));
+        assert!(extreme.ci95_high.is_some_and(f64::is_finite));
         let encoded = serde_json::to_string(&metrics).expect("metric summary must serialize");
         assert!(
             !encoded.contains("null"),
@@ -1979,9 +2017,12 @@ mod tests {
 
         assert_eq!(effect.control_mean, 2.0e200);
         assert_eq!(effect.treatment_mean, 3.0e200);
-        assert!(effect.pooled_sd.is_finite() && effect.pooled_sd > 0.0);
-        assert!(effect.hedges_g.is_finite());
-        assert!(effect.ci95_low.is_finite() && effect.ci95_high.is_finite());
+        assert!(effect
+            .pooled_sd
+            .is_some_and(|value| value.is_finite() && value > 0.0));
+        assert!(effect.hedges_g.is_some_and(f64::is_finite));
+        assert!(effect.ci95_low.is_some_and(f64::is_finite));
+        assert!(effect.ci95_high.is_some_and(f64::is_finite));
         let encoded = serde_json::to_string(&effect).expect("effect size must serialize");
         assert!(
             !encoded.contains("null"),
@@ -2010,6 +2051,107 @@ mod tests {
             encoded["AggregateNotFinite"]["statistic"],
             "sample standard deviation"
         );
+    }
+
+    #[test]
+    fn singleton_metric_does_not_fabricate_spread_or_confidence() {
+        let registry = ObservableRegistry::reference_default();
+        let manifest = baseline_manifest(vec![10]);
+        let mut run =
+            run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, 10, None, None);
+        run.final_observables = vec![("pilot".into(), 42.0)];
+
+        let metrics = summarize_metrics(&[&run]).expect("singleton descriptive summary");
+        let encoded = serde_json::to_value(&metrics[0]).expect("metric must serialize");
+
+        assert_eq!(encoded["mean"], 42.0);
+        assert_eq!(encoded["min"], 42.0);
+        assert_eq!(encoded["max"], 42.0);
+        assert!(encoded["std"].is_null(), "one sample has no sample SD");
+        assert!(
+            encoded["ci95_low"].is_null() && encoded["ci95_high"].is_null(),
+            "one sample cannot estimate a confidence interval: {encoded}"
+        );
+    }
+
+    #[test]
+    fn singleton_independent_groups_do_not_fabricate_inference() {
+        let effect =
+            effect_size("pilot", &[1.0], &[3.0]).expect("raw singleton difference is descriptive");
+        let encoded = serde_json::to_value(&effect).expect("effect must serialize");
+
+        assert_eq!(encoded["control_mean"], 1.0);
+        assert_eq!(encoded["treatment_mean"], 3.0);
+        assert_eq!(encoded["mean_difference"], 2.0);
+        for field in ["pooled_sd", "hedges_g", "ci95_low", "ci95_high"] {
+            assert!(
+                encoded[field].is_null(),
+                "{field} is not estimable from singleton groups: {encoded}"
+            );
+        }
+
+        let asymmetric =
+            effect_size("pilot", &[1.0], &[2.0, 4.0]).expect("raw asymmetric difference");
+        let asymmetric_json =
+            serde_json::to_value(&asymmetric).expect("asymmetric effect must serialize");
+        assert_eq!(asymmetric_json["mean_difference"], 2.0);
+        for field in ["pooled_sd", "hedges_g", "ci95_low", "ci95_high"] {
+            assert!(
+                asymmetric_json[field].is_null(),
+                "{field} needs variance estimates from both groups: {asymmetric_json}"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_pooled_sd_does_not_claim_zero_standardized_effect() {
+        let effect =
+            effect_size("constant", &[1.0, 1.0], &[3.0, 3.0]).expect("finite raw difference");
+        let encoded = serde_json::to_value(&effect).expect("effect must serialize");
+
+        assert_eq!(encoded["pooled_sd"], 0.0);
+        assert!(
+            encoded["hedges_g"].is_null(),
+            "a nonzero difference divided by zero spread is undefined, not zero"
+        );
+        assert_eq!(encoded["ci95_low"], 2.0);
+        assert_eq!(encoded["ci95_high"], 2.0);
+    }
+
+    #[test]
+    fn optional_inference_fields_read_existing_numeric_artifacts() {
+        let metric: MetricSummary = serde_json::from_value(serde_json::json!({
+            "observable": "legacy",
+            "n": 5,
+            "mean": 10.0,
+            "std": 2.0,
+            "min": 7.0,
+            "max": 13.0,
+            "ci95_low": 8.0,
+            "ci95_high": 12.0
+        }))
+        .expect("existing numeric metric artifact");
+        assert_eq!(metric.std, Some(2.0));
+        assert_eq!(metric.ci95_low, Some(8.0));
+        assert_eq!(metric.ci95_high, Some(12.0));
+
+        let effect: EffectSize = serde_json::from_value(serde_json::json!({
+            "observable": "legacy",
+            "n_control": 5,
+            "n_treatment": 5,
+            "control_mean": 10.0,
+            "treatment_mean": 12.0,
+            "mean_difference": 2.0,
+            "pooled_sd": 1.5,
+            "hedges_g": 1.2,
+            "ci95_low": 0.5,
+            "ci95_high": 3.5
+        }))
+        .expect("existing numeric effect artifact");
+        assert_eq!(effect.pooled_sd, Some(1.5));
+        assert_eq!(effect.hedges_g, Some(1.2));
+        assert_eq!(effect.ci95_low, Some(0.5));
+        assert_eq!(effect.ci95_high, Some(3.5));
     }
 
     // A test-double model that fails to construct for one poisoned seed, proving the ensemble keeps
@@ -2928,8 +3070,8 @@ mod tests {
             plants.mean_difference
         );
         // The interval brackets the mean difference.
-        assert!(plants.ci95_low <= plants.mean_difference);
-        assert!(plants.mean_difference <= plants.ci95_high);
+        assert!(plants.ci95_low.expect("n=5 lower bound") <= plants.mean_difference);
+        assert!(plants.mean_difference <= plants.ci95_high.expect("n=5 upper bound"));
 
         // An observable present only in the treatment is reported as treatment-only, not silently
         // dropped and not compared against a fabricated zero.
@@ -2964,13 +3106,17 @@ mod tests {
             "drought must lower plants, got {}",
             plants.mean_difference
         );
+        let hedges_g = plants.hedges_g.expect("both groups estimate spread");
         assert!(
-            plants.hedges_g.abs() > 1.0,
+            hedges_g.abs() > 1.0,
             "a drought should be a large standardized effect, got g={}",
-            plants.hedges_g
+            hedges_g
         );
         // The 95% interval excludes zero for a real effect this large.
-        assert!(plants.ci95_high < 0.0, "interval should exclude 0");
+        assert!(
+            plants.ci95_high.expect("n=6 upper bound") < 0.0,
+            "interval should exclude 0"
+        );
     }
 
     #[test]
@@ -2988,16 +3134,14 @@ mod tests {
         assert_eq!(cmp.control_n, 4);
         assert_eq!(cmp.treatment_n, 4);
 
-        // Control == treatment here, so the difference is exactly 0 and the pooled SD is 0. A
-        // degenerate (zero-variance) comparison must report g = 0 rather than NaN/±inf.
+        // Control == treatment here, so the raw difference is exactly 0. If between-seed spread is
+        // nonzero, g is the defined value 0; if spread is zero, g is explicitly undefined.
         let plants = cmp.effect_of("plants").expect("plants compared");
         assert_eq!(plants.mean_difference, 0.0);
-        assert!(
-            plants.hedges_g.is_finite(),
-            "degenerate variance must not yield NaN/inf, got {}",
-            plants.hedges_g
-        );
-        assert_eq!(plants.hedges_g, 0.0);
+        match plants.pooled_sd.expect("n=4 estimates pooled spread") {
+            0.0 => assert_eq!(plants.hedges_g, None),
+            _ => assert_eq!(plants.hedges_g, Some(0.0)),
+        }
     }
 
     // ---- Task-5: hardened entry points ------------------------------------------------------
