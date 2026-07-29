@@ -15,6 +15,7 @@
     "test:e2e": "npm run test:e2e --prefix tests",
     "test:all": "npm run test && npm run test:frontend && npm run test:e2e",
     "gen:manifest": "node scripts/run_ts.mjs scripts/gen_map_manifest.ts",
+    "check:map-vision-manifest": "node scripts/run_ts.mjs scripts/gen_map_manifest.ts --check",
     "lint": "eslint .",
     "typecheck:tests": "tsc -p tests/tsconfig.json --noEmit",
     "check:csp": "node scripts/check_csp_compat.mjs",

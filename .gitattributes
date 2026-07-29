@@ -28,6 +28,9 @@ NOTICE                      text eol=lf
 sbom.cdx.json               text eol=lf
 licensing/**                text eol=lf
 
+# Generated map-review evidence — byte-compared by `check:map-vision-manifest`.
+animal-map.manifest.json    text eol=lf
+
 # `THIRD_PARTY_LICENSES.txt` reproduces third-party licence texts verbatim, and some of them contain
 # trailing spaces — `ring`'s BoringSSL notice, `image`'s exrs attribution, several npm MIT texts that
 # were hard-wrapped by hand. `git diff --check` reports each one as a whitespace error, which it is
