@@ -225,7 +225,21 @@ trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều n�
 > **Toàn bộ bảng** — kể cả hàng `tests/`, vốn từng là hàng duy nhất chưa đo lại — đã được chạy tại
 > `d006f64` (nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge).
 
+<<<<<<< ours
 | Gate | Lệnh | Kết quả lúc đó |
+=======
+> **Đo lại 2026-07-29 — bảng vẫn đúng, nhưng ba gate đã từng nói dối để cho ra nó.** Lượt đo độc lập
+> tại `8b3d91a` ban đầu cho `npm run lint` **đỏ 4.656 lỗi**, `cargo test` **745 pass · 1 fail**, và
+> `check_test_targets.mjs` báo "0 rỗng" sau khi **chỉ đọc 61 trong 75 target**. Không cái nào là hồi
+> quy mã nguồn; cả ba là lỗi của chính bộ gate, và đã sửa (§4). Sau khi sửa, đo lại đầy đủ:
+> **746 pass · 0 fail · 4 ignored**, **75 target · 0 rỗng**, `fmt`/`clippy` sạch, lint **0 error ·
+> 491 warning**, `test` 90 pass, `test:frontend` 243 pass, build pass, docs link 417/0 gãy.
+>
+> Bài học đáng giữ hơn con số: **một bộ gate tốt vẫn cần gate cho chính nó.** Cả ba lỗi đều thuộc
+> loại mà dự án này tồn tại để chặn — chúng exit 0 và trông như xanh.
+
+| Gate | Lệnh | Kết quả |
+>>>>>>> theirs
 |---|---|---|
 | Backend test | `cargo test --features desktop --no-fail-fast` | **746 pass · 0 fail · 4 ignored**, 75 test binary, 0 warning biên dịch |
 | Target rỗng | `node scripts/check_test_targets.mjs <output>` | 75 target, **0 target chạy rỗng** |
@@ -379,7 +393,11 @@ vì CLAUDE.md cấm chạy full backend trên máy này.
 - **Số `cargo bench` in ra là *slope estimate*, không phải trung vị.** Chênh thật: `step_water`
   297,6 µs (slope) so với 271,5 µs (trung vị). Bảng số dùng trung vị, đọc từ `estimates.json`.
 
+<<<<<<< ours
 **Một finding đang mở, chưa ai đối chứng:**
+=======
+**Hai finding đang mở — cái thứ hai nay ĐÃ đối chứng (2026-07-29):**
+>>>>>>> theirs
 
 - Con số **~4,2 ms** trong doc comment của `ResourceField::REGROWTH_STRIDE` **không tái lập được** —
   release build cho ~0,36 ms, thấp hơn ~12 lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số
@@ -392,6 +410,19 @@ buộc phải bằng `MapSettings::default().width`. `COORDINATE_CONTRACT.md` §
 **từ `ResourceField` của thế giới đang chạy** và ghi vào `CaptureExport.workload` kèm cờ
 `dimensions_measured`, nên một số sai không thể lọt vào một report mà không lộ ra. Con số 128 còn sót
 lại **chỉ** ở `config.gridDim` trong `benchmark_report.json` (file kết quả cũ), không ở đường code nào.
+
+  > **Đã đối chứng 2026-07-29 — finding đúng, và rộng hơn mô tả trên.** `MapSettings::default()` là
+  > `width: 256, height: 256` ([`terrain.rs:97`](../../src-tauri/src/core/terrain.rs)), frontend
+  > cũng 256 (`SIM_ARTIFACT_SIZE`, `worldCache.ts`). Doc comment của hằng số **tự khai** là nó đến
+  > từ `MapSettings::default` — tức nó mâu thuẫn với chính nguồn nó viện dẫn. Con số 128 đã lan ra
+  > **bảy** chỗ coi nó là thẩm quyền: `COORDINATE_CONTRACT.md:117`, `SIMULATION_RULES.md:145`,
+  > `MAP_MANIFEST.md:66`, `benchmark_report.schema.json`, `map_manifest.schema.json`,
+  > `scripts/bench_baseline.mjs:51`, và **`map_manifest.json` đã ship với `gridDim: 128`**. Nó còn
+  > bị **khoá bằng test** ở `src/__tests__/mapManifest.test.ts:26`.
+  >
+  > **Mã nguồn thì đúng** — các hàm toạ độ nhận `width`/`height` làm tham số, không đọc hằng số này.
+  > Đây là lỗi **hợp đồng**, không phải lỗi runtime. Nhưng nó là hợp đồng mà bên thứ ba đọc để đặt
+  > ô, nên vẫn cần sửa một lượt trên cả bảy chỗ, và phải sửa cả test đang khoá con số sai.
 
 ### P0 — Đóng vòng lặp khoa học
 
@@ -597,9 +628,22 @@ một lần chạy app desktop dưới executor đa luồng.
 
 ### P1 — Nợ nền tảng đã biết
 
-#### 3.4 Gate `burn`/`wgpu` sau feature flag
+#### 3.4 Gate `burn`/`wgpu` sau feature flag — ✅ **XONG (xác minh 2026-07-29)**
 
-**Blocker là hình dạng code, không phải khối lượng.** `learn_handle` tại
+> Mục này **đã hoàn thành** nhưng vẫn nằm ở P1 mở cho tới khi được đo lại. Cả ba điều kiện của
+> "định nghĩa hoàn thành" bên dưới đều đạt:
+>
+> - `cargo tree --no-default-features -e normal` khớp đúng pattern CI (`neo4rs|tokio-tungstenite|
+>   burn-wgpu|naga`) cho **0** kết quả. `burn-core`/`burn-tensor`/`burn-autodiff` vẫn có mặt và
+>   **đúng như thiết kế** — đó là learner CPU, tức chính đường fallback.
+> - Gate `cargo tree` trong [`ci.yml`](../../.github/workflows/ci.yml) đã phủ `burn-wgpu` và `naga`.
+> - Hình dạng code đã tái cấu trúc: `learn_handle` nay nằm sau `#[cfg(feature = "ml-wgpu")]`
+>   ([`simulation_loop.rs:216`](../../src-tauri/src/core/simulation_loop.rs)), và `burn-wgpu` là
+>   `optional = true` sau feature `ml-wgpu` ([`Cargo.toml:45`](../../src-tauri/Cargo.toml)).
+>
+> Mô tả blocker bên dưới giữ lại làm **bối cảnh lịch sử**, không phải việc cần làm.
+
+**Blocker (lịch sử) là hình dạng code, không phải khối lượng.** `learn_handle` tại
 [`src-tauri/src/core/simulation_loop.rs:182`](../../src-tauri/src/core/simulation_loop.rs)
 được gán từ một `if has_wgpu { … } else { … }` mà hai nhánh **không `cfg` riêng từng nhánh được**.
 Cần tái cấu trúc chỗ đó, không phải rắc attribute. `burn` chỉ dùng ở **hai** file — bảy kết quả
@@ -864,6 +908,33 @@ vẫn trả đồ thị **đầy đủ**.
 ## 4. Bẫy đã biết — đọc trước khi sửa
 
 Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều giờ nhất và dễ tái phát nhất.
+
+- **Worktree làm `npm run lint` đỏ toàn bộ, và CI không thấy.** §4 khuyên dùng `git worktree` — nhưng
+  mỗi worktree là một bản sao đầy đủ **kèm `tsconfig.json` riêng**, và typescript-eslint thấy nhiều
+  ứng viên `tsconfigRootDir` thì **từ chối parse mọi thứ**. Đo 2026-07-29 với 34 worktree:
+  **4.656 lỗi**, không lỗi nào thuộc cây này. CI checkout sạch nên vĩnh viễn xanh — gate chỉ hỏng ở
+  chỗ không ai nhìn. Đã sửa: `.worktrees/**` vào `ignores` của `eslint.config.js`, và `.worktrees/`
+  vào `.gitignore` (trước đó chỉ nằm ở `.git/info/exclude`, tức **không sống qua một lần clone**).
+- **Output `cargo test` bị wrap làm `check_test_targets.mjs` bỏ qua target trong im lặng.** Regex cũ
+  đòi `Running <path> (` **trên cùng một dòng**; PowerShell wrap stderr của native command theo bề
+  rộng console, nên dấu `(` rơi xuống dòng sau. Đo được: 75 dòng `Running`, **61 khớp**, script in
+  "test targets: 61, empty: 0" và exit 0 — đúng chế độ hỏng-im-lặng mà nó tồn tại để chặn, xảy ra
+  bên trong chính nó. Đã sửa: bỏ yêu cầu `(`, **và** thêm tự-kiểm đối chiếu số target parse được với
+  số dòng `Running`. Tự-kiểm đó còn bắt được một target **crash lúc load** — đúng hình dạng
+  `STATUS_ENTRYPOINT_NOT_FOUND` ở mục Git Bash bên dưới, thứ trước đây exit 0.
+- **Một `#[test]` mỗi binary KHÔNG đủ cho gate zero-alloc.** Cách phòng ghi trong
+  [`tests/common/allocator.rs`](../../src-tauri/tests/common/allocator.rs) chỉ loại được thread của
+  *test anh em*. `observer_trace_zero_alloc_tests` **đã** là một `#[test]` duy nhất và vẫn fail
+  ("made 2 heap allocations") trong lượt chạy đầy đủ 2026-07-29, pass 3/3 khi chạy riêng — vì
+  **thread chính của libtest** sống suốt tiến trình và có cấp phát. Đã thêm
+  `start_tracking_this_thread()` (chỉ đếm thread gọi) và chuyển suite đó sang dùng nó.
+
+  **Đừng chuyển bừa mọi suite sang nó.** `map_generation_zero_alloc_tests` và
+  `terrain_challenger_tests` **phải** giữ `start_tracking()` process-wide: `TerrainMap::generate`
+  chạy pass noise trên rayon worker, nên bộ đếm theo thread sẽ **thôi đếm đúng thứ hai gate đó tồn
+  tại để bắt** — và sẽ xanh trong lúc làm vậy. Một gate im đi tệ hơn một gate thỉnh thoảng ồn. Hai
+  control âm trong file đó chốt cả hai chiều: bộ đếm vẫn thấy cấp phát thật, và nó **cố tình** mù
+  với thread khác.
 
 - **Gate im lặng.** Một test target biên dịch mà không chạy test nào sẽ **exit 0**. Luôn chạy
   `check_test_targets.mjs` sau `cargo test`, và luôn truyền `--features desktop`.

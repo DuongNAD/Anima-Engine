@@ -54,6 +54,12 @@ out*.txt
 *.sw?
 .DS_Store
 
+# Linked git worktrees. STATE_OF_THE_PROJECT.md §4 recommends them for working in this shared
+# checkout; each one is a full second copy of the tree and must never be committed into the first.
+# This was only in .git/info/exclude, which is per-machine — so the protection did not survive a
+# clone, and the next person to follow that advice would have staged 34 copies of the repo.
+.worktrees/
+
 # Agent Workspace Temp files
 .agents/
 .gemini/

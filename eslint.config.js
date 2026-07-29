@@ -20,6 +20,15 @@ export default tseslint.config(
       '.agents/**',
       '$.agents/**',
       '**/.agents/**',
+      // Linked git worktrees. STATE_OF_THE_PROJECT.md §4 recommends `git worktree add` as the way
+      // to work safely in this shared checkout, and every worktree is a second full copy of the
+      // tree — including its own tsconfig.json. typescript-eslint then sees N candidate
+      // tsconfigRootDirs and refuses to parse anything at all: measured 2026-07-29 with 34
+      // worktrees present, `npm run lint` returned 4,656 errors, none of them about this tree.
+      //
+      // CI checks out clean and never had them, so the gate stayed green there while the
+      // documented local command was unusable — a gate that only fails where nobody is looking.
+      '.worktrees/**',
       // Ad-hoc Playwright visual-verification harnesses: standalone scripts that
       // run browser-injected code (page.evaluate references page globals), so static
       // linting reports false positives. Not part of the maintained test suite.

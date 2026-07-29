@@ -14,7 +14,58 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
+# ⏪ [MỚI NHẤT] Sửa ba gate tự nói dối (2026-07-29)
+
+Một lượt kiểm toán độc lập chạy lại toàn bộ bảng gate tại `8b3d91a`. Ba gate cho kết quả **không
+tái lập được** — và không cái nào là hồi quy mã nguồn. Cả ba đều hỏng theo đúng cái kiểu mà bộ gate
+này tồn tại để chặn: **exit 0 và trông như xanh**.
+
+| Gate | Đo được ban đầu | Nguyên nhân | Sau khi sửa |
+|---|---|---|---|
+| `npm run lint` | **4.656 lỗi** | 34 worktree ⇒ typescript-eslint thấy 23 `tsconfigRootDir` và bỏ parse | **0 error · 491 warning** |
+| `check_test_targets.mjs` | "61 target, 0 rỗng" | regex đòi `(` cùng dòng; PowerShell wrap ⇒ **14/75 target bị bỏ qua** | **75 target, 0 rỗng** |
+| `observer_trace_zero_alloc_tests` | 2 alloc, pass 3/3 khi chạy riêng | bộ đếm process-wide; thread chính của libtest cũng cấp phát | **5/5 pha pass** |
+
+## Gate ESLint chỉ hỏng ở chỗ không ai nhìn
+
+CI checkout sạch nên không bao giờ có `.worktrees/`. Nghĩa là gate **vĩnh viễn xanh trên CI** trong
+khi lệnh mà tài liệu bảo chạy tại máy thì không dùng được. Trớ trêu: §4 của
+`STATE_OF_THE_PROJECT.md` *khuyên* dùng worktree làm cách an toàn trong checkout dùng chung.
+
+`.worktrees/` trước đó chỉ nằm ở `.git/info/exclude` — **không sống qua một lần clone**. Nay vào cả
+`.gitignore` lẫn `ignores` của `eslint.config.js`.
+
+## Gate chống-bỏ-sót tự nó bỏ sót
+
+Ngoài việc nới regex, đã thêm **tự-kiểm**: số target parse được phải khớp số dòng `Running`. Đây
+không chỉ là vá lỗi wrap — nó bắt luôn **target crash lúc load**, đúng hình dạng
+`STATUS_ENTRYPOINT_NOT_FOUND` mà §4 đã ghi, thứ trước đây exit 0. Hai control âm chứng minh gate có
+thể fail.
+
+## Một `#[test]` mỗi binary là chưa đủ
+
+`tests/common/allocator.rs` ghi cách phòng là "một `#[test]` mỗi binary". Suite này **đã** viết như
+thế và vẫn thua — vì cách đó chỉ loại thread của *test anh em*, không loại được **thread chính của
+libtest**, thứ sống suốt tiến trình.
+
+Thêm `start_tracking_this_thread()`. **Không** chuyển hết mọi suite sang nó:
+`map_generation_zero_alloc_tests` và `terrain_challenger_tests` phải giữ bản process-wide vì
+`TerrainMap::generate` chạy trên rayon worker — bộ đếm theo thread sẽ thôi đếm đúng thứ hai gate đó
+tồn tại để bắt, và sẽ **xanh** trong lúc làm vậy.
+
+## Control âm — vì đổi sang đếm hẹp hơn có thể biến ba khẳng định thành ba lời nói suông
+
+Ba pha đầu đều assert `allocs == 0`; một bộ đếm luôn trả 0 sẽ làm cả ba pass. Nên có thêm pha 4
+(bộ đếm vẫn thấy cấp phát thật) và pha 5 (nó **cố tình** mù với thread khác). Đánh đổi được chốt
+bằng test thay vì để trong comment.
+
+**Đo lại đầy đủ sau khi sửa:** 746 pass · 0 fail · 4 ignored · 75 target 0 rỗng · `fmt`/`clippy`
+sạch · lint 0 error/491 warning (đúng baseline) · `test` 90 · `test:frontend` 243 · build pass ·
+docs link 417/0 gãy.
+
+---
+
+# ⏪ Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
 
 `§3.3` và nửa còn lại của `§3.2` trong `STATE_OF_THE_PROJECT.md`. Ba mảnh khoá vào nhau:
 
@@ -25,7 +76,7 @@
 2. **`LiveExperimentAdapter: ExperimentModel`** (`core/live_experiment.rs`) chạy lịch trình đó qua
    **cùng** `experiment_runner` với `ReferenceEvolutionWorld`. `RefCell<World>` chứ không `unsafe`:
    hai method của trait nhận `&self` còn mọi query Bevy cần `&mut World`, nên cách trung thực là
-   mượn động, không phải cache một giá trị sẽ ôi.
+   mượn động, không phải cache động một giá trị sẽ ôi.
 3. **`core/tick_capture.rs`** đo một tick của lịch trình đó: ba pha kẹp **chính xác** bằng `Instant`
    trong vòng lặp sim, bốn pha còn lại giới hạn bằng checkpoint và **nói ra** rằng chúng chỉ là
    checkpoint (`PhaseSummary.exact`). Ring cấp phát sẵn, không kênh, không thread.
