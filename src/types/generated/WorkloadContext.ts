@@ -50,4 +50,18 @@ learning_transitions_disconnected_rejections_total: number | null,
  * Eligible transitions not attempted because the bounded learner queue had no room, cumulative
  * since run start. A rotating window makes this load shedding fair across agents.
  */
-learning_transitions_backpressure_skipped_total: number | null, };
+learning_transitions_backpressure_skipped_total: number | null,
+/**
+ * Trained policy snapshots accepted by the inference mailbox, cumulative since run start.
+ */
+learning_model_updates_published_total: number | null,
+/**
+ * Trained policy snapshots dropped because inference already had one pending, cumulative since
+ * run start. These are replaceable intermediate policies, but the loss must be visible for a
+ * run's learning cadence to be interpretable.
+ */
+learning_model_updates_backpressured_total: number | null,
+/**
+ * Policy snapshots rejected because inference disconnected, cumulative since run start.
+ */
+learning_model_updates_disconnected_total: number | null, };

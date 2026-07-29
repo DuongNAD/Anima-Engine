@@ -567,6 +567,20 @@ pub struct WorkloadContext {
     #[serde(default)]
     #[ts(type = "number | null")]
     pub learning_transitions_backpressure_skipped_total: Option<u64>,
+    /// Trained policy snapshots accepted by the inference mailbox, cumulative since run start.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_model_updates_published_total: Option<u64>,
+    /// Trained policy snapshots dropped because inference already had one pending, cumulative since
+    /// run start. These are replaceable intermediate policies, but the loss must be visible for a
+    /// run's learning cadence to be interpretable.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_model_updates_backpressured_total: Option<u64>,
+    /// Policy snapshots rejected because inference disconnected, cumulative since run start.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_model_updates_disconnected_total: Option<u64>,
 }
 
 /// The live state of a capture. Held behind [`SharedTickCapture`]'s mutex.
@@ -1224,6 +1238,9 @@ impl TickCaptureSink {
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
+                learning_model_updates_published_total: None,
+                learning_model_updates_backpressured_total: None,
+                learning_model_updates_disconnected_total: None,
             },
             None => WorkloadContext::default(),
         };
@@ -1241,6 +1258,16 @@ impl TickCaptureSink {
             Some(snapshot.disconnected_rejections);
         self.workload
             .learning_transitions_backpressure_skipped_total = Some(snapshot.backpressure_skipped);
+    }
+
+    /// Record learner-to-inference policy publication after the schedule has finished.
+    pub fn note_model_updates(&mut self, snapshot: crate::core::training::ModelUpdateSnapshot) {
+        if !self.measuring {
+            return;
+        }
+        self.workload.learning_model_updates_published_total = Some(snapshot.published);
+        self.workload.learning_model_updates_backpressured_total = Some(snapshot.backpressured);
+        self.workload.learning_model_updates_disconnected_total = Some(snapshot.disconnected);
     }
 
     /// Close the tick, handing its measurements to the shared capture.
@@ -1327,6 +1354,9 @@ mod tests {
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
+                learning_model_updates_published_total: None,
+                learning_model_updates_backpressured_total: None,
+                learning_model_updates_disconnected_total: None,
             },
         )
     }
@@ -1692,6 +1722,9 @@ mod tests {
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
+                learning_model_updates_published_total: None,
+                learning_model_updates_backpressured_total: None,
+                learning_model_updates_disconnected_total: None,
             },
         );
         let doc = shared.export();
@@ -1759,6 +1792,9 @@ mod tests {
             workload.learning_transitions_backpressure_skipped_total,
             None
         );
+        assert_eq!(workload.learning_model_updates_published_total, None);
+        assert_eq!(workload.learning_model_updates_backpressured_total, None);
+        assert_eq!(workload.learning_model_updates_disconnected_total, None);
     }
 
     #[test]
@@ -1860,6 +1896,11 @@ mod tests {
             disconnected_rejections: 0,
             backpressure_skipped: 900,
         });
+        sink.note_model_updates(crate::core::training::ModelUpdateSnapshot {
+            published: 30,
+            backpressured: 4,
+            disconnected: 0,
+        });
         assert!(sink.commit(1, 10_000_000, 1_000));
         assert_eq!(shared.sample_count(), 1);
         assert_eq!(shared.samples()[0].agent_count, 7);
@@ -1878,6 +1919,9 @@ mod tests {
             workload.learning_transitions_backpressure_skipped_total,
             Some(900)
         );
+        assert_eq!(workload.learning_model_updates_published_total, Some(30));
+        assert_eq!(workload.learning_model_updates_backpressured_total, Some(4));
+        assert_eq!(workload.learning_model_updates_disconnected_total, Some(0));
 
         // Committing twice cannot produce a second sample from one tick.
         assert!(!sink.commit(1, 10_000_000, 1_000));
