@@ -210,6 +210,22 @@ impl SimulationEngine {
         }
         self.migration_handoff_diagnostics.reset();
 
+        // Consume the pending checkpoint before any worker starts. Its RNG seed is the authority
+        // for the resumed run: resolving each pre-world worker from today's environment would let
+        // learner, inference, and evolution belong to a different trajectory than the ECS state
+        // restored below. Taking the state here also removes the peek/take race with the sim thread.
+        let state_to_load = self
+            .pending_load_state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let startup_run_seed = crate::core::simulation_state::startup_run_seed(
+            state_to_load.as_ref(),
+            crate::core::resources::resolve_run_seed(
+                crate::core::world_artifact::world_seed_from_disk(),
+            ),
+        );
+
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
         let agent_states_clone = Arc::clone(&self.agent_states);
@@ -224,10 +240,6 @@ impl SimulationEngine {
             crossbeam_channel::bounded::<ModelUpdate>(MODEL_UPDATE_QUEUE_CAPACITY);
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
         let model_update_diagnostics = ModelUpdateDiagnostics::default();
-        let learner_seed = crate::core::resources::resolve_run_seed(
-            crate::core::world_artifact::world_seed_from_disk(),
-        );
-
         let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
@@ -255,7 +267,7 @@ impl SimulationEngine {
             model_tx.clone(),
             old_model_rx.clone(),
             model_update_diagnostics.clone(),
-            learner_seed,
+            startup_run_seed,
         );
 
         #[cfg(feature = "ml-wgpu")]
@@ -289,6 +301,7 @@ impl SimulationEngine {
         let app_handle_evo = app_handle.clone();
         let lineage_tracker_evo = Arc::clone(&self.lineage_tracker);
         let chronicle_history_clone = Arc::clone(&self.chronicle_history);
+        let evolution_run_seed = startup_run_seed;
 
         let evo_exit = self.supervisor.token(sup::EVO);
         let evo_handle = thread::spawn(move || {
@@ -308,12 +321,10 @@ impl SimulationEngine {
             // seed reproduces the same offspring — see `resources::sim_stream`.
             //
             // This thread is spawned *before* the ECS world exists, so it cannot read `SimRng` off
-            // the world; it resolves the same seed from the same source the world will use. That the
-            // two agree is pinned by `sim_determinism_tests::evolution_thread_and_world_agree_on_seed`.
+            // the world. `start` selected one seed before any worker was spawned, including the
+            // checkpoint seed on resume.
             let mut evo_rng = crate::core::resources::derived_rng(
-                crate::core::resources::resolve_run_seed(
-                    crate::core::world_artifact::world_seed_from_disk(),
-                ),
+                evolution_run_seed,
                 crate::core::resources::sim_stream::EVOLUTION,
             );
             // G1.3. This thread mints lineage and chronicle ids and stamps chronicle entries, all of
@@ -322,12 +333,11 @@ impl SimulationEngine {
             // same sources the world will use, for the same reason `evo_rng` above does: the thread
             // is spawned before the ECS world exists.
             let evo_deterministic = crate::core::determinism::DeterministicMode::from_env();
-            let evo_run_id = crate::core::resources::resolve_run_seed(
-                crate::core::world_artifact::world_seed_from_disk(),
-            );
             // Separate namespaces so two id sources on one thread cannot collide.
-            let chronicle_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "chronicle");
-            let offspring_ids = crate::core::determinism::RunIdentity::new(evo_run_id, "lineage");
+            let chronicle_ids =
+                crate::core::determinism::RunIdentity::new(evolution_run_seed, "chronicle");
+            let offspring_ids =
+                crate::core::determinism::RunIdentity::new(evolution_run_seed, "lineage");
             let meta_ai_client: Box<dyn crate::evolution::meta_ai::MetaAiClient> =
                 match std::env::var("GEMINI_SESSION_TOKEN") {
                     Ok(token) if !token.trim().is_empty() => Box::new(
@@ -637,7 +647,6 @@ impl SimulationEngine {
         let app_handle_capture = app_handle.clone();
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
 
-        let pending_load_state_clone = Arc::clone(&self.pending_load_state);
         let save_request_rx_clone = self.save_request_rx.clone();
         let chronicle_history_clone_save = Arc::clone(&self.chronicle_history);
         let lineage_tracker_sim_save = Arc::clone(&self.lineage_tracker);
@@ -651,10 +660,6 @@ impl SimulationEngine {
         let sim_exit = self.supervisor.token(sup::SIM);
         let sim_handle = thread::spawn(move || {
             let _exit = sim_exit;
-            let state_to_load = pending_load_state_clone
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take();
 
             let mut world = init_world();
 
@@ -707,9 +712,10 @@ impl SimulationEngine {
                 .unwrap_or_default();
             world.insert_resource(loaded_pheromone);
 
-            // Seeded from the run, so the shared brain a legacy agent uses is the same network every
-            // time the same world is launched. `SimRng` is already in the world by now (`init_world`).
-            let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
+            // Seeded from the startup authority rather than init_world's fresh-world RNG. On resume
+            // the checkpoint owns this value, and restore_energy_state later restores its exact
+            // stream position into the ECS world.
+            let run_seed = startup_run_seed;
             world.insert_resource(BrainModel::new_seeded(15, 64, 4, run_seed));
             world.insert_resource(BrainInferenceBuffer::default());
 
