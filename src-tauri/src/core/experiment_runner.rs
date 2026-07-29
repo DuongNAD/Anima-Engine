@@ -54,6 +54,12 @@ pub trait ExperimentModel: Sized {
     /// persistence — that is AE4, out of scope; a checkpoint fork happens within one process.)
     type Snapshot: Clone;
 
+    /// Stable identity of the numerical model that produced a checksum.
+    ///
+    /// There is deliberately no default: an adapter that has not named its numerical semantics
+    /// must not compile into a runner capable of emitting apparently comparable checksums.
+    fn model_version() -> &'static str;
+
     /// Construct the model at genesis from the run's laws, initial conditions, declared runtime
     /// exotic forcings (AE-209), RNG seed and the reference field grid. Returns a structured error
     /// rather than panicking on an impossible config.
@@ -138,7 +144,7 @@ pub struct RunProvenance {
 }
 
 impl RunProvenance {
-    fn derive(
+    fn derive<M: ExperimentModel>(
         manifest: &ExperimentManifest,
         registry: &ObservableRegistry,
         seed: u64,
@@ -158,7 +164,7 @@ impl RunProvenance {
             manifest_fingerprint,
             law_fingerprint: manifest.laws.fingerprint(),
             registry_fingerprint: registry.fingerprint(),
-            model_version: MODEL_VERSION.to_string(),
+            model_version: M::model_version().to_string(),
             build_id: build_id(),
         }
     }
@@ -232,6 +238,35 @@ fn failed_run(provenance: RunProvenance, reason: String) -> RunResult {
     }
 }
 
+/// A model panic leaves its state unsuitable for further inspection. Preserve every sample/effect
+/// completed before the panic, but do not call `observables` or `checksum` on the unwound model.
+fn failed_runtime_run(
+    provenance: RunProvenance,
+    registry: &ObservableRegistry,
+    series: Vec<StateSample>,
+    ledger: CausalLedger,
+    tick: u64,
+    reason: String,
+) -> RunResult {
+    let (observable_specs, mut warnings) = specs_for_emitted(registry, &series, &[]);
+    warnings.push(reason.clone());
+    RunResult {
+        provenance,
+        status: RunStatus::Failed {
+            tick,
+            reason,
+            checksum: 0,
+        },
+        final_checksum: 0,
+        final_observables: Vec::new(),
+        series,
+        ledger,
+        exotic_budget: None,
+        observable_specs,
+        warnings,
+    }
+}
+
 /// Metadata for the **deterministic union of every observable a run emitted** — every name appearing
 /// in any sampled [`StateSample`] plus every `final_observables` name, in first-appearance order
 /// (series in tick order, then final). This catches a *transient* observable that only appears mid-run
@@ -266,6 +301,28 @@ fn specs_for_emitted(
 /// Drive `model` forward `run_ticks` base ticks under `queue`, sampling every `sample_period` ticks
 /// and stopping early on a non-finite observable. Shared by [`run_manifest_seed`] and
 /// [`checkpoint_fork`] so a full run and a forked continuation use identical stepping logic.
+struct DriveFailure {
+    tick: u64,
+    reason: String,
+    /// `false` after an unwind: callers must not inspect the model again.
+    model_usable: bool,
+}
+
+fn bounded_panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    const MAX_CHARS: usize = 1_024;
+    let raw = payload
+        .downcast_ref::<&str>()
+        .map(|value| (*value).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "non-string panic payload".to_owned());
+    let mut chars = raw.chars();
+    let mut bounded: String = chars.by_ref().take(MAX_CHARS).collect();
+    if chars.next().is_some() {
+        bounded.push('…');
+    }
+    bounded
+}
+
 fn drive<M: ExperimentModel>(
     model: &mut M,
     rng: &mut StdRng,
@@ -274,28 +331,47 @@ fn drive<M: ExperimentModel>(
     queue: &InterventionQueue,
     run_ticks: u64,
     sample_period: u64,
-) -> (Vec<StateSample>, Option<(u64, String)>) {
+) -> (Vec<StateSample>, Option<DriveFailure>) {
     let mut series = Vec::new();
     for _ in 0..run_ticks {
         let tick = clock.advance();
-        let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
-        model.step(clock, &active, ledger, rng);
-        if let Some((name, _)) = model
-            .observables()
-            .iter()
-            .find(|(_, v)| !v.is_finite())
-            .cloned()
-        {
-            return (
-                series,
-                Some((tick, format!("observable '{name}' became non-finite"))),
-            );
-        }
-        if sample_period != 0 && tick.is_multiple_of(sample_period) {
-            series.push(StateSample {
-                tick,
-                observables: model.observables(),
-            });
+        let tick_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
+            model.step(clock, &active, ledger, rng);
+            let observables = model.observables();
+            if let Some((name, _)) = observables.iter().find(|(_, value)| !value.is_finite()) {
+                return Some(name.clone());
+            }
+            if sample_period != 0 && tick.is_multiple_of(sample_period) {
+                series.push(StateSample { tick, observables });
+            }
+            None
+        }));
+        match tick_result {
+            Ok(Some(name)) => {
+                return (
+                    series,
+                    Some(DriveFailure {
+                        tick,
+                        reason: format!("observable '{name}' became non-finite"),
+                        model_usable: true,
+                    }),
+                );
+            }
+            Ok(None) => {}
+            Err(payload) => {
+                return (
+                    series,
+                    Some(DriveFailure {
+                        tick,
+                        reason: format!(
+                            "model panicked during tick {tick}: {}",
+                            bounded_panic_message(payload.as_ref())
+                        ),
+                        model_usable: false,
+                    }),
+                );
+            }
         }
     }
     (series, None)
@@ -349,6 +425,34 @@ fn assemble_result<M: ExperimentModel>(
     }
 }
 
+fn finish_drive<M: ExperimentModel>(
+    provenance: RunProvenance,
+    model: &M,
+    registry: &ObservableRegistry,
+    series: Vec<StateSample>,
+    ledger: CausalLedger,
+    failure: Option<DriveFailure>,
+) -> RunResult {
+    match failure {
+        Some(failure) if !failure.model_usable => failed_runtime_run(
+            provenance,
+            registry,
+            series,
+            ledger,
+            failure.tick,
+            failure.reason,
+        ),
+        failure => assemble_result(
+            provenance,
+            model,
+            registry,
+            series,
+            ledger,
+            failure.map(|failure| (failure.tick, failure.reason)),
+        ),
+    }
+}
+
 /// Run a single seed of a manifest to completion (or failure), returning a self-describing result.
 /// Deterministic: identical manifest + seed + build → identical `final_checksum`.
 ///
@@ -363,8 +467,28 @@ pub fn run_manifest_seed<M: ExperimentModel>(
     parent_run_id: Option<String>,
     fork_tick: Option<u64>,
 ) -> RunResult {
-    let provenance = RunProvenance::derive(manifest, registry, seed, parent_run_id, fork_tick);
+    let provenance = RunProvenance::derive::<M>(manifest, registry, seed, parent_run_id, fork_tick);
+    let fallback_provenance = provenance.clone();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run_manifest_seed_inner::<M>(manifest, registry, seed, provenance)
+    })) {
+        Ok(result) => result,
+        Err(payload) => failed_run(
+            fallback_provenance,
+            format!(
+                "model panicked outside the tick boundary: {}",
+                bounded_panic_message(payload.as_ref())
+            ),
+        ),
+    }
+}
 
+fn run_manifest_seed_inner<M: ExperimentModel>(
+    manifest: &ExperimentManifest,
+    registry: &ObservableRegistry,
+    seed: u64,
+    provenance: RunProvenance,
+) -> RunResult {
     if let Err(e) = registry.validate() {
         return failed_run(provenance, format!("invalid registry: {e}"));
     }
@@ -408,7 +532,7 @@ pub fn run_manifest_seed<M: ExperimentModel>(
         manifest.sample_period,
     );
 
-    assemble_result(provenance, &model, registry, series, ledger, failure)
+    finish_drive(provenance, &model, registry, series, ledger, failure)
 }
 
 // ---- Genesis fork (AE-106 / AE-S08) ----------------------------------------------------------
@@ -750,7 +874,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             // that would be a genesis fork), so the law fingerprint is shared.
             law_fingerprint: manifest.laws.fingerprint(),
             registry_fingerprint: registry.fingerprint(),
-            model_version: MODEL_VERSION.to_string(),
+            model_version: M::model_version().to_string(),
             build_id: build_id(),
         }
     };
@@ -783,8 +907,11 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
     // If the prefix diverged before reaching the checkpoint, the clock did NOT reach `fork_tick`, so
     // `remaining` would be wrong and the branches would resume from a partial/failed state. Fail
     // structurally instead of continuing.
-    if let Some((tick, reason)) = prefix_failure {
-        return Err(ExperimentError::CheckpointPrefixFailed { tick, reason });
+    if let Some(failure) = prefix_failure {
+        return Err(ExperimentError::CheckpointPrefixFailed {
+            tick: failure.tick,
+            reason: failure.reason,
+        });
     }
 
     // Capture the checkpoint: model state + the live RNG (cloned, so no RNG serialization is needed
@@ -827,7 +954,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             remaining,
             manifest.sample_period,
         );
-        Ok::<RunResult, ExperimentError>(assemble_result(
+        Ok::<RunResult, ExperimentError>(finish_drive(
             make_prov(
                 run_id,
                 Some(prefix_id.clone()),
@@ -1497,6 +1624,10 @@ mod tests {
     impl ExperimentModel for PreflightCountingModel {
         type Snapshot = ();
 
+        fn model_version() -> &'static str {
+            "test-preflight-counting/1"
+        }
+
         fn from_manifest(
             _laws: &WorldLawSet,
             _initial: &InitialConditionSet,
@@ -1619,6 +1750,11 @@ mod tests {
     struct FlakyModel(ReferenceEvolutionWorld);
     impl ExperimentModel for FlakyModel {
         type Snapshot = <ReferenceEvolutionWorld as ExperimentModel>::Snapshot;
+
+        fn model_version() -> &'static str {
+            "test-flaky-reference/1"
+        }
+
         fn from_manifest(
             laws: &WorldLawSet,
             initial: &InitialConditionSet,
@@ -1674,6 +1810,92 @@ mod tests {
         // The failed run is still present in `runs`, in order, not dropped.
         assert_eq!(summary.runs.len(), 5);
         assert!(matches!(summary.runs[2].status, RunStatus::Failed { .. }));
+    }
+
+    struct PanickingModel {
+        inner: ReferenceEvolutionWorld,
+        panic_during_step: bool,
+    }
+
+    impl ExperimentModel for PanickingModel {
+        type Snapshot = <ReferenceEvolutionWorld as ExperimentModel>::Snapshot;
+
+        fn model_version() -> &'static str {
+            "test-panicking-reference/1"
+        }
+
+        fn from_manifest(
+            laws: &WorldLawSet,
+            initial: &InitialConditionSet,
+            forcings: &[ExoticIntervention],
+            seed: u64,
+            grid: (usize, usize),
+            run_ticks: u64,
+        ) -> Result<Self, ExperimentError> {
+            Ok(Self {
+                inner: ReferenceEvolutionWorld::from_manifest(
+                    laws, initial, forcings, seed, grid, run_ticks,
+                )?,
+                panic_during_step: seed == 12,
+            })
+        }
+
+        fn snapshot(&self) -> Self::Snapshot {
+            self.inner.snapshot()
+        }
+
+        fn from_snapshot(snapshot: &Self::Snapshot) -> Result<Self, ExperimentError> {
+            Ok(Self {
+                inner: ReferenceEvolutionWorld::from_snapshot(snapshot)?,
+                panic_during_step: false,
+            })
+        }
+
+        fn step(
+            &mut self,
+            clock: &SimClock,
+            active: &[&InterventionCommand],
+            ledger: &mut CausalLedger,
+            rng: &mut StdRng,
+        ) {
+            assert!(
+                !(self.panic_during_step && clock.tick == 120),
+                "poisoned seed panicked deliberately"
+            );
+            self.inner.step(clock, active, ledger, rng);
+        }
+
+        fn checksum(&self) -> u32 {
+            self.inner.checksum()
+        }
+
+        fn observables(&self) -> Vec<(String, f64)> {
+            self.inner.observables()
+        }
+    }
+
+    #[test]
+    fn ae_s14_a_panicking_seed_is_preserved_without_destroying_the_ensemble() {
+        let registry = ObservableRegistry::reference_default();
+        let seeds = vec![10, 11, 12, 13];
+        let mut manifest = baseline_manifest(seeds.clone());
+        manifest.sample_period = 10;
+        let summary =
+            run_ensemble::<PanickingModel>(&manifest, &registry).expect("manifest is valid");
+
+        assert_eq!(summary.seed_order, seeds);
+        assert_eq!(summary.completed_runs, 3);
+        assert_eq!(summary.failed.len(), 1);
+        assert_eq!(summary.failed[0].0, 12);
+        assert!(matches!(
+            &summary.runs[2].status,
+            RunStatus::Failed { tick: 120, reason, checksum: 0 } if reason.contains("panicked")
+        ));
+        assert_eq!(
+            summary.runs[2].series.len(),
+            11,
+            "samples through tick 110 must survive the panic at tick 120"
+        );
     }
 
     // ---- AUDIT: AE-209 checkpoint exotic channel ---------------------------------------------
@@ -2158,6 +2380,11 @@ mod tests {
     }
     impl ExperimentModel for OneSidedFailModel {
         type Snapshot = (<ReferenceEvolutionWorld as ExperimentModel>::Snapshot, u64);
+
+        fn model_version() -> &'static str {
+            "test-one-sided-failure/1"
+        }
+
         fn from_manifest(
             laws: &WorldLawSet,
             initial: &InitialConditionSet,
@@ -2239,6 +2466,11 @@ mod tests {
         struct AlwaysFail(ReferenceEvolutionWorld, u64, bool);
         impl ExperimentModel for AlwaysFail {
             type Snapshot = <ReferenceEvolutionWorld as ExperimentModel>::Snapshot;
+
+            fn model_version() -> &'static str {
+                "test-always-fail/1"
+            }
+
             fn from_manifest(
                 laws: &WorldLawSet,
                 initial: &InitialConditionSet,
@@ -2704,6 +2936,11 @@ mod tests {
     }
     impl ExperimentModel for TransientModel {
         type Snapshot = (<ReferenceEvolutionWorld as ExperimentModel>::Snapshot, u64);
+
+        fn model_version() -> &'static str {
+            "test-transient-observable/1"
+        }
+
         fn from_manifest(
             laws: &WorldLawSet,
             initial: &InitialConditionSet,
@@ -2844,6 +3081,11 @@ mod tests {
     }
     impl ExperimentModel for PrefixFailModel {
         type Snapshot = (<ReferenceEvolutionWorld as ExperimentModel>::Snapshot, u64);
+
+        fn model_version() -> &'static str {
+            "test-prefix-failure/1"
+        }
+
         fn from_manifest(
             laws: &WorldLawSet,
             initial: &InitialConditionSet,

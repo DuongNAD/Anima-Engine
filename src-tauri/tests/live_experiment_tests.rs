@@ -18,11 +18,11 @@ use anima_engine_lib::core::experiment::{
     MANIFEST_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment_runner::{
-    checkpoint_fork, run_manifest_seed, ExperimentModel, RunStatus,
+    checkpoint_fork, run_manifest_seed, ExperimentModel, RunStatus, MODEL_VERSION,
 };
 use anima_engine_lib::core::intervention::{Curve, InterventionCommand, InterventionKind, Region};
 use anima_engine_lib::core::live_experiment::{
-    LiveExperimentAdapter, LiveSnapshot, LIVE_OBSERVABLE_IDS,
+    LiveExperimentAdapter, LiveSnapshot, LIVE_MODEL_VERSION, LIVE_OBSERVABLE_IDS,
 };
 use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
 use anima_engine_lib::core::world_artifact::WorldIdentity;
@@ -113,6 +113,11 @@ fn the_same_seed_and_manifest_give_the_same_live_checksum() {
     assert_eq!(
         a.provenance.manifest_fingerprint, b.provenance.manifest_fingerprint,
         "both runs must be attributed to the same manifest"
+    );
+    assert_eq!(a.provenance.model_version, LIVE_MODEL_VERSION);
+    assert_ne!(
+        a.provenance.model_version, MODEL_VERSION,
+        "a live-world checksum must not claim to come from the reference model"
     );
 }
 

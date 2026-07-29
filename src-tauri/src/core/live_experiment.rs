@@ -1029,6 +1029,10 @@ impl LiveExperimentAdapter {
 impl ExperimentModel for LiveExperimentAdapter {
     type Snapshot = LiveSnapshot;
 
+    fn model_version() -> &'static str {
+        LIVE_MODEL_VERSION
+    }
+
     fn from_manifest(
         laws: &WorldLawSet,
         initial: &InitialConditionSet,
@@ -1526,7 +1530,11 @@ fn install_runtime_resources(
     world.insert_resource(NextNodeId(3));
     world.insert_resource(crate::core::ecs::EnvironmentalSpawnSettings::default());
 
-    world.insert_resource(crate::ai::model::BrainModel::new_seeded(15, 64, 4, seed));
+    // A manifest is the complete declared input to a scientific run. The interactive app may opt
+    // into WGPU, but adapter availability and `ANIMA_USE_GPU` must not alter this trajectory.
+    world.insert_resource(crate::ai::model::BrainModel::new_seeded_cpu(
+        15, 64, 4, seed,
+    ));
     world.insert_resource(crate::ai::model::BrainInferenceBuffer::default());
 
     // Simulation LOD, at its default — disabled, which tiers every agent `Hot`, i.e. the pre-LOD
@@ -1560,6 +1568,7 @@ pub const CAUSE_LIVE_MANIFEST: CauseId = 1;
 #[cfg(test)]
 mod inference_pump_tests {
     use super::*;
+    use crate::ai::model::BrainModelBackend;
     use crate::core::agent_systems::{
         AgentInferenceRequest, InferenceRequestBatch, InferenceResponseBatch,
     };
@@ -1608,6 +1617,24 @@ mod inference_pump_tests {
                 brain: None,
             }],
         }
+    }
+
+    #[test]
+    fn a_live_experiment_pins_the_shared_brain_to_cpu() {
+        let adapter = LiveExperimentAdapter::build(
+            &WorldLawSet::baseline(),
+            &InitialConditionSet::new(Vec::new()),
+            7,
+            None,
+            0,
+            0,
+        )
+        .expect("default live experiment builds");
+        let world = adapter.world();
+        assert!(matches!(
+            world.resource::<crate::ai::model::BrainModel>().backend(),
+            BrainModelBackend::NdArray(..)
+        ));
     }
 
     #[test]
