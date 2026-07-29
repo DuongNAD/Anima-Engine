@@ -51,6 +51,7 @@ pub type LearnArgs = (
     crossbeam_channel::Receiver<Transition>,
     crossbeam_channel::Sender<ModelUpdate>,
     crossbeam_channel::Receiver<ModelUpdate>,
+    u64,
 );
 
 /// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
@@ -59,7 +60,7 @@ pub fn spawn_ndarray_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
+    let (running, trans_rx, model_tx, old_model_rx, seed) = args;
     thread::spawn(move || {
         // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
         // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
@@ -71,6 +72,7 @@ pub fn spawn_ndarray_learner(
             model_tx,
             old_model_rx,
             device,
+            seed,
             ModelUpdate::NdArray,
         );
     })
@@ -82,7 +84,7 @@ pub fn spawn_wgpu_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx) = args;
+    let (running, trans_rx, model_tx, old_model_rx, seed) = args;
     thread::spawn(move || {
         let _exit = exit;
         let device = burn_wgpu::WgpuDevice::default();
@@ -92,6 +94,7 @@ pub fn spawn_wgpu_learner(
             model_tx,
             old_model_rx,
             device,
+            seed,
             ModelUpdate::Wgpu,
         );
     })
@@ -148,12 +151,26 @@ where
     loss_actor + loss_critic * 0.5
 }
 
+fn seeded_training_model<B>(device: &B::Device, seed: u64) -> ActorCriticModel<Autodiff<B>>
+where
+    B: Backend<FloatElem = f32>,
+    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>,
+{
+    let weights =
+        crate::ai::model::BrainModel::seeded_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed);
+    ActorCriticModel::<Autodiff<B>>::from_flat_weights(
+        STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, device,
+    )
+    .expect("seeded weights were built for the learner architecture")
+}
+
 fn run_training_loop<B>(
     running: Arc<AtomicBool>,
     trans_rx: crossbeam_channel::Receiver<Transition>,
     model_tx: crossbeam_channel::Sender<ModelUpdate>,
     old_model_rx: crossbeam_channel::Receiver<ModelUpdate>,
     device: B::Device,
+    seed: u64,
     to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
 ) where
     B: Backend<FloatElem = f32> + 'static,
@@ -167,8 +184,7 @@ fn run_training_loop<B>(
     ActorCriticModel<Autodiff<B>>:
         AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
 {
-    let mut train_model =
-        ActorCriticModel::<Autodiff<B>>::new(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &device);
+    let mut train_model = seeded_training_model::<B>(&device, seed);
     let mut optim = AdamConfig::new().init();
 
     let mut batch = Vec::new();
@@ -287,5 +303,37 @@ mod tests {
             a2c_loss(&model, states.clone(), states, actions, rewards, DISCOUNT).into_scalar();
 
         assert!(loss.is_finite(), "loss must be finite, got {loss}");
+    }
+
+    #[test]
+    fn learner_and_inference_start_from_the_same_seeded_policy() {
+        let seed = 0x5EED_CAFE;
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let learner = seeded_training_model::<B>(&device, seed).valid();
+        let inference =
+            crate::ai::model::BrainModel::new_seeded_cpu(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed);
+        let inference_model = match inference.backend() {
+            crate::ai::model::BrainModelBackend::NdArray(model, _) => model,
+            #[cfg(feature = "ml-wgpu")]
+            crate::ai::model::BrainModelBackend::Wgpu(..) => {
+                panic!("the explicitly CPU-seeded inference model must use ndarray");
+            }
+        };
+        let input = Tensor::<B, 2>::from_data(
+            Data::new(vec![0.25; STATE_DIM], Shape::new([1, STATE_DIM])),
+            &device,
+        );
+
+        let (learner_actor, learner_critic) = learner.forward(input.clone());
+        let (inference_actor, inference_critic) = inference_model.forward(input);
+
+        assert_eq!(
+            learner_actor.into_data().value,
+            inference_actor.into_data().value
+        );
+        assert_eq!(
+            learner_critic.into_data().value,
+            inference_critic.into_data().value
+        );
     }
 }

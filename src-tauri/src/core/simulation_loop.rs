@@ -219,6 +219,9 @@ impl SimulationEngine {
         let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
         let (model_tx, model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
+        let learner_seed = crate::core::resources::resolve_run_seed(
+            crate::core::world_artifact::world_seed_from_disk(),
+        );
 
         let use_gpu = crate::core::resources::gpu_backend_requested();
 
@@ -246,6 +249,7 @@ impl SimulationEngine {
             trans_rx.clone(),
             model_tx.clone(),
             old_model_rx.clone(),
+            learner_seed,
         );
 
         #[cfg(feature = "ml-wgpu")]
