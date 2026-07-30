@@ -119,6 +119,7 @@ pub fn decode_genotype(
                 state: [0.0; 15],
                 action: [0.0; 4],
                 has_last: false,
+                pending_state: None,
             },
             ChildrenLinks(Vec::new()),
             SpatialCollider {

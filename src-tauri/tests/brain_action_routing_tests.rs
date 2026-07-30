@@ -10,6 +10,7 @@
 //! already pinned by the EB-S02 parity gate.
 
 use anima_engine_lib::ai::cpg::{CpgOscillator, TimeStep};
+use anima_engine_lib::ai::hrrl::LastTransitionState;
 use anima_engine_lib::ai::model::{run_inference_batch, BrainModel, InferenceScratch};
 use anima_engine_lib::core::agent_systems::{
     action_resolution_system, sensory_system, AgentInferenceRequest, AgentInferenceResponse,
@@ -434,6 +435,44 @@ fn locomotion_still_comes_from_the_first_four_outputs() {
         *h.world.get::<CognitiveState>(agent).unwrap(),
         CognitiveState::Ready
     ));
+}
+
+#[test]
+fn a_delayed_response_keeps_the_observation_that_produced_its_action() {
+    let mut h = harness();
+    let agent = spawn_agent(&mut h.world, Some(evolved_brain(61)));
+    h.world.entity_mut(agent).insert(LastTransitionState {
+        state: [0.1; 15],
+        action: [0.2; 4],
+        has_last: true,
+        pending_state: None,
+    });
+
+    pend(&mut h);
+    let requested_state = h
+        .req_rx
+        .try_recv()
+        .expect("sensory system queued the request")
+        .requests[0]
+        .sensory_input;
+
+    // The worker is asynchronous. While it is thinking, HRRL observes later world states and
+    // advances its bookkeeping. The returned action must still be attributed to the observation
+    // that actually produced it, not whichever state happened to be newest when the response won
+    // the scheduling race.
+    h.world.get_mut::<LastTransitionState>(agent).unwrap().state = [0.9; 15];
+
+    let mut actions = AgentInferenceResponse::open_gates_default();
+    actions[..action_index::CPG_LEN].copy_from_slice(&[0.4, 0.3, 0.2, 0.1]);
+    resolve(&mut h, agent, actions);
+
+    let last = h.world.get::<LastTransitionState>(agent).unwrap();
+    assert_eq!(
+        last.state, requested_state,
+        "an asynchronous action must remain paired with the policy observation that produced it"
+    );
+    assert_eq!(last.action, [0.4, 0.3, 0.2, 0.1]);
+    assert!(last.has_last);
 }
 
 #[test]

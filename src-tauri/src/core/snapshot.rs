@@ -964,6 +964,7 @@ mod tests {
                 state: [0.0; 15],
                 action: [0.0; 4],
                 has_last: false,
+                pending_state: None,
             },
             cognitive_state: Default::default(),
             inertia: Default::default(),

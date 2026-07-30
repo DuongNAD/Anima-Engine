@@ -1103,6 +1103,7 @@ pub fn brain_inference_system(
             last.state = agent_inputs_list[agent_idx];
             last.action = action;
             last.has_last = true;
+            last.pending_state = None;
         }
     }
 

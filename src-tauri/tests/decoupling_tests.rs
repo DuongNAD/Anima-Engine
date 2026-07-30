@@ -1,5 +1,5 @@
 use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator};
-use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::ai::hrrl::{HomeostaticState, LastTransitionState};
 use anima_engine_lib::core::agent_systems::{
     action_resolution_system, sensory_system, AgentInferenceResponse, InferenceChannels,
     InferenceRequestBatch, InferenceResponseBatch,
@@ -66,6 +66,7 @@ fn test_decoupled_inference_cycle() {
             },
             CognitiveState::Ready,
             InertiaComponent::default(),
+            LastTransitionState::default(),
             SensoryBufferComponent::default(),
         ))
         .id();
@@ -123,6 +124,14 @@ fn test_decoupled_inference_cycle() {
     let req = &req_batch.requests[0];
     assert_eq!(req.entity, agent);
     assert_eq!(req.request_id, ticket_id);
+    assert_eq!(
+        world
+            .get::<LastTransitionState>(agent)
+            .unwrap()
+            .pending_state,
+        Some(req.sensory_input),
+        "the in-flight ticket must retain the observation that produced its future action"
+    );
 
     // Recycle the request batch
     recycle_req_tx.send(req_batch).unwrap();
@@ -249,6 +258,15 @@ fn test_decoupled_inference_cycle() {
         final_inertia.cpg_parameters,
         [1.0, 0.0, 1.0, 0.0],
         "Expected baseline CPG parameters"
+    );
+    let final_transition = world.get::<LastTransitionState>(agent).unwrap();
+    assert!(
+        final_transition.pending_state.is_none(),
+        "a timed-out ticket must release its pending observation"
+    );
+    assert!(
+        !final_transition.has_last,
+        "fallback locomotion must not be attributed to the previous learned action"
     );
 
     // Check child segment oscillator updated to baseline parameters: [1.0, 0.0, 1.0, 0.0]

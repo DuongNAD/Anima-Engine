@@ -62,6 +62,7 @@ fn world_with_agent(policy: BrainPolicy, at: Vec3) -> (World, Entity) {
                 state: [0.3; 15],
                 action: [0.9, 0.1, 0.8, 0.2],
                 has_last: true,
+                pending_state: None,
             },
             brain(7),
         ))

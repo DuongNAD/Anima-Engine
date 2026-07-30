@@ -51,6 +51,13 @@ pub struct LastTransitionState {
     pub state: [f32; 15],
     pub action: [f32; 4],
     pub has_last: bool,
+    /// Observation attached to the in-flight asynchronous inference ticket.
+    ///
+    /// The worker may answer several ticks later, after [`Self::state`] has advanced. Keeping the
+    /// request observation separately prevents the returned action from being trained against an
+    /// unrelated, newer state. Saved with the agent so checkpoint/resume preserves the pairing.
+    #[serde(default)]
+    pub pending_state: Option<[f32; 15]>,
 }
 
 #[derive(Resource)]
