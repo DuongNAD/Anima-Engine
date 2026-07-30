@@ -205,7 +205,8 @@ fn test_mutate_genotype() {
     let mut counter = 1;
     let original = genotype.clone();
     let mut rng = test_rng();
-    mutate_genotype(&mut genotype, &mut counter, 0.0, &mut rng);
+    mutate_genotype(&mut genotype, &mut counter, 0.0, &mut rng)
+        .expect("test node cursor has headroom");
     assert_eq!(genotype.nodes.len(), original.nodes.len());
     assert_eq!(genotype.nodes[0].length, original.nodes[0].length);
 
@@ -214,7 +215,8 @@ fn test_mutate_genotype() {
     for _ in 0..100 {
         let mut temp_genotype = original.clone();
         let mut temp_counter = 1;
-        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0, &mut rng);
+        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0, &mut rng)
+            .expect("test node cursor has headroom");
         if temp_genotype.nodes.len() == 2
             || temp_genotype.nodes[0].length != 2.0
             || temp_genotype.nodes[0].radius != 0.5
@@ -268,7 +270,8 @@ fn test_crossover_genotypes() {
     // Run crossover
     let mut counter = 4;
     let mut rng = test_rng();
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("test node cursor has headroom");
 
     // The subtree crossover should result in 2 nodes: the root (id 0) and a grafted node from parent_b with remapped id 4.
     assert_eq!(child.nodes.len(), 2);
@@ -310,7 +313,8 @@ fn test_map_elites_extremes() {
     let mut rng = test_rng();
     // Mutate multiple times with mutation_rate = 1.0, verify it never exceeds 15 nodes
     for _ in 0..50 {
-        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng)
+            .expect("test node cursor has headroom");
         assert!(genotype.nodes.len() <= 15);
     }
 
