@@ -22,8 +22,8 @@
 use crate::core::causal::CausalLedger;
 use crate::core::exotic_energy::{ExoticEnergyBudget, ExoticIntervention};
 use crate::core::experiment::{
-    validate_intervention, ExperimentError, ExperimentManifest, FactorDiff, InitialConditionSet,
-    ObservableRegistry, ObservableSpec, WorldLawSet, MAX_INTERVENTIONS,
+    fnv1a_64, validate_intervention, ExperimentError, ExperimentManifest, FactorDiff,
+    InitialConditionSet, ObservableRegistry, ObservableSpec, WorldLawSet, MAX_INTERVENTIONS,
 };
 use crate::core::intervention::{InterventionCommand, InterventionQueue};
 use crate::core::scenario::{StateSample, TargetDelta};
@@ -38,6 +38,22 @@ pub const MODEL_VERSION: &str = "reference-evolution-world/1";
 /// A stable build identifier for provenance (the crate version).
 pub fn build_id() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+fn run_identity_base(
+    experiment_id: &str,
+    manifest_fingerprint: u64,
+    registry_fingerprint: u64,
+    model_version: &str,
+    build_id: &str,
+    seed: u64,
+) -> String {
+    format!(
+        "{experiment_id}#{manifest_fingerprint:016x}#r{registry_fingerprint:016x}\
+         #m{:016x}#b{:016x}#s{seed}",
+        fnv1a_64(model_version.as_bytes()),
+        fnv1a_64(build_id.as_bytes())
+    )
 }
 
 /// The reference field grid used by the headless slice (small — the reference ecosystem is a single
@@ -152,20 +168,27 @@ impl RunProvenance {
         fork_tick: Option<u64>,
     ) -> Self {
         let manifest_fingerprint = manifest.fingerprint();
+        let registry_fingerprint = registry.fingerprint();
+        let model_version = M::model_version().to_string();
+        let build_id = build_id();
         RunProvenance {
             experiment_id: manifest.experiment_id.clone(),
-            run_id: format!(
-                "{}#{:016x}#s{}",
-                manifest.experiment_id, manifest_fingerprint, seed
+            run_id: run_identity_base(
+                &manifest.experiment_id,
+                manifest_fingerprint,
+                registry_fingerprint,
+                &model_version,
+                &build_id,
+                seed,
             ),
             parent_run_id,
             fork_tick,
             seed,
             manifest_fingerprint,
             law_fingerprint: manifest.laws.fingerprint(),
-            registry_fingerprint: registry.fingerprint(),
-            model_version: M::model_version().to_string(),
-            build_id: build_id(),
+            registry_fingerprint,
+            model_version,
+            build_id,
         }
     }
 }
@@ -868,8 +891,25 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
 
     let mfp = manifest.fingerprint();
     let treatment_fp = effective_treatment.fingerprint();
-    let base_id = format!("{}#{:016x}#s{}", manifest.experiment_id, mfp, seed);
-    let treatment_base_id = format!("{}#{:016x}#s{}", manifest.experiment_id, treatment_fp, seed);
+    let registry_fingerprint = registry.fingerprint();
+    let model_version = M::model_version().to_string();
+    let build_id = build_id();
+    let base_id = run_identity_base(
+        &manifest.experiment_id,
+        mfp,
+        registry_fingerprint,
+        &model_version,
+        &build_id,
+        seed,
+    );
+    let treatment_base_id = run_identity_base(
+        &manifest.experiment_id,
+        treatment_fp,
+        registry_fingerprint,
+        &model_version,
+        &build_id,
+        seed,
+    );
     let prefix_id = format!("{base_id}#prefix@{fork_tick}");
     // `fingerprint` selects which manifest's identity a branch carries: the prefix and control run
     // under the base manifest, the treatment under the effective treatment manifest.
@@ -888,9 +928,9 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             // The world laws are identical across branches (a checkpoint fork never changes a law —
             // that would be a genesis fork), so the law fingerprint is shared.
             law_fingerprint: manifest.laws.fingerprint(),
-            registry_fingerprint: registry.fingerprint(),
-            model_version: M::model_version().to_string(),
-            build_id: build_id(),
+            registry_fingerprint,
+            model_version: model_version.clone(),
+            build_id: build_id.clone(),
         }
     };
 
@@ -1980,6 +2020,62 @@ mod tests {
         assert_eq!(a.final_observables, b.final_observables);
         assert_eq!(a.provenance.run_id, b.provenance.run_id);
         assert!(a.status.is_completed());
+    }
+
+    #[test]
+    fn run_identity_distinguishes_numerical_models() {
+        let registry = ObservableRegistry::reference_default();
+        let manifest = baseline_manifest(vec![42]);
+        let reference =
+            RunProvenance::derive::<ReferenceEvolutionWorld>(&manifest, &registry, 42, None, None);
+        let other =
+            RunProvenance::derive::<DuplicateObservableModel>(&manifest, &registry, 42, None, None);
+
+        assert_ne!(reference.model_version, other.model_version);
+        assert_ne!(
+            reference.run_id, other.run_id,
+            "two numerical models must not publish the same address for different runs"
+        );
+    }
+
+    #[test]
+    fn run_identity_distinguishes_observable_registries() {
+        let registry = ObservableRegistry::reference_default();
+        let mut alternate_json =
+            serde_json::to_value(&registry).expect("the default registry serializes");
+        alternate_json["specs"][0]["display_name"] =
+            serde_json::Value::String("alternate display contract".into());
+        let alternate: ObservableRegistry =
+            serde_json::from_value(alternate_json).expect("the alternate registry parses");
+        alternate
+            .validate()
+            .expect("the alternate registry is valid");
+
+        let manifest = baseline_manifest(vec![42]);
+        let original =
+            RunProvenance::derive::<ReferenceEvolutionWorld>(&manifest, &registry, 42, None, None);
+        let changed =
+            RunProvenance::derive::<ReferenceEvolutionWorld>(&manifest, &alternate, 42, None, None);
+
+        assert_ne!(
+            original.registry_fingerprint, changed.registry_fingerprint,
+            "the control must actually change the registry contract"
+        );
+        assert_ne!(
+            original.run_id, changed.run_id,
+            "different measurement contracts must not share a run address"
+        );
+    }
+
+    #[test]
+    fn run_identity_distinguishes_builds() {
+        let first = run_identity_base("experiment", 1, 2, "model/1", "build-a", 42);
+        let second = run_identity_base("experiment", 1, 2, "model/1", "build-b", 42);
+
+        assert_ne!(
+            first, second,
+            "different binaries must not publish the same run address"
+        );
     }
 
     // ---- AE-S01: baseline parity with the legacy scenario -----------------------------------
