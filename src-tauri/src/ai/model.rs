@@ -1042,6 +1042,11 @@ pub fn brain_inference_system(
     let mut child_segments = std::mem::take(&mut brain_buf.child_segments);
 
     for (agent_idx, &agent_entity) in agent_entities.iter().enumerate() {
+        let action_start = agent_idx * 4;
+        let Some(agent_actions) = outputs_vec.get(action_start..action_start + 4) else {
+            continue;
+        };
+
         child_segments.clear();
         if let Some(&first_idx) = parent_head.get(&agent_entity) {
             let mut curr = Some(first_idx);
@@ -1055,13 +1060,13 @@ pub fn brain_inference_system(
 
         for (seg_idx, &(_, seg_entity)) in child_segments.iter().enumerate() {
             if let Ok(mut osc) = oscillator_query.get_mut(seg_entity) {
-                let freq_idx = agent_idx * 4 + seg_idx * 2;
-                let amp_idx = agent_idx * 4 + seg_idx * 2 + 1;
+                let freq_idx = seg_idx * 2;
+                let amp_idx = seg_idx * 2 + 1;
 
-                if let Some(&freq_raw) = outputs_vec.get(freq_idx) {
+                if let Some(&freq_raw) = agent_actions.get(freq_idx) {
                     osc.frequency = 0.1 + freq_raw * 2.9;
                 }
-                if let Some(&amp_raw) = outputs_vec.get(amp_idx) {
+                if let Some(&amp_raw) = agent_actions.get(amp_idx) {
                     osc.amplitude = amp_raw * 1.5;
                 }
             }
@@ -1070,7 +1075,7 @@ pub fn brain_inference_system(
         // Save last transition state
         let mut action = [0.0; 4];
         for (k, act_val) in action.iter_mut().enumerate() {
-            if let Some(&val) = outputs_vec.get(agent_idx * 4 + k) {
+            if let Some(&val) = agent_actions.get(k) {
                 *act_val = val;
             }
         }
