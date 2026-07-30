@@ -155,6 +155,73 @@ impl<B: Backend> ActorCriticModel<B> {
         })
     }
 
+    /// Export the exact output-major layout accepted by [`Self::from_flat_weights`].
+    ///
+    /// Burn stores linear weights as `[input, output]`; the simulation's portable checkpoint format
+    /// stores one neuron's full fan-in contiguously. Keeping the inverse transpose beside the loader
+    /// makes a save/load round trip bit-exact instead of merely shape-compatible.
+    pub fn to_flat_weights(
+        &self,
+        inputs: usize,
+        hidden: usize,
+        outputs: usize,
+    ) -> Result<Vec<f32>, String>
+    where
+        B: Backend<FloatElem = f32>,
+    {
+        fn append_linear<B: Backend<FloatElem = f32>>(
+            linear: &Linear<B>,
+            d_in: usize,
+            d_out: usize,
+            out: &mut Vec<f32>,
+        ) -> Result<(), String> {
+            let weight = linear.weight.val();
+            if weight.dims() != [d_in, d_out] {
+                return Err(format!(
+                    "linear weight shape {:?} does not match [{d_in}, {d_out}]",
+                    weight.dims()
+                ));
+            }
+            let burn_layout = weight.into_data().value;
+            for output in 0..d_out {
+                for input in 0..d_in {
+                    out.push(burn_layout[input * d_out + output]);
+                }
+            }
+
+            let bias = linear
+                .bias
+                .as_ref()
+                .ok_or_else(|| "shared learner linear layer has no bias".to_owned())?
+                .val();
+            if bias.dims() != [d_out] {
+                return Err(format!(
+                    "linear bias shape {:?} does not match [{d_out}]",
+                    bias.dims()
+                ));
+            }
+            out.extend(bias.into_data().value);
+            Ok(())
+        }
+
+        if inputs == 0 || hidden == 0 || outputs == 0 {
+            return Err(format!(
+                "degenerate architecture {inputs}x{hidden}x{outputs}"
+            ));
+        }
+        let expected = (inputs * hidden + hidden)
+            + (hidden * hidden + hidden)
+            + (hidden * outputs + outputs)
+            + (hidden + 1);
+        let mut weights = Vec::with_capacity(expected);
+        append_linear(&self.trunk1, inputs, hidden, &mut weights)?;
+        append_linear(&self.trunk2, hidden, hidden, &mut weights)?;
+        append_linear(&self.actor_head, hidden, outputs, &mut weights)?;
+        append_linear(&self.critic_head, hidden, 1, &mut weights)?;
+        debug_assert_eq!(weights.len(), expected);
+        Ok(weights)
+    }
+
     pub fn forward(&self, input: Tensor<B, 2>) -> (Tensor<B, 2>, Tensor<B, 2>) {
         let x = self.trunk1.forward(input);
         let x = burn::tensor::activation::relu(x);
@@ -392,6 +459,7 @@ pub struct BrainModel {
     /// swap. That turns a rule a future author has to remember into one they cannot break.
     backend: BrainModelBackend,
     pub input_dim: usize,
+    pub hidden_dim: usize,
     pub action_dim: usize,
 }
 
@@ -453,10 +521,16 @@ impl BrainModel {
     /// note above structural. It was previously a convention followed at four sites, and the CPU
     /// pair did not follow it — which is how the latent race got in. A convention that has already
     /// been broken once should not be re-established as a convention.
-    fn from_backend(backend: BrainModelBackend, input_dim: usize, action_dim: usize) -> Self {
+    fn from_backend(
+        backend: BrainModelBackend,
+        input_dim: usize,
+        hidden_dim: usize,
+        action_dim: usize,
+    ) -> Self {
         let model = Self {
             backend,
             input_dim,
+            hidden_dim,
             action_dim,
         };
         model.materialize();
@@ -577,6 +651,7 @@ impl BrainModel {
         Self::from_backend(
             BrainModelBackend::NdArray(model, device),
             input_dim,
+            hidden_dim,
             action_dim,
         )
     }
@@ -598,7 +673,18 @@ impl BrainModel {
 
     pub fn new_seeded(input_dim: usize, hidden_dim: usize, action_dim: usize, seed: u64) -> Self {
         let weights = Self::seeded_weights(input_dim, hidden_dim, action_dim, seed);
+        Self::from_checkpoint_weights(input_dim, hidden_dim, action_dim, &weights)
+            .expect("seeded weights were built for exactly this architecture")
+    }
 
+    /// Restore a portable shared-policy checkpoint, preferring the configured backend and falling
+    /// back to ndarray under the same rules as [`Self::new_seeded`].
+    pub fn from_checkpoint_weights(
+        input_dim: usize,
+        hidden_dim: usize,
+        action_dim: usize,
+        weights: &[f32],
+    ) -> Result<Self, String> {
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_variables))]
         let use_gpu = crate::core::resources::gpu_backend_requested();
 
@@ -607,7 +693,7 @@ impl BrainModel {
             let built = std::panic::catch_unwind(|| {
                 let device = burn_wgpu::WgpuDevice::default();
                 let model = ActorCriticModel::<WgpuBackend>::from_flat_weights(
-                    input_dim, hidden_dim, action_dim, &weights, &device,
+                    input_dim, hidden_dim, action_dim, weights, &device,
                 );
                 // Inside the guard, and after the model exists: construction is lazy, so this is
                 // the first moment an adapter is actually demanded. See
@@ -618,16 +704,66 @@ impl BrainModel {
                 (model, device)
             });
             if let Ok((Ok(model), device)) = built {
-                return Self::from_backend(
+                return Ok(Self::from_backend(
                     BrainModelBackend::Wgpu(model, device),
                     input_dim,
+                    hidden_dim,
                     action_dim,
-                );
+                ));
             }
             eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
         }
 
-        Self::from_seeded_ndarray(input_dim, hidden_dim, action_dim, &weights)
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+            input_dim, hidden_dim, action_dim, weights, &device,
+        )?;
+        Ok(Self::from_backend(
+            BrainModelBackend::NdArray(model, device),
+            input_dim,
+            hidden_dim,
+            action_dim,
+        ))
+    }
+
+    /// Portable output-major weights for the policy currently serving inference.
+    pub fn checkpoint_weights(&self) -> Result<Vec<f32>, String> {
+        match &self.backend {
+            BrainModelBackend::NdArray(model, _) => {
+                model.to_flat_weights(self.input_dim, self.hidden_dim, self.action_dim)
+            }
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(model, _) => {
+                model.to_flat_weights(self.input_dim, self.hidden_dim, self.action_dim)
+            }
+        }
+    }
+
+    /// Apply a policy that was waiting in the learner→inference mailbox at checkpoint time.
+    pub fn apply_checkpoint_weights(&mut self, weights: &[f32]) -> Result<(), String> {
+        match &mut self.backend {
+            BrainModelBackend::NdArray(model, device) => {
+                *model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+                    self.input_dim,
+                    self.hidden_dim,
+                    self.action_dim,
+                    weights,
+                    device,
+                )?;
+            }
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(model, device) => {
+                *model = ActorCriticModel::<WgpuBackend>::from_flat_weights(
+                    self.input_dim,
+                    self.hidden_dim,
+                    self.action_dim,
+                    weights,
+                    device,
+                )?;
+            }
+        }
+        self.materialize();
+        Ok(())
     }
 
     pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize) -> Self {
@@ -652,6 +788,7 @@ impl BrainModel {
                     return Self::from_backend(
                         BrainModelBackend::Wgpu(model, device),
                         input_dim,
+                        hidden_dim,
                         action_dim,
                     );
                 }
@@ -669,6 +806,7 @@ impl BrainModel {
         Self::from_backend(
             BrainModelBackend::NdArray(model, device),
             input_dim,
+            hidden_dim,
             action_dim,
         )
     }
@@ -1392,6 +1530,64 @@ mod tests {
         let ok_len = (3 * 4 + 4) + (4 * 4 + 4) + (4 * 2 + 2) + (4 + 1);
         assert!(
             ActorCriticModel::<B>::from_flat_weights(3, 4, 2, &vec![0.0; ok_len], &device).is_ok()
+        );
+    }
+
+    #[test]
+    fn flat_weights_round_trip_without_layout_or_bit_drift() {
+        type B = burn_ndarray::NdArray<f32>;
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let weights = BrainModel::seeded_weights(3, 5, 2, 0xA11CE);
+        let model = ActorCriticModel::<B>::from_flat_weights(3, 5, 2, &weights, &device).unwrap();
+
+        let restored = model
+            .to_flat_weights(3, 5, 2)
+            .expect("materialized model must export");
+        assert_eq!(
+            restored
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            weights
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn shared_policy_checkpoint_restores_and_applies_pending_weights() {
+        let current = BrainModel::seeded_weights(15, 64, 4, 11);
+        let pending = BrainModel::seeded_weights(15, 64, 4, 12);
+        let mut model =
+            BrainModel::from_checkpoint_weights(15, 64, 4, &current).expect("restore current");
+        assert_eq!(
+            model
+                .checkpoint_weights()
+                .unwrap()
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            current
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
+        );
+
+        model
+            .apply_checkpoint_weights(&pending)
+            .expect("apply queued model");
+        assert_eq!(
+            model
+                .checkpoint_weights()
+                .unwrap()
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            pending
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>()
         );
     }
 }

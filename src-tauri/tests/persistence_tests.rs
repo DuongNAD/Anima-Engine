@@ -139,6 +139,15 @@ fn test_engine_save_load_lifecycle() {
         saved_state.evolution_worker.is_some(),
         "a live schema-6 save must include its evolution worker checkpoint"
     );
+    let shared = saved_state
+        .shared_learning
+        .as_ref()
+        .expect("a live schema-7 save must include shared learning state");
+    assert!(!shared.learner.training_model_record.is_empty());
+    assert!(!shared.learner.optimizer_record.is_empty());
+    shared
+        .validate(saved_state.sim_rng_seed)
+        .expect("live shared learning checkpoint validates");
 
     // Stop engine
     engine.stop();
@@ -174,6 +183,10 @@ fn test_engine_save_load_lifecycle() {
     assert!(loaded_state.tick_count >= 1000);
     assert_eq!(loaded_state.epoch_manager.current_epoch, 99);
     assert_eq!(loaded_state.agents.len(), 10);
+    assert!(
+        loaded_state.shared_learning.is_some(),
+        "the restored learner must be checkpointable again"
+    );
 
     engine.stop();
 }

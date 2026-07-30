@@ -68,6 +68,9 @@ fn serialized_agent(brain: Option<AgentBrain>) -> SerializedAgent {
             action: [0.0; 4],
             has_last: false,
         },
+        cognitive_state: Default::default(),
+        inertia: Default::default(),
+        action_gates: None,
         segments: vec![],
         brain,
     }

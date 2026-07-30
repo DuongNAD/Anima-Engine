@@ -13,8 +13,9 @@ use std::time::Duration;
 
 use bevy_ecs::prelude::Resource;
 use burn::backend::Autodiff;
-use burn::module::AutodiffModule;
+use burn::module::{AutodiffModule, Module};
 use burn::optim::{AdamConfig, GradientsParams, Optimizer};
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use burn::tensor::backend::Backend;
 use burn::tensor::{Data, Shape, Tensor};
 
@@ -34,6 +35,12 @@ pub const HIDDEN_DIM: usize = 64;
 pub const ACTION_DIM: usize = 4;
 /// Transitions accumulated before one optimiser step.
 pub const BATCH_SIZE: usize = 32;
+/// Maximum transitions waiting between the real-time simulation and the learner.
+pub const TRANSITION_QUEUE_CAPACITY: usize = 4_096;
+pub const SHARED_MODEL_PARAMETER_COUNT: usize = (STATE_DIM * HIDDEN_DIM + HIDDEN_DIM)
+    + (HIDDEN_DIM * HIDDEN_DIM + HIDDEN_DIM)
+    + (HIDDEN_DIM * ACTION_DIM + ACTION_DIM)
+    + (HIDDEN_DIM + 1);
 /// At most one trained policy may wait for inference.
 ///
 /// Model snapshots are replaceable intermediate results, not an event log. A deeper queue makes
@@ -52,6 +59,28 @@ pub enum ModelUpdate {
     Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
 }
 
+impl ModelUpdate {
+    pub fn checkpoint_weights(&self) -> Result<Vec<f32>, String> {
+        match self {
+            Self::NdArray(model) => model.to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM),
+            #[cfg(feature = "ml-wgpu")]
+            Self::Wgpu(model) => model.to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SavedLearnerWorkerState {
+    pub training_model_record: Vec<u8>,
+    pub optimizer_record: Vec<u8>,
+    pub partial_batch: Vec<Transition>,
+}
+
+pub struct LearnerCheckpointRequest {
+    pub reply: crossbeam_channel::Sender<Result<SavedLearnerWorkerState, String>>,
+    pub resume: crossbeam_channel::Receiver<()>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ModelUpdateDelivery {
     Published,
@@ -59,7 +88,7 @@ pub(crate) enum ModelUpdateDelivery {
     Disconnected,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ModelUpdateSnapshot {
     pub published: u64,
     pub backpressured: u64,
@@ -82,6 +111,14 @@ struct ModelUpdateCounters {
 pub struct ModelUpdateDiagnostics(Arc<ModelUpdateCounters>);
 
 impl ModelUpdateDiagnostics {
+    pub fn from_snapshot(snapshot: ModelUpdateSnapshot) -> Self {
+        Self(Arc::new(ModelUpdateCounters {
+            published: AtomicU64::new(snapshot.published),
+            backpressured: AtomicU64::new(snapshot.backpressured),
+            disconnected: AtomicU64::new(snapshot.disconnected),
+        }))
+    }
+
     fn increment(counter: &AtomicU64) {
         let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             Some(value.saturating_add(1))
@@ -131,6 +168,8 @@ pub type LearnArgs = (
     crossbeam_channel::Receiver<ModelUpdate>,
     ModelUpdateDiagnostics,
     u64,
+    Option<SavedLearnerWorkerState>,
+    crossbeam_channel::Receiver<LearnerCheckpointRequest>,
 );
 
 /// CPU learner. Always available — it is the fallback both when the GPU probe fails and when the
@@ -139,7 +178,8 @@ pub fn spawn_ndarray_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed) = args;
+    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed, resume, checkpoint_rx) =
+        args;
     thread::spawn(move || {
         // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
         // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
@@ -153,6 +193,8 @@ pub fn spawn_ndarray_learner(
             model_diagnostics,
             device,
             seed,
+            resume,
+            checkpoint_rx,
             ModelUpdate::NdArray,
         );
     })
@@ -164,7 +206,8 @@ pub fn spawn_wgpu_learner(
     args: LearnArgs,
     exit: crate::core::thread_supervisor::ExitToken,
 ) -> thread::JoinHandle<()> {
-    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed) = args;
+    let (running, trans_rx, model_tx, old_model_rx, model_diagnostics, seed, resume, checkpoint_rx) =
+        args;
     thread::spawn(move || {
         let _exit = exit;
         let device = burn_wgpu::WgpuDevice::default();
@@ -176,6 +219,8 @@ pub fn spawn_wgpu_learner(
             model_diagnostics,
             device,
             seed,
+            resume,
+            checkpoint_rx,
             ModelUpdate::Wgpu,
         );
     })
@@ -245,6 +290,45 @@ where
     .expect("seeded weights were built for the learner architecture")
 }
 
+/// Decode opaque Burn records before any live worker starts.
+///
+/// Burn 0.13's in-memory recorder panics on malformed bincode in a few paths, so local snapshot
+/// bytes are still treated as untrusted and the decoder is contained behind `catch_unwind`.
+pub fn validate_saved_learner_worker(
+    saved: &SavedLearnerWorkerState,
+    seed: u64,
+) -> Result<(), String> {
+    if saved.partial_batch.len() >= BATCH_SIZE
+        || saved
+            .partial_batch
+            .iter()
+            .any(|transition| !transition.is_finite())
+    {
+        return Err("learner partial batch is invalid".into());
+    }
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        type B = burn_ndarray::NdArray<f32>;
+        type AB = Autodiff<B>;
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+
+        let model_record =
+            Recorder::<AB>::load(&recorder, saved.training_model_record.clone(), &device)
+                .map_err(|error| format!("learner model record is unreadable: {error}"))?;
+        let _model = seeded_training_model::<B>(&device, seed).load_record(model_record);
+
+        let optimizer_record =
+            Recorder::<AB>::load(&recorder, saved.optimizer_record.clone(), &device)
+                .map_err(|error| format!("Adam record is unreadable: {error}"))?;
+        let _optimizer = AdamConfig::new()
+            .init::<AB, ActorCriticModel<AB>>()
+            .load_record(optimizer_record);
+        Ok::<(), String>(())
+    }))
+    .map_err(|_| "learner checkpoint decoder panicked on malformed bytes".to_owned())?
+}
+
 fn run_training_loop<B>(
     running: Arc<AtomicBool>,
     trans_rx: crossbeam_channel::Receiver<Transition>,
@@ -253,6 +337,8 @@ fn run_training_loop<B>(
     model_diagnostics: ModelUpdateDiagnostics,
     device: B::Device,
     seed: u64,
+    resume: Option<SavedLearnerWorkerState>,
+    checkpoint_rx: crossbeam_channel::Receiver<LearnerCheckpointRequest>,
     to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
 ) where
     B: Backend<FloatElem = f32> + 'static,
@@ -268,9 +354,65 @@ fn run_training_loop<B>(
 {
     let mut train_model = seeded_training_model::<B>(&device, seed);
     let mut optim = AdamConfig::new().init();
-
     let mut batch = Vec::new();
+    if let Some(saved) = resume {
+        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+        let model_record =
+            match Recorder::<Autodiff<B>>::load(&recorder, saved.training_model_record, &device) {
+                Ok(record) => record,
+                Err(error) => {
+                    eprintln!("learner checkpoint model is unreadable: {error}");
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
+        train_model = train_model.load_record(model_record);
+        let optimizer_record =
+            match Recorder::<Autodiff<B>>::load(&recorder, saved.optimizer_record, &device) {
+                Ok(record) => record,
+                Err(error) => {
+                    eprintln!("learner checkpoint optimizer is unreadable: {error}");
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
+        optim = optim.load_record(optimizer_record);
+        batch = saved.partial_batch;
+    }
+
     while running.load(Ordering::SeqCst) {
+        if let Ok(request) = checkpoint_rx.try_recv() {
+            let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+            let checkpoint = (|| {
+                let training_model_record = Recorder::<Autodiff<B>>::record(
+                    &recorder,
+                    train_model.clone().into_record(),
+                    (),
+                )
+                .map_err(|error| format!("cannot record learner model: {error}"))?;
+                let optimizer_record =
+                    Recorder::<Autodiff<B>>::record(&recorder, optim.to_record(), ())
+                        .map_err(|error| format!("cannot record Adam state: {error}"))?;
+                Ok(SavedLearnerWorkerState {
+                    training_model_record,
+                    optimizer_record,
+                    partial_batch: batch.clone(),
+                })
+            })();
+            if request.reply.send(checkpoint).is_ok() {
+                loop {
+                    if !running.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    match request.resume.recv_timeout(Duration::from_millis(10)) {
+                        Ok(()) | Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                        Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                    }
+                }
+            }
+            continue;
+        }
+
         while let Ok(old_model) = old_model_rx.try_recv() {
             drop(old_model);
         }
@@ -351,6 +493,8 @@ fn run_training_loop<B>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use burn::module::Module;
+    use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 
     type B = burn_ndarray::NdArray<f32>;
 
@@ -401,6 +545,180 @@ mod tests {
             a2c_loss(&model, states.clone(), states, actions, rewards, DISCOUNT).into_scalar();
 
         assert!(loss.is_finite(), "loss must be finite, got {loss}");
+    }
+
+    #[test]
+    fn learner_model_and_adam_resume_from_portable_records() {
+        type AB = Autodiff<B>;
+
+        fn one_step(
+            mut model: ActorCriticModel<AB>,
+            mut optim: impl Optimizer<ActorCriticModel<AB>, AB>,
+            device: &burn_ndarray::NdArrayDevice,
+        ) -> (
+            ActorCriticModel<AB>,
+            impl Optimizer<ActorCriticModel<AB>, AB>,
+        ) {
+            let states = Tensor::<AB, 2>::from_data(
+                Data::new(
+                    (0..BATCH_SIZE * STATE_DIM)
+                        .map(|index| index as f32 * 0.001)
+                        .collect(),
+                    Shape::new([BATCH_SIZE, STATE_DIM]),
+                ),
+                device,
+            );
+            let next_states = states.clone() + 0.01;
+            let actions = Tensor::<AB, 2>::from_data(
+                Data::new(
+                    vec![0.25; BATCH_SIZE * ACTION_DIM],
+                    Shape::new([BATCH_SIZE, ACTION_DIM]),
+                ),
+                device,
+            );
+            let rewards = Tensor::<AB, 2>::from_data(
+                Data::new(vec![0.5; BATCH_SIZE], Shape::new([BATCH_SIZE, 1])),
+                device,
+            );
+            let loss = a2c_loss(&model, states, next_states, actions, rewards, DISCOUNT);
+            let grads = loss.backward();
+            let grads = GradientsParams::from_grads(grads, &model);
+            model = optim.step(LEARNING_RATE, model, grads);
+            (model, optim)
+        }
+
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let model = seeded_training_model::<B>(&device, 0x5EED);
+        let optim = AdamConfig::new().init();
+        let (model, optim) = one_step(model, optim, &device);
+
+        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+        let model_bytes = Recorder::<AB>::record(&recorder, model.clone().into_record(), ())
+            .expect("training model must record");
+        let optimizer_bytes = Recorder::<AB>::record(&recorder, optim.to_record(), ())
+            .expect("Adam state must record");
+
+        let model_record = Recorder::<AB>::load(&recorder, model_bytes, &device)
+            .expect("training model must load");
+        let restored_model = seeded_training_model::<B>(&device, 0x5EED).load_record(model_record);
+        let optimizer_record = Recorder::<AB>::load(&recorder, optimizer_bytes, &device)
+            .expect("Adam state must load");
+        let restored_optim = AdamConfig::new().init().load_record(optimizer_record);
+
+        let (continued_model, _) = one_step(model, optim, &device);
+        let (restored_model, _) = one_step(restored_model, restored_optim, &device);
+        let continued = continued_model
+            .valid()
+            .to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM)
+            .unwrap();
+        let restored = restored_model
+            .valid()
+            .to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM)
+            .unwrap();
+        assert_eq!(
+            continued
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            restored
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<_>>(),
+            "model + Adam records must produce the same next optimizer step"
+        );
+    }
+
+    #[test]
+    fn malformed_learner_records_are_refused_without_escaping_a_panic() {
+        let saved = SavedLearnerWorkerState {
+            training_model_record: vec![0xFF, 0x00, 0xAA],
+            optimizer_record: vec![0x13, 0x37],
+            partial_batch: Vec::new(),
+        };
+        assert!(validate_saved_learner_worker(&saved, 7).is_err());
+    }
+
+    #[test]
+    fn learner_checkpoint_pauses_with_its_partial_batch_and_resumes() {
+        let running = Arc::new(AtomicBool::new(true));
+        let (trans_tx, trans_rx) =
+            crossbeam_channel::bounded::<Transition>(TRANSITION_QUEUE_CAPACITY);
+        let trans_rx_observer = trans_rx.clone();
+        let (model_tx, _model_rx) =
+            crossbeam_channel::bounded::<ModelUpdate>(MODEL_UPDATE_QUEUE_CAPACITY);
+        let (_old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(1);
+        let (checkpoint_tx, checkpoint_rx) =
+            crossbeam_channel::bounded::<LearnerCheckpointRequest>(1);
+        let running_worker = Arc::clone(&running);
+        let worker = thread::spawn(move || {
+            run_training_loop::<B>(
+                running_worker,
+                trans_rx,
+                model_tx,
+                old_model_rx,
+                ModelUpdateDiagnostics::default(),
+                burn_ndarray::NdArrayDevice::Cpu,
+                0xC0FFEE,
+                None,
+                checkpoint_rx,
+                ModelUpdate::NdArray,
+            );
+        });
+
+        let transition = Transition {
+            state: [0.1; STATE_DIM],
+            action: [0.2; ACTION_DIM],
+            reward: 0.3,
+            next_state: [0.4; STATE_DIM],
+        };
+        trans_tx.send(transition).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !trans_rx_observer.is_empty() && std::time::Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(
+            trans_rx_observer.is_empty(),
+            "learner did not consume the transition"
+        );
+
+        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+        let (resume_tx, resume_rx) = crossbeam_channel::bounded(1);
+        checkpoint_tx
+            .send(LearnerCheckpointRequest {
+                reply: reply_tx,
+                resume: resume_rx,
+            })
+            .unwrap();
+        let saved = reply_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("learner checkpoint reply")
+            .expect("learner checkpoint record");
+        assert_eq!(saved.partial_batch, vec![transition]);
+        validate_saved_learner_worker(&saved, 0xC0FFEE).expect("checkpoint records validate");
+
+        resume_tx.send(()).unwrap();
+        running.store(false, Ordering::SeqCst);
+        worker.join().expect("learner exits after resume");
+    }
+
+    #[test]
+    fn model_update_diagnostics_resume_monotonically() {
+        let diagnostics = ModelUpdateDiagnostics::from_snapshot(ModelUpdateSnapshot {
+            published: 4,
+            backpressured: 3,
+            disconnected: 2,
+        });
+        diagnostics.record(ModelUpdateDelivery::Published);
+        diagnostics.record(ModelUpdateDelivery::Backpressured);
+        diagnostics.record(ModelUpdateDelivery::Disconnected);
+        assert_eq!(
+            diagnostics.snapshot(),
+            ModelUpdateSnapshot {
+                published: 5,
+                backpressured: 4,
+                disconnected: 3,
+            }
+        );
     }
 
     #[test]
