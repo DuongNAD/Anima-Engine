@@ -47,6 +47,7 @@
 //! oldest sample, counting each overwrite. There is no channel, so there is nothing to grow
 //! unboundedly and no thread to join.
 
+use crate::core::build_identity::BUILD_ID;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -1119,7 +1120,7 @@ impl SharedTickCapture {
         let phases = summarise(&samples, config.groups);
         CaptureExport {
             schema_version: CAPTURE_SCHEMA_VERSION,
-            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            engine_version: BUILD_ID.to_owned(),
             profile: if cfg!(debug_assertions) {
                 "debug".to_string()
             } else {
@@ -1879,6 +1880,18 @@ mod tests {
         assert!(debris.is_empty(), "temp files left behind: {debris:?}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn capture_export_stamps_the_exact_build_identity() {
+        let export = SharedTickCapture::new().export();
+
+        assert_eq!(export.engine_version, env!("ANIMA_BUILD_ID"));
+        assert_ne!(
+            export.engine_version,
+            env!("CARGO_PKG_VERSION"),
+            "captures from different source revisions must not claim the same producer"
+        );
     }
 
     #[test]

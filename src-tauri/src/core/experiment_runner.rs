@@ -19,6 +19,7 @@
 //!   carries N, per-observable CI and failures, but there is deliberately **no control–treatment
 //!   effect-size API** in this slice, which AE-S14 also requires.
 
+pub use crate::core::build_identity::build_id;
 use crate::core::causal::CausalLedger;
 use crate::core::exotic_energy::{ExoticEnergyBudget, ExoticIntervention};
 use crate::core::experiment::{
@@ -34,15 +35,6 @@ use serde::{Deserialize, Serialize};
 /// The model-version string embedded in every run's provenance. Bump when the reference model's
 /// dynamics change in a way that would alter checksums.
 pub const MODEL_VERSION: &str = "reference-evolution-world/1";
-
-/// A stable build identifier for provenance.
-///
-/// The build script combines the human-readable crate version with either a release/CI override or
-/// the source revision and a fingerprint of every Rust implementation input. The source hash keeps
-/// local and source-archive builds distinct even when Git metadata is unavailable.
-pub fn build_id() -> String {
-    env!("ANIMA_BUILD_ID").to_string()
-}
 
 fn run_identity_base(
     experiment_id: &str,
