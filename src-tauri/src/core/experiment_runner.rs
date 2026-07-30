@@ -323,6 +323,18 @@ fn bounded_panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     bounded
 }
 
+fn duplicate_observable_name(observables: &[(String, f64)]) -> Option<&str> {
+    observables
+        .iter()
+        .enumerate()
+        .find_map(|(index, (name, _))| {
+            observables[..index]
+                .iter()
+                .any(|(seen, _)| seen == name)
+                .then_some(name.as_str())
+        })
+}
+
 fn drive<M: ExperimentModel>(
     model: &mut M,
     rng: &mut StdRng,
@@ -340,7 +352,10 @@ fn drive<M: ExperimentModel>(
             model.step(clock, &active, ledger, rng);
             let observables = model.observables();
             if let Some((name, _)) = observables.iter().find(|(_, value)| !value.is_finite()) {
-                return Some(name.clone());
+                return Some(format!("observable '{name}' became non-finite"));
+            }
+            if let Some(name) = duplicate_observable_name(&observables) {
+                return Some(format!("observable '{name}' was emitted more than once"));
             }
             if sample_period != 0 && tick.is_multiple_of(sample_period) {
                 series.push(StateSample { tick, observables });
@@ -348,12 +363,12 @@ fn drive<M: ExperimentModel>(
             None
         }));
         match tick_result {
-            Ok(Some(name)) => {
+            Ok(Some(reason)) => {
                 return (
                     series,
                     Some(DriveFailure {
                         tick,
-                        reason: format!("observable '{name}' became non-finite"),
+                        reason,
                         model_usable: true,
                     }),
                 );
@@ -2057,6 +2072,67 @@ mod tests {
         assert_eq!(metrics[0].mean, 2.0);
         assert_eq!(metrics[1].n, 1);
         assert_eq!(metrics[2].n, 1);
+    }
+
+    struct DuplicateObservableModel;
+
+    impl ExperimentModel for DuplicateObservableModel {
+        type Snapshot = ();
+
+        fn model_version() -> &'static str {
+            "test-duplicate-observable/1"
+        }
+
+        fn from_manifest(
+            _laws: &WorldLawSet,
+            _initial: &InitialConditionSet,
+            _forcings: &[ExoticIntervention],
+            _seed: u64,
+            _grid: (usize, usize),
+            _run_ticks: u64,
+        ) -> Result<Self, ExperimentError> {
+            Ok(Self)
+        }
+
+        fn snapshot(&self) -> Self::Snapshot {}
+
+        fn from_snapshot(_snapshot: &Self::Snapshot) -> Result<Self, ExperimentError> {
+            Ok(Self)
+        }
+
+        fn step(
+            &mut self,
+            _clock: &SimClock,
+            _active: &[&InterventionCommand],
+            _ledger: &mut CausalLedger,
+            _rng: &mut StdRng,
+        ) {
+        }
+
+        fn checksum(&self) -> u32 {
+            1
+        }
+
+        fn observables(&self) -> Vec<(String, f64)> {
+            vec![("ambiguous".into(), 1.0), ("ambiguous".into(), 2.0)]
+        }
+    }
+
+    #[test]
+    fn a_duplicate_observable_name_fails_the_run_instead_of_choosing_one_value() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = baseline_manifest(vec![10]);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+
+        let result =
+            run_manifest_seed::<DuplicateObservableModel>(&manifest, &registry, 10, None, None);
+
+        assert!(matches!(
+            result.status,
+            RunStatus::Failed { tick: 1, ref reason, .. }
+                if reason.contains("observable 'ambiguous' was emitted more than once")
+        ));
     }
 
     #[test]
