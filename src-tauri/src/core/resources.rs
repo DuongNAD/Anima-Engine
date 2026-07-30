@@ -5,12 +5,224 @@ use crate::evolution::genotype::MorphologyGenotype;
 use crate::evolution::meta_ai::EnvironmentalEvent;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 #[derive(Resource, Default)]
 pub struct ActiveRaycasts {
     pub raycasts: Vec<RaycastTelemetry>,
+}
+
+/// First scientific counter that reached its terminal value during a tick.
+///
+/// Tick systems share this through `Res`, not `ResMut`: reporting is internally synchronized and
+/// therefore does not add false Bevy conflicts between systems that can otherwise run in parallel.
+/// The first reason wins so a burst of agents reaching the same limit produces one stable diagnosis.
+#[derive(Resource, Default)]
+pub struct ScientificCounterFault {
+    reported: AtomicBool,
+    first: Mutex<Option<&'static str>>,
+}
+
+impl ScientificCounterFault {
+    pub fn report(&self, counter: &'static str) {
+        if self.reported.load(Ordering::Acquire) {
+            return;
+        }
+        let mut first = self
+            .first
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if first.is_none() {
+            *first = Some(counter);
+            self.reported.store(true, Ordering::Release);
+        }
+    }
+
+    pub fn take(&self) -> Option<&'static str> {
+        if !self.reported.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut first = self
+            .first
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        let reason = first.take();
+        self.reported.store(false, Ordering::Release);
+        reason
+    }
+}
+
+pub fn checked_scientific_increment_u32(
+    current: u32,
+    counter: &'static str,
+    fault: Option<&ScientificCounterFault>,
+) -> Option<u32> {
+    let next = current.checked_add(1);
+    if next.is_none() || next == Some(u32::MAX) {
+        if let Some(fault) = fault {
+            fault.report(counter);
+        }
+    }
+    next
+}
+
+pub fn checked_scientific_increment_u64(
+    current: u64,
+    counter: &'static str,
+    fault: Option<&ScientificCounterFault>,
+) -> Option<u64> {
+    let next = current.checked_add(1);
+    if next.is_none() || next == Some(u64::MAX) {
+        if let Some(fault) = fault {
+            fault.report(counter);
+        }
+    }
+    next
+}
+
+#[cfg(test)]
+mod scientific_counter_fault_tests {
+    use super::*;
+
+    fn active_homeostasis() -> crate::ai::hrrl::HomeostaticState {
+        crate::ai::hrrl::HomeostaticState {
+            energy: 100.0,
+            energy_target: 100.0,
+            hydration: 100.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+        }
+    }
+
+    #[test]
+    fn checked_counters_report_the_terminal_value_without_wrapping() {
+        let fault = ScientificCounterFault::default();
+
+        assert_eq!(
+            checked_scientific_increment_u32(u32::MAX - 1, "agent survival counter", Some(&fault),),
+            Some(u32::MAX)
+        );
+        assert_eq!(fault.take(), Some("agent survival counter"));
+
+        assert_eq!(
+            checked_scientific_increment_u32(u32::MAX, "agent survival counter", Some(&fault),),
+            None
+        );
+        assert_eq!(fault.take(), Some("agent survival counter"));
+
+        assert_eq!(
+            checked_scientific_increment_u64(u64::MAX - 1, "simulation tick counter", Some(&fault),),
+            Some(u64::MAX)
+        );
+        assert_eq!(fault.take(), Some("simulation tick counter"));
+    }
+
+    #[test]
+    fn ordinary_advances_are_silent_and_the_first_fault_wins() {
+        let fault = ScientificCounterFault::default();
+
+        assert_eq!(
+            checked_scientific_increment_u32(40, "ordinary", Some(&fault)),
+            Some(41)
+        );
+        assert_eq!(fault.take(), None);
+
+        assert_eq!(
+            checked_scientific_increment_u32(u32::MAX, "first", Some(&fault)),
+            None
+        );
+        assert_eq!(
+            checked_scientific_increment_u64(u64::MAX, "second", Some(&fault)),
+            None
+        );
+        assert_eq!(fault.take(), Some("first"));
+        assert_eq!(fault.take(), None);
+    }
+
+    #[test]
+    fn agent_systems_publish_terminal_survival_and_feature_counters() {
+        let mut world = World::new();
+        world.insert_resource(crate::ai::cpg::TimeStep(0.1));
+        world.insert_resource(ScientificCounterFault::default());
+        let agent = world
+            .spawn((
+                crate::core::components::Position(glam::Vec3::ZERO),
+                crate::core::agent_systems::AgentEvaluation {
+                    start_position: glam::Vec3::ZERO,
+                    total_distance: 0.0,
+                    total_energy_expended: 0.0,
+                    survival_ticks: u32::MAX - 1,
+                    last_position: glam::Vec3::ZERO,
+                },
+                active_homeostasis(),
+                crate::core::components::FeatureTracker {
+                    tick_count: u32::MAX - 1,
+                    ..Default::default()
+                },
+            ))
+            .id();
+
+        let mut schedule = bevy_ecs::schedule::Schedule::default();
+        schedule.add_systems((
+            crate::core::agent_systems::update_agent_evaluation_system,
+            crate::core::world_systems::metabolic_decay_system,
+        ));
+        schedule.run(&mut world);
+
+        assert_eq!(
+            world
+                .get::<crate::core::agent_systems::AgentEvaluation>(agent)
+                .expect("evaluation")
+                .survival_ticks,
+            u32::MAX
+        );
+        assert_eq!(
+            world
+                .get::<crate::core::components::FeatureTracker>(agent)
+                .expect("feature tracker")
+                .tick_count,
+            u32::MAX
+        );
+        let counter = world
+            .resource::<ScientificCounterFault>()
+            .take()
+            .expect("a terminal counter must stop the driver");
+        assert!(
+            matches!(counter, "agent survival counter" | "agent feature counter"),
+            "{counter}"
+        );
+    }
+
+    #[test]
+    fn epoch_system_reports_the_last_representable_epoch() {
+        let mut world = World::new();
+        world.insert_resource(EpochManager {
+            ticks_per_epoch: 1,
+            current_epoch_ticks: 0,
+            current_epoch: u32::MAX - 1,
+        });
+        let (statistics_tx, _statistics_rx) = crossbeam_channel::bounded(1);
+        world.insert_resource(EvolutionSender(statistics_tx));
+        world.insert_resource(MapBounds::default());
+        world.insert_resource(crate::ai::cpg::TimeStep(0.1));
+        world.insert_resource(SimRng::from_seed(7));
+        world.insert_resource(ScientificCounterFault::default());
+
+        let mut schedule = bevy_ecs::schedule::Schedule::default();
+        schedule.add_systems(crate::core::agent_systems::check_epoch_completion_system);
+        schedule.run(&mut world);
+
+        let epoch = world.resource::<EpochManager>();
+        assert_eq!(epoch.current_epoch, u32::MAX);
+        assert_eq!(epoch.current_epoch_ticks, 0);
+        assert_eq!(
+            world.resource::<ScientificCounterFault>().take(),
+            Some("epoch counter")
+        );
+    }
 }
 
 #[derive(Resource, Default)]

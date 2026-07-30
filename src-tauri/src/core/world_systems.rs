@@ -95,6 +95,7 @@ pub fn metabolic_decay_system(
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     brain_policy: Option<Res<crate::core::resources::BrainPolicy>>,
+    counter_fault: Option<Res<ScientificCounterFault>>,
 ) {
     let brain_cost_per_1k = brain_policy
         .map(|p| p.brain_metabolic_cost)
@@ -166,7 +167,13 @@ pub fn metabolic_decay_system(
             let speed = velocity.map(|v| v.0.length()).unwrap_or(0.0);
             tracker.cumulative_energy_decay += decay;
             tracker.cumulative_distance += speed * dt;
-            tracker.tick_count += 1;
+            if let Some(next_tick) = checked_scientific_increment_u32(
+                tracker.tick_count,
+                "agent feature counter",
+                counter_fault.as_deref(),
+            ) {
+                tracker.tick_count = next_tick;
+            }
         }
     }
 
