@@ -156,12 +156,20 @@ fn checkpointable_substream_resumes_at_its_exact_position() {
 #[test]
 fn exact_evolution_worker_checkpoint_takes_precedence_over_legacy_reconstruction() {
     let mut state = empty_saved_state_for_tests();
+    state.chronicle_history.push(ChronicleEvent {
+        id: "legacy-stable-event".into(),
+        event_type: "Abundance".into(),
+        timestamp: 0,
+        title: "Stable Climate".into(),
+        description: String::new(),
+        parameter_delta: Default::default(),
+    });
     let rng = derived_sim_rng(9_001, sim_stream::EVOLUTION);
     state.evolution_worker = Some(SavedEvolutionWorkerState {
         rng_seed: rng.seed(),
         rng_pos: 42,
         node_id_counter: 77,
-        meta_ai_epoch: 9,
+        meta_ai_epoch: 1,
         meta_ai_history: vec![anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::Stable],
         chronicle_ids_issued: 12,
         offspring_ids_issued: 34,
@@ -178,6 +186,63 @@ fn exact_evolution_worker_checkpoint_takes_precedence_over_legacy_reconstruction
     assert_eq!(resumed.chronicle_ids_issued, 12);
     assert_eq!(resumed.offspring_ids_issued, 34);
     assert_eq!(resumed.archive.expect("full archive").grid_resolution, 0.25);
+}
+
+#[test]
+fn exact_evolution_checkpoint_rejects_an_epoch_cursor_ahead_of_its_history() {
+    let mut state = empty_saved_state_for_tests();
+    let rng = derived_sim_rng(9_001, sim_stream::EVOLUTION);
+    state.evolution_worker = Some(SavedEvolutionWorkerState {
+        rng_seed: rng.seed(),
+        rng_pos: 42,
+        node_id_counter: 3,
+        meta_ai_epoch: 2,
+        meta_ai_history: vec![anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::Stable],
+        chronicle_ids_issued: 0,
+        offspring_ids_issued: 0,
+        archive: SavedMapElitesArchive {
+            grid_resolution: 0.25,
+            elites: Vec::new(),
+        },
+    });
+
+    let error = evolution_worker_resume_state(Some(&state), 9_001)
+        .expect_err("an exact checkpoint may not skip an unrecorded Meta-AI epoch");
+    assert!(
+        error.contains("epoch") && error.contains("history"),
+        "{error}"
+    );
+}
+
+#[test]
+fn exact_evolution_checkpoint_rejects_history_that_contradicts_the_chronicle() {
+    let mut state = empty_saved_state_for_tests();
+    state.chronicle_history.push(ChronicleEvent {
+        id: "legacy-event".into(),
+        event_type: "Drought".into(),
+        timestamp: 0,
+        title: "Resource Drought".into(),
+        description: String::new(),
+        parameter_delta: Default::default(),
+    });
+    let rng = derived_sim_rng(9_001, sim_stream::EVOLUTION);
+    state.evolution_worker = Some(SavedEvolutionWorkerState {
+        rng_seed: rng.seed(),
+        rng_pos: 42,
+        node_id_counter: 3,
+        meta_ai_epoch: 1,
+        meta_ai_history: vec![anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::Stable],
+        chronicle_ids_issued: 0,
+        offspring_ids_issued: 0,
+        archive: SavedMapElitesArchive {
+            grid_resolution: 0.25,
+            elites: Vec::new(),
+        },
+    });
+
+    let error = evolution_worker_resume_state(Some(&state), 9_001)
+        .expect_err("hidden worker history may not contradict the public Chronicle");
+    assert!(error.contains("Chronicle"), "{error}");
 }
 
 #[test]
@@ -499,6 +564,37 @@ fn evolution_worker_resume_state_recovers_counters_and_history() {
             anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::ResourceDrought,
             anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::GlacialPeriod,
         ]
+    );
+}
+
+#[test]
+fn legacy_resume_counts_only_chronicle_events_that_belong_to_meta_ai_history() {
+    let mut state = empty_saved_state_for_tests();
+    state.chronicle_history = vec![
+        ChronicleEvent {
+            id: "operator-note".into(),
+            event_type: "OperatorNote".into(),
+            timestamp: 0,
+            title: "Calibration complete".into(),
+            description: String::new(),
+            parameter_delta: Default::default(),
+        },
+        ChronicleEvent {
+            id: "legacy-drought".into(),
+            event_type: "Drought".into(),
+            timestamp: 1,
+            title: "Resource Drought".into(),
+            description: String::new(),
+            parameter_delta: Default::default(),
+        },
+    ];
+
+    let resume = evolution_worker_resume_state(Some(&state), 0x2a)
+        .expect("an unrelated Chronicle entry must not corrupt legacy Meta-AI recovery");
+    assert_eq!(resume.meta_ai_epoch, 1);
+    assert_eq!(
+        resume.meta_ai_history,
+        vec![anima_engine_lib::evolution::meta_ai::EnvironmentalEvent::ResourceDrought]
     );
 }
 
