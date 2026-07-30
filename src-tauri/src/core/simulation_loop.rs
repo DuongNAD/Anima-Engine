@@ -1747,12 +1747,13 @@ impl SimulationEngine {
 
                 // One resource lookup and one uncontended mutex read decide whether this tick is
                 // measured at all; everything below is skipped when it is not.
-                let capturing = world
+                let capture_started = world
                     .get_resource_mut::<crate::core::tick_capture::TickCaptureSink>()
-                    .map(|mut sink| sink.begin_tick())
-                    .unwrap_or(false);
-
-                let schedule_started = Instant::now();
+                    .and_then(|mut sink| sink.begin_tick());
+                let (capturing, schedule_started) = match capture_started {
+                    Some(origin) => (true, origin),
+                    None => (false, Instant::now()),
+                };
                 schedule.run(&mut world);
                 let schedule_ns = elapsed_ns(schedule_started);
                 tick_count = next_tick_count;

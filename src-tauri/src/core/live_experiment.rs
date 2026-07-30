@@ -965,11 +965,13 @@ impl LiveExperimentAdapter {
         use crate::core::tick_capture::TickCaptureSink;
         let tick = self.clock.tick;
         let world = self.world.get_mut();
-        let capturing = world
+        let capture_started = world
             .get_resource_mut::<TickCaptureSink>()
-            .map(|mut sink| sink.begin_tick())
-            .unwrap_or(false);
-        let started = std::time::Instant::now();
+            .and_then(|mut sink| sink.begin_tick());
+        let (capturing, started) = match capture_started {
+            Some(origin) => (true, origin),
+            None => (false, std::time::Instant::now()),
+        };
         self.schedule.run(world);
         let schedule_ns = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
         if capturing {
