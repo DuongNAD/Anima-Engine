@@ -1,6 +1,6 @@
 use anima_engine_lib::core::engine::ChronicleEvent;
 use anima_engine_lib::evolution::meta_ai::{
-    EnvironmentalEvent, GeminiWebSessionClient, MetaAiClient,
+    EnvironmentalEvent, GeminiWebSessionClient, MetaAiClient, MAX_META_AI_RESPONSE_BYTES,
 };
 use std::io::{Read, Write};
 use std::sync::{Arc, RwLock};
@@ -116,6 +116,18 @@ fn successful_query_returns_the_remote_response() {
             .expect("valid endpoint response"),
         "TemperatureSpike"
     );
+    server.join().expect("test server exits");
+}
+
+#[test]
+fn oversized_remote_response_is_rejected_before_it_can_drive_the_simulation() {
+    let oversized = "x".repeat(MAX_META_AI_RESPONSE_BYTES + 1);
+    let (client, server) = client_responding_with(&oversized);
+
+    let error = client
+        .query("real request")
+        .expect_err("one event token never needs an unbounded response body");
+    assert!(error.contains("too large"), "unexpected error: {error}");
     server.join().expect("test server exits");
 }
 

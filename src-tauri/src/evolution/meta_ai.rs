@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 use std::time::Duration;
+
+/// Maximum decoded HTTP body accepted from an external Meta-AI service.
+///
+/// A valid response contains one short event token; 64 KiB leaves ample room for provider metadata
+/// while bounding both declared bodies and streams whose size is unknown in advance.
+pub const MAX_META_AI_RESPONSE_BYTES: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EnvironmentalEvent {
@@ -37,6 +44,41 @@ fn parse_environmental_event(response: &str) -> Option<EnvironmentalEvent> {
     } else {
         None
     }
+}
+
+fn read_meta_ai_json_from_reader<R: Read>(
+    reader: R,
+    declared_size: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    if declared_size.is_some_and(|size| size > MAX_META_AI_RESPONSE_BYTES as u64) {
+        return Err(format!(
+            "Meta-AI response is too large (limit {MAX_META_AI_RESPONSE_BYTES} bytes)"
+        ));
+    }
+
+    let requested = declared_size.unwrap_or(0) as usize;
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(requested).map_err(|error| {
+        format!("cannot allocate {requested} bytes for Meta-AI response: {error}")
+    })?;
+    reader
+        .take(MAX_META_AI_RESPONSE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read Meta-AI response: {error}"))?;
+    if bytes.len() > MAX_META_AI_RESPONSE_BYTES {
+        return Err(format!(
+            "Meta-AI response is too large (limit {MAX_META_AI_RESPONSE_BYTES} bytes)"
+        ));
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|error| format!("failed to parse Meta-AI response JSON: {error}"))
+}
+
+fn read_meta_ai_json(response: ureq::Response) -> Result<serde_json::Value, String> {
+    let declared_size = response
+        .header("Content-Length")
+        .and_then(|value| value.parse::<u64>().ok());
+    read_meta_ai_json_from_reader(response.into_reader(), declared_size)
 }
 
 pub trait MetaAiClient: Send + Sync {
@@ -125,7 +167,7 @@ impl MetaAiClient for GeminiMetaAiClient {
 
         match response {
             Ok(res) => {
-                if let Ok(json) = res.into_json::<serde_json::Value>() {
+                if let Ok(json) = read_meta_ai_json(res) {
                     if let Some(text) =
                         json["candidates"][0]["content"]["parts"][0]["text"].as_str()
                     {
@@ -177,14 +219,11 @@ impl GeminiWebSessionClient {
 
         match response {
             Ok(res) => {
-                if let Ok(json) = res.into_json::<serde_json::Value>() {
-                    if let Some(text) = json["response"].as_str() {
-                        Ok(text.to_string())
-                    } else {
-                        Err("Invalid response format".to_string())
-                    }
+                let json = read_meta_ai_json(res)?;
+                if let Some(text) = json["response"].as_str() {
+                    Ok(text.to_string())
                 } else {
-                    Err("Failed to parse response JSON".to_string())
+                    Err("Invalid response format".to_string())
                 }
             }
             Err(error) => Err(format!("Gemini WebSession request failed: {error}")),
@@ -270,6 +309,15 @@ mod tests {
             None
         );
         assert_eq!(parse_environmental_event("unknown"), None);
+    }
+
+    #[test]
+    fn response_reader_caps_streams_without_a_declared_length() {
+        let body = vec![b'x'; MAX_META_AI_RESPONSE_BYTES + 1];
+        let error = read_meta_ai_json_from_reader(std::io::Cursor::new(body), None)
+            .expect_err("an undeclared stream is still bounded");
+
+        assert!(error.contains("too large"), "unexpected error: {error}");
     }
 
     #[test]
