@@ -33,6 +33,7 @@
 //! requirement names. Older files are rejected with a message naming the version, rather than being
 //! coerced into a shape they were never written in.
 
+use crate::core::build_identity::BUILD_ID;
 use crate::core::simulation_state::SavedSimulationState;
 use crate::core::world_artifact::fnv1a_32;
 use serde::{Deserialize, Serialize};
@@ -97,7 +98,7 @@ fn exceeds_numeric_safety_envelope(value: glam::Vec3) -> bool {
 /// a save file.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BuildProvenance {
-    /// Crate version of the engine that wrote this.
+    /// Exact build identity of the engine that wrote this.
     pub engine_version: String,
     /// Target triple it was built for. Float behaviour is not identical across all targets, so a
     /// checksum mismatch between two machines is worth being able to attribute.
@@ -116,7 +117,7 @@ impl BuildProvenance {
     /// Provenance of the running binary.
     pub fn current() -> Self {
         Self {
-            engine_version: env!("CARGO_PKG_VERSION").to_string(),
+            engine_version: BUILD_ID.to_owned(),
             target: std::env::consts::ARCH.to_string() + "-" + std::env::consts::OS,
             profile: if cfg!(debug_assertions) {
                 "debug".to_string()
@@ -1010,6 +1011,18 @@ mod tests {
         envelope
             .verify()
             .expect("a freshly sealed envelope verifies");
+    }
+
+    #[test]
+    fn snapshot_provenance_stamps_the_exact_build_identity() {
+        let provenance = BuildProvenance::current();
+
+        assert_eq!(provenance.engine_version, env!("ANIMA_BUILD_ID"));
+        assert_ne!(
+            provenance.engine_version,
+            env!("CARGO_PKG_VERSION"),
+            "snapshots from different source revisions must not claim the same producer"
+        );
     }
 
     #[test]
