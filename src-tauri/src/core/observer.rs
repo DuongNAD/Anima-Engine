@@ -201,11 +201,15 @@ impl ObserverTrace {
     /// apart are two things a human did, not one.
     pub fn record_action(&mut self, record: ObserverActionRecord) -> bool {
         if self.actions.len() == self.actions.capacity() {
-            self.dropped_actions += 1;
+            self.record_dropped_actions(1);
             return false;
         }
         self.actions.push(record);
         true
+    }
+
+    fn record_dropped_actions(&mut self, count: u64) {
+        self.dropped_actions = self.dropped_actions.saturating_add(count);
     }
 
     pub fn actions(&self) -> &[ObserverActionRecord] {
@@ -426,26 +430,53 @@ pub struct ObserverActionRecord {
 /// constraint that made [`SharedLodFocus`](crate::core::simulation_lod::SharedLodFocus) a handle. A
 /// command pushes here; [`drain_observer_actions_system`] moves them into the
 /// [`ObserverTrace`] once per tick.
-#[derive(Resource, Clone, Default)]
-pub struct SharedObserverActions(pub Arc<Mutex<Vec<ObserverActionRecord>>>);
+const DEFAULT_OBSERVER_ACTION_INGRESS_CAPACITY: usize = 64;
+
+struct ObserverActionQueue {
+    records: Vec<ObserverActionRecord>,
+    limit: usize,
+    dropped: u64,
+}
+
+#[derive(Resource, Clone)]
+pub struct SharedObserverActions(Arc<Mutex<ObserverActionQueue>>);
+
+impl Default for SharedObserverActions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl SharedObserverActions {
     pub fn new() -> Self {
-        // Room for a burst of UI activity between two ticks without the command thread reallocating.
-        Self(Arc::new(Mutex::new(Vec::with_capacity(64))))
+        Self::with_capacity(DEFAULT_OBSERVER_ACTION_INGRESS_CAPACITY)
+    }
+
+    fn with_capacity(capacity: usize) -> Self {
+        Self(Arc::new(Mutex::new(ObserverActionQueue {
+            records: Vec::with_capacity(capacity),
+            limit: capacity,
+            dropped: 0,
+        })))
     }
 
     /// Called from a Tauri command. Never blocks the world: a poisoned lock drops the record rather
     /// than propagating a panic into the IPC layer, and says so.
     pub fn push(&self, action: ObserverAction) {
         match self.0.lock() {
-            Ok(mut queue) => queue.push(ObserverActionRecord {
-                // The tick is stamped by the drain, which is the only place that knows it. Zero here
-                // means "not yet stamped" and is never observed outside this queue.
-                tick: 0,
-                action,
-                cause_id: CAUSE_OBSERVER,
-            }),
+            Ok(mut queue) => {
+                if queue.records.len() >= queue.limit {
+                    queue.dropped = queue.dropped.saturating_add(1);
+                    return;
+                }
+                queue.records.push(ObserverActionRecord {
+                    // The tick is stamped by the drain, which is the only place that knows it. Zero
+                    // here means "not yet stamped" and is never observed outside this queue.
+                    tick: 0,
+                    action,
+                    cause_id: CAUSE_OBSERVER,
+                });
+            }
             Err(_) => eprintln!(
                 "observer action '{}' was not recorded: the action queue's lock is poisoned",
                 action.command_name()
@@ -549,9 +580,16 @@ impl ObserverSeam {
     pub fn trigger_migration(&self, target_port: u16) -> Result<(), String> {
         self.actions
             .push(ObserverAction::MigrationTriggered { target_port });
-        self.migration_trigger
-            .send(target_port)
-            .map_err(|e| e.to_string())
+        match self.migration_trigger.try_send(target_port) {
+            Ok(()) => Ok(()),
+            Err(crossbeam_channel::TrySendError::Full(_)) => Err(
+                "manual migration request queue is full; retry after the simulation drains it"
+                    .to_owned(),
+            ),
+            Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                Err("manual migration request queue is disconnected".to_owned())
+            }
+        }
     }
 
     /// Repartition the world under a running population.
@@ -598,7 +636,9 @@ pub fn drain_observer_actions_system(
     let Ok(mut queue) = queued.0.lock() else {
         return;
     };
-    for mut record in queue.drain(..) {
+    let dropped = std::mem::take(&mut queue.dropped);
+    trace.record_dropped_actions(dropped);
+    for mut record in queue.records.drain(..) {
         record.tick = *tick;
         trace.record_action(record);
     }
@@ -628,6 +668,72 @@ pub fn record_observer_trace_system(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observer_action_ingress_is_bounded_and_reports_provenance_gaps() {
+        let queue = SharedObserverActions::with_capacity(2);
+        queue.push(ObserverAction::EvolutionToggled { running: true });
+        queue.push(ObserverAction::EvolutionToggled { running: false });
+        queue.push(ObserverAction::MigrationTriggered { target_port: 7001 });
+
+        let mut world = bevy_ecs::world::World::new();
+        world.insert_resource(queue);
+        world.insert_resource(ObserverTrace::with_capacity(8));
+        let mut schedule = bevy_ecs::schedule::Schedule::default();
+        schedule.add_systems(drain_observer_actions_system);
+        schedule.run(&mut world);
+
+        let trace = world.resource::<ObserverTrace>();
+        assert_eq!(trace.actions().len(), 2);
+        assert_eq!(
+            trace.dropped_actions(),
+            1,
+            "a bounded ingress queue must declare every provenance record it could not retain"
+        );
+    }
+
+    #[test]
+    fn a_full_migration_queue_refuses_immediately_and_keeps_the_action_record() {
+        let actions = SharedObserverActions::with_capacity(8);
+        let (migration_tx, migration_rx) = crossbeam_channel::bounded(1);
+        let seam = ObserverSeam::new(
+            actions.clone(),
+            Arc::new(Mutex::new(crate::commands::EvolutionSettings {
+                mutation_rate: 0.15,
+                selection_bias: 1.5,
+                grid_resolution: 50,
+            })),
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            Arc::new(std::sync::RwLock::new(
+                crate::core::components::ShardingConfig::default(),
+            )),
+            migration_tx,
+        );
+        seam.trigger_migration(7001).expect("first queue slot");
+
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let attempt = std::thread::spawn(move || {
+            let _ = result_tx.send(seam.trigger_migration(7002));
+        });
+        let result = match result_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+            Ok(result) => result,
+            Err(error) => {
+                drop(migration_rx);
+                attempt.join().expect("blocked trigger thread");
+                panic!("a full control-plane queue blocked the caller: {error}");
+            }
+        };
+        attempt.join().expect("trigger thread");
+
+        let error = result.expect_err("a full migration queue must apply backpressure");
+        assert!(error.contains("full"), "{error}");
+        assert_eq!(migration_rx.len(), 1);
+        assert_eq!(
+            actions.0.lock().expect("action queue").records.len(),
+            2,
+            "the failed request is still part of observer provenance"
+        );
+    }
 
     #[test]
     fn the_default_is_absent() {

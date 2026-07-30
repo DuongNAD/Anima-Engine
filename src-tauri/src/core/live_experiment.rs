@@ -1505,7 +1505,7 @@ fn install_runtime_resources(
     // agents a seeded experiment retains. The bounded production channel lives in SimulationEngine.
     let (outbound_tx, outbound_rx) =
         crossbeam_channel::unbounded::<crate::core::components::OutboundMigration>();
-    let (migration_tx, migration_rx) = crossbeam_channel::unbounded::<u16>();
+    let (migration_tx, migration_rx) = crate::core::resources::manual_migration_channel();
     world.insert_resource(crate::core::ecs::InboundMigrationReceiver(inbound_rx));
     world.insert_resource(crate::core::ecs::OutboundMigrationSender(outbound_tx));
     world.insert_resource(crate::core::ecs::ShardingResource(std::sync::Arc::new(

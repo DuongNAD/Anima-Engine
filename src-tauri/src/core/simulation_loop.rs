@@ -288,7 +288,7 @@ impl SimulationEngine {
         ));
         let sharding_config = Arc::new(RwLock::new(crate::core::ecs::ShardingConfig::default()));
         let (manual_migration_trigger, manual_migration_receiver) =
-            crossbeam_channel::unbounded::<u16>();
+            crate::core::resources::manual_migration_channel();
         let (save_request_tx, save_request_rx) = save_request_channel();
         let pending_load_state = Arc::new(Mutex::new(None));
 
@@ -340,8 +340,6 @@ impl SimulationEngine {
         evolution_running: Arc<std::sync::atomic::AtomicBool>,
         map_elites_grid: Arc<std::sync::Mutex<crate::commands::MapElitesGridState>>,
     ) {
-        while self.manual_migration_receiver.try_recv().is_ok() {}
-
         if self
             .running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -349,6 +347,7 @@ impl SimulationEngine {
         {
             return;
         }
+        while self.manual_migration_receiver.try_recv().is_ok() {}
         reject_stale_save_requests(&self.save_request_rx);
         self.migration_handoff_diagnostics.reset();
 
@@ -2448,6 +2447,52 @@ mod mean_tick_time_tests {
 
         assert!(error.contains("already pending"), "{error}");
         assert_eq!(requests_rx.len(), 1);
+    }
+
+    #[test]
+    fn engine_uses_the_bounded_manual_migration_channel() {
+        let engine = SimulationEngine::new();
+        for port in 0..crate::core::resources::MANUAL_MIGRATION_QUEUE_CAPACITY {
+            engine
+                .manual_migration_trigger
+                .try_send(port as u16)
+                .expect("declared manual migration slot");
+        }
+        assert!(matches!(
+            engine.manual_migration_trigger.try_send(65_000),
+            Err(crossbeam_channel::TrySendError::Full(65_000))
+        ));
+    }
+
+    #[test]
+    fn duplicate_start_does_not_consume_the_running_control_plane() {
+        let engine = SimulationEngine::new();
+        engine.running.store(true, Ordering::SeqCst);
+        engine
+            .manual_migration_trigger
+            .try_send(7001)
+            .expect("queue one request for the active run");
+
+        engine.start::<tauri::test::MockRuntime>(
+            None,
+            Arc::new(std::sync::Mutex::new(crate::commands::EvolutionSettings {
+                mutation_rate: 0.15,
+                selection_bias: 1.5,
+                grid_resolution: 50,
+            })),
+            Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            Arc::new(std::sync::Mutex::new(crate::commands::MapElitesGridState {
+                grid: std::collections::HashMap::new(),
+                grid_resolution: 50,
+            })),
+        );
+
+        assert_eq!(
+            engine.manual_migration_receiver.try_recv(),
+            Ok(7001),
+            "a rejected duplicate start must not drain requests from the active run"
+        );
+        engine.running.store(false, Ordering::SeqCst);
     }
 
     #[test]
