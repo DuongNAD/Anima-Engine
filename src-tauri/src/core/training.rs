@@ -429,6 +429,12 @@ fn run_training_loop<B>(
 
         match trans_rx.recv_timeout(Duration::from_millis(10)) {
             Ok(transition) => {
+                // The simulation producer validates too, but checkpoint restore and tests can feed
+                // this channel directly. One NaN in a batch would make the loss, Adam state and
+                // every subsequently published shared policy non-finite.
+                if !transition.is_finite() {
+                    continue;
+                }
                 batch.push(transition);
                 if batch.len() >= BATCH_SIZE {
                     let mut states_vec = Vec::with_capacity(BATCH_SIZE * STATE_DIM);
@@ -695,6 +701,72 @@ mod tests {
             .expect("learner checkpoint record");
         assert_eq!(saved.partial_batch, vec![transition]);
         validate_saved_learner_worker(&saved, 0xC0FFEE).expect("checkpoint records validate");
+
+        resume_tx.send(()).unwrap();
+        running.store(false, Ordering::SeqCst);
+        worker.join().expect("learner exits after resume");
+    }
+
+    #[test]
+    fn learner_discards_a_non_finite_transition_before_its_partial_batch() {
+        let running = Arc::new(AtomicBool::new(true));
+        let (trans_tx, trans_rx) =
+            crossbeam_channel::bounded::<Transition>(TRANSITION_QUEUE_CAPACITY);
+        let trans_rx_observer = trans_rx.clone();
+        let (model_tx, _model_rx) =
+            crossbeam_channel::bounded::<ModelUpdate>(MODEL_UPDATE_QUEUE_CAPACITY);
+        let (_old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(1);
+        let (checkpoint_tx, checkpoint_rx) =
+            crossbeam_channel::bounded::<LearnerCheckpointRequest>(1);
+        let running_worker = Arc::clone(&running);
+        let worker = thread::spawn(move || {
+            run_training_loop::<B>(
+                running_worker,
+                trans_rx,
+                model_tx,
+                old_model_rx,
+                ModelUpdateDiagnostics::default(),
+                burn_ndarray::NdArrayDevice::Cpu,
+                0xC0FFEE,
+                None,
+                checkpoint_rx,
+                ModelUpdate::NdArray,
+            );
+        });
+
+        trans_tx
+            .send(Transition {
+                state: [0.1; STATE_DIM],
+                action: [0.2; ACTION_DIM],
+                reward: f32::NAN,
+                next_state: [0.4; STATE_DIM],
+            })
+            .unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !trans_rx_observer.is_empty() && std::time::Instant::now() < deadline {
+            thread::yield_now();
+        }
+        assert!(
+            trans_rx_observer.is_empty(),
+            "learner did not consume the invalid transition"
+        );
+
+        let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
+        let (resume_tx, resume_rx) = crossbeam_channel::bounded(1);
+        checkpoint_tx
+            .send(LearnerCheckpointRequest {
+                reply: reply_tx,
+                resume: resume_rx,
+            })
+            .unwrap();
+        let saved = reply_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("learner checkpoint reply")
+            .expect("learner checkpoint record");
+        assert!(
+            saved.partial_batch.is_empty(),
+            "invalid transitions must be discarded before they can poison a gradient batch"
+        );
 
         resume_tx.send(()).unwrap();
         running.store(false, Ordering::SeqCst);

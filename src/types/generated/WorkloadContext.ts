@@ -39,6 +39,11 @@ agent_count_max: number | null,
  */
 learning_transitions_queued_total: number | null, 
 /**
+ * Transitions rejected because any state, action or reward value was non-finite, cumulative
+ * since run start. A non-zero value makes data quarantine visible in the experiment artifact.
+ */
+learning_transitions_invalid_rejections_total: number | null,
+/**
  * Transitions rejected because the bounded learner queue was full, cumulative since run start.
  */
 learning_transitions_full_rejections_total: number | null, 

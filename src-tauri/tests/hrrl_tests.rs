@@ -225,6 +225,102 @@ fn test_transition_collection_and_sending() {
 }
 
 #[test]
+fn non_finite_runtime_state_never_enters_or_contaminates_the_learning_queue() {
+    let mut world = World::new();
+    let (tx, rx) = bounded::<Transition>(10);
+    world.insert_resource(TransitionSender(tx));
+    world.insert_resource(LearningQueueDiagnostics::default());
+    let agent = world
+        .spawn((
+            Agent,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            HomeostaticState {
+                energy: f32::NAN,
+                energy_target: 100.0,
+                hydration: 90.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 1.0,
+            },
+            LastTransitionState {
+                state: [0.1; 15],
+                action: [0.2; 4],
+                has_last: true,
+            },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(hrrl_learning_system);
+    schedule.run(&mut world);
+
+    assert!(
+        rx.try_recv().is_err(),
+        "a single corrupt agent must not send a NaN transition to the shared learner"
+    );
+    let homeo = world.get::<HomeostaticState>(agent).unwrap();
+    assert_eq!(
+        homeo.previous_deviation, 1.0,
+        "the last finite deviation must not be overwritten by NaN"
+    );
+    let last = world.get::<LastTransitionState>(agent).unwrap();
+    assert!(
+        last.state.iter().all(|value| value.is_finite()),
+        "the reusable transition state must retain its last finite observation"
+    );
+    assert!(
+        !last.has_last,
+        "the invalid transition must be cleared so it is not retried every tick"
+    );
+    assert_eq!(
+        world
+            .resource::<LearningQueueDiagnostics>()
+            .snapshot()
+            .invalid_rejections,
+        1,
+        "discarded training data must remain visible in scientific telemetry"
+    );
+}
+
+#[test]
+fn non_finite_runtime_state_cannot_replace_the_last_finite_observation_without_a_learner() {
+    let mut world = World::new();
+    let agent = world
+        .spawn((
+            Agent,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            HomeostaticState {
+                energy: 90.0,
+                energy_target: 100.0,
+                hydration: f32::INFINITY,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 2.0,
+            },
+            LastTransitionState {
+                state: [0.3; 15],
+                action: [0.4; 4],
+                has_last: true,
+            },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(hrrl_learning_system);
+    schedule.run(&mut world);
+
+    let homeo = world.get::<HomeostaticState>(agent).unwrap();
+    assert_eq!(homeo.previous_deviation, 2.0);
+    let last = world.get::<LastTransitionState>(agent).unwrap();
+    assert_eq!(last.state, [0.3; 15]);
+    assert!(!last.has_last);
+}
+
+#[test]
 fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
     let mut world = World::new();
     let (tx, rx) = bounded::<Transition>(1);
@@ -268,6 +364,7 @@ fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
     );
     let snapshot = world.resource::<LearningQueueDiagnostics>().snapshot();
     assert_eq!(snapshot.queued, 0);
+    assert_eq!(snapshot.invalid_rejections, 0);
     assert_eq!(snapshot.full_rejections, 1);
     assert_eq!(snapshot.disconnected_rejections, 0);
     assert_eq!(snapshot.backpressure_skipped, 0);
@@ -276,6 +373,7 @@ fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
     schedule.run(&mut world);
     let snapshot = world.resource::<LearningQueueDiagnostics>().snapshot();
     assert_eq!(snapshot.queued, 0);
+    assert_eq!(snapshot.invalid_rejections, 0);
     assert_eq!(snapshot.full_rejections, 1);
     assert_eq!(snapshot.disconnected_rejections, 1);
     assert_eq!(snapshot.backpressure_skipped, 0);

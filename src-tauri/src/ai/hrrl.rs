@@ -59,6 +59,8 @@ pub struct TransitionSender(pub crossbeam_channel::Sender<Transition>);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearningQueueSnapshot {
     pub queued: u64,
+    #[serde(default)]
+    pub invalid_rejections: u64,
     pub full_rejections: u64,
     pub disconnected_rejections: u64,
     pub backpressure_skipped: u64,
@@ -67,6 +69,7 @@ pub struct LearningQueueSnapshot {
 #[derive(Default)]
 struct LearningQueueCounters {
     queued: AtomicU64,
+    invalid_rejections: AtomicU64,
     full_rejections: AtomicU64,
     disconnected_rejections: AtomicU64,
     backpressure_skipped: AtomicU64,
@@ -84,6 +87,7 @@ impl LearningQueueDiagnostics {
     pub fn from_snapshot(snapshot: LearningQueueSnapshot) -> Self {
         Self(Arc::new(LearningQueueCounters {
             queued: AtomicU64::new(snapshot.queued),
+            invalid_rejections: AtomicU64::new(snapshot.invalid_rejections),
             full_rejections: AtomicU64::new(snapshot.full_rejections),
             disconnected_rejections: AtomicU64::new(snapshot.disconnected_rejections),
             backpressure_skipped: AtomicU64::new(snapshot.backpressure_skipped),
@@ -98,6 +102,10 @@ impl LearningQueueDiagnostics {
 
     pub fn record_queued(&self) {
         Self::increment(&self.0.queued);
+    }
+
+    pub fn record_invalid_rejection(&self) {
+        Self::increment(&self.0.invalid_rejections);
     }
 
     pub fn record_full_rejection(&self) {
@@ -120,6 +128,7 @@ impl LearningQueueDiagnostics {
     pub fn snapshot(&self) -> LearningQueueSnapshot {
         LearningQueueSnapshot {
             queued: self.0.queued.load(Ordering::Relaxed),
+            invalid_rejections: self.0.invalid_rejections.load(Ordering::Relaxed),
             full_rejections: self.0.full_rejections.load(Ordering::Relaxed),
             disconnected_rejections: self.0.disconnected_rejections.load(Ordering::Relaxed),
             backpressure_skipped: self.0.backpressure_skipped.load(Ordering::Relaxed),
@@ -128,6 +137,7 @@ impl LearningQueueDiagnostics {
 
     pub fn reset(&self) {
         self.0.queued.store(0, Ordering::Relaxed);
+        self.0.invalid_rejections.store(0, Ordering::Relaxed);
         self.0.full_rejections.store(0, Ordering::Relaxed);
         self.0.disconnected_rejections.store(0, Ordering::Relaxed);
         self.0.backpressure_skipped.store(0, Ordering::Relaxed);
@@ -142,11 +152,13 @@ mod tests {
     fn learning_queue_diagnostics_resume_monotonically() {
         let diagnostics = LearningQueueDiagnostics::from_snapshot(LearningQueueSnapshot {
             queued: 5,
+            invalid_rejections: 1,
             full_rejections: 4,
             disconnected_rejections: 3,
             backpressure_skipped: 2,
         });
         diagnostics.record_queued();
+        diagnostics.record_invalid_rejection();
         diagnostics.record_full_rejection();
         diagnostics.record_disconnected_rejection();
         diagnostics.record_backpressure_skipped(2);
@@ -154,10 +166,26 @@ mod tests {
             diagnostics.snapshot(),
             LearningQueueSnapshot {
                 queued: 6,
+                invalid_rejections: 2,
                 full_rejections: 5,
                 disconnected_rejections: 4,
                 backpressure_skipped: 4,
             }
         );
+    }
+
+    #[test]
+    fn an_older_learning_queue_snapshot_defaults_invalid_rejections_to_zero() {
+        let snapshot: LearningQueueSnapshot = serde_json::from_str(
+            r#"{
+                "queued": 5,
+                "full_rejections": 4,
+                "disconnected_rejections": 3,
+                "backpressure_skipped": 2
+            }"#,
+        )
+        .expect("pre-counter snapshots remain readable");
+
+        assert_eq!(snapshot.invalid_rejections, 0);
     }
 }
