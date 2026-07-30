@@ -180,16 +180,7 @@ impl GeminiWebSessionClient {
                     Err("Failed to parse response JSON".to_string())
                 }
             }
-            Err(_) => {
-                let lower_prompt = prompt.to_lowercase();
-                if lower_prompt.contains("drought") {
-                    Ok("ResourceDrought".to_string())
-                } else if lower_prompt.contains("temperature") {
-                    Ok("TemperatureSpike".to_string())
-                } else {
-                    Ok("Stable".to_string())
-                }
-            }
+            Err(error) => Err(format!("Gemini WebSession request failed: {error}")),
         }
     }
 
