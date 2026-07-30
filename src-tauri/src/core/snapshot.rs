@@ -1204,6 +1204,19 @@ mod tests {
             "snapshot-agent"
         );
 
+        let mut out_of_range = state.clone();
+        out_of_range
+            .shared_learning
+            .as_mut()
+            .unwrap()
+            .pending_inference[0]
+            .responses[0]
+            .actions[0] = 1.01;
+        assert!(matches!(
+            SnapshotEnvelope::seal(out_of_range),
+            Err(SnapshotError::InvalidState(_))
+        ));
+
         state.shared_learning.as_mut().unwrap().pending_inference[0].responses[0].request_id = 41;
         assert!(matches!(
             SnapshotEnvelope::seal(state),

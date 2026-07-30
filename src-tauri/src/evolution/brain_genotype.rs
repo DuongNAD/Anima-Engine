@@ -180,6 +180,15 @@ pub enum BrainGenotypeError {
     NonFiniteWeight {
         index: usize,
     },
+    /// A corrupt observation must be rejected before matrix products can spread it through a brain.
+    NonFiniteInput {
+        index: usize,
+    },
+    /// Finite inputs and weights can still overflow in a pathological network.
+    NonFiniteActivation {
+        layer: &'static str,
+        index: usize,
+    },
     UnsupportedVersion(u16),
 }
 
@@ -192,6 +201,12 @@ impl std::fmt::Display for BrainGenotypeError {
             }
             Self::NonFiniteWeight { index } => {
                 write!(f, "brain weight {index} is NaN or infinite")
+            }
+            Self::NonFiniteInput { index } => {
+                write!(f, "brain input {index} is NaN or infinite")
+            }
+            Self::NonFiniteActivation { layer, index } => {
+                write!(f, "brain {layer} activation {index} is NaN or infinite")
             }
             Self::UnsupportedVersion(v) => write!(
                 f,
@@ -338,6 +353,9 @@ impl BrainGenotype {
                 found: inputs.len() + scratch.len() + actions.len(),
             });
         }
+        if let Some(index) = inputs.iter().position(|input| !input.is_finite()) {
+            return Err(BrainGenotypeError::NonFiniteInput { index });
+        }
 
         let w = &self.weights;
         let (h1, h2) = scratch.split_at_mut(h);
@@ -352,6 +370,12 @@ impl BrainGenotype {
                 acc += w[t1w + n * i + k] * x;
             }
             *out = acc.max(0.0); // relu
+            if !out.is_finite() {
+                return Err(BrainGenotypeError::NonFiniteActivation {
+                    layer: "trunk1",
+                    index: n,
+                });
+            }
         }
 
         let (t2w, _) = self.arch.trunk2_w();
@@ -362,6 +386,12 @@ impl BrainGenotype {
                 acc += w[t2w + n * h + k] * x;
             }
             *out = acc.max(0.0); // relu
+            if !out.is_finite() {
+                return Err(BrainGenotypeError::NonFiniteActivation {
+                    layer: "trunk2",
+                    index: n,
+                });
+            }
         }
 
         let (aw, _) = self.arch.actor_w();
@@ -372,6 +402,12 @@ impl BrainGenotype {
                 acc += w[aw + n * h + k] * x;
             }
             *out = 1.0 / (1.0 + (-acc).exp()); // sigmoid
+            if !out.is_finite() {
+                return Err(BrainGenotypeError::NonFiniteActivation {
+                    layer: "actor",
+                    index: n,
+                });
+            }
         }
 
         let (cw, _) = self.arch.critic_w();
@@ -379,6 +415,12 @@ impl BrainGenotype {
         let mut value = w[cb];
         for (k, x) in h2.iter().enumerate() {
             value += w[cw + k] * x;
+        }
+        if !value.is_finite() {
+            return Err(BrainGenotypeError::NonFiniteActivation {
+                layer: "critic",
+                index: 0,
+            });
         }
         Ok(value)
     }
