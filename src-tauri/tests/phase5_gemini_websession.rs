@@ -5,6 +5,49 @@ use anima_engine_lib::evolution::meta_ai::{
 use std::io::{Read, Write};
 use std::sync::{Arc, RwLock};
 
+fn client_responding_with(response: &str) -> (GeminiWebSessionClient, std::thread::JoinHandle<()>) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test endpoint");
+    let address = listener.local_addr().expect("test endpoint address");
+    let body = serde_json::json!({ "response": response }).to_string();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("one request");
+        let mut request = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        loop {
+            let read = stream.read(&mut chunk).expect("read request");
+            assert_ne!(read, 0, "client closed before sending its complete request");
+            request.extend_from_slice(&chunk[..read]);
+            let Some(header_end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
+                continue;
+            };
+            let headers = std::str::from_utf8(&request[..header_end]).expect("HTTP headers");
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    line.to_ascii_lowercase()
+                        .strip_prefix("content-length:")
+                        .and_then(|value| value.trim().parse::<usize>().ok())
+                })
+                .unwrap_or(0);
+            if request.len() >= header_end + 4 + content_length {
+                break;
+            }
+        }
+        write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
+             Connection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .expect("write response");
+    });
+    let client = GeminiWebSessionClient {
+        session_token: "test-session".into(),
+        endpoint: format!("http://{address}/v1/query"),
+    };
+    (client, server)
+}
+
 #[test]
 fn transport_failure_is_reported_instead_of_inferred_from_prompt_keywords() {
     let client = GeminiWebSessionClient {
@@ -65,51 +108,25 @@ fn test_gemini_websession_client_configuration_and_logging() {
 
 #[test]
 fn successful_query_returns_the_remote_response() {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind test endpoint");
-    let address = listener.local_addr().expect("test endpoint address");
-    let server = std::thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("one request");
-        let mut request = Vec::new();
-        let mut chunk = [0_u8; 1024];
-        loop {
-            let read = stream.read(&mut chunk).expect("read request");
-            assert_ne!(read, 0, "client closed before sending its complete request");
-            request.extend_from_slice(&chunk[..read]);
-            let Some(header_end) = request.windows(4).position(|w| w == b"\r\n\r\n") else {
-                continue;
-            };
-            let headers = std::str::from_utf8(&request[..header_end]).expect("HTTP headers");
-            let content_length = headers
-                .lines()
-                .find_map(|line| {
-                    line.to_ascii_lowercase()
-                        .strip_prefix("content-length:")
-                        .and_then(|value| value.trim().parse::<usize>().ok())
-                })
-                .unwrap_or(0);
-            if request.len() >= header_end + 4 + content_length {
-                break;
-            }
-        }
-        let body = r#"{"response":"TemperatureSpike"}"#;
-        write!(
-            stream,
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\
-             Connection: close\r\n\r\n{body}",
-            body.len()
-        )
-        .expect("write response");
-    });
-    let client = GeminiWebSessionClient {
-        session_token: "test-session".into(),
-        endpoint: format!("http://{address}/v1/query"),
-    };
+    let (client, server) = client_responding_with("TemperatureSpike");
 
     assert_eq!(
         client
             .query("real request")
             .expect("valid endpoint response"),
         "TemperatureSpike"
+    );
+    server.join().expect("test server exits");
+}
+
+#[test]
+fn ambiguous_remote_choice_uses_the_deterministic_fallback() {
+    let (client, server) = client_responding_with("ResourceDrought or Stable");
+
+    assert_eq!(
+        client.generate_event(2, &[]),
+        EnvironmentalEvent::TemperatureSpike,
+        "an ambiguous answer must not inject the first event it mentions"
     );
     server.join().expect("test server exits");
 }

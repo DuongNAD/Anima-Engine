@@ -22,6 +22,23 @@ impl std::fmt::Display for EnvironmentalEvent {
     }
 }
 
+fn parse_environmental_event(response: &str) -> Option<EnvironmentalEvent> {
+    let choice = response.trim();
+    if choice.eq_ignore_ascii_case("Stable") {
+        Some(EnvironmentalEvent::Stable)
+    } else if choice.eq_ignore_ascii_case("ResourceDrought") {
+        Some(EnvironmentalEvent::ResourceDrought)
+    } else if choice.eq_ignore_ascii_case("TemperatureSpike") {
+        Some(EnvironmentalEvent::TemperatureSpike)
+    } else if choice.eq_ignore_ascii_case("GlacialPeriod") {
+        Some(EnvironmentalEvent::GlacialPeriod)
+    } else if choice.eq_ignore_ascii_case("ToxicDeluge") {
+        Some(EnvironmentalEvent::ToxicDeluge)
+    } else {
+        None
+    }
+}
+
 pub trait MetaAiClient: Send + Sync {
     fn generate_event(&self, epoch: u32, history: &[EnvironmentalEvent]) -> EnvironmentalEvent;
 }
@@ -112,18 +129,8 @@ impl MetaAiClient for GeminiMetaAiClient {
                     if let Some(text) =
                         json["candidates"][0]["content"]["parts"][0]["text"].as_str()
                     {
-                        let cleaned = text.trim().to_lowercase();
-                        if cleaned.contains("drought") || cleaned.contains("resource") {
-                            EnvironmentalEvent::ResourceDrought
-                        } else if cleaned.contains("spike") || cleaned.contains("temperature") {
-                            EnvironmentalEvent::TemperatureSpike
-                        } else if cleaned.contains("glacial") || cleaned.contains("period") {
-                            EnvironmentalEvent::GlacialPeriod
-                        } else if cleaned.contains("toxic") || cleaned.contains("deluge") {
-                            EnvironmentalEvent::ToxicDeluge
-                        } else {
-                            EnvironmentalEvent::Stable
-                        }
+                        parse_environmental_event(text)
+                            .unwrap_or_else(|| MockMetaAiClient.generate_event(epoch, history))
                     } else {
                         MockMetaAiClient.generate_event(epoch, history)
                     }
@@ -232,22 +239,8 @@ impl MetaAiClient for GeminiWebSessionClient {
         );
 
         match self.query(&prompt) {
-            Ok(text) => {
-                let cleaned = text.trim().to_lowercase();
-                if cleaned.contains("drought") || cleaned.contains("resource") {
-                    EnvironmentalEvent::ResourceDrought
-                } else if cleaned.contains("spike") || cleaned.contains("temperature") {
-                    EnvironmentalEvent::TemperatureSpike
-                } else if cleaned.contains("glacial") || cleaned.contains("period") {
-                    EnvironmentalEvent::GlacialPeriod
-                } else if cleaned.contains("toxic") || cleaned.contains("deluge") {
-                    EnvironmentalEvent::ToxicDeluge
-                } else if cleaned.contains("stable") {
-                    EnvironmentalEvent::Stable
-                } else {
-                    MockMetaAiClient.generate_event(epoch, history)
-                }
-            }
+            Ok(text) => parse_environmental_event(&text)
+                .unwrap_or_else(|| MockMetaAiClient.generate_event(epoch, history)),
             Err(_) => MockMetaAiClient.generate_event(epoch, history),
         }
     }
@@ -256,6 +249,28 @@ impl MetaAiClient for GeminiWebSessionClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn model_choice_parser_accepts_only_a_single_declared_event() {
+        for (response, expected) in [
+            ("Stable", EnvironmentalEvent::Stable),
+            ("ResourceDrought", EnvironmentalEvent::ResourceDrought),
+            (
+                "  temperaturespike\r\n",
+                EnvironmentalEvent::TemperatureSpike,
+            ),
+            ("GlacialPeriod", EnvironmentalEvent::GlacialPeriod),
+            ("ToxicDeluge", EnvironmentalEvent::ToxicDeluge),
+        ] {
+            assert_eq!(parse_environmental_event(response), Some(expected));
+        }
+        assert_eq!(parse_environmental_event("ResourceDrought or Stable"), None);
+        assert_eq!(
+            parse_environmental_event("I recommend ResourceDrought."),
+            None
+        );
+        assert_eq!(parse_environmental_event("unknown"), None);
+    }
 
     #[test]
     fn an_expired_request_deadline_falls_back_before_http() {
