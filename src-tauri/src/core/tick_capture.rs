@@ -1191,16 +1191,23 @@ impl TickCaptureSink {
         &self.shared
     }
 
-    /// Open a tick. Returns whether the checkpoints should measure it.
-    pub fn begin_tick(&mut self) -> bool {
+    /// Open a tick and return the clock origin used by every checkpoint.
+    ///
+    /// The caller must use this same `Instant` for the enclosing schedule bracket. Two separately
+    /// sampled origins can straddle an OS preemption, making the last checkpoint appear later than
+    /// the schedule that contains it and causing a valid sample to be rejected as out of order.
+    pub fn begin_tick(&mut self) -> Option<Instant> {
         self.measuring = self.shared.is_active();
         self.checkpoint_ns = [0; 3];
         self.agent_count = 0;
         self.workload = WorkloadContext::default();
         if self.measuring {
-            self.tick_start = Instant::now();
+            let origin = Instant::now();
+            self.tick_start = origin;
+            Some(origin)
+        } else {
+            None
         }
-        self.measuring
     }
 
     /// Whether this tick is being measured.
@@ -1879,13 +1886,13 @@ mod tests {
         let shared = SharedTickCapture::new();
         let mut sink = TickCaptureSink::new(shared.clone());
         // Nothing started: the whole tick is skipped.
-        assert!(!sink.begin_tick());
+        assert!(sink.begin_tick().is_none());
         sink.stamp(0);
         assert!(!sink.commit(1, 100, 10));
         assert_eq!(shared.sample_count(), 0);
 
         shared.start(ok_config()).expect("valid config");
-        assert!(sink.begin_tick());
+        assert!(sink.begin_tick().is_some());
         sink.stamp(0);
         sink.stamp(1);
         sink.stamp(2);
@@ -1926,6 +1933,24 @@ mod tests {
         // Committing twice cannot produce a second sample from one tick.
         assert!(!sink.commit(1, 10_000_000, 1_000));
         assert_eq!(shared.sample_count(), 1);
+    }
+
+    #[test]
+    fn the_sink_and_schedule_share_the_exact_same_clock_origin() {
+        let shared = SharedTickCapture::new();
+        shared.start(ok_config()).expect("valid config");
+        let mut sink = TickCaptureSink::new(shared.clone());
+
+        let schedule_started = sink.begin_tick().expect("capture is active");
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        sink.stamp(0);
+        sink.stamp(1);
+        sink.stamp(2);
+        let schedule_ns = schedule_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+
+        assert!(sink.commit(1, schedule_ns, 0));
+        assert_eq!(shared.sample_count(), 1);
+        assert_eq!(shared.accounting().dropped_out_of_order, 0);
     }
 }
 
