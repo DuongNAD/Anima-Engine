@@ -901,6 +901,7 @@ impl LiveExperimentAdapter {
         world.insert_resource(state);
         world.insert_resource(LiveForcings::default());
         world.insert_resource(LiveInterventions::with_capacity(16));
+        world.insert_resource(crate::core::resources::ScientificCounterFault::default());
 
         // Deterministic by construction, not by environment: an experiment whose trajectory
         // depends on a shell variable is not the experiment the manifest describes.
@@ -979,6 +980,15 @@ impl LiveExperimentAdapter {
                 // `executor` plus the run's own provenance say why.
                 sink.commit(tick, schedule_ns, 0);
             }
+        }
+        if let Some(counter) = world
+            .resource::<crate::core::resources::ScientificCounterFault>()
+            .take()
+        {
+            panic!(
+                "live experiment stopped after the final exact tick because the {counter} \
+                 reached its terminal value"
+            );
         }
     }
 

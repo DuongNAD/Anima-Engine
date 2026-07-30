@@ -1292,6 +1292,7 @@ impl SimulationEngine {
                         current_epoch: 0,
                     });
             world.insert_resource(loaded_epoch);
+            world.insert_resource(ScientificCounterFault::default());
             world.insert_resource(EvolutionQueue::default());
 
             world.insert_resource(crate::core::ecs::InboundMigrationReceiver(inbound_rx));
@@ -1693,6 +1694,22 @@ impl SimulationEngine {
             };
 
             while running_clone.load(Ordering::SeqCst) {
+                let next_tick_count = {
+                    let fault = world.get_resource::<ScientificCounterFault>();
+                    checked_scientific_increment_u64(tick_count, "simulation tick counter", fault)
+                };
+                let Some(next_tick_count) = next_tick_count else {
+                    let counter = world
+                        .resource::<ScientificCounterFault>()
+                        .take()
+                        .unwrap_or("simulation tick counter");
+                    eprintln!(
+                        "ERROR: simulation stopped because the {counter} cannot advance without \
+                         overflow"
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    break;
+                };
                 let start_time = Instant::now();
 
                 // One resource lookup and one uncontended mutex read decide whether this tick is
@@ -1705,7 +1722,8 @@ impl SimulationEngine {
                 let schedule_started = Instant::now();
                 schedule.run(&mut world);
                 let schedule_ns = elapsed_ns(schedule_started);
-                tick_count += 1;
+                tick_count = next_tick_count;
+                let counter_fault = world.resource::<ScientificCounterFault>().take();
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
                     // A checkpoint cuts all three asynchronous scientific workers at their next
@@ -2205,6 +2223,15 @@ impl SimulationEngine {
                     } else {
                         0.0
                     };
+                }
+
+                if let Some(counter) = counter_fault {
+                    eprintln!(
+                        "ERROR: simulation stopped after the final exact tick because the \
+                         {counter} reached its terminal value"
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    break;
                 }
 
                 if elapsed < target_frame_duration {

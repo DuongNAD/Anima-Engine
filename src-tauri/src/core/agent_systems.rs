@@ -5,8 +5,9 @@ use crate::core::ecs::Velocity;
 use crate::core::ecs::{
     AgentClass, AgentEpochStats, CognitiveState, EpochManager, EvolutionQueue, EvolutionReceiver,
     EvolutionSender, FeatureTracker, Food, InertiaComponent, ParentAgent, Position, Predator, Prey,
-    Rotation, Segment, SegmentJointForce,
+    Rotation, ScientificCounterFault, Segment, SegmentJointForce,
 };
+use crate::core::resources::checked_scientific_increment_u32;
 use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
 use bevy_ecs::prelude::*;
 use std::sync::Arc;
@@ -257,6 +258,7 @@ pub fn update_agent_evaluation_system(
         Option<&SegmentJointForce>,
     )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    counter_fault: Option<Res<ScientificCounterFault>>,
 ) {
     let dt = time_step.0;
     let k_base = 0.1;
@@ -268,7 +270,14 @@ pub fn update_agent_evaluation_system(
         if homeo.energy <= 0.0 || homeo.hydration <= 0.0 {
             continue;
         }
-        eval.survival_ticks += 1;
+        let Some(next_survival_tick) = checked_scientific_increment_u32(
+            eval.survival_ticks,
+            "agent survival counter",
+            counter_fault.as_deref(),
+        ) else {
+            continue;
+        };
+        eval.survival_ticks = next_survival_tick;
         let dist = pos.0.distance(eval.last_position);
         eval.total_distance += dist;
         eval.last_position = pos.0;
@@ -305,11 +314,24 @@ pub fn check_epoch_completion_system(
     bounds: Res<crate::core::ecs::MapBounds>,
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut sim_rng: ResMut<crate::core::resources::SimRng>,
+    counter_fault: Option<Res<ScientificCounterFault>>,
 ) {
-    epoch_manager.current_epoch_ticks += 1;
-    if epoch_manager.current_epoch_ticks >= epoch_manager.ticks_per_epoch {
+    let Some(next_epoch_tick) = epoch_manager.current_epoch_ticks.checked_add(1) else {
+        if let Some(fault) = counter_fault.as_deref() {
+            fault.report("epoch tick counter");
+        }
+        return;
+    };
+    if next_epoch_tick >= epoch_manager.ticks_per_epoch {
+        let Some(next_epoch) = checked_scientific_increment_u32(
+            epoch_manager.current_epoch,
+            "epoch counter",
+            counter_fault.as_deref(),
+        ) else {
+            return;
+        };
         epoch_manager.current_epoch_ticks = 0;
-        epoch_manager.current_epoch += 1;
+        epoch_manager.current_epoch = next_epoch;
 
         let dt = time_step.0;
         let mut stats_batch = Vec::new();
@@ -350,6 +372,8 @@ pub fn check_epoch_completion_system(
         }
 
         let _ = evolution_sender.0.send(stats_batch);
+    } else {
+        epoch_manager.current_epoch_ticks = next_epoch_tick;
     }
 }
 
