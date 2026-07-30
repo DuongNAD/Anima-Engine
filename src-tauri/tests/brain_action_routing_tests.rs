@@ -10,9 +10,10 @@
 //! already pinned by the EB-S02 parity gate.
 
 use anima_engine_lib::ai::cpg::{CpgOscillator, TimeStep};
+use anima_engine_lib::ai::model::{run_inference_batch, BrainModel, InferenceScratch};
 use anima_engine_lib::core::agent_systems::{
-    action_resolution_system, sensory_system, AgentInferenceResponse, InferenceChannels,
-    InferenceRequestBatch, InferenceResponseBatch, ACTION_SLOTS,
+    action_resolution_system, sensory_system, AgentInferenceRequest, AgentInferenceResponse,
+    InferenceChannels, InferenceRequestBatch, InferenceResponseBatch, ACTION_SLOTS,
 };
 use anima_engine_lib::core::components::{ActionGates, AgentBrain};
 use anima_engine_lib::core::ecs::{
@@ -103,6 +104,58 @@ fn spawn_agent(world: &mut World, brain: Option<AgentBrain>) -> Entity {
 fn evolved_brain(seed: u64) -> AgentBrain {
     let mut rng = StdRng::seed_from_u64(seed);
     AgentBrain::from_genotype(BrainGenotype::random(EVOLVED_ARCH, &mut rng).unwrap())
+}
+
+#[test]
+fn a_wide_shared_model_produces_the_same_rows_batched_or_individually() {
+    let model = BrainModel::new_seeded_cpu(15, 64, ACTION_SLOTS, 20260730);
+    let requests = [
+        AgentInferenceRequest {
+            entity: Entity::from_raw(1),
+            sensory_input: [0.2; 15],
+            request_id: 1,
+            brain: None,
+        },
+        AgentInferenceRequest {
+            entity: Entity::from_raw(2),
+            sensory_input: [0.8; 15],
+            request_id: 2,
+            brain: None,
+        },
+    ];
+
+    let mut batched = Vec::new();
+    run_inference_batch(
+        &model,
+        &requests,
+        &mut batched,
+        &mut InferenceScratch::with_capacity(requests.len()),
+    );
+
+    for (request, batch_response) in requests.iter().zip(&batched) {
+        let mut individual = Vec::new();
+        run_inference_batch(
+            &model,
+            std::slice::from_ref(request),
+            &mut individual,
+            &mut InferenceScratch::with_capacity(1),
+        );
+        let individual = &individual[0];
+
+        for (slot, (&batch_value, &individual_value)) in batch_response
+            .actions
+            .iter()
+            .zip(&individual.actions)
+            .enumerate()
+        {
+            assert!(
+                (batch_value - individual_value).abs() <= 1e-6,
+                "request {} action slot {slot} changed between batch and single inference: \
+                 {batch_value} vs {individual_value}",
+                request.request_id
+            );
+        }
+    }
 }
 
 // --- request side -------------------------------------------------------------------------------
