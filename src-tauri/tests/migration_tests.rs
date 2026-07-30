@@ -511,6 +511,7 @@ async fn test_agent_migration_serialization_and_resilience() {
             state: [1.0; 15],
             action: [2.0; 4],
             has_last: true,
+            pending_state: None,
         }),
         source_port: 0,
         brain: None,

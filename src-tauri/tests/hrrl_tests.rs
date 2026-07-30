@@ -192,6 +192,7 @@ fn test_transition_collection_and_sending() {
                 state: [0.1; 15],
                 action: [0.2; 4],
                 has_last: true,
+                pending_state: None,
             },
         ))
         .id();
@@ -248,6 +249,7 @@ fn non_finite_runtime_state_never_enters_or_contaminates_the_learning_queue() {
                 state: [0.1; 15],
                 action: [0.2; 4],
                 has_last: true,
+                pending_state: None,
             },
         ))
         .id();
@@ -305,6 +307,7 @@ fn non_finite_runtime_state_cannot_replace_the_last_finite_observation_without_a
                 state: [0.3; 15],
                 action: [0.4; 4],
                 has_last: true,
+                pending_state: None,
             },
         ))
         .id();
@@ -350,6 +353,7 @@ fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
             state: [0.1; 15],
             action: [0.2; 4],
             has_last: true,
+            pending_state: None,
         },
     ));
 
@@ -405,6 +409,7 @@ fn available_learning_slots_rotate_fairly_across_agents() {
                 state,
                 action: [0.2; 4],
                 has_last: true,
+                pending_state: None,
             },
         ));
     }

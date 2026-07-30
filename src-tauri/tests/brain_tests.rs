@@ -32,6 +32,7 @@ fn test_brain_inference_system() {
                 state: [0.0; 15],
                 action: [0.0; 4],
                 has_last: false,
+                pending_state: None,
             },
         ))
         .id();
@@ -111,6 +112,7 @@ fn one_agents_action_slice_never_drives_another_agents_extra_segments() {
                     state: [0.0; 15],
                     action: [0.0; 4],
                     has_last: false,
+                    pending_state: None,
                 },
             ))
             .id();

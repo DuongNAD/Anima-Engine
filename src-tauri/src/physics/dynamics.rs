@@ -87,6 +87,7 @@ pub fn integrate_physics_system(
         Option<&ParentAgent>,
         Option<&mut crate::core::ecs::InertiaComponent>,
         Option<&mut crate::core::ecs::CognitiveState>,
+        Option<&mut crate::ai::hrrl::LastTransitionState>,
     )>,
     agent_query: Query<&crate::ai::hrrl::HomeostaticState>,
     prey_query: Query<&Prey>,
@@ -96,8 +97,16 @@ pub fn integrate_physics_system(
     mut child_buf: Local<Vec<(u32, Entity)>>,
 ) {
     let dt = time_step.0;
-    for (entity, mut body, mut pos, mut vel, parent_agent, mut opt_inertia, mut opt_cog) in
-        query.iter_mut()
+    for (
+        entity,
+        mut body,
+        mut pos,
+        mut vel,
+        parent_agent,
+        mut opt_inertia,
+        mut opt_cog,
+        mut opt_last,
+    ) in query.iter_mut()
     {
         if let Some(ref mut inertia) = opt_inertia {
             // Apply forces towards target_velocity if desired
@@ -114,6 +123,12 @@ pub fn integrate_physics_system(
                         **cog_state = crate::core::ecs::CognitiveState::Ready;
                         inertia.ticks_pending = 0;
                         inertia.cpg_parameters = [1.0, 0.0, 1.0, 0.0];
+                        if let Some(ref mut last) = opt_last {
+                            last.pending_state = None;
+                            // The fallback differs from the action recorded in `last`; wait for a
+                            // fresh valid response rather than attributing fallback rewards to it.
+                            last.has_last = false;
+                        }
 
                         // Reset actions to CPG baseline on oscillators
                         crate::core::agent_systems::apply_inertia_to_oscillators(

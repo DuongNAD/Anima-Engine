@@ -67,6 +67,7 @@ fn serialized_agent(brain: Option<AgentBrain>) -> SerializedAgent {
             state: [0.0; 15],
             action: [0.0; 4],
             has_last: false,
+            pending_state: None,
         },
         cognitive_state: Default::default(),
         inertia: Default::default(),
@@ -231,6 +232,50 @@ fn a_save_written_before_brains_existed_still_loads() {
     assert!(
         decoded.brain.is_none(),
         "a missing brain field must default to the legacy shared model"
+    );
+}
+
+#[test]
+fn a_pending_inference_observation_survives_save_and_defaults_empty_for_legacy_json() {
+    let mut payload = serialized_agent(None);
+    payload.last_transition_state.pending_state = Some([0.25; 15]);
+    payload.cognitive_state =
+        anima_engine_lib::core::components::CognitiveState::PendingInference(17);
+
+    let value = serde_json::to_value(&payload).unwrap();
+    let restored: SerializedAgent = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(
+        restored.last_transition_state.pending_state,
+        Some([0.25; 15]),
+        "checkpoint/resume must preserve the request observation until its response resolves"
+    );
+
+    let mut legacy = value;
+    legacy
+        .get_mut("last_transition_state")
+        .and_then(serde_json::Value::as_object_mut)
+        .unwrap()
+        .remove("pending_state");
+    let restored_legacy: SerializedAgent = serde_json::from_value(legacy).unwrap();
+    assert!(
+        restored_legacy
+            .last_transition_state
+            .pending_state
+            .is_none(),
+        "an older save has no attributable pending observation and must decode safely"
+    );
+}
+
+#[test]
+fn a_non_finite_pending_observation_is_refused_before_restore() {
+    let mut payload = serialized_agent(None);
+    let mut pending = [0.25; 15];
+    pending[6] = f32::NAN;
+    payload.last_transition_state.pending_state = Some(pending);
+
+    assert!(
+        payload.validate().is_err(),
+        "a corrupt in-flight observation must not enter later transition math"
     );
 }
 

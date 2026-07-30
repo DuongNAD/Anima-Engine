@@ -607,6 +607,7 @@ pub fn sensory_system(
             Option<&Predator>,
             Option<&crate::ai::pheromone::OlfactorySensors>,
             &mut CognitiveState,
+            Option<&mut crate::ai::hrrl::LastTransitionState>,
             Option<&crate::core::components::AgentBrain>,
         ),
         With<crate::core::ecs::Agent>,
@@ -661,8 +662,17 @@ pub fn sensory_system(
     };
     batch.requests.clear();
 
-    for (entity, agent_pos, rotation, homeo, opt_predator, opt_sensors, mut cog_state, opt_brain) in
-        agent_query.iter_mut()
+    for (
+        entity,
+        agent_pos,
+        rotation,
+        homeo,
+        opt_predator,
+        opt_sensors,
+        mut cog_state,
+        opt_last,
+        opt_brain,
+    ) in agent_query.iter_mut()
     {
         if !matches!(*cog_state, CognitiveState::Ready) {
             continue;
@@ -796,6 +806,9 @@ pub fn sensory_system(
         *ticket_counter += 1;
 
         *cog_state = CognitiveState::PendingInference(ticket_id);
+        if let Some(mut last) = opt_last {
+            last.pending_state = Some(state_arr);
+        }
 
         batch.requests.push(AgentInferenceRequest {
             entity,
@@ -860,7 +873,7 @@ pub fn action_resolution_system(
 ) {
     while let Ok(batch) = channels.res_rx.try_recv() {
         for response in &batch.responses {
-            if let Ok((_entity, mut cog_state, mut inertia, opt_last, opt_gates)) =
+            if let Ok((_entity, mut cog_state, mut inertia, mut opt_last, opt_gates)) =
                 agent_query.get_mut(response.entity)
             {
                 if let CognitiveState::PendingInference(ticket_id) = *cog_state {
@@ -872,6 +885,9 @@ pub fn action_resolution_system(
                         // never mix old gates with new CPG values or install NaN in an oscillator.
                         inertia.ticks_pending = 0;
                         *cog_state = CognitiveState::Ready;
+                        let pending_state = opt_last
+                            .as_deref_mut()
+                            .and_then(|last| last.pending_state.take());
                         if !AgentInferenceResponse::actions_are_valid(&response.actions) {
                             continue;
                         }
@@ -894,8 +910,16 @@ pub fn action_resolution_system(
                         // which only ever knew about the CPG parameters, so it keeps its 4 slots
                         // rather than growing to hold gates no gradient touches.
                         if let Some(mut last) = opt_last {
-                            last.action = cpg;
-                            last.has_last = true;
+                            if let Some(state) = pending_state {
+                                last.state = state;
+                                last.action = cpg;
+                                last.has_last = true;
+                            } else {
+                                // An old/incomplete checkpoint may have the ticket but not the
+                                // observation. Apply the action for continuity, but never invent a
+                                // scientifically invalid transition from unrelated state.
+                                last.has_last = false;
+                            }
                         }
 
                         // Apply InertiaComponent parameters to oscillators

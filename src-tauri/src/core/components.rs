@@ -373,6 +373,9 @@ pub(crate) fn validate_scientific_agent_state(
     if let Some(last) = last_transition_state {
         if last.state.iter().any(|value| !value.is_finite())
             || last.action.iter().any(|value| !value.is_finite())
+            || last
+                .pending_state
+                .is_some_and(|state| state.iter().any(|value| !value.is_finite()))
         {
             return Err(MigrationValidationError::NonFiniteTransition);
         }
