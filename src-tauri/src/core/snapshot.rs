@@ -52,7 +52,8 @@ use std::path::Path;
 /// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
 /// | 5 | Adds the live experiment state: manifest/law/registry fingerprints, the multi-rate clock's tick, and the causal ledger. |
 /// | 6 | Adds the exact evolution-worker RNG, MAP-Elites archive, identity cursors and Meta-AI state. |
-pub const SCHEMA_VERSION: u32 = 6;
+/// | 7 | Adds the shared learner model, Adam state, partial/queued transitions and inference policy. |
+pub const SCHEMA_VERSION: u32 = 7;
 
 /// Oldest **enveloped** schema this build can still read. N−2 per the G1.2 requirement.
 ///
@@ -76,6 +77,7 @@ const MAX_SNAPSHOT_LINEAGE_RECORDS: usize = 2_000_000;
 const MAX_SNAPSHOT_FOOD_CAP: usize = 1_000_000;
 const MAX_SNAPSHOT_MAP_ELITES_CELLS: usize = 1_000_000;
 const MAX_SNAPSHOT_MAP_ELITES_FEATURES: usize = 64;
+const MAX_SNAPSHOT_LEARNER_RECORD_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SNAPSHOT_SCALAR_MAGNITUDE: f32 = 1.0e9;
 // Closed-resource arithmetic can land a few ULPs below zero before the next clamp. Preserve those
 // checkpoints exactly while still rejecting materially impossible negative stores.
@@ -618,6 +620,58 @@ fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
         )
         .map_err(|error| invalid(format!("evolution worker checkpoint: {error}")))?;
     }
+    if let Some(shared) = &state.shared_learning {
+        if shared.learner.training_model_record.is_empty()
+            || shared.learner.training_model_record.len() > MAX_SNAPSHOT_LEARNER_RECORD_BYTES
+            || shared.learner.optimizer_record.is_empty()
+            || shared.learner.optimizer_record.len() > MAX_SNAPSHOT_LEARNER_RECORD_BYTES
+        {
+            return Err(invalid(
+                "shared learner checkpoint records exceed snapshot limits".to_owned(),
+            ));
+        }
+        shared
+            .validate(state.sim_rng_seed)
+            .map_err(|error| invalid(format!("shared learner checkpoint: {error}")))?;
+        let pending_by_lineage: std::collections::HashMap<_, _> = shared
+            .pending_inference
+            .iter()
+            .flat_map(|batch| batch.responses.iter())
+            .map(|response| (response.lineage_id.as_str(), response.request_id))
+            .collect();
+        let pending_agents = state
+            .agents
+            .iter()
+            .filter_map(|agent| match agent.cognitive_state {
+                crate::core::components::CognitiveState::PendingInference(request_id) => {
+                    Some((agent.lineage_id.as_str(), request_id))
+                }
+                _ => None,
+            });
+        for (lineage, request_id) in pending_agents {
+            if pending_by_lineage.get(lineage) != Some(&request_id) {
+                return Err(invalid(format!(
+                    "pending inference response does not match agent '{lineage}'"
+                )));
+            }
+        }
+        if pending_by_lineage.len()
+            != state
+                .agents
+                .iter()
+                .filter(|agent| {
+                    matches!(
+                        agent.cognitive_state,
+                        crate::core::components::CognitiveState::PendingInference(_)
+                    )
+                })
+                .count()
+        {
+            return Err(invalid(
+                "pending inference responses do not match the pending agent population".to_owned(),
+            ));
+        }
+    }
 
     let ecosystem = [state.eco_detritus, state.eco_plants, state.eco_animals];
     if ecosystem
@@ -782,9 +836,72 @@ pub fn world_checksum(world: &mut bevy_ecs::world::World) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::model::BrainModel;
+    use crate::core::simulation_state::{SavedInferenceResponseBatch, SavedSharedLearningState};
 
     fn state_fixture() -> SavedSimulationState {
         crate::core::simulation_state::empty_saved_state_for_tests()
+    }
+
+    fn shared_learning_fixture(seed: u64) -> SavedSharedLearningState {
+        use burn::backend::Autodiff;
+        use burn::module::Module;
+        use burn::optim::{AdamConfig, Optimizer};
+        use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+
+        type B = burn_ndarray::NdArray<f32>;
+        type AB = Autodiff<B>;
+
+        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let weights = BrainModel::seeded_weights(
+            crate::core::training::STATE_DIM,
+            crate::core::training::HIDDEN_DIM,
+            crate::core::training::ACTION_DIM,
+            seed,
+        );
+        let model = crate::ai::model::ActorCriticModel::<AB>::from_flat_weights(
+            crate::core::training::STATE_DIM,
+            crate::core::training::HIDDEN_DIM,
+            crate::core::training::ACTION_DIM,
+            &weights,
+            &device,
+        )
+        .expect("fixture model");
+        let optimizer = AdamConfig::new().init::<AB, crate::ai::model::ActorCriticModel<AB>>();
+        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+        let training_model_record =
+            Recorder::<AB>::record(&recorder, model.into_record(), ()).expect("record model");
+        let optimizer_record =
+            Recorder::<AB>::record(&recorder, optimizer.to_record(), ()).expect("record Adam");
+        let transition = crate::ai::hrrl::Transition {
+            state: [0.25; 15],
+            action: [0.5; 4],
+            reward: 0.75,
+            next_state: [1.0; 15],
+        };
+
+        SavedSharedLearningState {
+            learner: crate::core::training::SavedLearnerWorkerState {
+                training_model_record,
+                optimizer_record,
+                partial_batch: vec![transition],
+            },
+            inference_weights: weights,
+            pending_inference_weights: Some(BrainModel::seeded_weights(15, 64, 4, seed + 1)),
+            queued_transitions: vec![transition],
+            pending_inference: Vec::new(),
+            learning_queue_diagnostics: crate::ai::hrrl::LearningQueueSnapshot {
+                queued: 10,
+                full_rejections: 2,
+                disconnected_rejections: 1,
+                backpressure_skipped: 3,
+            },
+            model_update_diagnostics: crate::core::training::ModelUpdateSnapshot {
+                published: 4,
+                backpressured: 1,
+                disconnected: 0,
+            },
+        }
     }
 
     fn unchecked_envelope(state: SavedSimulationState) -> SnapshotEnvelope {
@@ -837,6 +954,9 @@ mod tests {
                 action: [0.0; 4],
                 has_last: false,
             },
+            cognitive_state: Default::default(),
+            inertia: Default::default(),
+            action_gates: None,
             segments: Vec::new(),
             brain: None,
         }
@@ -969,6 +1089,107 @@ mod tests {
     }
 
     #[test]
+    fn shared_learning_checkpoint_round_trips_every_continuation_field() {
+        let mut state = state_fixture();
+        state.sim_rng_seed = 1_337;
+        state.shared_learning = Some(shared_learning_fixture(state.sim_rng_seed));
+
+        let envelope = SnapshotEnvelope::seal(state).expect("valid shared learning checkpoint");
+        let back = from_bytes(&serde_json::to_vec(&envelope).unwrap()).expect("read back");
+        let shared = back
+            .shared_learning
+            .expect("schema 7 shared learning state");
+
+        assert_eq!(shared.learner.partial_batch.len(), 1);
+        assert_eq!(shared.queued_transitions.len(), 1);
+        assert_eq!(
+            shared.inference_weights.len(),
+            crate::core::training::SHARED_MODEL_PARAMETER_COUNT
+        );
+        assert_eq!(
+            shared.pending_inference_weights.as_ref().map(Vec::len),
+            Some(crate::core::training::SHARED_MODEL_PARAMETER_COUNT)
+        );
+        assert_eq!(shared.learning_queue_diagnostics.queued, 10);
+        assert_eq!(shared.model_update_diagnostics.published, 4);
+        shared
+            .validate(1_337)
+            .expect("decoded Burn model and Adam records remain usable");
+    }
+
+    #[test]
+    fn shared_learning_checkpoint_rejects_bad_policy_and_transition_values() {
+        let mut wrong_shape = state_fixture();
+        wrong_shape.sim_rng_seed = 7;
+        wrong_shape.shared_learning = Some(shared_learning_fixture(7));
+        wrong_shape
+            .shared_learning
+            .as_mut()
+            .unwrap()
+            .inference_weights
+            .pop();
+        assert!(matches!(
+            SnapshotEnvelope::seal(wrong_shape),
+            Err(SnapshotError::InvalidState(_))
+        ));
+
+        let mut non_finite = state_fixture();
+        non_finite.sim_rng_seed = 7;
+        non_finite.shared_learning = Some(shared_learning_fixture(7));
+        non_finite
+            .shared_learning
+            .as_mut()
+            .unwrap()
+            .queued_transitions[0]
+            .reward = f32::NAN;
+        assert!(matches!(
+            SnapshotEnvelope::seal(non_finite),
+            Err(SnapshotError::InvalidState(_))
+        ));
+    }
+
+    #[test]
+    fn pending_inference_round_trips_by_lineage_and_must_match_agent_ticket() {
+        let mut state = state_fixture();
+        state.sim_rng_seed = 17;
+        let mut agent = agent_fixture();
+        agent.cognitive_state = crate::core::components::CognitiveState::PendingInference(42);
+        agent.inertia.cpg_parameters = [0.1, 0.2, 0.3, 0.4];
+        agent.action_gates = Some(crate::core::components::ActionGates {
+            pheromone_emit: 0.25,
+            attack_intent: 0.5,
+            feed_intent: 0.75,
+        });
+        state.agents.push(agent);
+        let mut shared = shared_learning_fixture(state.sim_rng_seed);
+        shared.pending_inference = vec![SavedInferenceResponseBatch {
+            responses: vec![crate::core::simulation_state::SavedInferenceResponse {
+                lineage_id: "snapshot-agent".to_owned(),
+                actions: [0.6; crate::core::agent_systems::ACTION_SLOTS],
+                request_id: 42,
+            }],
+        }];
+        state.shared_learning = Some(shared);
+
+        let envelope = SnapshotEnvelope::seal(state.clone()).expect("matched pending response");
+        let back = from_bytes(&serde_json::to_vec(&envelope).unwrap()).expect("read back");
+        assert_eq!(
+            back.agents[0].cognitive_state,
+            crate::core::components::CognitiveState::PendingInference(42)
+        );
+        assert_eq!(
+            back.shared_learning.unwrap().pending_inference[0].responses[0].lineage_id,
+            "snapshot-agent"
+        );
+
+        state.shared_learning.as_mut().unwrap().pending_inference[0].responses[0].request_id = 41;
+        assert!(matches!(
+            SnapshotEnvelope::seal(state),
+            Err(SnapshotError::InvalidState(_))
+        ));
+    }
+
+    #[test]
     fn a_bare_pre_envelope_state_still_loads_and_reports_its_schema() {
         // Version 1: no envelope, no energy fields.
         let v1 = state_fixture();
@@ -996,6 +1217,12 @@ mod tests {
             if schema < 5 {
                 object.remove("experiment");
                 object.remove("resource_field_phase");
+            }
+            if schema < 6 {
+                object.remove("evolution_worker");
+            }
+            if schema < 7 {
+                object.remove("shared_learning");
             }
             let text = serde_json::to_string(&state).expect("state text");
             let envelope = SnapshotEnvelope {

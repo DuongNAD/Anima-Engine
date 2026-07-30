@@ -29,12 +29,21 @@ impl HomeostaticState {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Transition {
     pub state: [f32; 15],
     pub action: [f32; 4],
     pub reward: f32,
     pub next_state: [f32; 15],
+}
+
+impl Transition {
+    pub fn is_finite(&self) -> bool {
+        self.state.iter().all(|value| value.is_finite())
+            && self.action.iter().all(|value| value.is_finite())
+            && self.reward.is_finite()
+            && self.next_state.iter().all(|value| value.is_finite())
+    }
 }
 
 #[derive(Component, Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -47,7 +56,7 @@ pub struct LastTransitionState {
 #[derive(Resource)]
 pub struct TransitionSender(pub crossbeam_channel::Sender<Transition>);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearningQueueSnapshot {
     pub queued: u64,
     pub full_rejections: u64,
@@ -72,6 +81,15 @@ struct LearningQueueCounters {
 pub struct LearningQueueDiagnostics(Arc<LearningQueueCounters>);
 
 impl LearningQueueDiagnostics {
+    pub fn from_snapshot(snapshot: LearningQueueSnapshot) -> Self {
+        Self(Arc::new(LearningQueueCounters {
+            queued: AtomicU64::new(snapshot.queued),
+            full_rejections: AtomicU64::new(snapshot.full_rejections),
+            disconnected_rejections: AtomicU64::new(snapshot.disconnected_rejections),
+            backpressure_skipped: AtomicU64::new(snapshot.backpressure_skipped),
+        }))
+    }
+
     fn increment(counter: &AtomicU64) {
         let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
             Some(value.saturating_add(1))
@@ -113,5 +131,33 @@ impl LearningQueueDiagnostics {
         self.0.full_rejections.store(0, Ordering::Relaxed);
         self.0.disconnected_rejections.store(0, Ordering::Relaxed);
         self.0.backpressure_skipped.store(0, Ordering::Relaxed);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn learning_queue_diagnostics_resume_monotonically() {
+        let diagnostics = LearningQueueDiagnostics::from_snapshot(LearningQueueSnapshot {
+            queued: 5,
+            full_rejections: 4,
+            disconnected_rejections: 3,
+            backpressure_skipped: 2,
+        });
+        diagnostics.record_queued();
+        diagnostics.record_full_rejection();
+        diagnostics.record_disconnected_rejection();
+        diagnostics.record_backpressure_skipped(2);
+        assert_eq!(
+            diagnostics.snapshot(),
+            LearningQueueSnapshot {
+                queued: 6,
+                full_rejections: 5,
+                disconnected_rejections: 4,
+                backpressure_skipped: 4,
+            }
+        );
     }
 }

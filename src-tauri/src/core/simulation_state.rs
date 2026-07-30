@@ -111,6 +111,12 @@ pub struct SerializedAgent {
     pub root_velocity: glam::Vec3,
     pub homeostatic_state: crate::ai::hrrl::HomeostaticState,
     pub last_transition_state: crate::ai::hrrl::LastTransitionState,
+    #[serde(default)]
+    pub cognitive_state: crate::core::components::CognitiveState,
+    #[serde(default)]
+    pub inertia: crate::core::components::InertiaComponent,
+    #[serde(default)]
+    pub action_gates: Option<crate::core::components::ActionGates>,
     pub segments: Vec<SerializedSegmentState>,
     /// The agent's own brain, when it has one. `None` is a legacy agent running on the shared
     /// [`crate::ai::model::BrainModel`] — and is what every save written before ADR-0003 decodes to,
@@ -129,6 +135,7 @@ pub enum SerializedAgentError {
     UnknownSegment { id: u32 },
     InvalidSegmentKinematics { id: u32 },
     InvalidOscillator { id: u32 },
+    InvalidControlState,
 }
 
 impl std::fmt::Display for SerializedAgentError {
@@ -156,6 +163,9 @@ impl std::fmt::Display for SerializedAgentError {
             Self::InvalidOscillator { id } => {
                 write!(f, "snapshot child segment {id} has a non-finite oscillator")
             }
+            Self::InvalidControlState => {
+                write!(f, "agent control state contains non-finite values")
+            }
         }
     }
 }
@@ -178,6 +188,21 @@ impl SerializedAgent {
             self.brain.as_ref(),
         )
         .map_err(SerializedAgentError::Scientific)?;
+        let invalid_inertia = !self.inertia.target_velocity.is_finite()
+            || self
+                .inertia
+                .cpg_parameters
+                .iter()
+                .chain(std::iter::once(&self.inertia.decay_rate))
+                .any(|value| !value.is_finite());
+        let invalid_gates = self.action_gates.is_some_and(|gates| {
+            [gates.pheromone_emit, gates.attack_intent, gates.feed_intent]
+                .into_iter()
+                .any(|value| !value.is_finite())
+        });
+        if invalid_inertia || invalid_gates {
+            return Err(SerializedAgentError::InvalidControlState);
+        }
 
         let rotation_len = self.root_rotation.length_squared();
         if !self.root_rotation.is_finite()
@@ -314,6 +339,86 @@ pub struct SavedEvolutionWorkerState {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct SavedSharedLearningState {
+    pub learner: crate::core::training::SavedLearnerWorkerState,
+    pub inference_weights: Vec<f32>,
+    pub pending_inference_weights: Option<Vec<f32>>,
+    pub queued_transitions: Vec<crate::ai::hrrl::Transition>,
+    #[serde(default)]
+    pub pending_inference: Vec<SavedInferenceResponseBatch>,
+    #[serde(default)]
+    pub learning_queue_diagnostics: crate::ai::hrrl::LearningQueueSnapshot,
+    #[serde(default)]
+    pub model_update_diagnostics: crate::core::training::ModelUpdateSnapshot,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct SavedInferenceResponse {
+    pub lineage_id: String,
+    pub actions: [f32; crate::core::agent_systems::ACTION_SLOTS],
+    pub request_id: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+pub struct SavedInferenceResponseBatch {
+    pub responses: Vec<SavedInferenceResponse>,
+}
+
+impl SavedSharedLearningState {
+    pub fn validate(&self, seed: u64) -> Result<(), String> {
+        crate::core::training::validate_saved_learner_worker(&self.learner, seed)?;
+
+        if self.queued_transitions.len() > crate::core::training::TRANSITION_QUEUE_CAPACITY {
+            return Err("queued learner transitions exceed the live channel capacity".into());
+        }
+        if self
+            .learner
+            .partial_batch
+            .iter()
+            .chain(self.queued_transitions.iter())
+            .any(|transition| !transition.is_finite())
+        {
+            return Err("shared learner checkpoint contains non-finite transitions".into());
+        }
+
+        let expected = crate::core::training::SHARED_MODEL_PARAMETER_COUNT;
+        let validate_weights = |label: &str, weights: &[f32]| {
+            if weights.len() != expected {
+                return Err(format!(
+                    "{label} has {} weights, expected {expected}",
+                    weights.len()
+                ));
+            }
+            if weights.iter().any(|weight| !weight.is_finite()) {
+                return Err(format!("{label} contains non-finite weights"));
+            }
+            Ok(())
+        };
+        validate_weights("inference policy", &self.inference_weights)?;
+        if let Some(pending) = self.pending_inference_weights.as_deref() {
+            validate_weights("pending inference policy", pending)?;
+        }
+        if self.pending_inference.len() > crate::core::agent_systems::INFERENCE_POOL_BATCHES {
+            return Err("pending inference batches exceed the bounded response pool".into());
+        }
+        let mut lineages = std::collections::HashSet::new();
+        for response in self
+            .pending_inference
+            .iter()
+            .flat_map(|batch| batch.responses.iter())
+        {
+            if response.lineage_id.is_empty()
+                || response.actions.iter().any(|action| !action.is_finite())
+                || !lineages.insert(response.lineage_id.as_str())
+            {
+                return Err("pending inference responses are invalid or duplicated".into());
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct SavedSimulationState {
     pub tick_count: u64,
     pub active_environment_event: crate::evolution::meta_ai::EnvironmentalEvent,
@@ -417,6 +522,10 @@ pub struct SavedSimulationState {
     #[serde(default)]
     pub evolution_worker: Option<SavedEvolutionWorkerState>,
 
+    // ---- Schema 7: exact continuation of the shared learner and inference policy -------------
+    #[serde(default)]
+    pub shared_learning: Option<SavedSharedLearningState>,
+
     /// Which on-disk schema this state was read from, filled in by
     /// [`crate::core::snapshot::read`]. Runtime-only: never written, so it cannot disagree with the
     /// envelope that carries the real version.
@@ -474,6 +583,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         dormant_cohorts: None,
         experiment: None,
         evolution_worker: None,
+        shared_learning: None,
         loaded_from_schema: 0,
     }
 }
@@ -744,9 +854,21 @@ pub fn spawn_serialized_agent(
         AgentGeneration(agent.generation),
         AgentParentLineageIds(agent.parent_ids.clone()),
     ));
-    world
-        .entity_mut(root_entity)
-        .insert(agent.last_transition_state);
+    world.entity_mut(root_entity).insert((
+        agent.last_transition_state,
+        agent.cognitive_state,
+        agent.inertia.clone(),
+    ));
+    match agent.action_gates {
+        Some(gates) => {
+            world.entity_mut(root_entity).insert(gates);
+        }
+        None => {
+            world
+                .entity_mut(root_entity)
+                .remove::<crate::core::components::ActionGates>();
+        }
+    }
 
     // Restore the saved brain verbatim. Invariant D01: restore is not development, so a saved
     // individual must never be handed a freshly rolled brain — that would be a different creature
@@ -1007,6 +1129,17 @@ pub fn serialize_world_state(
         } else {
             AgentClass::Prey
         };
+        let action_gates = world
+            .get::<crate::core::components::ActionGates>(entity)
+            .copied();
+        let cognitive_state = world
+            .get::<crate::core::components::CognitiveState>(entity)
+            .copied()
+            .unwrap_or_default();
+        let inertia = world
+            .get::<crate::core::components::InertiaComponent>(entity)
+            .cloned()
+            .unwrap_or_default();
         let mut segments = Vec::new();
 
         for (seg_entity, segment, seg_pos, seg_rot, seg_vel, parent_agent, opt_osc) in
@@ -1041,6 +1174,9 @@ pub fn serialize_world_state(
             root_velocity: root_vel,
             homeostatic_state: homeo,
             last_transition_state: last_trans,
+            cognitive_state,
+            inertia,
+            action_gates,
             segments,
             brain,
         });
@@ -1112,6 +1248,7 @@ pub fn serialize_world_state(
         dormant_cohorts,
         experiment,
         evolution_worker: None,
+        shared_learning: None,
         loaded_from_schema: crate::core::snapshot::SCHEMA_VERSION,
     }
 }

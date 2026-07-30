@@ -19,7 +19,7 @@ use crate::core::thread_supervisor as sup;
 use crate::core::training::spawn_wgpu_learner;
 use crate::core::training::{
     spawn_ndarray_learner, try_send_without_blocking, ModelUpdate, ModelUpdateDiagnostics,
-    MODEL_UPDATE_QUEUE_CAPACITY,
+    MODEL_UPDATE_QUEUE_CAPACITY, TRANSITION_QUEUE_CAPACITY,
 };
 use crate::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
@@ -50,6 +50,11 @@ const EVOLUTION_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(30);
 
 struct EvolutionCheckpointRequest {
     reply: crossbeam_channel::Sender<SavedEvolutionWorkerState>,
+    resume: crossbeam_channel::Receiver<()>,
+}
+
+struct InferenceCheckpointRequest {
+    reply: crossbeam_channel::Sender<Result<Vec<f32>, String>>,
     resume: crossbeam_channel::Receiver<()>,
 }
 
@@ -112,6 +117,36 @@ fn evolution_checkpoint_quiescence(
         ));
     }
     Ok(())
+}
+
+fn inference_checkpoint_quiescence(world: &World) -> Result<(), String> {
+    let Some(channels) = world.get_resource::<InferenceChannels>() else {
+        return Err("inference channels are unavailable".into());
+    };
+    let requests = channels.req_tx.len();
+    if requests != 0 {
+        return Err(format!(
+            "inference is not at a checkpoint boundary \
+             ({requests} request batches); retry after they drain"
+        ));
+    }
+    Ok(())
+}
+
+fn wait_for_worker_checkpoint<T>(
+    receiver: &crossbeam_channel::Receiver<Result<T, String>>,
+    worker: &str,
+) -> Result<T, String> {
+    match receiver.recv_timeout(EVOLUTION_CHECKPOINT_TIMEOUT) {
+        Ok(result) => result,
+        Err(crossbeam_channel::RecvTimeoutError::Disconnected) => Err(format!(
+            "{worker} checkpoint worker disconnected before replying"
+        )),
+        Err(crossbeam_channel::RecvTimeoutError::Timeout) => Err(format!(
+            "{worker} checkpoint worker did not reach a boundary within {} seconds",
+            EVOLUTION_CHECKPOINT_TIMEOUT.as_secs()
+        )),
+    }
 }
 
 /// Nanoseconds since `since`, saturated into a `u64`.
@@ -312,6 +347,23 @@ impl SimulationEngine {
                     return;
                 }
             };
+        let shared_learning_resume = state_to_load
+            .as_ref()
+            .and_then(|state| state.shared_learning.clone());
+        if let Some(shared) = shared_learning_resume.as_ref() {
+            if let Err(error) = shared.validate(startup_run_seed) {
+                eprintln!(
+                    "ERROR: snapshot restore aborted before workers started: shared learning state \
+                     is unsafe to resume ({error})"
+                );
+                *self
+                    .pending_load_state
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = state_to_load;
+                self.running.store(false, Ordering::SeqCst);
+                return;
+            }
+        }
 
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
@@ -322,11 +374,29 @@ impl SimulationEngine {
         let environmental_state_clone = Arc::clone(&self.environmental_state);
         let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
 
-        let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
+        let (trans_tx, trans_rx) =
+            crossbeam_channel::bounded::<Transition>(TRANSITION_QUEUE_CAPACITY);
+        if let Some(shared) = shared_learning_resume.as_ref() {
+            for transition in &shared.queued_transitions {
+                trans_tx
+                    .send(*transition)
+                    .expect("validated learner queue fits its live channel");
+            }
+        }
+        let trans_tx_checkpoint = trans_tx.clone();
+        let trans_rx_checkpoint = trans_rx.clone();
         let (model_tx, model_rx) =
             crossbeam_channel::bounded::<ModelUpdate>(MODEL_UPDATE_QUEUE_CAPACITY);
+        let model_rx_checkpoint = model_rx.clone();
         let (old_model_tx, old_model_rx) = crossbeam_channel::bounded::<ModelUpdate>(32);
-        let model_update_diagnostics = ModelUpdateDiagnostics::default();
+        let model_update_diagnostics = shared_learning_resume
+            .as_ref()
+            .map(|shared| ModelUpdateDiagnostics::from_snapshot(shared.model_update_diagnostics))
+            .unwrap_or_default();
+        let (learner_checkpoint_tx, learner_checkpoint_rx) =
+            crossbeam_channel::bounded::<crate::core::training::LearnerCheckpointRequest>(1);
+        let (inference_checkpoint_tx, inference_checkpoint_rx) =
+            crossbeam_channel::bounded::<InferenceCheckpointRequest>(1);
         let use_gpu = crate::core::resources::gpu_backend_requested();
 
         #[cfg_attr(not(feature = "ml-wgpu"), allow(unused_mut))]
@@ -355,6 +425,10 @@ impl SimulationEngine {
             old_model_rx.clone(),
             model_update_diagnostics.clone(),
             startup_run_seed,
+            shared_learning_resume
+                .as_ref()
+                .map(|shared| shared.learner.clone()),
+            learner_checkpoint_rx,
         );
 
         #[cfg(feature = "ml-wgpu")]
@@ -842,7 +916,19 @@ impl SimulationEngine {
             // the checkpoint owns this value, and restore_energy_state later restores its exact
             // stream position into the ECS world.
             let run_seed = startup_run_seed;
-            world.insert_resource(BrainModel::new_seeded(15, 64, 4, run_seed));
+            let world_brain = shared_learning_resume
+                .as_ref()
+                .map(|shared| {
+                    shared
+                        .pending_inference_weights
+                        .as_deref()
+                        .unwrap_or(&shared.inference_weights)
+                })
+                .map(|weights| BrainModel::from_checkpoint_weights(15, 64, 4, weights))
+                .transpose()
+                .expect("shared learning state was validated before workers started")
+                .unwrap_or_else(|| BrainModel::new_seeded(15, 64, 4, run_seed));
+            world.insert_resource(world_brain);
             world.insert_resource(BrainInferenceBuffer::default());
 
             // Simulation LOD. Until now this whole subsystem was unreachable from the running app:
@@ -919,6 +1005,8 @@ impl SimulationEngine {
             let (res_tx, res_rx) = crossbeam_channel::unbounded::<InferenceResponseBatch>();
             let (recycle_res_tx, recycle_res_rx) =
                 crossbeam_channel::unbounded::<InferenceResponseBatch>();
+            let res_tx_checkpoint = res_tx.clone();
+            let recycle_res_rx_restore = recycle_res_rx.clone();
 
             // Pre-populate recycle pools to ensure zero heap allocations in the hot path.
             //
@@ -948,6 +1036,12 @@ impl SimulationEngine {
             let running_inference = Arc::clone(&running_clone);
             let model_rx_inference = model_rx;
             let old_model_tx_inference = old_model_tx;
+            let inference_resume_weights = shared_learning_resume
+                .as_ref()
+                .map(|shared| shared.inference_weights.clone());
+            let pending_inference_weights = shared_learning_resume
+                .as_ref()
+                .and_then(|shared| shared.pending_inference_weights.clone());
 
             let inference_seed = run_seed;
             // Retained, not dropped. This worker was spawned and its JoinHandle thrown away, so a
@@ -958,12 +1052,50 @@ impl SimulationEngine {
                 // The same seed the world's copy used. These are two separately-constructed models
                 // that are meant to be the same network until the training thread starts sending
                 // updates; with unseeded initialisation they never were.
-                let mut brain_model = BrainModel::new_seeded(15, 64, 4, inference_seed);
+                let mut brain_model = inference_resume_weights
+                    .as_deref()
+                    .map(|weights| BrainModel::from_checkpoint_weights(15, 64, 4, weights))
+                    .transpose()
+                    .expect("shared learning state was validated before workers started")
+                    .unwrap_or_else(|| BrainModel::new_seeded(15, 64, 4, inference_seed));
+                if let Some(pending) = pending_inference_weights.as_deref() {
+                    brain_model
+                        .apply_checkpoint_weights(pending)
+                        .expect("pending inference policy was validated before workers started");
+                }
                 // Allocated once and reused every batch: the worker runs on the tick path's critical
                 // chain, so per-batch allocation here would show up as frame jitter.
                 let mut inference_scratch = crate::ai::model::InferenceScratch::with_capacity(256);
+                let mut pending_checkpoint = None;
 
                 while running_inference.load(Ordering::SeqCst) {
+                    if pending_checkpoint.is_none() {
+                        pending_checkpoint = inference_checkpoint_rx.try_recv().ok();
+                    }
+                    // Once the simulation thread stops producing batches, finish every request it
+                    // already published. The resulting responses are checkpointed by stable
+                    // lineage id; pausing earlier would strand process-local Entity handles in the
+                    // request queue and make an exact restart impossible.
+                    if pending_checkpoint.is_some() && req_rx.is_empty() {
+                        let request = pending_checkpoint.take().expect("checked above");
+                        let checkpoint = brain_model.checkpoint_weights();
+                        if request.reply.send(checkpoint).is_ok() {
+                            loop {
+                                if !running_inference.load(Ordering::SeqCst) {
+                                    break;
+                                }
+                                match request.resume.recv_timeout(Duration::from_millis(10)) {
+                                    Ok(())
+                                    | Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                                        break;
+                                    }
+                                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
                     // Check for model update
                     if let Ok(new_model) = model_rx_inference.try_recv() {
                         // Through `BrainModel`'s own API rather than by reaching into its backend.
@@ -1045,7 +1177,16 @@ impl SimulationEngine {
             world.insert_resource(EnvironmentalSpawnSettings::default());
 
             world.insert_resource(TransitionSender(trans_tx));
-            world.insert_resource(crate::ai::hrrl::LearningQueueDiagnostics::default());
+            world.insert_resource(
+                shared_learning_resume
+                    .as_ref()
+                    .map(|shared| {
+                        crate::ai::hrrl::LearningQueueDiagnostics::from_snapshot(
+                            shared.learning_queue_diagnostics,
+                        )
+                    })
+                    .unwrap_or_default(),
+            );
             world.insert_resource(model_update_diagnostics);
 
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
@@ -1389,6 +1530,49 @@ impl SimulationEngine {
                 }
             }
 
+            if let Some(shared) = shared_learning_resume.as_ref() {
+                let mut entities_by_lineage = std::collections::HashMap::new();
+                let mut lineage_query = world.query::<(Entity, &AgentLineageId)>();
+                for (entity, lineage) in lineage_query.iter(&world) {
+                    entities_by_lineage.insert(lineage.0.clone(), entity);
+                }
+                for saved_batch in &shared.pending_inference {
+                    let Ok(mut batch) = recycle_res_rx_restore.try_recv() else {
+                        eprintln!(
+                            "ERROR: snapshot restore aborted: pending inference responses exceed \
+                             the live recycle pool"
+                        );
+                        running_clone.store(false, Ordering::SeqCst);
+                        return;
+                    };
+                    batch.responses.clear();
+                    for saved in &saved_batch.responses {
+                        let Some(&entity) = entities_by_lineage.get(&saved.lineage_id) else {
+                            eprintln!(
+                                "ERROR: snapshot restore aborted: pending inference target '{}' \
+                                 is absent from the restored population",
+                                saved.lineage_id
+                            );
+                            running_clone.store(false, Ordering::SeqCst);
+                            return;
+                        };
+                        batch.responses.push(AgentInferenceResponse {
+                            entity,
+                            actions: saved.actions,
+                            request_id: saved.request_id,
+                        });
+                    }
+                    if res_tx_checkpoint.send(batch).is_err() {
+                        eprintln!(
+                            "ERROR: snapshot restore aborted: inference response worker channel \
+                             disconnected"
+                        );
+                        running_clone.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                }
+            }
+
             let deterministic = world
                 .get_resource::<crate::core::determinism::DeterministicMode>()
                 .copied()
@@ -1423,7 +1607,13 @@ impl SimulationEngine {
             let mut auto_export_done = false;
 
             let mut schedule = crate::core::simulation_schedule::build_tick_schedule(deterministic);
-            schedule.run(&mut world);
+            // Genesis keeps the historical priming tick. A restored world must not: running a
+            // full schedule here advances physics, ecology and inference without advancing the
+            // saved `tick_count`, so every load used to inject one invisible tick into the
+            // scientific trajectory. Its first schedule now runs in the counted loop below.
+            if state_to_load.is_none() {
+                schedule.run(&mut world);
+            }
             let mut query_state = world.query::<(
                 Entity,
                 &Segment,
@@ -1464,19 +1654,54 @@ impl SimulationEngine {
                 tick_count += 1;
 
                 if let Ok(tx) = save_request_rx_clone.try_recv() {
-                    // Schema 4 carries dormant cohorts; schema 6 carries the evolution worker.
-                    // The remaining refusal is deliberate: replacements are ECS commands whose
-                    // target `Entity` is process-local, so a checkpoint may only cut the run after
-                    // that queue and every worker channel are empty.
+                    // A checkpoint cuts all three asynchronous scientific workers at their next
+                    // boundary. Their resume channels are deliberately owned by this scope: any
+                    // error before the explicit resume sends drops a sender, which the paused
+                    // worker treats as permission to continue rather than deadlocking the app.
                     let answer = (|| -> Result<SavedSimulationState, String> {
                         evolution_checkpoint_quiescence(&world, false)?;
 
+                        let (inference_reply_tx, inference_reply_rx) =
+                            crossbeam_channel::bounded(1);
+                        let (inference_resume_tx, inference_resume_rx) =
+                            crossbeam_channel::bounded(1);
+                        inference_checkpoint_tx
+                            .try_send(InferenceCheckpointRequest {
+                                reply: inference_reply_tx,
+                                resume: inference_resume_rx,
+                            })
+                            .map_err(|error| {
+                                format!(
+                                    "inference checkpoint worker is unavailable ({error}); \
+                                     snapshot was not written"
+                                )
+                            })?;
+                        let inference_weights =
+                            wait_for_worker_checkpoint(&inference_reply_rx, "inference")?;
+
+                        let (learner_reply_tx, learner_reply_rx) = crossbeam_channel::bounded(1);
+                        let (learner_resume_tx, learner_resume_rx) = crossbeam_channel::bounded(1);
+                        learner_checkpoint_tx
+                            .try_send(crate::core::training::LearnerCheckpointRequest {
+                                reply: learner_reply_tx,
+                                resume: learner_resume_rx,
+                            })
+                            .map_err(|error| {
+                                format!(
+                                    "learner checkpoint worker is unavailable ({error}); \
+                                     snapshot was not written"
+                                )
+                            })?;
+                        let learner_checkpoint =
+                            wait_for_worker_checkpoint(&learner_reply_rx, "learner")?;
+
                         let (reply_tx, reply_rx) = crossbeam_channel::bounded(1);
-                        let (resume_tx, resume_rx) = crossbeam_channel::bounded(1);
+                        let (evolution_resume_tx, evolution_resume_rx) =
+                            crossbeam_channel::bounded(1);
                         evolution_checkpoint_tx
                             .try_send(EvolutionCheckpointRequest {
                                 reply: reply_tx,
-                                resume: resume_rx,
+                                resume: evolution_resume_rx,
                             })
                             .map_err(|error| {
                                 format!(
@@ -1513,22 +1738,130 @@ impl SimulationEngine {
 
                         observed_inflight_output |=
                             drain_evolution_outputs_for_checkpoint(&mut world);
-                        let quiescence =
-                            evolution_checkpoint_quiescence(&world, observed_inflight_output);
-                        let result = quiescence.map(|()| {
-                            let mut state = serialize_world_state(
-                                &mut world,
-                                tick_count,
-                                &chronicle_history_clone_save,
-                                &lineage_tracker_sim_save,
-                                &evolution_settings_clone_save,
-                                &map_elites_grid_clone_save,
-                            );
-                            state.evolution_worker = Some(worker_checkpoint);
-                            state
-                        });
+                        let result = (|| -> Result<SavedSimulationState, String> {
+                            evolution_checkpoint_quiescence(&world, observed_inflight_output)?;
+                            // The worker finishes every request it already owns before pausing, so
+                            // the request queue must now be empty. Completed responses are safe:
+                            // they are serialized below using stable lineage identifiers.
+                            inference_checkpoint_quiescence(&world)?;
 
-                        let _ = resume_tx.try_send(());
+                            let mut queued_transitions =
+                                Vec::with_capacity(trans_rx_checkpoint.len());
+                            while let Ok(transition) = trans_rx_checkpoint.try_recv() {
+                                queued_transitions.push(transition);
+                            }
+                            let response_rx = world
+                                .get_resource::<InferenceChannels>()
+                                .expect("inference channels were inserted before the schedule")
+                                .res_rx
+                                .clone();
+                            let mut pending_response_batches =
+                                Vec::with_capacity(response_rx.len());
+                            while let Ok(batch) = response_rx.try_recv() {
+                                pending_response_batches.push(batch);
+                            }
+                            let mut pending_model = match model_rx_checkpoint.try_recv() {
+                                Ok(model) => Ok(Some(model)),
+                                Err(crossbeam_channel::TryRecvError::Empty) => Ok(None),
+                                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                                    Err("learner model channel disconnected during checkpoint"
+                                        .to_owned())
+                                }
+                            };
+                            let checkpoint_result = (|| {
+                                let pending_inference = pending_response_batches
+                                    .iter()
+                                    .map(|batch| {
+                                        let responses = batch
+                                            .responses
+                                            .iter()
+                                            .filter_map(|response| {
+                                                world.get::<AgentLineageId>(response.entity).map(
+                                                    |lineage| SavedInferenceResponse {
+                                                        lineage_id: lineage.0.clone(),
+                                                        actions: response.actions,
+                                                        request_id: response.request_id,
+                                                    },
+                                                )
+                                            })
+                                            .collect();
+                                        SavedInferenceResponseBatch { responses }
+                                    })
+                                    .collect();
+                                let pending_inference_weights = pending_model
+                                    .as_ref()
+                                    .map_err(Clone::clone)?
+                                    .as_ref()
+                                    .map(ModelUpdate::checkpoint_weights)
+                                    .transpose()?;
+                                let learning_queue_diagnostics = world
+                                    .get_resource::<crate::ai::hrrl::LearningQueueDiagnostics>()
+                                    .map(|diagnostics| diagnostics.snapshot())
+                                    .unwrap_or_default();
+                                let model_update_diagnostics = world
+                                    .get_resource::<ModelUpdateDiagnostics>()
+                                    .map(|diagnostics| diagnostics.snapshot())
+                                    .unwrap_or_default();
+
+                                let mut state = serialize_world_state(
+                                    &mut world,
+                                    tick_count,
+                                    &chronicle_history_clone_save,
+                                    &lineage_tracker_sim_save,
+                                    &evolution_settings_clone_save,
+                                    &map_elites_grid_clone_save,
+                                );
+                                state.evolution_worker = Some(worker_checkpoint);
+                                state.shared_learning = Some(SavedSharedLearningState {
+                                    learner: learner_checkpoint,
+                                    inference_weights,
+                                    pending_inference_weights,
+                                    queued_transitions: queued_transitions.clone(),
+                                    pending_inference,
+                                    learning_queue_diagnostics,
+                                    model_update_diagnostics,
+                                });
+                                Ok(state)
+                            })();
+
+                            let mut restore_errors = Vec::new();
+                            for transition in queued_transitions.iter().copied() {
+                                if let Err(error) = trans_tx_checkpoint.try_send(transition) {
+                                    restore_errors.push(format!(
+                                        "could not restore learner transition queue ({error})"
+                                    ));
+                                    break;
+                                }
+                            }
+                            for batch in pending_response_batches {
+                                if let Err(error) = res_tx_checkpoint.send(batch) {
+                                    restore_errors.push(format!(
+                                        "could not restore inference response queue ({error})"
+                                    ));
+                                    break;
+                                }
+                            }
+                            if let Ok(Some(model)) = std::mem::replace(&mut pending_model, Ok(None))
+                            {
+                                if let Err(error) = model_tx.try_send(model) {
+                                    restore_errors.push(format!(
+                                        "could not restore pending inference policy ({error})"
+                                    ));
+                                }
+                            }
+                            if !restore_errors.is_empty() {
+                                running_clone.store(false, Ordering::SeqCst);
+                                return Err(format!(
+                                    "checkpoint disturbed live worker channels; simulation stopped: {}",
+                                    restore_errors.join("; ")
+                                ));
+                            }
+                            checkpoint_result
+                        })();
+
+                        let _ = evolution_resume_tx.try_send(());
+                        let _ = learner_resume_tx.try_send(());
+                        let _ = inference_resume_tx.try_send(());
                         result
                     })();
                     let _ = tx.send(answer);
@@ -2013,6 +2346,40 @@ mod mean_tick_time_tests {
                 Vec::new(),
             ));
         assert!(evolution_checkpoint_quiescence(&world, false).is_err());
+    }
+
+    #[test]
+    fn inference_checkpoint_requires_requests_drained_but_allows_saved_responses() {
+        let mut world = World::new();
+        let (req_tx, req_rx) = crossbeam_channel::unbounded();
+        let (_recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded();
+        let (res_tx, res_rx) = crossbeam_channel::unbounded();
+        let (recycle_res_tx, _recycle_res_rx) = crossbeam_channel::unbounded();
+        world.insert_resource(InferenceChannels {
+            req_tx: req_tx.clone(),
+            recycle_req_rx,
+            res_rx,
+            recycle_res_tx,
+        });
+
+        assert!(inference_checkpoint_quiescence(&world).is_ok());
+        req_tx
+            .send(InferenceRequestBatch {
+                requests: Vec::new(),
+            })
+            .unwrap();
+        assert!(inference_checkpoint_quiescence(&world).is_err());
+        req_rx.recv().unwrap();
+
+        res_tx
+            .send(InferenceResponseBatch {
+                responses: Vec::new(),
+            })
+            .unwrap();
+        assert!(
+            inference_checkpoint_quiescence(&world).is_ok(),
+            "responses are serialized by stable lineage id"
+        );
     }
 
     #[test]
