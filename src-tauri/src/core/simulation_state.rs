@@ -181,6 +181,7 @@ impl SerializedAgent {
             self.root_position,
             self.root_velocity,
             &self.lineage_id,
+            self.generation,
             &self.parent_ids,
             Some(&self.evaluation),
             Some(&self.feature_tracker),
@@ -719,6 +720,15 @@ pub fn evolution_worker_resume_state(
                 "evolution RNG seed {} does not belong to run {run_id}",
                 saved.rng_seed
             ));
+        }
+        if saved.node_id_counter == u32::MAX {
+            return Err("evolution morphology-node counter cannot advance without overflow".into());
+        }
+        if saved.meta_ai_epoch == u32::MAX {
+            return Err("evolution Meta-AI epoch cannot advance without overflow".into());
+        }
+        if saved.chronicle_ids_issued == u64::MAX || saved.offspring_ids_issued == u64::MAX {
+            return Err("evolution identity counter cannot advance without overflow".into());
         }
         crate::evolution::map_elites::MapElitesArchive::from_saved(saved.archive.clone())
             .map_err(|error| format!("saved MAP-Elites archive is invalid: {error}"))?;

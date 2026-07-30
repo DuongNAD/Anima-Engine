@@ -425,6 +425,15 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
 fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
     let invalid = |message: String| SnapshotError::InvalidState(message);
 
+    if state.tick_count == u64::MAX
+        || state.epoch_manager.current_epoch_ticks == u64::MAX
+        || state.epoch_manager.current_epoch == u32::MAX
+    {
+        return Err(invalid(
+            "simulation or epoch counter cannot advance without overflow".to_owned(),
+        ));
+    }
+
     let food_settings = state.food_spawn_settings;
     if food_settings.max_food_count > MAX_SNAPSHOT_FOOD_CAP
         || !food_settings.default_energy.is_finite()
@@ -1340,6 +1349,127 @@ mod tests {
             }
             other => panic!("expected unsafe kinematics rejection, got {other:?}"),
         }
+    }
+
+    fn evolution_worker_fixture(
+        run_seed: u64,
+    ) -> crate::core::simulation_state::SavedEvolutionWorkerState {
+        crate::core::simulation_state::SavedEvolutionWorkerState {
+            rng_seed: crate::core::resources::derived_seed(
+                run_seed,
+                crate::core::resources::sim_stream::EVOLUTION,
+            ),
+            rng_pos: 0,
+            node_id_counter: 3,
+            meta_ai_epoch: 0,
+            meta_ai_history: Vec::new(),
+            chronicle_ids_issued: 0,
+            offspring_ids_issued: 0,
+            archive: crate::evolution::map_elites::SavedMapElitesArchive {
+                grid_resolution: 0.25,
+                elites: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn snapshots_reject_counters_that_cannot_advance_without_overflow() {
+        let rejects = |state: SavedSimulationState, label: &str| {
+            assert!(
+                matches!(
+                    SnapshotEnvelope::seal(state),
+                    Err(SnapshotError::InvalidState(_))
+                ),
+                "{label} must be rejected before a restored tick can panic or wrap"
+            );
+        };
+
+        let mut state = state_fixture();
+        state.tick_count = u64::MAX;
+        rejects(state, "simulation tick counter");
+
+        let mut state = state_fixture();
+        state.epoch_manager.current_epoch_ticks = u64::MAX;
+        rejects(state, "epoch tick counter");
+
+        let mut state = state_fixture();
+        state.epoch_manager.current_epoch = u32::MAX;
+        rejects(state, "epoch counter");
+
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.evaluation.survival_ticks = u32::MAX;
+        state.agents.push(agent);
+        rejects(state, "agent survival counter");
+
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.feature_tracker.tick_count = u32::MAX;
+        state.agents.push(agent);
+        rejects(state, "agent feature counter");
+
+        let mut state = state_fixture();
+        let mut agent = agent_fixture();
+        agent.generation = u32::MAX;
+        state.agents.push(agent);
+        rejects(state, "agent generation");
+
+        let worker_state = || {
+            let mut state = state_fixture();
+            state.sim_rng_seed = 1_337;
+            state.evolution_worker = Some(evolution_worker_fixture(state.sim_rng_seed));
+            state
+        };
+
+        let mut state = worker_state();
+        state
+            .evolution_worker
+            .as_mut()
+            .expect("worker fixture")
+            .node_id_counter = u32::MAX;
+        rejects(state, "evolution morphology-node counter");
+
+        let mut state = worker_state();
+        state
+            .evolution_worker
+            .as_mut()
+            .expect("worker fixture")
+            .meta_ai_epoch = u32::MAX;
+        rejects(state, "Meta-AI epoch counter");
+
+        let mut state = worker_state();
+        state
+            .evolution_worker
+            .as_mut()
+            .expect("worker fixture")
+            .chronicle_ids_issued = u64::MAX;
+        rejects(state, "chronicle identity counter");
+
+        let mut state = worker_state();
+        state
+            .evolution_worker
+            .as_mut()
+            .expect("worker fixture")
+            .offspring_ids_issued = u64::MAX;
+        rejects(state, "offspring identity counter");
+
+        let mut state = worker_state();
+        state
+            .evolution_worker
+            .as_mut()
+            .expect("worker fixture")
+            .archive
+            .elites
+            .push(crate::evolution::map_elites::SavedEliteIndividual {
+                bin_x: 0,
+                bin_y: 0,
+                genotype: agent_fixture().genotype,
+                fitness: 1.0,
+                features: vec![0.0, 0.0],
+                lineage_id: "exhausted-elite".to_owned(),
+                generation: u32::MAX,
+            });
+        rejects(state, "archived elite generation");
     }
 
     #[test]
