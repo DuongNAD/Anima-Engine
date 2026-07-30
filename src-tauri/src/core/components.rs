@@ -201,6 +201,7 @@ pub enum MigrationValidationError {
     NonFiniteHomeostasis,
     InvalidLineageId,
     InvalidParentMetadata,
+    ExhaustedCounter(&'static str),
     NonFiniteEvaluation,
     NonFiniteFeatureTracker,
     NonFiniteTransition,
@@ -233,6 +234,9 @@ impl std::fmt::Display for MigrationValidationError {
             Self::InvalidLineageId => write!(f, "lineage id is empty or exceeds 1,024 bytes"),
             Self::InvalidParentMetadata => {
                 write!(f, "parent lineage metadata exceeds migration limits")
+            }
+            Self::ExhaustedCounter(counter) => {
+                write!(f, "agent {counter} counter cannot advance without overflow")
             }
             Self::NonFiniteEvaluation => write!(f, "agent evaluation is non-finite"),
             Self::NonFiniteFeatureTracker => write!(f, "feature tracker is non-finite"),
@@ -294,6 +298,7 @@ pub(crate) fn validate_scientific_agent_state(
     position: glam::Vec3,
     velocity: glam::Vec3,
     lineage_id: &str,
+    generation: u32,
     parent_ids: &[String],
     evaluation: Option<&crate::core::engine::AgentEvaluation>,
     feature_tracker: Option<&FeatureTracker>,
@@ -336,6 +341,9 @@ pub(crate) fn validate_scientific_agent_state(
     {
         return Err(MigrationValidationError::InvalidParentMetadata);
     }
+    if generation == u32::MAX {
+        return Err(MigrationValidationError::ExhaustedCounter("generation"));
+    }
     if let Some(evaluation) = evaluation {
         if !evaluation.start_position.is_finite()
             || !evaluation.last_position.is_finite()
@@ -346,6 +354,9 @@ pub(crate) fn validate_scientific_agent_state(
         {
             return Err(MigrationValidationError::NonFiniteEvaluation);
         }
+        if evaluation.survival_ticks == u32::MAX {
+            return Err(MigrationValidationError::ExhaustedCounter("survival tick"));
+        }
     }
     if let Some(tracker) = feature_tracker {
         if !tracker.cumulative_distance.is_finite()
@@ -354,6 +365,9 @@ pub(crate) fn validate_scientific_agent_state(
             || tracker.cumulative_energy_decay < 0.0
         {
             return Err(MigrationValidationError::NonFiniteFeatureTracker);
+        }
+        if tracker.tick_count == u32::MAX {
+            return Err(MigrationValidationError::ExhaustedCounter("feature tick"));
         }
     }
     if let Some(last) = last_transition_state {
@@ -402,6 +416,7 @@ impl AgentMigrationData {
             self.position,
             self.velocity,
             &self.lineage_id,
+            self.generation,
             &self.parent_ids,
             self.evaluation.as_ref(),
             self.feature_tracker.as_ref(),

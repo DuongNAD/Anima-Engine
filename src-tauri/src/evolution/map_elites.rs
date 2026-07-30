@@ -96,6 +96,12 @@ impl MapElitesArchive {
                     saved_elite.bin_x, saved_elite.bin_y
                 ));
             }
+            if saved_elite.generation == u32::MAX {
+                return Err(format!(
+                    "MAP-Elites niche ({}, {}) has a generation that cannot advance without overflow",
+                    saved_elite.bin_x, saved_elite.bin_y
+                ));
+            }
 
             let coords = (saved_elite.bin_x, saved_elite.bin_y);
             let elite = EliteIndividual {
