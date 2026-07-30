@@ -21,7 +21,7 @@
 
 pub use crate::core::build_identity::build_id;
 use crate::core::causal::CausalLedger;
-use crate::core::exotic_energy::{ExoticEnergyBudget, ExoticIntervention};
+use crate::core::exotic_energy::{ExoticEnergyBudget, ExoticIntervention, UnitId};
 use crate::core::experiment::{
     fnv1a_64, validate_intervention, ExperimentError, ExperimentManifest, FactorDiff,
     InitialConditionSet, ObservableRegistry, ObservableSpec, WorldLawSet, MAX_INTERVENTIONS,
@@ -354,6 +354,44 @@ fn duplicate_observable_name(observables: &[(String, f64)]) -> Option<&str> {
         })
 }
 
+fn validate_exotic_budget(
+    budget: &ExoticEnergyBudget,
+    expected_unit: Option<&UnitId>,
+) -> Result<(), String> {
+    if let Some(expected) = expected_unit {
+        if budget.unit != *expected {
+            return Err(format!(
+                "exotic budget unit '{}' does not match the manifest unit '{}'",
+                budget.unit.as_str(),
+                expected.as_str()
+            ));
+        }
+    }
+    for (name, value) in [
+        ("initial", budget.initial),
+        ("sourced", budget.sourced),
+        ("field", budget.field),
+        ("organism_storage", budget.organism_storage),
+        ("dissipated", budget.dissipated),
+        ("exported", budget.exported),
+    ] {
+        if !value.is_finite() {
+            return Err(format!(
+                "exotic budget field '{name}' is non-finite ({value})"
+            ));
+        }
+        if value < 0.0 {
+            return Err(format!(
+                "exotic budget field '{name}' is negative ({value})"
+            ));
+        }
+    }
+    if !budget.balance_error().is_finite() {
+        return Err("exotic budget balance error is non-finite".to_string());
+    }
+    Ok(())
+}
+
 fn drive<M: ExperimentModel>(
     model: &mut M,
     rng: &mut StdRng,
@@ -418,14 +456,28 @@ fn assemble_result<M: ExperimentModel>(
     provenance: RunProvenance,
     model: &M,
     registry: &ObservableRegistry,
+    expected_exotic_unit: Option<&UnitId>,
     series: Vec<StateSample>,
     ledger: CausalLedger,
-    failure: Option<(u64, String)>,
+    completion_tick: u64,
+    mut failure: Option<(u64, String)>,
 ) -> RunResult {
     let final_observables = model.observables();
     let final_checksum = model.checksum();
-    let exotic_budget = model.exotic_budget();
+    let mut exotic_budget = model.exotic_budget();
     let (observable_specs, mut warnings) = specs_for_emitted(registry, &series, &final_observables);
+
+    if let Some(reason) = exotic_budget
+        .as_ref()
+        .and_then(|budget| validate_exotic_budget(budget, expected_exotic_unit).err())
+    {
+        exotic_budget = None;
+        if failure.is_none() {
+            failure = Some((completion_tick, reason));
+        } else {
+            warnings.push(reason);
+        }
+    }
 
     if let Some(b) = &exotic_budget {
         if b.balance_error().abs() / b.throughput() > 1e-3 {
@@ -463,8 +515,10 @@ fn finish_drive<M: ExperimentModel>(
     provenance: RunProvenance,
     model: &M,
     registry: &ObservableRegistry,
+    expected_exotic_unit: Option<&UnitId>,
     series: Vec<StateSample>,
     ledger: CausalLedger,
+    completion_tick: u64,
     failure: Option<DriveFailure>,
 ) -> RunResult {
     match failure {
@@ -480,8 +534,10 @@ fn finish_drive<M: ExperimentModel>(
             provenance,
             model,
             registry,
+            expected_exotic_unit,
             series,
             ledger,
+            completion_tick,
             failure.map(|failure| (failure.tick, failure.reason)),
         ),
     }
@@ -566,7 +622,16 @@ fn run_manifest_seed_inner<M: ExperimentModel>(
         manifest.sample_period,
     );
 
-    finish_drive(provenance, &model, registry, series, ledger, failure)
+    finish_drive(
+        provenance,
+        &model,
+        registry,
+        manifest.laws.exotic_energy.as_ref().map(|law| &law.unit),
+        series,
+        ledger,
+        clock.tick,
+        failure,
+    )
 }
 
 // ---- Genesis fork (AE-106 / AE-S08) ----------------------------------------------------------
@@ -977,8 +1042,10 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
         make_prov(prefix_id.clone(), None, None, mfp),
         &model,
         registry,
+        manifest.laws.exotic_energy.as_ref().map(|law| &law.unit),
         prefix_series,
         prefix_ledger,
+        clock_at_fork.tick,
         None,
     );
 
@@ -1014,8 +1081,10 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             ),
             &branch_model,
             registry,
+            manifest.laws.exotic_energy.as_ref().map(|law| &law.unit),
             series,
             branch_ledger,
+            branch_clock.tick,
             failure,
         ))
     };
@@ -2240,6 +2309,182 @@ mod tests {
             RunStatus::Failed { tick: 1, ref reason, .. }
                 if reason.contains("observable 'ambiguous' was emitted more than once")
         ));
+    }
+
+    struct InvalidBudgetModel {
+        seed: u64,
+    }
+
+    impl ExperimentModel for InvalidBudgetModel {
+        type Snapshot = u64;
+
+        fn model_version() -> &'static str {
+            "test-non-finite-budget/1"
+        }
+
+        fn from_manifest(
+            _laws: &WorldLawSet,
+            _initial: &InitialConditionSet,
+            _forcings: &[ExoticIntervention],
+            seed: u64,
+            _grid: (usize, usize),
+            _run_ticks: u64,
+        ) -> Result<Self, ExperimentError> {
+            Ok(Self { seed })
+        }
+
+        fn snapshot(&self) -> Self::Snapshot {
+            self.seed
+        }
+
+        fn from_snapshot(snapshot: &Self::Snapshot) -> Result<Self, ExperimentError> {
+            Ok(Self { seed: *snapshot })
+        }
+
+        fn step(
+            &mut self,
+            _clock: &SimClock,
+            _active: &[&InterventionCommand],
+            _ledger: &mut CausalLedger,
+            _rng: &mut StdRng,
+        ) {
+        }
+
+        fn checksum(&self) -> u32 {
+            7
+        }
+
+        fn observables(&self) -> Vec<(String, f64)> {
+            vec![
+                ("plants".into(), 1.0),
+                ("herbivores".into(), 1.0),
+                ("predators".into(), 1.0),
+            ]
+        }
+
+        fn exotic_budget(&self) -> Option<ExoticEnergyBudget> {
+            let mut budget = ExoticEnergyBudget {
+                unit: crate::core::exotic_energy::UnitId::new(crate::core::exotic_energy::MU_UNIT),
+                initial: 1.0,
+                sourced: 0.0,
+                field: 1.0,
+                organism_storage: 0.0,
+                dissipated: 0.0,
+                exported: 0.0,
+            };
+            match self.seed {
+                10 => budget.sourced = f64::NAN,
+                11 => budget.field = -1.0,
+                12 => {
+                    budget.unit = crate::core::exotic_energy::UnitId::new("undeclared-budget-unit")
+                }
+                13 => {
+                    budget.initial = f64::MAX;
+                    budget.sourced = f64::MAX;
+                }
+                _ => {}
+            }
+            Some(budget)
+        }
+    }
+
+    #[test]
+    fn a_non_finite_exotic_budget_fails_and_remains_json_round_trippable() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = baseline_manifest(vec![10]);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+        manifest.laws.exotic_energy = Some(
+            crate::core::exotic_energy::ExoticEnergyLaw::mana_uniform(1.0),
+        );
+
+        let result = run_manifest_seed::<InvalidBudgetModel>(&manifest, &registry, 10, None, None);
+
+        assert!(matches!(
+            result.status,
+            RunStatus::Failed { tick: 1, ref reason, .. }
+                if reason.contains("exotic budget")
+                    && reason.contains("sourced")
+                    && reason.contains("non-finite")
+        ));
+        assert!(
+            result.exotic_budget.is_none(),
+            "an invalid budget must not survive into a JSON artifact"
+        );
+        let encoded = serde_json::to_vec(&result).expect("failed result serializes");
+        assert!(
+            !encoded
+                .windows(b"\"sourced\":null".len())
+                .any(|window| window == b"\"sourced\":null"),
+            "invalid numeric fields must not be erased into JSON null: {}",
+            String::from_utf8_lossy(&encoded)
+        );
+        serde_json::from_slice::<RunResult>(&encoded).expect("public result schema round-trips");
+    }
+
+    #[test]
+    fn a_negative_exotic_budget_compartment_fails_the_run() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = baseline_manifest(vec![11]);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+        manifest.laws.exotic_energy = Some(
+            crate::core::exotic_energy::ExoticEnergyLaw::mana_uniform(1.0),
+        );
+
+        let result = run_manifest_seed::<InvalidBudgetModel>(&manifest, &registry, 11, None, None);
+
+        assert!(matches!(
+            result.status,
+            RunStatus::Failed { tick: 1, ref reason, .. }
+                if reason.contains("exotic budget")
+                    && reason.contains("field")
+                    && reason.contains("negative")
+        ));
+        assert!(result.exotic_budget.is_none());
+    }
+
+    #[test]
+    fn an_exotic_budget_with_an_undeclared_unit_fails_the_run() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = baseline_manifest(vec![12]);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+        manifest.laws.exotic_energy = Some(
+            crate::core::exotic_energy::ExoticEnergyLaw::mana_uniform(1.0),
+        );
+
+        let result = run_manifest_seed::<InvalidBudgetModel>(&manifest, &registry, 12, None, None);
+
+        assert!(matches!(
+            result.status,
+            RunStatus::Failed { tick: 1, ref reason, .. }
+                if reason.contains("exotic budget unit")
+                    && reason.contains("undeclared-budget-unit")
+                    && reason.contains(crate::core::exotic_energy::MU_UNIT)
+        ));
+        assert!(result.exotic_budget.is_none());
+    }
+
+    #[test]
+    fn a_budget_whose_finite_compartments_overflow_its_balance_fails_the_run() {
+        let registry = ObservableRegistry::reference_default();
+        let mut manifest = baseline_manifest(vec![13]);
+        manifest.duration_ticks = 1;
+        manifest.sample_period = 1;
+        manifest.laws.exotic_energy = Some(
+            crate::core::exotic_energy::ExoticEnergyLaw::mana_uniform(1.0),
+        );
+
+        let result = run_manifest_seed::<InvalidBudgetModel>(&manifest, &registry, 13, None, None);
+
+        assert!(matches!(
+            result.status,
+            RunStatus::Failed { tick: 1, ref reason, .. }
+                if reason.contains("exotic budget balance error")
+                    && reason.contains("non-finite")
+        ));
+        assert!(result.exotic_budget.is_none());
     }
 
     #[test]
