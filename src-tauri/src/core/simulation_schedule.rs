@@ -134,10 +134,6 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .after(integrate_physics_system)
             .after(detect_food_collisions_system),
         hrrl_learning_system.after(metabolic_decay_system),
-        // Runs after `hrrl_learning_system`, which is where `LastTransitionState` and the
-        // homeostatic deviation this reads are refreshed. Returns immediately unless both
-        // evolved brains and lifetime learning are switched on.
-        crate::ai::model::lifetime_learning_system.after(hrrl_learning_system),
         check_epoch_completion_system.after(metabolic_decay_system),
         apply_staggered_evolution_system.after(check_epoch_completion_system),
         // An explicit observer request wins a contested queue slot over automatic boundary traffic.

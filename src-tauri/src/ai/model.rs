@@ -1115,10 +1115,10 @@ pub fn brain_inference_system(
     brain_buf.parent_head = parent_head;
 }
 
-/// Apply one in-life learning step to every eligible agent.
+/// Apply one in-life learning step from an already validated, completed transition.
 ///
-/// ADR-0003 decision 6. Off unless both `evolved` and `lifetime_learning.enabled` are set, so a
-/// default run is untouched: with the flag off this system reads one resource and returns.
+/// [`hrrl_learning_system`] owns the policy, cadence, and active-radius gates because it is also the
+/// only place where the previous state/action, pre-refresh reward, and current next state coexist.
 ///
 /// The reward is the same homeostatic drive-reduction the shared model trains on — the improvement
 /// in `HomeostaticState::compute_deviation` since last tick — so an agent is rewarded for moving
@@ -1127,71 +1127,32 @@ pub fn brain_inference_system(
 /// Learning never touches [`crate::core::components::AgentBrain::genotype`]: what an individual
 /// learns dies with it. That is the Baldwin position — evolution can select for brains that *learn
 /// well*, but not inherit what was learned.
-pub fn lifetime_learning_system(
-    policy: Option<Res<crate::core::resources::BrainPolicy>>,
-    lod_focus: Option<Res<crate::core::simulation_lod::LodFocus>>,
-    mut tick: Local<u32>,
-    mut scratch: Local<crate::evolution::brain_genotype::LearnScratch>,
-    mut agents: Query<(
-        &Position,
-        &HomeostaticState,
-        &crate::ai::hrrl::LastTransitionState,
-        &mut crate::core::components::AgentBrain,
-    )>,
+fn apply_lifetime_transition(
+    brain: &mut crate::core::components::AgentBrain,
+    transition: &crate::ai::hrrl::Transition,
+    cfg: crate::core::resources::LifetimeLearning,
+    scratch: &mut crate::evolution::brain_genotype::LearnScratch,
 ) {
-    let Some(policy) = policy else { return };
-    let cfg = policy.lifetime_learning;
-    if !policy.evolved || !cfg.enabled || cfg.interval == 0 {
+    let mut updated = (**brain.live()).clone();
+    // `V(s')` for the TD target, from the network as it stands before the update.
+    let Ok((_, next_value)) = updated.forward(&transition.next_state) else {
         return;
-    }
+    };
 
-    *tick = tick.wrapping_add(1);
-    if !(*tick).is_multiple_of(cfg.interval) {
-        return;
-    }
-
-    for (pos, homeo, last, mut brain) in agents.iter_mut() {
-        if !last.has_last {
-            continue; // nothing was done yet, so there is nothing to learn from
-        }
-        // Active-radius gate: agents outside it are not simulated in enough detail to learn from.
-        //
-        // Measured from the simulation-LOD focus, which is what ADR-0003 decision 6 asked for. Until
-        // LOD existed this fell back to the world origin — a stand-in that made the constraint
-        // testable but put the "active" region wherever the map happened to be centred. With no
-        // focus set it still falls back to the origin, so headless runs are unchanged.
-        let center = lod_focus
-            .as_deref()
-            .filter(|f| f.enabled)
-            .map(|f| f.center)
-            .unwrap_or(glam::Vec3::ZERO);
-        if cfg.active_radius.is_finite() && pos.0.distance(center) > cfg.active_radius {
-            continue;
-        }
-
-        let reward = homeo.previous_deviation - homeo.compute_deviation();
-        let mut updated = (**brain.live()).clone();
-
-        // `V(s')` for the TD target, from the network as it stands before the update.
-        let next_value = match updated.forward(&last.state) {
-            Ok((_, value)) => value,
-            Err(_) => continue,
-        };
-
-        if crate::evolution::brain_genotype::learn_step(
-            &mut updated,
-            &last.state,
-            &last.action,
-            reward,
-            next_value,
-            cfg.discount,
-            cfg.learning_rate,
-            &mut scratch,
-        )
-        .is_ok()
-        {
-            brain.set_learned(updated);
-        }
+    if crate::evolution::brain_genotype::learn_step(
+        &mut updated,
+        &transition.state,
+        &transition.action,
+        transition.reward,
+        next_value,
+        cfg.discount,
+        cfg.learning_rate,
+        scratch,
+    )
+    .is_ok()
+    {
+        // Only the live phenotype changes. The genotype remains heritable and untouched.
+        brain.set_learned(updated);
     }
 }
 
@@ -1211,6 +1172,8 @@ fn cyclic_window_contains(index: usize, start: usize, len: usize, total: usize) 
 }
 
 pub fn hrrl_learning_system(
+    policy: Option<Res<crate::core::resources::BrainPolicy>>,
+    lod_focus: Option<Res<crate::core::simulation_lod::LodFocus>>,
     mut agent_set: ParamSet<(
         Query<(&Position, &HomeostaticState), (With<crate::core::ecs::Agent>, With<Prey>)>,
         Query<(
@@ -1221,6 +1184,7 @@ pub fn hrrl_learning_system(
             &mut crate::ai::hrrl::LastTransitionState,
             Option<&Predator>,
             Option<&crate::ai::pheromone::OlfactorySensors>,
+            Option<&mut crate::core::components::AgentBrain>,
         )>,
     )>,
     food_query: Query<&Position, With<Food>>,
@@ -1234,7 +1198,30 @@ pub fn hrrl_learning_system(
     prey_tag_query: Query<(), With<Prey>>,
     parent_agent_query: Query<&ParentAgent>,
     mut learning_cursor: Local<usize>,
+    mut lifetime_tick: Local<u32>,
+    mut lifetime_scratch: Local<crate::evolution::brain_genotype::LearnScratch>,
 ) {
+    // Lifetime learning consumes the transition here, before the previous-state bookkeeping below
+    // advances. Keeping both learners on this boundary guarantees that they see the same exact
+    // (state, action, reward, next_state) tuple.
+    let lifetime_cfg = policy
+        .as_deref()
+        .filter(|policy| {
+            policy.evolved
+                && policy.lifetime_learning.enabled
+                && policy.lifetime_learning.interval > 0
+        })
+        .map(|policy| policy.lifetime_learning);
+    let lifetime_due = lifetime_cfg.is_some_and(|cfg| {
+        *lifetime_tick = lifetime_tick.wrapping_add(1);
+        (*lifetime_tick).is_multiple_of(cfg.interval)
+    });
+    let lifetime_center = lod_focus
+        .as_deref()
+        .filter(|focus| focus.enabled)
+        .map(|focus| focus.center)
+        .unwrap_or(glam::Vec3::ZERO);
+
     let mut prey_data = [(glam::Vec3::ZERO, 0.0f32); 256];
     let mut prey_count = 0;
     for (pos, homeo) in agent_set.p0().iter() {
@@ -1248,7 +1235,7 @@ pub fn hrrl_learning_system(
         let mut agent_query = agent_set.p1();
         agent_query
             .iter_mut()
-            .filter(|(_, _, _, _, last, _, _)| last.has_last)
+            .filter(|(_, _, _, _, last, _, _, _)| last.has_last)
             .count()
     };
     let (window_start, attempt_budget) = if let Some(ref sender) = transition_sender {
@@ -1279,7 +1266,7 @@ pub fn hrrl_learning_system(
 
     let mut eligible_index = 0usize;
     let mut agent_query = agent_set.p1();
-    for (entity, agent_pos, rotation, mut homeo, mut last, opt_predator, opt_sensors) in
+    for (entity, agent_pos, rotation, mut homeo, mut last, opt_predator, opt_sensors, opt_brain) in
         agent_query.iter_mut()
     {
         let is_predator = opt_predator.is_some();
@@ -1378,6 +1365,12 @@ pub fn hrrl_learning_system(
 
         if last.has_last {
             let reward = homeo.previous_deviation - current_deviation;
+            let transition = crate::ai::hrrl::Transition {
+                state: last.state,
+                action: last.action,
+                reward,
+                next_state: current_state,
+            };
             let should_attempt = cyclic_window_contains(
                 eligible_index,
                 window_start,
@@ -1385,24 +1378,34 @@ pub fn hrrl_learning_system(
                 eligible_count,
             );
             eligible_index += 1;
-            if should_attempt {
-                let sender = transition_sender
-                    .as_ref()
-                    .expect("an attempt budget exists only with a transition sender");
-                let transition = crate::ai::hrrl::Transition {
-                    state: last.state,
-                    action: last.action,
-                    reward,
-                    next_state: current_state,
-                };
-                if !transition.is_finite() {
-                    if let Some(ref diagnostics) = queue_diagnostics {
-                        diagnostics.record_invalid_rejection();
+            if !transition.is_finite() {
+                if let Some(ref diagnostics) = queue_diagnostics {
+                    diagnostics.record_invalid_rejection();
+                }
+                // Do not retry a corrupt state/action pair forever. A later valid inference
+                // response will establish a fresh action and set this flag again.
+                last.has_last = false;
+            } else {
+                if lifetime_due
+                    && lifetime_cfg.is_some_and(|cfg| {
+                        !cfg.active_radius.is_finite()
+                            || agent_pos.0.distance(lifetime_center) <= cfg.active_radius
+                    })
+                {
+                    if let (Some(mut brain), Some(cfg)) = (opt_brain, lifetime_cfg) {
+                        apply_lifetime_transition(
+                            &mut brain,
+                            &transition,
+                            cfg,
+                            &mut lifetime_scratch,
+                        );
                     }
-                    // Do not retry a corrupt state/action pair forever. A later valid inference
-                    // response will establish a fresh action and set this flag again.
-                    last.has_last = false;
-                } else {
+                }
+
+                if should_attempt {
+                    let sender = transition_sender
+                        .as_ref()
+                        .expect("an attempt budget exists only with a transition sender");
                     match sender.0.try_send(transition) {
                         Ok(()) => {
                             if let Some(ref diagnostics) = queue_diagnostics {
