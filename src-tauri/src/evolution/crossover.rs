@@ -1,5 +1,5 @@
 use crate::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
-use crate::evolution::mutation::is_valid_genotype;
+use crate::evolution::mutation::{is_valid_genotype, reserve_node_ids, NodeIdExhausted};
 use rand::seq::SliceRandom;
 
 fn get_subtree(
@@ -34,12 +34,12 @@ pub fn crossover_genotypes(
     parent_b: &MorphologyGenotype,
     node_id_counter: &mut u32,
     rng: &mut impl rand::Rng,
-) -> MorphologyGenotype {
+) -> Result<MorphologyGenotype, NodeIdExhausted> {
     if parent_a.nodes.is_empty() {
-        return parent_b.clone();
+        return Ok(parent_b.clone());
     }
     if parent_b.nodes.is_empty() {
-        return parent_a.clone();
+        return Ok(parent_a.clone());
     }
 
     let mut child = parent_a.clone();
@@ -69,10 +69,9 @@ pub fn crossover_genotypes(
         // Fallback case: Child only has a root. Graft parent_b's subtree as child.
         if let Some(w_node) = parent_b.nodes.choose(&mut *rng) {
             let (sub_nodes, sub_edges) = get_subtree(parent_b, w_node.id);
+            let reserved_ids = reserve_node_ids(node_id_counter, sub_nodes.len())?;
             let mut map = std::collections::HashMap::new();
-            for node in &sub_nodes {
-                let new_id = *node_id_counter;
-                *node_id_counter += 1;
+            for (node, new_id) in sub_nodes.iter().zip(reserved_ids) {
                 map.insert(node.id, new_id);
                 child.nodes.push(MorphologyNode {
                     id: new_id,
@@ -125,12 +124,11 @@ pub fn crossover_genotypes(
                 // Select a random node w from Parent B
                 if let Some(w_node) = parent_b.nodes.choose(&mut *rng) {
                     let (w_sub_nodes, w_sub_edges) = get_subtree(parent_b, w_node.id);
+                    let reserved_ids = reserve_node_ids(node_id_counter, w_sub_nodes.len())?;
 
                     // Graft the subtree rooted at w from parent_b into child
                     let mut map = std::collections::HashMap::new();
-                    for node in &w_sub_nodes {
-                        let new_id = *node_id_counter;
-                        *node_id_counter += 1;
+                    for (node, new_id) in w_sub_nodes.iter().zip(reserved_ids) {
                         map.insert(node.id, new_id);
                         child.nodes.push(MorphologyNode {
                             id: new_id,
@@ -157,9 +155,42 @@ pub fn crossover_genotypes(
     }
 
     if is_valid_genotype(&child) {
-        child
+        Ok(child)
     } else {
         *node_id_counter = backup_counter;
-        parent_a.clone()
+        Ok(parent_a.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    fn single_node(id: u32) -> MorphologyGenotype {
+        let mut genotype = MorphologyGenotype::new();
+        genotype.add_node(MorphologyNode {
+            id,
+            length: 1.0,
+            radius: 0.25,
+            mass: 1.0,
+        });
+        genotype
+    }
+
+    #[test]
+    fn exhausted_node_ids_return_error_without_panicking_or_mutating_the_cursor() {
+        let parent_a = single_node(0);
+        let parent_b = single_node(1);
+        let mut cursor = u32::MAX;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+
+        let result = crossover_genotypes(&parent_a, &parent_b, &mut cursor, &mut rng);
+
+        assert_eq!(cursor, u32::MAX);
+        assert!(
+            result.is_err(),
+            "exhaustion must stay visible to the evolution worker"
+        );
     }
 }

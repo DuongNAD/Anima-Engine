@@ -3,6 +3,28 @@ use glam::Vec3;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NodeIdExhausted;
+
+impl std::fmt::Display for NodeIdExhausted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "morphology node identity counter exhausted")
+    }
+}
+
+impl std::error::Error for NodeIdExhausted {}
+
+pub(crate) fn reserve_node_ids(
+    node_id_counter: &mut u32,
+    count: usize,
+) -> Result<std::ops::Range<u32>, NodeIdExhausted> {
+    let count = u32::try_from(count).map_err(|_| NodeIdExhausted)?;
+    let start = *node_id_counter;
+    let end = start.checked_add(count).ok_or(NodeIdExhausted)?;
+    *node_id_counter = end;
+    Ok(start..end)
+}
+
 pub fn is_valid_genotype(genotype: &MorphologyGenotype) -> bool {
     if genotype.nodes.is_empty() {
         return false;
@@ -50,9 +72,9 @@ pub fn mutate_genotype(
     node_id_counter: &mut u32,
     mutation_rate: f64,
     rng: &mut impl Rng,
-) {
+) -> Result<(), NodeIdExhausted> {
     if !rng.gen_bool(mutation_rate) {
-        return;
+        return Ok(());
     }
 
     let backup = genotype.clone();
@@ -125,7 +147,9 @@ pub fn mutate_genotype(
                     let parent_idx = rng.gen_range(0..genotype.nodes.len());
                     let parent = genotype.nodes[parent_idx].clone();
 
-                    let child_id = *node_id_counter;
+                    let child_id = reserve_node_ids(node_id_counter, 1)?
+                        .next()
+                        .ok_or(NodeIdExhausted)?;
 
                     let length = (parent.length + rng.gen_range(-0.5..0.5)).clamp(0.1, 5.0);
                     let radius = (parent.radius + rng.gen_range(-0.1..0.1)).clamp(0.05, 1.0);
@@ -162,7 +186,6 @@ pub fn mutate_genotype(
 
                     genotype.add_node(child_node);
                     genotype.add_edge(child_edge);
-                    *node_id_counter += 1;
                     success = true;
                 }
             }
@@ -200,5 +223,53 @@ pub fn mutate_genotype(
     if success && !is_valid_genotype(genotype) {
         *genotype = backup;
         *node_id_counter = backup_counter;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    fn single_node() -> MorphologyGenotype {
+        let mut genotype = MorphologyGenotype::new();
+        genotype.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.25,
+            mass: 1.0,
+        });
+        genotype
+    }
+
+    #[test]
+    fn exhausted_node_ids_never_panic_or_wrap_across_operator_orderings() {
+        let mut observed_exhaustion = false;
+        for seed in 0..256 {
+            let mut genotype = single_node();
+            let before = genotype.clone();
+            let mut cursor = u32::MAX;
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+            let result = mutate_genotype(&mut genotype, &mut cursor, 1.0, &mut rng);
+
+            assert_eq!(cursor, u32::MAX, "seed {seed} wrapped the node cursor");
+            if result.is_err() {
+                observed_exhaustion = true;
+                assert_eq!(genotype.nodes.len(), before.nodes.len());
+                assert_eq!(genotype.edges.len(), before.edges.len());
+                assert_eq!(genotype.nodes[0].id, before.nodes[0].id);
+            } else {
+                assert!(
+                    is_valid_genotype(&genotype),
+                    "seed {seed} left an invalid genotype"
+                );
+            }
+        }
+        assert!(
+            observed_exhaustion,
+            "the seed sweep must exercise structural-add exhaustion"
+        );
     }
 }

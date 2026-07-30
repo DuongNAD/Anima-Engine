@@ -259,7 +259,8 @@ fn mutation_replays_under_one_seed() {
         let mut counter = 100u32;
         let mut rng = SimRng::from_seed(seed);
         for _ in 0..25 {
-            mutate_genotype(&mut g, &mut counter, 1.0, rng.rng());
+            mutate_genotype(&mut g, &mut counter, 1.0, rng.rng())
+                .expect("test node cursor has headroom");
         }
         (
             g.nodes.iter().map(|n| (n.id, n.length)).collect::<Vec<_>>(),
@@ -293,7 +294,8 @@ fn crossover_replays_under_one_seed() {
         let mut rng = SimRng::from_seed(seed);
         let children: Vec<Vec<(u32, f32)>> = (0..15)
             .map(|_| {
-                let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, rng.rng());
+                let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, rng.rng())
+                    .expect("test node cursor has headroom");
                 child.nodes.iter().map(|n| (n.id, n.length)).collect()
             })
             .collect();

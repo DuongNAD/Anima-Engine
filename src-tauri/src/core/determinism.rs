@@ -171,12 +171,32 @@ impl RunIdentity {
         self.run_id
     }
 
-    /// Next id in sequence.
-    pub fn next_id(&self) -> String {
+    /// Try to mint the next id without ever wrapping the namespace counter.
+    pub fn try_next_id(&self) -> Result<String, String> {
         let n = self
             .counter
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        format!("{}-{:016x}-{:08x}", self.prefix, self.run_id, n)
+            .fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |current| current.checked_add(1),
+            )
+            .map_err(|_| {
+                format!(
+                    "deterministic id namespace {:?} for run {:016x} exhausted its counter",
+                    self.prefix, self.run_id
+                )
+            })?;
+        Ok(format!("{}-{:016x}-{:08x}", self.prefix, self.run_id, n))
+    }
+
+    /// Next id in sequence.
+    ///
+    /// Production paths that can resume an external cursor use [`Self::try_next_id`]. This
+    /// compatibility wrapper is for fresh, internally-owned cursors; exhaustion is explicit rather
+    /// than silently wrapping into an existing identity.
+    pub fn next_id(&self) -> String {
+        self.try_next_id()
+            .expect("deterministic identity counter exhausted")
     }
 
     /// How many ids have been issued. Part of a run's reproducibility fingerprint: two replays that
@@ -229,10 +249,15 @@ where
 ///
 /// The single call site pattern for replacing `Uuid::new_v4().to_string()`.
 pub fn next_entity_id(mode: DeterministicMode, ids: &RunIdentity) -> String {
+    try_next_entity_id(mode, ids).expect("fresh deterministic identity counter exhausted")
+}
+
+/// Fallible identity allocation for workers that resume a persisted cursor.
+pub fn try_next_entity_id(mode: DeterministicMode, ids: &RunIdentity) -> Result<String, String> {
     if mode.is_enabled() {
-        ids.next_id()
+        ids.try_next_id()
     } else {
-        uuid::Uuid::new_v4().to_string()
+        Ok(uuid::Uuid::new_v4().to_string())
     }
 }
 
@@ -275,6 +300,33 @@ mod tests {
         let a = RunIdentity::new(1, "lineage");
         let b = RunIdentity::new(2, "lineage");
         assert_ne!(a.next_id(), b.next_id());
+    }
+
+    #[test]
+    fn an_exhausted_identity_counter_refuses_without_wrapping() {
+        let ids = RunIdentity::with_issued(7, "lineage", u64::MAX);
+        let attempt = std::panic::catch_unwind(|| ids.next_id());
+
+        assert!(
+            attempt.is_err(),
+            "the infallible compatibility API must refuse exhaustion rather than mint a collision"
+        );
+        assert_eq!(
+            ids.issued(),
+            u64::MAX,
+            "a failed allocation must leave the cursor unchanged"
+        );
+    }
+
+    #[test]
+    fn fallible_entity_ids_propagate_deterministic_exhaustion() {
+        let ids = RunIdentity::with_issued(7, "lineage", u64::MAX);
+
+        let error = try_next_entity_id(DeterministicMode::on(), &ids)
+            .expect_err("deterministic exhaustion must remain visible to the worker");
+
+        assert!(error.contains("exhausted"), "{error}");
+        assert_eq!(ids.issued(), u64::MAX);
     }
 
     #[test]

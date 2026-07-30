@@ -127,7 +127,8 @@ fn test_robust_mutation() {
     // Mutate 200 times and check constraints every time
     for _ in 0..200 {
         let prev_genotype = genotype.clone();
-        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng)
+            .expect("test node cursor has headroom");
 
         // Ensure the genotype is valid
         assert!(
@@ -280,7 +281,8 @@ fn test_subtree_crossover() {
     let mut rng = test_rng();
 
     for _ in 0..50 {
-        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+            .expect("test node cursor has headroom");
 
         assert!(
             is_valid_genotype(&child),

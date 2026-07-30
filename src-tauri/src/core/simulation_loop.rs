@@ -158,6 +158,12 @@ fn elapsed_ns(since: Instant) -> u64 {
     since.elapsed().as_nanos().min(u64::MAX as u128) as u64
 }
 
+fn advance_scientific_counter(current: u32, name: &str) -> Result<u32, String> {
+    current
+        .checked_add(1)
+        .ok_or_else(|| format!("{name} exhausted its u32 range"))
+}
+
 /// Mean wall-clock milliseconds per tick **this run has measured**.
 ///
 /// The denominator is not the world's `tick_count`. A restored world starts at whatever tick the
@@ -525,7 +531,7 @@ impl SimulationEngine {
             // Reused across epochs so the hot path does not allocate a fresh Vec per batch.
             let mut new_offspring_ids: Vec<String> = Vec::new();
 
-            while running_clone_evo.load(Ordering::SeqCst) {
+            'evolution_loop: while running_clone_evo.load(Ordering::SeqCst) {
                 if let Ok(request) = evolution_checkpoint_rx.try_recv() {
                     let checkpoint = SavedEvolutionWorkerState {
                         rng_seed: evo_rng.seed(),
@@ -558,13 +564,30 @@ impl SimulationEngine {
                         continue;
                     }
 
-                    meta_ai_epoch += 1;
+                    meta_ai_epoch = match advance_scientific_counter(meta_ai_epoch, "Meta-AI epoch")
+                    {
+                        Ok(next) => next,
+                        Err(error) => {
+                            eprintln!("ERROR: evolution worker stopped: {error}");
+                            running_clone_evo.store(false, Ordering::SeqCst);
+                            break 'evolution_loop;
+                        }
+                    };
                     let new_event = meta_ai_client.generate_event(meta_ai_epoch, &meta_ai_history);
                     meta_ai_history.push(new_event);
                     let _ = env_tx.send(new_event);
 
-                    let id =
-                        crate::core::determinism::next_entity_id(evo_deterministic, &chronicle_ids);
+                    let id = match crate::core::determinism::try_next_entity_id(
+                        evo_deterministic,
+                        &chronicle_ids,
+                    ) {
+                        Ok(id) => id,
+                        Err(error) => {
+                            eprintln!("ERROR: evolution worker stopped: {error}");
+                            running_clone_evo.store(false, Ordering::SeqCst);
+                            break 'evolution_loop;
+                        }
+                    };
                     let (event_type, title, description) = match new_event {
                         crate::evolution::meta_ai::EnvironmentalEvent::ResourceDrought => (
                             "Drought".to_string(),
@@ -710,12 +733,22 @@ impl SimulationEngine {
                         let (mut offspring, parent_ids, max_parent_gen, relation_type) =
                             if let Some(elite_a) = parent_a {
                                 if let Some(elite_b) = parent_b {
-                                    let child = crate::evolution::crossover::crossover_genotypes(
-                                        &elite_a.genotype,
-                                        &elite_b.genotype,
-                                        &mut node_id_counter,
-                                        evo_rng.rng(),
-                                    );
+                                    let child =
+                                        match crate::evolution::crossover::crossover_genotypes(
+                                            &elite_a.genotype,
+                                            &elite_b.genotype,
+                                            &mut node_id_counter,
+                                            evo_rng.rng(),
+                                        ) {
+                                            Ok(child) => child,
+                                            Err(error) => {
+                                                eprintln!(
+                                                    "ERROR: evolution worker stopped: {error}"
+                                                );
+                                                running_clone_evo.store(false, Ordering::SeqCst);
+                                                break 'evolution_loop;
+                                            }
+                                        };
                                     (
                                         child,
                                         vec![
@@ -747,19 +780,40 @@ impl SimulationEngine {
                             if parent_ids.len() == 1 {
                                 final_rel_type = crate::evolution::lineage::RelationType::Mutate;
                             }
-                            crate::evolution::mutation::mutate_genotype(
+                            if let Err(error) = crate::evolution::mutation::mutate_genotype(
                                 &mut offspring,
                                 &mut node_id_counter,
                                 mutation_rate,
                                 evo_rng.rng(),
-                            );
+                            ) {
+                                eprintln!("ERROR: evolution worker stopped: {error}");
+                                running_clone_evo.store(false, Ordering::SeqCst);
+                                break 'evolution_loop;
+                            }
                         }
 
-                        let offspring_generation = max_parent_gen + 1;
-                        let offspring_id = crate::core::determinism::next_entity_id(
+                        let offspring_generation = match advance_scientific_counter(
+                            max_parent_gen,
+                            "offspring generation",
+                        ) {
+                            Ok(next) => next,
+                            Err(error) => {
+                                eprintln!("ERROR: evolution worker stopped: {error}");
+                                running_clone_evo.store(false, Ordering::SeqCst);
+                                break 'evolution_loop;
+                            }
+                        };
+                        let offspring_id = match crate::core::determinism::try_next_entity_id(
                             evo_deterministic,
                             &offspring_ids,
-                        );
+                        ) {
+                            Ok(id) => id,
+                            Err(error) => {
+                                eprintln!("ERROR: evolution worker stopped: {error}");
+                                running_clone_evo.store(false, Ordering::SeqCst);
+                                break 'evolution_loop;
+                            }
+                        };
 
                         let _ = lineage_tracker_evo.add_reproduction(
                             offspring_id.clone(),
@@ -2319,6 +2373,18 @@ impl SimulationEngine {
 #[cfg(test)]
 mod mean_tick_time_tests {
     use super::*;
+
+    #[test]
+    fn scientific_counters_refuse_exhaustion_instead_of_wrapping() {
+        assert_eq!(
+            advance_scientific_counter(41, "test counter").expect("ordinary increment"),
+            42
+        );
+        let error = advance_scientific_counter(u32::MAX, "test counter")
+            .expect_err("exhausted counter must fail closed");
+        assert!(error.contains("test counter"), "{error}");
+        assert!(error.contains("exhausted"), "{error}");
+    }
 
     #[test]
     fn evolution_checkpoint_requires_empty_world_and_channel_boundaries() {
