@@ -902,6 +902,7 @@ mod tests {
             pending_inference: Vec::new(),
             learning_queue_diagnostics: crate::ai::hrrl::LearningQueueSnapshot {
                 queued: 10,
+                invalid_rejections: 0,
                 full_rejections: 2,
                 disconnected_rejections: 1,
                 backpressure_skipped: 3,

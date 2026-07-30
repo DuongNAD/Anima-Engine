@@ -555,6 +555,11 @@ pub struct WorkloadContext {
     #[serde(default)]
     #[ts(type = "number | null")]
     pub learning_transitions_queued_total: Option<u64>,
+    /// Transitions rejected because any state, action or reward value was non-finite, cumulative
+    /// since run start. A non-zero value makes data quarantine visible in the experiment artifact.
+    #[serde(default)]
+    #[ts(type = "number | null")]
+    pub learning_transitions_invalid_rejections_total: Option<u64>,
     /// Transitions rejected because the bounded learner queue was full, cumulative since run start.
     #[serde(default)]
     #[ts(type = "number | null")]
@@ -1243,6 +1248,7 @@ impl TickCaptureSink {
                 agent_count_min: None,
                 agent_count_max: None,
                 learning_transitions_queued_total: None,
+                learning_transitions_invalid_rejections_total: None,
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
@@ -1260,6 +1266,8 @@ impl TickCaptureSink {
             return;
         }
         self.workload.learning_transitions_queued_total = Some(snapshot.queued);
+        self.workload.learning_transitions_invalid_rejections_total =
+            Some(snapshot.invalid_rejections);
         self.workload.learning_transitions_full_rejections_total = Some(snapshot.full_rejections);
         self.workload
             .learning_transitions_disconnected_rejections_total =
@@ -1359,6 +1367,7 @@ mod tests {
                 agent_count_min: None,
                 agent_count_max: None,
                 learning_transitions_queued_total: None,
+                learning_transitions_invalid_rejections_total: None,
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
@@ -1727,6 +1736,7 @@ mod tests {
                 agent_count_min: None,
                 agent_count_max: None,
                 learning_transitions_queued_total: None,
+                learning_transitions_invalid_rejections_total: None,
                 learning_transitions_full_rejections_total: None,
                 learning_transitions_disconnected_rejections_total: None,
                 learning_transitions_backpressure_skipped_total: None,
@@ -1791,6 +1801,7 @@ mod tests {
         assert_eq!(workload.agent_count_min, None);
         assert_eq!(workload.agent_count_max, None);
         assert_eq!(workload.learning_transitions_queued_total, None);
+        assert_eq!(workload.learning_transitions_invalid_rejections_total, None);
         assert_eq!(workload.learning_transitions_full_rejections_total, None);
         assert_eq!(
             workload.learning_transitions_disconnected_rejections_total,
@@ -1912,6 +1923,7 @@ mod tests {
         sink.note_workload(7, Some((256, 256)));
         sink.note_learning_queue(crate::ai::hrrl::LearningQueueSnapshot {
             queued: 90,
+            invalid_rejections: 3,
             full_rejections: 10,
             disconnected_rejections: 0,
             backpressure_skipped: 900,
@@ -1927,6 +1939,10 @@ mod tests {
         let workload = shared.export().workload;
         assert!(workload.dimensions_measured);
         assert_eq!(workload.learning_transitions_queued_total, Some(90));
+        assert_eq!(
+            workload.learning_transitions_invalid_rejections_total,
+            Some(3)
+        );
         assert_eq!(
             workload.learning_transitions_full_rejections_total,
             Some(10)

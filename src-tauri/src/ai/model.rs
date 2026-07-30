@@ -1395,28 +1395,43 @@ pub fn hrrl_learning_system(
                     reward,
                     next_state: current_state,
                 };
-                match sender.0.try_send(transition) {
-                    Ok(()) => {
-                        if let Some(ref diagnostics) = queue_diagnostics {
-                            diagnostics.record_queued();
-                        }
+                if !transition.is_finite() {
+                    if let Some(ref diagnostics) = queue_diagnostics {
+                        diagnostics.record_invalid_rejection();
                     }
-                    Err(crossbeam_channel::TrySendError::Full(_)) => {
-                        if let Some(ref diagnostics) = queue_diagnostics {
-                            diagnostics.record_full_rejection();
+                    // Do not retry a corrupt state/action pair forever. A later valid inference
+                    // response will establish a fresh action and set this flag again.
+                    last.has_last = false;
+                } else {
+                    match sender.0.try_send(transition) {
+                        Ok(()) => {
+                            if let Some(ref diagnostics) = queue_diagnostics {
+                                diagnostics.record_queued();
+                            }
                         }
-                    }
-                    Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
-                        if let Some(ref diagnostics) = queue_diagnostics {
-                            diagnostics.record_disconnected_rejection();
+                        Err(crossbeam_channel::TrySendError::Full(_)) => {
+                            if let Some(ref diagnostics) = queue_diagnostics {
+                                diagnostics.record_full_rejection();
+                            }
+                        }
+                        Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+                            if let Some(ref diagnostics) = queue_diagnostics {
+                                diagnostics.record_disconnected_rejection();
+                            }
                         }
                     }
                 }
             }
         }
 
-        homeo.previous_deviation = current_deviation;
-        last.state = current_state;
+        // A broken component must not replace the last finite observation and then be retried on
+        // every subsequent tick. Keep the previous deviation/state intact until the world recovers.
+        if current_deviation.is_finite() && current_state.iter().all(|value| value.is_finite()) {
+            homeo.previous_deviation = current_deviation;
+            last.state = current_state;
+        } else {
+            last.has_last = false;
+        }
     }
     if eligible_count > 0 {
         *learning_cursor = (window_start + attempt_budget) % eligible_count;
