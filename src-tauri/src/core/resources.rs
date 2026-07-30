@@ -225,6 +225,58 @@ mod scientific_counter_fault_tests {
     }
 }
 
+#[cfg(test)]
+mod migration_control_plane_tests {
+    use super::*;
+
+    #[test]
+    fn manual_migration_requests_have_a_fixed_backlog() {
+        let (requests_tx, requests_rx) = manual_migration_channel();
+        for port in 0..MANUAL_MIGRATION_QUEUE_CAPACITY {
+            requests_tx
+                .try_send(port as u16)
+                .expect("declared migration request slot");
+        }
+
+        assert!(matches!(
+            requests_tx.try_send(65_000),
+            Err(crossbeam_channel::TrySendError::Full(65_000))
+        ));
+        assert_eq!(requests_rx.len(), MANUAL_MIGRATION_QUEUE_CAPACITY);
+    }
+
+    #[test]
+    fn manual_migration_work_is_bounded_per_tick() {
+        let (requests_tx, requests_rx) = manual_migration_channel();
+        let request_count = MANUAL_MIGRATIONS_PER_TICK + 3;
+        for port in 0..request_count {
+            requests_tx
+                .try_send(port as u16)
+                .expect("request fits the declared backlog");
+        }
+
+        let mut world = World::new();
+        world.insert_resource(BevyMigrationTrigger(requests_rx.clone()));
+        world.insert_resource(MapBounds::default());
+        world.insert_resource(ShardingResource(Arc::new(RwLock::new(
+            ShardingConfig::default(),
+        ))));
+        let (outbound_tx, _outbound_rx) = outbound_migration_channel();
+        world.insert_resource(OutboundMigrationSender(outbound_tx));
+        world.insert_resource(SimRng::from_seed(7));
+
+        let mut schedule = bevy_ecs::schedule::Schedule::default();
+        schedule.add_systems(crate::core::world_systems::manual_migration_system);
+        schedule.run(&mut world);
+
+        assert_eq!(
+            requests_rx.len(),
+            request_count - MANUAL_MIGRATIONS_PER_TICK,
+            "one burst must be spread across bounded simulation ticks"
+        );
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct CombatEvents {
     pub events: Vec<CombatEvent>,
@@ -648,6 +700,23 @@ pub fn outbound_migration_channel() -> (
     crossbeam_channel::Receiver<OutboundMigration>,
 ) {
     crossbeam_channel::bounded(OUTBOUND_MIGRATION_QUEUE_CAPACITY)
+}
+
+/// Maximum number of observer-requested migrations waiting for the simulation tick.
+///
+/// Requests are only port numbers, but an unbounded queue also creates unbounded work: each one
+/// clones a complete agent handoff and attempts an outbound enqueue. The per-tick budget below
+/// spreads a full burst over bounded frames.
+pub const MANUAL_MIGRATION_QUEUE_CAPACITY: usize = 256;
+
+/// Maximum observer-requested migrations materialized in one simulation tick.
+pub const MANUAL_MIGRATIONS_PER_TICK: usize = 16;
+
+pub fn manual_migration_channel() -> (
+    crossbeam_channel::Sender<u16>,
+    crossbeam_channel::Receiver<u16>,
+) {
+    crossbeam_channel::bounded(MANUAL_MIGRATION_QUEUE_CAPACITY)
 }
 
 #[derive(Default)]

@@ -774,7 +774,10 @@ pub fn manual_migration_system(
         Err(_) => return,
     };
 
-    while let Ok(target_port) = trigger.0.try_recv() {
+    for _ in 0..crate::core::resources::MANUAL_MIGRATIONS_PER_TICK {
+        let Ok(target_port) = trigger.0.try_recv() else {
+            break;
+        };
         use rand::seq::IteratorRandom;
         let rng = sim_rng.rng();
         if let Some((
