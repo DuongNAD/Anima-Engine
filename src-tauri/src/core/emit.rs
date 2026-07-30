@@ -230,6 +230,15 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
         while running.load(Ordering::SeqCst) {
             thread::sleep(EMIT_INTERVAL);
 
+            // Combat events are transient telemetry, not simulation state. Drain them even in a
+            // headless run: without an AppHandle there is nobody to publish to, and letting the
+            // simulation append forever would turn a disabled output into an unbounded queue.
+            local_combat.clear();
+            {
+                let mut shared = combat_events.write().unwrap_or_else(|e| e.into_inner());
+                std::mem::swap(&mut *shared, &mut local_combat);
+            }
+
             let Some(ref handle) = app_handle else {
                 continue;
             };
@@ -258,13 +267,8 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
             }
             let _ = handle.emit("raycast-update", &local_raycasts);
 
-            // Swapped out rather than copied: the sim thread appends to the shared Vec, and taking
-            // it wholesale leaves an empty buffer behind for the next tick to fill.
-            local_combat.clear();
-            {
-                let mut shared = combat_events.write().unwrap_or_else(|e| e.into_inner());
-                std::mem::swap(&mut *shared, &mut local_combat);
-            }
+            // Swapped out rather than copied above: the sim thread appends to the shared Vec, and
+            // taking it wholesale leaves an empty buffer behind for the next tick to fill.
             for event in &local_combat {
                 let _ = handle.emit("combat-event", event);
             }
@@ -276,6 +280,54 @@ pub fn spawn_emit_thread<R: tauri::Runtime>(
 mod tests {
     use super::*;
     use crate::ai::pheromone::{CELL_COUNT, GRID_SIZE};
+
+    #[test]
+    fn a_headless_emitter_drains_transient_combat_events() {
+        let running = Arc::new(AtomicBool::new(true));
+        let combat_events = Arc::new(RwLock::new(vec![CombatEvent {
+            predator_id: 1,
+            prey_id: 2,
+            damage: 3.0,
+            energy_transferred: 4.0,
+        }]));
+        let supervisor = crate::core::thread_supervisor::ThreadSupervisor::new();
+        let handle = spawn_emit_thread::<tauri::test::MockRuntime>(
+            EmitChannels {
+                running: Arc::clone(&running),
+                agent_states: Arc::new(RwLock::new(Vec::new())),
+                pheromone_grid: Arc::new(RwLock::new(empty_grid())),
+                active_raycasts: Arc::new(RwLock::new(Vec::new())),
+                combat_events: Arc::clone(&combat_events),
+                environmental_state: Arc::new(RwLock::new(EnvironmentalState::default())),
+            },
+            None,
+            supervisor.token(crate::core::thread_supervisor::EMIT),
+        );
+
+        let deadline = Instant::now() + Duration::from_millis(300);
+        let drained = loop {
+            if combat_events
+                .read()
+                .unwrap_or_else(|error| error.into_inner())
+                .is_empty()
+            {
+                break true;
+            }
+            if Instant::now() >= deadline {
+                break false;
+            }
+            thread::sleep(Duration::from_millis(5));
+        };
+        running.store(false, Ordering::SeqCst);
+        handle.join().expect("headless emitter exits");
+
+        assert!(
+            drained,
+            "without a frontend, transient combat telemetry must be discarded instead of growing \
+             for the life of the simulation"
+        );
+        assert!(supervisor.live().is_empty());
+    }
 
     fn segment(agent_id: u32, segment_id: u32, parent: Option<u32>) -> SegmentState {
         SegmentState {
