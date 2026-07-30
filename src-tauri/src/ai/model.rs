@@ -389,7 +389,7 @@ pub fn run_inference_batch(
     for (row, &req_idx) in scratch.shared_slots.iter().enumerate() {
         let mut actions = AgentInferenceResponse::open_gates_default();
         for (k, action) in actions.iter_mut().take(action_index::CPG_LEN).enumerate() {
-            if let Some(&val) = outputs_vec.get(row * action_index::CPG_LEN + k) {
+            if let Some(&val) = outputs_vec.get(row * brain_model.action_dim + k) {
                 *action = val;
             }
         }
