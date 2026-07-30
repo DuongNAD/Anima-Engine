@@ -62,10 +62,8 @@ pub fn save_simulation_state(
     }
 
     let (tx, rx) = std::sync::mpsc::channel::<Result<SavedSimulationState, String>>();
-    engine
-        .save_request_tx
-        .send(tx)
-        .map_err(|e| format!("Failed to send save request: {}", e))?;
+    crate::core::simulation_loop::enqueue_save_request(&engine.save_request_tx, tx)
+        .map_err(|e| format!("Failed to enqueue save request: {e}"))?;
 
     // Two different failures, kept apart: the sim thread never answered, versus it answered that
     // this world cannot be saved. The second is a refusal with a reason the user can act on, so it

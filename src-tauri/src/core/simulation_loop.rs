@@ -37,6 +37,7 @@ use tauri::Emitter;
 ///
 /// On the happy path this costs nothing: `wait_for_exit` returns as soon as the registry empties.
 const SHUTDOWN_GRACE_SECS: u64 = 30;
+const SAVE_REQUEST_QUEUE_CAPACITY: usize = 1;
 
 /// Epochs between lineage compactions (OSS-071).
 ///
@@ -56,6 +57,40 @@ struct EvolutionCheckpointRequest {
 struct InferenceCheckpointRequest {
     reply: crossbeam_channel::Sender<Result<Vec<f32>, String>>,
     resume: crossbeam_channel::Receiver<()>,
+}
+
+pub type SaveReplySender = std::sync::mpsc::Sender<Result<SavedSimulationState, String>>;
+
+fn save_request_channel() -> (
+    crossbeam_channel::Sender<SaveReplySender>,
+    crossbeam_channel::Receiver<SaveReplySender>,
+) {
+    crossbeam_channel::bounded(SAVE_REQUEST_QUEUE_CAPACITY)
+}
+
+pub(crate) fn enqueue_save_request(
+    requests: &crossbeam_channel::Sender<SaveReplySender>,
+    reply: SaveReplySender,
+) -> Result<(), String> {
+    match requests.try_send(reply) {
+        Ok(()) => Ok(()),
+        Err(crossbeam_channel::TrySendError::Full(_)) => Err(
+            "a save request is already pending; retry after the current checkpoint completes"
+                .to_owned(),
+        ),
+        Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
+            Err("simulation save request channel is disconnected".to_owned())
+        }
+    }
+}
+
+fn reject_stale_save_requests(requests: &crossbeam_channel::Receiver<SaveReplySender>) {
+    while let Ok(reply) = requests.try_recv() {
+        let _ = reply.send(Err(
+            "save request belonged to a previous run and was rejected before the new simulation run"
+                .to_owned(),
+        ));
+    }
 }
 
 /// Move worker outputs into the world while a checkpoint request waits.
@@ -228,10 +263,8 @@ pub struct SimulationEngine {
     /// anything slept would have written a file silently missing a population. Schema 4 carries
     /// them, so that particular refusal is gone; the fallible shape stays, because the failure it
     /// was protecting against is the kind that is invisible when it is not typed.
-    pub save_request_tx:
-        crossbeam_channel::Sender<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
-    pub save_request_rx:
-        crossbeam_channel::Receiver<std::sync::mpsc::Sender<Result<SavedSimulationState, String>>>,
+    pub save_request_tx: crossbeam_channel::Sender<SaveReplySender>,
+    pub save_request_rx: crossbeam_channel::Receiver<SaveReplySender>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
@@ -256,7 +289,7 @@ impl SimulationEngine {
         let sharding_config = Arc::new(RwLock::new(crate::core::ecs::ShardingConfig::default()));
         let (manual_migration_trigger, manual_migration_receiver) =
             crossbeam_channel::unbounded::<u16>();
-        let (save_request_tx, save_request_rx) = crossbeam_channel::unbounded();
+        let (save_request_tx, save_request_rx) = save_request_channel();
         let pending_load_state = Arc::new(Mutex::new(None));
 
         Self {
@@ -316,6 +349,7 @@ impl SimulationEngine {
         {
             return;
         }
+        reject_stale_save_requests(&self.save_request_rx);
         self.migration_handoff_diagnostics.reset();
 
         // Consume the pending checkpoint before any worker starts. Its RNG seed is the authority
@@ -2400,6 +2434,37 @@ impl SimulationEngine {
 #[cfg(test)]
 mod mean_tick_time_tests {
     use super::*;
+
+    #[test]
+    fn save_requests_apply_backpressure_before_consumers_fall_behind() {
+        let (requests_tx, requests_rx) = save_request_channel();
+        let (first_reply_tx, _first_reply_rx) = std::sync::mpsc::channel();
+        let (second_reply_tx, _second_reply_rx) = std::sync::mpsc::channel();
+
+        enqueue_save_request(&requests_tx, first_reply_tx)
+            .expect("the one pending checkpoint slot is available");
+        let error = enqueue_save_request(&requests_tx, second_reply_tx)
+            .expect_err("a burst must be refused instead of retained without a bound");
+
+        assert!(error.contains("already pending"), "{error}");
+        assert_eq!(requests_rx.len(), 1);
+    }
+
+    #[test]
+    fn a_new_run_rejects_stale_save_requests_and_frees_the_slot() {
+        let (requests_tx, requests_rx) = save_request_channel();
+        let (stale_reply_tx, stale_reply_rx) = std::sync::mpsc::channel();
+        enqueue_save_request(&requests_tx, stale_reply_tx).expect("queue stale request");
+
+        reject_stale_save_requests(&requests_rx);
+
+        let error = stale_reply_rx
+            .recv()
+            .expect("a stale caller receives an explicit refusal")
+            .expect_err("a request from the old run cannot become a checkpoint of the new run");
+        assert!(error.contains("new simulation run"), "{error}");
+        assert!(requests_rx.is_empty());
+    }
 
     #[test]
     fn scientific_counters_refuse_exhaustion_instead_of_wrapping() {

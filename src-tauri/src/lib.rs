@@ -202,7 +202,11 @@ pub fn run() {
                 }
 
                 let (tx, rx) = std::sync::mpsc::channel();
-                if engine.save_request_tx.send(tx).is_ok() {
+                if let Err(error) =
+                    core::simulation_loop::enqueue_save_request(&engine.save_request_tx, tx)
+                {
+                    eprintln!("exit autosave skipped: {error}");
+                } else {
                     // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
                     // dropped deliberately — the autosave is best-effort and there is no one left
                     // to tell, whereas the explicit save command surfaces the reason.
