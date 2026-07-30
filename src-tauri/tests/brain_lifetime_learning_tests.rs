@@ -10,13 +10,15 @@
 
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::{HomeostaticState, LastTransitionState};
-use anima_engine_lib::ai::model::lifetime_learning_system;
+use anima_engine_lib::ai::model::hrrl_learning_system;
 use anima_engine_lib::core::components::AgentBrain;
-use anima_engine_lib::core::ecs::{Agent, Position};
+use anima_engine_lib::core::ecs::{Agent, Position, Rotation};
 use anima_engine_lib::core::resources::{BrainPolicy, LifetimeLearning};
-use anima_engine_lib::evolution::brain_genotype::{BrainGenotype, EVOLVED_ARCH};
+use anima_engine_lib::evolution::brain_genotype::{
+    learn_step, BrainGenotype, LearnScratch, EVOLVED_ARCH,
+};
 use bevy_ecs::prelude::*;
-use glam::Vec3;
+use glam::{Quat, Vec3};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -45,6 +47,7 @@ fn world_with_agent(policy: BrainPolicy, at: Vec3) -> (World, Entity) {
         .spawn((
             Agent,
             Position(at),
+            Rotation(Quat::IDENTITY),
             HomeostaticState {
                 energy: 60.0,
                 energy_target: 100.0,
@@ -68,7 +71,7 @@ fn world_with_agent(policy: BrainPolicy, at: Vec3) -> (World, Entity) {
 
 fn run(world: &mut World, ticks: usize) {
     let mut schedule = Schedule::default();
-    schedule.add_systems(lifetime_learning_system);
+    schedule.add_systems(hrrl_learning_system);
     for _ in 0..ticks {
         schedule.run(world);
     }
@@ -143,6 +146,69 @@ fn an_enabled_agent_learns_within_its_lifetime() {
     let after = live_weights(&world, agent);
     assert_ne!(after, before, "an enabled agent must actually change");
     assert!(after.iter().all(|w| w.is_finite()));
+}
+
+#[test]
+fn lifetime_learning_uses_the_exact_completed_transition() {
+    let policy = BrainPolicy {
+        evolved: true,
+        lifetime_learning: learning(true),
+        ..Default::default()
+    };
+    let (mut world, agent) = world_with_agent(policy, Vec3::ZERO);
+    let before = world
+        .entity(agent)
+        .get::<AgentBrain>()
+        .unwrap()
+        .live()
+        .as_ref()
+        .clone();
+    let previous_state = [0.3; 15];
+    let action = [0.9, 0.1, 0.8, 0.2];
+    let next_state = [
+        0.0, 0.0, 0.0, 60.0, 100.0, 60.0, 100.0, 37.0, 37.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    ];
+    let homeo = world.entity(agent).get::<HomeostaticState>().unwrap();
+    let reward = homeo.previous_deviation - homeo.compute_deviation();
+
+    let mut expected = before.clone();
+    let next_value = expected
+        .forward(&next_state)
+        .expect("the fixture is finite")
+        .1;
+    learn_step(
+        &mut expected,
+        &previous_state,
+        &action,
+        reward,
+        next_value,
+        0.99,
+        0.05,
+        &mut LearnScratch::default(),
+    )
+    .expect("the exact completed transition is learnable");
+
+    // This is the production order. `hrrl_learning_system` owns the exact (s, a, r, s') tuple;
+    // lifetime learning must consume that tuple before its state/deviation bookkeeping advances.
+    let mut schedule = Schedule::default();
+    schedule.add_systems(hrrl_learning_system);
+    schedule.run(&mut world);
+
+    let actual = world
+        .entity(agent)
+        .get::<AgentBrain>()
+        .unwrap()
+        .live_weights();
+    let first_mismatch = actual
+        .iter()
+        .zip(&expected.weights)
+        .position(|(actual, expected)| actual.to_bits() != expected.to_bits());
+    assert_eq!(actual.len(), expected.weights.len());
+    assert!(
+        first_mismatch.is_none(),
+        "lifetime learning must use previous state for the actor, current state for V(s'), and the \
+         pre-refresh homeostatic reward; first mismatching weight: {first_mismatch:?}"
+    );
 }
 
 #[test]
