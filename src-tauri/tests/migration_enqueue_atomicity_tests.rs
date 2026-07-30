@@ -634,6 +634,45 @@ fn inbound_migration_applies_velocity_to_every_segment_of_a_wide_agent() {
 }
 
 #[test]
+fn inbound_migration_starts_a_new_learning_transition_boundary() {
+    let mut world = World::new();
+    let mut data = migration_data(one_node_genotype(), Vec3::X);
+    data.last_transition_state = Some(anima_engine_lib::ai::hrrl::LastTransitionState {
+        state: [0.25; 15],
+        action: [0.5; 4],
+        has_last: true,
+        pending_state: Some([0.75; 15]),
+    });
+
+    SpawnMigrationCommand { data }.apply(&mut world);
+
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    let root = agents
+        .get_single(&world)
+        .expect("the migrated morphology must have one agent root");
+    let transition = world
+        .get::<anima_engine_lib::ai::hrrl::LastTransitionState>(root)
+        .expect("decoded agents carry transition state");
+
+    assert_eq!(
+        transition.state, [0.25; 15],
+        "historical observations remain available for diagnostics"
+    );
+    assert_eq!(
+        transition.action, [0.5; 4],
+        "historical actions remain available for diagnostics"
+    );
+    assert!(
+        !transition.has_last,
+        "a reset controller must not learn across the migration discontinuity"
+    );
+    assert_eq!(
+        transition.pending_state, None,
+        "an inference request cannot follow an entity to another shard"
+    );
+}
+
+#[test]
 fn inbound_then_outbound_migration_leaves_no_segment_past_a_deep_wide_frontier() {
     let mut world = World::new();
     SpawnMigrationCommand {

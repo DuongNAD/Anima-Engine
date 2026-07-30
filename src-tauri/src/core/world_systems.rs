@@ -926,7 +926,13 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
             AgentParentLineageIds(self.data.parent_ids.clone()),
         ));
 
-        if let Some(lts) = self.data.last_transition_state {
+        if let Some(mut lts) = self.data.last_transition_state {
+            // `decode_genotype` intentionally reconstructs the controller and cognitive state from
+            // their defaults. An in-flight inference ticket also belongs to the source shard's
+            // worker and cannot follow this entity. Preserve the last finite values for diagnostics,
+            // but never train on a transition that crosses this control discontinuity.
+            lts.has_last = false;
+            lts.pending_state = None;
             world.entity_mut(root_entity).insert(lts);
         }
 
