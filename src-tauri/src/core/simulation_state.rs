@@ -701,14 +701,14 @@ pub fn evolution_worker_resume_state(
         "checkpoint exhausted the u32 morphology-node id space; evolution cannot resume safely"
             .to_string()
     })?;
-    let meta_ai_epoch = u32::try_from(state.chronicle_history.len()).map_err(|_| {
-        "checkpoint chronicle has more events than the u32 Meta-AI epoch can represent".to_string()
-    })?;
-    let meta_ai_history = state
+    let meta_ai_history: Vec<_> = state
         .chronicle_history
         .iter()
         .filter_map(chronicle_environmental_event)
         .collect();
+    let meta_ai_epoch = u32::try_from(meta_ai_history.len()).map_err(|_| {
+        "checkpoint chronicle has more Meta-AI events than the u32 epoch can represent".to_string()
+    })?;
 
     if let Some(saved) = state.evolution_worker.as_ref() {
         let expected_seed = crate::core::resources::derived_seed(
@@ -741,8 +741,17 @@ pub fn evolution_worker_resume_state(
         if saved.node_id_counter < node_id_counter {
             return Err("evolution morphology-node cursor precedes saved genotypes".into());
         }
-        if saved.meta_ai_history.len() > saved.meta_ai_epoch as usize {
-            return Err("evolution Meta-AI history is longer than its epoch cursor".into());
+        // The worker copy drives the next Meta-AI decision while the Chronicle is the public,
+        // persisted provenance for the same decisions. Accepting either a skipped cursor or
+        // different contents would resume a hidden experiment history that the artifact cannot
+        // explain.
+        if saved.meta_ai_history.len() != saved.meta_ai_epoch as usize {
+            return Err("evolution Meta-AI epoch cursor does not match its history length".into());
+        }
+        if saved.meta_ai_history != meta_ai_history {
+            return Err(
+                "evolution Meta-AI history does not match the public Chronicle history".into(),
+            );
         }
 
         return Ok(EvolutionWorkerResumeState {
