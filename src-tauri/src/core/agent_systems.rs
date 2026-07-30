@@ -438,7 +438,7 @@ pub fn apply_staggered_evolution_system(
 #[derive(Debug, Clone)]
 pub struct AgentInferenceRequest {
     pub entity: Entity,
-    pub sensory_input: [f32; 15],
+    pub sensory_input: [f32; SENSORY_SLOTS],
     pub request_id: u64,
     /// The agent's own brain, when it has one. Carried as an `Arc` clone — a refcount bump, not a
     /// copy of the weight vector — so attaching it costs the tick path no allocation.
@@ -446,6 +446,9 @@ pub struct AgentInferenceRequest {
     /// `None` routes the agent through the shared [`crate::ai::model::BrainModel`] exactly as before.
     pub brain: Option<std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>>,
 }
+
+/// Fixed observation width shared by the ECS request and both inference backends.
+pub const SENSORY_SLOTS: usize = 15;
 
 /// Actions an inference produces.
 ///
@@ -475,6 +478,16 @@ impl AgentInferenceResponse {
             *slot = 1.0;
         }
         actions
+    }
+
+    /// Every live policy ends in a sigmoid, so a usable action is finite and lies in `[0, 1]`.
+    ///
+    /// Kept beside the wire type so runtime resolution and checkpoint restore enforce the same
+    /// contract instead of gradually acquiring different definitions of a valid decision.
+    pub fn actions_are_valid(actions: &[f32; ACTION_SLOTS]) -> bool {
+        actions
+            .iter()
+            .all(|action| action.is_finite() && (0.0..=1.0).contains(action))
     }
 }
 
@@ -772,6 +785,13 @@ pub fn sensory_system(
             right_reading,
         ];
 
+        // Quarantine corrupt component state at the observation boundary. Sending one NaN through
+        // a batched matrix multiply used to install NaN CPG parameters and poison downstream
+        // oscillators and physics. The agent remains Ready and keeps its last valid action.
+        if state_arr.iter().any(|value| !value.is_finite()) {
+            continue;
+        }
+
         let ticket_id = *ticket_counter;
         *ticket_counter += 1;
 
@@ -847,14 +867,19 @@ pub fn action_resolution_system(
                     if ticket_id == response.request_id {
                         use crate::evolution::brain_genotype::action_index;
 
+                        // Receiving the matching ticket completes the request even when its payload
+                        // is corrupt. In that case retain the entire previous decision atomically:
+                        // never mix old gates with new CPG values or install NaN in an oscillator.
+                        inertia.ticks_pending = 0;
+                        *cog_state = CognitiveState::Ready;
+                        if !AgentInferenceResponse::actions_are_valid(&response.actions) {
+                            continue;
+                        }
+
                         // Outputs `0..CPG_LEN` steer locomotion, exactly as before.
                         let mut cpg = [0.0f32; action_index::CPG_LEN];
                         cpg.copy_from_slice(&response.actions[..action_index::CPG_LEN]);
                         inertia.cpg_parameters = cpg;
-                        inertia.ticks_pending = 0;
-
-                        // Reset state to Ready
-                        *cog_state = CognitiveState::Ready;
 
                         // The remaining outputs are the ecological gates. A shared-model agent gets
                         // them filled with the fully-open default upstream, so this assignment is a

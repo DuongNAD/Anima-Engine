@@ -409,7 +409,9 @@ impl SavedSharedLearningState {
             .flat_map(|batch| batch.responses.iter())
         {
             if response.lineage_id.is_empty()
-                || response.actions.iter().any(|action| !action.is_finite())
+                || !crate::core::agent_systems::AgentInferenceResponse::actions_are_valid(
+                    &response.actions,
+                )
                 || !lineages.insert(response.lineage_id.as_str())
             {
                 return Err("pending inference responses are invalid or duplicated".into());

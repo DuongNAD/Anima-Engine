@@ -158,6 +158,117 @@ fn a_wide_shared_model_produces_the_same_rows_batched_or_individually() {
     }
 }
 
+#[test]
+fn a_non_finite_shared_request_is_quarantined_without_poisoning_its_peer() {
+    let model = BrainModel::new_seeded_cpu(15, 64, ACTION_SLOTS, 20260730);
+    let mut bad_input = [0.2; 15];
+    bad_input[3] = f32::NAN;
+    let requests = [
+        AgentInferenceRequest {
+            entity: Entity::from_raw(1),
+            sensory_input: bad_input,
+            request_id: 1,
+            brain: None,
+        },
+        AgentInferenceRequest {
+            entity: Entity::from_raw(2),
+            sensory_input: [0.8; 15],
+            request_id: 2,
+            brain: None,
+        },
+    ];
+
+    let mut batched = Vec::new();
+    run_inference_batch(
+        &model,
+        &requests,
+        &mut batched,
+        &mut InferenceScratch::with_capacity(requests.len()),
+    );
+
+    assert_eq!(
+        batched[0].actions,
+        AgentInferenceResponse::open_gates_default(),
+        "a request containing NaN must degrade to the finite safe fallback"
+    );
+    assert!(
+        batched[0].actions.iter().all(|value| value.is_finite()),
+        "the quarantine boundary must never emit NaN or infinity"
+    );
+
+    let mut individual = Vec::new();
+    run_inference_batch(
+        &model,
+        std::slice::from_ref(&requests[1]),
+        &mut individual,
+        &mut InferenceScratch::with_capacity(1),
+    );
+    assert_eq!(
+        batched[1].actions, individual[0].actions,
+        "one bad row must not change a healthy peer's decision"
+    );
+}
+
+#[test]
+fn an_incompatible_shared_input_width_falls_back_instead_of_panicking() {
+    let model = BrainModel::new_seeded_cpu(14, 64, ACTION_SLOTS, 20260730);
+    let request = AgentInferenceRequest {
+        entity: Entity::from_raw(1),
+        sensory_input: [0.2; 15],
+        request_id: 1,
+        brain: None,
+    };
+    let mut responses = Vec::new();
+
+    run_inference_batch(
+        &model,
+        std::slice::from_ref(&request),
+        &mut responses,
+        &mut InferenceScratch::with_capacity(1),
+    );
+
+    assert_eq!(
+        responses[0].actions,
+        AgentInferenceResponse::open_gates_default(),
+        "an incompatible model is a recoverable inference failure, not a process panic"
+    );
+}
+
+#[test]
+fn an_evolved_brain_rejects_non_finite_sensory_input() {
+    let brain = evolved_brain(20260730);
+    let mut sensory = [0.4; 15];
+    sensory[7] = f32::INFINITY;
+    let mut scratch = vec![0.0; brain.genotype.scratch_len()];
+    let mut actions = [0.0; ACTION_SLOTS];
+
+    assert!(
+        brain
+            .genotype
+            .forward_into(&sensory, &mut scratch, &mut actions)
+            .is_err(),
+        "a portable genome must reject non-finite input before it reaches its matrix products"
+    );
+}
+
+#[test]
+fn an_evolved_brain_rejects_finite_inputs_that_overflow_an_activation() {
+    let mut weights = vec![0.0; EVOLVED_ARCH.param_count()];
+    weights[0] = f32::MAX;
+    let brain = BrainGenotype::from_weights(EVOLVED_ARCH, weights).unwrap();
+    let mut sensory = [0.0; 15];
+    sensory[0] = 2.0;
+    let mut scratch = vec![0.0; brain.scratch_len()];
+    let mut actions = [0.0; ACTION_SLOTS];
+
+    assert!(
+        brain
+            .forward_into(&sensory, &mut scratch, &mut actions)
+            .is_err(),
+        "finite observations and weights can still overflow; the portable brain must reject that"
+    );
+}
+
 // --- request side -------------------------------------------------------------------------------
 
 #[test]
@@ -219,6 +330,32 @@ fn a_legacy_agent_sends_no_brain() {
     assert!(
         req.brain.is_none(),
         "a legacy agent must keep routing through the shared model"
+    );
+}
+
+#[test]
+fn sensory_system_does_not_enqueue_a_non_finite_agent_state() {
+    let mut h = harness();
+    let agent = spawn_agent(&mut h.world, None);
+    h.world
+        .get_mut::<anima_engine_lib::ai::hrrl::HomeostaticState>(agent)
+        .unwrap()
+        .energy = f32::NAN;
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(sensory_system);
+    schedule.run(&mut h.world);
+
+    assert!(
+        h.req_rx.try_recv().is_err(),
+        "invalid sensory state must not enter the shared inference batch"
+    );
+    assert!(
+        matches!(
+            *h.world.get::<CognitiveState>(agent).unwrap(),
+            CognitiveState::Ready
+        ),
+        "a quarantined agent must remain ready rather than waiting for a request that was not sent"
     );
 }
 
@@ -315,6 +452,50 @@ fn a_shared_model_response_leaves_the_gates_open() {
         h.world.get::<ActionGates>(agent).copied().unwrap(),
         ActionGates::OPEN
     );
+}
+
+#[test]
+fn invalid_action_responses_cannot_overwrite_the_last_valid_decision() {
+    for invalid in [f32::NAN, f32::INFINITY, -0.01, 1.01] {
+        let mut h = harness();
+        let agent = spawn_agent(&mut h.world, None);
+        let previous_cpg = [0.2, 0.3, 0.4, 0.5];
+        let previous_gates = ActionGates {
+            pheromone_emit: 0.25,
+            attack_intent: 0.75,
+            feed_intent: 0.5,
+        };
+        {
+            let mut inertia = h.world.get_mut::<InertiaComponent>(agent).unwrap();
+            inertia.cpg_parameters = previous_cpg;
+            inertia.ticks_pending = 3;
+        }
+        *h.world.get_mut::<ActionGates>(agent).unwrap() = previous_gates;
+        pend(&mut h);
+
+        let mut actions = AgentInferenceResponse::open_gates_default();
+        actions[0] = invalid;
+        resolve(&mut h, agent, actions);
+
+        let inertia = h.world.get::<InertiaComponent>(agent).unwrap();
+        assert_eq!(
+            inertia.cpg_parameters, previous_cpg,
+            "invalid action {invalid:?} overwrote a valid CPG decision"
+        );
+        assert_eq!(
+            inertia.ticks_pending, 0,
+            "rejecting a response must release the pending ticket"
+        );
+        assert_eq!(
+            h.world.get::<ActionGates>(agent).copied().unwrap(),
+            previous_gates,
+            "invalid action {invalid:?} partially changed ecological gates"
+        );
+        assert!(matches!(
+            *h.world.get::<CognitiveState>(agent).unwrap(),
+            CognitiveState::Ready
+        ));
+    }
 }
 
 #[test]

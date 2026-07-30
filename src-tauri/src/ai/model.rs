@@ -321,7 +321,7 @@ pub struct InferenceScratch {
 impl InferenceScratch {
     pub fn with_capacity(agents: usize) -> Self {
         Self {
-            inputs: Vec::with_capacity(agents * 15),
+            inputs: Vec::with_capacity(agents * crate::core::agent_systems::SENSORY_SLOTS),
             shared_slots: Vec::with_capacity(agents),
             shared_actions: Vec::with_capacity(agents),
             brain_hidden: Vec::with_capacity(256),
@@ -346,14 +346,18 @@ pub fn run_inference_batch(
     responses: &mut Vec<crate::core::agent_systems::AgentInferenceResponse>,
     scratch: &mut InferenceScratch,
 ) {
-    use crate::core::agent_systems::{AgentInferenceResponse, ACTION_SLOTS};
+    use crate::core::agent_systems::{AgentInferenceResponse, ACTION_SLOTS, SENSORY_SLOTS};
     use crate::evolution::brain_genotype::action_index;
 
     responses.clear();
     scratch.shared_slots.clear();
     scratch.inputs.clear();
+    let shared_model_compatible = brain_model.input_dim == SENSORY_SLOTS;
     for (idx, req) in requests.iter().enumerate() {
-        if req.brain.is_none() {
+        if req.brain.is_none()
+            && shared_model_compatible
+            && req.sensory_input.iter().all(|input| input.is_finite())
+        {
             scratch.shared_slots.push(idx);
             scratch.inputs.extend_from_slice(&req.sensory_input);
         }
@@ -366,14 +370,20 @@ pub fn run_inference_batch(
     } else {
         match brain_model.backend() {
             BrainModelBackend::NdArray(model, device) => {
-                let data = Data::new(scratch.inputs.clone(), Shape::new([batch_size, 15]));
+                let data = Data::new(
+                    scratch.inputs.clone(),
+                    Shape::new([batch_size, SENSORY_SLOTS]),
+                );
                 let input_tensor = Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
                 let (actor_out, _) = model.forward(input_tensor);
                 actor_out.into_data().value
             }
             #[cfg(feature = "ml-wgpu")]
             BrainModelBackend::Wgpu(model, device) => {
-                let data = Data::new(scratch.inputs.clone(), Shape::new([batch_size, 15]));
+                let data = Data::new(
+                    scratch.inputs.clone(),
+                    Shape::new([batch_size, SENSORY_SLOTS]),
+                );
                 let input_tensor =
                     Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(
                         data, device,
@@ -388,9 +398,19 @@ pub fn run_inference_batch(
     scratch.shared_actions.resize(requests.len(), None);
     for (row, &req_idx) in scratch.shared_slots.iter().enumerate() {
         let mut actions = AgentInferenceResponse::open_gates_default();
-        for (k, action) in actions.iter_mut().take(action_index::CPG_LEN).enumerate() {
-            if let Some(&val) = outputs_vec.get(row * brain_model.action_dim + k) {
-                *action = val;
+        let copied = brain_model.action_dim.min(action_index::CPG_LEN);
+        let row_values = row.checked_mul(brain_model.action_dim).and_then(|start| {
+            start
+                .checked_add(copied)
+                .and_then(|end| outputs_vec.get(start..end))
+        });
+        if let Some(values) = row_values.filter(|values| {
+            values
+                .iter()
+                .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+        }) {
+            for (action, &value) in actions.iter_mut().zip(values) {
+                *action = value;
             }
         }
         scratch.shared_actions[req_idx] = Some(actions);
