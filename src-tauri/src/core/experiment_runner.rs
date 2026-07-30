@@ -35,9 +35,13 @@ use serde::{Deserialize, Serialize};
 /// dynamics change in a way that would alter checksums.
 pub const MODEL_VERSION: &str = "reference-evolution-world/1";
 
-/// A stable build identifier for provenance (the crate version).
+/// A stable build identifier for provenance.
+///
+/// The build script combines the human-readable crate version with either a release/CI override or
+/// the source revision and a fingerprint of every Rust implementation input. The source hash keeps
+/// local and source-archive builds distinct even when Git metadata is unavailable.
 pub fn build_id() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
+    env!("ANIMA_BUILD_ID").to_string()
 }
 
 fn run_identity_base(
@@ -2009,6 +2013,21 @@ mod tests {
     }
 
     // ---- AE-S02: replay determinism ---------------------------------------------------------
+
+    #[test]
+    fn build_identity_is_more_specific_than_the_package_version() {
+        let id = build_id();
+        let version = env!("CARGO_PKG_VERSION");
+
+        assert_ne!(
+            id, version,
+            "a package version alone aliases binaries built from different source revisions"
+        );
+        assert!(
+            id.starts_with(&format!("{version}+")),
+            "build identity must retain the human-readable package version: {id}"
+        );
+    }
 
     #[test]
     fn ae_s02_same_manifest_and_seed_give_same_checksum() {
