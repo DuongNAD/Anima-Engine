@@ -2,6 +2,14 @@
 name = "anima-engine"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
+# This is the Tauri application, not a library anyone installs from crates.io -- and it could not be
+# published anyway, because `anima-domain` below is a path dependency with no version requirement.
+# Saying so makes `cargo deny`'s wildcard check accept that dependency instead of failing on it.
+# `anima-domain` is deliberately NOT marked this way: it is engine-free by design and is the crate
+# that could reasonably be published one day.
+publish = false
 
 [lib]
 name = "anima_engine_lib"
@@ -87,6 +95,18 @@ members = ["crates/*"]
 # working unchanged rather than everyone having to remember `--workspace`. The glob tracks `members`,
 # so a crate added later is covered without a second edit — which is the failure mode being fixed.
 default-members = [".", "crates/*"]
+
+# One license for every crate in the workspace, inherited via `license.workspace = true`. Stated
+# here rather than per-crate so a crate added later cannot ship without one — an unlicensed member
+# is invisible until someone tries to publish or audit it.
+#
+# `MIT OR Apache-2.0` is the Rust ecosystem's dual default, and the `OR` matters: Apache-2.0 alone
+# is incompatible with GPLv2, so a GPLv2 downstream could not use this engine. Offering MIT as the
+# alternative removes that barrier; offering Apache-2.0 keeps its explicit patent grant (§3) and its
+# NOTICE-propagation requirement (§4d) available to anyone who wants them.
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/DuongNAD/Anima-Engine"
 
 # Debug info is by far the largest thing this repo writes to disk. Every `cargo test` links a fresh
 # set of test binaries under new hashes and Cargo never garbage-collects the old ones, so the `.pdb`

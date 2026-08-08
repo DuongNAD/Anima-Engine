@@ -2,7 +2,7 @@
 title: Chỉ mục quản trị
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-08-08
 review_cycle: quarterly
 ---
 
@@ -18,19 +18,18 @@ và một thành phần bên thứ ba được nhận vào theo quy trình nào.
 
 ## Hai điều cần biết trước khi thêm bất cứ thứ gì từ bên ngoài
 
-1. **Anima Engine là proprietary.** [`LICENSE`](../../LICENSE) ở thư mục gốc là *all rights
-   reserved*. Hệ quả trực tiếp: thành phần copyleft (GPL/AGPL) bị **chặn cứng cho mọi đường tiếp xúc
-   với code** — kể cả đọc source rồi viết lại. Xem
+1. **Anima Engine là nguồn mở, cấp phép kép `MIT OR Apache-2.0`.** Thành phần copyleft
+   (GPL/AGPL) vẫn bị **chặn cứng cho code tích hợp** vì nhận code GPL sẽ làm dự án không thể tiếp tục
+   cung cấp nhánh MIT. MPL/LGPL cần ADR theo từng trường hợp. Xem
    [chính sách nguồn mở](OPEN_SOURCE_POLICY.md).
-2. **Attribution đã có, văn bản license còn thiếu 1 chỗ.** Một sản phẩm proprietary vẫn phải
-   attribution cho các thành phần permissive được phân phối. [`NOTICE`](../../NOTICE) (inventory 458
+2. **Attribution đã có, văn bản license còn thiếu 1 chỗ.** [`NOTICE`](../../NOTICE) (inventory 458
    thành phần) và [`licensing/`](../../licensing/) (văn bản license nguyên văn của **439/440** thành
    phần được phân phối) đều đã sinh tự động và có gate CI. Trong đó 408 đọc thẳng từ artifact đã
    cài, còn **31** lấy từ upstream tại đúng **commit bất biến** của bản phát hành, lưu nguyên byte ở
    [`licensing/upstream/`](../../licensing/upstream/) kèm manifest chứng cứ. Phần **chưa đóng được**
    còn **1** thành phần (`hexf-parse` 0.2.1) — upstream chưa từng publish văn bản license cho bản
    đó; [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) ghi đầy đủ những gì đã tìm. Đây là
-   mục 3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
+   mục 3.17 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
 
 ## Liên kết
 

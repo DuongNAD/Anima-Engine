@@ -29,16 +29,19 @@ Mức quyết định:
 - **Reference**: học mô hình hoặc kiến trúc, không nhập code.
 - **Reject now**: không phù hợp ràng buộc hiện tại.
 
-### Ràng buộc license của chính Anima Engine (mới, 2026-07-26)
+### Ràng buộc license của chính Anima Engine (cập nhật 2026-08-08 — relicense)
 
-[`LICENSE`](../../LICENSE) ở thư mục gốc nay tồn tại và là **proprietary, all rights reserved**.
-Trước đây [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md) coi việc chưa có license là
-blocker quản trị duy nhất; blocker đó đã được gỡ, nhưng nó gỡ theo hướng **thắt chặt**:
+Anima Engine nay là **nguồn mở, cấp phép kép `MIT OR Apache-2.0`**
+([`LICENSE-MIT`](../../LICENSE-MIT), [`LICENSE-APACHE`](../../LICENSE-APACHE)). Bản 2026-07-26 của
+mục này viết proprietary, all rights reserved; điều đó không còn đúng. Nhưng **kết luận về ứng viên
+copyleft thì không đổi**, chỉ đổi lý do — permissive không hấp thụ được GPL, vì nhận GPL vào thì
+nhánh MIT trở thành lời hứa không giữ được:
 
 - Ứng viên **permissive** (MIT, Apache-2.0, BSD, ISC, Zlib) vẫn theo quy trình cũ.
-- Ứng viên **copyleft** (GPL, AGPL, và ở mức độ khác là LGPL/MPL) nay là **chặn cứng cho mọi
-  đường tiếp xúc với code**, không phải "cần review thêm". Với các dự án đó, `Reference` nghĩa là
-  đọc *bài báo và tài liệu mô tả mô hình*, không phải đọc source rồi viết lại.
+- Ứng viên **GPL/AGPL** vẫn là **chặn cứng cho mọi đường tiếp xúc với code**, không phải "cần review
+  thêm". **LGPL/MPL thì nới ra**: copyleft ở mức file hoặc mức liên kết động tương thích được với
+  một dự án permissive, nên nay cần ADR chứ không mặc định từ chối. Với các dự án GPL/AGPL,
+  `Reference` nghĩa là đọc *bài báo và tài liệu mô tả mô hình*, không phải đọc source rồi viết lại.
 - Hạng `Oracle` **không** bị ràng buộc này khi công cụ chạy tách biệt và chỉ output dữ liệu — nhưng
   output vẫn phải kiểm điều khoản, vì license của tool không tự phủ lên output
   ([chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md) §"Code, model, data và asset").
