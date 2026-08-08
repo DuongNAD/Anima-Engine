@@ -188,8 +188,9 @@ ${
 
 ## What this file does NOT establish
 
-- It is an **inventory**, not a legal review. Compatibility of each licence with proprietary
-  distribution has not been assessed, and nothing here constitutes legal sign-off. In particular the
+- It is an **inventory**, not a legal review. Compatibility of each third-party licence with this
+  project's \`MIT OR Apache-2.0\` distribution has not been assessed, and nothing here constitutes legal sign-off.
+  In particular the
   components under MPL-2.0 and the copyleft-adjacent licences are flagged for review by
   [\`docs/governance/OPEN_SOURCE_POLICY.md\`](docs/governance/OPEN_SOURCE_POLICY.md) and that review
   has not been performed.

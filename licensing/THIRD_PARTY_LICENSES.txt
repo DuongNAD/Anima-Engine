@@ -2,7 +2,7 @@
 ANIMA-ENGINE - THIRD-PARTY LICENCES
 ================================================================================================
 
-Anima-Engine itself is proprietary and this file grants no rights to it; see LICENSE.
+Anima-Engine is dual-licensed under MIT OR Apache-2.0; see LICENSE-MIT and LICENSE-APACHE.
 
 This file reproduces the licence and copyright notices of the third-party components
 distributed inside the application, because MIT and BSD require that text to accompany
