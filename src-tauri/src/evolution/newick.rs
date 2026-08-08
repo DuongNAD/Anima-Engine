@@ -4,7 +4,7 @@
 //!
 //! Newick is the interchange format the whole phylogenetics toolchain reads (`ape`, `ggtree`,
 //! DendroPy, Biopython, iTOL). It is a *format*, so nothing is imported and the licences of those
-//! projects do not enter into it — which matters, because Anima Engine is proprietary.
+//! projects do not enter into it — the interoperability boundary stays format-only.
 //!
 //! The larger reason is not interop. A third-party parser is an **independent check on whether the
 //! lineage graph is actually well-formed**. A cycle, an orphan edge or a duplicate id can sit in an
