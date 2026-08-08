@@ -225,9 +225,8 @@ trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều n�
 > **Toàn bộ bảng** — kể cả hàng `tests/`, vốn từng là hàng duy nhất chưa đo lại — đã được chạy tại
 > `d006f64` (nhánh `feat/oss-071b-live-tracker`, trên `main` sau khi #19 merge).
 
-<<<<<<< ours
 | Gate | Lệnh | Kết quả lúc đó |
-=======
+
 > **Đo lại 2026-07-29 — bảng vẫn đúng, nhưng ba gate đã từng nói dối để cho ra nó.** Lượt đo độc lập
 > tại `8b3d91a` ban đầu cho `npm run lint` **đỏ 4.656 lỗi**, `cargo test` **745 pass · 1 fail**, và
 > `check_test_targets.mjs` báo "0 rỗng" sau khi **chỉ đọc 61 trong 75 target**. Không cái nào là hồi
@@ -239,7 +238,6 @@ trạng thái hôm nay; mỗi file đã mang một banner nói đúng điều n�
 > loại mà dự án này tồn tại để chặn — chúng exit 0 và trông như xanh.
 
 | Gate | Lệnh | Kết quả |
->>>>>>> theirs
 |---|---|---|
 | Backend test | `cargo test --features desktop --no-fail-fast` | **746 pass · 0 fail · 4 ignored**, 75 test binary, 0 warning biên dịch |
 | Target rỗng | `node scripts/check_test_targets.mjs <output>` | 75 target, **0 target chạy rỗng** |
@@ -393,11 +391,9 @@ vì CLAUDE.md cấm chạy full backend trên máy này.
 - **Số `cargo bench` in ra là *slope estimate*, không phải trung vị.** Chênh thật: `step_water`
   297,6 µs (slope) so với 271,5 µs (trung vị). Bảng số dùng trung vị, đọc từ `estimates.json`.
 
-<<<<<<< ours
 **Một finding đang mở, chưa ai đối chứng:**
-=======
+
 **Hai finding đang mở — cái thứ hai nay ĐÃ đối chứng (2026-07-29):**
->>>>>>> theirs
 
 - Con số **~4,2 ms** trong doc comment của `ResourceField::REGROWTH_STRIDE` **không tái lập được** —
   release build cho ~0,36 ms, thấp hơn ~12 lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số
@@ -919,6 +915,9 @@ vẫn trả đồ thị **đầy đủ**.
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
 | 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE`](../../LICENSE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) `LICENSE` vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
 | 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
+
+| 3.16 | ~~Đóng phần còn nợ của OSS-003~~ ✅ **Xong 2026-08-08 — relicense** | [`LICENSE-MIT`](../../LICENSE-MIT) + [`LICENSE-APACHE`](../../LICENSE-APACHE) + [`NOTICE`](../../NOTICE) + [`CONTRIBUTING.md`](../../CONTRIBUTING.md); `LICENSE` proprietary đã xoá | Dự án chuyển sang nguồn mở `MIT OR Apache-2.0`. Phạm vi code / asset / định dạng `.anmw` tách trong README; `license` khai trong `[workspace.package]` và cả hai `package.json`. **Còn nợ, chuyển sang 3.17:** `NOTICE` duy trì thủ công và chỉ phủ dependency trực tiếp, chưa phải inventory sinh tự động theo nhánh transitive |
+| 3.17 | Inventory dependency (OSS-004) | [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | Lỗ hổng đã có bằng chứng: `burn`/`burn-wgpu` là **runtime dep đang chạy** nhưng vắng khỏi ma trận khảo sát tới 2026-07-26, trong khi ma trận có cả những thứ chưa từng thêm |
 
 ---
 

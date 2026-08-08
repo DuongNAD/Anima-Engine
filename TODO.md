@@ -14,7 +14,85 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] `DEFAULT_GRID_DIM` — hằng số hợp đồng mà không gì đọc (2026-07-29)
+# ⏪ [MỚI NHẤT] Relicense: proprietary → `MIT OR Apache-2.0` (2026-08-08)
+
+Chủ sở hữu đổi Anima Engine sang **nguồn mở, cấp phép kép**. Việc này hợp lệ với **toàn bộ lịch sử
+commit**, không chỉ code từ nay: dự án có một tác giả duy nhất giữ toàn bộ copyright, không
+contributor ngoài, nên không cần CLA và không phải xin phép ai.
+
+`LICENSE` (proprietary, all rights reserved) bị xoá; thay bằng `LICENSE-MIT` + `LICENSE-APACHE`.
+Thêm `NOTICE` (attribution cho dependency trực tiếp của bản build nhị phân, license đọc từ
+`cargo metadata --features desktop` và `node_modules/*/package.json`) và `CONTRIBUTING.md` (inbound =
+outbound theo Apache-2.0 §5, không CLA). `license = "MIT OR Apache-2.0"` khai một lần ở
+`[workspace.package]` của `src-tauri/Cargo.toml` — đặt ở workspace để một crate thêm sau **không thể**
+ship mà thiếu license — và trong cả hai `package.json`.
+
+## Vì sao kép chứ không chỉ Apache-2.0
+
+Apache-2.0 **không tương thích với GPLv2** (chỉ GPLv3). Chỉ Apache-2.0 thì một dự án GPLv2 ở hạ nguồn
+không dùng được engine. Nhánh MIT gỡ rào đó và không mất gì: nhánh Apache-2.0 vẫn ở đó cho ai cần
+điều khoản sáng chế (§3) hoặc ràng buộc mang theo `NOTICE` (§4d). Đây cũng là mặc định de-facto của
+hệ sinh thái Rust — mọi dependency chính (`bevy_ecs`, `burn`, `tauri`, `glam`, `serde`) đều kép.
+
+## Cái không đổi, và đó mới là chỗ dễ đọc sai
+
+Permissive **không** mở cửa cho GPL/AGPL. Lý do đổi chứ kết luận không đổi: trước là "proprietary
+không phân phối được copyleft đã link vào", nay là "nhận GPL vào thì nhánh MIT thành lời hứa không
+giữ được". Muốn nhận code GPL phải relicense **cả dự án** sang GPL — một ADR, không phải một PR.
+
+Thứ **thật sự** nới ra là hàng giữa: **MPL-2.0 và LGPL** nay là câu hỏi mở cần ADR, không còn mặc
+định "không". `docs/governance/OPEN_SOURCE_POLICY.md`, `docs/governance/README.md`,
+`docs/research/OPEN_SOURCE_LANDSCAPE.md` và `docs/planning/OPEN_SOURCE_ADOPTION_PLAN.md` đã viết lại
+theo đúng chỗ này; OSS-003 đóng, mục 3.16 trong `STATE_OF_THE_PROJECT.md` đóng.
+
+Neo4j giữ nguyên và nay được ghi rõ: GPLv3, nhưng là **tiến trình riêng nói qua Bolt, không link**,
+và fallback in-memory luôn chạy được — điều kiện để lập luận ranh giới tiến trình đứng vững.
+
+## OSS-012 mở khoá theo, và nó tìm ra thứ chưa ai biết
+
+`cargo-deny` bị chặn từ đầu vì "adopt sau khi chọn license" — không có license của chính dự án thì
+không có allow-list nào để đối chiếu. Nay có: `src-tauri/deny.toml`, bước CI ngay sau `cargo audit`,
+`cargo deny check` **xanh cả bốn mục** (advisories, bans, licenses, sources).
+
+Allow-list gồm 13 license, **đọc từ graph thật** với `all-features = true` và ba target desktop, chứ
+không chép từ template. Ba thứ đáng ghi:
+
+- **5 crate `MPL-2.0`** trong graph: `cssparser`, `cssparser-macros`, `dtoa-short`, `selectors` (qua
+  `tauri → wry →` stack CSS của WebView) và `option-ext` (qua `dirs`). MPL là copyleft **mức file**,
+  không phải blocker như GPL, và cả 5 đều đến nguyên vẹn qua Cargo. Chúng được liệt kê **từng cái**
+  trong `exceptions` chứ không `allow` cả họ — để một dependency MPL **mới** làm đỏ gate và phải qua
+  ADR, đúng như chính sách vừa viết lại.
+- **`LGPL-2.1-or-later` biến mất khi giới hạn target.** Nó đến từ `r-efi`
+  (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`), mà `getrandom` chỉ dùng cho target **UEFI**. Với
+  `targets` để trống, một license copyleft hiện trong báo cáo cho code không bản build nào chạm tới.
+- **`Apache-2.0 WITH LLVM-exception`** (`target-lexicon`, qua build script của các crate `-sys` GTK).
+  Exception này chỉ **bỏ bớt** nghĩa vụ, nên nới hơn Apache-2.0 trần.
+
+`anima-engine` nay khai `publish = false` — đúng sự thật (nó là app Tauri, và có path dependency nên
+`cargo publish` vốn không chạy được), và đó là điều kiện để `cargo deny` chấp nhận `anima-domain` là
+path dep thay vì báo wildcard. `anima-domain` **không** khai, vì nó là crate engine-free duy nhất có
+thể publish sau này.
+
+Ranh giới trách nhiệm giữa hai gate được ghi thẳng vào `deny.toml`: **`cargo audit` sở hữu
+advisory.** `deny.toml` chỉ soi gương hai ignore của `.cargo/audit.toml` và đặt `unmaintained =
+"none"` — vì cargo-deny mặc định fail còn cargo audit thì không, và hai gate cùng repo cho hai phán
+quyết ngược nhau thì tệ hơn một gate. `cargo audit` vẫn báo `bincode` và GTK3 như trước.
+
+**Bẫy đã đo:** `cargo audit` chạy **từ thư mục gốc** sẽ đỏ giả — nó tìm `.cargo/audit.toml` theo cwd,
+nên bỏ qua hai ignore đã xác minh và báo lại `RUSTSEC-2024-0350` / `RUSTSEC-2025-0021`. Phải `cd
+src-tauri`. `cargo deny` không dính vì nó tìm `deny.toml` cạnh manifest. Đã ghi vào README.
+
+## Hồ sơ nguồn mở
+
+`README.en.md` — bản tiếng Anh đầy đủ, link đối xứng ở đầu hai README. GitHub topics đã đặt:
+`rust`, `artificial-life`, `simulation`, `evolutionary-algorithms`, `bevy`, `tauri`.
+
+Sửa kèm: README (VI) đang dạy `npm run tauri dev` — đúng cái lệnh trần mà `CLAUDE.md` cảnh báo, nó
+ship binary `default = []`. Đổi thành `npm run tauri:dev` kèm giải thích.
+
+---
+
+# ⏪ `DEFAULT_GRID_DIM` — hằng số hợp đồng mà không gì đọc (2026-07-29)
 
 `sim_rules.rs` ghi `DEFAULT_GRID_DIM = 128` và **tự khai** là lấy từ `MapSettings::default`. Hàm đó
 là **256**, và đã là 256 từ khi World Artifact dùng chung tới ở kích thước ấy.
@@ -378,6 +456,12 @@ Ba thứ đã sai sự thật chứ không phải chưa cập nhật:
    `licensing/THIRD_PARTY_LICENSES.txt` đều đã sinh tự động và có gate CI; sau đợt vendor
    `licensing/upstream/` (2026-07-27) chỉ còn **1** thành phần mà upstream chưa từng publish văn bản
    license, liệt kê kèm chứng cứ tìm kiếm ở `licensing/UNRESOLVED.md` (mục 3.16).
+
+   áp cho ít nhất SLiM, Avida, ALIEN và Thrive. Hệ quả phụ chưa xử lý: chưa có `NOTICE` cho các
+   thành phần permissive đang được phân phối (mục 3.16 mới).
+   > **Hết hiệu lực 2026-08-08.** Dự án đã relicense sang `MIT OR Apache-2.0`; `LICENSE` proprietary
+   > bị xoá và `NOTICE` đã có. Kết luận về GPL/AGPL vẫn đúng nhưng vì lý do khác, và LGPL/MPL nay
+   > không còn bị chặn mặc định — xem mục nhật ký trên cùng file này.
 2. **`three-mesh-bvh` được xếp "Pilot ưu tiên cao" trên một tiền đề code đã bác bỏ.** Không có
    `THREE.Raycaster` nào trong `src/`; cao độ địa hình lấy giải tích qua `sampleElevation`; LOD theo
    khoảng cách đã có ở `chunkLod.ts`. Còn `raycasts` trong `PixiViewport.tsx` là telemetry cảm biến

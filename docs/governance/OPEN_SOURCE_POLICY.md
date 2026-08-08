@@ -2,7 +2,7 @@
 title: Chính sách sử dụng nguồn mở
 status: proposed
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-08-08
 review_cycle: quarterly
 ---
 
@@ -10,17 +10,24 @@ review_cycle: quarterly
 
 ## License của Anima Engine — đã quyết định
 
-[`LICENSE`](../../LICENSE) ở thư mục gốc là **proprietary, all rights reserved**
-(© 2026 Duong Nguyen Anh). Việc công khai source không tự cấp quyền sử dụng, sửa đổi hay phân phối,
-kể cả với chính repository này.
+Anima Engine là **nguồn mở, cấp phép kép `MIT OR Apache-2.0`** (© 2026 Duong Nguyen Anh). Hai file
+[`LICENSE-MIT`](../../LICENSE-MIT) và [`LICENSE-APACHE`](../../LICENSE-APACHE) ở thư mục gốc;
+[`NOTICE`](../../NOTICE) giữ attribution cho thành phần bên thứ ba đi kèm bản build nhị phân;
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) đặt điều khoản inbound = outbound (Apache-2.0 §5), không
+CLA.
 
-> **Sửa 2026-07-26.** Bản trước của mục này viết *"Repository hiện chưa có `LICENSE` ở thư mục
-> gốc"* và coi đó là blocker quản trị duy nhất. Câu đó **đã sai sự thật**: file tồn tại. Blocker
-> (OSS-003) vì thế **đã được gỡ** — nhưng nó gỡ theo hướng thắt chặt, không phải nới ra. Xem hệ quả
-> ở mục kế tiếp.
+Phạm vi: code, tài liệu và asset đều theo cấp phép kép; định dạng `.anmw` (World Artifact) được
+tuyên bố là **định dạng mở**, ai cũng triển khai lại được. Chi tiết ở mục Giấy phép trong
+[`README.md`](../../README.md).
 
-Phạm vi riêng cho code, model, dataset, texture, ảnh và âm thanh vẫn **chưa được tách bạch** trong
-`LICENSE`; đó là phần còn nợ của OSS-003, không phải toàn bộ nó.
+> **Sửa 2026-08-08 — relicense.** Từ 2026-07-26 tới 2026-08-07, mục này viết `LICENSE` là
+> **proprietary, all rights reserved**, và cả chính sách dưới đây được suy ra từ đó. Chủ sở hữu đã
+> đổi sang cấp phép kép; `LICENSE` proprietary bị xoá. Việc này hợp lệ với **toàn bộ lịch sử commit**
+> chứ không chỉ code từ nay về sau, vì dự án chỉ có một tác giả duy nhất giữ toàn bộ copyright, không
+> có contributor ngoài nào cần xin phép. Hai mục tiếp theo đã được viết lại theo license mới.
+>
+> Bản trước nữa của mục này còn viết *"Repository hiện chưa có `LICENSE` ở thư mục gốc"* — câu đó
+> sai sự thật ngay khi viết và đã được sửa 2026-07-26.
 
 Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
 
@@ -32,9 +39,9 @@ Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
 | Cần review rõ ràng | MPL-2.0, LGPL, EPL, CC cho data/asset, license tùy chỉnh | ADR + xác định linking/distribution/modification |
 | Chặn mặc định cho code tích hợp | GPL, AGPL, proprietary, source-available, không license | Chỉ tiếp tục sau quyết định license/pháp lý rõ ràng |
 
-### Hệ quả của việc Anima Engine là proprietary
+### Hệ quả của việc Anima Engine là `MIT OR Apache-2.0`
 
-Hàng thứ ba của bảng trên nay có hiệu lực thật, không còn là mặc định thận trọng:
+Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. Nó đổi lý do, và nới hàng thứ hai:
 
 - Một sản phẩm **proprietary không phân phối được** code copyleft (GPL/AGPL) đã link vào. Với các dự
   án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) nghĩa là **đọc bài
@@ -80,6 +87,31 @@ Hàng thứ ba của bảng trên nay có hiệu lực thật, không còn là m
   > license trong README** (dự án chưa từng publish file license), và `zune-inflate` khai
   > `MIT OR Apache-2.0 OR Zlib` nhưng upstream chỉ publish văn bản Zlib — đóng gói **mọi** file có
   > tại bản phát hành, không tự chọn hộ chủ sở hữu.
+
+- **GPL/AGPL vẫn chặn cứng cho code tích hợp.** Lý do nay không còn là "proprietary không phân phối
+  được copyleft", mà là: dự án **cam kết** cho người dùng chọn MIT. Link một thư viện GPL vào thì tác
+  phẩm phái sinh phải phát hành theo GPL, tức là **không thể** tiếp tục chào MIT nữa — lời hứa trong
+  `LICENSE-MIT` sẽ thành lời hứa không giữ được. Muốn nhận code GPL thì phải relicense **cả dự án**
+  sang GPL; đó là một quyết định ADR, không phải một pull request.
+- Với các dự án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) vẫn
+  nghĩa là **đọc bài báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ
+  hai là vùng xám pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý. Áp cho
+  ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
+- **Hàng thứ hai (MPL-2.0, LGPL) nay dễ hơn thật.** Copyleft ở mức file (MPL-2.0) hoặc ở mức thư
+  viện liên kết động (LGPL) tương thích được với một dự án permissive theo cách chúng không tương
+  thích được với proprietary. Vẫn cần ADR xác định linking/distribution/modification — nhưng câu trả
+  lời không còn mặc định là "không".
+- Hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Output không mặc
+  nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
+- **Neo4j là tiền lệ đúng của ranh giới tiến trình.** Neo4j Community Edition là GPLv3; engine nói
+  chuyện với nó qua giao thức Bolt tới một tiến trình cài riêng, không link. Vì thế GPLv3 không lan
+  sang mã dự án. Điều kiện để lập luận này đứng vững là **fallback in-memory phải luôn chạy được** —
+  ngày Neo4j trở thành bắt buộc, nó thành một cuộc thảo luận khác.
+- **Attribution vẫn bắt buộc.** [`NOTICE`](../../NOTICE) đã có (2026-08-08) và liệt kê dependency
+  trực tiếp của bản build nhị phân. Nó **được duy trì thủ công**, chưa phải inventory sinh tự động
+  và đầy đủ theo nhánh transitive — đó là OSS-004, vẫn còn nợ.
+- Apache-2.0 chỉ tương thích **một chiều** với GPLv3: hạ nguồn GPLv3 dùng được code Apache-2.0, chiều
+  ngược lại thì không. Nhánh MIT là thứ giữ cho hạ nguồn **GPLv2** cũng dùng được.
 
 Một tool AGPL chạy tách biệt trong research có rủi ro khác với thư viện link vào ứng
 dụng, nhưng vẫn phải review cách triển khai, phân phối và đầu ra. Không suy luận từ

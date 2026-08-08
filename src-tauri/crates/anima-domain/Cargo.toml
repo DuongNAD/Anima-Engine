@@ -3,6 +3,8 @@ name = "anima-domain"
 version = "0.1.0"
 edition = "2021"
 description = "World laws, transactions and provenance, independent of any engine adapter."
+license.workspace = true
+repository.workspace = true
 
 # Deliberately minimal. This crate is the shared core the headless runner and the live Bevy world
 # are both meant to be adapters over (G2 task 1), so anything that ties it to one of them —

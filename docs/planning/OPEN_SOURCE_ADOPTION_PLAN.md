@@ -25,9 +25,12 @@ trong khảo sát.
 |---|---|---|---|
 | OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary; `NOTICE` + văn bản license **đã sinh tự động** (2026-07-27) | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data, và **1 thành phần** chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)); 31/32 đã đóng bằng kho vendor `licensing/upstream/` (2026-07-27) |
 | OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), 458 thành phần, CycloneDX 1.5 đã validate schema | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
+
+| OSS-003 license | Blocker quản trị duy nhất | Đã relicense **`MIT OR Apache-2.0`** (2026-08-08); trước đó là proprietary | **Đóng.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/data tách trong README |
+| OSS-004 inventory | Tạo inventory ban đầu | Chưa có; và `burn`/`burn-wgpu` bị **bỏ sót** khỏi khảo sát | Đã thêm dòng vào khảo sát; inventory tự động vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
-| OSS-012 cargo-deny | Adopt sau khi chọn license | ⬜ Advisory **đã được phủ** bởi `cargo audit` + `npm audit` | Thu hẹp phạm vi còn licenses/bans/sources |
+| OSS-012 cargo-deny | Adopt sau khi chọn license | ✅ **XONG 2026-08-08** — `src-tauri/deny.toml` + bước CI; `cargo deny check` xanh cả bốn mục | Mở khoá được nhờ OSS-003: trước khi có license của chính dự án thì không có allow-list nào để check |
 | OSS-013 lychee | Adopt | ✅ `scripts/check_docs_links.mjs` **đã là gate CI** | **Đóng — superseded** |
 | OS2 oracle | 2–3 tuần | ⬜ Chưa bắt đầu; OSS-021 bị chặn bởi OSS-020 | Giữ thứ tự, ghi rõ blocker |
 | OS3 BVH/meshopt | Pilot | Tiền đề bị code bác bỏ | **Park** — xem OS3 |
@@ -93,20 +96,24 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 | OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong một phần (2026-07-27).** `LICENSE` proprietary đã có; `NOTICE` (458 thành phần) và `licensing/THIRD_PARTY_LICENSES.txt` (văn bản của **439/440** thành phần được phân phối — 408 đọc từ artifact đã cài, 31 vendor từ commit upstream đã ghim) đã sinh tự động và có gate CI. **Còn nợ:** phạm vi riêng cho code/model/dataset/asset, và **1** thành phần mà upstream chưa từng publish văn bản license |
 | OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, 458 thành phần, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` (attribution bên thứ ba), `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế |
+| OSS-004 | Tạo inventory dependency ban đầu | ⬜ Chưa. Đã lộ một lỗ hổng thật: `burn`/`burn-wgpu` là runtime dep nhưng vắng khỏi khảo sát cho tới 2026-07-26 |
+
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
-khi thêm. Với `LICENSE` proprietary, thành phần copyleft (GPL/AGPL) là **chặn cứng cho mọi đường
-tiếp xúc với code**, không còn là "cần review thêm" — xem
+khi thêm. Với cấp phép kép `MIT OR Apache-2.0`, thành phần **GPL/AGPL vẫn chặn cứng cho mọi đường
+tiếp xúc với code** — nhận chúng vào thì không thể tiếp tục chào nhánh MIT. Ngược lại **MPL-2.0 và
+LGPL nay là câu hỏi mở** thay vì mặc định "không" — xem
 [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md).
 
 ### OS1 — Tooling ít rủi ro
 
-**Thời lượng:** 3–5 ngày. **Phụ thuộc:** OS0. **Trạng thái: 2/4 xong (2026-07-26).**
+**Thời lượng:** 3–5 ngày. **Phụ thuộc:** OS0. **Trạng thái: 3/4 xong (2026-08-08).** Còn OSS-011.
 
 | ID | Công việc | Kiểm tra / tiêu chí | Trạng thái |
 |---|---|---|---|
 | OSS-010 | Thêm Criterion cho tick, spatial query và artifact encode/decode | Benchmark chạy headless, lưu machine metadata và baseline | ✅ **XONG 2026-07-26** |
 | OSS-011 | Khai báo trực tiếp `tracing` và quy ước correlation ID | Không log mỗi entity/tick mặc định; overhead tắt < 2% | ⬜ Mục OS1 còn lại đáng làm nhất |
-| OSS-012 | Thêm `cargo-deny` cho **licenses/bans/sources** | CI chặn license/source ngoài policy | ⬜ Phạm vi đã hẹp lại: advisory nay do `cargo audit` + `npm audit` phủ |
+| OSS-012 | Thêm `cargo-deny` cho **licenses/bans/sources** | CI chặn license/source ngoài policy | ✅ **Xong 2026-08-08.** `src-tauri/deny.toml`: allow-list 13 license đọc từ graph thật (`all-features`, ba target desktop), 5 crate **MPL-2.0** liệt kê **từng cái** để một MPL mới làm đỏ gate thay vì lọt; `unknown-git`/`unknown-registry` = deny; wildcard = deny (trừ path dep nội bộ). Advisory vẫn do `cargo audit` sở hữu — `deny.toml` chỉ soi gương hai ignore của `.cargo/audit.toml` và tắt `unmaintained` để hai gate không mâu thuẫn |
 | OSS-013 | ~~Thêm lychee cho Markdown~~ | — | ✅ **Superseded** bởi [`scripts/check_docs_links.mjs`](../../scripts/check_docs_links.mjs) |
 
 **OSS-010 — bằng chứng hoàn tất, đã kiểm.** Bench phủ `integrate_physics_system`,

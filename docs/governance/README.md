@@ -18,9 +18,10 @@ và một thành phần bên thứ ba được nhận vào theo quy trình nào.
 
 ## Hai điều cần biết trước khi thêm bất cứ thứ gì từ bên ngoài
 
-1. **Anima Engine là proprietary.** [`LICENSE`](../../LICENSE) ở thư mục gốc là *all rights
-   reserved*. Hệ quả trực tiếp: thành phần copyleft (GPL/AGPL) bị **chặn cứng cho mọi đường tiếp xúc
-   với code** — kể cả đọc source rồi viết lại. Xem
+1. **Anima Engine là nguồn mở, cấp phép kép `MIT OR Apache-2.0`** (từ 2026-08-08 — trước đó là
+   proprietary). Thành phần copyleft (GPL/AGPL) **vẫn chặn cứng cho mọi đường tiếp xúc với code** —
+   kể cả đọc source rồi viết lại — nhưng vì một lý do khác: nhận code GPL thì không thể tiếp tục chào
+   nhánh MIT nữa. Đổi lại, **MPL-2.0 và LGPL nay là câu hỏi mở chứ không còn mặc định "không"**. Xem
    [chính sách nguồn mở](OPEN_SOURCE_POLICY.md).
 2. **Attribution đã có, văn bản license còn thiếu 1 chỗ.** Một sản phẩm proprietary vẫn phải
    attribution cho các thành phần permissive được phân phối. [`NOTICE`](../../NOTICE) (inventory 458
@@ -31,6 +32,10 @@ và một thành phần bên thứ ba được nhận vào theo quy trình nào.
    còn **1** thành phần (`hexf-parse` 0.2.1) — upstream chưa từng publish văn bản license cho bản
    đó; [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) ghi đầy đủ những gì đã tìm. Đây là
    mục 3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
+
+2. **`NOTICE` đã có, nhưng duy trì thủ công.** Nó liệt kê dependency **trực tiếp** của bản build nhị
+   phân, không phải inventory sinh tự động theo nhánh transitive. Phần còn nợ đó là OSS-004; xem mục
+   3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
 
 ## Liên kết
 
