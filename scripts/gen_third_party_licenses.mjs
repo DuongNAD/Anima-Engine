@@ -329,7 +329,7 @@ function renderBundle() {
   out.push('ANIMA-ENGINE - THIRD-PARTY LICENCES');
   out.push(rule);
   out.push('');
-  out.push('Anima-Engine itself is proprietary and this file grants no rights to it; see LICENSE.');
+  out.push('Anima-Engine is dual-licensed under MIT OR Apache-2.0; see LICENSE-MIT and LICENSE-APACHE.');
   out.push('');
   out.push('This file reproduces the licence and copyright notices of the third-party components');
   out.push('distributed inside the application, because MIT and BSD require that text to accompany');

@@ -1,3 +1,5 @@
+*Tiếng Việt · [English](README.en.md)*
+
 # Anima Engine
 
 Mô phỏng một thế giới sống — địa hình, nước, khí hậu, đất, thực vật, động vật và tác động
@@ -107,8 +109,13 @@ worldgen phía frontend.
 Chạy trọn ứng dụng desktop kèm backend:
 
 ```powershell
-npm run tauri dev
+npm run tauri:dev
 ```
+
+Dùng `npm run tauri:dev` / `npm run tauri:build`, **không** dùng `tauri dev` / `tauri build` trần.
+Hai script npm truyền `--features desktop`, còn `tauri.conf.json` không có trường nào khai Cargo
+feature — nên lệnh trần ship một binary `default = []`: không phả hệ Neo4j, không migration
+cross-shard, và learner chạy CPU. Cả ba đều có fallback hoạt động, nên không có gì báo lỗi.
 
 > ⚠️ Build và chạy toàn bộ backend Bevy/Tauri rất nặng và **đã từng làm treo máy phát triển
 > hiện tại**. Khi chỉ cần xem mô hình 3D hoặc cảnh quan, dùng `npm run dev`, hoặc serve tĩnh
@@ -131,7 +138,12 @@ Backend:
 ```powershell
 cargo test --manifest-path src-tauri/Cargo.toml --features desktop -j 2
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features desktop
+cargo deny --manifest-path src-tauri/Cargo.toml check
 ```
+
+`cargo audit` (advisory) phải chạy **từ trong `src-tauri/`**, không chạy từ gốc: nó tìm
+`.cargo/audit.toml` theo thư mục hiện tại, nên chạy từ gốc sẽ bỏ qua hai ignore đã được xác minh ở
+đó và báo đỏ nhầm. `cargo deny` thì tìm `deny.toml` cạnh manifest nên chạy từ đâu cũng được.
 
 E2E Playwright tự khởi động Vite dev server (`webServer` trong `tests/e2e/playwright.config.ts`),
 không cần binary release.
@@ -226,7 +238,44 @@ Xem đầy đủ tại [chính sách tài liệu](docs/governance/DOCUMENTATION_
 - **ADR-0003** (não theo từng cá thể + không gian hành động): accepted và đã triển khai sau cờ.
 - Việc đang mở và thứ tự phụ thuộc: [TODO.md](TODO.md) và [docs/planning](docs/planning/README.md).
 
+## Đóng góp
+
+Xem [CONTRIBUTING.md](CONTRIBUTING.md): điều khoản license của đóng góp, phần phải đọc trước khi
+sửa từng vùng mã, và các cổng kiểm tra cần chạy trước khi mở pull request. Không có CLA.
+
 ## Giấy phép
 
-Phần mềm độc quyền — `Copyright (c) 2026 Duong Nguyen Anh. All rights reserved.`
-Xem [LICENSE](LICENSE) trước khi sao chép, phân phối hoặc tạo tác phẩm phái sinh.
+`Copyright (c) 2026 Duong Nguyen Anh`
+
+Anima Engine là **nguồn mở, cấp phép kép**: bạn chọn một trong hai, tuỳ ý.
+
+| Phạm vi | Giấy phép |
+|---|---|
+| **Mã nguồn** (`src/`, `src-tauri/`, `scripts/`, `tests/`) | [MIT](LICENSE-MIT) **HOẶC** [Apache-2.0](LICENSE-APACHE) — `MIT OR Apache-2.0` |
+| **Tài liệu và asset** (`docs/`, `public/`, `src-tauri/icons/`, ảnh preview ở thư mục gốc) | cùng cấp phép kép như trên |
+| **Định dạng `.anmw`** (World Artifact) | **định dạng mở** — xem bên dưới |
+
+Đây là mặc định de-facto của hệ sinh thái Rust. Lý do chọn kép thay vì chỉ Apache-2.0: Apache-2.0
+**không tương thích với GPLv2**, nên một dự án GPLv2 ở hạ nguồn sẽ không dùng được engine này; nhánh
+MIT gỡ rào đó, còn nhánh Apache-2.0 giữ nguyên điều khoản cấp phép sáng chế (§3) và yêu cầu mang
+theo [`NOTICE`](NOTICE) (§4d) cho ai cần.
+
+`NOTICE` liệt kê attribution cho các thành phần bên thứ ba đi kèm bản build nhị phân.
+
+### `.anmw` là định dạng mở
+
+`WorldArtifact` — vùng chứa nhị phân có phiên bản và checksum FNV-1a mà Rust và TypeScript sinh ra
+**byte-identical** — là một **định dạng mở**. Bất kỳ ai cũng được đọc, ghi và triển khai lại nó
+trong phần mềm của mình, dưới bất kỳ giấy phép nào, không cần xin phép. Đặc tả là mã tham chiếu
+[`src-tauri/src/core/world_artifact.rs`](src-tauri/src/core/world_artifact.rs) cùng các fixture
+liên ngôn ngữ trong `src-tauri/tests/fixtures/`.
+
+### Neo4j là tuỳ chọn, và có giấy phép riêng
+
+Phả hệ chạy được **không cần** Neo4j: bỏ feature `neo4j` — hoặc chỉ cần không có server nào kết nối
+được — thì tracker in-memory nhận việc. Khi bật, engine nói chuyện với một tiến trình Neo4j cài
+riêng qua giao thức Bolt; đó là **ranh giới tiến trình, không phải linking**, nên GPLv3 của Neo4j
+Community Edition không lan sang mã của dự án này. Neo4j không được đóng gói kèm và người vận hành
+tự chịu trách nhiệm về giấy phép của nó.
+
+Tài liệu này không phải tư vấn pháp lý.

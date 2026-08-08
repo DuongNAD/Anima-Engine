@@ -54,8 +54,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            # cargo-audit is `cargo install`ed below, which builds it from source — several minutes
-            # on a Windows runner. Caching the bin directory makes that a first-run cost.
+            # cargo-audit and cargo-deny are `cargo install`ed below, which builds them from source —
+            # several minutes each on a Windows runner. Caching the bin directory makes that a
+            # first-run cost.
             ~/.cargo/bin
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
@@ -79,6 +80,21 @@ jobs:
       - name: cargo audit
         if: ${{ !cancelled() }}
         run: cargo audit
+
+      # OSS-012. `cargo audit` answers "is anything here vulnerable"; it cannot answer "what licenses
+      # does this graph actually drag in, and is anything coming from a source nobody vetted". That
+      # second question only became answerable once the project chose its own license (`MIT OR
+      # Apache-2.0`, 2026-08-08) — before that there was no allow-list to check against.
+      #
+      # `src-tauri/deny.toml` carries the allow-list and the reasoning, including why the five MPL-2.0
+      # crates are enumerated one by one instead of allowed wholesale.
+      - name: Install cargo-deny
+        if: ${{ !cancelled() }}
+        run: cargo install cargo-deny --locked || cargo deny --version
+
+      - name: cargo deny check
+        if: ${{ !cancelled() }}
+        run: cargo deny check
 
       - name: cargo clippy --all-targets -D warnings
         if: ${{ !cancelled() }}

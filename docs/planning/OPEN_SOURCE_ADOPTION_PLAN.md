@@ -23,7 +23,7 @@ trong khảo sát.
 
 | Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary; `NOTICE` + văn bản license **đã sinh tự động** (2026-07-27) | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data, và **1 thành phần** chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)); 31/32 đã đóng bằng kho vendor `licensing/upstream/` (2026-07-27) |
+| OSS-003 license | Blocker quản trị duy nhất | Đã relicense **`MIT OR Apache-2.0`** (2026-08-08); trước đó là proprietary | **Đóng.** `LICENSE-MIT` + `LICENSE-APACHE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README |
 | OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), 458 thành phần, CycloneDX 1.5 đã validate schema | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
@@ -90,12 +90,12 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 |---|---|---|
 | OSS-001 | Dùng `README.md` và `docs/README.md` làm hai điểm vào duy nhất | Mọi tài liệu chuẩn có đường đi ≤ 2 lần nhấp |
 | OSS-002 | Ban hành quy tắc Diátaxis, metadata, ADR và deprecation | Link nội bộ hợp lệ; không có hai nguồn sự thật |
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong một phần (2026-07-27).** `LICENSE` proprietary đã có; `NOTICE` (458 thành phần) và `licensing/THIRD_PARTY_LICENSES.txt` (văn bản của **439/440** thành phần được phân phối — 408 đọc từ artifact đã cài, 31 vendor từ commit upstream đã ghim) đã sinh tự động và có gate CI. **Còn nợ:** phạm vi riêng cho code/model/dataset/asset, và **1** thành phần mà upstream chưa từng publish văn bản license |
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế |
 | OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, 458 thành phần, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
-khi thêm. Với `LICENSE` proprietary, thành phần copyleft (GPL/AGPL) là **chặn cứng cho mọi đường
-tiếp xúc với code**, không còn là "cần review thêm" — xem
+khi thêm. Với cấp phép kép `MIT OR Apache-2.0`, thành phần GPL/AGPL vẫn **chặn cứng cho code tích
+hợp** vì sẽ làm dự án không thể tiếp tục cung cấp nhánh MIT; MPL/LGPL cần ADR theo từng trường hợp — xem
 [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md).
 
 ### OS1 — Tooling ít rủi ro
@@ -414,10 +414,9 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 2. **OSS-072 — truy vấn MRCA.** Phụ thuộc OSS-071, nay đã mở khoá. Đây là thứ mở đường cho OSS-073
    (giao thức đo "line of descent" kiểu Avida), và là thứ hiện **không trả lời được** câu "hai cá
    thể này rẽ nhánh ở đâu".
-3. **Đóng phần còn nợ của OSS-003:** tách phạm vi license cho code / model / dataset / asset.
-   (`NOTICE` và văn bản license đã xong 2026-07-27; đợt hai cùng ngày đóng 31/32 bằng kho vendor
-   [`licensing/upstream/`](../../licensing/upstream/), còn lại **1** thành phần trong
-   [`UNRESOLVED.md`](../../licensing/UNRESOLVED.md) — quyết định pháp lý, không phải của generator.)
+3. **Đóng phần còn nợ của OSS-004:** hoàn thiện inventory model / dataset / asset và xử lý **1**
+   thành phần còn thiếu văn bản license trong [`UNRESOLVED.md`](../../licensing/UNRESOLVED.md) —
+   quyết định pháp lý, không phải của generator.
 
 Ngoài ba việc trên: **OSS-011 (`tracing`)** vẫn mở nhưng đã bị hạ ưu tiên — nó là observability kỹ
 thuật, không sinh bằng chứng khoa học nào. Và **nối `to_newick`/`simplify` vào IPC** cần một thay đổi

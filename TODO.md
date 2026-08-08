@@ -14,6 +14,19 @@
 
 ---
 
+# ⏪ [MỚI NHẤT] Relicense: proprietary → `MIT OR Apache-2.0` (2026-08-08)
+
+Anima Engine chuyển sang **nguồn mở, cấp phép kép** cho code, tài liệu và asset. File `LICENSE`
+proprietary được thay bằng `LICENSE-MIT` + `LICENSE-APACHE`; metadata npm/Cargo, README,
+`CONTRIBUTING.md`, chính sách quản trị và CI `cargo-deny` được cập nhật cùng quyết định này.
+
+`NOTICE` và bundle license bên thứ ba tiếp tục được sinh từ dependency graph thật. GPL/AGPL vẫn
+bị chặn cho code tích hợp vì sẽ làm mất khả năng tiếp tục cung cấp nhánh MIT; MPL/LGPL cần ADR theo
+từng trường hợp. Phần inventory model/dataset/asset và một license text bên thứ ba chưa truy xuất
+được vẫn được ghi là nợ, không bị mô tả nhầm là đã giải quyết.
+
+---
+
 # ⏪ [MỚI NHẤT] Adapter thí nghiệm cho thế giới sống + đo tick trong tiến trình (2026-07-27)
 
 `§3.3` và nửa còn lại của `§3.2` trong `STATE_OF_THE_PROJECT.md`. Ba mảnh khoá vào nhau:

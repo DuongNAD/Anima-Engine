@@ -3,9 +3,10 @@
 //
 // # Why this is generated rather than written
 //
-// `LICENSE` is proprietary and grants nothing. That does not remove the obligation to attribute the
-// permissive components shipped inside the binary — MIT and BSD require the copyright notice and
-// licence text to travel with the distribution, and Apache-2.0 adds a NOTICE-propagation clause.
+// Anima-Engine is dual-licensed under MIT OR Apache-2.0. That first-party license does not remove
+// the obligation to attribute permissive components shipped inside the binary — MIT and BSD require
+// the copyright notice and licence text to travel with the distribution, and Apache-2.0 adds a
+// NOTICE-propagation clause.
 //
 // # What this file is, and what it is not
 //
@@ -93,13 +94,12 @@ const vendored = index.counts.fromVendoredUpstream;
 
 const body = `# NOTICE
 
-Anima-Engine itself is proprietary; see [LICENSE](LICENSE), which grants no rights and defines the
-scope of what is and is not covered.
+Anima-Engine is dual-licensed under MIT OR Apache-2.0; see [LICENSE-MIT](LICENSE-MIT) and
+[LICENSE-APACHE](LICENSE-APACHE). Copyright 2026 Duong Nguyen Anh.
 
-This file is the separate obligation. Anima-Engine is **distributed** with third-party components
-under permissive licences, and MIT/BSD require their copyright notice and licence text to travel
-with the distribution while Apache-2.0 adds a NOTICE-propagation clause. Being proprietary does not
-remove that; it is why a proprietary product still ships a NOTICE.
+This file records the separate obligations for third-party components distributed with
+Anima-Engine. MIT/BSD require their copyright notice and licence text to travel with the
+distribution, while Apache-2.0 adds a NOTICE-propagation clause.
 
 **This file is generated — do not edit by hand.** Regenerate with \`node scripts/gen_notice.mjs\`,
 and verify in CI with \`node scripts/gen_notice.mjs --check\`.
@@ -144,7 +144,7 @@ to prevent — the earlier version of this file did, in both directions at once.
   in the product; they are listed for completeness and clearly separated, not attributed as though
   they were distributed.
 - **Excluded:** workspace members (\`anima-engine\`, \`anima-domain\`) — first-party, covered by
-  \`LICENSE\`.
+  \`LICENSE-MIT\` and \`LICENSE-APACHE\`.
 
 Version numbers are the resolved ones from the lockfiles at generation time. Licence strings are the
 SPDX expressions each component declares in its own manifest — or, for a component the toolchain
@@ -188,8 +188,9 @@ ${
 
 ## What this file does NOT establish
 
-- It is an **inventory**, not a legal review. Compatibility of each licence with proprietary
-  distribution has not been assessed, and nothing here constitutes legal sign-off. In particular the
+- It is an **inventory**, not a legal review. Compatibility of each third-party licence with this
+  project's \`MIT OR Apache-2.0\` distribution has not been assessed, and nothing here constitutes legal sign-off.
+  In particular the
   components under MPL-2.0 and the copyleft-adjacent licences are flagged for review by
   [\`docs/governance/OPEN_SOURCE_POLICY.md\`](docs/governance/OPEN_SOURCE_POLICY.md) and that review
   has not been performed.

@@ -1,0 +1,119 @@
+# cargo-deny configuration (OSS-012).
+#
+# Run:  cargo deny --all-features check licenses bans sources     (from src-tauri/)
+#
+# SCOPE. This file does NOT own advisories -- `cargo audit` does, and its reasoning lives in
+# `.cargo/audit.toml`, where each ignore records the command that proves the code is never compiled.
+# Two gates disagreeing about the same advisory is worse than one gate, so the `[advisories]`
+# section below only mirrors those two ignores, to keep a bare `cargo deny check` from failing on
+# findings that were already investigated and closed elsewhere. Add new advisory reasoning to
+# `.cargo/audit.toml`, not here.
+#
+# What this file is for is the half `cargo audit` cannot see: which LICENSES the dependency graph
+# actually drags in, and whether anything is being pulled from a source nobody vetted. That question
+# only became answerable once Anima-Engine chose its own license -- see the root README.
+
+[graph]
+# Empty means "every target that exists", which reports crates that are provably never compiled.
+# The clearest case is `r-efi` (`MIT OR Apache-2.0 OR LGPL-2.1-or-later`): getrandom depends on it
+# for UEFI targets only, so with an unrestricted list a copyleft license shows up in the report for
+# code no build of this project ever touches. These three triples are the platforms the app is built
+# for; CI builds the Rust side on `windows-latest`.
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+]
+
+# The shipped desktop binary enables `neo4j`, `networking` and `ml-wgpu` (the `desktop` feature), so
+# checking a default build would miss the neo4rs, tungstenite and wgpu subtrees entirely -- the
+# heaviest and least familiar parts of the graph. Check everything.
+all-features = true
+
+[licenses]
+# Allow-list, not a deny-list: a license nobody has classified must fail, not pass. Every entry below
+# was observed in the actual graph, not copied from a template.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    # `target-lexicon`, via cfg-expr -> system-deps -> the GTK `-sys` build scripts. The LLVM
+    # exception only *removes* an obligation (it waives the Apache §4 notice requirement for
+    # compiler output), so it is strictly more permissive than plain Apache-2.0.
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
+
+# MPL-2.0 is copyleft at FILE level, so it is not in the allow-list above -- but it is also not the
+# blocker GPL is. The obligation it creates is: if you modify an MPL file, publish that file's
+# source. Every crate below arrives unmodified through Cargo, so the obligation is already met, and
+# a permissive project can distribute them.
+#
+# They are enumerated per crate rather than allowed wholesale on purpose. A NEW MPL dependency
+# appearing in the graph should stop the gate and get the ADR that
+# `docs/governance/OPEN_SOURCE_POLICY.md` asks for -- not slip in behind a blanket `allow`.
+#
+# Paths, so the next person does not have to re-derive them:
+#   cssparser, cssparser-macros, dtoa-short, selectors  <- tauri -> wry -> the WebView CSS stack
+#   option-ext                                          <- dirs -> dirs-sys
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "cssparser" },
+    { allow = ["MPL-2.0"], crate = "cssparser-macros" },
+    { allow = ["MPL-2.0"], crate = "dtoa-short" },
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+    { allow = ["MPL-2.0"], crate = "selectors" },
+]
+
+[licenses.private]
+# The workspace crates are `MIT OR Apache-2.0` and declare it (`[workspace.package]` in Cargo.toml),
+# so there is nothing to skip. Leaving this false means a workspace member that forgets its license
+# field fails the gate -- which is the point of declaring it at the workspace level.
+ignore = false
+
+[bans]
+# Warn, not deny. This graph carries six `windows-sys` majors and three `syn` majors because tauri,
+# wgpu and bevy each pin their own; deduplicating is upstream's call, not something a gate here can
+# fix. Kept visible so the count does not quietly grow.
+multiple-versions = "warn"
+
+# A `*` version requirement means "whatever resolves today", which is how an unreviewed major
+# version arrives without anyone editing a manifest -- so it fails. `allow-wildcard-paths` carves
+# out the one legitimate case: `anima-domain` is a path dependency inside this workspace, and a path
+# dependency has no version requirement to write.
+wildcards = "deny"
+allow-wildcard-paths = true
+highlight = "all"
+
+[sources]
+# Everything must come from crates.io. A git dependency is how an unreviewed fork enters a build
+# without showing up in any license report, so it fails here rather than being "warn".
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[advisories]
+# Mirrors `.cargo/audit.toml`. See the SCOPE note at the top: `cargo audit` is the gate that owns
+# these, and the verification for both lives there. Both are lockfile-only entries for the
+# burn-dataset -> gix chain, which no enabled feature compiles.
+ignore = [
+    "RUSTSEC-2024-0350",
+    "RUSTSEC-2025-0021",
+]
+
+# cargo-deny fails on "unmaintained" by default; cargo audit reports it and does not. Same repo,
+# same dependency graph, opposite verdicts -- so this side yields to the one that already wrote down
+# its reasoning: `bincode` 2.0.0-rc.3 is unmaintained and the gtk-rs GTK3 bindings (which arrive
+# through tauri on Linux) are archived, and neither has a fix short of changing the framework.
+# `cargo audit` still surfaces both, so turning this off loses no signal -- it only stops a gate
+# that cannot go green, and a gate that cannot go green stops being read.
+unmaintained = "none"

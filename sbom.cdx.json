@@ -11,9 +11,7 @@
       "description": "Real-time GPU-accelerated Artificial Life & Evolution simulator (Tauri v2 desktop app).",
       "licenses": [
         {
-          "license": {
-            "name": "Proprietary — see LICENSE"
-          }
+          "expression": "MIT OR Apache-2.0"
         }
       ]
     },
@@ -17455,5 +17453,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:d42edd2f-fd8f-5e91-9072-c31f72b12d55"
+  "serialNumber": "urn:uuid:cb142113-1268-54d6-9c4e-9c40f3ebb5fc"
 }
