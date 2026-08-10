@@ -69,6 +69,31 @@ pub struct SegmentState {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
+pub struct FloraState {
+    pub id: u32,
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub energy: f32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct CloudSyncState {
+    pub id: u32,
+    pub x: f32,
+    pub z: f32,
+    pub radius: f32,
+    pub shadow_intensity: f32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct EnvironmentUpdateState {
+    pub ambient_light: f32,
+    pub elapsed_time: f32,
+    pub clouds: Vec<CloudSyncState>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug)]
 pub struct SimulationStatus {
     pub running: bool,
     pub tick_count: u64,
@@ -95,6 +120,7 @@ pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
     pub agent_states: Arc<RwLock<Vec<SegmentState>>>,
+    pub flora_states: Arc<RwLock<Vec<FloraState>>>,
     pub pheromone_grid_state: Arc<RwLock<crate::ai::pheromone::PheromoneGridState>>,
     pub active_raycasts: Arc<RwLock<Vec<crate::core::ecs::RaycastTelemetry>>>,
     pub combat_events: Arc<RwLock<Vec<crate::core::ecs::CombatEvent>>>,
@@ -104,6 +130,12 @@ pub struct SimulationEngine {
     pub sharding_config: Arc<RwLock<crate::core::ecs::ShardingConfig>>,
     pub manual_migration_trigger: crossbeam_channel::Sender<u16>,
     pub manual_migration_receiver: crossbeam_channel::Receiver<u16>,
+    pub preset_spawn_sender: crossbeam_channel::Sender<String>,
+    pub preset_spawn_receiver: crossbeam_channel::Receiver<String>,
+    pub terrain_grid_state: Arc<RwLock<crate::core::terrain::TerrainGridState>>,
+    pub env_state_sync: Arc<RwLock<EnvironmentUpdateState>>,
+    pub env_settings: Arc<std::sync::Mutex<crate::commands::EnvironmentSettings>>,
+    pub manual_disaster: Arc<std::sync::Mutex<Option<crate::evolution::meta_ai::EnvironmentalEvent>>>,
 }
 
 impl Default for SimulationEngine {
@@ -120,6 +152,30 @@ impl SimulationEngine {
         let lineage_tracker = Arc::new(crate::evolution::lineage::FallbackLineageTracker::new(&uri, &user, &pass));
         let sharding_config = Arc::new(RwLock::new(crate::core::ecs::ShardingConfig::default()));
         let (manual_migration_trigger, manual_migration_receiver) = crossbeam_channel::unbounded::<u16>();
+        let (preset_spawn_sender, preset_spawn_receiver) = crossbeam_channel::unbounded::<String>();
+
+        let initial_terrain = crate::core::terrain::generate_terrain(128, 128, 42);
+        let elevations = initial_terrain.cells.iter().map(|c| c.elevation).collect();
+        let water_depths = initial_terrain.cells.iter().map(|c| c.water_depth).collect();
+        let biomes = initial_terrain.cells.iter().map(|c| c.biome).collect();
+        let terrain_grid_state = Arc::new(RwLock::new(crate::core::terrain::TerrainGridState {
+            width: 128,
+            height: 128,
+            elevations,
+            water_depths,
+            biomes,
+        }));
+        let env_state_sync = Arc::new(RwLock::new(EnvironmentUpdateState {
+            ambient_light: 1.0,
+            elapsed_time: 0.0,
+            clouds: Vec::with_capacity(8),
+        }));
+        let env_settings = Arc::new(std::sync::Mutex::new(crate::commands::EnvironmentSettings {
+            time_speed: 1.0,
+            fertility: 1.0,
+            weather_severity: 1.0,
+        }));
+        let manual_disaster = Arc::new(std::sync::Mutex::new(None));
 
         Self {
             running: Arc::new(AtomicBool::new(false)),
@@ -130,6 +186,7 @@ impl SimulationEngine {
                 fps: 0.0,
             })),
             agent_states: Arc::new(RwLock::new(Vec::with_capacity(1000))),
+            flora_states: Arc::new(RwLock::new(Vec::with_capacity(1000))),
             pheromone_grid_state: Arc::new(RwLock::new(crate::ai::pheromone::PheromoneGridState {
                 grid: vec![0.0; 128 * 128],
                 width: 128,
@@ -143,6 +200,12 @@ impl SimulationEngine {
             sharding_config,
             manual_migration_trigger,
             manual_migration_receiver,
+            preset_spawn_sender,
+            preset_spawn_receiver,
+            terrain_grid_state,
+            env_state_sync,
+            env_settings,
+            manual_disaster,
         }
     }
 
@@ -155,6 +218,7 @@ impl SimulationEngine {
     ) {
         // Cleanly drain manual_migration_receiver channel at the start of start()
         while self.manual_migration_receiver.try_recv().is_ok() {}
+        while self.preset_spawn_receiver.try_recv().is_ok() {}
 
         if self
             .running
@@ -167,9 +231,14 @@ impl SimulationEngine {
         let running_clone = Arc::clone(&self.running);
         let status_clone = Arc::clone(&self.status);
         let agent_states_clone = Arc::clone(&self.agent_states);
+        let flora_states_clone = Arc::clone(&self.flora_states);
         let pheromone_grid_state_clone = Arc::clone(&self.pheromone_grid_state);
         let active_raycasts_clone = Arc::clone(&self.active_raycasts);
         let combat_events_clone = Arc::clone(&self.combat_events);
+        let terrain_grid_state_clone = Arc::clone(&self.terrain_grid_state);
+        let env_state_sync_clone = Arc::clone(&self.env_state_sync);
+        let env_settings_clone = Arc::clone(&self.env_settings);
+        let manual_disaster_clone = Arc::clone(&self.manual_disaster);
 
         // Create crossbeam channels for learning
         let (trans_tx, trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
@@ -204,7 +273,7 @@ impl SimulationEngine {
                     model_tx_clone,
                     old_model_rx_clone,
                     device,
-                    |m| ModelUpdate::Wgpu(m),
+                    ModelUpdate::Wgpu,
                 );
             })
         } else {
@@ -220,7 +289,7 @@ impl SimulationEngine {
                     model_tx_clone,
                     old_model_rx_clone,
                     device,
-                    |m| ModelUpdate::NdArray(m),
+                    ModelUpdate::NdArray,
                 );
             })
         };
@@ -453,6 +522,7 @@ impl SimulationEngine {
         let lineage_tracker_sim = Arc::clone(&self.lineage_tracker);
         let sharding_config_sim = Arc::clone(&self.sharding_config);
         let manual_migration_receiver_clone = self.manual_migration_receiver.clone();
+        let preset_spawn_receiver_clone = self.preset_spawn_receiver.clone();
 
         // Channels for migration
         let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<crate::core::ecs::AgentMigrationData>();
@@ -470,6 +540,8 @@ impl SimulationEngine {
             world.insert_resource(BevyEvolutionSettings(evolution_settings));
             world.insert_resource(BevyEvolutionRunning(evolution_running));
             world.insert_resource(BevyMapElitesGrid(map_elites_grid));
+            world.insert_resource(BevyEnvironmentSettings(env_settings_clone));
+            world.insert_resource(BevyManualDisaster(manual_disaster_clone));
             world.insert_resource(BevyAppHandle(app_handle_clone));
             world.insert_resource(ActiveEvolutionSettings {
                 mutation_rate: 0.15,
@@ -497,6 +569,8 @@ impl SimulationEngine {
             world.insert_resource(crate::core::ecs::OutboundMigrationSender(outbound_tx));
             world.insert_resource(crate::core::ecs::ShardingResource(sharding_config_sim));
             world.insert_resource(crate::core::ecs::BevyMigrationTrigger(manual_migration_receiver_clone));
+            world.insert_resource(BevyPresetSpawnTrigger(preset_spawn_receiver_clone));
+            world.insert_resource(BevyLineageTracker(lineage_tracker_sim.clone()));
 
             // Create a 3-segment linear genotype
             let mut genotype = MorphologyGenotype::new();
@@ -548,7 +622,10 @@ impl SimulationEngine {
 
             let mut schedule = Schedule::default();
             schedule.add_systems((
+                crate::core::ecs::update_day_night_cycle_system,
                 sync_evolution_settings_system,
+                sync_environment_settings_system,
+                receive_manual_disasters_system,
                 receive_environmental_events_system,
                 apply_environmental_effects_system.after(receive_environmental_events_system),
                 brain_inference_system,
@@ -559,11 +636,14 @@ impl SimulationEngine {
                 crate::ai::pheromone::update_pheromone_grid_system.after(crate::ai::pheromone::agent_release_pheromone_system),
                 crate::ai::pheromone::agent_read_pheromone_system.after(crate::ai::pheromone::update_pheromone_grid_system),
             ));
+            schedule.add_systems(process_preset_spawns_system);
             schedule.add_systems((
                 update_agent_evaluation_system.after(integrate_physics_system),
                 crate::core::ecs::check_migration_boundaries_system.after(integrate_physics_system),
                 apply_deferred.after(crate::core::ecs::check_migration_boundaries_system),
-                wrap_coordinates_system.after(apply_deferred),
+                crate::core::ecs::update_positions_system,
+                wrap_coordinates_system.after(apply_deferred).after(crate::core::ecs::update_positions_system),
+                crate::core::ecs::herbivore_grazing_system.after(wrap_coordinates_system),
                 rebuild_spatial_grid_system.after(wrap_coordinates_system),
                 crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
                 metabolic_decay_system.after(integrate_physics_system),
@@ -574,6 +654,10 @@ impl SimulationEngine {
                 check_epoch_completion_system.after(metabolic_decay_system),
                 apply_staggered_evolution_system.after(check_epoch_completion_system),
                 crate::core::ecs::manual_migration_system.after(integrate_physics_system),
+                crate::core::terrain::water_dynamics_system.after(integrate_physics_system),
+                crate::core::ecs::grow_flora_system.after(crate::core::terrain::water_dynamics_system),
+                crate::core::ecs::wither_flora_system.after(crate::core::ecs::grow_flora_system),
+                crate::core::ecs::spawn_flora_system.after(crate::core::ecs::wither_flora_system),
             ));
 
             // Warm up systems and query cache to initialize archetype metadata (avoids allocation during tracking)
@@ -589,13 +673,25 @@ impl SimulationEngine {
             )>();
             let _ = query_state.iter(&world).count();
 
+            let mut flora_query_state = world.query::<(Entity, &crate::core::ecs::Flora, &Position)>();
+            let _ = flora_query_state.iter(&world).count();
+
+            let mut cloud_query_state = world.query::<(Entity, &Position, &crate::core::ecs::Cloud)>();
+            let _ = cloud_query_state.iter(&world).count();
+
             let mut tick_count = 0;
             let target_frame_duration = Duration::from_secs_f64(1.0 / 60.0);
             let mut total_tick_duration = Duration::ZERO;
 
             // Pre-allocated local state buffer to avoid capacity growth allocations
             let mut state_buffer = Vec::with_capacity(1000);
+            let mut state_flora_buffer = Vec::with_capacity(1000);
             let mut state_raycast_buffer = Vec::with_capacity(1000);
+            let mut local_env_state = EnvironmentUpdateState {
+                ambient_light: 1.0,
+                elapsed_time: 0.0,
+                clouds: Vec::with_capacity(8),
+            };
 
             while running_clone.load(Ordering::SeqCst) {
                 let start_time = Instant::now();
@@ -678,9 +774,35 @@ impl SimulationEngine {
                     std::mem::swap(&mut *shared, &mut state_buffer);
                 }
 
+                state_flora_buffer.clear();
+                for (entity, flora, pos) in flora_query_state.iter(&world) {
+                    state_flora_buffer.push(FloraState {
+                        id: entity.index(),
+                        x: pos.0.x,
+                        y: pos.0.y,
+                        z: pos.0.z,
+                        energy: flora.energy,
+                    });
+                }
+                {
+                    let mut shared = flora_states_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    std::mem::swap(&mut *shared, &mut state_flora_buffer);
+                }
+
                 if let Some(grid) = world.get_resource::<crate::ai::pheromone::PheromoneGrid>() {
                     let mut grid_state = pheromone_grid_state_clone.write().unwrap_or_else(|e| e.into_inner());
                     grid_state.grid.copy_from_slice(&grid.values);
+                }
+
+                if let Some(terrain) = world.get_resource::<crate::core::terrain::TerrainGrid>() {
+                    let mut shared = terrain_grid_state_clone.write().unwrap_or_else(|e| e.into_inner());
+                    for (i, cell) in terrain.cells.iter().enumerate() {
+                        shared.water_depths[i] = cell.water_depth;
+                        shared.biomes[i] = cell.biome;
+                        shared.elevations[i] = cell.elevation;
+                    }
                 }
 
                 state_raycast_buffer.clear();
@@ -690,6 +812,25 @@ impl SimulationEngine {
                 {
                     let mut shared = active_raycasts_clone.write().unwrap_or_else(|e| e.into_inner());
                     std::mem::swap(&mut *shared, &mut state_raycast_buffer);
+                }
+
+                local_env_state.clouds.clear();
+                if let Some(env) = world.get_resource::<crate::core::ecs::EnvironmentState>() {
+                    local_env_state.ambient_light = env.ambient_light;
+                    local_env_state.elapsed_time = env.elapsed_time;
+                }
+                for (entity, pos, cloud) in cloud_query_state.iter(&world) {
+                    local_env_state.clouds.push(CloudSyncState {
+                        id: entity.index(),
+                        x: pos.0.x,
+                        z: pos.0.z,
+                        radius: cloud.radius,
+                        shadow_intensity: cloud.shadow_intensity,
+                    });
+                }
+                {
+                    let mut shared = env_state_sync_clone.write().unwrap_or_else(|e| e.into_inner());
+                    std::mem::swap(&mut *shared, &mut local_env_state);
                 }
 
                 if let Some(mut combat_res) = world.get_resource_mut::<crate::core::ecs::CombatEvents>() {
@@ -730,12 +871,16 @@ impl SimulationEngine {
         // Spawn Tauri Event Emission Thread to decouple slow IPC serialization allocations from the hot loop
         let running_clone_emit = Arc::clone(&self.running);
         let agent_states_clone_emit = Arc::clone(&self.agent_states);
+        let flora_states_emit = Arc::clone(&self.flora_states);
         let pheromone_grid_state_emit = Arc::clone(&self.pheromone_grid_state);
         let active_raycasts_emit = Arc::clone(&self.active_raycasts);
         let combat_events_emit = Arc::clone(&self.combat_events);
+        let terrain_grid_state_emit = Arc::clone(&self.terrain_grid_state);
+        let env_state_sync_emit = Arc::clone(&self.env_state_sync);
 
         let emit_handle = thread::spawn(move || {
             let mut local_emit_buffer = Vec::with_capacity(1000);
+            let mut local_flora_emit = Vec::with_capacity(1000);
             let mut local_pheromone_emit = crate::ai::pheromone::PheromoneGridState {
                 grid: vec![0.0; 128 * 128],
                 width: 128,
@@ -743,6 +888,18 @@ impl SimulationEngine {
             };
             let mut local_raycast_emit = Vec::with_capacity(1000);
             let mut local_combat_emit = Vec::with_capacity(100);
+            let mut local_water_emit = crate::core::terrain::TerrainGridState {
+                width: 128,
+                height: 128,
+                elevations: vec![0.0; 128 * 128],
+                water_depths: vec![0.0; 128 * 128],
+                biomes: vec![crate::core::terrain::BiomeType::Grassland; 128 * 128],
+            };
+            let mut local_env_emit = EnvironmentUpdateState {
+                ambient_light: 1.0,
+                elapsed_time: 0.0,
+                clouds: Vec::with_capacity(8),
+            };
 
             while running_clone_emit.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(33)); // Emit at ~30 FPS
@@ -772,6 +929,21 @@ impl SimulationEngine {
                     }
                     let _ = handle.emit("raycast-update", &local_raycast_emit);
 
+                    {
+                        let shared = terrain_grid_state_emit.read().unwrap_or_else(|e| e.into_inner());
+                        local_water_emit.water_depths.copy_from_slice(&shared.water_depths);
+                        local_water_emit.biomes.copy_from_slice(&shared.biomes);
+                        local_water_emit.elevations.copy_from_slice(&shared.elevations);
+                    }
+                    let _ = handle.emit("water-update", &local_water_emit);
+
+                    local_flora_emit.clear();
+                    {
+                        let shared = flora_states_emit.read().unwrap_or_else(|e| e.into_inner());
+                        local_flora_emit.extend_from_slice(&shared);
+                    }
+                    let _ = handle.emit("flora-update", &local_flora_emit);
+
                     local_combat_emit.clear();
                     {
                         let mut shared = combat_events_emit.write().unwrap_or_else(|e| e.into_inner());
@@ -780,6 +952,15 @@ impl SimulationEngine {
                     for event in &local_combat_emit {
                         let _ = handle.emit("combat-event", event);
                     }
+
+                    local_env_emit.clouds.clear();
+                    {
+                        let shared = env_state_sync_emit.read().unwrap_or_else(|e| e.into_inner());
+                        local_env_emit.ambient_light = shared.ambient_light;
+                        local_env_emit.elapsed_time = shared.elapsed_time;
+                        local_env_emit.clouds.extend_from_slice(&shared.clouds);
+                    }
+                    let _ = handle.emit("environment-update", &local_env_emit);
                 }
             }
         });

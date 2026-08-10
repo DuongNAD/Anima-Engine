@@ -25,6 +25,13 @@ export default defineConfig({
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     // produce sourcemaps for debug builds
     sourcemap: !!process.env.TAURI_DEBUG,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, "index.html"),
+        playground: path.resolve(__dirname, "playground/frontend/index.html"),
+        "fantasy-map": path.resolve(__dirname, "playground/fantasy-map/index.html"),
+      },
+    },
   },
   test: {
     globals: true,

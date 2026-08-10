@@ -145,7 +145,7 @@ impl Default for MapBounds {
 
 // System cập nhật vị trí thực thể dựa trên vận tốc
 pub fn update_positions_system(
-    mut query: Query<(&mut Position, &Velocity)>,
+    mut query: Query<(&mut Position, &Velocity), Without<crate::physics::RigidBody>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
 ) {
     for (mut pos, vel) in query.iter_mut() {
@@ -192,6 +192,11 @@ pub fn init_world() -> World {
     let bounds = MapBounds::default();
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(10.0, &bounds));
     world.insert_resource(bounds);
+
+    // Generate and insert TerrainGrid resource (128x128 grid, seed 42)
+    let terrain_grid = crate::core::terrain::generate_terrain(128, 128, 42);
+    world.insert_resource(terrain_grid);
+
     world.insert_resource(ActiveRaycasts { raycasts: Vec::with_capacity(1000) });
     world.insert_resource(CombatEvents {
         events: Vec::with_capacity(1000),
@@ -199,8 +204,312 @@ pub fn init_world() -> World {
         prey_centroids: Vec::with_capacity(128),
     });
     world.insert_resource(ActiveEnvironmentEvent::default());
+    world.insert_resource(FloraSpawnSettings::default());
+    world.insert_resource(EnvironmentState::default());
+
+    // Spawn 3 clouds with random positions, velocities, and radii
+    {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        for _ in 0..3 {
+            let x = rng.gen_range(-100.0..100.0);
+            let z = rng.gen_range(-100.0..100.0);
+            let vx = rng.gen_range(-2.0..2.0);
+            let vz = rng.gen_range(-2.0..2.0);
+            let radius = rng.gen_range(15.0..25.0);
+            let shadow_intensity = rng.gen_range(0.7..0.9);
+            
+            world.spawn((
+                Position(glam::vec3(x, 0.0, z)),
+                Velocity(glam::vec3(vx, 0.0, vz)),
+                Cloud { radius, shadow_intensity },
+            ));
+        }
+    }
+
     world
 }
+
+#[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Flora {
+    pub energy: f32,
+    pub max_energy: f32,
+    pub growth_rate: f32,
+    pub decay_rate: f32,
+}
+
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FloraSpawnSettings {
+    pub max_flora_count: usize,
+    pub initial_energy: f32,
+    pub default_max_energy: f32,
+    pub default_growth_rate: f32,
+    pub default_decay_rate: f32,
+    pub spontaneous_spawn_chance: f32,
+    pub vegetative_reproduction_threshold: f32,
+    pub vegetative_reproduction_chance: f32,
+}
+
+impl Default for FloraSpawnSettings {
+    fn default() -> Self {
+        Self {
+            max_flora_count: 300,
+            initial_energy: 5.0,
+            default_max_energy: 100.0,
+            default_growth_rate: 1.5,
+            default_decay_rate: 0.2,
+            spontaneous_spawn_chance: 0.05,
+            vegetative_reproduction_threshold: 80.0,
+            vegetative_reproduction_chance: 0.002,
+        }
+    }
+}
+
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct EnvironmentState {
+    pub ambient_light: f32,
+    pub elapsed_time: f32,
+    pub day_length: f32,
+}
+
+impl Default for EnvironmentState {
+    fn default() -> Self {
+        Self {
+            ambient_light: 1.0,
+            elapsed_time: 0.0,
+            day_length: 120.0,
+        }
+    }
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct Cloud {
+    pub radius: f32,
+    pub shadow_intensity: f32,
+}
+
+#[derive(Component, Debug, Clone, Copy)]
+pub struct BaseCloudProperties {
+    pub base_shadow_intensity: f32,
+    pub base_velocity: glam::Vec3,
+}
+
+
+pub fn grow_flora_system(
+    time_step: Res<crate::ai::cpg::TimeStep>,
+    terrain_grid: Res<crate::core::terrain::TerrainGrid>,
+    bounds: Res<MapBounds>,
+    active_event: Res<ActiveEnvironmentEvent>,
+    env_state: Option<Res<EnvironmentState>>,
+    mut flora_query: Query<(&Position, &mut Flora)>,
+) {
+    let dt = time_step.0;
+    let light_factor = env_state.map(|e| e.ambient_light).unwrap_or(1.0);
+
+    for (pos, mut flora) in flora_query.iter_mut() {
+        let mut moisture_factor = 0.0;
+        let mut decay_multiplier = 1.0;
+
+        if let Some(idx) = terrain_grid.pos_to_index(pos.0, &bounds) {
+            let cell = terrain_grid.cells[idx];
+            
+            moisture_factor = match cell.biome {
+                crate::core::terrain::BiomeType::Grassland => 1.0,
+                crate::core::terrain::BiomeType::Mud => 0.9,
+                crate::core::terrain::BiomeType::Sand => 0.3,
+                crate::core::terrain::BiomeType::Rock => 0.05,
+                crate::core::terrain::BiomeType::Water => {
+                    if cell.water_depth > 0.5 {
+                        decay_multiplier = 3.0; // Drowning stress
+                        0.0
+                    } else {
+                        0.5 // Shallow water growth
+                    }
+                }
+            };
+        }
+
+        // Apply drought event stress multiplier
+        if active_event.0 == crate::evolution::meta_ai::EnvironmentalEvent::ResourceDrought {
+            decay_multiplier *= 2.0; 
+        }
+
+        let growth_delta = flora.growth_rate * moisture_factor * light_factor * dt;
+        let decay_delta = flora.decay_rate * decay_multiplier * dt;
+
+        let max_energy = flora.max_energy.max(0.0);
+        let next_energy = flora.energy + growth_delta - decay_delta;
+        flora.energy = if next_energy.is_nan() {
+            0.0
+        } else {
+            next_energy.clamp(0.0, max_energy)
+        };
+    }
+}
+
+pub fn wither_flora_system(
+    mut commands: Commands,
+    flora_query: Query<(Entity, &Flora)>,
+) {
+    for (entity, flora) in flora_query.iter() {
+        if flora.energy <= 0.0 || flora.energy.is_nan() {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+// Toroidal distance helper
+pub fn toroidal_distance_sq(p1: glam::Vec3, p2: glam::Vec3, bounds: &MapBounds) -> f32 {
+    let x_range = bounds.max.x - bounds.min.x;
+    let z_range = bounds.max.z - bounds.min.z;
+    if x_range <= 0.0 || z_range <= 0.0 {
+        return p1.distance_squared(p2);
+    }
+    
+    let mut dx = (p1.x - p2.x).abs();
+    if dx > x_range * 0.5 {
+        dx = x_range - dx;
+    }
+    
+    let mut dz = (p1.z - p2.z).abs();
+    if dz > z_range * 0.5 {
+        dz = z_range - dz;
+    }
+    
+    dx * dx + dz * dz
+}
+
+// Calculate the light level factor [0.05, 1.0] at a given position
+pub fn get_local_light(
+    pos: glam::Vec3,
+    ambient_light: f32,
+    clouds: &[(glam::Vec3, f32, f32)], // (cloud_pos, radius, shadow_intensity)
+    bounds: &MapBounds,
+) -> f32 {
+    let mut max_shadow: f32 = 0.0;
+    
+    for &(cloud_pos, radius, intensity) in clouds {
+        let dist_sq = toroidal_distance_sq(pos, cloud_pos, bounds);
+        let r_sq = radius * radius;
+        
+        if dist_sq < r_sq {
+            let dist = dist_sq.sqrt();
+            // Linear falloff: 100% intensity at center, 0% at boundary edge
+            let shadow = intensity * (1.0 - dist / radius);
+            max_shadow = max_shadow.max(shadow);
+        }
+    }
+    
+    // Global ambient light is attenuated by the strongest shadow
+    // We clamp the minimum visibility to 0.05 to avoid total blindness (agent failure)
+    (ambient_light * (1.0 - max_shadow)).max(0.05)
+}
+
+pub fn update_day_night_cycle_system(
+    time_step: Res<crate::ai::cpg::TimeStep>,
+    mut env_state: ResMut<EnvironmentState>,
+) {
+    env_state.elapsed_time += time_step.0;
+    
+    let day_len = if env_state.day_length > 0.0 { env_state.day_length } else { 120.0 };
+    
+    // Map elapsed time to [0, 2*PI]
+    let phase = (env_state.elapsed_time * 2.0 * std::f32::consts::PI / day_len) % (2.0 * std::f32::consts::PI);
+    
+    // Min light (night): 0.1, Max light (day): 1.0
+    let min_light = 0.1;
+    let max_light = 1.0;
+    
+    // Sinusoidal day-night transition
+    env_state.ambient_light = min_light + (max_light - min_light) * (0.5 * (1.0 + phase.sin()));
+}
+
+pub fn spawn_flora_system(
+    mut commands: Commands,
+    flora_query: Query<(&Position, &Flora)>,
+    bounds: Res<MapBounds>,
+    settings: Res<FloraSpawnSettings>,
+    terrain: Res<crate::core::terrain::TerrainGrid>,
+) {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let mut current_count = flora_query.iter().count();
+
+    // 1. Spontaneous Sprouting (Wind Dispersal)
+    if current_count < settings.max_flora_count
+        && rng.gen_bool(settings.spontaneous_spawn_chance as f64)
+    {
+        let x = rng.gen_range(bounds.min.x..bounds.max.x);
+        let z = rng.gen_range(bounds.min.z..bounds.max.z);
+        let pos = glam::Vec3::new(x, 0.0, z);
+
+        if let Some(idx) = terrain.pos_to_index(pos, &bounds) {
+            let cell = terrain.cells[idx];
+            if cell.biome == crate::core::terrain::BiomeType::Grassland || cell.biome == crate::core::terrain::BiomeType::Mud {
+                commands.spawn((
+                    Flora {
+                        energy: settings.initial_energy,
+                        max_energy: settings.default_max_energy,
+                        growth_rate: settings.default_growth_rate,
+                        decay_rate: settings.default_decay_rate,
+                    },
+                    Position(pos),
+                    crate::physics::SpatialCollider { radius: 0.3 },
+                ));
+                current_count += 1;
+            }
+        }
+    }
+
+    // 2. Vegetative Seeding (Local Offspring)
+    for (pos, flora) in flora_query.iter() {
+        if current_count >= settings.max_flora_count {
+            break;
+        }
+        if flora.energy >= settings.vegetative_reproduction_threshold
+            && rng.gen_bool(settings.vegetative_reproduction_chance as f64)
+        {
+            let angle = rng.gen_range(0.0..std::f32::consts::TAU);
+            let dist = rng.gen_range(2.0..6.0);
+            let offset = glam::Vec3::new(angle.cos() * dist, 0.0, angle.sin() * dist);
+            let sprout_pos = pos.0 + offset;
+
+            // Apply toroidal wrapping matching wrap_coordinates_system
+            let x_min = bounds.min.x;
+            let x_max = bounds.max.x;
+            let x_range = x_max - x_min;
+            let z_min = bounds.min.z;
+            let z_max = bounds.max.z;
+            let z_range = z_max - z_min;
+
+            let mut wrapped_pos = sprout_pos;
+            if x_range > 0.0 {
+                wrapped_pos.x = x_min + (sprout_pos.x - x_min).rem_euclid(x_range);
+            }
+            if z_range > 0.0 {
+                wrapped_pos.z = z_min + (sprout_pos.z - z_min).rem_euclid(z_range);
+            }
+
+            if let Some(idx) = terrain.pos_to_index(wrapped_pos, &bounds) {
+                let cell = terrain.cells[idx];
+                if cell.biome == crate::core::terrain::BiomeType::Grassland || cell.biome == crate::core::terrain::BiomeType::Mud {
+                    commands.spawn((
+                        Flora {
+                            energy: settings.initial_energy,
+                            max_energy: settings.default_max_energy,
+                            growth_rate: settings.default_growth_rate,
+                            decay_rate: settings.default_decay_rate,
+                        },
+                        Position(wrapped_pos),
+                        crate::physics::SpatialCollider { radius: 0.3 },
+                    ));
+                    current_count += 1;
+                }
+            }
+        }
+    }
+}
+
 
 #[derive(Component, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct FeatureTracker {
@@ -427,15 +736,13 @@ pub fn combat_system(
                                 let transfer = needed.min(prey_homeo.energy);
                                 prey_homeo.energy = (prey_homeo.energy - transfer).max(0.0);
                                 pred_homeo.energy = (pred_homeo.energy + transfer).min(pred_homeo.energy_target);
-                                if transfer > 0.0 {
-                                    if events_res.events.len() < events_res.events.capacity() {
-                                        events_res.events.push(CombatEvent {
-                                            predator_id: pred_entity.index(),
-                                            prey_id: prey_entity.index(),
-                                            damage: transfer,
-                                            energy_transferred: transfer,
-                                        });
-                                    }
+                                if transfer > 0.0 && events_res.events.len() < events_res.events.capacity() {
+                                    events_res.events.push(CombatEvent {
+                                        predator_id: pred_entity.index(),
+                                        prey_id: prey_entity.index(),
+                                        damage: transfer,
+                                        energy_transferred: transfer,
+                                    });
                                 }
                             }
                         }
@@ -832,5 +1139,53 @@ pub fn process_inbound_migrations_system(
         commands.add(SpawnMigrationCommand { data });
     }
 }
+
+pub fn herbivore_grazing_system(
+    mut prey_query: Query<(Entity, &mut crate::ai::hrrl::HomeostaticState, &Position), (With<Prey>, With<Agent>)>,
+    segment_query: Query<(&Position, &ParentAgent)>,
+    mut flora_query: Query<(&mut Flora, &Position)>,
+    time_step: Res<crate::ai::cpg::TimeStep>,
+    bounds: Option<Res<MapBounds>>,
+) {
+    let dt = time_step.0;
+    for (prey_entity, mut homeo, prey_pos) in prey_query.iter_mut() {
+        if homeo.energy >= homeo.energy_target {
+            continue;
+        }
+        let mut sum_pos = glam::Vec3::ZERO;
+        let mut count = 0;
+        for (seg_pos, parent_agent) in segment_query.iter() {
+            if parent_agent.0 == prey_entity {
+                sum_pos += seg_pos.0;
+                count += 1;
+            }
+        }
+        let centroid = if count > 0 {
+            sum_pos / count as f32
+        } else {
+            prey_pos.0
+        };
+
+        let max_grazable = 15.0 * dt;
+        for (mut flora, flora_pos) in flora_query.iter_mut() {
+            let dist_sq = if let Some(bounds) = bounds.as_ref() {
+                toroidal_distance_sq(centroid, flora_pos.0, bounds)
+            } else {
+                centroid.distance_squared(flora_pos.0)
+            };
+            if flora.energy > 0.0 && dist_sq < 2.25 {
+                let energy_needed = (homeo.energy_target - homeo.energy).max(0.0);
+                let actual_grazed = max_grazable.min(flora.energy).min(energy_needed);
+                if actual_grazed > 0.0 {
+                    flora.energy -= actual_grazed;
+                    homeo.energy += actual_grazed;
+                    homeo.hydration = (homeo.hydration + actual_grazed * 0.4).min(homeo.hydration_target);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 
 

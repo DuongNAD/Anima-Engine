@@ -19,6 +19,15 @@ fn test_ecs_simulation_loop() {
     // 1. Initialize the real Bevy ECS world and spawn 1000 actual agents
     let mut world = init_world();
 
+    // Flatten terrain to grassland so speed coupling multiplier is exactly 1.0
+    if let Some(mut terrain) = world.get_resource_mut::<anima_engine_lib::core::terrain::TerrainGrid>() {
+        for cell in &mut terrain.cells {
+            cell.biome = anima_engine_lib::core::terrain::BiomeType::Grassland;
+            cell.elevation = 0.0;
+            cell.water_depth = 0.0;
+        }
+    }
+
     // Assert MapBounds resource is registered
     assert!(world.contains_resource::<MapBounds>());
 

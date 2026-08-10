@@ -55,6 +55,8 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
   });
 
   it('CRASH 1: should cause infinite recursion (Stack Overflow) when cyclic segments are rendered', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     render(<App />);
 
     // Seed a cyclic parent-child relation that traverses from root
@@ -97,11 +99,13 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
     });
 
-    // In JSDOM, React 18 might throw in console.error or fail the render.
-    // Let's assert that it fails or triggers maximum call stack size exceeded.
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   it('CRASH 2: should crash the canvas rendering loop when a malformed raycast payload is received', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
     render(<App />);
 
     // Malformed raycast payload where direction is missing (causing undefined[0] TypeError)
@@ -119,6 +123,9 @@ describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
     await act(async () => {
       await emit('raycast-update', malformedRaycast);
     });
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 
   it('CRASH 3: should NOT crash the React component when a combat event contains undefined fields (e.g. damage)', async () => {

@@ -51,6 +51,12 @@ impl InMemoryLineageTracker {
     }
 }
 
+impl Default for InMemoryLineageTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LineageTracker for InMemoryLineageTracker {
     fn add_root(&self, id: String, genotype: MorphologyGenotype) -> Result<(), String> {
         let node = LineageNode {

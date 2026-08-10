@@ -33,7 +33,14 @@ pnpm-debug.log*
 .DS_Store
 
 # Agent Workspace Temp files
-.agents/
+# Bỏ qua output của agent, NHƯNG giữ lại skill — skill là source, phải được commit.
+.agents/*
+!.agents/skills/
+
+# Hai thư mục rác sinh do lỗi gõ tên của agent đời trước (một cái có dấu cách
+# ở đầu, một cái ba chấm). Không phải source, đừng commit.
+\ .agents/
+...agents/
 .gemini/
 /tests/test-results/
 /tests/playwright-report/

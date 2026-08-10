@@ -1,13 +1,95 @@
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+:root {
+  --cyber-bg: #060913;
+  --cyber-card: #0c1222;
+  --cyber-border: #1a2a4b;
+  --cyber-text: #00f0ff;
+  --cyber-text-dim: #0088cc;
+  --cyber-green: #39ff14;
+  --cyber-magenta: #ff007f;
+  --cyber-amber: #ffaa00;
+  --cyber-blue: #0044ff;
+  
+  --glow-cyan: 0 0 10px rgba(0, 240, 255, 0.4);
+  --glow-green: 0 0 10px rgba(57, 255, 20, 0.4);
+  --glow-magenta: 0 0 10px rgba(255, 0, 127, 0.4);
+}
+
 body {
+  background-color: var(--cyber-bg);
+  color: var(--cyber-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* CRT Screen Scanline Overlay Removed */
+.crt-screen {
+  position: relative;
+}
+
+/* Sci-fi Panel styling (Glassmorphic Redesign) */
+.sci-fi-panel {
+  background-color: rgba(12, 18, 34, 0.6) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 240, 255, 0.15) !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 0 15px rgba(0, 240, 255, 0.05), 0 0 10px rgba(0, 240, 255, 0.1) !important;
+  border-radius: 8px;
+  position: relative;
+  color: var(--cyber-text) !important;
+}
+
+.sci-fi-title {
+  color: var(--cyber-text) !important;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: var(--glow-cyan);
+  border-bottom: 2px solid var(--cyber-border) !important;
+}
+
+.glow-btn {
+  background: transparent !important;
+  color: var(--cyber-text) !important;
+  border: 1px solid var(--cyber-text) !important;
+  text-transform: uppercase;
+  font-family: inherit;
+  box-shadow: var(--glow-cyan);
+  text-shadow: var(--glow-cyan);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.glow-btn:hover {
+  background: var(--cyber-text) !important;
+  color: var(--cyber-bg) !important;
+  box-shadow: 0 0 15px var(--cyber-text) !important;
+}
+
+.glow-btn:disabled {
+  border-color: #334e68 !important;
+  color: #334e68 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  cursor: not-allowed;
+}
+
+/* Neon utilities */
+.cyber-glow-cyan {
+  text-shadow: var(--glow-cyan);
+}
+.cyber-glow-green {
+  text-shadow: var(--glow-green);
+  color: var(--cyber-green) !important;
+}
+.cyber-glow-magenta {
+  text-shadow: var(--glow-magenta);
+  color: var(--cyber-magenta) !important;
 }

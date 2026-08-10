@@ -4,11 +4,6 @@ import { App } from "../App";
 import "@testing-library/jest-dom";
 import { emit } from "@tauri-apps/api/event";
 
-// Mock RabbitVisualizer to prevent React Three Fiber from loading/crashing under JSDOM
-vi.mock("../playground/RabbitVisualizer", () => ({
-  default: () => <div data-testid="rabbit-visualizer-mock">Mock Rabbit Visualizer</div>,
-}));
-
 // Giả lập @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockImplementation((command) => {
@@ -48,6 +43,25 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (command === "get_chronicle_history") {
       return Promise.resolve([]);
+    }
+    if (command === "get_terrain_grid") {
+      return Promise.resolve({
+        width: 128,
+        height: 128,
+        elevations: [],
+        water_depths: [],
+        biomes: [],
+      });
+    }
+    if (command === "get_env_state") {
+      return Promise.resolve({
+        ambient_light: 1.0,
+        elapsed_time: 0.0,
+        clouds: [],
+      });
+    }
+    if (command === "update_env_settings" || command === "trigger_disaster") {
+      return Promise.resolve(true);
     }
     return Promise.reject(`Unknown command: ${command}`);
   }),

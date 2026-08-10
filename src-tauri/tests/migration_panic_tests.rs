@@ -149,6 +149,7 @@ async fn test_high_velocity_migration_loop_under_narrow_bounds() {
     let mut schedule = Schedule::default();
     schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
     schedule.add_systems((
+        anima_engine_lib::physics::integrate_physics_system,
         update_positions_system,
         check_migration_boundaries_system,
         apply_deferred,

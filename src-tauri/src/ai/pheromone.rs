@@ -38,6 +38,10 @@ impl PheromoneGrid {
     /// Maps a 3D physical coordinate (X, Z plane) to a flat 1D grid index, supporting toroidal wrapping.
     #[inline]
     pub fn pos_to_index(&self, pos: Vec3, bounds: &MapBounds) -> Option<usize> {
+        if GRID_SIZE == 0 {
+            return None;
+        }
+
         if !pos.x.is_finite() || !pos.y.is_finite() || !pos.z.is_finite() {
             return None;
         }
@@ -213,15 +217,36 @@ pub fn update_pheromone_grid_system(
 /// System to update the agent's olfactory readings.
 pub fn agent_read_pheromone_system(
     grid: Res<PheromoneGrid>,
+    env_state: Option<Res<crate::core::ecs::EnvironmentState>>,
+    clouds_query: Query<(&Position, &crate::core::ecs::Cloud)>,
     mut query: Query<(&Position, &Rotation, &mut OlfactorySensors)>,
     bounds: Res<MapBounds>,
 ) {
+    let ambient = env_state.map(|e| e.ambient_light).unwrap_or(1.0);
+    // Avoid heap allocation by using a stack-allocated buffer (array) for clouds:
+    let mut active_clouds = [(glam::Vec3::ZERO, 0.0, 0.0); 16];
+    let mut cloud_count = 0;
+    for (pos, cloud) in clouds_query.iter() {
+        if cloud_count < 16 {
+            active_clouds[cloud_count] = (pos.0, cloud.radius, cloud.shadow_intensity);
+            cloud_count += 1;
+        }
+    }
+    let clouds_slice = &active_clouds[..cloud_count];
+
     for (pos, rot, mut sensors) in query.iter_mut() {
         let world_left = pos.0 + (rot.0 * sensors.left_offset);
         let world_right = pos.0 + (rot.0 * sensors.right_offset);
 
-        sensors.left_reading = grid.sample_bilinear(world_left, &bounds);
-        sensors.right_reading = grid.sample_bilinear(world_right, &bounds);
+        let base_left = grid.sample_bilinear(world_left, &bounds);
+        let base_right = grid.sample_bilinear(world_right, &bounds);
+
+        // Attenuate by local light at sensor location
+        let light_left = crate::core::ecs::get_local_light(world_left, ambient, clouds_slice, &bounds);
+        let light_right = crate::core::ecs::get_local_light(world_right, ambient, clouds_slice, &bounds);
+
+        sensors.left_reading = base_left * light_left;
+        sensors.right_reading = base_right * light_right;
     }
 }
 

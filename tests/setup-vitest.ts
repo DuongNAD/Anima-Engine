@@ -127,6 +127,71 @@ beforeEach(() => {
         return;
       case 'plugin:event|unlisten':
         return;
+      case 'get_organism_presets':
+        return [
+          {
+            name: "Default Prey",
+            description: "Default prey organism",
+            segment_count: 3,
+            agent_class: "Prey",
+            initial_energy: 100.0,
+            mass: 1.0,
+            length: 1.0,
+            radius: 0.2,
+            frequency: 1.0,
+            amplitude: 0.5,
+          },
+          {
+            name: "Default Predator",
+            description: "Default predator organism",
+            segment_count: 3,
+            agent_class: "Predator",
+            initial_energy: 120.0,
+            mass: 1.2,
+            length: 1.0,
+            radius: 0.25,
+            frequency: 1.2,
+            amplitude: 0.6,
+          },
+          {
+            name: "Giant Prey",
+            description: "A large, slow-moving prey organism",
+            segment_count: 5,
+            agent_class: "Prey",
+            initial_energy: 200.0,
+            mass: 3.0,
+            length: 1.5,
+            radius: 0.4,
+            frequency: 0.6,
+            amplitude: 0.4,
+          },
+          {
+            name: "Speedy Predator",
+            description: "A fast, agile predator organism",
+            segment_count: 2,
+            agent_class: "Predator",
+            initial_energy: 90.0,
+            mass: 0.8,
+            length: 0.8,
+            radius: 0.15,
+            frequency: 2.0,
+            amplitude: 0.8,
+          },
+          {
+            name: "Long Snake",
+            description: "A long snake-like prey organism",
+            segment_count: 8,
+            agent_class: "Prey",
+            initial_energy: 150.0,
+            mass: 0.7,
+            length: 0.8,
+            radius: 0.12,
+            frequency: 1.5,
+            amplitude: 0.7,
+          }
+        ];
+      case 'spawn_preset_organism':
+        return true;
       default:
         throw new Error(`Command ${cmd} is not supported in the mock environment.`);
     }

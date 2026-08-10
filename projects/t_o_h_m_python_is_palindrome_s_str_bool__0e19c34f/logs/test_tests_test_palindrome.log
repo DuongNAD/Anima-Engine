@@ -1,0 +1,12 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.11.8, pytest-9.0.3, pluggy-1.6.0
+rootdir: /Users/duongnad/Documents/project/Anima-Engine/projects/t_o_h_m_python_is_palindrome_s_str_bool__0e19c34f/tests
+plugins: cov-7.1.0, anyio-4.14.1, timeout-2.4.0, asyncio-1.4.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 23 items
+
+Users/duongnad/Documents/project/Anima-Engine/projects/t_o_h_m_python_is_palindrome_s_str_bool__0e19c34f/tests/test_palindrome.py . [  4%]
+......................                                                   [100%]
+
+============================== 23 passed in 0.01s ==============================
+

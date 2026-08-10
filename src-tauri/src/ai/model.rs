@@ -112,6 +112,16 @@ pub struct BrainInferenceBuffer {
     pub parent_head: std::collections::HashMap<Entity, usize>,
 }
 
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct EnvParams<'w, 's> {
+    pub env_state: Option<Res<'w, crate::core::ecs::EnvironmentState>>,
+    pub clouds_query: Query<'w, 's, (&'static Position, &'static crate::core::ecs::Cloud)>,
+    pub bounds: Option<Res<'w, crate::core::ecs::MapBounds>>,
+    pub spatial_grid: Option<Res<'w, crate::physics::SpatialHashGrid>>,
+    pub flora_query: Query<'w, 's, (&'static Position, &'static crate::core::ecs::Flora)>,
+    pub flora_tag_query: Query<'w, 's, (), With<crate::core::ecs::Flora>>,
+}
+
 pub fn brain_inference_system(
     brain_model: Res<BrainModel>,
     mut brain_buf: ResMut<BrainInferenceBuffer>,
@@ -128,18 +138,29 @@ pub fn brain_inference_system(
     mut oscillator_query: Query<&mut CpgOscillator>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut last_state_query: Query<&mut crate::ai::hrrl::LastTransitionState>,
-    spatial_grid: Option<Res<crate::physics::SpatialHashGrid>>,
-    bounds: Option<Res<crate::core::ecs::MapBounds>>,
     collider_query: Query<(&Position, &crate::physics::SpatialCollider)>,
     food_tag_query: Query<(), With<Food>>,
     predator_tag_query: Query<(), With<Predator>>,
     prey_tag_query: Query<(), With<Prey>>,
     parent_agent_query: Query<&ParentAgent>,
     mut active_raycasts: Option<ResMut<crate::core::ecs::ActiveRaycasts>>,
+    env_params: EnvParams,
 ) {
     if let Some(ref mut raycasts_res) = active_raycasts {
         raycasts_res.raycasts.clear();
     }
+
+    let ambient = env_params.env_state.map(|e| e.ambient_light).unwrap_or(1.0);
+    // Avoid heap allocation by using a stack-allocated buffer (array) for clouds:
+    let mut active_clouds = [(glam::Vec3::ZERO, 0.0, 0.0); 16];
+    let mut cloud_count = 0;
+    for (pos, cloud) in env_params.clouds_query.iter() {
+        if cloud_count < 16 {
+            active_clouds[cloud_count] = (pos.0, cloud.radius, cloud.shadow_intensity);
+            cloud_count += 1;
+        }
+    }
+    let clouds_slice = &active_clouds[..cloud_count];
 
     let mut inputs = std::mem::take(&mut brain_buf.inputs);
     inputs.clear();
@@ -168,7 +189,7 @@ pub fn brain_inference_system(
             }
             nearest_prey
         } else {
-            // Prey: target nearest active Food node
+            // Prey: target nearest active Food or Flora node (with energy > 0)
             let mut nearest_food = None;
             let mut min_dist_sq = f32::MAX;
             for food_pos in food_query.iter() {
@@ -176,6 +197,15 @@ pub fn brain_inference_system(
                 if dist_sq < min_dist_sq {
                     min_dist_sq = dist_sq;
                     nearest_food = Some(food_pos.0);
+                }
+            }
+            for (flora_pos, flora) in env_params.flora_query.iter() {
+                if flora.energy > 0.0 {
+                    let dist_sq = agent_pos.0.distance_squared(flora_pos.0);
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                        nearest_food = Some(flora_pos.0);
+                    }
                 }
             }
             nearest_food
@@ -195,13 +225,21 @@ pub fn brain_inference_system(
         let mut hit_type = crate::core::ecs::HitEntityType::None;
         let direction = rotation.0 * glam::Vec3::Z; // Forward is positive Z
 
-        if let (Some(grid), Some(map_bounds)) = (&spatial_grid, &bounds) {
+        let local_light = if let Some(map_bounds) = &env_params.bounds {
+            crate::core::ecs::get_local_light(agent_pos.0, ambient, clouds_slice, map_bounds)
+        } else {
+            ambient
+        };
+
+        let effective_range = 10.0 * local_light;
+
+        if let (Some(grid), Some(map_bounds)) = (&env_params.spatial_grid, &env_params.bounds) {
             let ray = crate::physics::Ray3D {
                 origin: agent_pos.0,
                 direction,
             };
             
-            if let Some(hit) = grid.raycast(&ray, 10.0, map_bounds, &collider_query) {
+            if let Some(hit) = grid.raycast(&ray, effective_range, map_bounds, &collider_query) {
                 // Ignore self-collisions (own body segments)
                 let root_agent_id = if let Ok(parent) = parent_agent_query.get(hit.entity) {
                     parent.0
@@ -211,14 +249,14 @@ pub fn brain_inference_system(
 
                 if root_agent_id != entity {
                     hit_distance = hit.distance;
-                    if food_tag_query.get(hit.entity).is_ok() {
-                        hit_is_food = 1.0;
+                    if food_tag_query.get(hit.entity).is_ok() || env_params.flora_tag_query.get(hit.entity).is_ok() {
+                        hit_is_food = 1.0 * local_light;
                         hit_type = crate::core::ecs::HitEntityType::Food;
                     } else if predator_tag_query.get(root_agent_id).is_ok() {
-                        hit_is_predator = 1.0;
+                        hit_is_predator = 1.0 * local_light;
                         hit_type = crate::core::ecs::HitEntityType::Predator;
                     } else if prey_tag_query.get(root_agent_id).is_ok() {
-                        hit_is_prey = 1.0;
+                        hit_is_prey = 1.0 * local_light;
                         hit_type = crate::core::ecs::HitEntityType::Prey;
                     } else {
                         hit_type = crate::core::ecs::HitEntityType::Obstacle;
@@ -391,7 +429,22 @@ pub fn hrrl_learning_system(
     predator_tag_query: Query<(), With<Predator>>,
     prey_tag_query: Query<(), With<Prey>>,
     parent_agent_query: Query<&ParentAgent>,
+    env_state: Option<Res<crate::core::ecs::EnvironmentState>>,
+    clouds_query: Query<(&Position, &crate::core::ecs::Cloud)>,
+    flora_query: Query<(&Position, &crate::core::ecs::Flora)>,
+    flora_tag_query: Query<(), With<crate::core::ecs::Flora>>,
 ) {
+    let ambient = env_state.as_ref().map(|e| e.ambient_light).unwrap_or(1.0);
+    let mut active_clouds = [(glam::Vec3::ZERO, 0.0, 0.0); 16];
+    let mut cloud_count = 0;
+    for (pos, cloud) in clouds_query.iter() {
+        if cloud_count < 16 {
+            active_clouds[cloud_count] = (pos.0, cloud.radius, cloud.shadow_intensity);
+            cloud_count += 1;
+        }
+    }
+    let clouds_slice = &active_clouds[..cloud_count];
+
     let mut prey_data = [(glam::Vec3::ZERO, 0.0f32); 256];
     let mut prey_count = 0;
     for (pos, homeo) in agent_set.p0().iter() {
@@ -419,7 +472,7 @@ pub fn hrrl_learning_system(
             }
             nearest_prey
         } else {
-            // Prey: target nearest active Food node
+            // Prey: target nearest active Food or Flora node (with energy > 0)
             let mut nearest_food = None;
             let mut min_dist_sq = f32::MAX;
             for food_pos in food_query.iter() {
@@ -427,6 +480,15 @@ pub fn hrrl_learning_system(
                 if dist_sq < min_dist_sq {
                     min_dist_sq = dist_sq;
                     nearest_food = Some(food_pos.0);
+                }
+            }
+            for (flora_pos, flora) in flora_query.iter() {
+                if flora.energy > 0.0 {
+                    let dist_sq = agent_pos.0.distance_squared(flora_pos.0);
+                    if dist_sq < min_dist_sq {
+                        min_dist_sq = dist_sq;
+                        nearest_food = Some(flora_pos.0);
+                    }
                 }
             }
             nearest_food
@@ -444,13 +506,21 @@ pub fn hrrl_learning_system(
         let mut hit_is_predator = 0.0;
         let mut hit_is_prey = 0.0;
 
+        let local_light = if let Some(map_bounds) = &bounds {
+            crate::core::ecs::get_local_light(agent_pos.0, ambient, clouds_slice, map_bounds)
+        } else {
+            ambient
+        };
+
+        let effective_range = 10.0 * local_light;
+
         if let (Some(grid), Some(map_bounds)) = (&spatial_grid, &bounds) {
             let direction = rotation.0 * glam::Vec3::Z;
             let ray = crate::physics::Ray3D {
                 origin: agent_pos.0,
                 direction,
             };
-            if let Some(hit) = grid.raycast(&ray, 10.0, map_bounds, &collider_query) {
+            if let Some(hit) = grid.raycast(&ray, effective_range, map_bounds, &collider_query) {
                 let root_agent_id = if let Ok(parent) = parent_agent_query.get(hit.entity) {
                     parent.0
                 } else {
@@ -459,12 +529,12 @@ pub fn hrrl_learning_system(
 
                 if root_agent_id != entity {
                     hit_distance = hit.distance;
-                    if food_tag_query.get(hit.entity).is_ok() {
-                        hit_is_food = 1.0;
+                    if food_tag_query.get(hit.entity).is_ok() || flora_tag_query.get(hit.entity).is_ok() {
+                        hit_is_food = 1.0 * local_light;
                     } else if predator_tag_query.get(root_agent_id).is_ok() {
-                        hit_is_predator = 1.0;
+                        hit_is_predator = 1.0 * local_light;
                     } else if prey_tag_query.get(root_agent_id).is_ok() {
-                        hit_is_prey = 1.0;
+                        hit_is_prey = 1.0 * local_light;
                     }
                 }
             }

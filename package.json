@@ -9,12 +9,18 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
-    "test:frontend": "vitest run --config vitest.config.ts --root tests"
+    "test:frontend": "vitest run --config vitest.config.ts --root tests",
+    "cargo:check": "cargo check --manifest-path src-tauri/Cargo.toml --offline",
+    "cargo:build": "cargo build --manifest-path src-tauri/Cargo.toml --offline",
+    "cargo:test": "cargo test --manifest-path src-tauri/Cargo.toml --offline",
+    "tauri:icon": "tauri icon src-tauri/source-icon.png"
   },
   "dependencies": {
     "@react-three/fiber": "^8.13.0",
     "@tauri-apps/api": "^2.0.0",
     "@types/three": "^0.184.1",
+    "echarts": "^6.1.0",
+    "echarts-for-react": "^3.0.6",
     "pixi.js": "^8.1.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

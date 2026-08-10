@@ -74,6 +74,32 @@ Anima-Engine is a real-time, GPU-accelerated Artificial Life (ALife) and Evoluti
 | I32 | E2E Verification & Integration | Integrate components, compile backend/frontend, pass Phase 5 E2E tests | I28, I29, I30, I31, T11 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 | I33 | Adversarial Coverage Hardening | Tier 5 white-box coverage hardening for Phase 5 features | I32 | DONE | 9d5f58b8-10cd-4b85-9781-332fd119baab |
 
+### Phase 6: Modern Dashboard Redesign & Procedural 2D Game Simulation Canvas
+| # | Name | Scope | Dependencies | Status | Agent ID |
+|---|------|-------|-------------|--------|----------|
+| I34 | Tabbed Dashboard Layout | Modern glassmorphic theme, remove CRT effects, implement 3 tabs | None | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
+| I35 | 2D Game Organism Canvas | Detailed predators, prey, segment joints, pheromone clouds, radar scan beams | I34 | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
+| I36 | Functionality & Unit Verification | Run vitest suite, verify all tests pass and dashboard state functions | I35 | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
+| I37 | Forensic Audit & Release | Final verification with challenger and auditor | I36 | DONE | 7d6c95b2-81ed-4958-840d-4ae71f1b2225 |
+
+### Phase 7: Interactive Fantasy World Map Application
+| # | Name | Scope | Dependencies | Status | Agent ID |
+|---|------|-------|-------------|--------|----------|
+| I38 | Fantasy Map Workspace & Render Engine Setup | Initialize fantasy-map React/TS playground structure, PixiJS app, parchment background | None | DONE | f002cb14-9aa3-4def-91c0-dc3f5fa6cac1 |
+| I39 | Geographic Regions Rendering | Layout and custom canvas/PixiJS drawings for the 8 regions and floating island | I38 | DONE | c4956b38-edf2-4c43-ac34-ec5eb7f82de0 |
+| I40 | Navigation & Camera Mechanics | Zoom centered on cursor, click-and-drag pan with momentum/damping, zoom/pan constraints | I38 | DONE | 31523f09-04ed-4fdd-85ae-66b718e9b0c3 |
+| I41 | Ambient Effects, Paths & UI Overlay | Smoke, snow, spores particles, animated waterfall/island/water, sailing ships on bezier curves, kraken, grid/border UI | I39, I40 | DONE | d9bb6b13-d1d7-4bd1-985e-96093d0885bc |
+| I42 | Interactivity, Vite Integration & Verification | Region click parchment dialogs, new Vite config entry, build and check validation | I41 | DONE | 2adaf9b5-4cd1-4d7a-b5ec-a4afac1ee885 |
+
+### Phase 8: Optimized Texture Map & Telemetry Dashboard
+| # | Name | Scope | Dependencies | Status | Agent ID |
+|---|------|-------|-------------|--------|----------|
+| I43 | Base Texture Setup & Region Bounds | Copy reference map image, load as PixiJS static background texture, map coordinates of regions | None | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+| I44 | Overlay Animations & Particles | Smoke/lava, waterfall spray, World Tree spores, falling snow, ships on bezier paths, kraken | I43 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+| I45 | Performance Optimization | Cache static vector shapes (highlight rings, borders, grid), optimize ticker loop, batch render | I44 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+| I46 | Ecosystem Telemetry Dashboard | Split screen layout, ECharts widgets (Population, Energy, Resource) with mock telemetry, entry animations | I43 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+| I47 | E2E & Integration Verification | Validate integration with Vite entry point, verify TS/console errors, run vitest suites | I45, I46 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+
 ## Interface Contracts
 ### Tauri Commands
 - `get_simulation_status` -> `SimulationStatus`

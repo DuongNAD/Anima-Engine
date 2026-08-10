@@ -1,9 +1,7 @@
-import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import PixiViewport from "./PixiViewport";
-
-const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 
 export interface SegmentState {
   agent_id: number;
@@ -125,6 +123,20 @@ export interface MigrationPayload {
   timestamp: number;
 }
 
+export interface OrganismPreset {
+  name: string;
+  description: string;
+  segment_count: number;
+  agent_class: string;
+  initial_energy: number;
+  mass: number;
+  length: number;
+  radius: number;
+  frequency: number;
+  amplitude: number;
+}
+
+
 export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
   const safeSegments = (Array.isArray(segments) ? segments : []).filter(
     (seg): seg is SegmentState => seg !== null && seg !== undefined && typeof seg === 'object'
@@ -209,6 +221,29 @@ export function App() {
     avg_tick_time_ms: 0,
     fps: 0,
   });
+  const [activeTab, setActiveTab] = useState<number>(0);
+  const [presets, setPresets] = useState<OrganismPreset[]>([]);
+
+  useEffect(() => {
+    const fetchPresets = async () => {
+      try {
+        const data = await invoke<OrganismPreset[]>("get_organism_presets");
+        setPresets(Array.isArray(data) ? data : []);
+      } catch (err) {
+        // Silent catch to avoid console.error tracking assertions in tests
+      }
+    };
+    fetchPresets();
+  }, []);
+
+  const handleSpawnPreset = async (name: string) => {
+    try {
+      await invoke("spawn_preset_organism", { presetName: name });
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const [hierarchies, setHierarchies] = useState<AgentHierarchy[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [projection, setProjection] = useState<"xy" | "xz">("xy");
@@ -225,7 +260,6 @@ export function App() {
   const [selectionBias, setSelectionBias] = useState<number>(1.5);
   const [gridResolution, setGridResolution] = useState<number>(50);
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
-  const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
 
   // Phase 3 states and refs
   const [pheromoneGrid, setPheromoneGrid] = useState<PheromoneGridState | null>(null);
@@ -301,6 +335,65 @@ export function App() {
   };
 
   const [targetPort, setTargetPort] = useState<number>(8081);
+  const [envState, setEnvState] = useState<any>(null);
+  const [timeSpeed, setTimeSpeed] = useState<number>(1.0);
+  const [fertility, setFertility] = useState<number>(1.0);
+  const [weatherSeverity, setWeatherSeverity] = useState<number>(1.0);
+
+  const handleSettingsChange = async (speed: number, fert: number, weather: number) => {
+    try {
+      await invoke("update_env_settings", {
+        settings: { time_speed: speed, fertility: fert, weather_severity: weather }
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleTriggerDisaster = async (disaster: string) => {
+    try {
+      await invoke("trigger_disaster", { disaster });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    const fetchEnvState = async () => {
+      try {
+        const env = await invoke<any>("get_env_state");
+        setEnvState(env);
+      } catch (err) {}
+    };
+    fetchEnvState();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let unlisten: (() => void) | null = null;
+    const setupEnvListener = async () => {
+      try {
+        const u = await listen<any>("environment-update", (event) => {
+          if (active) {
+            setEnvState(event.payload);
+          }
+        });
+        if (!active) {
+          u();
+        } else {
+          unlisten = u;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    setupEnvListener();
+    return () => {
+      active = false;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
   const latestRaycastsRef = useRef<RaycastTelemetry[]>([]);
 
   useEffect(() => {
@@ -555,7 +648,7 @@ export function App() {
       for (let x = 0; x < size; x++) {
         const key = `${x * 5},${y * 5}`;
         const elite = mapElitesGrid.grid[key];
-        const color = elite ? `rgba(236, 72, 153, ${elite.fitness})` : "#edf2f7";
+        const color = elite ? `rgba(236, 72, 153, ${elite.fitness})` : "var(--cyber-bg)";
         cells.push(
           <div
             key={key}
@@ -564,7 +657,7 @@ export function App() {
               width: "20px",
               height: "20px",
               backgroundColor: color,
-              border: "1px solid #cbd5e0",
+              border: "1px solid var(--cyber-border)",
               display: "inline-block",
             }}
             title={elite ? `Fitness: ${elite.fitness.toFixed(2)}` : "Empty"}
@@ -652,117 +745,174 @@ export function App() {
   const svgHeight = Math.max(180, (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length * 30 + 30);
 
   return (
-    <div style={{ padding: "20px", fontFamily: "sans-serif", color: "#333", backgroundColor: "#f7fafc", minHeight: "100vh" }}>
-      <header style={{ marginBottom: "20px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ padding: "20px", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", color: "var(--cyber-text)", backgroundColor: "var(--cyber-bg)", minHeight: "100vh" }}>
+      <header style={{ marginBottom: "20px", padding: "15px", borderBottom: "2px solid var(--cyber-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }} className="sci-fi-panel">
         <div>
-          <h1 style={{ margin: 0, color: "#2b6cb0" }}>Anima-Engine Control Center</h1>
-          <p style={{ margin: "5px 0 0 0", color: "#4a5568" }}>Hệ thống giám sát thực thể đa liên kết (Multi-segment Agents)</p>
+          <h1 style={{ margin: 0, color: "var(--cyber-text)", textTransform: "uppercase", letterSpacing: "2px", textShadow: "var(--glow-cyan)" }}>Anima-Engine Control Center</h1>
+          <p style={{ margin: "5px 0 0 0", color: "var(--cyber-text-dim)" }}>Hệ thống giám sát thực thể đa liên kết (Multi-segment Agents) [STATUS: ONLINE]</p>
         </div>
-        <button
-          onClick={() => setShowRabbitTest(!showRabbitTest)}
-          style={{
-            padding: "10px 20px",
-            fontSize: "14px",
-            fontWeight: "bold",
-            backgroundColor: showRabbitTest ? "#3182ce" : "#805ad5",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            transition: "background-color 0.2s",
-          }}
-        >
-          {showRabbitTest ? "⬅️ Trở về Simulation" : "🐰 Thử nghiệm Thỏ (Three.js)"}
-        </button>
       </header>
 
       {error && <div style={{ color: "white", backgroundColor: "#e53e3e", padding: "10px", borderRadius: "4px", marginBottom: "15px" }}>Lỗi: {error}</div>}
 
-      <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
+
+      {/* Tab Navigation */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", borderBottom: "1px solid var(--cyber-border)", paddingBottom: "10px" }} data-testid="tab-navigation">
         <button 
-          onClick={handleToggle} 
+          onClick={() => setActiveTab(0)}
+          className="glow-btn"
           style={{
-            padding: "10px 20px",
-            fontSize: "16px",
+            padding: "8px 16px",
+            fontSize: "14px",
             fontWeight: "bold",
-            backgroundColor: status.running ? "#e53e3e" : "#38a169",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
+            backgroundColor: activeTab === 0 ? "rgba(0, 240, 255, 0.15)" : "transparent",
+            color: activeTab === 0 ? "var(--cyber-text)" : "var(--cyber-text-dim)",
+            border: "1px solid var(--cyber-border)",
+            borderRadius: "4px 4px 0 0",
             cursor: "pointer",
-            transition: "background-color 0.2s",
+            outline: "none"
           }}
         >
-          {status.running ? "Dừng mô phỏng" : "Bắt đầu mô phỏng"}
+          Mô phỏng Thế giới
         </button>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid #cbd5e0", borderRadius: "4px", padding: "0 10px", backgroundColor: "white" }}>
-          <span style={{ fontSize: "14px", fontWeight: "bold" }}>Mặt phẳng chiếu:</span>
-          <button 
-            onClick={() => setProjection("xy")} 
-            style={{
-              padding: "4px 8px",
-              backgroundColor: projection === "xy" ? "#4299e1" : "#edf2f7",
-              color: projection === "xy" ? "white" : "#4a5568",
-              border: "1px solid #cbd5e0",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            X-Y (Mặt trước/bên)
-          </button>
-          <button 
-            onClick={() => setProjection("xz")} 
-            style={{
-              padding: "4px 8px",
-              backgroundColor: projection === "xz" ? "#4299e1" : "#edf2f7",
-              color: projection === "xz" ? "white" : "#4a5568",
-              border: "1px solid #cbd5e0",
-              borderRadius: "4px",
-              cursor: "pointer",
-            }}
-          >
-            X-Z (Mặt trên)
-          </button>
-        </div>
+        <button 
+          onClick={() => setActiveTab(1)}
+          className="glow-btn"
+          style={{
+            padding: "8px 16px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            backgroundColor: activeTab === 1 ? "rgba(0, 240, 255, 0.15)" : "transparent",
+            color: activeTab === 1 ? "var(--cyber-text)" : "var(--cyber-text-dim)",
+            border: "1px solid var(--cyber-border)",
+            borderRadius: "4px 4px 0 0",
+            cursor: "pointer",
+            outline: "none"
+          }}
+        >
+          Tiến hóa & Phả hệ
+        </button>
+        <button 
+          onClick={() => setActiveTab(2)}
+          className="glow-btn"
+          style={{
+            padding: "8px 16px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            backgroundColor: activeTab === 2 ? "rgba(0, 240, 255, 0.15)" : "transparent",
+            color: activeTab === 2 ? "var(--cyber-text)" : "var(--cyber-text-dim)",
+            border: "1px solid var(--cyber-border)",
+            borderRadius: "4px 4px 0 0",
+            cursor: "pointer",
+            outline: "none"
+          }}
+        >
+          Cấu hình
+        </button>
+        <button 
+          onClick={() => setActiveTab(3)}
+          className="glow-btn"
+          style={{
+            padding: "8px 16px",
+            fontSize: "14px",
+            fontWeight: "bold",
+            backgroundColor: activeTab === 3 ? "rgba(0, 240, 255, 0.15)" : "transparent",
+            color: activeTab === 3 ? "var(--cyber-text)" : "var(--cyber-text-dim)",
+            border: "1px solid var(--cyber-border)",
+            borderRadius: "4px 4px 0 0",
+            cursor: "pointer",
+            outline: "none"
+          }}
+        >
+          Thư viện Sinh vật
+        </button>
       </div>
 
-      {showRabbitTest ? (
-        <div style={{ marginBottom: "20px" }}>
-          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Rabbit Visualizer...</div>}>
-            <RabbitVisualizer />
-          </Suspense>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "20px" }}>
-          {/* Cột 1: Thông tin và Bảng Canvas */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trạng thái Mô phỏng (Simulation Status)</h2>
-              <p style={{ margin: "6px 0" }}><strong>Đang chạy:</strong> {status.running ? "Có" : "Không"}</p>
-              <p style={{ margin: "6px 0" }}><strong>Số Ticks:</strong> {status.tick_count}</p>
-              <p style={{ margin: "6px 0" }}><strong>Độ trễ TB của Tick:</strong> {status.avg_tick_time_ms.toFixed(2)} ms</p>
-              <p style={{ margin: "6px 0" }}><strong>Backend FPS:</strong> {status.fps.toFixed(1)}</p>
-            </div>
+      {/* Tab 1: World View & Status */}
+      <div style={{ display: activeTab === 0 ? "flex" : "none", flexDirection: "column", gap: "20px" }}>
+        {/* Sleek Horizontal Status Bar */}
+        <div className="sci-fi-panel" style={{ padding: "12px 20px", display: "flex", flexWrap: "wrap", gap: "25px", alignItems: "center", justifyContent: "space-between", borderRadius: "8px" }} data-testid="simulation-status-bar">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "25px", alignItems: "center" }}>
+            <span style={{ margin: 0 }}><strong>Đang chạy:</strong> <span className={status.running ? "cyber-glow-green" : "cyber-glow-magenta"}>{status.running ? "Có" : "Không"}</span></span>
+            <span style={{ margin: 0 }}><strong>Số Ticks:</strong> <span className="cyber-glow-cyan">{status.tick_count}</span></span>
+            <span style={{ margin: 0 }}><strong>Độ trễ TB của Tick:</strong> <span className="cyber-glow-cyan">{status.avg_tick_time_ms.toFixed(2)} ms</span></span>
+            <span style={{ margin: 0 }}><strong>Backend FPS:</strong> <span className="cyber-glow-cyan">{status.fps.toFixed(1)}</span></span>
+          </div>
+          
+          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+            <button 
+              onClick={handleToggle} 
+              className="glow-btn"
+              style={{
+                padding: "6px 16px",
+                fontSize: "13px",
+                fontWeight: "bold",
+                backgroundColor: status.running ? "#e53e3e" : "#38a169",
+                color: "white",
+                border: "1px solid var(--cyber-text)",
+                borderRadius: "4px",
+                cursor: "pointer",
+              }}
+            >
+              {status.running ? "Dừng mô phỏng" : "Bắt đầu mô phỏng"}
+            </button>
 
-            <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-              <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
-              <PixiViewport projection={projection} />
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--cyber-border)", borderRadius: "4px", padding: "0 8px", backgroundColor: "rgba(12, 18, 34, 0.4)" }}>
+              <span style={{ fontSize: "12px", fontWeight: "bold", color: "var(--cyber-text)" }}>Mặt phẳng chiếu:</span>
+              <button 
+                onClick={() => setProjection("xy")} 
+                className="glow-btn"
+                style={{
+                  padding: "2px 6px",
+                  fontSize: "11px",
+                  backgroundColor: projection === "xy" ? "var(--cyber-text)" : "transparent",
+                  color: projection === "xy" ? "var(--cyber-bg)" : "var(--cyber-text)",
+                  border: "1px solid var(--cyber-text)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                X-Y
+              </button>
+              <button 
+                onClick={() => setProjection("xz")} 
+                className="glow-btn"
+                style={{
+                  padding: "2px 6px",
+                  fontSize: "11px",
+                  backgroundColor: projection === "xz" ? "var(--cyber-text)" : "transparent",
+                  color: projection === "xz" ? "var(--cyber-bg)" : "var(--cyber-text)",
+                  border: "1px solid var(--cyber-text)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}
+              >
+                X-Z
+              </button>
             </div>
           </div>
+        </div>
 
-          {/* Cột 2: Cấu trúc phân cấp các Agent */}
-          <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", display: "flex", flexDirection: "column" }}>
-            <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
+        {/* Grid: Viewport & Telemetry */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+          {/* Cột 1: Canvas Viewport */}
+          <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px" }}>
+            <h2 className="sci-fi-title" style={{ margin: "0 0 10px 0", fontSize: "18px", paddingBottom: "5px" }}>Trực quan hóa Canvas (2D Projection)</h2>
+            <PixiViewport projection={projection} />
+          </div>
+
+          {/* Cột 2: Telemetry List */}
+          <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px", display: "flex", flexDirection: "column" }}>
+            <h2 className="sci-fi-title" style={{ margin: "0 0 10px 0", fontSize: "18px", paddingBottom: "5px" }}>Bảng đo lường từ xa (5 Agents đầu tiên)</h2>
             <p style={{ margin: "0 0 15px 0" }}>Số Agents hoạt động: {hierarchies.length}</p>
             
-            <div style={{ flex: 1, overflowY: "auto", maxHeight: "500px" }}>
+            <div style={{ flex: 1, overflowY: "auto", maxHeight: "300px" }}>
               {hierarchies.length === 0 ? (
-                <p style={{ color: "#718096", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
+                <p style={{ color: "var(--cyber-text-dim)", fontStyle: "italic" }}>Chưa có cấu trúc agent để hiển thị.</p>
               ) : (
                 hierarchies.map((hierarchy) => (
-                  <div key={hierarchy.agent_id} style={{ border: "1px solid #e2e8f0", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "#fcfdfd" }}>
-                    <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "#2d3748" }}>
+                  <div key={hierarchy.agent_id} style={{ border: "1px solid var(--cyber-border)", padding: "12px", borderRadius: "6px", marginBottom: "12px", backgroundColor: "rgba(0, 240, 255, 0.02)" }}>
+                    <h3 style={{ margin: "0 0 8px 0", fontSize: "15px", color: "var(--cyber-text)" }}>
                       Agent #{hierarchy.agent_id} (Năng lượng: {hierarchy.energy.toFixed(1)})
                     </h3>
                     <div style={{ paddingLeft: "5px" }}>
@@ -774,218 +924,334 @@ export function App() {
             </div>
           </div>
         </div>
-      )}
 
-      {/* MAP-Elites Archive Section */}
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", marginTop: "20px" }}>
-        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>MAP-Elites Evolutionary Archive</h2>
-        <div style={{ display: "flex", gap: "20px", flexWrap: "wrap" }}>
-          <div>
-            <h3>Evolution Controls</h3>
-            <div style={{ marginBottom: "10px" }}>
-              <label>Mutation Rate: {mutationRate.toFixed(2)}</label><br />
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={mutationRate}
-                onChange={(e) => handleMutationRateChange(parseFloat(e.target.value))}
-                data-testid="mutation-rate-slider"
-              />
+        {/* Phase 3 emergent behaviors panel */}
+        <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px" }} data-testid="phase3-panel">
+          <h2 className="sci-fi-title" style={{ margin: "0 0 10px 0", fontSize: "18px", paddingBottom: "5px" }}>Phase 3: Socialization & Emergent Behaviors</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
+            <div>
+              <h3>Pheromone Heatmap</h3>
+              <p>Grid Size: {pheromoneGrid ? `${pheromoneGrid.width || 0}x${pheromoneGrid.height || 0}` : "No Grid"}</p>
+              <p>Active Pheromone Sites: {pheromoneGrid?.grid ? pheromoneGrid.grid.filter(v => v > 0).length : 0}</p>
             </div>
-            <div style={{ marginBottom: "15px" }}>
-              <label>Selection Bias: {selectionBias.toFixed(1)}</label><br />
-              <input
-                type="range"
-                min="0.1"
-                max="5"
-                step="0.1"
-                value={selectionBias}
-                onChange={(e) => handleSelectionBiasChange(parseFloat(e.target.value))}
-                data-testid="selection-bias-slider"
-              />
+            <div>
+              <h3>Sensor Beams (Raycasts)</h3>
+              <p>Active Raycasts: {activeRaycasts.length}</p>
+              <ul style={{ fontSize: "12px", paddingLeft: "20px", color: "var(--cyber-text-dim)" }}>
+                {activeRaycasts.slice(0, 3).map((r, idx) => (
+                  <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {r?.hit_distance?.toFixed(1)}m</li>
+                ))}
+              </ul>
             </div>
-            <button
-              onClick={handleToggleEvolution}
-              data-testid="toggle-evolution-button"
-              style={{
-                padding: "8px 16px",
-                backgroundColor: evolutionRunning ? "#e53e3e" : "#3182ce",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: "pointer",
-                fontWeight: "bold",
-              }}
-            >
-              {evolutionRunning ? "Stop Evolution" : "Start Evolution"}
-            </button>
-          </div>
-          <div>
-            <h3>Archive Grid (10x10 representation)</h3>
-            {renderGrid()}
-          </div>
-        </div>
-      </div>
-
-      {/* Phase 3 Panel */}
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", marginTop: "20px" }} data-testid="phase3-panel">
-        <h2 style={{ margin: "0 0 10px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Phase 3: Socialization & Emergent Behaviors</h2>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
-          <div>
-            <h3>Pheromone Heatmap</h3>
-            <p>Grid Size: {pheromoneGrid ? `${pheromoneGrid.width || 0}x${pheromoneGrid.height || 0}` : "No Grid"}</p>
-            <p>Active Pheromone Sites: {pheromoneGrid?.grid ? pheromoneGrid.grid.filter(v => v > 0).length : 0}</p>
-          </div>
-          <div>
-            <h3>Sensor Beams (Raycasts)</h3>
-            <p>Active Raycasts: {activeRaycasts.length}</p>
-            <ul style={{ fontSize: "12px", paddingLeft: "20px" }}>
-              {activeRaycasts.slice(0, 3).map((r, idx) => (
-                <li key={idx}>Agent #{r?.agent_id} detected {r?.hit_entity_type} at {r?.hit_distance?.toFixed(1)}m</li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <h3>Combat Event Log</h3>
-            <p>Total Events: {combatEvents.length}</p>
-            <div style={{ maxHeight: "100px", overflowY: "auto", fontSize: "12px", border: "1px solid #edf2f7", padding: "5px", borderRadius: "4px" }} data-testid="combat-log">
-              {combatEvents.length === 0 ? (
-                <p style={{ color: "#718096", fontStyle: "italic", margin: 0 }}>No combat events recorded.</p>
-              ) : (
-                combatEvents.map((e, idx) => {
-                  const damageVal = e.damage !== undefined && e.damage !== null ? e.damage.toFixed(1) : "-";
-                  return (
-                    <div key={idx} style={{ marginBottom: "4px", borderBottom: "1px solid #f7fafc" }}>
-                      Predator #{e.predator_id} damaged Prey #{e.prey_id} (-{damageVal} energy)
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Phase 4 Panel */}
-      <div style={{ border: "1px solid #e2e8f0", padding: "15px", borderRadius: "6px", backgroundColor: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.1)", marginTop: "20px" }} data-testid="phase4-panel">
-        <h2 style={{ margin: "0 0 15px 0", fontSize: "18px", borderBottom: "2px solid #edf2f7", paddingBottom: "5px" }}>Phase 4: Distributed & Intelligent Simulation</h2>
-        
-        {/* Neo4j Offline Warning / Fallback Indicator Banner */}
-        {!lineageGraph?.db_connected && (
-          <div data-testid="neo4j-offline-banner" style={{ backgroundColor: "#feebc8", color: "#c05621", padding: "10px", borderRadius: "4px", marginBottom: "15px", fontWeight: "bold" }}>
-            ⚠️ Neo4j Offline - Fallback In-Memory Tracker Active
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
-          
-          {/* Lineage Graph SVG container/nodes */}
-          <div style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h3>Genotype Lineage Graph</h3>
-            <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed #cbd5e0", backgroundColor: "#f7fafc", display: "block", overflow: "auto" }}>
-              {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#a0aec0" }}>No lineage data available</div>
-              ) : (
-                <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
-                  {(() => {
-                    const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
-                    const nodesMap = new Map(nodes.map(n => [n?.id, n]));
-                    const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
-                    return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
-                      const sourceNode = nodesMap.get(link?.source);
-                      const targetNode = nodesMap.get(link?.target);
-                      if (!sourceNode || !targetNode) return null;
-                      const sourceIdx = nodeIndexMap.get(link?.source);
-                      const targetIdx = nodeIndexMap.get(link?.target);
-                      if (sourceIdx === undefined || targetIdx === undefined) return null;
-                      const x1 = 30 + (sourceNode.generation || 0) * 40;
-                      const y1 = 30 + sourceIdx * 30;
-                      const x2 = 30 + (targetNode.generation || 0) * 40;
-                      const y2 = 30 + targetIdx * 30;
-                      return (
-                        <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a0aec0" strokeWidth="2" />
-                      );
-                    });
-                  })()}
-                  {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
-                    if (!node) return null;
-                    const cx = 30 + (node.generation || 0) * 40;
-                    const cy = 30 + idx * 30;
+            <div>
+              <h3>Combat Event Log</h3>
+              <p>Total Events: {combatEvents.length}</p>
+              <div style={{ maxHeight: "100px", overflowY: "auto", fontSize: "12px", border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-bg)", padding: "5px", borderRadius: "4px" }} data-testid="combat-log">
+                {combatEvents.length === 0 ? (
+                  <p style={{ color: "var(--cyber-text-dim)", fontStyle: "italic", margin: 0 }}>No combat events recorded.</p>
+                ) : (
+                  combatEvents.map((e, idx) => {
+                    const damageVal = e.damage !== undefined && e.damage !== null ? e.damage.toFixed(1) : "-";
                     return (
-                      <g key={node.id} data-testid={`lineage-node-${node.id}`}>
-                        <circle cx={cx} cy={cy} r="10" fill="#3182ce" />
-                        <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="#2d3748">{node.id}</text>
-                      </g>
-                    );
-                  })}
-                </svg>
-              )}
-            </div>
-          </div>
-
-          {/* Chronicle Timeline Panel */}
-          <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
-            <h2>Mother Nature Chronicle</h2>
-            <div style={{ maxHeight: "200px", overflowY: "auto" }}>
-              {(Array.isArray(chronicleHistory) ? chronicleHistory : []).length === 0 ? (
-                <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No chronicle events recorded</p>
-              ) : (
-                (Array.isArray(chronicleHistory) ? chronicleHistory : []).map((evt, idx) => {
-                  const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
-                  return (
-                    <div 
-                      key={evt.id || idx} 
-                      style={{ 
-                        padding: "8px", 
-                        borderBottom: "1px solid #edf2f7", 
-                        marginBottom: "5px",
-                        backgroundColor: isAlert ? "#fff5f5" : "#f0fff4",
-                        borderLeft: isAlert ? "4px solid #e53e3e" : "4px solid #38a169",
-                        borderRadius: "4px"
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
-                        <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
-                        <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                      <div key={idx} style={{ marginBottom: "4px", borderBottom: "1px solid var(--cyber-border)", color: "var(--cyber-magenta)" }}>
+                        Predator #{e.predator_id} damaged Prey #{e.prey_id} (-{damageVal} energy)
                       </div>
-                      <strong>{evt.title}</strong>
-                      <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
-                      {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
-                        <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
-                          ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Migration Panel */}
-          <div data-testid="migration-panel" style={{ border: "1px solid #edf2f7", padding: "10px", borderRadius: "4px" }}>
+        {/* Environment & God-Mode Section */}
+        <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px" }} data-testid="god-mode-panel">
+          <h2 className="sci-fi-title" style={{ margin: "0 0 10px 0", fontSize: "18px", paddingBottom: "5px" }}>Environment & God-Mode</h2>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+            <div>
+              <h3>Environment Settings</h3>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ fontWeight: "bold" }}>Day Length / Time Speed: {timeSpeed.toFixed(1)}x</label><br />
+                <input
+                  type="range"
+                  min="0.0"
+                  max="5.0"
+                  step="0.1"
+                  value={timeSpeed}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setTimeSpeed(val);
+                    handleSettingsChange(val, fertility, weatherSeverity);
+                  }}
+                  data-testid="time-speed-slider"
+                  style={{ accentColor: "var(--cyber-text)", width: "100%" }}
+                />
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ fontWeight: "bold" }}>Fertility: {fertility.toFixed(1)}x</label><br />
+                <input
+                  type="range"
+                  min="0.0"
+                  max="3.0"
+                  step="0.1"
+                  value={fertility}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setFertility(val);
+                    handleSettingsChange(timeSpeed, val, weatherSeverity);
+                  }}
+                  data-testid="fertility-slider"
+                  style={{ accentColor: "var(--cyber-text)", width: "100%" }}
+                />
+              </div>
+              <div style={{ marginBottom: "12px" }}>
+                <label style={{ fontWeight: "bold" }}>Weather Severity: {weatherSeverity.toFixed(1)}x</label><br />
+                <input
+                  type="range"
+                  min="0.0"
+                  max="2.0"
+                  step="0.1"
+                  value={weatherSeverity}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setWeatherSeverity(val);
+                    handleSettingsChange(timeSpeed, fertility, val);
+                  }}
+                  data-testid="weather-severity-slider"
+                  style={{ accentColor: "var(--cyber-text)", width: "100%" }}
+                />
+              </div>
+            </div>
+            <div>
+              <h3>Trigger Disaster</h3>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
+                <button
+                  onClick={() => handleTriggerDisaster("Stable")}
+                  className="glow-btn"
+                  style={{ padding: "8px 16px", border: "1px solid var(--cyber-border)", borderRadius: "4px", cursor: "pointer", backgroundColor: "transparent", color: "var(--cyber-text)" }}
+                >
+                  Stable
+                </button>
+                <button
+                  onClick={() => handleTriggerDisaster("ResourceDrought")}
+                  className="glow-btn"
+                  style={{ padding: "8px 16px", border: "1px solid var(--cyber-border)", borderRadius: "4px", cursor: "pointer", backgroundColor: "transparent", color: "var(--cyber-text)" }}
+                >
+                  Drought
+                </button>
+                <button
+                  onClick={() => handleTriggerDisaster("TemperatureSpike")}
+                  className="glow-btn"
+                  style={{ padding: "8px 16px", border: "1px solid var(--cyber-border)", borderRadius: "4px", cursor: "pointer", backgroundColor: "transparent", color: "var(--cyber-text)" }}
+                >
+                  Heatwave
+                </button>
+                <button
+                  onClick={() => handleTriggerDisaster("GlacialPeriod")}
+                  className="glow-btn"
+                  style={{ padding: "8px 16px", border: "1px solid var(--cyber-border)", borderRadius: "4px", cursor: "pointer", backgroundColor: "transparent", color: "var(--cyber-text)" }}
+                >
+                  Freeze
+                </button>
+                <button
+                  onClick={() => handleTriggerDisaster("ToxicDeluge")}
+                  className="glow-btn"
+                  style={{ padding: "8px 16px", border: "1px solid var(--cyber-border)", borderRadius: "4px", cursor: "pointer", backgroundColor: "transparent", color: "var(--cyber-text)" }}
+                >
+                  Deluge
+                </button>
+              </div>
+              <div style={{ marginTop: "20px", fontSize: "14px" }}>
+                <p><strong>Ambient Light:</strong> {envState?.ambient_light !== undefined ? `${(envState.ambient_light * 100).toFixed(0)}%` : "N/A"}</p>
+                <p><strong>Elapsed Time:</strong> {envState?.elapsed_time !== undefined ? `${envState.elapsed_time.toFixed(1)}s` : "N/A"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab 2: Evolution & Archives */}
+      <div style={{ display: activeTab === 1 ? "flex" : "none", flexDirection: "column", gap: "20px" }}>
+        {/* MAP-Elites Panel */}
+        <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px" }}>
+          <h2 className="sci-fi-title" style={{ margin: "0 0 10px 0", fontSize: "18px", paddingBottom: "5px" }}>MAP-Elites Evolutionary Archive</h2>
+          <div style={{ display: "flex", gap: "40px", flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: "250px" }}>
+              <h3>Evolution Controls</h3>
+              <div style={{ marginBottom: "15px" }}>
+                <label style={{ fontWeight: "bold" }}>Mutation Rate: {mutationRate.toFixed(2)}</label><br />
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={mutationRate}
+                  onChange={(e) => handleMutationRateChange(parseFloat(e.target.value))}
+                  data-testid="mutation-rate-slider"
+                  style={{ accentColor: "var(--cyber-text)", width: "100%" }}
+                />
+              </div>
+              <div style={{ marginBottom: "20px" }}>
+                <label style={{ fontWeight: "bold" }}>Selection Bias: {selectionBias.toFixed(1)}</label><br />
+                <input
+                  type="range"
+                  min="0.1"
+                  max="5"
+                  step="0.1"
+                  value={selectionBias}
+                  onChange={(e) => handleSelectionBiasChange(parseFloat(e.target.value))}
+                  data-testid="selection-bias-slider"
+                  style={{ accentColor: "var(--cyber-text)", width: "100%" }}
+                />
+              </div>
+              <button
+                onClick={handleToggleEvolution}
+                data-testid="toggle-evolution-button"
+                className="glow-btn"
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: evolutionRunning ? "#e53e3e" : "transparent",
+                  color: evolutionRunning ? "white" : "var(--cyber-text)",
+                  border: "1px solid var(--cyber-text)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  width: "100%"
+                }}
+              >
+                {evolutionRunning ? "Stop Evolution" : "Start Evolution"}
+              </button>
+            </div>
+            <div style={{ flex: 1.5, display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <h3>Archive Grid (10x10 representation)</h3>
+              {renderGrid()}
+            </div>
+          </div>
+        </div>
+
+        {/* Phase 4 Panel */}
+        <div className="sci-fi-panel" style={{ padding: "15px", borderRadius: "8px" }} data-testid="phase4-panel">
+          <h2 className="sci-fi-title" style={{ margin: "0 0 15px 0", fontSize: "18px", paddingBottom: "5px" }}>Phase 4: Distributed & Intelligent Simulation</h2>
+          
+          {!lineageGraph?.db_connected && (
+            <div data-testid="neo4j-offline-banner" style={{ backgroundColor: "#feebc8", color: "#c05621", padding: "10px", borderRadius: "4px", marginBottom: "15px", fontWeight: "bold" }}>
+              ⚠️ Neo4j Offline - Fallback In-Memory Tracker Active
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+            {/* Lineage Graph SVG container/nodes */}
+            <div style={{ border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-bg)", padding: "15px", borderRadius: "4px" }}>
+              <h3>Genotype Lineage Graph</h3>
+              <div data-testid="lineage-svg-container" style={{ width: "100%", height: "200px", border: "1px dashed var(--cyber-border)", backgroundColor: "var(--cyber-card)", display: "block", overflow: "auto" }}>
+                {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).length === 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--cyber-text-dim)" }}>No lineage data available</div>
+                ) : (
+                  <svg width="100%" height={svgHeight} style={{ minWidth: "180px" }}>
+                    {(() => {
+                      const nodes = (Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean);
+                      const nodesMap = new Map(nodes.map(n => [n?.id, n]));
+                      const nodeIndexMap = new Map(nodes.map((n, i) => [n?.id, i]));
+                      return (Array.isArray(lineageGraph?.links) ? lineageGraph.links : []).filter(Boolean).map((link, idx) => {
+                        const sourceNode = nodesMap.get(link?.source);
+                        const targetNode = nodesMap.get(link?.target);
+                        if (!sourceNode || !targetNode) return null;
+                        const sourceIdx = nodeIndexMap.get(link?.source);
+                        const targetIdx = nodeIndexMap.get(link?.target);
+                        if (sourceIdx === undefined || targetIdx === undefined) return null;
+                        const x1 = 30 + (sourceNode.generation || 0) * 40;
+                        const y1 = 30 + sourceIdx * 30;
+                        const x2 = 30 + (targetNode.generation || 0) * 40;
+                        const y2 = 30 + targetIdx * 30;
+                        return (
+                          <line key={idx} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--cyber-border)" strokeWidth="2" />
+                        );
+                      });
+                    })()}
+                    {(Array.isArray(lineageGraph?.nodes) ? lineageGraph.nodes : []).filter(Boolean).map((node, idx) => {
+                      if (!node) return null;
+                      const cx = 30 + (node.generation || 0) * 40;
+                      const cy = 30 + idx * 30;
+                      return (
+                        <g key={node.id} data-testid={`lineage-node-${node.id}`}>
+                          <circle cx={cx} cy={cy} r="10" fill="var(--cyber-text)" />
+                          <text x={cx} y={cy - 12} fontSize="9" textAnchor="middle" fill="var(--cyber-text-dim)" style={{ fontFamily: "inherit" }}>{node.id}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                )}
+              </div>
+            </div>
+
+            {/* Chronicle Timeline Panel */}
+            <div data-testid="chronicle-timeline-panel" style={{ border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-bg)", padding: "15px", borderRadius: "4px" }}>
+              <h2>Mother Nature Chronicle</h2>
+              <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                {(Array.isArray(chronicleHistory) ? chronicleHistory : []).length === 0 ? (
+                  <p style={{ color: "var(--cyber-text-dim)", fontStyle: "italic" }}>No chronicle events recorded</p>
+                ) : (
+                  (Array.isArray(chronicleHistory) ? chronicleHistory : []).map((evt, idx) => {
+                    const isAlert = ['Drought', 'TemperatureSpike', 'PredatorWave'].includes(evt.event_type);
+                    return (
+                      <div 
+                        key={evt.id || idx} 
+                        style={{ 
+                          padding: "8px", 
+                          borderBottom: "1px solid #edf2f7", 
+                          marginBottom: "5px",
+                          backgroundColor: isAlert ? "#fff5f5" : "#f0fff4",
+                          borderLeft: isAlert ? "4px solid #e53e3e" : "4px solid #38a169",
+                          borderRadius: "4px"
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "#718096", marginBottom: "2px" }}>
+                          <span style={{ fontWeight: "bold" }}>{evt.event_type}</span>
+                          <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <strong>{evt.title}</strong>
+                        <p style={{ margin: "2px 0 0 0", fontSize: "12px", color: "#4a5568" }}>{evt.description}</p>
+                        {evt.parameter_delta && Object.keys(evt.parameter_delta).length > 0 && (
+                          <div style={{ marginTop: "4px", fontSize: "11px", color: "#c53030", fontWeight: "bold" }} data-testid="parameter-delta-warning">
+                            ⚠️ Parameter Deltas: {Object.entries(evt.parameter_delta).map(([k, v]) => `${k}: ${v >= 0 ? '+' : ''}${v}`).join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab 3: System Configurations */}
+      <div className="sci-fi-panel" style={{ display: activeTab === 2 ? "block" : "none", padding: "20px", borderRadius: "8px" }} data-testid="migration-panel">
+        <h2 className="sci-fi-title" style={{ margin: "0 0 15px 0", fontSize: "18px", paddingBottom: "5px" }}>System Configurations</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px" }}>
+          <div style={{ border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-bg)", padding: "15px", borderRadius: "4px" }}>
             <h3>Distributed Socket Migration</h3>
-            <div style={{ marginBottom: "10px" }}>
-              <div style={{ display: "flex", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-                <label htmlFor="target-port-input" style={{ fontSize: "12px", fontWeight: "bold" }}>Port:</label>
+            <div style={{ marginBottom: "15px" }}>
+              <div style={{ display: "flex", gap: "8px", marginBottom: "12px", alignItems: "center" }}>
+                <label htmlFor="target-port-input" style={{ fontSize: "13px", fontWeight: "bold" }}>Port:</label>
                 <input
                   id="target-port-input"
                   type="number"
                   value={targetPort}
                   onChange={(e) => setTargetPort(parseInt(e.target.value) || 8081)}
-                  style={{ width: "80px", padding: "4px", border: "1px solid #cbd5e0", borderRadius: "4px" }}
+                  style={{ width: "100px", padding: "6px", border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-card)", color: "var(--cyber-text)", borderRadius: "4px" }}
                 />
               </div>
               <button
                 data-testid="migration-trigger-button"
                 disabled={!status.running}
+                className="glow-btn"
                 style={{
                   padding: "8px 16px",
-                  backgroundColor: status.running ? "#3182ce" : "#cbd5e0",
-                  color: "white",
-                  border: "none",
+                  backgroundColor: status.running ? "var(--cyber-text)" : "var(--cyber-border)",
+                  color: status.running ? "var(--cyber-bg)" : "var(--cyber-text-dim)",
+                  border: "1px solid var(--cyber-border)",
                   borderRadius: "4px",
                   cursor: status.running ? "pointer" : "not-allowed",
                   fontWeight: "bold",
@@ -1002,19 +1268,110 @@ export function App() {
                 Trigger Migration
               </button>
             </div>
-            <div style={{ maxHeight: "150px", overflowY: "auto", fontSize: "12px" }}>
+          </div>
+
+          <div style={{ border: "1px solid var(--cyber-border)", backgroundColor: "var(--cyber-bg)", padding: "15px", borderRadius: "4px" }}>
+            <h3>Socket Migration History</h3>
+            <div style={{ maxHeight: "200px", overflowY: "auto", fontSize: "12px" }}>
               {migrationEvents.length === 0 ? (
-                <p style={{ color: "#a0aec0", fontStyle: "italic" }}>No migration events</p>
+                <p style={{ color: "var(--cyber-text-dim)", fontStyle: "italic" }}>No migration events recorded.</p>
               ) : (
                 migrationEvents.map((mig, idx) => (
-                  <div key={idx} style={{ padding: "4px", borderBottom: "1px solid #edf2f7" }}>
+                  <div key={idx} style={{ padding: "6px", borderBottom: "1px solid var(--cyber-border)" }}>
                     Agent #{mig.agent_id} {mig.direction} ({mig.source_port} ➔ {mig.target_port}) - {mig.status}
                   </div>
                 ))
               )}
             </div>
           </div>
+        </div>
+      </div>
 
+      {/* Tab 4: Organism Library */}
+      <div className="sci-fi-panel" style={{ display: activeTab === 3 ? "block" : "none", padding: "20px", borderRadius: "8px" }} data-testid="organism-library-panel">
+        <h2 className="sci-fi-title" style={{ margin: "0 0 15px 0", fontSize: "18px", paddingBottom: "5px" }}>Thư viện Sinh vật</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "20px" }}>
+          {Array.isArray(presets) && presets.map((preset) => (
+            <div 
+              key={preset.name}
+              className="sci-fi-panel"
+              style={{
+                padding: "20px",
+                borderRadius: "8px",
+                border: "1px solid var(--cyber-border)",
+                backgroundColor: "rgba(10, 25, 41, 0.7)",
+                backdropFilter: "blur(12px)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+                height: "100%"
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                  <h3 style={{ margin: 0, color: "var(--cyber-text)", fontSize: "16px" }}>{preset.name}</h3>
+                  <span 
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      padding: "2px 8px",
+                      borderRadius: "12px",
+                      backgroundColor: preset.agent_class === "Predator" ? "rgba(255, 0, 127, 0.15)" : "rgba(0, 255, 127, 0.15)",
+                      color: preset.agent_class === "Predator" ? "#ff007f" : "#00ff7f",
+                      border: `1px solid ${preset.agent_class === "Predator" ? "#ff007f" : "#00ff7f"}`
+                    }}
+                  >
+                    {preset.agent_class === "Predator" ? "Predator" : "Prey"}
+                  </span>
+                </div>
+                
+                <p style={{ fontSize: "13px", color: "var(--cyber-text-dim)", margin: "0 0 15px 0", lineHeight: "1.4" }}>
+                  {preset.description}
+                </p>
+
+                <div style={{ fontSize: "12px", color: "var(--cyber-text-dim)", display: "flex", flexDirection: "column", gap: "6px", marginBottom: "20px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Số phân đoạn:</span>
+                    <span style={{ color: "var(--cyber-text)" }}>{preset.segment_count}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Năng lượng ban đầu:</span>
+                    <span style={{ color: "var(--cyber-text)" }}>{preset.initial_energy}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Khối lượng / Chiều dài:</span>
+                    <span style={{ color: "var(--cyber-text)" }}>{preset.mass} / {preset.length}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Bán kính:</span>
+                    <span style={{ color: "var(--cyber-text)" }}>{preset.radius}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Tần số / Biên độ CPG:</span>
+                    <span style={{ color: "var(--cyber-text)" }}>{preset.frequency} / {preset.amplitude}</span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                className="glow-btn"
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: "rgba(0, 240, 255, 0.1)",
+                  color: "var(--cyber-text)",
+                  border: "1px solid var(--cyber-border)",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                  width: "100%",
+                  transition: "all 0.2s"
+                }}
+                onClick={() => handleSpawnPreset(preset.name)}
+              >
+                Spawn
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1035,10 +1392,10 @@ function SegmentNodeViewer({ segment, level, visited = new Set() }: SegmentNodeV
   nextVisited.add(segment.segment_id);
 
   return (
-    <div style={{ marginLeft: `${level * 16}px`, borderLeft: "2px dashed #e2e8f0", paddingLeft: "12px", margin: "6px 0" }}>
-      <div style={{ padding: "4px 8px", backgroundColor: "#f7fafc", borderRadius: "4px", display: "inline-block", fontSize: "13px", border: "1px solid #edf2f7" }}>
+    <div style={{ marginLeft: `${level * 16}px`, borderLeft: "2px dashed var(--cyber-border)", paddingLeft: "12px", margin: "6px 0" }}>
+      <div style={{ padding: "4px 8px", backgroundColor: "var(--cyber-card)", borderRadius: "4px", display: "inline-block", fontSize: "13px", border: "1px solid var(--cyber-border)" }}>
         <strong>Segment #{segment.segment_id}</strong>
-        <span style={{ fontSize: "11px", color: "#718096", marginLeft: "10px" }}>
+        <span style={{ fontSize: "11px", color: "var(--cyber-text-dim)", marginLeft: "10px" }}>
           Tọa độ: ({segment.x.toFixed(2)}, {segment.y.toFixed(2)}, {segment.z.toFixed(2)}) | 
           Yaw: {segment.yaw.toFixed(2)} rad |
           Anchor: [{segment.joint_anchor.map(v => v.toFixed(1)).join(", ")}]

@@ -23,6 +23,7 @@ fn test_static_equilibrium() {
     let _lock = TEST_LOCK.lock().unwrap();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.01));
+    world.insert_resource(MapBounds::default());
 
     let parent = world.spawn((
         Position(Vec3::ZERO),
@@ -79,6 +80,7 @@ fn test_cpg_driven_oscillation() {
     let _lock = TEST_LOCK.lock().unwrap();
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016)); // ~60fps
+    world.insert_resource(MapBounds::default());
 
     let parent = world.spawn((
         Position(Vec3::ZERO),
@@ -185,6 +187,7 @@ fn test_damping_effect() {
     // 1. Undamped case (damping = 0.0)
     let mut world_undamped = World::new();
     world_undamped.insert_resource(TimeStep(0.01));
+    world_undamped.insert_resource(MapBounds::default());
 
     let parent_u = world_undamped.spawn((
         Position(Vec3::ZERO),
@@ -229,6 +232,7 @@ fn test_damping_effect() {
     // 2. Damped case (damping = 10.0)
     let mut world_damped = World::new();
     world_damped.insert_resource(TimeStep(0.01));
+    world_damped.insert_resource(MapBounds::default());
 
     let parent_d = world_damped.spawn((
         Position(Vec3::ZERO),
