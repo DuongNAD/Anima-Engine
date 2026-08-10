@@ -50,3 +50,8 @@ pnpm-debug.log*
 
 # Playground / Sandbox for temporary experiments
 /playground/
+
+# --- hardening kit ---
+logs/
+mutants.out/
+mutants.verify/
