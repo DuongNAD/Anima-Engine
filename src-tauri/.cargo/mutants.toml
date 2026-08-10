@@ -1,0 +1,19 @@
+# Cài vào <crate>/.cargo/mutants.toml
+# Build nặng (tauri/burn/wgpu/bevy) thì timeout rộng, nếu không cargo-mutants sẽ
+# đếm nhầm "timeout" thành "missed" và sinh hàng loạt task rác cho agent.
+timeout_multiplier = 6.0
+minimum_test_timeout = 180
+
+# Không mutate thứ không có oracle. MỖI dòng thêm vào đây PHẢI kèm lý do.
+# Không có lý do = đang farm metric, không phải hardening.
+exclude_globs = [
+    "src/main.rs",   # entrypoint, không test được từ unit test
+]
+
+# Bỏ mutation trên code chỉ log/format — giết chúng không tăng chất lượng.
+exclude_re = [
+    "replace .*::fmt ",
+    "replace .*log_.* with \\(\\)",
+]
+
+additional_cargo_test_args = ["--release"]

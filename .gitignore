@@ -21,6 +21,9 @@ pnpm-debug.log*
 .env.test.local
 .env.production.local
 *.env
+# .hardening.env KHONG phai secret — no la config layout cua bo khung verifier,
+# moi script deu source no. Phai duoc commit.
+!.hardening.env
 
 # IDE / Editor folders
 .vscode/
