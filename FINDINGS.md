@@ -143,7 +143,14 @@ Quy tắc ghi:
   không chạy FFI). Hệ quả: **hai lớp công cụ tìm bug mạnh nhất đều không dùng
   được**, và mỗi mutant phải build lại cả tauri + wgpu + burn.
 - **Tái hiện:** `cd src-tauri && cargo +nightly fuzz build bin_coords`
-- **Đề xuất sửa:** tách logic thuần (`evolution`, `physics`, `ai/cpg`) ra crate
-  `anima-core` không phụ thuộc Tauri. Mở khoá được ba thứ cùng lúc: fuzz, Miri,
-  và mutation testing nhanh hơn nhiều lần.
-- **Trạng thái:** OPEN
+- **Đã sửa:** tách `evolution::{genotype,mutation,crossover,map_elites}` ra crate
+  `anima-core`. `ai` và `physics` KHÔNG tách được — cả hai dính `core::ecs`.
+  Năm tham chiếu ngược của nhóm evolution nằm gọn trong một hàm `decode_genotype`,
+  đã chuyển sang `core/spawn.rs`.
+- **Kết quả đo được:**
+  | | trước | sau |
+  |---|---|---|
+  | `cargo fuzz` | hỏng khi build | 191.792.110 lượt / 91 giây |
+  | `cargo miri` | không chạy | chạy được |
+  | mutation | 24 mutant / 55 phút | 135 mutant / 2 phút |
+- **Trạng thái:** FIXED (b6c636b)
