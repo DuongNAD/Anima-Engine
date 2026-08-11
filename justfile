@@ -42,12 +42,21 @@ determinism:
 # ---------- mutation ----------
 # Quét toàn bộ. shard 1..5 để chia sweep theo NGÀY.
 # KHÔNG chạy 5 shard cùng lúc trên một máy — chúng tranh CPU của nhau.
-hunt shard="1" jobs="6":
-    -cd "$HD_CRATE" && cargo mutants --iterate --shard {{shard}}/5 -j {{jobs}} --timeout 120
+#
+# KHÔNG truyền --timeout ở đây. Nó ĐÈ mọi thứ trong .cargo/mutants.toml, kể cả
+# minimum_test_timeout. Đặt số cứng thấp hơn thời gian chạy suite là giết luôn
+# cả baseline, và cargo-mutants bỏ nguyên lượt quét với thông báo
+# "cargo test failed in an unmutated tree".
+#
+# jobs mặc định 4: bằng số P-core của máy Apple Silicon phổ thông. Đặt cao hơn
+# thì phần dôi rơi xuống E-core, chậm hơn nhiều mà vẫn tranh bộ nhớ với P-core —
+# tổng thời gian tệ đi chứ không tốt lên.
+hunt shard="1" jobs="4":
+    -cd "$HD_CRATE" && cargo mutants --iterate --shard {{shard}}/5 -j {{jobs}}
 
 # Quét hẹp một file. Dùng cái này nhiều hơn `hunt`.
-hunt-file file jobs="6":
-    -cd "$HD_CRATE" && cargo mutants --iterate --file {{file}} -j {{jobs}} --timeout 120
+hunt-file file jobs="4":
+    -cd "$HD_CRATE" && cargo mutants --iterate --file {{file}} -j {{jobs}}
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
 list-missed:

@@ -71,7 +71,7 @@ if [ -n "$MUTANT" ]; then
   RE=$(printf '%s' "$MUTANT" | sed 's/[][\.^$*+?(){}|\\/]/\\&/g')
   # --output riêng: mặc định cargo-mutants ghi de mutants.out/ va xoa sach
   # missed.txt — tuc la moi lan verify se huy danh sach task cua ca doi.
-  ( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout 120 \
+  ( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" \
       --baseline skip --output mutants.verify ) \
     || reject "mutant van song sau khi them test"
 fi
