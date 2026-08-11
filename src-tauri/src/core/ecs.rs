@@ -207,10 +207,13 @@ pub fn init_world() -> World {
     world.insert_resource(FloraSpawnSettings::default());
     world.insert_resource(EnvironmentState::default());
 
+    // RNG dùng chung của mọi system. Phải chèn TRƯỚC các system cần nó.
+    world.insert_resource(crate::core::rng::SimRng::default());
+
     // Spawn 3 clouds with random positions, velocities, and radii
     {
         use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = crate::core::rng::SimRng::default().0;
         for _ in 0..3 {
             let x = rng.gen_range(-100.0..100.0);
             let z = rng.gen_range(-100.0..100.0);
