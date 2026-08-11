@@ -20,19 +20,36 @@ Nhiều dòng = nhiều task. Không bao giờ gộp.
    hành vi nào quan sát được từ API công khai sẽ sai?*
 4. Không trả lời được câu 3 → **dừng**, báo `cần refactor để test được` + lý do.
    Không tự sửa code nguồn.
-5. Thêm test vào file test có sẵn nếu chủ đề khớp; chỉ tạo file mới khi không khớp.
+5. Đếm xem có **bao nhiêu** thứ quan sát được. Toán tử so sánh thường có hai:
+   giá trị trả về, VÀ trạng thái bị thay đổi. Khoá một cái thì mutant vẫn sống.
+6. Thêm test vào file test có sẵn nếu chủ đề khớp; chỉ tạo file mới khi không khớp.
    Bắt buộc:
    - seed hằng số (lấy `HD_SEED` trong `.hardening.env`)
    - assert trên **giá trị cụ thể**, không phải `is_ok()`
    - không phụ thuộc timing, số thread, thứ tự HashMap
-6. `just verify "<nguyên dòng mutant>"`.
-7. Exit != 0 → đọc lỗi, sửa test, thử lại. **Tối đa 3 lần** rồi báo thất bại.
+7. Nếu test phụ thuộc RNG: **tự lật toán tử trong code nguồn, chạy test, rồi lật
+   lại** — để chắc chắn hai nhánh cho ra kết quả KHÁC nhau. Mất 1 phút, tiết kiệm
+   một lượt `just verify` 6 phút. Nhớ lật lại trước khi verify.
+8. `just verify "<nguyên dòng mutant>"`.
+9. Exit != 0 → đọc lỗi, sửa test, thử lại. **Tối đa 3 lần** rồi báo thất bại.
 
 ## Cấm
-- Chạm code nguồn
+- Chạm code nguồn (trừ bước 7: lật thử rồi lật lại ngay, không commit)
 - Test chỉ khẳng định "không panic"
 - Sửa file config mutation để loại mutant thay vì giết nó
 - Báo hoàn thành khi chưa thấy `QUA CONG`
+
+## Đọc kết quả verify cho đúng
+
+`TU CHOI: mutant van song` có **hai** nguyên nhân khác hẳn nhau:
+
+- output có `MISSED` → test thật sự chưa phân biệt được hành vi. Sửa test.
+- output có `TIMEOUT` → **không phải lỗi của test**. Suite chạy quá lâu.
+  Báo lại kèm nguyên dòng TIMEOUT, đừng viết thêm test. Viết thêm test ở đây là
+  đốt quota vào việc không tồn tại.
+
+`TU CHOI: bo khung hardening chua duoc commit` cũng không phải lỗi của bạn —
+người cài quên commit. Dừng và báo.
 
 ## Báo cáo (bắt buộc, không rút gọn)
 ```

@@ -1,0 +1,770 @@
+[
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 0)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (0, 0) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 0)",
+    "package": "anima-engine",
+    "replacement": "(0, 0)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (0, 1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 1)",
+    "package": "anima-engine",
+    "replacement": "(0, 1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, -1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (0, -1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, -1)",
+    "package": "anima-engine",
+    "replacement": "(0, -1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 0)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (1, 0) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 0)",
+    "package": "anima-engine",
+    "replacement": "(1, 0)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (1, 1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 1)",
+    "package": "anima-engine",
+    "replacement": "(1, 1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, -1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (1, -1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, -1)",
+    "package": "anima-engine",
+    "replacement": "(1, -1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 0)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (-1, 0) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 0)",
+    "package": "anima-engine",
+    "replacement": "(-1, 0)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (-1, 1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 1)",
+    "package": "anima-engine",
+    "replacement": "(-1, 1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, -1)\n@@ -23,22 +23,17 @@\n         Self {\n             grid: BTreeMap::new(),\n             grid_resolution,\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n-        let f0 = features.first().cloned().unwrap_or(0.0);\n-        let f1 = features.get(1).cloned().unwrap_or(0.0);\n-        (\n-            (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n-        )\n+        (-1, -1) /* ~ changed by cargo-mutants ~ */\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n                 self.grid.insert(coords, individual);\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, -1)",
+    "package": "anima-engine",
+    "replacement": "(-1, -1)",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 36
+      },
+      "start": {
+        "column": 9,
+        "line": 31
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace / with % in MapElitesArchive::get_bin_coords\n@@ -26,17 +26,17 @@\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n         let f0 = features.first().cloned().unwrap_or(0.0);\n         let f1 = features.get(1).cloned().unwrap_or(0.0);\n         (\n-            (f0 / self.grid_resolution).floor() as i32,\n+            (f0 % /* ~ changed by cargo-mutants ~ */ self.grid_resolution).floor() as i32,\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:34:17: replace / with % in MapElitesArchive::get_bin_coords",
+    "package": "anima-engine",
+    "replacement": "%",
+    "span": {
+      "end": {
+        "column": 18,
+        "line": 34
+      },
+      "start": {
+        "column": 17,
+        "line": 34
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace / with * in MapElitesArchive::get_bin_coords\n@@ -26,17 +26,17 @@\n         }\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n         let f0 = features.first().cloned().unwrap_or(0.0);\n         let f1 = features.get(1).cloned().unwrap_or(0.0);\n         (\n-            (f0 / self.grid_resolution).floor() as i32,\n+            (f0 * /* ~ changed by cargo-mutants ~ */ self.grid_resolution).floor() as i32,\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:34:17: replace / with * in MapElitesArchive::get_bin_coords",
+    "package": "anima-engine",
+    "replacement": "*",
+    "span": {
+      "end": {
+        "column": 18,
+        "line": 34
+      },
+      "start": {
+        "column": 17,
+        "line": 34
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace / with % in MapElitesArchive::get_bin_coords\n@@ -27,17 +27,17 @@\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n         let f0 = features.first().cloned().unwrap_or(0.0);\n         let f1 = features.get(1).cloned().unwrap_or(0.0);\n         (\n             (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n+            (f1 % /* ~ changed by cargo-mutants ~ */ self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:35:17: replace / with % in MapElitesArchive::get_bin_coords",
+    "package": "anima-engine",
+    "replacement": "%",
+    "span": {
+      "end": {
+        "column": 18,
+        "line": 35
+      },
+      "start": {
+        "column": 17,
+        "line": 35
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace / with * in MapElitesArchive::get_bin_coords\n@@ -27,17 +27,17 @@\n     }\n \n     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)\n     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {\n         let f0 = features.first().cloned().unwrap_or(0.0);\n         let f1 = features.get(1).cloned().unwrap_or(0.0);\n         (\n             (f0 / self.grid_resolution).floor() as i32,\n-            (f1 / self.grid_resolution).floor() as i32,\n+            (f1 * /* ~ changed by cargo-mutants ~ */ self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n             if individual.fitness > existing.fitness {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::get_bin_coords",
+      "return_type": "-> (i32, i32)",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 37
+        },
+        "start": {
+          "column": 5,
+          "line": 30
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:35:17: replace / with * in MapElitesArchive::get_bin_coords",
+    "package": "anima-engine",
+    "replacement": "*",
+    "span": {
+      "end": {
+        "column": 18,
+        "line": 35
+      },
+      "start": {
+        "column": 17,
+        "line": 35
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::add_individual -> bool with true\n@@ -33,28 +33,17 @@\n         (\n             (f0 / self.grid_resolution).floor() as i32,\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n-        let coords = self.get_bin_coords(&individual.features);\n-        if let Some(existing) = self.grid.get(&coords) {\n-            if individual.fitness > existing.fitness {\n-                self.grid.insert(coords, individual);\n-                true\n-            } else {\n-                false\n-            }\n-        } else {\n-            self.grid.insert(coords, individual);\n-            true\n-        }\n+        true /* ~ changed by cargo-mutants ~ */\n     }\n \n     pub fn select_parent(\n         &self,\n         selection_bias: f64,\n         rng: &mut impl rand::Rng,\n     ) -> Option<&EliteIndividual> {\n         if self.grid.is_empty() {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::add_individual",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 53
+        },
+        "start": {
+          "column": 5,
+          "line": 40
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with true",
+    "package": "anima-engine",
+    "replacement": "true",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 52
+      },
+      "start": {
+        "column": 9,
+        "line": 41
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::add_individual -> bool with false\n@@ -33,28 +33,17 @@\n         (\n             (f0 / self.grid_resolution).floor() as i32,\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n-        let coords = self.get_bin_coords(&individual.features);\n-        if let Some(existing) = self.grid.get(&coords) {\n-            if individual.fitness > existing.fitness {\n-                self.grid.insert(coords, individual);\n-                true\n-            } else {\n-                false\n-            }\n-        } else {\n-            self.grid.insert(coords, individual);\n-            true\n-        }\n+        false /* ~ changed by cargo-mutants ~ */\n     }\n \n     pub fn select_parent(\n         &self,\n         selection_bias: f64,\n         rng: &mut impl rand::Rng,\n     ) -> Option<&EliteIndividual> {\n         if self.grid.is_empty() {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::add_individual",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 53
+        },
+        "start": {
+          "column": 5,
+          "line": 40
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with false",
+    "package": "anima-engine",
+    "replacement": "false",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 52
+      },
+      "start": {
+        "column": 9,
+        "line": 41
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with == in MapElitesArchive::add_individual\n@@ -35,17 +35,17 @@\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n-            if individual.fitness > existing.fitness {\n+            if individual.fitness == /* ~ changed by cargo-mutants ~ */ existing.fitness {\n                 self.grid.insert(coords, individual);\n                 true\n             } else {\n                 false\n             }\n         } else {\n             self.grid.insert(coords, individual);\n             true\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::add_individual",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 53
+        },
+        "start": {
+          "column": 5,
+          "line": 40
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:43:35: replace > with == in MapElitesArchive::add_individual",
+    "package": "anima-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 43
+      },
+      "start": {
+        "column": 35,
+        "line": 43
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with < in MapElitesArchive::add_individual\n@@ -35,17 +35,17 @@\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n-            if individual.fitness > existing.fitness {\n+            if individual.fitness < /* ~ changed by cargo-mutants ~ */ existing.fitness {\n                 self.grid.insert(coords, individual);\n                 true\n             } else {\n                 false\n             }\n         } else {\n             self.grid.insert(coords, individual);\n             true\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::add_individual",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 53
+        },
+        "start": {
+          "column": 5,
+          "line": 40
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:43:35: replace > with < in MapElitesArchive::add_individual",
+    "package": "anima-engine",
+    "replacement": "<",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 43
+      },
+      "start": {
+        "column": 35,
+        "line": 43
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with >= in MapElitesArchive::add_individual\n@@ -35,17 +35,17 @@\n             (f1 / self.grid_resolution).floor() as i32,\n         )\n     }\n \n     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn\n     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {\n         let coords = self.get_bin_coords(&individual.features);\n         if let Some(existing) = self.grid.get(&coords) {\n-            if individual.fitness > existing.fitness {\n+            if individual.fitness >= /* ~ changed by cargo-mutants ~ */ existing.fitness {\n                 self.grid.insert(coords, individual);\n                 true\n             } else {\n                 false\n             }\n         } else {\n             self.grid.insert(coords, individual);\n             true\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::add_individual",
+      "return_type": "-> bool",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 53
+        },
+        "start": {
+          "column": 5,
+          "line": 40
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:43:35: replace > with >= in MapElitesArchive::add_individual",
+    "package": "anima-engine",
+    "replacement": ">=",
+    "span": {
+      "end": {
+        "column": 36,
+        "line": 43
+      },
+      "start": {
+        "column": 35,
+        "line": 43
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with None\n@@ -52,35 +52,11 @@\n         }\n     }\n \n     pub fn select_parent(\n         &self,\n         selection_bias: f64,\n         rng: &mut impl rand::Rng,\n     ) -> Option<&EliteIndividual> {\n-        if self.grid.is_empty() {\n-            return None;\n-        }\n-        use rand::seq::IteratorRandom;\n-        if selection_bias <= 1.0 {\n-            self.grid.values().choose(rng)\n-        } else {\n-            let k = (selection_bias.ceil() as usize).max(2);\n-            let mut best: Option<&EliteIndividual> = None;\n-            for _ in 0..k {\n-                if let Some(candidate) = self.grid.values().choose(rng) {\n-                    match best {\n-                        Some(b) => {\n-                            if candidate.fitness > b.fitness {\n-                                best = Some(candidate);\n-                            }\n-                        }\n-                        None => {\n-                            best = Some(candidate);\n-                        }\n-                    }\n-                }\n-            }\n-            best\n-        }\n+        None /* ~ changed by cargo-mutants ~ */\n     }\n }\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with None",
+    "package": "anima-engine",
+    "replacement": "None",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 84
+      },
+      "start": {
+        "column": 9,
+        "line": 60
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))\n@@ -52,35 +52,11 @@\n         }\n     }\n \n     pub fn select_parent(\n         &self,\n         selection_bias: f64,\n         rng: &mut impl rand::Rng,\n     ) -> Option<&EliteIndividual> {\n-        if self.grid.is_empty() {\n-            return None;\n-        }\n-        use rand::seq::IteratorRandom;\n-        if selection_bias <= 1.0 {\n-            self.grid.values().choose(rng)\n-        } else {\n-            let k = (selection_bias.ceil() as usize).max(2);\n-            let mut best: Option<&EliteIndividual> = None;\n-            for _ in 0..k {\n-                if let Some(candidate) = self.grid.values().choose(rng) {\n-                    match best {\n-                        Some(b) => {\n-                            if candidate.fitness > b.fitness {\n-                                best = Some(candidate);\n-                            }\n-                        }\n-                        None => {\n-                            best = Some(candidate);\n-                        }\n-                    }\n-                }\n-            }\n-            best\n-        }\n+        Some(Box::leak(Box::new(Default::default()))) /* ~ changed by cargo-mutants ~ */\n     }\n }\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "FnValue",
+    "name": "src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))",
+    "package": "anima-engine",
+    "replacement": "Some(Box::leak(Box::new(Default::default())))",
+    "span": {
+      "end": {
+        "column": 10,
+        "line": 84
+      },
+      "start": {
+        "column": 9,
+        "line": 60
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace <= with > in MapElitesArchive::select_parent\n@@ -56,17 +56,17 @@\n         &self,\n         selection_bias: f64,\n         rng: &mut impl rand::Rng,\n     ) -> Option<&EliteIndividual> {\n         if self.grid.is_empty() {\n             return None;\n         }\n         use rand::seq::IteratorRandom;\n-        if selection_bias <= 1.0 {\n+        if selection_bias > /* ~ changed by cargo-mutants ~ */ 1.0 {\n             self.grid.values().choose(rng)\n         } else {\n             let k = (selection_bias.ceil() as usize).max(2);\n             let mut best: Option<&EliteIndividual> = None;\n             for _ in 0..k {\n                 if let Some(candidate) = self.grid.values().choose(rng) {\n                     match best {\n                         Some(b) => {\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:64:27: replace <= with > in MapElitesArchive::select_parent",
+    "package": "anima-engine",
+    "replacement": ">",
+    "span": {
+      "end": {
+        "column": 29,
+        "line": 64
+      },
+      "start": {
+        "column": 27,
+        "line": 64
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with == in MapElitesArchive::select_parent\n@@ -65,17 +65,17 @@\n             self.grid.values().choose(rng)\n         } else {\n             let k = (selection_bias.ceil() as usize).max(2);\n             let mut best: Option<&EliteIndividual> = None;\n             for _ in 0..k {\n                 if let Some(candidate) = self.grid.values().choose(rng) {\n                     match best {\n                         Some(b) => {\n-                            if candidate.fitness > b.fitness {\n+                            if candidate.fitness == /* ~ changed by cargo-mutants ~ */ b.fitness {\n                                 best = Some(candidate);\n                             }\n                         }\n                         None => {\n                             best = Some(candidate);\n                         }\n                     }\n                 }\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:73:50: replace > with == in MapElitesArchive::select_parent",
+    "package": "anima-engine",
+    "replacement": "==",
+    "span": {
+      "end": {
+        "column": 51,
+        "line": 73
+      },
+      "start": {
+        "column": 50,
+        "line": 73
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with < in MapElitesArchive::select_parent\n@@ -65,17 +65,17 @@\n             self.grid.values().choose(rng)\n         } else {\n             let k = (selection_bias.ceil() as usize).max(2);\n             let mut best: Option<&EliteIndividual> = None;\n             for _ in 0..k {\n                 if let Some(candidate) = self.grid.values().choose(rng) {\n                     match best {\n                         Some(b) => {\n-                            if candidate.fitness > b.fitness {\n+                            if candidate.fitness < /* ~ changed by cargo-mutants ~ */ b.fitness {\n                                 best = Some(candidate);\n                             }\n                         }\n                         None => {\n                             best = Some(candidate);\n                         }\n                     }\n                 }\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:73:50: replace > with < in MapElitesArchive::select_parent",
+    "package": "anima-engine",
+    "replacement": "<",
+    "span": {
+      "end": {
+        "column": 51,
+        "line": 73
+      },
+      "start": {
+        "column": 50,
+        "line": 73
+      }
+    }
+  },
+  {
+    "diff": "--- src/evolution/map_elites.rs\n+++ replace > with >= in MapElitesArchive::select_parent\n@@ -65,17 +65,17 @@\n             self.grid.values().choose(rng)\n         } else {\n             let k = (selection_bias.ceil() as usize).max(2);\n             let mut best: Option<&EliteIndividual> = None;\n             for _ in 0..k {\n                 if let Some(candidate) = self.grid.values().choose(rng) {\n                     match best {\n                         Some(b) => {\n-                            if candidate.fitness > b.fitness {\n+                            if candidate.fitness >= /* ~ changed by cargo-mutants ~ */ b.fitness {\n                                 best = Some(candidate);\n                             }\n                         }\n                         None => {\n                             best = Some(candidate);\n                         }\n                     }\n                 }\n",
+    "file": "src/evolution/map_elites.rs",
+    "function": {
+      "function_name": "MapElitesArchive::select_parent",
+      "return_type": "-> Option<&EliteIndividual>",
+      "span": {
+        "end": {
+          "column": 6,
+          "line": 85
+        },
+        "start": {
+          "column": 5,
+          "line": 55
+        }
+      }
+    },
+    "genre": "BinaryOperator",
+    "name": "src/evolution/map_elites.rs:73:50: replace > with >= in MapElitesArchive::select_parent",
+    "package": "anima-engine",
+    "replacement": ">=",
+    "span": {
+      "end": {
+        "column": 51,
+        "line": 73
+      },
+      "start": {
+        "column": 50,
+        "line": 73
+      }
+    }
+  }
+]

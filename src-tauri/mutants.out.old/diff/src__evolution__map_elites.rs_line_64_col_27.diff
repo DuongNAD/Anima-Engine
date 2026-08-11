@@ -1,0 +1,21 @@
+--- src/evolution/map_elites.rs
++++ replace <= with > in MapElitesArchive::select_parent
+@@ -56,17 +56,17 @@
+         &self,
+         selection_bias: f64,
+         rng: &mut impl rand::Rng,
+     ) -> Option<&EliteIndividual> {
+         if self.grid.is_empty() {
+             return None;
+         }
+         use rand::seq::IteratorRandom;
+-        if selection_bias <= 1.0 {
++        if selection_bias > /* ~ changed by cargo-mutants ~ */ 1.0 {
+             self.grid.values().choose(rng)
+         } else {
+             let k = (selection_bias.ceil() as usize).max(2);
+             let mut best: Option<&EliteIndividual> = None;
+             for _ in 0..k {
+                 if let Some(candidate) = self.grid.values().choose(rng) {
+                     match best {
+                         Some(b) => {

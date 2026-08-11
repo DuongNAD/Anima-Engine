@@ -1,0 +1,21 @@
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 0)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 0)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, -1)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 1)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 1)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, -1)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 0)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 1)
+src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, -1)
+src/evolution/map_elites.rs:34:17: replace / with % in MapElitesArchive::get_bin_coords
+src/evolution/map_elites.rs:34:17: replace / with * in MapElitesArchive::get_bin_coords
+src/evolution/map_elites.rs:35:17: replace / with % in MapElitesArchive::get_bin_coords
+src/evolution/map_elites.rs:35:17: replace / with * in MapElitesArchive::get_bin_coords
+src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with true
+src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with false
+src/evolution/map_elites.rs:43:35: replace > with == in MapElitesArchive::add_individual
+src/evolution/map_elites.rs:43:35: replace > with < in MapElitesArchive::add_individual
+src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with None
+src/evolution/map_elites.rs:64:27: replace <= with > in MapElitesArchive::select_parent
+src/evolution/map_elites.rs:73:50: replace > with == in MapElitesArchive::select_parent
+src/evolution/map_elites.rs:73:50: replace > with < in MapElitesArchive::select_parent

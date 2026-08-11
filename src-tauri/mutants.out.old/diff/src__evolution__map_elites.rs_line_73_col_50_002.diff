@@ -1,0 +1,21 @@
+--- src/evolution/map_elites.rs
++++ replace > with >= in MapElitesArchive::select_parent
+@@ -65,17 +65,17 @@
+             self.grid.values().choose(rng)
+         } else {
+             let k = (selection_bias.ceil() as usize).max(2);
+             let mut best: Option<&EliteIndividual> = None;
+             for _ in 0..k {
+                 if let Some(candidate) = self.grid.values().choose(rng) {
+                     match best {
+                         Some(b) => {
+-                            if candidate.fitness > b.fitness {
++                            if candidate.fitness >= /* ~ changed by cargo-mutants ~ */ b.fitness {
+                                 best = Some(candidate);
+                             }
+                         }
+                         None => {
+                             best = Some(candidate);
+                         }
+                     }
+                 }

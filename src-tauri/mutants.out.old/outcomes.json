@@ -1,0 +1,1613 @@
+{
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success",
+      "log_path": "log/baseline.log",
+      "diff_path": null,
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 59.048027292,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 262.587479875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 0)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(0, 0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 81.147641791,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 493.419632334,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 0)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(1, 0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 238.545550666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 557.69584275,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, -1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(0, -1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_003.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_003.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 402.176696666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 485.87237566700003,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, 1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(1, 1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_004.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_004.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 90.130339125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 328.102369708,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, 1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(0, 1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_002.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 413.822823625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 627.596107125,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (1, -1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(1, -1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_005.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_005.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 54.237421042,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 305.116899875,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 0)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(-1, 0)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_006.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_006.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 47.695243666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 319.863650833,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, 1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(-1, 1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_007.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_007.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 30.275106458,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 364.347568708,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:31:9: replace MapElitesArchive::get_bin_coords -> (i32, i32) with (-1, -1)",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 31,
+              "column": 9
+            },
+            "end": {
+              "line": 36,
+              "column": 10
+            }
+          },
+          "replacement": "(-1, -1)",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_31_col_9_008.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_31_col_9_008.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 62.104930792,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 368.057532291,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:34:17: replace / with % in MapElitesArchive::get_bin_coords",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 34,
+              "column": 17
+            },
+            "end": {
+              "line": 34,
+              "column": 18
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_34_col_17.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_34_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 70.348113916,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 311.085861458,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:34:17: replace / with * in MapElitesArchive::get_bin_coords",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 34,
+              "column": 17
+            },
+            "end": {
+              "line": 34,
+              "column": 18
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_34_col_17_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_34_col_17_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 79.411500875,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 347.587702667,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:35:17: replace / with % in MapElitesArchive::get_bin_coords",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 35,
+              "column": 17
+            },
+            "end": {
+              "line": 35,
+              "column": 18
+            }
+          },
+          "replacement": "%",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_35_col_17.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_35_col_17.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 48.683223625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 364.622673959,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:35:17: replace / with * in MapElitesArchive::get_bin_coords",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::get_bin_coords",
+            "return_type": "-> (i32, i32)",
+            "span": {
+              "start": {
+                "line": 30,
+                "column": 5
+              },
+              "end": {
+                "line": 37,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 35,
+              "column": 17
+            },
+            "end": {
+              "line": 35,
+              "column": 18
+            }
+          },
+          "replacement": "*",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_35_col_17_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_35_col_17_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 44.63049725,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 304.40746675,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with true",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::add_individual",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 40,
+                "column": 5
+              },
+              "end": {
+                "line": 53,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 41,
+              "column": 9
+            },
+            "end": {
+              "line": 52,
+              "column": 10
+            }
+          },
+          "replacement": "true",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_41_col_9.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_41_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 82.827585625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 344.3837035,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:41:9: replace MapElitesArchive::add_individual -> bool with false",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::add_individual",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 40,
+                "column": 5
+              },
+              "end": {
+                "line": 53,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 41,
+              "column": 9
+            },
+            "end": {
+              "line": 52,
+              "column": 10
+            }
+          },
+          "replacement": "false",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_41_col_9_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_41_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 67.357059375,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 377.427690916,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:43:35: replace > with == in MapElitesArchive::add_individual",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::add_individual",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 40,
+                "column": 5
+              },
+              "end": {
+                "line": 53,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 43,
+              "column": 35
+            },
+            "end": {
+              "line": 43,
+              "column": 36
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_43_col_35.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_43_col_35.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 55.305298708,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 378.285174875,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 60,
+              "column": 9
+            },
+            "end": {
+              "line": 84,
+              "column": 10
+            }
+          },
+          "replacement": "Some(Box::leak(Box::new(Default::default())))",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "Unviable",
+      "log_path": "log/src__evolution__map_elites.rs_line_60_col_9_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_60_col_9_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 3.877785958,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:43:35: replace > with < in MapElitesArchive::add_individual",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::add_individual",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 40,
+                "column": 5
+              },
+              "end": {
+                "line": 53,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 43,
+              "column": 35
+            },
+            "end": {
+              "line": 43,
+              "column": 36
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_43_col_35_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_43_col_35_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 68.394598625,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 361.69147775,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:43:35: replace > with >= in MapElitesArchive::add_individual",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::add_individual",
+            "return_type": "-> bool",
+            "span": {
+              "start": {
+                "line": 40,
+                "column": 5
+              },
+              "end": {
+                "line": 53,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 43,
+              "column": 35
+            },
+            "end": {
+              "line": 43,
+              "column": 36
+            }
+          },
+          "replacement": ">=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_43_col_35_002.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_43_col_35_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 67.549515709,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 365.928113292,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with None",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 60,
+              "column": 9
+            },
+            "end": {
+              "line": 84,
+              "column": 10
+            }
+          },
+          "replacement": "None",
+          "genre": "FnValue"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_60_col_9.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_60_col_9.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 90.590607709,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 335.801518084,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:64:27: replace <= with > in MapElitesArchive::select_parent",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 64,
+              "column": 27
+            },
+            "end": {
+              "line": 64,
+              "column": 29
+            }
+          },
+          "replacement": ">",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_64_col_27.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_64_col_27.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 81.897990666,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 377.757492917,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:73:50: replace > with == in MapElitesArchive::select_parent",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 73,
+              "column": 50
+            },
+            "end": {
+              "line": 73,
+              "column": 51
+            }
+          },
+          "replacement": "==",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_73_col_50.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_73_col_50.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 74.594242125,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 447.029896458,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:73:50: replace > with < in MapElitesArchive::select_parent",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 73,
+              "column": 50
+            },
+            "end": {
+              "line": 73,
+              "column": 51
+            }
+          },
+          "replacement": "<",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_73_col_50_001.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_73_col_50_001.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 48.918546834,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 382.3748645,
+          "process_status": {
+            "Failure": 101
+          },
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/evolution/map_elites.rs:73:50: replace > with >= in MapElitesArchive::select_parent",
+          "package": "anima-engine",
+          "file": "src/evolution/map_elites.rs",
+          "function": {
+            "function_name": "MapElitesArchive::select_parent",
+            "return_type": "-> Option<&EliteIndividual>",
+            "span": {
+              "start": {
+                "line": 55,
+                "column": 5
+              },
+              "end": {
+                "line": 85,
+                "column": 6
+              }
+            }
+          },
+          "span": {
+            "start": {
+              "line": 73,
+              "column": 50
+            },
+            "end": {
+              "line": 73,
+              "column": 51
+            }
+          },
+          "replacement": ">=",
+          "genre": "BinaryOperator"
+        }
+      },
+      "summary": "MissedMutant",
+      "log_path": "log/src__evolution__map_elites.rs_line_73_col_50_002.log",
+      "diff_path": "diff/src__evolution__map_elites.rs_line_73_col_50_002.diff",
+      "phase_results": [
+        {
+          "phase": "Build",
+          "duration": 114.786881958,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--no-run",
+            "--verbose",
+            "--package=anima-engine@0.1.0"
+          ]
+        },
+        {
+          "phase": "Test",
+          "duration": 308.797745042,
+          "process_status": "Success",
+          "argv": [
+            "/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo",
+            "test",
+            "--verbose",
+            "--package=anima-engine@0.1.0",
+            "--release"
+          ]
+        }
+      ]
+    }
+  ],
+  "total_mutants": 24,
+  "missed": 2,
+  "caught": 21,
+  "timeout": 0,
+  "unviable": 1,
+  "success": 0,
+  "start_time": "2026-08-11T07:55:04.982231Z",
+  "end_time": "2026-08-11T09:05:46.128515Z",
+  "cargo_mutants_version": "27.1.0"
+}

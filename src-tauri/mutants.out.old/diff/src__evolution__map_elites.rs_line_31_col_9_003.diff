@@ -1,0 +1,26 @@
+--- src/evolution/map_elites.rs
++++ replace MapElitesArchive::get_bin_coords -> (i32, i32) with (0, -1)
+@@ -23,22 +23,17 @@
+         Self {
+             grid: BTreeMap::new(),
+             grid_resolution,
+         }
+     }
+ 
+     // Chuyển đổi feature vector thành tọa độ ô lưới (Niche coordination)
+     pub fn get_bin_coords(&self, features: &[f32]) -> (i32, i32) {
+-        let f0 = features.first().cloned().unwrap_or(0.0);
+-        let f1 = features.get(1).cloned().unwrap_or(0.0);
+-        (
+-            (f0 / self.grid_resolution).floor() as i32,
+-            (f1 / self.grid_resolution).floor() as i32,
+-        )
++        (0, -1) /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn
+     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {
+         let coords = self.get_bin_coords(&individual.features);
+         if let Some(existing) = self.grid.get(&coords) {
+             if individual.fitness > existing.fitness {
+                 self.grid.insert(coords, individual);

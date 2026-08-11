@@ -1,0 +1,32 @@
+--- src/evolution/map_elites.rs
++++ replace MapElitesArchive::add_individual -> bool with false
+@@ -33,28 +33,17 @@
+         (
+             (f0 / self.grid_resolution).floor() as i32,
+             (f1 / self.grid_resolution).floor() as i32,
+         )
+     }
+ 
+     // Cập nhật cá thể ưu tú vào ô lưới nếu có fitness cao hơn
+     pub fn add_individual(&mut self, individual: EliteIndividual) -> bool {
+-        let coords = self.get_bin_coords(&individual.features);
+-        if let Some(existing) = self.grid.get(&coords) {
+-            if individual.fitness > existing.fitness {
+-                self.grid.insert(coords, individual);
+-                true
+-            } else {
+-                false
+-            }
+-        } else {
+-            self.grid.insert(coords, individual);
+-            true
+-        }
++        false /* ~ changed by cargo-mutants ~ */
+     }
+ 
+     pub fn select_parent(
+         &self,
+         selection_bias: f64,
+         rng: &mut impl rand::Rng,
+     ) -> Option<&EliteIndividual> {
+         if self.grid.is_empty() {

@@ -1,0 +1,524 @@
+
+*** src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))
+
+*** mutation diff:
+--- src/evolution/map_elites.rs
++++ replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))
+@@ -52,35 +52,11 @@
+         }
+     }
+ 
+     pub fn select_parent(
+         &self,
+         selection_bias: f64,
+         rng: &mut impl rand::Rng,
+     ) -> Option<&EliteIndividual> {
+-        if self.grid.is_empty() {
+-            return None;
+-        }
+-        use rand::seq::IteratorRandom;
+-        if selection_bias <= 1.0 {
+-            self.grid.values().choose(rng)
+-        } else {
+-            let k = (selection_bias.ceil() as usize).max(2);
+-            let mut best: Option<&EliteIndividual> = None;
+-            for _ in 0..k {
+-                if let Some(candidate) = self.grid.values().choose(rng) {
+-                    match best {
+-                        Some(b) => {
+-                            if candidate.fitness > b.fitness {
+-                                best = Some(candidate);
+-                            }
+-                        }
+-                        None => {
+-                            best = Some(candidate);
+-                        }
+-                    }
+-                }
+-            }
+-            best
+-        }
++        Some(Box::leak(Box::new(Default::default()))) /* ~ changed by cargo-mutants ~ */
+     }
+ }
+
+
+*** /Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo test --no-run --verbose --package=anima-engine@0.1.0
+       Fresh unicode-ident v1.0.24
+       Fresh proc-macro2 v1.0.106
+       Fresh quote v1.0.45
+       Fresh syn v2.0.117
+       Fresh libc v0.2.186
+       Fresh cfg-if v1.0.4
+       Fresh serde_derive v1.0.228
+       Fresh memchr v2.8.1
+       Fresh shlex v2.0.1
+       Fresh find-msvc-tools v0.1.9
+       Fresh cc v1.2.63
+       Fresh synstructure v0.13.2
+       Fresh zerofrom-derive v0.1.7
+       Fresh itoa v1.0.18
+       Fresh zerofrom v0.1.8
+       Fresh yoke-derive v0.8.2
+       Fresh autocfg v1.5.1
+       Fresh scopeguard v1.2.0
+       Fresh lock_api v0.4.14
+       Fresh serde_core v1.0.228
+       Fresh zerovec-derive v0.11.3
+       Fresh version_check v0.9.5
+       Fresh siphasher v1.0.3
+       Fresh displaydoc v0.2.6
+       Fresh once_cell v1.21.4
+       Fresh writeable v0.6.3
+       Fresh litemap v0.8.2
+       Fresh thiserror-impl v1.0.69
+       Fresh thiserror v1.0.69
+       Fresh zmij v1.0.21
+       Fresh utf8_iter v1.0.4
+       Fresh zerocopy-derive v0.8.52
+       Fresh zerocopy v0.8.52
+       Fresh icu_normalizer_data v2.2.0
+       Fresh icu_properties_data v2.2.0
+       Fresh hashbrown v0.17.1
+       Fresh equivalent v1.0.2
+       Fresh indexmap v2.14.0
+       Fresh phf_generator v0.13.1
+       Fresh aho-corasick v1.1.4
+       Fresh regex-syntax v0.8.11
+       Fresh regex-automata v0.4.14
+       Fresh crossbeam-utils v0.8.21
+       Fresh regex v1.12.4
+       Fresh rand_core v0.10.1
+       Fresh smallvec v1.15.1
+       Fresh byteorder v1.5.0
+       Fresh libm v0.2.16
+       Fresh num-traits v0.2.19
+       Fresh getrandom v0.3.4
+       Fresh serde v1.0.228
+       Fresh num-conv v0.2.2
+       Fresh time-core v0.1.8
+       Fresh powerfmt v0.2.0
+       Fresh deranged v0.5.8
+       Fresh chacha20 v0.10.0
+       Fresh stable_deref_trait v1.2.1
+       Fresh yoke v0.8.3
+       Fresh rand v0.10.1
+       Fresh phf_macros v0.13.1
+       Fresh getrandom v0.2.17
+       Fresh ahash v0.8.12
+       Fresh thiserror-impl v2.0.18
+       Fresh winnow v1.0.3
+       Fresh toml_parser v1.1.2+spec-1.1.0
+       Fresh thiserror v2.0.18
+       Fresh typeid v1.0.3
+       Fresh zerovec v0.11.6
+       Fresh phf_codegen v0.13.1
+       Fresh strsim v0.11.1
+       Fresh toml_writer v1.1.1+spec-1.1.0
+       Fresh ident_case v1.0.1
+       Fresh darling_core v0.23.0
+       Fresh option-ext v0.2.0
+       Fresh allocator-api2 v0.2.21
+       Fresh hashbrown v0.14.5
+       Fresh getrandom v0.4.2
+       Fresh darling_macro v0.23.0
+       Fresh unic-char-range v0.9.0
+       Fresh fnv v1.0.7
+       Fresh simd-adler32 v0.3.9
+       Fresh new_debug_unreachable v1.0.6
+       Fresh unic-common v0.9.0
+       Fresh pin-project-lite v0.2.17
+       Fresh unic-ucd-version v0.9.0
+       Fresh unic-char-property v0.9.0
+       Fresh darling v0.23.0
+       Fresh uuid v1.23.3
+       Fresh tinystr v0.8.3
+       Fresh parking_lot_core v0.9.12
+       Fresh string_cache_codegen v0.6.1
+       Fresh alloc-no-stdlib v2.0.4
+       Fresh utf-8 v0.7.6
+       Fresh precomputed-hash v0.1.1
+       Fresh base64 v0.22.1
+       Fresh alloc-stdlib v0.2.2
+       Fresh parking_lot v0.12.5
+       Fresh icu_locale_core v2.2.0
+       Fresh serde_with_macros v3.21.0
+       Fresh unic-ucd-ident v0.9.0
+       Fresh potential_utf v0.1.5
+       Fresh zerotrie v0.2.4
+       Fresh quick-xml v0.39.4
+       Fresh errno v0.3.14
+       Fresh adler2 v2.0.1
+       Fresh core-foundation-sys v0.8.7
+       Fresh miniz_oxide v0.8.9
+       Fresh icu_provider v2.2.0
+       Fresh icu_collections v2.2.0
+       Fresh string_cache v0.9.0
+       Fresh brotli-decompressor v5.0.1
+       Fresh serde_json v1.0.150
+       Fresh ppv-lite86 v0.2.21
+       Fresh dtoa v1.0.11
+       Fresh ctor-proc-macro v0.0.7
+       Fresh bitflags v1.3.2
+       Fresh log v0.4.32
+       Fresh dunce v1.0.5
+       Fresh same-file v1.0.6
+       Fresh walkdir v2.5.0
+       Fresh ctor v0.8.0
+       Fresh dtoa-short v0.3.5
+       Fresh rand_chacha v0.3.1
+       Fresh brotli v8.0.3
+       Fresh web_atoms v0.2.4
+       Fresh anyhow v1.0.102
+       Fresh crc32fast v1.5.0
+       Fresh tendril v0.5.0
+       Fresh derive_more-impl v2.1.1
+       Fresh cssparser-macros v0.6.1
+       Fresh glob v0.3.3
+       Fresh cssparser v0.36.0
+       Fresh derive_more v2.1.1
+       Fresh markup5ever v0.38.0
+       Fresh flate2 v1.1.9
+       Fresh icu_properties v2.2.0
+       Fresh icu_normalizer v2.2.0
+       Fresh objc2-exception-helper v0.1.1
+       Fresh signal-hook-registry v1.4.8
+       Fresh servo_arc v0.4.3
+       Fresh serde_derive_internals v0.29.1
+       Fresh bit-vec v0.8.0
+       Fresh hashbrown v0.12.3
+       Fresh bitflags v2.13.0
+       Fresh rustc-hash v2.1.2
+       Fresh objc2-encode v4.1.0
+       Fresh objc2 v0.6.4
+       Fresh selectors v0.36.1
+       Fresh indexmap v1.9.3
+       Fresh bit-set v0.8.0
+       Fresh schemars_derive v0.8.22
+       Fresh idna_adapter v1.2.2
+       Fresh html5ever v0.38.0
+       Fresh camino v1.2.2
+       Fresh cargo-platform v0.1.9
+       Fresh percent-encoding v2.3.2
+       Fresh dyn-clone v1.0.20
+       Fresh base64 v0.21.7
+       Fresh foldhash v0.2.0
+       Fresh dom_query v0.27.0
+       Fresh swift-rs v1.0.7
+       Fresh schemars v0.8.22
+       Fresh form_urlencoded v1.2.2
+       Fresh cargo_metadata v0.19.2
+       Fresh idna v1.1.0
+       Fresh fdeflate v0.3.7
+       Fresh crossbeam-epoch v0.9.18
+       Fresh bytes v1.11.1
+       Fresh derive-new v0.6.0
+       Fresh futures-core v0.3.32
+       Fresh crossbeam-deque v0.8.6
+       Fresh url v2.5.8
+       Fresh time-macros v0.2.27
+       Fresh half v2.7.1
+       Fresh crossbeam-channel v0.5.15
+       Fresh typenum v1.20.1
+       Fresh generic-array v0.14.7
+       Fresh time v0.3.47
+       Fresh rayon-core v1.13.0
+       Fresh block2 v0.6.2
+       Fresh objc2-core-foundation v0.3.2
+       Fresh dirs-sys v0.5.0
+       Fresh spin v0.9.8
+       Fresh foreign-types-macros v0.2.3
+       Fresh foreign-types-shared v0.3.1
+       Fresh raw-window-handle v0.6.2
+       Fresh foreign-types v0.5.0
+       Fresh burn-common v0.13.2
+       Fresh dirs v6.0.0
+       Fresh objc2-foundation v0.3.2
+       Fresh png v0.17.16
+       Fresh rustc_version v0.4.1
+       Fresh toml_datetime v0.7.5+spec-1.1.0
+       Fresh pkg-config v0.3.33
+       Fresh cfg_aliases v0.1.1
+       Fresh either v1.16.0
+       Fresh vcpkg v0.2.15
+       Fresh fastrand v2.4.1
+       Fresh rustc-hash v1.1.0
+       Fresh winnow v0.7.15
+       Fresh zeroize v1.8.2
+       Fresh rustls-pki-types v1.14.1
+       Fresh toml v0.9.12+spec-1.1.0
+       Fresh rayon v1.12.0
+       Fresh embed-resource v3.0.9
+       Fresh objc2-app-kit v0.3.2
+       Fresh crypto-common v0.1.7
+       Fresh block-buffer v0.10.4
+       Fresh rand_distr v0.4.3
+       Fresh core-foundation v0.9.4
+       Fresh tracing-core v0.1.36
+       Fresh futures-io v0.3.32
+       Fresh heck v0.5.0
+       Fresh burn-tensor v0.13.2
+       Fresh digest v0.10.7
+       Fresh tauri-winres v0.3.6
+       Fresh cargo_toml v0.22.3
+       Fresh signal-hook v0.3.18
+       Fresh erased-serde v0.4.10
+       Fresh http v1.4.2
+       Fresh dirs-sys v0.4.1
+       Fresh faster-hex v0.9.0
+       Fresh cpufeatures v0.2.17
+       Fresh bytemuck v1.25.0
+       Fresh rand_core v0.6.4
+       Fresh slab v0.4.12
+       Fresh lazy_static v1.5.0
+       Fresh rand v0.8.6
+       Fresh gix-hash v0.13.3
+       Fresh dirs v5.0.1
+       Fresh tauri-build v2.6.2
+       Fresh libsqlite3-sys v0.27.0
+       Fresh hashlink v0.8.4
+       Fresh dpi v0.1.2
+       Fresh socket2 v0.6.4
+       Fresh mio v1.2.1
+       Fresh tokio-macros v2.7.0
+       Fresh weezl v0.1.12
+       Fresh fallible-iterator v0.3.0
+       Fresh parking v2.2.1
+       Fresh fallible-streaming-iterator v0.1.9
+       Fresh gix-trace v0.1.20
+       Fresh gix-features v0.36.1
+       Fresh rusqlite v0.30.0
+       Fresh tokio v1.52.3
+       Fresh objc_exception v0.1.2
+       Fresh paste v1.0.15
+       Fresh phf_generator v0.11.3
+       Fresh rustix v1.1.4
+       Fresh jpeg-decoder v0.3.2
+       Fresh jsonptr v0.6.3
+       Fresh core-foundation v0.10.1
+       Fresh zune-inflate v0.2.54
+       Fresh cfb v0.7.3
+       Fresh scheduled-thread-pool v0.2.7
+       Fresh concurrent-queue v2.5.0
+       Fresh phf_shared v0.13.1
+       Fresh serde_spanned v1.1.1
+       Fresh toml_datetime v1.1.1+spec-1.1.0
+       Fresh malloc_buf v0.0.6
+       Fresh bit_field v0.10.3
+       Fresh untrusted v0.9.0
+       Fresh lebe v0.5.3
+       Fresh termcolor v1.4.1
+       Fresh color_quant v1.1.0
+       Fresh toml_datetime v0.6.11
+       Fresh bit-vec v0.6.3
+       Fresh futures-sink v0.3.32
+       Fresh unicode-width v0.1.14
+       Fresh winnow v0.5.40
+       Fresh toml_edit v0.21.1
+       Fresh codespan-reporting v0.11.1
+       Fresh futures-channel v0.3.32
+       Fresh bit-set v0.5.3
+       Fresh gif v0.13.3
+       Fresh exr v1.74.0
+       Fresh ring v0.17.14
+       Fresh objc v0.2.7
+       Fresh toml v1.1.2+spec-1.1.0
+       Fresh phf v0.13.1
+       Fresh r2d2 v0.8.10
+       Fresh infer v0.19.0
+       Fresh core-graphics-types v0.2.0
+       Fresh json-patch v3.0.1
+       Fresh tiff v0.9.1
+       Fresh tempfile v3.27.0
+       Fresh phf_codegen v0.11.3
+       Fresh cookie v0.18.1
+       Fresh rustversion v1.0.22
+       Fresh gix-fs v0.8.1
+       Fresh qoi v0.4.1
+       Fresh serde-untagged v0.1.9
+       Fresh core-graphics-types v0.1.3
+       Fresh objc2-web-kit v0.3.2
+       Fresh plist v1.9.0
+       Fresh urlpattern v0.3.0
+       Fresh serde_with v3.21.0
+       Fresh dashmap v5.5.3
+       Fresh rmp v0.8.15
+       Fresh parse-zoneinfo v0.3.1
+       Fresh csv-core v0.1.13
+       Fresh thread_local v1.1.9
+       Fresh num_cpus v1.17.0
+       Fresh futures-macro v0.3.32
+       Fresh unicode-xid v0.2.6
+       Fresh heck v0.4.1
+       Fresh futures-task v0.3.32
+       Fresh virtue v0.0.18
+       Fresh hexf-parse v0.2.1
+       Fresh ryu v1.0.23
+       Fresh block v0.1.6
+       Fresh semver v1.0.28
+       Fresh tauri-utils v2.9.2
+       Fresh metal v0.27.0
+       Fresh csv v1.4.0
+       Fresh naga v0.19.2
+       Fresh bincode_derive v2.0.1
+       Fresh futures-util v0.3.32
+       Fresh strum_macros v0.25.3
+       Fresh chrono-tz-build v0.2.1
+       Fresh rmp-serde v1.3.1
+       Fresh gix-tempfile v11.0.1
+       Fresh image v0.24.9
+       Fresh core-graphics v0.25.0
+       Fresh r2d2_sqlite v0.23.0
+       Fresh rustls-webpki v0.103.13
+       Fresh bevy_macro_utils v0.13.2
+       Fresh event-listener v5.4.1
+       Fresh serde_rusqlite v0.34.0
+       Fresh sharded-slab v0.1.7
+       Fresh sanitize-filename v0.5.0
+       Fresh sha2 v0.10.9
+       Fresh burn-autodiff v0.13.2
+       Fresh tracing-log v0.2.0
+       Fresh ico v0.5.0
+       Fresh dispatch2 v0.3.1
+       Fresh tauri-plugin v2.6.2
+       Fresh wgpu-types v0.19.2
+       Fresh libloading v0.8.9
+       Fresh fixedbitset v0.4.2
+       Fresh strum v0.25.0
+       Fresh arrayvec v0.7.6
+       Fresh nu-ansi-term v0.50.3
+       Fresh unicode-segmentation v1.13.3
+       Fresh subtle v2.6.1
+       Fresh profiling v1.0.18
+       Fresh wgpu-hal v0.19.5
+       Fresh rustls v0.23.40
+       Fresh keyboard-types v0.7.0
+       Fresh tracing-subscriber v0.3.23
+       Fresh burn-dataset v0.13.2
+       Fresh petgraph v0.6.5
+       Fresh tao v0.35.3
+       Fresh tauri-codegen v2.6.2
+       Fresh event-listener-strategy v0.5.4
+       Fresh tauri-runtime v2.11.2
+       Fresh bincode v2.0.0-rc.3
+       Fresh wry v0.55.1
+       Fresh futures-lite v2.6.1
+       Fresh tracing v0.1.44
+       Fresh webpki-roots v1.0.7
+       Fresh thread-tree v0.3.3
+       Fresh burn-derive v0.13.2
+       Fresh png v0.18.1
+       Fresh security-framework-sys v2.17.0
+       Fresh hashbrown v0.13.2
+       Fresh phf_shared v0.11.3
+       Fresh os_pipe v1.2.3
+       Fresh bevy_utils_proc_macros v0.13.2
+       Fresh serialize-to-javascript-impl v0.1.2
+       Fresh async-task v4.7.1
+       Fresh md5 v0.7.0
+       Fresh rawpointer v0.2.1
+       Fresh symlink v0.1.0
+       Fresh nonmax v0.5.5
+       Fresh web-time v0.2.4
+       Fresh bevy_utils v0.13.2
+       Fresh tracing-appender v0.2.5
+       Fresh matrixmultiply v0.3.10
+       Fresh burn-compute v0.13.2
+       Fresh async-executor v1.14.0
+       Fresh serialize-to-javascript v0.1.2
+       Fresh sigchld v0.2.4
+       Fresh phf v0.11.3
+       Fresh text_placeholder v0.5.1
+       Fresh security-framework v2.11.1
+       Fresh muda v0.19.2
+       Fresh burn-core v0.13.2
+       Fresh webpki-roots v0.26.11
+       Fresh tauri-runtime-wry v2.11.2
+       Fresh async-channel v2.5.0
+       Fresh wgpu-core v0.19.4
+       Fresh tauri-macros v2.6.2
+       Fresh httparse v1.10.1
+       Fresh syn v1.0.109
+       Fresh bevy_reflect_derive v0.13.2
+       Fresh futures-executor v0.3.32
+       Fresh sha1 v0.10.6
+       Fresh burn-fusion v0.13.2
+       Fresh window-vibrancy v0.6.0
+       Fresh rustls-pemfile v2.2.0
+       Fresh num-complex v0.4.6
+       Fresh num-integer v0.1.46
+       Fresh chrono v0.4.45
+       Fresh serde_repr v0.1.20
+       Fresh async-trait v0.1.89
+       Fresh deadpool-runtime v0.1.4
+       Fresh static_assertions v1.1.0
+       Fresh downcast-rs v1.2.1
+       Fresh embed_plist v1.2.2
+       Fresh mime v0.3.17
+       Fresh bevy_ptr v0.13.2
+       Fresh retain_mut v0.1.9
+       Fresh pathdiff v0.2.3
+       Fresh data-encoding v2.11.0
+       Fresh tungstenite v0.21.0
+       Fresh open v5.3.5
+       Fresh deadpool v0.9.5
+       Fresh bevy_reflect v0.13.2
+       Fresh tauri v2.11.2
+       Fresh wgpu v0.19.4
+       Fresh chrono-tz v0.8.6
+       Fresh ndarray v0.15.6
+       Fresh rustls-native-certs v0.7.3
+       Fresh burn-jit v0.13.2
+       Fresh futures v0.3.32
+       Fresh delegate v0.10.0
+       Fresh bevy_tasks v0.13.2
+       Fresh burn-train v0.13.2
+       Fresh shared_child v1.1.1
+       Fresh tokio-rustls v0.26.4
+       Fresh bevy_ecs_macros v0.13.2
+       Fresh futures-intrusive v0.5.0
+       Fresh encoding_rs v0.8.35
+       Fresh neo4rs-macros v0.3.0
+       Fresh pollster v0.3.0
+       Fresh burn-wgpu v0.13.2
+       Fresh neo4rs v0.7.3
+       Fresh tauri-plugin-shell v2.3.5
+       Fresh bevy_ecs v0.13.2
+       Fresh burn v0.13.2
+       Fresh burn-ndarray v0.13.2
+       Fresh tokio-tungstenite v0.21.0
+       Fresh ureq v2.12.1
+       Fresh glam v0.25.0
+       Fresh socket2 v0.5.10
+       Fresh dotenvy v0.15.7
+       Dirty anima-engine v0.1.0 (/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp): the file `src/evolution/map_elites.rs` has changed (1786438400.662599351s, 7m 12s after last build at 1786437968.607165849s)
+   Compiling anima-engine v0.1.0 (/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp)
+     Running `/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name anima_engine_lib --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=03ab35f39f1cd981 -C extra-filename=-6b2846fcf6e2ae14 --out-dir /private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps -C incremental=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/incremental -L dependency=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps --extern bevy_ecs=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libbevy_ecs-d995b98c722aaee8.rmeta --extern bincode=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libbincode-92fcec8129d49d4d.rmeta --extern burn=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn-e2cd33b5396d1d67.rmeta --extern burn_ndarray=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn_ndarray-9849395c2d70e0d1.rmeta --extern burn_wgpu=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn_wgpu-bcbcf76930b70108.rmeta --extern crossbeam_channel=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libcrossbeam_channel-0914f17f873031b0.rmeta --extern dotenvy=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libdotenvy-40ce069f36585d24.rmeta --extern futures_util=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libfutures_util-91291f29bd1f8bbb.rmeta --extern glam=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libglam-74c12a12d8d67a07.rmeta --extern neo4rs=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libneo4rs-5a5a2215e2a83869.rmeta --extern rand=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/librand-efe0337e80bad617.rmeta --extern rayon=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/librayon-fc2e3eaf13060dfa.rmeta --extern serde=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libserde-04a0be56015c54d8.rmeta --extern serde_json=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libserde_json-e6e4327f05f01f3d.rmeta --extern socket2=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libsocket2-529d4271c336199f.rmeta --extern tauri=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtauri-f17d5477b7ac654c.rmeta --extern tauri_plugin_shell=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtauri_plugin_shell-8fbf092af3d7cbfd.rmeta --extern tokio=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtokio-4f5b4947db34d3f9.rmeta --extern tokio_tungstenite=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtokio_tungstenite-9167d6859f74e16f.rmeta --extern ureq=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libureq-08e556da2a3b800c.rmeta --extern uuid=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libuuid-6d45cb487ff577f9.rmeta -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/libsqlite3-sys-4b9875ae60d26310/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/objc_exception-90ae20be71ead3cc/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/ring-d068fe6099d1afa5/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/objc2-exception-helper-db1b14c2ec955a9e/out --cfg desktop --cfg dev --check-cfg 'cfg(desktop)' --check-cfg 'cfg(mobile)' --check-cfg 'cfg(dev)'`
+error[E0277]: the trait bound `EliteIndividual: std::default::Default` is not satisfied
+  --> src/evolution/map_elites.rs:60:33
+   |
+60 |         Some(Box::leak(Box::new(Default::default()))) /* ~ changed by cargo-mutants ~ */
+   |                                 ^^^^^^^^^^^^^^^^^^ the trait `std::default::Default` is not implemented for `EliteIndividual`
+   |
+help: consider annotating `EliteIndividual` with `#[derive(Default)]`
+   |
+ 5 + #[derive(Default)]
+ 6 | pub struct EliteIndividual {
+   |
+
+warning: unused import: `rand::Rng`
+ --> src/evolution/mutation.rs:3:5
+  |
+3 | use rand::Rng;
+  |     ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0277`.
+warning: `anima-engine` (lib) generated 1 warning
+error: could not compile `anima-engine` (lib) due to 1 previous error; 1 warning emitted
+
+Caused by:
+  process didn't exit successfully: `/Users/duongnad/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc --crate-name anima_engine_lib --edition=2021 src/lib.rs --error-format=json --json=diagnostic-rendered-ansi,artifacts,future-incompat --crate-type lib --emit=dep-info,metadata,link -C embed-bitcode=no -C debuginfo=2 -C split-debuginfo=unpacked --check-cfg 'cfg(docsrs,test)' --check-cfg 'cfg(feature, values())' -C metadata=03ab35f39f1cd981 -C extra-filename=-6b2846fcf6e2ae14 --out-dir /private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps -C incremental=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/incremental -L dependency=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps --extern bevy_ecs=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libbevy_ecs-d995b98c722aaee8.rmeta --extern bincode=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libbincode-92fcec8129d49d4d.rmeta --extern burn=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn-e2cd33b5396d1d67.rmeta --extern burn_ndarray=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn_ndarray-9849395c2d70e0d1.rmeta --extern burn_wgpu=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libburn_wgpu-bcbcf76930b70108.rmeta --extern crossbeam_channel=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libcrossbeam_channel-0914f17f873031b0.rmeta --extern dotenvy=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libdotenvy-40ce069f36585d24.rmeta --extern futures_util=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libfutures_util-91291f29bd1f8bbb.rmeta --extern glam=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libglam-74c12a12d8d67a07.rmeta --extern neo4rs=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libneo4rs-5a5a2215e2a83869.rmeta --extern rand=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/librand-efe0337e80bad617.rmeta --extern rayon=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/librayon-fc2e3eaf13060dfa.rmeta --extern serde=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libserde-04a0be56015c54d8.rmeta --extern serde_json=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libserde_json-e6e4327f05f01f3d.rmeta --extern socket2=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libsocket2-529d4271c336199f.rmeta --extern tauri=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtauri-f17d5477b7ac654c.rmeta --extern tauri_plugin_shell=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtauri_plugin_shell-8fbf092af3d7cbfd.rmeta --extern tokio=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtokio-4f5b4947db34d3f9.rmeta --extern tokio_tungstenite=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libtokio_tungstenite-9167d6859f74e16f.rmeta --extern ureq=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libureq-08e556da2a3b800c.rmeta --extern uuid=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/deps/libuuid-6d45cb487ff577f9.rmeta -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/libsqlite3-sys-4b9875ae60d26310/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/objc_exception-90ae20be71ead3cc/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/ring-d068fe6099d1afa5/out -L native=/private/var/folders/cd/zk3m8vps03vg88p8k8c3j_gw0000gn/T/cargo-mutants-src-tauri-MkX6go.tmp/target/debug/build/objc2-exception-helper-db1b14c2ec955a9e/out --cfg desktop --cfg dev --check-cfg 'cfg(desktop)' --check-cfg 'cfg(mobile)' --check-cfg 'cfg(dev)'` (exit status: 1)
+
+*** result: Failure(101)
