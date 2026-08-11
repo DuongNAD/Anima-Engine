@@ -95,3 +95,16 @@ Quy tắc ghi:
 - **Test khoá lại:** chưa có — cần refactor `FallbackLineageTracker` (thêm constructor nhận status mock hoặc trait `Neo4jClient`) để test được.
 - **Trạng thái:** OPEN
 
+### F-005 — Ba cặp phụ thuộc vòng giữa các module lõi
+- **Ngày:** 2026-08-11
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/{ai,core,physics}/`
+- **Phát hiện bởi:** dataflow
+- **Triệu chứng:** đồ thị phụ thuộc thật (`cargo modules dependencies --lib`) cho
+  thấy ba cặp trỏ lẫn nhau: `ai ↔ core`, `ai ↔ physics`, `core ↔ physics`.
+  Nghĩa là không module nào trong ba module lõi có thể test, đọc hay thay thế độc
+  lập với hai module kia. Đây cũng là lý do F-002 khó sửa: muốn có `test_world()`
+  dùng chung thì phải quyết định nó thuộc về đâu, mà cả ba đều phụ thuộc nhau.
+- **Tái hiện:** `just dataflow-truth && just dataflow-verify`
+- **Test khoá lại:** chưa có — cần khai contract phụ thuộc rồi cho CI chặn
+- **Trạng thái:** OPEN
