@@ -51,12 +51,22 @@ determinism:
 # jobs mặc định 4: bằng số P-core của máy Apple Silicon phổ thông. Đặt cao hơn
 # thì phần dôi rơi xuống E-core, chậm hơn nhiều mà vẫn tranh bộ nhớ với P-core —
 # tổng thời gian tệ đi chứ không tốt lên.
+#
+# CARGO_BUILD_JOBS là thứ dễ bỏ sót nhất: `-j N` của cargo-mutants chạy N tiến
+# trình cargo, NHƯNG mỗi cargo lại tự build với TOÀN BỘ số core. Không siết lại
+# thì song song thật = N × ncpu (đo được: 4 × 10 = load 27 trên máy 10 core), và
+# mỗi lượt test chậm gấp 3 lần chạy đơn — 263s so với 89s. Giảm song song lại
+# NHANH HƠN. Công thức: jobs × CARGO_BUILD_JOBS ≈ ncpu.
 hunt shard="1" jobs="4":
-    -cd "$HD_CRATE" && cargo mutants --iterate --shard {{shard}}/5 -j {{jobs}}
+    -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
+     cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
+     cargo mutants --iterate --shard {{shard}}/5 -j {{jobs}}
 
 # Quét hẹp một file. Dùng cái này nhiều hơn `hunt`.
 hunt-file file jobs="4":
-    -cd "$HD_CRATE" && cargo mutants --iterate --file {{file}} -j {{jobs}}
+    -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
+     cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
+     cargo mutants --iterate --file {{file}} -j {{jobs}}
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
 list-missed:
