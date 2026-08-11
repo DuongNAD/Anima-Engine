@@ -14,8 +14,8 @@ test:
     cd "$HD_CRATE" && cargo test --release
 
 # CỔNG DUY NHẤT. Không thấy "QUA CONG" nghĩa là chưa xong.
-verify mutant="":
-    ./scripts/verify.sh "{{mutant}}"
+verify mutant="" sub="":
+    ./scripts/verify.sh "{{mutant}}" "{{sub}}"
 
 clippy:
     cd "$HD_CRATE" && cargo clippy --all-targets -- -W clippy::pedantic
@@ -80,20 +80,24 @@ hunt shard="1" jobs="2":
 # ĐÁNH ĐỔI PHẢI BIẾT: thu hẹp làm cổng LỎNG hơn — mutant bị test đã loại giết
 # thì sẽ báo "missed" giả, đẻ task rác. Dùng cho `hunt` (đi tìm) thì được;
 # `verify` (phán quyết) luôn chạy toàn suite, không bao giờ thu hẹp.
+# sub="anima-core" để quét crate con. Tách crate thuần ra khỏi vỏ ứng dụng làm
+# mutation nhanh hàng trăm lần — đo được trên Anima-Engine: 24 mutant/55 phút ở
+# crate chính so với 135 mutant/2 phút ở crate con. Quét crate con TRƯỚC.
+#
 # `file` nhận cả glob, NHỚ đặt trong nháy khi gọi:
 #     just hunt-file 'src/evolution/*.rs'
 # Không nháy thì shell bung glob ra nhiều đường dẫn, cargo-mutants chỉ nhận một.
 # Xem test nào liên quan:  grep -rl "<tên module>" $HD_CRATE/$HD_TEST
-hunt-file file jobs="2" tests="":
+hunt-file file jobs="2" tests="" sub="":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
      ta=""; for t in $(echo "{{tests}}" | tr ',' ' '); do ta="$ta --test $t"; done; \
-     cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
+     cd "$HD_CRATE/{{sub}}" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
      nice -n 10 cargo mutants --iterate --copy-target true --file "{{file}}" -j {{jobs}} \
        ${ta:+--} $ta
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
-list-missed:
-    @cat "$HD_CRATE/mutants.out/missed.txt" 2>/dev/null || echo "chua co missed.txt — chay 'just hunt' truoc"
+list-missed sub="":
+    @cat "$HD_CRATE/{{sub}}/mutants.out/missed.txt" 2>/dev/null || echo "chua co missed.txt — chay 'just hunt' truoc"
 
 # In prompt dán thẳng cho agent, mỗi mutant một cái.
 tasks n="5":
@@ -105,8 +109,8 @@ tasks n="5":
 skip re reason:
     @./scripts/skip.sh "{{re}}" "{{reason}}"
 
-mutation-score:
-    @cd "$HD_CRATE" && c=$(grep -c . mutants.out/caught.txt 2>/dev/null || echo 0); \
+mutation-score sub="":
+    @cd "$HD_CRATE/{{sub}}" && c=$(grep -c . mutants.out/caught.txt 2>/dev/null || echo 0); \
      m=$(grep -c . mutants.out/missed.txt 2>/dev/null || echo 0); \
      t=$((c+m)); [ "$t" -eq 0 ] && echo "chua co du lieu" || \
      echo "caught=$c missed=$m score=$((100*c/t))%"

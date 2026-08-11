@@ -9,6 +9,8 @@ ROOT=$(git rev-parse --show-toplevel); cd "$ROOT"
 source .hardening.env
 
 MUTANT="${1:-}"
+# Crate con chua mutant (vd "anima-core"). Rong = crate chinh.
+SUB="${2:-}"
 # Vung ghi: thu muc test cua crate chinh VA cua moi crate con trong workspace.
 # Tach crate con (vi du anima-core) la viec nen lam — no mo khoa fuzz/miri va lam
 # mutation nhanh hang tram lan — nhung neu cong chi cho ghi vao $HD_CRATE/$HD_TEST
@@ -96,7 +98,7 @@ if [ -n "$MUTANT" ]; then
   # co giai thich. Ma cargo-mutants tra ma khac 0 chinh la truong hop mutant CON
   # SONG — tuc duong quan trong nhat cua cong se im lang.
   set +e
-  OUT=$( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
+  OUT=$( cd "$HD_CRATE/$SUB" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
            --baseline skip --output mutants.verify 2>&1 )
   RC=$?
   set -e
