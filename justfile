@@ -99,6 +99,12 @@ list-missed:
 tasks n="5":
     @./scripts/tasks.sh {{n}}
 
+# Loại mutant KHÔNG giết được, kèm lý do bắt buộc. Đọc kỹ trước khi dùng:
+# đây KHÔNG phải đường thoát cho mutant khó — chỉ dành cho equivalent mutant,
+# tức thứ mà mọi giá trị thay thế đều cho hành vi y hệt.
+skip re reason:
+    @./scripts/skip.sh "{{re}}" "{{reason}}"
+
 mutation-score:
     @cd "$HD_CRATE" && c=$(grep -c . mutants.out/caught.txt 2>/dev/null || echo 0); \
      m=$(grep -c . mutants.out/missed.txt 2>/dev/null || echo 0); \

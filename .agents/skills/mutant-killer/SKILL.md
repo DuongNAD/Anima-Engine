@@ -39,6 +39,32 @@ Nhiều dòng = nhiều task. Không bao giờ gộp.
 - Sửa file config mutation để loại mutant thay vì giết nó
 - Báo hoàn thành khi chưa thấy `QUA CONG`
 
+## Equivalent mutant — nhận ra sớm, đừng cố giết
+
+Có loại mutant **không thể giết được**: mọi giá trị thay thế đều cho hành vi y hệt
+trong môi trường test. Cố viết test cho nó là đốt quota vào việc không tồn tại.
+
+Dấu hiệu, kiểm theo đúng thứ tự này **trước** khi viết dòng test đầu tiên:
+
+1. Giá trị mutant thay vào có **trùng** giá trị thật trong test không?
+   Ví dụ `is_online()` luôn `false` khi không có dịch vụ ngoài → thay bằng `false`
+   là không đổi gì.
+2. Hàm chỉ ghi vào field **private không có getter**, và field đó chỉ được đọc
+   trong nhánh không bao giờ chạy?
+3. Hàm chỉ có tác dụng phụ ra ngoài (log, mạng, đĩa) mà test không quan sát?
+
+Trúng bất kỳ dấu hiệu nào → **dừng**. Không viết test. Làm hai việc:
+
+```
+just skip "<regex khớp mutant>" "<vì sao mọi giá trị thay thế đều cho hành vi y hệt, và điều kiện gỡ ra>"
+```
+
+rồi ghi một mục `TEST-GAP` vào `FINDINGS.md`.
+
+**Cẩn thận:** "khó test" **không phải** equivalent. Equivalent nghĩa là *không tồn
+tại* test nào phân biệt được với API hiện tại — chứ không phải bạn chưa nghĩ ra.
+Không chắc thì cứ viết test; cổng sẽ phán hộ.
+
 ## Đọc kết quả verify cho đúng
 
 `TU CHOI: mutant van song` có **hai** nguyên nhân khác hẳn nhau:
