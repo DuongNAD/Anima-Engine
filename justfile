@@ -77,12 +77,15 @@ hunt shard="1" jobs="4":
 # ĐÁNH ĐỔI PHẢI BIẾT: thu hẹp làm cổng LỎNG hơn — mutant bị test đã loại giết
 # thì sẽ báo "missed" giả, đẻ task rác. Dùng cho `hunt` (đi tìm) thì được;
 # `verify` (phán quyết) luôn chạy toàn suite, không bao giờ thu hẹp.
+# `file` nhận cả glob, NHỚ đặt trong nháy khi gọi:
+#     just hunt-file 'src/evolution/*.rs'
+# Không nháy thì shell bung glob ra nhiều đường dẫn, cargo-mutants chỉ nhận một.
 # Xem test nào liên quan:  grep -rl "<tên module>" $HD_CRATE/$HD_TEST
 hunt-file file jobs="4" tests="":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
      ta=""; for t in $(echo "{{tests}}" | tr ',' ' '); do ta="$ta --test $t"; done; \
      cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
-     cargo mutants --iterate --copy-target true --file {{file}} -j {{jobs}} \
+     cargo mutants --iterate --copy-target true --file "{{file}}" -j {{jobs}} \
        ${ta:+--} $ta
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
