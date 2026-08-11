@@ -35,6 +35,7 @@ fn test_stress_boundary_time_speed() {
 
     for &time_speed in &cases {
         let mut world = World::new();
+        world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
 
         // Initialize resources
         world.insert_resource(TimeStep(1.0 / 60.0));
@@ -115,6 +116,7 @@ fn test_stress_boundary_fertility() {
 
     for &fertility in &cases {
         let mut world = World::new();
+        world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
 
         // Initialize resources
         world.insert_resource(TimeStep(1.0 / 60.0));
@@ -190,6 +192,7 @@ fn test_thread_safety_high_rate_updates() {
     let running_sim = Arc::clone(&running);
     let sim_handle = thread::spawn(move || {
         let mut world = World::new();
+        world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
         world.insert_resource(TimeStep(1.0 / 60.0));
         world.insert_resource(FloraSpawnSettings::default());
         world.insert_resource(BevyEnvironmentSettings(settings_sim));

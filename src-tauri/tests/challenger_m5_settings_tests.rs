@@ -15,6 +15,7 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 /// Helper to setup Bevy World with resources needed for sync_environment_settings_system
 fn setup_test_world(settings: EnvironmentSettings) -> World {
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0 / 60.0));
     world.insert_resource(FloraSpawnSettings::default());
     world.insert_resource(BevyEnvironmentSettings(Arc::new(Mutex::new(settings))));
@@ -219,6 +220,7 @@ fn test_settings_high_rate_thread_safety() {
     });
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0 / 60.0));
     world.insert_resource(FloraSpawnSettings::default());
     world.insert_resource(BevyEnvironmentSettings(shared_settings));

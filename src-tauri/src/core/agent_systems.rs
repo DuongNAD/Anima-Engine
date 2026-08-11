@@ -258,6 +258,7 @@ pub fn check_epoch_completion_system(
     )>,
     bounds: Res<crate::core::ecs::MapBounds>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    mut sim_rng: ResMut<crate::core::rng::SimRng>,
 ) {
     epoch_manager.current_epoch_ticks += 1;
     if epoch_manager.current_epoch_ticks >= epoch_manager.ticks_per_epoch {
@@ -266,7 +267,7 @@ pub fn check_epoch_completion_system(
 
         let dt = time_step.0;
         let mut stats_batch = Vec::new();
-        let mut rng = rand::thread_rng();
+        let rng = &mut sim_rng.0;
         use rand::Rng;
 
         for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in agent_query.iter_mut() {

@@ -22,6 +22,7 @@ fn test_flora_growth_and_withering() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0)); // dt = 1.0
     world.insert_resource(MapBounds::default());
     world.insert_resource(ActiveEnvironmentEvent::default());
@@ -100,6 +101,7 @@ fn test_flora_growth_biomes_and_stress() {
 
     for (biome, water_depth, expected_moisture) in biomes_to_test {
         let mut world = World::new();
+        world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
         world.insert_resource(TimeStep(1.0)); // dt = 1.0
         world.insert_resource(MapBounds::default());
         world.insert_resource(ActiveEnvironmentEvent::default());
@@ -144,6 +146,7 @@ fn test_flora_drought_stress() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0)); // dt = 1.0
     world.insert_resource(MapBounds::default());
     // ResourceDrought active event
@@ -188,6 +191,7 @@ fn test_flora_spontaneous_spawn() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0));
     world.insert_resource(MapBounds {
         min: glam::Vec3::new(-10.0, 0.0, -10.0),
@@ -228,6 +232,7 @@ fn test_flora_vegetative_seeding() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0));
     world.insert_resource(MapBounds {
         min: glam::Vec3::new(-10.0, 0.0, -10.0),
@@ -279,6 +284,7 @@ fn test_zero_heap_allocation_flora_systems() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0 / 60.0));
     world.insert_resource(MapBounds::default());
     world.insert_resource(ActiveEnvironmentEvent::default());

@@ -16,6 +16,7 @@ fn test_toroidal_wrapping_boundary_values() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     let bounds = MapBounds {
         min: glam::Vec3::new(-10.0, 0.0, -10.0),
         max: glam::Vec3::new(10.0, 10.0, 10.0),
@@ -102,6 +103,7 @@ fn test_vegetative_seeding_toroidal_wrapping() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(anima_engine_lib::ai::cpg::TimeStep(1.0));
     let bounds = MapBounds {
         min: glam::Vec3::new(-10.0, 0.0, -10.0),
@@ -186,6 +188,7 @@ fn test_spawning_density_limits_under_long_runs() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(anima_engine_lib::ai::cpg::TimeStep(1.0));
     let bounds = MapBounds {
         min: glam::Vec3::new(-10.0, 0.0, -10.0),
@@ -255,6 +258,7 @@ fn test_spawning_density_limits_boundary_max_zero() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(anima_engine_lib::ai::cpg::TimeStep(1.0));
     let bounds = MapBounds::default();
     world.insert_resource(bounds);
@@ -304,6 +308,7 @@ fn test_spawning_density_limits_boundary_max_one() {
     let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
     let mut world = World::new();
+    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(anima_engine_lib::ai::cpg::TimeStep(1.0));
     let bounds = MapBounds::default();
     world.insert_resource(bounds);
