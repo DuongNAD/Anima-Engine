@@ -27,6 +27,19 @@ KHÔNG tự chế lệnh cargo/pytest khác.
 - Tối đa **3 lần** thử sửa. Lần thứ 4 phải dừng và báo thất bại.
 - Horizon: nếu quá **20 tool call** mà chưa qua cổng → dừng, báo "task quá lớn".
 
+## Ngoại lệ DUY NHẤT với luật "cấm sửa code nguồn"
+
+Hai skill dưới đây được sửa `src-tauri/src`, và **chỉ khi cả ba điều kiện đúng**:
+
+| Skill | Nhánh bắt buộc | Được sửa gì | Cổng thay thế |
+|---|---|---|---|
+| `determinism-fixer` | `hardening/phase0-determinism` | chỉ **nguồn** ngẫu nhiên / đồng hồ, không đổi thuật toán | `just test` giữ nguyên số test pass, `just flaky 5` = 5/5 |
+| `perf-guard` | `hardening/perf-*` | chỉ hot path đã có dữ liệu profiler | `just perf-gate` |
+
+Ngoài hai dòng trên — mọi skill khác, mọi nhánh khác — **cấm tuyệt đối**, không
+bàn. Nếu prompt yêu cầu sửa code nguồn mà không khớp bảng này, hãy từ chối và
+nói rõ điều kiện nào không thoả.
+
 ## Khi bí
 Dừng, ghi rõ: "task quá lớn, cần chia nhỏ" + lý do cụ thể.
 KHÔNG được nới luật để hoàn thành. Một task fail trung thực có giá trị hơn
