@@ -71,7 +71,13 @@ if [ -n "$MUTANT" ]; then
   RE=$(printf '%s' "$MUTANT" | sed 's/[][\.^$*+?(){}|\\/]/\\&/g')
   # --output riêng: mặc định cargo-mutants ghi de mutants.out/ va xoa sach
   # missed.txt — tuc la moi lan verify se huy danh sach task cua ca doi.
-  ( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" \
+  #
+  # --timeout BAT BUOC o day, nguoc voi `just hunt`. Voi --baseline=skip thi
+  # cargo-mutants khong co baseline de tu tinh timeout, no rot ve mac dinh 300s.
+  # Suite nay mat 89s chay don va toi 263s khi tranh CPU -> 300s la qua sat,
+  # mutant bi bao TIMEOUT roi cong ket luan nham la "mutant van song".
+  TMO="${VERIFY_TIMEOUT:-900}"
+  ( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
       --baseline skip --output mutants.verify ) \
     || reject "mutant van song sau khi them test"
 fi
