@@ -1,0 +1,58 @@
+# Cổng chặn thoái lui. Tính tất định vừa khôi phục xong rất dễ mất lại, và mất
+# âm thầm — golden hash ghim cứng là thứ báo ngay.
+#
+# CHƯA ĐẨY LÊN REMOTE. Xem lại rồi tự push khi thấy ổn.
+name: hardening
+
+on:
+  push:
+    branches: [main, "hardening/**"]
+  pull_request:
+
+jobs:
+  determinism:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Tauri cần các thư viện hệ thống này trên Linux.
+      - name: cài phụ thuộc hệ thống
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+
+      - name: test
+        working-directory: src-tauri
+        run: cargo test --release
+
+      # Chạy lại 5 lần để bắt flaky. 20 lần là cổng ở máy local; trên CI thì 5
+      # là đủ để bắt cái nào hỏng thường xuyên mà không đốt hết ngân sách runner.
+      - name: kiểm ổn định (5 lần)
+        working-directory: src-tauri
+        run: |
+          for i in 1 2 3 4 5; do
+            RAYON_NUM_THREADS=1 cargo test --release --quiet \
+              || { echo "::error::test khong on dinh o lan $i"; exit 1; }
+          done
+
+      # Chạy riêng để thông báo lỗi nói rõ nguyên nhân.
+      - name: golden hash tất định
+        working-directory: src-tauri
+        run: |
+          cargo test --release --test determinism_tests || {
+            echo "::error::world_hash doi. Hai nguyen nhan: (1) sim mat tinh tat dinh -> di sua; (2) hanh vi sim doi co chu y -> cap nhat GOLDEN trong cung commit voi thay doi do."
+            exit 1
+          }
+
+      - name: cấm thêm nguồn phi tất định vào src
+        run: |
+          n=$(grep -rn 'rand::thread_rng()' src-tauri/src --include='*.rs' | grep -vc ':[[:space:]]*//' || true)
+          [ "$n" -eq 0 ] || { echo "::error::co $n cho goi thread_rng() trong src. Dung SimRng hoac tham so rng."; exit 1; }
