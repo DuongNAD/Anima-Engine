@@ -58,6 +58,12 @@ Quy tắc ghi:
   Thêm `SimRng` đã làm vỡ 1 test kiểu này.
 - **Tái hiện:** thêm một `Res<T>` mới vào `spawn_food_system` rồi `cargo test`
 - **Test khoá lại:** chưa có — cần một helper `test_world()` dùng chung
+- **Phạm vi thật (người kiểm bổ sung):** không chỉ một dòng. `mark_offline()` cũng
+  equivalent vì nó chỉ đặt `is_online=false` (vốn đã false) và gán `neo4j_graph=None`
+  (field private, chỉ đọc trong nhánh `if self.is_online()` không bao giờ chạy).
+  Mọi mutant trong nhánh online của `FallbackLineageTracker` đều cùng loại này.
+- **Đã xử lý:** thêm `exclude_re` vào `src-tauri/.cargo/mutants.toml` kèm lý do, để
+  chúng không sinh task rác mỗi lượt quét. Gỡ ra khi nào struct nhận được mock qua DI.
 - **Trạng thái:** OPEN
 
 ### F-003 — Luật xử lý hoà fitness trong MAP-Elites chưa từng được quyết định
@@ -78,3 +84,14 @@ Quy tắc ghi:
   `tests/map_elites_tests.rs::select_parent_hoa_fitness_thi_giu_ung_vien_truoc`
 - **Trạng thái:** FIXED — hành vi hiện tại (giữ cái cũ / giữ ứng viên trước) nay
   đã được khoá bằng test, không còn đổi ngầm được
+
+### F-004 — FallbackLineageTracker::is_online không thể test được vì thiếu mock/DI cho Neo4j
+- **Ngày:** 2026-08-11
+- **Loại:** TEST-GAP
+- **Vị trí:** `src-tauri/src/evolution/lineage.rs:186` và `:190` — và **cả nhánh online** của struct
+- **Phát hiện bởi:** mutant
+- **Triệu chứng:** `FallbackLineageTracker` chỉ chuyển sang `is_online == true` khi kết nối thành công tới dịch vụ Neo4j thật qua mạng. Trong môi trường unit test (không có server Neo4j), `is_online` luôn giữ giá trị mặc định `false`. Do đó, đột biến `replace FallbackLineageTracker::is_online -> bool with false` trả về `false` hoàn toàn trùng khớp với giá trị thực tế trong môi trường test, không thể tạo ra hành vi quan sát được sai từ API công khai nếu không refactor code nguồn để hỗ trợ injection/mocking.
+- **Tái hiện:** `just verify "src/evolution/lineage.rs:187:9: replace FallbackLineageTracker::is_online -> bool with false"`
+- **Test khoá lại:** chưa có — cần refactor `FallbackLineageTracker` (thêm constructor nhận status mock hoặc trait `Neo4jClient`) để test được.
+- **Trạng thái:** OPEN
+

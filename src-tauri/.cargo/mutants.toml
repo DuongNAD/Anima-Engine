@@ -12,6 +12,13 @@ exclude_globs = [
 
 # Bỏ mutation trên code chỉ log/format — giết chúng không tăng chất lượng.
 exclude_re = [
+    # FallbackLineageTracker: nhanh online chi bat khi ket noi duoc Neo4j that qua
+    # mang. Trong test khong co server thi is_online LUON false, neo4j_graph LUON
+    # None va la field private khong co getter — nen moi mutant o day deu
+    # EQUIVALENT, khong phai "thieu test". Giet chung la bat kha thi ma van sinh
+    # task rac moi luot quet. Xem F-004 trong FINDINGS.md.
+    # Go dong nay ra khi nao FallbackLineageTracker nhan duoc mock qua DI.
+    "FallbackLineageTracker::(is_online|mark_offline)",
     "replace .*::fmt ",
     "replace .*log_.* with \\(\\)",
 ]
