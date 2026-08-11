@@ -73,6 +73,36 @@ hỏi: có chỗ nào thành 0 hay 1 không?
 `if phase > 2π { phase -= 2π }` — `tick(0.25)` cho `phase = π/2`, không bao giờ
 chạm tới. Nhánh nào test không đi qua thì mọi mutant trong đó đều sống.
 
+## Test bất biến yếu hơn test nhắm đích — đo được
+
+Cám dỗ thường gặp: viết một test "bao quát" khẳng định bất biến (giá trị luôn
+trong khoảng, cấu trúc luôn hợp lệ) rồi hy vọng nó giết cả cụm mutant.
+
+Số đo thật trên Anima-Engine, cùng một hàm:
+
+| Kiểu test | Mutant giết được |
+|---|---|
+| bất biến (kẹp tham số, biên hình học) | **+2** |
+| nhắm đích (bộ đếm tăng đúng bao nhiêu) | **+4** |
+
+Bất biến khẳng định "kết quả nằm trong khoảng rộng" — gần như mọi đột biến đều
+giữ được điều đó. Test bất biến vẫn đáng viết cho độ bền, nhưng **đừng dùng nó
+làm cách giết mutant**.
+
+Nhắm đích nghĩa là: khẳng định một **quan hệ chính xác**, không phải một khoảng.
+"bộ đếm tăng đúng bằng số node thêm vào" giết được; "bộ đếm không giảm" thì không.
+
+## Kiểm cả nhánh TỪ CHỐI, không chỉ nhánh chấp nhận
+
+Nếu hàm trả `bool` mà mọi test đều khẳng định `true`, thì thay cả thân hàm bằng
+`true` vẫn qua — và mutation testing sẽ chỉ ra đúng chỗ đó.
+
+Đây là lỗi tìm thấy thật: `is_valid_genotype` được gọi ở 8 chỗ trong test, **cả
+8 đều khẳng định `true`**. Hàm kiểm tính hợp lệ có thể hỏng hoàn toàn mà không
+ai biết, trong khi chính nó quyết định giữ hay hoàn tác mỗi đột biến.
+
+Với mọi hàm kiểm tra, hỏi: **đã có test nào khẳng định nó trả `false` chưa?**
+
 ## Equivalent mutant — nhận ra sớm, đừng cố giết
 
 Có loại mutant **không thể giết được**: mọi giá trị thay thế đều cho hành vi y hệt
