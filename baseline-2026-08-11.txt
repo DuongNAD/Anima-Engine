@@ -1,0 +1,13 @@
+# baseline 2026-08-11T07:48:27Z  commit=3a688a0  modules=determinism mutation
+src_loc: 6585
+test_loc: 10800
+test_count: 180
+ignored_tests: 0
+unsafe: 2
+thread_rng: 0
+wallclock: 6
+hashmap_iter: 34
+mutants_total: 2006
+clippy_pedantic: 915
+coverage_lines: 75.63%
+findings_bug: 1

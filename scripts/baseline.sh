@@ -15,7 +15,8 @@ echo -n "test_loc: ";       find "$HD_TEST" -name '*.rs' 2>/dev/null | xargs cat
 echo -n "test_count: ";     grep -rhoE '#\[(tokio::)?test\]' "$HD_SRC" "$HD_TEST" 2>/dev/null | wc -l | tr -d ' '
 echo -n "ignored_tests: ";  grep -rhoE '#\[ignore\]' "$HD_SRC" "$HD_TEST" 2>/dev/null | wc -l | tr -d ' '
 echo -n "unsafe: ";         grep -rc 'unsafe' "$HD_SRC" --include='*.rs' 2>/dev/null | n
-echo -n "thread_rng: ";     grep -rc 'thread_rng' "$HD_SRC" --include='*.rs' 2>/dev/null | n
+# Đếm LỜI GỌI thật, không đếm dòng chú thích nhắc tới tên hàm.
+echo -n "thread_rng: ";     grep -rn 'rand::thread_rng()' "$HD_SRC" --include='*.rs' 2>/dev/null | grep -vc ':[[:space:]]*//'
 echo -n "wallclock: ";      grep -rcE '(SystemTime|Instant)::now' "$HD_SRC" --include='*.rs' 2>/dev/null | n
 echo -n "hashmap_iter: ";   grep -rc 'HashMap\|HashSet' "$HD_SRC" --include='*.rs' 2>/dev/null | n
 
