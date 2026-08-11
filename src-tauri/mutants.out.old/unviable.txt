@@ -1,1 +1,0 @@
-src/evolution/map_elites.rs:60:9: replace MapElitesArchive::select_parent -> Option<&EliteIndividual> with Some(Box::leak(Box::new(Default::default())))

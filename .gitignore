@@ -53,5 +53,6 @@ pnpm-debug.log*
 
 # --- hardening kit ---
 logs/
-mutants.out/
-mutants.verify/
+# cargo-mutants doi ten thu muc output cu thanh mutants.out.old
+mutants.out*
+mutants.verify*

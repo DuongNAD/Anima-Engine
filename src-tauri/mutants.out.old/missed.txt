@@ -1,2 +1,0 @@
-src/evolution/map_elites.rs:43:35: replace > with >= in MapElitesArchive::add_individual
-src/evolution/map_elites.rs:73:50: replace > with >= in MapElitesArchive::select_parent
