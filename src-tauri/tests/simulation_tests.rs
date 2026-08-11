@@ -40,3 +40,12 @@ fn test_ecs_world_initialization_and_tick() {
     let cpg = world.get::<CpgOscillator>(entity).unwrap();
     assert_ne!(cpg.output, 0.0);
 }
+
+#[test]
+fn test_cpg_oscillator_tick_advances_phase() {
+    let mut osc = CpgOscillator::new(1.0, 2.0);
+    osc.tick(0.25);
+    assert!(osc.phase > 1.57);
+    assert_eq!((osc.output * 10.0) as i32, 20);
+}
+
