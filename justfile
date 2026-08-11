@@ -32,8 +32,10 @@ flaky n="20":
     ./scripts/flaky_check.sh {{n}}
 
 # Liệt kê mọi nguồn phi tất định còn lại trong src.
+# Bỏ dòng chú thích: đếm cả chúng thì file nào NÓI về thread_rng cũng bị tính,
+# và số đo nói dối đúng lúc anh cần nó nói thật nhất.
 seed-audit:
-    @grep -rnE 'thread_rng|rand::random|SystemTime::now|Instant::now' "$HD_CRATE/$HD_SRC" --include='*.rs' || echo "sach"
+    @grep -rnE '(rand::)?thread_rng\(\)|rand::random|SystemTime::now|Instant::now' "$HD_CRATE/$HD_SRC" --include='*.rs' | grep -v ':[[:space:]]*//' || echo "sach"
 
 # Chạy riêng golden test tất định.
 determinism:
