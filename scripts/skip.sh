@@ -14,8 +14,11 @@ ROOT=$(git rev-parse --show-toplevel); cd "$ROOT"
 source .hardening.env
 
 RE="${1:-}"; LYDO="${2:-}"
+# Crate con (vd "anima-core"). Rong = crate chinh. Crate con co .cargo/ RIENG,
+# ghi nham vao config cua crate cha thi exclude khong co tac dung nao.
+SUB="${3:-}"
 [ -z "$RE" ] || [ -z "$LYDO" ] && {
-  echo "dung: just skip \"<regex>\" \"<ly do + dieu kien go ra>\""
+  echo "dung: just skip \"<regex>\" \"<ly do>\" [crate-con]"
   echo
   echo "Ly do BAT BUOC va phai tra loi duoc: vi sao MOI gia tri thay the deu cho"
   echo "hanh vi y het? Neu chi la 'kho test' thi do KHONG phai equivalent mutant —"
@@ -24,16 +27,20 @@ RE="${1:-}"; LYDO="${2:-}"
 }
 [ "${#LYDO}" -lt 30 ] && { echo "TU CHOI: ly do qua ngan (<30 ky tu). Viet ro vi sao khong quan sat duoc."; exit 1; }
 
-CFG="$HD_CRATE/.cargo/mutants.toml"
-[ -f "$CFG" ] || { echo "khong thay $CFG"; exit 1; }
-grep -qF "\"$RE\"" "$CFG" && { echo "da co san trong exclude_re: $RE"; exit 0; }
+CFG="$HD_CRATE${SUB:+/$SUB}/.cargo/mutants.toml"
+mkdir -p "$(dirname "$CFG")"
+[ -f "$CFG" ] || printf 'timeout_multiplier = 6.0\nminimum_test_timeout = 180\n\nexclude_re = [\n]\n' > "$CFG"
+grep -qF "'$RE'" "$CFG" && { echo "da co san trong exclude_re: $RE"; exit 0; }
+case "$RE" in *"'"*) echo "TU CHOI: regex chua dau nhay don, khong ghi duoc vao TOML literal string"; exit 1;; esac
 
 python3 - "$CFG" "$RE" "$LYDO" <<'PY'
 import sys, re, textwrap
 cfg, pat, ly = sys.argv[1], sys.argv[2], sys.argv[3]
 s = open(cfg).read()
 block = "\n".join("    # " + l for l in textwrap.wrap(ly, 72))
-entry = f'{block}\n    "{pat}",\n'
+# TOML literal string (nhay don): khong dien giai escape. Dung chuoi thuong
+# ("...") thi regex nhu '\\+' lam TOML chet voi 'missing escaped value'.
+entry = f"{block}\n    '{pat}',\n"
 if "exclude_re = [" in s:
     s = s.replace("exclude_re = [\n", "exclude_re = [\n" + entry, 1)
 else:

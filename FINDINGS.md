@@ -154,3 +154,36 @@ Quy tắc ghi:
   | `cargo miri` | không chạy | chạy được |
   | mutation | 24 mutant / 55 phút | 135 mutant / 2 phút |
 - **Trạng thái:** FIXED (b6c636b)
+
+### F-008 — Không test nào khẳng định genotype hỏng bị TỪ CHỐI
+- **Ngày:** 2026-08-11
+- **Loại:** TEST-GAP
+- **Vị trí:** `src-tauri/anima-core/src/mutation.rs:6` (`is_valid_genotype`)
+- **Phát hiện bởi:** mutant (`replace is_valid_genotype -> bool with true` sống sót)
+- **Triệu chứng:** mọi lời gọi `is_valid_genotype` trong toàn bộ test đều khẳng
+  định `true` — không một chỗ nào khẳng định `false`. Hàm có thể luôn trả `true`
+  mà cả suite vẫn xanh. Nguy hiểm thật chứ không chỉ thiếu điểm: `mutate_genotype`
+  dùng chính hàm này để quyết định giữ hay hoàn tác một đột biến, nên hàm hỏng
+  nghĩa là genotype không hợp lệ được nhận, rồi `decode_genotype` dựng sinh vật lỗi.
+- **Tái hiện:** `cd src-tauri/anima-core && cargo mutants --file src/mutation.rs`
+- **Test khoá lại:** `anima-core/tests/genotype_validity.rs` — 6 test, phủ cả 5
+  điều kiện từ chối (rỗng, nhiều gốc, thành phần rời rạc, chu trình, cạnh trỏ tới
+  node không tồn tại) kèm một ca đối chứng khẳng định `true`
+- **Trạng thái:** FIXED — bản thân hàm vốn đúng, 6/6 test pass ngay lần đầu
+
+### F-009 — Một phần mutant sống là equivalent do khoảng lấy mẫu đối xứng
+- **Ngày:** 2026-08-11
+- **Loại:** SMELL
+- **Vị trí:** `anima-core/src/{mutation,crossover}.rs` — 10 chỗ dạng
+  `x + rng.gen_range(-a..a)`
+- **Phát hiện bởi:** mutant
+- **Triệu chứng:** đổi `+` thành `-` không phân biệt được, vì khoảng lấy mẫu đối
+  xứng quanh 0 nên hai biểu thức cho **cùng một phân phối**. Không test hành vi
+  nào bắt được; chỉ test ghim giá trị theo seed mới bắt, mà test đó giòn và không
+  khẳng định điều gì có nghĩa.
+- **Ý nghĩa:** trần thực tế của mutation score **không phải 100%**. Trước khi ép
+  score lên, phải phân loại mutant sống thành "thiếu test" và "equivalent" — nếu
+  không sẽ đốt công vào việc bất khả thi.
+- **Đã xử lý:** `exclude_re` trong `anima-core/.cargo/mutants.toml` kèm điều kiện
+  gỡ ra (nếu khoảng lấy mẫu trở thành bất đối xứng)
+- **Trạng thái:** OPEN

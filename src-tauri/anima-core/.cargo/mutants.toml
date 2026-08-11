@@ -1,0 +1,9 @@
+timeout_multiplier = 6.0
+minimum_test_timeout = 180
+
+exclude_re = [
+    # Doi 'x + rng.gen_range(-a..a)' thanh 'x - ...'. Khoang lay mau DOI XUNG
+    # quanh 0 nen hai bieu thuc cho CUNG MOT phan phoi — khong test hanh vi
+    # nao phan biet duoc. Go ra neu khoang tro thanh bat doi xung.
+    'replace \+ with - in (mutate_genotype|crossover_genotypes)',
+]
