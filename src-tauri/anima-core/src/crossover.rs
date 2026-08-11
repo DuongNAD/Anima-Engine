@@ -1,5 +1,5 @@
-use crate::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
-use crate::evolution::mutation::is_valid_genotype;
+use crate::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
+use crate::mutation::is_valid_genotype;
 use rand::seq::SliceRandom;
 
 fn get_subtree(genotype: &MorphologyGenotype, root_id: u32) -> (Vec<MorphologyNode>, Vec<MorphologyEdge>) {

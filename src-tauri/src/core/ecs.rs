@@ -1058,7 +1058,7 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
     fn apply(self, world: &mut World) {
         use crate::physics::dynamics::RigidBody;
         use crate::core::ecs::{Velocity, ChildrenLinks};
-        use crate::evolution::genotype::decode_genotype;
+        use crate::core::spawn::decode_genotype;
         use crate::core::engine::{AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration};
 
         let initial_pos = self.data.position;

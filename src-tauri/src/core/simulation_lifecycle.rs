@@ -6,8 +6,9 @@ use crate::core::ecs::{
     EpochManager, FeatureTracker, Predator, Prey, apply_environmental_effects_system
 };
 use crate::ai::hrrl::{Transition, TransitionSender};
+use crate::core::spawn::decode_genotype;
 use crate::evolution::genotype::{
-    decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
+    MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use crate::physics::{
     resolve_joints_system, integrate_physics_system, JointConstraint,

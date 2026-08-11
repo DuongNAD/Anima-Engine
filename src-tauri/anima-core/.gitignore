@@ -1,0 +1,4 @@
+fuzz/target
+fuzz/corpus
+fuzz/artifacts
+target

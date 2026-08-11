@@ -1,5 +1,5 @@
 [package]
-name = "anima-engine-fuzz"
+name = "anima-core-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -10,7 +10,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 
-[dependencies.anima-engine]
+[dependencies.anima-core]
 path = ".."
 
 [[bin]]

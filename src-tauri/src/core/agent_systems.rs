@@ -7,7 +7,8 @@ use crate::core::ecs::{
 use crate::core::ecs::ActiveEnvironmentEvent;
 use crate::core::ecs::Velocity;
 use crate::ai::hrrl::HomeostaticState;
-use crate::evolution::genotype::{MorphologyGenotype, decode_genotype};
+use crate::core::spawn::decode_genotype;
+use crate::evolution::genotype::MorphologyGenotype;
 
 #[derive(Resource)]
 pub struct BevyEvolutionSettings(pub Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>);

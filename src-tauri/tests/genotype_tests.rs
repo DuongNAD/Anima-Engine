@@ -3,8 +3,9 @@ use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
     Agent, ChildrenLinks, JointAxis, ParentLink, Position, Rotation, Segment, Velocity,
 };
+use anima_engine_lib::core::spawn::decode_genotype;
 use anima_engine_lib::evolution::genotype::{
-    decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
+    MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use anima_engine_lib::physics::dynamics::{JointConstraint, RigidBody};
 use bevy_ecs::prelude::*;

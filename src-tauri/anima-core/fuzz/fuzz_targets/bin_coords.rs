@@ -10,7 +10,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use anima_engine_lib::evolution::map_elites::MapElitesArchive;
+use anima_core::map_elites::MapElitesArchive;
 
 fuzz_target!(|data: &[u8]| {
     if data.len() < 12 {

@@ -1,44 +1,12 @@
-use glam::Vec3;
-use serde::{Serialize, Deserialize};
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MorphologyNode {
-    pub id: u32,
-    pub length: f32,
-    pub radius: f32,
-    pub mass: f32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct MorphologyEdge {
-    pub source_node: u32,
-    pub target_node: u32,
-    pub joint_anchor: Vec3,
-    pub joint_axis: Vec3,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct MorphologyGenotype {
-    pub nodes: Vec<MorphologyNode>,
-    pub edges: Vec<MorphologyEdge>,
-}
-
-impl MorphologyGenotype {
-    pub fn new() -> Self {
-        Self {
-            nodes: Vec::new(),
-            edges: Vec::new(),
-        }
-    }
-
-    pub fn add_node(&mut self, node: MorphologyNode) {
-        self.nodes.push(node);
-    }
-
-    pub fn add_edge(&mut self, edge: MorphologyEdge) {
-        self.edges.push(edge);
-    }
-}
+//! Cầu nối giữa genotype (dữ liệu thuần) và thế giới ECS.
+//!
+//! Hàm này từng nằm trong `evolution/genotype.rs` và là thứ DUY NHẤT khiến cả
+//! module `evolution` không tách khỏi vỏ ứng dụng được: nó kéo theo `core::ecs`,
+//! `ai::cpg`, `ai::hrrl`, `physics::dynamics`, `physics::SpatialCollider`.
+//!
+//! Chuyển nó sang đây để `evolution` trở thành dữ liệu + thuật toán thuần, tách
+//! được thành crate riêng. Xem F-007 trong FINDINGS.md.
+use crate::evolution::genotype::MorphologyGenotype;
 
 pub fn decode_genotype(
     world: &mut bevy_ecs::prelude::World,

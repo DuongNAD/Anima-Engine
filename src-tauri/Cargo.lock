@@ -78,9 +78,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
+name = "anima-core"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "rand 0.8.6",
+ "serde",
+]
+
+[[package]]
 name = "anima-engine"
 version = "0.1.0"
 dependencies = [
+ "anima-core",
  "bevy_ecs",
  "bincode",
  "burn",

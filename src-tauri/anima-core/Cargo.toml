@@ -1,0 +1,17 @@
+[package]
+name = "anima-core"
+version = "0.1.0"
+edition = "2021"
+
+# CHU Y: crate nay co dung MOT muc dich — chua logic sim THUAN, khong phu thuoc
+# Tauri, wgpu hay bevy. Do la thu mo khoa ba nang luc cung luc (xem F-007):
+#   - cargo fuzz chay duoc   (generate_context! cua Tauri chan no)
+#   - cargo miri chay duoc   (Miri khong chay FFI)
+#   - mutation testing nhanh hon nhieu lan (khong build lai tauri+wgpu+burn)
+#
+# Them bat ky dependency nang nao vao day la vut bo ca ba. Truoc khi them, hoi:
+# fuzz va miri co con chay duoc khong?
+[dependencies]
+glam = { version = "0.25", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8"

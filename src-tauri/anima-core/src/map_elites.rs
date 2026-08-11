@@ -1,4 +1,4 @@
-use crate::evolution::genotype::MorphologyGenotype;
+use crate::genotype::MorphologyGenotype;
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]

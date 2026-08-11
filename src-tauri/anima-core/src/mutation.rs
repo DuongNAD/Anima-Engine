@@ -1,4 +1,4 @@
-use crate::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
+use crate::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
 use glam::Vec3;
 use rand::Rng;
 use rand::seq::SliceRandom;
