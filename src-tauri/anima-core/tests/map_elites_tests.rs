@@ -1,8 +1,8 @@
 use glam::Vec3;
-use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode, MorphologyEdge};
-use anima_engine_lib::evolution::map_elites::{MapElitesArchive, EliteIndividual};
-use anima_engine_lib::evolution::mutation::mutate_genotype;
-use anima_engine_lib::evolution::crossover::crossover_genotypes;
+use anima_core::genotype::{MorphologyGenotype, MorphologyNode, MorphologyEdge};
+use anima_core::map_elites::{MapElitesArchive, EliteIndividual};
+use anima_core::mutation::mutate_genotype;
+use anima_core::crossover::crossover_genotypes;
 
 #[test]
 fn test_map_elites_binning() {

@@ -9,6 +9,11 @@ ROOT=$(git rev-parse --show-toplevel); cd "$ROOT"
 source .hardening.env
 
 MUTANT="${1:-}"
+# Vung ghi: thu muc test cua crate chinh VA cua moi crate con trong workspace.
+# Tach crate con (vi du anima-core) la viec nen lam — no mo khoa fuzz/miri va lam
+# mutation nhanh hang tram lan — nhung neu cong chi cho ghi vao $HD_CRATE/$HD_TEST
+# thi agent khong the them test cho crate con, tuc tach xong lai khong dung duoc.
+GUARD_RE="^$HD_CRATE/([^/]+/)?$HD_TEST/"
 GUARD="$HD_CRATE/$HD_TEST/"
 reject() { printf 'TU CHOI: %s\n' "$*" >&2; exit 1; }
 
@@ -20,19 +25,20 @@ KIT_RE='^(justfile|AGENTS\.md|FINDINGS\.md|\.hardening\.env|scripts/|\.agents/sk
 
 CHANGED=$( { git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
            | sort -u | grep -v '^$' | grep -vE "$ART_RE" || true)
-BAD=$(echo "$CHANGED" | grep -v "^${GUARD}" | grep -v '^FINDINGS.md$' | grep -v '^$' || true)
+BAD=$(echo "$CHANGED" | grep -vE "$GUARD_RE" | grep -v '^FINDINGS.md$' | grep -v '^$' || true)
 NONKIT=$(echo "$BAD" | grep -vE "$KIT_RE" | grep -v '^$' || true)
 if [ -n "$BAD" ] && [ -z "$NONKIT" ]; then
   reject "bo khung hardening chua duoc commit. Chay:
   git add justfile AGENTS.md FINDINGS.md .hardening.env scripts .agents/skills && git commit -m 'chore: cai hardening kit'"
 fi
-[ -n "$NONKIT" ] && reject "sua file ngoai ${GUARD} va FINDINGS.md:
+[ -n "$NONKIT" ] && reject "sua file ngoai ${HD_CRATE}/**/${HD_TEST}/ va FINDINGS.md:
 $NONKIT"
 
 # --- Diff PHẢI gồm cả file untracked. Không có dòng này thì agent chỉ cần tạo
 #     file MỚI là lách sạch luật 2..6. Đây là lỗ thủng lớn nhất của cổng. ---
-git add --intent-to-add -- "$GUARD" >/dev/null 2>&1 || true
-DIFF=$(git diff HEAD -- "$GUARD" || true)
+GUARD_DIRS=$(echo "$CHANGED" | grep -E "$GUARD_RE" | sed -E "s|($HD_CRATE/([^/]+/)?$HD_TEST)/.*|\\1|" | sort -u)
+for d in $GUARD_DIRS; do git add --intent-to-add -- "$d" >/dev/null 2>&1 || true; done
+DIFF=$(git diff HEAD -- $GUARD_DIRS 2>/dev/null || true)
 ADDED=$(echo "$DIFF"   | grep '^+' | grep -v '^+++' || true)
 REMOVED=$(echo "$DIFF" | grep '^-' | grep -v '^---' || true)
 
