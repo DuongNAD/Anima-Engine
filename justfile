@@ -52,6 +52,13 @@ determinism:
 # thì phần dôi rơi xuống E-core, chậm hơn nhiều mà vẫn tranh bộ nhớ với P-core —
 # tổng thời gian tệ đi chứ không tốt lên.
 #
+# --copy-target true là thay đổi có tác động lớn nhất, đo được:
+#   không có nó -> moi cay tam build lai TOAN BO dependency tu so 0
+#                  (tauri + wgpu + burn), lap lai MOI luot quet, MOI worker
+#   có nó       -> build 5-87 giay
+# Trên APFS thì bản chép dùng reflink (copy-on-write) nên 13 GB target gần như
+# không tốn byte đĩa nào và gần như tức thì.
+#
 # CARGO_BUILD_JOBS là thứ dễ bỏ sót nhất: `-j N` của cargo-mutants chạy N tiến
 # trình cargo, NHƯNG mỗi cargo lại tự build với TOÀN BỘ số core. Không siết lại
 # thì song song thật = N × ncpu (đo được: 4 × 10 = load 27 trên máy 10 core), và
@@ -60,17 +67,31 @@ determinism:
 hunt shard="1" jobs="4":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
      cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
-     cargo mutants --iterate --shard {{shard}}/5 -j {{jobs}}
+     cargo mutants --iterate --copy-target true --shard {{shard}}/5 -j {{jobs}}
 
 # Quét hẹp một file. Dùng cái này nhiều hơn `hunt`.
-hunt-file file jobs="4":
+#
+# tests="a,b" thu hẹp tập test binary được chạy. Sau khi vá copy-target thì phase
+# TEST là nút thắt còn lại (575s/mutant so với 89s chạy đơn), và phần lớn test
+# binary không thể nào giết được mutant trong file đang xét.
+# ĐÁNH ĐỔI PHẢI BIẾT: thu hẹp làm cổng LỎNG hơn — mutant bị test đã loại giết
+# thì sẽ báo "missed" giả, đẻ task rác. Dùng cho `hunt` (đi tìm) thì được;
+# `verify` (phán quyết) luôn chạy toàn suite, không bao giờ thu hẹp.
+# Xem test nào liên quan:  grep -rl "<tên module>" $HD_CRATE/$HD_TEST
+hunt-file file jobs="4" tests="":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
+     ta=""; for t in $(echo "{{tests}}" | tr ',' ' '); do ta="$ta --test $t"; done; \
      cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
-     cargo mutants --iterate --file {{file}} -j {{jobs}}
+     cargo mutants --iterate --copy-target true --file {{file}} -j {{jobs}} \
+       ${ta:+--} $ta
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
 list-missed:
     @cat "$HD_CRATE/mutants.out/missed.txt" 2>/dev/null || echo "chua co missed.txt — chay 'just hunt' truoc"
+
+# In prompt dán thẳng cho agent, mỗi mutant một cái.
+tasks n="5":
+    @./scripts/tasks.sh {{n}}
 
 mutation-score:
     @cd "$HD_CRATE" && c=$(grep -c . mutants.out/caught.txt 2>/dev/null || echo 0); \
