@@ -103,7 +103,9 @@ fn test_mutate_genotype() {
     // With rate 0.0, nothing changes
     let mut counter = 1;
     let original = genotype.clone();
-    mutate_genotype(&mut genotype, &mut counter, 0.0);
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
+    mutate_genotype(&mut genotype, &mut counter, 0.0, &mut rng);
     assert_eq!(genotype.nodes.len(), original.nodes.len());
     assert_eq!(genotype.nodes[0].length, original.nodes[0].length);
 
@@ -112,7 +114,7 @@ fn test_mutate_genotype() {
     for _ in 0..100 {
         let mut temp_genotype = original.clone();
         let mut temp_counter = 1;
-        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0);
+        mutate_genotype(&mut temp_genotype, &mut temp_counter, 1.0, &mut rng);
         if temp_genotype.nodes.len() == 2 || temp_genotype.nodes[0].length != 2.0 || temp_genotype.nodes[0].radius != 0.5 || temp_genotype.nodes[0].mass != 1.0 {
             mutated = true;
             break;
@@ -141,7 +143,9 @@ fn test_crossover_genotypes() {
     
     // Run crossover
     let mut counter = 4;
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter);
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
     
     // The subtree crossover should result in 2 nodes: the root (id 0) and a grafted node from parent_b with remapped id 4.
     assert_eq!(child.nodes.len(), 2);
@@ -175,9 +179,12 @@ fn test_map_elites_extremes() {
     }
     
     let mut counter = 15;
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
+
     // Mutate multiple times with mutation_rate = 1.0, verify it never exceeds 15 nodes
     for _ in 0..50 {
-        mutate_genotype(&mut genotype, &mut counter, 1.0);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
         assert!(genotype.nodes.len() <= 15);
     }
     

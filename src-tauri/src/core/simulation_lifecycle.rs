@@ -315,6 +315,13 @@ impl SimulationEngine {
             };
             let mut archive = crate::evolution::map_elites::MapElitesArchive::new(1.0 / (initial_resolution as f32));
             let mut node_id_counter = 3u32;
+            // Vòng tiến hoá chạy ngoài ECS nên không với tới Resource SimRng.
+            // Khai báo ở đây, ngoài mọi vòng lặp: tạo lại mỗi epoch sẽ lặp đúng
+            // một chuỗi số, tức là mọi epoch tiến hoá y hệt nhau.
+            let mut evo_rng = crate::core::rng::stream(
+                crate::core::rng::DEFAULT_SEED,
+                crate::core::rng::STREAM_EVOLUTION,
+            );
             let meta_ai_client: Box<dyn MetaAiClient> = match std::env::var("GEMINI_SESSION_TOKEN") {
                 Ok(token) if !token.trim().is_empty() => {
                     Box::new(crate::evolution::meta_ai::GeminiWebSessionClient::new(&token))
@@ -454,8 +461,8 @@ impl SimulationEngine {
 
                     // Select parents, mutate/crossover, and send spawn instructions back
                     for stats in stats_batch {
-                        let parent_a = archive.select_parent(selection_bias);
-                        let parent_b = archive.select_parent(selection_bias);
+                        let parent_a = archive.select_parent(selection_bias, &mut evo_rng);
+                        let parent_b = archive.select_parent(selection_bias, &mut evo_rng);
 
                         let (mut offspring, parent_ids, max_parent_gen, relation_type) = if let Some(elite_a) = parent_a {
                             if let Some(elite_b) = parent_b {
@@ -463,6 +470,7 @@ impl SimulationEngine {
                                     &elite_a.genotype,
                                     &elite_b.genotype,
                                     &mut node_id_counter,
+                                    &mut evo_rng,
                                 );
                                 (
                                     child,
@@ -496,6 +504,7 @@ impl SimulationEngine {
                                 &mut offspring,
                                 &mut node_id_counter,
                                 mutation_rate,
+                                &mut evo_rng,
                             );
                         }
 

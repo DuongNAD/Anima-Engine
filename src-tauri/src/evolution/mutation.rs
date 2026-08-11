@@ -42,8 +42,12 @@ pub fn is_valid_genotype(genotype: &MorphologyGenotype) -> bool {
     visited.len() == genotype.nodes.len()
 }
 
-pub fn mutate_genotype(genotype: &mut MorphologyGenotype, node_id_counter: &mut u32, mutation_rate: f64) {
-    let mut rng = rand::thread_rng();
+pub fn mutate_genotype(
+    genotype: &mut MorphologyGenotype,
+    node_id_counter: &mut u32,
+    mutation_rate: f64,
+    rng: &mut impl rand::Rng,
+) {
     if !rng.gen_bool(mutation_rate) {
         return;
     }
@@ -53,7 +57,7 @@ pub fn mutate_genotype(genotype: &mut MorphologyGenotype, node_id_counter: &mut 
 
     // Shuffle the operators to try them randomly
     let mut operators = vec![1, 2, 3, 4];
-    operators.shuffle(&mut rng);
+    operators.shuffle(rng);
 
     let mut success = false;
     for op in operators {

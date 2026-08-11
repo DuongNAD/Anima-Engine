@@ -46,8 +46,12 @@ fn test_selection_bias_tournament() {
     // Sample with uniform selection (selection_bias <= 1.0)
     let samples_uniform = 1000;
     let mut counts_uniform = std::collections::HashMap::new();
+    // rng NGOAI vong lay mau. Dat trong vong lap se cho ra 1000 lan cung mot
+    // phan tu, phan phoi sup ve 100%/0%/0%/0%.
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
     for _ in 0..samples_uniform {
-        let selected = archive.select_parent(1.0).unwrap();
+        let selected = archive.select_parent(1.0, &mut rng).unwrap();
         *counts_uniform.entry(selected.fitness as i32).or_insert(0) += 1;
     }
     
@@ -61,7 +65,7 @@ fn test_selection_bias_tournament() {
     let samples_tournament = 1000;
     let mut counts_tournament = std::collections::HashMap::new();
     for _ in 0..samples_tournament {
-        let selected = archive.select_parent(5.0).unwrap();
+        let selected = archive.select_parent(5.0, &mut rng).unwrap();
         *counts_tournament.entry(selected.fitness as i32).or_insert(0) += 1;
     }
     
@@ -96,11 +100,15 @@ fn test_robust_mutation() {
     assert!(is_valid_genotype(&genotype));
     
     let mut counter = 3;
+    // rng khai bao NGOAI vong lap: tao lai moi vong se lap dung mot chuoi so,
+    // bien 200 lan thanh 1 lan lam 200 lan.
+    use rand::SeedableRng;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
     
     // Mutate 200 times and check constraints every time
     for _ in 0..200 {
         let prev_genotype = genotype.clone();
-        mutate_genotype(&mut genotype, &mut counter, 1.0);
+        mutate_genotype(&mut genotype, &mut counter, 1.0, &mut rng);
         
         // Ensure the genotype is valid
         assert!(is_valid_genotype(&genotype), "Genotype became invalid after mutating from {:?}", prev_genotype);
@@ -174,7 +182,9 @@ fn test_subtree_crossover() {
     let mut counter = 20;
     
     for _ in 0..50 {
-        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter);
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
         
         assert!(is_valid_genotype(&child), "Crossover result is invalid genotype: {:?}", child);
         

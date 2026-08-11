@@ -1,5 +1,5 @@
 use crate::evolution::genotype::MorphologyGenotype;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug)]
 pub struct EliteIndividual {
@@ -11,14 +11,17 @@ pub struct EliteIndividual {
 }
 
 pub struct MapElitesArchive {
-    pub grid: HashMap<(i32, i32), EliteIndividual>,
+    /// BTreeMap chu khong phai HashMap: `select_parent` chon ngau nhien tren
+/// `grid.values()`, ma thu tu duyet HashMap doi giua cac lan chay tien trinh
+/// (RandomState). Cung seed van cho ket qua khac => sim khong tai lap duoc.
+    pub grid: BTreeMap<(i32, i32), EliteIndividual>,
     pub grid_resolution: f32,
 }
 
 impl MapElitesArchive {
     pub fn new(grid_resolution: f32) -> Self {
         Self {
-            grid: HashMap::new(),
+            grid: BTreeMap::new(),
             grid_resolution,
         }
     }
@@ -49,19 +52,22 @@ impl MapElitesArchive {
         }
     }
 
-    pub fn select_parent(&self, selection_bias: f64) -> Option<&EliteIndividual> {
+    pub fn select_parent(
+        &self,
+        selection_bias: f64,
+        rng: &mut impl rand::Rng,
+    ) -> Option<&EliteIndividual> {
         if self.grid.is_empty() {
             return None;
         }
         use rand::seq::IteratorRandom;
-        let mut rng = rand::thread_rng();
         if selection_bias <= 1.0 {
-            self.grid.values().choose(&mut rng)
+            self.grid.values().choose(rng)
         } else {
             let k = (selection_bias.ceil() as usize).max(2);
             let mut best: Option<&EliteIndividual> = None;
             for _ in 0..k {
-                if let Some(candidate) = self.grid.values().choose(&mut rng) {
+                if let Some(candidate) = self.grid.values().choose(rng) {
                     match best {
                         Some(b) => {
                             if candidate.fitness > b.fitness {
