@@ -85,9 +85,15 @@ if [ -n "$MUTANT" ]; then
   # Suite nay mat 89s chay don va toi 263s khi tranh CPU -> 300s la qua sat,
   # mutant bi bao TIMEOUT roi cong ket luan nham la "mutant van song".
   TMO="${VERIFY_TIMEOUT:-900}"
+  # `set +e` BAT BUOC quanh doan nay: voi `set -e`, phep gan OUT=$(...) that bai
+  # se giet script NGAY, truoc khi doc duoc RC va truoc khi toi cac cau tu choi
+  # co giai thich. Ma cargo-mutants tra ma khac 0 chinh la truong hop mutant CON
+  # SONG — tuc duong quan trong nhat cua cong se im lang.
+  set +e
   OUT=$( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
            --baseline skip --output mutants.verify 2>&1 )
   RC=$?
+  set -e
   echo "$OUT" | tail -6
 
   # Cong PHAI kiem rang co dung mot mutant duoc test. Khong kiem thi:

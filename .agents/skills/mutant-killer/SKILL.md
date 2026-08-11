@@ -39,6 +39,40 @@ Nhiều dòng = nhiều task. Không bao giờ gộp.
 - Sửa file config mutation để loại mutant thay vì giết nó
 - Báo hoàn thành khi chưa thấy `QUA CONG`
 
+## Chọn giá trị đầu vào: tránh phần tử trung hoà
+
+Mutant đổi toán tử chỉ lộ ra khi giá trị đầu vào **phân biệt được** hai toán tử.
+Chọn nhầm là test pass mà mutant vẫn sống — và nó sống **im lặng**, vì cổng chỉ
+kiểm mutant được giao chứ không kiểm các mutant anh em cùng dòng.
+
+| Toán tử bị thay | Giá trị KHÔNG được dùng | Vì sao |
+|---|---|---|
+| `*` ↔ `/` | **1.0** | `x * 1 == x / 1` |
+| `+` ↔ `-` | **0** | `x + 0 == x - 0` |
+| `*` ↔ `+` | **0 hoặc 2** | `2*2 == 2+2`, `0*x == 0+x` khi x=0 |
+| `>` ↔ `>=` | giá trị **không bao giờ bằng nhau** | phải có ca hoà mới phân biệt được |
+| `&&` ↔ `\|\|` | cả hai vế **cùng** true hoặc cùng false | phải có ca lệch |
+
+Quy tắc: dùng số **không tròn, không trung hoà** — `3.0`, `7`, `0.25`. Và với
+toán tử so sánh thì **bắt buộc** có một ca hai vế bằng nhau.
+
+**Giá trị trung hoà còn sinh ra Ở GIỮA phép tính, không chỉ ở tham số.**
+
+Ví dụ thật, đo được: test cho
+`phase += 2.0*PI*frequency*delta_time; output = amplitude * sin(phase)`
+gọi `tick(0.25)` với `frequency = 1.0`. Kết quả: giết được `+=`→`-=` nhưng để
+sống **hai** mutant, vì hai chỗ khác nhau đều rơi vào 1.0:
+
+- `× frequency` với `frequency = 1.0` → `×` và `÷` y hệt
+- `× sin(phase)` với `phase = π/2` → **`sin(π/2) = 1.0`**, lại y hệt
+
+Cái thứ hai không nhìn ra từ tham số. Phải tính nhẩm giá trị **trung gian** rồi
+hỏi: có chỗ nào thành 0 hay 1 không?
+
+**Và nhớ đi qua mọi nhánh.** Cùng test đó để sống 6 mutant ở nhánh
+`if phase > 2π { phase -= 2π }` — `tick(0.25)` cho `phase = π/2`, không bao giờ
+chạm tới. Nhánh nào test không đi qua thì mọi mutant trong đó đều sống.
+
 ## Equivalent mutant — nhận ra sớm, đừng cố giết
 
 Có loại mutant **không thể giết được**: mọi giá trị thay thế đều cho hành vi y hệt
