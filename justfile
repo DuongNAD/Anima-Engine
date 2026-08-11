@@ -110,3 +110,57 @@ mutation-score:
      m=$(grep -c . mutants.out/missed.txt 2>/dev/null || echo 0); \
      t=$((c+m)); [ "$t" -eq 0 ] && echo "chua co du lieu" || \
      echo "caught=$c missed=$m score=$((100*c/t))%"
+
+# ---------- fuzz + miri (chạy nền, 0 token) ----------
+# Miri chỉ chạy được code Rust thuần, không FFI. Lọc hẹp, đừng chạy cả suite.
+miri filter="":
+    cd "$HD_CRATE" && MIRIFLAGS="-Zmiri-disable-isolation" cargo +nightly miri test --lib {{filter}}
+
+fuzz target time="3600":
+    cd "$HD_CRATE" && cargo +nightly fuzz run {{target}} -- -max_total_time={{time}}
+
+fuzz-list:
+    @ls "$HD_CRATE/fuzz/fuzz_targets" 2>/dev/null || echo "chua co fuzz target — chay 'cargo fuzz init' trong $HD_CRATE"
+
+# Danh sách crash chưa triage.
+crashes:
+    @ls -1 "$HD_CRATE"/fuzz/artifacts/*/* 2>/dev/null || echo "khong co crash"
+
+# Gắn vào Scheduled Task của Antigravity, 02:00 hằng đêm.
+nightly time="14400":
+    -just miri 2>&1 | tee "logs/miri-$(date +%F).log"
+    -for t in $(ls "$HD_CRATE/fuzz/fuzz_targets" 2>/dev/null | sed 's/\.rs$//'); do \
+        just fuzz "$t" {{time}} 2>&1 | tee "logs/fuzz-$t-$(date +%F).log"; done
+
+# ---------- dataflow ----------
+# Agent xuất dataflow.json, script đối chiếu với cargo-modules. Không có oracle
+# thì "phân tích luồng dữ liệu" chỉ là văn xuôi đẹp — đây là oracle.
+#
+# Đo trên repo thật: đồ thị thô có 788 cạnh. Lọc bỏ "owns" (phân cấp module,
+# không phải luồng dữ liệu) rồi gộp về mức module còn 11. 788 thì không agent
+# nào liệt kê nổi; bắt liệt kê đủ là ra task bất khả thi. Việc lọc nằm trong
+# scripts/verify_dataflow.py.
+dataflow-truth:
+    cd "$HD_CRATE" && cargo modules dependencies --lib --no-externs > ../dataflow-truth.dot
+    @echo "canh 'uses' muc module: $(python3 scripts/verify_dataflow.py --count dataflow-truth.dot 2>/dev/null || echo '(chay dataflow-verify de xem)')"
+
+# depth=1 -> so sánh ở mức "core", "ai". depth=2 -> "core::ecs".
+dataflow-verify depth="1":
+    python3 scripts/verify_dataflow.py dataflow.json dataflow-truth.dot {{depth}}
+
+# ---------- perf ----------
+# CẢNH BÁO: đây là module DUY NHẤT agent được sửa src/. Chạy trên nhánh riêng.
+#
+# `--benches` là bắt buộc, không phải tuỳ chọn. Thiếu nó thì `cargo bench --` đẩy
+# cờ của criterion vào CẢ harness libtest mặc định (unittest trong src/), mà nó
+# không hiểu `--save-baseline` và làm hỏng cả lượt đo:
+#     error: Unrecognized option: 'save-baseline'
+bench-baseline:
+    cd "$HD_CRATE" && cargo bench --benches -- --save-baseline base
+
+bench-compare:
+    cd "$HD_CRATE" && cargo bench --benches -- --baseline base
+
+# Gate: chỉ giữ tối ưu nếu vượt ngưỡng ý nghĩa thống kê, ngược lại revert.
+perf-gate:
+    ./scripts/perf_gate.sh

@@ -11,7 +11,7 @@ THRESH="${PERF_THRESHOLD:-5}"   # % cải thiện tối thiểu
 cd "$HD_CRATE"
 cargo test --release --quiet >/dev/null 2>&1 || { echo "TU CHOI: test do sau khi toi uu"; exit 1; }
 
-OUT=$(cargo bench -- --baseline base 2>&1)
+OUT=$(cargo bench --benches -- --baseline base 2>&1)
 echo "$OUT" | grep -E 'change:|Performance has' || true
 
 if echo "$OUT" | grep -q 'Performance has regressed'; then
