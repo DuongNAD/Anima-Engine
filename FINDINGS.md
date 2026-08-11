@@ -108,3 +108,42 @@ Quy tắc ghi:
 - **Tái hiện:** `just dataflow-truth && just dataflow-verify`
 - **Test khoá lại:** chưa có — cần khai contract phụ thuộc rồi cho CI chặn
 - **Trạng thái:** OPEN
+
+### F-006 — get_bin_coords nuốt NaN và gán vào ô gốc, im lặng
+- **Ngày:** 2026-08-11
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/evolution/map_elites.rs:29` (`get_bin_coords`)
+- **Phát hiện bởi:** fuzz (giả thuyết fuzz, kiểm bằng tay vì cargo-fuzz bị chặn — xem F-007)
+- **Triệu chứng:** `(f / resolution).floor() as i32` với `f = NaN` cho ra `0`, vì
+  `as i32` trong Rust là saturating cast và NaN quy về 0. Kết quả: mọi vector đặc
+  trưng chứa NaN đều rơi vào **ô (0,0)** — cùng ô với gốc toạ độ hợp lệ. Một agent
+  có đặc trưng hoá NaN sẽ tranh ô với một elite thật và có thể đẩy nó ra nếu
+  fitness cao hơn. Không panic, không log, không test nào bắt được.
+  Kèm theo: mọi giá trị ≥ ~2^31 × resolution đều bão hoà về cùng một ô biên, nên
+  các hành vi rất khác nhau bị gộp làm một.
+- **Tái hiện:**
+  ```rust
+  let a = MapElitesArchive::new(0.5);
+  assert_eq!(a.get_bin_coords(&[f32::NAN, f32::NAN]), a.get_bin_coords(&[0.0, 0.0]));
+  ```
+- **Test khoá lại:** chưa có
+- **Đề xuất sửa:** `get_bin_coords` trả `Option<(i32,i32)>` và trả `None` khi đặc
+  trưng không hữu hạn; `add_individual` bỏ qua cá thể như vậy và đếm vào một
+  counter để thấy được. Sửa im lặng bằng cách clamp là giấu lỗi, không phải sửa.
+- **Trạng thái:** OPEN — chưa chứng minh được NaN thật sự phát sinh trong đường
+  chạy sim, nhưng hành vi khi nó phát sinh thì sai rõ ràng.
+
+### F-007 — Logic sim hàn chặt vào vỏ Tauri, chặn cả fuzz lẫn Miri
+- **Ngày:** 2026-08-11
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/lib.rs:352` — `.run(tauri::generate_context!())`
+- **Phát hiện bởi:** fuzz
+- **Triệu chứng:** `cargo fuzz build` thất bại vì `generate_context!` cần toàn bộ
+  pipeline build của Tauri. Cùng gốc rễ khiến `cargo miri` không chạy được (Miri
+  không chạy FFI). Hệ quả: **hai lớp công cụ tìm bug mạnh nhất đều không dùng
+  được**, và mỗi mutant phải build lại cả tauri + wgpu + burn.
+- **Tái hiện:** `cd src-tauri && cargo +nightly fuzz build bin_coords`
+- **Đề xuất sửa:** tách logic thuần (`evolution`, `physics`, `ai/cpg`) ra crate
+  `anima-core` không phụ thuộc Tauri. Mở khoá được ba thứ cùng lúc: fuzz, Miri,
+  và mutation testing nhanh hơn nhiều lần.
+- **Trạng thái:** OPEN
