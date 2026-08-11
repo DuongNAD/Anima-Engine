@@ -48,9 +48,12 @@ determinism:
 # cả baseline, và cargo-mutants bỏ nguyên lượt quét với thông báo
 # "cargo test failed in an unmutated tree".
 #
-# jobs mặc định 4: bằng số P-core của máy Apple Silicon phổ thông. Đặt cao hơn
-# thì phần dôi rơi xuống E-core, chậm hơn nhiều mà vẫn tranh bộ nhớ với P-core —
-# tổng thời gian tệ đi chứ không tốt lên.
+# jobs mặc định 2, KHÔNG phải số core. Lý do: quét mutation là việc nền, còn máy
+# thì người ta đang ngồi dùng. Đo được load average 114 trên máy 10 core với
+# jobs=4 — trên MacBook Air (không quạt) thì giao diện giật hẳn, kể cả khi macOS
+# chưa ghi nhận cảnh báo nhiệt nào. Sắp rời máy thì tự nâng: `just hunt-file <f> 4`.
+#
+# `nice -n 10`: việc nền không có lý do gì tranh CPU với thứ anh đang gõ.
 #
 # --copy-target true là thay đổi có tác động lớn nhất, đo được:
 #   không có nó -> moi cay tam build lai TOAN BO dependency tu so 0
@@ -64,10 +67,10 @@ determinism:
 # thì song song thật = N × ncpu (đo được: 4 × 10 = load 27 trên máy 10 core), và
 # mỗi lượt test chậm gấp 3 lần chạy đơn — 263s so với 89s. Giảm song song lại
 # NHANH HƠN. Công thức: jobs × CARGO_BUILD_JOBS ≈ ncpu.
-hunt shard="1" jobs="4":
+hunt shard="1" jobs="2":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
      cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
-     cargo mutants --iterate --copy-target true --shard {{shard}}/5 -j {{jobs}}
+     nice -n 10 cargo mutants --iterate --copy-target true --shard {{shard}}/5 -j {{jobs}}
 
 # Quét hẹp một file. Dùng cái này nhiều hơn `hunt`.
 #
@@ -81,11 +84,11 @@ hunt shard="1" jobs="4":
 #     just hunt-file 'src/evolution/*.rs'
 # Không nháy thì shell bung glob ra nhiều đường dẫn, cargo-mutants chỉ nhận một.
 # Xem test nào liên quan:  grep -rl "<tên module>" $HD_CRATE/$HD_TEST
-hunt-file file jobs="4" tests="":
+hunt-file file jobs="2" tests="":
     -bj=$(( $(sysctl -n hw.ncpu 2>/dev/null || nproc) / {{jobs}} )); [ "$bj" -lt 1 ] && bj=1; \
      ta=""; for t in $(echo "{{tests}}" | tr ',' ' '); do ta="$ta --test $t"; done; \
      cd "$HD_CRATE" && CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$bj}" \
-     cargo mutants --iterate --copy-target true --file "{{file}}" -j {{jobs}} \
+     nice -n 10 cargo mutants --iterate --copy-target true --file "{{file}}" -j {{jobs}} \
        ${ta:+--} $ta
 
 # Danh sách task cho agent. Mỗi dòng = MỘT task cho MỘT agent.
