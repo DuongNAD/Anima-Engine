@@ -59,3 +59,22 @@ Quy tắc ghi:
 - **Tái hiện:** thêm một `Res<T>` mới vào `spawn_food_system` rồi `cargo test`
 - **Test khoá lại:** chưa có — cần một helper `test_world()` dùng chung
 - **Trạng thái:** OPEN
+
+### F-003 — Luật xử lý hoà fitness trong MAP-Elites chưa từng được quyết định
+- **Ngày:** 2026-08-11
+- **Loại:** TEST-GAP
+- **Vị trí:** `src-tauri/src/evolution/map_elites.rs:43` (`add_individual`)
+  và `:73` (`select_parent`)
+- **Phát hiện bởi:** mutant
+- **Triệu chứng:** cả hai chỗ dùng `>`; đổi thành `>=` thì không test nào phát
+  hiện. Nghĩa là hành vi khi hai cá thể **hoà fitness** — giữ cá thể cũ hay thay
+  bằng cá thể mới — chưa ai chọn có ý thức, nó chỉ là mặc định của lần gõ đầu.
+  Với MAP-Elites, thay khi hoà làm archive xoay vòng giữa các cá thể ngang tài,
+  khiến lineage nhiễu mà chất lượng không tăng; tournament lấy ứng viên bốc sau
+  thì thiên vị theo thứ tự bốc thay vì theo fitness.
+- **Tái hiện:** `just verify "src/evolution/map_elites.rs:43:35: replace > with >= in MapElitesArchive::add_individual"`
+- **Test khoá lại:**
+  `tests/map_elites_tests.rs::add_individual_hoa_fitness_thi_giu_ca_the_cu`
+  `tests/map_elites_tests.rs::select_parent_hoa_fitness_thi_giu_ung_vien_truoc`
+- **Trạng thái:** FIXED — hành vi hiện tại (giữ cái cũ / giữ ứng viên trước) nay
+  đã được khoá bằng test, không còn đổi ngầm được

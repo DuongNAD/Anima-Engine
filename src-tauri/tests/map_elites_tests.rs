@@ -200,3 +200,85 @@ fn test_map_elites_extremes() {
     assert!(coords_inf.0 == i32::MAX || coords_inf.0 == i32::MIN);
     assert!(coords_inf.1 == i32::MAX || coords_inf.1 == i32::MIN);
 }
+
+/// Hoà fitness thì GIỮ cá thể đang chiếm ô, không thay bằng cá thể mới.
+///
+/// Khoá cả hai thứ quan sát được, vì khoá một cái thì `>=` vẫn lọt:
+/// giá trị trả về, VÀ cá thể nào còn nằm trong lưới.
+///
+/// Vì sao chọn "giữ cá thể cũ": MAP-Elites thay cá thể khi hoà sẽ làm archive
+/// xoay vòng liên tục giữa các cá thể ngang tài, khiến lineage nhiễu mà chất
+/// lượng không tăng.
+#[test]
+fn add_individual_hoa_fitness_thi_giu_ca_the_cu() {
+    let mut archive = MapElitesArchive::new(0.5);
+    let same_features = vec![0.2, 0.4];
+
+    let cu = EliteIndividual {
+        genotype: MorphologyGenotype::new(),
+        fitness: 5.0,
+        features: same_features.clone(),
+        lineage_id: "CU".to_string(),
+        generation: 0,
+    };
+    let moi = EliteIndividual {
+        genotype: MorphologyGenotype::new(),
+        fitness: 5.0, // BẰNG, không hơn
+        features: same_features.clone(),
+        lineage_id: "MOI".to_string(),
+        generation: 1,
+    };
+
+    assert!(archive.add_individual(cu), "ô trống thì phải nhận cá thể đầu tiên");
+
+    // Quan sát 1: giá trị trả về
+    assert_eq!(
+        archive.add_individual(moi),
+        false,
+        "hoa fitness ma bao da thay the"
+    );
+
+    // Quan sát 2: cá thể nào thực sự nằm trong lưới
+    let coords = archive.get_bin_coords(&same_features);
+    assert_eq!(
+        archive.grid.get(&coords).map(|e| e.lineage_id.as_str()),
+        Some("CU"),
+        "hoa fitness ma van ghi de len ca the cu"
+    );
+}
+
+/// Tournament hoà fitness thì GIỮ ứng viên bốc được TRƯỚC, không lấy cái sau.
+///
+/// Bốn cá thể fitness bằng nhau, seed cố định nên chuỗi bốc là tất định:
+/// - `>`  giữ ứng viên đầu tiên  -> "D"
+/// - `>=` lấy ứng viên cuối cùng -> "A"
+///
+/// Giá trị "D" là đặc trưng của cặp (seed, thứ tự BTreeMap), không phải hằng số
+/// tuỳ tiện. Nó đổi thì có đúng hai nguyên nhân: thứ tự duyệt grid đổi (nghi
+/// ngay HashMap quay lại — xem F-001), hoặc luật xử lý hoà đổi có chủ ý.
+///
+/// Vì sao "giữ cái trước": lấy cái sau khiến tournament thiên vị theo thứ tự
+/// bốc thay vì theo fitness, mà thứ tự bốc thì không mang ý nghĩa tiến hoá nào.
+#[test]
+fn select_parent_hoa_fitness_thi_giu_ung_vien_truoc() {
+    use rand::SeedableRng;
+
+    let mut archive = MapElitesArchive::new(0.5);
+    for (i, lid) in ["A", "B", "C", "D"].iter().enumerate() {
+        archive.add_individual(EliteIndividual {
+            genotype: MorphologyGenotype::new(),
+            fitness: 7.0, // tất cả BẰNG nhau
+            features: vec![i as f32, 0.0],
+            lineage_id: lid.to_string(),
+            generation: 0,
+        });
+    }
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x5EED);
+    let chon = archive.select_parent(5.0, &mut rng).expect("archive khong rong");
+
+    assert_eq!(
+        chon.lineage_id, "D",
+        "hoa fitness ma tournament lay ung vien bốc sau"
+    );
+}
