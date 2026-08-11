@@ -47,6 +47,14 @@ echo "$REMOVED" | grep -qE '(assert|assert_eq|assert_ne|debug_assert|panic)!' \
 echo "$ADDED" | grep -qE '(thread_rng|rand::random|SystemTime::now|Instant::now)' \
   && reject "test dung RNG/dong ho phi tat dinh"
 
+# --- Luật 4b: cấm rèn trạng thái private bằng unsafe ---
+# Agent that da lam: khai bao mot struct "guong" cung layout roi transmute de ghi
+# thang vao field private. Struct khong co #[repr(C)] thi Rust KHONG dam bao thu
+# tu field — do la UB, hom nay chay duoc la may. Va no khong test hanh vi that:
+# no ren ra mot trang thai ma API cong khai khong bao gio tao duoc.
+echo "$ADDED" | grep -qE 'unsafe |transmute|from_raw_parts' \
+  && reject "test dung unsafe/transmute de ren trang thai private. Do khong phai test hanh vi. Neu API cong khai khong tao duoc trang thai can test thi day la mutant can refactor: dung just skip hoac bao lai."
+
 # --- Luật 5: assertion phải quan sát được hành vi, không phải "khong panic" ---
 N_ANY=$(echo "$ADDED"    | grep -cE 'assert' || true)
 N_STRONG=$(echo "$ADDED" | grep -cE 'assert_eq!|assert_ne!|assert!\([^)]*(==|!=|<|>|\.contains|\.len\(\)|\.starts_with)' || true)
@@ -77,9 +85,24 @@ if [ -n "$MUTANT" ]; then
   # Suite nay mat 89s chay don va toi 263s khi tranh CPU -> 300s la qua sat,
   # mutant bi bao TIMEOUT roi cong ket luan nham la "mutant van song".
   TMO="${VERIFY_TIMEOUT:-900}"
-  ( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
-      --baseline skip --output mutants.verify ) \
-    || reject "mutant van song sau khi them test"
+  OUT=$( cd "$HD_CRATE" && cargo mutants --file "$FILE" --re "$RE" --timeout "$TMO" \
+           --baseline skip --output mutants.verify 2>&1 )
+  RC=$?
+  echo "$OUT" | tail -6
+
+  # Cong PHAI kiem rang co dung mot mutant duoc test. Khong kiem thi:
+  #   - chuoi mutant go sai  -> regex khong khop -> "Found 0 mutants" -> exit 0
+  #   - mutant da bi exclude -> y het nhu tren
+  # va cong bao QUA CONG trong khi chua test gi. Day la FALSE PASS, loai hong te
+  # nhat: no khen mot cong viec chua lam.
+  if echo "$OUT" | grep -q "Found 0 mutants"; then
+    reject "KHONG tim thay mutant nao khop. Hai kha nang: (1) chuoi mutant go sai, dan lai NGUYEN dong tu just list-missed; (2) mutant da bi loai trong .cargo/mutants.toml. Cong khong the ket luan gi."
+  fi
+  if echo "$OUT" | grep -qi "timeout"; then
+    reject "mutant bi TIMEOUT, KHONG phai con song. Day khong phai loi cua test. Tang VERIFY_TIMEOUT hoac bao lai."
+  fi
+  [ "$RC" -eq 0 ] || reject "mutant van song sau khi them test"
+  echo "$OUT" | grep -qE "[0-9]+ caught" || reject "khong xac nhan duoc mutant da chet"
 fi
 
 echo "QUA CONG"
