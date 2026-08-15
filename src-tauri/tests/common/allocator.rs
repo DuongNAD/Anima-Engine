@@ -18,17 +18,12 @@
 // run in three with "made 4 heap allocations" in a function that makes none, and a new emit-path
 // suite failed the same way on its first full run while passing in isolation every time.
 //
-<<<<<<< ours
 // There are two honest fixes. A hot path that owns worker threads must keep this process-wide
 // counter and give its binary one `#[test]` that runs phases in sequence; `brain_budget_tests.rs`,
 // `emit_zero_alloc_tests.rs`, and `challenger_meta_ai_tests.rs` do that. A structurally
 // single-threaded hot path should use `ThreadTrackingAllocator`, which excludes unrelated process
 // threads without hiding work the path owns. The remaining multi-test process-wide suites are
 // latent until they adopt the first shape.
-=======
-// The first mitigation: give the binary a single `#[test]` that calls each measurement in
-// sequence, with an `eprintln!` per phase so a failure still says which one broke.
-// `brain_budget_tests.rs` and `emit_zero_alloc_tests.rs` are written that way.
 //
 // # One `#[test]` is NOT sufficient, and that is measured
 //
@@ -52,7 +47,6 @@
 // Use `start_tracking_this_thread` only after checking that the code inside the measurement window
 // does not hand work to another thread. Everything it would have counted from elsewhere is silently
 // dropped, so this is a real trade, not a free upgrade.
->>>>>>> theirs
 #![allow(dead_code)]
 
 use std::alloc::{GlobalAlloc, Layout, System};

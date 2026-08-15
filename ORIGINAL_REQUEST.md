@@ -1632,4 +1632,76 @@ Integrity mode: development
 - [ ] The map is verified to be 1000x1000 in scale with distinct Desert, Jungle, Glacier, and Volcanic environments visible.
 - [ ] All 235 frontend tests in `npm run test:frontend` pass successfully.
 
+## Follow-up — 2026-08-14T03:35:46Z
+
+Comprehensive audit and analysis of the entire Anima-Engine codebase (TypeScript frontend, WebGL/Three.js rendering, simulation & ecology engines, Rust Tauri backend, data contracts, and test suites) to identify bugs, architectural issues, performance bottlenecks, and technical debt, producing a structured audit report with prioritized recommendations without modifying source files.
+
+Working directory: E:\Project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Core Simulation & World Logic Audit
+Audit simulation tick loops, creature morphogenesis/AI, biome taxonomy enforcement, coordinate systems, and vegetation/water updates against documented engine specifications (`SIMULATION_RULES.md`, `COORDINATE_CONTRACT.md`, `BIOME_TAXONOMY.md`) to detect logical contradictions, unhandled edge cases, and state divergence.
+
+### R2. Rendering, Shaders & Frontend Architecture Audit
+Inspect the WebGL / Three.js rendering pipeline, shader implementations, state management, UI lifecycles, and memory management (disposals, asset caching, leak hazards, framerate bottlenecks).
+
+### R3. Rust Tauri Backend & IPC Audit
+Review the native Rust backend (`src-tauri/`), IPC communication channels, thread concurrency, memory safety, error propagation, and OS integration points for potential deadlocks, panic conditions, or performance lags.
+
+### R4. Code Health, Type Safety & Test Infrastructure Audit
+Run and analyze all static analysis tools, TypeScript compiler checks (`tsc --noEmit`), linters, schemas (`map_manifest.schema.json`, `benchmark_report.schema.json`), and test suites (`npm test`, `cargo test`). Catalog test gaps, fragile assertions, and flaky testing setups.
+
+### R5. Comprehensive Audit Report & Actionable Roadmap
+Synthesize all findings into a structured markdown report categorized by subsystem and severity (Critical, High, Medium, Low), citing exact file paths and line numbers, with concrete reproduction steps/evidence and a prioritized roadmap for refactoring and optimization.
+
+## Acceptance Criteria
+
+### Verification & Automated Diagnostics
+- [ ] Automated verification passes through running typechecks (`tsc --noEmit`), linters, and test suites across both TypeScript and Rust components, recording any failures and warnings.
+- [ ] Schema validations for manifest and benchmark files are executed and verified.
+
+### Report Completeness & Evidence
+- [ ] Audit report covers all key subsystems: Core Simulation, Biomes/Ecology, Rendering/WebGL, Rust/Tauri IPC, Data Schemas, and Test Infrastructure.
+- [ ] Every identified bug, risk, or technical debt item provides exact file paths, line references (or function identifiers), description of the root cause, and estimated impact.
+- [ ] Deliverable includes a clear, phased action plan (Quick-Wins, High-Priority Fixes, Medium-Term Architectural Improvements).
+- [ ] Source code remains untouched (pure audit & reporting deliverable).
+
+## Follow-up — 2026-08-14T05:22:41Z
+
+Thực thi sửa chữa toàn diện các lỗi nghiêm trọng, điểm nghẽn hạ tầng CI/Test, lỗi logic mô phỏng vật lý và tối ưu hóa WebGL/VRAM (Phase 1 + Phase 2) đã được xác định trong báo cáo AUDIT_REPORT.md của dự án Anima-Engine.
+
+Working directory: E:\Project\Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Khắc phục điểm nghẽn Hạ tầng & Kiểm thử (Phase 1 Fixes)
+- Xóa và giải quyết triệt để các Git merge conflict markers trong `src-tauri/tests/common/allocator.rs` và `scripts/check_test_targets.mjs`.
+- Bổ sung cài đặt `ajv-formats` trong `node_modules` và đồng bộ tệp `NOTICE` thông qua `scripts/gen_notice.mjs`.
+- Loại bỏ mock `@react-three/fiber` khỏi root `tsconfig.json` và chuẩn hóa E2E mock contract `get_lineage_graph` (`links`, `db_connected: false`).
+
+### R2. Khắc phục Lỗi Logic Mô phỏng & An toàn Động lực học (Phase 2 Simulation Fixes)
+- Sửa hàm `intersect_sphere` trong `src-tauri/src/physics/spatial.rs` để nhận diện chính xác khi ray origin nằm trong sphere collider ($t_2 \ge 0$).
+- Sử dụng `.try_normalize().unwrap_or(Vec3::Y)` trong `src-tauri/src/physics/dynamics.rs` để ngăn ngừa `NaN` quaternion poisoning.
+- Xử lý điều kiện cạn kiệt năng lượng cho Predator (`homeo.energy <= 0.0`) trong `dynamics.rs` đảm bảo tính toàn vẹn của chu trình sinh thái.
+- Điều chỉnh phép tính FPS và cơ chế bù trừ lag trong `src-tauri/src/core/simulation_loop.rs`.
+
+### R3. Tối ưu Hiệu năng Đồ họa WebGL & Dọn dẹp Tài nguyên GPU (Phase 2 Graphics Fixes)
+- Loại bỏ vòng lặp CPU tính toán 250.000 đỉnh mỗi frame trong `src/components/Landscape/Terrain.tsx` và chuyển hoàn toàn hiệu ứng sóng sang Vertex Shader.
+- Điều chỉnh `boundingSphere` của InstancedMesh trong `WorldVegetation.tsx` để khắc phục lỗi culling sớm.
+- Thêm lifecycle cleanup hook `.dispose()` cho Three.js geometries/materials/textures trong `Vegetation.tsx`, `Water.tsx`, `Sky.tsx`, và Web Audio node graph.
+- Loại bỏ việc tạo object tạm thời (typed array / Vector3 / Euler / Object3D) trong vòng lặp 60Hz của `WorldMinimap.tsx`, `WorldCameraRig.tsx`, và `WorldWildlife.tsx`.
+
+## Acceptance Criteria
+
+### Automated Verification Gates
+- [ ] `cargo check` và `cargo test --features desktop` vượt qua 100% không có lỗi biên dịch hay test failure nào.
+- [ ] `npm run lint` hoàn tất với mã 0 (0 error, 0 merge conflict parse error).
+- [ ] `npm run typecheck:tests` và `npm run test:frontend` vượt qua 100% (446/446 tests pass).
+- [ ] `npm run build` thành công không có lỗi typecheck hay vi phạm Content Security Policy.
+- [ ] Unit tests mới hoặc cập nhật kiểm chứng: Raycast inside collider trả về `Some(...)`, Joint rotation không sinh `NaN`, và Predator dừng vận động khi hết năng lượng.
+
+
 

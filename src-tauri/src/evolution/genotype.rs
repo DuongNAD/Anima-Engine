@@ -28,7 +28,36 @@ impl MorphologyGenotype {
     /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
     /// the most important ecological / life-history niche axis for the MAP-Elites archive.
     pub fn total_mass(&self) -> f32 {
-        self.nodes.iter().map(|n| n.mass).sum()
+        if self.nodes.is_empty() {
+            return 0.0;
+        }
+        use std::collections::{HashSet, VecDeque};
+        let has_incoming: HashSet<u32> = self.edges.iter().map(|e| e.target_node).collect();
+        let root_node = self
+            .nodes
+            .iter()
+            .find(|n| !has_incoming.contains(&n.id))
+            .unwrap_or(&self.nodes[0]);
+
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        visited.insert(root_node.id);
+        queue.push_back(root_node.id);
+
+        let mut mass = root_node.mass;
+
+        while let Some(curr_id) = queue.pop_front() {
+            for edge in self.edges.iter().filter(|e| e.source_node == curr_id) {
+                if !visited.contains(&edge.target_node) {
+                    if let Some(target_node) = self.nodes.iter().find(|n| n.id == edge.target_node) {
+                        visited.insert(edge.target_node);
+                        mass += target_node.mass;
+                        queue.push_back(edge.target_node);
+                    }
+                }
+            }
+        }
+        mass
     }
 
     pub fn new() -> Self {

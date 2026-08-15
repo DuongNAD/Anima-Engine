@@ -2,7 +2,7 @@
 title: Chỉ mục nghiên cứu
 status: active
 owner: architecture
-last_reviewed: 2026-07-26
+last_reviewed: 2026-08-07
 review_cycle: quarterly
 ---
 
@@ -17,6 +17,7 @@ ghi thành [ADR](../decisions/README.md), còn tài liệu nghiên cứu giữ l
 |---|---|---|
 | [`OPEN_SOURCE_LANDSCAPE.md`](OPEN_SOURCE_LANDSCAPE.md) | Đánh giá từng dự án nguồn mở theo hạng Adopt / Pilot / Oracle / Reference / Reject, kèm biên tích hợp và hạng rủi ro license | `accepted` · review 2026-07-26 |
 | [`MAP_AND_ML_UPGRADE_RESEARCH.md`](MAP_AND_ML_UPGRADE_RESEARCH.md) | Đào sâu hai mảng: sinh thế giới/bản đồ, và mô hình machine (ML/tiến hoá) | `proposed` |
+| [`RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md`](RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md) | Đánh giá zero-copy/binary IPC, structured Meta-AI, Hunyuan3D và các tin quantum; tách ứng viên pilot khỏi mục defer/reject | `proposed` · review 2026-08-07 |
 
 ## Cách đọc
 

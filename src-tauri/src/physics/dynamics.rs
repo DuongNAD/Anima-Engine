@@ -1,6 +1,6 @@
 use crate::ai::cpg::{CpgOscillator, TimeStep};
 use crate::core::ecs::{
-    JointAxis, ParentAgent, Position, Prey, Rotation, Segment, SegmentJointForce, Velocity,
+    JointAxis, ParentAgent, Position, Predator, Prey, Rotation, Segment, SegmentJointForce, Velocity,
 };
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
@@ -47,7 +47,8 @@ pub fn resolve_joints_system(
             // Update child orientation
             if let (Some(axis), Some(cpg)) = (opt_axis, opt_cpg) {
                 let axis_val = axis.0;
-                let target_rel_rot = Quat::from_axis_angle(axis_val.normalize(), cpg.output);
+                let axis_norm = axis_val.try_normalize().unwrap_or(Vec3::Y);
+                let target_rel_rot = Quat::from_axis_angle(axis_norm, cpg.output);
                 let r_target = parent_rot.0 * target_rel_rot;
                 child_rot.0 = child_rot
                     .0
@@ -91,6 +92,7 @@ pub fn integrate_physics_system(
     )>,
     agent_query: Query<&crate::ai::hrrl::HomeostaticState>,
     prey_query: Query<&Prey>,
+    predator_query: Query<&Predator>,
     time_step: Res<TimeStep>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
@@ -150,8 +152,8 @@ pub fn integrate_physics_system(
                 false
             }
         } else if let Ok(homeo) = agent_query.get(entity) {
-            let is_prey = prey_query.get(entity).is_ok();
-            is_prey && homeo.energy <= 0.0
+            let is_agent = prey_query.get(entity).is_ok() || predator_query.get(entity).is_ok();
+            is_agent && homeo.energy <= 0.0
         } else {
             false
         };

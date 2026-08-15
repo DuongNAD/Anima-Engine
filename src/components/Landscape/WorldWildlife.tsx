@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -29,6 +29,9 @@ function hash01(n: number): number {
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
+
+const scratchDummy = new THREE.Object3D();
+const scratchTint = new THREE.Color();
 
 /** Fills a geometry's vertex colours with one flat colour (two-tone merged bodies). */
 function paint(geom: THREE.BufferGeometry, hex: string): THREE.BufferGeometry {
@@ -122,6 +125,15 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
   const heronGeom = useMemo(() => makeHeron(), []);
   const butterflyGeom = useMemo(() => makeButterfly(), []);
   const deerGeom = useMemo(() => makeDeer(), []);
+
+  useEffect(() => {
+    return () => {
+      duckGeom.dispose();
+      heronGeom.dispose();
+      butterflyGeom.dispose();
+      deerGeom.dispose();
+    };
+  }, [duckGeom, heronGeom, butterflyGeom, deerGeom]);
 
   // ---- deterministic placement over the world fields ----
   const spots = useMemo(() => {
@@ -271,7 +283,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
 
   useFrame((state) => {
     const t = sceneElapsed(state.clock);
-    const dummy = new THREE.Object3D();
+    const dummy = scratchDummy;
 
     // Ducks paddle a lazy little circle and bob on the swell.
     const ducks = duckRef.current;
@@ -292,7 +304,7 @@ export const WorldWildlife: React.FC<WorldWildlifeProps> = ({
     // Butterflies flutter in a small wandering loop above the flowers.
     const flies = butterflyRef.current;
     if (flies && typeof flies.setMatrixAt === 'function') {
-      const tint = new THREE.Color();
+      const tint = scratchTint;
       for (let i = 0; i < spots.butterflies.length; i++) {
         const p = spots.butterflies[i];
         const wx = Math.sin(t * 0.5 + p.seed) * 2.2 + Math.sin(t * 1.3 + p.seed * 2) * 0.7;

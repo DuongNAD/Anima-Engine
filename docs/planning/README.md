@@ -2,7 +2,7 @@
 title: Chỉ mục kế hoạch
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-08-07
 ---
 
 # Kế hoạch
@@ -14,6 +14,7 @@ last_reviewed: 2026-07-26
 | Creature morphogenesis | [`CREATURE_MORPHOGENESIS_PLAN.md`](CREATURE_MORPHOGENESIS_PLAN.md) | Genotype, phenotype, spawn, persistence và adaptation gates |
 | Alternate evolution + World Lab | [Feature task plan](../ai/planning/2026-07-24-feature-alternate-evolution-world-lab.md) | World laws, exotic energy, forks, observability và species evidence |
 | Áp dụng dự án nguồn mở | [Open-source adoption plan](OPEN_SOURCE_ADOPTION_PLAN.md) | Luồng việc tích hợp, thử nghiệm và loại bỏ |
+| Nâng cấp từ điểm tin R&D 2026-08-07 | [`RD_TECH_UPGRADE_PLAN_2026-08-07.md`](RD_TECH_UPGRADE_PLAN_2026-08-07.md) | Baseline và pilot cho binary data plane, structured Meta-AI, asset 3D và contract LIVA ↔ Anima |
 | Backlog thực thi hiện tại | [`TODO.md`](../../TODO.md) | Trạng thái công việc ngắn hạn |
 
 Kế hoạch mô tả **sẽ làm gì**; hợp đồng trong [Reference](../reference/README.md) mô tả
