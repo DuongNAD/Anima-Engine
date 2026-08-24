@@ -1,7 +1,7 @@
-use anima_engine_lib::evolution::crossover::crossover_genotypes;
-use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::evolution::map_elites::{EliteIndividual, MapElitesArchive};
-use anima_engine_lib::evolution::mutation::{is_valid_genotype, mutate_genotype};
+use anima_core::crossover::crossover_genotypes;
+use anima_core::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
+use anima_core::map_elites::{EliteIndividual, MapElitesArchive};
+use anima_core::mutation::{is_valid_genotype, mutate_genotype};
 use glam::Vec3;
 use rand::rngs::StdRng;
 use rand::SeedableRng;

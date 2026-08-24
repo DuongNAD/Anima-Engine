@@ -244,3 +244,182 @@ fn toan_tu_1_doi_tham_so_node_van_giu_khoang_gan_gia_tri_goc() {
         }
     }
 }
+
+// =====================================================================
+// F-015: khoá lại 17 mutant còn sống ở quét tươi 2026-08-24
+// (src/mutation.rs — xem mutants.out/missed.txt sau khi sửa compile).
+// Mọi test đều tất định: seed hằng số, không RNG phi tất định, không đồng hồ.
+// =====================================================================
+
+const SWEEP: usize = 256;
+const SWEEP_BASE: u64 = SEED_BASE + 10_000;
+
+/// Chạy `mutate_genotype` với mutation_rate = 1.0 trên SWEEP seed, trả về
+/// genotype sau biến đổi của từng seed.
+fn quet(g0: &MorphologyGenotype, counter: u32) -> Vec<MorphologyGenotype> {
+    (0..SWEEP)
+        .map(|i| {
+            let mut g = g0.clone();
+            let mut c = counter;
+            let mut rng = StdRng::seed_from_u64(SWEEP_BASE + i as u64);
+            mutate_genotype(&mut g, &mut c, 1.0, &mut rng)
+                .expect("mutate_genotype phải thành công với counter còn dư");
+            g
+        })
+        .collect()
+}
+
+/// Chain 0 -> 1 với tham số được chọn sao cho mọi clamp của op1/op2 KHÔNG
+/// chạm biên: radius sau nhiễu ∈ [0.4, 0.6] > |anchor.x| = |anchor.y| = 0.1;
+/// length sau nhiễu ∈ [3.5, 4.5] nên length/2 ∈ [1.75, 2.25] > |anchor.z| = 1.0.
+/// Hai cạnh z đối dấu có chủ đích: mutant "/ -> %" trên MAX bound chỉ bộc lộ
+/// với z dương, trên MIN bound chỉ bộc lộ với z âm.
+fn chain_2_node_dac_biet() -> MorphologyGenotype {
+    let mut g = MorphologyGenotype::new();
+    g.add_node(node(0, 4.0, 0.5, 2.0));
+    g.add_node(node(1, 4.0, 0.5, 2.0));
+    g.add_node(node(2, 4.0, 0.5, 2.0));
+    // Hai cạnh z đối dấu có chủ đích: mutant "/ -> %" trên MAX bound chỉ bộc lộ
+    // với z dương, trên MIN bound chỉ bộc lộ với z âm. Nhắm vào 2 node lá khác
+    // nhau (không dùng cạnh trùng 0->1 — DFS của is_valid_genotype sẽ tưởng
+    // cycle và revert mọi mutation).
+    for (target, z) in [(1u32, 1.0), (2u32, -1.0)] {
+        g.add_edge(MorphologyEdge {
+            source_node: 0,
+            target_node: target,
+            joint_anchor: Vec3::new(0.1, 0.1, z),
+            joint_axis: Vec3::X,
+        });
+    }
+    g
+}
+
+fn tham_so_bi_doi(g: &MorphologyGenotype, g0: &MorphologyGenotype) -> bool {
+    g.nodes.iter().zip(g0.nodes.iter()).any(|(a, b)| {
+        a.length != b.length || a.radius != b.radius || a.mass != b.mass
+    })
+}
+
+/// Kill mutant 109:77, 110:77, 112:59/67/81 (op1 clamp anchor):
+/// "delete -" biến clamp(-x, x) thành clamp(x, x) — ép anchor vào đúng biên;
+/// "/ -> %" biến length/2 thành length%2. Code đúng phải giữ anchor NGUYÊN
+/// giá trị vì clamp không chạm.
+#[test]
+fn op1_giu_nguyen_anchor_khi_clamp_khong_cham() {
+    let g0 = chain_2_node_dac_biet();
+    let mut op1_runs = 0usize;
+    for g in quet(&g0, 10) {
+        if !tham_so_bi_doi(&g, &g0) {
+            continue; // op2/op3/op4 — anchor đổi giá trị là hợp lệ
+        }
+        op1_runs += 1;
+        for (i, expected_z) in [1.0, -1.0].into_iter().enumerate() {
+            assert_eq!(
+                g.edges[i].joint_anchor,
+                Vec3::new(0.1, 0.1, expected_z),
+                "op1 không được đụng anchor khi clamp không chạm — mutant ép vào biên sẽ đổi giá trị này"
+            );
+        }
+    }
+    assert!(op1_runs >= 8, "sweep phải phủ seed chạy op1, thấy {op1_runs}");
+}
+
+/// Kill mutant 127:84, 129:50, 129:84, 130:68, 131:36/44/58 (op2 anchor):
+/// "delete -" ép anchor vào biên (x=y=radius=0.5, z=length/2=2.0);
+/// "+ -> *" biến nhiễu cộng thành nhân (y, z âm hoặc gần 0).
+#[test]
+fn op2_phat_anchor_trong_dai_khong_cham_clamp() {
+    let g0 = chain_2_node_dac_biet();
+    let mut op2_runs = 0usize;
+    for g in quet(&g0, 10) {
+        if tham_so_bi_doi(&g, &g0) || g.nodes.len() != 3 || g.edges.len() != 2 {
+            continue; // chỉ op2 giữ cấu trúc 3 node/2 cạnh và không đụng tham số node
+        }
+        op2_runs += 1;
+        // Mỗi cạnh hoặc giữ nguyên (op2 chọn cạnh kia), hoặc nằm trong dải
+        // nhiễu quanh giá trị gốc. Mutant ép biên/đổi phép tính sẽ lọt ra ngoài cả hai.
+        for (e, expected_z) in g.edges.iter().zip([1.0, -1.0]) {
+            let nguyen_ban = e.joint_anchor == Vec3::new(0.1, 0.1, expected_z);
+            if nguyen_ban {
+                continue;
+            }
+            let a = e.joint_anchor;
+            assert!(
+                a.x < 0.3,
+                "anchor.x phải nằm trong dải nhiễu (0.1 ± 0.1), thấy {} — mutant ép vào biên radius",
+                a.x
+            );
+            assert!(
+                a.y >= 0.0 && a.y < 0.3,
+                "anchor.y = 0.1 + noise ∈ [0, 0.2), thấy {} — mutant nhân noise cho y âm",
+                a.y
+            );
+            assert!(
+                a.z * expected_z > 0.5 && a.z * expected_z < 1.5,
+                "anchor.z phải = {} + noise (cùng dấu, |z| ∈ [0.9, 1.1)), thấy {} — mutant biên/chiếu chia đổi giá trị",
+                expected_z,
+                a.z
+            );
+        }
+    }
+    assert!(op2_runs >= 8, "sweep phải phủ seed chạy op2, thấy {op2_runs}");
+}
+
+/// Kill mutant 146:41 ("<" -> "<="): op3 phải bị chặn ở ĐÚNG 15 node.
+#[test]
+fn op3_khong_them_node_khi_dat_tran_15() {
+    let g0 = chain(15, 1.0, 0.25, 1.0);
+    for g in quet(&g0, 100) {
+        assert!(
+            g.nodes.len() <= 15,
+            "op3 phải bị chặn khi đã đủ 15 node, thấy {}",
+            g.nodes.len()
+        );
+    }
+}
+
+/// Kill mutant 194:41 (">" -> ">="): op4 không được bỏ node khi chỉ còn 2.
+#[test]
+fn op4_khong_bo_node_khi_chi_con_hai() {
+    let g0 = chain(2, 1.0, 0.25, 1.0);
+    for g in quet(&g0, 100) {
+        assert!(
+            g.nodes.len() >= 2,
+            "op4 không được chạy với 2 node, còn {}",
+            g.nodes.len()
+        );
+    }
+}
+
+/// Kill mutant 166:39, 168:40 ("/" -> "%"): anchor z của node con phải là
+/// ±parent.length/2 (4.0/2.0 = 2.0), không phải length%2 (4.0%2.0 = 0.0).
+#[test]
+fn op3_anchor_z_cua_con_la_nua_chieu_dai_cha() {
+    let mut g0 = MorphologyGenotype::new();
+    g0.add_node(node(0, 4.0, 0.5, 2.0));
+    let mut add_runs = 0usize;
+    for g in quet(&g0, 7) {
+        if g.nodes.len() == 1 {
+            continue; // op1 chạy — không có node mới
+        }
+        add_runs += 1;
+        assert_eq!(g.edges.len(), 1, "op3 phải tạo đúng 1 cạnh mới");
+        assert_eq!(
+            g.edges[0].joint_anchor.z.abs(),
+            2.0,
+            "anchor.z của con phải = length/2 = 2.0, thấy {}",
+            g.edges[0].joint_anchor.z
+        );
+    }
+    assert!(add_runs >= 8, "sweep phải phủ seed chạy op3, thấy {add_runs}");
+}
+
+/// Kill mutant 11:9 (Display::fmt -> Ok(Default::default())): thông điệp lỗi
+/// phải con người đọc được, không được biến thành chuỗi rỗng.
+#[test]
+fn loi_node_id_exhausted_co_thong_dieu_ro_rang() {
+    assert_eq!(
+        format!("{}", NodeIdExhausted),
+        "morphology node identity counter exhausted"
+    );
+}

@@ -42,7 +42,8 @@ fn crossover_fallback_node_id_counter_increments_correctly() {
     let counter_before = counter;
     let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
 
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("crossover succeeds on valid parents");
 
     // The chosen subtree has some number of nodes; counter must have
     // advanced by exactly that many.
@@ -90,7 +91,8 @@ fn crossover_fallback_no_duplicate_node_ids() {
     let mut counter: u32 = 200;
     let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
 
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("crossover succeeds on valid parents");
 
     let mut seen = std::collections::HashSet::new();
     for node in &child.nodes {
@@ -138,7 +140,8 @@ fn crossover_fallback_copies_correct_edge_anchor_from_parent_b() {
         let mut counter: u32 = 300;
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("crossover succeeds on valid parents");
 
         // The grafting edge connects root_id (0) to the newly-mapped w_node.
         // It is the last edge pushed (or the only edge connecting to root 0).
@@ -216,7 +219,8 @@ fn crossover_fallback_anchor_z_is_parent_len_divided_by_two() {
     let mut counter: u32 = 400;
     let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
 
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("crossover succeeds on valid parents");
 
     // The graft edge connects root 0 to the newly-mapped node.
     let graft_edge = child.edges.iter()
@@ -255,7 +259,8 @@ fn crossover_fallback_anchor_distinguishes_div_from_mod_and_mul() {
     let mut counter: u32 = 500;
     let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
 
-    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng);
+    let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+        .expect("crossover succeeds on valid parents");
 
     let graft_edge = child.edges.iter()
         .find(|e| e.source_node == 0)
