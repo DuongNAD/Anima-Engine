@@ -53,6 +53,49 @@ Quy tắc ghi:
   Sau khi sửa, chạy lại: `just hunt-file src/mutation.rs 2
   mutation_operator_tests,mutation_invariants anima-core` để có missed.txt tươi.
 - **Trạng thái:** OPEN — chờ owner sửa config.
+- **FIXED (2026-08-24):** owner chỉ thị "làm nốt" → chọn phương án (a): thêm
+  bảng `[workspace]` rỗng (kèm chú thích) vào `src-tauri/anima-core/Cargo.toml`.
+  Không ảnh hưởng build crate chính (src-tauri không phụ thuộc anima-core).
+  Quét tươi mở khoá — kéo theo phát hiện F-015.
+
+### F-015 — anima-core không biên dịch được sau merge 157f85d: import path stale + validator tham chiếu ngược crate cha
+- **Ngày:** 2026-08-24
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/anima-core/src/crossover.rs:1-2`, `src/mutation.rs:1`,
+  `src/map_elites.rs:1,82` (path `crate::evolution::…` / `crate::core::…` không
+  tồn tại trong crate tách rời), và `tests/evolution_robustness_tests.rs:1-4`,
+  `tests/map_elites_tests.rs:1-6` (import nhầm `anima_engine_lib` — crate cha),
+  `tests/crossover_logic_tests.rs:45,93,141,219,258` (dùng `child.nodes` trên
+  `Result` — viết cho API cũ trả thẳng genotype).
+- **Phát hiện bởi:** mutation scan (F-014 vừa mở khoá thì baseline build chết:
+  `ERROR cargo build failed in an unmutated tree`).
+- **Triệu chứng:** 5 lỗi E0433 ở lib + 13+ lỗi ở test → toàn bộ fuzz/miri/
+  mutation của anima-core tê liệt từ merge 157f85d; mutation score "70%" trước
+  đó không thể tái tạo. `map_elites.rs:82` gọi
+  `crate::core::components::validate_morphology_payload` — hàm này là
+  `pub(crate)` ở crate cha, không thể gọi chéo (sẽ đảo dependency).
+- **Tái hiện:** `just hunt-file src/mutation.rs 2 "" anima-core` (trước fix) →
+  E0433 hàng loạt.
+- **Cách sửa (owner ủy quyền qua chỉ thị "làm nốt đi" sau khi F-014 được báo):**
+  1. Sửa import path về module top-level của anima-core (`crate::genotype`,
+     `crate::mutation`).
+  2. Port `validate_morphology_payload` thành
+     `anima-core/src/components.rs` (thuần, trả `Result<(), String>`, giữ
+     `MAX_MORPHOLOGY_NODES = 128` đồng bộ bản gốc); call site đổi sang
+     `crate::components::…`.
+  3. Sửa test: thêm `.expect()` cho API `Result` mới; đổi import về
+     `anima_core::`; derive `PartialEq` cho 3 struct genotype (additive);
+     thêm `[dev-dependencies] serde_json` cho test round-trip JSON.
+  4. Viết thêm 6 test khoá 17 mutant sống (xem dưới).
+- **Kết quả mutation (quét tươi, chỉ test 2 suite mutation):** 83 mutant của
+  `src/mutation.rs`: 76 caught, 7 unviable, **0 missed** — 100% mutant khả thi
+  bị giết (test mới: `mutation_operator_tests.rs::op1_giu_nguyen_anchor…`,
+  `op2_phat_anchor…`, `op3_khong_them_node…`, `op4_khong_bo_node…`,
+  `op3_anchor_z_cua_con…`, `loi_node_id_exhausted…`).
+- **Bài học:** khi tách crate, phải chạy `cargo check` trên crate MỚI ngay —
+  copy file giữ nguyên path cũ thì mọi cổng phía sau đều đo trên xác chết.
+- **Trạng thái:** FIXED (commit kèm biên bản này).
+
 
 ### F-013 — Mutant "replace + with -" ở z_down wrap toroidal KHÔNG tương đương, đã giết bằng test hành vi
 - **Ngày:** 2026-08-24
