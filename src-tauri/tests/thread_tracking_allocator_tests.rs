@@ -14,11 +14,20 @@ fn current_thread_tracking_ignores_allocations_from_other_threads() {
     let worker_start = Arc::clone(&start);
     let worker_finished = Arc::clone(&finished);
     let worker = std::thread::spawn(move || {
-        worker_start.wait();
-        let allocation = Box::new([7_u8; 1024]);
-        black_box(&allocation);
-        worker_finished.wait();
+        // Vòng 1: khô (warm-up) — vòng 2: vòng được đo.
+        for _ in 0..2 {
+            worker_start.wait();
+            let allocation = Box::new([7_u8; 1024]);
+            black_box(&allocation);
+            worker_finished.wait();
+        }
     });
+
+    // Vòng khô (warm-up): Barrier/Condvar/parking của std có thể cấp phát lười
+    // trong LẦN DÙNG ĐẦU TIÊN trên luồng này. Vòng chạy dưới đây diễn ra TRƯỚC
+    // cửa sổ đo để những cấp phát đó không bị đếm nhầm vào cổng zero-alloc.
+    start.wait();
+    finished.wait();
 
     ALLOCATOR.start_tracking();
     start.wait();

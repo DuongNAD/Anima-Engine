@@ -45,10 +45,21 @@ fn run_ticks(ticks: usize) -> u64 {
     // simulation_lifecycle. Xem F-002 trong FINDINGS.md: khong co mot duong
     // dung World chuan duy nhat, moi noi tu lap mot tap resource rieng.
     world.insert_resource(FoodSpawnSettings::default());
+    // Mot entity van toc hang so de the gioi THUC SU bien doi qua tung tick.
+    // Sau merge 157f85d bo flora (F-012), schedule chi con thuc an — bao hoa
+    // sau dung 1 tick, khi do hash khong phan biet duoc 1 tick voi 60 tick va
+    // test doi chứng o duoi mat het y nghia. update_positions_system tich hop
+    // Velocity vao Position moi tick, tat dinh tuyet doi.
+    world.spawn((
+        Position(glam::Vec3::new(0.0, 0.0, 0.0)),
+        anima_engine_lib::core::ecs::Velocity(glam::Vec3::new(0.25, 0.0, -0.1)),
+    ));
     let mut schedule = Schedule::default();
+    // spawn_flora_system da bi loai khoi src theo merge 157f85d (F-012) —
+    // schedule con lai la spawn_food_system + wrap_coordinates_system.
     schedule.add_systems((
         anima_engine_lib::core::ecs::spawn_food_system,
-        anima_engine_lib::core::ecs::spawn_flora_system,
+        anima_engine_lib::core::world_systems::update_positions_system,
         anima_engine_lib::core::ecs::wrap_coordinates_system,
     ));
     for _ in 0..ticks {
@@ -88,7 +99,7 @@ fn world_hash_bat_duoc_thay_doi_that() {
 /// 2. hành vi sim đổi có chủ ý   -> cập nhật hằng số trong cùng commit với thay đổi đó
 #[test]
 fn determinism_hash_ghim() {
-    const GOLDEN: u64 = 7453603239474115607;
+    const GOLDEN: u64 = 192458580480519260;
     assert_eq!(
         run_ticks(200),
         GOLDEN,

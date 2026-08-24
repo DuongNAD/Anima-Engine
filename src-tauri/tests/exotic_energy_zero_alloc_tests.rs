@@ -33,7 +33,7 @@ fn test_exotic_field_hotloop_zero_heap_allocations() {
         field.step();
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
 
     // The steady-state per-tick update: source injection → decay → 5-point diffusion into the
     // preallocated double buffer. No allocation should occur.
@@ -81,7 +81,7 @@ fn test_exotic_forcing_hotloop_zero_heap_allocations() {
         field.step();
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
 
     let mut tick = 360u64;
     for _ in 0..500 {
@@ -134,7 +134,7 @@ fn test_ae3_population_physiology_hotloop_zero_heap_allocations() {
         field.step();
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
 
     for _ in 0..500 {
         pop.step_physiology(Some(&mut field), &mut dissipated);
