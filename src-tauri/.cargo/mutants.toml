@@ -12,6 +12,12 @@ exclude_globs = [
 
 # Bỏ mutation trên code chỉ log/format — giết chúng không tăng chất lượng.
 exclude_re = [
+    # Equivalent mutant z_up (F-011): (z-GRID_SIZE-1)%GRID_SIZE ===
+    # (z+GRID_SIZE-1)%GRID_SIZE voi moi z trong [0,128) — tru usize wrap 2^64
+    # va -129 === 127 mod 128, 2^64 === 0 mod 128. Regex cu ghim 190:23 da loi
+    # thoi sau merge 157f85d (doi so dong). Go ra khi GRID_SIZE khong con la
+    # luy thua cua 2, hoac bat overflow-checks, hoac doi sang rem_euclid.
+    'pheromone\.rs:195:23: replace \+ with - in update_pheromone_grid_system',
     # Equivalent mutant: z_up=(z-GRID_SIZE-1)%GRID_SIZE cho ket qua GIONG HET
     # (z+GRID_SIZE-1)%GRID_SIZE voi moi z trong [0,128) vi phep tru usize chi
     # wrap-around (overflow-checks tat trong release) va -129 mod 128 = 127,
