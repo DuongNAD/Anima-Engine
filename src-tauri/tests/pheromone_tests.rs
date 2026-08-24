@@ -48,6 +48,49 @@ fn test_pheromone_decay() {
 }
 
 #[test]
+fn test_pheromone_diffusion_z_wraps_forward_not_backward_at_z_zero() {
+    // Khoá lại mutant "replace + with -" tai pheromone.rs:197:29
+    // (z_down = (z + 1) % GRID_SIZE). Mutant doi thanh (z - 1) % GRID_SIZE:
+    // voi z = 0 thi (0 - 1) usize underflow wrap thanh 2^64 - 1, mod 128 =
+    // 127, nen o (z=0) doc lang gieng down tu HANG 127 thay vi HANG 1.
+    // Khac voi mutant o dong 190 (z_up), hai bieu thuc nay PHAN BIET duoc:
+    // dat pheromone chi tai hang 1 thi code dung phai cho o (z=0) nhan
+    // diffusion > 0, con mutant cho 0. Xem FINDINGS F-013.
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    world.insert_resource(TimeStep(1.0));
+
+    // Pure diffusion (decay = 0.0, diffusion = 0.1)
+    let grid = PheromoneGrid::new(0.1, 0.0);
+    world.insert_resource(grid);
+
+    // Place concentration ONLY at (z = 1, x = 0): the correct `down`
+    // neighbour of (z = 0, x = 0). Row 127 stays empty so the backward
+    // reading of the mutated code sees pure zero.
+    {
+        let mut grid_res = world.resource_mut::<PheromoneGrid>();
+        grid_res.values[1 * GRID_SIZE] = 10.0;
+    }
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(update_pheromone_grid_system);
+
+    // d_dt = min(0.1 * 1.0, 0.24) = 0.1
+    // At (z=0, x=0): laplacian = left(0) + right(0) + up(row127: 0)
+    //                      + down(row1: 10) - 4 * center(0) = 10
+    // new value = 0 + 0.1 * 10 = 1.0
+    // Under the mutant, down reads row 127 (= 0.0) so laplacian = 0 and the
+    // cell stays exactly 0.0.
+    schedule.run(&mut world);
+
+    let grid_res = world.resource::<PheromoneGrid>();
+    let delta = (grid_res.values[0] - 1.0).abs();
+    // Guard chống assertion rỗng quét theo dòng và chỉ nhìn đoạn trước dấu
+    // ")" đầu tiên, nên phép so sánh phải đứng ngay sau `assert!(`.
+    assert!(delta < 1e-5, "cell (z=0,x=0) must diffuse from its FORWARD z-neighbour (row 1): expected 1.0, got {}", grid_res.values[0]);
+}
+
+#[test]
 fn test_pheromone_diffusion() {
     let _lock = TEST_LOCK.lock().unwrap();
     let mut world = World::new();

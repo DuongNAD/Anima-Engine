@@ -4,6 +4,10 @@
 //! hai lần chạy sim từ cùng một seed có cho ra cùng một thế giới hay không.
 //! File này mới là bằng chứng đó.
 //!
+//! Lưu ý 2026-08-24: schedule đã thay đổi sau merge 157f85d (flora bị xoá,
+//! xem F-012) nên GOLDEN được ghim lại trong cùng chuỗi sửa — đúng giao thức
+//! "hành vi sim đổi có chủ ý" ghi ở dưới.
+//!
 //! Phạm vi: các system đã chuyển sang `SimRng`. Schedule đầy đủ của sim nằm
 //! trong closure của `simulation_lifecycle::start` nên chưa dựng lại được từ
 //! test; khi nào tách được nó ra thành hàm dùng chung thì mở rộng test này.

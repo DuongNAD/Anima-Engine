@@ -1,5 +1,7 @@
 mod common;
 
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use rand::Rng;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -26,10 +28,14 @@ use anima_engine_lib::core::engine::{
 use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
 use anima_engine_lib::evolution::lineage::{FallbackLineageTracker, LineageTracker, RelationType};
 
-// Bind to tracking allocator
+/// Bind to tracking allocator
 #[global_allocator]
 static ALLOCATOR: common::allocator::TrackingAllocator =
     common::allocator::TrackingAllocator::new();
+
+/// Seed hằng số lấy từ `HD_SEED` trong `.hardening.env` — cấm RNG phi tất định
+/// trong test (luật hardening). Các stream dẫn xuất đều là hằng số tất định.
+const HD_SEED: u64 = 0x5EED;
 
 /// Disarms the process-wide counter if a measured system panics before the explicit read.
 struct AllocationTrackingGuard {
@@ -89,7 +95,7 @@ fn test_lineage_tracker_concurrency_and_fallback() {
         let gen_clone = genotype.clone();
 
         let handle = thread::spawn(move || {
-            let mut rng = rand::thread_rng();
+            let mut rng = StdRng::seed_from_u64(HD_SEED ^ (thread_idx as u64));
             for op_idx in 0..ops_per_thread {
                 let id = format!("thread-{}-node-{}", thread_idx, op_idx);
                 if op_idx == 0 {
@@ -121,7 +127,7 @@ fn test_lineage_tracker_concurrency_and_fallback() {
     let reader_running = Arc::new(AtomicBool::new(true));
     let reader_running_clone = Arc::clone(&reader_running);
     let reader_handle = thread::spawn(move || {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(HD_SEED.wrapping_add(1));
         while reader_running_clone.load(Ordering::SeqCst) {
             let _ = tracker_reader.get_lineage_graph();
             if rng.gen_bool(0.2) {
@@ -135,7 +141,7 @@ fn test_lineage_tracker_concurrency_and_fallback() {
     let offline_running = Arc::new(AtomicBool::new(true));
     let offline_running_clone = Arc::clone(&offline_running);
     let offline_handle = thread::spawn(move || {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(HD_SEED.wrapping_mul(0x9E3779B97F4A7C15));
         while offline_running_clone.load(Ordering::SeqCst) {
             tracker_offline.mark_offline();
             if rng.gen_bool(0.2) {
