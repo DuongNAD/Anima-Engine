@@ -89,6 +89,15 @@ Quy tắc ghi:
   (`git cat-file -e origin/main:<path>` → KHÔNG tồn tại; số chỗ dùng API đã đếm
   ở trên). Việc xoá nằm trong commit riêng kèm mục FINDINGS này làm biên bản;
   ngoài 11 file này không được xoá/gọt bất kỳ assertion nào khác.
+- **BỔ SUNG (2026-08-24):** quét mở rộng theo symbol phát hiện thêm ở vòng build
+  sau (`get_default_presets`, `build_preset_genotype`,
+  `process_preset_spawns_system`, `BevyPresetSpawnTrigger`, `BevyLineageTracker`,
+  `commands::EnvironmentSettings`, `sync_environment_settings_system`,
+  `receive_manual_disasters_system`, `BevyEnvironmentSettings`,
+  `BevyManualDisaster`, `update_day_night_cycle_system` — đều xác nhận không còn
+  trong `src-tauri/src`) cho thấy đúng 1 file thứ 12 cùng cảnh ngộ:
+  `src-tauri/tests/organism_library_tests.rs`, không tồn tại trên origin/main →
+  xoá theo cùng uỷ quyền và tiêu chí.
 
 
 ### F-010 — verify.sh chết im lặng (exit 1, không output) khi không có thay đổi nào trong thư mục tests
