@@ -2,6 +2,12 @@ timeout_multiplier = 6.0
 minimum_test_timeout = 180
 
 exclude_re = [
+    # Equivalent mutant (F-016): child tai diem prune luon la CAY, va canh
+    # incoming vao goc subtree v da bi remove o dong 113 TRUOC khi retain —
+    # tren cay, canh duy nhat cat qua ranh gioi subtree chinh la canh incoming
+    # do, nen !A||!B va !A&&!B luon chon cung tap hop canh. Go ra neu child
+    # tai diem prune khong con la cay (cho phep DAG/da canh vao subtree).
+    'crossover\.rs:121:57: replace && with \|\| in crossover_genotypes',
     # Doi 'x + rng.gen_range(-a..a)' thanh 'x - ...'. Khoang lay mau DOI XUNG
     # quanh 0 nen hai bieu thuc cho CUNG MOT phan phoi — khong test hanh vi
     # nao phan biet duoc. Go ra neu khoang tro thanh bat doi xung.

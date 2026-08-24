@@ -94,7 +94,41 @@ Quy tắc ghi:
   `op3_anchor_z_cua_con…`, `loi_node_id_exhausted…`).
 - **Bài học:** khi tách crate, phải chạy `cargo check` trên crate MỚI ngay —
   copy file giữ nguyên path cũ thì mọi cổng phía sau đều đo trên xác chết.
+- **BỔ SUNG (2026-08-24) — quét TOÀN crate:** `just hunt-file src 2 '' anima-core`
+  (81 mutant): lần đầu 26 missed → viết test khoá lại cho crossover/map_elites/
+  components → còn 4 → phân tích thêm → **0 missed**. Chi tiết các test mới:
+  `crossover_logic_tests::graft_subtree_giu_do_thi_hop_le_tren_seed_sweep`,
+  `map_elites_tests::from_saved_tu_choi_*` (3 test),
+  `map_elites_tests::add_individual_khong_thay_the…`,
+  `map_elites_tests::select_parent_replay_khop_mo_phong_rut`,
+  `components_validation_tests.rs` (4 test). Mutant cuối cùng là equivalent —
+  xem F-016.
 - **Trạng thái:** FIXED (commit kèm biên bản này).
+
+### F-016 — Mutant "&&"→"||" ở prune cạnh khi ghép subtree là tương đương trên miền input là cây
+- **Ngày:** 2026-08-24
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/anima-core/src/crossover.rs:121`
+  (`child.edges.retain(|e| !v_sub_ids.contains(&e.source_node) && !v_sub_ids.contains(&e.target_node))`)
+- **Phát hiện bởi:** mutant (sống sót 3 vòng test sweep 128 seed)
+- **Triệu chứng:** thoạt nhìn `&&`→`||` giữ thêm cạnh lơ lửng vào node đã bị
+  xoá → phá validity. Nhưng: (1) `child` tại điểm prune luôn là CÂY (xây từ
+  hai cây), (2) cạnh incoming vào gốc subtree `v` đã bị `edges.remove()` ở
+  dòng 113 TRƯỚC khi retain. Trên cây, cạnh duy nhất cắt qua ranh giới một
+  subtree chính là cạnh vào gốc của nó → sau khi bỏ cạnh đó, không còn cạnh
+  nào chạm v_sub ngoài các cạnh nội bộ → `!A||!B` và `!A&&!B` chọn cùng tập
+  cạnh. Không tồn tại test hành vi phân biệt được trên miền input hiện có.
+- **Tái hiện:** `just hunt-file src 2 '' anima-core` → mutant trên báo Missed
+  (trước khi skip).
+- **Test khoá lại:** không có — không thể có trên miền input là cây.
+- **Đã xử lý:** `just skip 'crossover\.rs:121:57: replace && with \|\| in
+  crossover_genotypes' …` thêm vào `exclude_re` của
+  `src-tauri/anima-core/.cargo/mutants.toml`.
+- **Điều kiện gỡ ra:** khi `child` tại điểm prune cho phép DAG/nhiều cạnh vào
+  cùng subtree (không còn là cây đơn) — khi đó cross-edge nhiều hơn một và
+  mutant PHẢI bị giết bằng test.
+- **Trạng thái:** OPEN (đã loại khỏi mutation gate, chờ điều kiện gỡ)
+
 
 
 ### F-013 — Mutant "replace + with -" ở z_down wrap toroidal KHÔNG tương đương, đã giết bằng test hành vi
