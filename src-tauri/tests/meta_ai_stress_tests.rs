@@ -57,7 +57,6 @@ fn reset_alloc_count() {
 #[test]
 fn test_stress_environmental_transitions_and_boundaries() {
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(ActiveEnvironmentEvent::default());
     world.insert_resource(FoodSpawnSettings::default());
 
@@ -219,7 +218,6 @@ fn test_rate_limiting_and_offline_fallback() {
 fn test_non_blocking_event_trigger_processing() {
     let (tx, rx) = crossbeam_channel::bounded::<EnvironmentalEvent>(10000);
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(EnvironmentalEventReceiver(rx));
     world.insert_resource(ActiveEnvironmentEvent::default());
 

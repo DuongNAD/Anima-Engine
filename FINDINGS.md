@@ -30,6 +30,86 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-011 — Mutant "replace + with -" ở wrap toroidal là tương đương, đã loại bằng skip
+- **Ngày:** 2026-08-24
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/ai/pheromone.rs:195` (`let z_up = (z + GRID_SIZE - 1) % GRID_SIZE;`)
+- **Phát hiện bởi:** mutant (`src/ai/pheromone.rs:190:23: replace + with - in update_pheromone_grid_system` sống sót qua quét shard, thấy trong `src-tauri/mutants.out/missed.txt`)
+- **Triệu chứng:** với usize và overflow-checks tắt (mặc định profile release,
+  thứ mà cargo-mutants dùng), `(z - GRID_SIZE - 1) % GRID_SIZE` cho kết quả
+  **giống hệt** `(z + GRID_SIZE - 1) % GRID_SIZE` với mọi z ∈ [0,128): phép trừ
+  underflow wrap thành `2^64 - (129 - z)` mà `2^64 ≡ 0 (mod 128)` và
+  `-129 ≡ 127 (mod 128)`, nên sau `% GRID_SIZE` hai biểu thức trùng khít. Không
+  tồn tại test hành vi nào phân biệt được — mọi giá trị thay thế đều cho cùng
+  output lưới.
+- **Tái hiện:** `cd src-tauri && cargo mutants --file src/ai/pheromone.rs --baseline skip`
+  → mutant trên báo Missed.
+- **Test khoá lại:** không có — không thể có, đây là equivalent mutant.
+- **Đã xử lý:** `just skip 'pheromone\.rs:190:23: replace \+ with - in update_pheromone_grid_system' ...`
+  thêm vào `exclude_re` của `src-tauri/.cargo/mutants.toml`.
+- **Điều kiện gỡ ra:** GRID_SIZE không còn là luỹ thừa của 2; hoặc bật
+  overflow-checks trong profile release/test; hoặc đổi sang số có dấu +
+  `rem_euclid`. Khi đó mutant không còn tương đương và PHẢI bị giết bằng test.
+- **Trạng thái:** OPEN (đã loại khỏi mutation gate, chờ điều kiện gỡ)
+
+### F-012 — Merge 157f85d đồng bộ src theo origin/main nhưng bỏ sót 11+ suite test
+- **Ngày:** 2026-08-24
+- **Loại:** BUG
+- **Vị trí:** 11 file trong `src-tauri/tests/`: flora_tests (39 chỗ dùng API đã
+  xoá), flora_stress_boundary_tests (31), challenger_terrain_tests (18),
+  milestone5_challenger_stress_tests (17), env_physics_tests (16),
+  adversarial_terrain_challenger_tests (10), challenger_m5_settings_tests (10),
+  milestone4_tests (9), terrain_tests (5), challenger_stress_tests (3),
+  challenger_m6_weather_tests (2). Ngoài ra conflict marker còn nguyên trong
+  `src-tauri/tests/common/allocator.rs:21-55` (đã giải trong session này).
+- **Phát hiện bởi:** tay (`just test` exit 101)
+- **Triệu chứng:** commit merge 157f85d thay toàn bộ `src-tauri/src` bằng phiên
+  bản origin/main (xoá Flora/FloraSpawnSettings/spawn/grow/wither_flora_system,
+  TerrainGrid → TerrainMap, EnvironmentState bị xoá/đổi tên, core::rng không
+  còn được khai báo trong core/mod.rs dù file rng.rs vẫn tồn tại) nhưng KHÔNG
+  cập nhật vùng test. Hệ quả: nhiều test binary không biên dịch được
+  (`E0432/E0422/E0425/E0433`), `just test` exit 101, cổng verify luật 7 không
+  thể qua. 11 file trên KHÔNG tồn tại trên origin/main — chúng là suite mồ côi
+  của kiến trúc cũ. 4 file khác (meta_ai_stress_tests, challenger_meta_ai_tests,
+  hrrl_tests, ecs_simulation_tests) đã đồng bộ về bản main (diff không xoá
+  assertion nào).
+- **Tái hiện:** `just test` → exit 101; ví dụ một lỗi:
+  `tests/flora_stress_boundary_tests.rs:6` import
+  `anima_engine_lib::core::ecs::Flora` → E0432.
+- **Test khoá lại:** không áp dụng được — bế tắc cấu trúc: cổng verify cấm xoá
+  assertion đã có (luật 3) nên không được xoá/gọt suite mồ côi; đồng thời cấm sửa
+  `src-tauri/src` nên không được hồi sinh API cũ. Cần chủ sở hữu kit quyết định
+  một trong hai hướng: (a) gỡ bỏ chính thức các suite mồ côi khỏi vùng guard
+  kèm biên bản, hoặc (b) chấp nhận revert phần xoá flora/terrain API trong src.
+- **Trạng thái:** OPEN — chờ quyết định kiến trúc phía owner.
+- **QUYẾT ĐỊNH OWNER (2026-08-24):** chọn phương án (a) — xoá 11 suite mồ côi.
+  Ủy quyền cho agent kèm tiêu chí bắt buộc (cả hai phải thoả đồng thời):
+  (i) API được test đã biến mất khỏi `src-tauri/src`, và (ii) file không tồn tại
+  trên nhánh gốc `origin/main`. Đã đối chiếu: cả 11 file thoả cả hai tiêu chí
+  (`git cat-file -e origin/main:<path>` → KHÔNG tồn tại; số chỗ dùng API đã đếm
+  ở trên). Việc xoá nằm trong commit riêng kèm mục FINDINGS này làm biên bản;
+  ngoài 11 file này không được xoá/gọt bất kỳ assertion nào khác.
+
+
+### F-010 — verify.sh chết im lặng (exit 1, không output) khi không có thay đổi nào trong thư mục tests
+- **Ngày:** 2026-08-24
+- **Loại:** BUG
+- **Vị trí:** `scripts/verify.sh:41` (`GUARD_DIRS=$(...)`)
+- **Phát hiện bởi:** tay
+- **Triệu chứng:** dòng 41 là một phép gán qua pipeline
+  `grep -E "$GUARD_RE" | sed | sort -u` mà KHÔNG có `|| true`. Khi working tree
+  sạch (hoặc mọi thay đổi đều ngoài vùng tests), `grep` trả exit 1 vì không có
+  dòng nào khớp; `set -eo pipefail` ở đầu script khiến nó thoát ngay tại đó,
+  exit 1, không in bất kỳ thông báo nào — người chạy chỉ thấy
+  `error: recipe 'verify' failed` từ just. Nghịch lý: cổng "chống gian lận"
+  tự chết đúng khi agent KHÔNG gian lận (tree sạch).
+- **Tái hiện:** trên working tree sạch: `just verify` → exit 1, log trống.
+  Trace xác nhận: `bash -x ./scripts/verify.sh "" ""` dừng ngay sau `+ GUARD_DIRS=`.
+- **Test khoá lại:** không áp dụng được (script thuộc hardening kit, cấm sửa theo
+  AGENTS.md; cần người sở hữu kit sửa bằng cách thêm `|| true` hoặc xử lý rỗng
+  tường minh trước khi gán `GUARD_DIRS`).
+- **Trạng thái:** OPEN
+
 ### F-001 — MAP-Elites chọn cha mẹ trên HashMap nên sim không tái lập được
 - **Ngày:** 2026-08-11
 - **Loại:** BUG

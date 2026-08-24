@@ -91,7 +91,6 @@ fn environmental_systems_non_blocking_performance() {
 
     // Initialize ECS World and resources
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(ActiveEnvironmentEvent::default());
     world.insert_resource(EnvironmentalEventReceiver(env_rx));
     world.insert_resource(FoodSpawnSettings::default());
@@ -137,7 +136,6 @@ fn environmental_systems_non_blocking_performance() {
 /// Verify that I22 hot path systems preserve the zero-dynamic-allocations contract.
 fn ecs_hot_path_zero_allocations_i22() {
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0 / 60.0));
     world.insert_resource(MapBounds::default());
     world.insert_resource(ActiveEnvironmentEvent::default());

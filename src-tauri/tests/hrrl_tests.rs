@@ -17,7 +17,6 @@ use anima_engine_lib::physics::dynamics::RigidBody;
 #[test]
 fn test_metabolic_decay_and_thermoregulation() {
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(TimeStep(1.0 / 60.0));
 
     // Spawn agent with initial homeostatic values
@@ -84,7 +83,6 @@ fn test_metabolic_decay_and_thermoregulation() {
 #[test]
 fn test_food_spawning_and_collision_replenishment() {
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     world.insert_resource(MapBounds {
         min: Vec3::new(-10.0, 0.0, -10.0),
         max: Vec3::new(10.0, 10.0, 10.0),
@@ -173,7 +171,6 @@ fn test_food_spawning_and_collision_replenishment() {
 #[test]
 fn test_transition_collection_and_sending() {
     let mut world = World::new();
-    world.insert_resource(anima_engine_lib::core::rng::SimRng::default());
     let (tx, rx) = bounded::<Transition>(10);
     world.insert_resource(TransitionSender(tx));
 
