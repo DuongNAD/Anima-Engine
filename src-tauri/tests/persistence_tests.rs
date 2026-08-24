@@ -84,6 +84,9 @@ fn test_saved_simulation_state_serialization() {
     let serialized = serde_json::to_string(&state);
     assert!(serialized.is_ok());
     let json_str = serialized.unwrap();
+    // Gia cố (2026-08-24): JSON serialize thành công chưa đủ — payload phải
+    // khác rỗng, nếu không bước deserialize dưới đây kiểm tra trên chuỗi rỗng.
+    assert!(json_str.len() > 0, "serialized SavedSimulationState must not be empty");
 
     let deserialized = serde_json::from_str::<SavedSimulationState>(&json_str);
     assert!(deserialized.is_ok());
