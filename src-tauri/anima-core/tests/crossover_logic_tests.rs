@@ -1,6 +1,7 @@
 use glam::Vec3;
 use anima_core::crossover::crossover_genotypes;
 use anima_core::genotype::{MorphologyEdge, MorphologyGenotype, MorphologyNode};
+use anima_core::mutation::is_valid_genotype;
 use rand::SeedableRng;
 
 const SEED: u64 = 0x5EED;
@@ -276,4 +277,61 @@ fn crossover_fallback_anchor_distinguishes_div_from_mod_and_mul() {
          Would be {} with `%`, {} with `*`.",
         expected_z, graft_edge.joint_anchor.z, wrong_mod, wrong_mul,
     );
+}
+
+// ---------------------------------------------------------------------------
+// F-015b (2026-08-24): kill 3 mutant còn sống tại dòng prune cạnh khi ghép
+// subtree (121:21 delete !, 121:57 "&&"->"||", 121:60 delete !).
+// Bất biến: sau crossover, child PHẢI là cây hợp lệ (is_valid_genotype) và có
+// đúng n-1 cạnh. Mutant giữ cạnh lơ lửng (đầu mút đã bị xoá) hoặc cắt quá
+// mức (cây đứt gãy) đều phá một trong hai bất biến này.
+// ---------------------------------------------------------------------------
+#[test]
+fn graft_subtree_giu_do_thi_hop_le_tren_seed_sweep() {
+    let mut parent_a = MorphologyGenotype::new();
+    for id in 0..4u32 {
+        parent_a.add_node(MorphologyNode { id, length: 1.0, radius: 0.2, mass: 1.0 });
+    }
+    for id in 0..3u32 {
+        parent_a.add_edge(MorphologyEdge {
+            source_node: id, target_node: id + 1,
+            joint_anchor: Vec3::new(0.0, 0.0, 0.5), joint_axis: Vec3::Y,
+        });
+    }
+
+    let mut parent_b = MorphologyGenotype::new();
+    for id in 0..3u32 {
+        parent_b.add_node(MorphologyNode { id, length: 1.5, radius: 0.3, mass: 1.2 });
+    }
+    for id in 0..2u32 {
+        parent_b.add_edge(MorphologyEdge {
+            source_node: id, target_node: id + 1,
+            joint_anchor: Vec3::new(0.0, 0.0, 0.75), joint_axis: Vec3::Y,
+        });
+    }
+
+    for i in 0..128u64 {
+        let mut counter: u32 = 100;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(SEED + 77_000 + i);
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+            .expect("crossover phải thành công với counter còn dư");
+        assert!(
+            is_valid_genotype(&child),
+            "seed {i}: child phải là cây hợp lệ"
+        );
+        assert_eq!(
+            child.nodes.len(),
+            child.edges.len() + 1,
+            "seed {i}: cây hợp lệ phải có đúng (số node - 1) cạnh"
+        );
+        // Kill 121:21/57/60: crossover có revert nội bộ (child invalid ->
+        // trả parent_a), nên kiểm tra "child hợp lệ" không đủ. Code đúng LUÔN
+        // ghép subtree từ parent_b với id mới >= 100 (counter khởi tạo 100);
+        // mutant prune sai bị revert về parent_a (chỉ có id 0..3) → không bao
+        // giờ thấy node ghép.
+        assert!(
+            child.nodes.iter().any(|n| n.id >= 100),
+            "seed {i}: phải có node ghép từ parent_b (id >= 100) — mutant prune sai bị revert về parent_a"
+        );
+    }
 }
