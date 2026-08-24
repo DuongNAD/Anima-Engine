@@ -7,6 +7,7 @@
 //! thuộc về đây. Cầu nối nằm ở `anima_engine_lib::core::spawn`.
 
 pub mod crossover;
+pub mod components;
 pub mod genotype;
 pub mod map_elites;
 pub mod mutation;

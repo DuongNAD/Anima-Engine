@@ -15,3 +15,17 @@ edition = "2021"
 glam = { version = "0.25", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 rand = "0.8"
+
+# Chỉ cho test: map_elites_tests kiểm tra round-trip JSON của SavedMapElitesArchive
+[dev-dependencies]
+serde_json = "1.0"
+
+# F-014 (owner duyệt 2026-08-24): khai báo workspace độc lập để cargo không
+# coi crate này là "belong to" workspace cha src-tauri (nó nằm trong thư mục
+# src-tauri/ nhưng không nằm trong members = ["crates/*"]). Không có bảng này
+# thì MỌI lệnh cargo trong anima-core chết với lỗi "current package believes
+# it's in a workspace when it's not" — kể cả cargo test/mutants/fuzz/miri,
+# tức cả ba năng lực mà crate này sinh ra để mở khoá (xem comment đầu file).
+# Không thêm member nào vào đây: crate này là lá độc lập.
+[workspace]
+

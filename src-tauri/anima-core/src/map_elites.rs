@@ -1,4 +1,4 @@
-use crate::evolution::genotype::MorphologyGenotype;
+use crate::genotype::MorphologyGenotype;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -79,7 +79,7 @@ impl MapElitesArchive {
                     saved_elite.bin_x, saved_elite.bin_y
                 ));
             }
-            crate::core::components::validate_morphology_payload(&saved_elite.genotype).map_err(
+            crate::components::validate_morphology_payload(&saved_elite.genotype).map_err(
                 |error| {
                     format!(
                         "MAP-Elites niche ({}, {}) has invalid morphology: {error}",

@@ -1,7 +1,7 @@
 use glam::Vec3;
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MorphologyNode {
     pub id: u32,
     pub length: f32,
@@ -9,7 +9,7 @@ pub struct MorphologyNode {
     pub mass: f32,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MorphologyEdge {
     pub source_node: u32,
     pub target_node: u32,
@@ -17,7 +17,7 @@ pub struct MorphologyEdge {
     pub joint_axis: Vec3,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MorphologyGenotype {
     pub nodes: Vec<MorphologyNode>,
     pub edges: Vec<MorphologyEdge>,
