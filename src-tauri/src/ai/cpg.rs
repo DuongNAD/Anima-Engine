@@ -27,11 +27,15 @@ impl CpgOscillator {
     }
 }
 
-use crate::core::ecs::ParentAgent;
 use crate::ai::hrrl::HomeostaticState;
+use crate::core::ecs::ParentAgent;
 
 pub fn update_cpg_system(
-    mut query: Query<(&mut CpgOscillator, Option<&ParentAgent>, Option<&HomeostaticState>)>,
+    mut query: Query<(
+        &mut CpgOscillator,
+        Option<&ParentAgent>,
+        Option<&HomeostaticState>,
+    )>,
     agent_query: Query<&HomeostaticState>,
     time_step: Res<TimeStep>,
 ) {

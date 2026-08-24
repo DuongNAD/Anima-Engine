@@ -1,12 +1,51 @@
-//! Cầu nối giữa genotype (dữ liệu thuần) và thế giới ECS.
-//!
-//! Hàm này từng nằm trong `evolution/genotype.rs` và là thứ DUY NHẤT khiến cả
-//! module `evolution` không tách khỏi vỏ ứng dụng được: nó kéo theo `core::ecs`,
-//! `ai::cpg`, `ai::hrrl`, `physics::dynamics`, `physics::SpatialCollider`.
-//!
-//! Chuyển nó sang đây để `evolution` trở thành dữ liệu + thuật toán thuần, tách
-//! được thành crate riêng. Xem F-007 trong FINDINGS.md.
-use crate::evolution::genotype::MorphologyGenotype;
+use glam::Vec3;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MorphologyNode {
+    pub id: u32,
+    pub length: f32,
+    pub radius: f32,
+    pub mass: f32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MorphologyEdge {
+    pub source_node: u32,
+    pub target_node: u32,
+    pub joint_anchor: Vec3,
+    pub joint_axis: Vec3,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MorphologyGenotype {
+    pub nodes: Vec<MorphologyNode>,
+    pub edges: Vec<MorphologyEdge>,
+}
+
+impl MorphologyGenotype {
+    /// Total body mass = sum of every segment's mass. In the Metabolic Theory of Ecology this
+    /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
+    /// the most important ecological / life-history niche axis for the MAP-Elites archive.
+    pub fn total_mass(&self) -> f32 {
+        self.nodes.iter().map(|n| n.mass).sum()
+    }
+
+    pub fn new() -> Self {
+        Self {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        }
+    }
+
+    pub fn add_node(&mut self, node: MorphologyNode) {
+        self.nodes.push(node);
+    }
+
+    pub fn add_edge(&mut self, edge: MorphologyEdge) {
+        self.edges.push(edge);
+    }
+}
 
 pub fn decode_genotype(
     world: &mut bevy_ecs::prelude::World,
@@ -16,17 +55,27 @@ pub fn decode_genotype(
 ) -> bevy_ecs::prelude::Entity {
     use crate::ai::cpg::CpgOscillator;
     use crate::ai::hrrl::{HomeostaticState, LastTransitionState};
+    use crate::core::components::ActionGates;
     use crate::core::ecs::{
-        Agent, ChildrenLinks, JointAxis, ParentAgent, ParentLink, Position, Rotation, Segment,
-        SegmentJointForce, Velocity,
+        Agent, ChildrenLinks, CognitiveState, InertiaComponent, JointAxis, ParentAgent, ParentLink,
+        Position, Rotation, Segment, SegmentJointForce, SensoryBufferComponent, Velocity,
     };
     use crate::physics::dynamics::{JointConstraint, RigidBody};
     use crate::physics::SpatialCollider;
     use std::collections::{HashSet, VecDeque};
 
-    if genotype.nodes.is_empty() {
-        panic!("Cannot decode empty genotype");
-    }
+    // Kept as a panic rather than converted to a `Result`, deliberately.
+    //
+    // `decode_genotype` returns an `Entity` and is called from genesis, birth, epoch replacement,
+    // restore and migration. Threading a `Result` out would change all of those, and every caller
+    // would have to invent an answer to "what is a creature with no body" — which is a question the
+    // creature-development contract already answers by construction: a genotype with no nodes cannot
+    // be produced by mutation, crossover or decode, so reaching here means an upstream invariant is
+    // already broken and continuing would spawn a corrupt agent into the world.
+    assert!(
+        !genotype.nodes.is_empty(),
+        "cannot decode a genotype with no nodes; a morphology genome always has at least a root"
+    );
 
     // Find the root node: the first node in genotype.nodes or a node with no incoming edges.
     let has_incoming: HashSet<u32> = genotype.edges.iter().map(|e| e.target_node).collect();
@@ -70,16 +119,25 @@ pub fn decode_genotype(
                 state: [0.0; 15],
                 action: [0.0; 4],
                 has_last: false,
+                pending_state: None,
             },
             ChildrenLinks(Vec::new()),
-            SpatialCollider { radius: root_node.radius },
+            SpatialCollider {
+                radius: root_node.radius,
+            },
+            CognitiveState::default(),
+            InertiaComponent::default(),
+            SensoryBufferComponent::default(),
         ))
         .id();
 
-    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0)
+    // Attach ParentAgent(root_entity) and SegmentJointForce(0.0). `ActionGates::default()` is fully
+    // open, so an agent spawned here behaves exactly as it did before the gates existed — the
+    // component is installed now so that later steps have somewhere to write, not to change anything.
     world.entity_mut(root_entity).insert((
         ParentAgent(root_entity),
         SegmentJointForce(0.0),
+        ActionGates::default(),
     ));
 
     // BFS Queue holds: (current_node, parent_entity, parent_pos, parent_rot)
@@ -137,7 +195,9 @@ pub fn decode_genotype(
                         CpgOscillator::new(1.0, 0.5),
                         ParentAgent(root_entity),
                         SegmentJointForce(0.0),
-                        SpatialCollider { radius: child_node.radius },
+                        SpatialCollider {
+                            radius: child_node.radius,
+                        },
                     ))
                     .id();
 

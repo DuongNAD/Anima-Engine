@@ -1,44 +1,72 @@
 mod common;
 
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
-use std::thread;
 use rand::Rng;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 
-use anima_engine_lib::core::ecs::{
-    init_world, wrap_coordinates_system, combat_system, Position, Rotation, ParentAgent, Segment,
-    FoodSpawnSettings, spawn_food_system, detect_food_collisions_system, MapBounds,
-    SegmentJointForce, Velocity, EpochManager, FeatureTracker, Prey, AgentParentLineageIds
-};
 use anima_engine_lib::ai::cpg::TimeStep;
-use anima_engine_lib::ai::hrrl::{Transition, TransitionSender, HomeostaticState};
-use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::evolution::lineage::{
-    FallbackLineageTracker, LineageTracker, RelationType
+use anima_engine_lib::ai::hrrl::{HomeostaticState, Transition, TransitionSender};
+use anima_engine_lib::core::ecs::{
+    combat_system, detect_food_collisions_system, init_world, spawn_food_system,
+    wrap_coordinates_system, AgentParentLineageIds, EpochManager, FeatureTracker,
+    FoodSpawnSettings, MapBounds, ParentAgent, Position, Prey, Rotation, Segment,
+    SegmentJointForce, Velocity,
 };
 use anima_engine_lib::core::engine::{
-    BevyEvolutionSettings, BevyEvolutionRunning, BevyMapElitesGrid, BevyAppHandle,
-    ActiveEvolutionSettings, BevyMapElitesArchive, NextNodeId, EvolutionSender, EvolutionReceiver,
-    AgentEpochStats, AgentGenotype, AgentEvaluation, AgentLineageId, AgentGeneration, EvolutionQueue,
+    ActiveEvolutionSettings, AgentEpochStats, AgentEvaluation, AgentGeneration, AgentGenotype,
+    AgentLineageId, BevyAppHandle, BevyEvolutionRunning, BevyEvolutionSettings,
+    BevyMapElitesArchive, BevyMapElitesGrid, EvolutionQueue, EvolutionReceiver, EvolutionSender,
+    NextNodeId,
 };
+use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
+use anima_engine_lib::evolution::lineage::{FallbackLineageTracker, LineageTracker, RelationType};
 
 // Bind to tracking allocator
 #[global_allocator]
-static ALLOCATOR: common::allocator::TrackingAllocator = common::allocator::TrackingAllocator::new();
+static ALLOCATOR: common::allocator::TrackingAllocator =
+    common::allocator::TrackingAllocator::new();
 
-static TEST_LOCK: Mutex<()> = Mutex::new(());
+/// Disarms the process-wide counter if a measured system panics before the explicit read.
+struct AllocationTrackingGuard {
+    active: bool,
+}
 
-#[test]
+impl AllocationTrackingGuard {
+    fn start() -> Self {
+        ALLOCATOR.start_tracking();
+        Self { active: true }
+    }
+
+    fn stop(mut self) -> usize {
+        self.active = false;
+        ALLOCATOR.stop_tracking()
+    }
+}
+
+impl Drop for AllocationTrackingGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = ALLOCATOR.stop_tracking();
+        }
+    }
+}
+
 fn test_lineage_tracker_concurrency_and_fallback() {
-    let _lock = TEST_LOCK.lock().unwrap();
-
     // Start with an offline address. Graces fallback to offline immediately without crash.
-    let tracker = Arc::new(FallbackLineageTracker::new("bolt://localhost:9999", "neo4j", "password"));
-    assert!(!tracker.is_online(), "FallbackLineageTracker should report offline for bad address");
+    let tracker = Arc::new(FallbackLineageTracker::new(
+        "bolt://localhost:9999",
+        "neo4j",
+        "password",
+    ));
+    assert!(
+        !tracker.is_online(),
+        "FallbackLineageTracker should report offline for bad address"
+    );
 
     let num_threads: usize = 12;
     let ops_per_thread: usize = 40;
@@ -46,7 +74,12 @@ fn test_lineage_tracker_concurrency_and_fallback() {
 
     let genotype = {
         let mut g = MorphologyGenotype::new();
-        g.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.0 });
+        g.add_node(MorphologyNode {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.0,
+        });
         g
     };
 
@@ -54,7 +87,7 @@ fn test_lineage_tracker_concurrency_and_fallback() {
     for thread_idx in 0..num_threads {
         let tracker_clone = Arc::clone(&tracker);
         let gen_clone = genotype.clone();
-        
+
         let handle = thread::spawn(move || {
             let mut rng = rand::thread_rng();
             for op_idx in 0..ops_per_thread {
@@ -63,13 +96,15 @@ fn test_lineage_tracker_concurrency_and_fallback() {
                     assert!(tracker_clone.add_root(id, gen_clone.clone()).is_ok());
                 } else {
                     let parent = format!("thread-{}-node-{}", thread_idx, op_idx - 1);
-                    assert!(tracker_clone.add_reproduction(
-                        id,
-                        op_idx as u32,
-                        gen_clone.clone(),
-                        vec![parent],
-                        RelationType::Clone,
-                    ).is_ok());
+                    assert!(tracker_clone
+                        .add_reproduction(
+                            id,
+                            op_idx as u32,
+                            gen_clone.clone(),
+                            vec![parent],
+                            RelationType::Clone,
+                        )
+                        .is_ok());
                 }
 
                 // Random yielding
@@ -126,12 +161,9 @@ fn test_lineage_tracker_concurrency_and_fallback() {
     assert_eq!(relations.len(), num_threads * (ops_per_thread - 1));
 }
 
-#[test]
 fn test_ecs_hot_path_zero_heap_allocations() {
-    let _lock = TEST_LOCK.lock().unwrap();
-
     let mut world = init_world();
-    
+
     // Insert spatial hash grid resources
     let bounds = MapBounds {
         min: Vec3::new(-100.0, 0.0, -100.0),
@@ -148,22 +180,33 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     // Dummy channels
     let (trans_tx, _trans_rx) = crossbeam_channel::bounded::<Transition>(4096);
     let (stats_tx, _stats_rx) = crossbeam_channel::bounded::<Vec<AgentEpochStats>>(128);
-    let (_spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(Entity, MorphologyGenotype, glam::Vec3, String, u32, Vec<String>)>(128);
+    let (_spawn_tx, spawn_rx) = crossbeam_channel::bounded::<(
+        Entity,
+        MorphologyGenotype,
+        glam::Vec3,
+        String,
+        u32,
+        Vec<String>,
+    )>(128);
 
     world.insert_resource(TransitionSender(trans_tx));
     world.insert_resource(EvolutionSender(stats_tx));
     world.insert_resource(EvolutionReceiver(spawn_rx));
 
-    let evolution_settings = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::EvolutionSettings {
-        mutation_rate: 0.15,
-        selection_bias: 1.5,
-        grid_resolution: 50,
-    }));
+    let evolution_settings = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::EvolutionSettings {
+            mutation_rate: 0.15,
+            selection_bias: 1.5,
+            grid_resolution: 50,
+        },
+    ));
     let evolution_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let map_elites_grid = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::MapElitesGridState {
-        grid: std::collections::HashMap::new(),
-        grid_resolution: 50,
-    }));
+    let map_elites_grid = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 50,
+        },
+    ));
 
     world.insert_resource(BevyEvolutionSettings(evolution_settings));
     world.insert_resource(BevyEvolutionRunning(evolution_running));
@@ -192,51 +235,62 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     schedule.add_systems((
         anima_engine_lib::core::engine::sync_evolution_settings_system,
         anima_engine_lib::ai::cpg::update_cpg_system,
-        anima_engine_lib::physics::resolve_joints_system.after(anima_engine_lib::ai::cpg::update_cpg_system),
-        anima_engine_lib::physics::integrate_physics_system.after(anima_engine_lib::physics::resolve_joints_system),
-        anima_engine_lib::ai::pheromone::agent_release_pheromone_system.after(anima_engine_lib::physics::integrate_physics_system),
-        anima_engine_lib::ai::pheromone::update_pheromone_grid_system.after(anima_engine_lib::ai::pheromone::agent_release_pheromone_system),
-        anima_engine_lib::ai::pheromone::agent_read_pheromone_system.after(anima_engine_lib::ai::pheromone::update_pheromone_grid_system),
-        anima_engine_lib::core::engine::update_agent_evaluation_system.after(anima_engine_lib::physics::integrate_physics_system),
+        anima_engine_lib::physics::resolve_joints_system
+            .after(anima_engine_lib::ai::cpg::update_cpg_system),
+        anima_engine_lib::physics::integrate_physics_system
+            .after(anima_engine_lib::physics::resolve_joints_system),
+        anima_engine_lib::ai::pheromone::agent_release_pheromone_system
+            .after(anima_engine_lib::physics::integrate_physics_system),
+        anima_engine_lib::ai::pheromone::update_pheromone_grid_system
+            .after(anima_engine_lib::ai::pheromone::agent_release_pheromone_system),
+        anima_engine_lib::ai::pheromone::agent_read_pheromone_system
+            .after(anima_engine_lib::ai::pheromone::update_pheromone_grid_system),
+        anima_engine_lib::core::engine::update_agent_evaluation_system
+            .after(anima_engine_lib::physics::integrate_physics_system),
         wrap_coordinates_system.after(anima_engine_lib::physics::integrate_physics_system),
         anima_engine_lib::physics::rebuild_spatial_grid_system.after(wrap_coordinates_system),
-        anima_engine_lib::core::ecs::metabolic_decay_system.after(anima_engine_lib::physics::integrate_physics_system),
+        anima_engine_lib::core::ecs::metabolic_decay_system
+            .after(anima_engine_lib::physics::integrate_physics_system),
         spawn_food_system.after(anima_engine_lib::physics::integrate_physics_system),
         detect_food_collisions_system.after(anima_engine_lib::physics::integrate_physics_system),
         combat_system.after(anima_engine_lib::physics::integrate_physics_system),
-        anima_engine_lib::core::engine::check_epoch_completion_system.after(anima_engine_lib::core::ecs::metabolic_decay_system),
-        anima_engine_lib::core::engine::apply_staggered_evolution_system.after(anima_engine_lib::core::engine::check_epoch_completion_system),
+        anima_engine_lib::core::engine::check_epoch_completion_system
+            .after(anima_engine_lib::core::ecs::metabolic_decay_system),
+        anima_engine_lib::core::engine::apply_staggered_evolution_system
+            .after(anima_engine_lib::core::engine::check_epoch_completion_system),
     ));
 
     // Spawn 1 agent with lineage components attached (representing typical simulation state)
     let initial_pos = glam::Vec3::new(0.0, 0.0, 0.0);
-    let agent_entity = world.spawn((
-        Position(initial_pos),
-        Rotation(glam::Quat::IDENTITY),
-        Velocity(Vec3::ZERO),
-        HomeostaticState {
-            energy: 100.0,
-            energy_target: 100.0,
-            hydration: 100.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-        AgentGenotype(MorphologyGenotype::default()),
-        AgentEvaluation {
-            start_position: initial_pos,
-            total_distance: 0.0,
-            total_energy_expended: 0.0,
-            survival_ticks: 0,
-            last_position: initial_pos,
-        },
-        FeatureTracker::default(),
-        AgentLineageId("some-test-lineage-id".to_string()),
-        AgentGeneration(0),
-        AgentParentLineageIds(Vec::new()),
-        Prey,
-    )).id();
+    let agent_entity = world
+        .spawn((
+            Position(initial_pos),
+            Rotation(glam::Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            HomeostaticState {
+                energy: 100.0,
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+            AgentGenotype(MorphologyGenotype::default()),
+            AgentEvaluation {
+                start_position: initial_pos,
+                total_distance: 0.0,
+                total_energy_expended: 0.0,
+                survival_ticks: 0,
+                last_position: initial_pos,
+            },
+            FeatureTracker::default(),
+            AgentLineageId("some-test-lineage-id".to_string()),
+            AgentGeneration(0),
+            AgentParentLineageIds(Vec::new()),
+            Prey,
+        ))
+        .id();
 
     // Spawn segment entities for agent
     world.spawn((
@@ -244,7 +298,12 @@ fn test_ecs_hot_path_zero_heap_allocations() {
         Position(initial_pos),
         Rotation(glam::Quat::IDENTITY),
         Velocity(Vec3::ZERO),
-        Segment { id: 0, length: 1.0, radius: 0.2, mass: 1.0 },
+        Segment {
+            id: 0,
+            length: 1.0,
+            radius: 0.2,
+            mass: 1.0,
+        },
         anima_engine_lib::physics::dynamics::RigidBody {
             mass: 1.0,
             velocity: Vec3::ZERO,
@@ -259,7 +318,7 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     }
 
     // Start tracking allocations
-    ALLOCATOR.start_tracking();
+    let tracking_guard = AllocationTrackingGuard::start();
 
     // Run active hot tick loop (no epoch completions, no spawn queues)
     for _ in 0..100 {
@@ -267,8 +326,35 @@ fn test_ecs_hot_path_zero_heap_allocations() {
     }
 
     // Stop tracking
-    let allocations = ALLOCATOR.stop_tracking();
+    let allocations = tracking_guard.stop();
 
     // Assert zero heap allocations on the hot path (conforming to Phase 4 zero-alloc spec)
-    assert_eq!(allocations, 0, "Expected 0 allocations on hot path ticks, but recorded {}", allocations);
+    assert_eq!(
+        allocations, 0,
+        "Expected 0 allocations on hot path ticks, but recorded {}",
+        allocations
+    );
+}
+
+/// Keep the process-wide allocation window in a binary with one libtest thread. The allocation gate
+/// runs before the deliberately concurrent lineage contract, and both helpers still execute if one
+/// fails. Helper names are intentionally not independently filterable.
+#[test]
+fn lineage_stress_contracts() {
+    eprintln!("allocation gate: ECS hot path");
+    let allocation_result = std::panic::catch_unwind(test_ecs_hot_path_zero_heap_allocations);
+
+    eprintln!("concurrency gate: lineage fallback");
+    let concurrency_result =
+        std::panic::catch_unwind(test_lineage_tracker_concurrency_and_fallback);
+
+    if let Err(payload) = allocation_result {
+        if concurrency_result.is_err() {
+            eprintln!("lineage concurrency gate also failed; see the panic above");
+        }
+        std::panic::resume_unwind(payload);
+    }
+    if let Err(payload) = concurrency_result {
+        std::panic::resume_unwind(payload);
+    }
 }

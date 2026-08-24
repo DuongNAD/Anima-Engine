@@ -1,7 +1,9 @@
+use crate::ai::cpg::{CpgOscillator, TimeStep};
+use crate::core::ecs::{
+    JointAxis, ParentAgent, Position, Prey, Rotation, Segment, SegmentJointForce, Velocity,
+};
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
-use crate::core::ecs::{Position, Rotation, Velocity, Segment, JointAxis, ParentAgent, SegmentJointForce, Prey, MapBounds};
-use crate::ai::cpg::{CpgOscillator, TimeStep};
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct RigidBody {
@@ -34,51 +36,35 @@ pub fn resolve_joints_system(
         Option<&mut SegmentJointForce>,
     )>,
     time_step: Res<TimeStep>,
-    bounds: Res<MapBounds>,
 ) {
     let dt = time_step.0;
     for (child_entity, constraint, opt_axis, opt_cpg, opt_joint_force) in joint_query.iter_mut() {
         let parent_entity = constraint.parent_entity;
-        if let Ok([
-            (mut child_body, child_pos, mut child_rot, child_vel, child_segment),
-            (mut parent_body, parent_pos, parent_rot, parent_vel, _parent_segment),
-        ]) = components_query.get_many_mut([child_entity, parent_entity]) {
+        if let Ok(
+            [(mut child_body, child_pos, mut child_rot, child_vel, child_segment), (mut parent_body, parent_pos, parent_rot, parent_vel, _parent_segment)],
+        ) = components_query.get_many_mut([child_entity, parent_entity])
+        {
             // Update child orientation
             if let (Some(axis), Some(cpg)) = (opt_axis, opt_cpg) {
                 let axis_val = axis.0;
-                let normalized_axis = axis_val.try_normalize().unwrap_or(Vec3::Y);
-                let target_rel_rot = Quat::from_axis_angle(normalized_axis, cpg.output);
+                let target_rel_rot = Quat::from_axis_angle(axis_val.normalize(), cpg.output);
                 let r_target = parent_rot.0 * target_rel_rot;
-                
-                let mut slerp_factor = constraint.stiffness * dt;
-                if slerp_factor.is_nan() {
-                    slerp_factor = 0.0;
-                } else {
-                    slerp_factor = slerp_factor.clamp(0.0, 1.0);
-                }
-                child_rot.0 = child_rot.0.slerp(r_target, slerp_factor);
+                child_rot.0 = child_rot
+                    .0
+                    .slerp(r_target, (constraint.stiffness * dt).clamp(0.0, 1.0));
             }
 
             // Calculate joint positions in global space
             let p_joint_parent = parent_pos.0 + parent_rot.0 * constraint.anchor_offset;
-            let p_joint_child = child_pos.0 - child_rot.0 * Vec3::new(0.0, 0.0, child_segment.length / 2.0);
+            let p_joint_child =
+                child_pos.0 - child_rot.0 * Vec3::new(0.0, 0.0, child_segment.length / 2.0);
 
             // Calculate displacement error
-            let mut e_joint = p_joint_parent - p_joint_child;
-
-            let x_range = bounds.max.x - bounds.min.x;
-            if x_range > 0.0 {
-                if e_joint.x > x_range * 0.5 { e_joint.x -= x_range; }
-                else if e_joint.x < -x_range * 0.5 { e_joint.x += x_range; }
-            }
-            let z_range = bounds.max.z - bounds.min.z;
-            if z_range > 0.0 {
-                if e_joint.z > z_range * 0.5 { e_joint.z -= z_range; }
-                else if e_joint.z < -z_range * 0.5 { e_joint.z += z_range; }
-            }
+            let e_joint = p_joint_parent - p_joint_child;
 
             // Calculate spring-damper force
-            let f_spring = constraint.stiffness * e_joint - constraint.damping * (child_vel.0 - parent_vel.0);
+            let f_spring =
+                constraint.stiffness * e_joint - constraint.damping * (child_vel.0 - parent_vel.0);
 
             // Apply forces
             child_body.force += f_spring;
@@ -99,18 +85,64 @@ pub fn integrate_physics_system(
         &mut Position,
         &mut Velocity,
         Option<&ParentAgent>,
+        Option<&mut crate::core::ecs::InertiaComponent>,
+        Option<&mut crate::core::ecs::CognitiveState>,
+        Option<&mut crate::ai::hrrl::LastTransitionState>,
     )>,
     agent_query: Query<&crate::ai::hrrl::HomeostaticState>,
     prey_query: Query<&Prey>,
     time_step: Res<TimeStep>,
-    terrain: Option<Res<crate::core::terrain::TerrainGrid>>,
-    bounds: Option<Res<MapBounds>>,
+    segment_query: Query<(Entity, &ParentAgent, &Segment)>,
+    mut oscillator_query: Query<&mut CpgOscillator>,
+    mut child_buf: Local<Vec<(u32, Entity)>>,
 ) {
-    let mut dt = time_step.0;
-    if dt.is_nan() {
-        dt = 0.0;
-    }
-    for (entity, mut body, mut pos, mut vel, parent_agent) in query.iter_mut() {
+    let dt = time_step.0;
+    for (
+        entity,
+        mut body,
+        mut pos,
+        mut vel,
+        parent_agent,
+        mut opt_inertia,
+        mut opt_cog,
+        mut opt_last,
+    ) in query.iter_mut()
+    {
+        if let Some(ref mut inertia) = opt_inertia {
+            // Apply forces towards target_velocity if desired
+            if inertia.target_velocity.length_squared() > 1e-6 {
+                let force_to_target = (inertia.target_velocity - body.velocity) * body.mass * 2.0;
+                body.force += force_to_target;
+            }
+
+            // Timeout check
+            if let Some(ref mut cog_state) = opt_cog {
+                if let crate::core::ecs::CognitiveState::PendingInference(_) = **cog_state {
+                    inertia.ticks_pending += 1;
+                    if inertia.ticks_pending > 5 {
+                        **cog_state = crate::core::ecs::CognitiveState::Ready;
+                        inertia.ticks_pending = 0;
+                        inertia.cpg_parameters = [1.0, 0.0, 1.0, 0.0];
+                        if let Some(ref mut last) = opt_last {
+                            last.pending_state = None;
+                            // The fallback differs from the action recorded in `last`; wait for a
+                            // fresh valid response rather than attributing fallback rewards to it.
+                            last.has_last = false;
+                        }
+
+                        // Reset actions to CPG baseline on oscillators
+                        crate::core::agent_systems::apply_inertia_to_oscillators(
+                            entity,
+                            &inertia.cpg_parameters,
+                            &segment_query,
+                            &mut oscillator_query,
+                            &mut child_buf,
+                        );
+                    }
+                }
+            }
+        }
+
         let is_depleted = if let Some(parent) = parent_agent {
             if let Ok(homeo) = agent_query.get(parent.0) {
                 homeo.energy <= 0.0
@@ -135,66 +167,8 @@ pub fn integrate_physics_system(
             let accel = body.force / body.mass;
             body.velocity += accel * dt;
         }
-
-        let mut multiplier = 1.0;
-        if let (Some(terrain), Some(bounds)) = (terrain.as_ref(), bounds.as_ref()) {
-            if let Some(idx) = terrain.pos_to_index(pos.0, bounds) {
-                let cell = terrain.cells[idx];
-                
-                // Biome Factor
-                let biome_factor = match cell.biome {
-                    crate::core::terrain::BiomeType::Grassland => 1.0,
-                    crate::core::terrain::BiomeType::Rock => 0.95,
-                    crate::core::terrain::BiomeType::Sand => 0.85,
-                    crate::core::terrain::BiomeType::Mud => 0.65,
-                    crate::core::terrain::BiomeType::Water => 1.0,
-                };
-                multiplier *= biome_factor;
-
-                // Water depth drag
-                if cell.water_depth > 0.0 {
-                    multiplier *= (1.0 - cell.water_depth * 0.40).max(0.15);
-                }
-
-                // Slope penalty
-                let step = 1.0;
-                let get_elevation = |p: Vec3, terrain: &crate::core::terrain::TerrainGrid, bounds: &MapBounds| -> f32 {
-                    if let Some(i) = terrain.pos_to_index(p, bounds) {
-                        terrain.cells[i].elevation
-                    } else {
-                        0.0
-                    }
-                };
-
-                let h_x1 = get_elevation(pos.0 + Vec3::new(step, 0.0, 0.0), terrain, bounds);
-                let h_x0 = get_elevation(pos.0 - Vec3::new(step, 0.0, 0.0), terrain, bounds);
-                let h_z1 = get_elevation(pos.0 + Vec3::new(0.0, 0.0, step), terrain, bounds);
-                let h_z0 = get_elevation(pos.0 - Vec3::new(0.0, 0.0, step), terrain, bounds);
-
-                let grad_x = (h_x1 - h_x0) / (2.0 * step);
-                let grad_z = (h_z1 - h_z0) / (2.0 * step);
-
-                let vel_len = body.velocity.length();
-                let slope = if vel_len > 1e-5 {
-                    let dir = body.velocity / vel_len;
-                    grad_x * dir.x + grad_z * dir.z
-                } else {
-                    0.0
-                };
-
-                let slope_scale = if slope >= 0.0 {
-                    (1.0 - slope * 1.0).max(0.2)
-                } else {
-                    (1.0 - slope * 0.5).min(1.25)
-                };
-                multiplier *= slope_scale;
-            }
-        }
-
-        body.velocity *= multiplier;
         vel.0 = body.velocity;
         pos.0 += vel.0 * dt;
         body.force = Vec3::ZERO;
     }
 }
-

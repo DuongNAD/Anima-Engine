@@ -2,54 +2,239 @@
 name = "anima-engine"
 version = "0.1.0"
 edition = "2021"
+default-run = "anima-engine"
+
+license.workspace = true
+repository.workspace = true
+# This is the Tauri application, not a library anyone installs from crates.io -- and it could not be
+# published anyway, because `anima-domain` below is a path dependency with no version requirement.
+# Saying so makes `cargo deny`'s wildcard check accept that dependency instead of failing on it.
+# `anima-domain` is deliberately NOT marked this way: it is engine-free by design and is the crate
+# that could reasonably be published one day.
+publish = false
 
 [lib]
 name = "anima_engine_lib"
 crate-type = ["lib"]
-# criterion doi harness rieng. Khong tat harness mac dinh cua [lib] thi
-# `cargo bench -- --save-baseline base` day co cua criterion vao ca libtest,
-# va libtest tra loi: error: Unrecognized option: 'save-baseline'
-bench = false
-
-# Bin cung phai tat, khong chi lib. Cargo coi MOI target co harness mac dinh la
-# bench target, va tat ca deu nhan co cua criterion.
-[[bin]]
-name = "anima-engine"
-path = "src/main.rs"
-bench = false
 
 [dependencies]
-anima-core = { path = "anima-core" }
 tauri = { version = "2.0.0", features = ["test"] }
 tauri-plugin-shell = "2.0.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `rc` enables Serialize/Deserialize for Arc. `AgentBrain` holds its genome behind an Arc so the
+# per-tick inference request can carry it as a refcount bump instead of cloning a weight vector on
+# the hot path — the zero-allocation rule in SIMULATION_RULES.md. Feature of an existing dependency,
+# not a new crate. Note: deserialization does not deduplicate shared Arcs, which is fine here because
+# each agent owns its own genome.
+anima-domain = { path = "crates/anima-domain", features = ["bevy"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
+# `raw_value` lets the snapshot envelope hold the state as the exact bytes written to disk, so the
+# checksum covers those bytes instead of a re-serialization. It still earns its place after
+# `float_roundtrip`: it also makes the hash immune to map iteration order and to any future change
+# in how the envelope is formatted, which are different failures from the float one.
+#
+# `float_roundtrip` fixes the float one at its actual source. The old comment here blamed the
+# *writer* — "serde_json's f64 round trip is not bit-exact (observed: 990.5102615356445 reads back
+# as ...444)". The observation was real and the attribution was wrong: serde_json writes floats with
+# `ryu`, which is shortest-round-trip and exact, and that exact text was written. It is the default
+# **parser** that is a fast approximation and may land 1 ULP away. This feature switches it to a
+# correctly-rounded one. It adds no crate — the parser lives inside serde_json — and it turns a
+# lossy save/load boundary into an exact one; see
+# `snapshot_checkpoint_tests::serde_json_round_trips_every_awkward_f64_bit_for_bit`.
+serde_json = { version = "1.0", features = ["raw_value", "float_roundtrip"] }
+# Generates the TypeScript IPC types from the Rust structs (G1.4). The hand-written mirrors in
+# src/types/ drifted from the backend and a dead feature shipped for it (`head_directions`); a
+# generated type makes that a compile error instead of a silent no-op. Exports run under `cargo test`.
+ts-rs = "10"
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
-burn = { version = "0.13.2", default-features = false, features = ["std", "train", "autodiff"] }
+# No `train` feature. It exists for Burn's `Learner`/`LearnerBuilder` harness, which this project
+# does not use — `core::training::run_training_loop` drives Adam by hand over a crossbeam channel,
+# and everything it needs (`optim`, `module`, `nn`, `tensor`, `backend::Autodiff`) is in burn-core.
+#
+# What `train` pulled in was burn-train -> burn-dataset -> gix-tempfile -> gix-fs 0.8.1, which
+# carries RUSTSEC-2024-0350: traversal outside the working tree enabling arbitrary code execution,
+# CVSS 8.8. There is no fix inside the 0.13 line; the advisory is only reachable through a
+# git-repository dataset loader that nothing here calls. Dropping the feature removes the code
+# rather than accepting the risk, and takes gix, its SHA-1 advisory (RUSTSEC-2025-0021) and a
+# sizeable chunk of build time with it.
+# `autodiff` is what the learner actually needs (it is `train`'s transitive dependency, not `train`
+# itself); naming it directly is what lets `train` go.
+burn = { version = "0.13.2", features = ["std", "autodiff"] }
 burn-ndarray = { version = "0.13.2" }
-burn-wgpu = { version = "0.13.2" }
+burn-wgpu = { version = "0.13.2", optional = true }
 socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"
+# Migration normally traverses fewer than 64 body segments and must stay allocation-free, but
+# crossover/imported peers can legally produce wider morphologies. SmallVec keeps the common path
+# inline and spills only when correctness requires more space instead of silently orphaning limbs.
+smallvec = "1.15"
 rand = "0.8"
-neo4rs = "0.7.0"
+# Direct dependency so `SimRng` can save and restore its exact stream position. `StdRng` IS
+# ChaCha12Rng in rand 0.8 but does not expose `get_word_pos`/`set_word_pos`, and a snapshot that
+# cannot restore the draw position is not a checkpoint (G1.2).
+rand_chacha = "0.3"
+neo4rs = { version = "0.7.0", optional = true }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 tokio = { version = "1.36", features = ["full"] }
 ureq = { version = "2.9", features = ["json"] }
 dotenvy = "0.15"
-tokio-tungstenite = "0.21"
+tokio-tungstenite = { version = "0.21", optional = true }
 futures-util = "0.3"
+noise = "0.8.2"
+image = "0.24.7"
 
 
+[workspace]
+# The crate split (G2 task 1). `anima-domain` holds the world laws; `anima-engine` is the live
+# adapter over it. New domain modules go in the member crate, not here.
+members = ["crates/*"]
+
+# Without this, `cargo test` from this directory runs ONLY the root package: when the workspace root
+# is itself a package, Cargo's default selection is that package alone. The member crates compile as
+# dependencies, so nothing looks wrong — their `#[cfg(test)]` tests simply never run. That silently
+# took the 20 tests of the newly extracted `anima-domain` out of every gate, including CI's
+# `cargo test`, the moment the crate was created.
+#
+# Listing the members here fixes it at the source, so the documented acceptance command keeps
+# working unchanged rather than everyone having to remember `--workspace`. The glob tracks `members`,
+# so a crate added later is covered without a second edit — which is the failure mode being fixed.
+default-members = [".", "crates/*"]
+
+# One license for every crate in the workspace, inherited via `license.workspace = true`. Stated
+# here rather than per-crate so a crate added later cannot ship without one — an unlicensed member
+# is invisible until someone tries to publish or audit it.
+#
+# `MIT OR Apache-2.0` is the Rust ecosystem's dual default, and the `OR` matters: Apache-2.0 alone
+# is incompatible with GPLv2, so a GPLv2 downstream could not use this engine. Offering MIT as the
+# alternative removes that barrier; offering Apache-2.0 keeps its explicit patent grant (§3) and its
+# NOTICE-propagation requirement (§4d) available to anyone who wants them.
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/DuongNAD/Anima-Engine"
+
+# Debug info is by far the largest thing this repo writes to disk. Every `cargo test` links a fresh
+# set of test binaries under new hashes and Cargo never garbage-collects the old ones, so the `.pdb`
+# files accumulate without bound: 884 of them, 182 GB, in `target/debug/deps` alone — 177 GB of that
+# written across two days of agent runs, on a machine with 90 GB free.
+#
+# `line-tables-only` keeps the file/line numbers, which is all a panic backtrace and the test harness
+# ever read; what it drops is the type and variable info only a step-debugger uses. Set on the
+# workspace root because that is the only place Cargo reads profiles from, and `profile.test`
+# inherits from `dev`, which is where the test binaries actually come from.
+[profile.dev]
+debug = "line-tables-only"
 
 [build-dependencies]
+sha2 = "0.10"
 tauri-build = { version = "2.0.0", features = [] }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+# OSS-010. The "60 FPS real-time" claim had never been measured: BENCHMARK_BASELINE.md declares its
+# own numbers proxies because running the full backend crashed the dev machine. Criterion measures
+# individual tick systems headless, so the claim becomes checkable without booting Tauri or opening
+# a GPU device.
+#
+# `default-features = false` drops the HTML report, which pulls plotters and a second rayon tree for
+# output nobody reads in CI; `cargo_bench_support` is the one feature `cargo bench` needs to drive
+# the harness. As a dev-dependency it is invisible to `cargo tree -e normal`, which is what the G2
+# feature-split gate actually checks — see `.github/workflows/ci.yml`.
+criterion = { version = "0.5", default-features = false, features = [
+    "cargo_bench_support",
+] }
 
 [[bench]]
-name = "core_loops"
+name = "tick_systems"
 harness = false
+
+# The headless experiment CLI. Declared explicitly rather than left to `src/bin` auto-discovery so
+# the target has a written-down identity: it builds under `default` features (no Neo4j, no
+# WebSocket stack, no wgpu), which is what makes it usable as a plain `cargo run --bin anima-lab`
+# without dragging in the desktop feature set. The path matches the auto-discovered one, so the two
+# describe the same target rather than competing for it.
+[[bin]]
+name = "anima-lab"
+path = "src/bin/anima-lab.rs"
+
+# Integration targets that cannot exist without an optional subsystem.
+#
+# Each of these files is a crate-level `#![cfg(feature = "...")]`. Without `required-features` Cargo
+# still *builds* them under `--no-default-features`, producing seven binaries that report
+# `running 0 tests` and exit 0 — a passing gate over 1,877 lines that never ran. `required-features`
+# tells Cargo not to schedule the target at all, which is the honest state: the target does not
+# exist in that configuration, rather than existing and being empty.
+#
+# The crate-level `#![cfg(...)]` stays as a second line of defence, and
+# `feature_gated_targets_tests.rs` pins the two halves together so neither can drift away from the
+# other in silence.
+[[test]]
+name = "adversarial_challenger_tests"
+path = "tests/adversarial_challenger_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_tests"
+path = "tests/migration_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_high_throughput_tests"
+path = "tests/migration_high_throughput_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_narrow_bounds_loop_tests"
+path = "tests/migration_narrow_bounds_loop_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_panic_tests"
+path = "tests/migration_panic_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "migration_stress_tests"
+path = "tests/migration_stress_tests.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "phase5_websocket_reuse"
+path = "tests/phase5_websocket_reuse.rs"
+required-features = ["networking"]
+
+[[test]]
+name = "phase5_burn_wgpu_fallback"
+path = "tests/phase5_burn_wgpu_fallback.rs"
+required-features = ["ml-wgpu"]
+
+[features]
+# G2 gate: a DEFAULT build must not compile the heavy optional subsystems. The desktop app turns
+# them back on (see the `desktop` feature), but a library consumer — and CI's fast path — gets a
+# crate that does not link a Neo4j driver, a WebSocket stack or an HTTP client it never calls.
+#
+# The feature has to be passed on the command line: `tauri.conf.json` has no field for Cargo
+# features — the Tauri v2 config schema does not define one — so a plain `npm run tauri build`
+# silently produces a `default = []` binary with the in-memory lineage tracker, no cross-shard
+# migration and the CPU learner. Every one of those has a working fallback, which is exactly why
+# nobody would notice. `npm run tauri:dev` / `npm run tauri:build` pass it; use those.
+#
+# Each gated subsystem has a working fallback that predates this split, which is why the gates are
+# cheap: lineage falls back to its in-memory tracker, and the Meta-AI falls back to
+# `MockMetaAiClient` — the same pure function a deterministic run already uses (G1.3).
+default = []
+
+# Neo4j-backed lineage. Off => `FallbackLineageTracker` runs purely in memory.
+neo4j = ["dep:neo4rs"]
+# Cross-shard WebSocket migration.
+networking = ["dep:tokio-tungstenite"]
+# GPU learner backend. Off => the ndarray CPU learner, which is already the fallback whenever the
+# GPU probe fails. This is the heaviest gate by far: it drops wgpu, naga, ash, d3d12 and the rest.
+ml-wgpu = ["dep:burn-wgpu"]
+# What the shipped desktop binary builds with. Passed by the `tauri:dev` / `tauri:build` npm
+# scripts and by CI's clippy/test steps; nothing turns it on implicitly.
+desktop = ["neo4j", "networking", "ml-wgpu"]
+
+# NOTE: `ureq` (the Gemini client) is deliberately NOT gated. G2 names Burn/WGPU, Neo4j and
+# networking; ureq is a small pure-Rust HTTP client with no transitive weight worth a feature, and
+# G1.3 already routes any deterministic run to `MockMetaAiClient` regardless of the build.

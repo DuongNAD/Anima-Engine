@@ -1,0 +1,28 @@
+{
+  "arm": "treatment",
+  "duration_ticks": 18000,
+  "experiment_id": "e2-evolved-brain-default::treatment",
+  "final_checksum": 2643270831,
+  "final_observables": {
+    "detritus": 1019.9112288341591,
+    "live.agent_count": 10.0,
+    "live.animals_eu": 0.0,
+    "live.closed_eu_total": 154587.24986350394,
+    "live.food_items": 50.0,
+    "live.herbivore_count": 7.0,
+    "live.mean_agent_energy": 0.0,
+    "live.predator_count": 3.0,
+    "live.season_phase": 6.282561779022217,
+    "live.standing_crop": 153567.33863479062,
+    "plants": 153567.33863466978
+  },
+  "kind": "e2-replay",
+  "manifest_fingerprint": 8950111943615762144,
+  "model_version_of_the_model_actually_run": "live-bevy-world/1",
+  "model_version_recorded_by_runner": "reference-evolution-world/1",
+  "note": "A checksum-identity check (gate E2-G5). Never merged into the analysis.",
+  "seed": 700001,
+  "status": "completed",
+  "wall_clock_seconds": 2.7702697,
+  "warnings": []
+}

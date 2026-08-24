@@ -1,0 +1,78 @@
+// FlatBuffers Schema for high-performance agent inference and actions.
+// Optimized for zero-copy deserialization.
+
+namespace Anima.Network;
+
+struct SensoryInput {
+  local_target_x: float;
+  local_target_y: float;
+  local_target_z: float;
+  energy: float;
+  energy_target: float;
+  hydration: float;
+  hydration_target: float;
+  temperature: float;
+  temp_target: float;
+  hit_distance: float;
+  hit_is_food: float;
+  hit_is_predator: float;
+  hit_is_prey: float;
+  left_reading: float;
+  right_reading: float;
+}
+
+struct ActionData {
+  action_0: float;
+  action_1: float;
+  action_2: float;
+  action_3: float;
+}
+
+// Aligned structs to allow direct casting and zero-copy access in vector reads.
+struct AgentSensoryDataStruct {
+  request_id: ulong;
+  entity_id: uint;
+  sensory_input: SensoryInput;
+}
+
+struct AgentActionStruct {
+  request_id: ulong;
+  entity_id: uint;
+  action: ActionData;
+  padding: uint; // Pad to ensure 8-byte alignment (total size: 32 bytes)
+}
+
+// Individual agent tables
+table AgentSensoryData {
+  entity_id: uint;
+  request_id: ulong;
+  sensory_input: SensoryInput;
+}
+
+table AgentAction {
+  entity_id: uint;
+  request_id: ulong;
+  action: ActionData;
+}
+
+// Batch requests and responses.
+// Optimized with both vector-of-structs and parallel vector-of-primitives for maximum zero-copy flexibility.
+table InferenceRequestBatch {
+  requests: [AgentSensoryDataStruct];
+  
+  // Alternative parallel primitive vectors for direct slice/tensor mapping
+  entity_ids: [uint];
+  request_ids: [ulong];
+  sensory_inputs: [float]; // Flat vector: 15 floats per agent
+}
+
+table InferenceResponseBatch {
+  responses: [AgentActionStruct];
+  
+  // Alternative parallel primitive vectors for direct slice/tensor mapping
+  entity_ids: [uint];
+  request_ids: [ulong];
+  actions: [float]; // Flat vector: 4 floats per agent
+}
+
+root_type InferenceRequestBatch;

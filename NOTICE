@@ -1,0 +1,62 @@
+Anima-Engine
+Copyright 2026 Duong Nguyen Anh
+
+This product includes software developed as part of the Anima-Engine project
+(https://github.com/DuongNAD/Anima-Engine).
+
+Licensed under either of the Apache License, Version 2.0 or the MIT license, at
+your option. See LICENSE-APACHE and LICENSE-MIT.
+
+--------------------------------------------------------------------------------
+THIRD-PARTY COMPONENTS
+--------------------------------------------------------------------------------
+
+Anima-Engine depends on third-party components that remain governed by their own
+licenses. Nothing in this file grants or restricts rights in those components.
+
+A source distribution of this repository vendors no third-party code: every Rust
+dependency is resolved by Cargo from crates.io and every JavaScript dependency by
+npm, each carrying its own license text inside its own package.
+
+A binary distribution (the Tauri desktop bundle from `npm run tauri:build`) does
+carry them. Below are the direct dependencies of that build with the license each
+one declares in its own manifest, read from `cargo metadata --features desktop`
+and from `node_modules/*/package.json` on 2026-08-08:
+
+  Rust — MIT OR Apache-2.0
+    bevy_ecs, glam, rand, rand_chacha, rayon, serde, serde_json,
+    crossbeam-channel, socket2, image, ureq, futures-util,
+    burn, burn-ndarray, burn-wgpu (feature `ml-wgpu`)
+
+  Rust — Apache-2.0 OR MIT
+    tauri, tauri-plugin-shell, tauri-build, uuid
+
+  Rust — Apache-2.0/MIT (dual, declared with the legacy separator)
+    noise
+
+  Rust — MIT
+    tokio, bincode, dotenvy, ts-rs,
+    neo4rs (feature `neo4j`), tokio-tungstenite (feature `networking`)
+
+  JavaScript — MIT
+    react, react-dom, pixi.js, three, @react-three/fiber
+
+  JavaScript — Apache-2.0 OR MIT
+    @tauri-apps/api
+
+This list covers direct dependencies only; it is maintained by hand and is not a
+generated, transitively complete inventory. That inventory is tracked as OSS-004
+in docs/planning/OPEN_SOURCE_ADOPTION_PLAN.md. For the authoritative set as
+built, run `cargo tree --features desktop` in src-tauri/ and `npm ls --omit=dev`
+at the repository root.
+
+--------------------------------------------------------------------------------
+OPTIONAL EXTERNAL SERVICES
+--------------------------------------------------------------------------------
+
+Neo4j is an optional runtime service, not a dependency of this software. With the
+`neo4j` Cargo feature enabled, Anima-Engine talks to a separately installed Neo4j
+server over the Bolt network protocol; without the feature, or when no server is
+reachable, lineage falls back to an in-memory tracker. Neo4j Community Edition is
+distributed under the GPLv3 by Neo4j, Inc. and is neither included in nor linked
+into this software. Obtaining and licensing it is the operator's responsibility.

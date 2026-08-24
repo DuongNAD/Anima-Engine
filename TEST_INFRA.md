@@ -1,55 +1,44 @@
-# E2E Test Infra: Anima-Engine Phase 8 Fantasy Map & Telemetry Dashboard
+# E2E Test Infra: Photorealistic Landscape Showcase
+
+> ## 📐 Design document — the counts here are the **planned** matrix
+>
+> The per-feature tier counts below describe how the suite is *specified*, not how many tests ran or
+> passed. Measured status: [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ## Test Philosophy
 - Opaque-box, requirement-driven. No dependency on implementation design.
-- Methodology: Category-Partition + Boundary Value Analysis (BVA) + Pairwise Combinatorial Testing + Real-World Workload Testing.
-- Execution environment: JSDOM + Vitest.
+- Methodology: Category-Partition + BVA + Pairwise + Workload Testing.
 
 ## Feature Inventory
-| # | Feature | Source (requirement) | Tier 1 (Coverage) | Tier 2 (Boundary) | Tier 3 (Pairwise) | Tier 4 (Workload) |
-|---|---------|---------------------|:------:|:------:|:------:|:------:|
-| 1 | Base Texture Rendering | Phase 8 R1 | 5 | 5 | ✓ | ✓ |
-| 2 | Region Selection | Phase 8 R1 | 5 | 5 | ✓ | ✓ |
-| 3 | Volcano Smoke Particles | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 4 | Volcano Lava Glow | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 5 | Jungle Waterfall Spray | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 6 | Jungle Waterfall Foam | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 7 | World Tree Spores | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 8 | World Tree Light Rays | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 9 | Falling Snow | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 10| Sailing Ships | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 11| Sea Monster Tentacles | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 12| Zoom & Pan Damping | Phase 8 R2 | 5 | 5 | ✓ | ✓ |
-| 13| Grid/Highlight Caching | Phase 8 R3 | 5 | 5 | ✓ | ✓ |
-| 14| Split-Screen Layout | Phase 8 R4 | 5 | 5 | ✓ | ✓ |
-| 15| ECharts Population Chart | Phase 8 R4 | 5 | 5 | ✓ | ✓ |
-| 16| ECharts Energy/Resource Telemetry | Phase 8 R4 | 5 | 5 | ✓ | ✓ |
-| 17| Mock Data & Transition Animations | Phase 8 R4 | 5 | 5 | ✓ | ✓ |
+| # | Feature | Source (requirement) | Tier 1 | Tier 2 | Tier 3 |
+|---|---------|---------------------|:------:|:------:|:------:|
+| 1 | Procedural Terrain | R1 | 5 | 5 | ✓ |
+| 2 | Advanced Water Rendering | R2 | 5 | 5 | ✓ |
+| 3 | Rich Vegetation | R3 | 5 | 5 | ✓ |
+| 4 | Atmospheric Sky & Lighting | R4 | 5 | 5 | ✓ |
+| 5 | Weather Effects | R5 | 5 | 5 | ✓ |
+| 6 | Environmental Audio | R6 | 5 | 5 | ✓ |
+| 7 | Full Camera Controls | R7 | 5 | 5 | ✓ |
+| 8 | Technical/App Integration | R8 | 5 | 5 | ✓ |
 
 ## Test Architecture
-- **Test Runner**: Vitest (`npm run test:frontend`) configured with JSDOM.
-- **Mocks**: 
-  - `pixi.js`: Mocked to capture graphic draws, event registration, and ticker loops.
-  - `echarts`: Mocked to verify that charts are correctly initialized, updated, and disposed without executing heavy DOM/Canvas operations.
-- **Test Case Format**: Each test renders the component via React Testing Library (`@testing-library/react`), triggers simulated actions (pointer, wheel, time ticks), and queries DOM elements/PixiJS mocks to verify state/attributes.
-- **Directory Layout**:
-  - `tests/frontend/fantasy_map.test.tsx` (Tiers 1, 2, and 3)
-  - `tests/frontend/fantasy_map_stress.test.tsx` (Tier 2 and Tier 4)
+- Test runner: Vitest inside JSDOM environment
+- Test command: `npm run test:frontend`
+- Test file: `tests/frontend/landscape_showcase.test.tsx`
+- Mock setups: Mock WebGL/R3F Canvas, HTMLCanvasElement 2D context, and Web Audio API (AudioContext, GainNode, PannerNode).
 
 ## Real-World Application Scenarios (Tier 4)
 | # | Scenario | Features Exercised | Complexity |
 |---|----------|--------------------|------------|
-| 1 | Map Idle State & Ambient Effects | F1, F3, F4, F5, F6, F7, F8, F9, F10, F11, F13, F17 | High |
-| 2 | Zoom-Pan and Region Inspect | F2, F12, F14, F17 | Medium |
-| 3 | Region Lore Display & Sidebar Update | F2, F14, F15, F16, F17 | High |
-| 4 | Rapid Multi-Region Navigation | F2, F12, F14, F17 | Medium |
-| 5 | Simulation Lifecycle Telemetry Update | F14, F15, F16, F17 | High |
-| 6 | Extreme Pan Zoom Damping Decay | F12 | High |
-| 7 | Particle Lifecycle Under Tick Load | F3, F5, F7, F9 | High |
-| 8 | High-Throughput User Actions & Memory Safety | F2, F12, F13, F14, F17 | High |
+| 1 | Cinematic Flyover | Camera, Audio, Sky | High |
+| 2 | Weather Transition | Weather, Sky, Audio, Terrain | High |
+| 3 | Alpine Exploration | Terrain, Vegetation, Weather, Audio | High |
+| 4 | Beach Exploration | Terrain, Water, Vegetation, Audio | High |
+| 5 | Ecosystem Speedup | Sky, Lighting, Weather, Audio, Integration | High |
 
 ## Coverage Thresholds
-- **Tier 1 (Feature Coverage)**: ≥5 test cases per feature (17 * 5 = 85 tests total).
-- **Tier 2 (Boundary & Corner)**: ≥5 test cases per feature covering boundaries (85 tests total).
-- **Tier 3 (Cross-Feature)**: ≥17 test cases covering pairwise combinations of major feature areas.
-- **Tier 4 (Workload/Application)**: ≥8 complex scenarios exercising the application end-to-end.
+- Tier 1: Feature Coverage (>=5 per feature, total >=40 tests)
+- Tier 2: Boundary & Corner Cases (>=5 per feature, total >=40 tests)
+- Tier 3: Cross-Feature Combinations (pairwise coverage, total >=8 tests)
+- Tier 4: Real-World Application Scenarios (total >=5 tests)
+- Total: 93 tests

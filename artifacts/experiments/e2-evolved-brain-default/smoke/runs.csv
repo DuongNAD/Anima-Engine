@@ -1,0 +1,3 @@
+seed,arm,status,failed_tick,failure_reason,final_checksum,warnings,plants,detritus,live.animals_eu,live.closed_eu_total,live.agent_count,live.herbivore_count,live.predator_count,live.food_items,live.standing_crop,live.mean_agent_energy,live.season_phase
+999983,control,completed,,,248377510,,153568.50242136294,1018.7474421320069,0,154587.24986349494,10,7,3,50,153568.50242149248,0,6.282561779022217
+999983,treatment,completed,,,150464771,,153568.5024213634,1018.7474421321381,0,154587.24986349553,10,7,3,50,153568.50242149248,0,6.282561779022217

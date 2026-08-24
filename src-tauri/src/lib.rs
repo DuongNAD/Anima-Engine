@@ -1,333 +1,64 @@
-#![allow(clippy::too_many_arguments, clippy::collapsible_match, clippy::type_complexity)]
+#![allow(
+    clippy::too_many_arguments,
+    clippy::collapsible_match,
+    clippy::type_complexity
+)]
 
 pub mod ai;
+pub mod commands;
 pub mod core;
 pub mod evolution;
 pub mod physics;
 
 use crate::core::engine::SimulationEngine;
 use std::sync::Arc;
+use tauri::Manager;
 
 pub struct AppState {
     pub engine: Arc<SimulationEngine>,
     pub evolution_settings: Arc<std::sync::Mutex<commands::EvolutionSettings>>,
     pub evolution_running: Arc<std::sync::atomic::AtomicBool>,
     pub map_elites_grid: Arc<std::sync::Mutex<commands::MapElitesGridState>>,
+    /// The one route a human's write takes into the running world (ADR-0004 C3).
+    ///
+    /// The four handles above and beside it are still here because `SimulationEngine::start` takes
+    /// them as arguments — so this is enforcement by *construction of the write*, not yet by
+    /// visibility. See [`ObserverSeam`](core::observer::ObserverSeam) for what that does and does not
+    /// close.
+    pub seam: core::observer::ObserverSeam,
 }
-
-pub mod commands {
-    use super::AppState;
-    use crate::core::engine::SimulationStatus;
-    use tauri::State;
-    use std::sync::Arc;
-    use crate::evolution::lineage::LineageTracker;
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-    pub struct EvolutionSettings {
-        pub mutation_rate: f64,
-        pub selection_bias: f64,
-        pub grid_resolution: u32,
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-    pub struct EliteIndividualState {
-        pub fitness: f64,
-        pub features: Vec<f64>,
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-    pub struct MapElitesGridState {
-        pub grid: std::collections::HashMap<String, EliteIndividualState>,
-        pub grid_resolution: u32,
-    }
-
-    #[tauri::command]
-    pub fn get_simulation_status(state: State<'_, AppState>) -> Result<SimulationStatus, String> {
-        Ok(state.engine.get_status())
-    }
-
-    #[tauri::command]
-    pub fn toggle_simulation(
-        state: State<'_, AppState>,
-        app_handle: tauri::AppHandle,
-    ) -> Result<bool, String> {
-        let engine = &state.engine;
-        if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
-            engine.stop();
-            Ok(false)
-        } else {
-            engine.start(
-                Some(app_handle),
-                Arc::clone(&state.evolution_settings),
-                Arc::clone(&state.evolution_running),
-                Arc::clone(&state.map_elites_grid),
-            );
-            Ok(true)
-        }
-    }
-
-    #[tauri::command]
-    pub fn get_map_elites_grid(
-        state: State<'_, AppState>,
-    ) -> Result<MapElitesGridState, String> {
-        let grid = state.map_elites_grid.lock().unwrap();
-        Ok(grid.clone())
-    }
-
-    #[tauri::command]
-    pub fn update_evolution_settings(
-        state: State<'_, AppState>,
-        settings: EvolutionSettings,
-    ) -> Result<bool, String> {
-        if settings.mutation_rate < 0.0
-            || settings.mutation_rate > 1.0
-            || settings.selection_bias <= 0.0
-        {
-            return Err("Invalid settings".to_string());
-        }
-        let mut evolution_settings = state.evolution_settings.lock().unwrap();
-        *evolution_settings = settings;
-        Ok(true)
-    }
-
-    #[tauri::command]
-    pub fn toggle_evolution(
-        state: State<'_, AppState>,
-        _app_handle: tauri::AppHandle,
-    ) -> Result<bool, String> {
-        let running = &state.evolution_running;
-        let was_running = running.load(std::sync::atomic::Ordering::SeqCst);
-        let new_running = !was_running;
-        running.store(new_running, std::sync::atomic::Ordering::SeqCst);
-        Ok(new_running)
-    }
-
-    #[tauri::command]
-    pub fn get_pheromone_grid(state: State<'_, AppState>) -> Result<crate::ai::pheromone::PheromoneGridState, String> {
-        let shared = state.engine.pheromone_grid_state.read().unwrap_or_else(|e| e.into_inner());
-        Ok(shared.clone())
-    }
-
-    #[tauri::command]
-    pub fn get_active_raycasts(state: State<'_, AppState>) -> Result<Vec<crate::core::ecs::RaycastTelemetry>, String> {
-        let shared = state.engine.active_raycasts.read().unwrap_or_else(|e| e.into_inner());
-        Ok(shared.clone())
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-    pub struct LineageNodePayload {
-        pub id: String,
-        pub generation: u32,
-        pub parent_id: Option<String>,
-        pub fitness: f64,
-        pub mutations_count: u32,
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-    pub struct LineageLinkPayload {
-        pub source: String,
-        pub target: String,
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-    pub struct LineageGraphPayload {
-        pub nodes: Vec<LineageNodePayload>,
-        pub links: Vec<LineageLinkPayload>,
-        pub db_connected: bool,
-    }
-
-    #[tauri::command]
-    pub fn get_lineage_graph(
-        state: State<'_, AppState>,
-    ) -> Result<LineageGraphPayload, String> {
-        let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
-        let db_connected = state.engine.lineage_tracker.is_online();
-
-        let mut payload_nodes = Vec::with_capacity(nodes.len());
-        let mut payload_links = Vec::with_capacity(relations.len());
-
-        for rel in &relations {
-            payload_links.push(LineageLinkPayload {
-                source: rel.source_id.clone(),
-                target: rel.target_id.clone(),
-            });
-        }
-
-        let mut parent_map = std::collections::HashMap::new();
-        for rel in &relations {
-            parent_map.entry(rel.target_id.clone())
-                .or_insert_with(Vec::new)
-                .push((rel.source_id.clone(), rel.relation_type));
-        }
-
-        let mut mutations_map = std::collections::HashMap::new();
-
-        fn get_mutations_count(
-            node_id: &str,
-            parent_map: &std::collections::HashMap<String, Vec<(String, crate::evolution::lineage::RelationType)>>,
-            memo: &mut std::collections::HashMap<String, u32>,
-        ) -> u32 {
-            if let Some(&val) = memo.get(node_id) {
-                return val;
-            }
-            let mut count = 0;
-            if let Some(parents) = parent_map.get(node_id) {
-                let mut max_parent_mutations = 0;
-                let mut is_mutation = false;
-                for (parent_id, rel_type) in parents {
-                    let parent_mut = get_mutations_count(parent_id, parent_map, memo);
-                    if parent_mut > max_parent_mutations {
-                        max_parent_mutations = parent_mut;
-                    }
-                    if *rel_type == crate::evolution::lineage::RelationType::Mutate {
-                        is_mutation = true;
-                    }
-                }
-                count = max_parent_mutations + if is_mutation { 1 } else { 0 };
-            }
-            memo.insert(node_id.to_string(), count);
-            count
-        }
-
-        for node in &nodes {
-            let parent_id = parent_map.get(&node.id)
-                .and_then(|parents| parents.first())
-                .map(|(p_id, _)| p_id.clone());
-
-            let mutations_count = get_mutations_count(&node.id, &parent_map, &mut mutations_map);
-            let fitness = node.genotype.as_ref().map(|g| g.nodes.len() as f64).unwrap_or(0.0);
-
-            payload_nodes.push(LineageNodePayload {
-                id: node.id.clone(),
-                generation: node.generation,
-                parent_id,
-                fitness,
-                mutations_count,
-            });
-        }
-
-        Ok(LineageGraphPayload {
-            nodes: payload_nodes,
-            links: payload_links,
-            db_connected,
-        })
-    }
-
-    #[tauri::command]
-    pub fn get_chronicle_history(state: State<'_, AppState>) -> Result<Vec<crate::core::engine::ChronicleEvent>, String> {
-        let history = state.engine.chronicle_history.read().unwrap_or_else(|e| e.into_inner());
-        Ok(history.clone())
-    }
-
-    #[tauri::command]
-    pub fn trigger_migration(
-        state: State<'_, AppState>,
-        target_port: u16,
-    ) -> Result<(), String> {
-        state.engine.manual_migration_trigger.send(target_port).map_err(|e| e.to_string())
-    }
-
-    #[tauri::command]
-    pub fn set_sharding_config(
-        state: State<'_, AppState>,
-        config: crate::core::ecs::ShardingConfig,
-    ) -> Result<(), String> {
-        let mut sharding_config = state.engine.sharding_config.write().map_err(|e| e.to_string())?;
-        *sharding_config = config;
-        Ok(())
-    }
-
-    #[tauri::command]
-    pub fn get_sharding_config(
-        state: State<'_, AppState>,
-    ) -> Result<crate::core::ecs::ShardingConfig, String> {
-        let sharding_config = state.engine.sharding_config.read().map_err(|e| e.to_string())?;
-        Ok(sharding_config.clone())
-    }
-
-    #[tauri::command]
-    pub fn get_terrain_grid(
-        state: State<'_, AppState>,
-    ) -> Result<crate::core::terrain::TerrainGridState, String> {
-        let shared = state.engine.terrain_grid_state.read().map_err(|e| e.to_string())?;
-        Ok(shared.clone())
-    }
-
-    #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
-    pub struct EnvironmentSettings {
-        pub time_speed: f32,
-        pub fertility: f32,
-        pub weather_severity: f32,
-    }
-
-    #[tauri::command]
-    pub fn update_env_settings(
-        state: State<'_, AppState>,
-        settings: EnvironmentSettings,
-    ) -> Result<bool, String> {
-        let mut env_settings = state.engine.env_settings.lock().unwrap();
-        *env_settings = settings;
-        Ok(true)
-    }
-
-    #[tauri::command]
-    pub fn trigger_disaster(
-        state: State<'_, AppState>,
-        disaster: String,
-    ) -> Result<bool, String> {
-        let event = match disaster.as_str() {
-            "Stable" => crate::evolution::meta_ai::EnvironmentalEvent::Stable,
-            "ResourceDrought" => crate::evolution::meta_ai::EnvironmentalEvent::ResourceDrought,
-            "TemperatureSpike" => crate::evolution::meta_ai::EnvironmentalEvent::TemperatureSpike,
-            "GlacialPeriod" => crate::evolution::meta_ai::EnvironmentalEvent::GlacialPeriod,
-            "ToxicDeluge" => crate::evolution::meta_ai::EnvironmentalEvent::ToxicDeluge,
-            _ => return Err("Invalid disaster type".to_string()),
-        };
-        let mut manual_disaster = state.engine.manual_disaster.lock().unwrap();
-        *manual_disaster = Some(event);
-        Ok(true)
-    }
-
-    #[tauri::command]
-    pub fn get_env_state(
-        state: State<'_, AppState>,
-    ) -> Result<crate::core::simulation_lifecycle::EnvironmentUpdateState, String> {
-        let shared = state.engine.env_state_sync.read().unwrap_or_else(|e| e.into_inner());
-        Ok(shared.clone())
-    }
-
-    #[tauri::command]
-    pub fn get_organism_presets() -> Result<Vec<crate::core::agent_systems::OrganismPreset>, String> {
-        Ok(crate::core::agent_systems::get_default_presets())
-    }
-
-    #[tauri::command]
-    pub fn spawn_preset_organism(
-        state: State<'_, AppState>,
-        preset_name: String,
-    ) -> Result<bool, String> {
-        state.engine.preset_spawn_sender.send(preset_name).map_err(|e| e.to_string())?;
-        Ok(true)
-    }
-}
-
 pub fn run() {
     let initial_grid = std::collections::HashMap::new();
+    let launch_persistence = core::resources::LaunchPersistencePolicy::from_env();
 
-    tauri::Builder::default()
+    // Hoisted out of the `manage(..)` literal so the seam can be handed the same handles the rest of
+    // the app reads through, rather than a second set that would drift from them.
+    let engine = Arc::new(SimulationEngine::new());
+    let evolution_settings = Arc::new(std::sync::Mutex::new(commands::EvolutionSettings {
+        mutation_rate: 0.15,
+        selection_bias: 1.5,
+        grid_resolution: 50,
+    }));
+    let evolution_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let seam = core::observer::ObserverSeam::new(
+        engine.observer_actions.clone(),
+        Arc::clone(&evolution_settings),
+        Arc::clone(&evolution_running),
+        Arc::clone(&engine.sharding_config),
+        engine.manual_migration_trigger.clone(),
+    );
+
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            engine: Arc::new(SimulationEngine::new()),
-            evolution_settings: Arc::new(std::sync::Mutex::new(commands::EvolutionSettings {
-                mutation_rate: 0.15,
-                selection_bias: 1.5,
-                grid_resolution: 50,
-            })),
-            evolution_running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            engine,
+            evolution_settings,
+            evolution_running,
             map_elites_grid: Arc::new(std::sync::Mutex::new(commands::MapElitesGridState {
                 grid: initial_grid,
                 grid_resolution: 50,
             })),
+            seam,
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_simulation_status,
@@ -336,19 +67,187 @@ pub fn run() {
             commands::update_evolution_settings,
             commands::toggle_evolution,
             commands::get_pheromone_grid,
+            commands::get_environmental_elements,
             commands::get_active_raycasts,
             commands::get_lineage_graph,
             commands::get_chronicle_history,
+            commands::set_lod_focus,
+            commands::get_lod_focus,
+            commands::get_lod_bands,
             commands::set_sharding_config,
             commands::get_sharding_config,
+            commands::get_migration_handoff_diagnostics,
             commands::trigger_migration,
-            commands::get_terrain_grid,
-            commands::update_env_settings,
-            commands::trigger_disaster,
-            commands::get_env_state,
-            commands::get_organism_presets,
-            commands::spawn_preset_organism
+            commands::get_test_rabbit_state,
+            commands::save_simulation_state,
+            commands::load_simulation_state,
+            commands::get_terrain_map,
+            commands::get_ecosystem_state,
+            commands::save_world_artifact,
+            commands::list_legacy_saves,
+            commands::import_legacy_save,
+            commands::start_tick_capture,
+            commands::stop_tick_capture,
+            commands::get_tick_capture_status,
+            commands::export_tick_capture
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .setup(move |app| {
+            let app_state = app.state::<AppState>();
+            if !launch_persistence.resume_autosave {
+                eprintln!(
+                    "[anima] ANIMA_FRESH_START is set; starting from genesis and leaving the \
+                     existing autosave untouched"
+                );
+            } else if let Ok(app_data_dir) = app.path().app_data_dir() {
+                // One autosave, under the same contract as every other save.
+                //
+                // This used to read `app_data_dir/default_save.json` — a bare `serde_json` dump,
+                // outside the `saves/` directory the load command can reach, with no envelope, no
+                // checksum and no schema version. Two persistence contracts existed side by side
+                // and only one of them was versioned.
+                //
+                // The autosave now lives at `saves/autosave.json` and goes through
+                // `snapshot::read`, which verifies the checksum and migrates a pre-envelope file
+                // forward. The old location is read **once**, if the new one is absent, so an
+                // existing user's world is adopted rather than stranded; nothing writes back to it.
+                let saves_dir = app_data_dir.join("saves");
+                let autosave = saves_dir.join(crate::commands::save_paths::AUTOSAVE_NAME);
+                let legacy = app_data_dir.join(crate::commands::save_paths::LEGACY_AUTOSAVE_FILE);
+                let source = if autosave.exists() {
+                    Some(autosave)
+                } else if legacy.exists() {
+                    Some(legacy)
+                } else {
+                    None
+                };
+
+                if let Some(path) = source {
+                    match crate::core::snapshot::read(&path) {
+                        Ok(loaded_state) => {
+                            *app_state
+                                .evolution_settings
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) =
+                                loaded_state.evolution_settings.clone();
+                            *app_state
+                                .map_elites_grid
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) =
+                                loaded_state.map_elites_grid.clone();
+
+                            *app_state
+                                .engine
+                                .pending_load_state
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) = Some(loaded_state);
+                            app_state.engine.start(
+                                Some(app.handle().clone()),
+                                Arc::clone(&app_state.evolution_settings),
+                                Arc::clone(&app_state.evolution_running),
+                                Arc::clone(&app_state.map_elites_grid),
+                            );
+                        }
+                        // A corrupt or unreadable autosave is not a reason to refuse to launch —
+                        // the app starts on a fresh world instead. But the previous code swallowed
+                        // this with `if let Ok(..)` and said nothing, so a user whose world failed
+                        // to load saw an empty simulation and no explanation. The file is left in
+                        // place, so it can still be inspected or recovered.
+                        Err(e) => {
+                            eprintln!(
+                                "[anima] autosave at {} could not be read ({e}); starting a fresh \
+                                 world. The file has been left untouched.",
+                                path.display()
+                            );
+                        }
+                    }
+                }
+            }
+
+            // A fresh world starts running only when asked. Placed after the autosave branch and
+            // guarded on `running`, so resuming a save and starting from zero cannot both fire and
+            // spawn two engines over one world.
+            //
+            // The condition this closes: before it, the *only* way an engine started without a
+            // human clicking Start was resuming an autosave — so a run "from zero" and a run
+            // "unattended" were mutually exclusive.
+            if crate::core::resources::autostart_from_env()
+                && !app_state
+                    .engine
+                    .running
+                    .load(std::sync::atomic::Ordering::SeqCst)
+            {
+                eprintln!("[anima] ANIMA_AUTOSTART is set; simulating from genesis");
+                app_state.engine.start(
+                    Some(app.handle().clone()),
+                    Arc::clone(&app_state.evolution_settings),
+                    Arc::clone(&app_state.evolution_running),
+                    Arc::clone(&app_state.map_elites_grid),
+                );
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(move |app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { .. } = event {
+            let state = app_handle.state::<AppState>();
+            let engine = &state.engine;
+
+            if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
+                if !launch_persistence.write_exit_autosave {
+                    eprintln!("[anima] fresh-start process is exiting; autosave remains untouched");
+                    engine.stop();
+                    return;
+                }
+
+                let (tx, rx) = std::sync::mpsc::channel();
+                if let Err(error) =
+                    core::simulation_loop::enqueue_save_request(&engine.save_request_tx, tx)
+                {
+                    eprintln!("exit autosave skipped: {error}");
+                } else {
+                    // `Ok(Ok(_))`: the thread answered, and it did not refuse. A refusal on exit is
+                    // dropped deliberately — the autosave is best-effort and there is no one left
+                    // to tell, whereas the explicit save command surfaces the reason.
+                    if let Ok(Ok(saved_state)) = rx.recv_timeout(std::time::Duration::from_secs(2))
+                    {
+                        if let Ok(app_data_dir) = app_handle.path().app_data_dir() {
+                            // Same directory, same envelope, same atomic write as an explicit
+                            // save. The old form was `to_string_pretty` into `fs::write`, which
+                            // truncates the destination before writing a byte — so a crash or a
+                            // full disk during exit destroyed the autosave the user already had in
+                            // order to fail at producing a new one. It also wrote a bare state with
+                            // no schema version, which the load command could not read back.
+                            let saves = app_data_dir.join("saves");
+                            if let Err(error) = std::fs::create_dir_all(&saves) {
+                                eprintln!(
+                                    "exit autosave failed: could not create {}: {error}",
+                                    saves.display()
+                                );
+                            } else {
+                                let target = saves.join(crate::commands::save_paths::AUTOSAVE_NAME);
+                                match crate::core::snapshot::SnapshotEnvelope::seal(saved_state) {
+                                    Ok(envelope) => {
+                                        if let Err(error) =
+                                            crate::core::snapshot::write_atomic(&target, &envelope)
+                                        {
+                                            eprintln!(
+                                                "exit autosave failed while writing {}: {error}",
+                                                target.display()
+                                            );
+                                        }
+                                    }
+                                    Err(error) => eprintln!(
+                                        "exit autosave refused invalid checkpoint state: {error}"
+                                    ),
+                                }
+                            }
+                        }
+                    }
+                }
+                engine.stop();
+            }
+        }
+    });
 }

@@ -1,21 +1,23 @@
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+// Cross-shard WebSocket migration lives behind the `networking` feature (G2). Without it this
+// suite has nothing to exercise, so the whole file compiles away rather than failing to link.
+#![cfg(feature = "networking")]
+
 use bevy_ecs::prelude::*;
 use glam::Vec3;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
+use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
-    ShardingConfig, InboundMigrationReceiver,
-    OutboundMigrationSender, ShardingResource, check_migration_boundaries_system,
-    process_inbound_migrations_system, AgentParentLineageIds, Prey, Agent,
-    MapBounds, ChildrenLinks, Position, Velocity, Rotation
+    check_migration_boundaries_system, process_inbound_migrations_system, Agent,
+    AgentParentLineageIds, ChildrenLinks, InboundMigrationReceiver, MapBounds,
+    OutboundMigrationSender, Position, Prey, Rotation, ShardingConfig, ShardingResource, Velocity,
+};
+use anima_engine_lib::core::engine::{
+    run_websocket_client, AgentGeneration, AgentGenotype, AgentLineageId,
 };
 use anima_engine_lib::evolution::genotype::{MorphologyGenotype, MorphologyNode};
-use anima_engine_lib::core::engine::{
-    AgentGenotype, AgentLineageId, AgentGeneration,
-    run_websocket_client
-};
-use anima_engine_lib::ai::hrrl::HomeostaticState;
 
 #[tokio::test]
 async fn test_migration_narrow_bounds_infinite_loop() {
@@ -44,29 +46,36 @@ async fn test_migration_narrow_bounds_infinite_loop() {
 
     // Spawn initial agent already moving right and out of bounds on the right (x = 0.6)
     let mut genotype = MorphologyGenotype::new();
-    genotype.add_node(MorphologyNode { id: 0, length: 1.0, radius: 0.2, mass: 1.5 });
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.5,
+    });
 
-    let _agent_entity = world.spawn((
-        Agent,
-        Prey,
-        Position(Vec3::new(0.6, 0.0, 0.0)),
-        Rotation(glam::Quat::IDENTITY),
-        Velocity(Vec3::new(1.0, 0.0, 0.0)),
-        AgentGenotype(genotype.clone()),
-        HomeostaticState {
-            energy: 100.0,
-            energy_target: 100.0,
-            hydration: 100.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        },
-        AgentLineageId("loop-lineage-id".to_string()),
-        AgentGeneration(1),
-        AgentParentLineageIds(vec![]),
-        ChildrenLinks(vec![]),
-    )).id();
+    let _agent_entity = world
+        .spawn((
+            Agent,
+            Prey,
+            Position(Vec3::new(0.6, 0.0, 0.0)),
+            Rotation(glam::Quat::IDENTITY),
+            Velocity(Vec3::new(1.0, 0.0, 0.0)),
+            AgentGenotype(genotype.clone()),
+            HomeostaticState {
+                energy: 100.0,
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+            AgentLineageId("loop-lineage-id".to_string()),
+            AgentGeneration(1),
+            AgentParentLineageIds(vec![]),
+            ChildrenLinks(vec![]),
+        ))
+        .id();
 
     // Start run_websocket_client on closed ports
     let running = Arc::new(AtomicBool::new(true));
@@ -80,7 +89,8 @@ async fn test_migration_narrow_bounds_infinite_loop() {
             running_clone,
             None,
             8080,
-        ).await;
+        )
+        .await;
     });
 
     let mut schedule = Schedule::default();
@@ -95,8 +105,24 @@ async fn test_migration_narrow_bounds_infinite_loop() {
     // It should despawn the agent and send outbound migration.
     schedule.run(&mut world);
 
-    // Let tokio scheduler yield so that websocket client can process the outbound migration, fail, and bounce back.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Wait for the observable bounce-back, not for a guessed scheduler interval.
+    let bounce_started = Instant::now();
+    loop {
+        let inbound_ready = !world
+            .get_resource::<InboundMigrationReceiver>()
+            .expect("inbound receiver")
+            .0
+            .is_empty();
+        if inbound_ready {
+            break;
+        }
+        let waited = bounce_started.elapsed();
+        assert!(
+            waited < Duration::from_secs(10),
+            "migration did not bounce back within the liveness deadline ({waited:.2?})"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
 
     // After bounce back, inbound channel should have the bounced agent, and process_inbound_migrations_system should spawn it.
     schedule.run(&mut world);
@@ -113,8 +139,6 @@ async fn test_migration_narrow_bounds_infinite_loop() {
     // It should not despawn or re-migrate the agent.
     schedule.run(&mut world);
 
-    tokio::time::sleep(Duration::from_millis(50)).await;
-
     // Verify the agent remains inside boundaries at 0.45, was not despawned, and inbound queue is empty.
     let results: Vec<_> = query.iter(&world).collect();
     assert_eq!(results.len(), 1);
@@ -124,15 +148,19 @@ async fn test_migration_narrow_bounds_infinite_loop() {
 
     {
         let inbound_rec = world.get_resource::<InboundMigrationReceiver>().unwrap();
-        assert!(inbound_rec.0.is_empty(), "Inbound queue should be empty; no second migration should have occurred");
+        assert!(
+            inbound_rec.0.is_empty(),
+            "Inbound queue should be empty; no second migration should have occurred"
+        );
         let outbound_rec = world.get_resource::<OutboundMigrationSender>().unwrap();
-        assert!(outbound_rec.0.is_empty(), "Outbound queue should be empty; no further migrations should have been triggered");
+        assert!(
+            outbound_rec.0.is_empty(),
+            "Outbound queue should be empty; no further migrations should have been triggered"
+        );
     }
 
     // Tick 3: check_migration_boundaries_system runs again.
     schedule.run(&mut world);
-
-    tokio::time::sleep(Duration::from_millis(50)).await;
 
     // Verify again that the agent remains inside boundaries at 0.45 and inbound queue is empty.
     let results: Vec<_> = query.iter(&world).collect();
@@ -143,9 +171,15 @@ async fn test_migration_narrow_bounds_infinite_loop() {
 
     {
         let inbound_rec = world.get_resource::<InboundMigrationReceiver>().unwrap();
-        assert!(inbound_rec.0.is_empty(), "Inbound queue should still be empty; no loop should occur");
+        assert!(
+            inbound_rec.0.is_empty(),
+            "Inbound queue should still be empty; no loop should occur"
+        );
         let outbound_rec = world.get_resource::<OutboundMigrationSender>().unwrap();
-        assert!(outbound_rec.0.is_empty(), "Outbound queue should still be empty; no loop should occur");
+        assert!(
+            outbound_rec.0.is_empty(),
+            "Outbound queue should still be empty; no loop should occur"
+        );
     }
 
     running.store(false, Ordering::SeqCst);

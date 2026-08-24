@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct AgentState {
@@ -174,16 +175,20 @@ fn test_real_simulation_engine_start_stop() {
     assert!(!engine.get_status().running);
 
     // Start the simulation engine
-    let evolution_settings = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::EvolutionSettings {
-        mutation_rate: 0.15,
-        selection_bias: 1.5,
-        grid_resolution: 50,
-    }));
+    let evolution_settings = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::EvolutionSettings {
+            mutation_rate: 0.15,
+            selection_bias: 1.5,
+            grid_resolution: 50,
+        },
+    ));
     let evolution_running = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let map_elites_grid = Arc::new(std::sync::Mutex::new(anima_engine_lib::commands::MapElitesGridState {
-        grid: std::collections::HashMap::new(),
-        grid_resolution: 50,
-    }));
+    let map_elites_grid = Arc::new(std::sync::Mutex::new(
+        anima_engine_lib::commands::MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 50,
+        },
+    ));
     engine.start(
         None::<tauri::AppHandle<tauri::test::MockRuntime>>,
         evolution_settings,
@@ -191,16 +196,22 @@ fn test_real_simulation_engine_start_stop() {
         map_elites_grid,
     );
 
-    // Wait briefly for the simulation thread to start and tick
-    let mut started = false;
-    for _ in 0..200 {
-        if engine.get_status().running {
-            started = true;
+    // Wait for the tick too, not just for `running`: the flag is set by `start` before the sim
+    // thread has run a single tick, so polling on it alone falls through to the `tick_count > 0`
+    // assertion below and fails it on a busy machine.
+    let start = Instant::now();
+    loop {
+        let status = engine.get_status();
+        if status.running && status.tick_count > 0 {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        let waited = start.elapsed();
+        assert!(
+            waited < Duration::from_secs(10),
+            "Simulation failed to start and tick within {waited:.2?}; last status: {status:?}"
+        );
+        std::thread::sleep(Duration::from_millis(5));
     }
-    assert!(started, "Simulation failed to start within 2 seconds");
 
     // Verify it runs
     assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst));
@@ -218,17 +229,41 @@ fn test_real_simulation_engine_start_stop() {
     // Verify agent segment telemetry data
     {
         let states = engine.agent_states.read().unwrap();
-        assert_eq!(states.len(), 30, "Should track exactly 30 segments (10 agents * 3 segments)");
-        
-        // Find segment with ID 1 and verify parent
-        let seg_1 = states.iter().find(|s| s.segment_id == 1).expect("Should find segment 1");
-        assert_eq!(seg_1.parent_segment_id, Some(0), "Segment 1 must have parent 0");
+        assert_eq!(
+            states.len(),
+            30,
+            "Should track exactly 30 segments (10 agents * 3 segments)"
+        );
 
-        let seg_2 = states.iter().find(|s| s.segment_id == 2).expect("Should find segment 2");
-        assert_eq!(seg_2.parent_segment_id, Some(1), "Segment 2 must have parent 1");
+        // Find segment with ID 1 and verify parent
+        let seg_1 = states
+            .iter()
+            .find(|s| s.segment_id == 1)
+            .expect("Should find segment 1");
+        assert_eq!(
+            seg_1.parent_segment_id,
+            Some(0),
+            "Segment 1 must have parent 0"
+        );
+
+        let seg_2 = states
+            .iter()
+            .find(|s| s.segment_id == 2)
+            .expect("Should find segment 2");
+        assert_eq!(
+            seg_2.parent_segment_id,
+            Some(1),
+            "Segment 2 must have parent 1"
+        );
 
         // Verify root segment (segment 0) has no parent
-        let seg_0 = states.iter().find(|s| s.segment_id == 0).expect("Should find segment 0");
-        assert_eq!(seg_0.parent_segment_id, None, "Segment 0 must have no parent");
+        let seg_0 = states
+            .iter()
+            .find(|s| s.segment_id == 0)
+            .expect("Should find segment 0");
+        assert_eq!(
+            seg_0.parent_segment_id, None,
+            "Segment 0 must have no parent"
+        );
     }
 }

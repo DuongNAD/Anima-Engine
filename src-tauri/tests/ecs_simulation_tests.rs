@@ -3,10 +3,10 @@ mod common;
 use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecs::{
-    energy_decay_system, init_world, wrap_coordinates_system, MapBounds,
-    Position, Rotation, Velocity,
+    energy_decay_system, init_world, wrap_coordinates_system, MapBounds, Position, Rotation,
+    Velocity,
 };
-use anima_engine_lib::physics::{resolve_joints_system, integrate_physics_system, RigidBody};
+use anima_engine_lib::physics::{integrate_physics_system, resolve_joints_system, RigidBody};
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 

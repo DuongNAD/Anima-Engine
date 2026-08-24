@@ -1,95 +1,115 @@
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-
-:root {
-  --cyber-bg: #060913;
-  --cyber-card: #0c1222;
-  --cyber-border: #1a2a4b;
-  --cyber-text: #00f0ff;
-  --cyber-text-dim: #0088cc;
-  --cyber-green: #39ff14;
-  --cyber-magenta: #ff007f;
-  --cyber-amber: #ffaa00;
-  --cyber-blue: #0044ff;
-  
-  --glow-cyan: 0 0 10px rgba(0, 240, 255, 0.4);
-  --glow-green: 0 0 10px rgba(57, 255, 20, 0.4);
-  --glow-magenta: 0 0 10px rgba(255, 0, 127, 0.4);
-}
-
 body {
-  background-color: var(--cyber-bg);
-  color: var(--cyber-text);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  background-color: #09090b;
+  color: #e2e8f0;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  font-family: Consolas, Monaco, monospace;
 }
 
-/* CRT Screen Scanline Overlay Removed */
-.crt-screen {
-  position: relative;
+/* --- CRT Screen Scanline Overlay --- */
+.crt-scanlines {
+  display: none !important; /* Disabled for clean glassmorphic appearance */
 }
 
-/* Sci-fi Panel styling (Glassmorphic Redesign) */
-.sci-fi-panel {
-  background-color: rgba(12, 18, 34, 0.6) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 240, 255, 0.15) !important;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 0 15px rgba(0, 240, 255, 0.05), 0 0 10px rgba(0, 240, 255, 0.1) !important;
-  border-radius: 8px;
-  position: relative;
-  color: var(--cyber-text) !important;
-}
-
-.sci-fi-title {
-  color: var(--cyber-text) !important;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  text-shadow: var(--glow-cyan);
-  border-bottom: 2px solid var(--cyber-border) !important;
-}
-
-.glow-btn {
-  background: transparent !important;
-  color: var(--cyber-text) !important;
-  border: 1px solid var(--cyber-text) !important;
-  text-transform: uppercase;
-  font-family: inherit;
-  box-shadow: var(--glow-cyan);
-  text-shadow: var(--glow-cyan);
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-}
-
-.glow-btn:hover {
-  background: var(--cyber-text) !important;
-  color: var(--cyber-bg) !important;
-  box-shadow: 0 0 15px var(--cyber-text) !important;
-}
-
-.glow-btn:disabled {
-  border-color: #334e68 !important;
-  color: #334e68 !important;
-  box-shadow: none !important;
+/* --- Clean Monochromatic/Polished Status Helper Classes (Glows Removed) --- */
+.neon-teal {
+  color: #f8fafc !important;
+  font-weight: 600;
   text-shadow: none !important;
-  cursor: not-allowed;
 }
 
-/* Neon utilities */
-.cyber-glow-cyan {
-  text-shadow: var(--glow-cyan);
+.neon-gold {
+  color: #cbd5e1 !important;
+  font-weight: 600;
+  text-shadow: none !important;
 }
-.cyber-glow-green {
-  text-shadow: var(--glow-green);
-  color: var(--cyber-green) !important;
+
+.neon-green {
+  color: #f8fafc !important;
+  font-weight: 600;
+  text-shadow: none !important;
 }
-.cyber-glow-magenta {
-  text-shadow: var(--glow-magenta);
-  color: var(--cyber-magenta) !important;
+
+.neon-red {
+  color: #94a3b8 !important;
+  font-weight: 600;
+  text-shadow: none !important;
 }
+
+/* --- Glassmorphic Card/Panel Styling --- */
+.hud-panel {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  color: #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.25) !important;
+  font-family: 'Inter', -apple-system, sans-serif !important;
+}
+
+.hud-title-teal {
+  color: #f8fafc !important;
+  font-family: 'Inter', -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+}
+
+.hud-title-gold {
+  color: #cbd5e1 !important;
+  font-family: 'Inter', -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+}
+
+/* Glassmorphic Action Buttons */
+.hud-btn {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  color: #f1f5f9 !important;
+  font-family: 'Inter', -apple-system, sans-serif !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0.2px !important;
+  cursor: pointer !important;
+  border-radius: 8px !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.hud-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  text-shadow: none !important;
+}
+
+.hud-btn:disabled {
+  opacity: 0.35 !important;
+  cursor: not-allowed !important;
+}
+
+/* --- Minimalist Scrollbar --- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
+}
+

@@ -1,0 +1,3534 @@
+{
+  "control_law_fingerprint": 11173561918340764083,
+  "control_manifest_fingerprint": 9775089651275947196,
+  "control_only": [],
+  "declared_factors": [
+    "initial_conditions"
+  ],
+  "effects": [
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 1018.7474421320069,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "detritus",
+      "paired_dz": null,
+      "paired_mean_delta": 1.311946107307449e-10,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 1018.7474421321381
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 10.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.agent_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 10.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.animals_eu",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 154587.24986349494,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.closed_eu_total",
+      "paired_dz": null,
+      "paired_mean_delta": 5.820766091346741e-10,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 154587.24986349553
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 50.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.food_items",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 50.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 7.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.herbivore_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 7.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.mean_agent_energy",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 3.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.predator_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 3.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 6.282561779022217,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.season_phase",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 6.282561779022217
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 153568.50242149248,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.standing_crop",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 153568.50242149248
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "control_mean": 153568.50242136294,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "plants",
+      "paired_dz": null,
+      "paired_mean_delta": 4.656612873077393e-10,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 153568.5024213634
+    }
+  ],
+  "experiment_id": "e2-evolved-brain-default::smoke-treatment",
+  "pairs": [
+    {
+      "control": {
+        "exotic_budget": null,
+        "final_checksum": 248377510,
+        "final_observables": [
+          [
+            "plants",
+            153568.50242136294
+          ],
+          [
+            "detritus",
+            1018.7474421320069
+          ],
+          [
+            "live.animals_eu",
+            0.0
+          ],
+          [
+            "live.closed_eu_total",
+            154587.24986349494
+          ],
+          [
+            "live.agent_count",
+            10.0
+          ],
+          [
+            "live.herbivore_count",
+            7.0
+          ],
+          [
+            "live.predator_count",
+            3.0
+          ],
+          [
+            "live.food_items",
+            50.0
+          ],
+          [
+            "live.standing_crop",
+            153568.50242149248
+          ],
+          [
+            "live.mean_agent_energy",
+            0.0
+          ],
+          [
+            "live.season_phase",
+            6.282561779022217
+          ]
+        ],
+        "ledger": {
+          "effects": []
+        },
+        "observable_specs": [
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "plants",
+            "id": "plants",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "detritus",
+            "id": "detritus",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.animals_eu",
+            "id": "live.animals_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.closed_eu_total",
+            "id": "live.closed_eu_total",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.agent_count",
+            "id": "live.agent_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.herbivore_count",
+            "id": "live.herbivore_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.predator_count",
+            "id": "live.predator_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.food_items",
+            "id": "live.food_items",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.standing_crop",
+            "id": "live.standing_crop",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_agent_energy",
+            "id": "live.mean_agent_energy",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.season_phase",
+            "id": "live.season_phase",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "fraction",
+            "valid_max": 1.0,
+            "valid_min": 0.0
+          }
+        ],
+        "provenance": {
+          "build_id": "0.1.0",
+          "experiment_id": "e2-evolved-brain-default::smoke-control",
+          "fork_tick": null,
+          "law_fingerprint": 11173561918340764083,
+          "manifest_fingerprint": 9775089651275947196,
+          "model_version": "reference-evolution-world/1",
+          "parent_run_id": null,
+          "registry_fingerprint": 13957894475303924432,
+          "run_id": "e2-evolved-brain-default::smoke-control#87a8183f47e65cbc#s999983",
+          "seed": 999983
+        },
+        "series": [
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242148954
+              ],
+              [
+                "detritus",
+                98.57826030827633
+              ],
+              [
+                "live.animals_eu",
+                920.1691818237305
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986362155
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                92.01691818237305
+              ],
+              [
+                "live.season_phase",
+                0.6283166408538818
+              ]
+            ],
+            "tick": 600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242148517
+              ],
+              [
+                "detritus",
+                202.4276408014404
+              ],
+              [
+                "live.animals_eu",
+                816.3198013305664
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986361718
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                81.63198013305664
+              ],
+              [
+                "live.season_phase",
+                1.2566477060317993
+              ]
+            ],
+            "tick": 1200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214808
+              ],
+              [
+                "detritus",
+                309.8569887933838
+              ],
+              [
+                "live.animals_eu",
+                708.890453338623
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986361281
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                70.8890453338623
+              ],
+              [
+                "live.season_phase",
+                1.8849998712539673
+              ]
+            ],
+            "tick": 1800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242147644
+              ],
+              [
+                "detritus",
+                422.36018932438964
+              ],
+              [
+                "live.animals_eu",
+                596.3872528076172
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986360845
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                59.63872528076172
+              ],
+              [
+                "live.season_phase",
+                2.513293504714966
+              ]
+            ],
+            "tick": 2400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242147208
+              ],
+              [
+                "detritus",
+                543.5708407220948
+              ],
+              [
+                "live.animals_eu",
+                475.1766014099121
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986360408
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                47.51766014099121
+              ],
+              [
+                "live.season_phase",
+                3.1415741443634033
+              ]
+            ],
+            "tick": 3000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214677
+              ],
+              [
+                "detritus",
+                675.9057053384888
+              ],
+              [
+                "live.animals_eu",
+                342.84173679351807
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986359972
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                34.28417367935181
+              ],
+              [
+                "live.season_phase",
+                3.769854784011841
+              ]
+            ],
+            "tick": 3600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242146334
+              ],
+              [
+                "detritus",
+                810.9929299411881
+              ],
+              [
+                "live.animals_eu",
+                207.7545121908188
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986359535
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                20.77545121908188
+              ],
+              [
+                "live.season_phase",
+                4.398135662078857
+              ]
+            ],
+            "tick": 4200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242145898
+              ],
+              [
+                "detritus",
+                917.5771392641175
+              ],
+              [
+                "live.animals_eu",
+                101.1703028678894
+              ],
+              [
+                "live.closed_eu_total",
+                154587.249863591
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                10.11703028678894
+              ],
+              [
+                "live.season_phase",
+                5.026416301727295
+              ]
+            ],
+            "tick": 4800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214546
+              ],
+              [
+                "detritus",
+                999.6880617497075
+              ],
+              [
+                "live.animals_eu",
+                19.059380382299423
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986358662
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                1.9059380382299422
+              ],
+              [
+                "live.season_phase",
+                5.654696941375732
+              ]
+            ],
+            "tick": 5400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242145025
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986358226
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.28297758102417
+              ]
+            ],
+            "tick": 6000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242144588
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635779
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6281086802482605
+              ]
+            ],
+            "tick": 6600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242144152
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986357352
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2564396858215332
+              ]
+            ],
+            "tick": 7200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242143715
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986356916
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8847918510437012
+              ]
+            ],
+            "tick": 7800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214328
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635648
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5130856037139893
+              ]
+            ],
+            "tick": 8400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242142842
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986356043
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.1413662433624268
+              ]
+            ],
+            "tick": 9000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242142405
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986355606
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7696468830108643
+              ]
+            ],
+            "tick": 9600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214197
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635517
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397927761077881
+              ]
+            ],
+            "tick": 10200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242141532
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986354733
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026208400726318
+              ]
+            ],
+            "tick": 10800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242141096
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986354297
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654489040374756
+              ]
+            ],
+            "tick": 11400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214066
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635386
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282769680023193
+              ]
+            ],
+            "tick": 12000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242140223
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986353423
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6279007792472839
+              ]
+            ],
+            "tick": 12600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242139786
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986352987
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2562317848205566
+              ]
+            ],
+            "tick": 13200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213935
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635255
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8845839500427246
+              ]
+            ],
+            "tick": 13800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242138913
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986352114
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5128777027130127
+              ]
+            ],
+            "tick": 14400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242138476
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986351677
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.14115834236145
+              ]
+            ],
+            "tick": 15000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213804
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635124
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7694389820098877
+              ]
+            ],
+            "tick": 15600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242137603
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986350804
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397719860076904
+              ]
+            ],
+            "tick": 16200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242137167
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986350368
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026000499725342
+              ]
+            ],
+            "tick": 16800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213673
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498634993
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654281139373779
+              ]
+            ],
+            "tick": 17400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242136294
+              ],
+              [
+                "detritus",
+                1018.7474421320069
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986349494
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282561779022217
+              ]
+            ],
+            "tick": 18000
+          }
+        ],
+        "status": "Completed",
+        "warnings": []
+      },
+      "seed": 999983,
+      "treatment": {
+        "exotic_budget": null,
+        "final_checksum": 150464771,
+        "final_observables": [
+          [
+            "plants",
+            153568.5024213634
+          ],
+          [
+            "detritus",
+            1018.7474421321381
+          ],
+          [
+            "live.animals_eu",
+            0.0
+          ],
+          [
+            "live.closed_eu_total",
+            154587.24986349553
+          ],
+          [
+            "live.agent_count",
+            10.0
+          ],
+          [
+            "live.herbivore_count",
+            7.0
+          ],
+          [
+            "live.predator_count",
+            3.0
+          ],
+          [
+            "live.food_items",
+            50.0
+          ],
+          [
+            "live.standing_crop",
+            153568.50242149248
+          ],
+          [
+            "live.mean_agent_energy",
+            0.0
+          ],
+          [
+            "live.season_phase",
+            6.282561779022217
+          ]
+        ],
+        "ledger": {
+          "effects": []
+        },
+        "observable_specs": [
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "plants",
+            "id": "plants",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "detritus",
+            "id": "detritus",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.animals_eu",
+            "id": "live.animals_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.closed_eu_total",
+            "id": "live.closed_eu_total",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.agent_count",
+            "id": "live.agent_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.herbivore_count",
+            "id": "live.herbivore_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.predator_count",
+            "id": "live.predator_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.food_items",
+            "id": "live.food_items",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.standing_crop",
+            "id": "live.standing_crop",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_agent_energy",
+            "id": "live.mean_agent_energy",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.season_phase",
+            "id": "live.season_phase",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "fraction",
+            "valid_max": 1.0,
+            "valid_min": 0.0
+          }
+        ],
+        "provenance": {
+          "build_id": "0.1.0",
+          "experiment_id": "e2-evolved-brain-default::smoke-treatment",
+          "fork_tick": null,
+          "law_fingerprint": 11173561918340764083,
+          "manifest_fingerprint": 2640926278323842558,
+          "model_version": "reference-evolution-world/1",
+          "parent_run_id": null,
+          "registry_fingerprint": 13957894475303924432,
+          "run_id": "e2-evolved-brain-default::smoke-treatment#24a67475397cadfe#s999983",
+          "seed": 999983
+        },
+        "series": [
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242149
+              ],
+              [
+                "detritus",
+                154.4415797053803
+              ],
+              [
+                "live.animals_eu",
+                864.3058624267578
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986362213
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                86.43058624267579
+              ],
+              [
+                "live.season_phase",
+                0.6283166408538818
+              ]
+            ],
+            "tick": 600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242148564
+              ],
+              [
+                "detritus",
+                309.32812679400337
+              ],
+              [
+                "live.animals_eu",
+                709.4193153381348
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986361776
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                70.94193153381347
+              ],
+              [
+                "live.season_phase",
+                1.2566477060317993
+              ]
+            ],
+            "tick": 1200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242148127
+              ],
+              [
+                "detritus",
+                435.990051156186
+              ],
+              [
+                "live.animals_eu",
+                582.7573909759521
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498636134
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                58.27573909759521
+              ],
+              [
+                "live.season_phase",
+                1.8849998712539673
+              ]
+            ],
+            "tick": 1800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214769
+              ],
+              [
+                "detritus",
+                539.4798373042572
+              ],
+              [
+                "live.animals_eu",
+                479.26760482788086
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986360903
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                47.92676048278808
+              ],
+              [
+                "live.season_phase",
+                2.513293504714966
+              ]
+            ],
+            "tick": 2400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242147254
+              ],
+              [
+                "detritus",
+                605.1005877315033
+              ],
+              [
+                "live.animals_eu",
+                413.64685440063477
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986360467
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                41.364685440063475
+              ],
+              [
+                "live.season_phase",
+                3.1415741443634033
+              ]
+            ],
+            "tick": 3000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242146818
+              ],
+              [
+                "detritus",
+                670.67368114581
+              ],
+              [
+                "live.animals_eu",
+                348.0737609863281
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498636003
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                34.807376098632815
+              ],
+              [
+                "live.season_phase",
+                3.769854784011841
+              ]
+            ],
+            "tick": 3600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214638
+              ],
+              [
+                "detritus",
+                736.3716507016647
+              ],
+              [
+                "live.animals_eu",
+                282.3757914304733
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986359593
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                28.237579143047334
+              ],
+              [
+                "live.season_phase",
+                4.398135662078857
+              ]
+            ],
+            "tick": 4200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242145945
+              ],
+              [
+                "detritus",
+                791.3424528895844
+              ],
+              [
+                "live.animals_eu",
+                227.4049892425537
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986359157
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                22.74049892425537
+              ],
+              [
+                "live.season_phase",
+                5.026416301727295
+              ]
+            ],
+            "tick": 4800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242145508
+              ],
+              [
+                "detritus",
+                844.300628548764
+              ],
+              [
+                "live.animals_eu",
+                174.44681358337402
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635872
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                17.4446813583374
+              ],
+              [
+                "live.season_phase",
+                5.654696941375732
+              ]
+            ],
+            "tick": 5400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214507
+              ],
+              [
+                "detritus",
+                895.6884268580902
+              ],
+              [
+                "live.animals_eu",
+                123.05901527404785
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986358284
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                12.305901527404785
+              ],
+              [
+                "live.season_phase",
+                6.28297758102417
+              ]
+            ],
+            "tick": 6000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242144635
+              ],
+              [
+                "detritus",
+                934.5027025996674
+              ],
+              [
+                "live.animals_eu",
+                84.2447395324707
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986357847
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                8.42447395324707
+              ],
+              [
+                "live.season_phase",
+                0.6281086802482605
+              ]
+            ],
+            "tick": 6600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242144198
+              ],
+              [
+                "detritus",
+                964.5988539515961
+              ],
+              [
+                "live.animals_eu",
+                54.14858818054199
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635741
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                5.414858818054199
+              ],
+              [
+                "live.season_phase",
+                1.2564396858215332
+              ]
+            ],
+            "tick": 7200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242143762
+              ],
+              [
+                "detritus",
+                994.4592832385529
+              ],
+              [
+                "live.animals_eu",
+                24.288158893585205
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986356974
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                2.4288158893585203
+              ],
+              [
+                "live.season_phase",
+                1.8847918510437012
+              ]
+            ],
+            "tick": 7800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242143325
+              ],
+              [
+                "detritus",
+                1012.4148463069428
+              ],
+              [
+                "live.animals_eu",
+                6.3325958251953125
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986356538
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.6332595825195313
+              ],
+              [
+                "live.season_phase",
+                2.5130856037139893
+              ]
+            ],
+            "tick": 8400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214289
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.249863561
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.1413662433624268
+              ]
+            ],
+            "tick": 9000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242142452
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986355664
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7696468830108643
+              ]
+            ],
+            "tick": 9600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242142015
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986355228
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397927761077881
+              ]
+            ],
+            "tick": 10200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214158
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498635479
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026208400726318
+              ]
+            ],
+            "tick": 10800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242141142
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986354355
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654489040374756
+              ]
+            ],
+            "tick": 11400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242140706
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986353918
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282769680023193
+              ]
+            ],
+            "tick": 12000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024214027
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986353482
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6279007792472839
+              ]
+            ],
+            "tick": 12600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242139833
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986353045
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2562317848205566
+              ]
+            ],
+            "tick": 13200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242139396
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986352609
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8845839500427246
+              ]
+            ],
+            "tick": 13800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213896
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986352172
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5128777027130127
+              ]
+            ],
+            "tick": 14400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242138523
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986351735
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.14115834236145
+              ]
+            ],
+            "tick": 15000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242138086
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.249863513
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7694389820098877
+              ]
+            ],
+            "tick": 15600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213765
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986350862
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397719860076904
+              ]
+            ],
+            "tick": 16200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242137213
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986350426
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026000499725342
+              ]
+            ],
+            "tick": 16800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.50242136777
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.2498634999
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654281139373779
+              ]
+            ],
+            "tick": 17400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                153568.5024213634
+              ],
+              [
+                "detritus",
+                1018.7474421321381
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                154587.24986349553
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                153568.50242149248
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282561779022217
+              ]
+            ],
+            "tick": 18000
+          }
+        ],
+        "status": "Completed",
+        "warnings": []
+      }
+    }
+  ],
+  "registry_fingerprint": 13957894475303924432,
+  "seed_order": [
+    999983
+  ],
+  "treatment_law_fingerprint": 11173561918340764083,
+  "treatment_manifest_fingerprint": 2640926278323842558,
+  "treatment_only": []
+}

@@ -1,15 +1,15 @@
 mod common;
 
 use bevy_ecs::prelude::*;
-use glam::{Vec3, Quat};
+use glam::{Quat, Vec3};
 use std::sync::Mutex;
 
-use anima_engine_lib::ai::pheromone::{
-    PheromoneGrid, OlfactorySensors, PheromoneReleaser, GRID_SIZE, MAX_CONCENTRATION,
-    agent_release_pheromone_system, update_pheromone_grid_system, agent_read_pheromone_system,
-};
-use anima_engine_lib::core::ecs::{Position, Rotation, MapBounds};
 use anima_engine_lib::ai::cpg::TimeStep;
+use anima_engine_lib::ai::pheromone::{
+    agent_read_pheromone_system, agent_release_pheromone_system, update_pheromone_grid_system,
+    OlfactorySensors, PheromoneGrid, PheromoneReleaser, GRID_SIZE, MAX_CONCENTRATION,
+};
+use anima_engine_lib::core::ecs::{MapBounds, Position, Rotation};
 
 #[global_allocator]
 static ALLOCATOR: common::allocator::TrackingAllocator =
@@ -40,7 +40,11 @@ fn test_pheromone_decay() {
     // After 1 step (dt = 1.0, decay_rate = 0.1), decay factor = (1.0 - 0.1 * 1.0) = 0.9
     // Expected concentration: 5.0 * 0.9 = 4.5
     let grid_res = world.resource::<PheromoneGrid>();
-    assert!((grid_res.values[0] - 4.5).abs() < 1e-5, "Expected decayed value to be 4.5, got {}", grid_res.values[0]);
+    assert!(
+        (grid_res.values[0] - 4.5).abs() < 1e-5,
+        "Expected decayed value to be 4.5, got {}",
+        grid_res.values[0]
+    );
 }
 
 #[test]
@@ -75,15 +79,27 @@ fn test_pheromone_diffusion() {
     schedule.run(&mut world);
 
     let grid_res = world.resource::<PheromoneGrid>();
-    assert!((grid_res.values[64 * GRID_SIZE + 64] - 6.0).abs() < 1e-5, "Expected center 6.0, got {}", grid_res.values[64 * GRID_SIZE + 64]);
-    assert!((grid_res.values[64 * GRID_SIZE + 65] - 1.0).abs() < 1e-5, "Expected neighbor 1.0, got {}", grid_res.values[64 * GRID_SIZE + 65]);
+    assert!(
+        (grid_res.values[64 * GRID_SIZE + 64] - 6.0).abs() < 1e-5,
+        "Expected center 6.0, got {}",
+        grid_res.values[64 * GRID_SIZE + 64]
+    );
+    assert!(
+        (grid_res.values[64 * GRID_SIZE + 65] - 1.0).abs() < 1e-5,
+        "Expected neighbor 1.0, got {}",
+        grid_res.values[64 * GRID_SIZE + 65]
+    );
     assert!((grid_res.values[64 * GRID_SIZE + 63] - 1.0).abs() < 1e-5);
     assert!((grid_res.values[(64 + 1) * GRID_SIZE + 64] - 1.0).abs() < 1e-5);
     assert!((grid_res.values[(64 - 1) * GRID_SIZE + 64] - 1.0).abs() < 1e-5);
 
     // Verify conservation of mass (10.0 initially, should sum to 10.0)
     let total_mass: f32 = grid_res.values.iter().sum();
-    assert!((total_mass - 10.0).abs() < 1e-4, "Expected total mass 10.0, got {}", total_mass);
+    assert!(
+        (total_mass - 10.0).abs() < 1e-4,
+        "Expected total mass 10.0, got {}",
+        total_mass
+    );
 
     // Toroidal wrapping diffusion test: place concentration at (0, 0)
     let mut world2 = World::new();
@@ -133,14 +149,16 @@ fn test_olfactory_sensors() {
 
     // Spawn agent at center (0.0, 0.0, 0.0) rotated 90 degrees around Y axis
     let yaw_90 = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
-    let agent_entity = world.spawn((
-        Position(Vec3::new(0.0, 0.0, 0.0)),
-        Rotation(yaw_90),
-        OlfactorySensors::new(
-            Vec3::new(-1.0, 0.0, 0.0), // left
-            Vec3::new(1.0, 0.0, 0.0),  // right
-        ),
-    )).id();
+    let agent_entity = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 0.0)),
+            Rotation(yaw_90),
+            OlfactorySensors::new(
+                Vec3::new(-1.0, 0.0, 0.0), // left
+                Vec3::new(1.0, 0.0, 0.0),  // right
+            ),
+        ))
+        .id();
 
     let mut schedule = Schedule::default();
     schedule.add_systems(agent_read_pheromone_system);

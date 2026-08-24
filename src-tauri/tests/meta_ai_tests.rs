@@ -64,30 +64,20 @@ pub fn apply_chronicle_event(event: &EnvironmentEvent, params: &mut SimParameter
     }
 
     // Boundary checks & clamping
-    if params.metabolic_decay_rate < 0.1 {
-        params.metabolic_decay_rate = 0.1;
-    } else if params.metabolic_decay_rate > 10.0 {
-        params.metabolic_decay_rate = 10.0;
-    }
-
-    if params.max_food_count < 10 {
-        params.max_food_count = 10;
-    } else if params.max_food_count > 1000 {
-        params.max_food_count = 1000;
-    }
-
-    if params.predator_spawn_rate < 0.1 {
-        params.predator_spawn_rate = 0.1;
-    } else if params.predator_spawn_rate > 5.0 {
-        params.predator_spawn_rate = 5.0;
-    }
+    params.metabolic_decay_rate = params.metabolic_decay_rate.clamp(0.1, 10.0);
+    params.max_food_count = params.max_food_count.clamp(10, 1000);
+    params.predator_spawn_rate = params.predator_spawn_rate.clamp(0.1, 5.0);
 }
 
 #[test]
 fn test_chronicle_mock_client_and_param_updates() {
     let mock_nature = MotherNatureMock::new(false, 100); // No API Key set
     let event = mock_nature.fetch_next_event().unwrap();
-    assert_eq!(event, EnvironmentEvent::TemperatureSpike, "Should fall back to TemperatureSpike event");
+    assert_eq!(
+        event,
+        EnvironmentEvent::TemperatureSpike,
+        "Should fall back to TemperatureSpike event"
+    );
 
     let mut sim_params = SimParameters {
         metabolic_decay_rate: 1.0,
@@ -96,11 +86,17 @@ fn test_chronicle_mock_client_and_param_updates() {
     };
 
     apply_chronicle_event(&event, &mut sim_params);
-    assert_eq!(sim_params.metabolic_decay_rate, 1.5, "Metabolic decay should increase by 1.5x");
+    assert_eq!(
+        sim_params.metabolic_decay_rate, 1.5,
+        "Metabolic decay should increase by 1.5x"
+    );
 
     // Test Drought
     apply_chronicle_event(&EnvironmentEvent::Drought, &mut sim_params);
-    assert_eq!(sim_params.max_food_count, 50, "Max food count should be halved");
+    assert_eq!(
+        sim_params.max_food_count, 50,
+        "Max food count should be halved"
+    );
 }
 
 #[test]
@@ -110,8 +106,14 @@ fn test_meta_ai_tier1_tier2_keys_rate_limits_invalid() {
     let mock_nature_with_key = MotherNatureMock::new(true, 5);
 
     // Environmental event variant tests
-    assert_eq!(mock_nature_no_key.fetch_next_event().unwrap(), EnvironmentEvent::TemperatureSpike);
-    assert_eq!(mock_nature_with_key.fetch_next_event().unwrap(), EnvironmentEvent::Drought);
+    assert_eq!(
+        mock_nature_no_key.fetch_next_event().unwrap(),
+        EnvironmentEvent::TemperatureSpike
+    );
+    assert_eq!(
+        mock_nature_with_key.fetch_next_event().unwrap(),
+        EnvironmentEvent::Drought
+    );
 
     // Tier 2: Rate limit simulation
     for _ in 0..4 {
@@ -130,9 +132,15 @@ fn test_meta_ai_tier1_tier2_keys_rate_limits_invalid() {
     };
     let initial_params = params.clone();
     apply_chronicle_event(&EnvironmentEvent::UnknownEvent, &mut params);
-    assert_eq!(params.metabolic_decay_rate, initial_params.metabolic_decay_rate);
+    assert_eq!(
+        params.metabolic_decay_rate,
+        initial_params.metabolic_decay_rate
+    );
     assert_eq!(params.max_food_count, initial_params.max_food_count);
-    assert_eq!(params.predator_spawn_rate, initial_params.predator_spawn_rate);
+    assert_eq!(
+        params.predator_spawn_rate,
+        initial_params.predator_spawn_rate
+    );
 }
 
 #[test]
@@ -189,36 +197,40 @@ fn test_meta_ai_tier4_timeline_event_stream_drift() {
     assert_eq!(params.predator_spawn_rate, 5.0); // should be clamped
 }
 
-use bevy_ecs::prelude::*;
-use anima_engine_lib::evolution::meta_ai::{EnvironmentalEvent, MetaAiClient, MockMetaAiClient, GeminiMetaAiClient};
-use anima_engine_lib::core::ecs::{ActiveEnvironmentEvent, FoodSpawnSettings, apply_environmental_effects_system, Agent};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
+use anima_engine_lib::core::ecs::{
+    apply_environmental_effects_system, ActiveEnvironmentEvent, Agent, FoodSpawnSettings,
+};
+use anima_engine_lib::evolution::meta_ai::{
+    EnvironmentalEvent, GeminiMetaAiClient, MetaAiClient, MockMetaAiClient,
+};
+use bevy_ecs::prelude::*;
 
 #[test]
 fn test_real_mock_client_behavior() {
     let client = MockMetaAiClient;
     let mut history = Vec::new();
-    
+
     // Epoch 1 -> ResourceDrought
     let e1 = client.generate_event(1, &history);
     assert_eq!(e1, EnvironmentalEvent::ResourceDrought);
     history.push(e1);
-    
+
     // Epoch 2 -> TemperatureSpike
     let e2 = client.generate_event(2, &history);
     assert_eq!(e2, EnvironmentalEvent::TemperatureSpike);
     history.push(e2);
-    
+
     // Epoch 3 -> GlacialPeriod
     let e3 = client.generate_event(3, &history);
     assert_eq!(e3, EnvironmentalEvent::GlacialPeriod);
     history.push(e3);
-    
+
     // Epoch 4 -> ToxicDeluge
     let e4 = client.generate_event(4, &history);
     assert_eq!(e4, EnvironmentalEvent::ToxicDeluge);
     history.push(e4);
-    
+
     // Epoch 5 -> Stable
     let e5 = client.generate_event(5, &history);
     assert_eq!(e5, EnvironmentalEvent::Stable);
@@ -228,7 +240,7 @@ fn test_real_mock_client_behavior() {
 fn test_gemini_client_fallback_without_key() {
     std::env::remove_var("GEMINI_API_KEY");
     let client = GeminiMetaAiClient::new(std::time::Duration::from_millis(50));
-    
+
     let event = client.generate_event(1, &[]);
     assert_eq!(event, EnvironmentalEvent::ResourceDrought);
 }
@@ -242,12 +254,12 @@ fn test_food_spawn_settings_drought_multiplier() {
         default_energy: 30.0,
         default_hydration: 20.0,
     });
-    
+
     let mut schedule = Schedule::default();
     schedule.add_systems(apply_environmental_effects_system);
-    
+
     schedule.run(&mut world);
-    
+
     let food_settings = world.resource::<FoodSpawnSettings>();
     assert_eq!(food_settings.max_food_count, 25);
 }
@@ -257,31 +269,33 @@ fn test_homeostatic_targets_shift_under_temperature_events() {
     let mut world = World::new();
     world.insert_resource(ActiveEnvironmentEvent(EnvironmentalEvent::TemperatureSpike));
     world.insert_resource(FoodSpawnSettings::default());
-    
-    let agent_entity = world.spawn((
-        Agent,
-        HomeostaticState {
-            energy: 100.0,
-            energy_target: 100.0,
-            hydration: 100.0,
-            hydration_target: 100.0,
-            temperature: 37.0,
-            temp_target: 37.0,
-            previous_deviation: 0.0,
-        }
-    )).id();
-    
+
+    let agent_entity = world
+        .spawn((
+            Agent,
+            HomeostaticState {
+                energy: 100.0,
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+        ))
+        .id();
+
     let mut schedule = Schedule::default();
     schedule.add_systems(apply_environmental_effects_system);
-    
+
     schedule.run(&mut world);
-    
+
     let state = world.get::<HomeostaticState>(agent_entity).unwrap();
     assert_eq!(state.temp_target, 42.0);
-    
+
     world.insert_resource(ActiveEnvironmentEvent(EnvironmentalEvent::GlacialPeriod));
     schedule.run(&mut world);
-    
+
     let state2 = world.get::<HomeostaticState>(agent_entity).unwrap();
     assert_eq!(state2.temp_target, 32.0);
 }
@@ -289,12 +303,12 @@ fn test_homeostatic_targets_shift_under_temperature_events() {
 #[test]
 fn test_decoupled_asynchronous_channel() {
     let (tx, rx) = crossbeam_channel::bounded::<EnvironmentalEvent>(32);
-    
+
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(50));
         tx.send(EnvironmentalEvent::ToxicDeluge).unwrap();
     });
-    
+
     let start = std::time::Instant::now();
     let mut received = None;
     while start.elapsed() < std::time::Duration::from_millis(200) {
@@ -304,19 +318,19 @@ fn test_decoupled_asynchronous_channel() {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    
+
     assert_eq!(received, Some(EnvironmentalEvent::ToxicDeluge));
 }
 
 #[test]
 fn test_chronicle_history_integration() {
-    use anima_engine_lib::core::engine::{SimulationEngine, ChronicleEvent};
-    
+    use anima_engine_lib::core::engine::{ChronicleEvent, SimulationEngine};
+
     let engine = SimulationEngine::new();
-    
+
     // Check initial state
     assert!(engine.chronicle_history.read().unwrap().is_empty());
-    
+
     // Add an event
     let event = ChronicleEvent {
         id: "test-id".to_string(),
@@ -326,8 +340,12 @@ fn test_chronicle_history_integration() {
         description: "Test Description".to_string(),
         parameter_delta: std::collections::HashMap::new(),
     };
-    engine.chronicle_history.write().unwrap().push(event.clone());
-    
+    engine
+        .chronicle_history
+        .write()
+        .unwrap()
+        .push(event.clone());
+
     // Retrieve and check
     let history = engine.chronicle_history.read().unwrap();
     assert_eq!(history.len(), 1);
@@ -336,5 +354,3 @@ fn test_chronicle_history_integration() {
     assert_eq!(history[0].event_type, "TemperatureSpike");
     assert_eq!(history[0].timestamp, 12345);
 }
-
-

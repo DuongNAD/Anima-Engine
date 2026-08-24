@@ -1,0 +1,180 @@
+---
+title: Chính sách sử dụng nguồn mở
+status: proposed
+owner: maintainers
+last_reviewed: 2026-08-08
+review_cycle: quarterly
+---
+
+# Chính sách sử dụng nguồn mở
+
+## License của Anima Engine — đã quyết định
+
+Anima Engine là **nguồn mở, cấp phép kép `MIT OR Apache-2.0`** (© 2026 Duong Nguyen Anh). Hai file
+[`LICENSE-MIT`](../../LICENSE-MIT) và [`LICENSE-APACHE`](../../LICENSE-APACHE) ở thư mục gốc;
+[`NOTICE`](../../NOTICE) giữ attribution cho thành phần bên thứ ba đi kèm bản build nhị phân;
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) đặt điều khoản inbound = outbound (Apache-2.0 §5), không
+CLA.
+
+Phạm vi: code, tài liệu và asset đều theo cấp phép kép; định dạng `.anmw` (World Artifact) được
+tuyên bố là **định dạng mở**, ai cũng triển khai lại được. Chi tiết ở mục Giấy phép trong
+[`README.md`](../../README.md).
+
+> **Sửa 2026-08-08 — relicense.** Từ 2026-07-26 tới 2026-08-07, mục này viết `LICENSE` là
+> **proprietary, all rights reserved**, và cả chính sách dưới đây được suy ra từ đó. Chủ sở hữu đã
+> đổi sang cấp phép kép; `LICENSE` proprietary bị xoá. Việc này hợp lệ với **toàn bộ lịch sử commit**
+> chứ không chỉ code từ nay về sau, vì dự án chỉ có một tác giả duy nhất giữ toàn bộ copyright, không
+> có contributor ngoài nào cần xin phép. Hai mục tiếp theo đã được viết lại theo license mới.
+>
+> Bản trước nữa của mục này còn viết *"Repository hiện chưa có `LICENSE` ở thư mục gốc"* — câu đó
+> sai sự thật ngay khi viết và đã được sửa 2026-07-26.
+
+Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
+
+## Phân loại mặc định
+
+| Nhóm | License ví dụ | Xử lý |
+|---|---|---|
+| Cho phép sau kiểm tra | MIT, Apache-2.0, BSD-2/3-Clause, ISC, Zlib | Ghi inventory, attribution/NOTICE và lock version |
+| Cần review rõ ràng | MPL-2.0, LGPL, EPL, CC cho data/asset, license tùy chỉnh | ADR + xác định linking/distribution/modification |
+| Chặn mặc định cho code tích hợp | GPL, AGPL, proprietary, source-available, không license | Chỉ tiếp tục sau quyết định license/pháp lý rõ ràng |
+
+### Hệ quả của việc Anima Engine là `MIT OR Apache-2.0`
+
+Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. Nó đổi lý do, và nới hàng thứ hai:
+
+- Một sản phẩm **proprietary không phân phối được** code copyleft (GPL/AGPL) đã link vào. Với các dự
+  án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) nghĩa là **đọc bài
+  báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ hai là vùng xám
+  pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý.
+- Điều này áp cho ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
+- Ngược lại, hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Nhưng
+  output không mặc nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
+- Dự án proprietary vẫn phải giữ **attribution/NOTICE** cho mọi thành phần permissive được phân
+  phối.
+
+  > **Sửa 2026-07-27.** Bản trước viết *"Hiện repository **chưa có file `NOTICE`**"*. Câu đó **đã
+  > sai sự thật** kể từ `766609e`: [`NOTICE`](../../NOTICE) tồn tại và được sinh tự động. Trạng thái
+  > đo được hôm nay:
+  >
+  > - [`NOTICE`](../../NOTICE) — inventory 458 thành phần (419 crate Rust · 21 gói npm có byte
+  >   trong `dist/` · 18 gói cài nhưng **không** phân phối), sinh bởi `npm run gen:notice`.
+  > - [`licensing/THIRD_PARTY_LICENSES.txt`](../../licensing/THIRD_PARTY_LICENSES.txt) — **văn bản
+  >   license** của 439/440 thành phần được phân phối, kèm SHA-256 từng file trong
+  >   [`third-party-index.json`](../../licensing/third-party-index.json).
+  > - [`sbom.cdx.json`](../../sbom.cdx.json) — CycloneDX 1.5, đã **validate** với schema chính thức
+  >   được vendor và ghim theo commit.
+  >
+  > **Cập nhật 2026-07-27 (đợt hai).** Bản trước ghi *"còn nợ 32 thành phần"*. Con số đo được hôm
+  > nay là **1**. 31 thành phần còn lại đã đóng bằng cách **vendor văn bản license từ đúng commit
+  > bất biến** mà bản phát hành đó được publish: 39 file, 24 commit, 19 repository, lưu nguyên byte
+  > ở [`licensing/upstream/`](../../licensing/upstream/) kèm manifest chứng cứ
+  > [`upstream/sources.json`](../../licensing/upstream/sources.json). Bằng chứng commit↔version lấy
+  > từ `.cargo_vcs_info.json` trong `.crate` đã publish (do chính `cargo publish` ghi) và `gitHead`
+  > của npm registry, không phải từ nhánh `main`. Generator đọc kho này **fail-closed**: sai hash,
+  > sai commit, sai purl, symlink thoát thư mục, file không được git track, hoặc mapping thừa đều
+  > làm dừng chạy. `npm run verify:upstream-licenses` tải lại từ URL đã ghim để đối chiếu byte —
+  > chạy tay, không nằm trong CI.
+  >
+  > **Còn nợ và vẫn chặn phát hành:** **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — không có
+  > văn bản license ở artifact **lẫn** repository tại commit phát hành, và file `LICENSE` duy nhất
+  > mà dự án từng commit xuất hiện muộn hơn 3,5 năm với **license khác**. Chứng cứ tìm kiếm ghi đầy
+  > đủ ở [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md). Không sinh văn bản thay thế từ
+  > danh sách SPDX: đóng dòng này là **quyết định pháp lý**, không phải việc của generator.
+  >
+  > Hai điểm cần pháp lý đọc kỹ, đã ghi rõ trong
+  > [`licensing/README.md`](../../licensing/README.md): `neo4rs`/`neo4rs-macros` chỉ có **tuyên bố
+  > license trong README** (dự án chưa từng publish file license), và `zune-inflate` khai
+  > `MIT OR Apache-2.0 OR Zlib` nhưng upstream chỉ publish văn bản Zlib — đóng gói **mọi** file có
+  > tại bản phát hành, không tự chọn hộ chủ sở hữu.
+
+- **GPL/AGPL vẫn chặn cứng cho code tích hợp.** Lý do nay không còn là "proprietary không phân phối
+  được copyleft", mà là: dự án **cam kết** cho người dùng chọn MIT. Link một thư viện GPL vào thì tác
+  phẩm phái sinh phải phát hành theo GPL, tức là **không thể** tiếp tục chào MIT nữa — lời hứa trong
+  `LICENSE-MIT` sẽ thành lời hứa không giữ được. Muốn nhận code GPL thì phải relicense **cả dự án**
+  sang GPL; đó là một quyết định ADR, không phải một pull request.
+- Với các dự án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) vẫn
+  nghĩa là **đọc bài báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ
+  hai là vùng xám pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý. Áp cho
+  ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
+- **Hàng thứ hai (MPL-2.0, LGPL) nay dễ hơn thật.** Copyleft ở mức file (MPL-2.0) hoặc ở mức thư
+  viện liên kết động (LGPL) tương thích được với một dự án permissive theo cách chúng không tương
+  thích được với proprietary. Vẫn cần ADR xác định linking/distribution/modification — nhưng câu trả
+  lời không còn mặc định là "không".
+- Hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Output không mặc
+  nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
+- **Neo4j là tiền lệ đúng của ranh giới tiến trình.** Neo4j Community Edition là GPLv3; engine nói
+  chuyện với nó qua giao thức Bolt tới một tiến trình cài riêng, không link. Vì thế GPLv3 không lan
+  sang mã dự án. Điều kiện để lập luận này đứng vững là **fallback in-memory phải luôn chạy được** —
+  ngày Neo4j trở thành bắt buộc, nó thành một cuộc thảo luận khác.
+- **Attribution vẫn bắt buộc.** [`NOTICE`](../../NOTICE) đã có (2026-08-08) và liệt kê dependency
+  trực tiếp của bản build nhị phân. Nó **được duy trì thủ công**, chưa phải inventory sinh tự động
+  và đầy đủ theo nhánh transitive — đó là OSS-004, vẫn còn nợ.
+- Apache-2.0 chỉ tương thích **một chiều** với GPLv3: hạ nguồn GPLv3 dùng được code Apache-2.0, chiều
+  ngược lại thì không. Nhánh MIT là thứ giữ cho hạ nguồn **GPLv2** cũng dùng được.
+
+Một tool AGPL chạy tách biệt trong research có rủi ro khác với thư viện link vào ứng
+dụng, nhưng vẫn phải review cách triển khai, phân phối và đầu ra. Không suy luận từ
+tên dự án hoặc mô tả website; kiểm tra file license của đúng phiên bản.
+
+## Hồ sơ bắt buộc cho dependency
+
+- Tên, upstream URL, package registry.
+- Version/tag/commit và ngày kiểm tra.
+- SPDX expression và đường dẫn license.
+- Loại: runtime, build, dev-only, offline tool, copied code, model, data, asset.
+- Điểm tích hợp và owner.
+- Code đã sửa/copy, attribution và NOTICE cần thiết.
+- Transitive dependencies đáng chú ý.
+- CVE/advisory và nguồn phát hành.
+- Test, benchmark, feature flag và cách gỡ.
+- Chính sách update: cadence, version range và migration.
+
+Hồ sơ có thể bắt đầu trong ADR; khi tooling ổn định, sinh inventory tự động từ
+`Cargo.lock` và `package-lock.json`, bổ sung inventory thủ công cho data/asset/model.
+
+## Quy trình nhận thành phần
+
+1. **Discover:** xác nhận upstream chính thức, hoạt động duy trì và license đúng tag.
+2. **Classify:** xác định integration type; asset/data tách khỏi code.
+3. **Minimize:** ưu tiên adapter nhỏ hoặc dev/offline tool hơn dependency runtime.
+4. **Baseline:** tạo fixture và đo đường hiện tại trước pilot.
+5. **Pilot:** lock version, feature flag, không để type vendor lan qua domain.
+6. **Verify:** correctness, determinism, performance, memory, binary size, security.
+7. **Record:** ADR, inventory, NOTICE/credits và tài liệu cập nhật.
+8. **Maintain:** audit hàng quý/release; có owner cho migration.
+9. **Remove:** giữ khả năng đọc dữ liệu cũ hoặc cung cấp migration trước khi gỡ.
+
+## Code, model, data và asset
+
+- License của **code** không tự bao phủ checkpoint/model weight.
+- Dataset có thể có điều khoản attribution, non-commercial hoặc privacy riêng.
+- Texture, mesh, âm thanh và screenshot phải lưu nguồn, tác giả, license, thay đổi và
+  phạm vi phân phối.
+- Output của một tool không mặc nhiên có cùng license với tool; kiểm tra điều khoản và
+  input data.
+- Không commit package cache, virtual environment hoặc dữ liệu không có provenance.
+
+## Kiểm soát tự động đề xuất
+
+- Rust: `cargo-deny` cho advisory, bans, licenses và sources.
+- JavaScript: lockfile review và công cụ audit hiện có; không auto-fix major version
+  trong cùng PR tính năng.
+- Tài liệu: lychee kiểm tra link.
+- Release: sinh SBOM khi pipeline phát hành được thiết lập.
+- Renovation/update bot chỉ mở PR; benchmark và compatibility test vẫn là gate.
+
+## Sự cố license hoặc bảo mật
+
+Khi phát hiện license sai, package bị chiếm quyền, CVE nghiêm trọng hoặc upstream biến
+mất:
+
+1. Đóng băng release chứa thành phần nếu còn phân phối.
+2. Xác định version, đường phụ thuộc và artifact bị ảnh hưởng.
+3. Tắt feature/adapter nếu có đường hoàn tác an toàn.
+4. Nâng cấp, thay thế hoặc loại bỏ trong PR độc lập.
+5. Cập nhật SBOM/inventory/NOTICE và ghi ADR hoặc incident note.
+6. Kiểm chứng rằng save/artifact cũ còn đọc được hoặc có migration.
+
+Các ứng viên đang đánh giá được ghi tại
+[`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md).

@@ -1,8 +1,7 @@
+use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
+use anima_engine_lib::core::engine::SimulationEngine;
 use std::sync::Arc;
 use std::time::Duration;
-use std::thread;
-use anima_engine_lib::core::engine::SimulationEngine;
-use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 
 #[test]
 fn test_engine_toggle_stress_channels() {
@@ -36,21 +35,47 @@ fn test_engine_toggle_stress_channels() {
         );
 
         // Assert it is running
-        assert!(engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be running on iteration {}", i);
+        assert!(
+            engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be running on iteration {}",
+            i
+        );
 
-        // Sleep briefly to let threads spawn, execute channel requests
-        thread::sleep(Duration::from_millis(50));
+        // A real roundtrip proves both that the simulation thread has ticked and that its request
+        // channel is serviced. A fixed sleep could expire before either happened — or pass without
+        // exercising the channel this test is named after.
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        engine
+            .save_request_tx
+            .send(reply_tx)
+            .expect("simulation save channel must stay connected while running");
+        let saved = reply_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("simulation channel did not answer before the liveness deadline")
+            .expect("a default world must be serialisable");
+        assert!(
+            saved.tick_count > 0,
+            "a channel reply must come from a tick the simulation actually ran"
+        );
 
         // Stop the engine (joins threads and drains channels)
         engine.stop();
 
         // Assert it is stopped
-        assert!(!engine.running.load(std::sync::atomic::Ordering::SeqCst), "Engine should be stopped on iteration {}", i);
+        assert!(
+            !engine.running.load(std::sync::atomic::Ordering::SeqCst),
+            "Engine should be stopped on iteration {}",
+            i
+        );
 
         // Verify that the threads Option is cleared and joined
         {
             let threads_lock = engine.threads.lock().unwrap();
-            assert!(threads_lock.is_none(), "Threads should be joined and None on iteration {}", i);
+            assert!(
+                threads_lock.is_none(),
+                "Threads should be joined and None on iteration {}",
+                i
+            );
         }
     }
 }

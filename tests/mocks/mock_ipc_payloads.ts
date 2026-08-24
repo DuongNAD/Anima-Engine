@@ -49,25 +49,15 @@ export const mockAgentStates: AgentState[] = [
   },
 ];
 
-export interface SegmentState {
-  agent_id: number;
-  segment_id: number;
-  parent_segment_id: number | null;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  pitch: number;
-  roll: number;
-  joint_anchor_x: number;
-  joint_anchor_y: number;
-  joint_anchor_z: number;
-  joint_axis_x: number;
-  joint_axis_y: number;
-  joint_axis_z: number;
-  energy: number;
-  agent_type?: 'predator' | 'prey';
-}
+// Re-exported from the generated binding, not restated. The copy that used to live here had already
+// drifted three ways — `hydration`, `head_direction` and `agent_type` were optional, and
+// `agent_type` was a two-value string union where the Rust struct has `AgentType | null` — and a
+// mock type that disagrees with the producer is how a consumer written against the mock passes its
+// tests and fails in the app. Same reasoning as the `buildAgentHierarchy` re-export above.
+export type { SegmentState } from '../../src/types/generated/SegmentState';
+import type { SegmentState } from '../../src/types/generated/SegmentState';
+import { segments } from './segment_fixtures';
+
 
 export interface AgentHierarchy {
   agent_id: number;
@@ -88,69 +78,18 @@ export interface RenderSegment {
   children: RenderSegment[];
 }
 
-export function buildAgentHierarchy(segments: SegmentState[]): AgentHierarchy[] {
-  const agentsMap = new Map<number, SegmentState[]>();
+// Re-exported, NOT reimplemented. This file used to carry its own copy, and because the tests
+// imported that copy rather than the shipping one, everything they asserted about hierarchy building
+// was about a fixture. The copies had already drifted: this one had no cycle guard and no tolerance
+// for a null `agent_id`, both of which the real implementation has and neither of which any test
+// could reach. Mocks belong to payloads; behaviour under test must come from the source.
+export { buildAgentHierarchy } from '../../src/utils/agentHierarchy';
 
-  // Group segments by agent_id
-  segments.forEach(seg => {
-    if (!agentsMap.has(seg.agent_id)) {
-      agentsMap.set(seg.agent_id, []);
-    }
-    agentsMap.get(seg.agent_id)!.push(seg);
-  });
-
-  const hierarchies: AgentHierarchy[] = [];
-
-  agentsMap.forEach((segs, agentId) => {
-    const segmentMap = new Map<number, RenderSegment>();
-    let rootSegment: RenderSegment | null = null;
-    let rootEnergy = 0;
-
-    // Initialize all render segments
-    segs.forEach(s => {
-      const renderSeg: RenderSegment = {
-        segment_id: s.segment_id,
-        x: s.x,
-        y: s.y,
-        z: s.z,
-        yaw: s.yaw,
-        pitch: s.pitch,
-        roll: s.roll,
-        joint_anchor: [s.joint_anchor_x, s.joint_anchor_y, s.joint_anchor_z],
-        joint_axis: [s.joint_axis_x, s.joint_axis_y, s.joint_axis_z],
-        children: []
-      };
-      segmentMap.set(s.segment_id, renderSeg);
-      if (s.parent_segment_id === null) {
-        rootSegment = renderSeg;
-        rootEnergy = s.energy;
-      }
-    });
-
-    // Wire up parent-child connections
-    segs.forEach(s => {
-      if (s.parent_segment_id !== null) {
-        const parent = segmentMap.get(s.parent_segment_id);
-        const child = segmentMap.get(s.segment_id);
-        if (parent && child) {
-          parent.children.push(child);
-        }
-      }
-    });
-
-    if (rootSegment) {
-      hierarchies.push({
-        agent_id: agentId,
-        energy: rootEnergy,
-        root: rootSegment
-      });
-    }
-  });
-
-  return hierarchies;
-}
-
-export const mockSegmentStates: SegmentState[] = [
+// A three-segment predator, built over a complete segment so the fields nothing here cares about —
+// `hydration`, `head_direction` — are present rather than missing. They are not decoration: the
+// telemetry panel reads both, and a fixture without them describes a payload the backend never
+// sends.
+export const mockSegmentStates: SegmentState[] = segments(
   {
     agent_id: 1,
     segment_id: 0,
@@ -159,14 +98,6 @@ export const mockSegmentStates: SegmentState[] = [
     y: 1.5,
     z: -5.0,
     yaw: 0.1,
-    pitch: 0.0,
-    roll: 0.0,
-    joint_anchor_x: 0,
-    joint_anchor_y: 0,
-    joint_anchor_z: 0,
-    joint_axis_x: 0,
-    joint_axis_y: 0,
-    joint_axis_z: 0,
     energy: 95.5,
     agent_type: 'predator',
   },
@@ -179,12 +110,7 @@ export const mockSegmentStates: SegmentState[] = [
     z: -5.0,
     yaw: 0.2,
     pitch: 0.1,
-    roll: 0.0,
     joint_anchor_x: 1.0,
-    joint_anchor_y: 0.0,
-    joint_anchor_z: 0.0,
-    joint_axis_x: 0.0,
-    joint_axis_y: 0.0,
     joint_axis_z: 1.0,
     energy: 95.5,
     agent_type: 'predator',
@@ -198,17 +124,12 @@ export const mockSegmentStates: SegmentState[] = [
     z: -5.0,
     yaw: 0.3,
     pitch: 0.2,
-    roll: 0.0,
     joint_anchor_x: 1.0,
-    joint_anchor_y: 0.0,
-    joint_anchor_z: 0.0,
-    joint_axis_x: 0.0,
-    joint_axis_y: 0.0,
     joint_axis_z: 1.0,
     energy: 95.5,
     agent_type: 'predator',
   },
-];
+);
 
 export interface EvolutionSettings {
   mutation_rate: number;
@@ -400,6 +321,64 @@ export const mockMigrationPayload: MigrationPayload = {
   status: "Success",
   timestamp: Date.now(),
 };
+
+// --- Phase 6 Interfaces ---
+export interface EnvironmentalElement {
+  type: 'lake' | 'tree' | string;
+  x: number;
+  y: number;
+  radius: number;
+  resources: number;
+}
+
+export interface EnvironmentalState {
+  elements: EnvironmentalElement[];
+}
+
+// `head_directions` mirrors a Rust `HashMap<u32, [f32; 3]>`, which serde encodes as a JSON OBJECT
+// keyed by agent id. It was declared here as an ARRAY of {agent_id, direction} — a shape the
+// backend does not send and never did. App.tsx was written against that same fiction, so the real object payload
+// fell through its `Array.isArray` guard and head directions silently never updated. The mock
+// agreeing with the consumer instead of with the backend is precisely why 237 passing tests could
+// not see it (G1.4).
+export interface SimulationTickPayload {
+  segments: SegmentState[];
+  environmental_state: EnvironmentalState;
+  head_directions: Record<number, [number, number, number]>;
+}
+
+// --- Phase 6 Mock Data ---
+export const mockEnvironmentalState: EnvironmentalState = {
+  elements: [
+    {
+      type: 'lake',
+      x: 50,
+      y: 50,
+      radius: 30,
+      resources: 100
+    },
+    {
+      type: 'tree',
+      x: -50,
+      y: -50,
+      radius: 10,
+      resources: 50
+    }
+  ]
+};
+
+export const mockSimulationTickPayload: SimulationTickPayload = {
+  segments: mockSegmentStates.map(seg => ({
+    ...seg,
+    hydration: 75.0,
+    head_direction: [1.0, 0.0, 0.0] as [number, number, number]
+  })),
+  environmental_state: mockEnvironmentalState,
+  head_directions: {
+    1: [1.0, 0.0, 0.0]
+  }
+};
+
 
 
 

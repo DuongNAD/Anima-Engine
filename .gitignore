@@ -7,12 +7,34 @@ dist-isolation/
 src-tauri/target/
 src-tauri/target_test/
 src-tauri/target_*/
+target_*/
+
+# Generated map-vision manifest — regenerate with `npm run gen:manifest`.
+# This file is deliberately tracked: the MCP discovers it by name, and reviewing an ignored
+# manifest from another checkout can produce a valid score for the wrong world.
+
+# NOTE: `artifacts/` is deliberately NOT ignored. `map_manifest.json` declares the SHA-256 of
+# `artifacts/world_256.anmw`, and the whole finding this closed was a manifest pointing at a file
+# that did not exist. Ignoring the bytes would put the checksum gate back to unverifiable on a fresh
+# clone. Regenerate both together with `npm run gen:world-manifest`.
 
 # Logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Captured compiler / test output (cargo check, cargo test, tsc redirections)
+err*.txt
+out*.txt
+
+# Debug screenshots. Real image assets live in public/ and src-tauri/icons/ and stay tracked,
+# so this is an explicit list rather than a *.png rule.
+/anima_world_refined.png
+/lake_visual_check.png
+/lake_visual_check_2.png
+/world_preview.png
 
 # Environment and Secrets
 .env
@@ -21,9 +43,6 @@ pnpm-debug.log*
 .env.test.local
 .env.production.local
 *.env
-# .hardening.env KHONG phai secret — no la config layout cua bo khung verifier,
-# moi script deu source no. Phai duoc commit.
-!.hardening.env
 
 # IDE / Editor folders
 .vscode/
@@ -35,24 +54,30 @@ pnpm-debug.log*
 *.sw?
 .DS_Store
 
-# Agent Workspace Temp files
-# Bỏ qua output của agent, NHƯNG giữ lại skill — skill là source, phải được commit.
-.agents/*
-!.agents/skills/
+# Linked git worktrees. STATE_OF_THE_PROJECT.md §4 recommends them for working in this shared
+# checkout; each one is a full second copy of the tree and must never be committed into the first.
+# This was only in .git/info/exclude, which is per-machine — so the protection did not survive a
+# clone, and the next person to follow that advice would have staged 34 copies of the repo.
+.worktrees/
 
-# Hai thư mục rác sinh do lỗi gõ tên của agent đời trước (một cái có dấu cách
-# ở đầu, một cái ba chấm). Không phải source, đừng commit.
-\ .agents/
-...agents/
+# Agent Workspace Temp files
+.agents/
 .gemini/
+.worktrees/
+# Machine-specific Claude Code MCP config (absolute server paths; regenerate per machine)
+.mcp.json
 /tests/test-results/
 /tests/playwright-report/
 
 # Playground / Sandbox for temporary experiments
 /playground/
 
-# --- hardening kit ---
-logs/
-# cargo-mutants doi ten thu muc output cu thanh mutants.out.old
-mutants.out*
-mutants.verify*
+# Additional scratch / large prototypes (added during /init cleanup)
+$.agents/
+# Earlier tooling created sibling agent-scratch dirs with mangled names. The first pattern escapes
+# a literal leading space so it is not mistaken for indentation.
+\ .agents/
+...agents/
+/test-results/
+map-prototype/
+.claude/settings.local.json

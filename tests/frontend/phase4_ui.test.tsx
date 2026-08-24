@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
 import {
   mockLineageGraph,
   mockChronicleHistory,
@@ -10,10 +10,18 @@ import {
   mockMigrationPayload
 } from '../mocks/mock_ipc_payloads';
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
   return {
     ...original,
+    // `args`, not `_args`: the fall-through at the end of this table forwards them to the real
+    // `invoke`, so the underscore was naming a parameter as unused that the body reads.
     invoke: vi.fn().mockImplementation((cmd, args) => {
       if (cmd === 'get_lineage_graph') {
         return Promise.resolve(mockLineageGraph);
@@ -77,7 +85,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
 
   // TIER 2: Assert rendering of empty states and Neo4j offline warning
   it('should render empty states and Neo4j offline warning banner', async () => {
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_lineage_graph') {
         return Promise.resolve({
           nodes: [],
@@ -125,7 +133,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
   // TIER 3: Verify interactive controls enable/disable based on simulation state
   it('should disable migration trigger button when simulation is not running', async () => {
     // 1. Simulation not running -> button disabled
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_simulation_status') {
         return Promise.resolve({
           running: false,
@@ -163,7 +171,7 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
 
   it('should enable migration trigger button when simulation is running', async () => {
     // 2. Simulation running -> button enabled
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_simulation_status') {
         return Promise.resolve({
           running: true,
@@ -246,11 +254,11 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
       fireEvent.click(button);
     });
 
-    expect(invoke).toHaveBeenCalledWith('trigger_migration', { target_port: 9000 });
+    expect(invoke).toHaveBeenCalledWith('trigger_migration', { targetPort: 9000 });
   });
 
   it('should color-code chronicle events based on event type and show the formatted time', async () => {
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_chronicle_history') {
         return Promise.resolve([
           {
@@ -303,11 +311,11 @@ describe('Phase 4 Front-end UI & Feature Verification', () => {
     expect(droughtContainer).toBeDefined();
     expect(abundanceContainer).toBeDefined();
 
-    expect(droughtContainer?.style.backgroundColor).toBe('rgb(255, 245, 245)');
-    expect(droughtContainer?.style.borderLeft).toBe('4px solid rgb(229, 62, 62)');
+    expect(droughtContainer?.style.backgroundColor).toBe('rgba(255, 255, 255, 0.02)');
+    expect(droughtContainer?.style.borderLeft).toBe('3px solid rgb(255, 255, 255)');
 
-    expect(abundanceContainer?.style.backgroundColor).toBe('rgb(240, 255, 244)');
-    expect(abundanceContainer?.style.borderLeft).toBe('4px solid rgb(56, 161, 105)');
+    expect(abundanceContainer?.style.backgroundColor).toBe('rgba(255, 255, 255, 0.02)');
+    expect(abundanceContainer?.style.borderLeft).toBe('3px solid rgba(255, 255, 255, 0.3)');
 
     const expectedTime = new Date(1625097600000).toLocaleTimeString();
     expect(screen.getAllByText(expectedTime).length).toBeGreaterThanOrEqual(1);

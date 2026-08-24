@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
+
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
@@ -51,11 +57,13 @@ describe('MAP-Elites Grid Dashboard UI', () => {
     expect(gridContainer).toBeDefined();
 
     // Check that occupied cells are styled correctly
-    const cell1 = screen.getByTestId('grid-cell-10,20');
-    expect(cell1.style.backgroundColor).toContain('rgba(236, 72, 153, 0.85)');
+    await waitFor(() => {
+      const cell1 = screen.getByTestId('grid-cell-10,20');
+      expect(cell1.style.backgroundColor).toContain('rgba(255, 255, 255, 0.525)');
 
-    const cell2 = screen.getByTestId('grid-cell-30,40');
-    expect(cell2.style.backgroundColor).toContain('rgba(236, 72, 153, 0.92)');
+      const cell2 = screen.getByTestId('grid-cell-30,40');
+      expect(cell2.style.backgroundColor).toContain('rgba(255, 255, 255, 0.56)');
+    });
   });
 
   it('should dispatch Tauri update_evolution_settings when mutation rate slider is changed', async () => {
@@ -144,6 +152,6 @@ describe('MAP-Elites Grid Dashboard UI', () => {
     // Verify new cell is rendered with pink fitness color
     const cellNew = await screen.findByTitle('Fitness: 0.75');
     expect(cellNew).toBeDefined();
-    expect(cellNew.style.backgroundColor).toContain('rgba(236, 72, 153, 0.75)');
+    expect(cellNew.style.backgroundColor).toContain('rgba(255, 255, 255, 0.475)');
   });
 });

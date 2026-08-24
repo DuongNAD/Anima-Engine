@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebGL Test</title>
+  <style>
+    body { background: #111; color: #eee; font-family: system-ui; padding: 2rem; }
+    canvas { border: 1px solid #444; display: block; margin: 1rem 0; }
+    .ok { color: #4ade80; }
+    .fail { color: #ef4444; }
+    pre { background: #222; padding: 1rem; border-radius: 8px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>WebGL Diagnostic Test</h1>
+  <div id="results"></div>
+  <canvas id="testCanvas" width="300" height="200"></canvas>
+
+  <script>
+    const results = document.getElementById('results');
+    const canvas = document.getElementById('testCanvas');
+    
+    function log(msg, ok) {
+      const p = document.createElement('p');
+      p.className = ok ? 'ok' : 'fail';
+      p.textContent = (ok ? '✅ ' : '❌ ') + msg;
+      results.appendChild(p);
+    }
+
+    function logInfo(msg) {
+      const p = document.createElement('p');
+      p.style.color = '#94a3b8';
+      p.textContent = 'ℹ️ ' + msg;
+      results.appendChild(p);
+    }
+
+    // Test 1: WebGL2
+    let gl = null;
+    try {
+      gl = canvas.getContext('webgl2');
+      if (gl) {
+        log('WebGL2 context created successfully!', true);
+      } else {
+        log('WebGL2 context returned null', false);
+      }
+    } catch(e) {
+      log('WebGL2 threw error: ' + e.message, false);
+    }
+
+    // Test 2: WebGL1 fallback
+    if (!gl) {
+      try {
+        gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (gl) {
+          log('WebGL1 context created successfully!', true);
+        } else {
+          log('WebGL1 context also returned null', false);
+        }
+      } catch(e) {
+        log('WebGL1 threw error: ' + e.message, false);
+      }
+    }
+
+    // Test 3: With failIfMajorPerformanceCaveat = false
+    if (!gl) {
+      const canvas2 = document.createElement('canvas');
+      try {
+        gl = canvas2.getContext('webgl2', { failIfMajorPerformanceCaveat: false }) ||
+             canvas2.getContext('webgl', { failIfMajorPerformanceCaveat: false });
+        if (gl) {
+          log('WebGL with failIfMajorPerformanceCaveat=false: SUCCESS', true);
+        } else {
+          log('WebGL with failIfMajorPerformanceCaveat=false: FAILED', false);
+        }
+      } catch(e) {
+        log('Error: ' + e.message, false);
+      }
+    }
+
+    // Get GPU info
+    if (gl) {
+      try {
+        const ext = gl.getExtension('WEBGL_debug_renderer_info');
+        if (ext) {
+          const vendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);
+          const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+          logInfo('GPU Vendor: ' + vendor);
+          logInfo('GPU Renderer: ' + renderer);
+        }
+        logInfo('WebGL Version: ' + gl.getParameter(gl.VERSION));
+        logInfo('GLSL Version: ' + gl.getParameter(gl.SHADING_LANGUAGE_VERSION));
+        logInfo('Max Texture Size: ' + gl.getParameter(gl.MAX_TEXTURE_SIZE));
+        logInfo('Max Viewport: ' + JSON.stringify(gl.getParameter(gl.MAX_VIEWPORT_DIMS)));
+        
+        // Try to render a simple triangle
+        gl.clearColor(0.1, 0.5, 0.2, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        log('Rendered green screen on canvas — WebGL is fully working!', true);
+      } catch(e) {
+        log('GPU info error: ' + e.message, false);
+      }
+    } else {
+      log('NO WebGL context available at all. Your browser/GPU cannot run WebGL.', false);
+      
+      // Check 2D canvas
+      try {
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(0, 0, 300, 200);
+          ctx.fillStyle = 'white';
+          ctx.font = '16px system-ui';
+          ctx.fillText('2D Canvas works, but WebGL does not.', 20, 100);
+          log('2D Canvas is working fine — only WebGL is broken', true);
+        }
+      } catch(e) {}
+
+      const pre = document.createElement('pre');
+      pre.textContent = `Troubleshooting:
+1. Open a new tab and go to: chrome://gpu
+2. Look for "WebGL" and "WebGL2" status
+3. If they say "Disabled" or "Software only":
+   - Go to chrome://flags/#ignore-gpu-blocklist
+   - Set "Override software rendering list" to ENABLED
+   - Relaunch Chrome
+4. Also check: chrome://flags/#use-angle
+   - Set to "D3D11" (NOT D3D9, NOT D3D11 WARP)
+5. Make sure Hardware Acceleration is ON:
+   - chrome://settings/system
+   - Toggle "Use graphics acceleration when available" = ON
+   - Restart Chrome completely`;
+      results.appendChild(pre);
+    }
+  </script>
+</body>
+</html>

@@ -3,6 +3,12 @@ import { render, screen, act, fireEvent } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
   return {
@@ -41,7 +47,7 @@ describe('Phase 4 Front-end UI - Adversarial Stress Tests', () => {
     vi.clearAllMocks();
   });
 
-  const makeSafeMock = (overrides: Record<string, any>) => {
+  const makeSafeMock = (overrides: Record<string, unknown>) => {
     vi.mocked(invoke).mockImplementation((cmd) => {
       if (overrides[cmd] !== undefined) {
         if (overrides[cmd] instanceof Error) {
@@ -200,18 +206,18 @@ describe('Phase 4 Front-end UI - Adversarial Stress Tests', () => {
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: 999999 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: 999999 });
 
     fireEvent.change(portInput, { target: { value: '-80' } });
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: -80 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: -80 });
 
     fireEvent.change(portInput, { target: { value: 'invalid_port' } });
     await act(async () => {
       fireEvent.click(triggerButton);
     });
-    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { target_port: 8081 });
+    expect(invoke).toHaveBeenLastCalledWith('trigger_migration', { targetPort: 8081 });
   });
 });

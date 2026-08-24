@@ -7,7 +7,7 @@ describe('Frontend Morphology Stream IPC Integration', () => {
     let receivedPayload: SegmentState[] | null = null;
 
     // Listen to simulation ticks
-    const unlisten = await listen<SegmentState[]>('simulation-tick', (event: any) => {
+    const unlisten = await listen<SegmentState[]>('simulation-tick', (event) => {
       receivedPayload = event.payload;
     });
 

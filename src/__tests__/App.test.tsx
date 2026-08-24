@@ -4,6 +4,65 @@ import { App } from "../App";
 import "@testing-library/jest-dom";
 import { emit } from "@tauri-apps/api/event";
 
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
+// Mock RabbitVisualizer to prevent React Three Fiber from loading/crashing under JSDOM
+vi.mock("../playground/RabbitVisualizer", () => ({
+  default: () => <div data-testid="rabbit-visualizer-mock">Mock Rabbit Visualizer</div>,
+}));
+
+// Mock pixi.js
+const mockGraphicsMethods = {
+  clear: vi.fn().mockReturnThis(),
+  beginFill: vi.fn().mockReturnThis(),
+  drawCircle: vi.fn().mockReturnThis(),
+  drawPolygon: vi.fn().mockReturnThis(),
+  endFill: vi.fn().mockReturnThis(),
+  lineStyle: vi.fn().mockReturnThis(),
+  moveTo: vi.fn().mockReturnThis(),
+  lineTo: vi.fn().mockReturnThis(),
+  drawRect: vi.fn().mockReturnThis(),
+};
+
+// The implementations are `function` expressions, not arrows, and that is load-bearing. These three
+// are all invoked with `new` in PixiViewport. Under @vitest/spy 4 a mock constructed with `new`
+// reaches the implementation through `Reflect.construct`, and an arrow function has no [[Construct]]
+// slot — it throws `TypeError: () => ({...}) is not a constructor` from inside the spy. Vitest 1
+// called the implementation plainly and returned its object, so arrows worked there by accident.
+vi.mock("pixi.js", () => {
+  return {
+    Application: vi.fn(function () {
+      return {
+        init: vi.fn().mockResolvedValue(undefined),
+        canvas: document.createElement('canvas'),
+        stage: {
+          addChild: vi.fn(),
+          removeChild: vi.fn(),
+        },
+        renderer: {},
+        ticker: {
+          add: vi.fn(),
+          remove: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+    }),
+    Graphics: vi.fn(function () {
+      return mockGraphicsMethods;
+    }),
+    Container: vi.fn(function () {
+      return {
+        addChild: vi.fn(),
+        removeChild: vi.fn(),
+      };
+    }),
+  };
+});
+
 // Giả lập @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockImplementation((command) => {
@@ -43,25 +102,6 @@ vi.mock("@tauri-apps/api/core", () => ({
     }
     if (command === "get_chronicle_history") {
       return Promise.resolve([]);
-    }
-    if (command === "get_terrain_grid") {
-      return Promise.resolve({
-        width: 128,
-        height: 128,
-        elevations: [],
-        water_depths: [],
-        biomes: [],
-      });
-    }
-    if (command === "get_env_state") {
-      return Promise.resolve({
-        ambient_light: 1.0,
-        elapsed_time: 0.0,
-        clouds: [],
-      });
-    }
-    if (command === "update_env_settings" || command === "trigger_disaster") {
-      return Promise.resolve(true);
     }
     return Promise.reject(`Unknown command: ${command}`);
   }),
@@ -126,15 +166,11 @@ describe("Anima-Engine Frontend IPC Integration", () => {
     await waitFor(() => {
       expect(container.querySelector("canvas")).toBeInTheDocument();
     });
-    const canvas = container.querySelector("canvas") as HTMLCanvasElement;
 
     // Extra tick to let the async listen register
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
-
-    const ctx = canvas.getContext("2d");
-    expect(ctx).toBeDefined();
 
     // Trigger simulation-tick event
     await act(async () => {
@@ -185,12 +221,12 @@ describe("Anima-Engine Frontend IPC Integration", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    // Verify canvas APIs were invoked
-    expect(ctx?.clearRect).toHaveBeenCalled();
-    expect(ctx?.beginPath).toHaveBeenCalled();
-    expect(ctx?.arc).toHaveBeenCalled();
-    expect(ctx?.moveTo).toHaveBeenCalled();
-    expect(ctx?.lineTo).toHaveBeenCalled();
-    expect(ctx?.fill).toHaveBeenCalled();
+    // Verify canvas APIs were invoked via PIXI mock
+    expect(mockGraphicsMethods.clear).toHaveBeenCalled();
+    expect(mockGraphicsMethods.beginFill).toHaveBeenCalled();
+    expect(mockGraphicsMethods.drawCircle).toHaveBeenCalled();
+    expect(mockGraphicsMethods.drawPolygon).toHaveBeenCalled();
+    expect(mockGraphicsMethods.moveTo).toHaveBeenCalled();
+    expect(mockGraphicsMethods.lineTo).toHaveBeenCalled();
   });
 });

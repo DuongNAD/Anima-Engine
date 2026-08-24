@@ -2,16 +2,69 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
 import { invoke } from '@tauri-apps/api/core';
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit } from '@tauri-apps/api/event';
+import { makeCanvas2DStub, stubCanvas2D, type Canvas2DStub } from '../mocks/canvas-2d';
 import {
   mockRaycastTelemetry,
   mockPheromoneGridState,
-  mockCombatEvent,
   mockSegmentStates,
   RaycastTelemetry,
   PheromoneGridState,
   CombatEvent
 } from '../mocks/mock_ipc_payloads';
+
+// The first `render(<App />)` here pays for the whole lazy module graph plus world generation
+// under jsdom — seconds, not milliseconds, and more again when the machine is shared with other
+// builds. Raised at file scope, where that cost actually is, rather than in the project config
+// where it would also hide a hang in a test that should finish instantly.
+vi.setConfig({ testTimeout: 30_000 });
+
+// Mock pixi.js
+const mockGraphicsMethods = {
+  clear: vi.fn().mockReturnThis(),
+  beginFill: vi.fn().mockReturnThis(),
+  drawCircle: vi.fn().mockReturnThis(),
+  drawPolygon: vi.fn().mockReturnThis(),
+  endFill: vi.fn().mockReturnThis(),
+  lineStyle: vi.fn().mockReturnThis(),
+  moveTo: vi.fn().mockReturnThis(),
+  lineTo: vi.fn().mockReturnThis(),
+  drawRect: vi.fn().mockReturnThis(),
+};
+
+vi.mock('pixi.js', () => {
+  return {
+    // `function`, not an arrow: PixiViewport calls these with `new`, and under @vitest/spy 4 a
+    // mock constructed with `new` reaches its implementation through `Reflect.construct`. An arrow
+    // has no [[Construct]] slot, so it throws "() => ({...}) is not a constructor" from inside the
+    // spy. Vitest 1 called the implementation plainly, so arrows worked there by accident.
+    Application: vi.fn(function () {
+      return {
+        init: vi.fn().mockResolvedValue(undefined),
+        canvas: document.createElement('canvas'),
+        stage: {
+          addChild: vi.fn(),
+          removeChild: vi.fn(),
+        },
+        renderer: {},
+        ticker: {
+          add: vi.fn(),
+          remove: vi.fn(),
+        },
+        destroy: vi.fn(),
+      };
+    }),
+    Graphics: vi.fn(function () {
+      return mockGraphicsMethods;
+    }),
+    Container: vi.fn(function () {
+      return {
+        addChild: vi.fn(),
+        removeChild: vi.fn(),
+      };
+    }),
+  };
+});
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();
@@ -44,31 +97,12 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 3 Front-end UI & Canvas Rendering', () => {
-  let mockCtx: any;
+  let mockCtx: Canvas2DStub;
 
   beforeEach(() => {
     vi.clearAllMocks();
-
-    mockCtx = {
-      clearRect: vi.fn(),
-      beginPath: vi.fn(),
-      arc: vi.fn(),
-      fill: vi.fn(),
-      stroke: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      closePath: vi.fn(),
-      fillText: vi.fn(),
-      fillRect: vi.fn(),
-      fillStyle: '',
-      strokeStyle: '',
-      lineWidth: 1,
-      font: '',
-      textAlign: '',
-      textBaseline: '',
-    };
-
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(mockCtx as any);
+    mockCtx = makeCanvas2DStub();
+    stubCanvas2D(mockCtx);
   });
 
   it('should call get_pheromone_grid and get_active_raycasts on mount and display them', async () => {
@@ -148,6 +182,11 @@ describe('Phase 3 Front-end UI & Canvas Rendering', () => {
   it('should invoke canvas drawing methods for pheromone heatmap, sensor beams, and predator/prey geometries', async () => {
     render(<App />);
 
+    // Wait for async initPixi to complete and register event listeners
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
     // Seed canvas segments data via simulation-tick to trigger agent rendering
     await act(async () => {
       await emit('simulation-tick', mockSegmentStates);
@@ -158,16 +197,14 @@ describe('Phase 3 Front-end UI & Canvas Rendering', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
 
-    // Verify pheromone drawing calls (which calls fill or arc)
-    expect(mockCtx.beginPath).toHaveBeenCalled();
-    expect(mockCtx.fill).toHaveBeenCalled();
+    // Verify pheromone drawing calls (which calls drawRect)
+    expect(mockGraphicsMethods.drawRect).toHaveBeenCalled();
 
-    // Verify sensor beam drawing (which uses moveTo/lineTo/stroke)
-    expect(mockCtx.moveTo).toHaveBeenCalled();
-    expect(mockCtx.lineTo).toHaveBeenCalled();
-    expect(mockCtx.stroke).toHaveBeenCalled();
+    // Verify sensor beam drawing (which uses moveTo/lineTo)
+    expect(mockGraphicsMethods.moveTo).toHaveBeenCalled();
+    expect(mockGraphicsMethods.lineTo).toHaveBeenCalled();
 
-    // Verify predator drawing (which closes path)
-    expect(mockCtx.closePath).toHaveBeenCalled();
+    // Verify predator drawing (which uses drawPolygon)
+    expect(mockGraphicsMethods.drawPolygon).toHaveBeenCalled();
   });
 });

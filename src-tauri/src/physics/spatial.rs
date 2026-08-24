@@ -1,7 +1,7 @@
+use crate::core::ecs::{MapBounds, Position};
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::collections::HashMap;
-use crate::core::ecs::{MapBounds, Position};
 
 #[derive(Component, Debug, Clone, Copy)]
 pub struct SpatialCollider {
@@ -44,7 +44,10 @@ impl SpatialHashGrid {
             cell_size
         };
 
-        let bounds_valid = bounds.min.is_finite() && bounds.max.is_finite() && bounds.max.x >= bounds.min.x && bounds.max.z >= bounds.min.z;
+        let bounds_valid = bounds.min.is_finite()
+            && bounds.max.is_finite()
+            && bounds.max.x >= bounds.min.x
+            && bounds.max.z >= bounds.min.z;
 
         if !bounds_valid {
             return Self {
@@ -181,8 +184,20 @@ impl SpatialHashGrid {
         cx = cx_start + (cx - cx_start).rem_euclid(cx_range);
         cy = cy_start + (cy - cy_start).rem_euclid(cy_range);
 
-        let step_x = if dir.x > 0.0 { 1 } else if dir.x < 0.0 { -1 } else { 0 };
-        let step_z = if dir.z > 0.0 { 1 } else if dir.z < 0.0 { -1 } else { 0 };
+        let step_x = if dir.x > 0.0 {
+            1
+        } else if dir.x < 0.0 {
+            -1
+        } else {
+            0
+        };
+        let step_z = if dir.z > 0.0 {
+            1
+        } else if dir.z < 0.0 {
+            -1
+        } else {
+            0
+        };
 
         let t_delta_x = if dir.x.abs() > 1e-6 {
             self.cell_size / dir.x.abs()
@@ -237,7 +252,9 @@ impl SpatialHashGrid {
                         }
                         let c_virtual = ray_pos + diff;
 
-                        if let Some(t_hit) = intersect_sphere(ray.origin, dir, c_virtual, collider.radius) {
+                        if let Some(t_hit) =
+                            intersect_sphere(ray.origin, dir, c_virtual, collider.radius)
+                        {
                             if t_hit >= 0.0 && t_hit <= max_distance {
                                 let mut hit_pos = ray.origin + t_hit * dir;
                                 if x_range > 0.0 {
@@ -331,7 +348,7 @@ pub fn rebuild_spatial_grid_system(
     query: Query<(Entity, &Position, &SpatialCollider)>,
 ) {
     let grid_ref = &mut *grid;
-    
+
     // Reset our prepopulated counts
     for val in grid_ref.counts.values_mut() {
         *val = 0;
