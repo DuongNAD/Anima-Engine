@@ -30,6 +30,50 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-014 — Không thể quét mutation cho anima-core: crate nằm trong workspace cha nhưng không thuộc members/exclude
+- **Ngày:** 2026-08-24
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/anima-core/Cargo.toml` (thiếu bảng `[workspace]`) và/hoặc
+  `src-tauri/Cargo.toml:members = ["crates/*"]` (không chứa `anima-core`)
+- **Phát hiện bởi:** tay (`just hunt-file src/mutation.rs 2 mutation_operator_tests,mutation_invariants anima-core`)
+- **Triệu chứng:** mọi lệnh cargo chạy trong `src-tauri/anima-core` đều chết ngay:
+  `cargo locate-project failed: current package believes it's in a workspace
+  when it's not`. Hệ quả: không tái tạo được quét mutation cho anima-core —
+  `mutants.out/missed.txt` (25 dòng, 22:33) là dữ liệu cũ từ TRƯỚC khi
+  `tests/mutation_operator_tests.rs` được thêm; header file test này khẳng định
+  nó giết đúng 25 mutant đó nhưng KHÔNG có bằng chứng tươi. Mutation score của
+  anima-core hiện không thể đo = số đo nói dối.
+- **Tái hiện:** `just hunt-file src/mutation.rs 2 "" anima-core` → error trên.
+- **Test khoá lại:** không áp dụng được — cả hai file đều là config build, cấm
+  sửa theo AGENTS.md.
+- **Cách sửa đề xuất cho owner** (một trong hai):
+  (a) thêm bảng `[workspace]` rỗng vào cuối `src-tauri/anima-core/Cargo.toml`
+  (tách khỏi workspace cha — đúng tinh thần "crate thuần, build độc lập"), hoặc
+  (b) thêm `"anima-core"` vào `workspace.exclude` của `src-tauri/Cargo.toml`.
+  Sau khi sửa, chạy lại: `just hunt-file src/mutation.rs 2
+  mutation_operator_tests,mutation_invariants anima-core` để có missed.txt tươi.
+- **Trạng thái:** OPEN — chờ owner sửa config.
+
+### F-013 — Mutant "replace + with -" ở z_down wrap toroidal KHÔNG tương đương, đã giết bằng test hành vi
+- **Ngày:** 2026-08-24
+- **Loại:** TEST-GAP
+- **Vị trí:** `src-tauri/src/ai/pheromone.rs:196` (`let z_down = (z + 1) % GRID_SIZE;`;
+  chuỗi mutant đầy đủ sau merge 157f85d:
+  `src/ai/pheromone.rs:196:25: replace + with - in update_pheromone_grid_system`.
+  `missed.txt` cũ ghi `197:29` là số dòng TRƯỚC merge — đã lỗi thời.)
+- **Phát hiện bởi:** mutant (`src/ai/pheromone.rs:196:25: replace + with - in update_pheromone_grid_system` sống sót trong quét trước merge)
+- **Triệu chứng:** khác với mutant tương đương ở dòng 190 (F-011), mutant này
+  **phân biệt được**: đổi `(z + 1)` thành `(z - 1)` thì với z = 0, `(0 - 1)`
+  usize underflow wrap thành `2^64 - 1 ≡ 127 (mod 128)`, nên ô (z=0) đọc láng
+  giềng `down` từ hàng 127 thay vì hàng 1. Không có test hành vi nào đặt
+  pheromone lệch để phân biệt hai hướng wrap theo trục z.
+- **Tái hiện:** `cd src-tauri && cargo mutants --file src/ai/pheromone.rs --baseline skip`
+  → mutant trên báo Missed.
+- **Test khoá lại:** `src-tauri/tests/pheromone_tests.rs::test_pheromone_diffusion_z_wraps_forward_not_backward_at_z_zero`
+  (đặt 10.0 chỉ tại hàng 1, chạy system 1 tick, assert ô (z=0,x=0) = 1.0;
+  mutant cho đúng 0.0).
+- **Trạng thái:** FIXED bằng test (chờ `just hunt` xác nhận mutant chết).
+
 ### F-011 — Mutant "replace + with -" ở wrap toroidal là tương đương, đã loại bằng skip
 - **Ngày:** 2026-08-24
 - **Loại:** SMELL
@@ -47,6 +91,13 @@ Quy tắc ghi:
 - **Test khoá lại:** không có — không thể có, đây là equivalent mutant.
 - **Đã xử lý:** `just skip 'pheromone\.rs:190:23: replace \+ with - in update_pheromone_grid_system' ...`
   thêm vào `exclude_re` của `src-tauri/.cargo/mutants.toml`.
+- **BỔ SUNG (2026-08-24):** merge 157f85d đổi số dòng, biểu thức `z_up` giờ ở
+  `pheromone.rs:195` nên regex cũ ghim `190:23` không còn khớp — mutant tương
+  đương sẽ tái xuất hiện dạng Missed ở quét tươi. Đã thêm regex mới bằng lệnh
+  chính thức `just skip 'pheromone\.rs:195:23: replace \+ with - in
+  update_pheromone_grid_system' ...`. Regex cũ để nguyên trong toml (dead
+  pattern, vô hại). Bài học: exclusion ghim theo số dòng dễ vỡ khi src đổi —
+  các exclude sau này nên neo theo nội dung thay vì `file:line:col`.
 - **Điều kiện gỡ ra:** GRID_SIZE không còn là luỹ thừa của 2; hoặc bật
   overflow-checks trong profile release/test; hoặc đổi sang số có dấu +
   `rem_euclid`. Khi đó mutant không còn tương đương và PHẢI bị giết bằng test.
