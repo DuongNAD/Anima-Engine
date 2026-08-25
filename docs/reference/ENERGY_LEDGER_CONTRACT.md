@@ -125,3 +125,17 @@ mà cổng này tồn tại để bắt.
 - `sim_rules::STATE_VARIABLES` chưa có mục nào cho phần EU đang nằm trong food/fruit chưa tiêu thụ,
   vì thiết kế coi chúng là quyền rút trên detritus chứ không phải kho. Nếu sau này chúng trở thành
   kho thật, bảng đơn vị phải được cập nhật cùng lúc.
+
+## 8. Nhánh tử vong (ecological-selection M) — **không có đường EU mới**
+
+> Ghi 2026-08-25 theo M-6 của task backlog. Đây là *câu trả lời*, không phải một mục trống.
+
+Nhánh M thêm cái chết cho agent sống (`core::mortality::mortality_system`). Kiểm lại toàn bộ
+đường EU khi triển khai cho kết quả: **không cần và không được thêm bất kỳ đường chuyển năng lượng
+nào**. Cái chết đi qua đúng nguyên hàm có sẵn —
+[`ReclaimAndDespawnAgentCommand`](../../src-tauri/src/core/agent_systems.rs) ghi nợ toàn bộ dự trữ
+của xác và ghi có vào `detritus` **tại cùng một sync point** với việc huỷ entity, đúng mục 3 của
+hợp đồng này. Bộ đếm `starving_ticks` là sổ sách vòng đời thuần: không nằm trong `world_checksum`,
+không đọc/ghi EU, và không quan sát được khi `MortalityPolicy` tắt. Cổng MO-S01 (residual ≤ 1e-3 EU
+qua run 120.000 tick có deaths, kèm epoch replacement) chạy xanh trên cấu hình này.
+

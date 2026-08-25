@@ -41,7 +41,16 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 | 8 | `EcosystemBiomass` có **bốn** ngăn (`dormant` là ngăn thứ tư, F1) | `crates/anima-domain/src/energy.rs:19-38` | đọc mã |
 | 9 | Bảy hệ thống O(agent × segment) | xem §6 | `grep -rn 'segment_query.iter()' src-tauri/src` |
 | 10 | `combat_system` **đã** dùng mẫu chỉ mục đúng | `core/world_systems.rs:300-340` | đọc mã |
-| 11 | 11 observable, không cái nào phát hiện được tiến hoá | `core/live_experiment.rs:721-794` | đọc mã |
+| 11 | Observable hiện tại **không cái nào phát hiện được tiến hoá** | `core/live_experiment.rs:721-794` | đọc mã |
+
+> Đính chính 2026-08-25 (chặng 2): số observable hôm nay là **12**, không phải 11 như bảng gốc ghi —
+> `live.dormant_eu` được nhánh living-world F1 thêm vào `LIVE_OBSERVABLE_IDS`. Đối chứng âm CA-S03
+> áp cho **cả 12**. Số dòng cũng trôi: `LIVE_OBSERVABLE_IDS` nay ở `core/live_experiment.rs:718`.
+>
+> Cũng đính chính: `core/experiment_runner.rs` nay **4477 dòng** (bảng P2 §3.12 của
+> STATE_OF_THE_PROJECT ghi 3173). **Không tách file trong chặng sinh thái** — một diff dời file
+> khổng lồ cùng lúc với cổng "checksum trùng bit" là cách chắc chắn nhất để không ai audit được
+> cái gì. Tách sau khi vòng sinh thái đóng.
 | 12 | Shannon/Simpson đã tính, chỉ chảy vào UI | `core/simulation_loop.rs:2192` | đọc mã |
 | 13 | Quần thể mặc định **10**, epoch **1000** tick | `core/resources.rs:1215`, `core/simulation_loop.rs:1323` | đọc mã |
 
@@ -51,12 +60,12 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| M-1 | ⬜ | `starving_ticks: u32` vào `HomeostaticState`, `#[serde(default)]` | `src-tauri/src/ai/hrrl.rs:6` | — | snapshot cũ nạp được, round-trip giữ giá trị | ⚠️ thiếu `serde(default)` ⇒ mọi save cũ hỏng |
-| M-2 | ⬜ | Tăng khi ở đáy, **reset về 0 khi ăn/uống được** | `src-tauri/src/core/world_systems.rs:121-178` | M-1 | unit test: ăn một lần ⇒ bộ đếm về 0 | ⚠️ quên reset ⇒ mọi con chết sau `starve_ticks` bất kể ăn bao nhiêu |
-| M-3 | ⬜ | `MortalityPolicy` + `ANIMA_MORTALITY` | `src-tauri/src/core/resources.rs` | — | cờ unset ⇒ checksum trùng bit | dùng `Option<Res<…>>`, xử lý `None` tường minh |
-| M-4 | ⬜ | `mortality_system` → `ReclaimAndDespawnAgentCommand` | file mới `src-tauri/src/core/mortality.rs` | M-1…M-3 | MO-S01…MO-S04 xanh | ⚠️ **không** trừ năng lượng ở đây; command tự làm |
-| M-5 | ⬜ | Khai lịch trình: sau `metabolic_decay`, trước `ecosystem_census` | `src-tauri/src/core/simulation_schedule.rs` | M-4 | test thứ tự; census đếm thế giới sau khi xác thành detritus | ⚠️ khai ở **một** chỗ duy nhất — `build_tick_schedule` |
-| M-6 | ⬜ | Cập nhật `ENERGY_LEDGER_CONTRACT` nếu đường EU mới xuất hiện | `docs/reference/ENERGY_LEDGER_CONTRACT.md` | M-4 | — | nếu làm đúng thì **không** có đường mới, và đó là câu trả lời |
+| M-1 | ✅ | `starving_ticks: u32` vào `HomeostaticState`, `#[serde(default)]` | `src-tauri/src/ai/hrrl.rs:6` | — | snapshot cũ nạp được, round-trip giữ giá trị | ⚠️ thiếu `serde(default)` ⇒ mọi save cũ hỏng |
+| M-2 | ✅ | Tăng khi ở đáy, **reset về 0 khi ăn/uống được** | `src-tauri/src/core/world_systems.rs:121-178` | M-1 | unit test: ăn một lần ⇒ bộ đếm về 0 | ⚠️ quên reset ⇒ mọi con chết sau `starve_ticks` bất kể ăn bao nhiêu |
+| M-3 | ✅ | `MortalityPolicy` + `ANIMA_MORTALITY` | `src-tauri/src/core/resources.rs` | — | cờ unset ⇒ checksum trùng bit | dùng `Option<Res<…>>`, xử lý `None` tường minh |
+| M-4 | ✅ | `mortality_system` → `ReclaimAndDespawnAgentCommand` | file mới `src-tauri/src/core/mortality.rs` | M-1…M-3 | MO-S01…MO-S04 xanh | ⚠️ **không** trừ năng lượng ở đây; command tự làm |
+| M-5 | ✅ | Khai lịch trình: sau `metabolic_decay`, trước `ecosystem_census` | `src-tauri/src/core/simulation_schedule.rs` | M-4 | test thứ tự; census đếm thế giới sau khi xác thành detritus | ⚠️ khai ở **một** chỗ duy nhất — `build_tick_schedule` |
+| M-6 | ✅ | Cập nhật `ENERGY_LEDGER_CONTRACT` nếu đường EU mới xuất hiện | `docs/reference/ENERGY_LEDGER_CONTRACT.md` | M-4 | — | nếu làm đúng thì **không** có đường mới, và đó là câu trả lời |
 
 ---
 

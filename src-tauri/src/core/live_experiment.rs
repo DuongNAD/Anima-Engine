@@ -107,14 +107,32 @@ pub const LIVE_KEY_FOOD_CAP: &str = "live.food_cap";
 /// declared input in its place meant one arm of a controlled comparison could not be expressed.
 pub const LIVE_KEY_EVOLVED_BRAINS: &str = "live.evolved_brains";
 
+/// Whether agents die of hunger or thirst (feature ecological-selection, branch M), as a
+/// **declared** input.
+///
+/// Same shape and same reasoning as [`LIVE_KEY_EVOLVED_BRAINS`]: the app seeds `MortalityPolicy`
+/// from `ANIMA_MORTALITY`, but [`build_live_world`] deliberately does not read the environment —
+/// a run's trajectory must not depend on ambient variables. Absent means off, which is exactly
+/// today's behaviour, so every live manifest written before this key existed stays bit-identical.
+pub const LIVE_KEY_MORTALITY: &str = "live.mortality";
+/// Consecutive bottom ticks (energy exhausted) before starvation kills, when mortality is on.
+/// Absent keeps the policy's default of 120.
+pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
+/// Consecutive bottom ticks (hydration exhausted) before dehydration kills, when mortality is on.
+/// Absent keeps the policy's default of 120.
+pub const LIVE_KEY_DEHYDRATION_TICKS: &str = "live.dehydration_ticks";
+
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 6] = [
+pub const LIVE_KEYS: [&str; 9] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
     LIVE_KEY_FOOD_CAP,
     LIVE_KEY_EVOLVED_BRAINS,
+    LIVE_KEY_MORTALITY,
+    LIVE_KEY_STARVE_TICKS,
+    LIVE_KEY_DEHYDRATION_TICKS,
 ];
 
 /// The genesis the manifest asked for.
@@ -130,12 +148,30 @@ pub struct LiveWorldConfig {
     /// the same direction of default the key itself takes.
     #[serde(default)]
     pub evolved_brains: bool,
+    /// Branch M death rule, off unless a manifest asks. Off is today's behaviour, so a config
+    /// serialized before these fields existed reads back as the world that never dies of hunger.
+    #[serde(default)]
+    pub mortality: bool,
+    /// Declared thresholds; absent reads back as the policy's own defaults.
+    #[serde(default = "default_starve_ticks")]
+    pub starve_ticks: u32,
+    #[serde(default = "default_dehydration_ticks")]
+    pub dehydration_ticks: u32,
+}
+
+fn default_starve_ticks() -> u32 {
+    crate::core::resources::MortalityPolicy::disabled().starve_ticks
+}
+
+fn default_dehydration_ticks() -> u32 {
+    crate::core::resources::MortalityPolicy::disabled().dehydration_ticks
 }
 
 impl Default for LiveWorldConfig {
     /// The engine's own genesis: ten founders, seven prey and three predators, and the stock
     /// environment-spawn settings — the population `SimulationEngine::start` builds when there is no
     /// save to load. Brains are off, which is `BrainPolicy::default()` and the ADR-0003 baseline.
+    /// Mortality is off, which is `MortalityPolicy::default()` — nobody dies of hunger.
     fn default() -> Self {
         Self {
             founders: 10,
@@ -144,6 +180,9 @@ impl Default for LiveWorldConfig {
             lakes: 2,
             food_cap: crate::core::ecs::FoodSpawnSettings::default().max_food_count,
             evolved_brains: false,
+            mortality: false,
+            starve_ticks: default_starve_ticks(),
+            dehydration_ticks: default_dehydration_ticks(),
         }
     }
 }
@@ -201,6 +240,26 @@ impl LiveWorldConfig {
                         })
                     }
                 },
+                // Same exact-boolean reading as `live.evolved_brains`: a threshold is declared,
+                // not rounded.
+                LIVE_KEY_MORTALITY => match *value {
+                    0.0 => config.mortality = false,
+                    1.0 => config.mortality = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_STARVE_TICKS => {
+                    config.starve_ticks = bounded_count(key, *value, 0.0, 65_536.0)? as u32
+                }
+                LIVE_KEY_DEHYDRATION_TICKS => {
+                    config.dehydration_ticks = bounded_count(key, *value, 0.0, 65_536.0)? as u32
+                }
                 _ => unreachable!("key membership was checked above"),
             }
         }
@@ -1205,6 +1264,15 @@ fn build_live_world(
     world.insert_resource(crate::core::resources::BrainPolicy {
         evolved: config.evolved_brains,
         ..Default::default()
+    });
+    // Mortality comes from the manifest for the same reason brains do: the app resolves
+    // `MortalityPolicy` from `ANIMA_MORTALITY`, and an ambient variable must not decide whether
+    // a declared experiment's population can die. Absent key ⇒ disabled ⇒ bit-identical to every
+    // run made before branch M existed.
+    world.insert_resource(crate::core::resources::MortalityPolicy {
+        enabled: config.mortality,
+        starve_ticks: config.starve_ticks,
+        dehydration_ticks: config.dehydration_ticks,
     });
 
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();

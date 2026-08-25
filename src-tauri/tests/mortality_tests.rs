@@ -431,3 +431,62 @@ fn npp_zero_collapses_the_population_only_when_mortality_is_enabled() {
          lose a single agent"
     );
 }
+
+// ---------------------------------------------------------------------------------------
+// M-7 — death is a DECLARED input, not an ambient one
+// ---------------------------------------------------------------------------------------
+
+/// The manifest path must reach the same kill as the direct-insertion path: `live.mortality` in
+/// the initial conditions turns the flag on inside `build_live_world`, with no test-side
+/// `insert_resource` and no environment variable involved.
+#[test]
+fn mortality_is_expressible_through_the_manifest_and_absent_means_off() {
+    let mut declared = vec![
+        (LIVE_KEY_FOUNDERS.to_string(), 6.0),
+        (LIVE_KEY_PREDATOR_FRACTION.to_string(), 0.0),
+        (LIVE_KEY_TREES.to_string(), 0.0),
+        (LIVE_KEY_LAKES.to_string(), 0.0),
+        (LIVE_KEY_FOOD_CAP.to_string(), 0.0),
+        ("live.mortality".to_string(), 1.0),
+        ("live.starve_ticks".to_string(), 2.0),
+        ("live.dehydration_ticks".to_string(), 2.0),
+    ];
+    let mut a = LiveExperimentAdapter::from_manifest(
+        &WorldLawSet::baseline(),
+        &InitialConditionSet::new(declared.clone()),
+        &[],
+        SEED,
+        (16, 16),
+        0,
+    )
+    .expect("the live world builds");
+    endow_all_agents(&mut a, 7.5, 0.0);
+    set_every_agent_state(&mut a, 7.5, 2);
+    a.run_schedule_once();
+    assert_eq!(
+        agent_count(&a),
+        0,
+        "a manifest declaring live.mortality = 1.0 must be able to kill dehydrated agents"
+    );
+
+    // Negative control over the *declaration* itself: drop only the keys, keep everything else.
+    declared.truncate(5);
+    let mut b = LiveExperimentAdapter::from_manifest(
+        &WorldLawSet::baseline(),
+        &InitialConditionSet::new(declared),
+        &[],
+        SEED,
+        (16, 16),
+        0,
+    )
+    .expect("the live world builds");
+    endow_all_agents(&mut b, 7.5, 0.0);
+    set_every_agent_state(&mut b, 7.5, 2);
+    b.run_schedule_once();
+    assert_eq!(
+        agent_count(&b),
+        6,
+        "without the declared keys nobody dies — absent means off, bit for bit"
+    );
+}
+
