@@ -288,6 +288,7 @@ fn test_ecs_hot_path_zero_heap_allocations() {
                 start_position: initial_pos,
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
+                total_energy_gained: 0.0,
                 survival_ticks: 0,
                 last_position: initial_pos,
             },

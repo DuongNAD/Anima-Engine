@@ -23,4 +23,12 @@ unavailable: Array<UnavailablePhase>,
  * Tick number of the oldest and newest retained sample, so a reader can see the window the
  * summary covers rather than assuming it is the whole run.
  */
-first_tick: number | null, last_tick: number | null, };
+first_tick: number | null, last_tick: number | null, 
+/**
+ * Feature ecological-selection F: which fitness rule this run ranked epoch replacement by.
+ * Read from the same environment the app seeds `FitnessRuleSetting` from — a capture only
+ * ever runs in the desktop app, where that is the source of truth. `None` means undeclared
+ * rather than silently `"locomotion"`: a report that cannot say what selected for must say
+ * so instead of guessing.
+ */
+fitness_rule: string | null, };

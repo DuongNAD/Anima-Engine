@@ -65,6 +65,7 @@ fn payload(brain_value: Option<AgentBrain>) -> SerializedAgent {
             start_position: glam::Vec3::ZERO,
             total_distance: 1.0,
             total_energy_expended: 2.0,
+            total_energy_gained: 0.0,
             survival_ticks: 10,
             last_position: glam::Vec3::ZERO,
         },

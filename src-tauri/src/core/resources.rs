@@ -155,6 +155,7 @@ mod scientific_counter_fault_tests {
                     start_position: glam::Vec3::ZERO,
                     total_distance: 0.0,
                     total_energy_expended: 0.0,
+                    total_energy_gained: 0.0,
                     survival_ticks: u32::MAX - 1,
                     last_position: glam::Vec3::ZERO,
                 },

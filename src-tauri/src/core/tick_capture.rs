@@ -998,6 +998,14 @@ pub struct CaptureExport {
     pub first_tick: Option<u64>,
     #[ts(type = "number | null")]
     pub last_tick: Option<u64>,
+    /// Feature ecological-selection F: which fitness rule this run ranked epoch replacement by.
+    /// Read from the same environment the app seeds `FitnessRuleSetting` from — a capture only
+    /// ever runs in the desktop app, where that is the source of truth. `None` means undeclared
+    /// rather than silently `"locomotion"`: a report that cannot say what selected for must say
+    /// so instead of guessing.
+    #[serde(default)]
+    #[ts(type = "string | null")]
+    pub fitness_rule: Option<String>,
 }
 
 /// Errors from exporting.
@@ -1141,6 +1149,10 @@ impl SharedTickCapture {
             unavailable: unavailable_phases(),
             first_tick: samples.first().map(|s| s.tick),
             last_tick: samples.last().map(|s| s.tick),
+            fitness_rule: std::env::var("ANIMA_FITNESS").ok().and_then(|v| {
+                crate::evolution::fitness::FitnessRuleSetting::parse_rule(&v)
+                    .map(|r| r.id().to_owned())
+            }),
         }
     }
 

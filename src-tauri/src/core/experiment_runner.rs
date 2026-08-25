@@ -153,6 +153,11 @@ pub struct RunProvenance {
     pub registry_fingerprint: u64,
     pub model_version: String,
     pub build_id: String,
+    /// Feature ecological-selection F: which fitness rule this run ranked epoch replacement by,
+    /// read from the declared initial conditions (never the environment). Empty on provenance
+    /// records written before branch F existed — `serde(default)` keeps them loadable.
+    #[serde(default)]
+    pub fitness_rule: String,
 }
 
 impl RunProvenance {
@@ -185,8 +190,22 @@ impl RunProvenance {
             registry_fingerprint,
             model_version,
             build_id,
+            fitness_rule: declared_fitness_rule(&manifest.initial_conditions),
         }
     }
+}
+
+/// Feature ecological-selection F: which fitness rule the manifest declares, from the
+/// initial-condition key alone. Absent ⇒ locomotion, which is what an absent key means
+/// everywhere else in this feature.
+fn declared_fitness_rule(initial: &crate::core::experiment::InitialConditionSet) -> String {
+    use crate::core::live_experiment::LIVE_KEY_ECOLOGICAL_FITNESS;
+    for (key, value) in &initial.values {
+        if key == LIVE_KEY_ECOLOGICAL_FITNESS && *value == 1.0 {
+            return crate::evolution::fitness::FITNESS_ECOLOGICAL.to_owned();
+        }
+    }
+    crate::evolution::fitness::FITNESS_LOCOMOTION.to_owned()
 }
 
 /// Whether a run finished or failed (a failed run is preserved, never dropped — ER11).
@@ -992,6 +1011,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             registry_fingerprint,
             model_version: model_version.clone(),
             build_id: build_id.clone(),
+            fitness_rule: declared_fitness_rule(&manifest.initial_conditions),
         }
     };
 

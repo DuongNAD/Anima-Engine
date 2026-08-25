@@ -156,8 +156,11 @@ fn the_live_world_honours_exactly_one_new_initial_condition_key() {
     );
     assert_eq!(
         LIVE_KEYS.len(),
-        6,
-        "design §3 adds ONE key; anything else is a factor nobody registered"
+        11,
+        "every key must be a registered factor: 6 original + live.mortality / \
+         live.starve_ticks / live.dehydration_ticks (ecological-selection M-7) + \
+         live.ecological_fitness / live.w_surplus (F-4). Anything outside this list is a \
+         factor nobody registered"
     );
 }
 

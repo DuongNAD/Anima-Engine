@@ -96,7 +96,11 @@ pub fn resource_field_regrowth_system(
 /// enters the animal; the ecosystem census mirrors it into the `animals` compartment.
 pub fn herbivore_grazing_system(
     mut prey_query: Query<
-        (&Position, &mut crate::ai::hrrl::HomeostaticState),
+        (
+            &Position,
+            &mut crate::ai::hrrl::HomeostaticState,
+            Option<&mut crate::core::agent_systems::AgentEvaluation>,
+        ),
         (With<Agent>, With<Prey>),
     >,
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
@@ -110,7 +114,7 @@ pub fn herbivore_grazing_system(
                                       // Rounding remainders across every grazing agent this tick, banked once at the end.
     let mut spill = 0.0f64;
     let mut grazed = 0.0f64;
-    for (pos, mut homeo) in prey_query.iter_mut() {
+    for (pos, mut homeo, opt_eval) in prey_query.iter_mut() {
         let cap = homeo.energy_target;
         let hunger = (cap - homeo.energy).max(0.0);
         if hunger <= 0.0 {
@@ -130,6 +134,11 @@ pub fn herbivore_grazing_system(
             let removed = cell_before - field.r[i] as f64;
             let landed =
                 crate::core::energy_ledger::credit_reserve(&mut homeo.energy, removed as f32, cap);
+            // Fitness intake bookkeeping: exactly what landed in the reserve, measured here by
+            // the ledger primitive itself. Moves no energy.
+            if let Some(mut eval) = opt_eval {
+                eval.total_energy_gained += landed as f32;
+            }
             spill += removed - landed;
             grazed += removed;
         }

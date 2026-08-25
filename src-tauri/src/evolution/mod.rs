@@ -1,5 +1,6 @@
 pub mod brain_genotype;
 pub mod crossover;
+pub mod fitness;
 pub mod genotype;
 pub mod lineage;
 pub mod map_elites;

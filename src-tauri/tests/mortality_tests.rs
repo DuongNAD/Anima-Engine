@@ -489,4 +489,3 @@ fn mortality_is_expressible_through_the_manifest_and_absent_means_off() {
         "without the declared keys nobody dies — absent means off, bit for bit"
     );
 }
-

@@ -73,12 +73,12 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| F-1 | ⬜ | `trait FitnessRule` + `LocomotionFitness` chép **nguyên văn** | file mới `src-tauri/src/evolution/fitness.rs` | — | FI-S01: cùng seed ⇒ checksum trùng bit | ⚠️ đổi thứ tự hai số hạng `f32` cũng có thể đổi làm tròn |
-| F-2 | ⬜ | `EcologicalFitness` đọc `AgentEvaluation` | cùng file | F-1 | FI-S02 | không có số hạng quãng đường — nếu có, P-04 quay lại |
-| F-3 | ⬜ | Bỏ `_` ở `_eval, _homeo`, truyền vào luật | `src-tauri/src/core/agent_systems.rs:523` | F-1 | biên dịch, FI-S01 | ⚠️ **không** thêm query thứ hai; query hiện tại đã có cả hai |
-| F-4 | ⬜ | `ANIMA_FITNESS` + trường trong `ExperimentManifest` | `src-tauri/src/core/resources.rs`, `src-tauri/src/core/experiment.rs` | F-1 | manifest có trường, preflight từ chối giá trị lạ | `#[serde(default)]` để manifest cũ vẫn nạp |
-| F-5 | ⬜ | `id()` vào tick capture export + provenance ensemble | `src-tauri/src/core/tick_capture.rs` | F-4 | FI-S04: mọi report nói được nó chấm bằng luật nào | |
-| F-6 | ⬜ | Sinh lại binding `ts-rs` nếu payload đổi | `src/types/generated/` | F-4 | `git diff --exit-code -- src/types/generated` | **không sửa tay** thư mục này |
+| F-1 | ✅ | `trait FitnessRule` + `LocomotionFitness` chép **nguyên văn** | file mới `src-tauri/src/evolution/fitness.rs` | — | FI-S01: cùng seed ⇒ checksum trùng bit | ⚠️ đổi thứ tự hai số hạng `f32` cũng có thể đổi làm tròn |
+| F-2 | ✅ | `EcologicalFitness` đọc `AgentEvaluation` | cùng file | F-1 | FI-S02 | không có số hạng quãng đường — nếu có, P-04 quay lại |
+| F-3 | ✅ | Bỏ `_` ở `_eval, _homeo`, truyền vào luật | `src-tauri/src/core/agent_systems.rs:523` | F-1 | biên dịch, FI-S01 | ⚠️ **không** thêm query thứ hai; query hiện tại đã có cả hai |
+| F-4 | ✅ | `ANIMA_FITNESS` + trường trong `ExperimentManifest` | `src-tauri/src/core/resources.rs`, `src-tauri/src/core/experiment.rs` | F-1 | manifest có trường, preflight từ chối giá trị lạ | ✏️ chặng 2: cài qua **khoá điều kiện đầu khai báo** (`live.ecological_fitness`, `live.w_surplus`) thay vì một trường cấu trúc mới — initial_conditions đã nằm trong fingerprint manifest và được preflight từ chối khoá lạ; tránh hai nguồn sự thật. `parse_rule` từ chối id lạ |
+| F-5 | ✅ | `id()` vào tick capture export + provenance ensemble | `src-tauri/src/core/tick_capture.rs` | F-4 | FI-S04: mọi report nói được nó chấm bằng luật nào | |
+| F-6 | ✅ | Sinh lại binding `ts-rs` nếu payload đổi | `src/types/generated/` | F-4 | `git diff --exit-code -- src/types/generated` | **không sửa tay** thư mục này |
 
 ---
 

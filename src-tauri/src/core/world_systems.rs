@@ -229,6 +229,7 @@ pub fn detect_food_collisions_system(
             &Position,
             &mut crate::ai::hrrl::HomeostaticState,
             Option<&crate::core::components::ActionGates>,
+            Option<&mut crate::core::agent_systems::AgentEvaluation>,
         ),
         With<Agent>,
     >,
@@ -237,7 +238,7 @@ pub fn detect_food_collisions_system(
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
 ) {
-    for (agent_entity, agent_pos, mut homeo, gates) in agent_query.iter_mut() {
+    for (agent_entity, agent_pos, mut homeo, gates, opt_eval) in agent_query.iter_mut() {
         // Feeding used to fire on contact alone. The gate defaults open and reads open when absent,
         // so this is a no-op until a brain drives it (ADR-0003 decision 4).
         if !crate::core::components::ActionGates::of(gates).feeds() {
@@ -268,7 +269,9 @@ pub fn detect_food_collisions_system(
                 let cap = homeo.energy_target;
                 match (biomass.as_mut(), ledger.as_mut()) {
                     (Some(pool), Some(ledger)) => {
-                        ledger.transfer_into_reserve(
+                        // Fitness intake bookkeeping reads the measured transfer — what the
+                        // reserve actually gained, not what was requested. Moves no energy.
+                        let landed = ledger.transfer_into_reserve(
                             pool,
                             crate::core::energy_ledger::Compartment::Detritus,
                             &mut homeo.energy,
@@ -276,6 +279,9 @@ pub fn detect_food_collisions_system(
                             food.energy_value,
                             crate::core::energy_ledger::EnergyEvent::Feeding,
                         );
+                        if let Some(mut eval) = opt_eval {
+                            eval.total_energy_gained += landed as f32;
+                        }
                     }
                     // Bare test worlds without the closed ledger keep the original behaviour.
                     _ => {
@@ -297,6 +303,7 @@ pub fn combat_system(
             &Position,
             &mut crate::ai::hrrl::HomeostaticState,
             Option<&crate::core::components::ActionGates>,
+            Option<&mut crate::core::agent_systems::AgentEvaluation>,
         ),
         (With<Agent>, With<Predator>),
     >,
@@ -319,7 +326,7 @@ pub fn combat_system(
 
         // Centroid telemetry still covers every predator, gated or not — a predator that chooses not
         // to strike is still present in the world and should stay visible to observers.
-        for (entity, pos, _, _) in predator_query.iter() {
+        for (entity, pos, _, _, _) in predator_query.iter() {
             events_res
                 .predator_centroids
                 .push((entity, pos.0, Vec3::ZERO, 0));
@@ -380,7 +387,7 @@ pub fn combat_system(
                         if prey_homeo.energy <= 0.0 {
                             continue;
                         }
-                        if let Ok((_, _, mut pred_homeo, pred_gates)) =
+                        if let Ok((_, _, mut pred_homeo, pred_gates, pred_eval)) =
                             predator_query.get_mut(pred_entity)
                         {
                             // Striking used to be automatic on proximity. The gate defaults open and
@@ -416,6 +423,10 @@ pub fn combat_system(
                                     assimilated,
                                     pred_cap,
                                 );
+                                // Fitness intake bookkeeping — the measured credit only.
+                                if let Some(mut eval) = pred_eval {
+                                    eval.total_energy_gained += gained as f32;
+                                }
                                 if let Some(ref mut pool) = biomass {
                                     pool.detritus += removed - gained;
                                 }
@@ -437,7 +448,9 @@ pub fn combat_system(
             }
         }
     } else {
-        for (pred_entity, pred_pos, mut pred_homeo, pred_gates) in predator_query.iter_mut() {
+        for (pred_entity, pred_pos, mut pred_homeo, pred_gates, pred_eval) in
+            predator_query.iter_mut()
+        {
             // Same gate as the telemetry branch above — a predator must not strike in one code path
             // and hold back in the other just because combat events happen to be unavailable.
             if !crate::core::components::ActionGates::of(pred_gates).attacks() {
@@ -493,6 +506,10 @@ pub fn combat_system(
                             assimilated,
                             pred_cap,
                         );
+                        // Fitness intake bookkeeping — the measured credit only.
+                        if let Some(mut eval) = pred_eval {
+                            eval.total_energy_gained += gained as f32;
+                        }
                         if let Some(ref mut pool) = biomass {
                             pool.detritus += removed - gained;
                         }
@@ -923,6 +940,7 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
             start_position: initial_pos,
             total_distance: 0.0,
             total_energy_expended: 0.0,
+            total_energy_gained: 0.0,
             survival_ticks: 0,
             last_position: initial_pos,
         });

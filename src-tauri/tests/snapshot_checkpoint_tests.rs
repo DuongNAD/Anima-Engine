@@ -102,6 +102,7 @@ fn with_genesis() -> (World, crossbeam_channel::Sender<EvolutionMsg>) {
                 start_position: pos,
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
+                total_energy_gained: 0.0,
                 survival_ticks: 0,
                 last_position: pos,
             },

@@ -50,6 +50,12 @@ pub struct AgentEvaluation {
     pub start_position: glam::Vec3,
     pub total_distance: f32,
     pub total_energy_expended: f32,
+    /// Bookkeeping only: every EU the ledger actually credited into this reserve — grazing,
+    /// food items, predation — recorded where each credit is measured. Read by
+    /// `EcologicalFitness`; moves no energy and sits outside `world_checksum`. `serde(default)`
+    /// so pre-F snapshots read back as "gained nothing yet".
+    #[serde(default)]
+    pub total_energy_gained: f32,
     pub survival_ticks: u32,
     pub last_position: glam::Vec3,
 }
@@ -342,6 +348,7 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
                 start_position: self.initial_pos,
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
+                total_energy_gained: 0.0,
                 survival_ticks: 0,
                 last_position: self.initial_pos,
             },
@@ -497,6 +504,9 @@ pub fn check_epoch_completion_system(
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut sim_rng: ResMut<crate::core::resources::SimRng>,
     counter_fault: Option<Res<ScientificCounterFault>>,
+    // Feature ecological-selection F: which rule ranks agents this epoch. Absent resource ⇒
+    // default ⇒ locomotion ⇒ the historical line below, bit for bit.
+    fitness_setting: Option<Res<crate::evolution::fitness::FitnessRuleSetting>>,
 ) {
     let Some(next_epoch_tick) = epoch_manager.current_epoch_ticks.checked_add(1) else {
         if let Some(fault) = counter_fault.as_deref() {
@@ -520,12 +530,17 @@ pub fn check_epoch_completion_system(
         let rng = sim_rng.rng();
         use rand::Rng;
 
-        for (agent_entity, genotype, _eval, _homeo, mut tracker, lineage_id, generation) in
+        for (agent_entity, genotype, eval, homeo, mut tracker, lineage_id, generation) in
             agent_query.iter_mut()
         {
             let avg_speed = tracker.cumulative_distance / (tracker.tick_count as f32 * dt + 1e-6);
             let efficiency = tracker.cumulative_distance / (tracker.cumulative_energy_decay + 1e-6);
-            let fitness = tracker.cumulative_distance + tracker.tick_count as f32;
+            let fitness_setting = fitness_setting.as_deref().copied().unwrap_or_default();
+            let rule = crate::evolution::fitness::selected_rule(&fitness_setting);
+            // Default (locomotion) reproduces the historical inline expression bit for bit:
+            // `tracker.cumulative_distance + tracker.tick_count as f32`. Operand order is
+            // load-bearing for `f32` rounding — see evolution::fitness.
+            let fitness = rule.score(eval, &tracker, homeo, &genotype.0);
             // Ecological niche descriptors: body mass (MTE master trait) + foraging range.
             let body_mass = genotype.0.total_mass();
             let foraging_range = tracker.cumulative_distance;

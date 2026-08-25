@@ -1283,6 +1283,9 @@ impl SimulationEngine {
             // Mortality is flag-gated (`ANIMA_MORTALITY`); with the flag unset this is the
             // disabled policy and no agent dies of hunger — today's behaviour, bit for bit.
             world.insert_resource(crate::core::resources::MortalityPolicy::from_env());
+            // Fitness rule likewise (`ANIMA_FITNESS`); unset ⇒ locomotion ⇒ the historical
+            // ranking, bit for bit.
+            world.insert_resource(crate::evolution::fitness::FitnessRuleSetting::from_env());
 
             let initial_resolution = {
                 let settings_lock = evolution_settings_clone_save
@@ -1485,6 +1488,7 @@ impl SimulationEngine {
                             start_position: initial_pos,
                             total_distance: 0.0,
                             total_energy_expended: 0.0,
+                            total_energy_gained: 0.0,
                             survival_ticks: 0,
                             last_position: initial_pos,
                         },

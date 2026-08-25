@@ -121,9 +121,15 @@ pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
 /// Consecutive bottom ticks (hydration exhausted) before dehydration kills, when mortality is on.
 /// Absent keeps the policy's default of 120.
 pub const LIVE_KEY_DEHYDRATION_TICKS: &str = "live.dehydration_ticks";
+/// Branch F: `1.0` ranks epoch replacement by [`crate::evolution::fitness::EcologicalFitness`];
+/// `0.0`/absent keeps the locomotion ranking every pre-F run used. Declared, not ambient —
+/// `build_live_world` never reads `ANIMA_FITNESS`.
+pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
+/// Weight of the net-surplus term of the ecological rule. Absent reads back as 1.0.
+pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 9] = [
+pub const LIVE_KEYS: [&str; 11] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -133,6 +139,8 @@ pub const LIVE_KEYS: [&str; 9] = [
     LIVE_KEY_MORTALITY,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
+    LIVE_KEY_ECOLOGICAL_FITNESS,
+    LIVE_KEY_W_SURPLUS,
 ];
 
 /// The genesis the manifest asked for.
@@ -157,6 +165,13 @@ pub struct LiveWorldConfig {
     pub starve_ticks: u32,
     #[serde(default = "default_dehydration_ticks")]
     pub dehydration_ticks: u32,
+    /// Branch F fitness rule: `1.0` selects `ecological`, `0.0`/absent keeps `locomotion` —
+    /// the ranking every run made before branch F existed.
+    #[serde(default)]
+    pub ecological_fitness: bool,
+    /// Weight of the net-surplus term of the ecological rule; absent reads back as 1.0.
+    #[serde(default = "default_w_surplus")]
+    pub w_surplus: f32,
 }
 
 fn default_starve_ticks() -> u32 {
@@ -165,6 +180,10 @@ fn default_starve_ticks() -> u32 {
 
 fn default_dehydration_ticks() -> u32 {
     crate::core::resources::MortalityPolicy::disabled().dehydration_ticks
+}
+
+fn default_w_surplus() -> f32 {
+    crate::evolution::fitness::FitnessRuleSetting::default().w_surplus
 }
 
 impl Default for LiveWorldConfig {
@@ -183,6 +202,8 @@ impl Default for LiveWorldConfig {
             mortality: false,
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
+            ecological_fitness: false,
+            w_surplus: default_w_surplus(),
         }
     }
 }
@@ -259,6 +280,29 @@ impl LiveWorldConfig {
                 }
                 LIVE_KEY_DEHYDRATION_TICKS => {
                     config.dehydration_ticks = bounded_count(key, *value, 0.0, 65_536.0)? as u32
+                }
+                LIVE_KEY_ECOLOGICAL_FITNESS => match *value {
+                    0.0 => config.ecological_fitness = false,
+                    1.0 => config.ecological_fitness = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_W_SURPLUS => {
+                    if !value.is_finite() || *value < 0.0 {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: f64::MAX,
+                        });
+                    }
+                    config.w_surplus = *value as f32;
                 }
                 _ => unreachable!("key membership was checked above"),
             }
@@ -1274,6 +1318,17 @@ fn build_live_world(
         starve_ticks: config.starve_ticks,
         dehydration_ticks: config.dehydration_ticks,
     });
+    // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
+    // who reproduces is a declared input of the experiment, and absent keys keep the
+    // locomotion ranking — bit-identical to every run made before branch F existed.
+    world.insert_resource(crate::evolution::fitness::FitnessRuleSetting {
+        rule: if config.ecological_fitness {
+            crate::evolution::fitness::FitnessRuleId::Ecological
+        } else {
+            crate::evolution::fitness::FitnessRuleId::Locomotion
+        },
+        w_surplus: config.w_surplus,
+    });
 
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();
     world.insert_resource(bounds);
@@ -1444,6 +1499,7 @@ fn genesis(
                 start_position: pos,
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
+                total_energy_gained: 0.0,
                 survival_ticks: 0,
                 last_position: pos,
             },
