@@ -280,24 +280,27 @@ pub fn detect_environmental_collisions_system(
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     mut ledger: Option<ResMut<EnergyLedger>>,
+    // Branch H: per-agent segment centroids, ONE walk of the segments instead of one per agent
+    // — bit-exact (same adds, same order), allocation-free across ticks.
+    mut seg_centroids: Local<bevy_ecs::entity::EntityHashMap<(glam::Vec3, u32)>>,
 ) {
     let dt = time_step.0;
     let max_drinking_rate = 15.0; // units/sec
     let max_eating_rate = 15.0; // units/sec
 
+    seg_centroids.clear();
+    for (seg_pos, parent_agent) in segment_query.iter() {
+        let entry = seg_centroids
+            .entry(parent_agent.0)
+            .or_insert((glam::Vec3::ZERO, 0));
+        entry.0 += seg_pos.0;
+        entry.1 += 1;
+    }
+
     for (agent_entity, agent_pos, mut homeo, opt_prey) in agent_query.iter_mut() {
-        let mut sum_pos = glam::Vec3::ZERO;
-        let mut count = 0;
-        for (seg_pos, parent_agent) in segment_query.iter() {
-            if parent_agent.0 == agent_entity {
-                sum_pos += seg_pos.0;
-                count += 1;
-            }
-        }
-        let centroid = if count > 0 {
-            sum_pos / count as f32
-        } else {
-            agent_pos.0
+        let centroid = match seg_centroids.get(&agent_entity) {
+            Some((sum, count)) if *count > 0 => *sum / *count as f32,
+            _ => agent_pos.0,
         };
 
         if homeo.hydration < homeo.hydration_target {

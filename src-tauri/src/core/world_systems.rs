@@ -96,6 +96,10 @@ pub fn metabolic_decay_system(
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     brain_policy: Option<Res<crate::core::resources::BrainPolicy>>,
     counter_fault: Option<Res<ScientificCounterFault>>,
+    // Branch H: per-agent segment sums, built in ONE walk of the segments instead of one walk
+    // per agent. The accumulation order per agent is unchanged, so every `f32` sum is bit-exact
+    // with the nested loop this replaces. Reused across ticks — no allocation in the warm path.
+    mut segment_stats: Local<bevy_ecs::entity::EntityHashMap<(f32, f32)>>,
 ) {
     let brain_cost_per_1k = brain_policy
         .map(|p| p.brain_metabolic_cost)
@@ -108,6 +112,16 @@ pub fn metabolic_decay_system(
     let k_velocity = 0.2;
     let k_force = 0.3;
 
+    segment_stats.clear();
+    for (parent, body, vel, joint_force) in segment_query.iter() {
+        let speed = vel.0.length();
+        let force_output = joint_force.map(|jf| jf.0).unwrap_or(0.0);
+        let activity = (k_velocity * speed) + (k_force * force_output);
+        let entry = segment_stats.entry(parent.0).or_insert((0.0f32, 0.0f32));
+        entry.0 += body.mass;
+        entry.1 += activity;
+    }
+
     for (agent_entity, mut homeo, opt_tracker, velocity, opt_predator, opt_brain) in
         agent_query.iter_mut()
     {
@@ -116,16 +130,10 @@ pub fn metabolic_decay_system(
         // burn — and (2) ACTIVITY — the linear locomotion cost of moving mass and firing
         // joints. Predators carry a higher baseline (hunting is costly).
         let k_base = if opt_predator.is_some() { 0.2 } else { 0.1 };
-        let mut body_mass = 0.0f32;
-        let mut activity_cost = 0.0f32;
-        for (parent, body, vel, joint_force) in segment_query.iter() {
-            if parent.0 == agent_entity {
-                body_mass += body.mass;
-                let segment_speed = vel.0.length();
-                let force_output = joint_force.map(|jf| jf.0).unwrap_or(0.0);
-                activity_cost += (k_velocity * segment_speed) + (k_force * force_output);
-            }
-        }
+        let (body_mass, activity_cost) = segment_stats
+            .get(&agent_entity)
+            .copied()
+            .unwrap_or((0.0, 0.0));
         let maintenance = crate::core::ecology::metabolic_rate(
             body_mass,
             homeo.temperature,
@@ -237,25 +245,27 @@ pub fn detect_food_collisions_system(
     food_query: Query<(Entity, &Position, &Food)>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
+    // Branch H: per-agent segment centroids, one walk of the segments instead of one per agent
+    // — bit-exact (same adds, same order), allocation-free across ticks.
+    mut seg_centroids: Local<bevy_ecs::entity::EntityHashMap<(Vec3, u32)>>,
 ) {
+    seg_centroids.clear();
+    for (seg_pos, parent_agent) in segment_query.iter() {
+        let entry = seg_centroids
+            .entry(parent_agent.0)
+            .or_insert((Vec3::ZERO, 0));
+        entry.0 += seg_pos.0;
+        entry.1 += 1;
+    }
     for (agent_entity, agent_pos, mut homeo, gates, opt_eval) in agent_query.iter_mut() {
         // Feeding used to fire on contact alone. The gate defaults open and reads open when absent,
         // so this is a no-op until a brain drives it (ADR-0003 decision 4).
         if !crate::core::components::ActionGates::of(gates).feeds() {
             continue;
         }
-        let mut sum_pos = glam::Vec3::ZERO;
-        let mut count = 0;
-        for (seg_pos, parent_agent) in segment_query.iter() {
-            if parent_agent.0 == agent_entity {
-                sum_pos += seg_pos.0;
-                count += 1;
-            }
-        }
-        let centroid = if count > 0 {
-            sum_pos / count as f32
-        } else {
-            agent_pos.0
+        let centroid = match seg_centroids.get(&agent_entity) {
+            Some((sum, count)) if *count > 0 => *sum / *count as f32,
+            _ => agent_pos.0,
         };
 
         for (food_entity, food_pos, food) in food_query.iter() {
@@ -318,7 +328,18 @@ pub fn combat_system(
     // classification enforced by the queries above. Reused between ticks to keep the warm path
     // allocation-free.
     mut centroid_index: Local<bevy_ecs::entity::EntityHashMap<(bool, usize)>>,
+    // Branch H: per-agent segment centroids, ONE walk shared by both strike branches — bit-exact
+    // with the per-agent walks this replaces (same adds, same order), allocation-free.
+    mut combat_seg_centroids: Local<bevy_ecs::entity::EntityHashMap<(Vec3, u32)>>,
 ) {
+    combat_seg_centroids.clear();
+    for (seg_pos, parent_agent) in segment_query.iter() {
+        let entry = combat_seg_centroids
+            .entry(parent_agent.0)
+            .or_insert((Vec3::ZERO, 0));
+        entry.0 += seg_pos.0;
+        entry.1 += 1;
+    }
     if let Some(ref mut events_res) = combat_events {
         events_res.events.clear();
         events_res.predator_centroids.clear();
@@ -457,36 +478,18 @@ pub fn combat_system(
             if !crate::core::components::ActionGates::of(pred_gates).attacks() {
                 continue;
             }
-            let mut pred_sum = glam::Vec3::ZERO;
-            let mut pred_count = 0;
-            for (seg_pos, parent_agent) in segment_query.iter() {
-                if parent_agent.0 == pred_entity {
-                    pred_sum += seg_pos.0;
-                    pred_count += 1;
-                }
-            }
-            let pred_centroid = if pred_count > 0 {
-                pred_sum / pred_count as f32
-            } else {
-                pred_pos.0
+            let pred_centroid = match combat_seg_centroids.get(&pred_entity) {
+                Some((sum, count)) if *count > 0 => *sum / *count as f32,
+                _ => pred_pos.0,
             };
 
             for (prey_entity, prey_pos, mut prey_homeo) in prey_query.iter_mut() {
                 if prey_homeo.energy <= 0.0 {
                     continue;
                 }
-                let mut prey_sum = glam::Vec3::ZERO;
-                let mut prey_count = 0;
-                for (seg_pos, parent_agent) in segment_query.iter() {
-                    if parent_agent.0 == prey_entity {
-                        prey_sum += seg_pos.0;
-                        prey_count += 1;
-                    }
-                }
-                let prey_centroid = if prey_count > 0 {
-                    prey_sum / prey_count as f32
-                } else {
-                    prey_pos.0
+                let prey_centroid = match combat_seg_centroids.get(&prey_entity) {
+                    Some((sum, count)) if *count > 0 => *sum / *count as f32,
+                    _ => prey_pos.0,
                 };
 
                 if pred_centroid.distance(prey_centroid) < 1.5 {

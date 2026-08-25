@@ -138,13 +138,21 @@ Mẫu chép: `combat_system` tại `src-tauri/src/core/world_systems.rs:300-340`
 
 | ID | Trạng thái | Việc | Neo | Định nghĩa hoàn thành |
 |---|---|---|---|---|
-| H-1 | ⬜ | `metabolic_decay_system` | `src-tauri/src/core/world_systems.rs:121` | PF-S01 + `allocs == 0` |
-| H-2 | ⬜ | `update_agent_evaluation_system` | `src-tauri/src/core/agent_systems.rs:468` | PF-S01 |
-| H-3 | ⬜ | `detect_food_collisions_system` (hai vòng: `:236` segment, `:248` food) | `src-tauri/src/core/world_systems.rs:236` | PF-S01 |
-| H-4 | ⬜ | Ba chỗ còn lại trong `world_systems` | `src-tauri/src/core/world_systems.rs:337, 436, 454` | PF-S01 |
-| H-5 | ⬜ | `detect_environmental_collisions_system` | `src-tauri/src/core/environmental_systems.rs:282` | PF-S01 |
-| H-6 | ⬜ | `sensory_system` hỏi `SpatialHashGrid` | `src-tauri/src/core/agent_systems.rs:877, 890` | PF-S01, PF-S02 |
-| H-7 | ⚠️ | Đo `full_tick` p50 ở 1000 agent, **bản release** | `BENCHMARK_BASELINE.md` | PF-S03 — **cần người bấm chạy**, agent dừng ở đây |
+| H-1 | ✅ | `metabolic_decay_system` | `src-tauri/src/core/world_systems.rs:121` | PF-S01 + `allocs == 0` |
+| H-2 | ✅ | `update_agent_evaluation_system` | `src-tauri/src/core/agent_systems.rs:468` | PF-S01 |
+| H-3 | ✅ | `detect_food_collisions_system` (hai vòng: `:236` segment, `:248` food) | `src-tauri/src/core/world_systems.rs:236` | PF-S01 |
+| H-4 | ✅ | Ba chỗ còn lại trong `world_systems` | `src-tauri/src/core/world_systems.rs:337, 436, 454` | PF-S01 |
+| H-5 | ✅ | `detect_environmental_collisions_system` | `src-tauri/src/core/environmental_systems.rs:282` | PF-S01 |
+| H-6 | ✅ | `sensory_system` hỏi `SpatialHashGrid` | `src-tauri/src/core/agent_systems.rs:877, 890` | PF-S01, PF-S02 |
+| H-7 | ⬜ | Đo `full_tick` p50 ở 1000 agent, **bản release** | `BENCHMARK_BASELINE.md` | PF-S03 — **cần người bấm chạy**, agent dừng ở đây |
+
+> Cập nhật chặng 2 (2026-08-25): H-1…H-6 ✅. **PF-S01 chứng minh bằng probe**: checksum 1500 tick
+> / seed 0x5EED, trước-H = sau-H = **4013327208**, trùng bit (probe: `tests/h_probe.rs`, so sánh
+> cây làm việc với phiên bản `d8b39e5` của ba file bị sửa). Ghi chú H-6: hai vòng quét
+> nearest-target được thay bằng cache snapshot một lượt duyệt theo thứ tự query — giữ nguyên kết
+> quả chọn mục tiêu bit-for-bit; **không** truy vấn SpatialHashGrid trực tiếp vì grid sẽ đổi quy
+> tắc phân giải khi hai mục tiêu cách đều (founders sinh trên một đường thẳng đối xứng — tie xảy
+> ra thật); muốn dùng grid cần khai báo tiêu chuẩn tie-break trước, đó là quyết định thiết kế.
 
 > ⚠️ **Bẫy chung của cả nhánh H.** `EntityHashMap` **không** duyệt theo thứ tự chèn. Chỗ nào kết
 > quả phụ thuộc thứ tự duyệt — điển hình là ai giành được miếng ăn cuối cùng trong một ô — phải

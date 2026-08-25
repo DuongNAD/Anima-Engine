@@ -454,12 +454,26 @@ pub fn update_agent_evaluation_system(
     )>,
     time_step: Res<crate::ai::cpg::TimeStep>,
     counter_fault: Option<Res<ScientificCounterFault>>,
+    // Branch H: per-agent segment cost sums, ONE walk of the segments instead of one per agent
+    // — bit-exact (same adds, same order), allocation-free across ticks.
+    mut segment_costs: Local<bevy_ecs::entity::EntityHashMap<f32>>,
 ) {
     let dt = time_step.0;
     let k_base = 0.1;
     let k_mass = 0.05;
     let k_velocity = 0.2;
     let k_force = 0.3;
+
+    segment_costs.clear();
+    for (parent, _body, vel, joint_force) in segment_query.iter() {
+        let segment_mass = _body.mass;
+        let segment_speed = vel.0.length();
+        let force_output = joint_force.map(|jf| jf.0).unwrap_or(0.0);
+        let segment_cost =
+            (k_mass * segment_mass) + (k_velocity * segment_speed) + (k_force * force_output);
+        let entry = segment_costs.entry(parent.0).or_insert(0.0);
+        *entry += segment_cost;
+    }
 
     for (agent_entity, pos, mut eval, homeo) in agent_query.iter_mut() {
         if homeo.energy <= 0.0 || homeo.hydration <= 0.0 {
@@ -478,17 +492,8 @@ pub fn update_agent_evaluation_system(
         eval.last_position = pos.0;
 
         let mut total_cost = k_base;
-        for (parent, _body, vel, joint_force) in segment_query.iter() {
-            if parent.0 == agent_entity {
-                let segment_mass = _body.mass;
-                let segment_speed = vel.0.length();
-                let force_output = joint_force.map(|jf| jf.0).unwrap_or(0.0);
-
-                let segment_cost = (k_mass * segment_mass)
-                    + (k_velocity * segment_speed)
-                    + (k_force * force_output);
-                total_cost += segment_cost;
-            }
+        if let Some(segment_sum) = segment_costs.get(&agent_entity) {
+            total_cost += segment_sum;
         }
         eval.total_energy_expended += total_cost * dt;
     }
@@ -838,6 +843,12 @@ pub fn sensory_system(
     mut ticket_counter: Local<u64>,
     mut local_batch: Local<Option<InferenceRequestBatch>>,
     mut lod: crate::core::simulation_lod::LodGate,
+    // Branch H: per-tick snapshots of the nearest-target scans, built in ONE walk of each query
+    // in query order. The per-agent scans then read these buffers — same values, same visit
+    // order, so the chosen target is bit-identical with the linear scans this replaces.
+    // (A SpatialHashGrid lookup would change tie-breaking at equal distances and is therefore
+    // NOT done here without a declared tie-break rule.)
+    mut target_caches: Local<(Vec<(glam::Vec3, f32)>, Vec<glam::Vec3>)>,
 ) {
     if let Some(ref mut raycasts_res) = active_raycasts {
         raycasts_res.raycasts.clear();
@@ -845,6 +856,19 @@ pub fn sensory_system(
 
     // One snapshot for the whole population, so every agent is tiered against the same focus.
     let lod = lod.begin_tick();
+
+    // Branch H: build the nearest-target caches in one pass each, preserving query order.
+    let (prey_cache, food_cache) = &mut *target_caches;
+    prey_cache.clear();
+    for (prey_pos, prey_homeo) in prey_query.iter() {
+        if prey_homeo.energy > 0.0 {
+            prey_cache.push((prey_pos.0, prey_homeo.energy));
+        }
+    }
+    food_cache.clear();
+    for food_pos in food_query.iter() {
+        food_cache.push(food_pos.0);
+    }
 
     // The recycle pool is the memory bound of the whole inference path, and this is where it was
     // being broken.
@@ -904,24 +928,22 @@ pub fn sensory_system(
         let target_pos = if is_predator {
             let mut nearest_prey = None;
             let mut min_dist_sq = f32::MAX;
-            for (prey_pos, prey_homeo) in prey_query.iter() {
-                if prey_homeo.energy > 0.0 {
-                    let dist_sq = agent_pos.0.distance_squared(prey_pos.0);
-                    if dist_sq < min_dist_sq {
-                        min_dist_sq = dist_sq;
-                        nearest_prey = Some(prey_pos.0);
-                    }
+            for (prey_pos, _energy) in prey_cache.iter() {
+                let dist_sq = agent_pos.0.distance_squared(*prey_pos);
+                if dist_sq < min_dist_sq {
+                    min_dist_sq = dist_sq;
+                    nearest_prey = Some(*prey_pos);
                 }
             }
             nearest_prey
         } else {
             let mut nearest_food = None;
             let mut min_dist_sq = f32::MAX;
-            for food_pos in food_query.iter() {
-                let dist_sq = agent_pos.0.distance_squared(food_pos.0);
+            for food_pos in food_cache.iter() {
+                let dist_sq = agent_pos.0.distance_squared(*food_pos);
                 if dist_sq < min_dist_sq {
                     min_dist_sq = dist_sq;
-                    nearest_food = Some(food_pos.0);
+                    nearest_food = Some(*food_pos);
                 }
             }
             nearest_food
