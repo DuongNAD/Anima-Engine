@@ -56,6 +56,11 @@ pub struct AgentEvaluation {
     /// so pre-F snapshots read back as "gained nothing yet".
     #[serde(default)]
     pub total_energy_gained: f32,
+    /// The predation share of the intake above, for the branch-Q trophic-level descriptor.
+    /// Incremented only where the ledger credits a predator; serde default keeps pre-F saves
+    /// loadable (they read as "never ate prey").
+    #[serde(default)]
+    pub prey_energy_gained: f32,
     pub survival_ticks: u32,
     pub last_position: glam::Vec3,
 }
@@ -349,6 +354,7 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
                 total_energy_gained: 0.0,
+                prey_energy_gained: 0.0,
                 survival_ticks: 0,
                 last_position: self.initial_pos,
             },
@@ -557,6 +563,9 @@ pub fn check_epoch_completion_system(
                 efficiency,
                 body_mass,
                 foraging_range,
+                // Branch-Q niche-axis inputs: where this animal's EU actually came from.
+                total_intake: eval.total_energy_gained,
+                prey_intake: eval.prey_energy_gained,
                 position: next_pos,
                 lineage_id: lineage_id.0.clone(),
                 generation: generation.0,

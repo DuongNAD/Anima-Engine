@@ -22,8 +22,18 @@ pub struct SavedEliteIndividual {
     pub generation: u32,
 }
 
+/// Feature ecological-selection, branch Q: which niche-descriptor set the archive's coordinates
+/// were computed against. Changing the axes (foraging range → actual trophic level) changes what
+/// a bin coordinate MEANS, so an archive written under one set must never be loaded under
+/// another — the individuals would silently land in the wrong niches.
+pub const DESCRIPTOR_SET_ID: &str = "body-mass+trophic-ratio/v2";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SavedMapElitesArchive {
+    /// Which descriptor set computed these coordinates. Written by every save from this build;
+    /// older saves without the field read back as empty and are REFUSED by `from_saved`.
+    #[serde(default)]
+    pub descriptor_set_id: String,
     pub grid_resolution: f32,
     pub elites: Vec<SavedEliteIndividual>,
 }
@@ -47,6 +57,7 @@ impl MapElitesArchive {
 
     pub fn to_saved(&self) -> SavedMapElitesArchive {
         SavedMapElitesArchive {
+            descriptor_set_id: DESCRIPTOR_SET_ID.to_owned(),
             grid_resolution: self.grid_resolution,
             elites: self
                 .grid
@@ -65,6 +76,13 @@ impl MapElitesArchive {
     }
 
     pub fn from_saved(saved: SavedMapElitesArchive) -> Result<Self, String> {
+        if saved.descriptor_set_id != DESCRIPTOR_SET_ID {
+            return Err(format!(
+                "MAP-Elites archive was written for descriptor set {:?}, but this build computes \
+                 {:?}; loading it would place every individual in a niche it never earned",
+                saved.descriptor_set_id, DESCRIPTOR_SET_ID
+            ));
+        }
         if !saved.grid_resolution.is_finite() || saved.grid_resolution <= 0.0 {
             return Err("MAP-Elites grid resolution must be finite and positive".into());
         }

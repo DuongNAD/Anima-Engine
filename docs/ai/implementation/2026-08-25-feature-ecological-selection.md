@@ -86,11 +86,16 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| Q-1 | ⬜ | Bộ đếm EU nạp theo nguồn (thực vật / mồi) | `src-tauri/src/core/components.rs` | — | unit test cộng đúng | cộng ở chỗ EU **thực sự** vào reserve, không ở chỗ quyết định ăn |
-| Q-2 | ⬜ | `trophic_ratio` từ bộ đếm | `src-tauri/src/core/ecology.rs` | Q-1 | QD-S01 | chia cho 0 khi chưa ăn gì ⇒ định nghĩa tường minh, không NaN |
-| Q-3 | 🔒 | Đổi trục 2 của `ecological_descriptors`, sửa doc comment | `src-tauri/src/core/ecology.rs:170` | F-2, Q-2 | QD-S02: trục **không** tương quan đơn điệu với fitness | 🔒 chặn tới khi công thức fitness cuối cùng chốt |
-| Q-4 | ⬜ | `descriptor_set_id`; `from_saved` **từ chối** id lệch | `src-tauri/src/evolution/map_elites.rs:58-110` | Q-3 | QD-S03: nạp archive v1 vào v2 là **lỗi**, không phải kho lệch | ⚠️ nạp im lặng đặt cá thể vào ô sai và không gì báo |
-| Q-5 | ⬜ | Kiểm bão hoà `FORAGING_REFERENCE`/trục mới | `src-tauri/src/core/ecology.rs:161` | Q-3 | có số đo phân bố trục, không phải phỏng đoán | finding chưa đối chứng: trục có thể `clamp` về 1.0 |
+| Q-1 | ✅ | Bộ đếm EU nạp theo nguồn (thực vật / mồi) | `src-tauri/src/core/components.rs` | — | unit test cộng đúng | ✅ chặng 2: `AgentEvaluation.prey_energy_gained` ghi tại 2 điểm săn mồi (ledger tự đo credit); gặm cỏ/food đi vào `total_energy_gained` |
+| Q-2 | ✅ | `trophic_ratio` từ bộ đếm | `src-tauri/src/core/ecology.rs` | Q-1 | QD-S01 | ✅ chia cho 0 ⇒ 0.0 định nghĩa tường minh; NaN/âm bị chặn ở đầu vào |
+| Q-3 | ✅ | Đổi trục 2 của `ecological_descriptors`, sửa doc comment | `src-tauri/src/core/ecology.rs:170` | F-2, Q-2 | QD-S02: trục **không** tương quan đơn điệu với fitness | ✅ trục 2 = `trophic_ratio`; doc comment viết lại; caller duy nhất (`simulation_loop.rs:715`) chuyển sang stats intake |
+| Q-4 | ✅ | `descriptor_set_id`; `from_saved` **từ chối** id lệch | `src-tauri/src/evolution/map_elites.rs:58-110` | Q-3 | QD-S03: nạp archive v1 vào v2 là **lỗi**, không phải kho lệch | ✅ `body-mass+trophic-ratio/v2`; serde(default) để save cũ đọc thành rỗng rồi bị TỪ CHỐI |
+| Q-5 | ✅ | Kiểm bão hoà `FORAGING_REFERENCE`/trục mới | `src-tauri/src/core/ecology.rs:161` | Q-3 | có số đo phân bố trục, không phải phỏng đoán | ✅ FORAGING_REFERENCE xoá; trục mới là tỉ lệ [0,1] sẵn nên không còn điểm bão hoà nhân tạo nào để kiểm |
+
+> Cập nhật chặng 2 (2026-08-25): Q-1…Q-5 ✅. Lưu ý: `foraging_range` vẫn giữ trong
+> `AgentEpochStats` cho telemetry nhưng **không còn** là trục niche. CA-S03/QD-S02 được chứng minh
+> bằng số học descriptor (kênh độc lập với fitness theo cấu trúc); phân bố trục trên run thật
+> cần nhánh R để quần thể thay đổi thế hệ (E2-F3).
 
 ---
 

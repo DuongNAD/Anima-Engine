@@ -945,6 +945,7 @@ mod tests {
                 total_distance: 0.0,
                 total_energy_expended: 0.0,
                 total_energy_gained: 0.0,
+                prey_energy_gained: 0.0,
                 survival_ticks: 1,
                 last_position: glam::Vec3::ZERO,
             },
@@ -1095,6 +1096,7 @@ mod tests {
             chronicle_ids_issued: 0,
             offspring_ids_issued: 0,
             archive: crate::evolution::map_elites::SavedMapElitesArchive {
+                descriptor_set_id: crate::evolution::map_elites::DESCRIPTOR_SET_ID.to_owned(),
                 grid_resolution: 0.25,
                 elites: Vec::new(),
             },
@@ -1396,6 +1398,7 @@ mod tests {
             chronicle_ids_issued: 0,
             offspring_ids_issued: 0,
             archive: crate::evolution::map_elites::SavedMapElitesArchive {
+                descriptor_set_id: crate::evolution::map_elites::DESCRIPTOR_SET_ID.to_owned(),
                 grid_resolution: 0.25,
                 elites: Vec::new(),
             },

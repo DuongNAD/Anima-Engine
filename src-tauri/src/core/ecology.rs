@@ -156,21 +156,38 @@ pub fn predation_capture(prey_energy: f32, predator_deficit: f32) -> f32 {
 
 // ---- Ecological niche descriptors (MAP-Elites behavior space) --------------------------
 
-/// Reference scales that normalize raw ecological traits into a comparable [0, 1] MAP-Elites
-/// behavior space, so a fixed grid resolution bins both axes sensibly.
+/// Reference scale that normalizes body mass — the Metabolic-Theory master trait — into the
+/// [0, 1] MAP-Elites behavior space.
 pub const MASS_REFERENCE: f32 = 20.0;
-pub const FORAGING_REFERENCE: f32 = 200.0;
+
+/// Feature ecological-selection, branch Q: an animal's actual trophic level, measured as the
+/// share of its ledger-recorded intake that came from predation. `0.0` is a pure grazer, `1.0`
+/// a pure predator. This replaces the old second axis (`foraging_range`), which was exactly the
+/// locomotion fitness minus a constant — an archive axis that could not see anything fitness
+/// did not already rank.
+#[inline]
+pub fn trophic_ratio(prey_intake: f32, total_intake: f32) -> f32 {
+    if !total_intake.is_finite()
+        || !prey_intake.is_finite()
+        || total_intake <= 0.0
+        || prey_intake < 0.0
+    {
+        // Nothing eaten yet (or a nonsensical input): a defined zero, never NaN.
+        return 0.0;
+    }
+    (prey_intake / total_intake).clamp(0.0, 1.0)
+}
 
 /// Two ecological niche axes for MAP-Elites (Hutchinson's hypervolume): body mass (the
-/// Metabolic-Theory master trait) and foraging range (distance roamed = niche breadth), each
-/// normalized to [0, 1]. Illuminating this space rewards ECOLOGICAL diversity — small roamers
-/// vs large homebodies, generalists vs specialists — instead of a single locomotion optimum,
-/// and lets predator/prey arms races (Red Queen) spread the archive rather than collapse it.
+/// Metabolic-Theory master trait) and the MEASURED trophic level from branch-Q intake
+/// bookkeeping, each normalized to [0, 1]. Axis two is independent of every fitness rule by
+/// construction: it is computed from where an animal's EU actually came from, not from how far
+/// or how long it moved — so the archive illuminates a direction fitness cannot rank.
 #[inline]
-pub fn ecological_descriptors(body_mass: f32, foraging_range: f32) -> [f32; 2] {
+pub fn ecological_descriptors(body_mass: f32, trophic_ratio: f32) -> [f32; 2] {
     [
         (body_mass / MASS_REFERENCE).clamp(0.0, 1.0),
-        (foraging_range / FORAGING_REFERENCE).clamp(0.0, 1.0),
+        trophic_ratio.clamp(0.0, 1.0),
     ]
 }
 
@@ -620,18 +637,34 @@ mod tests {
 
     #[test]
     fn ecological_descriptors_normalize_and_order() {
-        let [m, f] = ecological_descriptors(10.0, 100.0);
-        assert!((m - 0.5).abs() < 1e-6 && (f - 0.5).abs() < 1e-6);
-        // Heavier / wider-ranging organisms sit higher on each axis, clamped to 1.0.
-        let [m2, f2] = ecological_descriptors(1000.0, 1000.0);
-        assert_eq!([m2, f2], [1.0, 1.0]);
-        let [m0, f0] = ecological_descriptors(0.0, 0.0);
-        assert_eq!([m0, f0], [0.0, 0.0]);
-        // The two axes are independent (a heavy homebody differs from a light wanderer).
+        // Axis two is now the measured trophic ratio (branch Q): already in [0, 1].
+        let [m, t] = ecological_descriptors(10.0, 0.5);
+        assert!((m - 0.5).abs() < 1e-6 && (t - 0.5).abs() < 1e-6);
+        // Heavier organisms sit higher on axis one, clamped to 1.0.
+        let [m2, t2] = ecological_descriptors(1000.0, 1.0);
+        assert_eq!([m2, t2], [1.0, 1.0]);
+        let [m0, t0] = ecological_descriptors(0.0, 0.0);
+        assert_eq!([m0, t0], [0.0, 0.0]);
+        // The two axes are independent (a heavy grazer differs from a light predator).
         assert_ne!(
-            ecological_descriptors(18.0, 10.0),
-            ecological_descriptors(2.0, 180.0)
+            ecological_descriptors(18.0, 0.1),
+            ecological_descriptors(2.0, 0.9)
         );
+    }
+
+    #[test]
+    fn trophic_ratio_is_defined_without_nan_and_never_exceeds_one() {
+        // QD-S01: nothing eaten yet is a defined zero, not NaN.
+        assert_eq!(trophic_ratio(0.0, 0.0), 0.0);
+        assert_eq!(trophic_ratio(5.0, 0.0), 0.0);
+        // Pure grazer / pure predator / mixed.
+        assert_eq!(trophic_ratio(0.0, 10.0), 0.0);
+        assert!((trophic_ratio(4.0, 10.0) - 0.4).abs() < 1e-6);
+        assert_eq!(trophic_ratio(10.0, 10.0), 1.0);
+        // A nonsensical input cannot leak past the clamp.
+        assert_eq!(trophic_ratio(12.0, 10.0), 1.0);
+        assert_eq!(trophic_ratio(f32::NAN, 10.0), 0.0);
+        assert_eq!(trophic_ratio(-1.0, 10.0), 0.0);
     }
 
     #[test]

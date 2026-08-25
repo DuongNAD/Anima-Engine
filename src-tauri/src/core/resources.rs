@@ -156,6 +156,7 @@ mod scientific_counter_fault_tests {
                     total_distance: 0.0,
                     total_energy_expended: 0.0,
                     total_energy_gained: 0.0,
+                    prey_energy_gained: 0.0,
                     survival_ticks: u32::MAX - 1,
                     last_position: glam::Vec3::ZERO,
                 },
@@ -723,8 +724,13 @@ pub struct AgentEpochStats {
     pub efficiency: f32,
     /// Total body mass (Metabolic-Theory master trait) — a MAP-Elites ecological niche axis.
     pub body_mass: f32,
-    /// Distance roamed this epoch (foraging range / niche breadth) — the other niche axis.
+    /// Distance roamed this epoch. No longer a niche axis (branch Q): it correlated perfectly
+    /// with locomotion fitness. Kept for telemetry.
     pub foraging_range: f32,
+    /// Ledger-measured total and predation-share intake this epoch — the inputs of the branch-Q
+    /// trophic-level niche axis (`ecology::trophic_ratio`).
+    pub total_intake: f32,
+    pub prey_intake: f32,
     pub position: glam::Vec3,
     pub lineage_id: String,
     pub generation: u32,

@@ -41,6 +41,7 @@ fn eval(survival: u32, gained: f32, spent: f32) -> AgentEvaluation {
         total_distance: 10.0,
         total_energy_expended: spent,
         total_energy_gained: gained,
+        prey_energy_gained: 0.0,
         survival_ticks: survival,
         last_position: glam::Vec3::ZERO,
     }

@@ -426,6 +426,7 @@ pub fn combat_system(
                                 // Fitness intake bookkeeping — the measured credit only.
                                 if let Some(mut eval) = pred_eval {
                                     eval.total_energy_gained += gained as f32;
+                                    eval.prey_energy_gained += gained as f32;
                                 }
                                 if let Some(ref mut pool) = biomass {
                                     pool.detritus += removed - gained;
@@ -509,6 +510,7 @@ pub fn combat_system(
                         // Fitness intake bookkeeping — the measured credit only.
                         if let Some(mut eval) = pred_eval {
                             eval.total_energy_gained += gained as f32;
+                            eval.prey_energy_gained += gained as f32;
                         }
                         if let Some(ref mut pool) = biomass {
                             pool.detritus += removed - gained;
@@ -941,6 +943,7 @@ impl bevy_ecs::system::Command for SpawnMigrationCommand {
             total_distance: 0.0,
             total_energy_expended: 0.0,
             total_energy_gained: 0.0,
+            prey_energy_gained: 0.0,
             survival_ticks: 0,
             last_position: initial_pos,
         });

@@ -502,6 +502,7 @@ async fn test_agent_migration_serialization_and_resilience() {
             total_distance: 5.0,
             total_energy_expended: 12.0,
             total_energy_gained: 0.0,
+            prey_energy_gained: 0.0,
             survival_ticks: 100,
             last_position: Vec3::new(15.5, 0.0, -12.3),
         }),

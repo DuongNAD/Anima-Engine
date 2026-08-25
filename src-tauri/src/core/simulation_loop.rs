@@ -710,11 +710,15 @@ impl SimulationEngine {
                     }
 
                     for stats in &stats_batch {
-                        // MAP-Elites niche axes = ecological descriptors (body mass × foraging
-                        // range), normalized so the QD archive illuminates ecological diversity.
+                        // MAP-Elites niche axes = ecological descriptors (body mass × measured
+                        // trophic level), normalized so the QD archive illuminates ecological
+                        // diversity along an axis fitness cannot rank (branch Q).
                         let features = crate::core::ecology::ecological_descriptors(
                             stats.body_mass,
-                            stats.foraging_range,
+                            crate::core::ecology::trophic_ratio(
+                                stats.prey_intake,
+                                stats.total_intake,
+                            ),
                         )
                         .to_vec();
                         let elite = crate::evolution::map_elites::EliteIndividual {
@@ -1491,6 +1495,7 @@ impl SimulationEngine {
                             total_distance: 0.0,
                             total_energy_expended: 0.0,
                             total_energy_gained: 0.0,
+                            prey_energy_gained: 0.0,
                             survival_ticks: 0,
                             last_position: initial_pos,
                         },

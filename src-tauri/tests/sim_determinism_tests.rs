@@ -174,6 +174,8 @@ fn exact_evolution_worker_checkpoint_takes_precedence_over_legacy_reconstruction
         chronicle_ids_issued: 12,
         offspring_ids_issued: 34,
         archive: SavedMapElitesArchive {
+            descriptor_set_id: anima_engine_lib::evolution::map_elites::DESCRIPTOR_SET_ID
+                .to_owned(),
             grid_resolution: 0.25,
             elites: Vec::new(),
         },
@@ -201,6 +203,8 @@ fn exact_evolution_checkpoint_rejects_an_epoch_cursor_ahead_of_its_history() {
         chronicle_ids_issued: 0,
         offspring_ids_issued: 0,
         archive: SavedMapElitesArchive {
+            descriptor_set_id: anima_engine_lib::evolution::map_elites::DESCRIPTOR_SET_ID
+                .to_owned(),
             grid_resolution: 0.25,
             elites: Vec::new(),
         },
@@ -235,6 +239,8 @@ fn exact_evolution_checkpoint_rejects_history_that_contradicts_the_chronicle() {
         chronicle_ids_issued: 0,
         offspring_ids_issued: 0,
         archive: SavedMapElitesArchive {
+            descriptor_set_id: anima_engine_lib::evolution::map_elites::DESCRIPTOR_SET_ID
+                .to_owned(),
             grid_resolution: 0.25,
             elites: Vec::new(),
         },
@@ -257,6 +263,8 @@ fn evolution_worker_checkpoint_rejects_a_stream_from_another_run() {
         chronicle_ids_issued: 0,
         offspring_ids_issued: 0,
         archive: SavedMapElitesArchive {
+            descriptor_set_id: anima_engine_lib::evolution::map_elites::DESCRIPTOR_SET_ID
+                .to_owned(),
             grid_resolution: 0.25,
             elites: Vec::new(),
         },
