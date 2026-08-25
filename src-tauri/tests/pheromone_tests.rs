@@ -69,7 +69,7 @@ fn test_pheromone_diffusion_z_wraps_forward_not_backward_at_z_zero() {
     // reading of the mutated code sees pure zero.
     {
         let mut grid_res = world.resource_mut::<PheromoneGrid>();
-        grid_res.values[1 * GRID_SIZE] = 10.0;
+        grid_res.values[GRID_SIZE] = 10.0;
     }
 
     let mut schedule = Schedule::default();

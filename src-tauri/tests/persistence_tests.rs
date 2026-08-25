@@ -89,7 +89,7 @@ fn test_saved_simulation_state_serialization() {
     // rustfmt::skip: hardening gate đòi phép so sánh nằm cùng dòng `assert!(`
     // (regex chấm điểm theo dòng), trong khi fmt muốn tách dòng.
     #[rustfmt::skip]
-    assert!(json_str.len() > 0, "serialized SavedSimulationState must not be empty");
+    assert!(!json_str.is_empty(), "serialized SavedSimulationState must not be empty");
 
     let deserialized = serde_json::from_str::<SavedSimulationState>(&json_str);
     assert!(deserialized.is_ok());

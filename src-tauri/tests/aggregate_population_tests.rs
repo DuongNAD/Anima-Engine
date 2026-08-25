@@ -79,10 +79,10 @@ fn closed_total(world: &mut World) -> f64 {
         .get_resource::<ResourceField>()
         .map(|f| f.total_biomass())
         .unwrap_or(0.0);
-    let detritus = world
+    let (detritus, hibernated) = world
         .get_resource::<EcosystemBiomass>()
-        .map(|p| p.detritus)
-        .unwrap_or(0.0);
+        .map(|p| (p.detritus, p.dormant))
+        .unwrap_or((0.0, 0.0));
     let dormant = world
         .get_resource::<DormantCohorts>()
         .map(|c| c.total_energy())
@@ -92,7 +92,9 @@ fn closed_total(world: &mut World) -> f64 {
     for homeo in q.iter(world) {
         animals += homeo.energy.max(0.0) as f64;
     }
-    closed_total_eu(plants, animals + dormant, detritus)
+    // The aggregate LOD's cohorts still live in the `animals` compartment (F1-4 of that tier);
+    // the F1 hibernation pool is its own fourth compartment and travels in its own argument.
+    closed_total_eu(plants, animals + dormant, detritus, hibernated)
 }
 
 fn live_agents(world: &mut World) -> usize {
@@ -126,6 +128,7 @@ fn build_spaced_world(n: usize, spawn: glam::Vec3, spacing: f32, brains: bool) -
         detritus: 500.0,
         plants: 0.0,
         animals: 0.0,
+        dormant: 0.0,
     });
 
     let genotype = test_genotype();

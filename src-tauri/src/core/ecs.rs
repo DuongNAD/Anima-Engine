@@ -78,6 +78,7 @@ pub fn init_world() -> World {
         detritus: 0.0,
         plants: starting_plants,
         animals: 0.0,
+        dormant: 0.0,
     });
     // The one route by which EU may enter a compartment from another compartment. Inserted next to
     // the biomass pool it operates on; its baseline is locked after genesis, not here, because

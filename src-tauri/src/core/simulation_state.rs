@@ -24,6 +24,10 @@ pub struct SegmentState {
     pub agent_id: u32,
     pub segment_id: u32,
     pub parent_segment_id: Option<u32>,
+    /// Phenotype dimensions (A1): carried per segment so the renderer can size
+    /// the instance from the gene-derived shape instead of a fixed sphere.
+    pub length: f32,
+    pub radius: f32,
     pub x: f32,
     pub y: f32,
     pub z: f32,
@@ -431,6 +435,12 @@ pub struct SavedSimulationState {
     pub pheromone_grid: SerializedPheromoneGrid,
     pub foods: Vec<SerializedFood>,
     pub agents: Vec<SerializedAgent>,
+    /// Các agent đang ngủ đông (F1). `#[serde(default)]`: save trước F1 không
+    /// thể có agent hibernate, nên rỗng là đúng. EU của họ nằm trong
+    /// `eco_dormant`, bản ghi chỉ mang phenotype để `WakeAgentCommand` hồi
+    /// sinh không develop lại (D01).
+    #[serde(default)]
+    pub dormant_agents: Vec<crate::core::agent_systems::DormantAgentRecord>,
     pub evolution_settings: crate::commands::EvolutionSettings,
     pub map_elites_grid: crate::commands::MapElitesGridState,
     pub chronicle_history: Vec<ChronicleEvent>,
@@ -455,6 +465,11 @@ pub struct SavedSimulationState {
     pub eco_plants: f64,
     #[serde(default)]
     pub eco_animals: f64,
+    /// Ngăn ngủ đông (F1-1). `#[serde(default)]` giữ save cũ (không có trường
+    /// này) load được — một save cũ không thể có agent đang hibernate, nên 0.0
+    /// là đúng.
+    #[serde(default)]
+    pub eco_dormant: f64,
     /// Standing plant resource per cell. `r_max` is not stored: it is derived from the world's
     /// biomes, which the world identity already pins. Empty on a pre-G1.1 save, in which case the
     /// field keeps whatever `init_world` generated.
@@ -558,6 +573,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         },
         foods: Vec::new(),
         agents: Vec::new(),
+        dormant_agents: Vec::new(),
         evolution_settings: crate::commands::EvolutionSettings {
             mutation_rate: 0.2,
             selection_bias: 1.2,
@@ -576,6 +592,7 @@ pub fn empty_saved_state_for_tests() -> SavedSimulationState {
         eco_detritus: 0.0,
         eco_plants: 0.0,
         eco_animals: 0.0,
+        eco_dormant: 0.0,
         resource_field_r: Vec::new(),
         resource_field_phase: 0,
         sim_rng_seed: 0,
@@ -812,12 +829,16 @@ pub fn restore_energy_state(world: &mut World, state: &SavedSimulationState) {
             }
         }
     }
-    let has_pool = state.eco_detritus != 0.0 || state.eco_plants != 0.0 || state.eco_animals != 0.0;
+    let has_pool = state.eco_detritus != 0.0
+        || state.eco_plants != 0.0
+        || state.eco_animals != 0.0
+        || state.eco_dormant != 0.0;
     if has_pool {
         if let Some(mut pool) = world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>() {
             pool.detritus = state.eco_detritus;
             pool.plants = state.eco_plants;
             pool.animals = state.eco_animals;
+            pool.dormant = state.eco_dormant;
         }
     }
 
@@ -962,6 +983,102 @@ pub fn spawn_serialized_agent(
     Ok(root_entity)
 }
 
+/// Chụp một agent sống thành `SerializedAgent` — nguồn dùng chung cho save
+/// path và `HibernateAgentCommand` (F1-2).
+///
+/// ⚠️ Phải đọc đúng một tập component mà `serialize_world_state` đọc cho mỗi
+/// agent; lệch ở đây là lệch im lặng giữa checkpoint và hibernate. Trả về
+/// `None` khi entity thiếu bất kỳ component bắt buộc nào (không phải agent).
+pub fn serialize_single_agent(world: &mut World, root: Entity) -> Option<SerializedAgent> {
+    use crate::ai::cpg::CpgOscillator;
+    use crate::core::ecs::{
+        AgentClass, AgentParentLineageIds, ParentAgent, Position, Predator, Segment, Velocity,
+    };
+
+    let root_position = *world.get::<Position>(root)?;
+    let root_rotation = *world.get::<Rotation>(root)?;
+    let root_velocity = *world.get::<Velocity>(root)?;
+    let homeostatic_state = world
+        .get::<crate::ai::hrrl::HomeostaticState>(root)?
+        .clone();
+    let last_transition_state = *world.get::<crate::ai::hrrl::LastTransitionState>(root)?;
+    let genotype = world.get::<AgentGenotype>(root)?.0.clone();
+    let evaluation = world.get::<AgentEvaluation>(root)?.clone();
+    let feature_tracker = *world.get::<FeatureTracker>(root)?;
+    let lineage_id = world.get::<AgentLineageId>(root)?.0.clone();
+    let generation = world.get::<AgentGeneration>(root)?.0;
+    let parent_ids = world.get::<AgentParentLineageIds>(root)?.0.clone();
+    let is_predator = world.get::<Predator>(root).is_some();
+    let brain = world
+        .get::<crate::core::components::AgentBrain>(root)
+        .cloned();
+    let action_gates = world
+        .get::<crate::core::components::ActionGates>(root)
+        .copied();
+    let cognitive_state = world
+        .get::<crate::core::components::CognitiveState>(root)
+        .copied()
+        .unwrap_or_default();
+    let inertia = world
+        .get::<crate::core::components::InertiaComponent>(root)
+        .cloned()
+        .unwrap_or_default();
+
+    let mut segments = Vec::new();
+    let mut query = world.query::<(
+        Entity,
+        &Segment,
+        &Position,
+        &Rotation,
+        &Velocity,
+        &ParentAgent,
+        Option<&CpgOscillator>,
+    )>();
+    for (entity, segment, seg_pos, seg_rot, seg_vel, parent_agent, opt_osc) in query.iter(world) {
+        if parent_agent.0 == root && entity != root {
+            segments.push(SerializedSegmentState {
+                segment_id: segment.id,
+                position: seg_pos.0,
+                rotation: seg_rot.0,
+                velocity: seg_vel.0,
+                oscillator: opt_osc.map(|osc| CpgOscillatorState {
+                    phase: osc.phase,
+                    frequency: osc.frequency,
+                    amplitude: osc.amplitude,
+                    output: osc.output,
+                }),
+            });
+        }
+    }
+    segments.sort_by_key(|s| s.segment_id);
+
+    let class = if is_predator {
+        AgentClass::Predator
+    } else {
+        AgentClass::Prey
+    };
+
+    Some(SerializedAgent {
+        genotype,
+        class,
+        lineage_id,
+        generation,
+        parent_ids,
+        evaluation,
+        feature_tracker,
+        root_position: root_position.0,
+        root_rotation: root_rotation.0,
+        root_velocity: root_velocity.0,
+        homeostatic_state,
+        last_transition_state,
+        cognitive_state,
+        inertia,
+        action_gates,
+        segments,
+        brain,
+    })
+}
+
 pub fn serialize_world_state(
     world: &mut World,
     tick_count: u64,
@@ -993,10 +1110,10 @@ pub fn serialize_world_state(
         .unwrap_or_default();
     // Closed-energy state (G1.1). A save that omits these is not a checkpoint of the energy system:
     // reloading it would rebuild detritus at zero and plants at full capacity, silently moving EU.
-    let (eco_detritus, eco_plants, eco_animals) = world
+    let (eco_detritus, eco_plants, eco_animals, eco_dormant) = world
         .get_resource::<crate::core::ecology::EcosystemBiomass>()
-        .map(|p| (p.detritus, p.plants, p.animals))
-        .unwrap_or((0.0, 0.0, 0.0));
+        .map(|p| (p.detritus, p.plants, p.animals, p.dormant))
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let resource_field_r = world
         .get_resource::<crate::core::ecology::ResourceField>()
         .map(|f| f.r.clone())
@@ -1239,6 +1356,10 @@ pub fn serialize_world_state(
         pheromone_grid,
         foods,
         agents,
+        dormant_agents: world
+            .get_resource::<crate::core::agent_systems::DormantAgents>()
+            .map(|d| d.0.clone())
+            .unwrap_or_default(),
         evolution_settings: evolution_settings
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -1257,6 +1378,7 @@ pub fn serialize_world_state(
         trees,
         world_identity,
         eco_detritus,
+        eco_dormant,
         eco_plants,
         eco_animals,
         resource_field_r,

@@ -87,16 +87,16 @@ fn closed_total(world: &mut World) -> f64 {
         .get_resource::<ResourceField>()
         .map(|f| f.total_biomass())
         .unwrap_or(0.0);
-    let detritus = world
+    let (detritus, dormant) = world
         .get_resource::<EcosystemBiomass>()
-        .map(|p| p.detritus)
-        .unwrap_or(0.0);
+        .map(|p| (p.detritus, p.dormant))
+        .unwrap_or((0.0, 0.0));
     let mut animals = 0.0f64;
     let mut q = world.query_filtered::<&HomeostaticState, With<Agent>>();
     for homeo in q.iter(world) {
         animals += homeo.energy.max(0.0) as f64;
     }
-    closed_total_eu(plants, animals, detritus)
+    closed_total_eu(plants, animals, detritus, dormant)
 }
 
 fn living_agents(world: &mut World) -> Vec<Entity> {

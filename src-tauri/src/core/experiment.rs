@@ -849,6 +849,7 @@ impl ObservableRegistry {
             eu("plants", ConservationRole::ClosedEu),
             eu("detritus", ConservationRole::ClosedEu),
             eu("live.animals_eu", ConservationRole::ClosedEu),
+            eu("live.dormant_eu", ConservationRole::ClosedEu),
             eu("live.closed_eu_total", ConservationRole::None),
             count("live.agent_count"),
             count("live.herbivore_count"),

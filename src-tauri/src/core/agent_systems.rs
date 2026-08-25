@@ -151,6 +151,188 @@ impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
     }
 }
 
+// ---------------------------------------------------------------------------
+// F1 — Ngủ đông / đánh thức (tasks §3, F1-1…F1-5)
+// ---------------------------------------------------------------------------
+
+/// Một agent đang ngủ đông (F1). Bản ghi là phenotype chụp nguyên trạng tại
+/// thời điểm hibernate; `banked_eu` là số EU chính xác (f64 đo được) đã chuyển
+/// vào ngăn `Dormant`.
+///
+/// `agent.homeostatic_state.energy` trong bản ghi là **0**: EU của nó nằm ở
+/// ngăn dormant của thế giới, không nằm ở hai nơi cùng lúc — census chỉ cộng
+/// ngăn dormant một lần.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DormantAgentRecord {
+    pub agent: crate::core::simulation_state::SerializedAgent,
+    pub banked_eu: f64,
+}
+
+/// Kho các agent đang ngủ đông. Chỉ [`HibernateAgentCommand`] đẩy vào và
+/// [`WakeAgentCommand`] lấy ra; save/restore chép nguyên trạng (F1-4).
+#[derive(Resource, Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DormantAgents(pub Vec<DormantAgentRecord>);
+
+/// Ngủ đông một agent (F1-2): chuyển reserve vào ngăn `dormant` và despawn tại
+/// **cùng một sync point** — khuôn của [`ReclaimAndDespawnAgentCommand`].
+///
+/// Khác chết ở chỗ: EU vào `dormant`, không qua detritus (F1-5 — ngủ đông
+/// không phải cái chết, regrowth không được ăn vào thân một sinh vật đang
+/// ngủ), và phenotype được chụp nguyên trạng để [`WakeAgentCommand`] hồi sinh
+/// mà không develop lại (D01).
+pub struct HibernateAgentCommand {
+    /// Agent root entity.
+    pub root: Entity,
+}
+
+impl bevy_ecs::system::Command for HibernateAgentCommand {
+    fn apply(self, world: &mut World) {
+        if world.get_resource::<DormantAgents>().is_none() {
+            world.insert_resource(DormantAgents::default());
+        }
+
+        // 1. Chụp phenotype nguyên trạng TRƯỚC khi đụng reserve. Không chụp
+        //    được thì không phải agent hoàn chỉnh — bỏ qua, không đụng EU.
+        let Some(snapshot) =
+            crate::core::simulation_state::serialize_single_agent(world, self.root)
+        else {
+            return;
+        };
+
+        // 2. Chuyển reserve vào ngăn dormant, zero reserve trong bản ghi — EU
+        //    nằm ở đúng một nơi.
+        let banked = match world.get_mut::<HomeostaticState>(self.root) {
+            Some(mut homeo) => {
+                let amount = homeo.energy;
+                crate::core::energy_ledger::debit_reserve(&mut homeo.energy, amount)
+            }
+            None => return,
+        };
+
+        // 3. Ngăn dormant nhận đúng số EU reserve vừa mất — cùng sync point
+        //    với despawn tức thời dưới đây.
+        if banked > 0.0 {
+            if let Some(mut pool) =
+                world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>()
+            {
+                pool.dormant += banked;
+            }
+        }
+
+        // 4. Lưu bản ghi. Snapshot chụp TRƯỚC khi đụng reserve nên vẫn mang
+        //    reserve cũ; EU giờ nằm ở ngăn dormant, không được nằm ở hai nơi —
+        //    zero nó đi để census (chỉ cộng reserve sống một lần) không đếm kép.
+        let mut record = DormantAgentRecord {
+            agent: snapshot,
+            banked_eu: banked,
+        };
+        record.agent.homeostatic_state.energy = 0.0;
+        if let Some(mut store) = world.get_resource_mut::<DormantAgents>() {
+            store.0.push(record);
+        }
+
+        // 5. Despawn tức thời (không phải Commands deferred) — không hệ thống
+        //    nào trong tick này còn thấy một thân đã bị bank rồi.
+        let mut doomed: Vec<Entity> = Vec::new();
+        let mut q = world.query::<(Entity, &ParentAgent)>();
+        for (entity, parent) in q.iter(world) {
+            if parent.0 == self.root {
+                doomed.push(entity);
+            }
+        }
+        for entity in doomed {
+            if let Some(e) = world.get_entity_mut(entity) {
+                e.despawn();
+            }
+        }
+        if let Some(e) = world.get_entity_mut(self.root) {
+            e.despawn();
+        }
+    }
+}
+
+/// Đánh thức một agent đang ngủ đông (F1-3): trừ đúng `banked_eu` khỏi ngăn
+/// `dormant`, hoàn vào reserve của cá thể mới, spawn từ phenotype đã lưu tại
+/// **cùng một sync point**.
+///
+/// D01/D02: [`crate::core::simulation_state::spawn_serialized_agent`] tái dựng
+/// cá thể từ phenotype và brain đã chụp — KHÔNG develop lại. Ngủ đông rồi thức
+/// dậy là cùng một cá thể.
+///
+/// Ngăn `dormant` là con đường ra duy nhất của EU này (F1-5 chiều ngược lại):
+/// không qua detritus, không qua regrowth.
+pub struct WakeAgentCommand {
+    /// Vị trí bản ghi trong [`DormantAgents`] — nguồn sự thật duy nhất về ai
+    /// đang ngủ; lệnh chỉ tham chiếu theo chỉ số chứ không mang bản sao record
+    /// (bản sao có thể stale so với kho).
+    pub index: usize,
+    /// Vị trí đánh thức.
+    pub at: glam::Vec3,
+}
+
+impl bevy_ecs::system::Command for WakeAgentCommand {
+    fn apply(self, world: &mut World) {
+        if world.get_resource::<DormantAgents>().is_none() {
+            return;
+        }
+
+        // 1. Rút bản ghi khỏi kho trước — chỉ số ngoài phạm vi là caller lỗi,
+        //    không đụng EU.
+        let Some(record) = (|| {
+            let mut store = world.get_resource_mut::<DormantAgents>()?;
+            (self.index < store.0.len()).then(|| store.0.swap_remove(self.index))
+        })() else {
+            return;
+        };
+
+        // 2. Trừ ngăn dormant đúng số EU đã bank. Trừ những gì thực có để một
+        //    drift (nếu có) bị lộ ở residual thay vì bị giấu dưới số âm.
+        let credited = match world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>() {
+            Some(mut pool) => {
+                let credited = record.banked_eu.min(pool.dormant.max(0.0));
+                pool.dormant -= credited;
+                credited
+            }
+            None => 0.0,
+        };
+
+        // 3. Spawn từ phenotype đã lưu — KHÔNG develop lại (D01). Vị trí đánh
+        //    thức là tham số `at`, không phải nơi nó ngủ.
+        let mut woken = record.agent.clone();
+        woken.root_position = self.at;
+        let root = match crate::core::simulation_state::spawn_serialized_agent(world, &woken) {
+            Ok(root) => root,
+            Err(error) => {
+                // Hoàn EU đã trừ — hibernate/wake phải đóng sổ cả khi thất bại.
+                if credited > 0.0 {
+                    if let Some(mut pool) =
+                        world.get_resource_mut::<crate::core::ecology::EcosystemBiomass>()
+                    {
+                        pool.dormant += credited;
+                    }
+                }
+                if let Some(mut store) = world.get_resource_mut::<DormantAgents>() {
+                    store.0.push(record);
+                }
+                eprintln!("ERROR: wake aborted, agent kept dormant: {error}");
+                return;
+            }
+        };
+
+        // 4. Hoàn reserve vào thân vừa dựng — cùng sync point với việc trừ ngăn
+        //    dormant ở bước 2. Census tick này trở đi đếm EU này ở `animals`.
+        //    Trần được nới đủ để không clip: một EU bị cap ăn mất là một EU mất
+        //    tăm khỏi sổ — đúng thứ residual gate tồn tại để bắt.
+        if credited > 0.0 {
+            let amount = credited as f32;
+            if let Some(mut homeo) = world.get_mut::<HomeostaticState>(root) {
+                let cap = homeo.energy_target.max(homeo.energy + amount);
+                crate::core::energy_ledger::credit_reserve(&mut homeo.energy, amount, cap);
+            }
+        }
+    }
+}
+
 impl bevy_ecs::system::Command for SpawnGenotypeCommand {
     fn apply(self, world: &mut World) {
         let entity = decode_genotype(world, &self.genotype, self.initial_pos, self.initial_rot);

@@ -60,6 +60,7 @@ fn world_with_grazers(grazers: usize) -> World {
         detritus: 5_000.0,
         plants,
         animals: 0.0,
+        dormant: 0.0,
     });
 
     for i in 0..grazers {

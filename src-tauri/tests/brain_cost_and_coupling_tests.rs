@@ -44,6 +44,7 @@ fn metabolic_world(n: usize, arch: Option<ArchSpec>, cost_per_1k: f32) -> World 
         detritus: 0.0,
         plants: 0.0,
         animals: 0.0,
+        dormant: 0.0,
     });
     world.insert_resource(BrainPolicy {
         evolved: arch.is_some(),

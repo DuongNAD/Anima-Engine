@@ -12,6 +12,9 @@ import { buildAgentHierarchy, type RenderSegment, type SegmentState } from '../u
 function seg(over: Partial<SegmentState> & Pick<SegmentState, 'agent_id' | 'segment_id'>): SegmentState {
   return {
     parent_segment_id: null,
+    // A1-1: phenotype dimensions now ride every payload the backend emits.
+    length: 0,
+    radius: 0,
     x: 0, y: 0, z: 0,
     yaw: 0, pitch: 0, roll: 0,
     joint_anchor_x: 0, joint_anchor_y: 0, joint_anchor_z: 0,

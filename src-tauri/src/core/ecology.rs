@@ -755,6 +755,7 @@ mod tests {
             detritus: 5.0,
             plants: field.total_biomass(),
             animals: 20.0,
+            dormant: 0.0,
         };
         let total0 = pool.total();
         for _ in 0..50 {
@@ -787,6 +788,7 @@ mod tests {
             detritus: 0.0,
             plants: 100.0,
             animals: 50.0,
+            dormant: 0.0,
         };
         let before = pool.total();
         let captured = 10.0f64;

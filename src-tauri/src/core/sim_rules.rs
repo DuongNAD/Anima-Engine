@@ -320,6 +320,7 @@ mod tests {
             detritus: 5.0,
             plants: 40.0,
             animals: 12.0,
+            dormant: 0.0,
         };
         let total0 = pool.total();
         for _ in 0..1000 {

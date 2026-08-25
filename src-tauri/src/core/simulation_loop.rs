@@ -1375,6 +1375,12 @@ impl SimulationEngine {
                 // agents. Without this a load rebuilt detritus at zero and plants at full capacity,
                 // so every save/load boundary moved EU and whole-run conservation was unprovable.
                 crate::core::simulation_state::restore_energy_state(&mut world, state);
+                // F1-4: hibernating agents come back as records, not bodies. Their EU is already
+                // inside `pool.dormant` via `restore_energy_state`; an old save carries an empty
+                // list, which is exactly right — it cannot have had anyone asleep.
+                world.insert_resource(crate::core::agent_systems::DormantAgents(
+                    state.dormant_agents.clone(),
+                ));
                 for food in &state.foods {
                     use crate::core::ecs::Food;
                     world.spawn((
@@ -2022,6 +2028,8 @@ impl SimulationEngine {
                         agent_id: parent_agent.0.index(),
                         segment_id: segment.id,
                         parent_segment_id,
+                        length: segment.length,
+                        radius: segment.radius,
                         x: pos.0.x,
                         y: pos.0.y,
                         z: pos.0.z,

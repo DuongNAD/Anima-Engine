@@ -184,6 +184,7 @@ pub fn ecosystem_census_system(
                 pool.plants,
                 pool.animals,
                 pool.detritus,
+                pool.dormant,
             );
             // Invariant D06: the baseline is locked *after* genesis has initialised plants,
             // animals and detritus. Locking it lazily on the first census — rather than at some
@@ -193,6 +194,9 @@ pub fn ecosystem_census_system(
             // reload cannot re-baseline away a leak that has already happened.
             ledger.lock_baseline(closed);
             ledger.observe(closed);
+            // F1-1: the sleeping balance is mirrored onto the ledger by the same census, so the
+            // hibernation pool is readable off the ledger without reaching for the biomass pool.
+            ledger.observe_dormant(pool.dormant);
         }
     }
 }

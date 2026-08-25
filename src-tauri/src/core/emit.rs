@@ -334,6 +334,8 @@ mod tests {
             agent_id,
             segment_id,
             parent_segment_id: parent,
+            length: 1.0,
+            radius: 0.25,
             x: 0.0,
             y: 0.0,
             z: 0.0,

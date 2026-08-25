@@ -715,10 +715,11 @@ pub fn live_inference_pump_system(
 // ---- Observables ---------------------------------------------------------------------------------
 
 /// Every observable id the live world emits, in emission order.
-pub const LIVE_OBSERVABLE_IDS: [&str; 11] = [
+pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
     "plants",
     "detritus",
     "live.animals_eu",
+    "live.dormant_eu",
     "live.closed_eu_total",
     "live.agent_count",
     "live.herbivore_count",
@@ -733,10 +734,10 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 11] = [
 pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
-    let (plants, animals, detritus) = world
+    let (plants, animals, detritus, dormant) = world
         .get_resource::<EcosystemBiomass>()
-        .map(|p| (p.plants, p.animals, p.detritus))
-        .unwrap_or((0.0, 0.0, 0.0));
+        .map(|p| (p.plants, p.animals, p.detritus, p.dormant))
+        .unwrap_or((0.0, 0.0, 0.0, 0.0));
     let standing_crop = world
         .get_resource::<ResourceField>()
         .map(|f| f.total_biomass())
@@ -772,9 +773,10 @@ pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
         ("plants".to_string(), plants),
         ("detritus".to_string(), detritus),
         ("live.animals_eu".to_string(), animals),
+        ("live.dormant_eu".to_string(), dormant),
         (
             "live.closed_eu_total".to_string(),
-            crate::core::energy_ledger::closed_total_eu(plants, animals, detritus),
+            crate::core::energy_ledger::closed_total_eu(plants, animals, detritus, dormant),
         ),
         ("live.agent_count".to_string(), agents as f64),
         ("live.herbivore_count".to_string(), herbivores),

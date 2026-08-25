@@ -31,6 +31,8 @@ fn segment(agent_id: u32, segment_id: u32, parent: Option<u32>) -> SegmentState 
         agent_id,
         segment_id,
         parent_segment_id: parent,
+        length: 1.0,
+        radius: 0.25,
         x: 1.0,
         y: 2.0,
         z: 3.0,

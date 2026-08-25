@@ -1,6 +1,7 @@
 //! The closed-energy ledger: the compartments EU lives in, and the only API that moves it.
 //!
-//! This is the law G1.1 established — `plants + animals + detritus` is invariant absent an explicit
+//! This is the law G1.1 established — `plants + animals + detritus + dormant` is invariant absent
+//! an explicit
 //! source or sink — so it belongs on the shared side of the boundary. The headless runner and the
 //! live world must not each carry their own idea of how energy moves; that is precisely the second
 //! source of truth G2 removes.
@@ -22,21 +23,28 @@ pub struct EcosystemBiomass {
     pub plants: f64,
     /// Energy currently embodied in living animals.
     pub animals: f64,
+    /// Energy banked by hibernating agents (F1). A dormant agent's body is
+    /// despawned, so its reserve can no longer live in `animals` — the census
+    /// sums live reserves — but the EU is not death and must not leak into
+    /// `detritus`. It waits here, and `WakeAgentCommand` is the only way out.
+    pub dormant: f64,
 }
 
 impl EcosystemBiomass {
     /// Total energy in the closed system (should stay ~constant → conservation check).
     pub fn total(&self) -> f64 {
-        self.detritus + self.plants + self.animals
+        self.detritus + self.plants + self.animals + self.dormant
     }
 }
 
 /// A compartment of the closed energy system.
 ///
-/// These are exactly the three [`Conservation::ClosedEnergy`](crate::laws::Conservation)
-/// state variables. There is deliberately no fourth: uneaten food entities and unpicked fruit are
-/// *claims on detritus* that settle when something eats them, not a store of their own. Adding a
-/// compartment here would mean adding an undeclared quantity to the units table.
+/// The first three are the original [`Conservation::ClosedEnergy`](crate::laws::Conservation)
+/// state variables. `Dormant` is the declared fourth (F1-1): the pool hibernating
+/// agents bank their reserve into. It is *not* detritus — hibernation is not
+/// death, and regrowth must not be able to draw a sleeping creature's body back
+/// into the plant pool. The only way EU leaves `Dormant` is
+/// `WakeAgentCommand` re-crediting it into the woken individual's reserve.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Compartment {
     /// Standing plant biomass.
@@ -45,6 +53,9 @@ pub enum Compartment {
     Animals,
     /// Free energy available to regrow plants, and the pool food and fruit draw on.
     Detritus,
+    /// Energy banked by hibernating agents (F1-1). Inaccessible to ecology:
+    /// no grazer, predator or regrowth path reads it.
+    Dormant,
 }
 
 /// Why energy moved. Carried on every transaction so a leak can be attributed to a system rather
@@ -99,6 +110,11 @@ pub struct EnergyLedger {
     /// Closed EU as of the most recent census. Lets the invariant be read off a running world
     /// rather than only computed at the end of a test.
     last_total: f64,
+    /// EU currently banked in the hibernation compartment (F1-1). The authoritative store is
+    /// `EcosystemBiomass::dormant`; this mirror is refreshed by the same census that records
+    /// `last_total`, so a running world can read the sleeping balance straight off the ledger.
+    /// It starts at zero and participates in the locked baseline through `closed_total_eu`.
+    dormant: f64,
 }
 
 impl EnergyLedger {
@@ -150,6 +166,18 @@ impl EnergyLedger {
     /// live world. Called by `ecosystem_census_system`.
     pub fn observe(&mut self, current_total_eu: f64) {
         self.last_total = current_total_eu;
+    }
+
+    /// Record the hibernation compartment's balance from the same census (F1-1). Called by
+    /// `ecosystem_census_system` right beside [`Self::observe`].
+    pub fn observe_dormant(&mut self, dormant_eu: f64) {
+        self.dormant = dormant_eu.max(0.0);
+    }
+
+    /// EU banked by hibernating agents, as of the most recent
+    /// [`observe_dormant`](Self::observe_dormant).
+    pub fn dormant(&self) -> f64 {
+        self.dormant
     }
 
     /// Closed EU as of the most recent [`observe`](Self::observe).
@@ -261,6 +289,7 @@ impl EnergyLedger {
             Compartment::Plants => pool.plants,
             Compartment::Animals => pool.animals,
             Compartment::Detritus => pool.detritus,
+            Compartment::Dormant => pool.dormant,
         }
     }
 
@@ -270,6 +299,7 @@ impl EnergyLedger {
             Compartment::Plants => &mut pool.plants,
             Compartment::Animals => &mut pool.animals,
             Compartment::Detritus => &mut pool.detritus,
+            Compartment::Dormant => &mut pool.dormant,
         }
     }
 }
@@ -303,14 +333,15 @@ pub fn debit_reserve(reserve: &mut f32, amount: f32) -> f64 {
     before - (*reserve as f64)
 }
 
-/// The world's total closed EU, summed from the three **authoritative** stores rather than from the
+/// The world's total closed EU, summed from the **authoritative** stores rather than from the
 /// [`EcosystemBiomass`] mirrors. This is the number the conservation gate compares to the baseline.
 ///
 /// `plant_biomass` is `ResourceField::total_biomass()`, `animal_energy` is the sum of every living
-/// agent's reserve, and `detritus` is `EcosystemBiomass::detritus`.
+/// agent's reserve, `detritus` is `EcosystemBiomass::detritus`, and `dormant` is the hibernation
+/// pool (F1-1) — EU banked by agents whose bodies are despawned but who are not dead.
 #[inline]
-pub fn closed_total_eu(plant_biomass: f64, animal_energy: f64, detritus: f64) -> f64 {
-    plant_biomass + animal_energy + detritus
+pub fn closed_total_eu(plant_biomass: f64, animal_energy: f64, detritus: f64, dormant: f64) -> f64 {
+    plant_biomass + animal_energy + detritus + dormant
 }
 
 #[cfg(test)]
@@ -322,6 +353,7 @@ mod tests {
             detritus,
             plants,
             animals,
+            dormant: 0.0,
         }
     }
 
@@ -520,6 +552,6 @@ mod tests {
 
     #[test]
     fn closed_total_sums_the_authoritative_stores() {
-        assert_eq!(closed_total_eu(500.0, 250.0, 100.0), 850.0);
+        assert_eq!(closed_total_eu(500.0, 250.0, 100.0, 0.0), 850.0);
     }
 }
