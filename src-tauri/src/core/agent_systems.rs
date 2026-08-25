@@ -580,6 +580,7 @@ pub fn apply_staggered_evolution_system(
     mut queue: ResMut<EvolutionQueue>,
     position_query: Query<&Position>,
     predator_query: Query<&Predator>,
+    mut vitals: Option<ResMut<crate::core::resources::VitalStatistics>>,
     // The corpse's reserve and its segments are both handled by
     // `ReclaimAndDespawnAgentCommand` at the sync point, so this system no longer needs the
     // segment query or direct access to the biomass pool.
@@ -629,6 +630,11 @@ pub fn apply_staggered_evolution_system(
             generation,
             parent_ids,
         });
+        // Branch-O turnover bookkeeping: a replacement IS a birth (and its despawned partner a
+        // death already recorded through the reclaim path when mortality killed it).
+        if let Some(vitals) = vitals.as_mut() {
+            vitals.record_birth();
+        }
     }
 }
 

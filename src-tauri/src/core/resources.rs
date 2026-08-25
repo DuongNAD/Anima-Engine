@@ -461,6 +461,58 @@ impl Default for MortalityPolicy {
     }
 }
 
+/// Birth/death bookkeeping for the turnover observables (`live.births`, `live.deaths`,
+/// `live.mean_lifespan`) — feature ecological-selection, branch O.
+///
+/// Totals accumulate; the observable layer samples **windows** (delta since the previous
+/// sample), because a windowed count and a cumulative count answer different questions and the
+/// design forbids dressing one up as the other. Recording is pure bookkeeping: it reads no EU
+/// and sits outside `world_checksum`.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct VitalStatistics {
+    pub total_births: u64,
+    pub total_deaths: u64,
+    /// Sum of `survival_ticks` over recorded deaths, for the window mean lifespan.
+    pub lifespan_sum: u64,
+    pub lifespan_count: u64,
+    // Cumulative values already handed to a sampler — the window's left edge.
+    sampled_births: u64,
+    sampled_deaths: u64,
+    sampled_lifespan_sum: u64,
+    sampled_lifespan_count: u64,
+}
+
+impl VitalStatistics {
+    pub fn record_death(&mut self, survival_ticks: u32) {
+        self.total_deaths += 1;
+        self.lifespan_sum += survival_ticks as u64;
+        self.lifespan_count += 1;
+    }
+
+    pub fn record_birth(&mut self) {
+        self.total_births += 1;
+    }
+
+    /// `(births_in_window, deaths_in_window, mean_lifespan_of_window_deaths)`. The mean is
+    /// `None` when the window holds no deaths — absent information, not a fabricated zero.
+    pub fn sample_window(&mut self) -> (u64, u64, Option<f32>) {
+        let births = self.total_births - self.sampled_births;
+        let deaths = self.total_deaths - self.sampled_deaths;
+        let lsum = self.lifespan_sum - self.sampled_lifespan_sum;
+        let lcount = self.lifespan_count - self.sampled_lifespan_count;
+        self.sampled_births = self.total_births;
+        self.sampled_deaths = self.total_deaths;
+        self.sampled_lifespan_sum = self.lifespan_sum;
+        self.sampled_lifespan_count = self.lifespan_count;
+        let mean = if lcount > 0 {
+            Some(lsum as f32 / lcount as f32)
+        } else {
+            None
+        };
+        (births, deaths, mean)
+    }
+}
+
 impl MortalityPolicy {
     /// The flag-off policy: today's behaviour, bit for bit.
     pub fn disabled() -> Self {

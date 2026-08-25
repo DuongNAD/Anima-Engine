@@ -1286,6 +1286,8 @@ impl SimulationEngine {
             // Fitness rule likewise (`ANIMA_FITNESS`); unset ⇒ locomotion ⇒ the historical
             // ranking, bit for bit.
             world.insert_resource(crate::evolution::fitness::FitnessRuleSetting::from_env());
+            // Branch-O turnover bookkeeping: totals only; the observable layer samples windows.
+            world.insert_resource(crate::core::resources::VitalStatistics::default());
 
             let initial_resolution = {
                 let settings_lock = evolution_settings_clone_save

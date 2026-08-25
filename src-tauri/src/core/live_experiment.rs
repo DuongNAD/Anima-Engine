@@ -314,6 +314,24 @@ impl LiveWorldConfig {
     pub fn predators(&self) -> usize {
         ((self.founders as f64) * self.predator_fraction).round() as usize
     }
+
+    /// Feature ecological-selection, branch O-5: refuse a manifest's observable requests whose
+    /// producing structure this run does not declare. Death observables need a declared death
+    /// rule — reporting zeros for a world where nobody CAN die would look like a measurement.
+    /// Fail here, loudly, instead.
+    pub fn ensure_observables_supported(&self, ids: &[String]) -> Result<(), ExperimentError> {
+        for id in ids {
+            if matches!(id.as_str(), "live.deaths" | "live.mean_lifespan") && !self.mortality {
+                return Err(ExperimentError::InvalidObservableRequest {
+                    id: id.clone(),
+                    reason: "the run declares no death rule (live.mortality absent or 0.0); \
+                             nobody can die, so a death count would be a fabricated zero"
+                        .to_owned(),
+                });
+            }
+        }
+        Ok(())
+    }
 }
 
 fn bounded_count(key: &str, value: f64, min: f64, max: f64) -> Result<usize, ExperimentError> {
@@ -833,7 +851,63 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
     "live.season_phase",
 ];
 
-/// Read the live world's observables, in the stable order of [`LIVE_OBSERVABLE_IDS`].
+/// Feature ecological-selection, branch O: the distributional and turnover observables, emitted
+/// **after** the legacy twelve in the same stable order. The frozen E2 preregistration pins the
+/// legacy list — these are additive extensions, not edits to a registered experiment's metrics.
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 10] = [
+    "live.trait_mass_mean",
+    "live.trait_mass_var",
+    "live.trait_mass_p10",
+    "live.trait_mass_p90",
+    "live.shannon",
+    "live.simpson",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.archive_coverage",
+];
+
+/// Every observable id the adapter emits (legacy + extended), in emission order.
+pub fn all_live_observable_ids() -> Vec<&'static str> {
+    LIVE_OBSERVABLE_IDS
+        .iter()
+        .copied()
+        .chain(LIVE_EXTENDED_OBSERVABLE_IDS.iter().copied())
+        .collect()
+}
+
+/// Mean / population variance / p10 / p90 of a trait sample. Percentiles use nearest-rank on the
+/// ascending sample — the same convention the tick-capture summary uses — and an empty sample
+/// yields all zeros (an absent population is a real state, not missing data).
+pub fn mass_statistics(masses: &[f32]) -> [f64; 4] {
+    if masses.is_empty() {
+        return [0.0; 4];
+    }
+    let mut sorted: Vec<f32> = masses.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let n = sorted.len();
+    let mean = sorted.iter().map(|m| *m as f64).sum::<f64>() / n as f64;
+    let var = sorted
+        .iter()
+        .map(|m| (*m as f64 - mean) * (*m as f64 - mean))
+        .sum::<f64>()
+        / n as f64;
+    // Nearest-rank: ceil(p/100 * N), clamped into range.
+    let rank = |p: f64| -> f32 {
+        let idx = ((p / 100.0) * n as f64).ceil() as usize;
+        sorted[idx.clamp(1, n) - 1]
+    };
+    [mean, var, rank(10.0) as f64, rank(90.0) as f64]
+}
+
+/// Read the live world's observables, in the stable order of [`LIVE_OBSERVABLE_IDS`] followed by
+/// [`LIVE_EXTENDED_OBSERVABLE_IDS`].
+///
+/// Sampling drains the turnover window ([`crate::core::resources::VitalStatistics`]):
+/// `live.births` / `live.deaths` count events since the previous sample, and
+/// `live.mean_lifespan` averages `survival_ticks` over window deaths (`0.0` when the window had
+/// none — with the structural O-5 guarantee that a run without a death rule can never be asked
+/// for it).
 pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
@@ -872,6 +946,32 @@ pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
         q.iter(world).count() as f64
     };
 
+    // Branch-O: trait distribution (body mass, the MTE master trait), diversity over the same
+    // prey/predator abundances the panel indices use, archive occupancy, and the drained
+    // turnover window.
+    let mut masses: Vec<f32> = Vec::new();
+    {
+        let mut q =
+            world.query_filtered::<&crate::core::agent_systems::AgentGenotype, With<Agent>>();
+        for g in q.iter(world) {
+            masses.push(g.0.total_mass());
+        }
+    }
+    let stats = mass_statistics(&masses);
+    let counts = [herbivores as u32, predators as u32];
+    let shannon = crate::core::ecology::shannon_index(&counts);
+    let simpson = crate::core::ecology::simpson_index(&counts);
+    let (births, deaths, mean_lifespan) = {
+        match world.get_resource_mut::<crate::core::resources::VitalStatistics>() {
+            Some(mut v) => v.sample_window(),
+            None => (0, 0, None),
+        }
+    };
+    let archive_coverage = world
+        .get_resource::<crate::core::agent_systems::BevyMapElitesArchive>()
+        .map(|a| a.archive.grid.len() as f64)
+        .unwrap_or(0.0);
+
     vec![
         ("plants".to_string(), plants),
         ("detritus".to_string(), detritus),
@@ -895,6 +995,19 @@ pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
             },
         ),
         ("live.season_phase".to_string(), season_phase),
+        ("live.trait_mass_mean".to_string(), stats[0]),
+        ("live.trait_mass_var".to_string(), stats[1]),
+        ("live.trait_mass_p10".to_string(), stats[2]),
+        ("live.trait_mass_p90".to_string(), stats[3]),
+        ("live.shannon".to_string(), shannon as f64),
+        ("live.simpson".to_string(), simpson as f64),
+        ("live.births".to_string(), births as f64),
+        ("live.deaths".to_string(), deaths as f64),
+        (
+            "live.mean_lifespan".to_string(),
+            mean_lifespan.unwrap_or(0.0) as f64,
+        ),
+        ("live.archive_coverage".to_string(), archive_coverage),
     ]
 }
 
@@ -1621,6 +1734,8 @@ fn install_runtime_resources(
     world.insert_resource(EvolutionSender(stats_tx));
     world.insert_resource(EvolutionReceiver(spawn_rx));
     world.insert_resource(EvolutionQueue::default());
+    // Branch-O turnover totals; the observable layer drains windows on sample.
+    world.insert_resource(crate::core::resources::VitalStatistics::default());
 
     let (env_tx, env_rx) =
         crossbeam_channel::unbounded::<crate::evolution::meta_ai::EnvironmentalEvent>();

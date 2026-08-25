@@ -671,10 +671,10 @@ fn the_live_registry_is_valid_and_describes_exactly_what_the_world_emits() {
         .collect();
     assert_eq!(
         emitted,
-        LIVE_OBSERVABLE_IDS.to_vec(),
+        anima_engine_lib::core::live_experiment::all_live_observable_ids(),
         "the emission order is part of the contract"
     );
-    for id in LIVE_OBSERVABLE_IDS {
+    for id in anima_engine_lib::core::live_experiment::all_live_observable_ids() {
         let spec = reg.get(id).unwrap_or_else(|| panic!("no spec for {id}"));
         assert!(!spec.unit.is_empty(), "{id} has no unit");
         assert_eq!(spec.source, "core::live_experiment::LiveExperimentAdapter");

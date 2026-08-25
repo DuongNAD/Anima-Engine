@@ -111,11 +111,19 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| O-1 | ⬜ | Nối Shannon/Simpson vào observable | `src-tauri/src/core/simulation_loop.rs:2192` → `src-tauri/src/core/live_experiment.rs:721` | — | OB-S01 | rẻ nhất trong nhánh: số đã tính rồi |
-| O-2 | ⬜ | Phân bố khối lượng: mean/var/p10/p90 | `src-tauri/src/core/live_experiment.rs` | — | OB-S02: hai quần thể cùng trung bình, khác phương sai ⇒ observable khác nhau | đây là test chứng minh vì sao trung bình không đủ |
-| O-3 | 🔒 | `births`/`deaths`/`mean_lifespan` theo cửa sổ | cùng file | M-4 (và R-3 cho births) | OB-S03 | ⚠️ đếm theo cửa sổ ≠ tích luỹ; đừng chép quy tắc `Aggregation` của `evolution.births` |
-| O-4 | ⬜ | `archive_coverage` | `src-tauri/src/evolution/map_elites.rs` | — | OB-S04 | |
-| O-5 | ⬜ | Preflight fail khi xin observable mà cấu trúc không tồn tại | `src-tauri/src/core/experiment.rs` | O-3 | OB-S05: manifest xin `live.deaths` trên run tắt tử vong ⇒ **fail**, không trả 0 | ⚠️ trả 0 tệ hơn fail: nó trông như một phép đo |
+| O-1 | ✅ | Nối Shannon/Simpson vào observable | `src-tauri/src/core/simulation_loop.rs:2192` → `src-tauri/src/core/live_experiment.rs:721` | — | OB-S01 | rẻ nhất trong nhánh: số đã tính rồi |
+| O-2 | ✅ | Phân bố khối lượng: mean/var/p10/p90 | `src-tauri/src/core/live_experiment.rs` | — | OB-S02: hai quần thể cùng trung bình, khác phương sai ⇒ observable khác nhau | đây là test chứng minh vì sao trung bình không đủ |
+| O-3 | ✅ | `births`/`deaths`/`mean_lifespan` theo cửa sổ | cùng file | M-4 (và R-3 cho births) | OB-S03 | ⚠️ đếm theo cửa sổ ≠ tích luỹ; đừng chép quy tắc `Aggregation` của `evolution.births` |
+| O-4 | ✅ | `archive_coverage` | `src-tauri/src/evolution/map_elites.rs` | — | OB-S04 | |
+| O-5 | ✅ | Preflight fail khi xin observable mà cấu trúc không tồn tại | `src-tauri/src/core/experiment.rs` | O-3 | OB-S05: manifest xin `live.deaths` trên run tắt tử vong ⇒ **fail**, không trả 0 | ⚠️ trả 0 tệ hơn fail: nó trông như một phép đo |
+
+> Cập nhật chặng 2 (2026-08-25): O-1…O-5 ✅. Ghi chú phạm vi: `live.births` được nối vào đúng
+> đường thay thế thế giới (`apply_staggered_evolution_system`) nên **đếm được trong app**, nhưng
+> headless nó luôn = 0 cho tới khi nhánh R hoặc một evolution pump trong world tồn tại (E2-F3 —
+> cùng rào chắn đã ghi ở CA-S01). `live.mean_lifespan` đọc `survival_ticks` của agent lúc chết,
+> không thêm trường born_tick. Emission tách thành legacy 12 (đóng băng bởi prereg E2) +
+> extended 10; registry version 1→2; ba test census (e2_seam, live_cross_process_probe,
+> live_experiment_tests) cập nhật theo tập đầy đủ.
 
 ---
 

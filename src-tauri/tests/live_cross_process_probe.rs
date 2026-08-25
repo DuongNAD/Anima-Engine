@@ -16,7 +16,7 @@
 use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
 use anima_engine_lib::core::live_experiment::{
-    live_observables, LiveExperimentAdapter, LIVE_OBSERVABLE_IDS,
+    all_live_observable_ids, live_observables, LiveExperimentAdapter,
 };
 
 const SEED: u64 = 999_983;
@@ -55,7 +55,7 @@ fn print_one_runs_fingerprint_for_cross_process_comparison() {
     // `EcosystemBiomass`.
     assert_eq!(
         obs.len(),
-        LIVE_OBSERVABLE_IDS.len(),
+        all_live_observable_ids().len(),
         "the probe must cover every observable the adapter emits"
     );
     let body: Vec<String> = obs.iter().map(|(k, v)| format!("{k}={v:?}")).collect();

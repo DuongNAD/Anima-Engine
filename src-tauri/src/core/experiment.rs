@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 pub const WORLD_LAW_SCHEMA_VERSION: u16 = 1;
 pub const INITIAL_CONDITION_SCHEMA_VERSION: u16 = 1;
 pub const MANIFEST_SCHEMA_VERSION: u16 = 1;
-pub const OBSERVABLE_REGISTRY_VERSION: u16 = 1;
+pub const OBSERVABLE_REGISTRY_VERSION: u16 = 2;
 
 /// Import limits so an imported manifest cannot exhaust resources (design §Security/privacy).
 pub const MAX_SEEDS: usize = 1024;
@@ -150,6 +150,10 @@ pub enum ExperimentError {
     /// The AE3 reference population is impossible, mis-declared, or absent while an AE3 observable
     /// was requested (which would otherwise report a fabricated zero).
     InvalidPopulation { reason: String },
+    /// Feature ecological-selection (O-5): a manifest requested an observable whose producing
+    /// structure does not exist in this run — e.g. death observables on a run that declares no
+    /// death rule. Reporting a zero would look like a measurement; failing here does not.
+    InvalidObservableRequest { id: String, reason: String },
 }
 
 impl std::fmt::Display for ExperimentError {
@@ -236,6 +240,10 @@ impl std::fmt::Display for ExperimentError {
             ExperimentError::InvalidPopulation { reason } => {
                 write!(f, "invalid AE3 reference population: {reason}")
             }
+            ExperimentError::InvalidObservableRequest { id, reason } => write!(
+                f,
+                "observable '{id}' cannot be produced by this run: {reason}"
+            ),
         }
     }
 }
@@ -865,6 +873,22 @@ impl ObservableRegistry {
                 ECOLOGY_PERIOD,
                 "ecology",
             ),
+            // ---- Feature ecological-selection, branch O -------------------------------------------
+            // Distributional and turnover observables: the quantities a frozen population keeps
+            // constant and an evolving one does not. Each is emitted only when its producing
+            // structure exists — see `LiveWorldConfig::ensure_observables_supported`, which
+            // refuses death observables on runs that declare no death rule rather than
+            // reporting fabricated zeros.
+            eu("live.trait_mass_mean", ConservationRole::None),
+            eu("live.trait_mass_var", ConservationRole::None),
+            eu("live.trait_mass_p10", ConservationRole::None),
+            eu("live.trait_mass_p90", ConservationRole::None),
+            eu("live.shannon", ConservationRole::None),
+            eu("live.simpson", ConservationRole::None),
+            count("live.births"),
+            count("live.deaths"),
+            eu("live.mean_lifespan", ConservationRole::None),
+            count("live.archive_coverage"),
         ];
         Self {
             version: OBSERVABLE_REGISTRY_VERSION,

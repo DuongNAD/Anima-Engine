@@ -31,8 +31,16 @@ use crate::core::resources::MortalityPolicy;
 /// *this* tick. That timing is what MO-S04 pins.
 pub fn mortality_system(
     mut commands: Commands,
-    agents: Query<(Entity, &HomeostaticState), With<Agent>>,
+    agents: Query<
+        (
+            Entity,
+            &HomeostaticState,
+            Option<&crate::core::agent_systems::AgentEvaluation>,
+        ),
+        With<Agent>,
+    >,
     policy: Option<Res<MortalityPolicy>>,
+    mut vitals: Option<ResMut<crate::core::resources::VitalStatistics>>,
 ) {
     // Missing resource ≠ off by coincidence — both are handled explicitly, and both mean the
     // legacy behaviour: nobody dies of hunger (ADR-0004's reading of an undeclared policy).
@@ -42,10 +50,17 @@ pub fn mortality_system(
     if !policy.enabled {
         return;
     }
-    for (entity, homeo) in agents.iter() {
+    for (entity, homeo, opt_eval) in agents.iter() {
         let starved = homeo.energy <= 0.0 && homeo.starving_ticks >= policy.starve_ticks;
         let dehydrated = homeo.hydration <= 0.0 && homeo.starving_ticks >= policy.dehydration_ticks;
         if starved || dehydrated {
+            // Turnover bookkeeping for the branch-O observables. The animal's lifespan IS its
+            // `survival_ticks` at death — the counter only ever advanced while it was alive, so
+            // no separate birth-tick field is needed (design rule C).
+            if let Some(vitals) = vitals.as_mut() {
+                let lifespan = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
+                vitals.record_death(lifespan);
+            }
             commands.add(ReclaimAndDespawnAgentCommand { root: entity });
         }
     }
