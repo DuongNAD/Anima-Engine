@@ -30,6 +30,97 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-018 — Sinh thái không nối vào chọn lọc: cả crate có đúng một fitness và nó là quãng đường
+- **Ngày:** 2026-08-25
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:528` (định nghĩa fitness duy nhất),
+  `src-tauri/src/core/world_systems.rs:171` (`tick_count` tăng vô điều kiện)
+- **Phát hiện bởi:** tay (khảo sát toàn bộ mã nguồn, lần theo dữ liệu thay vì theo tài liệu)
+- **Triệu chứng:** `fitness = cumulative_distance + tick_count`, và `tick_count` tăng mỗi tick cho
+  mọi agent có `FeatureTracker` bất kể trạng thái sinh lý. Sau một epoch, `tick_count` gần như bằng
+  nhau ở mọi cá thể, nên xếp hạng fitness rút gọn thành xếp hạng quãng đường. Toàn bộ tầng sinh
+  thái — NPP theo biome, Kleiber, Boltzmann, Holling II/III, Lindeman, mùa vụ — **không có đường
+  nào** chạm tới hàm này. Một cá thể ăn no và một cá thể kiệt sức từ tick 300 có cơ hội truyền gene
+  bằng nhau nếu đi được quãng đường như nhau.
+- **Tái hiện:** `grep -rn 'fitness =' src-tauri/src --include='*.rs'` → đúng 1 kết quả gán.
+- **Test khoá lại:** chưa có. Gate đề xuất: **CA-S01** ở
+  `docs/ai/testing/2026-08-25-feature-ecological-selection.md` — đổi một tham số sinh thái phải đổi
+  phân bố tính trạng, và cùng test đó phải **không** đổi trên chế độ fitness cũ.
+- **Trạng thái:** OPEN — feature `ecological-selection` nhánh F.
+
+### F-019 — Không có cái chết: `energy <= 0` chỉ `continue`, nên không có áp lực chọn lọc nào
+- **Ngày:** 2026-08-25
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:452`
+- **Phát hiện bởi:** tay (cùng lượt khảo sát với F-018)
+- **Triệu chứng:** cạn năng lượng hoặc cạn nước không kết thúc gì — hệ đánh giá chỉ `continue`, agent
+  vẫn đi, vẫn trao đổi chất, vẫn được thay thế đúng lịch ở cuối epoch. Không tử vong nghĩa là không
+  có sức chứa môi trường thật, không bùng–sụp, không Red Queen, không phân hoá r/K. Đáng chú ý:
+  cơ chế trả EU của xác về `detritus` (`ReclaimAndDespawnAgentCommand`,
+  `src-tauri/src/core/agent_systems.rs:112-152`) **đã viết xong, nguyên tử, và đã có gate** — thứ
+  thiếu chỉ là điều kiện gọi nó.
+- **Tái hiện:** `grep -rn 'energy <= 0' src-tauri/src --include='*.rs'`
+- **Test khoá lại:** chưa có. Gate đề xuất: **CA-S02** — NPP = 0 phải làm quần thể sập về 0, và với
+  tử vong tắt thì **không** sập.
+- **Trạng thái:** OPEN — feature `ecological-selection` nhánh M.
+- **Ghi chú ranh giới:** invariant `"starvation must not kill"` tại
+  `src-tauri/src/core/aggregate_population.rs:1653` nói về quần thể tổng hợp AE3, một mô hình khác
+  có hợp đồng khác. Nó **không** phải mục tiêu sửa của finding này.
+
+### F-020 — `AgentEvaluation` tính đúng đại lượng cần cho fitness sinh thái rồi bị vứt đi
+- **Ngày:** 2026-08-25
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:523` (bind `_eval, _homeo`),
+  `:452-462` (`survival_ticks` có điều kiện sống)
+- **Phát hiện bởi:** tay
+- **Triệu chứng:** `AgentEvaluation.survival_ticks` chỉ tăng khi `energy > 0 && hydration > 0` — tức
+  đúng nghĩa "số tick sống được", đại lượng mà một fitness sinh thái cần, và nó đã được tính mỗi
+  tick từ trước. Nhưng `check_epoch_completion_system` bind nó thành `_eval` rồi đọc `FeatureTracker`
+  thay vì nó. Đây là lý do F-018 rẻ để sửa: phần khó đã tồn tại, chỉ là không ai đọc.
+- **Tái hiện:** đọc `src-tauri/src/core/agent_systems.rs:523` và `:452`.
+- **Test khoá lại:** chưa có. Gate đề xuất: **FI-S02**.
+- **Trạng thái:** OPEN — feature `ecological-selection` nhánh F, task F-3.
+
+### F-021 — Trục MAP-Elites thứ hai bằng đúng hàm fitness trừ một hằng số
+- **Ngày:** 2026-08-25
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:531` (`foraging_range = cumulative_distance`) so với
+  `:528` (`fitness = cumulative_distance + tick_count`); mô tả trục tại
+  `src-tauri/src/core/ecology.rs:161-174`
+- **Phát hiện bởi:** tay
+- **Triệu chứng:** MAP-Elites hoạt động được nhờ mô tả hành vi **độc lập** với fitness; đó là cách nó
+  soi sáng một không gian thay vì leo một đỉnh. Ở đây trục 2 là fitness trừ một hằng số, nên kho
+  thực chất chỉ khám phá **một** chiều (khối lượng cơ thể). Kho không hỏng — nó làm ít hơn một nửa
+  việc mà doc comment tại `ecology.rs:163-168` mô tả ("rewards ECOLOGICAL diversity … instead of a
+  single locomotion optimum"). Chưa đối chứng: `FORAGING_REFERENCE = 200.0` có `clamp`, nên trục còn
+  có thể bão hoà — chưa đo.
+- **Tái hiện:** `sed -n '526,532p' src-tauri/src/core/agent_systems.rs`
+- **Test khoá lại:** chưa có. Gate đề xuất: **QD-S02** — tương quan hạng giữa trục 2 và fitness phải
+  **không** đơn điệu trên một quần thể fixture.
+- **Trạng thái:** OPEN — feature `ecological-selection` nhánh Q. Sửa F-018 trước; nếu công thức
+  fitness mới không chứa quãng đường thì finding này đóng theo.
+
+### F-022 — Bảy hệ thống chạy O(agent × segment) trong khi mẫu sửa đúng đã có sẵn trong cùng file
+- **Ngày:** 2026-08-25
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/core/world_systems.rs:121, 236, 248, 337, 436, 454`,
+  `src-tauri/src/core/agent_systems.rs:468, 877, 890`,
+  `src-tauri/src/core/environmental_systems.rs:282`
+- **Phát hiện bởi:** tay
+- **Triệu chứng:** các hệ thống lặp **toàn bộ** segment trong thế giới ở **bên trong** vòng lặp agent,
+  lọc bằng `if parent.0 == agent_entity`. Với 10 agent (mặc định) điều đó vô hại; với 1000 agent × 3
+  segment, riêng `metabolic_decay_system` là 3 triệu vòng mỗi tick. `sensory_system` còn quét tuyến
+  tính toàn bộ danh sách thức ăn và mồi cho **từng** agent, trong khi `SpatialHashGrid` đã được dựng
+  lại mỗi tick và đang được dùng cho raycast **ngay bên dưới trong cùng hàm**. Mẫu sửa đúng đã có
+  trong repo: `combat_system` (`world_systems.rs:300-340`) dựng `centroid_index: Local<EntityHashMap>`
+  một lần rồi quét segment đúng một lượt — O(A + S), không cấp phát trong tick path.
+- **Tái hiện:** `grep -rn 'segment_query.iter()' src-tauri/src --include='*.rs'`
+- **Test khoá lại:** chưa có. Gate đề xuất: **PF-S04** — thời gian mỗi tick tăng **tuyến tính** theo
+  số agent, không bậc hai; và **PF-S01** — cùng seed cho cùng checksum trước và sau (refactor thuần).
+- **Trạng thái:** OPEN — feature `ecological-selection` nhánh H.
+- **Bẫy khi sửa:** `EntityHashMap` không duyệt theo thứ tự chèn. Chỗ nào kết quả phụ thuộc thứ tự
+  duyệt (ai giành miếng ăn cuối trong một ô) phải sắp xếp tường minh, nếu không checksum sẽ đổi.
+
 ### F-017 — `scripts/check_test_targets.mjs` đã commit với ba khối merge conflict còn nguyên, gate xác minh chết ngay khi chạy
 - **Ngày:** 2026-08-25
 - **Loại:** BUG

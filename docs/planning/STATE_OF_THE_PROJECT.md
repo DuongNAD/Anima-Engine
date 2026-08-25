@@ -639,6 +639,61 @@ một lần chạy app desktop dưới executor đa luồng.
 
 ---
 
+#### 3.19 Đóng vòng sinh thái — **mục P0 mới, mở 2026-08-25**
+
+> **Đây là khoảng trống mà §3.1 và §3.2 không mô tả được, vì nó nằm *giữa* các hệ thống chứ không
+> *trong* hệ thống nào.** Bộ gate của dự án rất mạnh ở việc bắt lỗi bên trong một hệ thống — năng
+> lượng có rò không, RNG có tái lập không, lịch trình có ổn định không. Không gate nào bắt lỗi kiểu
+> "sinh thái này có ảnh hưởng tới tiến hoá kia không". Năm finding dưới đây đều exit 0 hôm nay.
+
+**Khẳng định trung tâm, đọc mã 2026-08-25 (📋 chưa đo bằng lệnh nào):** toàn bộ tầng sinh thái —
+NPP theo biome, Kleiber, Boltzmann, Holling II/III, Lindeman, mùa vụ — **không có đường nào chạm
+tới hàm fitness**. Cả crate có đúng một định nghĩa fitness và nó là
+`cumulative_distance + tick_count` ([`agent_systems.rs:528`](../../src-tauri/src/core/agent_systems.rs)),
+còn `tick_count` tăng vô điều kiện mỗi tick
+([`world_systems.rs:171`](../../src-tauri/src/core/world_systems.rs)) nên sau một epoch nó gần như
+bằng nhau ở mọi cá thể. Không cá thể nào chết đói: `energy <= 0` chỉ `continue`
+([`agent_systems.rs:452`](../../src-tauri/src/core/agent_systems.rs)).
+
+**Đây cũng là nguyên nhân gốc của kết quả null ở §3.1.** Bản `RESULT.md` của E2 gọi số 0 là hiệu
+ứng sàn và đúng — nhưng sâu hơn một bậc: **không tồn tại kênh nào để một bộ não tốt hơn biến thành
+nhiều con cháu hơn**. Bất kỳ thí nghiệm nào về hành vi, chạy trên engine hôm nay, đều đo phương sai
+của bộ tạo số ngẫu nhiên. Chạy lại E2 ở T thấp hơn sẽ cho một số khác 0 mà không mang thêm thông
+tin nào về não.
+
+| Finding | Nội dung | Nhánh |
+|---|---|---|
+| [F-018](../../FINDINGS.md) | Sinh thái không nối vào chọn lọc | F |
+| [F-019](../../FINDINGS.md) | Không có cái chết; cơ chế trả EU thì **đã** viết xong | M |
+| [F-020](../../FINDINGS.md) | `AgentEvaluation` tính đúng đại lượng cần rồi bị vứt (`_eval` ở `:523`) | F |
+| [F-021](../../FINDINGS.md) | Trục MAP-Elites thứ hai **bằng** fitness trừ một hằng số | Q |
+| [F-022](../../FINDINGS.md) | Bảy hệ thống O(agent × segment); mẫu sửa đúng đã có trong cùng file | H |
+
+**Bộ tài liệu:**
+[requirements](../ai/requirements/2026-08-25-feature-ecological-selection.md) ·
+[design](../ai/design/2026-08-25-feature-ecological-selection.md) ·
+[plan](../ai/planning/2026-08-25-feature-ecological-selection.md) ·
+[task backlog](../ai/implementation/2026-08-25-feature-ecological-selection.md) ·
+[testing](../ai/testing/2026-08-25-feature-ecological-selection.md) ·
+[bản giao việc](../ai/planning/2026-08-25-agent-goal-ecological-selection.md).
+
+**Định nghĩa hoàn thành** (đầy đủ ở requirements §5): ba gate **kênh nhân quả** CA-S01…CA-S03 xanh
+**kèm đối chứng âm** — mỗi gate phải **đỏ** trên bản dựng cũ, vì một gate chỉ xanh trên bản mới có
+thể đang khẳng định một tautology · mọi cờ mới tắt ⇒ checksum **trùng bit** với hôm nay · residual
+EU ≤ `1e-3` ở **mọi** cấu hình cờ · một số đo `full_tick` p50 ở **1000 agent**, bản release.
+
+**Hai điều kiện tiên quyết thuộc về chủ dự án, không phải việc kỹ thuật:**
+
+1. [`AGENTS.md`](../../AGENTS.md) khai `src-tauri/src` là **chỉ đọc** và `src-tauri/tests` là vùng
+   ghi **duy nhất** (*"Vi phạm = task fail, không ngoại lệ"*). Hợp đồng đó viết cho agent săn
+   mutant nhưng phát biểu ở phạm vi toàn repo, còn feature này bắt buộc ghi vào `src-tauri/src`.
+   Cần **miễn trừ tường minh**, hoặc thu hẹp phạm vi của `AGENTS.md`.
+2. [F-017](../../FINDINGS.md) vẫn OPEN: [`scripts/check_test_targets.mjs`](../../scripts/check_test_targets.mjs)
+   đã commit với **ba khối merge conflict còn nguyên**, nên cổng đó chết khi parse và `npm run lint`
+   đỏ. **Baseline ratchet 0 ở §1.b không phản ánh cây mã trên nhánh `feat/living-world` hôm nay.**
+
+---
+
 ### P1 — Nợ nền tảng đã biết
 
 #### 3.4 Gate `burn`/`wgpu` sau feature flag — ✅ **XONG (xác minh 2026-07-29)**

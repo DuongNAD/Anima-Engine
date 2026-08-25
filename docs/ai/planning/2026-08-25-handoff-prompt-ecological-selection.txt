@@ -1,0 +1,159 @@
+Bạn là agent triển khai cho dự án Anima-Engine (Rust + Bevy ECS + Tauri v2 + React/TS,
+workspace ở src-tauri/, máy dev là macOS/zsh). Nhiệm vụ: triển khai feature
+"ecological-selection" — nối tầng sinh thái đã mô phỏng vào cơ chế chọn lọc.
+
+ĐỌC KHỐI NÀY TRƯỚC MỌI THỨ — HAI ĐIỀU KIỆN TIÊN QUYẾT THUỘC VỀ CHỦ DỰ ÁN:
+
+  (1) AGENTS.md ở gốc repo khai `src-tauri/src` là "CHỈ ĐỌC" và `src-tauri/tests` là vùng ghi
+      DUY NHẤT, kèm câu "Vi phạm = task fail, không ngoại lệ". Hợp đồng đó viết cho agent săn
+      mutant, không cho nhiệm vụ này — nhưng nó phát biểu ở phạm vi toàn repo, còn nhiệm vụ này
+      BẮT BUỘC phải ghi vào `src-tauri/src`.
+      => MIỄN TRỪ ĐÃ ĐƯỢC CẤP. Chủ dự án miễn trừ AGENTS.md cho ĐÚNG task này, tường minh, ngày
+         2026-08-25; bản ghi ở §4.0 bản giao việc. Bạn ĐƯỢC PHÉP ghi vào src-tauri/src trong phạm
+         vi danh sách file ở §5 bản giao việc.
+         Miễn trừ HẸP, không lan ra: KHÔNG mở sang scripts/, justfile, AGENTS.md, .hardening.env,
+         file config build, hay src-tauri/anima-core/. Mọi cấm khác của AGENTS.md VẪN CÒN HIỆU LỰC
+         — đặc biệt: không thêm #[ignore]/#[should_panic] để né lỗi, không xoá hay nới lỏng
+         assertion đã có, không dùng thread_rng/SystemTime::now/Instant::now trong test, và không
+         có test nào chỉ khẳng định "không lỗi".
+
+  (2) `scripts/check_test_targets.mjs` đã được COMMIT với ba khối merge conflict còn nguyên
+      (dòng 78/85/103, 108/118/131, 155/255/273). Chạy nó => SyntaxError: Unexpected token '<<'.
+      `npm run lint` cũng báo "Merge conflict marker encountered" cho file đó, cộng 9 lỗi eslint
+      tồn đọng ở `playground/` và `tests/frontend/` — nên baseline ratchet 0 KHÔNG phản ánh cây mã
+      hiện tại. Đây là FINDINGS F-017, ĐỎ TỪ TRƯỚC, không phải do bạn.
+      => Ghi nó vào baseline như một cổng đỏ có sẵn, rồi đi tiếp. ĐỪNG sửa `scripts/` (AGENTS.md
+         cấm và F-017 đang chờ chủ dự án). Đừng báo cáo nó như hồi quy của mình, và đừng dùng nó
+         làm lý do bỏ qua các cổng khác.
+
+BỐI CẢNH MỘT ĐOẠN (đọc kỹ, đây là lý do feature tồn tại):
+Engine mô phỏng sinh thái rất chi tiết — NPP theo biome, Kleiber, Boltzmann, Holling II/III,
+Lindeman, mùa vụ, sổ cái năng lượng đóng bit-exact. Nhưng không mảnh nào chạm tới việc ai được
+truyền gene. Cả crate có ĐÚNG MỘT định nghĩa fitness: `cumulative_distance + tick_count`
+(agent_systems.rs:528), và `tick_count` tăng vô điều kiện mỗi tick (world_systems.rs:171) nên sau
+một epoch nó gần như bằng nhau ở mọi cá thể — xếp hạng fitness rút gọn thành xếp hạng quãng đường.
+Không cá thể nào chết đói: `energy <= 0` chỉ `continue` (agent_systems.rs:452). Hệ quả: một con ăn
+no và một con kiệt sức có cơ hội truyền gene bằng nhau. Đây cũng là nguyên nhân gốc khiến thí
+nghiệm E2 cho delta đúng bằng 0 trên cả 12 seed.
+
+ĐỌC TRƯỚC KHI VIẾT DÒNG CODE NÀO, theo đúng thứ tự:
+  1. CLAUDE.md
+  2. docs/planning/STATE_OF_THE_PROJECT.md §1  (bảng số DUY NHẤT có thẩm quyền)
+  3. docs/ai/planning/2026-08-25-agent-goal-ecological-selection.md  <- BẢN GIAO VIỆC, đọc kỹ §3
+  4. docs/ai/requirements/2026-08-25-feature-ecological-selection.md  <- bảng T1-T15 ở §2.2
+  5. docs/ai/design/2026-08-25-feature-ecological-selection.md  <- §0 là bốn quy tắc bắt buộc
+  6. docs/ai/implementation/2026-08-25-feature-ecological-selection.md  <- DANH SÁCH VIỆC
+  7. docs/ai/testing/2026-08-25-feature-ecological-selection.md  <- ĐỌC §0 TRƯỚC TIÊN
+  8. docs/reference/ENERGY_LEDGER_CONTRACT.md
+
+Quy tắc thẩm quyền: code hiện tại + test mới thắng văn bản. Mục ghi SUPERSEDED/FIRST PASS là
+lịch sử. docs/archive/ không bao giờ là kế hoạch. Đọc lại symbol trước khi sửa; số dòng chỉ để
+hỗ trợ đọc — kiểm lại 13 sự thật ở §0 task backlog trước khi tin bất cứ số dòng nào.
+
+BỐN QUY TẮC CHUNG — vi phạm một trong bốn là lý do đủ để từ chối bản vá, kể cả khi test xanh:
+  A. Mọi hành vi mới nằm sau một cờ, và cờ tắt là hành vi hôm nay, TRÙNG BIT. Không phải "gần
+     giống", không phải "trong dung sai". Đây là điều duy nhất giữ cho mọi artifact thí nghiệm
+     đã ghi còn giá trị.
+  B. Không thêm đường chuyển năng lượng mới nào. Mọi thứ đi qua nguyên hàm energy_ledger và qua
+     ReclaimAndDespawnAgentCommand. Một phép trừ trực tiếp trên homeo.energy bên ngoài chúng sẽ
+     rò EU trong khi trông hoàn toàn hợp lý.
+  C. Đọc AgentEvaluation, đừng viết bộ đếm thứ hai. `survival_ticks` đã có điều kiện sống gắn sẵn
+     (chỉ tăng khi energy > 0 && hydration > 0) và đã được tính mỗi tick từ trước. Nó chỉ đang bị
+     vứt đi: check_epoch_completion_system bind `_eval, _homeo` rồi đọc FeatureTracker thay vì nó.
+  D. Nhánh H là refactor thuần. Checksum đổi sau một thay đổi thuộc H là BUG của H.
+
+MƯỜI CÁI BẪY — mỗi cái sinh ra code chạy được và SAI ÂM THẦM. Đủ mười ở §3 bản giao việc; sáu
+cái này là bắt buộc phải nhớ:
+  1. src-tauri/anima-core/ KHÔNG nằm trong workspace (Cargo.lock + target/ riêng). MorphologyGenotype
+     tồn tại ở HAI nơi; app biên dịch src-tauri/src/, KHÔNG phải anima-core. Sửa nhầm chỗ sẽ
+     compile sạch, test xanh, và không đổi gì trong ứng dụng.
+  2. Luôn dùng --features desktop. `cargo test` trần không lên lịch 7 test file feature-gated.
+  3. Mọi thay đổi năng lượng phải NGUYÊN TỬ với thay đổi vòng đời gây ra nó, tại MỘT sync point.
+     KHÔNG BAO GIỜ nâng RESIDUAL_ABS_TOLERANCE_EU = 1e-3 để test xanh.
+  4. LocomotionFitness phải chép NGUYÊN VĂN dòng agent_systems.rs:528, kể cả khi trông thừa. Đổi
+     thứ tự hai số hạng f32 có thể đổi làm tròn, và triệu chứng hiện ra ở một checksum rất xa.
+  5. Lịch tick dựng ở ĐÚNG MỘT CHỖ: core::simulation_schedule::build_tick_schedule. Test headless
+     tự khai .chain() riêng là đang test một lịch mà app không chạy.
+  6. Một cạnh lineage mồ côi phá TOÀN BỘ đồ thị (to_newick và simplify đều từ chối). add_reproduction
+     từ chối cạnh có cha không tồn tại — đó là hành vi ĐÚNG, đừng "sửa" thành ghi vô điều kiện.
+  Bẫy thứ mười một, loại khác: invariant "starvation must not kill" ở aggregate_population.rs:1653
+  nói về quần thể tổng hợp AE3, một MÔ HÌNH KHÁC. Feature này không chạm nó. Sửa nó là sửa nhầm.
+
+LOẠI GATE MỚI — phần quan trọng nhất của nhiệm vụ này:
+Bộ gate của repo rất mạnh ở việc bắt lỗi BÊN TRONG một hệ thống, và mù với lỗi GIỮA các hệ thống.
+Feature này thêm ba "gate kênh nhân quả", mỗi cái BẮT BUỘC có đối chứng âm — gate phải ĐỎ trên bản
+dựng cũ. Một gate chỉ xanh trên bản mới không chứng minh được gì; nó có thể đang khẳng định một
+tautology.
+  CA-S01  Đổi một tham số sinh thái => phân bố tính trạng đổi.
+          Đối chứng âm: cùng test trên ANIMA_FITNESS=locomotion phải KHÔNG đổi.
+  CA-S02  NPP = 0 => quần thể sập về 0.
+          Đối chứng âm: với ANIMA_MORTALITY tắt, quần thể KHÔNG sập.
+  CA-S03  Chuỗi observable phân biệt được run có tiến hoá với run đóng băng.
+          Đối chứng âm: 11 observable CŨ phải KHÔNG phân biệt được.
+Nếu một gate CA xanh trên CẢ HAI phía => phép đo đang bắt thứ khác (thường là drift RNG). DỪNG.
+
+THỨ TỰ LÀM:
+  E0  Khoá hợp đồng: xác nhận lại 13 sự thật ở §0 task backlog, ghi baseline `git status --short`
+      và output đầy đủ của khối xác minh, viết test ĐỎ trước.
+  E1  M — tử vong. starving_ticks (u32, serde(default)) trên HomeostaticState; tăng/reset trong
+      metabolic_decay_system; MortalityPolicy sau cờ ANIMA_MORTALITY; mortality_system gọi
+      ReclaimAndDespawnAgentCommand; khai lịch SAU metabolic_decay và TRƯỚC ecosystem_census.
+  E2  H — hiệu năng, song song với E1. Chép mẫu centroid_index của combat_system
+      (world_systems.rs:300-340) sang 7 chỗ O(agent x segment); cho sensory_system hỏi
+      SpatialHashGrid thay vì quét tuyến tính. E2 KHÔNG được đổi checksum.
+  E3  F — fitness. trait FitnessRule + LocomotionFitness (chép nguyên văn) + EcologicalFitness
+      (đọc AgentEvaluation, KHÔNG có số hạng quãng đường); bỏ dấu _ ở agent_systems.rs:523;
+      cờ ANIMA_FITNESS; id() vào manifest + tick capture + provenance.
+  E4  Q — trục MAP-Elites độc lập với fitness. Hôm nay trục 2 (foraging_range) BẰNG ĐÚNG fitness
+      trừ một hằng số, nên kho chỉ khám phá một chiều. Đổi sang bậc dinh dưỡng thực tế; thêm
+      descriptor_set_id và TỪ CHỐI archive id lệch.
+  E5  O — observable đo được tiến hoá. Nối Shannon/Simpson đã tính sẵn ở simulation_loop.rs:2192;
+      thêm phương sai/phân vị tính trạng, births/deaths/lifespan, archive_coverage; preflight FAIL
+      khi manifest xin observable mà cấu trúc không tồn tại (trả 0 tệ hơn fail).
+  E6  R — sinh sản theo ngưỡng năng lượng. CHỈ bắt đầu sau khi E3 xanh.
+  E7  Đối chiếu tài liệu.
+  MỐC ĐÁNG NHẮM NHẤT LÀ SAU E5. Dừng ở đó vẫn là một trạng thái tốt và đầy đủ.
+
+XÁC MINH (macOS/zsh — cảnh báo `cmd /c` trong CLAUDE.md là cho PowerShell trên CI Windows):
+  cd src-tauri && cargo test --features desktop --no-fail-fast 2>&1 | tee /tmp/anima-test.txt
+  cd src-tauri && cargo fmt --check
+  cd src-tauri && cargo clippy --all-targets --features desktop -- -D warnings
+  cd src-tauri && cargo clippy --all-targets --no-default-features -- -D warnings
+  node scripts/check_test_targets.mjs /tmp/anima-test.txt --profile desktop
+  npm run lint && node scripts/eslint_ratchet.mjs
+  npm run test && npm run test:frontend && npm run build
+  cd src-tauri && cargo test --features desktop && cd .. && git diff --exit-code -- src/types/generated
+  node scripts/check_docs_links.mjs
+Chạy TOÀN BỘ khối này TRƯỚC khi sửa gì, và ghi kết quả làm baseline. Không có baseline thì không
+phân biệt được "mình làm hỏng" với "nó vốn đã đỏ".
+
+AN TOÀN REPO:
+  Cây làm việc có file untracked (src-tauri/mutants.out/, src-tauri/anima-core/mutants.out/,
+  src-tauri/mutants.out.old/) — KHÔNG dọn, không git clean, không stash.
+  Không chạm file ngoài danh sách cho phép ở §5 bản giao việc. Đọc lại file ngay trước khi sửa.
+  Nhánh hiện tại là feat/living-world — tạo nhánh mới trước khi commit, không commit thẳng lên main.
+  KHÔNG chạm: anima-core/, terrain/world gen, WorldArtifact, BrainGenotype/A2C, exotic_energy/AE3,
+  aggregate_population.rs, phiên bản bevy/burn, src/components/Landscape/.
+
+DỪNG VÀ BÁO CÁO (không tự ứng biến) nếu:
+  - không giữ được closed-EU, hoặc phải nâng RESIDUAL_ABS_TOLERANCE_EU;
+  - phải làm yếu, sửa hoặc xoá một test hiện có để gate xanh;
+  - checksum của một run có seed đổi khi MỌI cờ mới đều tắt;
+  - checksum đổi sau một thay đổi thuộc nhánh H;
+  - một gate CA xanh trên cả bản mới lẫn đối chứng âm;
+  - phải đổi WorldLawSet, schema manifest, hoặc MorphologyEdge;
+  - xuất hiện thay đổi ngoài danh sách file cho phép;
+  - quần thể tuyệt chủng ở tham số mặc định, hoặc phân kỳ không trần.
+
+BÁO CÁO KHI XONG MỖI MILESTONE:
+  - Danh sách file đã đổi (đầy đủ, không rút gọn).
+  - Output MỚI của các lệnh xác minh, kèm ngày và cấu hình. Không mang số cũ sang.
+  - Số mục `git status --short` lúc bắt đầu và lúc kết thúc.
+  - Gate nào xanh, gate nào chưa chạy, gate nào đỏ — nói thẳng, không làm tròn.
+  - Với mỗi gate CA: CẢ HAI kết quả, bản mới và đối chứng âm. Một mình bản mới là chưa đủ.
+  - "Đã xác minh headless" != "đã chạy trong desktop app". Nói đúng cái đã chạy.
+  - Nếu một phần bị chặn: làm xong MỌI phần còn lại, rồi nói rõ phần nào bỏ lại và vì sao.
+
+MỘT VIỆC MÁY KHÔNG LÀM ĐƯỢC: đo full_tick p50 ở 1000 agent, bản release, qua ANIMA_TICK_CAPTURE.
+CLAUDE.md cấm chạy full backend trên máy dev và bốn lệnh capture là IPC-only. Làm H-1..H-6 rồi
+dừng ở H-7 và báo rằng nó cần một lần chạy tay.
