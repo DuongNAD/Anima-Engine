@@ -66,6 +66,7 @@ fn metabolic_world(n: usize, arch: Option<ArchSpec>, cost_per_1k: f32) -> World 
                     temperature: 37.0,
                     temp_target: 37.0,
                     previous_deviation: 0.0,
+                    starving_ticks: 0,
                 },
             ))
             .id();

@@ -179,6 +179,7 @@ fn ecs_hot_path_zero_allocations_i22() {
                     temperature: 37.0,
                     temp_target: 37.0,
                     previous_deviation: 0.0,
+                    starving_ticks: 0,
                 },
             ))
             .id();

@@ -27,6 +27,7 @@ fn test_brain_inference_system() {
                 temperature: 36.5,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             anima_engine_lib::ai::hrrl::LastTransitionState {
                 state: [0.0; 15],
@@ -107,6 +108,7 @@ fn one_agents_action_slice_never_drives_another_agents_extra_segments() {
                     temperature: 36.5,
                     temp_target: 37.0,
                     previous_deviation: 0.0,
+                    starving_ticks: 0,
                 },
                 anima_engine_lib::ai::hrrl::LastTransitionState {
                     state: [0.0; 15],

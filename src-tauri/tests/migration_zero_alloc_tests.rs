@@ -88,6 +88,7 @@ fn test_migration_systems_zero_allocations_on_hot_path() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             AgentGenotype(MorphologyGenotype::default()),
             AgentEvaluation {

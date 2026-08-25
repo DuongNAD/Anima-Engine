@@ -93,6 +93,7 @@ fn test_predator_tracking_inputs() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             anima_engine_lib::ai::hrrl::LastTransitionState::default(),
         ))
@@ -113,6 +114,7 @@ fn test_predator_tracking_inputs() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             anima_engine_lib::ai::hrrl::LastTransitionState::default(),
         ))
@@ -176,6 +178,7 @@ fn test_predator_prey_collision_and_combat() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -194,6 +197,7 @@ fn test_predator_prey_collision_and_combat() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -258,6 +262,7 @@ fn test_prey_carcass_freezing() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -315,6 +320,7 @@ fn test_zero_allocation_combat_hot_path() {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
     ));
 
@@ -330,6 +336,7 @@ fn test_zero_allocation_combat_hot_path() {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
     ));
 

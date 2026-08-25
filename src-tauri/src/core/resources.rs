@@ -94,6 +94,7 @@ mod scientific_counter_fault_tests {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         }
     }
 
@@ -431,6 +432,67 @@ pub fn sim_seed_override_from_env() -> Option<u64> {
 /// rather than merely likely.
 pub fn resolve_run_seed(world_seed: u32) -> u64 {
     sim_seed_override_from_env().unwrap_or_else(|| u64::from(world_seed))
+}
+
+// ---------------------------------------------------------------------------
+// Mortality (feature ecological-selection, branch M)
+// ---------------------------------------------------------------------------
+
+/// Death policy for live agents. Inert unless the resource is inserted **and** `enabled`: a
+/// missing resource means "nobody declared a death rule", and that must keep today's behaviour —
+/// no agent dies of hunger. A resource rather than scattered constants so tests can set it
+/// directly, an experiment can carry it like any other declared input, and a run's configuration
+/// is visible in one place. The app seeds it from `ANIMA_MORTALITY` at world construction.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct MortalityPolicy {
+    /// Gated by `ANIMA_MORTALITY` in the app; headless experiments insert the policy directly.
+    pub enabled: bool,
+    /// Consecutive bottom ticks with energy exhausted before starvation kills. `0` kills the
+    /// instant the reserve hits bottom — a deliberate, declarable edge case.
+    pub starve_ticks: u32,
+    /// Consecutive bottom ticks with hydration exhausted before dehydration kills.
+    pub dehydration_ticks: u32,
+}
+
+impl Default for MortalityPolicy {
+    fn default() -> Self {
+        Self::disabled()
+    }
+}
+
+impl MortalityPolicy {
+    /// The flag-off policy: today's behaviour, bit for bit.
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            starve_ticks: 120,
+            dehydration_ticks: 120,
+        }
+    }
+
+    /// Read `ANIMA_MORTALITY` (same truthy spellings as `ANIMA_EVOLVED_BRAINS`), with optional
+    /// `ANIMA_STARVE_TICKS` / `ANIMA_DEHYDRATION_TICKS`. Anything unset or unparseable leaves
+    /// the legacy behaviour in place — the safe direction for a flag that changes what the
+    /// simulation *is*.
+    pub fn from_env() -> Self {
+        let enabled = std::env::var("ANIMA_MORTALITY")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                !(v.is_empty() || v == "0" || v == "false")
+            })
+            .unwrap_or(false);
+        let tick_var = |name: &str, fallback: u32| {
+            std::env::var(name)
+                .ok()
+                .and_then(|v| v.trim().parse::<u32>().ok())
+                .unwrap_or(fallback)
+        };
+        Self {
+            enabled,
+            starve_ticks: tick_var("ANIMA_STARVE_TICKS", 120),
+            dehydration_ticks: tick_var("ANIMA_DEHYDRATION_TICKS", 120),
+        }
+    }
 }
 
 /// Whether newly created agents get their own heritable brain, and what shape it takes.

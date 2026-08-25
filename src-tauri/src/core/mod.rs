@@ -17,6 +17,7 @@ pub mod experiment;
 pub mod experiment_runner;
 pub mod intervention;
 pub mod live_experiment;
+pub mod mortality;
 pub mod networking_systems;
 pub mod observer;
 pub mod reference_world;

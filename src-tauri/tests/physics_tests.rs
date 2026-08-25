@@ -606,6 +606,7 @@ fn test_decoupled_systems_zero_allocation() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             anima_engine_lib::core::ecs::CognitiveState::default(),
             anima_engine_lib::core::ecs::InertiaComponent::default(),

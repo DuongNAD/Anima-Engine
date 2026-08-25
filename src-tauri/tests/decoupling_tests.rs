@@ -63,6 +63,7 @@ fn test_decoupled_inference_cycle() {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             CognitiveState::Ready,
             InertiaComponent::default(),

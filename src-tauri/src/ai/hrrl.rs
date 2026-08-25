@@ -12,6 +12,14 @@ pub struct HomeostaticState {
     pub temperature: f32,
     pub temp_target: f32,
     pub previous_deviation: f32,
+    /// Consecutive ticks spent at the bottom — energy or hydration exhausted. Incremented by
+    /// `metabolic_decay_system`, reset to 0 the moment the animal is out of the bottom again.
+    /// Read by `mortality_system` when a `MortalityPolicy` enables death; written
+    /// unconditionally, but nothing observes it without the flag, so flag-off runs stay
+    /// bit-identical (the field is outside `world_checksum`). `serde(default)` so snapshots
+    /// written before the field existed load as "not starving".
+    #[serde(default)]
+    pub starving_ticks: u32,
 }
 
 impl HomeostaticState {

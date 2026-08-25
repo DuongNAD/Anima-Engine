@@ -91,6 +91,7 @@ fn test_brain_inference_system_execution() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();

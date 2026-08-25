@@ -214,6 +214,17 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .after(herbivore_grazing_system),
     ));
 
+    // Death sits inside the declared energy chain: after metabolism (an animal that just ate is
+    // not killed by last tick's numbers) and before the census (the census counts the world
+    // after the corpse has become detritus, not a half-finished one). Both new edges refine the
+    // already-declared metabolic_decay → census edge, and the system is inert without an
+    // enabled `MortalityPolicy`, so a stock run is unaffected.
+    schedule.add_systems(
+        crate::core::mortality::mortality_system
+            .after(metabolic_decay_system)
+            .before(ecosystem_census_system),
+    );
+
     // A declared experiment's interventions reach the world here. `.before(...)` only — see the
     // module docs — and inert without a `LiveInterventions` resource, which only the experiment
     // adapter inserts.

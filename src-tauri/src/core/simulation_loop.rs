@@ -1280,6 +1280,9 @@ impl SimulationEngine {
             world.insert_resource(BevyEvolutionRunning(evolution_running));
             world.insert_resource(BevyMapElitesGrid(map_elites_grid));
             world.insert_resource(BevyAppHandle(app_handle_clone));
+            // Mortality is flag-gated (`ANIMA_MORTALITY`); with the flag unset this is the
+            // disabled policy and no agent dies of hunger — today's behaviour, bit for bit.
+            world.insert_resource(crate::core::resources::MortalityPolicy::from_env());
 
             let initial_resolution = {
                 let settings_lock = evolution_settings_clone_save

@@ -959,6 +959,7 @@ mod tests {
                 temperature: 37.0,
                 temp_target: 37.0,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
             last_transition_state: crate::ai::hrrl::LastTransitionState {
                 state: [0.0; 15],

@@ -276,6 +276,7 @@ fn test_collision_logic_maximum_limits_zero_allocations() {
                     temperature: 37.0,
                     temp_target: 37.0,
                     previous_deviation: 0.0,
+                    starving_ticks: 0,
                 },
             ))
             .id();

@@ -163,6 +163,18 @@ pub fn metabolic_decay_system(
         homeo.energy = (homeo.energy - decay).max(0.0);
         respired += (before - homeo.energy) as f64; // actual energy removed (floored at 0)
 
+        // Starvation bookkeeping (feature ecological-selection, branch M): consecutive ticks at
+        // the bottom — energy or hydration exhausted — counted here, where the post-decay state
+        // is authoritative; reset to zero the moment the animal is fed or watered again.
+        // Written unconditionally on purpose: nothing reads the counter without an enabled
+        // `MortalityPolicy`, and the field sits outside `world_checksum`, so flag-off runs stay
+        // bit-identical. `saturating_add` because a run without mortality never consumes it.
+        if homeo.energy <= 0.0 || homeo.hydration <= 0.0 {
+            homeo.starving_ticks = homeo.starving_ticks.saturating_add(1);
+        } else {
+            homeo.starving_ticks = 0;
+        }
+
         if let Some(mut tracker) = opt_tracker {
             let speed = velocity.map(|v| v.0.length()).unwrap_or(0.0);
             tracker.cumulative_energy_decay += decay;

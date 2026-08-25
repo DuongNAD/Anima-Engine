@@ -24,6 +24,7 @@ fn test_homeostatic_energy_decay() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -55,6 +56,7 @@ fn test_homeostatic_death_trigger() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -96,6 +98,7 @@ fn test_homeostatic_deviation_calc() {
         temperature: 38.5,
         temp_target: 36.5,
         previous_deviation: 0.0,
+        starving_ticks: 0,
     };
 
     // Calculation:
@@ -117,6 +120,7 @@ fn test_homeostatic_reward_calc() {
         temperature: 37.0,
         temp_target: 36.5,
         previous_deviation: 0.0,
+        starving_ticks: 0,
     };
 
     // If previous deviation was larger, reward should be positive.
@@ -147,6 +151,7 @@ fn test_food_collision_consumption() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -191,6 +196,7 @@ fn test_homeostatic_decay_clamping() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();
@@ -216,6 +222,7 @@ fn test_homeostatic_decay_clamping() {
                 temperature: 36.5,
                 temp_target: 36.5,
                 previous_deviation: 0.0,
+                starving_ticks: 0,
             },
         ))
         .id();

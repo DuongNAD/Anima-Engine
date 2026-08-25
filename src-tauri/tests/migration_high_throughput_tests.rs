@@ -81,6 +81,7 @@ async fn test_high_throughput_websocket_transfers() {
                     temperature: 37.0,
                     temp_target: 37.0,
                     previous_deviation: 0.0,
+                    starving_ticks: 0,
                 },
                 position: glam::Vec3::ZERO,
                 velocity: glam::Vec3::ZERO,

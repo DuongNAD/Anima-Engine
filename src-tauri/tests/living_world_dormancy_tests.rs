@@ -80,6 +80,7 @@ fn payload(brain_value: Option<AgentBrain>) -> SerializedAgent {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
         last_transition_state: Default::default(),
         cognitive_state: Default::default(),

@@ -167,6 +167,7 @@ async fn test_adversarial_stale_connection_cache() {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
         position: Vec3::ZERO,
         velocity: Vec3::new(1.0, 0.0, 0.0),

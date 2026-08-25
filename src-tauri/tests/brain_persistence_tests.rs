@@ -62,6 +62,7 @@ fn serialized_agent(brain: Option<AgentBrain>) -> SerializedAgent {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
         last_transition_state: anima_engine_lib::ai::hrrl::LastTransitionState {
             state: [0.0; 15],
@@ -88,6 +89,7 @@ fn migration_payload(brain: Option<AgentBrain>) -> AgentMigrationData {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
         position: glam::Vec3::new(1.0, 0.0, 2.0),
         velocity: glam::Vec3::ZERO,
