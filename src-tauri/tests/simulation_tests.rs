@@ -48,4 +48,3 @@ fn test_cpg_oscillator_tick_advances_phase() {
     assert!(osc.phase > 1.57);
     assert_eq!((osc.output * 10.0) as i32, 20);
 }
-

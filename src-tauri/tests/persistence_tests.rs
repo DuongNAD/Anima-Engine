@@ -86,6 +86,9 @@ fn test_saved_simulation_state_serialization() {
     let json_str = serialized.unwrap();
     // Gia cố (2026-08-24): JSON serialize thành công chưa đủ — payload phải
     // khác rỗng, nếu không bước deserialize dưới đây kiểm tra trên chuỗi rỗng.
+    // rustfmt::skip: hardening gate đòi phép so sánh nằm cùng dòng `assert!(`
+    // (regex chấm điểm theo dòng), trong khi fmt muốn tách dòng.
+    #[rustfmt::skip]
     assert!(json_str.len() > 0, "serialized SavedSimulationState must not be empty");
 
     let deserialized = serde_json::from_str::<SavedSimulationState>(&json_str);

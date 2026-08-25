@@ -87,6 +87,8 @@ fn test_pheromone_diffusion_z_wraps_forward_not_backward_at_z_zero() {
     let delta = (grid_res.values[0] - 1.0).abs();
     // Guard chống assertion rỗng quét theo dòng và chỉ nhìn đoạn trước dấu
     // ")" đầu tiên, nên phép so sánh phải đứng ngay sau `assert!(`.
+    // rustfmt::skip: hai gate đòi hỏi định dạng mâu thuẫn nhau (xem trên).
+    #[rustfmt::skip]
     assert!(delta < 1e-5, "cell (z=0,x=0) must diffuse from its FORWARD z-neighbour (row 1): expected 1.0, got {}", grid_res.values[0]);
 }
 
