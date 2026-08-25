@@ -30,6 +30,29 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-017 — `scripts/check_test_targets.mjs` đã commit với ba khối merge conflict còn nguyên, gate xác minh chết ngay khi chạy
+- **Ngày:** 2026-08-25
+- **Loại:** BUG
+- **Vị trí:** `scripts/check_test_targets.mjs:78` (`<<<<<<< ours`), `:103/:108`
+  (`=======`, khối hai), `:155/:273` (khối ba) — cả ba khối conflict đều nằm
+  trong bản đã commit trên nhánh `feat/living-world`.
+- **Phát hiện bởi:** tay (chạy cổng xác minh của living-world sau khi xong M3/F1).
+- **Triệu chứng:** script chết ngay khi parse — `node scripts/check_test_targets.mjs`
+  ném `SyntaxError: Unexpected token '<<'`. Hệ quả kép: (1) cổng
+  "check_test_targets" của vòng lặp xác minh không chạy được chút nào; (2)
+  `npm run lint` báo `Parsing error: Merge conflict marker encountered` cho file
+  này, góp phần làm rổ eslint gate. Ngoài ra cùng lần lint đó, `playground/` và
+  `tests/frontend/` có sẵn 9 lỗi eslint khác (chủ yếu `no-useless-assignment`,
+  `@ts-ignore`) cũng đã commit — baseline ratchet 0 không phản ánh cây mã hiện tại.
+- **Tái hiện:** `node scripts/check_test_targets.mjs /tmp/anima-test.txt --profile desktop`
+  → SyntaxError; `npm run lint` → 82 problems.
+- **Test khoá lại:** không áp dụng được — `scripts/` cấm sửa theo AGENTS.md.
+- **Cách sửa đề xuất cho owner:** resolve ba khối conflict trong
+  `check_test_targets.mjs` (giữ nhánh `theirs` có chú thích PowerShell-wrap vì
+  đó là bản mới hơn có đo đạc), rồi chạy lại `npm run lint`; quyết định riêng
+  về 9 lỗi eslint tồn đọng ở `playground/` + `tests/frontend/`.
+- **Trạng thái:** OPEN — chờ owner sửa `scripts/`.
+
 ### F-014 — Không thể quét mutation cho anima-core: crate nằm trong workspace cha nhưng không thuộc members/exclude
 - **Ngày:** 2026-08-24
 - **Loại:** BUG
