@@ -30,6 +30,38 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-023 — `adversarial_coverage_tests` đỏ flaky: counter toàn tiến trình bị test anh em nhiễu
+- **Ngày:** 2026-08-26
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/tests/adversarial_coverage_tests.rs:138,172,276` (điểm mở cửa sổ đo); gốc rễ:
+  `src-tauri/tests/common/allocator.rs` — `TrackingAllocator::start_tracking()` đếm **toàn tiến trình**
+- **Phát hiện bởi:** determinism (full `just test`, chạy release không feature)
+- **Triệu chứng:** `test_spatial_grid_rebuild_allocates_on_new_cell` failed 1 lần trong full suite với
+  `Expected zero allocations on out of bounds insert — left: 4, right: 0`; chạy riêng file đó thì xanh
+  7/7 ở CẢ cấu hình desktop lẫn trần. Nguyên nhân đúng như doc comment của `allocator.rs` đã cảnh báo:
+  libtest cho mỗi `#[test]` một thread, `TEST_LOCK` chỉ tuần tự hoá thân một phần test, và counter toàn
+  tiến trình gán mọi allocation trong cửa sổ đo — kể cả của thread test khác đang chạy song song.
+  Đây là một trong các suite "latent" mà tài liệu nêu tên: đường đo đơn-thread nhưng vẫn dùng counter
+  rộng. Cả ba đường được đo (`rebuild_spatial_grid_system` ×2, `combat_system`) đều không nhả worker
+  thread (không rayon/spawn trong `physics/spatial.rs`), nên chế độ per-thread là đúng policy, không
+  phải nới lỏng — assertion `allocs == 0` giữ nguyên.
+- **Tái hiện:** lặp `cd src-tauri && cargo test --release` đủ nhiều lần trên máy đang load → fail rải rác
+  ở một trong ba test đo allocation của file này; `cargo test --release --test adversarial_coverage_tests`
+  đứng riêng thì xanh ổn định.
+- **Test khoá lại:** `src-tauri/tests/adversarial_coverage_tests.rs` — ba cửa sổ đo chuyển sang
+  `ALLOCATOR.start_tracking_this_thread()`; assertion giữ nguyên.
+- **Trạng thái:** FIXED (commit kèm theo trên `feat/ecological-selection`)
+
+### F-022 — Cổng `verify` tự hủy im lặng khi diff không chứa file test nào
+- **Ngày:** 2026-08-26
+- **Loại:** BUG
+- **Vị trí:** `scripts/verify.sh:41`
+- **Phát hiện bởi:** tay (`bash -x ./scripts/verify.sh`, trace dừng đúng tại dòng 41, EXIT=1, không một byte output)
+- **Triệu chứng:** khi cây làm việc không có thay đổi nào dưới `src-tauri/**/tests/` (ví dụ: kiểm tra lại một trạng thái ĐÃ commit, hoặc diff chỉ chạm tài liệu/nguồn), `grep -E "$GUARD_RE"` trong pipeline của `GUARD_DIRS` không khớp dòng nào → exit 1. Với `set -o pipefail` + `set -e` và pipeline KHÔNG có `|| true` (khác mọi pipeline khác trong cùng script), phép gán thất bại và script thoát ngay với mã 1, **trước cả luật 2**, không in `TU CHỐI` và cũng không bao giờ tới được `QUA CONG`. Hệ quả: cổng chống gian lận không thể phán "đạt" cho bất kỳ công việc nào mà diff của nó không kèm file test mới — kể cả các việc hợp lệ như sửa tài liệu hay commit lại file nguồn bị thiếu.
+- **Tái hiện:** commit sạch toàn bộ thay đổi (hoặc đứng ở HEAD sau 893098b) rồi chạy `just verify` → exit 1, stdout/stderr rỗng. So sánh: trước khi commit, cùng lệnh in `TU CHỐI: ...` bình thường vì law 1 chặn sớm trước dòng 41.
+- **Đề xuất sửa (cho chủ dự án — `scripts/` nằm ngoài vùng ghi của agent):** thêm `|| true` cho phép gán ở dòng 41, giống cách đã làm với `CHANGED`/`BAD`/`NONKIT`; hoặc đổi thành `grep ... | sed ... | sort -u || true`. Không thay đổi ngữ nghĩa luật nào.
+- **Trạng thái:** OPEN
+
 ### F-018 — Sinh thái không nối vào chọn lọc: cả crate có đúng một fitness và nó là quãng đường
 - **Ngày:** 2026-08-25
 - **Loại:** BUG

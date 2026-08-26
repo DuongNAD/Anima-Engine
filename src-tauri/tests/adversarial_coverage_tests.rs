@@ -135,7 +135,7 @@ fn test_spatial_grid_rebuild_allocates_when_clustered() {
     schedule.run(&mut world);
 
     // Now track allocations during the rebuild with 50 entities in the same cell
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     schedule.run(&mut world);
     let allocs = ALLOCATOR.stop_tracking();
 
@@ -169,7 +169,7 @@ fn test_spatial_grid_rebuild_allocates_on_new_cell() {
     // Run once to warm up Bevy system cache and perform first-time inserts
     schedule.run(&mut world);
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     schedule.run(&mut world);
     let allocs = ALLOCATOR.stop_tracking();
 
@@ -273,7 +273,7 @@ fn test_combat_system_allocates_when_capacity_exceeded() {
         }
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     schedule.run(&mut world);
     let allocs = ALLOCATOR.stop_tracking();
 
