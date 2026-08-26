@@ -1,0 +1,69 @@
+Bạn là agent triển khai cho dự án Anima-Engine (Rust + Bevy ECS + Tauri v2 + React/TS,
+workspace ở src-tauri/). Nhiệm vụ: triển khai feature "living-world" — sinh vật có model 3D
+sinh theo gene/môi trường, animation mượt, và tính toán phân tán nhiều máy.
+
+ĐỌC TRƯỚC KHI VIẾT DÒNG CODE NÀO, theo đúng thứ tự:
+  1. CLAUDE.md
+  2. docs/planning/STATE_OF_THE_PROJECT.md §1  (bảng số DUY NHẤT có thẩm quyền)
+  3. docs/ai/planning/2026-08-25-agent-goal-living-world.md  ← BẢN GIAO VIỆC, đọc kỹ §3
+  4. docs/ai/implementation/2026-08-25-feature-living-world-tasks.md  ← DANH SÁCH VIỆC
+  5. docs/reference/CREATURE_PROMPT_CONTRACT.md
+  6. Design theo nhánh đang làm (bảng điều hướng ở docs/ai/requirements/2026-08-25-feature-living-world.md)
+
+Quy tắc thẩm quyền: code hiện tại + test mới thắng văn bản. Mục ghi SUPERSEDED/FIRST PASS là
+lịch sử. docs/archive/ không bao giờ là kế hoạch. Đọc lại symbol trước khi sửa; số dòng chỉ
+để hỗ trợ đọc.
+
+BẢY CÁI BẪY — mỗi cái sinh ra code chạy được và SAI ÂM THẦM. Đọc §3 của bản giao việc để có
+đủ 11 cái; bảy cái này là bắt buộc phải nhớ:
+
+  1. src-tauri/anima-core/ KHÔNG nằm trong workspace (có Cargo.lock + target/ riêng;
+     `cargo metadata --no-deps` chỉ ra anima-engine và anima-domain). MorphologyGenotype tồn
+     tại ở HAI nơi; app biên dịch src-tauri/src/core/spawn.rs, KHÔNG phải anima-core.
+     Sửa nhầm chỗ sẽ compile sạch, test xanh, và không đổi gì trong ứng dụng.
+  2. Luôn dùng `--features desktop`. `cargo test` trần không lên lịch 7 test file feature-gated.
+  3. KHÔNG LAMARCK: không bao giờ ghi môi trường vào genotype; không ghi AgentBrain.learned
+     ngược vào .genotype. Môi trường đi qua 3 kênh riêng: genesis prior / plasticity / selection.
+  4. Restore, Migration và WakeAgentCommand KHÔNG BAO GIỜ develop lại (D01).
+  5. Tick path không cấp phát heap (test khẳng định allocs == 0).
+  6. Mọi thay đổi năng lượng phải NGUYÊN TỬ với thay đổi vòng đời gây ra nó, tại MỘT sync point.
+     KHÔNG BAO GIỜ nâng RESIDUAL_ABS_TOLERANCE_EU = 1e-3 để test xanh.
+  7. src/types/generated/ do ts-rs sinh — không sửa tay. Renderer không được sample biome để
+     đổi màu/kích thước sinh vật.
+
+THỨ TỰ LÀM (M1–M3 độc lập, làm song song được):
+  M0  Khoá hợp đồng: ghi baseline `git status --short`, xác nhận 11 sự thật ở §0 task backlog,
+      viết test ĐỎ trước.
+  M1  A1 — SegmentState chở length/radius; bỏ hằng SEGMENT_RADIUS=1.6 ở LiveAgents.tsx.
+  M2  N1 — nội suy tick↔frame (giữ 2 payload, lerp vị trí, slerp xoay).
+  M3  F1 — ngăn `dormant` trong EnergyLedger + HibernateAgentCommand/WakeAgentCommand.
+      Ưu tiên sớm: đây là mục DUY NHẤT không rollback được.
+  M4  A2 · M5  N2+N3 · M6  F2+F3 · M7  A3+A4 · M8  đối chiếu tài liệu.
+  Chi tiết từng task (neo file + định nghĩa hoàn thành) ở task backlog.
+
+XÁC MINH (macOS/zsh — cảnh báo `cmd /c` trong CLAUDE.md là cho PowerShell trên CI Windows):
+  cd src-tauri && cargo test --features desktop --no-fail-fast 2>&1 | tee /tmp/anima-test.txt
+  cd src-tauri && cargo fmt --check && cargo clippy --all-targets --features desktop -- -D warnings
+  node scripts/check_test_targets.mjs /tmp/anima-test.txt --profile desktop
+  npm run lint && node scripts/eslint_ratchet.mjs && npm run test && npm run test:frontend && npm run build
+  cd src-tauri && cargo test --features desktop && cd .. && git diff --exit-code -- src/types/generated
+
+AN TOÀN REPO:
+  Cây làm việc có file untracked (mutants.out/) — không dọn, không git clean, không stash.
+  Không chạm file ngoài danh sách cho phép ở §5 bản giao việc. Đọc lại file ngay trước khi sửa.
+  Nhánh hiện tại là hardening/phase0-determinism — tạo nhánh mới trước khi commit, không commit
+  thẳng lên main.
+
+DỪNG VÀ BÁO CÁO (không tự ứng biến) nếu: phải sửa WorldLawSet/schema manifest/MorphologyEdge;
+phải làm yếu hoặc xoá một test hiện có; không giữ được closed-EU hoặc phải nâng tolerance;
+prompt không xuống dưới 1000 ký tự mà không bỏ slot bắt buộc; xuất hiện thay đổi ngoài danh
+sách file cho phép; một gate chỉ xanh được khi để asset AI hoặc dữ liệu contributor ghi thẳng
+vào hình học / năng lượng / fitness / lineage.
+
+BÁO CÁO KHI XONG MỖI MILESTONE:
+  - Danh sách file đã đổi (đầy đủ, không rút gọn).
+  - Output MỚI của các lệnh xác minh, kèm ngày và cấu hình.
+  - Số mục `git status --short` lúc bắt đầu và lúc kết thúc.
+  - Gate nào xanh, gate nào chưa chạy, gate nào đỏ — nói thẳng, không làm tròn.
+  - "Đã xác minh headless" ≠ "đã chạy trong desktop app". Nói đúng cái đã chạy.
+  - Nếu một phần bị chặn: làm xong mọi phần còn lại, rồi nói rõ phần nào bỏ lại và vì sao.
