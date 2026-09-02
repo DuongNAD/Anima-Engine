@@ -34,7 +34,10 @@ describe('S03 — coordinate contract round-trips (frontend mirror of sim_rules.
       for (let iy = 0; iy < h; iy++) {
         for (let ix = 0; ix < w; ix++) {
           const [u, v] = cellCenterUv(ix, iy, w, h);
-          expect(uvToCell(u, v, w, h)).toEqual([ix, iy]);
+          const [rx, ry] = uvToCell(u, v, w, h);
+          if (rx !== ix || ry !== iy) {
+            throw new Error(`uvToCell mismatch: expected [${ix}, ${iy}], got [${rx}, ${ry}]`);
+          }
         }
       }
     }
@@ -46,8 +49,12 @@ describe('S03 — coordinate contract round-trips (frontend mirror of sim_rules.
         for (let ix = 0; ix < w; ix++) {
           const [x, z] = cellCenterToWorldXz(ix, iy, w, h, bounds);
           const back = worldXzToCell(x, z, w, h, bounds);
-          expect(back).not.toBeNull();
-          expect(back).toEqual([ix, iy]);
+          if (back === null) {
+            throw new Error(`worldXzToCell returned null for (${x}, ${z})`);
+          }
+          if (back[0] !== ix || back[1] !== iy) {
+            throw new Error(`worldXzToCell mismatch: expected [${ix}, ${iy}], got [${back[0]}, ${back[1]}]`);
+          }
         }
       }
     }

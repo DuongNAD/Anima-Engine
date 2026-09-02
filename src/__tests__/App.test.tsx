@@ -15,6 +15,20 @@ vi.mock("../playground/RabbitVisualizer", () => ({
   default: () => <div data-testid="rabbit-visualizer-mock">Mock Rabbit Visualizer</div>,
 }));
 
+// Mock worldCache so App does not generate expensive 2048x2048 procedural terrain in JSDOM
+vi.mock("../components/Landscape/utils/worldCache", () => ({
+  loadOrGenerateWorld: vi.fn().mockResolvedValue({
+    size: 256,
+    shape: 'continent',
+    elevation: new Float32Array(256 * 256),
+    moisture: new Float32Array(256 * 256),
+    temperature: new Float32Array(256 * 256),
+    flow: new Float32Array(256 * 256),
+    biomes: new Uint8Array(256 * 256),
+  }),
+  getMemoizedWorld: vi.fn().mockReturnValue(null),
+}));
+
 // Mock pixi.js
 const mockGraphicsMethods = {
   clear: vi.fn().mockReturnThis(),
@@ -111,9 +125,10 @@ describe("Anima-Engine Frontend IPC Integration", () => {
   it("polls and renders the simulation status", async () => {
     render(<App />);
     
-    await screen.findByText(/Số Ticks:/);
-    const pTicks = screen.getByText(/Số Ticks:/).parentElement;
-    expect(pTicks?.textContent).toContain("Số Ticks: 42");
+    await waitFor(() => {
+      const pTicks = screen.getByText(/Số Ticks:/).parentElement;
+      expect(pTicks?.textContent).toContain("Số Ticks: 42");
+    });
 
     const pDelay = screen.getByText(/Độ trễ TB của Tick:/).parentElement;
     expect(pDelay?.textContent).toContain("Độ trễ TB của Tick: 1.25 ms");
