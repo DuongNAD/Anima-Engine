@@ -172,6 +172,14 @@ Không thuộc phạm vi feature, nhưng đây là chỗ ghi để phiên sau kh
 - **E3 — thí nghiệm đầu tiên có kênh nhân quả thật.** Tiền đăng ký theo đúng khuôn E2. Câu hỏi
   đề xuất: *một gradient NPP giữa hai biome có tạo ra phân hoá khối lượng cơ thể không?* Metric
   chính lấy từ nhánh O, không lấy từ 11 observable cũ.
+  > 📌 **Cập nhật 2026-08-26 — dự thảo đã có, và nó đổi nhân tố.** Đọc mã cho thấy câu hỏi đúng
+  > nguyên văn ở trên chưa trả lời được: `biome_npp()` là hàm hằng của `BiomeType` (không có núm
+  > chỉnh), bản đồ biome cố định ở seed `1337`, và các observable khối lượng của nhánh O là **toàn
+  > cục** nên không đọc được tương phản theo vùng. Dự thảo tiền đăng ký thay gradient-NPP-theo-biome
+  > bằng gradient-năng-suất-bằng-can-thiệp (`Deforest` nửa Tây / `AddNutrient` nửa Đông, kéo dài),
+  > và khai rõ nó đo **phân tán** chứ không đo **phân hoá không gian**:
+  > [`2026-08-26-experiment-e3-productivity-gradient-body-mass.md`](2026-08-26-experiment-e3-productivity-gradient-body-mass.md).
+  > Hai dụng cụ mở khoá câu hỏi gốc nằm ở §10 của tài liệu đó.
 - **Công cụ đọc kết quả.** `anima-lab` quét lưới tham số, xuất CSV dạng tidy, và một trang HTML
   tự sinh từ `EnsembleSummary`. Thư mục E2 có `runs.csv`, `effects.json`, `paired-report.json`
   nhưng chưa có gì vẽ chúng.

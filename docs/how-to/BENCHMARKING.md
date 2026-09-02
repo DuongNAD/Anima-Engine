@@ -640,6 +640,142 @@ File JSON nguyên vẹn, cộng dòng stderr ở bước 2. Không cần ảnh c
 Số điền vào đâu: cùng ánh xạ ở [§ File này điền được hàng nào](#file-này-điền-được-hàng-nào), nhưng
 lần này hàng `Full-brain agents MVP` **mới thực sự đóng được**, vì nó được định nghĩa ở 1000 agent.
 
+## Checklist đo sau nhánh H — PF-S03 + PF-S04 (soạn 2026-08-26, **chưa chạy**)
+
+Nhánh H (`0b29312`) viết lại bảy hệ thống từ O(agent × segment) thành **một** lượt duyệt segment.
+PF-S01 đã đóng bằng chứng cứ mạnh nhất có thể lấy tự động: checksum sau 1500 tick ở seed `0x5EED`
+bằng **4013327208** trên cả cây trước và sau H — trùng từng bit, nên H không đổi hành vi. Nhưng
+**chưa có phép đo nào nói tick đã rẻ đi**, và hai gate còn lại đều cần một con người ngồi trước máy:
+
+| Gate | Hỏi gì | Một lần chạy có trả lời được không |
+|---|---|---|
+| **PF-S03** | `full_tick` p50 ở 1000 agent, bản release | Có |
+| **PF-S04** | Thời gian mỗi tick tăng **tuyến tính** theo số agent, không bậc hai | **Không** — cần ít nhất ba điểm |
+
+PF-S04 là gate đáng giá hơn: PF-S01 chỉ bắt được chỗ bạn đã sửa mà sửa sai, còn PF-S04 bắt được
+**chỗ bị bỏ sót** — một hệ thống per-agent còn lại sẽ hiện ra thành độ cong, dù mọi checksum vẫn khớp.
+
+Vì vậy: **ba lần chạy trong cùng một phiên, cùng một máy, chỉ đổi đúng một biến.**
+
+> 🖥️ **Ghi phần cứng cho đúng.** `BENCHMARK_BASELINE.md` khai phần cứng mục tiêu là
+> **i5-14600KF / Windows 11 Pro**. Nếu bạn đo trên máy dev macOS thì con số vẫn hợp lệ, nhưng nó là
+> **một hàng phần cứng khác** — đừng ghi đè các hàng của máy mục tiêu. File JSON tự ghi khối
+> `hardware`, nên bản thân file đã nói nó đến từ máy nào; việc còn lại chỉ là đừng trộn hai máy vào
+> một hàng khi trích số.
+
+### Bước 0 — Build release
+
+```powershell
+cargo build --release --features desktop
+```
+
+`--features desktop` không bỏ được (lý do ở [§ Checklist lần chạy release](#checklist-lần-chạy-release--1000-agent)).
+
+### Bước 1 — Ba lần chạy, N = 250 / 500 / 1000
+
+Với **mỗi** N, đặt biến rồi chạy binary, bấm `Bắt đầu mô phỏng`, đợi dòng `tick capture complete`,
+đóng app, rồi sang N kế tiếp. Đừng chạy song song hai instance — chúng sẽ tranh CPU và bạn sẽ đo
+tiếng ồn chứ không đo độ dốc.
+
+```powershell
+# lặp lại khối này ba lần với N = 250, 500, 1000
+$N = 250
+$env:ANIMA_FOUNDING_POPULATION = "$N"
+$env:ANIMA_TICK_CAPTURE     = "warmup=300,capacity=1800,max_samples=1800"
+$env:ANIMA_TICK_CAPTURE_OUT = "h5-release-$N"
+.\src-tauri\target\release\anima-engine.exe
+```
+
+```bash
+# macOS/zsh — cùng ba biến, khác đường dẫn binary
+for N in 250 500 1000; do echo "chay N=$N roi bam nut, doi 'tick capture complete', dong app"; done
+N=250
+ANIMA_FOUNDING_POPULATION=$N \
+ANIMA_TICK_CAPTURE="warmup=300,capacity=1800,max_samples=1800" \
+ANIMA_TICK_CAPTURE_OUT="h5-release-$N" \
+  ./src-tauri/target/release/anima-engine
+```
+
+**Đừng đặt `ANIMA_MORTALITY` và `ANIMA_FITNESS`.** Cả hai mặc định tắt/`locomotion`, và đây là phép
+đo hiệu năng của một refactor thuần — bật thêm tử vong hoặc đổi luật fitness giữa chừng là đo hai
+thứ cùng lúc. File JSON ghi lại `fitness_rule`; bước 2 sẽ kiểm cả ba lần chạy khai **giống nhau**.
+
+Ba dấu hiệu sai, giống hệt checklist 1000 agent: chuỗi `ANIMA_TICK_CAPTURE is not a usable
+configuration`, `ANIMA_FOUNDING_POPULATION is not usable` (genesis đã chạy với 10 founder — đóng app,
+đừng đo tiếp), và `tick capture complete but ANIMA_TICK_CAPTURE_OUT could not be written`.
+
+### Bước 2 — Đọc ba file, kiểm trước khi tin
+
+Thư mục capture: `%APPDATA%\com.anima.engine\captures\` (Windows) hoặc
+`~/Library/Application Support/com.anima.engine/captures/` (macOS).
+
+```bash
+python3 - <<'PY'
+import json, glob, os, sys
+d = os.path.expanduser("~/Library/Application Support/com.anima.engine/captures")
+rows = []
+for n in (250, 500, 1000):
+    p = os.path.join(d, f"h5-release-{n}.json")
+    if not os.path.exists(p):
+        print(f"THIEU: {p}"); continue
+    j = json.load(open(p, encoding="utf-8"))
+    ft = next(x for x in j["phases"] if x["phase"] == "full_tick")
+    w  = j["workload"]
+    rows.append((n, j["profile"], j.get("fitness_rule"), w.get("agent_count_min"),
+                 w.get("agent_count_max"), ft["count"], ft["p50_ns"], ft["p95_ns"],
+                 ft.get("samples_without_agents")))
+hdr = ("N","profile","fitness_rule","agents_min","agents_max","count","p50_ns","p95_ns","no_agent_samples")
+print("\t".join(hdr))
+for r in rows: print("\t".join(str(x) for x in r))
+PY
+```
+
+**Sáu điều kiện, thiếu một là phép đo không dùng được:**
+
+1. `profile` == `release` ở cả ba. `debug` nghĩa là chạy nhầm binary.
+2. `fitness_rule` **giống nhau** ở cả ba lần chạy.
+3. `agents_min` ≈ `agents_max` ≈ N ở mỗi lần chạy. Đây là kiểm ngược quan trọng nhất: nó bắt được
+   trường hợp biến môi trường không tới được tiến trình, và bắt cả trường hợp quần thể chết dần
+   trong lúc đo (mortality vốn tắt, nhưng đói/khát vẫn có hiệu ứng sàn mà E2 đã ghi).
+4. `count` == 1800 ở cả ba.
+5. `no_agent_samples` == 0.
+6. `workload` world **256 × 256**, `dimensions_measured` == `true`.
+
+### Bước 3 — Kết luận, theo tiêu chí đã đăng ký TRƯỚC khi thấy số
+
+Gọi `t(N)` là `p50_ns` của `full_tick`.
+
+**PF-S03 đóng** khi có `t(1000)` từ một lần chạy thoả cả sáu điều kiện trên. Nó là một con số được
+ghi lại, không phải một ngưỡng phải vượt qua — hàng `Full-brain agents MVP` trong
+[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) hỏi đúng con số đó.
+
+**PF-S04** đọc theo hai phép, cả hai phải cùng nói "tuyến tính":
+
+- **Tỷ số đầu–cuối** `R = t(1000) / t(250)`. Tuyến tính thuần cho `R = 4`; có phần chi phí hằng
+  (trường tài nguyên 256², bước nước, lập lịch — không phụ thuộc số agent) thì `R < 4`. Bậc hai
+  thuần cho `R = 16`.
+- **Độ cong tại điểm giữa.** Nội suy tuyến tính giữa hai đầu tại N=500 là
+  `t_i = (t(250) + t(1000)) / 2`. Với một hàm tuyến tính, nội suy là **chính xác**, nên `t(500)`
+  phải trùng `t_i`. Với hàm bậc hai thuần, `t(500)` nằm **thấp hơn dây cung 33 %**.
+
+| Kết quả | Phán |
+|---|---|
+| `R ≤ 6` **và** `\|t_i − t(500)\| / t(500) ≤ 15 %` | **PF-S04 ĐẠT** — tuyến tính |
+| `R ≥ 10` **hoặc** `t(500)` thấp hơn `t_i` quá 25 % | **PF-S04 TRƯỢT** — còn chỗ per-agent bị bỏ sót |
+| còn lại | **CHƯA KẾT LUẬN** — báo cáo nguyên số, đừng tuyên bố gate; nghi can đầu tiên là một hệ thống vẫn quét tuyến tính theo agent |
+
+Ngưỡng ở trên là **tiêu chí, không phải phép đo** — chúng được viết ra ở đây trước khi có bất kỳ con
+số nào, đúng để lần đọc kết quả sau này không trượt thành đọc theo ý muốn.
+
+### Bước 4 — Số đi về đâu
+
+1. Ba file JSON: giữ nguyên vẹn, đính kèm.
+2. `BENCHMARK_BASELINE.md`: điền hàng `Full-brain agents MVP` bằng `t(1000)` (và ghi rõ máy đo).
+3. `FINDINGS.md` mục **F-022**: đổi phần "Còn lại H-5" thành kết quả thật, kèm `R` và độ cong.
+4. `docs/ai/testing/2026-08-25-feature-ecological-selection.md`: đánh dấu PF-S03/PF-S04.
+5. Nếu PF-S04 trượt: mở một finding mới với tên hệ thống nghi can, đừng sửa ngay trong cùng lượt —
+   một bản vá hiệu năng không có phép đo trước/sau thì không kiểm chứng được.
+
 ## Cái vẫn còn thiếu
 
 Phần cứng mục tiêu nay đã khớp, nhưng §3.2 của

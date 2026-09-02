@@ -1632,4 +1632,53 @@ Integrity mode: development
 - [ ] The map is verified to be 1000x1000 in scale with distinct Desert, Jungle, Glacier, and Volcanic environments visible.
 - [ ] All 235 frontend tests in `npm run test:frontend` pass successfully.
 
+## Follow-up — 2026-09-02T18:13:15Z
+
+# Teamwork Project Prompt
+
+> Requested team: Geometry & Collision, Navigation & Gameplay, Ecology & World Coherence, Visual & Lighting, and Integrator
+
+Nâng cấp Anima-Engine thành một nền tảng giả lập thế giới tự nhiên và trí tuệ nhân tạo sinh thái độc nhất vô nhị, tích hợp pipeline mô hình hóa sinh vật 3D qua Meshy AI kết hợp chuyển động học thủ tục (tham khảo Genesis Zero & open-source), đại tu bản đồ tự nhiên siêu thực với chuyển tiếp 22 quần xã và hiệu ứng khí quyển điện ảnh, cùng bộ cài đặt ứng dụng desktop Tauri v2 hoàn chỉnh.
+
+Working directory: /Users/duongnad/Documents/project/Anima-Engine
+Integrity mode: demo
+
+## Requirements
+
+### R1. Hợp nhất Bản đồ Tự nhiên & Hệ sinh thái Đóng (Unified Map & Closed Ecology)
+Hợp nhất hoàn toàn hệ thống bản đồ giữa Rust Bevy ECS (mô phỏng chính thống) và Three.js/Shader (hiển thị 3D) qua một định dạng World chung (World Artifact). Thế giới phải mở rộng quy mô (tối thiểu 2048x2048), mô phỏng xói mòn thủy văn và dòng chảy tự nhiên (sông D8, hồ Barnes Priority-Flood, thác nước, thung lũng, bờ biển) với 22 phân vùng sinh thái (Whittaker ecotones). Hệ sinh thái phải duy trì chu trình bảo toàn năng lượng sinh khối (Closed-EU ledger: thực vật - động vật ăn cỏ - thú săn mồi - chất mùn bã) và lý thuyết trao đổi chất MTE, ngăn ngừa sụp đổ quần thể đột ngột.
+
+### R2. Pipeline Hình thái học Sinh vật & Meshy AI 3D (Creature Morphogenesis & Meshy AI)
+Thiết kế kiến trúc sinh vật lai (Hybrid Architecture) lấy cảm hứng từ Genesis Zero:
+1. Mặc định vận hành bằng mô hình Procedural 3D Mesh với Inverse Kinematics (IK) và Central Pattern Generator (CPG) để di chuyển bám sát độ dốc địa hình với hiệu năng tối ưu 60 FPS.
+2. Tích hợp mô-đun sinh Prompt tự động từ Bộ gen (`MorphologyGenotype`: số lượng chi, tỷ lệ thân, lớp da/vảy/lông, cấu trúc miệng, chỉ số trao đổi chất, môi trường sinh sống) để gọi API Meshy AI (Text-to-3D / Image-to-3D) hoặc trích xuất prompt cho người dùng.
+3. Hỗ trợ cơ chế nạp và lưu trữ cục bộ (local caching) các tệp mô hình GLTF/GLB tải từ Meshy AI vào thế giới mô phỏng.
+
+### R3. Ánh sáng Điện ảnh, Hiệu ứng Khí quyển & Tối ưu Chunking LOD
+Xây dựng chu kỳ ngày/đêm tự nhiên với ánh sáng mặt trời/mặt trăng động, sương mù thể tích (volumetric fog), hiệu ứng hạt thời tiết đặc trưng cho từng biome (bão cát sa mạc, tuyết rơi băng giá, bào tử rừng mưa nhiệt đới, tàn tro núi lửa), và shader mặt nước chân thực (khúc xạ độ sâu, bọt sóng, phản chiếu caustics). Áp dụng kỹ thuật phân chia Chunking và Level-of-Detail (LOD) theo khoảng cách camera để đảm bảo mượt mà 60 FPS mà không làm nghẽn tài nguyên CPU/GPU.
+
+### R4. Đóng gói & Phát hành Ứng dụng Desktop Standalone (Tauri v2 Packaging)
+Hoàn thiện toàn diện cấu hình Tauri v2, giải quyết triệt để các ràng buộc về CSP, assets path và quyền hạn IPC. Đóng gói thành công bộ cài native cho macOS (`.dmg` / `.app`) và thiết lập kịch bản CI/CD GitHub Actions sẵn sàng cho việc tự động build bộ cài Windows (`.msi` / `.exe`) và Linux.
+
+## Acceptance Criteria
+
+### 1. World Architecture & Simulation Stability
+- [ ] File World Artifact nhị phân đồng bộ 100% dữ liệu địa hình (cao độ, nhiệt độ, độ ẩm, dòng nước, biome) giữa Bevy ECS backend và Three.js frontend.
+- [ ] Mô phỏng sinh thái duy trì cân bằng năng lượng, quần thể duy trì đa dạng sinh học (chỉ số Shannon/Simpson > 0) qua ít nhất 10.000 simulation ticks mà không bị tuyệt chủng toàn bộ.
+- [ ] Cơ chế Chunking và Frustum Culling giảm thiểu ít nhất 70% số lượng đa giác cần vẽ ở các vùng khuất tầm nhìn, duy trì tốc độ khung hình ổn định 60 FPS.
+
+### 2. Creature Morphogenesis & Meshy AI
+- [ ] Module Prompt Generator phân tích chính xác các thông số genotype và xuất chuỗi prompt mô tả sinh vật 3D đạt chuẩn chất lượng cao cho Meshy AI.
+- [ ] Tích hợp giao diện quản lý sinh vật: hiển thị thông số tiến hóa, cây phả hệ (lineage), và nút kích hoạt sinh/nạp model Meshy AI 3D (GLTF/GLB) với khả năng fallback sang procedural mesh khi ngoại tuyến.
+- [ ] Sinh vật di chuyển tự nhiên trên mặt đất (raycast terrain alignment, góc nghiêng thân và chân khớp phản ứng linh hoạt với địa hình mấp mô).
+
+### 3. Visuals, Shaders & Atmosphere
+- [ ] Chu kỳ ngày đêm chuyển màu mượt mà theo thời gian thực (bình minh, trưa, hoàng hôn, đêm đầy sao), bóng đổ thời gian thực thích ứng theo góc chiếu mặt trời.
+- [ ] Hệ thống mặt nước có độ trong suốt biến thiên theo độ sâu và hiệu ứng sóng gợn; các hiệu ứng hạt môi trường hiển thị chính xác theo từng vùng sinh thái.
+
+### 4. Build & Distribution
+- [ ] Lệnh `npm run tauri:build` hoàn thành thành công mà không phát sinh lỗi biên dịch, tạo ra tệp cài đặt `.dmg` / `.app` có thể khởi chạy độc lập trên máy tính người dùng.
+- [ ] Quy trình kiểm tra chất lượng theo chuẩn `just verify` và test suite vượt qua tất cả các cổng kiểm định bắt buộc.
+
+
 

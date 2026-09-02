@@ -1,0 +1,129 @@
+Bạn sửa MỘT lỗi trong hạ tầng kiểm tra của dự án Anima-Engine (Rust + Bevy ECS + Tauri v2,
+workspace ở src-tauri/, máy dev macOS/zsh, nhánh hiện tại `feat/ecological-selection`).
+
+Đây là việc của CHỦ DỰ ÁN uỷ quyền: file cần sửa nằm NGOÀI vùng ghi mà `AGENTS.md` cho phép agent
+đụng (`src-tauri/tests` + `FINDINGS.md`). Bạn được phép sửa đúng file nêu dưới đây, không thêm.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 0 — HIỂU CÁI CỔNG TRƯỚC KHI SỬA NÓ
+════════════════════════════════════════════════════════════════════════════════════════════
+
+`scripts/verify.sh` là "cổng chống gian lận": agent không được tự tuyên bố hoàn thành, chỉ script
+này phán. Nó chạy 8 luật, và chỉ in `QUA CONG` ở dòng cuối nếu tất cả đều đạt. `just verify` gọi nó.
+
+Luật 1 chặn ghi ngoài vùng cho phép. Luật 2–6 đọc diff của **thư mục test** và từ chối các thủ
+thuật né lỗi (`#[ignore]`, xoá assertion, RNG phi tất định, assertion rỗng nghĩa…). Luật 7 chạy
+test 3 lần. Luật 8 xác minh mutant thật sự chết.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 1 — LỖI (đã ghi là F-024 trong FINDINGS.md)
+════════════════════════════════════════════════════════════════════════════════════════════
+
+Vị trí: `scripts/verify.sh:41`
+
+    GUARD_DIRS=$(echo "$CHANGED" | grep -E "$GUARD_RE" | sed -E "s|($HD_CRATE/([^/]+/)?$HD_TEST)/.*|\1|" | sort -u)
+
+Cơ chế hỏng: script bật `set -e` và `set -o pipefail`. Khi cây làm việc KHÔNG có thay đổi nào dưới
+`src-tauri/**/tests/`, `grep -E "$GUARD_RE"` không khớp dòng nào và trả mã 1. Vì pipefail, cả
+pipeline trả 1; vì phép gán này — KHÁC với `CHANGED`, `BAD`, `NONKIT` ngay phía trên — KHÔNG có
+`|| true`, `set -e` giết script ngay tại dòng 41.
+
+Hệ quả: cổng thoát với mã 1, **không in một byte nào** — không `TU CHOI`, không `QUA CONG`, không
+lý do. Nó xảy ra TRƯỚC cả luật 2. Nghĩa là mọi công việc hợp lệ mà diff không kèm file test mới —
+sửa tài liệu, commit lại một file nguồn bị bỏ sót, hoặc đơn giản là kiểm tra lại một trạng thái ĐÃ
+commit sạch — đều không thể qua cổng, và người chạy không có cách nào biết tại sao.
+
+Tái hiện (bắt buộc làm trước khi sửa, để có baseline):
+
+    cd <repo>
+    git stash list                      # ghi lại, đừng đụng
+    git status --short                  # nếu có thay đổi dưới src-tauri/**/tests/ thì lỗi KHÔNG hiện
+    just verify ; echo "EXIT=$?"        # kỳ vọng: EXIT=1, stdout/stderr rỗng
+    bash -x ./scripts/verify.sh 2>&1 | tail -20   # trace dừng đúng tại dòng GUARD_DIRS
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 2 — CÁI BẪY THỨ HAI. ĐỪNG CHỈ THÊM `|| true` RỒI ĐI VỀ.
+════════════════════════════════════════════════════════════════════════════════════════════
+
+Nếu bạn chỉ thêm `|| true`, script chạy tiếp tới dòng 43:
+
+    DIFF=$(git diff HEAD -- $GUARD_DIRS 2>/dev/null || true)
+
+`$GUARD_DIRS` không được nháy và giờ nó RỖNG, nên lệnh trở thành `git diff HEAD --` — tức là
+**diff toàn cây**, không còn giới hạn ở thư mục test. Đã kiểm chứng trong repo này: với cây chỉ có
+`FINDINGS.md` sửa, `git diff HEAD -- $EMPTY` trả về đúng diff của `FINDINGS.md` (25 dòng), không
+phải rỗng.
+
+Từ đó `ADDED`/`REMOVED` mang nội dung của **file ngoài vùng test**, và luật 2–5 soi nhầm chỗ. Ví dụ
+cụ thể, không phải giả định: `FINDINGS.md` là file mà agent ĐƯỢC phép sửa, và các mục findings
+thường trích đúng những chuỗi mà luật 4 cấm (`thread_rng`, `Instant::now`, `SystemTime::now`) hoặc
+những chuỗi luật 3 coi là "xoá assertion" (`assert!(...)`). Ghi một finding trung thực về một test
+dùng `thread_rng` sẽ bị chính cổng từ chối, với lý do vô nghĩa.
+
+Vậy bản sửa đúng phải xử lý **cả hai**: pipeline không được giết script, VÀ nhánh rỗng không được
+mở rộng phạm vi diff.
+
+Gợi ý (bạn tự quyết cách viết, miễn giữ nguyên ngữ nghĩa 8 luật):
+
+    GUARD_DIRS=$(echo "$CHANGED" | grep -E "$GUARD_RE" | sed -E "s|($HD_CRATE/([^/]+/)?$HD_TEST)/.*|\1|" | sort -u || true)
+    if [ -n "$GUARD_DIRS" ]; then
+      for d in $GUARD_DIRS; do git add --intent-to-add -- "$d" >/dev/null 2>&1 || true; done
+      DIFF=$(git diff HEAD -- $GUARD_DIRS 2>/dev/null || true)
+    else
+      DIFF=""
+    fi
+
+Đặt `|| true` BÊN TRONG `$( ... )` để đồng nhất với `CHANGED`/`BAD`/`NONKIT` ở phía trên.
+Giữ NGUYÊN VĂN biểu thức `sed` của dòng gốc (trong file nó viết `\\1`, không phải `\1` — khối
+gợi ý trên đã bỏ một lớp thoát cho dễ đọc). Chỉ thêm `|| true` và nhánh rỗng, đừng gõ lại sed.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 3 — RÀNG BUỘC
+════════════════════════════════════════════════════════════════════════════════════════════
+
+1. KHÔNG đổi ngữ nghĩa của bất kỳ luật nào trong 8 luật. Không nới lỏng, không thêm ngoại lệ,
+   không thêm cờ "bỏ qua". Đây là sửa một lỗi shell, không phải chỉnh chính sách.
+2. Chỉ sửa `scripts/verify.sh`. Không đụng `justfile`, `AGENTS.md`, `.hardening.env`,
+   `src-tauri/**`. Nếu bạn thấy cần sửa chỗ khác, DỪNG và báo cáo thay vì tự làm.
+3. Rà nốt phần còn lại của `verify.sh` xem còn phép gán nào có cùng dạng hỏng (pipeline có `grep`
+   dưới `set -e` + `pipefail` mà thiếu `|| true`). BÁO CÁO những chỗ tìm được; chỉ sửa chỗ nào
+   bạn chứng minh được là hỏng bằng một lần tái hiện thật, đừng sửa phòng xa.
+4. Không `git push`. Commit thì được — một commit duy nhất, thông điệp nêu rõ đây là uỷ quyền của
+   chủ dự án (tiền lệ: `1ec6ac5`, `f021fd7` — "owner uy quyen").
+5. Cập nhật mục **F-024** trong `FINDINGS.md`: `Trạng thái: OPEN` → `FIXED (<sha>)`, kèm một dòng
+   nói bản sửa xử lý cả bẫy KHỐI 2. Đừng viết lại phần mô tả triệu chứng.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 4 — BẰNG CHỨNG PHẢI NỘP (thiếu bất kỳ mục nào = chưa xong)
+════════════════════════════════════════════════════════════════════════════════════════════
+
+A. Cây sạch (không có thay đổi nào dưới `src-tauri/**/tests/`):
+
+       just verify ; echo "EXIT=$?"
+
+   Kỳ vọng SAU khi sửa: in `QUA CONG`, EXIT=0. Dán nguyên output.
+   (Lưu ý: luật 7 chạy `cargo test --release` BA lần — lần đầu build release rất lâu. Đó là chạy
+   thật, không phải treo.)
+
+B. Cổng vẫn còn răng — chứng minh bằng ba ca ÂM TÍNH, mỗi ca phải in `TU CHOI`, EXIT khác 0:
+       B1. Sửa một file bất kỳ trong `src-tauri/src/` → luật 1 phải từ chối.
+       B2. Thêm `#[ignore]` vào một test trong `src-tauri/tests/` → luật 2 phải từ chối.
+       B3. Xoá một dòng `assert_eq!` có sẵn trong `src-tauri/tests/` → luật 3 phải từ chối.
+   Hoàn nguyên sạch sau mỗi ca (`git checkout -- <file>`), và ghi rõ bạn đã hoàn nguyên.
+
+C. Ca dương tính có thật: thêm một `assert_eq!` mới vào một file test có sẵn → `just verify` vẫn
+   phải in `QUA CONG`. Hoàn nguyên sau khi đo.
+
+D. Ca của KHỐI 2: sửa `FINDINGS.md` bằng một dòng có chứa chuỗi `Instant::now` → `just verify`
+   phải in `QUA CONG` (chứ KHÔNG phải từ chối vì "test dung RNG/dong ho phi tat dinh").
+   Đây là ca chứng minh bẫy thứ hai đã được xử lý. Hoàn nguyên sau khi đo.
+
+════════════════════════════════════════════════════════════════════════════════════════════
+KHỐI 5 — ĐỪNG LÀM
+════════════════════════════════════════════════════════════════════════════════════════════
+
+· Đừng `git clean`, `git stash`, hay xoá `src-tauri/mutants.out/` và
+  `src-tauri/anima-core/mutants.out/`. Chúng là artifact của công cụ, đã được cổng miễn trừ, và
+  có `mutants.out.old-20260826` đã được chuyển ra ngoài repo — đừng đi tìm.
+· Đừng "cải thiện" verify.sh ngoài phạm vi lỗi này. Cổng càng ít thay đổi càng đáng tin.
+· Đừng tuyên bố xong khi chưa thấy chuỗi `QUA CONG` bằng chính mắt mình ở ca A.

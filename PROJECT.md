@@ -1,156 +1,152 @@
-# Project: Anima Engine Landscape Expansion & Biome Integration
+# Project: Anima-Engine
 
 ## Architecture
-- **src/components/Landscape/utils/terrainGenerator.ts**: Core math, noise generation, biome classification (including Desert, Jungle, Volcanic, and Glacier via temperature noise), and flora placement.
-- **src/components/Landscape/Terrain.tsx**: Renders the 3D procedural terrain. Utilizes Level-of-Detail (LOD) and GPU/Vertex Shader-based wave animations to maintain performance at 1000x1000 scale.
-- **src/components/Landscape/Vegetation.tsx**: Renders instanced trees, cacti, jungle palms, dead trunks, and snow pines using optimized GPU instancing.
-- **src/components/Landscape/Water.tsx**: Renders water bodies (ocean, lakes, rivers) with custom shader-based depth transparency, lava river rendering for volcanic biomes, and ice sheet rendering for glaciers.
-- **src/components/Landscape/Minimap.tsx**: Renders a 2D overview of the 1000x1000 map.
-- **src/components/Landscape/LandscapeShowcase.tsx**: Parent component orchestrating canvas, sky, weather, audio, and UI overlays.
+Anima-Engine is an autonomous natural world simulation and ecological AI platform coupling a high-performance Rust Bevy ECS simulation engine with a high-fidelity Three.js/React Three Fiber 3D visualizer and PixiJS 2D HUD wrapped in Tauri v2.
+
+### Subsystems & Data Flow
+1. **World Generation & Hydrology (Authoritative 2048x2048)**:
+   - `worldGen.ts` generates 2048² SoA elevation, moisture, temperature, D8 flow accumulation, Barnes Priority-Flood lake basins, spillways, waterfalls, and 22 Whittaker biomes.
+   - `worldArtifact.ts` & `world_artifact.rs` serialize/deserialize this into the canonical binary `WorldArtifact` format (`.anmw`, version 2, 36-byte header, FNV-1a checksum).
+   - Ingested by Bevy ECS `init_world()` into `TerrainMap` (256x256 downsampled grid), binding `WorldIdentity` seed to `SimRng`.
+2. **Closed Ecology & Energy Ledger**:
+   - `EcosystemBiomass` & `EnergyLedger` in `anima-domain` maintain strict conservation ($E_{detritus} + E_{plants} + E_{animals} + E_{dormant} = \text{const}$) within $\le 10^{-3}$ EU tolerance.
+   - Net Primary Production (`ResourceField`) seeded from Whittaker biomes with strided logistic regrowth.
+   - Herbivore grazing (Holling Type II) and predator-prey combat (Holling Type III rarity refuge + 30% Lindeman trophic efficiency, 70% detritus return).
+   - Metabolic Theory of Ecology (MTE): Kleiber's $M^{3/4}$ scaling $\times$ Arrhenius temperature factor.
+   - Evolutionary niche space via MAP-Elites (`body-mass + trophic-ratio`).
+3. **Creature Morphogenesis & Meshy AI Pipeline**:
+   - `MorphologyGenotype` (acyclic tree of segment capsules & joint constraints).
+   - Hybrid Architecture: Procedural 3D mesh with CPG phase oscillators + joint spring-dampers (60 FPS baseline fallback).
+   - 9-slot deterministic prompt grammar (`CREATURE_PROMPT_CONTRACT.md`) generating concise prompts ($\le 500$ chars).
+   - Archetype BLAKE3 hashing, local `.glb` file caching (`app_data_dir/models/archetypes/<hash>.glb`), A1–A7 acceptance gates, and per-individual morphological fit (scale, axial stretch, tinting, bone binding).
+   - Terrain-following locomotion via raycast ground alignment and surface normal pitch/roll.
+4. **Cinematic Atmosphere, Water Shaders & Chunking LOD**:
+   - Celestial day/night cycle with dynamic sun/moon orbital trajectories and shadow frustum tracking.
+   - 4 signature biome weather particle systems: Desert sandstorm, Snowy frost/blizzard, Rainforest bioluminescent spores, Volcanic ash/embers.
+   - Water GLSL shader: Beer-Lambert depth absorption, dual-normal wave displacement, shoreline surf/foam, and underwater caustics.
+   - Chunking LOD: 6x6 chunk grid with distance-based mesh resolution scaling and frustum culling (>70% triangle/draw-call reduction at 60 FPS).
+5. **Desktop Packaging & Security**:
+   - Tauri v2 configuration (`src-tauri/tauri.conf.json`, `capabilities/default.json`).
+   - Strict Content Security Policy (CSP), verified by `scripts/check_csp_compat.mjs`.
+   - Native macOS `.app` / `.dmg` bundle output and GitHub Actions multi-platform CI/CD for Windows (`.msi`) and Linux (`.AppImage`/`.deb`).
+   - Repository hardening compliance verified by `just verify` ("QUA CONG").
+
+---
+
+## Feature Inventory
+| # | Feature | Description | Milestone | Source |
+|---|---|---|---|---|
+| 1 | 2048x2048 Procedural Terrain | 8-octave fBm, ridged multifractals, hydraulic erosion | M1 | Survey 1 |
+| 2 | D8 River Routing & Meanders | Flow accumulation, counting-sort descent, channel carving | M1 | Survey 1 |
+| 3 | Barnes Priority-Flood Lakes | Lake basin filling, spillway overflow, endorheic salt lakes | M1 | Survey 1 |
+| 4 | 22 Whittaker Biomes | Ecotones mapped from temperature lapse & orographic moisture | M1 | Survey 1 |
+| 5 | Binary World Artifact (.anmw) | Version 2, 36-byte header, FNV-1a checksum, 22↔11 biome mapping | M1 | Survey 1 |
+| 6 | Bevy ECS Terrain Sync | Ingest .anmw into `TerrainMap`, bind `WorldIdentity` seed | M1 | Survey 1 |
+| 7 | Closed-EU Energy Ledger | Conserve EU across 4 compartments (detritus, plants, animals, dormant) | M2 | Survey 2 |
+| 8 | MTE Metabolic Scaling | Kleiber's $M^{3/4}$ allometry $\times$ Arrhenius temperature factor | M2 | Survey 2 |
+| 9 | Holling II & III Dynamics | Type II grazing, Type III predation rarity refuge, 30% Lindeman | M2 | Survey 2 |
+| 10 | 10k+ Ticks Population Stability | Seasonal fertility, Whittaker NPP, Shannon/Simpson index > 0 | M2 | Survey 2 |
+| 11 | Procedural 3D Mesh Fallback | CPG oscillator + joint constraints + SLERP/IK at 60 FPS | M3 | Survey 2 |
+| 12 | 9-Slot Meshy Prompt Generator | Genotype to concise descriptive text prompt ($\le 500$ chars) | M3 | Survey 2 |
+| 13 | Local Archetype Model Caching | BLAKE3 hash indexing, local `.glb` storage, A1–A7 gates | M3 | Survey 2 |
+| 14 | Terrain-Following Locomotion | Raycast surface height and normal slope-following orientation | M3 | Survey 2 |
+| 15 | Celestial Day/Night Cycle | 4-phase sun/moon orbits, dynamic lighting & shadow tracking | M4 | Survey 3 |
+| 16 | Biome Weather Particles | Desert sandstorm, snow frost, rainforest spores, volcanic ash | M4 | Survey 3 |
+| 17 | Realistic Water GLSL Shader | Depth absorption (Beer-Lambert), wave foam, caustics | M4 | Survey 3 |
+| 18 | Distance Chunking & Frustum LOD | 6x6 chunk grid, distance tiers, skirts, >70% draw reduction | M4 | Survey 3 |
+| 19 | Tauri v2 Packaging & Security | CSP verification, window permissions, macOS `.app`/`.dmg` | M5 | Survey 3 |
+| 20 | Multi-Platform CI/CD Workflows | GitHub Actions matrix for macOS, Windows, and Linux | M5 | Survey 3 |
+| 21 | Verification & Hardening Gate | Passing `just verify` ("QUA CONG"), full Vitest & Cargo tests | M5 | Survey 3 |
+
+---
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
-|---|------|-------|-------------|--------|
-| 1 | Exploration & Initial Verification | Scan files, locate components, run test suite to verify baseline. | none | DONE |
-| 2 | E2E Test Suite Creation & Setup | Design and write/update E2E tests for the new biomes and scale. | M1 | PLANNED |
-| 3 | Expand Map Scale to 1000x1000 | Expand grid dimensions to 1000x1000 and optimize performance (LOD, shaders, vegetation loops). | M1 | PLANNED |
-| 4 | Integrate Desert, Jungle, Volcanic, and Glacier Biomes | Update terrain generator, biomes coloring, vegetation models, custom lava/ice water shaders. | M3 | PLANNED |
-| 5 | Performance & Robustness | Apply optimizations to guarantee 60 FPS, verify layout and features. | M4 | PLANNED |
-| 6 | Verification & Test Pass | Run full frontend test suite and Forensic Auditor checks. | M2, M5 | PLANNED |
+|---|---|---|---|---|
+| M1 | Unified Natural Map & Binary Sync | 2048² world generation, D8 flow, Barnes lakes, 22 biomes, `.anmw` format, Bevy ECS `init_world` sync | none | IN_PROGRESS |
+| M2 | Closed Ecology & Population Dynamics | Closed-EU ledger ($\le 10^{-3}$ EU), MTE metabolic rate, Holling II/III, 10k-tick stability ($H>0$) | M1 | PLANNED |
+| M3 | Creature Morphogenesis & Meshy AI | Hybrid procedural IK/CPG mesh fallback, 9-slot prompt generator, BLAKE3 cache, terrain locomotion | M1, M2 | PLANNED |
+| M4 | Cinematic Atmosphere, Water & LOD | Day/night cycle, 4-biome particle systems, water shader (depth/caustics), 6x6 chunk LOD & culling | M1 | PLANNED |
+| M5 | Desktop Packaging & Hardening | Tauri v2 configuration, CSP/IPC permissions, macOS packaging, CI/CD scripts, `just verify` | M1, M2, M3, M4 | PLANNED |
+| M6 | Final Integration & E2E Acceptance | 100% pass across E2E Tiers 1-4, Tier 5 adversarial coverage hardening | M1, M2, M3, M4, M5, E2E | PLANNED |
 
-### Phase 7: Ecosystem Dynamics (Metabolic Theory, Functional Responses, Closed Energy)
-Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1959; Lindeman 1942; Whittaker 1975; Rosenzweig 1971 paradox of enrichment). Backbone module `core/ecology.rs` (pure, unit-tested, zero-alloc on the hot path).
-| # | Name | Scope | Status |
-|---|------|-------|--------|
-| E1 | Metabolic Theory of Ecology | `metabolic_rate = i0·M^¾·e^(−E/kT)` (Kleiber + Arrhenius, E=0.65 eV animals / 0.30 eV producers); replaces the linear mass term in `metabolic_decay_system` so metabolism scales sub-linearly with body mass and speeds with warmth (Q10≈2.4) | DONE |
-| E2 | Holling functional responses | Type II/III + `predation_capture()`; combat uses Type III so a healthy prey is not zeroed in one strike and rare/weak prey are spared (rarity refuge → anti prey-extinction) | DONE |
-| E3 | Lindeman transfer + closed loop | Predators assimilate only ~30% of captured energy; the unassimilated remainder returns to a conserved `EcosystemBiomass` ledger (detritus/plants/animals) — energy conservation as the primary anti-collapse device | DONE |
-| E4 | NPP resource field | `ResourceField`: per-cell logistic regrowth `R+g·R(1−R/R_max)` with `R_max` from Whittaker biome NPP; SoA buffers, in-place `step_regrowth` (zero-alloc), `graze()`, world↔cell mapping; live `resource_field_regrowth_system` in the tick schedule, seeded from the terrain biomes in `init_world` | DONE |
-| E5 | Biodiversity diagnostics | Shannon (−Σpᵢln pᵢ) and Gini–Simpson (1−Σpᵢ²) indices as pure functions for dashboards/telemetry | DONE |
-| E6 | Grazing + closed energy loop | `herbivore_grazing_system`: prey graze `ResourceField` (Type II saturating intake → depleted cells disperse herbivores = giving-up-density refuge); biomass-GATED regrowth (`step_regrowth_gated`) so plants only grow by drawing detritus; metabolism routes respired energy → detritus; `ecosystem_census_system` tallies living-animal energy — the full plant→herbivore→detritus→plant cycle is conserved (unit-tested) | DONE |
-| E7 | MAP-Elites ecological niche axes + NPP fruiting | Archive descriptors switched from locomotion (speed/efficiency) to ECOLOGICAL niche axes — body mass (`MorphologyGenotype::total_mass()`, the MTE master trait) × foraging range (distance roamed), normalized to [0,1] via `ecological_descriptors()`; so quality-diversity illuminates ecological diversity and predator/prey arms races spread the grid. `fruit_growth_system` now scales fruiting by local biome NPP (rainforest fruits fast, desert slow; trees without a position fall back to base rate) | DONE |
-| E8 | Corpse decomposition + seasonal fertility | Death half of the closed loop — a replaced agent's remaining reserve energy returns to the detritus pool (conserved) via `apply_staggered_evolution_system`; a `SeasonClock` drives a `seasonal_fertility()` sine (summer boosts regrowth, winter suppresses) so the resource field booms and busts on a yearly cycle, a periodic disturbance that sustains predator-prey cycles | DONE |
-| E9 | Live ecosystem dashboard over IPC | `get_ecosystem_state` command + per-tick publish of the conserved `EcosystemState` (detritus/plants/animals/total, prey/predator counts, Shannon/Simpson); frontend `EcosystemPanel` polls it and renders the stacked biomass bar + population split + diversity indices (unit-tested) | DONE |
-| E10 | Ecosystem time-series visualization | `EcosystemPanel` keeps a rolling one-minute history and renders two validated inline-SVG sparklines — predator vs prey population (the Lotka-Volterra cycle) and the three biomass compartments over time — single-axis each, entity-fixed colors (CVD/contrast validated), legend + end-dot labels; unit-tested | DONE |
-| E11 | Coevolution / Red-Queen metrics | `niche_divergence()` — normalized separation of prey vs predator mean body mass = the character-displacement / arms-race signal; plus MAP-Elites `archive_coverage` (occupied niche cells = open-endedness proxy). Both added to `EcosystemState`, shown in the panel (readouts + a divergence sparkline). Unit-tested | DONE |
-| E12 | (Optional) Connectance + IDH study | Food-web connectance & chain length; an intermediate-disturbance-frequency diversity experiment (a study/harness, best run on the target hardware) | TODO |
-
-### Phase 6: Modern Dashboard Redesign & Procedural 2D Game Simulation Canvas
-| # | Name | Scope | Dependencies | Status | Agent ID |
-|---|------|-------|-------------|--------|----------|
-| I34 | Tabbed Dashboard Layout | Modern glassmorphic theme, remove CRT effects, implement 3 tabs | None | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
-| I35 | 2D Game Organism Canvas | Detailed predators, prey, segment joints, pheromone clouds, radar scan beams | I34 | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
-| I36 | Functionality & Unit Verification | Run vitest suite, verify all tests pass and dashboard state functions | I35 | DONE | 371aa068-b827-4118-b003-cc6de8c68d53 |
-| I37 | Forensic Audit & Release | Final verification with challenger and auditor | I36 | DONE | 7d6c95b2-81ed-4958-840d-4ae71f1b2225 |
-
-### Phase 7: Interactive Fantasy World Map Application
-| # | Name | Scope | Dependencies | Status | Agent ID |
-|---|------|-------|-------------|--------|----------|
-| I38 | Fantasy Map Workspace & Render Engine Setup | Initialize fantasy-map React/TS playground structure, PixiJS app, parchment background | None | DONE | f002cb14-9aa3-4def-91c0-dc3f5fa6cac1 |
-| I39 | Geographic Regions Rendering | Layout and custom canvas/PixiJS drawings for the 8 regions and floating island | I38 | DONE | c4956b38-edf2-4c43-ac34-ec5eb7f82de0 |
-| I40 | Navigation & Camera Mechanics | Zoom centered on cursor, click-and-drag pan with momentum/damping, zoom/pan constraints | I38 | DONE | 31523f09-04ed-4fdd-85ae-66b718e9b0c3 |
-| I41 | Ambient Effects, Paths & UI Overlay | Smoke, snow, spores particles, animated waterfall/island/water, sailing ships on bezier curves, kraken, grid/border UI | I39, I40 | DONE | d9bb6b13-d1d7-4bd1-985e-96093d0885bc |
-| I42 | Interactivity, Vite Integration & Verification | Region click parchment dialogs, new Vite config entry, build and check validation | I41 | DONE | 2adaf9b5-4cd1-4d7a-b5ec-a4afac1ee885 |
-
-### Phase 8: Optimized Texture Map & Telemetry Dashboard
-| # | Name | Scope | Dependencies | Status | Agent ID |
-|---|------|-------|-------------|--------|----------|
-| I43 | Base Texture Setup & Region Bounds | Copy reference map image, load as PixiJS static background texture, map coordinates of regions | None | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
-| I44 | Overlay Animations & Particles | Smoke/lava, waterfall spray, World Tree spores, falling snow, ships on bezier paths, kraken | I43 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
-| I45 | Performance Optimization | Cache static vector shapes (highlight rings, borders, grid), optimize ticker loop, batch render | I44 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
-| I46 | Ecosystem Telemetry Dashboard | Split screen layout, ECharts widgets (Population, Energy, Resource) with mock telemetry, entry animations | I43 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
-| I47 | E2E & Integration Verification | Validate integration with Vite entry point, verify TS/console errors, run vitest suites | I45, I46 | DONE | 60b12be0-f0d6-4ea1-b516-f0216cd95233 |
+---
 
 ## Interface Contracts
-### Tauri Commands
-- `get_simulation_status` -> `SimulationStatus`
-- `toggle_simulation` -> `bool`
-- `get_map_elites_grid` -> `MapElitesGridState`
-- `update_evolution_settings(settings: EvolutionSettings)` -> `bool`
-- `toggle_evolution` -> `bool`
-- `get_pheromone_grid` -> `PheromoneGridState`
-- `get_active_raycasts` -> `Vec<RaycastTelemetry>`
-- `get_lineage_graph` -> `LineageGraphState`
-- `get_chronicle_history` -> `Vec<ChronicleEvent>`
-- `get_ecosystem_state` -> `EcosystemState` (closed-energy ledger: detritus/plants/animals/total, prey/predator counts, Shannon/Simpson) — published each tick, polled by the frontend `EcosystemPanel`
-- `set_lod_focus(focus: LodFocus)` -> `()` — where simulation detail is centred, i.e. the observer's world position. `{ enabled: false, center: [0,0,0] }` is the default and the rollback: every agent `Hot`, thinking every tick, exactly as before simulation LOD existed. Applied on the next tick by `sync_lod_focus_system`, not immediately — the world belongs to the simulation thread.
-- `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
-- `get_lod_bands` -> `LodBands` — tier boundaries (`hot_radius`, `warm_radius`, `warm_interval`). The agent viewport asks for these rather than hardcoding them: it only sets a focus while everything on screen fits inside `hot_radius`, so that no agent the user is looking at is ever tiered down.
 
-#### Tick capture (in-process profiler)
+### 1. World Artifact Binary Format (`.anmw` v2)
+- Header (36 bytes LE):
+  - `0..4`: Magic `ANMW` (`[0x41, 0x4E, 0x4D, 0x57]`)
+  - `4..6`: Version `0x0002` (u16)
+  - `6..8`: Flags `0x0000` (u16)
+  - `8..12`: Grid width $W$ (u32)
+  - `12..16`: Grid height $H$ (u32)
+  - `16..20`: World seed (u32)
+  - `20..24`: Sea level (f32)
+  - `24..28`: Max elevation (f32)
+  - `28..32`: Payload byte length (u32)
+  - `32..36`: FNV-1a 32-bit checksum of payload (u32)
+- Payload layout:
+  - Elevation plane: $W \times H \times 2$ bytes (`u16` normalized $[0, 65535]$)
+  - Moisture plane: $W \times H \times 1$ byte (`u8` normalized $[0, 255]$)
+  - Temperature plane: $W \times H \times 1$ byte (`u8` normalized $[0, 255]$)
+  - Biome plane: $W \times H \times 1$ byte (`u8`, 22 canonical biomes)
+  - Flow accumulation plane: $W \times H \times 2$ bytes (`u16`)
 
-Operational evidence, never simulation state. A capture is opt-in, bounded by a pre-allocated ring,
-and cannot alter a trajectory: nothing it records enters `world_checksum`, an RNG stream or a
-snapshot. See `src-tauri/src/core/tick_capture.rs`, and `tests/tick_capture_tests.rs` for the gate
-that proves the disabled *and* the recording path both leave the world identical.
+### 2. Biome Taxonomy Translation (22 Canonical ↔ 11 Legacy)
+- 22 Canonical (Frontend/WorldGen):
+  `DeepOcean(0)`, `Ocean(1)`, `Beach(2)`, `Savanna(3)`, `Grassland(4)`, `Shrubland(5)`, `TemperateSeasonalForest(6)`, `Jungle(7)`, `TropicalRainforest(8)`, `Tundra(9)`, `Swamp(10)`, `MountainRock(11)`, `Snow(12)`, `Taiga(13)`, `Woodland(14)`, `Mangrove(15)`, `TemperateRainforest(16)`, `River(17)`, `Alpine(18)`, `Badlands(19)`, `Glacier(20)`, `Desert(21)`.
+- 11 Legacy (Bevy Simulation):
+  `DeepOcean(0)`, `Ocean(1)`, `Beach(2)`, `River(3)`, `Grassland(4)`, `TemperateForest(5)`, `BorealForest(6)`, `Rainforest(7)`, `Desert(8)`, `MountainRock(9)`, `Snow(10)`.
 
-- `start_tick_capture(config: CaptureConfig)` -> `()` — begins a capture, discarding the previous
-  one. A malformed configuration (zero capacity, zero sample rate, an empty phase set, a schedule
-  that overflows `u64`) is **refused with a reason** rather than clamped into a working one, because
-  a clamped capture reports a measurement it did not make.
-- `stop_tick_capture` -> `()` — stops recording and keeps what was captured. Idempotent.
-- `get_tick_capture_status` -> `CaptureStatusReport` — status, config, sample accounting
-  (ticks observed, warm-up discarded, rate-skipped, recorded, overwritten, dropped) and the workload
-  the capture measured.
-- `export_tick_capture(file_name: Option<String>)` -> `CaptureExport` — the summarised document.
-  With a name, it is also written atomically to `<app data>/captures/<name>.json` under the same
-  name contract as a save (see below). Percentiles are **nearest rank**; phases the build cannot
-  measure appear in `unavailable` with a reason rather than as a missing row; hardware fields this
-  package did not measure are listed in `hardware.not_measured` rather than guessed.
+### 3. Coordinate Contract (Affine Transformations)
+- Simulation World Space: $X \in [-100, 100], Z \in [-100, 100], Y \in [0, 10]$.
+- Render Space (Three.js): $X \in [-600, 600], Z \in [-600, 600], Y \in [0, 156]$.
+- Grid Cell Space: $U \in [0, W-1], V \in [0, H-1]$.
+- Transformation Formula:
+  $$\text{RenderX} = \text{SimX} \times 6.0, \quad \text{RenderZ} = \text{SimZ} \times 6.0, \quad \text{RenderY} = \text{SimY} \times 15.6$$
 
-`ANIMA_TICK_CAPTURE` starts one at engine boot for a run nobody is watching, e.g.
-`ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2`.
+### 4. Meshy AI Prompt Grammar IR (`MorphoSpec`)
+- Deterministic 9-slot string format:
+  `[size_class] [body_build] [limb_description] [integument_covering] [primary_secondary_colors] [craniofacial_features] [thermo_adaptation] [distinctive_traits], stylized low-poly game creature, clean topology, PBR textures`
 
-#### Persistence
-
-`file_path` keeps its parameter name for IPC compatibility. **It is a save *name*, not a path.**
-Both commands resolve it inside this app's own data directory and refuse anything path-shaped;
-they previously took the string straight to `fs`, so anything that could reach `invoke` could write
-a file anywhere the process had permission and read any file back into the running world.
-
-- `save_simulation_state(file_path: String)` -> `bool` — `file_path` is a single file name matching
-  `[A-Za-z0-9._-]{1,100}`, normalised to `*.json`, written under `<app data>/saves/` as a versioned
-  `SnapshotEnvelope` via an atomic write. Separators, drive letters, `..`, UNC prefixes, NTFS
-  streams and Windows device names (`CON`, `NUL`, `COM1`…) are refused with a reason.
-  See `src-tauri/src/commands/save_paths.rs`.
-- `load_simulation_state(file_path: String)` -> `bool` — the same name contract, read back from
-  `<app data>/saves/`. The reader verifies the envelope checksum and migrates schema 1–2 forward.
-- `list_legacy_saves` -> `LegacyImportListing` — `{ directory, names }` for
-  `<app data>/legacy-import/`, the drop box for saves written before path confinement.
-- `import_legacy_save(legacy_name: String, save_as: String)` -> `String` — reads one file from that
-  directory, re-seals it into the current envelope, and writes it into `saves/` under `save_as`.
-  **Read-only** with respect to the legacy file: never written, truncated or deleted.
-
-  Why a drop directory rather than an absolute path argument: "explicitly opt-in" has to mean *the
-  user*, not the page. A command taking an absolute path would hand back exactly the capability the
-  confinement removed — a compromised webview would call it with an SSH key and read the parse
-  error. Copying a file into the drop box is an act the webview cannot perform.
-
-The **autosave** (written on exit, adopted on startup) is an ordinary save named `autosave.json`
-under the same directory, envelope and atomic write. It was `<app data>/default_save.json`: a bare
-`serde_json` dump written with `fs::write`, unversioned, and unreachable from `load_simulation_state`.
-Startup reads the old location once if `saves/autosave.json` is absent, so existing worlds are
-adopted rather than stranded, and never writes back to it.
-
-### Tauri Events
-- `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)
-- `map-elites-update` (Payload: `MapElitesGridState`)
-- `pheromone-update` (Payload: `PheromoneGridState`)
-- `raycast-update` (Payload: `Vec<RaycastTelemetry>`)
-- `combat-event` (Payload: `CombatEvent`)
-- `chronicle-event` (Payload: `ChronicleEvent`)
-- `migration-event` (Payload: `MigrationPayload`)
+---
 
 ## Code Layout
-- `src-tauri/`: Rust workspace backend
-- `src/`: React + TypeScript frontend
-- `tests/`: Integration tests
-
-### Frontend landscape internals
-
-Not IPC — these are in-process contracts inside the older `LandscapeShowcase` stack, kept because
-that stack is still what `src/App.tsx` renders and what roughly half the frontend suite exercises.
-
-- **determineBiome**: `determineBiome(elevation: number, moisture: number, temperature?: number): BiomeType` — `temperature` is optional so pre-temperature callers keep working.
-- **Vegetation Instancing**: instanced meshes use precomputed layout data to avoid overlap without an $O(N^2)$ pass.
-- **Water Shader Uniforms**: the water shader takes temperature/biome mapping (texture or uniforms) so it can render lava and ice sheets.
+```
+Anima-Engine/
+├── src/                                  # Frontend TypeScript & React Three Fiber
+│   ├── components/
+│   │   ├── Landscape/                    # 3D World Visualization
+│   │   │   ├── WorldShowcase.tsx         # Master 3D scene coordinator
+│   │   │   ├── WorldTerrainLod.tsx       # 6x6 Chunked terrain mesh with skirts
+│   │   │   ├── WorldWater.tsx            # Realistic water GLSL shader (absorption/caustics)
+│   │   │   ├── WorldSky.tsx              # GLSL skydome & day/night celestial orbits
+│   │   │   ├── WorldWeather.tsx          # Biome particle systems (dust/snow/spores/ash)
+│   │   │   ├── WorldVegetation.tsx       # 14 instanced flora types
+│   │   │   ├── LiveAgents.tsx            # Hybrid creature rendering & terrain following
+│   │   │   └── utils/                    # World gen, artifact binary codec, chunk LOD
+│   │   └── EcosystemPanel.tsx            # Telemetry & god-mode controls
+│   ├── PixiViewport.tsx                  # 2D God-eye canvas & organism morphology
+│   ├── App.tsx                           # Main HUD interface & tabbed navigation
+│   └── types/generated/                  # ts-rs generated Rust-to-TypeScript bindings
+├── src-tauri/                            # Rust Backend
+│   ├── src/                              # READ-ONLY core simulation logic
+│   │   ├── core/                         # Bevy ECS systems, terrain, ecology, energy ledger
+│   │   ├── evolution/                    # MAP-Elites, genotype graph
+│   │   ├── physics/                      # Dynamics, joints, CPG oscillators
+│   │   └── commands/                     # Tauri IPC command endpoints
+│   ├── tests/                            # READ-WRITE verification test suites
+│   ├── Cargo.toml                        # Rust dependencies & feature definitions
+│   └── tauri.conf.json                   # Tauri v2 desktop application manifest
+├── docs/reference/                       # Specifications & contracts
+│   ├── BIOME_TAXONOMY.md
+│   ├── COORDINATE_CONTRACT.md
+│   ├── CREATURE_PROMPT_CONTRACT.md
+│   └── MAP_MANIFEST.md
+├── scripts/                              # Verification & quality scripts
+│   ├── verify.sh                         # Hardening gate ('QUA CONG')
+│   ├── check_csp_compat.mjs
+│   └── check_bundle_budget.mjs
+└── .agents/                              # Teamwork agent metadata & workspace state
+```

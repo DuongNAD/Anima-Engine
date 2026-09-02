@@ -52,7 +52,7 @@ Quy tắc ghi:
   `ALLOCATOR.start_tracking_this_thread()`; assertion giữ nguyên.
 - **Trạng thái:** FIXED (commit kèm theo trên `feat/ecological-selection`)
 
-### F-022 — Cổng `verify` tự hủy im lặng khi diff không chứa file test nào
+### F-024 — Cổng `verify` tự hủy im lặng khi diff không chứa file test nào
 - **Ngày:** 2026-08-26
 - **Loại:** BUG
 - **Vị trí:** `scripts/verify.sh:41`
@@ -149,7 +149,10 @@ Quy tắc ghi:
 - **Tái hiện:** `grep -rn 'segment_query.iter()' src-tauri/src --include='*.rs'`
 - **Test khoá lại:** chưa có. Gate đề xuất: **PF-S04** — thời gian mỗi tick tăng **tuyến tính** theo
   số agent, không bậc hai; và **PF-S01** — cùng seed cho cùng checksum trước và sau (refactor thuần).
-- **Trạng thái:** OPEN — feature `ecological-selection` nhánh H.
+- **Trạng thái:** FIXED (0b29312) — H-1..H-4 đã xong, refactor thuần, checksum trùng bit
+  (`tests/h_probe.rs`, 1500 tick, seed `0x5EED` = 4013327208 trên cả cây trước và sau H).
+  Còn lại H-5: đo `full_tick` p50 ở 1000 agent trên **bản release** qua `ANIMA_TICK_CAPTURE` —
+  bốn lệnh capture là IPC-only nên cần một lần chạy tay của người, chưa đo được.
 - **Bẫy khi sửa:** `EntityHashMap` không duyệt theo thứ tự chèn. Chỗ nào kết quả phụ thuộc thứ tự
   duyệt (ai giành miếng ăn cuối trong một ô) phải sắp xếp tường minh, nếu không checksum sẽ đổi.
 
