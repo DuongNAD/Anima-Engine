@@ -1680,5 +1680,47 @@ Hoàn thiện toàn diện cấu hình Tauri v2, giải quyết triệt để c�
 - [ ] Lệnh `npm run tauri:build` hoàn thành thành công mà không phát sinh lỗi biên dịch, tạo ra tệp cài đặt `.dmg` / `.app` có thể khởi chạy độc lập trên máy tính người dùng.
 - [ ] Quy trình kiểm tra chất lượng theo chuẩn `just verify` và test suite vượt qua tất cả các cổng kiểm định bắt buộc.
 
+## 2026-09-03T04:54:59Z
+
+Nghiên cứu, nâng cấp và phát triển toàn diện hệ thống mô phỏng sinh thái (Ecology AI, chuỗi thức ăn kín, bảo toàn năng lượng, tiến hóa MAP-Elites và độ ổn định đa dạng sinh học 10,000+ ticks) đạt chuẩn production-ready cho Anima-Engine.
+
+Working directory: /Users/duongnad/Documents/project/Anima-Engine
+Integrity mode: development
+
+## Requirements
+
+### R1. Closed-trophic Energy Ledger & Strict Conservation
+The simulation must enforce closed-loop trophic energy conservation across all compartments (detritus, primary producers/plants, herbivores, carnivores/predators, and dormant biomass). Total system energy must remain strictly conserved within a tolerance of $\le 10^{-3}$ Energy Units (EU) throughout continuous simulation runs, eliminating phantom energy creation or leakage.
+
+### R2. MAP-Elites Evolutionary Dynamics & Creature Adaptation
+The creature adaptation system must explore and retain phenotypic and behavioral diversity through a multi-dimensional MAP-Elites archive. Reproduction, mutation, and selection must reflect ecological fitness (foraging success, metabolic efficiency, predation evasion) and populate distinct niches across evolutionary generations.
+
+### R3. Long-Term Population Stability & Ecological Coexistence (10,000+ Ticks)
+The ecosystem dynamics (incorporating Whittaker biome carrying capacities, seasonal fertility fluctuations, Holling Type II grazing, and Holling Type III predation refuge) must maintain sustained multi-species coexistence over long horizons ($\ge 10,000$ simulation ticks) without catastrophic extinction cascades or unchecked monoculture proliferation.
+
+### R4. Deterministic Simulation & Hardened Quality Assurance
+All simulation systems and state transitions must be fully deterministic given a fixed seed. The project must strictly satisfy all repository hardening standards, passing all build, lint, and test gates (`just verify` must output "QUA CONG") without regressions.
+
+## Verification Resources
+- Project test suites and build gates managed via `just` (`just verify`, `just test`).
+- Repository hardening guidelines and seed configuration (`.hardening.env`, `AGENTS.md`).
+- Existing domain contracts: `SIMULATION_RULES.md`, `BIOME_TAXONOMY.md`, `COORDINATE_CONTRACT.md`.
+
+## Acceptance Criteria
+
+### Energy Conservation & Stability
+- [ ] Energy ledger audit passes: In an automated simulation run of 10,000 ticks, the maximum total energy variance $|E_{\text{total}}(t) - E_{\text{total}}(0)| \le 10^{-3}$ EU at every sample interval.
+- [ ] Multi-species persistence: After 10,000 continuous simulation ticks, both primary producers and at least 2 distinct consumer species remain active and viable (population $> 0$).
+- [ ] Biodiversity maintenance: Shannon diversity index $H'$ remains strictly greater than $0.5$ across the 10,000-tick evaluation.
+
+### Evolutionary Diversity
+- [ ] MAP-Elites archive occupancy: The evolutionary archive discovers and retains individuals across at least 4 distinct phenotypic/trophic niche cells after evolutionary epochs.
+
+### Determinism & Code Hardening
+- [ ] Deterministic replay: Two independent simulation runs executed with the identical seed produce identical state hashes at tick 1,000, tick 5,000, and tick 10,000.
+- [ ] Hardening gate pass: `just verify` completes with exit code 0 and outputs `QUA CONG`.
+- [ ] Zero regressions: All existing unit tests and integration tests in `src-tauri/tests` and root `tests` pass.
+
+
 
 
