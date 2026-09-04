@@ -36,7 +36,7 @@ struct AllocationTrackingGuard {
 
 impl AllocationTrackingGuard {
     fn start() -> Self {
-        ALLOCATOR.start_tracking();
+        ALLOCATOR.start_tracking_this_thread();
         Self { active: true }
     }
 

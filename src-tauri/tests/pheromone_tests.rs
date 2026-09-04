@@ -286,8 +286,8 @@ fn test_hotpath_allocations() {
     // Warm-up phase (allocations allowed here)
     schedule.run(&mut world);
 
-    // Start tracking
-    ALLOCATOR.start_tracking();
+    // Start tracking on the test thread (single-threaded schedule)
+    ALLOCATOR.start_tracking_this_thread();
 
     // Execute 10 ticks (0 heap allocations expected in systems hot path)
     for _ in 0..10 {
