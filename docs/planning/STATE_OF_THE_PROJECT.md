@@ -85,6 +85,7 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 | 📏 | CI Rust (`windows-latest`) | Actions run `31242649630`, 2026-08-08 | **failure** — `cargo fmt --check`, clippy, tách feature, parity binding, `cargo test` và policy target cùng đỏ vì `error: encountered diff marker`: conflict marker đã commit ở `src-tauri/tests/common/allocator.rs:21` và `scripts/check_test_targets.mjs:78,108,155`, vào từ `4b6258d`. Thêm `NOTICE is out of date` |
 | 📏 | CI Frontend (`ubuntu-latest`) | cùng run | **failure** — `npm audit` root và `tests/`; link tài liệu gãy `STATE_OF_THE_PROJECT.md:916 → ../../LICENSE` (file bị xoá khi relicense). E2E 18/18 pass |
 | 📏 | Advisory Rust trên lockfile của `main` | `cargo audit`, 2026-10-16, trong worktree có cùng `Cargo.lock` với `main` | **exit 1 — 4 lỗ hổng** `rustls` 0.23.42: RUSTSEC-2026-0285 (công bố 2026-09-14), -0346, -0348, -0349 (2026-10-14), sửa ở ≥ 0.23.46. Chúng ra đời **sau** lượt CI cuối, nên gỡ marker thôi thì `main` vẫn đỏ. Sửa ở nhánh `fix/main-ci-green` |
+| 📏 | Advisory npm, **kể cả** với lockfile đã refresh của `819ad2d` (PR #32) | `npm audit --audit-level=high` và `--prefix tests`, 2026-10-16 | **exit 1** — root 7 (5 high), `tests/` 4 (2 high): `undici`, `fast-uri`, `brace-expansion`, `source-map-js`, `@xmldom/xmldom`, `@vitest/mocker`, đều công bố sau 2026-08-08. `npm audit fix` của npm 10.9.8 (bản CI dùng) **crash** (`reading 'edgesOut'`); sửa bằng npm 11 rồi kiểm lại bằng npm 10 ở nhánh `fix/main-ci-green` |
 
 **`389de4b` sạch — worktree tạm, 2026-10-16**
 
