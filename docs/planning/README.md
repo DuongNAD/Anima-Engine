@@ -10,6 +10,7 @@ last_reviewed: 2026-07-26
 | Phạm vi | Tài liệu | Vai trò |
 |---|---|---|
 | **Bắt đầu ở đây** | [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) | Trạng thái **đo được** + backlog ưu tiên kèm điểm neo và định nghĩa hoàn thành |
+| Thứ tự tới bản phát hành | [`COMPLETION_ROADMAP_2026-10-16.md`](COMPLETION_ROADMAP_2026-10-16.md) (**proposed**) | Sáu giai đoạn HT0–HT5 từ hiện trạng tới phát hành, ba mức "hoàn thiện", quyết định cần chủ dự án |
 | Toàn bộ hệ mô phỏng | [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMULATION_PLAN.md) | Roadmap sản phẩm/kỹ thuật dài hạn |
 | Creature morphogenesis | [`CREATURE_MORPHOGENESIS_PLAN.md`](CREATURE_MORPHOGENESIS_PLAN.md) | Genotype, phenotype, spawn, persistence và adaptation gates |
 | Alternate evolution + World Lab | [Feature task plan](../ai/planning/2026-07-24-feature-alternate-evolution-world-lab.md) | World laws, exotic energy, forks, observability và species evidence |

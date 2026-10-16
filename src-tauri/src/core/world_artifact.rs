@@ -163,8 +163,9 @@ fn read_f32_array(bytes: &[u8], off: usize, n: usize) -> Result<Vec<f32>, String
         .get(off..end)
         .ok_or_else(|| "artifact truncated (f32 array)".to_string())?;
     let mut out = Vec::with_capacity(n);
-    for chunk in slice.chunks_exact(4) {
-        out.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    // `byte_len` is `n * 4`, so the remainder `as_chunks` returns is empty.
+    for chunk in slice.as_chunks::<4>().0 {
+        out.push(f32::from_le_bytes(*chunk));
     }
     Ok(out)
 }
