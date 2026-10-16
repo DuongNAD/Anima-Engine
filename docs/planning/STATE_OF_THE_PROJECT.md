@@ -29,7 +29,9 @@ gate chưa xanh.
 > Các mục §1.a–§1.e bên dưới là lượt đo **2026-07-27**: chúng đúng với cây mã lúc đó và **không** mô
 > tả `main` hôm nay. Số đo mới ở
 > [§1.f](#1f-đo-2026-10-16--main-đỏ-cây-làm-việc-đỏ-hai-gate-tái-lập); kế hoạch đưa về xanh là giai
-> đoạn HT0 của [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md).
+> đoạn HT0 của [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md). Bản sửa đỏ (HT0.2 + HT0.3)
+> là nhánh `fix/main-ci-green`; lượt đo lại toàn bộ trên `main` sau khi nó merge là HT0.7, và cho
+> tới lúc đó §1.f vẫn là số mới nhất.
 
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
 >
