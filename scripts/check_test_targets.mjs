@@ -1,8 +1,14 @@
 // Enforces the test-target policy in `scripts/test_target_policy.mjs` against a captured
 // `cargo test` run.
 //
-// Three failures are silent by construction, and this catches all three.
+// Four failures are silent by construction, and this catches all four.
 //
+//  0. **A target that dies before libtest starts leaves no trace here.** Cargo prints its `Running`
+//     line as it launches the binary, and libtest prints `running N tests` once it is alive. A
+//     binary that cannot load — a missing DLL, a bad entry point (`STATUS_ENTRYPOINT_NOT_FOUND`,
+//     which is what running the suite under Git Bash produces here) — dies between the two, so it
+//     contributes nothing to the parse below and every count in this report is quietly short. The
+//     capture is then the wrong thing to check a policy against, whatever it says.
 //  1. **A target that runs nothing passes.** `src-tauri/tests/` holds eight files carrying a
 //     crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]`. Before they
 //     carried `required-features`, a default build compiled every one of them into an empty binary
@@ -75,60 +81,31 @@ const lines = text.split(/\r?\n/);
 //   running 286 tests
 // and for doc tests:
 //    Doc-tests anima_domain
-<<<<<<< ours
 //   running 0 tests
 const targets = [];
 const ignoredTests = [];
 let pending = null;
 let currentTarget = null;
 let reportedIgnored = 0;
-=======
-//
-// The `(path/to/binary.exe)` part is deliberately NOT required to match. It used to be, and that
-// made this gate skip targets in silence: PowerShell wraps a native command's redirected stderr at
-// the console width, so `Running tests\foo.rs (target\...)` arrives as two lines and the `(` is on
-// the second one. Measured 2026-07-29 on a local capture: 75 `Running` lines, 61 matched, and the
-// script cheerfully reported `test targets: 61, empty: 0` and exited 0 — the exact silent-skip
-// failure it exists to prevent, in the gate itself. CI pipes into `tee`, so cargo does not wrap
-// there and CI never saw it.
-const targets = [];
-const unresolved = [];
-let pending = null;
-let runningLines = 0;
-
-const finishPending = () => {
-  if (pending) unresolved.push(pending.name);
-  pending = null;
-};
->>>>>>> theirs
+// A target cargo announced that never reached libtest. `pending` holding a name when the next
+// target is announced (or at EOF) is the only evidence left of a binary that died on load, because
+// such a target never becomes an entry in `targets` at all.
+const startedWithoutCount = [];
 
 for (const line of lines) {
   const running = line.match(/^\s*Running\s+(?:unittests\s+)?(\S+)/);
   if (running) {
-<<<<<<< ours
+    if (pending) startedWithoutCount.push(pending.name);
     // Normalize the Windows separators cargo emits so the policy is written one way.
     pending = { name: running[1].replace(/\\/g, '/') };
     continue;
   }
   const doc = line.match(/^\s*Doc-tests\s+(\S+)\s*$/);
   if (doc) {
+    if (pending) startedWithoutCount.push(pending.name);
     // Named rather than silently exempt: a doc-test target that runs nothing is still a decision.
     pending = { name: `doc-tests:${doc[1]}` };
     continue;
-=======
-    // A second `Running` before the previous one reported a count means that target never printed
-    // one. Do not overwrite it into oblivion — that is a target which loaded and died, which is
-    // what a missing native DLL looks like (STATUS_ENTRYPOINT_NOT_FOUND, 0xc0000139).
-    finishPending();
-    runningLines += 1;
-    // Normalize the Windows separators cargo emits so the allow-list is written one way.
-    pending = { name: running[1].replace(/\\/g, '/'), kind: 'test' };
-    continue;
-  }
-  if (/^\s*Doc-tests\s+/.test(line)) {
-    finishPending();
-    continue; // doc-test targets are exempt: an absent doc example is not a missing test
->>>>>>> theirs
   }
   const count = line.match(/^running (\d+) tests?$/);
   if (count && pending) {
@@ -145,14 +122,28 @@ for (const line of lines) {
   const summary = line.match(/^test result: \w+\. \d+ passed; \d+ failed; (\d+) ignored/);
   if (summary) reportedIgnored += Number(summary[1]);
 }
-finishPending();
+if (pending) startedWithoutCount.push(pending.name);
 
 if (targets.length === 0) {
   console.error(`No test targets found in ${file}. Did the cargo output get captured?`);
   process.exit(2);
 }
 
-<<<<<<< ours
+// ---- targets that started but never reported ---------------------------------------------------
+// Checked before anything else: a capture missing targets cannot certify a policy about targets.
+for (const name of startedWithoutCount) {
+  fail(
+    `test target "${name}" was launched but never printed "running N tests".\n` +
+      '    Cargo prints its `Running` line before the binary starts and libtest prints the count ' +
+      'once it is alive, so the process died in between — it could not load. On Windows that is ' +
+      'usually a missing DLL or STATUS_ENTRYPOINT_NOT_FOUND (running the suite under Git Bash ' +
+      'rather than PowerShell does exactly this to the feature-gated targets). The target ' +
+      'contributes nothing to the counts below, so every number in this report is short and the ' +
+      'capture is the wrong thing to check the policy against. Re-run from PowerShell, capturing ' +
+      'with `cmd /c "cargo test ... > out.txt 2>&1"`.',
+  );
+}
+
 // Cross-check the parse against libtest's own arithmetic, so a regex that stops matching cannot
 // quietly turn this gate into a no-op.
 if (ignoredTests.length !== reportedIgnored) {
@@ -252,25 +243,6 @@ if (profile === null) {
     }
   }
 }
-=======
-// The gate's own self-check. Every `Running` line must have produced a parsed target; if the two
-// numbers disagree, this script did not look at everything it claims to have looked at, and
-// "empty: 0" below would be a statement about a subset.
-if (targets.length !== runningLines) {
-  console.error(
-    `\nParsed ${targets.length} target(s) from ${runningLines} "Running" line(s) in ${file}.\n` +
-      (unresolved.length
-        ? `These printed no "running N tests" line:\n${unresolved.map(n => `  - ${n}`).join('\n')}\n`
-        : '') +
-      '\nA target that starts and never reports has either crashed on load or had its output ' +
-      'mangled by the capture. Re-run from PowerShell with `| Tee-Object`, or from CI with ' +
-      '`2>&1 | tee`, so cargo does not wrap its status lines.',
-  );
-  process.exit(1);
-}
-
-const empty = targets.filter(t => t.count === 0 && !DEFAULT_ALLOWED.has(t.name));
->>>>>>> theirs
 
 // ---- report -----------------------------------------------------------------------------------
 const gatedRunning = profile
