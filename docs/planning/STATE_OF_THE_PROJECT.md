@@ -93,6 +93,33 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 |---|---|---|---|
 | 📏 | Hai target nghi vấn | `cargo test --features desktop --test live_experiment_tests --test physics_tests` | **17 passed** + **10 passed**, 0 failed — gồm `run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run`, `a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards` và test hồi quy `sensor_ray_from_agent_centre_sees_past_its_own_collider` |
 
+**Nhánh `fix/main-ci-green` @ `4cf71ee` — đo cục bộ 2026-10-16, đúng lệnh của `ci.yml`**
+
+> Bản sửa đỏ của HT0.2 + HT0.3: `origin/main` + gỡ marker, hai commit của PR #32, template `NOTICE`,
+> toolchain ghim 1.98.1, `rustls` 0.23.46, binding sinh lại, `npm audit fix`. Commit sau `4cf71ee`
+> chỉ thêm bảng này. Đây là lượt **cục bộ trên Windows**; job frontend của CI chạy trên
+> `ubuntu-latest`, nên CI của PR mới là bằng chứng cho `main`.
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Toolchain | `rustc --version` | 1.98.1, chọn bởi `rust-toolchain.toml` |
+| 📏 | Format | `cargo fmt --check` | exit 0 |
+| 📏 | Advisory Rust | `cargo audit` · `cargo deny check` | exit 0 · exit 0 — 0 lỗ hổng; 2 cảnh báo yanked đã cho phép, chỉ ở lockfile |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | exit 0 |
+| 📏 | Tách feature (G2 #2) | `cargo clippy --all-targets --no-default-features -- -D warnings` + `cargo tree --no-default-features -e normal` | exit 0 — **0** kết quả cho `neo4rs\|tokio-tungstenite\|burn-wgpu\|naga` |
+| 📏 | Parity binding | `cargo test --lib export_bindings` rồi `git diff --exit-code -- src/types/generated` | exit 0 |
+| 📏 | Backend test | `cargo test --features desktop -- --nocapture` (`ANIMA_USE_GPU=0`) | **1069 passed · 0 failed · 2 ignored**, 93 dòng `test result` |
+| 📏📋 | Chính sách target | `check_test_targets.mjs` không `--profile` (như CI) và `--profile desktop` | exit 0 — 93 target, 3 rỗng + 2 ignore đều trong allow-list, 8 target feature-gated chạy, không target nào khởi chạy mà không báo số |
+| 📏 | Licence · SBOM · schema · NOTICE · flora | `npm run check:licenses` / `check:sbom` / `check:sbom-schema` / `check:notice` / `check:flora-footprint` | exit 0 cả năm |
+| 📏 | Advisory npm | `npm audit --audit-level=high` (root và `tests/`) | **0** lỗ hổng cả hai |
+| 📏 | Vệ sinh + E2 | `check:text-hygiene` · `check:e2` | exit 0 · exit 0 |
+| 📏 | Lint frontend | `npm run lint` + `eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
+| 📏 | Test frontend | `npm run test` · `npm run test:frontend` | 14 file · **109 passed** · 41 file · **446 passed** |
+| 📏 | Build + artifact | `build` · `check:bundle-closure` · `check:csp` · `check:bundle` | exit 0 — 21 gói có byte trong `dist/`, 2 HTML ship, 1652,4 / 2000 KiB |
+| 📏 | E2E Playwright | `npm run test:e2e` | **18 passed**, 0 `console.error` / `pageerror` / `TypeError` |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | 658 link / 116 file, 0 gãy |
+
 **Cây làm việc — 2026-10-16**
 
 | Loại | Gate | Lệnh | Kết quả |
@@ -413,9 +440,14 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 > ### Bàn giao 2026-10-16 — đọc trước bảng bên dưới
 >
 > Thứ tự công việc nay nằm ở [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md), và việc đầu
-> tiên **không** còn là §3.2 mà là **HT0**: sao lưu commit chưa push (`389de4b`) và khối chưa commit
-> sang nhánh riêng trên `origin`, rồi đưa `main` về xanh (§1.f). Bảng bên dưới giữ nguyên làm bối
-> cảnh — các mục của nó đã được xếp lại vào HT1–HT5 của lộ trình.
+> tiên **không** còn là §3.2 mà là **HT0**: sao lưu việc chỉ nằm trên một máy, rồi đưa `main` về
+> xanh (§1.f). Bảng bên dưới giữ nguyên làm bối cảnh — các mục của nó đã được xếp lại vào HT1–HT5.
+>
+> **Tiến độ HT0 (2026-10-16):** khối chưa commit đã nằm trên nhánh **cục bộ**
+> `wip/2026-08-16-map2-tier5` (`84fece1`, 170 file khớp từng byte) kèm một git bundle ngoài repo — cố
+> ý **không** push, vì repo public và khối đó có bằng chứng bịa. HT0.2 + HT0.3 là nhánh
+> `fix/main-ci-green`, xanh cục bộ đủ 30 gate của CI (bảng trong §1.f); còn chờ push, PR và CI thật.
+> `389de4b` vẫn chưa push.
 >
 > **Ba cái bẫy mới, trả giá trong khoảng 2026-07-29 → 2026-08-16:**
 >
