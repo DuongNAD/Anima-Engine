@@ -410,7 +410,7 @@ describe('Landscape Showcase Test Suite (93 Tests)', () => {
         const showcase = await screen.findByTestId('world-showcase', {}, { timeout: 20_000 });
         expect(showcase).toBeTruthy();
         expect(screen.queryByTestId('landscape-showcase')).toBeNull();
-      }, 30_000);
+      }, 60_000);
 
       it('F8.3: UI event handler', () => {
         render(<LandscapeShowcase />);

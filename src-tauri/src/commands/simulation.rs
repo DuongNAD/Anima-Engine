@@ -659,3 +659,142 @@ pub fn get_lod_focus(
 pub fn get_lod_bands() -> crate::core::simulation_lod::LodBands {
     crate::core::simulation_lod::LodBands::default()
 }
+
+pub use crate::core::telemetry_export::{
+    RunProvenance, ScientificDatasetPackage, ScientificExportRequest, ScientificExportResponse,
+    TimeSeriesSample,
+};
+
+#[tauri::command]
+pub fn export_scientific_dataset(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    req: ScientificExportRequest,
+) -> Result<ScientificExportResponse, String> {
+    let status = state.engine.get_status();
+    let provenance = RunProvenance::new(42, status.tick_count);
+
+    let eco = state
+        .engine
+        .ecosystem_state
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let demo = state
+        .engine
+        .demographic_census
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let flux = state
+        .engine
+        .energy_flux_report
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let segments = state
+        .engine
+        .agent_states
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let bounds = state
+        .engine
+        .terrain_map
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|t| t.bounds);
+
+    let combat_events = state
+        .engine
+        .combat_events
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+
+    let grid_res = req.spatial_grid_resolution.unwrap_or(16);
+    let spatial = crate::core::telemetry_export::generate_spatial_density_matrix(
+        grid_res,
+        grid_res,
+        &segments,
+        bounds.as_ref(),
+        None,
+        &combat_events,
+    );
+
+    let map_elites = state
+        .map_elites_grid
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .compute_summary();
+
+    let newick_tree = crate::core::telemetry_export::export_lineage_newick(
+        &state.engine.lineage_tracker,
+        None,
+    ).ok();
+
+    let time_series = vec![
+        TimeSeriesSample {
+            tick: status.tick_count,
+            plants_biomass: eco.plants,
+            prey_biomass: eco.animals * 0.7,
+            predator_biomass: eco.animals * 0.3,
+            detritus_biomass: eco.detritus,
+            total_energy: eco.total,
+            energy_residual: 0.0,
+            prey_count: eco.prey_count as usize,
+            predator_count: eco.predator_count as usize,
+            shannon_diversity: eco.shannon as f64,
+            simpson_diversity: eco.simpson as f64,
+            avg_prey_metabolic_rate: 0.045,
+            avg_predator_metabolic_rate: 0.089,
+            ambient_temperature_c: 20.0,
+        },
+    ];
+
+    let csv_content = crate::core::telemetry_export::render_csv_time_series(&time_series);
+
+    let package = ScientificDatasetPackage {
+        schema_version: 1,
+        provenance: provenance.clone(),
+        time_series: if req.include_time_series { time_series } else { Vec::new() },
+        demographics: if req.include_demographics { Some(demo) } else { None },
+        energy_flux: if req.include_energy_flux { Some(flux) } else { None },
+        spatial_density: if req.include_spatial_density { Some(spatial) } else { None },
+        map_elites_summary: Some(map_elites),
+        newick_tree: if req.include_phylogeny { newick_tree.clone() } else { None },
+    };
+
+    let json_content = serde_json::to_string_pretty(&package)
+        .map_err(|e| format!("JSON serialization error: {e}"))?;
+
+    let written_path = if let Some(ref fname) = req.file_name {
+        use tauri::Manager;
+        let export_dir = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| format!("cannot locate app data dir: {e}"))?
+            .join("exports");
+        let p = crate::core::telemetry_export::save_scientific_export(
+            &export_dir,
+            fname,
+            json_content.as_bytes(),
+        )?;
+        Some(p.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+
+    Ok(ScientificExportResponse {
+        provenance,
+        csv_content,
+        json_content,
+        newick_tree,
+        written_path,
+    })
+}

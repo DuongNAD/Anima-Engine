@@ -18,9 +18,9 @@
 
 use crate::core::exotic_energy::{ExoticEnergyLaw, ExoticIntervention, UnitId, EU_UNIT};
 use crate::core::intervention::{Curve, InterventionCommand, Region};
-use crate::core::observer::ObserverPolicy;
+pub use crate::core::observer::ObserverPolicy;
 use crate::core::sim_clock::RateBand;
-use crate::core::world_artifact::WorldIdentity;
+pub use crate::core::world_artifact::WorldIdentity;
 use serde::{Deserialize, Serialize};
 
 // ---- Schema versions & resource limits -------------------------------------------------------
@@ -1111,6 +1111,70 @@ pub fn validate_intervention(
             max: run_ticks as f64,
         });
     }
+
+    // Specific variant validation.
+    match &cmd.kind {
+        crate::core::intervention::InterventionKind::GeneticInjection {
+            trait_modifications,
+            ..
+        } => {
+            for tm in trait_modifications {
+                match tm {
+                    crate::core::intervention::TraitMod::ScaleMorphology(f)
+                    | crate::core::intervention::TraitMod::MassMultiplier(f)
+                    | crate::core::intervention::TraitMod::MetabolicEfficiencyDelta(f)
+                    | crate::core::intervention::TraitMod::SensoryRangeMultiplier(f) => {
+                        if !f.is_finite() {
+                            return Err(ExperimentError::NotFinite {
+                                field: format!("intervention {} trait modification", cmd.id),
+                            });
+                        }
+                    }
+                    crate::core::intervention::TraitMod::BrainParameterShift {
+                        bias_delta,
+                        ..
+                    } => {
+                        if !bias_delta.is_finite() {
+                            return Err(ExperimentError::NotFinite {
+                                field: format!("intervention {} brain bias delta", cmd.id),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        crate::core::intervention::InterventionKind::ToxicityPlume {
+            center_x,
+            center_y,
+            radius,
+            toxicity_level,
+            decay_rate,
+        } => {
+            if !center_x.is_finite()
+                || !center_y.is_finite()
+                || !radius.is_finite()
+                || !toxicity_level.is_finite()
+                || !decay_rate.is_finite()
+            {
+                return Err(ExperimentError::NotFinite {
+                    field: format!("intervention {} toxicity plume parameters", cmd.id),
+                });
+            }
+        }
+        crate::core::intervention::InterventionKind::PathogenTransmission {
+            transmission_rate,
+            mortality_multiplier,
+            ..
+        } => {
+            if !transmission_rate.is_finite() || !mortality_multiplier.is_finite() {
+                return Err(ExperimentError::NotFinite {
+                    field: format!("intervention {} pathogen parameters", cmd.id),
+                });
+            }
+        }
+        _ => {}
+    }
+
     Ok(())
 }
 
@@ -1654,7 +1718,7 @@ fn ecology_firings_in_window(start_tick: u64, duration: u64, run_ticks: u64, per
 
 fn canonicalize_intervention(c: &mut Canon, cmd: &InterventionCommand) {
     c.u32(cmd.id).u32(cmd.cause_id);
-    c.tag(intervention_kind_tag(cmd.kind));
+    canonicalize_intervention_kind(c, &cmd.kind);
     canonicalize_region(c, &cmd.region);
     c.u64(cmd.start_tick).u64(cmd.duration_ticks);
     c.f32(cmd.intensity).bool(cmd.signed_negative);
@@ -1683,14 +1747,87 @@ fn canonicalize_region(c: &mut Canon, region: &Region) {
     }
 }
 
-fn intervention_kind_tag(k: crate::core::intervention::InterventionKind) -> u8 {
-    use crate::core::intervention::InterventionKind::*;
+fn canonicalize_intervention_kind(c: &mut Canon, k: &crate::core::intervention::InterventionKind) {
+    use crate::core::intervention::{InterventionKind::*, TraitMod};
     match k {
-        RainfallDelta => 0x50,
-        TemperatureDelta => 0x51,
-        Deforest => 0x52,
-        RemovePredators => 0x53,
-        AddNutrient => 0x54,
+        RainfallDelta => {
+            c.tag(0x50);
+        }
+        TemperatureDelta => {
+            c.tag(0x51);
+        }
+        Deforest => {
+            c.tag(0x52);
+        }
+        RemovePredators => {
+            c.tag(0x53);
+        }
+        AddNutrient => {
+            c.tag(0x54);
+        }
+        GeneticInjection {
+            target_species,
+            trait_modifications,
+            count,
+        } => {
+            c.tag(0x55);
+            match target_species {
+                Some(sp) => {
+                    c.tag(0x01).u32(*sp);
+                }
+                None => {
+                    c.tag(0x00);
+                }
+            }
+            c.u64(*count as u64)
+                .u64(trait_modifications.len() as u64);
+            for tm in trait_modifications {
+                match tm {
+                    TraitMod::ScaleMorphology(f) => {
+                        c.tag(0x01).f32(*f);
+                    }
+                    TraitMod::MassMultiplier(f) => {
+                        c.tag(0x02).f32(*f);
+                    }
+                    TraitMod::MetabolicEfficiencyDelta(f) => {
+                        c.tag(0x03).f32(*f);
+                    }
+                    TraitMod::SensoryRangeMultiplier(f) => {
+                        c.tag(0x04).f32(*f);
+                    }
+                    TraitMod::BrainParameterShift {
+                        layer_index,
+                        bias_delta,
+                    } => {
+                        c.tag(0x05).u32(*layer_index).f32(*bias_delta);
+                    }
+                }
+            }
+        }
+        ToxicityPlume {
+            center_x,
+            center_y,
+            radius,
+            toxicity_level,
+            decay_rate,
+        } => {
+            c.tag(0x56)
+                .f32(*center_x)
+                .f32(*center_y)
+                .f32(*radius)
+                .f32(*toxicity_level)
+                .f32(*decay_rate);
+        }
+        PathogenTransmission {
+            pathogen_id,
+            transmission_rate,
+            mortality_multiplier,
+        } => {
+            c.tag(0x57)
+                .u32(*pathogen_id)
+                .f32(*transmission_rate)
+                .f32(*mortality_multiplier);
+        }
     }
 }
 
@@ -2495,9 +2632,31 @@ mod tests {
             InterventionKind::Deforest,
             InterventionKind::RemovePredators,
             InterventionKind::AddNutrient,
+            InterventionKind::GeneticInjection {
+                target_species: Some(1),
+                trait_modifications: vec![],
+                count: 10,
+            },
+            InterventionKind::ToxicityPlume {
+                center_x: 0.0,
+                center_y: 0.0,
+                radius: 10.0,
+                toxicity_level: 1.0,
+                decay_rate: 0.1,
+            },
+            InterventionKind::PathogenTransmission {
+                pathogen_id: 1,
+                transmission_rate: 0.5,
+                mortality_multiplier: 1.2,
+            },
         ];
-        let tags: HashSet<u8> = kinds.into_iter().map(intervention_kind_tag).collect();
-        assert_eq!(tags.len(), kinds.len());
+        let mut hashes = HashSet::new();
+        for k in &kinds {
+            let mut c = Canon::new();
+            canonicalize_intervention_kind(&mut c, k);
+            hashes.insert(c.hash());
+        }
+        assert_eq!(hashes.len(), kinds.len());
     }
 }
 

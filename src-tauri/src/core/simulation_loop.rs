@@ -286,6 +286,8 @@ pub struct SimulationEngine {
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
     pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
+    pub demographic_census: Arc<RwLock<crate::core::telemetry_export::DemographicCensusState>>,
+    pub energy_flux_report: Arc<RwLock<crate::core::telemetry_export::EnergyFluxReport>>,
 }
 
 impl Default for SimulationEngine {
@@ -346,6 +348,12 @@ impl SimulationEngine {
             terrain_map: Arc::new(RwLock::new(None)),
             ecosystem_state: Arc::new(RwLock::new(
                 crate::commands::environment::EcosystemState::default(),
+            )),
+            demographic_census: Arc::new(RwLock::new(
+                crate::core::telemetry_export::DemographicCensusState::default(),
+            )),
+            energy_flux_report: Arc::new(RwLock::new(
+                crate::core::telemetry_export::EnergyFluxReport::default(),
             )),
         }
     }
@@ -429,6 +437,8 @@ impl SimulationEngine {
         let combat_events_clone = Arc::clone(&self.combat_events);
         let environmental_state_clone = Arc::clone(&self.environmental_state);
         let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
+        let demographic_census_clone = Arc::clone(&self.demographic_census);
+        let energy_flux_report_clone = Arc::clone(&self.energy_flux_report);
 
         let (trans_tx, trans_rx) =
             crossbeam_channel::bounded::<Transition>(TRANSITION_QUEUE_CAPACITY);
@@ -2205,6 +2215,19 @@ impl SimulationEngine {
                     shared.niche_divergence =
                         crate::core::ecology::niche_divergence(prey_mass, predator_mass);
                     shared.archive_coverage = archive_coverage;
+                }
+
+                if let Some(census) = world.get_resource::<crate::core::telemetry_export::DemographicCensusState>() {
+                    let mut shared_census = demographic_census_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    *shared_census = census.clone();
+                }
+                if let Some(flux_rep) = world.get_resource::<crate::core::telemetry_export::EnergyFluxReport>() {
+                    let mut shared_flux = energy_flux_report_clone
+                        .write()
+                        .unwrap_or_else(|e| e.into_inner());
+                    *shared_flux = flux_rep.clone();
                 }
 
                 let telemetry_ns = elapsed_ns(telemetry_started);

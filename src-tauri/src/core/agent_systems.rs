@@ -3,10 +3,11 @@ use crate::ai::hrrl::HomeostaticState;
 use crate::core::ecs::ActiveEnvironmentEvent;
 use crate::core::ecs::Velocity;
 use crate::core::ecs::{
-    AgentClass, AgentEpochStats, CognitiveState, EpochManager, EvolutionQueue, EvolutionReceiver,
-    EvolutionSender, FeatureTracker, Food, InertiaComponent, ParentAgent, Position, Predator, Prey,
-    Rotation, ScientificCounterFault, Segment, SegmentJointForce,
+    Agent, AgentClass, AgentEpochStats, CognitiveState, EpochManager, EvolutionQueue,
+    EvolutionReceiver, EvolutionSender, FeatureTracker, Food, InertiaComponent, ParentAgent,
+    Position, Predator, Prey, Rotation, ScientificCounterFault, Segment, SegmentJointForce,
 };
+
 use crate::core::resources::checked_scientific_increment_u32;
 use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
 use bevy_ecs::prelude::*;
@@ -178,6 +179,19 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
             }
         }
 
+        let sex = match world.get_resource_mut::<crate::core::resources::SimRng>() {
+            Some(mut rng) => {
+                use rand::Rng;
+                if rng.rng().gen_bool(0.5) {
+                    crate::core::components::AgentSex::Male
+                } else {
+                    crate::core::components::AgentSex::Female
+                }
+            }
+            None => crate::core::components::AgentSex::Female,
+        };
+        world.entity_mut(entity).insert(sex);
+
         // Invariant D06: evolutionary replacement is NOT a birth, and its energy must come from
         // the individual it replaces. `decode_genotype` hands every new body a flat starting
         // reserve; before G1.1 that reserve came from nowhere while the replaced individual's own
@@ -237,6 +251,353 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
         }
     }
 }
+
+/// Biological birth command: creates an offspring entity endowed directly from the parent's
+/// transferred energy reserve, with inherited morphology/brain genotypes and lineage tracking.
+pub struct SpawnOffspringCommand {
+    pub parent_entity: Entity,
+    pub genotype: MorphologyGenotype,
+    pub initial_pos: glam::Vec3,
+    pub initial_rot: glam::Quat,
+    pub agent_class: AgentClass,
+    pub lineage_id: String,
+    pub generation: u32,
+    pub parent_ids: Vec<String>,
+    pub starting_energy: f32,
+    pub energy_target: f32,
+    pub brain: Option<std::sync::Arc<crate::evolution::brain_genotype::BrainGenotype>>,
+}
+
+impl bevy_ecs::system::Command for SpawnOffspringCommand {
+    fn apply(self, world: &mut World) {
+        let entity = decode_genotype(world, &self.genotype, self.initial_pos, self.initial_rot);
+
+        let (vx, vz) = match world.get_resource_mut::<crate::core::resources::SimRng>() {
+            Some(mut rng) => {
+                use rand::Rng;
+                let r = rng.rng();
+                let angle = r.gen_range(0.0..std::f32::consts::TAU);
+                let speed = if matches!(self.agent_class, AgentClass::Predator) {
+                    2.0
+                } else {
+                    1.5
+                };
+                (angle.cos() * speed, angle.sin() * speed)
+            }
+            None => (1.5, 1.5),
+        };
+
+        let homeo = HomeostaticState {
+            energy: self.starting_energy,
+            energy_target: self.energy_target,
+            hydration: 75.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+        };
+
+        let vel_vec = glam::Vec3::new(vx, 0.0, vz);
+
+        world.entity_mut(entity).insert((
+            Agent,
+            Velocity(vel_vec),
+            homeo,
+            AgentGenotype(self.genotype),
+            AgentEvaluation {
+                start_position: self.initial_pos,
+                total_distance: 0.0,
+                total_energy_expended: 0.0,
+                survival_ticks: 0,
+                last_position: self.initial_pos,
+            },
+
+            FeatureTracker::default(),
+            CognitiveState::Ready,
+            InertiaComponent::default(),
+            crate::core::components::ActionGates::default(),
+            AgentLineageId(self.lineage_id),
+            AgentGeneration(self.generation),
+            crate::core::ecs::AgentParentLineageIds(self.parent_ids),
+        ));
+
+        match self.agent_class {
+            AgentClass::Predator => {
+                world.entity_mut(entity).insert(Predator);
+            }
+            AgentClass::Prey => {
+                world.entity_mut(entity).insert(Prey);
+            }
+        }
+
+        let sex = match world.get_resource_mut::<crate::core::resources::SimRng>() {
+            Some(mut rng) => {
+                use rand::Rng;
+                if rng.rng().gen_bool(0.5) {
+                    crate::core::components::AgentSex::Male
+                } else {
+                    crate::core::components::AgentSex::Female
+                }
+            }
+            None => crate::core::components::AgentSex::Female,
+        };
+        world.entity_mut(entity).insert(sex);
+
+        // Synchronize root RigidBody velocity
+        if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(entity) {
+            body.velocity = vel_vec;
+            body.force = glam::Vec3::ZERO;
+        }
+
+        // Synchronize child segment RigidBody and Velocity
+        let mut child_entities = Vec::new();
+        let mut q = world.query::<(Entity, &ParentAgent)>();
+        for (e, parent) in q.iter(world) {
+            if parent.0 == entity {
+                child_entities.push(e);
+            }
+        }
+        for child_e in child_entities {
+            if let Some(mut child_vel) = world.get_mut::<Velocity>(child_e) {
+                child_vel.0 = vel_vec;
+            }
+            if let Some(mut child_body) =
+                world.get_mut::<crate::physics::dynamics::RigidBody>(child_e)
+            {
+                child_body.velocity = vel_vec;
+                child_body.force = glam::Vec3::ZERO;
+            }
+        }
+
+        if let Some(brain_arc) = self.brain {
+            world
+                .entity_mut(entity)
+                .insert(crate::core::components::AgentBrain::from_arc(brain_arc));
+        } else {
+            let policy = world
+                .get_resource::<crate::core::resources::BrainPolicy>()
+                .copied()
+                .unwrap_or_default();
+            if policy.evolved {
+                let brain = world
+                    .get_resource_mut::<crate::core::resources::SimRng>()
+                    .and_then(|mut rng| policy.new_brain(rng.rng()));
+                if let Some(brain) = brain {
+                    world.entity_mut(entity).insert(brain);
+                }
+            }
+        }
+    }
+}
+
+/// Starvation and natural mortality reclaim system:
+/// Detects agents with energy <= 0.0, reclaims any residual reserve into detritus, and despawns them intra-tick.
+pub fn agent_mortality_system(
+    mut commands: Commands,
+    agent_query: Query<(Entity, &HomeostaticState, &AgentLineageId, Option<&AgentEvaluation>), With<Agent>>,
+    mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+) {
+    let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
+    for (e, homeo, lineage_id, opt_eval) in agent_query.iter() {
+        if homeo.energy <= 0.0 {
+            let cause = if opt_eval.map(|ev| ev.survival_ticks >= 300).unwrap_or(false) {
+                "Senescence"
+            } else {
+                "Starvation"
+            };
+            to_despawn.push((lineage_id.0.clone(), e, cause));
+        }
+    }
+    to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    for (_, entity, cause) in to_despawn {
+        if let Some(ref mut trk) = tracker {
+            trk.record_death(cause);
+        }
+        commands.add(ReclaimAndDespawnAgentCommand { root: entity });
+    }
+}
+
+/// Autonomous continuous intra-tick reproduction on energy surplus:
+/// When an agent's reserve exceeds the reproduction threshold (>= 0.80 * energy_target),
+/// it splits a fraction of its energy reserve, funds an offspring through Lindeman transfer
+/// efficiency (eta ~= 0.20), routes the non-assimilated remainder (1 - eta) directly to
+/// detritus with zero leakage, and queues a SpawnOffspringCommand.
+pub fn autonomous_reproduction_system(
+    mut commands: Commands,
+    mut agent_query: Query<(
+        Entity,
+        &mut HomeostaticState,
+        &AgentGenotype,
+        Option<&crate::core::components::AgentBrain>,
+        &Position,
+        &AgentLineageId,
+        &AgentGeneration,
+        Option<&Predator>,
+        Option<&Prey>,
+        Option<&AgentEvaluation>,
+    ), With<Agent>>,
+    mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    mut sim_rng: Option<ResMut<crate::core::resources::SimRng>>,
+    bounds: Option<Res<crate::core::ecs::MapBounds>>,
+    mut next_node_id: Option<ResMut<NextNodeId>>,
+    mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+) {
+    use rand::Rng;
+
+    // Count living trophic populations for density-dependent fecundity regulation
+    let mut prey_count = 0usize;
+    let mut pred_count = 0usize;
+    for (_, _, _, _, _, _, _, opt_pred, _, _) in agent_query.iter() {
+        if opt_pred.is_some() {
+            pred_count += 1;
+        } else {
+            prey_count += 1;
+        }
+    }
+
+    // Collect and sort entities by lineage ID to guarantee deterministic iteration order across save/load boundaries
+    let mut sorted_entities: Vec<(String, Entity)> = agent_query
+        .iter()
+        .map(|(e, _, _, _, _, lineage_id, _, _, _, _)| (lineage_id.0.clone(), e))
+        .collect();
+    sorted_entities.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+    for (_lineage_str, entity) in sorted_entities {
+        let Ok((
+            _entity,
+            mut homeo,
+            genotype,
+            opt_brain,
+            pos,
+            lineage_id,
+            generation,
+            opt_pred,
+            _opt_prey,
+            opt_eval,
+        )) = agent_query.get_mut(entity) else {
+            continue;
+        };
+
+        let is_predator = opt_pred.is_some();
+        if is_predator {
+            if pred_count >= 8 || prey_count < pred_count * 5 {
+                continue;
+            }
+        } else {
+            if prey_count >= 80 {
+                continue;
+            }
+        }
+
+        let threshold_fraction = if is_predator { 0.95 } else { 0.65 };
+        let safe_fraction = if is_predator { 0.35 } else { 0.30 };
+        let invest_fraction = if is_predator { 0.65 } else { 0.50 };
+
+        let threshold = threshold_fraction * homeo.energy_target;
+        let safe_reserve = safe_fraction * homeo.energy_target;
+        if homeo.energy >= threshold && homeo.energy > safe_reserve {
+            // Parent invests fraction of current reserve above safe reserve
+            let surplus = homeo.energy - safe_reserve;
+            let invest_nominal = (invest_fraction * homeo.energy).min(surplus);
+            if invest_nominal <= 0.0 {
+                continue;
+            }
+
+            // Debit parent reserve exactly in f64
+            let debited =
+                crate::core::energy_ledger::debit_reserve(&mut homeo.energy, invest_nominal);
+            if debited <= 0.0 {
+                continue;
+            }
+
+            // Lindeman reproduction efficiency
+            let efficiency = crate::core::ecology::REPRODUCTION_EFFICIENCY as f64;
+            let child_endowment = (debited * efficiency) as f32;
+            let overhead_waste = debited - (child_endowment as f64);
+
+            // 0-leakage detritus routing for reproduction overhead
+            if overhead_waste > 0.0 {
+                if let Some(ref mut pool) = biomass {
+                    pool.detritus += overhead_waste;
+                }
+            }
+
+            let agent_class = if is_predator {
+                AgentClass::Predator
+            } else {
+                AgentClass::Prey
+            };
+
+            // Jitter offspring spawn position near parent
+            let (dx, dz) = match sim_rng.as_mut() {
+                Some(rng_res) => {
+                    let r = rng_res.rng();
+                    (r.gen_range(-1.5..1.5), r.gen_range(-1.5..1.5))
+                }
+                None => (0.5, 0.5),
+            };
+
+            let mut spawn_pos = glam::Vec3::new(pos.0.x + dx, pos.0.y, pos.0.z + dz);
+            if let Some(ref b) = bounds {
+                spawn_pos.x = spawn_pos.x.clamp(b.min.x + 1.0, b.max.x - 1.0);
+                spawn_pos.z = spawn_pos.z.clamp(b.min.z + 1.0, b.max.z - 1.0);
+            }
+
+            // Mutate child morphology with low probability (5%)
+            let mut child_genotype = genotype.0.clone();
+            if let (Some(ref mut rng_res), Some(ref mut node_id_res)) =
+                (sim_rng.as_mut(), next_node_id.as_mut())
+            {
+                let r = rng_res.rng();
+                let _ = crate::evolution::mutation::mutate_genotype(
+                    &mut child_genotype,
+                    &mut node_id_res.0,
+                    0.05,
+                    r,
+                );
+            }
+
+            // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
+            let child_brain =
+                if let (Some(brain), Some(ref mut rng_res)) = (opt_brain, sim_rng.as_mut()) {
+                    let mut brain_geno = (*brain.genotype).clone();
+                    let r = rng_res.rng();
+                    let _ = crate::evolution::brain_genotype::mutate_brain(
+                        &mut brain_geno,
+                        0.05,
+                        0.02,
+                        r,
+                    );
+                    Some(std::sync::Arc::new(brain_geno))
+                } else {
+                    opt_brain.map(|b| b.genotype.clone())
+                };
+
+            let child_lineage = format!("{}.{}", lineage_id.0, generation.0 + 1);
+
+            if let Some(ref mut trk) = demographic_tracker {
+                let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
+                trk.record_birth(parent_age);
+            }
+
+            commands.add(SpawnOffspringCommand {
+                parent_entity: entity,
+                genotype: child_genotype,
+                initial_pos: spawn_pos,
+                initial_rot: glam::Quat::IDENTITY,
+                agent_class,
+                lineage_id: child_lineage,
+                generation: generation.0 + 1,
+                parent_ids: vec![lineage_id.0.clone()],
+                starting_energy: child_endowment,
+                energy_target: homeo.energy_target,
+                brain: child_brain,
+            });
+        }
+    }
+}
+
 
 pub fn sync_evolution_settings_system(
     shared_settings: Res<BevyEvolutionSettings>,

@@ -124,12 +124,71 @@ pub fn get_chronicle_history(state: State<'_, AppState>) -> Result<Vec<Chronicle
     Ok(history.clone())
 }
 
-/// Persist the frontend-generated **shared World Artifact** to the canonical on-disk path so the
-/// simulation (`init_world`) boots on the SAME world that is rendered, instead of generating its own.
-/// The frontend calls this once when it finishes generating the world. Returns the written path.
 #[tauri::command]
 pub fn save_world_artifact(bytes: Vec<u8>) -> Result<String, String> {
     let path = crate::core::world_artifact::default_artifact_path();
     crate::core::world_artifact::write_artifact_bytes_to(&path, &bytes)?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+pub use crate::core::telemetry_export::{
+    AgeCohort, AgeFecundity, DemographicCensusState, EnergyFluxLink, EnergyFluxNode,
+    EnergyFluxReport, MortalityCauseCount, SpatialDensityReport,
+};
+
+#[tauri::command]
+pub fn get_demographic_census(state: State<'_, AppState>) -> Result<DemographicCensusState, String> {
+    let shared = state
+        .engine
+        .demographic_census
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    Ok(shared.clone())
+}
+
+#[tauri::command]
+pub fn get_energy_flux_matrix(state: State<'_, AppState>) -> Result<EnergyFluxReport, String> {
+    let shared = state
+        .engine
+        .energy_flux_report
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    Ok(shared.clone())
+}
+
+#[tauri::command]
+pub fn get_spatial_density_matrix(
+    state: State<'_, AppState>,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<SpatialDensityReport, String> {
+    let w = width.unwrap_or(16);
+    let h = height.unwrap_or(16);
+
+    let segments = state
+        .engine
+        .agent_states
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+    let bounds = state
+        .engine
+        .terrain_map
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        .map(|t| t.bounds);
+    let combat_events = state
+        .engine
+        .combat_events
+        .read()
+        .unwrap_or_else(|e| e.into_inner());
+
+    Ok(crate::core::telemetry_export::generate_spatial_density_matrix(
+        w,
+        h,
+        &segments,
+        bounds.as_ref(),
+        None,
+        &combat_events,
+    ))
 }

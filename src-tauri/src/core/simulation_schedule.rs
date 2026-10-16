@@ -97,10 +97,15 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
     ));
     schedule.add_systems((
         update_agent_evaluation_system.after(integrate_physics_system),
-        crate::core::ecs::check_migration_boundaries_system.after(integrate_physics_system),
-        apply_deferred.after(crate::core::ecs::check_migration_boundaries_system),
-        wrap_coordinates_system.after(apply_deferred),
+        (
+            crate::core::ecs::check_migration_boundaries_system,
+            apply_deferred,
+            wrap_coordinates_system,
+        )
+            .chain()
+            .after(integrate_physics_system),
         rebuild_spatial_grid_system.after(wrap_coordinates_system),
+
         crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
         // ---- The energy pipeline, declared end to end -------------------------------------------
         //
@@ -188,31 +193,32 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         crate::core::aggregate_population::dormant_cohort_ecology_system
             .after(herbivore_grazing_system)
             .before(resource_field_regrowth_system),
-        // The census does not accumulate, it takes a **snapshot** — `pool.animals = Σ reserves`,
-        // recomputed from scratch — so unlike `plants` and `detritus`, which are carried
-        // incrementally, its value is entirely a function of *when* in the tick it is taken.
-        //
-        // It used to declare only the two edges below, and nothing about the systems that move
-        // agent reserves. Two systems with no edge between them are ordered by the schedule's
-        // topological sort, and that sort is not a declared property of the schedule — so the order
-        // was chosen per process. Measured at commit `0bcb330`: five runs of one release binary at
-        // one seed gave two distinct `live.animals_eu` trajectories, 0.186 EU apart, which is one
-        // tick of metabolic decay across ten agents. Every other observable, and the world
-        // checksum, were bit-identical; `world_checksum` covers reserves and the resource field but
-        // not `EcosystemBiomass`, which is why no existing gate saw it.
-        //
-        // Every system that moves EU into or out of an agent's reserve is named here. Grazing is
-        // already transitively ordered through regrowth; it is stated anyway, because a reader
-        // checking this list should not have to prove a path through a third system, and because
-        // regrowth's edge could change without anyone thinking about the census.
-        ecosystem_census_system
-            .after(resource_field_regrowth_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
-            .after(metabolic_decay_system)
-            .after(detect_food_collisions_system)
-            .after(combat_system)
-            .after(herbivore_grazing_system),
     ));
+
+    // Closed-loop energy conservation: mortality & autonomous continuous reproduction
+    // flush deferred commands before the ecosystem census snapshot.
+    schedule.add_systems(
+        (
+            agent_mortality_system,
+            autonomous_reproduction_system,
+            apply_deferred,
+            ecosystem_census_system,
+        )
+            .chain()
+            .after(metabolic_decay_system)
+            .after(resource_field_regrowth_system)
+            .after(combat_system)
+            .after(detect_food_collisions_system)
+            .after(herbivore_grazing_system)
+            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
+    );
+
+    schedule.add_systems((
+        demographic_census_system.after(ecosystem_census_system),
+        energy_flux_aggregation_system.after(ecosystem_census_system),
+    ));
+
+
 
     // A declared experiment's interventions reach the world here. `.before(...)` only — see the
     // module docs — and inert without a `LiveInterventions` resource, which only the experiment

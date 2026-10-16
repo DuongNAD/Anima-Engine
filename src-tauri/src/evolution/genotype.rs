@@ -24,9 +24,17 @@ pub struct MorphologyGenotype {
 }
 
 impl MorphologyGenotype {
-    /// Total body mass = sum of every segment's mass. In the Metabolic Theory of Ecology this
+    /// Total body mass = the mass of the segments this genotype actually grows: the root plus
+    /// everything reachable from it, each counted once. In the Metabolic Theory of Ecology this
     /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
     /// the most important ecological / life-history niche axis for the MAP-Elites archive.
+    ///
+    /// **Reachability is the definition, not an implementation detail.** `decode_genotype` spawns
+    /// by the same root-finding and BFS below, so a node no edge path reaches never becomes a
+    /// segment in the world. Summing `nodes` flat instead would place an agent in a heavier
+    /// MAP-Elites cell than the body it is running around in — and every metabolic rate derived
+    /// from that mass would describe an organism that does not exist. The test named
+    /// `total_mass_matches_the_body_decode_genotype_spawns` holds the two traversals together.
     pub fn total_mass(&self) -> f32 {
         if self.nodes.is_empty() {
             return 0.0;
@@ -49,7 +57,8 @@ impl MorphologyGenotype {
         while let Some(curr_id) = queue.pop_front() {
             for edge in self.edges.iter().filter(|e| e.source_node == curr_id) {
                 if !visited.contains(&edge.target_node) {
-                    if let Some(target_node) = self.nodes.iter().find(|n| n.id == edge.target_node) {
+                    if let Some(target_node) = self.nodes.iter().find(|n| n.id == edge.target_node)
+                    {
                         visited.insert(edge.target_node);
                         mass += target_node.mass;
                         queue.push_back(edge.target_node);
@@ -135,15 +144,8 @@ pub fn decode_genotype(
                 radius: root_node.radius,
                 mass: root_node.mass,
             },
-            HomeostaticState {
-                energy: 100.0,
-                energy_target: 100.0,
-                hydration: 100.0,
-                hydration_target: 100.0,
-                temperature: 37.0,
-                temp_target: 37.0,
-                previous_deviation: 0.0,
-            },
+            HomeostaticState::default(),
+
             LastTransitionState {
                 state: [0.0; 15],
                 action: [0.0; 4],
@@ -241,4 +243,108 @@ pub fn decode_genotype(
     }
 
     root_entity
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: u32, mass: f32) -> MorphologyNode {
+        MorphologyNode {
+            id,
+            length: 1.0,
+            radius: 0.25,
+            mass,
+        }
+    }
+
+    fn edge(source_node: u32, target_node: u32) -> MorphologyEdge {
+        MorphologyEdge {
+            source_node,
+            target_node,
+            joint_anchor: Vec3::new(0.0, 0.0, 1.0),
+            joint_axis: Vec3::X,
+        }
+    }
+
+    fn genotype(nodes: &[(u32, f32)], edges: &[(u32, u32)]) -> MorphologyGenotype {
+        let mut g = MorphologyGenotype::new();
+        for &(id, mass) in nodes {
+            g.add_node(node(id, mass));
+        }
+        for &(s, t) in edges {
+            g.add_edge(edge(s, t));
+        }
+        g
+    }
+
+    #[test]
+    fn total_mass_of_an_empty_genotype_is_zero() {
+        assert_eq!(MorphologyGenotype::new().total_mass(), 0.0);
+    }
+
+    #[test]
+    fn total_mass_sums_a_connected_chain() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1), (1, 2)]);
+        assert_eq!(g.total_mass(), 15.0);
+    }
+
+    // The behaviour that separates this from `nodes.iter().map(|n| n.mass).sum()`. Node 2 is in the
+    // genome but no edge reaches it, so `decode_genotype` never spawns a segment for it and the
+    // organism does not carry its mass.
+    #[test]
+    fn total_mass_excludes_nodes_unreachable_from_the_root() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1)]);
+        assert_eq!(
+            g.total_mass(),
+            8.0,
+            "the unreachable node's 7.0 must not be counted; a flat sum over `nodes` gives 15.0"
+        );
+    }
+
+    // A diamond: two parents, one child. The child is one segment, so it weighs once.
+    #[test]
+    fn total_mass_counts_a_shared_child_once() {
+        let g = genotype(
+            &[(0, 3.0), (1, 5.0), (2, 7.0), (3, 11.0)],
+            &[(0, 1), (0, 2), (1, 3), (2, 3)],
+        );
+        assert_eq!(g.total_mass(), 26.0);
+    }
+
+    // No node is edge-free here, so root-finding falls through to `nodes[0]`. Without the `visited`
+    // set this would not terminate.
+    #[test]
+    fn total_mass_terminates_and_counts_once_on_a_cycle() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1), (1, 2), (2, 0)]);
+        assert_eq!(g.total_mass(), 15.0);
+    }
+
+    // The invariant the descriptor exists to express: the number fed to MAP-Elites is the mass of
+    // the body that actually gets spawned. Both sides do their own traversal, so this fails if
+    // either one is changed alone — which is the failure mode a value-only assertion would miss.
+    #[test]
+    fn total_mass_matches_the_body_decode_genotype_spawns() {
+        use crate::core::ecs::Segment;
+        use bevy_ecs::prelude::World;
+
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1)]);
+
+        let mut world = World::new();
+        decode_genotype(&mut world, &g, Vec3::ZERO, glam::Quat::IDENTITY);
+
+        let mut segments = world.query::<&Segment>();
+        let spawned_mass: f32 = segments.iter(&world).map(|s| s.mass).sum();
+
+        assert_eq!(
+            g.total_mass(),
+            spawned_mass,
+            "the MAP-Elites body-mass descriptor and the spawned body disagree"
+        );
+        assert_eq!(
+            segments.iter(&world).count(),
+            2,
+            "the unreachable node must not have been spawned"
+        );
+    }
 }

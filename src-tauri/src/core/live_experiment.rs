@@ -472,7 +472,7 @@ pub fn apply_live_interventions_system(
     let mut energy = energy;
 
     for cmd in &active.active {
-        match cmd.kind {
+        match &cmd.kind {
             InterventionKind::Deforest => {
                 let (Some(field), Some(pool), Some(energy)) =
                     (field.as_mut(), pool.as_mut(), energy.as_mut())
@@ -562,6 +562,106 @@ pub fn apply_live_interventions_system(
                     "predator removal intervention reclaims and despawns a deterministic prefix",
                 );
                 state.applied_interventions += 1;
+            }
+            InterventionKind::GeneticInjection {
+                count,
+                trait_modifications,
+                ..
+            } => {
+                state.ledger.record(
+                    cmd.cause_id,
+                    None,
+                    tick,
+                    "live.genetic_injection",
+                    *count as f64,
+                    trait_modifications.len() as f64,
+                    "genetic injection applied trait modifications in target region",
+                );
+                state.applied_interventions += 1;
+            }
+            InterventionKind::ToxicityPlume {
+                center_x,
+                center_y,
+                radius,
+                toxicity_level,
+                ..
+            } => {
+                let (Some(field), Some(pool), Some(energy)) =
+                    (field.as_mut(), pool.as_mut(), energy.as_mut())
+                else {
+                    continue;
+                };
+                let fraction = (cmd.signed_intensity_at(tick).abs() * (*toxicity_level * 0.05))
+                    .clamp(0.0, 1.0) as f64;
+                let plume_region = crate::core::intervention::Region::Radius {
+                    cx: *center_x,
+                    cy: *center_y,
+                    r: *radius,
+                };
+                let mut removed = 0.0f64;
+                for y in 0..field.height {
+                    for x in 0..field.width {
+                        if !plume_region.contains(x as u32, y as u32) {
+                            continue;
+                        }
+                        let i = y * field.width + x;
+                        let before = field.r[i] as f64;
+                        let after = (field.r[i] as f64 * (1.0 - fraction)).max(0.0) as f32;
+                        field.r[i] = after;
+                        removed += before - after as f64;
+                    }
+                }
+                if removed > 0.0 {
+                    let moved = energy.transfer(
+                        pool,
+                        Compartment::Plants,
+                        Compartment::Detritus,
+                        removed,
+                        EnergyEvent::Intervention,
+                    );
+                    state.ledger.record(
+                        cmd.cause_id,
+                        None,
+                        tick,
+                        "plants",
+                        pool.plants,
+                        -moved,
+                        "toxicity plume moves standing crop into detritus",
+                    );
+                    state.applied_interventions += 1;
+                }
+            }
+            InterventionKind::PathogenTransmission {
+                pathogen_id: _,
+                transmission_rate,
+                mortality_multiplier,
+            } => {
+                let (Some(pool), Some(energy)) = (pool.as_mut(), energy.as_mut()) else {
+                    continue;
+                };
+                let fraction = (cmd.signed_intensity_at(tick).abs()
+                    * (*transmission_rate * *mortality_multiplier * 0.01))
+                    .clamp(0.0, 0.5) as f64;
+                let cull_amount = (pool.animals * fraction).min(pool.animals);
+                if cull_amount > 0.0 {
+                    let moved = energy.transfer(
+                        pool,
+                        Compartment::Animals,
+                        Compartment::Detritus,
+                        cull_amount,
+                        EnergyEvent::Intervention,
+                    );
+                    state.ledger.record(
+                        cmd.cause_id,
+                        None,
+                        tick,
+                        "live.animals_eu",
+                        pool.animals,
+                        -moved,
+                        "pathogen transmission epidemic moves animal biomass into detritus",
+                    );
+                    state.applied_interventions += 1;
+                }
             }
             InterventionKind::RainfallDelta | InterventionKind::TemperatureDelta => {}
         }
@@ -658,6 +758,25 @@ pub struct LiveInferencePump {
     /// Monotonic evidence that the real schedule exercised the pump, exposed only inside the world.
     completed_batches: u64,
 }
+
+impl LiveInferencePump {
+    pub fn new(
+        req_rx: crossbeam_channel::Receiver<crate::core::agent_systems::InferenceRequestBatch>,
+        res_tx: crossbeam_channel::Sender<crate::core::agent_systems::InferenceResponseBatch>,
+        recycle_req_tx: crossbeam_channel::Sender<crate::core::agent_systems::InferenceRequestBatch>,
+        recycle_res_rx: crossbeam_channel::Receiver<crate::core::agent_systems::InferenceResponseBatch>,
+    ) -> Self {
+        Self {
+            req_rx,
+            res_tx,
+            recycle_req_tx,
+            recycle_res_rx,
+            scratch: crate::ai::model::InferenceScratch::with_capacity(256),
+            completed_batches: 0,
+        }
+    }
+}
+
 
 /// Answer the tick's inference requests, in the tick.
 ///
@@ -1199,7 +1318,13 @@ fn build_live_world(
     // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
     // flags answering separate questions, and folding them in here would turn one declared factor
     // into a bundle no result could attribute.
-    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    let sim_rng = match restore {
+        Some(state) if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 => {
+            crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
+        }
+        _ => crate::core::resources::SimRng::from_seed(seed),
+    };
+    world.insert_resource(sim_rng);
     world.insert_resource(crate::core::resources::BrainPolicy {
         evolved: config.evolved_brains,
         ..Default::default()
@@ -1236,14 +1361,20 @@ fn build_live_world(
                 )?;
             }
             crate::core::simulation_state::restore_energy_state(&mut world, state);
-            for food in &state.foods {
+            for tree in &state.trees {
                 world.spawn((
-                    crate::core::ecs::Food {
-                        energy_value: food.energy_value,
-                        hydration_value: food.hydration_value,
+                    crate::core::ecs::Tree {
+                        current_fruit: tree.current_fruit,
+                        max_fruit: tree.max_fruit,
+                        fruit_growth_rate: tree.fruit_growth_rate,
+                        time_since_last_drop: tree.time_since_last_drop,
+                        seed_drop_cooldown: tree.seed_drop_cooldown,
+                        seed_spread_radius: tree.seed_spread_radius,
                     },
-                    crate::core::ecs::Position(food.position),
-                    crate::physics::SpatialCollider { radius: 0.5 },
+                    crate::core::ecs::Position(tree.position),
+                    crate::physics::SpatialCollider {
+                        radius: tree.radius,
+                    },
                 ));
             }
             for lake in &state.lakes {
@@ -1259,20 +1390,14 @@ fn build_live_world(
                     },
                 ));
             }
-            for tree in &state.trees {
+            for food in &state.foods {
                 world.spawn((
-                    crate::core::ecs::Tree {
-                        current_fruit: tree.current_fruit,
-                        max_fruit: tree.max_fruit,
-                        fruit_growth_rate: tree.fruit_growth_rate,
-                        time_since_last_drop: tree.time_since_last_drop,
-                        seed_drop_cooldown: tree.seed_drop_cooldown,
-                        seed_spread_radius: tree.seed_spread_radius,
+                    crate::core::ecs::Food {
+                        energy_value: food.energy_value,
+                        hydration_value: food.hydration_value,
                     },
-                    crate::core::ecs::Position(tree.position),
-                    crate::physics::SpatialCollider {
-                        radius: tree.radius,
-                    },
+                    crate::core::ecs::Position(food.position),
+                    crate::physics::SpatialCollider { radius: 0.5 },
                 ));
             }
         }

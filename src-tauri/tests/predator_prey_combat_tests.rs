@@ -20,7 +20,7 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_predator_prey_classification() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut world = World::new();
 
     // Set up a genotype
@@ -72,7 +72,7 @@ fn test_predator_prey_classification() {
 
 #[test]
 fn test_predator_tracking_inputs() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut world = World::new();
 
     world.insert_resource(BrainModel::new(15, 64, 4));
@@ -159,7 +159,7 @@ fn test_predator_tracking_inputs() {
 
 #[test]
 fn test_predator_prey_collision_and_combat() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut world = World::new();
 
     // Predator at (0,0,0)
@@ -227,14 +227,14 @@ fn test_predator_prey_collision_and_combat() {
         "assimilation should lose energy: gained {gained}, lost {lost}"
     );
     assert!(
-        (gained - lost * 0.30).abs() < 1e-3,
-        "gained {gained} should be 30% of lost {lost}"
+        (gained - lost * anima_engine_lib::core::ecology::LINDEMAN_EFFICIENCY).abs() < 1e-3,
+        "gained {gained} should be 40% of lost {lost}"
     );
 }
 
 #[test]
 fn test_prey_carcass_freezing() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016));
 
@@ -298,7 +298,7 @@ fn test_prey_carcass_freezing() {
 
 #[test]
 fn test_zero_allocation_combat_hot_path() {
-    let _lock = TEST_LOCK.lock().unwrap();
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut world = World::new();
     world.insert_resource(TimeStep(0.016));
 

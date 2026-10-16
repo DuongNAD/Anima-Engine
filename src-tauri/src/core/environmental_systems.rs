@@ -338,3 +338,55 @@ pub fn detect_environmental_collisions_system(
         }
     }
 }
+
+/// Demographic census aggregation system:
+/// Bins living agents into age cohorts, tracks sex ratio, biodiversity indices, and mortality attribution.
+pub fn demographic_census_system(
+    agent_query: Query<(
+        &crate::core::agent_systems::AgentEvaluation,
+        Option<&crate::core::components::Predator>,
+        Option<&crate::core::components::Prey>,
+        Option<&crate::core::components::AgentSex>,
+        &crate::ai::hrrl::HomeostaticState,
+    ), With<crate::core::components::Agent>>,
+    tracker: Option<Res<crate::core::telemetry_export::DemographicTracker>>,
+    mut census_resource: Option<ResMut<crate::core::telemetry_export::DemographicCensusState>>,
+) {
+    let mut agent_data = Vec::new();
+    for (eval, opt_pred, _opt_prey, opt_sex, homeo) in agent_query.iter() {
+        if homeo.energy > 0.0 {
+            let agent_type = if opt_pred.is_some() {
+                Some(crate::core::ecs::AgentType::Predator)
+            } else {
+                Some(crate::core::ecs::AgentType::Prey)
+            };
+            agent_data.push((eval.survival_ticks, agent_type, opt_sex.copied()));
+        }
+    }
+
+    let census = crate::core::telemetry_export::build_demographic_census(&agent_data, tracker.as_deref());
+    if let Some(ref mut res) = census_resource {
+        **res = census;
+    }
+}
+
+/// Directed energy flux aggregation system:
+/// Updates energy flux report with trophic node biomasses, directed link transfers, and Lindeman dissipation.
+pub fn energy_flux_aggregation_system(
+    biomass: Option<Res<crate::core::ecology::EcosystemBiomass>>,
+    ledger: Option<Res<crate::core::energy_ledger::EnergyLedger>>,
+    flux: Option<Res<crate::core::energy_ledger::EnergyFluxMatrix>>,
+    mut flux_report: Option<ResMut<crate::core::telemetry_export::EnergyFluxReport>>,
+) {
+    if let Some(pool) = biomass {
+        let report = crate::core::telemetry_export::generate_energy_flux_report(
+            &pool,
+            ledger.as_deref(),
+            flux.as_deref(),
+        );
+        if let Some(ref mut res) = flux_report {
+            **res = report;
+        }
+    }
+}
+

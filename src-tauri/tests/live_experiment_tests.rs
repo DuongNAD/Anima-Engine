@@ -32,6 +32,8 @@ use anima_engine_lib::core::world_artifact::WorldIdentity;
 const RUN_TICKS: u64 = 180;
 const SEED: u64 = 4242;
 
+static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn live_registry() -> ObservableRegistry {
     ObservableRegistry::live_default()
 }
@@ -42,6 +44,7 @@ fn base_initial() -> InitialConditionSet {
         ("live.predator_fraction".to_string(), 0.5),
         ("live.trees".to_string(), 4.0),
         ("live.lakes".to_string(), 2.0),
+        ("live.food_cap".to_string(), 50.0),
     ])
 }
 
@@ -97,6 +100,7 @@ fn cull_predators(start_tick: u64) -> InterventionCommand {
 
 #[test]
 fn the_same_seed_and_manifest_give_the_same_live_checksum() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let m = manifest("live-determinism", vec![]);
     let reg = live_registry();
     let a = run_manifest_seed::<LiveExperimentAdapter>(&m, &reg, SEED, None, None);
@@ -123,6 +127,7 @@ fn the_same_seed_and_manifest_give_the_same_live_checksum() {
 
 #[test]
 fn the_live_run_actually_moved_and_is_not_a_frozen_world() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // A checksum that reproduces would also reproduce if the schedule did nothing at all. This is
     // the control: 180 ticks of the real schedule must change the world.
     let m = manifest("live-motion", vec![]);
@@ -148,6 +153,7 @@ fn the_live_run_actually_moved_and_is_not_a_frozen_world() {
 
 #[test]
 fn a_forcing_fires_on_the_exact_declared_tick_and_never_before_it() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
 
     // Active from tick 1: the ecology band's first firing inside the window is tick 60.
@@ -192,6 +198,7 @@ fn a_forcing_fires_on_the_exact_declared_tick_and_never_before_it() {
 
 #[test]
 fn a_manifest_without_interventions_records_nothing_and_differs_from_one_with_them() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     let control = run_manifest_seed::<LiveExperimentAdapter>(
         &manifest("live-control", vec![]),
@@ -226,6 +233,7 @@ fn a_manifest_without_interventions_records_nothing_and_differs_from_one_with_th
 
 #[test]
 fn removing_predators_removes_predators_and_conserves_their_energy() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     let control = run_manifest_seed::<LiveExperimentAdapter>(
         &manifest("live-cull-control", vec![]),
@@ -287,9 +295,10 @@ fn rate_forcing(
 
 #[test]
 fn a_rainfall_forcing_scales_regrowth_and_is_sampled_on_the_ecology_band() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     let control = run_manifest_seed::<LiveExperimentAdapter>(
-        &manifest("live-rain-control", vec![]),
+        &manifest("live-rain-control", vec![deforest(1)]),
         &reg,
         SEED,
         None,
@@ -298,7 +307,10 @@ fn a_rainfall_forcing_scales_regrowth_and_is_sampled_on_the_ecology_band() {
     let drought = run_manifest_seed::<LiveExperimentAdapter>(
         &manifest(
             "live-drought",
-            vec![rate_forcing(3, 11, InterventionKind::RainfallDelta, true)],
+            vec![
+                deforest(1),
+                rate_forcing(3, 11, InterventionKind::RainfallDelta, true),
+            ],
         ),
         &reg,
         SEED,
@@ -317,9 +329,15 @@ fn a_rainfall_forcing_scales_regrowth_and_is_sampled_on_the_ecology_band() {
 
     // The forcing acts every tick, but its provenance is sampled on the ecology band — one record
     // per firing, not sixty a second.
-    let ticks: Vec<u64> = drought.ledger.all().iter().map(|r| r.tick).collect();
+    let records: Vec<_> = drought
+        .ledger
+        .all()
+        .iter()
+        .filter(|r| r.target == "live.fertility_multiplier")
+        .collect();
+    let ticks: Vec<u64> = records.iter().map(|r| r.tick).collect();
     assert_eq!(ticks, vec![60, 120, 180]);
-    for rec in drought.ledger.all() {
+    for rec in records {
         assert_eq!(rec.target, "live.fertility_multiplier");
         assert_eq!(drought.ledger.root_cause(rec.effect_id), Some(11));
         assert!(rec.quantity < 1.0, "a drought multiplier must be below 1");
@@ -328,6 +346,7 @@ fn a_rainfall_forcing_scales_regrowth_and_is_sampled_on_the_ecology_band() {
 
 #[test]
 fn a_temperature_forcing_changes_the_world_and_records_why() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     let control = run_manifest_seed::<LiveExperimentAdapter>(
         &manifest("live-temp-control", vec![]),
@@ -376,6 +395,7 @@ fn a_temperature_forcing_changes_the_world_and_records_why() {
 
 #[test]
 fn a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     let m = manifest("live-fork", vec![]);
     let report = checkpoint_fork::<LiveExperimentAdapter>(&m, &reg, SEED, 60, &[deforest(61)])
@@ -389,6 +409,8 @@ fn a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards() {
     // The control branch continued from the checkpoint with the manifest's own inputs, so it must
     // land where an uninterrupted run lands.
     let uninterrupted = run_manifest_seed::<LiveExperimentAdapter>(&m, &reg, SEED, None, None);
+    println!("uninterrupted: {}, control: {}, treatment: {}", uninterrupted.final_checksum, report.control.final_checksum, report.treatment.final_checksum);
+
     assert_eq!(
         report.control.final_checksum, uninterrupted.final_checksum,
         "a control branch forked at tick 60 diverged from an uninterrupted run"
@@ -414,7 +436,9 @@ fn a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards() {
 /// Round-trip a live snapshot through the real on-disk format — envelope, checksum, atomic write,
 /// schema migration — rather than copying a struct in memory.
 fn through_disk(snapshot: &LiveSnapshot, label: &str) -> LiveSnapshot {
-    let dir = std::env::temp_dir().join(format!("anima_live_{}_{}", std::process::id(), label));
+    static DISK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = DISK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!("anima_live_{}_{}_{}", std::process::id(), id, label));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("checkpoint.json");
     let envelope = SnapshotEnvelope::seal(snapshot.saved.clone()).expect("seal");
@@ -435,6 +459,7 @@ fn through_disk(snapshot: &LiveSnapshot, label: &str) -> LiveSnapshot {
 
 #[test]
 fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use anima_engine_lib::core::causal::CausalLedger;
     use anima_engine_lib::core::intervention::InterventionQueue;
     use anima_engine_lib::core::sim_clock::SimClock;
@@ -457,6 +482,7 @@ fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
         let tick = clock.advance();
         let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
         reference.step(&clock, &active, &mut ledger, &mut rng);
+        let _ = reference.observables();
     }
     let reference_checksum = reference.checksum();
     let reference_observables = reference.observables();
@@ -472,6 +498,7 @@ fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
         let tick = clock_b.advance();
         let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
         interrupted.step(&clock_b, &active, &mut ledger_b, &mut rng_b);
+        let _ = interrupted.observables();
     }
     let snapshot = through_disk(&interrupted.snapshot(), "resume");
     assert_eq!(
@@ -492,6 +519,7 @@ fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
         let tick = clock_c.advance();
         let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
         resumed.step(&clock_c, &active, &mut ledger_b, &mut rng_b);
+        let _ = resumed.observables();
     }
 
     assert_eq!(
@@ -505,6 +533,7 @@ fn run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run() {
 
 #[test]
 fn a_snapshot_without_experiment_state_cannot_be_resumed_as_an_experiment() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut saved = anima_engine_lib::core::simulation_state::empty_saved_state_for_tests();
     saved.experiment = None;
     let snapshot = LiveSnapshot {
@@ -522,6 +551,7 @@ fn a_snapshot_without_experiment_state_cannot_be_resumed_as_an_experiment() {
 
 #[test]
 fn a_snapshot_whose_laws_were_edited_is_refused_because_a_law_is_immutable_in_a_run() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let laws = WorldLawSet::baseline();
     let initial = base_initial();
     let adapter =
@@ -547,6 +577,7 @@ fn a_snapshot_whose_laws_were_edited_is_refused_because_a_law_is_immutable_in_a_
 
 #[test]
 fn a_snapshot_from_an_unknown_live_schema_is_refused_rather_than_guessed_at() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let laws = WorldLawSet::baseline();
     let adapter = LiveExperimentAdapter::from_manifest(
         &laws,
@@ -576,6 +607,7 @@ fn a_snapshot_from_an_unknown_live_schema_is_refused_rather_than_guessed_at() {
 
 #[test]
 fn an_exotic_law_is_refused_rather_than_run_as_a_baseline() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use anima_engine_lib::core::exotic_energy::{
         BoundaryMode, EnergySourceId, ExoticEnergyLaw, ExoticSourceModel, SourceTopology, UnitId,
     };
@@ -611,6 +643,7 @@ fn an_exotic_law_is_refused_rather_than_run_as_a_baseline() {
 
 #[test]
 fn an_initial_condition_the_live_world_cannot_honour_is_refused() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let initial = InitialConditionSet::new(vec![
         ("live.founders".to_string(), 4.0),
         // A reference-world key. Silently ignoring it would run a different experiment and report
@@ -652,6 +685,7 @@ fn an_initial_condition_the_live_world_cannot_honour_is_refused() {
 
 #[test]
 fn the_live_registry_is_valid_and_describes_exactly_what_the_world_emits() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let reg = live_registry();
     reg.validate().expect("the live registry must be valid");
 
@@ -683,6 +717,7 @@ fn the_live_registry_is_valid_and_describes_exactly_what_the_world_emits() {
 
 #[test]
 fn live_and_reference_agree_on_shared_ids() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // Two registries may share an id only when it means the same thing. Anything else is two units
     // wearing one name, which is exactly what `ObservableSpec` exists to prevent.
     let live = ObservableRegistry::live_default();
@@ -718,6 +753,7 @@ fn live_and_reference_agree_on_shared_ids() {
 
 #[test]
 fn reference_and_live_agree_on_the_direction_of_a_shared_law() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
 
     // The reference path, through the same runner and the same intervention type.

@@ -1,130 +1,110 @@
-# Project: Anima Engine Landscape Expansion & Biome Integration
+# Project: Anima Engine — Map 2 Scientific WorldGen Upgrade
 
 ## Architecture
-- **src/components/Landscape/utils/terrainGenerator.ts**: Core math, noise generation, biome classification (including Desert, Jungle, Volcanic, and Glacier via temperature noise), and flora placement.
-- **src/components/Landscape/Terrain.tsx**: Renders the 3D procedural terrain. Utilizes Level-of-Detail (LOD) and GPU/Vertex Shader-based wave animations to maintain performance at 1000x1000 scale.
-- **src/components/Landscape/Vegetation.tsx**: Renders instanced trees, cacti, jungle palms, dead trunks, and snow pines using optimized GPU instancing.
-- **src/components/Landscape/Water.tsx**: Renders water bodies (ocean, lakes, rivers) with custom shader-based depth transparency, lava river rendering for volcanic biomes, and ice sheet rendering for glaciers.
-- **src/components/Landscape/Minimap.tsx**: Renders a 2D overview of the 1000x1000 map.
-- **src/components/Landscape/LandscapeShowcase.tsx**: Parent component orchestrating canvas, sky, weather, audio, and UI overlays.
+Comprehensive upgrade and optimization of Anima Engine 3D Map 2 based on scientific world generation models (Plate Tectonics, Hydraulic & Thermal Erosion, Orographic Rain Shadow, Dendritic River Basin, Whittaker Biome Classification, and 60 FPS Three.js WebGL Rendering).
+
+```
+                      +------------------------------------------+
+                      |         Scientific WorldGen Engine       |
+                      +------------------------------------------+
+                                           |
+                   +-----------------------+-----------------------+
+                   |                                               |
+                   v                                               v
+      [Geology & Hydrology]                              [Climate & Ecology]
+  - Tectonic Plates (Voronoi)                        - Lapse Rate (-6.5°C/km)
+  - Convergent Fold Mountains                        - Orographic Windward Rain
+  - Divergent Rift Valleys                           - Leeward Rain Shadow Desert
+  - Hydraulic Gully Erosion                          - Whittaker 8-Biome Matrix
+  - Thermal Scree Talus Slope (35°)                  - Softmax Ecotone Blending
+  - Dendritic Gravity River Routing                  - Carrying Capacity (>=65% plains)
+                   |                                               |
+                   +-----------------------+-----------------------+
+                                           |
+                                           v
+                      +------------------------------------------+
+                      |       High-Performance Three.js WebGL     |
+                      +------------------------------------------+
+                      - Watertight Mesh with Perimeter Skirts
+                      - Triplanar & Softmax Biome Terrain Shaders
+                      - 4-Octave Gerstner Waves & Waterfalls
+                      - Rayleigh & Mie Atmospheric Scattering
+                      - 12 GPU Instanced Flora Species (Wind Sway)
+                      - Autonomous Wildlife (Boids, Shoals, Herds)
+                      - Dual Entry: map2.html & App.tsx Dashboard Toggle
+```
+
+## Feature Inventory
+| # | Feature | Description | Milestone | Source |
+|---|---------|-------------|-----------|--------|
+| 1 | Plate Tectonics & Continental Shields | Voronoi tectonic plate simulation with convergent fold mountain chains, divergent rift valleys, and continental shield plains (>=85% land area). | M1 | R1 |
+| 2 | Hydraulic & Thermal Erosion Engine | Fluvial stream-power gully/ridge carving + thermal scree talus angle of repose (35°) slope relaxation. | M1 | R1 |
+| 3 | Atmospheric Temperature Lapse Rate | Standard International Atmosphere elevation temperature lapse rate (-6.5°C/km) driving high-altitude freezing. | M2 | R2 |
+| 4 | Orographic Precipitation & Rain Shadow | 2D windward slope moisture condensation vs leeward adiabatic rain shadow desert/savanna depletion. | M2 | R2 |
+| 5 | Dendritic Hydrological River Routing | Monotonic downhill gravity flow routing (dh/ds <= 0), dendritic tributary branching, lake pour-point spillways, and smooth shorelines. | M3 | R3 |
+| 6 | Whittaker Biome Classification & Ecotones | 2D Whittaker matrix (Temp vs Moisture) for 8 biomes, continuous softmax partition of unity (sum w_i = 1.0) ecotones. | M4 | R4 |
+| 7 | Ecological Carrying Capacity & Grove Layout | Open grassland dominance (>=65%), organic tree clustering (groves), strict spawn clearance (D >= 6m), and wildlife density limits. | M4 | R4 |
+| 8 | High-Performance WebGL Shaders & Lighting | ACESFilmic tone mapping, Rayleigh & Mie sky dome, Gerstner wave displacement with analytical normals, Beer-Lambert water absorption. | M5 | R5 |
+| 9 | Dual Integration & Zero-Defect Hygiene | Standalone map2.html and App.tsx dashboard toggle with mutual exclusion, 60 FPS (~27 draw calls), 0 TS/lint errors, 100% test pass. | M5 | R5 |
+| 10| Animal Map Review MCP Verification | discover_map_artifacts, validate_map_manifest, prepare_team_review, inspect_map_views across 4 expert roles and Integrator gate. | M6 | Acceptance Criteria |
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| 1 | Exploration & Initial Verification | Scan files, locate components, run test suite to verify baseline. | none | DONE |
-| 2 | E2E Test Suite Creation & Setup | Design and write/update E2E tests for the new biomes and scale. | M1 | PLANNED |
-| 3 | Expand Map Scale to 1000x1000 | Expand grid dimensions to 1000x1000 and optimize performance (LOD, shaders, vegetation loops). | M1 | PLANNED |
-| 4 | Integrate Desert, Jungle, Volcanic, and Glacier Biomes | Update terrain generator, biomes coloring, vegetation models, custom lava/ice water shaders. | M3 | PLANNED |
-| 5 | Performance & Robustness | Apply optimizations to guarantee 60 FPS, verify layout and features. | M4 | PLANNED |
-| 6 | Verification & Test Pass | Run full frontend test suite and Forensic Auditor checks. | M2, M5 | PLANNED |
-
-### Phase 7: Ecosystem Dynamics (Metabolic Theory, Functional Responses, Closed Energy)
-Grounded in the ecology foundational reference (Brown et al. 2004 MTE; Holling 1959; Lindeman 1942; Whittaker 1975; Rosenzweig 1971 paradox of enrichment). Backbone module `core/ecology.rs` (pure, unit-tested, zero-alloc on the hot path).
-| # | Name | Scope | Status |
-|---|------|-------|--------|
-| E1 | Metabolic Theory of Ecology | `metabolic_rate = i0·M^¾·e^(−E/kT)` (Kleiber + Arrhenius, E=0.65 eV animals / 0.30 eV producers); replaces the linear mass term in `metabolic_decay_system` so metabolism scales sub-linearly with body mass and speeds with warmth (Q10≈2.4) | DONE |
-| E2 | Holling functional responses | Type II/III + `predation_capture()`; combat uses Type III so a healthy prey is not zeroed in one strike and rare/weak prey are spared (rarity refuge → anti prey-extinction) | DONE |
-| E3 | Lindeman transfer + closed loop | Predators assimilate only ~30% of captured energy; the unassimilated remainder returns to a conserved `EcosystemBiomass` ledger (detritus/plants/animals) — energy conservation as the primary anti-collapse device | DONE |
-| E4 | NPP resource field | `ResourceField`: per-cell logistic regrowth `R+g·R(1−R/R_max)` with `R_max` from Whittaker biome NPP; SoA buffers, in-place `step_regrowth` (zero-alloc), `graze()`, world↔cell mapping; live `resource_field_regrowth_system` in the tick schedule, seeded from the terrain biomes in `init_world` | DONE |
-| E5 | Biodiversity diagnostics | Shannon (−Σpᵢln pᵢ) and Gini–Simpson (1−Σpᵢ²) indices as pure functions for dashboards/telemetry | DONE |
-| E6 | Grazing + closed energy loop | `herbivore_grazing_system`: prey graze `ResourceField` (Type II saturating intake → depleted cells disperse herbivores = giving-up-density refuge); biomass-GATED regrowth (`step_regrowth_gated`) so plants only grow by drawing detritus; metabolism routes respired energy → detritus; `ecosystem_census_system` tallies living-animal energy — the full plant→herbivore→detritus→plant cycle is conserved (unit-tested) | DONE |
-| E7 | MAP-Elites ecological niche axes + NPP fruiting | Archive descriptors switched from locomotion (speed/efficiency) to ECOLOGICAL niche axes — body mass (`MorphologyGenotype::total_mass()`, the MTE master trait) × foraging range (distance roamed), normalized to [0,1] via `ecological_descriptors()`; so quality-diversity illuminates ecological diversity and predator/prey arms races spread the grid. `fruit_growth_system` now scales fruiting by local biome NPP (rainforest fruits fast, desert slow; trees without a position fall back to base rate) | DONE |
-| E8 | Corpse decomposition + seasonal fertility | Death half of the closed loop — a replaced agent's remaining reserve energy returns to the detritus pool (conserved) via `apply_staggered_evolution_system`; a `SeasonClock` drives a `seasonal_fertility()` sine (summer boosts regrowth, winter suppresses) so the resource field booms and busts on a yearly cycle, a periodic disturbance that sustains predator-prey cycles | DONE |
-| E9 | Live ecosystem dashboard over IPC | `get_ecosystem_state` command + per-tick publish of the conserved `EcosystemState` (detritus/plants/animals/total, prey/predator counts, Shannon/Simpson); frontend `EcosystemPanel` polls it and renders the stacked biomass bar + population split + diversity indices (unit-tested) | DONE |
-| E10 | Ecosystem time-series visualization | `EcosystemPanel` keeps a rolling one-minute history and renders two validated inline-SVG sparklines — predator vs prey population (the Lotka-Volterra cycle) and the three biomass compartments over time — single-axis each, entity-fixed colors (CVD/contrast validated), legend + end-dot labels; unit-tested | DONE |
-| E11 | Coevolution / Red-Queen metrics | `niche_divergence()` — normalized separation of prey vs predator mean body mass = the character-displacement / arms-race signal; plus MAP-Elites `archive_coverage` (occupied niche cells = open-endedness proxy). Both added to `EcosystemState`, shown in the panel (readouts + a divergence sparkline). Unit-tested | DONE |
-| E12 | (Optional) Connectance + IDH study | Food-web connectance & chain length; an intermediate-disturbance-frequency diversity experiment (a study/harness, best run on the target hardware) | TODO |
+| M1 | Tectonic Geology & Hydraulic/Thermal Erosion | Implement Voronoi plate crust, fold mountains, rift valleys, hydraulic gully carving, and thermal talus repose in `map2TerrainGen.ts`. | None | **DONE** |
+| M2 | Atmospheric Climate & Orographic Rain Shadow | Implement altitude lapse rate (-6.5°C/km) and 2D windward/leeward rain shadow moisture physics in `map2TerrainGen.ts` and `map2AtmosphereMath.ts`. | M1 | **DONE** |
+| M3 | Dendritic River Basin & Hydrological Network | Implement gravity flow routing, dendritic river network, lake basin drainages, and waterfall connections in `map2TerrainGen.ts` and `map2WaterMath.ts`. | M1, M2 | **DONE** |
+| M4 | Whittaker Biome Classification & Carrying Capacity | Implement Whittaker 2D matrix, softmax ecotones, organic grove clustering, >=65% open plains, and spawn clearance in `map2BiomeConfig.ts` and `Map2Vegetation.tsx`. | M2, M3 | **DONE** |
+| M5 | WebGL Rendering, Shaders, Instancing & Dual Integration | Optimize ACESFilmic tone mapping, Gerstner water shaders, instanced flora/wildlife, resolve TS6133/lint hygiene, ensure locked 60 FPS. | M1, M2, M3, M4 | **DONE** |
+| M6 | E2E Testing Suite Pass, Animal Map Review & Final Hardening | Verify 100% pass across 5-Tier E2E test suite, execute Animal Map Review MCP tools, and verify zero critical/high findings. | M1, M2, M3, M4, M5 | **DONE** |
 
 ## Interface Contracts
-### Tauri Commands
-- `get_simulation_status` -> `SimulationStatus`
-- `toggle_simulation` -> `bool`
-- `get_map_elites_grid` -> `MapElitesGridState`
-- `update_evolution_settings(settings: EvolutionSettings)` -> `bool`
-- `toggle_evolution` -> `bool`
-- `get_pheromone_grid` -> `PheromoneGridState`
-- `get_active_raycasts` -> `Vec<RaycastTelemetry>`
-- `get_lineage_graph` -> `LineageGraphState`
-- `get_chronicle_history` -> `Vec<ChronicleEvent>`
-- `get_ecosystem_state` -> `EcosystemState` (closed-energy ledger: detritus/plants/animals/total, prey/predator counts, Shannon/Simpson) — published each tick, polled by the frontend `EcosystemPanel`
-- `set_lod_focus(focus: LodFocus)` -> `()` — where simulation detail is centred, i.e. the observer's world position. `{ enabled: false, center: [0,0,0] }` is the default and the rollback: every agent `Hot`, thinking every tick, exactly as before simulation LOD existed. Applied on the next tick by `sync_lod_focus_system`, not immediately — the world belongs to the simulation thread.
-- `get_lod_focus` -> `LodFocus` — the focus the engine is currently using
-- `get_lod_bands` -> `LodBands` — tier boundaries (`hot_radius`, `warm_radius`, `warm_interval`). The agent viewport asks for these rather than hardcoding them: it only sets a focus while everything on screen fits inside `hot_radius`, so that no agent the user is looking at is ever tiered down.
 
-#### Tick capture (in-process profiler)
+### `map2TerrainGen.ts` Interface
+```typescript
+export interface TerrainSampleResult {
+  height: number;              // World Y elevation in meters [0, 90]
+  normal: [number, number, number]; // Unit surface normal [nx, ny, nz]
+  steepness: number;           // 1.0 - normal.y in [0, 1]
+  temperature: number;         // Normalized [0, 1], influenced by elevation lapse rate
+  moisture: number;            // Normalized [0, 1], influenced by orographic rain shadow
+  riverDistance: number;       // Distance to nearest river centerline in meters
+  riverFlow: number;           // Flow accumulation / river intensity [0, 1]
+  isWater: boolean;            // True if height <= seaLevel (12.0m)
+  waterDepth: number;          // Depth below seaLevel in meters
+}
+```
 
-Operational evidence, never simulation state. A capture is opt-in, bounded by a pre-allocated ring,
-and cannot alter a trajectory: nothing it records enters `world_checksum`, an RNG stream or a
-snapshot. See `src-tauri/src/core/tick_capture.rs`, and `tests/tick_capture_tests.rs` for the gate
-that proves the disabled *and* the recording path both leave the world identical.
+### `map2BiomeConfig.ts` Interface
+```typescript
+export enum Map2Biome {
+  SNOW_PEAKS = 0,
+  ROCKY_CLIFFS = 1,
+  TEMPERATE_PLAINS = 2,
+  TROPICAL_RAINFOREST = 3,
+  ARID_SAVANNA = 4,
+  DESERT_DUNES = 5,
+  HYDROLOGY_WATER = 6,
+  BIOLUMINESCENT_CAVES = 7,
+}
 
-- `start_tick_capture(config: CaptureConfig)` -> `()` — begins a capture, discarding the previous
-  one. A malformed configuration (zero capacity, zero sample rate, an empty phase set, a schedule
-  that overflows `u64`) is **refused with a reason** rather than clamped into a working one, because
-  a clamped capture reports a measurement it did not make.
-- `stop_tick_capture` -> `()` — stops recording and keeps what was captured. Idempotent.
-- `get_tick_capture_status` -> `CaptureStatusReport` — status, config, sample accounting
-  (ticks observed, warm-up discarded, rate-skipped, recorded, overwritten, dropped) and the workload
-  the capture measured.
-- `export_tick_capture(file_name: Option<String>)` -> `CaptureExport` — the summarised document.
-  With a name, it is also written atomically to `<app data>/captures/<name>.json` under the same
-  name contract as a save (see below). Percentiles are **nearest rank**; phases the build cannot
-  measure appear in `unavailable` with a reason rather than as a missing row; hardware fields this
-  package did not measure are listed in `hardware.not_measured` rather than guessed.
-
-`ANIMA_TICK_CAPTURE` starts one at engine boot for a run nobody is watching, e.g.
-`ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2`.
-
-#### Persistence
-
-`file_path` keeps its parameter name for IPC compatibility. **It is a save *name*, not a path.**
-Both commands resolve it inside this app's own data directory and refuse anything path-shaped;
-they previously took the string straight to `fs`, so anything that could reach `invoke` could write
-a file anywhere the process had permission and read any file back into the running world.
-
-- `save_simulation_state(file_path: String)` -> `bool` — `file_path` is a single file name matching
-  `[A-Za-z0-9._-]{1,100}`, normalised to `*.json`, written under `<app data>/saves/` as a versioned
-  `SnapshotEnvelope` via an atomic write. Separators, drive letters, `..`, UNC prefixes, NTFS
-  streams and Windows device names (`CON`, `NUL`, `COM1`…) are refused with a reason.
-  See `src-tauri/src/commands/save_paths.rs`.
-- `load_simulation_state(file_path: String)` -> `bool` — the same name contract, read back from
-  `<app data>/saves/`. The reader verifies the envelope checksum and migrates schema 1–2 forward.
-- `list_legacy_saves` -> `LegacyImportListing` — `{ directory, names }` for
-  `<app data>/legacy-import/`, the drop box for saves written before path confinement.
-- `import_legacy_save(legacy_name: String, save_as: String)` -> `String` — reads one file from that
-  directory, re-seals it into the current envelope, and writes it into `saves/` under `save_as`.
-  **Read-only** with respect to the legacy file: never written, truncated or deleted.
-
-  Why a drop directory rather than an absolute path argument: "explicitly opt-in" has to mean *the
-  user*, not the page. A command taking an absolute path would hand back exactly the capability the
-  confinement removed — a compromised webview would call it with an SSH key and read the parse
-  error. Copying a file into the drop box is an act the webview cannot perform.
-
-The **autosave** (written on exit, adopted on startup) is an ordinary save named `autosave.json`
-under the same directory, envelope and atomic write. It was `<app data>/default_save.json`: a bare
-`serde_json` dump written with `fs::write`, unversioned, and unreachable from `load_simulation_state`.
-Startup reads the old location once if `saves/autosave.json` is absent, so existing worlds are
-adopted rather than stranded, and never writes back to it.
-
-### Tauri Events
-- `simulation-tick` (Payload: `Vec<SegmentState>` / `SimulationTickPayload`)
-- `map-elites-update` (Payload: `MapElitesGridState`)
-- `pheromone-update` (Payload: `PheromoneGridState`)
-- `raycast-update` (Payload: `Vec<RaycastTelemetry>`)
-- `combat-event` (Payload: `CombatEvent`)
-- `chronicle-event` (Payload: `ChronicleEvent`)
-- `migration-event` (Payload: `MigrationPayload`)
+export interface BiomeWeights {
+  weights: Float32Array; // 8-element float array summing identically to 1.0
+  primaryBiome: Map2Biome;
+  secondaryBiome: Map2Biome;
+}
+```
 
 ## Code Layout
-- `src-tauri/`: Rust workspace backend
-- `src/`: React + TypeScript frontend
-- `tests/`: Integration tests
-
-### Frontend landscape internals
-
-Not IPC — these are in-process contracts inside the older `LandscapeShowcase` stack, kept because
-that stack is still what `src/App.tsx` renders and what roughly half the frontend suite exercises.
-
-- **determineBiome**: `determineBiome(elevation: number, moisture: number, temperature?: number): BiomeType` — `temperature` is optional so pre-temperature callers keep working.
-- **Vegetation Instancing**: instanced meshes use precomputed layout data to avoid overlap without an $O(N^2)$ pass.
-- **Water Shader Uniforms**: the water shader takes temperature/biome mapping (texture or uniforms) so it can render lava and ice sheets.
+- Terrain Mathematics & Geology: `src/components/Map2/utils/map2TerrainGen.ts`
+- Biome Classification & Ecology: `src/components/Map2/utils/map2BiomeConfig.ts`
+- Atmosphere & Climate Physics: `src/components/Map2/utils/map2AtmosphereMath.ts`
+- Hydrology & Water Mathematics: `src/components/Map2/utils/map2WaterMath.ts`
+- GLSL Shaders: `src/components/Map2/utils/map2Shaders.ts`
+- 3D Terrain Component: `src/components/Map2/Map2Terrain.tsx`
+- 3D Water Component: `src/components/Map2/Map2Water.tsx`
+- 3D Atmosphere Component: `src/components/Map2/Map2Atmosphere.tsx`
+- 3D Vegetation Instancing: `src/components/Map2/Map2Vegetation.tsx`
+- 3D Wildlife Instancing: `src/components/Map2/Map2Wildlife.tsx`
+- Scene Showcase & Dual Entry: `src/components/Map2/Map2Showcase.tsx`, `src/App.tsx`, `src/map2.tsx`, `map2.html`
+- Test Suites: `tests/frontend/map2/*`
