@@ -39,8 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install rustfmt and clippy
-        run: rustup component add rustfmt clippy
+      # The toolchain and its rustfmt/clippy components are pinned in `rust-toolchain.toml` at the repo
+      # root. With no argument, `rustup toolchain install` installs exactly that, so the version
+      # lives in one file and "Show toolchain" below prints it.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
 
       - name: Show toolchain
         run: |
@@ -59,7 +62,9 @@ jobs:
             # first-run cost.
             ~/.cargo/bin
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          # The toolchain is part of the key: a target directory built by another rustc is rebuilt
+          # from scratch anyway, so restoring it only costs the download.
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: cargo fmt --check

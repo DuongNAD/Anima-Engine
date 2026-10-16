@@ -2,7 +2,7 @@
 title: Chỉ mục kế hoạch
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-10-16
 ---
 
 # Kế hoạch
@@ -10,10 +10,12 @@ last_reviewed: 2026-07-26
 | Phạm vi | Tài liệu | Vai trò |
 |---|---|---|
 | **Bắt đầu ở đây** | [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) | Trạng thái **đo được** + backlog ưu tiên kèm điểm neo và định nghĩa hoàn thành |
+| Thứ tự tới bản phát hành | [`COMPLETION_ROADMAP_2026-10-16.md`](COMPLETION_ROADMAP_2026-10-16.md) (**proposed**) | Sáu giai đoạn HT0–HT5 từ hiện trạng tới phát hành, ba mức "hoàn thiện", quyết định cần chủ dự án |
 | Toàn bộ hệ mô phỏng | [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMULATION_PLAN.md) | Roadmap sản phẩm/kỹ thuật dài hạn |
 | Creature morphogenesis | [`CREATURE_MORPHOGENESIS_PLAN.md`](CREATURE_MORPHOGENESIS_PLAN.md) | Genotype, phenotype, spawn, persistence và adaptation gates |
 | Alternate evolution + World Lab | [Feature task plan](../ai/planning/2026-07-24-feature-alternate-evolution-world-lab.md) | World laws, exotic energy, forks, observability và species evidence |
 | Áp dụng dự án nguồn mở | [Open-source adoption plan](OPEN_SOURCE_ADOPTION_PLAN.md) | Luồng việc tích hợp, thử nghiệm và loại bỏ |
+| Nâng cấp từ điểm tin R&D 2026-08-07 | [`RD_TECH_UPGRADE_PLAN_2026-08-07.md`](RD_TECH_UPGRADE_PLAN_2026-08-07.md) (**proposed**) | Baseline và pilot cho binary data plane, structured Meta-AI, asset 3D và contract LIVA ↔ Anima |
 | Backlog thực thi hiện tại | [`TODO.md`](../../TODO.md) | Trạng thái công việc ngắn hạn |
 
 Kế hoạch mô tả **sẽ làm gì**; hợp đồng trong [Reference](../reference/README.md) mô tả

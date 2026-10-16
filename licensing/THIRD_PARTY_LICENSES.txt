@@ -2,7 +2,7 @@
 ANIMA-ENGINE - THIRD-PARTY LICENCES
 ================================================================================================
 
-Anima-Engine itself is proprietary and this file grants no rights to it; see LICENSE.
+Anima-Engine is dual-licensed under MIT OR Apache-2.0; see LICENSE-MIT and LICENSE-APACHE.
 
 This file reproduces the licence and copyright notices of the third-party components
 distributed inside the application, because MIT and BSD require that text to accompany
@@ -2382,21 +2382,21 @@ pkg:cargo/rustls-pki-types@1.15.1
     text       : T0078  cargo-registry:rustls-pki-types-1.15.1/LICENSE-APACHE
     text       : T0148  cargo-registry:rustls-pki-types-1.15.1/LICENSE-MIT
 
-pkg:cargo/rustls-webpki@0.103.13
-    name       : rustls-webpki 0.103.13
+pkg:cargo/rustls-webpki@0.103.15
+    name       : rustls-webpki 0.103.15
     ecosystem  : cargo (cargo-registry)
     SPDX       : ISC
     repository : https://github.com/rustls/webpki
-    text       : T0092  cargo-registry:rustls-webpki-0.103.13/LICENSE
+    text       : T0092  cargo-registry:rustls-webpki-0.103.15/LICENSE
 
-pkg:cargo/rustls@0.23.42
-    name       : rustls 0.23.42
+pkg:cargo/rustls@0.23.46
+    name       : rustls 0.23.46
     ecosystem  : cargo (cargo-registry)
     SPDX       : Apache-2.0 OR ISC OR MIT
     repository : https://github.com/rustls/rustls
-    text       : T0166  cargo-registry:rustls-0.23.42/LICENSE-APACHE
-    text       : T0123  cargo-registry:rustls-0.23.42/LICENSE-ISC
-    text       : T0111  cargo-registry:rustls-0.23.42/LICENSE-MIT
+    text       : T0166  cargo-registry:rustls-0.23.46/LICENSE-APACHE
+    text       : T0123  cargo-registry:rustls-0.23.46/LICENSE-ISC
+    text       : T0111  cargo-registry:rustls-0.23.46/LICENSE-MIT
 
 pkg:cargo/same-file@1.0.6
     name       : same-file 1.0.6
@@ -3699,8 +3699,8 @@ pkg:npm/%40webgpu/types@0.1.70   [NOT DISTRIBUTED - installed only]
     SPDX       : BSD-3-Clause
     repository : gpuweb/types
 
-pkg:npm/%40xmldom/xmldom@0.8.13   [NOT DISTRIBUTED - installed only]
-    name       : @xmldom/xmldom 0.8.13
+pkg:npm/%40xmldom/xmldom@0.8.15   [NOT DISTRIBUTED - installed only]
+    name       : @xmldom/xmldom 0.8.15
     ecosystem  : npm (node_modules)
     SPDX       : MIT
     repository : git://github.com/xmldom/xmldom.git
@@ -10097,7 +10097,7 @@ THE SOFTWARE.
 ------------------------------------------------------------------------------------------------
 T0092   sha256:5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
 applies to 1 component file(s):
-  pkg:cargo/rustls-webpki@0.103.13  (LICENSE)
+  pkg:cargo/rustls-webpki@0.103.15  (LICENSE)
 ------------------------------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
@@ -11789,7 +11789,7 @@ T0111   sha256:709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c
 applies to 3 component file(s):
   pkg:cargo/rustls-native-certs@0.7.3  (LICENSE-MIT)
   pkg:cargo/rustls-pemfile@2.2.0  (LICENSE-MIT)
-  pkg:cargo/rustls@0.23.42  (LICENSE-MIT)
+  pkg:cargo/rustls@0.23.46  (LICENSE-MIT)
 ------------------------------------------------------------------------------------------------
 
 Copyright (c) 2016 Joseph Birr-Pixton <jpixton@gmail.com>
@@ -12277,7 +12277,7 @@ T0123   sha256:7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4
 applies to 3 component file(s):
   pkg:cargo/rustls-native-certs@0.7.3  (LICENSE-ISC)
   pkg:cargo/rustls-pemfile@2.2.0  (LICENSE-ISC)
-  pkg:cargo/rustls@0.23.42  (LICENSE-ISC)
+  pkg:cargo/rustls@0.23.46  (LICENSE-ISC)
 ------------------------------------------------------------------------------------------------
 
 ISC License (ISC)
@@ -14824,7 +14824,7 @@ applies to 102 component file(s):
   pkg:cargo/rustc-hash@1.1.0  (LICENSE-APACHE)
   pkg:cargo/rustls-native-certs@0.7.3  (LICENSE-APACHE)
   pkg:cargo/rustls-pemfile@2.2.0  (LICENSE-APACHE)
-  pkg:cargo/rustls@0.23.42  (LICENSE-APACHE)
+  pkg:cargo/rustls@0.23.46  (LICENSE-APACHE)
   pkg:cargo/scopeguard@1.2.0  (LICENSE-APACHE)
   pkg:cargo/serde_with@3.21.0  (LICENSE-APACHE)
   pkg:cargo/serde_with_macros@3.21.0  (LICENSE-APACHE)

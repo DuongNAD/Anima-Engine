@@ -46,7 +46,9 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
     padded.extend_from_slice(&bit_len.to_be_bytes());
 
     let mut w = [0u32; 64];
-    for chunk in padded.chunks_exact(64) {
+    // The padding above makes the length a multiple of 64, so the remainder `as_chunks` returns is
+    // always empty — the same blocks `chunks_exact(64)` yielded, typed as `[u8; 64]`.
+    for chunk in padded.as_chunks::<64>().0 {
         for (i, word) in w.iter_mut().take(16).enumerate() {
             *word = u32::from_be_bytes([
                 chunk[i * 4],

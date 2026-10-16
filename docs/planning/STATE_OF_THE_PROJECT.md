@@ -21,6 +21,18 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
+> ## ⚠️ Cập nhật 2026-10-16 — đọc §1.f trước mọi bảng khác
+>
+> **`main` đỏ CI** từ khi conflict marker được commit ở `4b6258d`, và lượt CI cuối trên `main`
+> (2026-08-08, `043930c`) đỏ cả hai job. Nhánh `feat/oss-071b-live-tracker` có một commit **chưa
+> push** sửa phần lớn chỗ đó, cộng một khối **chưa commit** làm đỏ hai gate tái lập của adapter sống.
+> Các mục §1.a–§1.e bên dưới là lượt đo **2026-07-27**: chúng đúng với cây mã lúc đó và **không** mô
+> tả `main` hôm nay. Số đo mới ở
+> [§1.f](#1f-đo-2026-10-16--main-đỏ-cây-làm-việc-đỏ-hai-gate-tái-lập); kế hoạch đưa về xanh là giai
+> đoạn HT0 của [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md). Bản sửa đỏ (HT0.2 + HT0.3)
+> là nhánh `fix/main-ci-green`; lượt đo lại toàn bộ trên `main` sau khi nó merge là HT0.7, và cho
+> tới lúc đó §1.f vẫn là số mới nhất.
+
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
 >
 > Mọi tài liệu khác **trỏ về đây** thay vì chép lại một con số dễ ôi. Nếu bạn thấy một con số
@@ -50,6 +62,90 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.f Đo 2026-10-16 — `main` đỏ, cây làm việc đỏ hai gate tái lập
+
+> Lượt này được chạy để **lập kế hoạch**, không phải để tuyên bố xanh. Nó đo **ba đối tượng khác
+> nhau** — đừng trộn số của chúng:
+>
+> 1. **`main` @ `043930c`** — chỉ có số của CI GitHub, không đo lại cục bộ.
+> 2. **`389de4b`** — commit duy nhất của `feat/oss-071b-live-tracker` trước `main`, **chưa push**.
+>    Đo trong một worktree tạm, sạch, chỉ hai target.
+> 3. **Cây làm việc** = `389de4b` + khối chưa commit (45 file sửa, khoảng 70 file mới, sửa lần cuối
+>    2026-08-16). Đo toàn bộ gate cục bộ.
+>
+> Toolchain: rustc **1.98.1** (2026-09-01) — **khác** 1.95.0 của §1.a, nên một lint clippy mới xuất
+> hiện ở code không ai sửa; Node 22.23.2. Không có `cargo`/`rustc` nào khác chạy; các suite chạy
+> **tuần tự** theo §4.
+
+**`main` @ `043930c` — CI GitHub**
+
+| Loại | Gate | Nguồn | Kết quả |
+|---|---|---|---|
+| 📏 | CI Rust (`windows-latest`) | Actions run `31242649630`, 2026-08-08 | **failure** — `cargo fmt --check`, clippy, tách feature, parity binding, `cargo test` và policy target cùng đỏ vì `error: encountered diff marker`: conflict marker đã commit ở `src-tauri/tests/common/allocator.rs:21` và `scripts/check_test_targets.mjs:78,108,155`, vào từ `4b6258d`. Thêm `NOTICE is out of date` |
+| 📏 | CI Frontend (`ubuntu-latest`) | cùng run | **failure** — `npm audit` root và `tests/`; link tài liệu gãy `STATE_OF_THE_PROJECT.md:916 → ../../LICENSE` (file bị xoá khi relicense). E2E 18/18 pass |
+| 📏 | Advisory Rust trên lockfile của `main` | `cargo audit`, 2026-10-16, trong worktree có cùng `Cargo.lock` với `main` | **exit 1 — 4 lỗ hổng** `rustls` 0.23.42: RUSTSEC-2026-0285 (công bố 2026-09-14), -0346, -0348, -0349 (2026-10-14), sửa ở ≥ 0.23.46. Chúng ra đời **sau** lượt CI cuối, nên gỡ marker thôi thì `main` vẫn đỏ. Sửa ở nhánh `fix/main-ci-green` |
+| 📏 | Advisory npm, **kể cả** với lockfile đã refresh của `819ad2d` (PR #32) | `npm audit --audit-level=high` và `--prefix tests`, 2026-10-16 | **exit 1** — root 7 (5 high), `tests/` 4 (2 high): `undici`, `fast-uri`, `brace-expansion`, `source-map-js`, `@xmldom/xmldom`, `@vitest/mocker`, đều công bố sau 2026-08-08. `npm audit fix` của npm 10.9.8 (bản CI dùng) **crash** (`reading 'edgesOut'`); sửa bằng npm 11 rồi kiểm lại bằng npm 10 ở nhánh `fix/main-ci-green` |
+
+**`389de4b` sạch — worktree tạm, 2026-10-16**
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Hai target nghi vấn | `cargo test --features desktop --test live_experiment_tests --test physics_tests` | **17 passed** + **10 passed**, 0 failed — gồm `run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run`, `a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards` và test hồi quy `sensor_ray_from_agent_centre_sees_past_its_own_collider` |
+
+**Nhánh `fix/main-ci-green` @ `4cf71ee` — đo cục bộ 2026-10-16, đúng lệnh của `ci.yml`**
+
+> Bản sửa đỏ của HT0.2 + HT0.3: `origin/main` + gỡ marker, hai commit của PR #32, template `NOTICE`,
+> toolchain ghim 1.98.1, `rustls` 0.23.46, binding sinh lại, `npm audit fix`. Commit sau `4cf71ee`
+> chỉ thêm bảng này. Đây là lượt **cục bộ trên Windows**; job frontend của CI chạy trên
+> `ubuntu-latest`, nên CI của PR mới là bằng chứng cho `main`.
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Toolchain | `rustc --version` | 1.98.1, chọn bởi `rust-toolchain.toml` |
+| 📏 | Format | `cargo fmt --check` | exit 0 |
+| 📏 | Advisory Rust | `cargo audit` · `cargo deny check` | exit 0 · exit 0 — 0 lỗ hổng; 2 cảnh báo yanked đã cho phép, chỉ ở lockfile |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | exit 0 |
+| 📏 | Tách feature (G2 #2) | `cargo clippy --all-targets --no-default-features -- -D warnings` + `cargo tree --no-default-features -e normal` | exit 0 — **0** kết quả cho `neo4rs\|tokio-tungstenite\|burn-wgpu\|naga` |
+| 📏 | Parity binding | `cargo test --lib export_bindings` rồi `git diff --exit-code -- src/types/generated` | exit 0 |
+| 📏 | Backend test | `cargo test --features desktop -- --nocapture` (`ANIMA_USE_GPU=0`) | **1069 passed · 0 failed · 2 ignored**, 93 dòng `test result` |
+| 📏📋 | Chính sách target | `check_test_targets.mjs` không `--profile` (như CI) và `--profile desktop` | exit 0 — 93 target, 3 rỗng + 2 ignore đều trong allow-list, 8 target feature-gated chạy, không target nào khởi chạy mà không báo số |
+| 📏 | Licence · SBOM · schema · NOTICE · flora | `npm run check:licenses` / `check:sbom` / `check:sbom-schema` / `check:notice` / `check:flora-footprint` | exit 0 cả năm |
+| 📏 | Advisory npm | `npm audit --audit-level=high` (root và `tests/`) | **0** lỗ hổng cả hai |
+| 📏 | Vệ sinh + E2 | `check:text-hygiene` · `check:e2` | exit 0 · exit 0 |
+| 📏 | Lint frontend | `npm run lint` + `eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
+| 📏 | Test frontend | `npm run test` · `npm run test:frontend` | 14 file · **109 passed** · 41 file · **446 passed** |
+| 📏 | Build + artifact | `build` · `check:bundle-closure` · `check:csp` · `check:bundle` | exit 0 — 21 gói có byte trong `dist/`, 2 HTML ship, 1652,4 / 2000 KiB |
+| 📏 | E2E Playwright | `npm run test:e2e` | **18 passed**, 0 `console.error` / `pageerror` / `TypeError` |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | 658 link / 116 file, 0 gãy |
+
+**Cây làm việc — 2026-10-16**
+
+| Loại | Gate | Lệnh | Kết quả |
+|---|---|---|---|
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | **1212 passed · 4 failed · 2 ignored**, 107 dòng `test result`, exit 101. Bốn test đỏ là **một** hồi quy — nhánh resume/fork lệch checksum với run liền mạch (`1740163834` so với `1989393324`): `live_experiment_tests::{a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards, run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run}` và hai test mới chưa track trong `adversarial_challenger_m2_r2_stress_tests`. Hai test đầu **pass** tại `389de4b` (bảng trên), nên hồi quy nằm trong khối chưa commit |
+| 📏📋 | Chính sách target | `node scripts/check_test_targets.mjs <capture> --profile desktop` | exit 0 — 107 target, 3 rỗng + 2 ignore (đều trong allow-list), 8 target feature-gated chạy |
+| 📏 | Parity binding | `git status -- src/types/generated` sau `cargo test` | file đã track không đổi byte nào; 15 file sinh mới vẫn untracked |
+| 📏 | Format | `cargo fmt --check` | **exit 1** — 245 chỗ lệch trong 36 file, **tất cả** là file chưa commit (17 mới, 19 sửa); 0 file đã commit |
+| 📏 | Clippy | `cargo clippy --all-targets --features desktop -- -D warnings` | **exit 101** — 14 lỗi: 12 trong module mới chưa track (`core/branch_tree.rs`, `core/sweeps.rs`, `core/telemetry_export.rs`, mỗi file 4); **2 trong code đã commit**: `core/sha256.rs:49` và `core/world_artifact.rs:166`, lint mới `chunks_exact_to_as_chunks` của clippy 1.98 |
+| 📏 | Lint frontend | `npm run lint` | exit 0 — 0 error, **102 warning**: 101 trong file chưa track, 1 trong `Terrain.tsx` (đang sửa dở), 0 trong file đã commit |
+| 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | **exit 1** — 102 warning so với baseline 0 |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | exit 0 |
+| 📏 | Test frontend (`src/`) | `npm run test` | **14 file · 109 passed**, exit 0 |
+| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | **57 file · 632 passed**, exit 0 — gồm test của khối chưa commit |
+| 📏 | Build | `npm run build` | exit 0 |
+| 📏 | CSP (artifact) | `npm run check:csp` | exit 0 — **3** file HTML ship (thêm `map2.html`), 0 origin ngoài, 0 inline script |
+| 📏 | Ngân sách bundle | `npm run check:bundle` | exit 0 — 1849,5 / 2000 KiB |
+| 📏 | Case tham số IPC | `npm run check:ipc` | exit 0 — 34 command · 39 call site · 14 key |
+| 📏 | Artifact E2 | `npm run check:e2` | exit 0 |
+| 📏 | NOTICE | `node scripts/gen_notice.mjs --check` | exit 0 — up to date (419 crate · 21 gói npm phân phối · 18 cài-không-ship · 1 văn bản chưa giải quyết). Nội dung **vẫn** ghi Anima-Engine là "proprietary; see LICENSE" |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | **exit 1** — 634 link / 115 file, 1 gãy (`→ ../../LICENSE`). Link đó đã gỡ trong cùng lượt sửa tài liệu này |
+| ⚠️ | E2E Playwright | `npm run test:e2e` | exit 0 — 270 passed, 0 `console.error` / `pageerror` / `TypeError` — **nhưng không so được với §1.b**: khối chưa commit đổi `tests/package.json` thành `playwright test e2e/tiers/`, nên **18 spec của CI không chạy**; `e2e/tiers` kiểm một bản viết lại bằng TypeScript của engine |
+
+**Không chạy lại trong lượt này:** `cargo audit`, hai `npm audit`, `check:licenses-complete`, SBOM,
+`cargo test` profile mặc định, `capture:views`. Lượt đo đầy đủ trên `main` sau khi sửa là HT0.7 của
+[lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md).
 
 ### 1.a Backend (Rust) — chạy lại 2026-07-27 tại `19e67fa`
 
@@ -340,6 +436,31 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 định nghĩa hoàn thành kiểm tra được.
 
 ### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
+
+> ### Bàn giao 2026-10-16 — đọc trước bảng bên dưới
+>
+> Thứ tự công việc nay nằm ở [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md), và việc đầu
+> tiên **không** còn là §3.2 mà là **HT0**: sao lưu việc chỉ nằm trên một máy, rồi đưa `main` về
+> xanh (§1.f). Bảng bên dưới giữ nguyên làm bối cảnh — các mục của nó đã được xếp lại vào HT1–HT5.
+>
+> **Tiến độ HT0 (2026-10-16):** khối chưa commit đã nằm trên nhánh **cục bộ**
+> `wip/2026-08-16-map2-tier5` (`84fece1`, 170 file khớp từng byte) kèm một git bundle ngoài repo — cố
+> ý **không** push, vì repo public và khối đó có bằng chứng bịa. HT0.2 + HT0.3 là nhánh
+> `fix/main-ci-green`, xanh cục bộ đủ 30 gate của CI (bảng trong §1.f); còn chờ push, PR và CI thật.
+> `389de4b` vẫn chưa push.
+>
+> **Ba cái bẫy mới, trả giá trong khoảng 2026-07-29 → 2026-08-16:**
+>
+> - **Một khuyến nghị audit sai đã làm mọi agent mù.** SIM-01 của `AUDIT_REPORT.md` khuyên
+>   `intersect_sphere` trả `Some(0.0)` khi tia xuất phát trong collider; agent mang collider của chính
+>   nó tại gốc tia, nên raycast luôn trả về chính nó và `ai/model.rs` bỏ hit đó — mọi tia, mọi tick.
+>   Cả suite vẫn xanh, và một fixture bị dời để che triệu chứng. Đã sửa ở `389de4b`. Finding của audit
+>   tự động là **giả thuyết**: tái hiện bằng test trước khi sửa.
+> - **Không ghim toolchain thì `main` có thể đỏ mà không ai sửa gì.** clippy 1.98 thêm
+>   `chunks_exact_to_as_chunks` và hai file đã commit trở thành lỗi.
+> - **Một gate có thể bị thu hẹp bằng cách sửa lệnh gọi nó.** Khối chưa commit đổi `test:e2e` để chỉ
+>   chạy `e2e/tiers/` — exit 0, 270 passed, và 18 spec của CI không chạy. `check_test_targets.mjs`
+>   chặn đúng chế độ hỏng này cho Rust; Playwright chưa có gate tương đương.
 
 > **PR #21 đã merge vào `main` tại `a053083`** (2026-07-27), sau ba commit sửa hạ tầng test mà
 > `068a750` chưa có. Bảng §1 vẫn đúng; cái mới nằm ở [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3)
@@ -913,7 +1034,7 @@ vẫn trả đồ thị **đầy đủ**.
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | 3.14 | Dọn tài liệu cũ ở root | [`handoff.md`](../../handoff.md), [`plan.md`](../../plan.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
-| 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE`](../../LICENSE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) `LICENSE` vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
+| 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · `LICENSE` *(đã xoá khi relicense 2026-08-08; link gỡ 2026-10-16 vì làm gate link tài liệu đỏ)* | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) `LICENSE` vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
 | 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
 
 | 3.16 | ~~Đóng phần còn nợ của OSS-003~~ ✅ **Xong 2026-08-08 — relicense** | [`LICENSE-MIT`](../../LICENSE-MIT) + [`LICENSE-APACHE`](../../LICENSE-APACHE) + [`NOTICE`](../../NOTICE) + [`CONTRIBUTING.md`](../../CONTRIBUTING.md); `LICENSE` proprietary đã xoá | Dự án chuyển sang nguồn mở `MIT OR Apache-2.0`. Phạm vi code / asset / định dạng `.anmw` tách trong README; `license` khai trong `[workspace.package]` và cả hai `package.json`. **Còn nợ, chuyển sang 3.17:** `NOTICE` duy trì thủ công và chỉ phủ dependency trực tiếp, chưa phải inventory sinh tự động theo nhánh transitive |
