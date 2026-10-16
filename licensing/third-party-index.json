@@ -8142,9 +8142,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/rustls-webpki@0.103.13",
+      "purl": "pkg:cargo/rustls-webpki@0.103.15",
       "name": "rustls-webpki",
-      "version": "0.103.13",
+      "version": "0.103.15",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -8157,7 +8157,7 @@
           "id": "T0092",
           "filename": "LICENSE",
           "origin": "installed",
-          "provenance": "cargo-registry:rustls-webpki-0.103.13/LICENSE",
+          "provenance": "cargo-registry:rustls-webpki-0.103.15/LICENSE",
           "sourceSha256": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a",
           "sourceBytes": 916,
           "textSha256": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a"
@@ -8165,9 +8165,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/rustls@0.23.42",
+      "purl": "pkg:cargo/rustls@0.23.46",
       "name": "rustls",
-      "version": "0.23.42",
+      "version": "0.23.46",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -8180,7 +8180,7 @@
           "id": "T0166",
           "filename": "LICENSE-APACHE",
           "origin": "installed",
-          "provenance": "cargo-registry:rustls-0.23.42/LICENSE-APACHE",
+          "provenance": "cargo-registry:rustls-0.23.46/LICENSE-APACHE",
           "sourceSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2",
           "sourceBytes": 10847,
           "textSha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
@@ -8189,7 +8189,7 @@
           "id": "T0123",
           "filename": "LICENSE-ISC",
           "origin": "installed",
-          "provenance": "cargo-registry:rustls-0.23.42/LICENSE-ISC",
+          "provenance": "cargo-registry:rustls-0.23.46/LICENSE-ISC",
           "sourceSha256": "7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4",
           "sourceBytes": 775,
           "textSha256": "7cfafc877eccc46c0e346ccbaa5c51bb6b894d2b818e617d970211e232785ad4"
@@ -8198,7 +8198,7 @@
           "id": "T0111",
           "filename": "LICENSE-MIT",
           "origin": "installed",
-          "provenance": "cargo-registry:rustls-0.23.42/LICENSE-MIT",
+          "provenance": "cargo-registry:rustls-0.23.46/LICENSE-MIT",
           "sourceSha256": "709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c",
           "sourceBytes": 1082,
           "textSha256": "709e3175b4212f7b13aa93971c9f62ff8c69ec45ad8c6532a7e0c41d7a7d6f8c"
