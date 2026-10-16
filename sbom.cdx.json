@@ -13253,9 +13253,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "bom-ref": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "name": "@xmldom/xmldom",
-      "version": "0.8.13",
+      "version": "0.8.15",
       "description": "A pure JavaScript W3C standard-based (XML DOM Level 2 Core) DOMParser and XMLSerializer module.",
       "scope": "excluded",
       "licenses": [
@@ -13265,7 +13265,7 @@
           }
         }
       ],
-      "purl": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "purl": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "externalReferences": [
         {
           "type": "vcs",
@@ -17314,7 +17314,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "ref": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "dependsOn": []
     },
     {
@@ -17384,7 +17384,7 @@
         "pkg:npm/%40pixi/colord@2.9.6",
         "pkg:npm/%40types/earcut@3.0.0",
         "pkg:npm/%40webgpu/types@0.1.70",
-        "pkg:npm/%40xmldom/xmldom@0.8.13",
+        "pkg:npm/%40xmldom/xmldom@0.8.15",
         "pkg:npm/earcut@3.0.2",
         "pkg:npm/eventemitter3@5.0.4",
         "pkg:npm/gifuct-js@2.1.2",
@@ -17454,5 +17454,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:bf8a3cd2-99ad-5afe-9fe5-fef93d656141"
+  "serialNumber": "urn:uuid:cd17863f-7b77-5d51-b276-578bffa5c78a"
 }

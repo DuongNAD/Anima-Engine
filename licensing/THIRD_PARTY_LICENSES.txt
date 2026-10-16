@@ -3699,8 +3699,8 @@ pkg:npm/%40webgpu/types@0.1.70   [NOT DISTRIBUTED - installed only]
     SPDX       : BSD-3-Clause
     repository : gpuweb/types
 
-pkg:npm/%40xmldom/xmldom@0.8.13   [NOT DISTRIBUTED - installed only]
-    name       : @xmldom/xmldom 0.8.13
+pkg:npm/%40xmldom/xmldom@0.8.15   [NOT DISTRIBUTED - installed only]
+    name       : @xmldom/xmldom 0.8.15
     ecosystem  : npm (node_modules)
     SPDX       : MIT
     repository : git://github.com/xmldom/xmldom.git

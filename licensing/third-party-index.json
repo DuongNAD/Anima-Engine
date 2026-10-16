@@ -13367,9 +13367,9 @@
       "texts": []
     },
     {
-      "purl": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "purl": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "name": "@xmldom/xmldom",
-      "version": "0.8.13",
+      "version": "0.8.15",
       "ecosystem": "npm",
       "origin": "node_modules",
       "distributed": false,
