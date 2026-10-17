@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-07-27
+last_reviewed: 2026-10-17
 review_cycle: per-release
 ---
 
@@ -21,17 +21,14 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
-> ## ⚠️ Cập nhật 2026-10-16 — đọc §1.f trước mọi bảng khác
+> ## ✅ Cập nhật 2026-10-17 — `main` xanh trở lại tại `1b3e7ef` (đọc §1.g trước mọi bảng khác)
 >
-> **`main` đỏ CI** từ khi conflict marker được commit ở `4b6258d`, và lượt CI cuối trên `main`
-> (2026-08-08, `043930c`) đỏ cả hai job. Nhánh `feat/oss-071b-live-tracker` có một commit **chưa
-> push** sửa phần lớn chỗ đó, cộng một khối **chưa commit** làm đỏ hai gate tái lập của adapter sống.
-> Các mục §1.a–§1.e bên dưới là lượt đo **2026-07-27**: chúng đúng với cây mã lúc đó và **không** mô
-> tả `main` hôm nay. Số đo mới ở
-> [§1.f](#1f-đo-2026-10-16--main-đỏ-cây-làm-việc-đỏ-hai-gate-tái-lập); kế hoạch đưa về xanh là giai
-> đoạn HT0 của [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md). Bản sửa đỏ (HT0.2 + HT0.3)
-> là nhánh `fix/main-ci-green`; lượt đo lại toàn bộ trên `main` sau khi nó merge là HT0.7, và cho
-> tới lúc đó §1.f vẫn là số mới nhất.
+> PR **#33** (`fix/main-ci-green`, HT0.2 + HT0.3 của [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md))
+> đã merge vào `main` tại **`1b3e7ef`**, và CI GitHub trên `main` (Actions run `38909879745`) xanh
+> cả hai job. Lượt đo lại toàn bộ trên `main` tại đúng commit `1b3e7ef` (HT0.7) nằm ở
+> [§1.g](#1g-đo-2026-10-17-tại-1b3e7ef--main-xanh-trở-lại-sau-pr-33-ht07) ngay bên dưới — đó là
+> **bảng số hiện tại duy nhất** của `main`. Mục [§1.f](#1f-đo-2026-10-16--main-đỏ-cây-làm-việc-đỏ-hai-gate-tái-lập)
+> và các mục §1.a–§1.e giữ lại làm bản ghi lịch sử.
 
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
 >
@@ -39,22 +36,11 @@ gate chưa xanh.
 > pass/fail/warning/target ở file khác mà không kèm lệnh + ngày, nó là **lịch sử**, không phải
 > trạng thái — xem [quy ước phân loại](#11-phân-loại-mọi-con-số-trong-tài-liệu).
 >
-> **Lần xác minh gần nhất: 2026-07-27**, worktree `.worktrees/feature-anima-completion`, nhánh
-> `feature-anima-completion`, tại commit **`068a750`** — commit **merge** đưa
-> `feat/oss-071b-live-tracker` vào nhánh này. Đây là một lượt chạy **toàn bộ** gate CI **sau merge**,
-> không phải chạy chọn lọc, và **không** tái sử dụng kết quả nào từ trước merge. Toolchain:
-> rustc/cargo **1.95.0**, Playwright **1.62.0**. Mọi hàng dưới đây đến từ **cùng một lượt chạy đó**,
-> trừ đúng một hàng còn ⏳ và đã nói rõ lý do.
->
-> Mọi con số ở lượt này **trùng với lượt đo tại `1cddeb5`**, và điều đó là kết quả mong đợi chứ không
-> phải dấu hiệu chép lại: merge chỉ đổi một file tài liệu, nên không có hành vi đo được nào thay đổi.
-> Số ở đây được **đo lại**, không mang sang.
->
-> **Sau `068a750`, PR #21 nhận thêm ba commit và đã merge vào `main` tại `a053083`.** Không commit nào
-> chạm mã Rust hay mã ứng dụng: hai commit sửa **cấu hình chạy test** (`72a6e34`, `0f5b4d3`) và một
-> commit sửa tài liệu (`b744df0`). Vì vậy §1.a–§1.c vẫn mô tả đúng cây mã hôm nay; cái đổi là **cách
-> gate được chạy**, và cái đó được đo riêng ở [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3). Đọc
-> §1.e trước khi trích một hàng frontend hay E2E ở §1.b.
+> **Lần xác minh gần nhất: 2026-10-17**, worktree `.worktrees/ht0-7-remeasure-main` tạo sạch từ
+> `origin/main` tại commit **`1b3e7ef`** (`1b3e7ef8eec90b39fc43e18218eed28f386de7df` — commit merge
+> PR #33). Toolchain: rustc/cargo **1.98.1** (ghim bởi `rust-toolchain.toml`), Node **22.23.2**,
+> npm **10.9.8**, Playwright **1.62.0**. Mọi hàng trong [§1.g](#1g-đo-2026-10-17-tại-1b3e7ef--main-xanh-trở-lại-sau-pr-33-ht07)
+> được chạy tuần tự tại cùng một commit đó.
 
 Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và **loại khẳng định**:
 
@@ -62,6 +48,57 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.g Đo 2026-10-17 tại `1b3e7ef` — `main` xanh trở lại sau PR #33 (HT0.7)
+
+> Lượt đo lại toàn bộ trên worktree sạch từ `origin/main` @ `1b3e7ef` sau khi PR **#33** merge,
+> thực thi tuần tự không chồng chéo từ PowerShell. Giữa ngày 2026-10-16 và 2026-10-17, cơ sở dữ liệu
+> RustSec nạp thêm từ 1.169 lên **1.334 advisory**, trong đó có 3 advisory mới đối với `zip 0.6.6`
+> (`RUSTSEC-2026-0367`, `-0368`, `-0369`, yêu cầu `>= 9.0.0`). Kiểm chứng bằng `cargo tree` cho thấy
+> `zip 0.6.6` chỉ nằm trong `Cargo.lock` qua hai nhánh optional không bật của `burn-core 0.13.2`
+> (`burn-candle -> candle-core -> zip` và `burn-tch -> tch -> torch-sys -> zip`), hoàn toàn không có
+> trong đồ thị biên dịch của bất kỳ cấu hình nào; ba mã này đã được ghi nhận vào
+> `src-tauri/.cargo/audit.toml` (và soi gương ở `src-tauri/deny.toml`) trong cùng PR tài liệu HT0.7.
+
+| Loại | Gate | Lệnh | Ngày | Commit | Kết quả |
+|---|---|---|---|---|---|
+| 📏 | CI GitHub trên `main` | Actions run `38909879745` (`push` lên `main`) | 2026-10-16 | `1b3e7ef` | **success** — `Rust (src-tauri)` (`windows-latest`) **pass, 28m33s** · `Frontend` (`ubuntu-latest`) **pass, 4m43s** |
+| 📏 | Toolchain | `rustc --version` · `cargo --version` · `cargo clippy --version` | 2026-10-17 | `1b3e7ef` | exit 0 — `rustc 1.98.1 (48a229cea 2026-09-01)` · `cargo 1.98.1` · `clippy 0.1.98` (chọn bởi `rust-toolchain.toml`) |
+| 📏 | Format backend | `cargo fmt --check` | 2026-10-17 | `1b3e7ef` | exit 0 |
+| 📏📋 | Advisory Rust | `cargo audit` (từ `src-tauri/`) | 2026-10-17 | `1b3e7ef` | **exit 1** trên cây `1b3e7ef` nguyên bản vì 3 advisory mới của `zip 0.6.6` (`RUSTSEC-2026-0367`, `-0368`, `-0369` trong 1.334 advisory nạp, quét 773 crate) chỉ tồn tại ở lockfile qua `burn-core -> {burn-candle, burn-tch}` không bật; **exit 0** (0 lỗ hổng, 1 cảnh báo `chacha20` yanked cho phép) sau khi ghi nhận 3 mã lockfile-only đã kiểm chứng vào `.cargo/audit.toml` |
+| 📏 | Kiểm chứng `zip 0.6.6` không biên dịch | `cargo tree --features desktop -i zip` · `cargo tree -e normal --target all -i zip` | 2026-10-17 | `1b3e7ef` | exit 0 — cả hai đều in `nothing to print` |
+| 📏 | License & đồ thị phụ thuộc Rust | `cargo deny check` | 2026-10-17 | `1b3e7ef` | exit 0 — `advisories ok, bans ok, licenses ok, sources ok` |
+| 📏 | Lint backend (`desktop`) | `cargo clippy --all-targets --features desktop -- -D warnings` | 2026-10-17 | `1b3e7ef` | exit 0 (1m04s) |
+| 📏 | Lint backend (`default`) | `cargo clippy --all-targets --no-default-features -- -D warnings` | 2026-10-17 | `1b3e7ef` | exit 0 (25,43s) |
+| 📏 | Tách feature (G2 #2) | `cargo tree --no-default-features -e normal` | 2026-10-17 | `1b3e7ef` | exit 0 — **0** kết quả cho `neo4rs\|tokio-tungstenite\|burn-wgpu\|naga\|criterion` |
+| 📏 | Parity binding Rust↔TS (G1.4) | `cargo test --lib export_bindings` rồi `git diff --exit-code -- ..\src\types\generated` | 2026-10-17 | `1b3e7ef` | exit 0 · exit 0 — **33 passed**, binding sinh lại không đổi byte nào |
+| 📏 | Backend test (`desktop`) | `cmd /c "set ANIMA_USE_GPU=0&& cargo test --features desktop -- --nocapture > ..\cargo-test-output.txt 2>&1"` | 2026-10-17 | `1b3e7ef` | exit 0 — **1069 passed · 0 failed · 2 ignored**, **93** dòng `test result` |
+| 📏📋 | Chính sách target (`desktop`) | `node ..\scripts\check_test_targets.mjs ..\cargo-test-output.txt --profile desktop` (và không `--profile`) | 2026-10-17 | `1b3e7ef` | exit 0 · exit 0 — **93 target**, 3 rỗng (allow-listed 3), 2 ignore (allow-listed 2), **8 target feature-gated chạy** |
+| 📏 | Backend test (`default`) | `cmd /c "set ANIMA_USE_GPU=0&& cargo test --no-default-features -- --nocapture > ..\cargo-test-default-output.txt 2>&1"` | 2026-10-17 | `1b3e7ef` | exit 0 — **1044 passed · 0 failed · 2 ignored**, **85** dòng `test result` |
+| 📏📋 | Chính sách target (`default`) | `node ..\scripts\check_test_targets.mjs ..\cargo-test-default-output.txt --profile default` | 2026-10-17 | `1b3e7ef` | exit 0 — **85 target**, 3 rỗng (allow-listed 3), 2 ignore (allow-listed 2), **0 target feature-gated chạy** |
+| 📏 | Văn bản license bên thứ ba | `npm run check:licenses` | 2026-10-17 | `1b3e7ef` | exit 0 — up to date (440 thành phần phân phối, 266 văn bản khác nhau, 1 chưa có văn bản) |
+| 🔴 | Đầy đủ văn bản license phân phối | `npm run check:licenses-complete` | 2026-10-17 | `1b3e7ef` | **exit 1** — chặn phát hành đã biết (`hexf-parse 0.2.1`, xem §1.c và HT5.1 / QĐ-3) |
+| 📏 | SBOM | `npm run check:sbom` | 2026-10-17 | `1b3e7ef` | exit 0 — up to date (458 thành phần, 440 phân phối, 459 bản ghi dependency) |
+| 📏 | SBOM đúng schema | `npm run check:sbom-schema` | 2026-10-17 | `1b3e7ef` | exit 0 — hợp lệ CycloneDX 1.5 (458 thành phần, 458 purl duy nhất, 1 khoảng trống license đã ghi, schema ghim ở `c320fc0f0b46`) |
+| 📏 | NOTICE | `npm run check:notice` | 2026-10-17 | `1b3e7ef` | exit 0 — up to date (419 crate, 21 gói npm phân phối, 18 gói cài-không-ship, 1 văn bản chưa giải quyết) |
+| 📏 | Dấu chân flora khớp hình học | `npm run check:flora-footprint` | 2026-10-17 | `1b3e7ef` | exit 0 — 7 loại thực vật khớp bán kính khai báo (drift lớn nhất 3,9e-5) |
+| 📏 | Advisory npm (root) | `npm audit --audit-level=high` | 2026-10-17 | `1b3e7ef` | exit 0 — **0** lỗ hổng |
+| 📏 | Advisory npm (`tests/`) | `npm audit --audit-level=high --prefix tests` | 2026-10-17 | `1b3e7ef` | exit 0 — **0** lỗ hổng |
+| 📏 | Byte điều khiển trong source | `npm run check:text-hygiene` | 2026-10-17 | `1b3e7ef` | exit 0 — **615 file** text được track, 0 byte điều khiển thô |
+| 📏 | Artifact thí nghiệm E2 | `npm run check:e2` | 2026-10-17 | `1b3e7ef` | exit 0 — tính lại 132 + 11 delta theo seed khớp `node:crypto` và tiền đăng ký |
+| 📏 | Case tham số IPC | `npm run check:ipc` | 2026-10-17 | `1b3e7ef` | exit 0 — **29 command · 22 call site · 8 key** |
+| 📏 | Lint frontend | `npm run lint` | 2026-10-17 | `1b3e7ef` | exit 0 |
+| 📏 | Ratchet ESLint | `node scripts/eslint_ratchet.mjs` | 2026-10-17 | `1b3e7ef` | exit 0 — **0 error, 0 warning** (baseline 0) |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | 2026-10-17 | `1b3e7ef` | exit 0 |
+| 📏 | Test frontend (`src/`) | `npm run test` | 2026-10-17 | `1b3e7ef` | exit 0 — **14 file · 109 passed · 0 fail** (9,33s) |
+| 📏 | Test frontend (`tests/`) | `npm run test:frontend` | 2026-10-17 | `1b3e7ef` | exit 0 — **41 file · 446 passed · 0 fail** (52,47s) |
+| 📏 | Build | `npm run build` | 2026-10-17 | `1b3e7ef` | exit 0 — `tsc` sạch, 793 module transform (624ms) |
+| 📏 | Ranh giới bundle npm | `npm run check:bundle-closure` | 2026-10-17 | `1b3e7ef` | exit 0 — **21 gói** có byte trong `dist/` (3 do toolchain nhúng), khớp ranh giới đã commit |
+| 📏 | CSP (artifact) | `npm run check:csp` | 2026-10-17 | `1b3e7ef` | exit 0 — **2 file HTML ship**, 0 origin ngoài, 0 inline script, đủ directive hardening |
+| 📏 | Ngân sách bundle | `npm run check:bundle` | 2026-10-17 | `1b3e7ef` | exit 0 — 23 chunk, **1652,4 / 2000 KiB**, mọi chunk trong ngân sách |
+| 📏 | E2E Playwright | `npm run test:e2e` | 2026-10-17 | `1b3e7ef` | exit 0 — **18 passed · 0 failed · 0 skipped** (33,1s), **0** `console.error` / `pageerror` / `TypeError` trong toàn bộ output thô |
+| 📏 | Tái lập 8 view chuẩn | `npm run capture:views` | 2026-10-17 | `1b3e7ef` | exit 0 — **8/8 view byte-identical** qua hai lần chụp mỗi view (2,2 phút), `git status` sạch với PNG đã commit |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | 2026-10-17 | `1b3e7ef` | exit 0 — **658 link tương đối trong 116 file**, **0 gãy** |
 
 ### 1.f Đo 2026-10-16 — `main` đỏ, cây làm việc đỏ hai gate tái lập
 
@@ -435,19 +472,32 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
 
-### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
+### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-10-17**)
 
-> ### Bàn giao 2026-10-16 — đọc trước bảng bên dưới
+> ### Bàn giao 2026-10-17 — đọc trước bảng bên dưới
 >
-> Thứ tự công việc nay nằm ở [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md), và việc đầu
-> tiên **không** còn là §3.2 mà là **HT0**: sao lưu việc chỉ nằm trên một máy, rồi đưa `main` về
-> xanh (§1.f). Bảng bên dưới giữ nguyên làm bối cảnh — các mục của nó đã được xếp lại vào HT1–HT5.
+> Thứ tự công việc nay nằm ở [lộ trình hoàn thiện](COMPLETION_ROADMAP_2026-10-16.md). Bảng bên dưới
+> giữ nguyên làm bối cảnh — các mục của nó đã được xếp lại vào HT1–HT5.
 >
-> **Tiến độ HT0 (2026-10-16):** khối chưa commit đã nằm trên nhánh **cục bộ**
-> `wip/2026-08-16-map2-tier5` (`84fece1`, 170 file khớp từng byte) kèm một git bundle ngoài repo — cố
-> ý **không** push, vì repo public và khối đó có bằng chứng bịa. HT0.2 + HT0.3 là nhánh
-> `fix/main-ci-green`, xanh cục bộ đủ 30 gate của CI (bảng trong §1.f); còn chờ push, PR và CI thật.
-> `389de4b` vẫn chưa push.
+> **Tiến độ HT0 (cập nhật 2026-10-17):**
+>
+> - **HT0.1 (sao lưu):** `389de4b` đã được push lên `origin/feat/oss-071b-live-tracker`. Khối chưa
+>   commit ngày 2026-08-16 nằm trên nhánh **cục bộ** `wip/2026-08-16-map2-tier5` (`84fece1`, 170 file
+>   khớp từng byte) kèm một git bundle ngoài repo (`git bundle verify` pass) — cố ý **không** push,
+>   vì repo public và khối đó có bằng chứng bịa; checkout gốc giữ nguyên không chạm vào.
+> - **HT0.2 + HT0.3 (`main` xanh + ghim toolchain):** PR **#33** (`fix/main-ci-green`) đã merge vào
+>   `main` tại **`1b3e7ef`**, CI GitHub trên `main` (Actions run `38909879745`) xanh cả hai job; PR
+>   **#32** đã đóng vì được thay thế bởi PR #33.
+> - **HT0.7 (đo lại toàn bộ §1 trên `main` mới):** đã đo lại trọn bộ 30 gate CI + profile mặc định +
+>   `check:ipc` + `check:licenses-complete` + `capture:views` trên worktree sạch tại `1b3e7ef` ngày
+>   2026-10-17 ([§1.g](#1g-đo-2026-10-17-tại-1b3e7ef--main-xanh-trở-lại-sau-pr-33-ht07)), đồng thời
+>   ghi nhận 3 advisory mới chỉ tồn tại ở lockfile của `zip 0.6.6` (`RUSTSEC-2026-0367`, `-0368`,
+>   `-0369` qua `burn-core -> {burn-candle, burn-tch}`) vào `src-tauri/.cargo/audit.toml` và
+>   `src-tauri/deny.toml`.
+> - **Việc kế tiếp theo hàng đợi:** **HT0.5** — tách phần còn lại của `389de4b` thành 3 PR độc lập từ
+>   `origin/main` (PR-A sửa mù cảm biến + test hồi quy; PR-B guard `dispose` frontend; PR-C năm thay
+>   đổi ngữ nghĩa mô phỏng kèm đo trước/sau trên E2 và `total_mass()` không cấp phát heap), tiếp theo
+>   là **HT0.6** (dọn nhánh) rồi **HT1**.
 >
 > **Ba cái bẫy mới, trả giá trong khoảng 2026-07-29 → 2026-08-16:**
 >
