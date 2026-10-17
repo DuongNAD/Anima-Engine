@@ -125,12 +125,15 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
     const toPx = (world: number) => ((world + renderSize / 2) / renderSize) * size;
     const clamp = (v: number) => Math.max(0, Math.min(size, v));
 
+    const img = (typeof ctx.createImageData === 'function') ? ctx.createImageData(size, size) : null;
+    if (img) {
+      img.data.set(biomeImage);
+    }
+
     const loop = () => {
       if (!active) return;
 
-      if (typeof ctx.createImageData === 'function' && typeof ctx.putImageData === 'function') {
-        const img = ctx.createImageData(size, size);
-        img.data.set(biomeImage);
+      if (img && typeof ctx.putImageData === 'function') {
         ctx.putImageData(img, 0, 0);
       } else if (typeof ctx.fillRect === 'function') {
         ctx.fillStyle = '#0a3b66';

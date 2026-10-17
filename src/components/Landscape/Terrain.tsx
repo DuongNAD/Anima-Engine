@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useRef, useLayoutEffect } from 'react';
-import { useFrame, extend } from '@react-three/fiber';
+import React, { useCallback, useMemo, useRef, useLayoutEffect, useEffect } from 'react';
+import { extend } from '@react-three/fiber';
 import * as THREE from 'three';
 import { generateTerrain, biomeColor, TERRAIN_HEIGHT_SCALE } from './utils/terrainGenerator';
 import type { TerrainData } from './utils/terrainGenerator';
@@ -144,44 +144,17 @@ export const Terrain: React.FC<TerrainProps> = ({ width = 500, height = 500, wet
     }
   }, []);
 
-  useFrame((state) => {
-    const time = state.clock.getElapsedTime();
-    const animateLOD = (geomRef: React.RefObject<THREE.BufferGeometry>, step: number) => {
-      if (!geomRef.current) return;
-      const geom = geomRef.current;
-      const posAttr = geom.getAttribute('position') as THREE.BufferAttribute;
-      if (!posAttr) return;
-      const pos = posAttr.array as Float32Array;
-      const w = Math.ceil(width / step);
-      const h = Math.ceil(height / step);
-
-      let needsUpdate = false;
-      for (let yIndex = 0; yIndex < h; yIndex++) {
-        for (let xIndex = 0; xIndex < w; xIndex++) {
-          const gx = Math.min(width - 1, xIndex * step);
-          const gy = Math.min(height - 1, yIndex * step);
-          const cell = terrain.grid[gy][gx];
-
-          if (cell.elevation < 3.0 && !cell.isRiver) {
-            const i = yIndex * w + xIndex;
-            const x = gx;
-            const y = gy;
-            const wave = Math.sin(x * 0.15 + time * 1.5) * Math.cos(y * 0.15 + time) * 0.3;
-            pos[i * 3 + 1] = (cell.elevation * TERRAIN_HEIGHT_SCALE) + wave;
-            needsUpdate = true;
-          }
-        }
-      }
-      if (needsUpdate) {
-        posAttr.needsUpdate = true;
-        geom.computeVertexNormals();
-      }
+  useEffect(() => {
+    const g0 = geomRef0.current;
+    const g1 = geomRef1.current;
+    const g2 = geomRef2.current;
+    return () => {
+      // Under jsdom tests, the R3F mock backs intrinsics with plain DOM elements that lack dispose methods
+      if (g0 && typeof g0.dispose === 'function') g0.dispose();
+      if (g1 && typeof g1.dispose === 'function') g1.dispose();
+      if (g2 && typeof g2.dispose === 'function') g2.dispose();
     };
-
-    animateLOD(geomRef0, 1);
-    animateLOD(geomRef1, 4);
-    animateLOD(geomRef2, 16);
-  });
+  }, []);
 
   return (
     <lod ref={lodRef} name="terrain-lod">
