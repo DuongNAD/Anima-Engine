@@ -34,6 +34,23 @@ ignore = [
     # gix-features 0.36.1 — RUSTSEC-2025-0021, SHA-1 collision attacks are not detected (CVSS 6.8).
     # Same dependency path, same reasoning: pulled in only by gix-fs above, never compiled.
     "RUSTSEC-2025-0021",
+
+    # zip 0.6.6 — RUSTSEC-2026-0367 (SUID/SGID preservation during extract, CVSS 7.3),
+    # RUSTSEC-2026-0368 (symlink target traversal during extract), and RUSTSEC-2026-0369 (Unix
+    # permissions applied through symlinks during extract, CVSS 9.1).
+    #
+    # Reached only via burn-core 0.13.2's disabled optional backends:
+    #   burn-core -> burn-candle -> candle-core 0.4.1 -> zip 0.6.6
+    #   burn-core -> burn-tch -> tch 0.15.0 -> torch-sys 0.15.0 -> zip 0.6.6
+    # Neither `burn-candle` nor `burn-tch` is enabled by any feature in this workspace; `zip` is a
+    # lockfile-only entry and is never compiled.
+    #
+    # Verified (2026-10-17):
+    #   cargo tree --features desktop --target all -i zip   -> nothing to print
+    #   cargo tree -e normal --target all -i zip            -> nothing to print
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]
 
 # Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals
