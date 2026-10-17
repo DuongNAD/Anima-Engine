@@ -23,12 +23,98 @@ pub struct MorphologyGenotype {
     pub edges: Vec<MorphologyEdge>,
 }
 
+/// Developed phenotype attached once to the root `Agent` entity when its body is materialized
+/// (`decode_genotype`), per `docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md` (D01, CM-405, CM-406).
+///
+/// Carrying `total_mass` in the phenotype avoids re-traversing the genotype graph on every tick in
+/// the ecosystem-snapshot publish path of `simulation_loop.rs` and at epoch evaluation.
+#[derive(bevy_ecs::prelude::Component, Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct DevelopedPhenotype {
+    pub total_mass: f32,
+}
+
 impl MorphologyGenotype {
-    /// Total body mass = sum of every segment's mass. In the Metabolic Theory of Ecology this
+    /// Total body mass = the mass of the segments this genotype actually grows: the root plus
+    /// everything reachable from it, each counted once. In the Metabolic Theory of Ecology this
     /// single number sets an organism's metabolism, lifespan and reproductive rate, so it is
     /// the most important ecological / life-history niche axis for the MAP-Elites archive.
+    ///
+    /// **Reachability is the definition, not an implementation detail.** `decode_genotype` spawns
+    /// by the same root-finding and BFS below, so a node no edge path reaches never becomes a
+    /// segment in the world. Summing `nodes` flat instead would place an agent in a heavier
+    /// MAP-Elites cell than the body it is running around in — and every metabolic rate derived
+    /// from that mass would describe an organism that does not exist. The test named
+    /// `total_mass_matches_the_body_decode_genotype_spawns` holds the two traversals together.
+    ///
+    /// For all engine morphologies (`nodes.len() <= 64`, mutation caps at 15), the BFS runs on
+    /// fixed stack arrays and performs zero heap allocations.
     pub fn total_mass(&self) -> f32 {
-        self.nodes.iter().map(|n| n.mass).sum()
+        if self.nodes.is_empty() {
+            return 0.0;
+        }
+
+        let root_node = self
+            .nodes
+            .iter()
+            .find(|n| !self.edges.iter().any(|e| e.target_node == n.id))
+            .unwrap_or(&self.nodes[0]);
+
+        const STACK_CAP: usize = 64;
+        if self.nodes.len() <= STACK_CAP {
+            let mut visited = [0u32; STACK_CAP];
+            let mut visited_len = 1usize;
+            visited[0] = root_node.id;
+
+            let mut queue = [0u32; STACK_CAP];
+            let mut head = 0usize;
+            let mut tail = 1usize;
+            queue[0] = root_node.id;
+
+            let mut mass = root_node.mass;
+
+            while head < tail {
+                let curr_id = queue[head];
+                head += 1;
+                for edge in self.edges.iter().filter(|e| e.source_node == curr_id) {
+                    if !visited[..visited_len].contains(&edge.target_node) {
+                        if let Some(target_node) =
+                            self.nodes.iter().find(|n| n.id == edge.target_node)
+                        {
+                            if visited_len < STACK_CAP && tail < STACK_CAP {
+                                visited[visited_len] = edge.target_node;
+                                visited_len += 1;
+                                mass += target_node.mass;
+                                queue[tail] = edge.target_node;
+                                tail += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            return mass;
+        }
+
+        use std::collections::{HashSet, VecDeque};
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        visited.insert(root_node.id);
+        queue.push_back(root_node.id);
+
+        let mut mass = root_node.mass;
+
+        while let Some(curr_id) = queue.pop_front() {
+            for edge in self.edges.iter().filter(|e| e.source_node == curr_id) {
+                if !visited.contains(&edge.target_node) {
+                    if let Some(target_node) = self.nodes.iter().find(|n| n.id == edge.target_node)
+                    {
+                        visited.insert(edge.target_node);
+                        mass += target_node.mass;
+                        queue.push_back(edge.target_node);
+                    }
+                }
+            }
+        }
+        mass
     }
 
     pub fn new() -> Self {
@@ -87,6 +173,7 @@ pub fn decode_genotype(
 
     let mut visited = HashSet::new();
     visited.insert(root_node.id);
+    let mut developed_mass = root_node.mass;
 
     // Spawn root segment
     let root_entity = world
@@ -158,6 +245,7 @@ pub fn decode_genotype(
             // Find the target node details
             if let Some(child_node) = genotype.nodes.iter().find(|n| n.id == edge.target_node) {
                 visited.insert(child_node.id);
+                developed_mass += child_node.mass;
 
                 // Compute global position and rotation
                 // P_child = P_parent + R_parent * joint_anchor + R_child * (0.0, 0.0, length_child / 2.0)
@@ -211,5 +299,119 @@ pub fn decode_genotype(
         }
     }
 
+    world.entity_mut(root_entity).insert(DevelopedPhenotype {
+        total_mass: developed_mass,
+    });
+
     root_entity
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(id: u32, mass: f32) -> MorphologyNode {
+        MorphologyNode {
+            id,
+            length: 1.0,
+            radius: 0.25,
+            mass,
+        }
+    }
+
+    fn edge(source_node: u32, target_node: u32) -> MorphologyEdge {
+        MorphologyEdge {
+            source_node,
+            target_node,
+            joint_anchor: Vec3::new(0.0, 0.0, 1.0),
+            joint_axis: Vec3::X,
+        }
+    }
+
+    fn genotype(nodes: &[(u32, f32)], edges: &[(u32, u32)]) -> MorphologyGenotype {
+        let mut g = MorphologyGenotype::new();
+        for &(id, mass) in nodes {
+            g.add_node(node(id, mass));
+        }
+        for &(s, t) in edges {
+            g.add_edge(edge(s, t));
+        }
+        g
+    }
+
+    #[test]
+    fn total_mass_of_an_empty_genotype_is_zero() {
+        assert_eq!(MorphologyGenotype::new().total_mass(), 0.0);
+    }
+
+    #[test]
+    fn total_mass_sums_a_connected_chain() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1), (1, 2)]);
+        assert_eq!(g.total_mass(), 15.0);
+    }
+
+    // The behaviour that separates this from `nodes.iter().map(|n| n.mass).sum()`. Node 2 is in the
+    // genome but no edge reaches it, so `decode_genotype` never spawns a segment for it and the
+    // organism does not carry its mass.
+    #[test]
+    fn total_mass_excludes_nodes_unreachable_from_the_root() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1)]);
+        assert_eq!(
+            g.total_mass(),
+            8.0,
+            "the unreachable node's 7.0 must not be counted; a flat sum over `nodes` gives 15.0"
+        );
+    }
+
+    // A diamond: two parents, one child. The child is one segment, so it weighs once.
+    #[test]
+    fn total_mass_counts_a_shared_child_once() {
+        let g = genotype(
+            &[(0, 3.0), (1, 5.0), (2, 7.0), (3, 11.0)],
+            &[(0, 1), (0, 2), (1, 3), (2, 3)],
+        );
+        assert_eq!(g.total_mass(), 26.0);
+    }
+
+    // No node is edge-free here, so root-finding falls through to `nodes[0]`. Without the `visited`
+    // set this would not terminate.
+    #[test]
+    fn total_mass_terminates_and_counts_once_on_a_cycle() {
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1), (1, 2), (2, 0)]);
+        assert_eq!(g.total_mass(), 15.0);
+    }
+
+    // The invariant the descriptor exists to express: the number fed to MAP-Elites is the mass of
+    // the body that actually gets spawned, and `DevelopedPhenotype` carries that mass on the root.
+    #[test]
+    fn total_mass_matches_the_body_decode_genotype_spawns() {
+        use crate::core::ecs::Segment;
+        use bevy_ecs::prelude::World;
+
+        let g = genotype(&[(0, 3.0), (1, 5.0), (2, 7.0)], &[(0, 1)]);
+
+        let mut world = World::new();
+        let root = decode_genotype(&mut world, &g, Vec3::ZERO, glam::Quat::IDENTITY);
+
+        let mut segments = world.query::<&Segment>();
+        let spawned_mass: f32 = segments.iter(&world).map(|s| s.mass).sum();
+        let pheno = world
+            .get::<DevelopedPhenotype>(root)
+            .expect("decode_genotype attaches DevelopedPhenotype on root");
+
+        assert_eq!(
+            g.total_mass(),
+            spawned_mass,
+            "the MAP-Elites body-mass descriptor and the spawned body disagree"
+        );
+        assert_eq!(
+            pheno.total_mass, spawned_mass,
+            "DevelopedPhenotype.total_mass must equal the spawned body mass"
+        );
+        assert_eq!(
+            segments.iter(&world).count(),
+            2,
+            "the unreachable node must not have been spawned"
+        );
+    }
 }

@@ -2133,23 +2133,27 @@ impl SimulationEngine {
                     // (mean total body mass of prey vs predators).
                     let mut prey_mass_sum = 0.0f32;
                     let mut pred_mass_sum = 0.0f32;
-                    let mut prey_q = world
-                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
-                            With<crate::core::components::Agent>,
-                            With<crate::core::components::Prey>,
-                        )>();
-                    for g in prey_q.iter(&world) {
+                    let mut prey_q = world.query_filtered::<(
+                        Option<&crate::evolution::genotype::DevelopedPhenotype>,
+                        &crate::core::agent_systems::AgentGenotype,
+                    ), (
+                        With<crate::core::components::Agent>,
+                        With<crate::core::components::Prey>,
+                    )>();
+                    for (pheno, g) in prey_q.iter(&world) {
                         prey_count += 1;
-                        prey_mass_sum += g.0.total_mass();
+                        prey_mass_sum += pheno.map_or_else(|| g.0.total_mass(), |p| p.total_mass);
                     }
-                    let mut pred_q = world
-                        .query_filtered::<&crate::core::agent_systems::AgentGenotype, (
-                            With<crate::core::components::Agent>,
-                            With<crate::core::components::Predator>,
-                        )>();
-                    for g in pred_q.iter(&world) {
+                    let mut pred_q = world.query_filtered::<(
+                        Option<&crate::evolution::genotype::DevelopedPhenotype>,
+                        &crate::core::agent_systems::AgentGenotype,
+                    ), (
+                        With<crate::core::components::Agent>,
+                        With<crate::core::components::Predator>,
+                    )>();
+                    for (pheno, g) in pred_q.iter(&world) {
                         predator_count += 1;
-                        pred_mass_sum += g.0.total_mass();
+                        pred_mass_sum += pheno.map_or_else(|| g.0.total_mass(), |p| p.total_mass);
                     }
                     let prey_mass = if prey_count > 0 {
                         prey_mass_sum / prey_count as f32
