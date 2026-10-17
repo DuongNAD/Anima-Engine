@@ -48,7 +48,8 @@ pub fn resolve_joints_system(
             // Update child orientation
             if let (Some(axis), Some(cpg)) = (opt_axis, opt_cpg) {
                 let axis_val = axis.0;
-                let target_rel_rot = Quat::from_axis_angle(axis_val.normalize(), cpg.output);
+                let axis_norm = axis_val.try_normalize().unwrap_or(Vec3::Y);
+                let target_rel_rot = Quat::from_axis_angle(axis_norm, cpg.output);
                 let r_target = parent_rot.0 * target_rel_rot;
                 child_rot.0 = child_rot
                     .0
