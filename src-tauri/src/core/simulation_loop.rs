@@ -217,6 +217,23 @@ fn mean_tick_time_ms(total: Duration, measured_ticks: u64) -> f64 {
     total.as_secs_f64() * 1000.0 / measured_ticks as f64
 }
 
+/// Computes the effective loop FPS given elapsed compute duration and target frame duration.
+#[inline]
+pub fn compute_loop_fps(compute_elapsed: Duration, target_duration: Duration) -> f64 {
+    let total_frame_duration = compute_elapsed.max(target_duration);
+    let secs = total_frame_duration.as_secs_f64();
+    if secs > 0.0 && secs.is_finite() {
+        let fps = 1.0 / secs;
+        if fps.is_finite() {
+            fps
+        } else {
+            0.0
+        }
+    } else {
+        0.0
+    }
+}
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -2249,18 +2266,14 @@ impl SimulationEngine {
                 measured_ticks += 1;
 
                 let avg_tick_time = mean_tick_time_ms(total_tick_duration, measured_ticks);
-                let actual_fps = 1.0 / elapsed.as_secs_f64();
+                let actual_fps = compute_loop_fps(elapsed, target_frame_duration);
 
                 {
                     let mut stat = status_clone.lock().unwrap_or_else(|e| e.into_inner());
                     stat.running = true;
                     stat.tick_count = tick_count;
                     stat.avg_tick_time_ms = avg_tick_time;
-                    stat.fps = if actual_fps.is_finite() {
-                        actual_fps
-                    } else {
-                        0.0
-                    };
+                    stat.fps = actual_fps;
                 }
 
                 if let Some(counter) = counter_fault {
@@ -2659,5 +2672,22 @@ mod mean_tick_time_tests {
             diluted < honest / 1000.0,
             "the old expression has to be wrong by orders of magnitude, or this test proves nothing"
         );
+    }
+
+    #[test]
+    fn compute_loop_fps_throttles_to_target_and_scales_down_under_load() {
+        let target = Duration::from_micros(16667); // ~60fps (1/60s)
+
+        // Compute finishes fast (e.g. 1ms) -> FPS is throttled to ~60.0
+        let fast_fps = compute_loop_fps(Duration::from_millis(1), target);
+        assert!((fast_fps - 59.9988).abs() < 0.1);
+
+        // Compute takes 33.333ms -> FPS throttles down to ~30.0
+        let slow_fps = compute_loop_fps(Duration::from_micros(33333), target);
+        assert!((slow_fps - 30.0003).abs() < 0.1);
+
+        // Zero target and zero elapsed returns 0.0 without panic/NaN
+        let zero_fps = compute_loop_fps(Duration::ZERO, Duration::ZERO);
+        assert_eq!(zero_fps, 0.0);
     }
 }
