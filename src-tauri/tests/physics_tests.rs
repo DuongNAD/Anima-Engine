@@ -674,3 +674,57 @@ fn test_decoupled_systems_zero_allocation() {
         allocs
     );
 }
+
+// The agent carries its own SpatialCollider (`evolution/genotype.rs`) and `ai/model.rs` casts the
+// sensor ray from that same Position. If `intersect_sphere` reports a hit for a ray starting inside
+// a sphere, `raycast` returns the agent itself at distance 0, `ai/model.rs` discards it as a
+// self-collision, and the agent sees nothing — on every ray, every tick, with the whole suite green.
+#[test]
+fn sensor_ray_from_agent_centre_sees_past_its_own_collider() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    let bounds = MapBounds {
+        min: Vec3::new(-100.0, 0.0, -100.0),
+        max: Vec3::new(100.0, 10.0, 100.0),
+    };
+    world.insert_resource(bounds);
+    world.insert_resource(SpatialHashGrid::new_prepopulated(10.0, &bounds));
+
+    let agent = world
+        .spawn((Position(Vec3::ZERO), SpatialCollider { radius: 0.5 }))
+        .id();
+    let food = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 4.0)),
+            SpatialCollider { radius: 0.5 },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(rebuild_spatial_grid_system);
+    schedule.run(&mut world);
+
+    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> =
+        bevy_ecs::system::SystemState::new(&mut world);
+    let query = system_state.get(&world);
+    let grid = world.get_resource::<SpatialHashGrid>().unwrap();
+
+    let ray = Ray3D {
+        origin: Vec3::ZERO,
+        direction: Vec3::new(0.0, 0.0, 1.0),
+    };
+    let hit = grid
+        .raycast(&ray, 10.0, &bounds, &query)
+        .expect("the ray should reach the food ahead");
+
+    assert_eq!(
+        hit.entity, food,
+        "the nearest hit must be the food ahead, not the agent's own collider at the ray origin"
+    );
+    assert_ne!(hit.entity, agent, "an agent must not sense itself");
+    assert!(
+        (hit.distance - 3.5).abs() < 1e-3,
+        "expected the food surface at 3.5, got {}",
+        hit.distance
+    );
+}
