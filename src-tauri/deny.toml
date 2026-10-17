@@ -103,11 +103,15 @@ allow-git = []
 
 [advisories]
 # Mirrors `.cargo/audit.toml`. See the SCOPE note at the top: `cargo audit` is the gate that owns
-# these, and the verification for both lives there. Both are lockfile-only entries for the
-# burn-dataset -> gix chain, which no enabled feature compiles.
+# these, and the verification for each lives there. All five are lockfile-only entries for optional
+# `burn-core` dependencies (`burn-dataset -> gix` and `burn-candle`/`burn-tch -> zip`), which no
+# enabled feature compiles.
 ignore = [
     "RUSTSEC-2024-0350",
     "RUSTSEC-2025-0021",
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
 ]
 
 # cargo-deny fails on "unmaintained" by default; cargo audit reports it and does not. Same repo,
