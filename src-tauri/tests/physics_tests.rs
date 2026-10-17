@@ -2,8 +2,8 @@ mod common;
 
 use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator, TimeStep};
 use anima_engine_lib::core::ecs::{
-    energy_decay_system, init_world, wrap_coordinates_system, JointAxis, MapBounds, Position,
-    Rotation, Segment, Velocity,
+    energy_decay_system, init_world, wrap_coordinates_system, JointAxis, MapBounds, ParentAgent,
+    Position, Rotation, Segment, Velocity,
 };
 use anima_engine_lib::physics::{
     integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
@@ -672,5 +672,91 @@ fn test_decoupled_systems_zero_allocation() {
         allocs, 0,
         "Decoupled hot path loop should perform 0 heap allocations, but made {}",
         allocs
+    );
+}
+
+#[test]
+fn test_predator_energy_depletion_stops_movement() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    world.insert_resource(TimeStep(0.016));
+
+    let predator = world
+        .spawn((
+            anima_engine_lib::core::ecs::Agent,
+            anima_engine_lib::core::ecs::Predator,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::new(5.0, 0.0, 0.0)),
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::new(5.0, 0.0, 0.0),
+                force: Vec3::new(20.0, 0.0, 0.0),
+            },
+            anima_engine_lib::ai::hrrl::HomeostaticState {
+                energy: 0.0, // Depleted predator
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+        ))
+        .id();
+
+    let child = world
+        .spawn((
+            ParentAgent(predator),
+            Position(Vec3::new(0.0, 0.0, 1.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::new(5.0, 0.0, 0.0)),
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::new(5.0, 0.0, 0.0),
+                force: Vec3::new(20.0, 0.0, 0.0),
+            },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(integrate_physics_system);
+    schedule.run(&mut world);
+
+    let pred_vel = world.get::<Velocity>(predator).unwrap().0;
+    let pred_rb = world.get::<RigidBody>(predator).unwrap();
+    let child_vel = world.get::<Velocity>(child).unwrap().0;
+    let child_rb = world.get::<RigidBody>(child).unwrap();
+
+    assert_eq!(
+        pred_vel,
+        Vec3::ZERO,
+        "Predator velocity must be zeroed when energy <= 0.0"
+    );
+    assert_eq!(
+        pred_rb.velocity,
+        Vec3::ZERO,
+        "Predator rigid body velocity must be zeroed"
+    );
+    assert_eq!(
+        pred_rb.force,
+        Vec3::ZERO,
+        "Predator rigid body force must be zeroed"
+    );
+
+    assert_eq!(
+        child_vel,
+        Vec3::ZERO,
+        "Child segment velocity must be zeroed when parent is depleted"
+    );
+    assert_eq!(
+        child_rb.velocity,
+        Vec3::ZERO,
+        "Child segment rigid body velocity must be zeroed"
+    );
+    assert_eq!(
+        child_rb.force,
+        Vec3::ZERO,
+        "Child segment rigid body force must be zeroed"
     );
 }
