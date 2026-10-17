@@ -19,10 +19,8 @@ impl CpgOscillator {
     }
 
     pub fn tick(&mut self, delta_time: f32) {
-        self.phase += 2.0 * std::f32::consts::PI * self.frequency * delta_time;
-        if self.phase > 2.0 * std::f32::consts::PI {
-            self.phase -= 2.0 * std::f32::consts::PI;
-        }
+        let two_pi = 2.0 * std::f32::consts::PI;
+        self.phase = (self.phase + two_pi * self.frequency * delta_time).rem_euclid(two_pi);
         self.output = self.amplitude * self.phase.sin();
     }
 }
@@ -58,3 +56,37 @@ pub fn update_cpg_system(
 
 #[derive(Resource)]
 pub struct TimeStep(pub f32);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tick_wraps_phase_into_zero_to_two_pi_across_multi_period_and_negative_steps() {
+        let two_pi = 2.0 * std::f32::consts::PI;
+
+        // Multi-period positive advance (3.25 full turns in one step): single subtraction of 2*pi
+        // would leave phase > 2*pi, whereas rem_euclid wraps into [0, 2*pi).
+        let mut osc = CpgOscillator::new(3.25, 1.0);
+        osc.tick(1.0);
+        assert!(
+            (0.0..two_pi).contains(&osc.phase),
+            "phase after multi-period step must stay in [0, 2*pi), got {}",
+            osc.phase
+        );
+        assert!((osc.phase - 0.25 * two_pi).abs() < 1e-5);
+        assert!((osc.output - 1.0).abs() < 1e-5);
+
+        // Negative frequency advance: single `if phase > 2*pi` left phase negative, whereas
+        // rem_euclid wraps negative phases into [0, 2*pi).
+        let mut neg = CpgOscillator::new(-0.25, 1.0);
+        neg.tick(1.0);
+        assert!(
+            (0.0..two_pi).contains(&neg.phase),
+            "phase after negative frequency step must stay in [0, 2*pi), got {}",
+            neg.phase
+        );
+        assert!((neg.phase - 0.75 * two_pi).abs() < 1e-5);
+        assert!((neg.output - (-1.0)).abs() < 1e-5);
+    }
+}
