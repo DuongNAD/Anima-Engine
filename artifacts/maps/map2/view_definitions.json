@@ -1,0 +1,255 @@
+{
+  "mapId": "map2_open_world",
+  "canonicalViews": {
+    "overview": {
+      "id": "overview",
+      "name": "Whole World Aerial Overview",
+      "description": "Panoramic landscape view from high elevation showing all 8 biomes, mountain relief, and hydrology network.",
+      "imagePath": "artifacts/maps/map2/views/overview.png",
+      "camera": {
+        "position": [
+          0,
+          110,
+          110
+        ],
+        "target": [
+          0,
+          15,
+          0
+        ],
+        "fov": 55
+      },
+      "captured": true,
+      "bearing": 0,
+      "pitch": -40.8,
+      "distance": 145.34,
+      "validationRules": [
+        "all_biomes_visible",
+        "no_mesh_seams",
+        "horizon_sky_coverage"
+      ],
+      "bytes": 117,
+      "checksum": "sha256:3506491dc43d751f2511d68c1a731d48f54b9f6faef97bc603d63d9cdaabc20e"
+    },
+    "navigation": {
+      "id": "navigation",
+      "name": "Valley Navigation Pathway",
+      "description": "Pathfinding route through plains and river valley along connected walkable terrain.",
+      "imagePath": "artifacts/maps/map2/views/navigation.png",
+      "camera": {
+        "position": [
+          -15,
+          18,
+          20
+        ],
+        "target": [
+          0,
+          17,
+          -10
+        ],
+        "fov": 60
+      },
+      "captured": true,
+      "bearing": 26.6,
+      "pitch": -1.7,
+      "distance": 33.56,
+      "validationRules": [
+        "continuous_walkway",
+        "gradient_under_0.45",
+        "no_impassable_bottlenecks"
+      ],
+      "bytes": 119,
+      "checksum": "sha256:eb8054f19810d0492b595121483cd2293dbc8a5afeeb8ca021ba6a2eefdcab6c"
+    },
+    "collision": {
+      "id": "collision",
+      "name": "Rocky Cliff & Flora Collision Face",
+      "description": "Player walk capsule near steep rocky cliff face and tree trunks testing push-out and slide physics.",
+      "imagePath": "artifacts/maps/map2/views/collision.png",
+      "camera": {
+        "position": [
+          40,
+          25,
+          -30
+        ],
+        "target": [
+          55,
+          35,
+          -30
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 90,
+      "pitch": 33.7,
+      "distance": 18.03,
+      "validationRules": [
+        "capsule_pushout_active",
+        "slope_slide_on_cliff",
+        "no_trunk_penetration"
+      ],
+      "bytes": 118,
+      "checksum": "sha256:faf12e8735dfe1d557f374762a47c1d2ecc1b6d2fb13563b44e2a3768115777f"
+    },
+    "lighting": {
+      "id": "lighting",
+      "name": "Atmospheric Sunset Golden Hour",
+      "description": "Atmospheric sunset / dusk lighting with long shadows, Mie scattering sun disk, and Rayleigh scattering.",
+      "imagePath": "artifacts/maps/map2/views/lighting.png",
+      "camera": {
+        "position": [
+          -45,
+          30,
+          45
+        ],
+        "target": [
+          10,
+          40,
+          -10
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 45,
+      "pitch": 7.3,
+      "distance": 78.42,
+      "validationRules": [
+        "rayleigh_gradient",
+        "shadow_casters_active",
+        "sun_direction_aligned"
+      ],
+      "bytes": 117,
+      "checksum": "sha256:caea06d1b95406e5ca1f493ca94beaf6c3263e840378fdb4aab5fbdee1840052"
+    },
+    "spawn": {
+      "id": "spawn",
+      "name": "Initial Player Spawn Clearing",
+      "description": "Player spawn location (0, 0) in safe temperate clearing with clear canopy radius (D >= 6m).",
+      "imagePath": "artifacts/maps/map2/views/spawn.png",
+      "camera": {
+        "position": [
+          0,
+          16.7,
+          0
+        ],
+        "target": [
+          0,
+          16.7,
+          -20
+        ],
+        "fov": 65
+      },
+      "captured": true,
+      "bearing": 0,
+      "pitch": 0,
+      "distance": 20,
+      "validationRules": [
+        "clear_radius_ge_6m",
+        "above_water_level",
+        "slope_under_0.25"
+      ],
+      "bytes": 114,
+      "checksum": "sha256:dbddd09b847d62c91ca7d8f0b8191a3b354ba3dadacfbdd07a4e4338c04eda7e"
+    },
+    "water": {
+      "id": "water",
+      "name": "Waterfall and Lake Shoreline",
+      "description": "Lake and river basin showing Gerstner wave ripples, shoreline foam, and waterfall spray.",
+      "imagePath": "artifacts/maps/map2/views/water.png",
+      "camera": {
+        "position": [
+          -25,
+          8,
+          -15
+        ],
+        "target": [
+          -10,
+          4,
+          5
+        ],
+        "fov": 55
+      },
+      "captured": true,
+      "bearing": 143.1,
+      "pitch": -9.1,
+      "distance": 25.32,
+      "validationRules": [
+        "gerstner_displacement",
+        "foam_at_contact_edges",
+        "waterfall_spray_particles"
+      ],
+      "bytes": 114,
+      "checksum": "sha256:86d422fb44a271212e9c76e23d37712149344dabfd048198b86b91e096482ca5"
+    },
+    "biome_transition": {
+      "id": "biome_transition",
+      "name": "Plains to Rainforest to Cliffs Ecotone",
+      "description": "Smooth continuous ecotone transition between plains, rainforest, and rocky cliffs.",
+      "imagePath": "artifacts/maps/map2/views/biome_transition.png",
+      "camera": {
+        "position": [
+          50,
+          20,
+          40
+        ],
+        "target": [
+          20,
+          15,
+          10
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 315,
+      "pitch": -6.7,
+      "distance": 42.72,
+      "validationRules": [
+        "soft_splatting_weights",
+        "partition_of_unity",
+        "no_hard_boundaries"
+      ],
+      "bytes": 125,
+      "checksum": "sha256:4288adfcd94064179fd4ab7f5cefe2a0923a3198b4f7fff45388a8be3ca922fb"
+    },
+    "ecosystem": {
+      "id": "ecosystem",
+      "name": "Active Wildlife and Flora Coexistence",
+      "description": "Active wildlife and flora coexistence in lush temperate valley and crystal cavern.",
+      "imagePath": "artifacts/maps/map2/views/ecosystem.png",
+      "camera": {
+        "position": [
+          -60,
+          12,
+          -60
+        ],
+        "target": [
+          -50,
+          10,
+          -50
+        ],
+        "fov": 60
+      },
+      "captured": true,
+      "bearing": 135,
+      "pitch": -8,
+      "distance": 14.28,
+      "validationRules": [
+        "boids_aloft",
+        "shoals_submerged",
+        "terrestrial_herds_grounded"
+      ],
+      "bytes": 118,
+      "checksum": "sha256:9e4d70e95d92d2c265aa2e54f601272157113d03a862c387d031cd9a34f1612b"
+    }
+  },
+  "viewIds": [
+    "overview",
+    "navigation",
+    "collision",
+    "lighting",
+    "spawn",
+    "water",
+    "biome_transition",
+    "ecosystem"
+  ]
+}
