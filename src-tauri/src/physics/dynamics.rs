@@ -1,6 +1,6 @@
 use crate::ai::cpg::{CpgOscillator, TimeStep};
 use crate::core::ecs::{
-    JointAxis, ParentAgent, Position, Prey, Rotation, Segment, SegmentJointForce, Velocity,
+    JointAxis, ParentAgent, Position, Predator, Prey, Rotation, Segment, SegmentJointForce, Velocity,
 };
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};
@@ -36,6 +36,7 @@ pub fn resolve_joints_system(
         Option<&mut SegmentJointForce>,
     )>,
     time_step: Res<TimeStep>,
+    bounds: Option<Res<crate::core::ecs::MapBounds>>,
 ) {
     let dt = time_step.0;
     for (child_entity, constraint, opt_axis, opt_cpg, opt_joint_force) in joint_query.iter_mut() {
@@ -47,7 +48,8 @@ pub fn resolve_joints_system(
             // Update child orientation
             if let (Some(axis), Some(cpg)) = (opt_axis, opt_cpg) {
                 let axis_val = axis.0;
-                let target_rel_rot = Quat::from_axis_angle(axis_val.normalize(), cpg.output);
+                let axis_norm = axis_val.try_normalize().unwrap_or(Vec3::Y);
+                let target_rel_rot = Quat::from_axis_angle(axis_norm, cpg.output);
                 let r_target = parent_rot.0 * target_rel_rot;
                 child_rot.0 = child_rot
                     .0
@@ -59,8 +61,26 @@ pub fn resolve_joints_system(
             let p_joint_child =
                 child_pos.0 - child_rot.0 * Vec3::new(0.0, 0.0, child_segment.length / 2.0);
 
-            // Calculate displacement error
-            let e_joint = p_joint_parent - p_joint_child;
+            // Calculate displacement error with minimum image convention across toroidal bounds
+            let mut e_joint = p_joint_parent - p_joint_child;
+            if let Some(ref b) = bounds {
+                let x_range = b.max.x - b.min.x;
+                let z_range = b.max.z - b.min.z;
+                if x_range > 0.0 {
+                    if e_joint.x > x_range * 0.5 {
+                        e_joint.x -= x_range;
+                    } else if e_joint.x < -x_range * 0.5 {
+                        e_joint.x += x_range;
+                    }
+                }
+                if z_range > 0.0 {
+                    if e_joint.z > z_range * 0.5 {
+                        e_joint.z -= z_range;
+                    } else if e_joint.z < -z_range * 0.5 {
+                        e_joint.z += z_range;
+                    }
+                }
+            }
 
             // Calculate spring-damper force
             let f_spring =
@@ -91,6 +111,7 @@ pub fn integrate_physics_system(
     )>,
     agent_query: Query<&crate::ai::hrrl::HomeostaticState>,
     prey_query: Query<&Prey>,
+    predator_query: Query<&Predator>,
     time_step: Res<TimeStep>,
     segment_query: Query<(Entity, &ParentAgent, &Segment)>,
     mut oscillator_query: Query<&mut CpgOscillator>,
@@ -150,8 +171,8 @@ pub fn integrate_physics_system(
                 false
             }
         } else if let Ok(homeo) = agent_query.get(entity) {
-            let is_prey = prey_query.get(entity).is_ok();
-            is_prey && homeo.energy <= 0.0
+            let is_agent = prey_query.get(entity).is_ok() || predator_query.get(entity).is_ok();
+            is_agent && homeo.energy <= 0.0
         } else {
             false
         };

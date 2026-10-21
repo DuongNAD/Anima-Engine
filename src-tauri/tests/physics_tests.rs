@@ -2,8 +2,8 @@ mod common;
 
 use anima_engine_lib::ai::cpg::{update_cpg_system, CpgOscillator, TimeStep};
 use anima_engine_lib::core::ecs::{
-    energy_decay_system, init_world, wrap_coordinates_system, JointAxis, MapBounds, Position,
-    Rotation, Segment, Velocity,
+    energy_decay_system, init_world, wrap_coordinates_system, JointAxis, MapBounds, ParentAgent,
+    Position, Rotation, Segment, Velocity,
 };
 use anima_engine_lib::physics::{
     integrate_physics_system, rebuild_spatial_grid_system, resolve_joints_system, JointConstraint,
@@ -672,5 +672,222 @@ fn test_decoupled_systems_zero_allocation() {
         allocs, 0,
         "Decoupled hot path loop should perform 0 heap allocations, but made {}",
         allocs
+    );
+}
+
+#[test]
+fn test_zero_joint_axis_no_nan() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    world.insert_resource(TimeStep(0.016));
+
+    let parent = world
+        .spawn((
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 0,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+        ))
+        .id();
+
+    let child = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 2.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::ZERO),
+            Segment {
+                id: 1,
+                length: 2.0,
+                radius: 0.5,
+                mass: 1.0,
+            },
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::ZERO,
+                force: Vec3::ZERO,
+            },
+            JointConstraint {
+                parent_entity: parent,
+                anchor_offset: Vec3::new(0.0, 0.0, 1.0),
+                stiffness: 100.0,
+                damping: 10.0,
+            },
+            JointAxis(Vec3::ZERO), // Degenerate zero axis
+            CpgOscillator::new(1.0, 0.5),
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems((
+        update_cpg_system,
+        resolve_joints_system.after(update_cpg_system),
+    ));
+
+    for _ in 0..10 {
+        schedule.run(&mut world);
+    }
+
+    let child_rot = world.get::<Rotation>(child).unwrap().0;
+    assert!(
+        child_rot.is_finite(),
+        "Rotation must remain finite under Vec3::ZERO joint axis, got: {:?}",
+        child_rot
+    );
+    assert!(
+        !child_rot.x.is_nan()
+            && !child_rot.y.is_nan()
+            && !child_rot.z.is_nan()
+            && !child_rot.w.is_nan(),
+        "Child rotation must not contain NaN"
+    );
+}
+
+#[test]
+fn test_predator_energy_depletion_stops_movement() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    world.insert_resource(TimeStep(0.016));
+
+    let predator = world
+        .spawn((
+            anima_engine_lib::core::ecs::Agent,
+            anima_engine_lib::core::ecs::Predator,
+            Position(Vec3::ZERO),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::new(5.0, 0.0, 0.0)),
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::new(5.0, 0.0, 0.0),
+                force: Vec3::new(20.0, 0.0, 0.0),
+            },
+            anima_engine_lib::ai::hrrl::HomeostaticState {
+                energy: 0.0, // Depleted predator
+                energy_target: 100.0,
+                hydration: 100.0,
+                hydration_target: 100.0,
+                temperature: 37.0,
+                temp_target: 37.0,
+                previous_deviation: 0.0,
+            },
+        ))
+        .id();
+
+    let child = world
+        .spawn((
+            ParentAgent(predator),
+            Position(Vec3::new(0.0, 0.0, 1.0)),
+            Rotation(Quat::IDENTITY),
+            Velocity(Vec3::new(5.0, 0.0, 0.0)),
+            RigidBody {
+                mass: 1.0,
+                velocity: Vec3::new(5.0, 0.0, 0.0),
+                force: Vec3::new(20.0, 0.0, 0.0),
+            },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(integrate_physics_system);
+    schedule.run(&mut world);
+
+    let pred_vel = world.get::<Velocity>(predator).unwrap().0;
+    let pred_rb = world.get::<RigidBody>(predator).unwrap();
+    let child_vel = world.get::<Velocity>(child).unwrap().0;
+    let child_rb = world.get::<RigidBody>(child).unwrap();
+
+    assert_eq!(
+        pred_vel,
+        Vec3::ZERO,
+        "Predator velocity must be zeroed when energy <= 0.0"
+    );
+    assert_eq!(
+        pred_rb.velocity,
+        Vec3::ZERO,
+        "Predator rigid body velocity must be zeroed"
+    );
+    assert_eq!(
+        pred_rb.force,
+        Vec3::ZERO,
+        "Predator rigid body force must be zeroed"
+    );
+
+    assert_eq!(
+        child_vel,
+        Vec3::ZERO,
+        "Child segment velocity must be zeroed when parent is depleted"
+    );
+    assert_eq!(
+        child_rb.velocity,
+        Vec3::ZERO,
+        "Child segment rigid body velocity must be zeroed"
+    );
+    assert_eq!(
+        child_rb.force,
+        Vec3::ZERO,
+        "Child segment rigid body force must be zeroed"
+    );
+}
+
+// The agent carries its own SpatialCollider (`evolution/genotype.rs`) and `ai/model.rs` casts the
+// sensor ray from that same Position. If `intersect_sphere` reports a hit for a ray starting inside
+// a sphere, `raycast` returns the agent itself at distance 0, `ai/model.rs` discards it as a
+// self-collision, and the agent sees nothing — on every ray, every tick, with the whole suite green.
+#[test]
+fn sensor_ray_from_agent_centre_sees_past_its_own_collider() {
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut world = World::new();
+    let bounds = MapBounds {
+        min: Vec3::new(-100.0, 0.0, -100.0),
+        max: Vec3::new(100.0, 10.0, 100.0),
+    };
+    world.insert_resource(bounds);
+    world.insert_resource(SpatialHashGrid::new_prepopulated(10.0, &bounds));
+
+    let agent = world
+        .spawn((Position(Vec3::ZERO), SpatialCollider { radius: 0.5 }))
+        .id();
+    let food = world
+        .spawn((
+            Position(Vec3::new(0.0, 0.0, 4.0)),
+            SpatialCollider { radius: 0.5 },
+        ))
+        .id();
+
+    let mut schedule = Schedule::default();
+    schedule.add_systems(rebuild_spatial_grid_system);
+    schedule.run(&mut world);
+
+    let mut system_state: bevy_ecs::system::SystemState<Query<(&Position, &SpatialCollider)>> =
+        bevy_ecs::system::SystemState::new(&mut world);
+    let query = system_state.get(&world);
+    let grid = world.get_resource::<SpatialHashGrid>().unwrap();
+
+    let ray = Ray3D {
+        origin: Vec3::ZERO,
+        direction: Vec3::new(0.0, 0.0, 1.0),
+    };
+    let hit = grid
+        .raycast(&ray, 10.0, &bounds, &query)
+        .expect("the ray should reach the food ahead");
+
+    assert_eq!(
+        hit.entity, food,
+        "the nearest hit must be the food ahead, not the agent's own collider at the ray origin"
+    );
+    assert_ne!(hit.entity, agent, "an agent must not sense itself");
+    assert!(
+        (hit.distance - 3.5).abs() < 1e-3,
+        "expected the food surface at 3.5, got {}",
+        hit.distance
     );
 }
