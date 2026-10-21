@@ -23,3 +23,18 @@ For `/teamwork-preview`, use the roles Geometry & Collision, Navigation & Gamepl
 Ecology & World Coherence, Visual & Lighting, and Integrator. The Integrator owns the
 final evidence table and reruns all gates.
 <!-- END ANIMAL MAP VISION -->
+
+<!-- BEGIN ACTIVE WORK HANDOFF -->
+# Active work handoff
+
+When the user opens this project in a new session and says `làm tiếp đi`, `tiếp tục`,
+`continue`, or `resume` without naming another task:
+
+1. Read `E:\Project\Anima-Engine\.worktrees\feature-anima-menagerie\docs\ai\handoffs\ACTIVE.md`.
+2. Resume the branch/worktree named in that file; do not restart the feature from scratch.
+3. Inspect `git status` and current feature docs before editing. Preserve all root-worktree and user changes.
+4. Execute the first unchecked priority in the handoff autonomously, using TDD and the required map-review gates.
+5. Update the handoff with verified state and the next concrete priority before ending the session.
+
+An explicit new user request overrides this default resume target.
+<!-- END ACTIVE WORK HANDOFF -->
