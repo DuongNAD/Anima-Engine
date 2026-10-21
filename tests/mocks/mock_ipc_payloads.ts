@@ -379,6 +379,148 @@ export const mockSimulationTickPayload: SimulationTickPayload = {
   }
 };
 
+// --- Milestone 4 Research Dashboard Mock Data ---
+import type { DemographicCensusState } from '../../src/types/generated/DemographicCensusState';
+import type { EnergyFluxReport } from '../../src/types/generated/EnergyFluxReport';
+import type { SpatialDensityReport } from '../../src/types/generated/SpatialDensityReport';
+import type { ScientificExportResponse } from '../../src/types/generated/ScientificExportResponse';
 
+export const mockDemographicCensusState: DemographicCensusState = {
+  ageCohorts: [
+    { minAge: 0, maxAge: 50, count: 12 },
+    { minAge: 51, maxAge: 150, count: 9 },
+    { minAge: 151, maxAge: 300, count: 3 },
+    { minAge: 301, maxAge: 1000, count: 1 },
+  ],
+  mortalityCauses: [
+    { cause: 'Starvation', count: 4n },
+    { cause: 'Predation', count: 12n },
+    { cause: 'Senescence', count: 2n },
+    { cause: 'Toxicity', count: 0n },
+    { cause: 'Pathogen', count: 0n },
+  ],
+  fecundityByAge: [
+    { ageGroup: '0-50', births: 15 },
+    { ageGroup: '51-150', births: 25 },
+    { ageGroup: '151-300', births: 5 },
+  ],
+  shannon: 0.52,
+  simpson: 0.41,
+  preyCount: 20,
+  predatorCount: 4,
+  maleCount: 12,
+  femaleCount: 12,
+  sexRatio: 1.0,
+  totalBirths: 45n,
+  totalDeaths: 18n,
+};
 
+export const mockEnergyFluxReport: EnergyFluxReport = {
+  nodes: [
+    { id: 'sun', label: 'Solar Radiance', biomass: 10000.0 },
+    { id: 'plants', label: 'Primary Producers', biomass: 2500.0 },
+    { id: 'herbivores', label: 'Herbivores / Prey', biomass: 450.0 },
+    { id: 'carnivores', label: 'Carnivores / Predators', biomass: 60.0 },
+    { id: 'detritus', label: 'Detritus & Soil Organic', biomass: 300.0 },
+    { id: 'metabolic_sink', label: 'Metabolic Heat Dissipation', biomass: 125.0 },
+  ],
+  links: [
+    { source: 'sun', target: 'plants', value: 500.0 },
+    { source: 'plants', target: 'herbivores', value: 85.0 },
+    { source: 'herbivores', target: 'carnivores', value: 18.0 },
+    { source: 'plants', target: 'detritus', value: 20.0 },
+    { source: 'herbivores', target: 'detritus', value: 10.0 },
+    { source: 'carnivores', target: 'detritus', value: 5.0 },
+    { source: 'detritus', target: 'plants', value: 15.0 },
+    { source: 'herbivores', target: 'metabolic_sink', value: 65.0 },
+    { source: 'carnivores', target: 'metabolic_sink', value: 15.0 },
+  ],
+  respirationLoss: 125.0,
+  totalSystemEnergy: 3310.0,
+  energyDriftPercent: 0.002,
+};
 
+export const mockSpatialDensityReport: SpatialDensityReport = {
+  width: 16,
+  height: 16,
+  preyDensity: new Array(256).fill(0.25),
+  predatorDensity: new Array(256).fill(0.05),
+  vegetationDensity: new Array(256).fill(0.8),
+  predationHotspots: new Array(256).fill(0.02),
+};
+
+export const mockScientificExportResponse: ScientificExportResponse = {
+  provenance: {
+    commitHash: 'c320fc0',
+    buildId: 'anima-build-2026',
+    seed: 42n,
+    durationTicks: 5000n,
+    engineVersion: '0.1.0',
+    timestampUtc: '2026-08-16T03:00:00Z',
+    architecture: 'x86_64',
+    os: 'windows',
+    manifestFingerprint: 123456n,
+    lawFingerprint: 789012n,
+    registryFingerprint: 345678n,
+  },
+  csvContent: 'tick,plants_biomass,prey_biomass,predator_biomass,detritus_biomass,total_energy,energy_residual\n100,500.0,300.0,50.0,100.0,950.0,0.0001\n200,520.0,290.0,55.0,95.0,960.0,0.0001',
+  jsonContent: JSON.stringify({
+    schemaVersion: 1,
+    provenance: {
+      commitHash: 'c320fc0',
+      buildId: 'anima-build-2026',
+      seed: 42,
+      durationTicks: 5000,
+      engineVersion: '0.1.0',
+      timestampUtc: '2026-08-16T03:00:00Z',
+      architecture: 'x86_64',
+      os: 'windows',
+    },
+  }, null, 2),
+  newickTree: '((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);',
+  writtenPath: 'C:\\Users\\Admin\\AppData\\Roaming\\anima-engine\\exports\\dataset_42.json',
+};
+
+export const mockNewickTree = '((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);';
+
+export interface CausalBranchNode {
+  id: number;
+  parentId: number | null;
+  forkTick: number;
+  label: string;
+  seedStrategy: string;
+  status: 'Pending' | 'Completed' | 'Failed';
+  children: number[];
+}
+
+export interface CausalBranchTreeState {
+  rootRunId: number;
+  nodes: CausalBranchNode[];
+  divergenceMetrics: {
+    branchA: number;
+    branchB: number;
+    biomassDelta: number;
+    populationDelta: number;
+    shannonDivergence: number;
+    dtwDistance: number;
+    rmsd: number;
+  };
+}
+
+export const mockCausalBranchTreeState: CausalBranchTreeState = {
+  rootRunId: 1001,
+  nodes: [
+    { id: 1001, parentId: null, forkTick: 0, label: 'Baseline (Control)', seedStrategy: 'InheritStream', status: 'Completed', children: [1002, 1003] },
+    { id: 1002, parentId: 1001, forkTick: 500, label: 'Intervention: Drought +30%', seedStrategy: 'DerivedStream (1)', status: 'Completed', children: [] },
+    { id: 1003, parentId: 1001, forkTick: 500, label: 'Intervention: Nutrient Spike', seedStrategy: 'DerivedStream (2)', status: 'Completed', children: [] },
+  ],
+  divergenceMetrics: {
+    branchA: 1002,
+    branchB: 1003,
+    biomassDelta: -145.2,
+    populationDelta: -18,
+    shannonDivergence: 0.14,
+    dtwDistance: 24.8,
+    rmsd: 12.3,
+  },
+};
