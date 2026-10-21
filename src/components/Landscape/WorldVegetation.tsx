@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
@@ -148,6 +148,7 @@ const TypedInstances: React.FC<{
       args={[geometry, null, indices.length]}
       name={`flora-${type}`}
       castShadow={!lowQuality && CASTS_SHADOW.has(type)}
+      frustumCulled={false}
     >
       <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
     </instancedMesh>
@@ -164,6 +165,13 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   quality = 'high',
 }) => {
   const geoms = useMemo(() => TYPES.map((type) => ({ type, geometry: makeFloraGeometry(type) })), []);
+
+  useEffect(() => {
+    return () => {
+      geoms.forEach((d) => d.geometry.dispose());
+    };
+  }, [geoms]);
+
   return (
     <group name="world-vegetation">
       {geoms.map((d) => (

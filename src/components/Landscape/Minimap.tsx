@@ -92,13 +92,16 @@ export const Minimap: React.FC<MinimapProps> = ({
 
     let active = true;
 
+    const imgData = (typeof ctx.createImageData === 'function') ? ctx.createImageData(180, 180) : null;
+    if (imgData) {
+      imgData.data.set(biomeImageData);
+    }
+
     const renderLoop = () => {
       if (!active) return;
 
       // 1. Draw base terrain image safely
-      if (typeof ctx.createImageData === 'function' && typeof ctx.putImageData === 'function') {
-        const imgData = ctx.createImageData(180, 180);
-        imgData.data.set(biomeImageData);
+      if (imgData && typeof ctx.putImageData === 'function') {
         ctx.putImageData(imgData, 0, 0);
       } else {
         // Fallback for mock contexts in testing environment
