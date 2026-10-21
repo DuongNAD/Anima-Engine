@@ -80,9 +80,27 @@ impl Curve {
     }
 }
 
+/// A numeric identifier for a species or morphotype.
+pub type SpeciesId = u32;
+
+/// Detailed modification payload for a genetic / trait injection.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum TraitMod {
+    /// Scale all segment lengths and radii by a factor.
+    ScaleMorphology(f32),
+    /// Multiply mass (affects metabolic scaling).
+    MassMultiplier(f32),
+    /// Shift basal metabolic efficiency (fractional delta).
+    MetabolicEfficiencyDelta(f32),
+    /// Alter sensory range / field of view multiplier.
+    SensoryRangeMultiplier(f32),
+    /// Direct mutation of brain weight biases or CPG frequency parameters.
+    BrainParameterShift { layer_index: u32, bias_delta: f32 },
+}
+
 /// What an intervention does. Kinds mirror the plan's impact matrix (§6); more are added as the
 /// abiotic/biotic systems land in M3–M8. The `f32` payload is interpreted per-kind via `intensity`.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum InterventionKind {
     /// Fractional change to precipitation (intensity 0.3 = −30% at full strength; sign in `signed`).
     RainfallDelta,
@@ -97,6 +115,26 @@ pub enum InterventionKind {
     RemovePredators,
     /// Nutrient/fertility boost in the region.
     AddNutrient,
+    /// Targeted genetic/trait injection into a population.
+    GeneticInjection {
+        target_species: Option<SpeciesId>,
+        trait_modifications: Vec<TraitMod>,
+        count: usize,
+    },
+    /// Localized toxicity plume affecting environmental dynamics and mortality.
+    ToxicityPlume {
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
+        toxicity_level: f32,
+        decay_rate: f32,
+    },
+    /// Pathogenic transmission / epidemic perturbation.
+    PathogenTransmission {
+        pathogen_id: u32,
+        transmission_rate: f32,
+        mortality_multiplier: f32,
+    },
 }
 
 /// A declarative intervention: apply `kind` at `intensity` (shaped by `curve`) to `region`, over

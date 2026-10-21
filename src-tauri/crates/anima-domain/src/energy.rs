@@ -49,7 +49,7 @@ pub enum Compartment {
 
 /// Why energy moved. Carried on every transaction so a leak can be attributed to a system rather
 /// than merely detected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EnergyEvent {
     /// An animal ate a spawned food item.
     Feeding,
@@ -57,9 +57,42 @@ pub enum EnergyEvent {
     Fruiting,
     /// Epoch replacement funded a replacement individual (D06: not a birth).
     Replacement,
+    /// Biological continuous reproduction: parent energy split to offspring + overhead.
+    BiologicalReproduction,
+    /// Predation capture and assimilation transfer.
+    Predation,
+    /// Herbivore grazing from plant biomass field.
+    Grazing,
+    /// Respiration and metabolic burn dissipation into detritus.
+    MetabolicDecay,
+    /// Corpse mortality return to detritus.
+    Mortality,
     /// A declared intervention moved energy.
     Intervention,
 }
+
+/// Intra-tick and cumulative energy flux matrix across trophic compartments.
+#[cfg_attr(feature = "bevy", derive(bevy_ecs::prelude::Resource))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct EnergyFluxMatrix {
+    /// Inflows from detritus into plants (primary production / regrowth)
+    pub detritus_to_plants: f64,
+    /// Inflows from plants into herbivores (grazing)
+    pub plants_to_herbivores: f64,
+    /// Inflows from herbivores into predators (predation)
+    pub herbivores_to_predators: f64,
+    /// Respiration / metabolic dissipation from animals to detritus
+    pub animals_to_detritus: f64,
+    /// Corpse decomposition returned to detritus
+    pub mortality_to_detritus: f64,
+    /// Reproductive overhead/waste returned to detritus
+    pub reproduction_waste_to_detritus: f64,
+    /// Direct claims on detritus (food, fruit)
+    pub detritus_to_animals: f64,
+    /// Cumulative sum of all transfers
+    pub total_flux: f64,
+}
+
 
 /// Absolute tolerance, in EU, for the closed-energy residual of a whole live run.
 ///
