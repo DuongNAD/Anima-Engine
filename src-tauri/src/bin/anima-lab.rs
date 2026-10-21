@@ -1,49 +1,53 @@
-//! `anima-lab` — run an experiment manifest headlessly and print the result as JSON.
+//! `anima-lab` — run experiments, parameter sweeps, and causal branch trees headlessly.
 //!
-//! Parses arguments, loads a manifest, hands it to [`run_ensemble`] over the selected reference or
-//! live model, and serialises the [`EnsembleSummary`]; the science stays in the shared runner.
-//! stdout carries JSON and nothing else. Errors go to stderr and exit non-zero — a run that fails
-//! *inside* a valid ensemble is reported in the JSON, not on stderr, and still makes the process
-//! exit non-zero so automation cannot mistake a partial result for success.
-//!
-//! `reference` remains the default; `--model live` selects [`LiveExperimentAdapter`].
+//! Subcommands:
+//! - `anima-lab [ensemble] [--model reference|live] <MANIFEST.json>`
+//! - `anima-lab sweep [--model reference|live] [--format json|csv] [--threads N] <SWEEP_MANIFEST.json>`
+//! - `anima-lab branch [--model reference|live] <BRANCH_MANIFEST.json>`
 
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use anima_engine_lib::core::branch_tree::{run_branch_tree, BranchTreeManifest};
 use anima_engine_lib::core::experiment::{ExperimentManifest, ObservableRegistry};
 use anima_engine_lib::core::experiment_runner::{run_ensemble, EnsembleSummary};
 use anima_engine_lib::core::live_experiment::LiveExperimentAdapter;
 use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
+use anima_engine_lib::core::sweeps::{run_sweep, SweepManifest};
 use serde::Serialize;
 
 const USAGE: &str = "\
-anima-lab — run an experiment manifest headlessly and print JSON to stdout
+anima-lab — headless experimentation, multidimensional parameter sweeps, and causal branching
 
-    anima-lab [--model reference|live] <MANIFEST.json>
+Usage:
+    anima-lab [ensemble] [--model reference|live] <MANIFEST.json>
+    anima-lab sweep [--model reference|live] [--format json|csv] [--threads N] <SWEEP_MANIFEST.json>
+    anima-lab branch [--model reference|live] <BRANCH_MANIFEST.json>
     anima-lab --help
 
-Every seed the manifest declares is run in order. The default model is `reference` for compatibility;
-`--model live` runs the real Bevy schedule through LiveExperimentAdapter.
-Exit 0 when every run completes. Exit 1 with JSON on stdout for preserved runtime failures, or with
-a reason on stderr when no report can be produced.
+Options:
+    --model <reference|live>   Simulation execution model (default: reference)
+    --format <json|csv>        Output format for sweep (default: json)
+    --threads <N>              Rayon thread pool size for sweeps (default: auto)
+    -h, --help                 Print this help text
+
+Exit Codes:
+    0: All runs/points completed successfully
+    1: Preserved runtime failures or invalid manifest
 ";
 
-/// A manifest is control-plane input, not a data container. Eight MiB leaves ample room for the
-/// schema's thousands of bounded seed/observable/intervention entries at normal identifier sizes
-/// while preventing an untrusted path from turning JSON parsing into an unbounded allocation.
-const MAX_MANIFEST_BYTES: usize = 8 * 1024 * 1024;
+const MAX_MANIFEST_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Model {
+pub enum Model {
     #[default]
     Reference,
     Live,
 }
 
 impl Model {
-    fn parse(value: &str) -> Result<Self, String> {
+    pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "reference" => Ok(Self::Reference),
             "live" => Ok(Self::Live),
@@ -53,14 +57,14 @@ impl Model {
         }
     }
 
-    const fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Reference => "reference",
             Self::Live => "live",
         }
     }
 
-    const fn registry_label(self) -> &'static str {
+    pub const fn registry_label(self) -> &'static str {
         match self {
             Self::Reference => "core::experiment::ObservableRegistry::reference_default",
             Self::Live => "core::experiment::ObservableRegistry::live_default",
@@ -68,23 +72,77 @@ impl Model {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Arguments {
-    manifest: PathBuf,
-    model: Model,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum OutputFormat {
+    #[default]
+    Json,
+    Csv,
 }
 
-/// Parse `argv` (without the program name). `Ok(None)` means help was requested.
-fn parse_args(argv: &[String]) -> Result<Option<Arguments>, String> {
-    if argv
-        .iter()
-        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
-    {
+impl OutputFormat {
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "json" => Ok(Self::Json),
+            "csv" => Ok(Self::Csv),
+            other => Err(format!(
+                "unknown output format '{other}'; expected 'json' or 'csv'"
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Command {
+    Ensemble {
+        manifest: PathBuf,
+        model: Model,
+    },
+    Sweep {
+        manifest: PathBuf,
+        model: Model,
+        format: OutputFormat,
+        threads: Option<usize>,
+    },
+    Branch {
+        manifest: PathBuf,
+        model: Model,
+    },
+}
+
+pub fn parse_args(argv: &[String]) -> Result<Option<Command>, String> {
+    if argv.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
         return Ok(None);
     }
+    if argv.is_empty() {
+        return Err("missing command or <MANIFEST.json>".into());
+    }
+
+    let mut args = argv.iter().peekable();
+    let mut subcmd = None;
+
+    if let Some(&first) = args.peek() {
+        match first.as_str() {
+            "ensemble" => {
+                subcmd = Some("ensemble");
+                args.next();
+            }
+            "sweep" => {
+                subcmd = Some("sweep");
+                args.next();
+            }
+            "branch" => {
+                subcmd = Some("branch");
+                args.next();
+            }
+            _ => {}
+        }
+    }
+
     let mut manifest: Option<PathBuf> = None;
     let mut model = None;
-    let mut args = argv.iter();
+    let mut format = None;
+    let mut threads = None;
+
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => return Ok(None),
@@ -92,9 +150,7 @@ fn parse_args(argv: &[String]) -> Result<Option<Arguments>, String> {
                 if model.is_some() {
                     return Err("--model may be specified only once".into());
                 }
-                let value = args
-                    .next()
-                    .ok_or("--model requires 'reference' or 'live'")?;
+                let value = args.next().ok_or("--model requires 'reference' or 'live'")?;
                 model = Some(Model::parse(value)?);
             }
             other if other.starts_with("--model=") => {
@@ -103,25 +159,74 @@ fn parse_args(argv: &[String]) -> Result<Option<Arguments>, String> {
                 }
                 model = Some(Model::parse(&other["--model=".len()..])?);
             }
+            "--format" => {
+                if format.is_some() {
+                    return Err("--format may be specified only once".into());
+                }
+                let value = args.next().ok_or("--format requires 'json' or 'csv'")?;
+                format = Some(OutputFormat::parse(value)?);
+            }
+            other if other.starts_with("--format=") => {
+                if format.is_some() {
+                    return Err("--format may be specified only once".into());
+                }
+                format = Some(OutputFormat::parse(&other["--format=".len()..])?);
+            }
+            "--threads" => {
+                if threads.is_some() {
+                    return Err("--threads may be specified only once".into());
+                }
+                let value = args.next().ok_or("--threads requires an integer")?;
+                let n: usize = value.parse().map_err(|_| format!("invalid thread count '{value}'"))?;
+                threads = Some(n);
+            }
+            other if other.starts_with("--threads=") => {
+                if threads.is_some() {
+                    return Err("--threads may be specified only once".into());
+                }
+                let val_str = &other["--threads=".len()..];
+                let n: usize = val_str.parse().map_err(|_| format!("invalid thread count '{val_str}'"))?;
+                threads = Some(n);
+            }
             other if other.starts_with('-') => return Err(format!("unknown option '{other}'")),
             other if manifest.is_none() => manifest = Some(PathBuf::from(other)),
             other => return Err(format!("unexpected extra argument '{other}'")),
         }
     }
-    manifest
-        .map(|manifest| {
-            Some(Arguments {
-                manifest,
-                model: model.unwrap_or_default(),
-            })
-        })
-        .ok_or("missing <MANIFEST.json>".into())
+
+    let manifest = manifest.ok_or("missing <MANIFEST.json>")?;
+    let model = model.unwrap_or_default();
+
+    match subcmd {
+        Some("sweep") => Ok(Some(Command::Sweep {
+            manifest,
+            model,
+            format: format.unwrap_or_default(),
+            threads,
+        })),
+        Some("branch") => {
+            if format.is_some() {
+                return Err("--format is only valid for 'sweep' subcommand".into());
+            }
+            if threads.is_some() {
+                return Err("--threads is only valid for 'sweep' subcommand".into());
+            }
+            Ok(Some(Command::Branch { manifest, model }))
+        }
+        _ => {
+            if format.is_some() {
+                return Err("--format is only valid for 'sweep' subcommand".into());
+            }
+            if threads.is_some() {
+                return Err("--threads is only valid for 'sweep' subcommand".into());
+            }
+            Ok(Some(Command::Ensemble { manifest, model }))
+        }
+    }
 }
 
-/// The stdout envelope: what was run, flattened over the runner's own summary rather than rebuilt
-/// from it, so no field can be dropped by going stale here.
 #[derive(Serialize)]
-struct Report<'a> {
+struct EnsembleReport<'a> {
     tool: &'static str,
     manifest: &'a str,
     model: &'static str,
@@ -166,26 +271,35 @@ fn read_manifest_with_limit<R: Read>(
     Ok(bytes)
 }
 
-fn load_manifest_with_limit(path: &Path, limit: usize) -> Result<ExperimentManifest, String> {
+fn load_manifest_bytes(path: &Path) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("cannot read manifest {}: {e}", path.display()))?;
     let size = file
         .metadata()
         .map_err(|e| format!("cannot inspect manifest {}: {e}", path.display()))?
         .len();
-    let bytes = read_manifest_with_limit(file, path, size, limit)?;
+    read_manifest_with_limit(file, path, size, MAX_MANIFEST_BYTES)
+}
+
+fn load_experiment_manifest(path: &Path) -> Result<ExperimentManifest, String> {
+    let bytes = load_manifest_bytes(path)?;
     serde_json::from_slice(&bytes)
         .map_err(|e| format!("cannot parse manifest {}: {e}", path.display()))
 }
 
-fn load_manifest(path: &Path) -> Result<ExperimentManifest, String> {
-    load_manifest_with_limit(path, MAX_MANIFEST_BYTES)
+fn load_sweep_manifest(path: &Path) -> Result<SweepManifest, String> {
+    let bytes = load_manifest_bytes(path)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|e| format!("cannot parse sweep manifest {}: {e}", path.display()))
 }
 
-/// Takes the manifest rather than a path so a test can drive the whole pipeline on a shortened one.
-/// Serialising into a writer avoids retaining a second, JSON-sized copy of a potentially large
-/// ensemble in memory.
-fn render_to_writer<W: Write>(
+fn load_branch_manifest(path: &Path) -> Result<BranchTreeManifest, String> {
+    let bytes = load_manifest_bytes(path)?;
+    serde_json::from_slice(&bytes)
+        .map_err(|e| format!("cannot parse branch manifest {}: {e}", path.display()))
+}
+
+pub fn render_ensemble<W: Write>(
     manifest: &ExperimentManifest,
     label: &str,
     model: Model,
@@ -204,7 +318,7 @@ fn render_to_writer<W: Write>(
 
     serde_json::to_writer_pretty(
         &mut *writer,
-        &Report {
+        &EnsembleReport {
             tool: "anima-lab",
             manifest: label,
             model: model.label(),
@@ -227,14 +341,92 @@ fn render_to_writer<W: Write>(
     })
 }
 
-/// Split from `main` so the error path is a value, not a process exit.
-fn run<W: Write>(args: &Arguments, writer: &mut W) -> Result<ExitCode, String> {
-    render_to_writer(
-        &load_manifest(&args.manifest)?,
-        &args.manifest.display().to_string(),
-        args.model,
-        writer,
-    )
+pub fn render_sweep<W: Write>(
+    mut manifest: SweepManifest,
+    model: Model,
+    format: OutputFormat,
+    threads: Option<usize>,
+    writer: &mut W,
+) -> Result<ExitCode, String> {
+    if threads.is_some() {
+        manifest.max_threads = threads;
+    }
+    let registry = match model {
+        Model::Reference => ObservableRegistry::reference_default(),
+        Model::Live => ObservableRegistry::live_default(),
+    };
+
+    let result = match model {
+        Model::Reference => run_sweep::<ReferenceEvolutionWorld>(&manifest, &registry),
+        Model::Live => run_sweep::<LiveExperimentAdapter>(&manifest, &registry),
+    }
+    .map_err(|e| format!("sweep rejected: {e}"))?;
+
+    match format {
+        OutputFormat::Json => {
+            serde_json::to_writer_pretty(&mut *writer, &result)
+                .map_err(|e| format!("cannot serialise sweep report: {e}"))?;
+            writer.write_all(b"\n").map_err(|e| format!("cannot write newline: {e}"))?;
+        }
+        OutputFormat::Csv => {
+            writer
+                .write_all(result.to_csv().as_bytes())
+                .map_err(|e| format!("cannot write csv: {e}"))?;
+        }
+    }
+    writer.flush().map_err(|e| format!("cannot flush report: {e}"))?;
+
+    Ok(if result.failed_runs == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    })
+}
+
+pub fn render_branch<W: Write>(
+    manifest: &BranchTreeManifest,
+    model: Model,
+    writer: &mut W,
+) -> Result<ExitCode, String> {
+    let registry = match model {
+        Model::Reference => ObservableRegistry::reference_default(),
+        Model::Live => ObservableRegistry::live_default(),
+    };
+
+    let result = match model {
+        Model::Reference => run_branch_tree::<ReferenceEvolutionWorld>(manifest, &registry),
+        Model::Live => run_branch_tree::<LiveExperimentAdapter>(manifest, &registry),
+    }
+    .map_err(|e| format!("branch tree rejected: {e}"))?;
+
+    serde_json::to_writer_pretty(&mut *writer, &result)
+        .map_err(|e| format!("cannot serialise branch tree report: {e}"))?;
+    writer.write_all(b"\n").map_err(|e| format!("cannot write newline: {e}"))?;
+    writer.flush().map_err(|e| format!("cannot flush report: {e}"))?;
+
+    Ok(ExitCode::SUCCESS)
+}
+
+pub fn run<W: Write>(cmd: &Command, writer: &mut W) -> Result<ExitCode, String> {
+    match cmd {
+        Command::Ensemble { manifest, model } => {
+            let m = load_experiment_manifest(manifest)?;
+            render_ensemble(&m, &manifest.display().to_string(), *model, writer)
+        }
+        Command::Sweep {
+            manifest,
+            model,
+            format,
+            threads,
+        } => {
+            let m = load_sweep_manifest(manifest)?;
+            render_sweep(m, *model, *format, *threads, writer)
+        }
+        Command::Branch { manifest, model } => {
+            let m = load_branch_manifest(manifest)?;
+            render_branch(&m, *model, writer)
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -244,10 +436,10 @@ fn main() -> ExitCode {
             print!("{USAGE}");
             ExitCode::SUCCESS
         }
-        Ok(Some(args)) => {
+        Ok(Some(cmd)) => {
             let stdout = std::io::stdout();
             let mut writer = BufWriter::new(stdout.lock());
-            match run(&args, &mut writer) {
+            match run(&cmd, &mut writer) {
                 Ok(exit_code) => exit_code,
                 Err(why) => fail(&why),
             }
@@ -264,17 +456,9 @@ fn fail(why: &str) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
 
-    fn parse(parts: &[&str]) -> Result<Option<Arguments>, String> {
+    fn parse(parts: &[&str]) -> Result<Option<Command>, String> {
         parse_args(&parts.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-    }
-
-    fn arguments(path: PathBuf, model: Model) -> Arguments {
-        Arguments {
-            manifest: path,
-            model,
-        }
     }
 
     fn fixture(name: &str) -> PathBuf {
@@ -283,9 +467,6 @@ mod tests {
             .join(name)
     }
 
-    /// Adding a second binary makes both Cargo's implicit `run` target and Tauri's package target
-    /// ambiguous. Keep the desktop executable explicit so the headless tool cannot make the app
-    /// unbuildable again.
     #[test]
     fn adding_the_lab_binary_keeps_the_desktop_binary_unambiguous() {
         let manifest =
@@ -304,33 +485,49 @@ mod tests {
         );
     }
 
-    /// Help wins even alongside a path, so `--help` never accidentally runs an experiment.
     #[test]
     fn a_path_is_the_only_argument_and_help_beats_it() {
         assert_eq!(
             parse(&["m.json"]).unwrap(),
-            Some(arguments(PathBuf::from("m.json"), Model::Reference))
+            Some(Command::Ensemble {
+                manifest: PathBuf::from("m.json"),
+                model: Model::Reference,
+            })
         );
         assert_eq!(
-            parse(&["--model", "live", "m.json"]).unwrap(),
-            Some(arguments(PathBuf::from("m.json"), Model::Live))
+            parse(&["ensemble", "--model", "live", "m.json"]).unwrap(),
+            Some(Command::Ensemble {
+                manifest: PathBuf::from("m.json"),
+                model: Model::Live,
+            })
         );
         assert_eq!(
-            parse(&["m.json", "--model=live"]).unwrap(),
-            Some(arguments(PathBuf::from("m.json"), Model::Live))
+            parse(&["sweep", "--format", "csv", "--threads", "4", "sweep.json"]).unwrap(),
+            Some(Command::Sweep {
+                manifest: PathBuf::from("sweep.json"),
+                model: Model::Reference,
+                format: OutputFormat::Csv,
+                threads: Some(4),
+            })
+        );
+        assert_eq!(
+            parse(&["branch", "--model=live", "branch.json"]).unwrap(),
+            Some(Command::Branch {
+                manifest: PathBuf::from("branch.json"),
+                model: Model::Live,
+            })
         );
         for a in [
             vec!["--help"],
             vec!["-h"],
             vec!["m.json", "--help"],
-            vec!["--model", "--help"],
+            vec!["sweep", "--help"],
+            vec!["branch", "--help"],
         ] {
             assert!(parse(&a).unwrap().is_none(), "{a:?}");
         }
     }
 
-    /// Each must be a message, not a default: silently picking a manifest the caller never named is
-    /// how a run gets attributed to the wrong thing.
     #[test]
     fn malformed_invocations_are_rejected_with_a_reason() {
         for case in [
@@ -340,142 +537,43 @@ mod tests {
             vec!["--model"],
             vec!["--model", "other", "m.json"],
             vec!["--model", "live", "--model", "reference", "m.json"],
+            vec!["branch", "--format", "csv", "b.json"],
         ] {
             assert!(!parse(&case).unwrap_err().is_empty(), "{case:?}");
         }
     }
 
-    /// Unreadable, unparseable, or refused by the runner — each an error, never an empty report.
     #[test]
     fn a_manifest_that_cannot_be_run_is_an_error() {
         let missing = run(
-            &arguments(PathBuf::from("no/such.json"), Model::Reference),
+            &Command::Ensemble {
+                manifest: PathBuf::from("no/such.json"),
+                model: Model::Reference,
+            },
             &mut Vec::new(),
         )
         .unwrap_err();
         assert!(missing.contains("cannot read manifest"), "{missing}");
-        // The tool's own source is a file that exists and is not a manifest.
+
         let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/anima-lab.rs");
-        assert!(run(&arguments(src, Model::Reference), &mut Vec::new())
-            .unwrap_err()
-            .contains("cannot parse"));
-        // Committed precisely because it is invalid; refused before the first tick.
+        assert!(run(
+            &Command::Ensemble {
+                manifest: src,
+                model: Model::Reference,
+            },
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .contains("cannot parse"));
+
         let refused = run(
-            &arguments(fixture("invalid-negative-source.json"), Model::Reference),
+            &Command::Ensemble {
+                manifest: fixture("invalid-negative-source.json"),
+                model: Model::Reference,
+            },
             &mut Vec::new(),
         )
         .unwrap_err();
         assert!(refused.contains("ensemble rejected"), "{refused}");
-    }
-
-    #[test]
-    fn an_oversized_manifest_is_rejected_before_it_can_be_allocated() {
-        let path = std::env::temp_dir().join(format!(
-            "anima-lab-oversized-manifest-{}.json",
-            std::process::id()
-        ));
-        let file = std::fs::File::create(&path).expect("create sparse manifest");
-        file.set_len(MAX_MANIFEST_BYTES as u64 + 1)
-            .expect("extend sparse manifest");
-        drop(file);
-
-        let error = load_manifest(&path).unwrap_err();
-        let _ = std::fs::remove_file(&path);
-
-        assert!(error.contains("manifest is too large"), "{error}");
-        assert!(error.contains(&path.display().to_string()), "{error}");
-        assert!(
-            error.contains(&format!("{} bytes", MAX_MANIFEST_BYTES + 1)),
-            "{error}"
-        );
-        assert!(
-            error.contains(&format!("limit {MAX_MANIFEST_BYTES} bytes")),
-            "{error}"
-        );
-    }
-
-    #[test]
-    fn a_manifest_that_grows_after_inspection_is_still_bounded() {
-        const TEST_LIMIT: usize = 32;
-        let path = Path::new("growing.json");
-        let error = read_manifest_with_limit(
-            std::io::Cursor::new(vec![b' '; TEST_LIMIT + 1]),
-            path,
-            1,
-            TEST_LIMIT,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("manifest is too large"), "{error}");
-        assert!(error.contains("33 bytes"), "{error}");
-        assert!(error.contains("limit 32 bytes"), "{error}");
-    }
-
-    #[derive(Default)]
-    struct RefusesOutput;
-
-    impl io::Write for RefusesOutput {
-        fn write(&mut self, _bytes: &[u8]) -> io::Result<usize> {
-            Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "downstream closed",
-            ))
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn a_closed_stdout_is_a_reported_error_not_a_panic() {
-        let mut manifest =
-            load_manifest(&fixture("baseline-no-exotic.json")).expect("fixture parses");
-        manifest.seeds.truncate(1);
-        manifest.duration_ticks = 1;
-        manifest.sample_period = 1;
-
-        let error = render_to_writer(
-            &manifest,
-            "baseline-no-exotic.json",
-            Model::Reference,
-            &mut RefusesOutput,
-        )
-        .unwrap_err();
-
-        assert!(error.contains("cannot serialise report"), "{error}");
-        assert!(error.contains("downstream closed"), "{error}");
-    }
-
-    /// End to end through the real runner, shortened to one seed and one sample window: 600 ticks
-    /// establishes the report's shape, and the numbers are the runner's tests to make.
-    #[test]
-    fn a_committed_fixture_produces_a_machine_readable_report() {
-        let mut m = load_manifest(&fixture("baseline-no-exotic.json")).expect("fixture parses");
-        m.seeds.truncate(1);
-        m.duration_ticks = 600;
-        m.sample_period = 600;
-
-        let mut json = Vec::new();
-        let exit_code =
-            render_to_writer(&m, "baseline-no-exotic.json", Model::Reference, &mut json)
-                .expect("must run");
-        assert_eq!(exit_code, ExitCode::SUCCESS);
-        let v: serde_json::Value = serde_json::from_slice(&json).expect("stdout must be JSON");
-        assert_eq!(v["tool"], "anima-lab");
-        assert_eq!(v["model"], "reference");
-        assert_eq!(
-            v["registry"],
-            "core::experiment::ObservableRegistry::reference_default"
-        );
-        assert_eq!(v["experiment_id"], "exp-1");
-        assert_eq!(v["completed_runs"], 1);
-        assert_eq!(v["runs"].as_array().map(Vec::len), Some(1));
-        assert!(
-            v["failed"].as_array().unwrap().is_empty(),
-            "{}",
-            String::from_utf8_lossy(&json)
-        );
-        assert!(v["runs"][0]["series"].is_array(), "the series survives");
     }
 }

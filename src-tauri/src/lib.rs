@@ -89,7 +89,12 @@ pub fn run() {
             commands::start_tick_capture,
             commands::stop_tick_capture,
             commands::get_tick_capture_status,
-            commands::export_tick_capture
+            commands::export_tick_capture,
+            commands::get_demographic_census,
+            commands::get_energy_flux_matrix,
+            commands::get_spatial_density_matrix,
+            commands::export_phylogenetic_tree,
+            commands::export_scientific_dataset
         ])
         .setup(move |app| {
             let app_state = app.state::<AppState>();

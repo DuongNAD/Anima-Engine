@@ -179,6 +179,22 @@ pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPaylo
     })
 }
 
+pub use crate::core::telemetry_export::{MapElitesSummary, NewickExportRequest};
+
+impl MapElitesGridState {
+    pub fn compute_summary(&self) -> MapElitesSummary {
+        crate::core::telemetry_export::compute_map_elites_summary(&self.grid, self.grid_resolution)
+    }
+}
+
+#[tauri::command]
+pub fn export_phylogenetic_tree(
+    state: State<'_, AppState>,
+    req: Option<NewickExportRequest>,
+) -> Result<String, String> {
+    crate::core::telemetry_export::export_lineage_newick(&state.engine.lineage_tracker, req.as_ref())
+}
+
 #[cfg(test)]
 mod tests {
     use super::EvolutionSettings;
