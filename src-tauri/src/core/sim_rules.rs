@@ -24,8 +24,13 @@ use crate::core::resources::MapBounds;
 // than redeclared so this units table stays one document and the S01 checks below still read
 // against the same names.
 pub use anima_domain::laws::{
-    SECONDS_PER_YEAR, TICKS_PER_EPOCH, TICKS_PER_YEAR, TICK_DT_SECONDS, TICK_HZ,
+    boltzmann_factor as domain_boltzmann_factor, holling_type_2 as domain_holling_type_2,
+    holling_type_3 as domain_holling_type_3, mte_basal_metabolism, BOLTZMANN_EV, CAPTURE_ATTACK,
+    CAPTURE_HANDLING, E_ANIMAL_EV, E_PRODUCER_EV, KLEIBER_EXP, LINDEMAN_EFFICIENCY, METABOLIC_NORM,
+    REF_TEMP_K, REPRODUCTION_EFFICIENCY, SECONDS_PER_YEAR, TICKS_PER_EPOCH, TICKS_PER_YEAR,
+    TICK_DT_SECONDS, TICK_HZ,
 };
+
 
 // ---- Space ----------------------------------------------------------------------------------
 

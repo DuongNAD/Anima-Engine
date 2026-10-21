@@ -118,9 +118,41 @@ pub fn holling_type3(prey: f32, attack: f32, handling: f32) -> f32 {
     (attack * n2) / (1.0 + attack * handling * n2)
 }
 
+/// Type III functional response with explicit rarity refuge parameter:
+/// `a·N² / (1 + a·h·N² + ε)`.
+#[inline]
+pub fn holling_type3_with_refuge(prey: f32, attack: f32, handling: f32, refuge: f32) -> f32 {
+    let n = prey.max(0.0);
+    let n2 = n * n;
+    (attack * n2) / (1.0 + attack * handling * n2 + refuge.max(0.0))
+}
+
+/// Pure f64 MTE basal metabolism computation (scientific contract).
+#[inline]
+pub fn mte_basal_metabolism(mass: f64, temp_kelvin: f64, basal_rate: f64, act_energy: f64) -> f64 {
+    anima_domain::laws::mte_basal_metabolism(mass, temp_kelvin, basal_rate, act_energy)
+}
+
+/// Pure f64 Holling Type II functional response (scientific contract).
+#[inline]
+pub fn holling_type_2(prey_density: f64, attack_rate: f64, handling_time: f64) -> f64 {
+    anima_domain::laws::holling_type_2(prey_density, attack_rate, handling_time)
+}
+
+/// Pure f64 Holling Type III functional response with rarity refuge (scientific contract).
+#[inline]
+pub fn holling_type_3(prey_density: f64, attack_rate: f64, handling_time: f64, refuge_param: f64) -> f64 {
+    anima_domain::laws::holling_type_3(prey_density, attack_rate, handling_time, refuge_param)
+}
+
 /// Lindeman trophic transfer (assimilation) efficiency — the fraction of captured prey energy
 /// that becomes predator energy. ~10% canonical; the remaining (1 − e) is recycled as detritus.
-pub const LINDEMAN_EFFICIENCY: f32 = 0.30;
+pub const LINDEMAN_EFFICIENCY: f32 = 0.40;
+
+/// Continuous reproduction assimilation efficiency (~60% to offspring, 40% to detritus).
+pub const REPRODUCTION_EFFICIENCY: f32 = 0.60;
+
+
 
 /// Herbivore grazing intake for one tick — a saturating (Type II) bite bounded by the standing
 /// plant resource, how hungry the animal is, and a maximum bite rate. Grazing a depleted cell
@@ -139,6 +171,11 @@ pub fn herbivore_intake(available: f32, hunger: f32, max_bite: f32) -> f32 {
 pub const CAPTURE_ATTACK: f32 = 0.02;
 pub const CAPTURE_HANDLING: f32 = 0.02;
 
+
+
+/// Default rarity refuge parameter for Holling Type III predation
+pub const DEFAULT_RARITY_REFUGE: f32 = 0.20;
+
 /// Energy a predator captures from a prey in one contact. A Type III response means a healthy,
 /// energetic prey is NOT drained to zero in a single strike, and a rare/weak (low-energy) prey
 /// is barely touched — the rarity refuge that stops prey extinction. Bounded above by the prey's
@@ -146,13 +183,20 @@ pub const CAPTURE_HANDLING: f32 = 0.02;
 /// so it never wastefully over-kills).
 #[inline]
 pub fn predation_capture(prey_energy: f32, predator_deficit: f32) -> f32 {
+    predation_capture_with_refuge(prey_energy, predator_deficit, DEFAULT_RARITY_REFUGE)
+}
+
+/// Predation capture with an explicit rarity refuge parameter.
+#[inline]
+pub fn predation_capture_with_refuge(prey_energy: f32, predator_deficit: f32, refuge: f32) -> f32 {
     if prey_energy <= 0.0 || predator_deficit <= 0.0 {
         return 0.0;
     }
-    let raw = holling_type3(prey_energy, CAPTURE_ATTACK, CAPTURE_HANDLING);
+    let raw = holling_type3_with_refuge(prey_energy, CAPTURE_ATTACK, CAPTURE_HANDLING, refuge);
     raw.min(prey_energy)
         .min(predator_deficit / LINDEMAN_EFFICIENCY.max(1e-3))
 }
+
 
 // ---- Ecological niche descriptors (MAP-Elites behavior space) --------------------------
 

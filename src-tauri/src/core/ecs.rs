@@ -112,5 +112,8 @@ pub fn init_world() -> World {
         prey_centroids: Vec::with_capacity(128),
     });
     world.insert_resource(ActiveEnvironmentEvent::default());
+    world.insert_resource(crate::core::telemetry_export::DemographicTracker::default());
+    world.insert_resource(crate::core::telemetry_export::DemographicCensusState::default());
+    world.insert_resource(crate::core::telemetry_export::EnergyFluxReport::default());
     world
 }

@@ -363,8 +363,9 @@ pub fn combat_system(
             for j in 0..events_res.prey_centroids.len() {
                 let (prey_entity, prey_centroid, _, _) = events_res.prey_centroids[j];
 
-                if pred_centroid.distance(prey_centroid) < 1.5 {
+                if pred_centroid.distance(prey_centroid) < 3.0 {
                     if let Ok((_, _, mut prey_homeo)) = prey_query.get_mut(prey_entity) {
+
                         if prey_homeo.energy <= 0.0 {
                             continue;
                         }
@@ -463,7 +464,7 @@ pub fn combat_system(
                     prey_pos.0
                 };
 
-                if pred_centroid.distance(prey_centroid) < 1.5 {
+                if pred_centroid.distance(prey_centroid) < 3.0 {
                     let needed = (pred_homeo.energy_target - pred_homeo.energy).max(0.0);
                     if needed > 0.0 {
                         let captured =
