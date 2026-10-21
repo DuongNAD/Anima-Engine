@@ -202,7 +202,7 @@ impl SimModel for ReferenceEcosystem {
             if !cmd.affects(0, 0) {
                 continue;
             }
-            match cmd.kind {
+            match &cmd.kind {
                 InterventionKind::RainfallDelta => {
                     precip_factor *= 1.0 + cmd.signed_intensity_at(tick) as f64;
                     precip_cause = Some(cmd.cause_id);
@@ -222,6 +222,65 @@ impl SimModel for ReferenceEcosystem {
                 InterventionKind::RemovePredators => {
                     pred_cull = (pred_cull + cmd.signed_intensity_at(tick).abs() as f64).min(1.0);
                     cull_cause = Some(cmd.cause_id);
+                }
+                InterventionKind::GeneticInjection {
+                    count,
+                    trait_modifications,
+                    ..
+                } => {
+                    let mag = cmd.signed_intensity_at(tick).abs() as f64;
+                    cap_factor += mag * 0.05;
+                    ledger.record(
+                        cmd.cause_id,
+                        None,
+                        tick,
+                        "genetic_injection",
+                        *count as f64,
+                        trait_modifications.len() as f64,
+                        "genetic injection applied trait modifications",
+                    );
+                }
+                InterventionKind::ToxicityPlume {
+                    toxicity_level,
+                    ..
+                } => {
+                    let mag = cmd.signed_intensity_at(tick).abs() as f64;
+                    let stress = (*toxicity_level as f64 * mag * 0.05).clamp(0.0, 0.5);
+                    let plant_loss = self.plants * stress;
+                    let herb_loss = self.herbivores * stress;
+                    self.plants -= plant_loss;
+                    self.herbivores -= herb_loss;
+                    self.detritus += plant_loss + herb_loss;
+                    ledger.record(
+                        cmd.cause_id,
+                        None,
+                        tick,
+                        "detritus",
+                        self.detritus,
+                        plant_loss + herb_loss,
+                        "toxicity plume moves living biomass into detritus",
+                    );
+                }
+                InterventionKind::PathogenTransmission {
+                    transmission_rate,
+                    mortality_multiplier,
+                    ..
+                } => {
+                    let mag = cmd.signed_intensity_at(tick).abs() as f64;
+                    let stress = (*transmission_rate as f64 * *mortality_multiplier as f64 * mag * 0.02)
+                        .clamp(0.0, 0.5);
+                    let loss = self.herbivores * stress;
+                    self.herbivores -= loss;
+                    self.detritus += loss;
+                    ledger.record(
+                        cmd.cause_id,
+                        None,
+                        tick,
+                        "detritus",
+                        self.detritus,
+                        loss,
+                        "pathogen transmission epidemic moves living biomass into detritus",
+                    );
                 }
             }
         }
