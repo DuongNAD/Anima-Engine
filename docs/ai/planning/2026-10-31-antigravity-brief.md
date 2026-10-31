@@ -413,11 +413,44 @@ Writes to src-tauri/src and src-tauri/tests. The owner authorized src-tauri/src 
 R2 still forbids loosening an assertion — and in this task that is the specific temptation,
 so read R2 again before you touch an assert.
 
-BRANCH FROM PR #39, NOT FROM main
-Base on `fix/declare-simrng-draw-order` (PR #39, stacked on #38). Reason: the 180-tick
-checksum is only stable per-process from #39 onward. Before it, one seed gave four different
-worlds in eight processes, so you could not tell your change's effect from the process you
-happened to run in.
+BRANCH FROM THE STACK TIP, NOT FROM main AND NOT FROM #39
+REVISED 2026-11-01. This block originally said to branch from PR #39. Branch from
+`fix/ci-gates-green` (PR #40, `78b2e85`) instead, or from B3b's tip if it has landed —
+`git fetch origin && git log --oneline -1 origin/fix/ci-gates-green`.
+Reason to be on #39 or later at all: the 180-tick checksum is only stable per-process from
+#39 onward. Before it, one seed gave four different worlds in eight processes, so you could
+not tell your change's effect from the process you happened to run in.
+Reason not to stop at #39: PR #40 ran `cargo fmt` over 36 files including
+`agent_systems.rs`, so every line number in PART 2 below moved. The numbers in this block
+were re-measured on `78b2e85`. Branching from #39 would also put your work on a line that
+has to be merged past #40 and B3b afterwards.
+#40 changed `agent_systems.rs` by **formatting only** — verified by running rustfmt on #39's
+version and diffing against #40's: zero semantic lines. So the code you are fixing is the
+same code; only its line numbers moved.
+
+THIS TASK DOES NOT CONFLICT WITH B3b, which may be running in parallel. B3b touches
+Cargo.lock, deny.toml, scripts/check_bundle_budget.mjs, licensing/ and maybe vite.config.ts.
+You touch src-tauri/src/core/agent_systems.rs and src-tauri/tests/. No overlap.
+
+WHAT QĐ-A′ MEANS FOR PART 2 — read before you plan your work
+The owner has decided the merge direction (chồng PR -> feat/ecological-selection) but NOT
+whether `feat`'s `core/mortality.rs::mortality_system` REPLACES
+`agent_systems.rs::agent_mortality_system` or sits beside it. That is QĐ-A′, still open. So:
+  - `agent_mortality_system`'s own Vec/clone/sort (site 1 below) MIGHT be deleted by that
+    decision. Note that `feat`'s mortality.rs already does the same job with no Vec, no clone
+    and no sort, so if "replace" wins, site 1 resolves itself.
+  - `ReclaimAndDespawnAgentCommand::apply` (site 2) is NOT at risk. Measured: the struct and
+    its `Command` impl exist on BOTH branches in `agent_systems.rs` (stack `:113`, feat
+    `:123`/`:128`), BOTH versions still contain `let mut doomed: Vec<Entity> = Vec::new()`
+    plus a full `world.query::<(Entity, &ParentAgent)>()` scan per death, and three modules
+    queue it (`agent_systems.rs`, `aggregate_population.rs`, `live_experiment.rs`). It is the
+    single choke point for agent death whichever mortality system survives.
+  - Your GATE is not at risk either, as long as you write it against the observable — two
+    agents die, allocations in the window are zero — and not against the name of whichever
+    system does the killing.
+So: do site 2 and the gate with full confidence. Do site 1 too, but keep it in its own commit
+so it can be dropped cheaply if QĐ-A′ goes the other way, and say in your report that you did
+that and why.
 main also does not compile on macOS: four of five src-tauri/icons/ files are 12-byte
 placeholder text files (F-028). Supply valid icons locally, UNCOMMITTED. On Windows, skip it.
 
@@ -455,27 +488,51 @@ PART 2 — THE ALLOCATION, AND WHY NOTHING WENT RED
 The old version of this task named `agent_death_system` at agent_systems.rs:400. That symbol
 does not exist. Re-measured 2026-10-31 on the main lineage:
 
-  src-tauri/src/core/agent_systems.rs:395  `agent_mortality_system`
-      :400  let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
-      :408  to_despawn.push((lineage_id.0.clone(), e, cause));     <- a String per death
-      :411  to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-  src-tauri/src/core/agent_systems.rs:118  `ReclaimAndDespawnAgentCommand::apply`
-      let mut doomed: Vec<Entity> = Vec::new();  plus a fresh
-      world.query::<(Entity, &ParentAgent)>() scanning every entity, once PER DEATH
+RE-MEASURED 2026-11-01 on `78b2e85` (PR #40 reformatted this file, so every number moved;
+the numbers below are the current ones). AND THERE ARE THREE SITES, NOT TWO:
 
-So there are two allocating sites, not one, and the second runs at the `apply_deferred` inside
-the same tick (simulation_schedule.rs:245-260 — the chain is
-agent_mortality_system → autonomous_reproduction_system → apply_deferred →
-ecosystem_census_system). Fixing only the system leaves the command allocating. Do both, or
-state plainly which one you left and why.
+  src-tauri/src/core/agent_systems.rs:394  `agent_mortality_system`        — per tick w/ deaths
+      :407  let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
+      :415  to_despawn.push((lineage_id.0.clone(), e, cause));     <- a String per death
+      :418  to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+  src-tauri/src/core/agent_systems.rs:119  `ReclaimAndDespawnAgentCommand::apply` — PER DEATH
+      :137  let mut doomed: Vec<Entity> = Vec::new();
+      :138  let mut q = world.query::<(Entity, &ParentAgent)>();   <- scans EVERY entity
+  src-tauri/src/core/agent_systems.rs:271  `SpawnOffspringCommand::apply`        — PER BIRTH
+      :352  let mut child_entities = Vec::new();
+      :353  let mut q = world.query::<(Entity, &ParentAgent)>();   <- same pattern, same cost
 
-Why no gate went red, measured two ways:
-  1. `grep -rln agent_mortality_system src-tauri/tests/*.rs` returns NOTHING. No test names it.
-  2. More importantly: `Vec::new()` does not allocate. It allocates on the first push. So with
-     no agent dying, this code allocates ZERO — and in the live experiment no agent dies
-     within 180 ticks. A gate that runs ticks without forcing a death passes while the bug is
-     untouched. THIS is the vacuity to defeat: your gate must make at least two agents die
-     inside the measured window, and you must show the count it reports with the fix reverted.
+The third one was not in the earlier version of this task. It matters more than the other two,
+for a reason given below. There are exactly three `fn apply` in this file — `:119`, `:156`,
+`:272` — belonging to `ReclaimAndDespawnAgentCommand`, `SpawnGenotypeCommand` and
+`SpawnOffspringCommand`; check all three, not just the ones named here.
+
+Site 2 and site 3 run at the `apply_deferred` inside the same tick
+(simulation_schedule.rs — the chain is agent_mortality_system →
+autonomous_reproduction_system → apply_deferred → ecosystem_census_system). Fixing only the
+system leaves the commands allocating. Do all three, or state plainly which you left and why.
+
+Note the connection to FINDINGS.md F-030: `SpawnGenotypeCommand` and `SpawnOffspringCommand`
+are ALSO the blind spot of the new SimRng ordering gate, because they draw from `SimRng`
+through `&mut World` rather than declaring `ResMut<SimRng>`. The same two commands are
+invisible to two different gates for two different reasons. That is not a coincidence worth
+ignoring: a `Command` that takes `&mut World` is outside every static analysis this repo has.
+
+Why no gate went red. The earlier version of this task said `Vec::new()` is lazy — it
+allocates on first push — and that no agent dies within 180 ticks, so the death path allocates
+zero. That is true for sites 1 and 2 and it is NOT the whole story, because site 3 fires on
+BIRTHS. B1b measured a tick-1 offspring in the live experiment (`live-founder-0005.1`, which
+moved between x = 71.47 and x = 75.77 depending on draw order), so a 180-tick run DOES push
+into site 3's Vec and DOES allocate.
+So the real reason is the third one, and it is worse: of the 23 test files that call
+`start_tracking`, the named zero-alloc gates cover dynamic fields, emit, exotic energy, map
+generation, migration, observer trace and phase5 modularity — and NOT ONE covers the
+spawn/despawn command path. The allocation is not hidden by lazy `Vec::new()`; it is simply
+never inside a measured window.
+VERIFY THAT CLAIM YOURSELF before you build on it — it is the premise of your gate's design.
+Then defeat both vacuities: your gate must force at least two DEATHS and at least one BIRTH
+inside the measured window, and you must paste the non-zero count it reports with your fix
+reverted.
 
 THE SEMANTIC QUESTION — SETTLE IT, DO NOT ASSUME IT
 The sort exists to make despawn order deterministic. Its key is `AgentLineageId(String)`.
@@ -1424,9 +1481,22 @@ MEASURE, do not assume, and report the raw numbers:
      180-tick checksum in SEVERAL PROCESSES (see below).
   2. With MortalityPolicy{enabled: true}: write a failing test first that spawns one
      agent, starves it, and asserts the detritus pool gains that agent's energy
-     EXACTLY ONCE. Then see whether it passes. Do not reason about it from the source;
-     `ReclaimAndDespawnAgentCommand::apply` re-queries the whole world per death, so
-     both "double credit" and "harmless no-op" are plausible and only a test decides.
+     EXACTLY ONCE. Then see whether it passes.
+     HYPOTHESIS, from reading `feat`'s `ReclaimAndDespawnAgentCommand::apply` — this is a
+     source reading on 2026-11-01, NOT a run, so treat it as the thing your test checks and
+     not as the answer. It reclaims via
+         let reclaimed = match world.get_mut::<HomeostaticState>(self.root) { … None => 0.0 }
+     and despawns the root at the end of the same `apply`. Commands apply sequentially on
+     `&mut World` at the sync point, so if both mortality systems queue a command for the
+     SAME root in one tick, the first despawns it and the second's `get_mut` returns `None`,
+     giving `reclaimed = 0.0` and no second credit. If that holds, two mortality systems are
+     EU-safe by accident, not by design.
+     Which is exactly why the test is worth writing even when it passes: it is the regression
+     guard for the day someone moves the despawn out of `apply`, or splits reclaim from
+     despawn, and silently re-opens a double credit. Say in the test's comment that this is
+     what it protects.
+     If your test instead shows a double credit, STOP — that is EU created from nothing, it
+     breaks the closed-EU contract, and it is a finding for FINDINGS.md before it is a fix.
   3. QĐ-A′ is still open: the owner has NOT decided whether these two systems replace
      each other or sit side by side. Do not pick for them. Deliver the measurement and
      say which outcome your test shows.
