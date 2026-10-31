@@ -1,0 +1,109 @@
+{
+  "nodes": [
+    "anima_engine_lib",
+    "AppState",
+    "ai",
+    "commands",
+    "core",
+    "evolution",
+    "physics"
+  ],
+  "edges": [
+    {
+      "from": "anima_engine_lib",
+      "to": "core",
+      "via": "src-tauri/src/lib.rs:36",
+      "invariant": "run constructs SimulationEngine once and starts the background thread only during Tauri setup"
+    },
+    {
+      "from": "AppState",
+      "to": "core",
+      "via": "src-tauri/src/lib.rs:28",
+      "invariant": "AppState exposes simulation state through Arc<SimulationEngine> and ObserverSeam without owning an ECS World"
+    },
+    {
+      "from": "ai",
+      "to": "core",
+      "via": "src-tauri/src/ai/model.rs:1132",
+      "invariant": "lifetime learning mutates AgentBrain.learned weights only and never writes back into AgentBrain.genotype"
+    },
+    {
+      "from": "ai",
+      "to": "evolution",
+      "via": "src-tauri/src/ai/model.rs:1143",
+      "invariant": "per-agent lifetime learning delegates gradient updates to brain_genotype::learn_step without allocating on the heap"
+    },
+    {
+      "from": "ai",
+      "to": "physics",
+      "via": "src-tauri/src/ai/model.rs:934",
+      "invariant": "sensory raycasting queries SpatialHashGrid and SpatialCollider read-only without mutating rigid-body positions"
+    },
+    {
+      "from": "commands",
+      "to": "AppState",
+      "via": "src-tauri/src/commands/simulation.rs:2",
+      "invariant": "Tauri IPC handlers receive AppState via tauri::State and route runtime mutations through app_state.seam"
+    },
+    {
+      "from": "commands",
+      "to": "core",
+      "via": "src-tauri/src/commands/simulation.rs:1",
+      "invariant": "IPC command handlers read shared snapshots and enqueue observer actions without locking the live ECS World"
+    },
+    {
+      "from": "commands",
+      "to": "evolution",
+      "via": "src-tauri/src/commands/evolution.rs:1",
+      "invariant": "get_lineage_graph queries LineageTracker read-only and never mutates genotypes or archive cells"
+    },
+    {
+      "from": "core",
+      "to": "ai",
+      "via": "src-tauri/src/core/simulation_schedule.rs:37",
+      "invariant": "build_tick_schedule orders update_cpg_system and hrrl_learning_system deterministically inside the single canonical tick schedule"
+    },
+    {
+      "from": "core",
+      "to": "commands",
+      "via": "src-tauri/src/core/agent_systems.rs:16",
+      "invariant": "core references DTO structs EvolutionSettings and MapElitesGridState only and never invokes a tauri::command handler"
+    },
+    {
+      "from": "core",
+      "to": "evolution",
+      "via": "src-tauri/src/core/agent_systems.rs:11",
+      "invariant": "epoch replacement scores candidates via selected_rule and decodes genotypes only at genesis or replacement"
+    },
+    {
+      "from": "core",
+      "to": "physics",
+      "via": "src-tauri/src/core/simulation_schedule.rs:43",
+      "invariant": "build_tick_schedule runs spatial_hash_update_system before spatial_collision_system on every physics tick"
+    },
+    {
+      "from": "evolution",
+      "to": "ai",
+      "via": "src-tauri/src/evolution/fitness.rs:22",
+      "invariant": "fitness evaluation reads HomeostaticState energy and water reserves without mutating CPG oscillators or neural weights"
+    },
+    {
+      "from": "evolution",
+      "to": "core",
+      "via": "src-tauri/src/evolution/fitness.rs:23",
+      "invariant": "fitness rules read AgentEvaluation and FeatureTracker metrics purely and never spawn or despawn ECS entities"
+    },
+    {
+      "from": "physics",
+      "to": "ai",
+      "via": "src-tauri/src/physics/dynamics.rs:1",
+      "invariant": "joint constraint dynamics read CpgOscillator phase and TimeStep dt without mutating oscillator parameters"
+    },
+    {
+      "from": "physics",
+      "to": "core",
+      "via": "src-tauri/src/physics/spatial.rs:1",
+      "invariant": "physics systems read and update ECS Position, Velocity, and MapBounds components with zero heap allocations per tick"
+    }
+  ]
+}

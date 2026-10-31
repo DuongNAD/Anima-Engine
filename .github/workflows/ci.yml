@@ -209,6 +209,14 @@ jobs:
         working-directory: .
         run: npm run check:flora-footprint
 
+      - name: Module dependency graph matches dataflow.json
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          cargo modules --version || cargo install cargo-modules --locked
+          cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot
+          python3 ../scripts/verify_dataflow.py ../dataflow.json ../dataflow-truth.dot 1
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

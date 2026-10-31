@@ -30,6 +30,43 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-026 — `justfile:151` gọi `verify_dataflow.py --count`, một cờ không tồn tại, nên dòng tổng kết luôn in bản dự phòng
+- **Ngày:** 2026-10-31
+- **Loại:** SMELL
+- **Vị trí:** [`justfile:151`](justfile), [`scripts/verify_dataflow.py`](scripts/verify_dataflow.py)
+- **Phát hiện bởi:** agent làm task S0.2
+- **Triệu chứng:** recipe `dataflow-truth` kết thúc bằng
+  `python3 scripts/verify_dataflow.py --count dataflow-truth.dot 2>/dev/null || echo '(chay dataflow-verify de xem)'`,
+  nhưng script **không có cờ `--count`** (chuỗi "count" xuất hiện **0** lần trong file) và nó coi
+  `sys.argv[1]` là đường dẫn file. Nên nhánh `||` luôn chạy, và dòng tổng kết **luôn** in bản dự
+  phòng thay vì con số.
+- **Tái hiện:** `grep -c count scripts/verify_dataflow.py` → `0`; `just dataflow-truth` → luôn in
+  `canh 'uses' muc module: (chay dataflow-verify de xem)`
+- **Vì sao đáng ghi:** đây là chỗ **thứ ba** trong đúng một recipe mười dòng mà một lệnh thất bại
+  lặng lẽ: producer thiếu `--package` (sửa ở S0.2), gate chưa bao giờ vào CI (sửa ở S0.2), và dòng
+  tổng kết này. `2>/dev/null ||` biến mọi thất bại thành một chuỗi trông bình thường — cùng hình
+  dạng với F-025 và với lỗi `webpki-roots` của phiên này: **một lệnh fail và không in gì không phải
+  một kết quả âm.**
+- **Test khoá lại:** chưa có. Sửa là một trong hai: cài cờ `--count` vào script, hoặc bỏ dòng echo
+  (gate `dataflow-verify` đã in con số). Không nên giữ nguyên.
+- **Trạng thái:** OPEN — nhỏ, chưa chặn gì, nhưng đừng để nó thành chỗ thứ tư.
+
+### F-027 — `cargo modules` chỉ sinh cạnh `uses` khi có item tham chiếu symbol, không phải khi có `use`
+- **Ngày:** 2026-10-31
+- **Loại:** SMELL (hành vi công cụ — cần biết trước khi tin một phép đo đồ thị)
+- **Vị trí:** [`scripts/verify_dataflow.py`](scripts/verify_dataflow.py), [`dataflow.json`](dataflow.json)
+- **Phát hiện bởi:** negative control của task S0.2
+- **Triệu chứng:** thêm `use crate::physics::spatial as _;` vào một file **không** phải `cfg(test)`
+  dưới `src-tauri/src/evolution/` **không** tạo ra cạnh `evolution -> physics` nào. Phải có một
+  item thật tham chiếu symbol — ví dụ `pub type _NegativeControl = crate::physics::SpatialCollider;`
+  — thì cạnh mới xuất hiện và gate mới đỏ đúng (`FAIL: 1 edge BO SOT: evolution -> physics`).
+- **Hệ quả:** một negative control viết bằng `use` trần sẽ **không** chứng minh được gate còn sống,
+  và người chạy dễ kết luận sai rằng gate đã chết. Bản ghi này tồn tại để lần sau không mất một
+  lượt vào đó. Nó cũng nói rằng `dataflow.json` mô tả **tham chiếu symbol thật**, không phải danh
+  sách `use` — đúng thứ đáng khai trong một hợp đồng phụ thuộc.
+- **Tái hiện:** xem báo cáo S0.2 — có cả lượt đỏ và lượt xanh sau khi revert.
+- **Trạng thái:** CLOSED-INFORMATIONAL — không phải lỗi, là tính chất công cụ, ghi để khỏi đo sai.
+
 ### F-025 — `cargo tree --target X` không độc lập host: proc-macro được resolve theo host, nên artifact licence không sinh được từ máy khác
 - **Ngày:** 2026-10-31
 - **Loại:** SMELL (hành vi cargo, không phải lỗi dự án)

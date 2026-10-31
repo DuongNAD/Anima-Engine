@@ -145,8 +145,15 @@ same PR that removes them (S1.6). scripts/verify_dataflow.py already prints the
 cyclic pairs on success as a LUU Y notice — so a green gate still names them.
 
 THE FILE FORMAT — read scripts/verify_dataflow.py before writing it
-    { "edges": [ { "from": "...", "to": "...", "invariant": "..." }, ... ] }
-The verifier fails in four ways and you must satisfy all four:
+    { "edges": [ { "from": "...", "to": "...", "via": "file.rs:12",
+                   "invariant": "..." }, ... ] }
+Corrected 2026-10-31: an earlier version of this block listed only three fields.
+`load_claim` requires FOUR — from, to, via, invariant — and `via` must match
+`^.+\.rs:\d+$`, so it is a real file:line, not a prose note. At depth=1 `module_of`
+strips the `anima_engine_lib::` prefix, so the node is keyed `"AppState"`, not
+`"anima_engine_lib::AppState"`.
+The verifier fails in five ways and you must satisfy all five:
+  0. a missing field, or a `via` that is not file.rs:line
   1. an edge in your claim that is not in the truth  -> "edge BIA"
   2. an edge in the truth you did not claim          -> "edge BO SOT"
   3. an `invariant` of fewer than three words        -> "invariant rong tuech"
@@ -171,9 +178,14 @@ DONE WHEN
      already exist, or the gate correctly stays green and you learn nothing. Of the
      16 edges above, `evolution -> physics` is absent from the lib graph — that is
      the one to use, and the reason it is absent is explained two paragraphs up.
-     So: add `use crate::physics::spatial as _;` to a NON-TEST file under
-     src-tauri/src/evolution/ (not inside a `#[cfg(test)] mod`, or cargo-modules
-     will not see it at all — that is the whole reason the hand count was wrong).
+     A BARE `use` IS NOT ENOUGH — corrected 2026-10-31, see FINDINGS.md F-027.
+     `cargo modules` emits a `uses` edge only when an item actually REFERENCES a
+     symbol in the target module; `use crate::physics::spatial as _;` on its own
+     produces no edge and the gate correctly stays green. Add a referencing item to
+     a NON-TEST file under src-tauri/src/evolution/, e.g.
+         pub type _NegativeControl = crate::physics::SpatialCollider;
+     (not inside a `#[cfg(test)] mod` — cargo-modules does not analyse those, which
+     is the whole reason the hand count was wrong).
      Re-run 1) and 2), confirm the gate goes RED and NAMES the new
      evolution -> physics edge as an "edge BO SOT", then revert and confirm green.
      Paste both outputs.
