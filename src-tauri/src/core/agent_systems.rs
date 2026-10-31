@@ -401,24 +401,18 @@ pub fn agent_mortality_system(
     >,
     mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
 ) {
-    let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
-    for (e, homeo, lineage_id, opt_eval) in agent_query.iter() {
+    for (e, homeo, _lineage_id, opt_eval) in agent_query.iter() {
         if homeo.energy <= 0.0 {
             let cause = if opt_eval.map(|ev| ev.survival_ticks >= 300).unwrap_or(false) {
                 "Senescence"
             } else {
                 "Starvation"
             };
-            to_despawn.push((lineage_id.0.clone(), e, cause));
+            if let Some(ref mut trk) = tracker {
+                trk.record_death(cause);
+            }
+            commands.add(ReclaimAndDespawnAgentCommand { root: e });
         }
-    }
-    to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
-    for (_, entity, cause) in to_despawn {
-        if let Some(ref mut trk) = tracker {
-            trk.record_death(cause);
-        }
-        commands.add(ReclaimAndDespawnAgentCommand { root: entity });
     }
 }
 
