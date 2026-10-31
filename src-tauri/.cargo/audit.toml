@@ -4,7 +4,7 @@
 #
 # `cargo audit` reads Cargo.lock, and a lockfile is feature-agnostic: it records every optional
 # dependency of every resolved package, whether or not the selected feature set compiles it. So an
-# advisory can be reported against a crate that is provably never built. The two ignores below are
+# advisory can be reported against a crate that is provably never built. The ignores below are
 # exactly that case, and each was verified rather than assumed.
 #
 # Everything else is a hard failure. Do not add an ignore without recording the check that shows the
@@ -34,6 +34,57 @@ ignore = [
     # gix-features 0.36.1 — RUSTSEC-2025-0021, SHA-1 collision attacks are not detected (CVSS 6.8).
     # Same dependency path, same reasoning: pulled in only by gix-fs above, never compiled.
     "RUSTSEC-2025-0021",
+
+    # zip 0.6.6 — RUSTSEC-2026-0367, Insecure Preservation of SUID/SGID Bits during ZIP Extraction
+    # Leading to Potential Privilege Escalation (CVSS 7.3, fix >= 9.0.0).
+    #
+    # Reached in Cargo.lock only as burn-core 0.13.2 -> (burn-candle 0.13.2 -> candle-core 0.4.1 |
+    # burn-tch 0.13.2 -> tch 0.15.0 -> torch-sys 0.15.0) -> zip 0.6.6. Neither `burn-candle` nor
+    # `burn-tch` is an enabled feature of `burn` (this crate enables only `std` and `autodiff`, plus
+    # `burn-ndarray` and optional `burn-wgpu`), so `zip` is not in any dependency tree — normal, dev,
+    # or build — across any target.
+    #
+    # Verified, and these are the commands to re-run if it is ever in doubt:
+    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
+    "RUSTSEC-2026-0367",
+
+    # zip 0.6.6 — RUSTSEC-2026-0368, `ZipArchive::extract` creates symbolic links whose
+    # attacker-controlled targets are outside the destination directory (no CVSS scored, fix >= 9.0.0).
+    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # never compiled.
+    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    "RUSTSEC-2026-0368",
+
+    # zip 0.6.6 — RUSTSEC-2026-0369, `ZipStreamReader::extract()` and `ZipArchive::extract()` apply
+    # Unix permissions through symlinks without confining the target (CVSS 9.1, fix >= 9.0.0).
+    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # never compiled.
+    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    "RUSTSEC-2026-0369",
+
+    # zstd-safe 5.0.2+zstd.1.5.2 — RUSTSEC-2026-0403, Uninitialized memory exposed when streaming
+    # decompression of a legacy frame fails (no CVSS scored, fix >= 8.2.0).
+    #
+    # Reached in Cargo.lock only as zip 0.6.6 -> zstd 0.11.2+zstd.1.5.2 -> zstd-safe 5.0.2+zstd.1.5.2,
+    # under the unenabled `burn-candle` / `burn-tch` optional dependencies of `burn-core` above.
+    #
+    # Verified:
+    #   cargo tree -i zstd-safe --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -e all --features desktop --target all | grep -c " zstd-safe v"   -> 0
+    "RUSTSEC-2026-0403",
+
+    # zstd-sys 2.0.16+zstd.1.5.7 — RUSTSEC-2026-0410, WebAssembly allocator shim corrupts memory on
+    # allocation failure (no CVSS scored, fix >= 2.1.2).
+    #
+    # Reached in Cargo.lock only as zip 0.6.6 -> zstd 0.11.2+zstd.1.5.2 -> zstd-safe 5.0.2+zstd.1.5.2
+    # -> zstd-sys 2.0.16+zstd.1.5.7, under the same unenabled `burn-candle` / `burn-tch` path above
+    # (and additionally affects only the wasm32 target shim).
+    #
+    # Verified:
+    #   cargo tree -i zstd-sys --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -e all --features desktop --target all | grep -c " zstd-sys v"   -> 0
+    "RUSTSEC-2026-0410",
 ]
 
 # Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals

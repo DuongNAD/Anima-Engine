@@ -191,22 +191,50 @@ GROUP 1 — REACHABLE IN THE SHIPPED BUILD. Five advisories. Bump these.
   Then check whether the rustls bump carries rustls-webpki to >=0.103.16 on its
   own; if it does not, bump it explicitly and say so.
 
-GROUP 2 — LOCKFILE-ONLY. Six advisories. These need a reasoned exemption, NOT a bump.
-  webpki-roots 1.0.9              RUSTSEC-2026-0381
+GROUP 2 — LOCKFILE-ONLY. Five advisories. These need a reasoned exemption, NOT a bump.
   zip 0.6.6                       RUSTSEC-2026-0367, -0368, -0369
   zstd-safe 5.0.2+zstd.1.5.2      RUSTSEC-2026-0403
   zstd-sys 2.0.16+zstd.1.5.7      RUSTSEC-2026-0410
 
-  Every one of these is in Cargo.lock and in NO dependency tree. Measured per crate:
-    cargo tree -i <crate> --features desktop -e all    -> 0 lines of output
-  `-e all` includes dev- and build-dependencies, so this is not "only a dev dep" —
-  the selected feature set never compiles them at all. src-tauri/.cargo/audit.toml
-  explains why that happens: a lockfile is feature-agnostic and records every
+  Each is in Cargo.lock and in no compiled graph, reached only as
+    burn-core 0.13.2 -> (burn-candle -> candle-core | burn-tch -> tch -> torch-sys)
+                     -> zip 0.6.6 -> zstd -> zstd-safe -> zstd-sys
+  and Cargo.toml enables neither backend: burn = { features = ["std", "autodiff"] }.
+  src-tauri/.cargo/audit.toml explains why an advisory can be reported against a
+  crate that is never built: a lockfile is feature-agnostic and records every
   optional dependency of every resolved package.
+
+  USE THE FORWARD CHECK, NOT `cargo tree -i`:
+    cargo tree -e all --features desktop --target all | grep -c " <crate> v"   -> 0
+  Corrected 2026-10-31, after this very block got it wrong. An earlier version of
+  this task listed webpki-roots 1.0.9 (RUSTSEC-2026-0381) here as a sixth
+  lockfile-only advisory, on the evidence that
+  `cargo tree -i webpki-roots --features desktop -e all` printed nothing. It
+  printed nothing because it FAILED:
+    error: specification `webpki-roots` is ambiguous
+    help: re-run this command with one of the following specifications
+      webpki-roots@0.26.11
+      webpki-roots@1.0.11
+  Two versions in the lockfile make `-i` ambiguous, it exits non-zero, writes to
+  stderr, and writes nothing to stdout — which reads exactly like "not in the
+  graph". It is in the graph:
+    webpki-roots v1.0.x <- webpki-roots v0.26.11 <- {neo4rs, ureq} <- anima-engine
+  (0.26.11 is a semver-bridge wrapper over 1.0.x). So it SHIPS, and it was bumped
+  to 1.0.11 rather than exempted. Writing that exemption would have suppressed a
+  shipped vulnerability and broken R3.
+  The forward check above has no `-i`, so no ambiguity, and it distinguishes the
+  two cases plainly: 0 for a crate that is never compiled, 2 for webpki-roots.
+  ALWAYS CHECK THE EXIT CODE. A command that fails and prints nothing is not a
+  negative result.
 
   Note how large those bumps would be if you tried: zip 0.6.6 -> >=9.0.0 and
   zstd-safe 5.0.2 -> >=8.2.0 are many majors. Do not attempt them for code that is
   never built.
+
+GROUP 1 HAS A THIRD CRATE because of the correction above:
+  webpki-roots 1.0.9   RUSTSEC-2026-0381  -> needs >=1.0.10
+  `cargo update -p webpki-roots@1.0.9` takes it to 1.0.11. Note the version in the
+  package spec: without it, cargo refuses the command as ambiguous.
 
 RULES
 Follow the format already in src-tauri/.cargo/audit.toml exactly. Its two
@@ -238,7 +266,8 @@ DONE WHEN
       | grep -E 'neo4rs|tokio-tungstenite|burn-wgpu|naga'   -> no output
       (a dependency bump must not leak a gated subsystem into the default build)
   git diff Cargo.lock                                -> report which crates moved
-Report the six ignores you added, one line each, with the command you ran for each.
+Report the five ignores you added, one line each, with the command you ran for each,
+and report the exit code of every `cargo tree` you relied on.
 ```
 
 ---
