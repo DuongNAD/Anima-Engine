@@ -131,7 +131,48 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         metabolic_decay_system
             .after(integrate_physics_system)
             .after(combat_system),
-        spawn_food_system.after(apply_environmental_effects_system),
+        // ---- The SimRng stream, declared end to end ---------------------------------------------
+        //
+        // Five systems in the tick schedule take `ResMut<SimRng>`: `manual_migration_system`,
+        // `spawn_food_system`, `seed_dropping_system`, `autonomous_reproduction_system` and
+        // `check_epoch_completion_system`. Taking `ResMut` on a shared resource makes Bevy's
+        // executor serialise them, NOT order them — without explicit `.after(...)` edges,
+        // `ScheduleGraph::topsort` picks which system draws first from the shared `ChaCha12Rng`
+        // stream using `FixedState::default()`, which is seeded per process (FINDINGS.md F-029).
+        //
+        // Measured before this chain existed: Bevy reported six unordered conflicting pairs among
+        // these systems (three predating `1d301c3` between `spawn_food_system`,
+        // `seed_dropping_system` and `check_epoch_completion_system`, plus three added when
+        // `1d301c3` introduced `autonomous_reproduction_system`). Six unordered pairs admit many
+        // sort orders, not two: one binary at one seed produced **four** distinct 180-tick
+        // checksums across eight processes — 3667697632, 3611111189, 1299407149 and 67815791 —
+        // and moved tick-1 offspring `live-founder-0005.1` between `x = 71.47` and `x = 75.77`.
+        // `spawn_food_system` draws 100 times on tick 1 (50 food items, two `gen_range` each), so
+        // whether it draws before or after the reproduction systems shifts the whole stream.
+        //
+        // The reproducibility tests stayed green through all of it, because each one compares two
+        // runs made inside the *same* process, and a process is self-consistent.
+        //
+        // The declared draw order follows the causal phases of a tick — migration handoff →
+        // environmental substrate replenishment (ground food, then tree saplings) → intra-tick
+        // reproduction → epoch-boundary evaluation:
+        //
+        //   manual_migration → spawn_food → seed_dropping
+        //     → autonomous_reproduction → check_epoch_completion
+        //
+        // The six pairs were among **four** of the five: Bevy reported no ambiguity between
+        // `manual_migration_system` and any of the others, so the sort already had a path to it.
+        // The chain is still written out in full — including that edge and
+        // `autonomous_reproduction.after(spawn_food)`, which `seed_dropping` already implies — so
+        // the whole draw order reads in one place instead of being reassembled from edges in four
+        // separate `add_systems` blocks. `no_two_systems_that_draw_simrng_are_left_unordered`
+        // guards the invariant either way.
+        //
+        // Running `spawn_food_system` ahead of `autonomous_reproduction_system` also preserves the
+        // tick-1 `SimRng` prefix (`0..100`) that `spawn_food_system` consumed before `1d301c3`.
+        spawn_food_system
+            .after(apply_environmental_effects_system)
+            .after(crate::core::ecs::manual_migration_system),
         detect_food_collisions_system
             .after(integrate_physics_system)
             .after(resource_field_regrowth_system),
@@ -139,7 +180,9 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .after(integrate_physics_system)
             .after(detect_food_collisions_system),
         hrrl_learning_system.after(metabolic_decay_system),
-        check_epoch_completion_system.after(metabolic_decay_system),
+        check_epoch_completion_system
+            .after(metabolic_decay_system)
+            .after(autonomous_reproduction_system),
         apply_staggered_evolution_system.after(check_epoch_completion_system),
         // An explicit observer request wins a contested queue slot over automatic boundary traffic.
         // The order also makes the two producers deterministic with respect to each other.
@@ -148,7 +191,9 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .before(crate::core::ecs::check_migration_boundaries_system),
         fruit_growth_system.after(apply_environmental_effects_system),
         lake_replenishment_system.after(apply_environmental_effects_system),
-        seed_dropping_system.after(apply_environmental_effects_system),
+        seed_dropping_system
+            .after(apply_environmental_effects_system)
+            .after(spawn_food_system),
         detect_environmental_collisions_system.after(integrate_physics_system),
     ));
 
@@ -210,7 +255,9 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .after(combat_system)
             .after(detect_food_collisions_system)
             .after(herbivore_grazing_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
+            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+            .after(spawn_food_system)
+            .after(seed_dropping_system),
     );
 
     schedule.add_systems((
