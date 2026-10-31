@@ -738,3 +738,107 @@ licensing artifact is trusted. Say so plainly rather than adjusting anything.
 ```
 
 </details>
+
+### B1b — F-029: declare the SimRng draw order, and gate it (stacks on PR #38)
+
+```text
+GOAL
+Make the live world's RNG draw order independent of the process, and add the gate
+that would have caught it. FINDINGS.md F-029.
+
+AUTHORIZATION
+Writes to src-tauri/src and src-tauri/tests. The owner authorized src-tauri/src
+(QĐ-B). R5 still applies to CLAUDE.md, AGENTS.md, PROJECT.md,
+STATE_OF_THE_PROJECT.md, docs/reference/ and the ADRs.
+
+BRANCH FROM PR #38, NOT FROM main
+Base your branch on `fix/live-world-restores-its-spatial-grid` (PR #38). Reason: on
+main today the two reproducibility gates fail in roughly half of processes BECAUSE
+the order varies. Fix the order first and they would fail — or pass — consistently,
+depending which order you pick, and you would not be able to tell your ordering
+change from #38's grid fix. #38 makes them pass under BOTH orders, so on top of it
+any remaining failure is yours.
+main also does not compile on macOS/Linux: four of five src-tauri/icons/ files are
+12-byte "placeholder" text files (F-028). Supply valid icons locally, UNCOMMITTED,
+as in B1 step 0. On Windows you can skip that.
+
+THE PROBLEM, measured 2026-10-31
+Five systems take ResMut<SimRng> on main:
+    agent_systems.rs:441          autonomous_reproduction_system   (added by 1d301c3)
+    agent_systems.rs:677          check_epoch_completion_system
+    environmental_systems.rs:217  seed_dropping_system
+    world_systems.rs:190          spawn_food_system
+    world_systems.rs:761          manual_migration_system
+Taking ResMut on one resource makes Bevy SERIALISE them — it does not decide which
+runs first. SimRng's own doc comment (core/resources.rs:347) states the invariant
+conditionally, and that condition is what broke:
+    "same seed plus SAME TICK ORDER yields the same run"
+    "Systems take ResMut<SimRng>, which makes Bevy serialise them against one another."
+Bevy orders conflicting unordered systems by a per-process hash seed, so the same
+seed and manifest produce different worlds in different processes. Measured effect:
+the tick-1 offspring lands at x = 75.77 or x = 71.47 depending on the process.
+
+WHAT IS ORDERED TODAY, AND WHAT IS NOT — read this before you add edges
+  simulation_schedule.rs:134  spawn_food_system.after(apply_environmental_effects_system)
+  simulation_schedule.rs:151  seed_dropping_system.after(apply_environmental_effects_system)
+  simulation_schedule.rs:142  check_epoch_completion_system.after(metabolic_decay_system)
+  simulation_schedule.rs:146  manual_migration_system.after(integrate_physics_system)
+                                                     .before(check_migration_boundaries_system)
+  simulation_schedule.rs:203  autonomous_reproduction_system — inside a .chain() with
+                              agent_mortality_system, apply_deferred and
+                              ecosystem_census_system, ordered .after() six systems,
+                              NONE of which is spawn_food_system or seed_dropping_system
+So at least three pairs are unordered, and one of them PREDATES 1d301c3:
+    autonomous_reproduction_system <-> spawn_food_system
+    autonomous_reproduction_system <-> seed_dropping_system
+    spawn_food_system              <-> seed_dropping_system      <- older than 1d301c3
+Do not take that list as complete. ENUMERATE it, with the tool: the test helper
+`ambiguous_pairs()` in src-tauri/tests/schedule_ambiguity_tests.rs already walks
+`schedule.graph().conflicting_systems()`, which is Bevy's own answer to this
+question. Report every unordered pair among the five, and say which ones predate
+1d301c3 — that changes whether this is a regression or a latent bug.
+
+THE ORDER YOU CHOOSE IS A SEMANTIC DECISION, NOT A FORMALITY
+Picking an order picks one of the two worlds. State the order you declared and WHY
+in that order — e.g. does food spawn before offspring exist, or after? The
+precedent to follow is in the same file, simulation_schedule.rs:144-145, where the
+authors ordered the two migration producers and wrote the reason beside it: "An
+explicit observer request wins a contested queue slot over automatic boundary
+traffic. The order also makes the two producers deterministic with respect to each
+other." Write a comment of that quality next to each edge you add.
+
+THE GATE — mirror the energy one
+src-tauri/tests/schedule_ambiguity_tests.rs has exactly two tests:
+    report_every_ambiguous_pair_in_the_tick_schedule   prints, asserts nothing
+    no_two_systems_that_move_energy_are_left_unordered asserts, energy only
+That scope was deliberate; the module docs say "an ambiguity is only a bug if the
+two orders give different answers. Most do not." True — and RNG-drawing systems are
+the other class where the order ALWAYS matters. Add the mirror:
+    no_two_systems_that_draw_simrng_are_left_unordered
+Model it on the energy test, in the same file, using the same helper. It must name
+the offending pair when it fails, not just count.
+
+RULES
+R8 applies and this one is unusual: unlike PR #38, the deterministic checksum WILL
+change, because you are choosing one of two trajectories. That is expected. Report
+the uninterrupted checksum before and after, and say so plainly.
+Checked for you: NO test freezes a live checksum as a literal — they compare two
+runs against each other — so nothing should need a baseline updated. If you find a
+frozen number anywhere, stop and report it instead of editing it (R2).
+Published experiment evidence: E2 is frozen at 9c57184, long before any of these
+systems existed, and runs from_manifest with restore: None. State the effect
+explicitly rather than assuming it.
+Do not fix the other red CI gates (fmt, clippy, audit, feature separation) — B3/B4.
+
+DONE WHEN
+  1) the new gate exists and PASSES
+  2) NEGATIVE CONTROL, required: remove one ordering edge you added, show the gate
+     goes RED and NAMES that pair, then restore it. Paste both outputs.
+  3) cd src-tauri && cargo test --features desktop --no-fail-fast  -> 0 failed
+  4) cargo test --features desktop -p anima-engine --test live_experiment_tests
+     run in TEN separate processes -> 17 passed, 0 failed, all ten
+  5) print the tick-1 position of the first offspring in five separate processes
+     and show it is now identical in all five (it was 75.77 or 71.47 before)
+  6) report: every unordered pair you found, which predate 1d301c3, the order you
+     declared and why, and the checksum before and after
+```
