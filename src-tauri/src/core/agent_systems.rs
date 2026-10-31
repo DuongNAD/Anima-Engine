@@ -311,7 +311,6 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
                 survival_ticks: 0,
                 last_position: self.initial_pos,
             },
-
             FeatureTracker::default(),
             CognitiveState::Ready,
             InertiaComponent::default(),
@@ -394,7 +393,15 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
 /// Detects agents with energy <= 0.0, reclaims any residual reserve into detritus, and despawns them intra-tick.
 pub fn agent_mortality_system(
     mut commands: Commands,
-    agent_query: Query<(Entity, &HomeostaticState, &AgentLineageId, Option<&AgentEvaluation>), With<Agent>>,
+    agent_query: Query<
+        (
+            Entity,
+            &HomeostaticState,
+            &AgentLineageId,
+            Option<&AgentEvaluation>,
+        ),
+        With<Agent>,
+    >,
     mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
 ) {
     let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
@@ -425,18 +432,21 @@ pub fn agent_mortality_system(
 /// detritus with zero leakage, and queues a SpawnOffspringCommand.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
-    mut agent_query: Query<(
-        Entity,
-        &mut HomeostaticState,
-        &AgentGenotype,
-        Option<&crate::core::components::AgentBrain>,
-        &Position,
-        &AgentLineageId,
-        &AgentGeneration,
-        Option<&Predator>,
-        Option<&Prey>,
-        Option<&AgentEvaluation>,
-    ), With<Agent>>,
+    mut agent_query: Query<
+        (
+            Entity,
+            &mut HomeostaticState,
+            &AgentGenotype,
+            Option<&crate::core::components::AgentBrain>,
+            &Position,
+            &AgentLineageId,
+            &AgentGeneration,
+            Option<&Predator>,
+            Option<&Prey>,
+            Option<&AgentEvaluation>,
+        ),
+        With<Agent>,
+    >,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     mut sim_rng: Option<ResMut<crate::core::resources::SimRng>>,
     bounds: Option<Res<crate::core::ecs::MapBounds>>,
@@ -475,7 +485,8 @@ pub fn autonomous_reproduction_system(
             opt_pred,
             _opt_prey,
             opt_eval,
-        )) = agent_query.get_mut(entity) else {
+        )) = agent_query.get_mut(entity)
+        else {
             continue;
         };
 
@@ -559,20 +570,17 @@ pub fn autonomous_reproduction_system(
             }
 
             // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
-            let child_brain =
-                if let (Some(brain), Some(ref mut rng_res)) = (opt_brain, sim_rng.as_mut()) {
-                    let mut brain_geno = (*brain.genotype).clone();
-                    let r = rng_res.rng();
-                    let _ = crate::evolution::brain_genotype::mutate_brain(
-                        &mut brain_geno,
-                        0.05,
-                        0.02,
-                        r,
-                    );
-                    Some(std::sync::Arc::new(brain_geno))
-                } else {
-                    opt_brain.map(|b| b.genotype.clone())
-                };
+            let child_brain = if let (Some(brain), Some(ref mut rng_res)) =
+                (opt_brain, sim_rng.as_mut())
+            {
+                let mut brain_geno = (*brain.genotype).clone();
+                let r = rng_res.rng();
+                let _ =
+                    crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
+                Some(std::sync::Arc::new(brain_geno))
+            } else {
+                opt_brain.map(|b| b.genotype.clone())
+            };
 
             let child_lineage = format!("{}.{}", lineage_id.0, generation.0 + 1);
 
@@ -597,7 +605,6 @@ pub fn autonomous_reproduction_system(
         }
     }
 }
-
 
 pub fn sync_evolution_settings_system(
     shared_settings: Res<BevyEvolutionSettings>,

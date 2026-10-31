@@ -1,8 +1,8 @@
 //! Integration tests for N-ary Causal Branch Tree and Trajectory Divergence (Feature 6).
 
 use anima_engine_lib::core::branch_tree::{
-    dynamic_time_warping, run_branch_tree, BranchNodeSpecification,
-    BranchSeedStrategy, BranchTreeManifest, BRANCH_TREE_SCHEMA_VERSION,
+    dynamic_time_warping, run_branch_tree, BranchNodeSpecification, BranchSeedStrategy,
+    BranchTreeManifest, BRANCH_TREE_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment::{
     ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy, WorldIdentity,
@@ -163,12 +163,20 @@ fn branch_tree_n_ary_execution_with_checkpoint_memoization() {
     assert_eq!(report.divergences.len(), 3);
 
     // Verify root vs deforest divergence
-    let div_1_2 = report.divergences.iter().find(|d| d.branch_a_id == 1 && d.branch_b_id == 2).unwrap();
+    let div_1_2 = report
+        .divergences
+        .iter()
+        .find(|d| d.branch_a_id == 1 && d.branch_b_id == 2)
+        .unwrap();
     assert_eq!(div_1_2.common_start_tick, 240);
     assert_eq!(div_1_2.common_end_tick, 1200);
     assert!(div_1_2.phase_space.max_distance > 0.0);
 
-    let plant_div = div_1_2.observables.iter().find(|o| o.observable_id == "plants").unwrap();
+    let plant_div = div_1_2
+        .observables
+        .iter()
+        .find(|o| o.observable_id == "plants")
+        .unwrap();
     assert!(plant_div.max_abs_delta > 0.0);
 
     // Verify serialization roundtrip

@@ -64,7 +64,7 @@ fn test_demographic_census_unisex_population() {
 #[test]
 fn test_demographic_census_cohorts_and_fecundity() {
     let mut tracker = DemographicTracker::default();
-    tracker.record_birth(25);  // young
+    tracker.record_birth(25); // young
     tracker.record_birth(100); // mature
     tracker.record_birth(200); // old
     tracker.record_death("Starvation");
@@ -72,11 +72,11 @@ fn test_demographic_census_cohorts_and_fecundity() {
     tracker.record_death("Senescence");
 
     let agents = vec![
-        (10, Some(AgentType::Prey), Some(AgentSex::Male)),       // cohort 0-50
-        (45, Some(AgentType::Prey), Some(AgentSex::Female)),     // cohort 0-50
-        (80, Some(AgentType::Predator), Some(AgentSex::Male)),   // cohort 51-150
-        (200, Some(AgentType::Prey), Some(AgentSex::Female)),    // cohort 151-300
-        (500, Some(AgentType::Predator), Some(AgentSex::Female)),// cohort 301-1000
+        (10, Some(AgentType::Prey), Some(AgentSex::Male)), // cohort 0-50
+        (45, Some(AgentType::Prey), Some(AgentSex::Female)), // cohort 0-50
+        (80, Some(AgentType::Predator), Some(AgentSex::Male)), // cohort 51-150
+        (200, Some(AgentType::Prey), Some(AgentSex::Female)), // cohort 151-300
+        (500, Some(AgentType::Predator), Some(AgentSex::Female)), // cohort 301-1000
     ];
 
     let census = build_demographic_census(&agents, Some(&tracker));
@@ -95,18 +95,42 @@ fn test_demographic_census_cohorts_and_fecundity() {
     assert_eq!(census.total_births, 3);
     assert_eq!(census.total_deaths, 3);
 
-    let starv = census.mortality_causes.iter().find(|m| m.cause == "Starvation").unwrap();
+    let starv = census
+        .mortality_causes
+        .iter()
+        .find(|m| m.cause == "Starvation")
+        .unwrap();
     assert_eq!(starv.count, 1);
-    let pred = census.mortality_causes.iter().find(|m| m.cause == "Predation").unwrap();
+    let pred = census
+        .mortality_causes
+        .iter()
+        .find(|m| m.cause == "Predation")
+        .unwrap();
     assert_eq!(pred.count, 1);
-    let sen = census.mortality_causes.iter().find(|m| m.cause == "Senescence").unwrap();
+    let sen = census
+        .mortality_causes
+        .iter()
+        .find(|m| m.cause == "Senescence")
+        .unwrap();
     assert_eq!(sen.count, 1);
 
-    let y_fec = census.fecundity_by_age.iter().find(|f| f.age_group.contains("0-50")).unwrap();
+    let y_fec = census
+        .fecundity_by_age
+        .iter()
+        .find(|f| f.age_group.contains("0-50"))
+        .unwrap();
     assert_eq!(y_fec.births, 1);
-    let m_fec = census.fecundity_by_age.iter().find(|f| f.age_group.contains("51-150")).unwrap();
+    let m_fec = census
+        .fecundity_by_age
+        .iter()
+        .find(|f| f.age_group.contains("51-150"))
+        .unwrap();
     assert_eq!(m_fec.births, 1);
-    let o_fec = census.fecundity_by_age.iter().find(|f| f.age_group.contains("151+")).unwrap();
+    let o_fec = census
+        .fecundity_by_age
+        .iter()
+        .find(|f| f.age_group.contains("151+"))
+        .unwrap();
     assert_eq!(o_fec.births, 1);
 }
 
@@ -215,7 +239,8 @@ fn test_spatial_density_matrix_conservation() {
         energy_transferred: 10.0,
     }];
 
-    let report = generate_spatial_density_matrix(16, 16, &segments, Some(&bounds), None, &combat_events);
+    let report =
+        generate_spatial_density_matrix(16, 16, &segments, Some(&bounds), None, &combat_events);
 
     assert_eq!(report.width, 16);
     assert_eq!(report.height, 16);

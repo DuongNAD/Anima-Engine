@@ -1131,8 +1131,7 @@ pub fn validate_intervention(
                         }
                     }
                     crate::core::intervention::TraitMod::BrainParameterShift {
-                        bias_delta,
-                        ..
+                        bias_delta, ..
                     } => {
                         if !bias_delta.is_finite() {
                             return Err(ExperimentError::NotFinite {
@@ -1779,8 +1778,7 @@ fn canonicalize_intervention_kind(c: &mut Canon, k: &crate::core::intervention::
                     c.tag(0x00);
                 }
             }
-            c.u64(*count as u64)
-                .u64(trait_modifications.len() as u64);
+            c.u64(*count as u64).u64(trait_modifications.len() as u64);
             for tm in trait_modifications {
                 match tm {
                     TraitMod::ScaleMorphology(f) => {

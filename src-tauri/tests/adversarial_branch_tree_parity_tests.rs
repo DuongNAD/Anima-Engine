@@ -8,9 +8,8 @@
 //! 5. Empirical exposure of bugs and boundary condition failures.
 
 use anima_engine_lib::core::branch_tree::{
-    dynamic_time_warping, run_branch_tree,
-    BranchNodeSpecification, BranchSeedStrategy, BranchTreeManifest,
-    BRANCH_TREE_SCHEMA_VERSION,
+    dynamic_time_warping, run_branch_tree, BranchNodeSpecification, BranchSeedStrategy,
+    BranchTreeManifest, BRANCH_TREE_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment::{
     ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy, WorldIdentity,
@@ -283,17 +282,34 @@ fn adversarial_deep_dag_grandchild_multiway_forks_and_interventions() {
         .expect("deep DAG branch tree must execute successfully");
 
     assert_eq!(report.nodes.len(), 7, "All 7 nodes must be completed");
-    assert_eq!(report.divergences.len(), 7, "All 7 comparisons must be computed");
+    assert_eq!(
+        report.divergences.len(),
+        7,
+        "All 7 comparisons must be computed"
+    );
 
     for (id, node) in &report.nodes {
-        assert_eq!(node.status, anima_engine_lib::core::branch_tree::BranchExecutionStatus::Completed);
+        assert_eq!(
+            node.status,
+            anima_engine_lib::core::branch_tree::BranchExecutionStatus::Completed
+        );
         let res = node.run_result.as_ref().expect("run_result must exist");
         assert_eq!(res.status, RunStatus::Completed);
-        assert!(!res.series.is_empty(), "Series for node {} must not be empty", id);
+        assert!(
+            !res.series.is_empty(),
+            "Series for node {} must not be empty",
+            id
+        );
     }
 
     // Verify Child C (Node 7) vs Root (Node 1) is exact zero divergence
-    let div_root_control = report.divergences.iter().find(|d| (d.branch_a_id == 1 && d.branch_b_id == 7) || (d.branch_a_id == 7 && d.branch_b_id == 1)).unwrap();
+    let div_root_control = report
+        .divergences
+        .iter()
+        .find(|d| {
+            (d.branch_a_id == 1 && d.branch_b_id == 7) || (d.branch_a_id == 7 && d.branch_b_id == 1)
+        })
+        .unwrap();
     assert_eq!(div_root_control.phase_space.max_distance, 0.0);
     assert_eq!(div_root_control.phase_space.mean_distance, 0.0);
     assert_eq!(div_root_control.time_to_divergence, None);
@@ -332,14 +348,19 @@ fn adversarial_wide_20_node_tree_execution() {
     // Add 18 more children forking from either 1 or 2 at strictly later ticks
     for i in 3..=20 {
         let (parent_id, min_fork) = if i > 12 { (2, 120) } else { (1, 0) };
-        let fork_tick = min_fork + match i % 4 {
-            0 => 60,
-            1 => 120,
-            2 => 180,
-            _ => 240,
-        };
+        let fork_tick = min_fork
+            + match i % 4 {
+                0 => 60,
+                1 => 120,
+                2 => 180,
+                _ => 240,
+            };
         // Ensure fork_tick > parent fork
-        let effective_fork = if parent_id == 2 && fork_tick <= 120 { 240 } else { fork_tick };
+        let effective_fork = if parent_id == 2 && fork_tick <= 120 {
+            240
+        } else {
+            fork_tick
+        };
 
         nodes.push(BranchNodeSpecification {
             id: i,
@@ -441,13 +462,25 @@ fn adversarial_checkpoint_memoization_parity_vs_standalone_scratch_run() {
 
     let tree_report = run_branch_tree::<ReferenceEvolutionWorld>(&branch_manifest, &registry)
         .expect("branch tree should execute");
-    let memoized_child_run = tree_report.nodes.get(&2).unwrap().run_result.as_ref().unwrap();
+    let memoized_child_run = tree_report
+        .nodes
+        .get(&2)
+        .unwrap()
+        .run_result
+        .as_ref()
+        .unwrap();
 
     let mut standalone_manifest = base.clone();
     standalone_manifest.interventions = vec![deforest_intervention_241];
     standalone_manifest.duration_ticks = 800;
 
-    let standalone_run = run_manifest_seed::<ReferenceEvolutionWorld>(&standalone_manifest, &registry, seed, None, None);
+    let standalone_run = run_manifest_seed::<ReferenceEvolutionWorld>(
+        &standalone_manifest,
+        &registry,
+        seed,
+        None,
+        None,
+    );
 
     assert_eq!(memoized_child_run.status, RunStatus::Completed);
     assert_eq!(standalone_run.status, RunStatus::Completed);
@@ -456,16 +489,29 @@ fn adversarial_checkpoint_memoization_parity_vs_standalone_scratch_run() {
         "Final checksum of memoized branch MUST be bit-exact identical to standalone run"
     );
 
-    let memoized_samples_map: std::collections::HashMap<u64, &anima_engine_lib::core::scenario::StateSample> =
-        memoized_child_run.series.iter().map(|s| (s.tick, s)).collect();
+    let memoized_samples_map: std::collections::HashMap<
+        u64,
+        &anima_engine_lib::core::scenario::StateSample,
+    > = memoized_child_run
+        .series
+        .iter()
+        .map(|s| (s.tick, s))
+        .collect();
 
     for standalone_sample in &standalone_run.series {
         if standalone_sample.tick >= 240 {
-            let memo_sample = memoized_samples_map.get(&standalone_sample.tick)
-                .unwrap_or_else(|| panic!("Sample at tick {} must exist in memoized run", standalone_sample.tick));
+            let memo_sample = memoized_samples_map
+                .get(&standalone_sample.tick)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Sample at tick {} must exist in memoized run",
+                        standalone_sample.tick
+                    )
+                });
             assert_eq!(
                 memo_sample.observables, standalone_sample.observables,
-                "Trajectory observables at tick {} must be bit-exact identical", standalone_sample.tick
+                "Trajectory observables at tick {} must be bit-exact identical",
+                standalone_sample.tick
             );
         }
     }
@@ -536,31 +582,91 @@ fn adversarial_divergence_metrics_exact_zero_and_strictly_positive() {
     let report = run_branch_tree::<ReferenceEvolutionWorld>(&manifest, &registry).unwrap();
 
     // 1. Check identical comparison (1 vs 2)
-    let div_1_2 = report.divergences.iter().find(|d| d.branch_a_id == 1 && d.branch_b_id == 2).unwrap();
-    assert_eq!(div_1_2.phase_space.mean_distance, 0.0, "Identical runs must have mean_distance = 0");
-    assert_eq!(div_1_2.phase_space.max_distance, 0.0, "Identical runs must have max_distance = 0");
-    assert_eq!(div_1_2.phase_space.final_distance, 0.0, "Identical runs must have final_distance = 0");
-    assert_eq!(div_1_2.time_to_divergence, None, "Identical runs must have time_to_divergence = None");
+    let div_1_2 = report
+        .divergences
+        .iter()
+        .find(|d| d.branch_a_id == 1 && d.branch_b_id == 2)
+        .unwrap();
+    assert_eq!(
+        div_1_2.phase_space.mean_distance, 0.0,
+        "Identical runs must have mean_distance = 0"
+    );
+    assert_eq!(
+        div_1_2.phase_space.max_distance, 0.0,
+        "Identical runs must have max_distance = 0"
+    );
+    assert_eq!(
+        div_1_2.phase_space.final_distance, 0.0,
+        "Identical runs must have final_distance = 0"
+    );
+    assert_eq!(
+        div_1_2.time_to_divergence, None,
+        "Identical runs must have time_to_divergence = None"
+    );
     for obs in &div_1_2.observables {
-        assert_eq!(obs.mean_delta, 0.0, "Observable {} mean_delta must be 0", obs.observable_id);
-        assert_eq!(obs.max_abs_delta, 0.0, "Observable {} max_abs_delta must be 0", obs.observable_id);
-        assert_eq!(obs.rmsd, 0.0, "Observable {} rmsd must be 0", obs.observable_id);
-        assert_eq!(obs.relative_divergence, 0.0, "Observable {} relative_divergence must be 0", obs.observable_id);
+        assert_eq!(
+            obs.mean_delta, 0.0,
+            "Observable {} mean_delta must be 0",
+            obs.observable_id
+        );
+        assert_eq!(
+            obs.max_abs_delta, 0.0,
+            "Observable {} max_abs_delta must be 0",
+            obs.observable_id
+        );
+        assert_eq!(
+            obs.rmsd, 0.0,
+            "Observable {} rmsd must be 0",
+            obs.observable_id
+        );
+        assert_eq!(
+            obs.relative_divergence, 0.0,
+            "Observable {} relative_divergence must be 0",
+            obs.observable_id
+        );
         if let Some(dtw) = obs.dtw_distance {
-            assert_eq!(dtw, 0.0, "Observable {} DTW distance must be 0", obs.observable_id);
+            assert_eq!(
+                dtw, 0.0,
+                "Observable {} DTW distance must be 0",
+                obs.observable_id
+            );
         }
     }
 
     // 2. Check active intervention comparison (1 vs 3)
-    let div_1_3 = report.divergences.iter().find(|d| d.branch_a_id == 1 && d.branch_b_id == 3).unwrap();
-    assert!(div_1_3.phase_space.max_distance > 0.0, "Intervention must produce strictly positive max_distance");
-    assert!(div_1_3.phase_space.mean_distance > 0.0, "Intervention must produce strictly positive mean_distance");
-    assert!(div_1_3.time_to_divergence.is_some(), "Intervention must trigger time_to_divergence");
+    let div_1_3 = report
+        .divergences
+        .iter()
+        .find(|d| d.branch_a_id == 1 && d.branch_b_id == 3)
+        .unwrap();
+    assert!(
+        div_1_3.phase_space.max_distance > 0.0,
+        "Intervention must produce strictly positive max_distance"
+    );
+    assert!(
+        div_1_3.phase_space.mean_distance > 0.0,
+        "Intervention must produce strictly positive mean_distance"
+    );
+    assert!(
+        div_1_3.time_to_divergence.is_some(),
+        "Intervention must trigger time_to_divergence"
+    );
     let ttd = div_1_3.time_to_divergence.unwrap();
-    assert!(ttd >= 120, "time_to_divergence {} must be >= fork_tick 120", ttd);
+    assert!(
+        ttd >= 120,
+        "time_to_divergence {} must be >= fork_tick 120",
+        ttd
+    );
 
-    let plant_obs = div_1_3.observables.iter().find(|o| o.observable_id == "plants").unwrap();
-    assert!(plant_obs.max_abs_delta > 10.0, "Plants must be heavily impacted by deforest");
+    let plant_obs = div_1_3
+        .observables
+        .iter()
+        .find(|o| o.observable_id == "plants")
+        .unwrap();
+    assert!(
+        plant_obs.max_abs_delta > 10.0,
+        "Plants must be heavily impacted by deforest"
+    );
     assert!(plant_obs.rmsd > 0.0);
     assert!(plant_obs.relative_divergence > 0.0);
     assert!(plant_obs.dtw_distance.unwrap_or(0.0) > 0.0);
@@ -716,7 +822,8 @@ fn adversarial_branch_tree_determinism_and_state_digest_checksum_repeatability()
 
         assert_eq!(
             r1.final_checksum, r2.final_checksum,
-            "Node {} final checksum must be bit-exact across runs", id
+            "Node {} final checksum must be bit-exact across runs",
+            id
         );
         assert_eq!(r1.series.len(), r2.series.len());
         for (s1, s2) in r1.series.iter().zip(r2.series.iter()) {
@@ -774,13 +881,19 @@ fn adversarial_genesis_fork_tick_0_executes_successfully() {
 
     assert!(manifest.validate(&registry).is_ok());
     let result = run_branch_tree::<ReferenceEvolutionWorld>(&manifest, &registry);
-    assert!(result.is_ok(), "Genesis fork at tick 0 must execute successfully");
+    assert!(
+        result.is_ok(),
+        "Genesis fork at tick 0 must execute successfully"
+    );
     let report = result.unwrap();
     let r1 = report.nodes.get(&1).unwrap().run_result.as_ref().unwrap();
     let r2 = report.nodes.get(&2).unwrap().run_result.as_ref().unwrap();
     assert_eq!(r1.status, RunStatus::Completed);
     assert_eq!(r2.status, RunStatus::Completed);
-    assert_eq!(r1.final_checksum, r2.final_checksum, "Unmodified child at tick 0 must match root exactly");
+    assert_eq!(
+        r1.final_checksum, r2.final_checksum,
+        "Unmodified child at tick 0 must match root exactly"
+    );
 }
 
 /// Tests co-temporal fork (`fork_tick == parent.fork_tick`) memoization and execution parity.
@@ -832,9 +945,15 @@ fn adversarial_cotemporal_fork_at_parent_fork_tick_executes_successfully() {
         comparisons: vec![(1, 2), (2, 3)],
     };
 
-    assert!(manifest.validate(&registry).is_ok(), "Manifest validation permits fork_tick == parent.fork_tick");
+    assert!(
+        manifest.validate(&registry).is_ok(),
+        "Manifest validation permits fork_tick == parent.fork_tick"
+    );
     let result = run_branch_tree::<ReferenceEvolutionWorld>(&manifest, &registry);
-    assert!(result.is_ok(), "Co-temporal fork at parent fork tick 240 must execute successfully");
+    assert!(
+        result.is_ok(),
+        "Co-temporal fork at parent fork tick 240 must execute successfully"
+    );
     let report = result.unwrap();
     let r1 = report.nodes.get(&1).unwrap().run_result.as_ref().unwrap();
     let r2 = report.nodes.get(&2).unwrap().run_result.as_ref().unwrap();
@@ -896,7 +1015,10 @@ fn adversarial_fork_tick_intervention_applicability_and_parity() {
     };
 
     // Manifest validation must reject this inapplicable intervention
-    assert!(invalid_branch_manifest.validate(&registry).is_err(), "Inapplicable impulse intervention before branch execution window must be rejected");
+    assert!(
+        invalid_branch_manifest.validate(&registry).is_err(),
+        "Inapplicable impulse intervention before branch execution window must be rejected"
+    );
 
     // Scheduling the impulse at tick 241 (the first simulated tick post-fork) is valid and produces bit-exact parity
     let impulse_241 = InterventionCommand {
@@ -945,12 +1067,24 @@ fn adversarial_fork_tick_intervention_applicability_and_parity() {
     assert!(valid_branch_manifest.validate(&registry).is_ok());
     let tree_report = run_branch_tree::<ReferenceEvolutionWorld>(&valid_branch_manifest, &registry)
         .expect("Valid branch tree must execute");
-    let child_node = tree_report.nodes.get(&2).unwrap().run_result.as_ref().unwrap();
+    let child_node = tree_report
+        .nodes
+        .get(&2)
+        .unwrap()
+        .run_result
+        .as_ref()
+        .unwrap();
 
     let mut standalone_manifest = base;
     standalone_manifest.interventions = vec![impulse_241];
     standalone_manifest.duration_ticks = 600;
-    let standalone_run = run_manifest_seed::<ReferenceEvolutionWorld>(&standalone_manifest, &registry, seed, None, None);
+    let standalone_run = run_manifest_seed::<ReferenceEvolutionWorld>(
+        &standalone_manifest,
+        &registry,
+        seed,
+        None,
+        None,
+    );
 
     assert_eq!(
         child_node.final_checksum, standalone_run.final_checksum,

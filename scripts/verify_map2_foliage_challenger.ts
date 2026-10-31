@@ -1,28 +1,17 @@
-import * as THREE from 'three';
 import {
-  Map2TerrainMathEngine,
   sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   Map2Biome,
   BIOME_METADATA,
-  Map2BiomeEcologySystem,
 } from '../src/components/Map2/utils/map2BiomeConfig';
 import {
   Map2FloraSpecies,
-  FLORA_CANOPY_RADII,
-  FLORA_TRUNK_COLLIDER_RADII,
-  isTallFlora,
-  isGroundCoverFlora,
 } from '../src/components/Map2/utils/map2FloraGeometry';
 
 import {
   generatePlacements,
   FloraPlacement,
-  ALL_SPECIES,
-  hash2D,
 } from '../src/components/Map2/Map2Vegetation';
 
 
@@ -40,7 +29,6 @@ const halfBound = 96.0;
 const sampleStep = (halfBound * 2) / sampleRes;
 
 let totalLandSamples = 0;
-let totalWaterSamples = 0;
 let gladeSamples = 0;
 let groveSamples = 0;
 const biomeLandCounts = new Map<Map2Biome, { total: number; glade: number; grove: number }>();
@@ -54,7 +42,6 @@ for (let gx = 0; gx < sampleRes; gx++) {
     const { height, steepness, isWater, biomeId, moisture } = sample;
 
     if (isWater || height <= 12.0) {
-      totalWaterSamples++;
       continue;
     }
 

@@ -8,15 +8,11 @@ import {
 import {
   Map2Biome,
   Map2BiomeEcologySystem,
-  BIOME_METADATA,
 } from '../src/components/Map2/utils/map2BiomeConfig';
 import {
   Map2CameraPhysicsController,
   PHYSICS_CONSTANTS,
   SpatialFloraColliderIndex,
-  resolveFloraOverlap,
-  computeBearing,
-  computePitch,
 } from '../src/components/Map2/utils/map2Physics';
 import {
   computeCelestialState,
@@ -25,7 +21,7 @@ import {
 interface TestSummary {
   name: string;
   passed: boolean;
-  metrics: Record<string, any>;
+  metrics: Record<string, unknown>;
   errors: string[];
 }
 
@@ -270,7 +266,6 @@ for (let x = -80; x <= 80; x += 4) {
 
 const walkSteps = 10_000;
 let terrainPenetrations = 0;
-const treeCollisionsDetected = 0;
 let treeCollisionsClipped = 0;
 let maxSlideSpeed = 0;
 let minClearance = Infinity;

@@ -342,13 +342,16 @@ pub fn detect_environmental_collisions_system(
 /// Demographic census aggregation system:
 /// Bins living agents into age cohorts, tracks sex ratio, biodiversity indices, and mortality attribution.
 pub fn demographic_census_system(
-    agent_query: Query<(
-        &crate::core::agent_systems::AgentEvaluation,
-        Option<&crate::core::components::Predator>,
-        Option<&crate::core::components::Prey>,
-        Option<&crate::core::components::AgentSex>,
-        &crate::ai::hrrl::HomeostaticState,
-    ), With<crate::core::components::Agent>>,
+    agent_query: Query<
+        (
+            &crate::core::agent_systems::AgentEvaluation,
+            Option<&crate::core::components::Predator>,
+            Option<&crate::core::components::Prey>,
+            Option<&crate::core::components::AgentSex>,
+            &crate::ai::hrrl::HomeostaticState,
+        ),
+        With<crate::core::components::Agent>,
+    >,
     tracker: Option<Res<crate::core::telemetry_export::DemographicTracker>>,
     mut census_resource: Option<ResMut<crate::core::telemetry_export::DemographicCensusState>>,
 ) {
@@ -364,7 +367,8 @@ pub fn demographic_census_system(
         }
     }
 
-    let census = crate::core::telemetry_export::build_demographic_census(&agent_data, tracker.as_deref());
+    let census =
+        crate::core::telemetry_export::build_demographic_census(&agent_data, tracker.as_deref());
     if let Some(ref mut res) = census_resource {
         **res = census;
     }
@@ -389,4 +393,3 @@ pub fn energy_flux_aggregation_system(
         }
     }
 }
-

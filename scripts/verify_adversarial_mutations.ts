@@ -9,10 +9,6 @@ import {
   calculateMteMetabolicRate,
   calculateHollingType2,
   calculateHollingType3,
-  calculateLogisticRegrowth,
-  calculateShannonIndex,
-  calculateSimpsonIndex,
-  calculateLindemanEfficiency,
   boltzmannFactor,
   SimulatedEnergyLedger,
   MultiTrophicSimulation,
@@ -20,16 +16,11 @@ import {
   CausalBranchTree,
   CausalInterventionEngine,
   DeterministicReplayEngine,
-  DemographicsPipeline,
-  EnergyFluxPipeline,
-  SpatialDensityPipeline,
   MapElitesNewickPipeline,
-  ScientificDatasetExporter,
   SnapshotEnvelopeManager,
   ZeroAllocBufferSimulator,
   RESIDUAL_ABS_TOLERANCE_EU,
   E_ANIMAL_EV,
-  E_PRODUCER_EV,
 } from '../tests/e2e/tiers/e2e_harness';
 
 interface MutationResult {
@@ -41,10 +32,6 @@ interface MutationResult {
 }
 
 const results: MutationResult[] = [];
-
-function assert(condition: boolean, msg: string) {
-  if (!condition) throw new Error(`Assertion failed: ${msg}`);
-}
 
 // -----------------------------------------------------------------------------------------------
 // F1: Closed-Loop Energy Ledger
@@ -296,7 +283,7 @@ function assert(condition: boolean, msg: string) {
   // Mutation: Simulate heap allocation inside hot path
   let fakeAllocCount = simZero.totalAllocations;
   for (let i = 0; i < 10; i++) {
-    const leak = new Float64Array(64); // illegal alloc in hot path
+    void new Float64Array(64); // illegal alloc in hot path
     fakeAllocCount++;
   }
   const mutationCaught = fakeAllocCount > 1;

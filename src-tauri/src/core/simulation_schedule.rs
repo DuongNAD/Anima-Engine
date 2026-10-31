@@ -105,7 +105,6 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .chain()
             .after(integrate_physics_system),
         rebuild_spatial_grid_system.after(wrap_coordinates_system),
-
         crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
         // ---- The energy pipeline, declared end to end -------------------------------------------
         //
@@ -264,8 +263,6 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         demographic_census_system.after(ecosystem_census_system),
         energy_flux_aggregation_system.after(ecosystem_census_system),
     ));
-
-
 
     // A declared experiment's interventions reach the world here. `.before(...)` only — see the
     // module docs — and inert without a `LiveInterventions` resource, which only the experiment

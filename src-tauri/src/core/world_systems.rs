@@ -365,7 +365,6 @@ pub fn combat_system(
 
                 if pred_centroid.distance(prey_centroid) < 3.0 {
                     if let Ok((_, _, mut prey_homeo)) = prey_query.get_mut(prey_entity) {
-
                         if prey_homeo.energy <= 0.0 {
                             continue;
                         }

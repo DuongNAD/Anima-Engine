@@ -12,7 +12,9 @@
 
 use std::collections::HashMap;
 
-use anima_domain::energy::{EcosystemBiomass, EnergyFluxMatrix, EnergyLedger, RESIDUAL_ABS_TOLERANCE_EU};
+use anima_domain::energy::{
+    EcosystemBiomass, EnergyFluxMatrix, EnergyLedger, RESIDUAL_ABS_TOLERANCE_EU,
+};
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::agent_systems::{AgentEvaluation, AgentLineageId};
 use anima_engine_lib::core::components::{Agent, AgentSex, Predator, Prey};
@@ -39,16 +41,34 @@ fn test_adversarial_empty_world_boundary_conditions() {
     let census = build_demographic_census(&empty_agents, Some(&tracker));
 
     // Numerical sanity: No NaN, no Infinity
-    assert!(!census.shannon.is_nan(), "Shannon index must not be NaN on empty world");
-    assert!(!census.shannon.is_infinite(), "Shannon index must not be infinite");
+    assert!(
+        !census.shannon.is_nan(),
+        "Shannon index must not be NaN on empty world"
+    );
+    assert!(
+        !census.shannon.is_infinite(),
+        "Shannon index must not be infinite"
+    );
     assert_eq!(census.shannon, 0.0);
 
-    assert!(!census.simpson.is_nan(), "Simpson index must not be NaN on empty world");
-    assert!(!census.simpson.is_infinite(), "Simpson index must not be infinite");
+    assert!(
+        !census.simpson.is_nan(),
+        "Simpson index must not be NaN on empty world"
+    );
+    assert!(
+        !census.simpson.is_infinite(),
+        "Simpson index must not be infinite"
+    );
     assert_eq!(census.simpson, 0.0);
 
-    assert!(!census.sex_ratio.is_nan(), "Sex ratio must not be NaN on empty world");
-    assert!(!census.sex_ratio.is_infinite(), "Sex ratio must not be infinite");
+    assert!(
+        !census.sex_ratio.is_nan(),
+        "Sex ratio must not be NaN on empty world"
+    );
+    assert!(
+        !census.sex_ratio.is_infinite(),
+        "Sex ratio must not be infinite"
+    );
     assert_eq!(census.sex_ratio, 0.0);
 
     assert_eq!(census.prey_count, 0);
@@ -85,14 +105,33 @@ fn test_adversarial_empty_world_boundary_conditions() {
 
     for node in &flux_report.nodes {
         assert!(!node.biomass.is_nan(), "Node {} biomass is NaN", node.id);
-        assert!(!node.biomass.is_infinite(), "Node {} biomass is Infinite", node.id);
+        assert!(
+            !node.biomass.is_infinite(),
+            "Node {} biomass is Infinite",
+            node.id
+        );
         assert!(node.biomass >= 0.0, "Node {} biomass is negative", node.id);
     }
 
     for link in &flux_report.links {
-        assert!(!link.value.is_nan(), "Link {}->{} is NaN", link.source, link.target);
-        assert!(!link.value.is_infinite(), "Link {}->{} is Infinite", link.source, link.target);
-        assert!(link.value >= 0.0, "Link {}->{} is negative", link.source, link.target);
+        assert!(
+            !link.value.is_nan(),
+            "Link {}->{} is NaN",
+            link.source,
+            link.target
+        );
+        assert!(
+            !link.value.is_infinite(),
+            "Link {}->{} is Infinite",
+            link.source,
+            link.target
+        );
+        assert!(
+            link.value >= 0.0,
+            "Link {}->{} is negative",
+            link.source,
+            link.target
+        );
     }
 
     // Spatial Density on 0 segments & 0 bounds
@@ -138,7 +177,10 @@ fn test_adversarial_unisex_populations_and_skewed_ratios() {
     let census_males = build_demographic_census(&all_males, Some(&tracker));
     assert_eq!(census_males.male_count, 500);
     assert_eq!(census_males.female_count, 0);
-    assert_eq!(census_males.sex_ratio, 0.0, "Sex ratio for 0 females must be 0.0 without panic");
+    assert_eq!(
+        census_males.sex_ratio, 0.0,
+        "Sex ratio for 0 females must be 0.0 without panic"
+    );
     assert!(!census_males.sex_ratio.is_nan());
     assert!(!census_males.sex_ratio.is_infinite());
 
@@ -176,12 +218,14 @@ fn test_adversarial_unisex_populations_and_skewed_ratios() {
     assert!((census_skewed_female.sex_ratio - 0.0001).abs() < 1e-6);
 
     // 5. Unassigned Sex Fallback (None)
-    let unassigned_sex: Vec<(u32, Option<AgentType>, Option<AgentSex>)> = (0..100)
-        .map(|i| (i, Some(AgentType::Prey), None))
-        .collect();
+    let unassigned_sex: Vec<(u32, Option<AgentType>, Option<AgentSex>)> =
+        (0..100).map(|i| (i, Some(AgentType::Prey), None)).collect();
 
     let census_unassigned = build_demographic_census(&unassigned_sex, Some(&tracker));
-    assert_eq!(census_unassigned.male_count + census_unassigned.female_count, 100);
+    assert_eq!(
+        census_unassigned.male_count + census_unassigned.female_count,
+        100
+    );
     assert_eq!(census_unassigned.male_count, 50);
     assert_eq!(census_unassigned.female_count, 50);
     assert_eq!(census_unassigned.sex_ratio, 1.0);
@@ -197,10 +241,20 @@ fn test_adversarial_extreme_age_senescence_and_clamping() {
 
     // Extreme age cohorts: 0, 50, 51, 150, 151, 300, 301, 1000, 5000, u32::MAX
     let test_ages = vec![
-        0, 1, 25, 50,           // Cohort 0 (0-50) -> 4 agents
-        51, 100, 150,           // Cohort 1 (51-150) -> 3 agents
-        151, 200, 300,          // Cohort 2 (151-300) -> 3 agents
-        301, 1000, 2500, u32::MAX, // Cohort 3 (301-1000+) -> 4 agents
+        0,
+        1,
+        25,
+        50, // Cohort 0 (0-50) -> 4 agents
+        51,
+        100,
+        150, // Cohort 1 (51-150) -> 3 agents
+        151,
+        200,
+        300, // Cohort 2 (151-300) -> 3 agents
+        301,
+        1000,
+        2500,
+        u32::MAX, // Cohort 3 (301-1000+) -> 4 agents
     ];
 
     let agents: Vec<(u32, Option<AgentType>, Option<AgentSex>)> = test_ages
@@ -210,10 +264,22 @@ fn test_adversarial_extreme_age_senescence_and_clamping() {
 
     let census = build_demographic_census(&agents, Some(&tracker));
 
-    assert_eq!(census.age_cohorts[0].count, 4, "Cohort 0 (0-50) count mismatch");
-    assert_eq!(census.age_cohorts[1].count, 3, "Cohort 1 (51-150) count mismatch");
-    assert_eq!(census.age_cohorts[2].count, 3, "Cohort 2 (151-300) count mismatch");
-    assert_eq!(census.age_cohorts[3].count, 4, "Cohort 3 (301+) count mismatch");
+    assert_eq!(
+        census.age_cohorts[0].count, 4,
+        "Cohort 0 (0-50) count mismatch"
+    );
+    assert_eq!(
+        census.age_cohorts[1].count, 3,
+        "Cohort 1 (51-150) count mismatch"
+    );
+    assert_eq!(
+        census.age_cohorts[2].count, 3,
+        "Cohort 2 (151-300) count mismatch"
+    );
+    assert_eq!(
+        census.age_cohorts[3].count, 4,
+        "Cohort 3 (301+) count mismatch"
+    );
 
     // Parent birth age tracking at extreme values
     tracker.record_birth(0);
@@ -251,10 +317,11 @@ fn test_adversarial_extreme_age_senescence_and_clamping() {
 
 #[test]
 fn test_adversarial_counter_saturation_and_overflow_resistance() {
-    let mut tracker = DemographicTracker::default();
-
     // Force near u32::MAX for births
-    tracker.births_young = u32::MAX - 1;
+    let mut tracker = DemographicTracker {
+        births_young: u32::MAX - 1,
+        ..Default::default()
+    };
     tracker.record_birth(20);
     assert_eq!(tracker.births_young, u32::MAX);
     // Saturating add must not wrap to 0 or panic
@@ -270,7 +337,21 @@ fn test_adversarial_counter_saturation_and_overflow_resistance() {
 
     // Large batch calculation
     let massive_agents: Vec<(u32, Option<AgentType>, Option<AgentSex>)> = (0..50_000)
-        .map(|i| (i % 400, if i % 3 == 0 { Some(AgentType::Predator) } else { Some(AgentType::Prey) }, if i % 2 == 0 { Some(AgentSex::Male) } else { Some(AgentSex::Female) }))
+        .map(|i| {
+            (
+                i % 400,
+                if i % 3 == 0 {
+                    Some(AgentType::Predator)
+                } else {
+                    Some(AgentType::Prey)
+                },
+                if i % 2 == 0 {
+                    Some(AgentSex::Male)
+                } else {
+                    Some(AgentSex::Female)
+                },
+            )
+        })
         .collect();
 
     let census = build_demographic_census(&massive_agents, Some(&tracker));
@@ -280,7 +361,10 @@ fn test_adversarial_counter_saturation_and_overflow_resistance() {
     assert_eq!(census.sex_ratio, 1.0);
 
     let total_cohort_count: u32 = census.age_cohorts.iter().map(|c| c.count).sum();
-    assert_eq!(total_cohort_count, 50_000, "All 50,000 agents must be strictly conserved in cohorts");
+    assert_eq!(
+        total_cohort_count, 50_000,
+        "All 50,000 agents must be strictly conserved in cohorts"
+    );
 }
 
 // ===============================================================================================
@@ -296,7 +380,8 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
     });
 
     let biomes = vec![0u8; 32 * 32];
-    let mut resource_field = ResourceField::from_biomes(&biomes, 32, 32, -100.0, -100.0, 100.0, 100.0, 0.05);
+    let mut resource_field =
+        ResourceField::from_biomes(&biomes, 32, 32, -100.0, -100.0, 100.0, 100.0, 0.05);
     for r in resource_field.r.iter_mut() {
         *r = 5.0;
     }
@@ -380,8 +465,14 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
     assert_eq!(census.female_count, 20);
     assert_eq!(census.male_count, 5);
     assert_eq!(census.sex_ratio, 5.0 / 20.0);
-    assert!(census.shannon > 0.0, "Shannon diversity should be positive for mixed community");
-    assert!(census.simpson > 0.0, "Simpson diversity should be positive for mixed community");
+    assert!(
+        census.shannon > 0.0,
+        "Shannon diversity should be positive for mixed community"
+    );
+    assert!(
+        census.simpson > 0.0,
+        "Simpson diversity should be positive for mixed community"
+    );
 
     // Verify energy flux report
     let flux_report = world.resource::<EnergyFluxReport>();
@@ -395,12 +486,33 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
     );
 
     // Check node biomass sum conservation (plants + detritus + herbivores + carnivores = total_energy)
-    let plant_biomass = flux_report.nodes.iter().find(|n| n.id == "plants").unwrap().biomass;
-    let detritus_biomass = flux_report.nodes.iter().find(|n| n.id == "detritus").unwrap().biomass;
-    let herbivore_biomass = flux_report.nodes.iter().find(|n| n.id == "herbivores").unwrap().biomass;
-    let carnivore_biomass = flux_report.nodes.iter().find(|n| n.id == "carnivores").unwrap().biomass;
+    let plant_biomass = flux_report
+        .nodes
+        .iter()
+        .find(|n| n.id == "plants")
+        .unwrap()
+        .biomass;
+    let detritus_biomass = flux_report
+        .nodes
+        .iter()
+        .find(|n| n.id == "detritus")
+        .unwrap()
+        .biomass;
+    let herbivore_biomass = flux_report
+        .nodes
+        .iter()
+        .find(|n| n.id == "herbivores")
+        .unwrap()
+        .biomass;
+    let carnivore_biomass = flux_report
+        .nodes
+        .iter()
+        .find(|n| n.id == "carnivores")
+        .unwrap()
+        .biomass;
 
-    let summed_flux_nodes = plant_biomass + detritus_biomass + herbivore_biomass + carnivore_biomass;
+    let summed_flux_nodes =
+        plant_biomass + detritus_biomass + herbivore_biomass + carnivore_biomass;
     let delta = (summed_flux_nodes - initial_total_energy).abs();
     assert!(
         delta < RESIDUAL_ABS_TOLERANCE_EU,
@@ -477,7 +589,8 @@ fn test_adversarial_spatial_density_coordinate_anomalies() {
         },
     ];
 
-    let report = generate_spatial_density_matrix(16, 16, &corrupt_segments, Some(&bounds), None, &[]);
+    let report =
+        generate_spatial_density_matrix(16, 16, &corrupt_segments, Some(&bounds), None, &[]);
 
     assert_eq!(report.width, 16);
     assert_eq!(report.height, 16);
@@ -488,8 +601,14 @@ fn test_adversarial_spatial_density_coordinate_anomalies() {
     let sum_pred: u32 = report.predator_density.iter().sum();
 
     // 3 prey root segments + 1 predator root segment = 4 total agents
-    assert_eq!(sum_prey, 3, "Corrupt prey coordinates must safely clamp into grid");
-    assert_eq!(sum_pred, 1, "Corrupt predator coordinates must safely clamp into grid");
+    assert_eq!(
+        sum_prey, 3,
+        "Corrupt prey coordinates must safely clamp into grid"
+    );
+    assert_eq!(
+        sum_pred, 1,
+        "Corrupt predator coordinates must safely clamp into grid"
+    );
 }
 
 // ===============================================================================================

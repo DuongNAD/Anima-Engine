@@ -48,14 +48,11 @@ pub const LINDEMAN_EFFICIENCY: f64 = 0.40;
 /// Canonical continuous reproduction assimilation efficiency (~60% to offspring, 40% overhead to detritus).
 pub const REPRODUCTION_EFFICIENCY: f64 = 0.60;
 
-
 /// Default Holling Type III attack parameter for predation capture.
 pub const CAPTURE_ATTACK: f64 = 0.02;
 
-
 /// Default Holling Type III handling parameter for predation capture.
 pub const CAPTURE_HANDLING: f64 = 0.02;
-
 
 /// Arrhenius/Boltzmann temperature scaling factor, normalized to 1.0 at `REF_TEMP_K`.
 /// `temp_c` is organism body temperature in °C.
@@ -87,7 +84,12 @@ pub fn holling_type_2(prey_density: f64, attack_rate: f64, handling_time: f64) -
 
 /// Holling Type III functional response with rarity refuge: $f_{III}(N) = \frac{a N^2}{1 + a h N^2 + \epsilon_{\text{refuge}}}$.
 #[inline]
-pub fn holling_type_3(prey_density: f64, attack_rate: f64, handling_time: f64, refuge_param: f64) -> f64 {
+pub fn holling_type_3(
+    prey_density: f64,
+    attack_rate: f64,
+    handling_time: f64,
+    refuge_param: f64,
+) -> f64 {
     let n = prey_density.max(0.0);
     let n2 = n * n;
     (attack_rate * n2) / (1.0 + attack_rate * handling_time * n2 + refuge_param.max(0.0))
@@ -131,4 +133,3 @@ mod tests {
         assert!(h3_low < h2_low * 0.2);
     }
 }
-

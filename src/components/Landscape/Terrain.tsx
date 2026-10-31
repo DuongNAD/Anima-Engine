@@ -43,7 +43,7 @@ interface PatchableShader {
  * previous version of this feature had no test of any kind, which is how deleting it registered as
  * a pure performance win.
  */
-export function applyShoreWave(shader: PatchableShader, uniforms: ShoreWaveUniforms): void {
+function applyShoreWave(shader: PatchableShader, uniforms: ShoreWaveUniforms): void {
   shader.uniforms.uTime = uniforms.uTime;
   shader.uniforms.uGridOrigin = uniforms.uGridOrigin;
   shader.vertexShader = shader.vertexShader

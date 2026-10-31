@@ -110,7 +110,10 @@ pub enum Command {
 }
 
 pub fn parse_args(argv: &[String]) -> Result<Option<Command>, String> {
-    if argv.iter().any(|arg| matches!(arg.as_str(), "-h" | "--help")) {
+    if argv
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "-h" | "--help"))
+    {
         return Ok(None);
     }
     if argv.is_empty() {
@@ -150,7 +153,9 @@ pub fn parse_args(argv: &[String]) -> Result<Option<Command>, String> {
                 if model.is_some() {
                     return Err("--model may be specified only once".into());
                 }
-                let value = args.next().ok_or("--model requires 'reference' or 'live'")?;
+                let value = args
+                    .next()
+                    .ok_or("--model requires 'reference' or 'live'")?;
                 model = Some(Model::parse(value)?);
             }
             other if other.starts_with("--model=") => {
@@ -177,7 +182,9 @@ pub fn parse_args(argv: &[String]) -> Result<Option<Command>, String> {
                     return Err("--threads may be specified only once".into());
                 }
                 let value = args.next().ok_or("--threads requires an integer")?;
-                let n: usize = value.parse().map_err(|_| format!("invalid thread count '{value}'"))?;
+                let n: usize = value
+                    .parse()
+                    .map_err(|_| format!("invalid thread count '{value}'"))?;
                 threads = Some(n);
             }
             other if other.starts_with("--threads=") => {
@@ -185,7 +192,9 @@ pub fn parse_args(argv: &[String]) -> Result<Option<Command>, String> {
                     return Err("--threads may be specified only once".into());
                 }
                 let val_str = &other["--threads=".len()..];
-                let n: usize = val_str.parse().map_err(|_| format!("invalid thread count '{val_str}'"))?;
+                let n: usize = val_str
+                    .parse()
+                    .map_err(|_| format!("invalid thread count '{val_str}'"))?;
                 threads = Some(n);
             }
             other if other.starts_with('-') => return Err(format!("unknown option '{other}'")),
@@ -366,7 +375,9 @@ pub fn render_sweep<W: Write>(
         OutputFormat::Json => {
             serde_json::to_writer_pretty(&mut *writer, &result)
                 .map_err(|e| format!("cannot serialise sweep report: {e}"))?;
-            writer.write_all(b"\n").map_err(|e| format!("cannot write newline: {e}"))?;
+            writer
+                .write_all(b"\n")
+                .map_err(|e| format!("cannot write newline: {e}"))?;
         }
         OutputFormat::Csv => {
             writer
@@ -374,7 +385,9 @@ pub fn render_sweep<W: Write>(
                 .map_err(|e| format!("cannot write csv: {e}"))?;
         }
     }
-    writer.flush().map_err(|e| format!("cannot flush report: {e}"))?;
+    writer
+        .flush()
+        .map_err(|e| format!("cannot flush report: {e}"))?;
 
     Ok(if result.failed_runs == 0 {
         ExitCode::SUCCESS
@@ -401,8 +414,12 @@ pub fn render_branch<W: Write>(
 
     serde_json::to_writer_pretty(&mut *writer, &result)
         .map_err(|e| format!("cannot serialise branch tree report: {e}"))?;
-    writer.write_all(b"\n").map_err(|e| format!("cannot write newline: {e}"))?;
-    writer.flush().map_err(|e| format!("cannot flush report: {e}"))?;
+    writer
+        .write_all(b"\n")
+        .map_err(|e| format!("cannot write newline: {e}"))?;
+    writer
+        .flush()
+        .map_err(|e| format!("cannot flush report: {e}"))?;
 
     Ok(ExitCode::SUCCESS)
 }

@@ -18,8 +18,8 @@ use anima_engine_lib::core::branch_tree::{
 };
 use anima_engine_lib::core::causal::CausalLedger;
 use anima_engine_lib::core::experiment::{
-    ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy,
-    WorldIdentity, WorldLawSet, MANIFEST_SCHEMA_VERSION,
+    ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy, WorldIdentity,
+    WorldLawSet, MANIFEST_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment_runner::{
     checkpoint_fork, run_manifest_seed, ExperimentModel, RunStatus,
@@ -108,7 +108,12 @@ fn live_base_manifest(duration_ticks: u64, seed: u64) -> ExperimentManifest {
 fn through_disk_temp(snapshot: &LiveSnapshot, label: &str) -> LiveSnapshot {
     static DISK_CTR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(5000);
     let id = DISK_CTR.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("anima_challenger_r2_{}_{}_{}", std::process::id(), id, label));
+    let dir = std::env::temp_dir().join(format!(
+        "anima_challenger_r2_{}_{}_{}",
+        std::process::id(),
+        id,
+        label
+    ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let path = dir.join("checkpoint.json");
     let envelope = SnapshotEnvelope::seal(snapshot.saved.clone()).expect("seal");
@@ -144,8 +149,9 @@ fn stress_test_live_sim_checkpoint_disk_roundtrip_parity() {
     let queue = InterventionQueue::new(vec![]);
 
     // 1. Uninterrupted reference execution
-    let mut uninterrupted = LiveExperimentAdapter::from_manifest(&laws, &initial, &[], seed, (16, 16), duration)
-        .expect("build uninterrupted");
+    let mut uninterrupted =
+        LiveExperimentAdapter::from_manifest(&laws, &initial, &[], seed, (16, 16), duration)
+            .expect("build uninterrupted");
     let mut rng_ref = rand::rngs::StdRng::seed_from_u64(seed);
     let mut clock_ref = SimClock::new();
     let mut ledger_ref = CausalLedger::new();
@@ -161,8 +167,9 @@ fn stress_test_live_sim_checkpoint_disk_roundtrip_parity() {
 
     // 2. Interrupted execution at K = 60
     let k = 60;
-    let mut interrupted = LiveExperimentAdapter::from_manifest(&laws, &initial, &[], seed, (16, 16), duration)
-        .expect("build interrupted");
+    let mut interrupted =
+        LiveExperimentAdapter::from_manifest(&laws, &initial, &[], seed, (16, 16), duration)
+            .expect("build interrupted");
     let mut rng_b = rand::rngs::StdRng::seed_from_u64(seed);
     let mut clock_b = SimClock::new();
     let mut ledger_b = CausalLedger::new();
@@ -199,8 +206,12 @@ fn stress_test_live_checkpoint_fork_control_parity() {
     let reg = live_registry();
     let seed = 4242;
     let m = live_base_manifest(180, seed);
-    let report = checkpoint_fork::<LiveExperimentAdapter>(&m, &reg, seed, 60, &[
-        InterventionCommand {
+    let report = checkpoint_fork::<LiveExperimentAdapter>(
+        &m,
+        &reg,
+        seed,
+        60,
+        &[InterventionCommand {
             id: 10,
             cause_id: 100,
             kind: InterventionKind::Deforest,
@@ -211,8 +222,9 @@ fn stress_test_live_checkpoint_fork_control_parity() {
             signed_negative: true,
             curve: Curve::Step,
             reversible: false,
-        },
-    ]).expect("checkpoint_fork must succeed");
+        }],
+    )
+    .expect("checkpoint_fork must succeed");
 
     let uninterrupted = run_manifest_seed::<LiveExperimentAdapter>(&m, &reg, seed, None, None);
     assert_eq!(
@@ -331,7 +343,12 @@ fn stress_test_deep_multi_tier_genesis_fork_chain_at_tick_0() {
     assert_eq!(report.nodes.len(), 4);
     for (id, node) in &report.nodes {
         let res = node.run_result.as_ref().unwrap();
-        assert_eq!(res.status, RunStatus::Completed, "Node {} must complete", id);
+        assert_eq!(
+            res.status,
+            RunStatus::Completed,
+            "Node {} must complete",
+            id
+        );
     }
 }
 
@@ -478,7 +495,13 @@ fn stress_test_massive_cotemporal_multi_tier_dag() {
     );
 
     // Control comparison 1 vs 5 must have exactly 0 distance
-    let div_1_5 = report.divergences.iter().find(|d| (d.branch_a_id == 1 && d.branch_b_id == 5) || (d.branch_a_id == 5 && d.branch_b_id == 1)).unwrap();
+    let div_1_5 = report
+        .divergences
+        .iter()
+        .find(|d| {
+            (d.branch_a_id == 1 && d.branch_b_id == 5) || (d.branch_a_id == 5 && d.branch_b_id == 1)
+        })
+        .unwrap();
     assert_eq!(div_1_5.phase_space.max_distance, 0.0);
     assert_eq!(div_1_5.time_to_divergence, None);
 }
@@ -567,9 +590,17 @@ fn stress_test_large_50_node_tree_execution() {
     assert_eq!(report.divergences.len(), 49);
 
     for (id, node) in &report.nodes {
-        assert_eq!(node.status, anima_engine_lib::core::branch_tree::BranchExecutionStatus::Completed);
+        assert_eq!(
+            node.status,
+            anima_engine_lib::core::branch_tree::BranchExecutionStatus::Completed
+        );
         let res = node.run_result.as_ref().unwrap();
-        assert_eq!(res.status, RunStatus::Completed, "Node {} status must be completed", id);
+        assert_eq!(
+            res.status,
+            RunStatus::Completed,
+            "Node {} status must be completed",
+            id
+        );
     }
 }
 
@@ -712,29 +743,27 @@ fn stress_test_adversarial_validation_and_error_rejection() {
         tree_id: "late_iv_tree".into(),
         name: "Late Intervention Tree".into(),
         base_manifest: base.clone(),
-        nodes: vec![
-            BranchNodeSpecification {
+        nodes: vec![BranchNodeSpecification {
+            id: 1,
+            parent_id: None,
+            fork_tick: 0,
+            duration_ticks: 300,
+            interventions: vec![InterventionCommand {
                 id: 1,
-                parent_id: None,
-                fork_tick: 0,
-                duration_ticks: 300,
-                interventions: vec![InterventionCommand {
-                    id: 1,
-                    cause_id: 10,
-                    kind: InterventionKind::Deforest,
-                    region: Region::Global,
-                    start_tick: 301,
-                    duration_ticks: 10,
-                    intensity: 0.5,
-                    signed_negative: true,
-                    curve: Curve::Step,
-                    reversible: false,
-                }],
-                exotic_interventions: Vec::new(),
-                seed_strategy: BranchSeedStrategy::InheritStream,
-                label: "Root".into(),
-            },
-        ],
+                cause_id: 10,
+                kind: InterventionKind::Deforest,
+                region: Region::Global,
+                start_tick: 301,
+                duration_ticks: 10,
+                intensity: 0.5,
+                signed_negative: true,
+                curve: Curve::Step,
+                reversible: false,
+            }],
+            exotic_interventions: Vec::new(),
+            seed_strategy: BranchSeedStrategy::InheritStream,
+            label: "Root".into(),
+        }],
         comparisons: Vec::new(),
     };
     assert!(late_iv_manifest.validate(&registry).is_err());

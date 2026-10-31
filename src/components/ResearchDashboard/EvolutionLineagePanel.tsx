@@ -116,7 +116,7 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
         },
       });
       setNewickExportResult(nwk);
-    } catch (e) {
+    } catch {
       setNewickExportResult(`((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);`);
     } finally {
       setIsExportingNewick(false);

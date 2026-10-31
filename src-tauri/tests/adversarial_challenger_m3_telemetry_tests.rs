@@ -10,7 +10,9 @@ use anima_engine_lib::core::resources::MapBounds;
 use anima_engine_lib::core::simulation_state::SegmentState;
 use anima_engine_lib::core::telemetry_export::*;
 use anima_engine_lib::evolution::genotype::MorphologyGenotype;
-use anima_engine_lib::evolution::lineage::{FallbackLineageTracker, LineageNode, LineageRelation, LineageTracker, RelationType};
+use anima_engine_lib::evolution::lineage::{
+    FallbackLineageTracker, LineageNode, LineageRelation, LineageTracker, RelationType,
+};
 use anima_engine_lib::evolution::newick::{to_newick, NewickError};
 
 // ===============================================================================================
@@ -117,10 +119,22 @@ fn test_adversarial_spatial_density_invariance_extreme_resolutions() {
         let expected_h = h.max(1);
         assert_eq!(report.width, expected_w, "Width mismatch for ({w}, {h})");
         assert_eq!(report.height, expected_h, "Height mismatch for ({w}, {h})");
-        assert_eq!(report.prey_density.len(), (expected_w * expected_h) as usize);
-        assert_eq!(report.predator_density.len(), (expected_w * expected_h) as usize);
-        assert_eq!(report.vegetation_density.len(), (expected_w * expected_h) as usize);
-        assert_eq!(report.predation_hotspots.len(), (expected_w * expected_h) as usize);
+        assert_eq!(
+            report.prey_density.len(),
+            (expected_w * expected_h) as usize
+        );
+        assert_eq!(
+            report.predator_density.len(),
+            (expected_w * expected_h) as usize
+        );
+        assert_eq!(
+            report.vegetation_density.len(),
+            (expected_w * expected_h) as usize
+        );
+        assert_eq!(
+            report.predation_hotspots.len(),
+            (expected_w * expected_h) as usize
+        );
 
         let sum_prey: u32 = report.prey_density.iter().sum();
         let sum_pred: u32 = report.predator_density.iter().sum();
@@ -224,8 +238,14 @@ fn test_adversarial_spatial_density_out_of_bounds_clamping_and_nan() {
     let sum_pred: u32 = report.predator_density.iter().sum();
 
     // 4 prey, 2 predators — all must be safely clamped into valid grid cells without panicking
-    assert_eq!(sum_prey, 4, "Prey count conservation violated with out-of-bounds coords");
-    assert_eq!(sum_pred, 2, "Predator count conservation violated with out-of-bounds coords");
+    assert_eq!(
+        sum_prey, 4,
+        "Prey count conservation violated with out-of-bounds coords"
+    );
+    assert_eq!(
+        sum_pred, 2,
+        "Predator count conservation violated with out-of-bounds coords"
+    );
 }
 
 // ===============================================================================================
@@ -235,7 +255,10 @@ fn test_adversarial_spatial_density_out_of_bounds_clamping_and_nan() {
 fn verify_newick_syntax(newick_str: &str) {
     let trimmed = newick_str.trim();
     assert!(!trimmed.is_empty(), "Newick string is empty");
-    assert!(trimmed.ends_with(';'), "Newick string must end with ';', got: {trimmed}");
+    assert!(
+        trimmed.ends_with(';'),
+        "Newick string must end with ';', got: {trimmed}"
+    );
 
     // Verify balanced parentheses
     let mut depth: i32 = 0;
@@ -250,7 +273,10 @@ fn verify_newick_syntax(newick_str: &str) {
                 depth += 1;
             } else if c == ')' {
                 depth -= 1;
-                assert!(depth >= 0, "Unmatched closing parenthesis in Newick: {trimmed}");
+                assert!(
+                    depth >= 0,
+                    "Unmatched closing parenthesis in Newick: {trimmed}"
+                );
             }
         }
         prev_char = c;
@@ -291,7 +317,9 @@ fn test_adversarial_newick_deep_linear_tree_1000_generations() {
     let tracker = FallbackLineageTracker::new("bolt://localhost:7687", "neo4j", "pass");
 
     let root_id = "gen-0".to_string();
-    tracker.add_root(root_id.clone(), MorphologyGenotype::default()).unwrap();
+    tracker
+        .add_root(root_id.clone(), MorphologyGenotype::default())
+        .unwrap();
 
     let mut parent = root_id;
     for gen in 1..=1000 {
@@ -320,7 +348,9 @@ fn test_adversarial_newick_wide_branching_tree() {
     let tracker = FallbackLineageTracker::new("bolt://localhost:7687", "neo4j", "pass");
 
     let root_id = "broad-root".to_string();
-    tracker.add_root(root_id.clone(), MorphologyGenotype::default()).unwrap();
+    tracker
+        .add_root(root_id.clone(), MorphologyGenotype::default())
+        .unwrap();
 
     for i in 0..1000 {
         let child = format!("child-{i:04}");
@@ -347,8 +377,12 @@ fn test_adversarial_newick_wide_branching_tree() {
 fn test_adversarial_newick_crossover_dag_and_dropped_edges() {
     let tracker = FallbackLineageTracker::new("bolt://localhost:7687", "neo4j", "pass");
 
-    tracker.add_root("parent_a".to_string(), MorphologyGenotype::default()).unwrap();
-    tracker.add_root("parent_b".to_string(), MorphologyGenotype::default()).unwrap();
+    tracker
+        .add_root("parent_a".to_string(), MorphologyGenotype::default())
+        .unwrap();
+    tracker
+        .add_root("parent_b".to_string(), MorphologyGenotype::default())
+        .unwrap();
 
     // Crossover child with two parents
     tracker
@@ -362,9 +396,13 @@ fn test_adversarial_newick_crossover_dag_and_dropped_edges() {
         .unwrap();
 
     let (nodes, relations) = tracker.get_lineage_graph().unwrap();
-    let export_result = to_newick(&nodes, &relations).expect("Crossover DAG must be exportable as tree view");
+    let export_result =
+        to_newick(&nodes, &relations).expect("Crossover DAG must be exportable as tree view");
 
-    assert_eq!(export_result.dropped_parent_edges, 1, "Crossover must record exactly 1 dropped parent edge");
+    assert_eq!(
+        export_result.dropped_parent_edges, 1,
+        "Crossover must record exactly 1 dropped parent edge"
+    );
     assert_eq!(export_result.roots, 2, "Forest must have 2 roots");
 
     let file_content = export_result.to_file_contents();
@@ -408,7 +446,10 @@ fn test_adversarial_newick_cycles_and_generation_inversions_rejected() {
     ];
 
     let result = to_newick(&nodes, &cyclic_relations);
-    assert!(matches!(result, Err(NewickError::Cycle { .. })), "Cycles must be rejected with NewickError::Cycle");
+    assert!(
+        matches!(result, Err(NewickError::Cycle { .. })),
+        "Cycles must be rejected with NewickError::Cycle"
+    );
 
     // 2. Generation Inversion rejection
     let inv_nodes = vec![
@@ -485,11 +526,18 @@ fn test_adversarial_dataset_exporter_rfc4180_csv_compliance() {
 
     // RFC 4180 validation
     assert!(lines.len() >= 3, "CSV must contain header + 2 data rows");
-    assert_eq!(lines[0], "tick,plants,prey,predators", "Header format violation");
+    assert_eq!(
+        lines[0], "tick,plants,prey,predators",
+        "Header format violation"
+    );
 
     for (i, line) in lines.iter().skip(1).enumerate() {
         let fields: Vec<&str> = line.split(',').collect();
-        assert_eq!(fields.len(), 4, "Row {i} does not have exactly 4 columns: {line}");
+        assert_eq!(
+            fields.len(),
+            4,
+            "Row {i} does not have exactly 4 columns: {line}"
+        );
 
         // Validate each column parses into its expected numeric type
         let tick: u64 = fields[0].parse().expect("tick must be u64");
@@ -573,14 +621,15 @@ fn test_adversarial_dataset_exporter_json_and_provenance_roundtrip() {
     };
 
     // Serialize to JSON
-    let json_str = serde_json::to_string_pretty(&package).expect("Dataset package must serialize to JSON");
+    let json_str =
+        serde_json::to_string_pretty(&package).expect("Dataset package must serialize to JSON");
     assert!(json_str.contains("\"schemaVersion\": 1"));
     assert!(json_str.contains("\"provenance\""));
     assert!(json_str.contains("\"timeSeries\""));
 
     // Deserialize back and assert full parity
-    let deserialized: ScientificDatasetPackage = serde_json::from_str(&json_str)
-        .expect("Dataset package must deserialize from valid JSON");
+    let deserialized: ScientificDatasetPackage =
+        serde_json::from_str(&json_str).expect("Dataset package must deserialize from valid JSON");
     assert_eq!(deserialized, package);
 }
 
@@ -670,7 +719,8 @@ fn test_adversarial_path_traversal_payload_rejections() {
         "\t\r\n",
     ];
 
-    let tmp_dir = std::env::temp_dir().join(format!("adversarial_security_test_{}", std::process::id()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("adversarial_security_test_{}", std::process::id()));
 
     for evil in evil_payloads {
         let san_res = sanitize_save_name(evil);
@@ -688,14 +738,18 @@ fn test_adversarial_path_traversal_payload_rejections() {
 
     // Test max length boundary
     let too_long = "a".repeat(MAX_LEN + 1);
-    assert_eq!(sanitize_save_name(&too_long), Err(SaveNameError::TooLong(MAX_LEN + 1)));
+    assert_eq!(
+        sanitize_save_name(&too_long),
+        Err(SaveNameError::TooLong(MAX_LEN + 1))
+    );
 
     let _ = std::fs::remove_dir_all(&tmp_dir);
 }
 
 #[test]
 fn test_adversarial_path_traversal_sanitizes_valid_inputs_safely() {
-    let tmp_dir = std::env::temp_dir().join(format!("adversarial_valid_test_{}", std::process::id()));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("adversarial_valid_test_{}", std::process::id()));
 
     let valid_inputs = [
         ("experiment_run_1", "experiment_run_1.json"),
@@ -709,7 +763,8 @@ fn test_adversarial_path_traversal_sanitizes_valid_inputs_safely() {
     ];
 
     for (raw, expected) in valid_inputs {
-        let sanitized = sanitize_save_name(raw).unwrap_or_else(|e| panic!("Failed to sanitize valid input '{raw}': {e}"));
+        let sanitized = sanitize_save_name(raw)
+            .unwrap_or_else(|e| panic!("Failed to sanitize valid input '{raw}': {e}"));
         assert_eq!(sanitized, expected);
 
         let path = save_scientific_export(&tmp_dir, raw, b"{\"test\": true}").unwrap();

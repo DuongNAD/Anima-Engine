@@ -40,13 +40,13 @@ export interface FloraPlacement {
 /**
  * Fast deterministic spatial hash returning a float in [0, 1).
  */
-export function hash2D(x: number, z: number, seed = 0): number {
+function hash2D(x: number, z: number, seed = 0): number {
   let h = Math.imul((x * 374761393) | 0, (z * 668265263) | 0) + Math.imul(seed, 1274126177);
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-export const ALL_SPECIES: Map2FloraSpecies[] = [
+const ALL_SPECIES: Map2FloraSpecies[] = [
   Map2FloraSpecies.ConiferPine,
   Map2FloraSpecies.BroadleafDeciduous,
   Map2FloraSpecies.TropicalPalm,
@@ -66,6 +66,7 @@ export const ALL_SPECIES: Map2FloraSpecies[] = [
  * open glade dominance (>= 70%), solitary specimen isolation (>= 14.0m),
  * and clean ecological slope/elevation constraints.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- Reason: pure placement generator shared with headless verification scripts in scripts/
 export function generatePlacements(
   size = 200,
   waterLevel = 12.0,
@@ -554,29 +555,43 @@ export const Map2Vegetation: React.FC<Map2VegetationProps> = ({
   spawnClearanceRadius = 6.0,
   quality = 'high',
 }) => {
-  // Shared wind uniforms created once for safe frame-rate mutation
-  const windUniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uWindSpeed: { value: windSpeed },
-    uWindDirection: { value: windDirection },
-  }), []);
+  // Shared wind uniforms held in a ref for frame-rate updates without mutating render outputs
+  const windUniformsRef = useRef<{
+    uTime: { value: number };
+    uWindSpeed: { value: number };
+    uWindDirection: { value: number };
+  } | null>(null);
 
-  const resources = useMemo(() => {
-    return ALL_SPECIES.map((species) => {
+  const { resources, initialUniforms } = useMemo(() => {
+    const uniforms = {
+      uTime: { value: 0 },
+      uWindSpeed: { value: 1.0 },
+      uWindDirection: { value: 0.785 },
+    };
+    const builtResources = ALL_SPECIES.map((species) => {
       const isTall = isTallFlora(species);
       const geometry = makeMap2FloraGeometry(species);
-      const material = createWindSwayMaterial(isTall, windUniforms);
+      const material = createWindSwayMaterial(isTall, uniforms);
       return { species, isTall, geometry, material };
     });
-  }, [windUniforms]);
+    return { resources: builtResources, initialUniforms: uniforms };
+  }, []);
+
+  useLayoutEffect(() => {
+    windUniformsRef.current = initialUniforms;
+  }, [initialUniforms]);
 
   useEffect(() => {
-    windUniforms.uWindSpeed.value = windSpeed;
-    windUniforms.uWindDirection.value = windDirection;
-  }, [windSpeed, windDirection, windUniforms]);
+    if (windUniformsRef.current) {
+      windUniformsRef.current.uWindSpeed.value = windSpeed;
+      windUniformsRef.current.uWindDirection.value = windDirection;
+    }
+  }, [windSpeed, windDirection]);
 
   useFrame((state) => {
-    windUniforms.uTime.value = state.clock.getElapsedTime();
+    if (windUniformsRef.current) {
+      windUniformsRef.current.uTime.value = state.clock.getElapsedTime();
+    }
   });
 
   // Clean disposal on unmount

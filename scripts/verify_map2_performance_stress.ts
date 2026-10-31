@@ -2,24 +2,8 @@ import * as THREE from 'three';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import {
-  sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
-} from '../src/components/Map2/utils/map2TerrainGen';
-import {
-  Map2Biome,
-  Map2BiomeEcologySystem,
-} from '../src/components/Map2/utils/map2BiomeConfig';
-import {
-  PHYSICS_CONSTANTS,
-  SpatialFloraColliderIndex,
-  resolveFloraOverlap,
   computeBearing,
   computePitch,
-  calculateHeadBob,
-  clampCameraSafetyFloor,
-  clampWorldBounds,
-  CANONICAL_CINE_KEYFRAMES,
 } from '../src/components/Map2/utils/map2Physics';
 import {
   computeCelestialState,
@@ -28,8 +12,6 @@ import {
 import {
   Map2FloraSpecies,
   makeMap2FloraGeometry,
-  isTallFlora,
-  FLORA_CANOPY_RADII,
 } from '../src/components/Map2/utils/map2FloraGeometry';
 import {
   makeBirdGeometry,
@@ -40,7 +22,6 @@ import {
   makeButterflyGeometry,
 } from '../src/components/Map2/utils/map2WildlifeGeometry';
 import {
-  MAP2_DEFAULT_GERSTNER_WAVES,
   MAP2_WATERFALL_LOCATIONS,
 } from '../src/components/Map2/utils/map2WaterMath';
 import {
@@ -55,7 +36,7 @@ interface BenchmarkResult {
   category: string;
   test: string;
   passed: boolean;
-  metrics: Record<string, any>;
+  metrics: Record<string, unknown>;
   notes?: string;
 }
 
@@ -92,7 +73,7 @@ if (manifestExists) {
       const imgPath = resolve(process.cwd(), v.imagePath);
       viewFileChecks[v.id] = existsSync(imgPath);
     }
-  } catch (e) {
+  } catch {
     manifestValid = false;
   }
 }
@@ -122,17 +103,12 @@ console.log(`Gate 1 Result: ${gate1Passed ? 'PASSED' : 'FAILED'} (Views: ${canon
 // -------------------------------------------------------------------------------------------------
 console.log('>>> [GATE 2/4] MEMORY STABILITY ACROSS 20 RAPID MOUNT/UNMOUNT CYCLES...');
 
-interface TrackedResource {
-  type: string;
-  disposed: boolean;
-}
-
-const trackedGeometries: THREE.BufferGeometry[] = [];
-const trackedMaterials: THREE.Material[] = [];
+type TrackableGeometry = THREE.BufferGeometry & { __disposed?: boolean };
+type TrackableMaterial = THREE.Material & { __disposed?: boolean };
 
 function simulateMap2Mount() {
-  const localGeoms: THREE.BufferGeometry[] = [];
-  const localMats: THREE.Material[] = [];
+  const localGeoms: TrackableGeometry[] = [];
+  const localMats: TrackableMaterial[] = [];
 
   // Terrain
   const tGeo = new THREE.BufferGeometry();
@@ -196,11 +172,11 @@ function simulateMap2Mount() {
   const unmount = () => {
     localGeoms.forEach((g) => {
       g.dispose();
-      (g as any).__disposed = true;
+      g.__disposed = true;
     });
     localMats.forEach((m) => {
       m.dispose();
-      (m as any).__disposed = true;
+      m.__disposed = true;
     });
   };
 
@@ -230,8 +206,8 @@ for (let cycle = 1; cycle <= MOUNT_CYCLES; cycle++) {
   // Unmount
   instance.unmount();
 
-  const allGDisposed = instance.localGeoms.every((g: any) => g.__disposed === true);
-  const allMDisposed = instance.localMats.every((m: any) => m.__disposed === true);
+  const allGDisposed = instance.localGeoms.every((g) => g.__disposed === true);
+  const allMDisposed = instance.localMats.every((m) => m.__disposed === true);
   if (allGDisposed) totalGeometriesDisposed += instance.localGeoms.length;
   if (allMDisposed) totalMaterialsDisposed += instance.localMats.length;
 }
@@ -289,7 +265,6 @@ const framesToTest = 1000;
 // Track allocations during wildlife loop
 const wildlifeStartMem = process.memoryUsage().heapUsed;
 for (let frame = 0; frame < framesToTest; frame++) {
-  const t = frame * dt;
   for (let i = 0; i < birds.length; i++) {
     const b = birds[i];
     let sepX = 0, sepZ = 0, cohX = 0, cohZ = 0, alignX = 0, alignZ = 0, neighborCount = 0;

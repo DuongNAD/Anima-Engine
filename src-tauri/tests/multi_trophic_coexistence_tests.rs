@@ -6,7 +6,6 @@
 //! 3. Total closed-system energy E(t) = P(t) + A(t) + D(t) drift |E(t) - E(0)| <= 10^-3 EU (<0.01% drift).
 //! 4. Lotka-Volterra phase-space non-collapse (non-trivial attractor orbit).
 
-use std::sync::Arc;
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::{HomeostaticState, TransitionSender};
 use anima_engine_lib::ai::model::{BrainInferenceBuffer, BrainModel};
@@ -17,6 +16,7 @@ use anima_engine_lib::core::agent_systems::{
     EnvironmentalEventReceiver, InferenceChannels, InferenceRequestBatch, InferenceResponseBatch,
     NextNodeId,
 };
+use std::sync::Arc;
 
 use anima_engine_lib::core::determinism::DeterministicMode;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
@@ -160,24 +160,32 @@ fn setup_coexistence_world(num_prey: usize, num_pred: usize) -> World {
         recycle_res_rx,
     ));
 
-    let (trans_tx, _trans_rx) = crossbeam_channel::unbounded::<anima_engine_lib::ai::hrrl::Transition>();
+    let (trans_tx, _trans_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::ai::hrrl::Transition>();
     world.insert_resource(TransitionSender(trans_tx));
 
-    let (stats_tx, _stats_rx) = crossbeam_channel::unbounded::<Vec<anima_engine_lib::core::resources::AgentEpochStats>>();
-    let (_spawn_tx, spawn_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::resources::EvolutionSpawn>();
+    let (stats_tx, _stats_rx) =
+        crossbeam_channel::unbounded::<Vec<anima_engine_lib::core::resources::AgentEpochStats>>();
+    let (_spawn_tx, spawn_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::resources::EvolutionSpawn>();
     world.insert_resource(EvolutionSender(stats_tx));
     world.insert_resource(EvolutionReceiver(spawn_rx));
     world.insert_resource(EvolutionQueue::default());
 
-    let (_env_tx, env_rx) = crossbeam_channel::unbounded::<anima_engine_lib::evolution::meta_ai::EnvironmentalEvent>();
+    let (_env_tx, env_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::evolution::meta_ai::EnvironmentalEvent>();
     world.insert_resource(EnvironmentalEventReceiver(env_rx));
 
-    let (_inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::components::AgentMigrationData>();
-    let (outbound_tx, _outbound_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::components::OutboundMigration>();
+    let (_inbound_tx, inbound_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::components::AgentMigrationData>();
+    let (outbound_tx, _outbound_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::components::OutboundMigration>();
     let (_migration_tx, migration_rx) = manual_migration_channel();
     world.insert_resource(InboundMigrationReceiver(inbound_rx));
     world.insert_resource(OutboundMigrationSender(outbound_tx));
-    world.insert_resource(ShardingResource(Arc::new(std::sync::RwLock::new(ShardingConfig::default()))));
+    world.insert_resource(ShardingResource(Arc::new(std::sync::RwLock::new(
+        ShardingConfig::default(),
+    ))));
     world.insert_resource(BevyMigrationTrigger(migration_rx));
 
     let evolution_settings = Arc::new(std::sync::Mutex::new(EvolutionSettings {
@@ -186,11 +194,15 @@ fn setup_coexistence_world(num_prey: usize, num_pred: usize) -> World {
         grid_resolution: 50,
     }));
     world.insert_resource(BevyEvolutionSettings(evolution_settings));
-    world.insert_resource(BevyEvolutionRunning(Arc::new(std::sync::atomic::AtomicBool::new(false))));
-    world.insert_resource(BevyMapElitesGrid(Arc::new(std::sync::Mutex::new(MapElitesGridState {
-        grid: std::collections::HashMap::new(),
-        grid_resolution: 50,
-    }))));
+    world.insert_resource(BevyEvolutionRunning(Arc::new(
+        std::sync::atomic::AtomicBool::new(false),
+    )));
+    world.insert_resource(BevyMapElitesGrid(Arc::new(std::sync::Mutex::new(
+        MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 50,
+        },
+    ))));
     world.insert_resource(ActiveEvolutionSettings {
         mutation_rate: 0.15,
         selection_bias: 1.5,
@@ -276,7 +288,9 @@ fn setup_coexistence_world(num_prey: usize, num_pred: usize) -> World {
             if let Some(mut child_vel) = world.get_mut::<Velocity>(child_e) {
                 child_vel.0 = vel;
             }
-            if let Some(mut rb) = world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e) {
+            if let Some(mut rb) =
+                world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e)
+            {
                 rb.velocity = vel;
                 rb.force = glam::Vec3::ZERO;
             }
@@ -341,7 +355,9 @@ fn setup_coexistence_world(num_prey: usize, num_pred: usize) -> World {
             if let Some(mut child_vel) = world.get_mut::<Velocity>(child_e) {
                 child_vel.0 = vel;
             }
-            if let Some(mut rb) = world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e) {
+            if let Some(mut rb) =
+                world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e)
+            {
                 rb.velocity = vel;
                 rb.force = glam::Vec3::ZERO;
             }
@@ -445,8 +461,14 @@ fn test_three_trophic_unforced_coexistence_10000_ticks() {
     );
 
     // Acceptance criteria
-    assert!(final_herbivores >= 5, "Final herbivore count too low ({final_herbivores} < 5)");
-    assert!(final_predators >= 2, "Final predator count too low ({final_predators} < 2)");
+    assert!(
+        final_herbivores >= 5,
+        "Final herbivore count too low ({final_herbivores} < 5)"
+    );
+    assert!(
+        final_predators >= 2,
+        "Final predator count too low ({final_predators} < 2)"
+    );
     assert!(
         relative_drift < 0.0001,
         "Total energy relative drift exceeds 0.01%: {relative_drift:.8}"

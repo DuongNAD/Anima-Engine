@@ -1,15 +1,15 @@
 //! Integration tests for Multidimensional Parameter Sweeps (Feature 5).
 
-use std::collections::HashSet;
 use anima_engine_lib::core::experiment::{
     ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy, WorldIdentity,
     WorldLawSet, MANIFEST_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
 use anima_engine_lib::core::sweeps::{
-    pearson_correlation, run_sweep, DimensionSpec, ParameterDim, SamplingStrategy,
-    SobolSequence, SweepManifest, SweepTarget, SWEEP_SCHEMA_VERSION,
+    pearson_correlation, run_sweep, DimensionSpec, ParameterDim, SamplingStrategy, SobolSequence,
+    SweepManifest, SweepTarget, SWEEP_SCHEMA_VERSION,
 };
+use std::collections::HashSet;
 
 fn base_manifest() -> ExperimentManifest {
     ExperimentManifest {
@@ -52,7 +52,10 @@ fn sobol_sequence_generates_bounded_uniform_points() {
         let pt = sobol.next_point();
         assert_eq!(pt.len(), 4);
         for &u in &pt {
-            assert!(u >= 0.0 && u < 1.0, "Sobol coordinate {u} out of [0, 1)");
+            assert!(
+                (0.0..1.0).contains(&u),
+                "Sobol coordinate {u} out of [0, 1)"
+            );
         }
         points.push(pt);
     }
@@ -67,20 +70,32 @@ fn sobol_sequence_generates_bounded_uniform_points() {
 
 #[test]
 fn dimension_spec_mapping_and_grid_generation() {
-    let cont = DimensionSpec::Continuous { min: 10.0, max: 20.0 };
+    let cont = DimensionSpec::Continuous {
+        min: 10.0,
+        max: 20.0,
+    };
     assert_eq!(cont.map_normalized(0.0), 10.0);
     assert_eq!(cont.map_normalized(0.5), 15.0);
     assert_eq!(cont.grid_values(5), vec![10.0, 12.5, 15.0, 17.5, 20.0]);
 
-    let log = DimensionSpec::Logarithmic { min: 1.0, max: 100.0 };
+    let log = DimensionSpec::Logarithmic {
+        min: 1.0,
+        max: 100.0,
+    };
     assert_eq!(log.map_normalized(0.0), 1.0);
     assert!((log.map_normalized(0.5) - 10.0).abs() < 1e-10);
     assert_eq!(log.grid_values(3), vec![1.0, 10.0, 100.0]);
 
-    let int_range = DimensionSpec::IntegerRange { min: 5, max: 9, step: 2 };
+    let int_range = DimensionSpec::IntegerRange {
+        min: 5,
+        max: 9,
+        step: 2,
+    };
     assert_eq!(int_range.grid_values(0), vec![5.0, 7.0, 9.0]);
 
-    let disc = DimensionSpec::Discrete { values: vec![1.1, 2.2, 3.3] };
+    let disc = DimensionSpec::Discrete {
+        values: vec![1.1, 2.2, 3.3],
+    };
     assert_eq!(disc.map_normalized(0.0), 1.1);
     assert_eq!(disc.map_normalized(0.4), 2.2);
     assert_eq!(disc.map_normalized(0.9), 3.3);
@@ -115,15 +130,22 @@ fn sweep_grid_execution_and_csv_generation() {
             ParameterDim {
                 name: "plant_biomass".into(),
                 target: SweepTarget::InitialCondition("plants".into()),
-                spec: DimensionSpec::Continuous { min: 50.0, max: 150.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 50.0,
+                    max: 150.0,
+                },
             },
             ParameterDim {
                 name: "herbivore_biomass".into(),
                 target: SweepTarget::InitialCondition("herbivores".into()),
-                spec: DimensionSpec::Discrete { values: vec![20.0, 40.0] },
+                spec: DimensionSpec::Discrete {
+                    values: vec![20.0, 40.0],
+                },
             },
         ],
-        sampling: SamplingStrategy::Grid { points_per_dim: Some(3) },
+        sampling: SamplingStrategy::Grid {
+            points_per_dim: Some(3),
+        },
         max_threads: Some(2),
     };
 
@@ -155,20 +177,29 @@ fn sweep_sobol_sensitivity_analysis() {
             ParameterDim {
                 name: "plants".into(),
                 target: SweepTarget::InitialCondition("plants".into()),
-                spec: DimensionSpec::Continuous { min: 80.0, max: 120.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 80.0,
+                    max: 120.0,
+                },
             },
             ParameterDim {
                 name: "herbivores".into(),
                 target: SweepTarget::InitialCondition("herbivores".into()),
-                spec: DimensionSpec::Continuous { min: 30.0, max: 50.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 30.0,
+                    max: 50.0,
+                },
             },
         ],
-        sampling: SamplingStrategy::Sobol { num_samples: 8, offset: 0 },
+        sampling: SamplingStrategy::Sobol {
+            num_samples: 8,
+            offset: 0,
+        },
         max_threads: Some(4),
     };
 
-    let result = run_sweep::<ReferenceEvolutionWorld>(&sweep, &registry)
-        .expect("sobol sweep must succeed");
+    let result =
+        run_sweep::<ReferenceEvolutionWorld>(&sweep, &registry).expect("sobol sweep must succeed");
 
     assert_eq!(result.total_points, 8);
     assert_eq!(result.completed_points, 8);
@@ -190,13 +221,14 @@ fn sweep_latin_hypercube_reproducibility() {
         sweep_id: "lhs_repro_sweep".into(),
         name: "LHS Repro Test".into(),
         base_manifest: base.clone(),
-        parameters: vec![
-            ParameterDim {
-                name: "predators".into(),
-                target: SweepTarget::InitialCondition("predators".into()),
-                spec: DimensionSpec::Continuous { min: 2.0, max: 12.0 },
+        parameters: vec![ParameterDim {
+            name: "predators".into(),
+            target: SweepTarget::InitialCondition("predators".into()),
+            spec: DimensionSpec::Continuous {
+                min: 2.0,
+                max: 12.0,
             },
-        ],
+        }],
         sampling: SamplingStrategy::LatinHypercube {
             num_samples: 5,
             seed: Some(seed),

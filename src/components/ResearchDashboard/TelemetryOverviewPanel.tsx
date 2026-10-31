@@ -31,8 +31,17 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
   const [shannonHistory, setShannonHistory] = useState<number[]>([]);
   const [simpsonHistory, setSimpsonHistory] = useState<number[]>([]);
   const [residualHistory, setResidualHistory] = useState<number[]>([]);
+  const [baselineEnergyState, setBaselineEnergyState] = useState<number | null>(
+    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
+      ? initialEcosystemState.total
+      : null,
+  );
 
-  const baselineEnergyRef = useRef<number | null>(null);
+  const baselineEnergyRef = useRef<number | null>(
+    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
+      ? initialEcosystemState.total
+      : null,
+  );
 
   // Polling loop
   useEffect(() => {
@@ -46,6 +55,7 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
 
         if (baselineEnergyRef.current === null && typeof eco.total === 'number' && eco.total > 0) {
           baselineEnergyRef.current = eco.total;
+          setBaselineEnergyState(eco.total);
         }
 
         const baseline = baselineEnergyRef.current || eco.total || 900;
@@ -88,7 +98,7 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
 
   // Energy conservation metrics
   const currentTotalEnergy = ecoState?.total ?? 900;
-  const baselineEnergy = baselineEnergyRef.current ?? 900;
+  const baselineEnergy = baselineEnergyState ?? 900;
   const currentResidual = Math.abs(currentTotalEnergy - baselineEnergy);
   const driftPercent = baselineEnergy > 0 ? (currentResidual / baselineEnergy) * 100 : 0;
 

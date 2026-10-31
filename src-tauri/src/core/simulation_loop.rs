@@ -2217,13 +2217,17 @@ impl SimulationEngine {
                     shared.archive_coverage = archive_coverage;
                 }
 
-                if let Some(census) = world.get_resource::<crate::core::telemetry_export::DemographicCensusState>() {
+                if let Some(census) =
+                    world.get_resource::<crate::core::telemetry_export::DemographicCensusState>()
+                {
                     let mut shared_census = demographic_census_clone
                         .write()
                         .unwrap_or_else(|e| e.into_inner());
                     *shared_census = census.clone();
                 }
-                if let Some(flux_rep) = world.get_resource::<crate::core::telemetry_export::EnergyFluxReport>() {
+                if let Some(flux_rep) =
+                    world.get_resource::<crate::core::telemetry_export::EnergyFluxReport>()
+                {
                     let mut shared_flux = energy_flux_report_clone
                         .write()
                         .unwrap_or_else(|e| e.into_inner());

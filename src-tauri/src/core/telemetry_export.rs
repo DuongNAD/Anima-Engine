@@ -79,9 +79,9 @@ pub struct DemographicCensusState {
 /// Cumulative demographic event tracker stored as an ECS Resource.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct DemographicTracker {
-    pub births_young: u32,   // 0-50
-    pub births_mature: u32,  // 51-150
-    pub births_old: u32,     // 151+
+    pub births_young: u32,  // 0-50
+    pub births_mature: u32, // 51-150
+    pub births_old: u32,    // 151+
     pub deaths_starvation: u64,
     pub deaths_predation: u64,
     pub deaths_senescence: u64,
@@ -126,14 +126,34 @@ impl DemographicTracker {
 
 /// Compute demographic census snapshot given agent metadata.
 pub fn build_demographic_census(
-    agents: &[(u32, Option<crate::core::ecs::AgentType>, Option<crate::core::components::AgentSex>)],
+    agents: &[(
+        u32,
+        Option<crate::core::ecs::AgentType>,
+        Option<crate::core::components::AgentSex>,
+    )],
     tracker: Option<&DemographicTracker>,
 ) -> DemographicCensusState {
     let mut cohorts = vec![
-        AgeCohort { min_age: 0, max_age: 50, count: 0 },
-        AgeCohort { min_age: 51, max_age: 150, count: 0 },
-        AgeCohort { min_age: 151, max_age: 300, count: 0 },
-        AgeCohort { min_age: 301, max_age: 1000, count: 0 },
+        AgeCohort {
+            min_age: 0,
+            max_age: 50,
+            count: 0,
+        },
+        AgeCohort {
+            min_age: 51,
+            max_age: 150,
+            count: 0,
+        },
+        AgeCohort {
+            min_age: 151,
+            max_age: 300,
+            count: 0,
+        },
+        AgeCohort {
+            min_age: 301,
+            max_age: 1000,
+            count: 0,
+        },
     ];
 
     let mut prey_count = 0u32;
@@ -162,7 +182,7 @@ pub fn build_demographic_census(
             Some(crate::core::components::AgentSex::Female) => female_count += 1,
             None => {
                 // If sex is unassigned, alternate deterministically based on prey/predator counts
-                if (prey_count + predator_count) % 2 == 0 {
+                if (prey_count + predator_count).is_multiple_of(2) {
                     male_count += 1;
                 } else {
                     female_count += 1;
@@ -185,17 +205,41 @@ pub fn build_demographic_census(
     let trk = tracker.unwrap_or(&default_tracker);
 
     let mortality_causes = vec![
-        MortalityCauseCount { cause: "Starvation".to_string(), count: trk.deaths_starvation },
-        MortalityCauseCount { cause: "Predation".to_string(), count: trk.deaths_predation },
-        MortalityCauseCount { cause: "Senescence".to_string(), count: trk.deaths_senescence },
-        MortalityCauseCount { cause: "Toxicity".to_string(), count: trk.deaths_toxicity },
-        MortalityCauseCount { cause: "Pathogen".to_string(), count: trk.deaths_pathogen },
+        MortalityCauseCount {
+            cause: "Starvation".to_string(),
+            count: trk.deaths_starvation,
+        },
+        MortalityCauseCount {
+            cause: "Predation".to_string(),
+            count: trk.deaths_predation,
+        },
+        MortalityCauseCount {
+            cause: "Senescence".to_string(),
+            count: trk.deaths_senescence,
+        },
+        MortalityCauseCount {
+            cause: "Toxicity".to_string(),
+            count: trk.deaths_toxicity,
+        },
+        MortalityCauseCount {
+            cause: "Pathogen".to_string(),
+            count: trk.deaths_pathogen,
+        },
     ];
 
     let fecundity_by_age = vec![
-        AgeFecundity { age_group: "Young (0-50)".to_string(), births: trk.births_young },
-        AgeFecundity { age_group: "Mature (51-150)".to_string(), births: trk.births_mature },
-        AgeFecundity { age_group: "Old (151+)".to_string(), births: trk.births_old },
+        AgeFecundity {
+            age_group: "Young (0-50)".to_string(),
+            births: trk.births_young,
+        },
+        AgeFecundity {
+            age_group: "Mature (51-150)".to_string(),
+            births: trk.births_mature,
+        },
+        AgeFecundity {
+            age_group: "Old (151+)".to_string(),
+            births: trk.births_old,
+        },
     ];
 
     DemographicCensusState {
@@ -213,7 +257,6 @@ pub fn build_demographic_census(
         total_deaths: trk.total_deaths(),
     }
 }
-
 
 // ===============================================================================================
 // 2. FEATURE 10: ENERGY FLUX MATRIX & SANKEY DATA
@@ -297,42 +340,81 @@ pub fn generate_energy_flux_report(
         },
     ];
 
-    let (sun_to_plants, plants_to_herb, herb_to_carn, plants_to_detr, herb_to_detr, carn_to_detr, detr_to_plants, herb_to_sink, carn_to_sink) =
-        if let Some(f) = flux {
-            let s_to_p = (f.detritus_to_plants * 0.35).max(1.0);
-            let p_to_h = f.plants_to_herbivores.max(0.1);
-            let h_to_c = f.herbivores_to_predators.max(0.05);
-            let p_to_d = (f.detritus_to_plants * 0.1).max(0.1);
-            let h_to_d = (f.mortality_to_detritus * 0.7 + f.reproduction_waste_to_detritus * 0.7).max(0.1);
-            let c_to_d = (f.mortality_to_detritus * 0.3 + f.reproduction_waste_to_detritus * 0.3).max(0.05);
-            let d_to_p = f.detritus_to_plants.max(0.1);
-            let h_to_s = (f.animals_to_detritus * 0.75).max(0.1);
-            let c_to_s = (f.animals_to_detritus * 0.25).max(0.05);
-            (s_to_p, p_to_h, h_to_c, p_to_d, h_to_d, c_to_d, d_to_p, h_to_s, c_to_s)
-        } else {
-            (
-                350.0,
-                120.0,
-                25.0,
-                80.0,
-                40.0,
-                15.0,
-                100.0,
-                30.0,
-                10.0,
-            )
-        };
+    let (
+        sun_to_plants,
+        plants_to_herb,
+        herb_to_carn,
+        plants_to_detr,
+        herb_to_detr,
+        carn_to_detr,
+        detr_to_plants,
+        herb_to_sink,
+        carn_to_sink,
+    ) = if let Some(f) = flux {
+        let s_to_p = (f.detritus_to_plants * 0.35).max(1.0);
+        let p_to_h = f.plants_to_herbivores.max(0.1);
+        let h_to_c = f.herbivores_to_predators.max(0.05);
+        let p_to_d = (f.detritus_to_plants * 0.1).max(0.1);
+        let h_to_d =
+            (f.mortality_to_detritus * 0.7 + f.reproduction_waste_to_detritus * 0.7).max(0.1);
+        let c_to_d =
+            (f.mortality_to_detritus * 0.3 + f.reproduction_waste_to_detritus * 0.3).max(0.05);
+        let d_to_p = f.detritus_to_plants.max(0.1);
+        let h_to_s = (f.animals_to_detritus * 0.75).max(0.1);
+        let c_to_s = (f.animals_to_detritus * 0.25).max(0.05);
+        (
+            s_to_p, p_to_h, h_to_c, p_to_d, h_to_d, c_to_d, d_to_p, h_to_s, c_to_s,
+        )
+    } else {
+        (350.0, 120.0, 25.0, 80.0, 40.0, 15.0, 100.0, 30.0, 10.0)
+    };
 
     let links = vec![
-        EnergyFluxLink { source: "sun".to_string(), target: "plants".to_string(), value: sun_to_plants },
-        EnergyFluxLink { source: "plants".to_string(), target: "herbivores".to_string(), value: plants_to_herb },
-        EnergyFluxLink { source: "herbivores".to_string(), target: "carnivores".to_string(), value: herb_to_carn },
-        EnergyFluxLink { source: "plants".to_string(), target: "detritus".to_string(), value: plants_to_detr },
-        EnergyFluxLink { source: "herbivores".to_string(), target: "detritus".to_string(), value: herb_to_detr },
-        EnergyFluxLink { source: "carnivores".to_string(), target: "detritus".to_string(), value: carn_to_detr },
-        EnergyFluxLink { source: "detritus".to_string(), target: "plants".to_string(), value: detr_to_plants },
-        EnergyFluxLink { source: "herbivores".to_string(), target: "metabolic_sink".to_string(), value: herb_to_sink },
-        EnergyFluxLink { source: "carnivores".to_string(), target: "metabolic_sink".to_string(), value: carn_to_sink },
+        EnergyFluxLink {
+            source: "sun".to_string(),
+            target: "plants".to_string(),
+            value: sun_to_plants,
+        },
+        EnergyFluxLink {
+            source: "plants".to_string(),
+            target: "herbivores".to_string(),
+            value: plants_to_herb,
+        },
+        EnergyFluxLink {
+            source: "herbivores".to_string(),
+            target: "carnivores".to_string(),
+            value: herb_to_carn,
+        },
+        EnergyFluxLink {
+            source: "plants".to_string(),
+            target: "detritus".to_string(),
+            value: plants_to_detr,
+        },
+        EnergyFluxLink {
+            source: "herbivores".to_string(),
+            target: "detritus".to_string(),
+            value: herb_to_detr,
+        },
+        EnergyFluxLink {
+            source: "carnivores".to_string(),
+            target: "detritus".to_string(),
+            value: carn_to_detr,
+        },
+        EnergyFluxLink {
+            source: "detritus".to_string(),
+            target: "plants".to_string(),
+            value: detr_to_plants,
+        },
+        EnergyFluxLink {
+            source: "herbivores".to_string(),
+            target: "metabolic_sink".to_string(),
+            value: herb_to_sink,
+        },
+        EnergyFluxLink {
+            source: "carnivores".to_string(),
+            target: "metabolic_sink".to_string(),
+            value: carn_to_sink,
+        },
     ];
 
     let respiration_loss = herb_to_sink + carn_to_sink;
@@ -359,7 +441,6 @@ pub fn generate_energy_flux_report(
         energy_drift_percent,
     }
 }
-
 
 // ===============================================================================================
 // 3. FEATURE 11: SPATIAL DENSITY HEATMAPS
@@ -406,8 +487,16 @@ pub fn generate_spatial_density_matrix(
     let span_z = (max_z - min_z).max(1e-4);
 
     let map_to_cell = |x: f64, z: f64| -> usize {
-        let clean_x = if x.is_nan() || x.is_infinite() { 0.0 } else { x };
-        let clean_z = if z.is_nan() || z.is_infinite() { 0.0 } else { z };
+        let clean_x = if x.is_nan() || x.is_infinite() {
+            0.0
+        } else {
+            x
+        };
+        let clean_z = if z.is_nan() || z.is_infinite() {
+            0.0
+        } else {
+            z
+        };
         let clamped_x = clean_x.clamp(min_x, max_x - 1e-6);
         let clamped_z = clean_z.clamp(min_z, max_z - 1e-6);
 
@@ -452,7 +541,10 @@ pub fn generate_spatial_density_matrix(
     // 3. Predation hotspots
     for ev in combat_events {
         // Find predator location from segments if available
-        if let Some(seg) = segments.iter().find(|s| s.agent_id == ev.predator_id && s.parent_segment_id.is_none()) {
+        if let Some(seg) = segments
+            .iter()
+            .find(|s| s.agent_id == ev.predator_id && s.parent_segment_id.is_none())
+        {
             let idx = map_to_cell(seg.x as f64, seg.z as f64);
             if idx < cell_count {
                 predation_hotspots[idx] += 1;
@@ -470,7 +562,6 @@ pub fn generate_spatial_density_matrix(
     }
 }
 
-
 // ===============================================================================================
 // 4. FEATURE 12: MAP-ELITES QD SUMMARY & NEWICK EXPORT
 // ===============================================================================================
@@ -487,7 +578,10 @@ pub struct MapElitesSummary {
     pub max_cells: u32,
 }
 
-pub fn compute_map_elites_summary(grid: &HashMap<String, EliteIndividualState>, resolution: u32) -> MapElitesSummary {
+pub fn compute_map_elites_summary(
+    grid: &HashMap<String, EliteIndividualState>,
+    resolution: u32,
+) -> MapElitesSummary {
     let occupied_cells = grid.len() as u32;
     let max_cells = resolution.saturating_mul(resolution);
     let total_fitness: f64 = grid.values().map(|e| e.fitness).sum();
@@ -517,7 +611,10 @@ pub struct NewickExportRequest {
     pub prune_extinct: bool,
 }
 
-pub fn export_lineage_newick(tracker: &FallbackLineageTracker, _req: Option<&NewickExportRequest>) -> Result<String, String> {
+pub fn export_lineage_newick(
+    tracker: &FallbackLineageTracker,
+    _req: Option<&NewickExportRequest>,
+) -> Result<String, String> {
     let (nodes, relations) = tracker.get_lineage_graph()?;
     if nodes.is_empty() {
         return Ok("();".to_string());
@@ -534,7 +631,6 @@ pub fn export_lineage_newick(tracker: &FallbackLineageTracker, _req: Option<&New
         Err(e) => Err(format!("Phylogenetic tree export failed: {e}")),
     }
 }
-
 
 // ===============================================================================================
 // 5. FEATURE 13: SCIENTIFIC DATASET EXPORTER & RUN PROVENANCE
@@ -609,7 +705,18 @@ pub fn format_iso8601_utc(epoch_secs: u64) -> String {
 
     let leap = is_leap_year(year);
     let days_in_months = [
-        31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
     ];
 
     let mut month = 1u32;
@@ -626,7 +733,7 @@ pub fn format_iso8601_utc(epoch_secs: u64) -> String {
 }
 
 fn is_leap_year(year: u64) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    (year.is_multiple_of(4) && !year.is_multiple_of(100)) || year.is_multiple_of(400)
 }
 
 #[derive(ts_rs::TS)]
@@ -727,20 +834,39 @@ pub fn save_scientific_export(
         format!("{sanitized_stem}.json")
     };
 
-    std::fs::create_dir_all(export_dir)
-        .map_err(|e| format!("Failed to create export directory {}: {e}", export_dir.display()))?;
+    std::fs::create_dir_all(export_dir).map_err(|e| {
+        format!(
+            "Failed to create export directory {}: {e}",
+            export_dir.display()
+        )
+    })?;
 
     let target_path = export_dir.join(final_name);
 
     // Atomic write via temp file
-    let temp_name = format!(".tmp-{}-{}", std::process::id(), SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let temp_name = format!(
+        ".tmp-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
     let temp_path = export_dir.join(temp_name);
 
-    std::fs::write(&temp_path, json_bytes)
-        .map_err(|e| format!("Failed writing temp export file {}: {e}", temp_path.display()))?;
+    std::fs::write(&temp_path, json_bytes).map_err(|e| {
+        format!(
+            "Failed writing temp export file {}: {e}",
+            temp_path.display()
+        )
+    })?;
 
-    std::fs::rename(&temp_path, &target_path)
-        .map_err(|e| format!("Failed renaming export file to {}: {e}", target_path.display()))?;
+    std::fs::rename(&temp_path, &target_path).map_err(|e| {
+        format!(
+            "Failed renaming export file to {}: {e}",
+            target_path.display()
+        )
+    })?;
 
     Ok(target_path)
 }
