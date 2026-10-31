@@ -498,52 +498,153 @@ DONE WHEN
 DEPENDS ON  B1b (PR #39)
 ```
 
-### B3 — Feature separation
+### B3+B4 — main's eight red gates, in the order the gates force
+
+These were two tasks. They are one, because the ordering is not a preference: the
+feature-separation check (B3) cannot run until clippy (B4) compiles. Measured below.
 
 ```text
 GOAL
-Make the default build exclude Neo4j, the WebSocket stack and Burn/WGPU again.
+Make both CI jobs green. Eight steps are red; they are not eight independent tasks.
 
-CONTEXT
-The CI step "Default build excludes Neo4j, the WebSocket stack and Burn/WGPU" is RED on main.
-It checks the dependency GRAPH, not compilability, so the cause is a new unconditional `use`
-or a dependency that lost its `optional = true` / cfg gate, added by the 2026-10-22 commits.
+AUTHORIZATION
+Writes to src-tauri/src, src-tauri/tests, src/, scripts/, src-tauri/Cargo.lock,
+src-tauri/deny.toml, src-tauri/.cargo/audit.toml, package-lock.json. R2 and R3 apply
+throughout. R12 stands: do NOT regenerate NOTICE, licensing/third-party-index.json or
+sbom.cdx.json — those gates are already GREEN; leave them alone.
 
-FILES
-  src-tauri/Cargo.toml, and whichever module introduced the unconditional import
+BRANCH FROM PR #39
+Base on `fix/declare-simrng-draw-order` (PR #39, stacked on #38). Everything below is
+measured on that base, from CI run 41204212880 — not remembered, not from an older run.
+main does not compile on macOS (F-028, 12-byte placeholder icons). Supply valid icons
+locally, UNCOMMITTED, or work on Windows.
 
-DONE WHEN
-  cd src-tauri && cargo tree --no-default-features -e normal | \
-    grep -E 'neo4rs|tokio-tungstenite|burn-wgpu|naga'     -> no output
-  cd src-tauri && cargo tree --no-default-features -e normal | grep criterion  -> no output
-  cd src-tauri && cargo test --no-default-features --no-fail-fast   -> 0 failed
-  Report WHICH import caused it.
-```
+WHAT IS ALREADY GREEN — DO NOT TOUCH IT
+  cargo test                                  SUCCESS   (1216 passed on macOS too)
+  No test target ran zero tests               SUCCESS
+  TypeScript IPC bindings match Rust structs  SUCCESS
+  npm run test (src) / test:frontend / build  SUCCESS
+  npm run test:e2e (Playwright)               SUCCESS
+  the npm distribution boundary               SUCCESS
+An older version of this task listed `cargo test` and the zero-test gate as failing. They
+are not, as of #39. If your change turns any of the above red, stop and revert it.
 
-### B4 — The rest of main's red CI
+CLUSTER 1 — CLIPPY BLOCKS THE FEATURE CHECK. DO THIS FIRST.
+The step named "Default build excludes Neo4j, the WebSocket stack and Burn/WGPU" runs TWO
+commands (.github/workflows/ci.yml:106-113):
+    cargo clippy --all-targets --no-default-features -- -D warnings
+    leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite|burn-wgpu|naga' || true)
+    test "$leaked" -eq 0
+The FIRST line fails with the same 12 errors, so the `cargo tree` line NEVER RUNS. The
+feature separation is therefore UNMEASURED, not broken. The previous version of this task
+asserted the cause was "a new unconditional `use` or a dependency that lost its
+`optional = true`" — nothing in the log supports that, and nothing can, because the gate
+stopped before looking. Fix clippy, then run the `cargo tree` line yourself and report what
+it says. It may already be 0. If it is not, THEN find the import.
 
-```text
-GOAL
-Make both CI jobs green on main.
+THE 12 CLIPPY ERRORS, exact (toolchain 1.98.1, paths as CI prints them):
+  derivable_impls      src/core/branch_tree.rs:52        this `impl` can be derived
+  clone_on_copy        src/core/branch_tree.rs:718,732,775   `SimClock` implements `Copy`
+  needless_range_loop  src/core/sweeps.rs:422   `sample_idx` is ONLY used to index `dim_strata`
+  needless_range_loop  src/core/sweeps.rs:424   `d` IS used to index `dim_strata`
+  needless_range_loop  src/core/sweeps.rs:598   `i` IS used to index `v0`
+  needless_range_loop  src/core/sweeps.rs:923   `d` is ONLY used to index `matrix`
+  manual_is_multiple_of  src/core/telemetry_export.rs:165
+  manual_is_multiple_of  src/core/telemetry_export.rs:629:6, :629:23, :629:43
+Read the wording difference and do not treat the four range loops as one job. "ONLY used to
+index" is mechanical — iterate the slice. "IS used to index" means the variable is used for
+something else as well, so `.iter().enumerate()` or an index arithmetic rewrite may change
+behaviour. `sweeps.rs` is parameter-sweep/strata code: a wrong rewrite there produces a
+different sampling grid that still runs and still returns finite numbers.
+The three at :629 are one expression: `(year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)`
+— the Gregorian leap-year rule. Rewriting it with `is_multiple_of` must preserve the rule
+exactly; check it against 1900 (not a leap year) and 2000 (a leap year) before and after.
+Fix the code. Do not add `#[allow]` without a reason comment in the same place (R2 spirit).
 
-CONTEXT — CI run 39644804767, every failing step:
-  Rust (windows-latest): cargo fmt --check | cargo audit (5 vulns) | cargo deny check |
-    cargo clippy --all-targets -D warnings (12 lints) | cargo test (B1) |
-    "No test target ran zero tests" | feature separation (B3)
-  Frontend (ubuntu-latest): npm audit (root) | npm audit (tests/) | ESLint warning ratchet
-The 12 clippy lints include: manual implementation of .is_multiple_of(), four
-needless_range_loop ("the loop variable d is only used to index matrix"), this impl can be
-derived, using clone on type SimClock which implements Copy.
+CLUSTER 2 — TWO ADVISORY POLICIES, ONE LOCKFILE, AND AN EXEMPTION THAT IS FATAL IN ONE
+  cargo audit        error: 7 vulnerabilities found
+      rustls-webpki  RUSTSEC-2026-0382  certificate verification accepts distrusted intermediates
+      webpki-roots   RUSTSEC-2026-0381  bundled roots trust distrusted emSign intermediates
+      zip            RUSTSEC-2026-0367 (7.3 high), 0368, 0369 (9.1 critical)
+      zstd-safe      RUSTSEC-2026-0403      zstd-sys  RUSTSEC-2026-0410
+      chacha20       (yanked)
+  cargo deny check   advisories FAILED, bans ok, licenses ok, sources ok
+      error[vulnerability]  RUSTSEC-2026-0382
+      error[vulnerability]  RUSTSEC-2026-0381
+      error[unsound]        RUSTSEC-2026-0386  `AsyncFd::new` violates I/O safety (tokio)
+Note what this means: deny reports RUSTSEC-2026-0386, which audit does not treat as a
+failure, and audit reports the zip/zstd set, which deny does not. Same lockfile, two
+policies, two allow-lists (src-tauri/.cargo/audit.toml and src-tauri/deny.toml, whose
+comment says it "Mirrors .cargo/audit.toml"). An exemption written in one does not cover
+the other. Satisfy BOTH, and say which file each exemption went in and why.
+Measured on branch feat/ecological-selection for comparison: `cargo audit` exits 0 there
+(A6 bumped the lockfile and wrote five verified lockfile-only exemptions), but `cargo deny`
+exits 1 there for a DIFFERENT reason — deny.toml:109 and :110 still list RUSTSEC-2024-0350
+and RUSTSEC-2025-0021 and `no crate matched advisory criteria` any more. cargo audit ignores
+a stale exemption; cargo deny errors on it. That is a two-line deletion on that branch, and
+it is the shape of bug to expect when you move the lockfile here: fixing audit can leave
+deny red on exemptions that stopped applying.
+Rule: an exemption needs the check that shows the code is unreachable, recorded beside it —
+that is what .cargo/audit.toml's own header demands. Do not write one you cannot justify,
+and do not keep one that no longer matches.
 
-RULES
-Fix the code for clippy, never add #[allow] without a reason comment in the same place.
-R12: do NOT regenerate NOTICE / SBOM / third-party-index — those gates are already GREEN,
-leave them alone.
+CLUSTER 3 — npm audit AND THE ESLint RATCHET PULL AGAINST EACH OTHER
+  npm audit (root)   15 vulnerabilities (13 moderate, 2 high)   -> --audit-level=high fails
+  npm audit (tests)  1 high severity vulnerability              -> fails
+  ESLint ratchet     eslint: 0 errors, 102 warnings (baseline 0) -> exit 1
+The 2 high root vulns are in the eslint dependency chain: @eslint/config-array →
+@eslint-community/eslint-utils → @typescript-eslint/utils. npm's own offered fix is
+`npm audit fix --force`, and its printed consequence is "Will install
+typescript-eslint@8.14.0, which is a breaking change". typescript-eslint IS the thing that
+produces the 102 warnings the ratchet counts. So the audit fix can move the lint surface,
+and a ratchet at baseline 0 has no slack to absorb that.
+Do them as one unit: change the dependency, then RE-MEASURE the ratchet, and report both
+numbers. If the forced upgrade changes the warning count in either direction, say so — a
+drop is not automatically good news, because the baseline may only ever be LOWERED and
+0 is already the floor, so a drop means rules stopped firing.
+The 102 warnings, by rule: 77 @typescript-eslint/no-unused-vars, 7
+@typescript-eslint/no-explicit-any, 7 react-hooks/refs, 3 react-hooks/purity,
+2 react-hooks/immutability, remainder unclassified. They sit in 8 scripts/*.ts files plus
+src/components/{Landscape,Map2,ResearchDashboard}/**. Fix the code; do not add
+eslint-disable without a reason comment, and do not touch eslint.config.js `ignores` to make
+a file disappear — that is R4's spirit applied to lint.
 npm 10.9.8 crashes on `npm audit fix`; use npm 11 and then re-verify with npm 10.
 
+CLUSTER 4 — FORMATTING, LAST
+  cargo fmt --check   245 diff blocks across 36 files
+Concentrated in the 2026-10-22 commits: tests/adversarial_sweep_stress_tests.rs (25),
+tests/tier5_backend_adversarial_tests.rs (21), tests/adversarial_challenger_m3_telemetry_tests.rs
+(18), tests/adversarial_branch_tree_parity_tests.rs (17), src/core/telemetry_export.rs (17),
+src/core/branch_tree.rs (16), src/core/sweeps.rs (11).
+Run `cargo fmt` LAST, after every other edit lands, or it will fight every diff you make.
+It is mechanical — but note that branch_tree.rs, telemetry_export.rs and sweeps.rs are also
+where the clippy errors are, so do clippy there first and format once.
+
+WHERE THE OTHER TREE HELPS AND WHERE IT DOES NOT — measured 2026-10-31, both trees
+  gate                      main lineage (#39)             feat/ecological-selection
+  cargo fmt --check         245 blocks / 36 files          exit 0
+  cargo audit               7 vulnerabilities              exit 0
+  cargo deny check          advisories FAILED (3 errors)   exit 1 (2 stale ignores)
+  ESLint ratchet            102 warnings                   0 warnings
+  npm audit (root)          15 (13 mod, 2 high)            22 (14 mod, 8 HIGH)  <- WORSE
+  npm audit (tests)         1 high                         6 (2 mod, 4 high)    <- WORSE
+  cargo clippy              12 errors                      not measured
+  feature separation        unmeasured (clippy aborts)     not measured
+Do not assume the branch is ahead everywhere. It is ahead on Rust advisories, formatting and
+lint, and BEHIND on npm advisories. If you port anything from it, port the thing you
+measured, name the file, and re-run the gate here.
+
 DONE WHEN
-  every step above exits 0 locally, and the PR's CI shows both jobs green
-  Paste the CI run URL.
+  every one of the eight steps exits 0 locally, each with its command and output pasted
+  the `cargo tree --no-default-features` line from Cluster 1 run and reported SEPARATELY
+    from clippy, with its count
+  `cargo test --features desktop --no-fail-fast` still 1216 passed / 0 failed (or whatever
+    B2 left it at) — a green gate bought with a red test is not progress
+  the ratchet re-measured AFTER any dependency change, both numbers reported
+  the PR's CI shows both jobs green; paste the run URL
+  report: which exemption went in which file and why; what the feature check said once it
+    could run; whether the forced typescript-eslint upgrade changed the warning count
+DEPENDS ON  B1b (PR #39). Independent of B2 — different files.
 ```
 
 ### B5 — Restore the full E2E suite
