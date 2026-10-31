@@ -434,7 +434,8 @@ Cargo.lock, deny.toml, scripts/check_bundle_budget.mjs, licensing/ and maybe vit
 You touch src-tauri/src/core/agent_systems.rs and src-tauri/tests/. No overlap.
 
 WHAT QĐ-A′ MEANS FOR PART 2 — read before you plan your work
-The owner has decided the merge direction (chồng PR -> feat/ecological-selection) but NOT
+The owner has decided the merge direction (the PR stack merges INTO
+feat/ecological-selection, which becomes the trunk) but NOT
 whether `feat`'s `core/mortality.rs::mortality_system` REPLACES
 `agent_systems.rs::agent_mortality_system` or sits beside it. That is QĐ-A′, still open. So:
   - `agent_mortality_system`'s own Vec/clone/sort (site 1 below) MIGHT be deleted by that
@@ -527,8 +528,9 @@ zero. That is true for sites 1 and 2 and it is NOT the whole story, because site
 BIRTHS. B1b measured a tick-1 offspring in the live experiment (`live-founder-0005.1`, which
 moved between x = 71.47 and x = 75.77 depending on draw order), so a 180-tick run DOES push
 into site 3's Vec and DOES allocate.
-So the real reason is the third one, and it is worse: of the 23 test files that call
-`start_tracking`, the named zero-alloc gates cover dynamic fields, emit, exotic energy, map
+So the real reason is the third one, and it is worse: of the 22 test files that call
+`start_tracking` (23 files in all, one of which is the allocator module itself), the named
+zero-alloc gates cover dynamic fields, emit, exotic energy, map
 generation, migration, observer trace and phase5 modularity — and NOT ONE covers the
 spawn/despawn command path. The allocation is not hidden by lazy `Vec::new()`; it is simply
 never inside a measured window.
