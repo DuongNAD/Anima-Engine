@@ -378,36 +378,124 @@ DONE WHEN
   hypothesis held, and whether you were on Windows or supplied local icons.
 ```
 
-### B2 — The allocation the gate did not catch
+### B2 — The allocation the gate did not catch, and the gate that measures itself
 
 ```text
 GOAL
-Remove the per-tick heap allocation in the agent death path, AND extend the allocation gate
-so it would have caught it.
+Two halves, both required. (1) Repair the allocation instrument: it is red on macOS because
+it counts its own synchronisation (FINDINGS.md F-031). (2) Remove the per-death heap
+allocation in the agent death path and point a gate at it that would have caught it.
 
-CONTEXT
-src-tauri/src/core/agent_systems.rs:400 allocates a Vec every tick; :408 clones a String per
-dying agent. CLAUDE.md states tick systems must not allocate and that tests assert
-allocs == 0 — but no existing gate covers agent_death_system, which is why nothing went red.
-The branch feat/ecological-selection solves the same problem differently, in
-src-tauri/src/core/mortality.rs: no Vec, no clone, no sort; it queues the existing
-ReclaimAndDespawnAgentCommand through Commands and lets the command queue order it. Read
-that file before designing your fix.
+AUTHORIZATION
+Writes to src-tauri/src and src-tauri/tests. The owner authorized src-tauri/src (QĐ-B).
+R2 still forbids loosening an assertion — and in this task that is the specific temptation,
+so read R2 again before you touch an assert.
 
-FILES
-  src-tauri/src/core/agent_systems.rs
-  the existing allocation test (find it: grep -rn "allocs" src-tauri/tests)
+BRANCH FROM PR #39, NOT FROM main
+Base on `fix/declare-simrng-draw-order` (PR #39, stacked on #38). Reason: the 180-tick
+checksum is only stable per-process from #39 onward. Before it, one seed gave four different
+worlds in eight processes, so you could not tell your change's effect from the process you
+happened to run in.
+main also does not compile on macOS: four of five src-tauri/icons/ files are 12-byte
+placeholder text files (F-028). Supply valid icons locally, UNCOMMITTED. On Windows, skip it.
+
+PART 1 — THE INSTRUMENT MEASURES ITSELF (F-031)
+src-tauri/tests/thread_tracking_allocator_tests.rs:11 asserts that the tracking window counts
+only the measured thread's allocations. It is RED on macOS: left: 3, right: 1. Measured on the
+PR #38 base too, with no other change — it is not new.
+Cause: the test's own two `Barrier::wait()` calls (:24 and :27) sit INSIDE the
+start_tracking()..stop_tracking() window, and on macOS `std::sync::Barrier` allocates once per
+barrier on first use. Two barriers plus the one intended Box is three. On Windows neither
+`wait()` allocates, which is why CI never saw it.
+The number 1 is exactly what the test exists to assert. Do not change it to 3, to `<= 3`, or
+to a cfg(target_os) branch. Move the synchronisation out of the measured window, or warm both
+barriers with a discarded wait pair before `start_tracking()`, so the window contains only the
+allocation under test. Then say in a comment why the barriers are warmed, or the next person
+will "simplify" it back.
+
+PART 1b — THERE ARE THREE INSTRUMENTS, NOT ONE
+  src-tauri/tests/common/allocator.rs:66   TrackingAllocator       (start_tracking,
+                                                                    start_tracking_this_thread)
+  src-tauri/tests/common/allocator.rs:157  ThreadTrackingAllocator (thread-local counter)
+  src-tauri/tests/meta_ai_stress_tests.rs:1-49  a hand-rolled THIRD copy: its own GlobalAlloc
+                                                impl, its own AtomicUsize, its own
+                                                set_tracking/get_alloc_count
+22 test files use the thread-scoped API; exactly one uses its own private copy. Only a
+thread-scoped counter is immune to the contamination class F-031 is an instance of.
+Report which of the three each zero-allocation assertion actually runs under, and whether the
+private copy in meta_ai_stress_tests.rs is thread-scoped. If it is not, say so — do not
+migrate it in this task unless the migration is mechanical and you can show the assertion
+still fails when the allocation returns.
+Checked for you: every file that asserts a count of 0 does declare `#[global_allocator]`, so
+none of them passes vacuously for THAT reason. The vacuity is elsewhere — see Part 2.
+
+PART 2 — THE ALLOCATION, AND WHY NOTHING WENT RED
+The old version of this task named `agent_death_system` at agent_systems.rs:400. That symbol
+does not exist. Re-measured 2026-10-31 on the main lineage:
+
+  src-tauri/src/core/agent_systems.rs:395  `agent_mortality_system`
+      :400  let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
+      :408  to_despawn.push((lineage_id.0.clone(), e, cause));     <- a String per death
+      :411  to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+  src-tauri/src/core/agent_systems.rs:118  `ReclaimAndDespawnAgentCommand::apply`
+      let mut doomed: Vec<Entity> = Vec::new();  plus a fresh
+      world.query::<(Entity, &ParentAgent)>() scanning every entity, once PER DEATH
+
+So there are two allocating sites, not one, and the second runs at the `apply_deferred` inside
+the same tick (simulation_schedule.rs:245-260 — the chain is
+agent_mortality_system → autonomous_reproduction_system → apply_deferred →
+ecosystem_census_system). Fixing only the system leaves the command allocating. Do both, or
+state plainly which one you left and why.
+
+Why no gate went red, measured two ways:
+  1. `grep -rln agent_mortality_system src-tauri/tests/*.rs` returns NOTHING. No test names it.
+  2. More importantly: `Vec::new()` does not allocate. It allocates on the first push. So with
+     no agent dying, this code allocates ZERO — and in the live experiment no agent dies
+     within 180 ticks. A gate that runs ticks without forcing a death passes while the bug is
+     untouched. THIS is the vacuity to defeat: your gate must make at least two agents die
+     inside the measured window, and you must show the count it reports with the fix reverted.
+
+THE SEMANTIC QUESTION — SETTLE IT, DO NOT ASSUME IT
+The sort exists to make despawn order deterministic. Its key is `AgentLineageId(String)`.
+Nothing in this repository states that a live agent's lineage id is unique, and
+`grep -rn lineage_id src-tauri/tests/*.rs | grep -i "uniq|duplicate|distinct"` returns
+nothing — no test asserts it. So:
+  - If two live agents can share a lineage id, `sort_unstable_by` on that key is not a total
+    order and the current code is already arbitrary among them — the sort is theatre.
+  - If ids are unique per live agent, the sort IS a total order, and dropping it changes
+    despawn order to query iteration order. Then you must show that order is deterministic
+    across processes, or keep a deterministic order without allocating.
+Determine which it is by measurement and say how you determined it. This decides whether your
+change is a cleanup or a semantic change.
+
+READ FOR SHAPE, NOT TO COPY
+src-tauri/src/core/mortality.rs on branch feat/ecological-selection (67 lines) does the same
+job in one pass: no Vec, no clone, no sort, `commands.add(ReclaimAndDespawnAgentCommand)`
+straight from the query loop. It is NOT a drop-in replacement — it has different semantics
+(MortalityPolicy, starving_ticks, dehydration, VitalStatistics instead of
+DemographicTracker). Take the shape, not the body.
 
 RULES
-The second half of this task is not optional: a fix without a gate extension leaves the
-same hole open. Write the gate so that reverting your fix makes it RED, and report that
-negative control.
+R8 applies and may bite here: if despawn order changes, the 180-tick checksum changes. Report
+it before and after and say which. No test freezes a checksum as a literal (checked: every
+comparison in src-tauri/tests is run-vs-run, and there is no 9-or-10-digit literal in the
+directory), so nothing should need a baseline updated. If you find one, stop and report it.
+Do not fix fmt, clippy, audit or feature separation — those are B3/B4, and they are already
+red on this base.
 
 DONE WHEN
-  the allocation gate covers agent_death_system and exits 0
-  reverting the fix makes it fail (paste that output too)
-  cd src-tauri && cargo test --features desktop --no-fail-fast   -> 0 failed
-DEPENDS ON  B1
+  1) thread_tracking_allocator_tests passes on macOS with the assertion still `== 1`
+  2) a gate covers the death path, FORCES at least two deaths in the measured window, and
+     passes
+  3) NEGATIVE CONTROL, required: revert your fix, show the gate RED, and paste the non-zero
+     allocation count it reports. Then restore.
+  4) cd src-tauri && cargo test --features desktop --no-fail-fast  -> 0 failed
+     (baseline on this branch: 1216 passed · 1 failed · 2 ignored, 107 targets; the one
+     failure is the F-031 test you are fixing, so 0 failed is the target)
+  5) report: both allocating sites and what you did to each; which of the three instruments
+     each assertion runs under; how you settled the lineage-id uniqueness question; the
+     checksum before and after
+DEPENDS ON  B1b (PR #39)
 ```
 
 ### B3 — Feature separation
