@@ -98,10 +98,17 @@ Quy tắc ghi:
 - **Triệu chứng:** **năm** system nhận `ResMut<SimRng>` trên `origin/main`, và `1d301c3` thêm
   `autonomous_reproduction_system` **không** khai cạnh thứ tự nào với `spawn_food_system` /
   `seed_dropping_system` — những cái cũng rút cùng stream ở tick 1. Bevy topological-sort các
-  system xung đột mà không có cạnh theo một thứ tự phụ thuộc hash seed **của từng tiến trình**, nên
-  khoảng **một nửa** số tiến trình chạy thứ tự này, nửa còn lại chạy thứ tự kia. Hệ quả đo được:
-  cùng seed, cùng manifest, con non `live-founder-0005.1` sinh ra ở `x = 75.77` hoặc `x = 71.47`
-  tuỳ tiến trình.
+  system xung đột mà không có cạnh theo một thứ tự phụ thuộc hash seed **của từng tiến trình**.
+  Hệ quả đo được: cùng seed, cùng manifest, con non `live-founder-0005.1` sinh ra ở `x = 75.77`
+  hoặc `x = 71.47` tuỳ tiến trình.
+- **Sửa lại con số (2026-10-31, đo khi khoá F-029):** mô tả ban đầu ở trên nói "khoảng một nửa
+  tiến trình chạy thứ tự này, nửa còn lại chạy thứ tự kia" — **sai**. Sáu cặp không có thứ tự cho
+  phép **nhiều** thứ tự sort, không phải hai. Đo trực tiếp bằng cách chạy
+  `a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards` (test này **đã in sẵn**
+  checksum 180 tick) trong từng tiến trình riêng, trên lịch chưa sửa: **tám tiến trình cho bốn thế
+  giới khác nhau** — `3667697632`, `3611111189`, `1299407149`, `67815791`. Sau khi khai chuỗi thứ
+  tự: sáu tiến trình cho `3611111189` cả sáu lần. Bài học lặp lại: hai mẫu không đủ để gọi một
+  phân bố là nhị thức.
 - **Vì sao nó lọt:** chú thích của chính `SimRng` (`core/resources.rs:347`) phát biểu bất biến
   **có điều kiện** và điều kiện đó đã bị phá: *"same seed plus **same tick order** yields the same
   run"*, và *"Systems take `ResMut<SimRng>`, which makes Bevy serialise them against one another."*
@@ -123,8 +130,13 @@ Quy tắc ghi:
 - **Test khoá lại cần có:** mở rộng `schedule_ambiguity_tests.rs` thêm một test đối xứng với test
   năng lượng — *không hai system nào rút `SimRng` được để không có thứ tự*. Đây là gate rẻ và nó
   bắt đúng lớp lỗi này ở lần sau.
-- **Trạng thái:** OPEN — **chưa sửa**. Đây là việc riêng, không thuộc B1 (R8: đổi thứ tự lịch là
-  thay đổi ngữ nghĩa mô phỏng, phải có PR riêng kèm checksum trước/sau).
+- **Trạng thái:** FIXED trên nhánh `fix/declare-simrng-draw-order` (commit `03b331f`, xếp trên
+  PR #38). `build_tick_schedule` khai chuỗi
+  `manual_migration → spawn_food → seed_dropping → autonomous_reproduction → check_epoch_completion`,
+  và `schedule_ambiguity_tests.rs::no_two_systems_that_draw_simrng_are_left_unordered` canh lại.
+  Checksum 180 tick đổi — đúng như R8 dự liệu — và không test nào ghim nó thành hằng số (đã soát:
+  mọi so sánh trong `tests/` là run-vs-run, không có literal 9–10 chữ số nào). Biên của gate đó ghi
+  ở F-030.
 
 ### F-028 — `origin/main` không compile được trên macOS: 4/5 icon là file text `placeholder`
 - **Ngày:** 2026-10-31
