@@ -18,7 +18,7 @@ vào file này.
 | World artifact | [`PROJECT.md`](../../PROJECT.md), schema/fixtures trong code | Rust/TS codec và fixtures |
 | Map artifact/canonical views | [`MAP_MANIFEST.md`](../../MAP_MANIFEST.md) | [`map_manifest.schema.json`](../../map_manifest.schema.json) |
 | Benchmark report | [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) | [`benchmark_report.schema.json`](../../benchmark_report.schema.json) |
-| Test infrastructure | [`TEST_INFRA.md`](../../TEST_INFRA.md) | package scripts, Cargo tests |
+| Test infrastructure | [`TEST_INFRA.md`](../ai/TEST_INFRA.md) | package scripts, Cargo tests |
 | Genotype → phenotype → spawn/save/migration | [`CREATURE_DEVELOPMENT_CONTRACT.md`](CREATURE_DEVELOPMENT_CONTRACT.md) | ADR-0001, CM-S01…CM-S11 |
 | World-law fork, exotic energy, experiment và species evidence | [`EVOLUTION_EXPERIMENT_CONTRACT.md`](EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)* | ADR-0002, AE-S01…AE-S15 |
 

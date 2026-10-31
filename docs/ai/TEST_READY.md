@@ -7,7 +7,7 @@
 > tests passed today.
 >
 > **Measured status lives in one place:**
-> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)
+> [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)
 > — which records the `tests/` suite at **432 passed** on 2026-07-27, a different and larger number
 > because the suite has grown well past this original matrix.
 

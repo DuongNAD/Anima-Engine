@@ -3,7 +3,7 @@
 > ## 📐 Design document — the counts here are the **planned** matrix
 >
 > The per-feature tier counts below describe how the suite is *specified*, not how many tests ran or
-> passed. Measured status: [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+> passed. Measured status: [`docs/planning/STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 
 ## Test Philosophy
 - Opaque-box, requirement-driven. No dependency on implementation design.
