@@ -136,7 +136,7 @@ describe('Mock Leakage Demonstration', () => {
   });
 
   it('Test A: should disable migration trigger button when simulation is not running', async () => {
-    vi.mocked(invoke).mockImplementation((cmd, args) => {
+    vi.mocked(invoke).mockImplementation((cmd, _args) => {
       if (cmd === 'get_simulation_status') {
         return Promise.resolve({
           running: false,

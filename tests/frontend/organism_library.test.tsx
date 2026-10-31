@@ -1,9 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { App } from '../../src/App';
 
 // Store invoked calls to inspect them in the test
-const invokedCalls: { cmd: string; args: any }[] = [];
+const invokedCalls: { cmd: string; args: unknown }[] = [];
 
 vi.mock('@tauri-apps/api/core', async (importOriginal) => {
   const original = await importOriginal<typeof import('@tauri-apps/api/core')>();

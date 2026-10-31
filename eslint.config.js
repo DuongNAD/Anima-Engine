@@ -15,6 +15,13 @@ export default tseslint.config(
       'tests/node_modules',
       'map-prototype',
       'rabbit-standalone',
+      // `.gitignore:73` already excludes `/playground/`, and all of it except
+      // `RabbitVisualizer.tsx` is untracked scratch — a 1182-line second viewport that nothing
+      // imports, parallel to the shipping `src/PixiViewport.tsx`. Linting files that are not in
+      // version control made the gate depend on one machine's working tree: 7 of the 8 errors
+      // this ratchet reported came from there, and a fresh clone has none of them. Decision
+      // QĐ-D, docs/planning/COMPLETION_ROADMAP_2026-10-31.md §1.e.
+      'playground',
       '**/*.d.ts',
       // Vendored agent-scratch workspaces — not source.
       '.agents/**',
