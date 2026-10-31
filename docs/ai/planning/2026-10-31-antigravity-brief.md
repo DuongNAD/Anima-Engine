@@ -515,7 +515,14 @@ the generated transitive inventory and says so itself ("maintained by hand and i
 not a generated, transitively complete inventory"). The failing tests expect the
 generated form: an npm section with >=15 versioned components, the string
 licensing/THIRD_PARTY_LICENSES.txt, and a Rust crate count matching
-licensing/third-party-index.json (which currently says 419).
+licensing/third-party-index.json.
+
+Do NOT expect that count to be 419. The committed index says 419, but task A6
+(commit f73086c) moved rustls 0.23.42->0.23.46, rustls-webpki ->0.103.16 and
+webpki-roots 1.0.9->1.0.11, and a version bump can add or drop transitive
+dependencies. `gen:compliance` regenerates the index and NOTICE together, so the
+two agree whatever the new number is. Report the number you get; a difference from
+419 is expected, not a defect.
 
 The generator's template was already fixed on this branch in commit a791248 —
 before that, regenerating would have written "Anima-Engine itself is proprietary"
@@ -543,4 +550,10 @@ DONE WHEN
   and report the Rust crate count the regeneration produced, plus the OS and
   rustc version you ran it on, so the next reader knows which host the committed
   artifacts describe.
+
+If a test that is NOT one of these six fails on Windows while it passes on macOS,
+that is a finding, not something to fix in passing: say which test and stop. Line
+endings and path separators are the usual causes and both have bitten this project
+before — scripts/check_test_targets.mjs exists partly because PowerShell wrapped
+cargo's output and made a gate under-report.
 ```
