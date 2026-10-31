@@ -1400,6 +1400,18 @@ fn build_live_world(
                     crate::physics::SpatialCollider { radius: 0.5 },
                 ));
             }
+            // `sensory_system` runs at the start of the tick, before `rebuild_spatial_grid_system`.
+            // In an uninterrupted run that has already stepped at least one tick, `SpatialHashGrid`
+            // holds the end-of-tick-K collider positions when tick K+1 begins; rebuilding it here
+            // keeps a resumed or forked run from raycasting against an empty grid on tick K+1.
+            if state.tick_count > 0
+                || state
+                    .experiment
+                    .as_ref()
+                    .is_some_and(|exp| exp.clock_tick > 0)
+            {
+                populate_spatial_grid(&mut world);
+            }
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
@@ -1418,6 +1430,16 @@ fn build_live_world(
     }
 
     Ok(world)
+}
+
+fn populate_spatial_grid(world: &mut World) {
+    // Run the *same* system the tick schedule runs, rather than a second implementation of it.
+    // `rebuild_spatial_grid_system` resets the prepopulated per-cell counts and reserves capacity
+    // in a counting pass before inserting; a hand-rolled `clear()` + `insert()` loop here would be
+    // a second definition of one invariant, and the two would drift the first time the real one
+    // changed. `run_system_once` is the one-shot form of exactly that system.
+    use bevy_ecs::system::RunSystemOnce;
+    world.run_system_once(crate::physics::spatial::rebuild_spatial_grid_system);
 }
 
 /// The founding population and environment a manifest declared.
