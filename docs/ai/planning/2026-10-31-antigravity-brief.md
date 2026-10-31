@@ -1339,9 +1339,20 @@ CLAUDE.md, PROJECT.md, AGENTS.md, STATE_OF_THE_PROJECT.md, docs/reference/ and t
 ADRs — AND THREE OF THOSE CONFLICT. See "the docs conflicts" below; do not resolve
 them yourself.
 
-DO NOT START until B3b has landed on `fix/ci-gates-green`. B3b changes Cargo.lock,
-deny.toml, the bundle budget and the licensing artifacts. Merging before it means
-merging twice.
+DO NOT START until B3b has landed. CHECK IT, do not assume:
+
+    git fetch origin && git log --oneline -1 origin/fix/ci-gates-green
+
+If that still prints `78b2e85 chore(ci): clear all eight failing Rust and frontend CI
+gates`, then B3b has NOT landed. STOP, merge nothing, and report that as the reason.
+B3b changes Cargo.lock, deny.toml, the bundle budget and the licensing artifacts, so
+merging the 78b2e85 tip means doing this entire merge a second time afterwards — and
+the second time, the conflict set below no longer matches what you were handed.
+
+If B3b landed on a branch of its own instead of on `fix/ci-gates-green`, merge THAT
+branch's tip, say which sha you merged, and re-run the merge-tree command below
+yourself: the 9-file conflict set was measured against 78b2e85 and B3b touches
+audit.toml, which is one of the nine.
 
 ===============================================================================
 THE CONFLICTS — 9 files, already measured, do not re-survey
