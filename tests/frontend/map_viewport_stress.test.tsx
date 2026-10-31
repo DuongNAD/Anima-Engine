@@ -51,21 +51,27 @@ mockCanvas.getBoundingClientRect = () => ({
 });
 
 vi.mock('pixi.js', () => {
-  const ApplicationMock = vi.fn().mockImplementation(() => ({
-    init: vi.fn().mockResolvedValue(undefined),
-    canvas: mockCanvas,
-    stage: {
-      addChild: mockStageAddChild,
-      removeChild: vi.fn(),
-    },
-    ticker: {
-      add: mockTickerAdd,
-      remove: mockTickerRemove,
-    },
-    destroy: mockAppDestroy,
-  }));
+  // Every mock below is reached through `new` in MapViewport, so each implementation has to be a
+  // `function` and not an arrow: under @vitest/spy 4 a `new`ed mock is invoked via
+  // `Reflect.construct`, and an arrow has no [[Construct]] slot — the spy then throws
+  // `… is not a constructor` from inside itself. See the gotcha in CLAUDE.md.
+  const ApplicationMock = vi.fn().mockImplementation(function () {
+    return {
+      init: vi.fn().mockResolvedValue(undefined),
+      canvas: mockCanvas,
+      stage: {
+        addChild: mockStageAddChild,
+        removeChild: vi.fn(),
+      },
+      ticker: {
+        add: mockTickerAdd,
+        remove: mockTickerRemove,
+      },
+      destroy: mockAppDestroy,
+    };
+  });
 
-  const ContainerMock = vi.fn().mockImplementation(() => {
+  const ContainerMock = vi.fn().mockImplementation(function () {
     const inst = {
       addChild: vi.fn(),
       destroy: vi.fn(),
@@ -95,31 +101,52 @@ vi.mock('pixi.js', () => {
     return inst;
   });
 
-  const GraphicsMock = vi.fn().mockImplementation(() => mockGraphicsMethods);
+  const GraphicsMock = vi.fn().mockImplementation(function () {
+    return mockGraphicsMethods;
+  });
 
-  const TilingSpriteMock = vi.fn().mockImplementation((options) => ({
-    options,
-    destroy: vi.fn(),
-  }));
+  const TilingSpriteMock = vi.fn().mockImplementation(function (options) {
+    return {
+      options,
+      destroy: vi.fn(),
+    };
+  });
 
-  const TextureMock = vi.fn().mockImplementation((options) => ({
-    options,
-    destroy: mockTextureDestroy,
-  }));
+  const TextureMock = vi.fn().mockImplementation(function (options) {
+    return {
+      options,
+      destroy: mockTextureDestroy,
+    };
+  });
   (TextureMock as any).from = vi.fn().mockImplementation(() => ({
     destroy: mockTextureDestroy,
   }));
 
-  const TextMock = vi.fn().mockImplementation(() => ({
-    anchor: {
-      set: vi.fn(),
-    },
-    x: 0,
-    y: 0,
-    destroy: vi.fn(),
-  }));
+  const TextMock = vi.fn().mockImplementation(function () {
+    return {
+      anchor: {
+        set: vi.fn(),
+      },
+      x: 0,
+      y: 0,
+      destroy: vi.fn(),
+    };
+  });
 
-  const TextStyleMock = vi.fn().mockImplementation((options) => options);
+  const TextStyleMock = vi.fn().mockImplementation(function (options) {
+    return options ?? {};
+  });
+
+  // `new PIXI.Sprite(...)` sits behind `if (app.renderer)`, which this mock's Application does not
+  // provide, so the branch is unreachable today. Declared anyway: the factory must not be the
+  // reason a future test that does provide a renderer fails on `new undefined()`.
+  const SpriteMock = vi.fn().mockImplementation(function (texture) {
+    return {
+      texture,
+      zIndex: 0,
+      destroy: vi.fn(),
+    };
+  });
 
   return {
     Application: ApplicationMock,
@@ -129,6 +156,7 @@ vi.mock('pixi.js', () => {
     Texture: TextureMock,
     Text: TextMock,
     TextStyle: TextStyleMock,
+    Sprite: SpriteMock,
   };
 });
 
