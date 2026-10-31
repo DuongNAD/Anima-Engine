@@ -3,9 +3,14 @@
 //
 // # Why this is generated rather than written
 //
-// `LICENSE` is proprietary and grants nothing. That does not remove the obligation to attribute the
-// permissive components shipped inside the binary — MIT and BSD require the copyright notice and
-// licence text to travel with the distribution, and Apache-2.0 adds a NOTICE-propagation clause.
+// The project is `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Its own licence does not
+// remove the obligation to attribute the permissive components shipped inside the binary — MIT and
+// BSD require the copyright notice and licence text to travel with the distribution, and Apache-2.0
+// adds a NOTICE-propagation clause.
+//
+// The header below used to say the project was proprietary. The relicense replaced NOTICE by hand
+// and left this template alone, so CI's `--check` failed on the hand-written file, and regenerating
+// to make it pass would have put "proprietary" back. The template is the only place that text lives.
 //
 // # What this file is, and what it is not
 //
@@ -93,13 +98,16 @@ const vendored = index.counts.fromVendoredUpstream;
 
 const body = `# NOTICE
 
-Anima-Engine itself is proprietary; see [LICENSE](LICENSE), which grants no rights and defines the
-scope of what is and is not covered.
+Anima-Engine
+Copyright 2026 Duong Nguyen Anh
+
+Licensed under either of the Apache License, Version 2.0 or the MIT license, at your option. See
+[LICENSE-APACHE](LICENSE-APACHE) and [LICENSE-MIT](LICENSE-MIT).
 
 This file is the separate obligation. Anima-Engine is **distributed** with third-party components
-under permissive licences, and MIT/BSD require their copyright notice and licence text to travel
-with the distribution while Apache-2.0 adds a NOTICE-propagation clause. Being proprietary does not
-remove that; it is why a proprietary product still ships a NOTICE.
+under their own licences, and MIT/BSD require their copyright notice and licence text to travel
+with the distribution while Apache-2.0 adds a NOTICE-propagation clause. The project's own licence
+does not discharge that, and nothing in this file grants or restricts rights in those components.
 
 **This file is generated — do not edit by hand.** Regenerate with \`node scripts/gen_notice.mjs\`,
 and verify in CI with \`node scripts/gen_notice.mjs --check\`.
@@ -188,8 +196,9 @@ ${
 
 ## What this file does NOT establish
 
-- It is an **inventory**, not a legal review. Compatibility of each licence with proprietary
-  distribution has not been assessed, and nothing here constitutes legal sign-off. In particular the
+- It is an **inventory**, not a legal review. Compatibility of each third-party licence with this
+  project's \`MIT OR Apache-2.0\` distribution has not been assessed, and nothing here constitutes legal sign-off.
+  In particular the
   components under MPL-2.0 and the copyleft-adjacent licences are flagged for review by
   [\`docs/governance/OPEN_SOURCE_POLICY.md\`](docs/governance/OPEN_SOURCE_POLICY.md) and that review
   has not been performed.
