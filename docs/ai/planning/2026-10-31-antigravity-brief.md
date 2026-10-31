@@ -60,6 +60,13 @@ R3  NEVER fabricate data, evidence, or fallback values. No hardcoded seeds prese
     invented checksums on a dashboard, no 1x1 PNGs generated to make an evidence hash
     differ. If a value is not available, fail loudly or leave the feature out.
     History: all four of those shipped.
+    This includes PROVENANCE, not just values: a number you read from a doc is that doc's
+    measurement, taken on the machine, platform and commit recorded there. It is never
+    evidence for a platform you did not run on. Quote the file and line you read it from,
+    or do not report it. History: a B1b report gave a "Windows CI" checksum of 1989393324;
+    that number appears exactly once in the repository, in
+    docs/planning/STATE_OF_THE_PROJECT.md line 127, as a macOS measurement of a DIFFERENT
+    failure taken before PR #38. No Windows run produced it.
 
 R4  NEVER narrow a test command. Do not edit the `test`, `test:frontend`, `test:e2e`,
     `lint`, or `typecheck` scripts in any package.json to run a smaller set.

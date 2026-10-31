@@ -30,6 +30,63 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-031 — `thread_tracking_allocator_tests` đỏ trên macOS: chính hai `Barrier::wait()` của test nằm trong cửa sổ đo
+- **Ngày:** 2026-10-31
+- **Loại:** TEST-GAP (lỗi tính khả chuyển của dụng cụ đo, không phải lỗi hot loop)
+- **Vị trí:** `src-tauri/tests/thread_tracking_allocator_tests.rs:23-28` (cửa sổ
+  `ALLOCATOR.start_tracking()` … `stop_tracking()`), assert ở `:31`
+- **Phát hiện bởi:** agent làm task B1b, trong `cargo test --features desktop --no-fail-fast`
+  trên macOS (`aarch64-apple-darwin`)
+- **Triệu chứng:** `current_thread_tracking_ignores_allocations_from_other_threads` đỏ với
+  `left: 3, right: 1`. Test muốn khẳng định cửa sổ đo chỉ đếm cấp phát **của luồng đo**, nhưng
+  `start.wait()` (`:24`) và `finished.wait()` (`:27`) **nằm bên trong** cửa sổ đó. Trên macOS,
+  `std::sync::Barrier` cấp phát lười một lần cho mỗi barrier ở lần `wait()` đầu — hai barrier, hai
+  lần cấp phát — cộng một `Box` cố ý là **3**. Trên Windows (`SRWLOCK` + `CONDITION_VARIABLE`) cả
+  hai lần `wait()` không cấp phát, nên CI xanh và lỗi này chưa từng lộ.
+- **Điều này KHÔNG nói:** nó không nói hot loop cấp phát. `ThreadTrackingAllocator` và các gate
+  `allocs == 0` của tick system không liên quan; đây là **self-test của dụng cụ đo** tự làm nhiễu
+  cửa sổ của chính nó.
+- **Vì sao vẫn phải ghi:** trên macOS nó làm suite đỏ, và một người gặp suite đỏ ở đúng file này
+  rất dễ "sửa" bằng cách nới assert thành `<= 3` hoặc `>= 1` — đúng kiểu vi phạm R2 mà repo này
+  đã gặp năm lần. Ghi ra trước để lần sau không ai nới.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop -p anima-engine --test thread_tracking_allocator_tests`
+  trên macOS → `0 passed; 1 failed`.
+- **Sửa đúng cách (thuộc B2, không thuộc B1b):** đưa đồng bộ ra **ngoài** cửa sổ đo — hoặc hâm nóng
+  cả hai barrier bằng một cặp `wait()` bỏ đi trước `start_tracking()`, rồi mới đo. Tuyệt đối không
+  nới assert: con số 1 chính là điều test tồn tại để khẳng định.
+- **Trạng thái:** OPEN — agent B1b gặp, báo ở SURPRISES và **không** sửa (đúng R2). Đây là đầu vào
+  trực tiếp cho B2 (allocation gate).
+
+### F-030 — Gate `SimRng` mới chỉ thấy system **khai** `ResMut<SimRng>`; hai `Command` rút cùng stream qua `&mut World` thì nó không thấy
+- **Ngày:** 2026-10-31
+- **Loại:** TEST-GAP
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:182`, `:246` (`SpawnGenotypeCommand::apply`),
+  `:275`, `:333`, `:383` (`SpawnOffspringCommand::apply`); gate ở
+  `src-tauri/tests/schedule_ambiguity_tests.rs::no_two_systems_that_draw_simrng_are_left_unordered`
+- **Phát hiện bởi:** tay — soát lại biên của gate B1b sau khi nó xanh
+- **Triệu chứng:** gate lọc cặp ambiguity theo một danh sách tên cứng gồm **năm** system, và năm
+  cái đó đúng là toàn bộ system **khai** `ResMut<SimRng>` trong signature (đã đếm:
+  `grep -rn "ResMut<[a-z_:]*SimRng>" src/` cho 5 signature + 2 dòng chú thích). Nhưng
+  `SpawnGenotypeCommand::apply` và `SpawnOffspringCommand::apply` rút từ **cùng stream** bằng
+  `world.get_resource_mut::<SimRng>()`, và `Command` không có signature cho Bevy đọc. Bộ phát hiện
+  ambiguity của Bevy không thấy lần rút đó, nên gate cũng không.
+- **Hôm nay vẫn đúng, vì sao:** `autonomous_reproduction_system` xếp trong một `.chain()` có
+  `apply_deferred` ngay sau nó (`core/simulation_schedule.rs:203`), nên command được flush ở một
+  điểm **đã có thứ tự**. Lần rút xảy ra đúng một chỗ xác định.
+- **Vì sao vẫn là lỗ:** nếu một system thứ hai cũng xếp `SpawnOffspringCommand` (hoặc một command
+  mới rút `SimRng`) và cả hai flush ở **cùng** `apply_deferred`, thứ tự rút khi đó do thứ tự hàng
+  đợi command quyết định, tức do thứ tự chạy của hai system xếp chúng — và hai system đó có thể
+  **không** khai `ResMut<SimRng>` nên gate cho qua. Đây đúng là hình dạng của F-029, chỉ khác là
+  lần này ẩn sau một `Command`.
+- **Tái hiện:** `grep -rn "get_resource_mut::<crate::core::resources::SimRng>" src-tauri/src/` —
+  5 chỗ, cả 5 trong `impl Command`, không chỗ nào nằm trong `SIMRNG_SYSTEMS`.
+- **Test khoá lại cần có:** một source-scan gate (dạng như scan `thread_rng()` đã có) khẳng định
+  mọi chỗ chạm `SimRng` qua `&mut World` đều nằm trong một `impl Command` được flush ở
+  `apply_deferred` đã khai thứ tự — hoặc rẻ hơn: khẳng định tập `impl Command` chạm `SimRng`
+  **không tăng** so với danh sách đã kiểm.
+- **Trạng thái:** OPEN — gate B1b vẫn là bước tiến thật (nó bắt đúng 6 cặp của F-029); đây là biên
+  của nó, phải nói ra chứ không được để người đọc sau tưởng gate phủ mọi lần rút.
+
 ### F-029 — Thứ tự rút `SimRng` của thế giới sống phụ thuộc tiến trình: `1d301c3` thêm system thứ năm không có cạnh thứ tự, và gate ambiguity chỉ canh năng lượng
 - **Ngày:** 2026-10-31
 - **Loại:** BUG (vi phạm hợp đồng tất định)
