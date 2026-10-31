@@ -81,11 +81,11 @@ fn test_arrhenius_boltzmann_temperature_response() {
     let q10_10_20 = f_20c / f_10c;
 
     assert!(
-        q10_20_30 >= 2.0 && q10_20_30 <= 3.0,
+        (2.0..=3.0).contains(&q10_20_30),
         "Q10 (20->30C) was {q10_20_30}, expected in [2.0, 3.0]"
     );
     assert!(
-        q10_10_20 >= 2.0 && q10_10_20 <= 3.0,
+        (2.0..=3.0).contains(&q10_10_20),
         "Q10 (10->20C) was {q10_10_20}, expected in [2.0, 3.0]"
     );
 
@@ -178,7 +178,6 @@ fn test_holling_type_3_sigmoidal_rarity_refuge() {
         );
     }
 
-
     // 3. Comparison with Holling II: Holling III extraction fraction is strictly smaller at low densities
     let n_rare = 0.05;
     let h2_rare_per_capita = domain_laws::holling_type_2(n_rare, attack, handling) / n_rare;
@@ -187,7 +186,6 @@ fn test_holling_type_3_sigmoidal_rarity_refuge() {
         h3_rare_per_capita < h2_rare_per_capita * 0.10,
         "Holling III should provide >= 10x rarity protection over Holling II at N=0.05: h3={h3_rare_per_capita}, h2={h2_rare_per_capita}"
     );
-
 
     // 4. Explicit refuge parameter epsilon
     let h3_refuged = domain_laws::holling_type_3(2.0, attack, handling, 0.10);

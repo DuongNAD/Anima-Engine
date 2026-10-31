@@ -1,13 +1,9 @@
 import {
   Map2TerrainMathEngine,
-  sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   computeAtmosphereLapseRate,
   computeOrographicRainShadow,
-  computeAtmosphericMicroclimate,
 } from '../src/components/Map2/utils/map2AtmosphereMath';
 import { evaluateDendriticRiverNetwork } from '../src/components/Map2/utils/map2WaterMath';
 import * as THREE from 'three';
@@ -231,6 +227,7 @@ for (let i = 0; i < N_BENCH; i++) {
   const s = engine.sample(x, z);
   dummyAcc += s.height + s.temperature + s.moisture + s.steepness;
 }
+void dummyAcc;
 const tElapsed = performance.now() - tStart;
 const avgLatencyMs = tElapsed / N_BENCH;
 const queriesPerSec = Math.round(N_BENCH / (tElapsed / 1000));

@@ -137,7 +137,9 @@ pub use crate::core::telemetry_export::{
 };
 
 #[tauri::command]
-pub fn get_demographic_census(state: State<'_, AppState>) -> Result<DemographicCensusState, String> {
+pub fn get_demographic_census(
+    state: State<'_, AppState>,
+) -> Result<DemographicCensusState, String> {
     let shared = state
         .engine
         .demographic_census
@@ -183,12 +185,14 @@ pub fn get_spatial_density_matrix(
         .read()
         .unwrap_or_else(|e| e.into_inner());
 
-    Ok(crate::core::telemetry_export::generate_spatial_density_matrix(
-        w,
-        h,
-        &segments,
-        bounds.as_ref(),
-        None,
-        &combat_events,
-    ))
+    Ok(
+        crate::core::telemetry_export::generate_spatial_density_matrix(
+            w,
+            h,
+            &segments,
+            bounds.as_ref(),
+            None,
+            &combat_events,
+        ),
+    )
 }

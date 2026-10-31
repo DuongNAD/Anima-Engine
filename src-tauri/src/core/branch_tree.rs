@@ -3,10 +3,10 @@
 //! Provides arbitrary counterfactual branching tree execution, single-pass checkpoint
 //! memoization across prefix timelines, and multi-dimensional trajectory divergence metrics.
 
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
 use crate::core::build_identity::build_id;
 use crate::core::causal::CausalLedger;
@@ -14,9 +14,7 @@ use crate::core::exotic_energy::ExoticIntervention;
 use crate::core::experiment::{
     ExperimentError, ExperimentManifest, ObservableRegistry, ObservableSpec, MAX_DURATION_TICKS,
 };
-use crate::core::experiment_runner::{
-    ExperimentModel, RunProvenance, RunResult, RunStatus,
-};
+use crate::core::experiment_runner::{ExperimentModel, RunProvenance, RunResult, RunStatus};
 use crate::core::intervention::{InterventionCommand, InterventionQueue};
 use crate::core::scenario::StateSample;
 use crate::core::sim_clock::SimClock;
@@ -28,7 +26,8 @@ pub type BranchNodeId = u64;
 
 /// Deterministic 64-bit seed derivation function.
 pub fn derived_seed(base_seed: u64, stream_id: u64) -> u64 {
-    let mut h = base_seed.wrapping_mul(0x517cc1b727220a95) ^ stream_id.wrapping_mul(0x9e3779b97f4a7c15);
+    let mut h =
+        base_seed.wrapping_mul(0x517cc1b727220a95) ^ stream_id.wrapping_mul(0x9e3779b97f4a7c15);
     h ^= h >> 33;
     h = h.wrapping_mul(0xff51afd7ed558ccd);
     h ^= h >> 33;
@@ -38,21 +37,16 @@ pub fn derived_seed(base_seed: u64, stream_id: u64) -> u64 {
 }
 
 /// Strategy for initializing the deterministic random number generator for a branch.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum BranchSeedStrategy {
     /// Seamlessly continue from the parent's RNG stream at the fork tick (exact cloned state).
+    #[default]
     InheritStream,
     /// Derive a distinct deterministic seed using `derived_seed(parent_seed, stream_id ^ (fork_tick << 32))`.
     DerivedStream { stream_id: u64 },
     /// Explicitly provide a fixed seed for the branch.
     ExplicitSeed { seed: u64 },
-}
-
-impl Default for BranchSeedStrategy {
-    fn default() -> Self {
-        Self::InheritStream
-    }
 }
 
 /// Specification of an individual branch node in the manifest.
@@ -227,12 +221,14 @@ impl BranchTreeManifest {
 
         for node in &self.nodes {
             if let Some(pid) = node.parent_id {
-                let parent = node_map.get(&pid).ok_or_else(|| ExperimentError::InvalidLaw {
-                    reason: format!(
-                        "branch node {} references non-existent parent_id {}",
-                        node.id, pid
-                    ),
-                })?;
+                let parent = node_map
+                    .get(&pid)
+                    .ok_or_else(|| ExperimentError::InvalidLaw {
+                        reason: format!(
+                            "branch node {} references non-existent parent_id {}",
+                            node.id, pid
+                        ),
+                    })?;
 
                 if node.fork_tick > parent.duration_ticks {
                     return Err(ExperimentError::OutOfRange {
@@ -289,9 +285,7 @@ impl BranchTreeManifest {
         for &(a, b) in &self.comparisons {
             if !node_map.contains_key(&a) || !node_map.contains_key(&b) {
                 return Err(ExperimentError::InvalidLaw {
-                    reason: format!(
-                        "comparison refers to unknown branch node ({a}, {b})"
-                    ),
+                    reason: format!("comparison refers to unknown branch node ({a}, {b})"),
                 });
             }
         }
@@ -471,9 +465,21 @@ pub fn compute_pairwise_divergence(
     let mut time_to_divergence = None;
 
     let get_compartments = |map: &HashMap<String, f64>| -> [f64; 4] {
-        let p = map.get("plants").copied().or_else(|| map.get("live.standing_crop").copied()).unwrap_or(0.0);
-        let h = map.get("herbivores").copied().or_else(|| map.get("live.herbivore_count").copied()).unwrap_or(0.0);
-        let c = map.get("predators").copied().or_else(|| map.get("live.predator_count").copied()).unwrap_or(0.0);
+        let p = map
+            .get("plants")
+            .copied()
+            .or_else(|| map.get("live.standing_crop").copied())
+            .unwrap_or(0.0);
+        let h = map
+            .get("herbivores")
+            .copied()
+            .or_else(|| map.get("live.herbivore_count").copied())
+            .unwrap_or(0.0);
+        let c = map
+            .get("predators")
+            .copied()
+            .or_else(|| map.get("live.predator_count").copied())
+            .unwrap_or(0.0);
         let d = map.get("detritus").copied().unwrap_or(0.0);
         [p, h, c, d]
     };
@@ -486,7 +492,11 @@ pub fn compute_pairwise_divergence(
         let pt_a = get_compartments(vals_a);
         let pt_b = get_compartments(&vals_b);
 
-        let dist_sq: f64 = pt_a.iter().zip(pt_b.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+        let dist_sq: f64 = pt_a
+            .iter()
+            .zip(pt_b.iter())
+            .map(|(a, b)| (a - b).powi(2))
+            .sum();
         let dist = dist_sq.sqrt();
         phase_distances.push(dist);
 
@@ -495,11 +505,19 @@ pub fn compute_pairwise_divergence(
         }
 
         if let Some(prev) = prev_pt_a {
-            let step: f64 = pt_a.iter().zip(prev.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+            let step: f64 = pt_a
+                .iter()
+                .zip(prev.iter())
+                .map(|(a, b)| (a - b).powi(2))
+                .sum();
             traj_len_a += step.sqrt();
         }
         if let Some(prev) = prev_pt_b {
-            let step: f64 = pt_b.iter().zip(prev.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+            let step: f64 = pt_b
+                .iter()
+                .zip(prev.iter())
+                .map(|(a, b)| (a - b).powi(2))
+                .sum();
             traj_len_b += step.sqrt();
         }
         prev_pt_a = Some(pt_a);
@@ -655,13 +673,17 @@ pub fn run_branch_tree<M: ExperimentModel>(
 
     for node in &manifest.nodes {
         if let Some(pid) = node.parent_id {
-            child_fork_points.get_mut(&pid).unwrap().insert(node.fork_tick);
+            child_fork_points
+                .get_mut(&pid)
+                .unwrap()
+                .insert(node.fork_tick);
             children_map.get_mut(&pid).unwrap().push(node.id);
         }
     }
 
     // Memoization cache: (node_id, tick) -> CheckpointEntry
-    let mut checkpoint_cache: HashMap<(BranchNodeId, u64), CheckpointEntry<M::Snapshot>> = HashMap::new();
+    let mut checkpoint_cache: HashMap<(BranchNodeId, u64), CheckpointEntry<M::Snapshot>> =
+        HashMap::new();
     let mut node_results: HashMap<BranchNodeId, BranchNodeResult> = HashMap::new();
 
     for spec in nodes_order {
@@ -669,7 +691,15 @@ pub fn run_branch_tree<M: ExperimentModel>(
         let fork_ticks = child_fork_points[&node_id].clone();
 
         // 1. Initialize model and RNG stream
-        let (mut model, mut rng, mut clock, start_tick, resolved_seed, mut ledger, initial_observables) = match spec.parent_id {
+        let (
+            mut model,
+            mut rng,
+            mut clock,
+            start_tick,
+            resolved_seed,
+            mut ledger,
+            initial_observables,
+        ) = match spec.parent_id {
             None => {
                 // Root node
                 let model = M::from_manifest(
@@ -707,7 +737,8 @@ pub fn run_branch_tree<M: ExperimentModel>(
                 let (rng, resolved_seed) = match spec.seed_strategy {
                     BranchSeedStrategy::InheritStream => (entry.rng.clone(), entry.resolved_seed),
                     BranchSeedStrategy::DerivedStream { stream_id } => {
-                        let s = derived_seed(entry.resolved_seed, stream_id ^ (spec.fork_tick << 32));
+                        let s =
+                            derived_seed(entry.resolved_seed, stream_id ^ (spec.fork_tick << 32));
                         (StdRng::seed_from_u64(s), s)
                     }
                     BranchSeedStrategy::ExplicitSeed { seed } => {
@@ -715,9 +746,17 @@ pub fn run_branch_tree<M: ExperimentModel>(
                     }
                 };
 
-                let clock = entry.clock.clone();
+                let clock = entry.clock;
                 let obs = model.observables();
-                (model, rng, clock, spec.fork_tick, resolved_seed, CausalLedger::new(), obs)
+                (
+                    model,
+                    rng,
+                    clock,
+                    spec.fork_tick,
+                    resolved_seed,
+                    CausalLedger::new(),
+                    obs,
+                )
             }
         };
 
@@ -729,7 +768,7 @@ pub fn run_branch_tree<M: ExperimentModel>(
                 CheckpointEntry {
                     snapshot,
                     rng: rng.clone(),
-                    clock: clock.clone(),
+                    clock,
                     resolved_seed,
                 },
             );
@@ -772,7 +811,7 @@ pub fn run_branch_tree<M: ExperimentModel>(
                     CheckpointEntry {
                         snapshot,
                         rng: rng.clone(),
-                        clock: clock.clone(),
+                        clock,
                         resolved_seed,
                     },
                 );
@@ -788,8 +827,14 @@ pub fn run_branch_tree<M: ExperimentModel>(
         let provenance = RunProvenance {
             experiment_id: manifest.tree_id.clone(),
             run_id: format!("{}#node_{}", manifest.tree_id, node_id),
-            parent_run_id: spec.parent_id.map(|pid| format!("{}#node_{}", manifest.tree_id, pid)),
-            fork_tick: if spec.parent_id.is_some() { Some(spec.fork_tick) } else { None },
+            parent_run_id: spec
+                .parent_id
+                .map(|pid| format!("{}#node_{}", manifest.tree_id, pid)),
+            fork_tick: if spec.parent_id.is_some() {
+                Some(spec.fork_tick)
+            } else {
+                None
+            },
             seed: resolved_seed,
             manifest_fingerprint: manifest.base_manifest.fingerprint(),
             law_fingerprint: manifest.base_manifest.laws.fingerprint(),

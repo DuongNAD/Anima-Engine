@@ -141,7 +141,12 @@ pub fn holling_type_2(prey_density: f64, attack_rate: f64, handling_time: f64) -
 
 /// Pure f64 Holling Type III functional response with rarity refuge (scientific contract).
 #[inline]
-pub fn holling_type_3(prey_density: f64, attack_rate: f64, handling_time: f64, refuge_param: f64) -> f64 {
+pub fn holling_type_3(
+    prey_density: f64,
+    attack_rate: f64,
+    handling_time: f64,
+    refuge_param: f64,
+) -> f64 {
     anima_domain::laws::holling_type_3(prey_density, attack_rate, handling_time, refuge_param)
 }
 
@@ -151,8 +156,6 @@ pub const LINDEMAN_EFFICIENCY: f32 = 0.40;
 
 /// Continuous reproduction assimilation efficiency (~60% to offspring, 40% to detritus).
 pub const REPRODUCTION_EFFICIENCY: f32 = 0.60;
-
-
 
 /// Herbivore grazing intake for one tick — a saturating (Type II) bite bounded by the standing
 /// plant resource, how hungry the animal is, and a maximum bite rate. Grazing a depleted cell
@@ -170,8 +173,6 @@ pub fn herbivore_intake(available: f32, hunger: f32, max_bite: f32) -> f32 {
 /// Type III capture attack rate and handling time for one predator–prey contact.
 pub const CAPTURE_ATTACK: f32 = 0.02;
 pub const CAPTURE_HANDLING: f32 = 0.02;
-
-
 
 /// Default rarity refuge parameter for Holling Type III predation
 pub const DEFAULT_RARITY_REFUGE: f32 = 0.20;
@@ -196,7 +197,6 @@ pub fn predation_capture_with_refuge(prey_energy: f32, predator_deficit: f32, re
     raw.min(prey_energy)
         .min(predator_deficit / LINDEMAN_EFFICIENCY.max(1e-3))
 }
-
 
 // ---- Ecological niche descriptors (MAP-Elites behavior space) --------------------------
 

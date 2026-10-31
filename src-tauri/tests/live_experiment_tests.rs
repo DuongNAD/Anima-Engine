@@ -409,7 +409,12 @@ fn a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards() {
     // The control branch continued from the checkpoint with the manifest's own inputs, so it must
     // land where an uninterrupted run lands.
     let uninterrupted = run_manifest_seed::<LiveExperimentAdapter>(&m, &reg, SEED, None, None);
-    println!("uninterrupted: {}, control: {}, treatment: {}", uninterrupted.final_checksum, report.control.final_checksum, report.treatment.final_checksum);
+    println!(
+        "uninterrupted: {}, control: {}, treatment: {}",
+        uninterrupted.final_checksum,
+        report.control.final_checksum,
+        report.treatment.final_checksum
+    );
 
     assert_eq!(
         report.control.final_checksum, uninterrupted.final_checksum,
@@ -438,7 +443,12 @@ fn a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards() {
 fn through_disk(snapshot: &LiveSnapshot, label: &str) -> LiveSnapshot {
     static DISK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let id = DISK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("anima_live_{}_{}_{}", std::process::id(), id, label));
+    let dir = std::env::temp_dir().join(format!(
+        "anima_live_{}_{}_{}",
+        std::process::id(),
+        id,
+        label
+    ));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("checkpoint.json");
     let envelope = SnapshotEnvelope::seal(snapshot.saved.clone()).expect("seal");

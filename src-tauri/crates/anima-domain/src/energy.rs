@@ -93,7 +93,6 @@ pub struct EnergyFluxMatrix {
     pub total_flux: f64,
 }
 
-
 /// Absolute tolerance, in EU, for the closed-energy residual of a whole live run.
 ///
 /// **This is a property of the arithmetic, not a knob.** Because every ledger transfer debits the

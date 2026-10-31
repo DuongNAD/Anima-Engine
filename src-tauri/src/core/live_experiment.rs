@@ -763,8 +763,12 @@ impl LiveInferencePump {
     pub fn new(
         req_rx: crossbeam_channel::Receiver<crate::core::agent_systems::InferenceRequestBatch>,
         res_tx: crossbeam_channel::Sender<crate::core::agent_systems::InferenceResponseBatch>,
-        recycle_req_tx: crossbeam_channel::Sender<crate::core::agent_systems::InferenceRequestBatch>,
-        recycle_res_rx: crossbeam_channel::Receiver<crate::core::agent_systems::InferenceResponseBatch>,
+        recycle_req_tx: crossbeam_channel::Sender<
+            crate::core::agent_systems::InferenceRequestBatch,
+        >,
+        recycle_res_rx: crossbeam_channel::Receiver<
+            crate::core::agent_systems::InferenceResponseBatch,
+        >,
     ) -> Self {
         Self {
             req_rx,
@@ -776,7 +780,6 @@ impl LiveInferencePump {
         }
     }
 }
-
 
 /// Answer the tick's inference requests, in the tick.
 ///

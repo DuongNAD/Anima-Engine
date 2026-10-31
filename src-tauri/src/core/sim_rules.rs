@@ -31,7 +31,6 @@ pub use anima_domain::laws::{
     TICK_DT_SECONDS, TICK_HZ,
 };
 
-
 // ---- Space ----------------------------------------------------------------------------------
 
 /// Default working resolution of the backend simulation grid, cells per side.

@@ -192,7 +192,10 @@ pub fn export_phylogenetic_tree(
     state: State<'_, AppState>,
     req: Option<NewickExportRequest>,
 ) -> Result<String, String> {
-    crate::core::telemetry_export::export_lineage_newick(&state.engine.lineage_tracker, req.as_ref())
+    crate::core::telemetry_export::export_lineage_newick(
+        &state.engine.lineage_tracker,
+        req.as_ref(),
+    )
 }
 
 #[cfg(test)]

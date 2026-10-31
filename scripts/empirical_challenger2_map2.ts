@@ -1,23 +1,15 @@
-import * as THREE from 'three';
 import {
-  Map2TerrainMathEngine,
   sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   Map2Biome,
   BIOME_METADATA,
-  Map2BiomeEcologySystem,
 } from '../src/components/Map2/utils/map2BiomeConfig';
 import {
   computeMap2NavigationBFS,
-  generateMap2Manifest,
 } from '../src/components/Map2/utils/map2Manifest';
 import {
   Map2FloraSpecies,
-  FLORA_CANOPY_RADII,
-  FLORA_TRUNK_COLLIDER_RADII,
 } from '../src/components/Map2/utils/map2FloraGeometry';
 
 function hash2D(x: number, z: number, seed = 0): number {

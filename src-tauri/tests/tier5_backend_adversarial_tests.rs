@@ -15,8 +15,8 @@ use anima_domain::energy::{
 };
 use anima_domain::laws::{
     boltzmann_factor as domain_boltzmann, holling_type_2 as domain_holling2,
-    holling_type_3 as domain_holling3, mte_basal_metabolism as domain_mte,
-    BOLTZMANN_EV, E_ANIMAL_EV, KLEIBER_EXP, METABOLIC_NORM, REF_TEMP_K,
+    holling_type_3 as domain_holling3, mte_basal_metabolism as domain_mte, BOLTZMANN_EV,
+    E_ANIMAL_EV, KLEIBER_EXP, METABOLIC_NORM, REF_TEMP_K,
 };
 use anima_engine_lib::core::branch_tree::{
     dynamic_time_warping, BranchNodeSpecification, BranchSeedStrategy, BranchTreeManifest,
@@ -25,12 +25,10 @@ use anima_engine_lib::core::causal::{
     is_reserved_cause, CausalLedger, CauseId, CAUSE_BACKGROUND, CAUSE_OBSERVER,
 };
 use anima_engine_lib::core::ecology::{
-    boltzmann_factor, herbivore_intake, holling_type2, holling_type3,
-    metabolic_rate, predation_capture, E_ANIMAL_EV as E_ANIMAL_EV_F32, LINDEMAN_EFFICIENCY,
+    boltzmann_factor, herbivore_intake, holling_type2, holling_type3, metabolic_rate,
+    predation_capture, E_ANIMAL_EV as E_ANIMAL_EV_F32, LINDEMAN_EFFICIENCY,
 };
-use anima_engine_lib::core::experiment::{
-    ExperimentError, ExperimentManifest, ObservableRegistry,
-};
+use anima_engine_lib::core::experiment::{ExperimentError, ExperimentManifest, ObservableRegistry};
 use anima_engine_lib::core::snapshot::{
     checksum_bytes, from_bytes, SnapshotEnvelope, SnapshotError, MIN_SUPPORTED_SCHEMA,
     SCHEMA_VERSION,
@@ -53,22 +51,31 @@ fn test_adv_mte_absolute_zero_and_sub_zero_temperature() {
     assert_eq!(b_zero_k, 0.0, "Metabolism at absolute zero must be 0.0");
 
     let factor_zero_k = boltzmann_factor(-273.15, E_ANIMAL_EV_F32);
-    assert_eq!(factor_zero_k, 0.0, "Arrhenius factor at -273.15 °C must be 0.0");
+    assert_eq!(
+        factor_zero_k, 0.0,
+        "Arrhenius factor at -273.15 °C must be 0.0"
+    );
 
     let factor_domain_zero_k = domain_boltzmann(-273.15, E_ANIMAL_EV);
-    assert_eq!(factor_domain_zero_k, 0.0, "Domain Arrhenius factor at -273.15 °C must be 0.0");
+    assert_eq!(
+        factor_domain_zero_k, 0.0,
+        "Domain Arrhenius factor at -273.15 °C must be 0.0"
+    );
 
     // Sub-absolute zero (e.g. -300.0 °C / negative Kelvin)
     let b_neg_k = domain_mte(1.0, -10.0, METABOLIC_NORM, E_ANIMAL_EV);
     assert_eq!(b_neg_k, 0.0, "Metabolism at negative Kelvin must be 0.0");
 
     let factor_neg_c = boltzmann_factor(-300.0, E_ANIMAL_EV_F32);
-    assert_eq!(factor_neg_c, 0.0, "Arrhenius factor below -273.15 °C must clamp to 0.0");
+    assert_eq!(
+        factor_neg_c, 0.0,
+        "Arrhenius factor below -273.15 °C must clamp to 0.0"
+    );
 
     // Near absolute zero (1e-6 Kelvin)
     let b_near_zero = domain_mte(1.0, 1e-6, METABOLIC_NORM, E_ANIMAL_EV);
     assert!(
-        b_near_zero >= 0.0 && b_near_zero < 1e-100,
+        (0.0..1e-100).contains(&b_near_zero),
         "Near-zero Kelvin must underflow gracefully to ~0.0 without NaN: got {b_near_zero}"
     );
     assert!(!b_near_zero.is_nan());
@@ -79,7 +86,10 @@ fn test_adv_mte_hyper_thermal_boiling_extremes() {
     // Boiling water: 100 °C (373.15 K)
     let b_boiling = domain_mte(1.0, 373.15, METABOLIC_NORM, E_ANIMAL_EV);
     let b_ref = domain_mte(1.0, REF_TEMP_K, METABOLIC_NORM, E_ANIMAL_EV);
-    assert!(b_boiling > b_ref, "Metabolism at 100°C must exceed reference 20°C");
+    assert!(
+        b_boiling > b_ref,
+        "Metabolism at 100°C must exceed reference 20°C"
+    );
     assert!(b_boiling.is_finite(), "Metabolism at 100°C must be finite");
 
     // Extreme hyper-thermal: 1,000 K and 10,000 K
@@ -91,7 +101,8 @@ fn test_adv_mte_hyper_thermal_boiling_extremes() {
 
     // Asymptotic upper bound at stellar temperatures: as T -> infinity, exp(E/k * (1/T0 - 1/T)) -> exp(E/(k*T0))
     let b_stellar = domain_mte(1.0, 1e8, METABOLIC_NORM, E_ANIMAL_EV);
-    let theoretical_asymptote = METABOLIC_NORM * ((E_ANIMAL_EV / BOLTZMANN_EV) * (1.0 / REF_TEMP_K)).exp();
+    let theoretical_asymptote =
+        METABOLIC_NORM * ((E_ANIMAL_EV / BOLTZMANN_EV) * (1.0 / REF_TEMP_K)).exp();
     assert!(
         (b_stellar - theoretical_asymptote).abs() / theoretical_asymptote < 1e-4,
         "Stellar core temperature metabolism should approach theoretical asymptote: {b_stellar} vs {theoretical_asymptote}"
@@ -101,11 +112,17 @@ fn test_adv_mte_hyper_thermal_boiling_extremes() {
 #[test]
 fn test_adv_mte_subnormal_and_extreme_masses() {
     // Zero mass
-    assert_eq!(domain_mte(0.0, REF_TEMP_K, METABOLIC_NORM, E_ANIMAL_EV), 0.0);
+    assert_eq!(
+        domain_mte(0.0, REF_TEMP_K, METABOLIC_NORM, E_ANIMAL_EV),
+        0.0
+    );
     assert_eq!(metabolic_rate(0.0, 20.0, E_ANIMAL_EV_F32), 0.0);
 
     // Negative mass
-    assert_eq!(domain_mte(-10.0, REF_TEMP_K, METABOLIC_NORM, E_ANIMAL_EV), 0.0);
+    assert_eq!(
+        domain_mte(-10.0, REF_TEMP_K, METABOLIC_NORM, E_ANIMAL_EV),
+        0.0
+    );
     assert_eq!(metabolic_rate(-10.0, 20.0, E_ANIMAL_EV_F32), 0.0);
 
     // Subnormal / micro mass: 1e-30
@@ -198,7 +215,11 @@ fn test_adv_holling_handling_time_extremes() {
 
     // Zero handling time: pure linear Lotka-Volterra Type I
     let h2_zero_h = domain_holling2(n, attack, 0.0);
-    assert_eq!(h2_zero_h, attack * n, "Zero handling time must yield linear Lotka-Volterra response");
+    assert_eq!(
+        h2_zero_h,
+        attack * n,
+        "Zero handling time must yield linear Lotka-Volterra response"
+    );
 
     // Huge handling time: 1e9
     let h2_huge_h = domain_holling2(n, attack, 1e9);
@@ -356,14 +377,32 @@ fn test_adv_closed_loop_10k_random_adversarial_flux_sequence() {
                 // Animal reserve burn / debit back to detritus
                 let burn = rng.gen_range(0.0f32..30.0f32);
                 let debited = debit_reserve(&mut animal_reserve, burn);
-                ledger.transfer(&mut pool, Compartment::Animals, Compartment::Detritus, debited, EnergyEvent::MetabolicDecay);
+                ledger.transfer(
+                    &mut pool,
+                    Compartment::Animals,
+                    Compartment::Detritus,
+                    debited,
+                    EnergyEvent::MetabolicDecay,
+                );
             }
         }
 
         // Verify that neither compartment went negative beyond numerical tolerance
-        assert!(pool.detritus >= -RESIDUAL_ABS_TOLERANCE_EU, "Detritus was negative: {}", pool.detritus);
-        assert!(pool.plants >= -RESIDUAL_ABS_TOLERANCE_EU, "Plants was negative: {}", pool.plants);
-        assert!(pool.animals >= -RESIDUAL_ABS_TOLERANCE_EU, "Animals was negative: {}", pool.animals);
+        assert!(
+            pool.detritus >= -RESIDUAL_ABS_TOLERANCE_EU,
+            "Detritus was negative: {}",
+            pool.detritus
+        );
+        assert!(
+            pool.plants >= -RESIDUAL_ABS_TOLERANCE_EU,
+            "Plants was negative: {}",
+            pool.plants
+        );
+        assert!(
+            pool.animals >= -RESIDUAL_ABS_TOLERANCE_EU,
+            "Animals was negative: {}",
+            pool.animals
+        );
 
         // Strict conservation invariant after every single transaction
         let current_total = pool.total();
@@ -511,15 +550,24 @@ fn test_adv_causal_dag_cycle_and_forward_link_defense() {
         ]
     }"#;
 
-    let corrupted_ledger: CausalLedger = serde_json::from_str(json_corrupted).expect("parses corrupted ledger");
+    let corrupted_ledger: CausalLedger =
+        serde_json::from_str(json_corrupted).expect("parses corrupted ledger");
 
     // Self-parent on e1: trace must terminate immediately without spinning forever
     let trace1 = corrupted_ledger.trace_to_root(1);
-    assert_eq!(trace1, vec![1], "Self-parent cycle must terminate at the node");
+    assert_eq!(
+        trace1,
+        vec![1],
+        "Self-parent cycle must terminate at the node"
+    );
 
     // Forward parent on e0: trace must terminate immediately
     let trace0 = corrupted_ledger.trace_to_root(0);
-    assert_eq!(trace0, vec![0], "Forward-parent link must terminate at the node");
+    assert_eq!(
+        trace0,
+        vec![0],
+        "Forward-parent link must terminate at the node"
+    );
 }
 
 #[test]
@@ -583,17 +631,16 @@ fn test_adv_sweep_zero_range_dimensions() {
         min: 10.0,
         max: 10.0,
     };
-    dim_cont.validate("cont_deg").expect("valid degenerate bound");
+    dim_cont
+        .validate("cont_deg")
+        .expect("valid degenerate bound");
     assert_eq!(dim_cont.map_normalized(0.0), 10.0);
     assert_eq!(dim_cont.map_normalized(0.5), 10.0);
     assert_eq!(dim_cont.map_normalized(0.999), 10.0);
     assert_eq!(dim_cont.grid_values(5), vec![10.0]);
 
     // 0-range logarithmic dimension: min = 5.0, max = 5.0
-    let dim_log = DimensionSpec::Logarithmic {
-        min: 5.0,
-        max: 5.0,
-    };
+    let dim_log = DimensionSpec::Logarithmic { min: 5.0, max: 5.0 };
     dim_log.validate("log_deg").expect("valid degenerate bound");
     assert_eq!(dim_log.map_normalized(0.0), 5.0);
     assert_eq!(dim_log.map_normalized(0.5), 5.0);
@@ -605,7 +652,9 @@ fn test_adv_sweep_zero_range_dimensions() {
         max: 42,
         step: 1,
     };
-    dim_int.validate("int_deg").expect("valid integer degenerate bound");
+    dim_int
+        .validate("int_deg")
+        .expect("valid integer degenerate bound");
     assert_eq!(dim_int.map_normalized(0.5), 42.0);
     assert_eq!(dim_int.grid_values(5), vec![42.0]);
 
@@ -613,7 +662,9 @@ fn test_adv_sweep_zero_range_dimensions() {
     let dim_disc = DimensionSpec::Discrete {
         values: vec![123.45],
     };
-    dim_disc.validate("disc_deg").expect("valid discrete degenerate bound");
+    dim_disc
+        .validate("disc_deg")
+        .expect("valid discrete degenerate bound");
     assert_eq!(dim_disc.map_normalized(0.0), 123.45);
     assert_eq!(dim_disc.map_normalized(0.99), 123.45);
     assert_eq!(dim_disc.grid_values(5), vec![123.45]);
@@ -649,7 +700,9 @@ fn test_adv_sweep_single_point_sobol_and_lhs() {
         max_threads: Some(1),
     };
     sobol_manifest.validate(&registry).expect("valid manifest");
-    let (names, matrix) = sobol_manifest.generate_sample_matrix().expect("generates matrix");
+    let (names, matrix) = sobol_manifest
+        .generate_sample_matrix()
+        .expect("generates matrix");
     assert_eq!(names, vec!["initial_plants"]);
     assert_eq!(matrix.len(), 1);
     assert_eq!(matrix[0].len(), 1);
@@ -677,7 +730,9 @@ fn test_adv_sweep_single_point_sobol_and_lhs() {
         max_threads: Some(1),
     };
     lhs_manifest.validate(&registry).expect("valid manifest");
-    let (_, lhs_matrix) = lhs_manifest.generate_sample_matrix().expect("generates matrix");
+    let (_, lhs_matrix) = lhs_manifest
+        .generate_sample_matrix()
+        .expect("generates matrix");
     assert_eq!(lhs_matrix.len(), 1);
     assert_eq!(lhs_matrix[0].len(), 1);
     // Centered 1-sample LHS evaluates at midpoint u = 0.5: 100 + 0.5 * 400 = 300
@@ -692,7 +747,7 @@ fn test_adv_sweep_32_dimensional_sobol_boundary() {
         assert_eq!(pt.len(), 32);
         for (dim, &u) in pt.iter().enumerate() {
             assert!(
-                u >= 0.0 && u < 1.0,
+                (0.0..1.0).contains(&u),
                 "Sobol point out of [0, 1) in dim {dim}: {u}"
             );
             assert!(u.is_finite());
@@ -721,7 +776,9 @@ fn test_adv_pearson_correlation_zero_variance_and_degeneracies() {
     assert!((r_pos - 1.0).abs() < 1e-9);
 
     // 5. Perfect negative correlation (r = -1.0)
-    let y_neg = (0..50).map(|i| -5.0 * (i as f64) + 10.0).collect::<Vec<_>>();
+    let y_neg = (0..50)
+        .map(|i| -5.0 * (i as f64) + 10.0)
+        .collect::<Vec<_>>();
     let r_neg = pearson_correlation(&x, &y_neg).unwrap();
     assert!((r_neg - (-1.0)).abs() < 1e-9);
 }
@@ -731,6 +788,8 @@ fn test_adv_pearson_correlation_zero_variance_and_degeneracies() {
 // ================================================================================================
 
 #[test]
+// Reason: this test deliberately exercises bit-exact roundtrip of high-precision float literals.
+#[allow(clippy::excessive_precision, clippy::approx_constant)]
 fn test_adv_snapshot_extreme_float_precision_and_subnormals() {
     let mut state = anima_engine_lib::core::simulation_state::empty_saved_state_for_tests();
 

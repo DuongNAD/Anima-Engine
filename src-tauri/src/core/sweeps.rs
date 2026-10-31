@@ -7,18 +7,14 @@
 //! Enables parallel batch execution via `rayon` while maintaining bit-exact determinism
 //! and closed-loop conservation laws.
 
-use std::collections::HashMap;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-use crate::core::experiment::{
-    ExperimentError, ExperimentManifest, ObservableRegistry,
-};
-use crate::core::experiment_runner::{
-    run_ensemble, ExperimentModel, MetricSummary,
-};
+use crate::core::experiment::{ExperimentError, ExperimentManifest, ObservableRegistry};
+use crate::core::experiment_runner::{run_ensemble, ExperimentModel, MetricSummary};
 
 pub const SWEEP_SCHEMA_VERSION: u16 = 1;
 pub const MAX_SWEEP_POINTS: usize = 100_000;
@@ -190,7 +186,9 @@ impl DimensionSpec {
                     vec![*min]
                 } else {
                     (0..default_points_per_dim)
-                        .map(|i| min + (i as f64) * (max - min) / ((default_points_per_dim - 1) as f64))
+                        .map(|i| {
+                            min + (i as f64) * (max - min) / ((default_points_per_dim - 1) as f64)
+                        })
                         .collect()
                 }
             }
@@ -200,7 +198,9 @@ impl DimensionSpec {
                 } else {
                     let ratio = max / min;
                     (0..default_points_per_dim)
-                        .map(|i| min * ratio.powf((i as f64) / ((default_points_per_dim - 1) as f64)))
+                        .map(|i| {
+                            min * ratio.powf((i as f64) / ((default_points_per_dim - 1) as f64))
+                        })
                         .collect()
                 }
             }
@@ -421,9 +421,9 @@ impl SweepManifest {
                 let mut rows = Vec::with_capacity(n);
                 for sample_idx in 0..n {
                     let mut row = Vec::with_capacity(num_dims);
-                    for d in 0..num_dims {
-                        let u = dim_strata[d][sample_idx];
-                        row.push(self.parameters[d].spec.map_normalized(u));
+                    for (strata, param) in dim_strata.iter().zip(&self.parameters) {
+                        let u = strata[sample_idx];
+                        row.push(param.spec.map_normalized(u));
                     }
                     rows.push(row);
                 }
@@ -446,7 +446,12 @@ impl SweepManifest {
         for (param, &val) in self.parameters.iter().zip(values.iter()) {
             match &param.target {
                 SweepTarget::InitialCondition(key) => {
-                    if let Some(pos) = manifest.initial_conditions.values.iter().position(|(k, _)| k == key) {
+                    if let Some(pos) = manifest
+                        .initial_conditions
+                        .values
+                        .iter()
+                        .position(|(k, _)| k == key)
+                    {
                         manifest.initial_conditions.values[pos].1 = val;
                     } else {
                         manifest.initial_conditions.values.push((key.clone(), val));
@@ -480,7 +485,9 @@ impl SweepManifest {
                         .find(|c| c.id == *id)
                         .ok_or_else(|| ExperimentError::InapplicableIntervention {
                             id: *id,
-                            reason: format!("target intervention id {id} not found in base manifest"),
+                            reason: format!(
+                                "target intervention id {id} not found in base manifest"
+                            ),
                         })?;
                     cmd.intensity = val as f32;
                 }
@@ -491,7 +498,9 @@ impl SweepManifest {
                         .find(|c| c.id == *id)
                         .ok_or_else(|| ExperimentError::InapplicableIntervention {
                             id: *id,
-                            reason: format!("target intervention id {id} not found in base manifest"),
+                            reason: format!(
+                                "target intervention id {id} not found in base manifest"
+                            ),
                         })?;
                     cmd.start_tick = val.max(0.0) as u64;
                 }
@@ -502,7 +511,9 @@ impl SweepManifest {
                         .find(|c| c.id == *id)
                         .ok_or_else(|| ExperimentError::InapplicableIntervention {
                             id: *id,
-                            reason: format!("target intervention id {id} not found in base manifest"),
+                            reason: format!(
+                                "target intervention id {id} not found in base manifest"
+                            ),
                         })?;
                     cmd.duration_ticks = val.max(0.0) as u64;
                 }
@@ -595,8 +606,8 @@ fn generate_sobol_direction_numbers(dimensions: usize) -> Vec<[u32; 32]> {
 
     // Dimension 0: v_{0, i} = 1 << (32 - (i + 1))
     let mut v0 = [0u32; 32];
-    for i in 0..32 {
-        v0[i] = 1u32 << (31 - i);
+    for (i, slot) in v0.iter_mut().enumerate() {
+        *slot = 1u32 << (31 - i);
     }
     dir_nums.push(v0);
 
@@ -721,8 +732,6 @@ impl SweepResult {
                 if let Some(m) = pt.observables.get(obs) {
                     let std_val = m.std.unwrap_or(0.0);
                     out.push_str(&format!(",{},{},{},{}", m.mean, std_val, m.min, m.max));
-
-
                 } else {
                     out.push_str(",,,,");
                 }
@@ -788,80 +797,82 @@ pub fn run_sweep<M: ExperimentModel>(
         .map(|(idx, row)| manifest.apply_point(idx, row))
         .collect::<Result<_, _>>()?;
 
-    let run_point = |(idx, pm): (usize, &ExperimentManifest)| -> (PointSweepSummary, Vec<FailedRunSummary>) {
-        let params = matrix[idx].clone();
-        match run_ensemble::<M>(pm, registry) {
-            Ok(summary) => {
-                let mut obs_map = HashMap::new();
-                for m in summary.metrics {
-                    obs_map.insert(m.observable.clone(), m);
+    let run_point =
+        |(idx, pm): (usize, &ExperimentManifest)| -> (PointSweepSummary, Vec<FailedRunSummary>) {
+            let params = matrix[idx].clone();
+            match run_ensemble::<M>(pm, registry) {
+                Ok(summary) => {
+                    let mut obs_map = HashMap::new();
+                    for m in summary.metrics {
+                        obs_map.insert(m.observable.clone(), m);
+                    }
+                    let point_summary = PointSweepSummary {
+                        point_index: idx,
+                        parameters: params,
+                        completed_runs: summary.completed_runs,
+                        failed_runs: summary.failed.len(),
+                        observables: obs_map,
+                    };
+                    let fails = summary
+                        .failed
+                        .into_iter()
+                        .map(|(seed, reason)| FailedRunSummary {
+                            point_index: idx,
+                            seed,
+                            tick: 0,
+                            reason,
+                        })
+                        .collect();
+                    (point_summary, fails)
                 }
-                let point_summary = PointSweepSummary {
-                    point_index: idx,
-                    parameters: params,
-                    completed_runs: summary.completed_runs,
-                    failed_runs: summary.failed.len(),
-                    observables: obs_map,
-                };
-                let fails = summary
-                    .failed
-                    .into_iter()
-                    .map(|(seed, reason)| FailedRunSummary {
-                        point_index: idx,
-                        seed,
-                        tick: 0,
-                        reason,
-                    })
-                    .collect();
-                (point_summary, fails)
-            }
 
-            Err(e) => {
-                let point_summary = PointSweepSummary {
-                    point_index: idx,
-                    parameters: params,
-                    completed_runs: 0,
-                    failed_runs: pm.seeds.len(),
-                    observables: HashMap::new(),
-                };
-                let fails = pm
-                    .seeds
-                    .iter()
-                    .map(|&s| FailedRunSummary {
+                Err(e) => {
+                    let point_summary = PointSweepSummary {
                         point_index: idx,
-                        seed: s,
-                        tick: 0,
-                        reason: format!("ensemble rejected: {e}"),
-                    })
-                    .collect();
-                (point_summary, fails)
+                        parameters: params,
+                        completed_runs: 0,
+                        failed_runs: pm.seeds.len(),
+                        observables: HashMap::new(),
+                    };
+                    let fails = pm
+                        .seeds
+                        .iter()
+                        .map(|&s| FailedRunSummary {
+                            point_index: idx,
+                            seed: s,
+                            tick: 0,
+                            reason: format!("ensemble rejected: {e}"),
+                        })
+                        .collect();
+                    (point_summary, fails)
+                }
             }
-        }
-    };
+        };
 
-    let results: Vec<(PointSweepSummary, Vec<FailedRunSummary>)> = if let Some(threads) = manifest.max_threads {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build()
-            .map_err(|_| ExperimentError::ResourceLimit {
-                field: "rayon thread pool".into(),
-                limit: threads,
-                found: 0,
-            })?;
-        pool.install(|| {
+    let results: Vec<(PointSweepSummary, Vec<FailedRunSummary>)> =
+        if let Some(threads) = manifest.max_threads {
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .map_err(|_| ExperimentError::ResourceLimit {
+                    field: "rayon thread pool".into(),
+                    limit: threads,
+                    found: 0,
+                })?;
+            pool.install(|| {
+                point_manifests
+                    .par_iter()
+                    .enumerate()
+                    .map(run_point)
+                    .collect()
+            })
+        } else {
             point_manifests
                 .par_iter()
                 .enumerate()
                 .map(run_point)
                 .collect()
-        })
-    } else {
-        point_manifests
-            .par_iter()
-            .enumerate()
-            .map(run_point)
-            .collect()
-    };
+        };
 
     let mut points = Vec::with_capacity(total_points);
     let mut failure_records = Vec::new();
@@ -919,14 +930,15 @@ pub fn run_sweep<M: ExperimentModel>(
         let max = obs_means.iter().copied().fold(f64::NEG_INFINITY, f64::max);
 
         // Parameter correlations $r(X_d, Y_O)$
-        let mut parameter_correlations = Vec::with_capacity(num_dims);
-        for d in 0..num_dims {
-            let x_vals: Vec<f64> = valid_point_indices
-                .iter()
-                .map(|&idx| matrix[idx][d])
-                .collect();
-            parameter_correlations.push(pearson_correlation(&x_vals, &obs_means));
-        }
+        let parameter_correlations: Vec<Option<f64>> = (0..num_dims)
+            .map(|d| {
+                let x_vals: Vec<f64> = valid_point_indices
+                    .iter()
+                    .map(|&idx| matrix[idx][d])
+                    .collect();
+                pearson_correlation(&x_vals, &obs_means)
+            })
+            .collect();
 
         global_metrics.insert(
             obs_id,

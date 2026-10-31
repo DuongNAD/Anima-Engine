@@ -19,15 +19,12 @@ use anima_domain::energy::{
 };
 use anima_engine_lib::core::causal::{CausalLedger, CauseId, CAUSE_BACKGROUND};
 use anima_engine_lib::core::ecology::{
-    biome_carrying_capacity, biome_npp, boltzmann_factor, ecological_descriptors,
-    herbivore_intake, holling_type2, holling_type3, logistic_regrowth, metabolic_rate,
-    niche_divergence, predation_capture, shannon_index, simpson_index,
-    ResourceField, SeasonClock, E_ANIMAL_EV, E_PRODUCER_EV, KLEIBER_EXP, LINDEMAN_EFFICIENCY,
+    biome_carrying_capacity, biome_npp, boltzmann_factor, ecological_descriptors, herbivore_intake,
+    holling_type2, holling_type3, logistic_regrowth, metabolic_rate, niche_divergence,
+    predation_capture, shannon_index, simpson_index, ResourceField, SeasonClock, E_ANIMAL_EV,
+    E_PRODUCER_EV, KLEIBER_EXP, LINDEMAN_EFFICIENCY,
 };
-use anima_engine_lib::core::terrain::BiomeType;
-use anima_engine_lib::core::experiment::{
-    ExperimentManifest, FactorDiff, ObservableRegistry,
-};
+use anima_engine_lib::core::experiment::{ExperimentManifest, FactorDiff, ObservableRegistry};
 use anima_engine_lib::core::experiment_runner::{
     checkpoint_fork, genesis_fork, run_manifest_seed, run_paired_ensemble,
 };
@@ -35,6 +32,7 @@ use anima_engine_lib::core::intervention::{
     Curve, InterventionCommand, InterventionKind, InterventionQueue, Region,
 };
 use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
+use anima_engine_lib::core::terrain::BiomeType;
 use serde_json::Value;
 
 // Helper to locate committed test fixtures
@@ -162,7 +160,7 @@ fn test_mte_kleiber_allometric_and_arrhenius_thermal_scaling() {
     // Biological Q10 ratio over 10 °C must be within 2.0 to 3.0
     let q10 = factor_warm / factor_ref;
     assert!(
-        q10 >= 2.0 && q10 <= 3.0,
+        (2.0..=3.0).contains(&q10),
         "Q10 temperature sensitivity was {q10}, expected between 2.0 and 3.0"
     );
 
@@ -231,7 +229,10 @@ fn test_resource_field_whittaker_npp_and_gated_strided_regrowth() {
 
     // Verify cell capacities reflect biomes
     assert!(field.r_max[0] > field.r_max[1]); // Rainforest > Desert
-    assert_eq!(field.r_max[0], biome_carrying_capacity(BiomeType::Rainforest));
+    assert_eq!(
+        field.r_max[0],
+        biome_carrying_capacity(BiomeType::Rainforest)
+    );
 
     // Graze a cell
     let grazed = field.graze(0.5, 0.5, 5.0);
@@ -421,14 +422,9 @@ fn test_deterministic_replay_and_checkpoint_fork_state_parity() {
     assert!(single_run.status.is_completed());
 
     // 2. Run checkpoint fork at tick 600 with no extra interventions (control arm)
-    let fork_report = checkpoint_fork::<ReferenceEvolutionWorld>(
-        &manifest,
-        &registry,
-        42,
-        600,
-        &[],
-    )
-    .expect("checkpoint fork succeeds");
+    let fork_report =
+        checkpoint_fork::<ReferenceEvolutionWorld>(&manifest, &registry, 42, 600, &[])
+            .expect("checkpoint fork succeeds");
 
     assert!(fork_report.prefix.status.is_completed());
     assert!(fork_report.control.status.is_completed());
@@ -491,12 +487,9 @@ fn test_paired_ensemble_effect_size_analysis() {
         allowed_paths: vec!["initial_conditions.values".to_string()],
     };
 
-    let paired_summary = run_paired_ensemble::<ReferenceEvolutionWorld>(
-        &treatment,
-        &registry,
-        &allowed,
-    )
-    .expect("paired ensemble executes");
+    let paired_summary =
+        run_paired_ensemble::<ReferenceEvolutionWorld>(&treatment, &registry, &allowed)
+            .expect("paired ensemble executes");
 
     assert_eq!(paired_summary.complete_pairs(), 5);
     assert_eq!(paired_summary.incomplete_pairs(), 0);
@@ -571,8 +564,8 @@ fn test_anima_lab_cli_reference_model_execution_and_json_schema() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let report: Value = serde_json::from_slice(&output.stdout)
-        .expect("CLI stdout must be valid JSON report");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("CLI stdout must be valid JSON report");
 
     assert_eq!(report["tool"], "anima-lab");
     assert_eq!(report["model"], "reference");
@@ -610,8 +603,8 @@ fn test_anima_lab_cli_live_adapter_execution() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let report: Value = serde_json::from_slice(&output.stdout)
-        .expect("CLI stdout must be valid JSON report");
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("CLI stdout must be valid JSON report");
 
     assert_eq!(report["model"], "live");
     assert_eq!(report["completed_runs"], 1);

@@ -733,41 +733,58 @@ pub fn export_scientific_dataset(
         .unwrap_or_else(|e| e.into_inner())
         .compute_summary();
 
-    let newick_tree = crate::core::telemetry_export::export_lineage_newick(
-        &state.engine.lineage_tracker,
-        None,
-    ).ok();
+    let newick_tree =
+        crate::core::telemetry_export::export_lineage_newick(&state.engine.lineage_tracker, None)
+            .ok();
 
-    let time_series = vec![
-        TimeSeriesSample {
-            tick: status.tick_count,
-            plants_biomass: eco.plants,
-            prey_biomass: eco.animals * 0.7,
-            predator_biomass: eco.animals * 0.3,
-            detritus_biomass: eco.detritus,
-            total_energy: eco.total,
-            energy_residual: 0.0,
-            prey_count: eco.prey_count as usize,
-            predator_count: eco.predator_count as usize,
-            shannon_diversity: eco.shannon as f64,
-            simpson_diversity: eco.simpson as f64,
-            avg_prey_metabolic_rate: 0.045,
-            avg_predator_metabolic_rate: 0.089,
-            ambient_temperature_c: 20.0,
-        },
-    ];
+    let time_series = vec![TimeSeriesSample {
+        tick: status.tick_count,
+        plants_biomass: eco.plants,
+        prey_biomass: eco.animals * 0.7,
+        predator_biomass: eco.animals * 0.3,
+        detritus_biomass: eco.detritus,
+        total_energy: eco.total,
+        energy_residual: 0.0,
+        prey_count: eco.prey_count as usize,
+        predator_count: eco.predator_count as usize,
+        shannon_diversity: eco.shannon as f64,
+        simpson_diversity: eco.simpson as f64,
+        avg_prey_metabolic_rate: 0.045,
+        avg_predator_metabolic_rate: 0.089,
+        ambient_temperature_c: 20.0,
+    }];
 
     let csv_content = crate::core::telemetry_export::render_csv_time_series(&time_series);
 
     let package = ScientificDatasetPackage {
         schema_version: 1,
         provenance: provenance.clone(),
-        time_series: if req.include_time_series { time_series } else { Vec::new() },
-        demographics: if req.include_demographics { Some(demo) } else { None },
-        energy_flux: if req.include_energy_flux { Some(flux) } else { None },
-        spatial_density: if req.include_spatial_density { Some(spatial) } else { None },
+        time_series: if req.include_time_series {
+            time_series
+        } else {
+            Vec::new()
+        },
+        demographics: if req.include_demographics {
+            Some(demo)
+        } else {
+            None
+        },
+        energy_flux: if req.include_energy_flux {
+            Some(flux)
+        } else {
+            None
+        },
+        spatial_density: if req.include_spatial_density {
+            Some(spatial)
+        } else {
+            None
+        },
         map_elites_summary: Some(map_elites),
-        newick_tree: if req.include_phylogeny { newick_tree.clone() } else { None },
+        newick_tree: if req.include_phylogeny {
+            newick_tree.clone()
+        } else {
+            None
+        },
     };
 
     let json_content = serde_json::to_string_pretty(&package)

@@ -1,6 +1,7 @@
 use crate::ai::cpg::{CpgOscillator, TimeStep};
 use crate::core::ecs::{
-    JointAxis, ParentAgent, Position, Predator, Prey, Rotation, Segment, SegmentJointForce, Velocity,
+    JointAxis, ParentAgent, Position, Predator, Prey, Rotation, Segment, SegmentJointForce,
+    Velocity,
 };
 use bevy_ecs::prelude::*;
 use glam::{Quat, Vec3};

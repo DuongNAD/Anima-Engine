@@ -105,50 +105,54 @@ fn bit_exact_replay_parity_across_repeated_runs() {
 fn altering_extended_interventions_causes_deterministic_checksum_divergence() {
     let registry = ObservableRegistry::reference_default();
 
-    let manifest_a = create_test_manifest(vec![
-        InterventionCommand {
-            id: 1,
-            cause_id: 10,
-            kind: InterventionKind::PathogenTransmission {
-                pathogen_id: 1,
-                transmission_rate: 0.5,
-                mortality_multiplier: 1.0,
-            },
-            region: Region::Global,
-            start_tick: 60,
-            duration_ticks: 180,
-            intensity: 1.0,
-            signed_negative: true,
-            curve: Curve::Step,
-            reversible: false,
+    let manifest_a = create_test_manifest(vec![InterventionCommand {
+        id: 1,
+        cause_id: 10,
+        kind: InterventionKind::PathogenTransmission {
+            pathogen_id: 1,
+            transmission_rate: 0.5,
+            mortality_multiplier: 1.0,
         },
-    ]);
+        region: Region::Global,
+        start_tick: 60,
+        duration_ticks: 180,
+        intensity: 1.0,
+        signed_negative: true,
+        curve: Curve::Step,
+        reversible: false,
+    }]);
 
-    let manifest_b = create_test_manifest(vec![
-        InterventionCommand {
-            id: 1,
-            cause_id: 10,
-            kind: InterventionKind::PathogenTransmission {
-                pathogen_id: 1,
-                transmission_rate: 0.9, // Altered transmission rate
-                mortality_multiplier: 1.5,
-            },
-            region: Region::Global,
-            start_tick: 60,
-            duration_ticks: 180,
-            intensity: 1.0,
-            signed_negative: true,
-            curve: Curve::Step,
-            reversible: false,
+    let manifest_b = create_test_manifest(vec![InterventionCommand {
+        id: 1,
+        cause_id: 10,
+        kind: InterventionKind::PathogenTransmission {
+            pathogen_id: 1,
+            transmission_rate: 0.9, // Altered transmission rate
+            mortality_multiplier: 1.5,
         },
-    ]);
+        region: Region::Global,
+        start_tick: 60,
+        duration_ticks: 180,
+        intensity: 1.0,
+        signed_negative: true,
+        curve: Curve::Step,
+        reversible: false,
+    }]);
 
     let seed = 12345;
-    let run_a = run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_a, &registry, seed, None, None);
-    let run_b = run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_b, &registry, seed, None, None);
+    let run_a =
+        run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_a, &registry, seed, None, None);
+    let run_b =
+        run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_b, &registry, seed, None, None);
 
-    assert_eq!(run_a.status, anima_engine_lib::core::experiment_runner::RunStatus::Completed);
-    assert_eq!(run_b.status, anima_engine_lib::core::experiment_runner::RunStatus::Completed);
+    assert_eq!(
+        run_a.status,
+        anima_engine_lib::core::experiment_runner::RunStatus::Completed
+    );
+    assert_eq!(
+        run_b.status,
+        anima_engine_lib::core::experiment_runner::RunStatus::Completed
+    );
     assert_ne!(run_a.final_checksum, run_b.final_checksum);
 }
 

@@ -9,6 +9,13 @@ export interface CheckpointStudioPanelProps {
   initialBranchTree?: CausalBranchTreeState | null;
 }
 
+const INITIAL_BOOKMARKS_BASE_TS = Date.now();
+const DEFAULT_BOOKMARKS: CheckpointBookmark[] = [
+  { tick: 0, label: 'Genesis Baseline', timestamp: INITIAL_BOOKMARKS_BASE_TS - 360000, worldChecksum: '0xa4f28e1' },
+  { tick: 500, label: 'Pre-Intervention Fork Point', timestamp: INITIAL_BOOKMARKS_BASE_TS - 180000, worldChecksum: '0xb7d19c3' },
+  { tick: 1000, label: 'Coexistence Checkpoint', timestamp: INITIAL_BOOKMARKS_BASE_TS - 60000, worldChecksum: '0x992ef40' },
+];
+
 export const CheckpointStudioPanel: React.FC<CheckpointStudioPanelProps> = ({
   currentTick = 1200,
   initialBranchTree,
@@ -16,11 +23,7 @@ export const CheckpointStudioPanel: React.FC<CheckpointStudioPanelProps> = ({
   const [branchTree, setBranchTree] = useState<CausalBranchTreeState | null>(initialBranchTree || null);
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(1002);
   const [scrubberTick, setScrubberTick] = useState<number>(currentTick);
-  const [bookmarks, setBookmarks] = useState<CheckpointBookmark[]>([
-    { tick: 0, label: 'Genesis Baseline', timestamp: Date.now() - 360000, worldChecksum: '0xa4f28e1' },
-    { tick: 500, label: 'Pre-Intervention Fork Point', timestamp: Date.now() - 180000, worldChecksum: '0xb7d19c3' },
-    { tick: 1000, label: 'Coexistence Checkpoint', timestamp: Date.now() - 60000, worldChecksum: '0x992ef40' },
-  ]);
+  const [bookmarks, setBookmarks] = useState<CheckpointBookmark[]>(DEFAULT_BOOKMARKS);
 
   const [showForkModal, setShowForkModal] = useState<boolean>(false);
   const [forkParentId, setForkParentId] = useState<number>(1001);

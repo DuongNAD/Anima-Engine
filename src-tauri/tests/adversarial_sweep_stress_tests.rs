@@ -10,9 +10,8 @@ use anima_engine_lib::core::experiment::{
 };
 use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
 use anima_engine_lib::core::sweeps::{
-    pearson_correlation, run_sweep, DimensionSpec, ParameterDim, SamplingStrategy,
-    SobolSequence, SweepManifest, SweepResult, SweepTarget, MAX_SWEEP_DIMENSIONS,
-    SWEEP_SCHEMA_VERSION,
+    pearson_correlation, run_sweep, DimensionSpec, ParameterDim, SamplingStrategy, SobolSequence,
+    SweepManifest, SweepResult, SweepTarget, MAX_SWEEP_DIMENSIONS, SWEEP_SCHEMA_VERSION,
 };
 
 fn base_reference_manifest() -> ExperimentManifest {
@@ -71,7 +70,7 @@ fn sobol_sequence_covers_all_32_dimensions_with_unit_bounds() {
                 "Sobol dim {d} produced non-finite value at sample {idx}: {coord}"
             );
             assert!(
-                coord >= 0.0 && coord < 1.0,
+                (0.0..1.0).contains(&coord),
                 "Sobol dim {d} coordinate out of [0, 1) at sample {idx}: {coord}"
             );
         }
@@ -101,7 +100,7 @@ fn sobol_sequence_covers_all_32_dimensions_with_unit_bounds() {
 fn sobol_sequence_pairwise_low_correlation() {
     let mut sobol = SobolSequence::new(8);
     let n_samples = 1024;
-    let mut dims = vec![Vec::with_capacity(n_samples); 8];
+    let mut dims: Vec<Vec<f64>> = (0..8).map(|_| Vec::with_capacity(n_samples)).collect();
 
     for _ in 0..n_samples {
         let pt = sobol.next_point();
@@ -173,9 +172,12 @@ fn lhs_strictly_satisfies_latin_property_across_dimensions_and_sample_sizes() {
                     let mut bin_counts = vec![0usize; n_samples];
                     for row in &matrix {
                         let val = row[d];
-                        assert!(val >= 0.0 && val <= 100.0, "LHS value {val} out of bounds");
-                        let bin = ((val / 100.0 * n_samples as f64).floor() as usize)
-                            .min(n_samples - 1);
+                        assert!(
+                            (0.0..=100.0).contains(&val),
+                            "LHS value {val} out of bounds"
+                        );
+                        let bin =
+                            ((val / 100.0 * n_samples as f64).floor() as usize).min(n_samples - 1);
                         bin_counts[bin] += 1;
                     }
 
@@ -363,10 +365,7 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
         .map(|d| ParameterDim {
             name: format!("p_{d}"),
             target: SweepTarget::InitialCondition(format!("init_{d}")),
-            spec: DimensionSpec::Continuous {
-                min: 0.0,
-                max: 1.0,
-            },
+            spec: DimensionSpec::Continuous { min: 0.0, max: 1.0 },
         })
         .collect();
     let sweep_over_32 = SweepManifest {
@@ -382,7 +381,11 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
         max_threads: None,
     };
     match sweep_over_32.validate(&registry) {
-        Err(ExperimentError::ResourceLimit { field, limit, found }) => {
+        Err(ExperimentError::ResourceLimit {
+            field,
+            limit,
+            found,
+        }) => {
             assert!(field.contains("sweep parameters"));
             assert_eq!(limit, 32);
             assert_eq!(found, 33);
@@ -441,7 +444,10 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_inv_cont = ParameterDim {
         name: "bad_cont".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::Continuous { min: 10.0, max: 5.0 },
+        spec: DimensionSpec::Continuous {
+            min: 10.0,
+            max: 5.0,
+        },
     };
     assert!(matches!(
         p_inv_cont.validate(),
@@ -452,7 +458,10 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_inv_log = ParameterDim {
         name: "bad_log".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::Logarithmic { min: 10.0, max: 1.0 },
+        spec: DimensionSpec::Logarithmic {
+            min: 10.0,
+            max: 1.0,
+        },
     };
     assert!(matches!(
         p_inv_log.validate(),
@@ -463,7 +472,10 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_zero_log = ParameterDim {
         name: "bad_log_zero".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::Logarithmic { min: 0.0, max: 10.0 },
+        spec: DimensionSpec::Logarithmic {
+            min: 0.0,
+            max: 10.0,
+        },
     };
     assert!(matches!(
         p_zero_log.validate(),
@@ -473,7 +485,10 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_neg_log = ParameterDim {
         name: "bad_log_neg".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::Logarithmic { min: -5.0, max: 10.0 },
+        spec: DimensionSpec::Logarithmic {
+            min: -5.0,
+            max: 10.0,
+        },
     };
     assert!(matches!(
         p_neg_log.validate(),
@@ -484,7 +499,11 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_bad_step = ParameterDim {
         name: "bad_step".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::IntegerRange { min: 1, max: 10, step: 0 },
+        spec: DimensionSpec::IntegerRange {
+            min: 1,
+            max: 10,
+            step: 0,
+        },
     };
     assert!(matches!(
         p_bad_step.validate(),
@@ -506,7 +525,9 @@ fn invalid_manifests_gracefully_rejected_with_specific_errors() {
     let p_nan_disc = ParameterDim {
         name: "nan_disc".into(),
         target: SweepTarget::InitialCondition("plants".into()),
-        spec: DimensionSpec::Discrete { values: vec![1.0, f64::NAN] },
+        spec: DimensionSpec::Discrete {
+            values: vec![1.0, f64::NAN],
+        },
     };
     assert!(matches!(
         p_nan_disc.validate(),
@@ -626,7 +647,7 @@ fn pearson_correlation_adversarial_properties_and_bounds() {
     let x_offset = vec![1e14 + 1.0, 1e14 + 2.0, 1e14 + 3.0, 1e14 + 4.0];
     let y_offset = vec![1e14 + 2.0, 1e14 + 4.0, 1e14 + 6.0, 1e14 + 8.0];
     let r_offset = pearson_correlation(&x_offset, &y_offset).unwrap();
-    assert!(r_offset >= -1.0 && r_offset <= 1.0);
+    assert!((-1.0..=1.0).contains(&r_offset));
     assert!((r_offset - 1.0).abs() < 1e-5);
 }
 
@@ -648,15 +669,22 @@ fn sweep_result_csv_and_json_format_integrity() {
             ParameterDim {
                 name: "plants".into(),
                 target: SweepTarget::InitialCondition("plants".into()),
-                spec: DimensionSpec::Continuous { min: 60.0, max: 120.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 60.0,
+                    max: 120.0,
+                },
             },
             ParameterDim {
                 name: "herbivores".into(),
                 target: SweepTarget::InitialCondition("herbivores".into()),
-                spec: DimensionSpec::Discrete { values: vec![20.0, 40.0] },
+                spec: DimensionSpec::Discrete {
+                    values: vec![20.0, 40.0],
+                },
             },
         ],
-        sampling: SamplingStrategy::Grid { points_per_dim: Some(2) },
+        sampling: SamplingStrategy::Grid {
+            points_per_dim: Some(2),
+        },
         max_threads: Some(2),
     };
 
@@ -689,7 +717,10 @@ fn sweep_result_csv_and_json_format_integrity() {
         // Verify numeric values parse properly
         for col in cols {
             if !col.is_empty() {
-                assert!(col.parse::<f64>().is_ok(), "Column '{col}' is not a valid float");
+                assert!(
+                    col.parse::<f64>().is_ok(),
+                    "Column '{col}' is not a valid float"
+                );
             }
         }
     }
@@ -735,9 +766,15 @@ fn cli_anima_lab_sweep_json_and_csv_execution() {
         parameters: vec![ParameterDim {
             name: "plants".into(),
             target: SweepTarget::InitialCondition("plants".into()),
-            spec: DimensionSpec::Continuous { min: 80.0, max: 120.0 },
+            spec: DimensionSpec::Continuous {
+                min: 80.0,
+                max: 120.0,
+            },
         }],
-        sampling: SamplingStrategy::Sobol { num_samples: 4, offset: 0 },
+        sampling: SamplingStrategy::Sobol {
+            num_samples: 4,
+            offset: 0,
+        },
         max_threads: None,
     };
 
@@ -812,9 +849,8 @@ fn sobol_2d_elementary_interval_digital_net_property() {
         }
 
         let mut occupied_cells = 0usize;
-        for bx in 0..num_x_bins {
-            for by in 0..num_y_bins {
-                let count = grid_counts[bx][by];
+        for (bx, col) in grid_counts.iter().enumerate() {
+            for (by, &count) in col.iter().enumerate() {
                 assert!(
                     count <= 2,
                     "Sobol partition a={a}, b={b}, cell ({bx}, {by}) count={count} exceeded bound 2"
@@ -840,18 +876,19 @@ fn sobol_2d_elementary_interval_digital_net_property() {
 fn sweep_target_intervention_and_exotic_law_modifications() {
     let mut base = base_reference_manifest();
     // Add an intervention command
-    base.interventions.push(anima_domain::intervention::InterventionCommand {
-        id: 101,
-        cause_id: 1,
-        start_tick: 10,
-        duration_ticks: 5,
-        intensity: 0.2,
-        signed_negative: true,
-        region: anima_domain::intervention::Region::Global,
-        curve: anima_domain::intervention::Curve::Step,
-        reversible: false,
-        kind: anima_domain::intervention::InterventionKind::RemovePredators,
-    });
+    base.interventions
+        .push(anima_domain::intervention::InterventionCommand {
+            id: 101,
+            cause_id: 1,
+            start_tick: 10,
+            duration_ticks: 5,
+            intensity: 0.2,
+            signed_negative: true,
+            region: anima_domain::intervention::Region::Global,
+            curve: anima_domain::intervention::Curve::Step,
+            reversible: false,
+            kind: anima_domain::intervention::InterventionKind::RemovePredators,
+        });
 
     let sweep = SweepManifest {
         schema_version: SWEEP_SCHEMA_VERSION,
@@ -867,15 +904,25 @@ fn sweep_target_intervention_and_exotic_law_modifications() {
             ParameterDim {
                 name: "cull_start".into(),
                 target: SweepTarget::InterventionStartTick(101),
-                spec: DimensionSpec::IntegerRange { min: 20, max: 50, step: 10 },
+                spec: DimensionSpec::IntegerRange {
+                    min: 20,
+                    max: 50,
+                    step: 10,
+                },
             },
             ParameterDim {
                 name: "cull_dur".into(),
                 target: SweepTarget::InterventionDuration(101),
-                spec: DimensionSpec::IntegerRange { min: 5, max: 15, step: 5 },
+                spec: DimensionSpec::IntegerRange {
+                    min: 5,
+                    max: 15,
+                    step: 5,
+                },
             },
         ],
-        sampling: SamplingStrategy::Grid { points_per_dim: Some(2) },
+        sampling: SamplingStrategy::Grid {
+            points_per_dim: Some(2),
+        },
         max_threads: Some(1),
     };
 
@@ -896,7 +943,9 @@ fn sweep_target_intervention_and_exotic_law_modifications() {
             target: SweepTarget::InterventionIntensity(9999),
             spec: DimensionSpec::Continuous { min: 0.1, max: 0.9 },
         }],
-        sampling: SamplingStrategy::Grid { points_per_dim: Some(2) },
+        sampling: SamplingStrategy::Grid {
+            points_per_dim: Some(2),
+        },
         max_threads: Some(1),
     };
     assert!(sweep_bad_target.apply_point(0, &[0.5]).is_err());
@@ -920,15 +969,24 @@ fn sweep_thread_scaling_yields_bit_identical_results() {
             ParameterDim {
                 name: "plants".into(),
                 target: SweepTarget::InitialCondition("plants".into()),
-                spec: DimensionSpec::Continuous { min: 50.0, max: 150.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 50.0,
+                    max: 150.0,
+                },
             },
             ParameterDim {
                 name: "herbivores".into(),
                 target: SweepTarget::InitialCondition("herbivores".into()),
-                spec: DimensionSpec::Continuous { min: 20.0, max: 60.0 },
+                spec: DimensionSpec::Continuous {
+                    min: 20.0,
+                    max: 60.0,
+                },
             },
         ],
-        sampling: SamplingStrategy::Sobol { num_samples: 8, offset: 0 },
+        sampling: SamplingStrategy::Sobol {
+            num_samples: 8,
+            offset: 0,
+        },
         max_threads: Some(1),
     };
 
@@ -946,7 +1004,11 @@ fn sweep_thread_scaling_yields_bit_identical_results() {
         assert_eq!(p1.parameters, p2.parameters);
         for (k, m1) in &p1.observables {
             let m2 = &p2.observables[k];
-            assert_eq!(m1.mean.to_bits(), m2.mean.to_bits(), "Mean mismatch for {k}");
+            assert_eq!(
+                m1.mean.to_bits(),
+                m2.mean.to_bits(),
+                "Mean mismatch for {k}"
+            );
             assert_eq!(m1.min.to_bits(), m2.min.to_bits(), "Min mismatch for {k}");
             assert_eq!(m1.max.to_bits(), m2.max.to_bits(), "Max mismatch for {k}");
         }
@@ -976,14 +1038,22 @@ fn live_experiment_adapter_sweep_execution() {
         parameters: vec![ParameterDim {
             name: "live_founders".into(),
             target: SweepTarget::InitialCondition("live.founders".into()),
-            spec: DimensionSpec::Continuous { min: 10.0, max: 30.0 },
+            spec: DimensionSpec::Continuous {
+                min: 10.0,
+                max: 30.0,
+            },
         }],
-        sampling: SamplingStrategy::Sobol { num_samples: 3, offset: 0 },
+        sampling: SamplingStrategy::Sobol {
+            num_samples: 3,
+            offset: 0,
+        },
         max_threads: Some(1),
     };
 
-    let result = run_sweep::<anima_engine_lib::core::live_experiment::LiveExperimentAdapter>(&sweep, &registry)
-        .expect("Live adapter sweep must run successfully");
+    let result = run_sweep::<anima_engine_lib::core::live_experiment::LiveExperimentAdapter>(
+        &sweep, &registry,
+    )
+    .expect("Live adapter sweep must run successfully");
 
     assert_eq!(
         result.completed_points, 3,
@@ -1014,7 +1084,10 @@ fn cli_anima_lab_sweep_error_cases_and_exit_codes() {
     assert!(String::from_utf8_lossy(&out_bad_flag.stderr).contains("unknown option"));
 
     // 3. Malformed JSON file
-    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let malformed_path = std::env::temp_dir().join(format!("malformed-{nonce}.json"));
     std::fs::write(&malformed_path, b"{ this is not valid json }").unwrap();
 
@@ -1027,4 +1100,3 @@ fn cli_anima_lab_sweep_error_cases_and_exit_codes() {
     assert!(!out_malformed.status.success());
     assert!(String::from_utf8_lossy(&out_malformed.stderr).contains("cannot parse sweep manifest"));
 }
-

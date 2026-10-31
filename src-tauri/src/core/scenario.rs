@@ -240,10 +240,7 @@ impl SimModel for ReferenceEcosystem {
                         "genetic injection applied trait modifications",
                     );
                 }
-                InterventionKind::ToxicityPlume {
-                    toxicity_level,
-                    ..
-                } => {
+                InterventionKind::ToxicityPlume { toxicity_level, .. } => {
                     let mag = cmd.signed_intensity_at(tick).abs() as f64;
                     let stress = (*toxicity_level as f64 * mag * 0.05).clamp(0.0, 0.5);
                     let plant_loss = self.plants * stress;
@@ -267,8 +264,9 @@ impl SimModel for ReferenceEcosystem {
                     ..
                 } => {
                     let mag = cmd.signed_intensity_at(tick).abs() as f64;
-                    let stress = (*transmission_rate as f64 * *mortality_multiplier as f64 * mag * 0.02)
-                        .clamp(0.0, 0.5);
+                    let stress =
+                        (*transmission_rate as f64 * *mortality_multiplier as f64 * mag * 0.02)
+                            .clamp(0.0, 0.5);
                     let loss = self.herbivores * stress;
                     self.herbivores -= loss;
                     self.detritus += loss;
