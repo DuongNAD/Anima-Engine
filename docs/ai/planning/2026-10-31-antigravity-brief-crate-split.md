@@ -167,11 +167,21 @@ DONE WHEN
   2) just dataflow-verify 1              -> exit 0, prints
                                             "QUA CONG — 16 edge khop hoan toan"
                                             and lists the 6 cyclic pairs as LUU Y
-  3) NEGATIVE CONTROL, required: add a throwaway `use crate::physics::spatial;` to
-     some file in ai/ that does not already import it, re-run 1) and 2), confirm it
-     goes RED and NAMES the new ai -> physics edge, then revert the throwaway and
-     confirm green again. Paste both outputs. A gate nobody has seen fail is not a
-     gate — this project has shipped three of those.
+  3) NEGATIVE CONTROL, required. The throwaway edge has to be one that does NOT
+     already exist, or the gate correctly stays green and you learn nothing. Of the
+     16 edges above, `evolution -> physics` is absent from the lib graph — that is
+     the one to use, and the reason it is absent is explained two paragraphs up.
+     So: add `use crate::physics::spatial as _;` to a NON-TEST file under
+     src-tauri/src/evolution/ (not inside a `#[cfg(test)] mod`, or cargo-modules
+     will not see it at all — that is the whole reason the hand count was wrong).
+     Re-run 1) and 2), confirm the gate goes RED and NAMES the new
+     evolution -> physics edge as an "edge BO SOT", then revert and confirm green.
+     Paste both outputs.
+     Do NOT use `ai -> physics` for this: it is already one of the 16, so adding
+     that import proves nothing.
+     A gate nobody has seen fail is not a gate — this project has shipped three of
+     those, and src-tauri/src is otherwise out of scope for this task, so revert
+     the throwaway before you finish.
   4) the new CI step runs in the Rust job and is green
   5) cd src-tauri && cargo test --features desktop --no-fail-fast
      -> 1153 passed, 0 failed   (nothing here touches Rust; a different number
