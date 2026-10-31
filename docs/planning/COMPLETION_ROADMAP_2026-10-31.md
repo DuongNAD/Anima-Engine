@@ -257,13 +257,14 @@ mảnh nó cần — một fitness mà sinh thái chạm được, và một cá
 
 ---
 
-## 4. Bốn quyết định chỉ chủ dự án đưa ra được
+## 4. Quyết định chỉ chủ dự án đưa ra được
 
 | # | Quyết định | Vì sao máy không quyết được |
 |---|---|---|
 | **QĐ-A** | **Cây nào là nền**, và cụm A trên `main` bị hoàn nguyên hay bị sửa tại chỗ | Đánh đổi giữa việc mất công đã làm và việc giữ một hiện thực vi phạm bốn khoản hợp đồng. Khuyến nghị: nền là `main`, cụm A bị **thay** bởi `mortality.rs` của nhánh |
 | **QĐ-B** | **Phạm vi `AGENTS.md`** — nó khai `src-tauri/src` là chỉ đọc và `src-tauri/tests` là vùng ghi duy nhất, ở phạm vi toàn repo, trong khi mọi việc ở HT0′–HT1′ bắt buộc ghi vào `src-tauri/src` | Đây là hợp đồng, không phải mã. Cần miễn trừ tường minh hoặc thu hẹp phạm vi. Mục tiên quyết này đã mở từ `STATE §3.19` và vẫn chưa được đóng |
-| **QĐ-D** | **`playground/` là mã thật hay là nháp** (§1.e) — track nó và đưa vào phạm vi gate, hay loại bốn file test đang kiểm nó | Đây là quyết định phạm vi sản phẩm. Khuyến nghị: nếu `MapViewport` là thứ sẽ ship thì track nó; nếu không, loại test. Không chọn gì thì ba gate ở trên đỏ mãi |
+| ~~**QĐ-D**~~ | ✅ **ĐÃ QUYẾT 2026-10-31 tại `26c8a96`: `playground/` là nháp.** Căn cứ là so hai viewport, không phải sở thích: `src/PixiViewport.tsx` (1296 dòng, track, `src/App.tsx:3` import, 7 file test) là *presentational* — nhận `zoom`/pan làm prop, **không** có wheel/drag/inertia/clamp. `playground/fantasy-map/MapViewport.tsx` (1182 dòng, không track) tự giữ tất cả, kể cả `Math.max(1.0, Math.min(5.0, …))` ở `:1108`. Nên 8 test tính chất kia **không có đối tượng tương ứng** ở bản ship — không port được, vì hành vi đó không ở đó. Đã xoá 4 file test và loại `playground` khỏi phạm vi ESLint | Đo: lint **8 error · 72 warning → 0 · 0**, ratchet xanh; `test:frontend` **17 đỏ → 9 đỏ** |
+| **QĐ-E** | **`organism_library` — xây tính năng hay bỏ test** (mục mới, mở 2026-10-31). `tests/frontend/organism_library.test.tsx` (3 test đỏ) tìm một button `"Thư viện Sinh vật"` không có trong `App.tsx`, và gọi lệnh Tauri `spawn_preset_organism` **không tồn tại trong `src-tauri/src`**. Tức nó kiểm một tính năng **không có ở cả hai phía** — cùng hạng với hai lệnh IPC chết của Research Dashboard ở §1.d | Không đọc mã ra được: tuỳ chủ dự án có muốn Organism Library hay không. Đây là 3 trong 9 test đỏ còn lại |
 | **QĐ-C** | **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
 
 Hai việc **cần tay người** (không phải quyết định): chạy app desktop bản **release** với
