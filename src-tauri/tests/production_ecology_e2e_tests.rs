@@ -713,38 +713,32 @@ fn test_map_elites_multiniche_occupancy_and_descriptors_contract() {
     assert_eq!(mass_large, 3.0);
 
     // 1. Small Grazer (mass=1.0, total_intake=50.0, prey_intake=0.0 -> trophic=0.0)
-    let desc_small_grazer =
-        ecological_descriptors(mass_small, trophic_ratio(0.0, 50.0)).to_vec();
+    let desc_small_grazer = ecological_descriptors(mass_small, trophic_ratio(0.0, 50.0)).to_vec();
     let coords_small_grazer = archive.get_bin_coords(&desc_small_grazer);
     assert_eq!(coords_small_grazer, (0, 0));
 
     // 2. Medium Grazer (mass=6.0, total_intake=80.0, prey_intake=0.0 -> trophic=0.0)
-    let desc_medium_grazer =
-        ecological_descriptors(6.0, trophic_ratio(0.0, 80.0)).to_vec();
+    let desc_medium_grazer = ecological_descriptors(6.0, trophic_ratio(0.0, 80.0)).to_vec();
     let coords_medium_grazer = archive.get_bin_coords(&desc_medium_grazer);
     assert_eq!(coords_medium_grazer, (1, 0));
 
     // 3. Large Grazer (mass=12.0, total_intake=120.0, prey_intake=0.0 -> trophic=0.0)
-    let desc_large_grazer =
-        ecological_descriptors(12.0, trophic_ratio(0.0, 120.0)).to_vec();
+    let desc_large_grazer = ecological_descriptors(12.0, trophic_ratio(0.0, 120.0)).to_vec();
     let coords_large_grazer = archive.get_bin_coords(&desc_large_grazer);
     assert_eq!(coords_large_grazer, (2, 0));
 
     // 4. Small Agile Predator (mass=1.0, total_intake=40.0, prey_intake=40.0 -> trophic=1.0)
-    let desc_small_pred =
-        ecological_descriptors(mass_small, trophic_ratio(40.0, 40.0)).to_vec();
+    let desc_small_pred = ecological_descriptors(mass_small, trophic_ratio(40.0, 40.0)).to_vec();
     let coords_small_pred = archive.get_bin_coords(&desc_small_pred);
     assert_eq!(coords_small_pred, (0, 4));
 
     // 5. Large Apex Predator (mass=12.0, total_intake=100.0, prey_intake=100.0 -> trophic=1.0)
-    let desc_large_pred =
-        ecological_descriptors(12.0, trophic_ratio(100.0, 100.0)).to_vec();
+    let desc_large_pred = ecological_descriptors(12.0, trophic_ratio(100.0, 100.0)).to_vec();
     let coords_large_pred = archive.get_bin_coords(&desc_large_pred);
     assert_eq!(coords_large_pred, (2, 4));
 
     // 6. Omnivore Opportunist (mass=6.0, total_intake=60.0, prey_intake=30.0 -> trophic=0.5)
-    let desc_omnivore =
-        ecological_descriptors(6.0, trophic_ratio(30.0, 60.0)).to_vec();
+    let desc_omnivore = ecological_descriptors(6.0, trophic_ratio(30.0, 60.0)).to_vec();
     let coords_omnivore = archive.get_bin_coords(&desc_omnivore);
     assert_eq!(coords_omnivore, (1, 2));
 
@@ -838,10 +832,7 @@ fn test_map_elites_multiniche_occupancy_and_descriptors_contract() {
     let restored = MapElitesArchive::from_saved(saved).expect("Archive must cleanly restore");
     assert_eq!(restored.grid.len(), 6);
     assert_eq!(restored.grid_resolution, 0.25);
-    assert_eq!(
-        restored.grid.get(&(0, 0)).unwrap().fitness,
-        250.0
-    );
+    assert_eq!(restored.grid.get(&(0, 0)).unwrap().fitness, 250.0);
 }
 
 // ---------------------------------------------------------------------------------------------

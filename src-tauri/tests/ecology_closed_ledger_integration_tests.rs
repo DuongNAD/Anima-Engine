@@ -30,11 +30,11 @@ use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::agent_systems::apply_staggered_evolution_system;
 use anima_engine_lib::core::ecology::{
-    biome_carrying_capacity, biome_npp, boltzmann_factor,
-    ecological_descriptors, herbivore_intake, holling_type2, holling_type3, logistic_regrowth,
-    metabolic_rate, niche_divergence, predation_capture, seasonal_fertility, shannon_index,
-    simpson_index, trophic_ratio, EcosystemBiomass, ResourceField, SeasonClock, BOLTZMANN_EV,
-    E_ANIMAL_EV, E_PRODUCER_EV, KLEIBER_EXP, LINDEMAN_EFFICIENCY, METABOLIC_NORM, REF_TEMP_K,
+    biome_carrying_capacity, biome_npp, boltzmann_factor, ecological_descriptors, herbivore_intake,
+    holling_type2, holling_type3, logistic_regrowth, metabolic_rate, niche_divergence,
+    predation_capture, seasonal_fertility, shannon_index, simpson_index, trophic_ratio,
+    EcosystemBiomass, ResourceField, SeasonClock, BOLTZMANN_EV, E_ANIMAL_EV, E_PRODUCER_EV,
+    KLEIBER_EXP, LINDEMAN_EFFICIENCY, METABOLIC_NORM, REF_TEMP_K,
 };
 use anima_engine_lib::core::ecs::{
     init_world, Agent, EpochManager, MapBounds, Position, Predator, Prey, Tree,
@@ -111,7 +111,7 @@ fn build_live_world_m2() -> (World, crossbeam_channel::Sender<EvolutionMsg>) {
 
     let genotype = test_genotype();
     let bounds = *world.resource::<MapBounds>();
-    
+
     // Spawn founding populations: 10 prey herbivores, 4 predators
     for i in 0..14 {
         let x_offset = bounds.min.x + (i as f32 + 1.0) * 4.0;
@@ -308,15 +308,33 @@ fn test_closed_eu_four_compartments_ledger_invariants_and_exact_accounting() {
 
     // Rejections for invalid transfers
     assert_eq!(
-        ledger.transfer(&mut pool, Compartment::Detritus, Compartment::Detritus, 10.0, EnergyEvent::Intervention),
+        ledger.transfer(
+            &mut pool,
+            Compartment::Detritus,
+            Compartment::Detritus,
+            10.0,
+            EnergyEvent::Intervention
+        ),
         0.0
     );
     assert_eq!(
-        ledger.transfer(&mut pool, Compartment::Detritus, Compartment::Plants, -5.0, EnergyEvent::Intervention),
+        ledger.transfer(
+            &mut pool,
+            Compartment::Detritus,
+            Compartment::Plants,
+            -5.0,
+            EnergyEvent::Intervention
+        ),
         0.0
     );
     assert_eq!(
-        ledger.transfer(&mut pool, Compartment::Detritus, Compartment::Plants, f64::NAN, EnergyEvent::Intervention),
+        ledger.transfer(
+            &mut pool,
+            Compartment::Detritus,
+            Compartment::Plants,
+            f64::NAN,
+            EnergyEvent::Intervention
+        ),
         0.0
     );
 }
@@ -334,13 +352,22 @@ fn test_metabolic_theory_of_ecology_kleiber_and_arrhenius_temperature_scaling() 
 
     // 1. Reference temperature: Boltzmann factor = 1.0 at 20 °C (293.15 K)
     let bf_ref = boltzmann_factor(20.0, E_ANIMAL_EV);
-    assert!((bf_ref - 1.0).abs() < 1e-4, "Boltzmann factor at 20°C must be ~1.0, got {bf_ref}");
+    assert!(
+        (bf_ref - 1.0).abs() < 1e-4,
+        "Boltzmann factor at 20°C must be ~1.0, got {bf_ref}"
+    );
 
     // 2. Temperature scaling: Warmth speeds metabolism, cold slows it
     let bf_warm = boltzmann_factor(35.0, E_ANIMAL_EV);
     let bf_cold = boltzmann_factor(5.0, E_ANIMAL_EV);
-    assert!(bf_warm > 1.0, "Warm body temperature must accelerate metabolism");
-    assert!(bf_cold < 1.0, "Cold body temperature must decelerate metabolism");
+    assert!(
+        bf_warm > 1.0,
+        "Warm body temperature must accelerate metabolism"
+    );
+    assert!(
+        bf_cold < 1.0,
+        "Cold body temperature must decelerate metabolism"
+    );
     assert!(bf_warm > bf_cold);
 
     // 3. Q10 Biological Temperature Coefficient between 20°C and 30°C
@@ -391,14 +418,23 @@ fn test_metabolic_theory_of_ecology_kleiber_and_arrhenius_temperature_scaling() 
 fn test_holling_functional_responses_and_lindeman_rarity_refuge_dynamics() {
     // 0. Direct mathematical properties of Holling Type II and Type III
     let t2_sat = holling_type2(10_000.0, 1.0, 0.5);
-    assert!((t2_sat - 2.0).abs() < 1e-2, "Holling Type II must saturate at 1/h = 2.0");
+    assert!(
+        (t2_sat - 2.0).abs() < 1e-2,
+        "Holling Type II must saturate at 1/h = 2.0"
+    );
 
     let t3_sat = holling_type3(10_000.0, 1.0, 0.5);
-    assert!((t3_sat - 2.0).abs() < 1e-2, "Holling Type III must saturate at 1/h = 2.0");
+    assert!(
+        (t3_sat - 2.0).abs() < 1e-2,
+        "Holling Type III must saturate at 1/h = 2.0"
+    );
 
     let t2_low = holling_type2(0.1, 1.0, 0.5);
     let t3_low = holling_type3(0.1, 1.0, 0.5);
-    assert!(t3_low < t2_low * 0.2, "Type III sigmoid response must be significantly lower than Type II at low density");
+    assert!(
+        t3_low < t2_low * 0.2,
+        "Type III sigmoid response must be significantly lower than Type II at low density"
+    );
 
     // 1. Holling Type II Grazing
     let bite_max = 2.0f32;
@@ -409,7 +445,10 @@ fn test_holling_functional_responses_and_lindeman_rarity_refuge_dynamics() {
     assert!(intake_rich <= bite_max);
     assert!(intake_rich > intake_moderate);
     assert!(intake_moderate > intake_depleted);
-    assert!(intake_rich > intake_depleted * 5.0, "Giving-up density dispersal signal");
+    assert!(
+        intake_rich > intake_depleted * 5.0,
+        "Giving-up density dispersal signal"
+    );
     assert_eq!(herbivore_intake(0.0, 10.0, bite_max), 0.0);
 
     // Hunger bounding
@@ -439,7 +478,7 @@ fn test_holling_functional_responses_and_lindeman_rarity_refuge_dynamics() {
     assert_eq!(LINDEMAN_EFFICIENCY, 0.30);
     let captured = 20.0f64;
     let assimilated = captured * LINDEMAN_EFFICIENCY as f64; // ~6.0 EU
-    let unassimilated = captured - assimilated;             // ~14.0 EU
+    let unassimilated = captured - assimilated; // ~14.0 EU
 
     assert!((assimilated - 6.0).abs() < 1e-5);
     assert!((unassimilated - 14.0).abs() < 1e-5);
@@ -481,20 +520,33 @@ fn test_whittaker_npp_resource_field_and_trophic_niche_descriptors() {
     assert!(biome_npp(BiomeType::Desert) > biome_npp(BiomeType::Beach));
     assert!(biome_npp(BiomeType::Beach) > biome_npp(BiomeType::MountainRock));
 
-    assert!(biome_carrying_capacity(BiomeType::Rainforest) > biome_carrying_capacity(BiomeType::Grassland));
-    assert!(biome_carrying_capacity(BiomeType::Grassland) > biome_carrying_capacity(BiomeType::Desert));
+    assert!(
+        biome_carrying_capacity(BiomeType::Rainforest)
+            > biome_carrying_capacity(BiomeType::Grassland)
+    );
+    assert!(
+        biome_carrying_capacity(BiomeType::Grassland) > biome_carrying_capacity(BiomeType::Desert)
+    );
 
     // 2. Discrete logistic regrowth formula
     let mut r_test = 0.5f32;
     for _ in 0..1000 {
         r_test = logistic_regrowth(r_test, 0.1, 10.0);
     }
-    assert!((r_test - 10.0).abs() < 1e-2, "Logistic regrowth must converge to carrying capacity");
+    assert!(
+        (r_test - 10.0).abs() < 1e-2,
+        "Logistic regrowth must converge to carrying capacity"
+    );
 
     // 3. ResourceField Strided Biomass-Gated Regrowth
-    let biomes = [BiomeType::Rainforest as u8, BiomeType::Grassland as u8, BiomeType::Desert as u8, BiomeType::Snow as u8];
+    let biomes = [
+        BiomeType::Rainforest as u8,
+        BiomeType::Grassland as u8,
+        BiomeType::Desert as u8,
+        BiomeType::Snow as u8,
+    ];
     let mut field = ResourceField::from_biomes(&biomes, 2, 2, -10.0, -10.0, 10.0, 10.0, 0.1);
-    
+
     // Drain field to 0
     for r in field.r.iter_mut() {
         *r = 0.0;
@@ -505,7 +557,10 @@ fn test_whittaker_npp_resource_field_and_trophic_niche_descriptors() {
     let budget = 5.0f64;
     let grown = field.step_regrowth_gated_strided(1.0, 1.0, budget, 0, 1);
     assert!(grown > 0.0);
-    assert!(grown <= budget + 1e-6, "Grown {grown} cannot exceed detritus budget {budget}");
+    assert!(
+        grown <= budget + 1e-6,
+        "Grown {grown} cannot exceed detritus budget {budget}"
+    );
     assert!((field.total_biomass() - grown).abs() < 1e-4);
 
     // Zero budget => zero growth

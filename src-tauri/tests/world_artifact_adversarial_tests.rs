@@ -68,7 +68,11 @@ fn create_test_artifact(w: usize, h: usize, seed: u32) -> WorldArtifact {
         elevation.push(rng.next_f32());
         moisture.push(rng.next_f32());
         temperature.push(rng.next_f32());
-        flow.push(if rng.next_f32() < 0.1 { rng.next_f32() * 50.0 } else { 0.0 });
+        flow.push(if rng.next_f32() < 0.1 {
+            rng.next_f32() * 50.0
+        } else {
+            0.0
+        });
         biome.push((rng.next_u32() % 22) as u8);
     }
 
@@ -108,7 +112,10 @@ fn test_adversarial_artifact_header_malformations() {
         let mut buf = valid.clone();
         buf[0..4].copy_from_slice(&bad_m);
         let err = WorldArtifact::from_bytes(&buf).unwrap_err();
-        assert!(err.contains("bad artifact magic"), "must reject magic {bad_m:?}");
+        assert!(
+            err.contains("bad artifact magic"),
+            "must reject magic {bad_m:?}"
+        );
         assert!(WorldArtifact::peek_seed(&buf).is_err());
     }
 
@@ -202,13 +209,13 @@ fn test_adversarial_checksum_single_bit_and_swapping_corruption() {
     // 2. Corrupt individual bits across all 5 fields
     let n = 36;
     let field_offsets = [
-        36,                       // first elevation byte
-        36 + n * 2,               // middle elevation byte
-        36 + n * 4,               // first moisture byte
-        36 + n * 8,               // first temperature byte
-        36 + n * 12,              // first flow byte
-        36 + n * 16,              // first biome byte
-        valid.len() - 1,          // last biome byte
+        36,              // first elevation byte
+        36 + n * 2,      // middle elevation byte
+        36 + n * 4,      // first moisture byte
+        36 + n * 8,      // first temperature byte
+        36 + n * 12,     // first flow byte
+        36 + n * 16,     // first biome byte
+        valid.len() - 1, // last biome byte
     ];
 
     for off in field_offsets {
@@ -230,7 +237,10 @@ fn test_adversarial_checksum_single_bit_and_swapping_corruption() {
     slice_a.copy_from_slice(slice_b);
     slice_b.copy_from_slice(&tmp);
     let err = WorldArtifact::from_bytes(&swapped).unwrap_err();
-    assert!(err.contains("artifact checksum mismatch"), "swapped values must invalidate checksum");
+    assert!(
+        err.contains("artifact checksum mismatch"),
+        "swapped values must invalidate checksum"
+    );
 }
 
 #[test]
@@ -270,11 +280,26 @@ fn test_adversarial_coordinate_extreme_boundaries_and_epsilons() {
     let h = 256;
 
     // 1. Exact boundary values
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds), Some((0, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MAX_XZ, WORLD_MIN_XZ, w, h, &bounds), Some((w - 1, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ, WORLD_MAX_XZ, w, h, &bounds), Some((0, h - 1)));
-    assert_eq!(world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds), Some((w - 1, h - 1)));
-    assert_eq!(world_xz_to_cell(0.0, 0.0, w, h, &bounds), Some((w / 2, h / 2)));
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds),
+        Some((0, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MAX_XZ, WORLD_MIN_XZ, w, h, &bounds),
+        Some((w - 1, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ, WORLD_MAX_XZ, w, h, &bounds),
+        Some((0, h - 1))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds),
+        Some((w - 1, h - 1))
+    );
+    assert_eq!(
+        world_xz_to_cell(0.0, 0.0, w, h, &bounds),
+        Some((w / 2, h / 2))
+    );
 
     // 2. Positions strictly outside bounds (exceeding f32 ULP for magnitude 100.0)
     let epsilons = [1e-4, 1e-3, 0.01, 0.1, 1.0, 10.0, 100.0];
@@ -331,9 +356,18 @@ fn test_adversarial_coordinate_degenerate_bounds_and_single_cell() {
     let single_bounds = MapBounds::default();
     let (cx, cz) = cell_center_to_world_xz(0, 0, 1, 1, &single_bounds);
     assert_eq!((cx, cz), (0.0, 0.0));
-    assert_eq!(world_xz_to_cell(0.0, 0.0, 1, 1, &single_bounds), Some((0, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, 1, 1, &single_bounds), Some((0, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, 1, 1, &single_bounds), Some((0, 0)));
+    assert_eq!(
+        world_xz_to_cell(0.0, 0.0, 1, 1, &single_bounds),
+        Some((0, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, 1, 1, &single_bounds),
+        Some((0, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, 1, 1, &single_bounds),
+        Some((0, 0))
+    );
 
     // 4. Non-square grids (1x100, 100x1, 3x7, 137x200)
     for &(gw, gh) in &[(1, 100), (100, 1), (3, 7), (137, 200), (2048, 256)] {
@@ -489,7 +523,9 @@ fn test_adversarial_world_identity_mismatch_detection() {
     assert!(base_id.mismatch_against(&base_id).is_none());
 
     // 2. Legacy save (all zero) -> None
-    assert!(WorldIdentity::default().mismatch_against(&base_id).is_none());
+    assert!(WorldIdentity::default()
+        .mismatch_against(&base_id)
+        .is_none());
 
     // 3. Seed difference -> Some
     let mut diff_seed = base_id;

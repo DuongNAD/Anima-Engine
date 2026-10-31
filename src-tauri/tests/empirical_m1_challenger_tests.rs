@@ -60,7 +60,12 @@ impl DeterministicChallengeRng {
 }
 
 /// Helper to generate a procedural artifact with deterministic synthetic climate and elevation.
-fn generate_challenge_artifact(width: usize, height: usize, seed: u32, sea_level: f32) -> WorldArtifact {
+fn generate_challenge_artifact(
+    width: usize,
+    height: usize,
+    seed: u32,
+    sea_level: f32,
+) -> WorldArtifact {
     let n = width * height;
     let mut rng = DeterministicChallengeRng::new(seed);
     let mut elevation = Vec::with_capacity(n);
@@ -81,7 +86,11 @@ fn generate_challenge_artifact(width: usize, height: usize, seed: u32, sea_level
             let lapse = (elev - sea_level).max(0.0) * 1.35;
             let temp = (lat * 0.82 + rng.next_f32() * 0.18 - lapse).clamp(0.0, 1.0);
             let moist = (v * 0.7 + rng.next_f32() * 0.3).clamp(0.0, 1.0);
-            let fl = if rng.next_f32() < 0.08 { rng.next_f32() * 50.0 } else { 0.0 };
+            let fl = if rng.next_f32() < 0.08 {
+                rng.next_f32() * 50.0
+            } else {
+                0.0
+            };
 
             // Determine biome following Whittaker classification rules
             let b: u8 = if elev < sea_level {
@@ -97,16 +106,58 @@ fn generate_challenge_artifact(width: usize, height: usize, seed: u32, sea_level
             } else if temp < 0.26 && elev > sea_level + 0.18 && moist > 0.25 {
                 18 // Alpine
             } else if temp < 0.24 {
-                if moist < 0.6 { 9 } else { 8 } // Tundra vs Taiga
+                if moist < 0.6 {
+                    9
+                } else {
+                    8
+                } // Tundra vs Taiga
             } else if temp < 0.42 {
-                if moist < 0.16 { 17 } else if moist < 0.3 { 5 } else { 8 } // Steppe, Shrubland, Taiga
+                if moist < 0.16 {
+                    17
+                } else if moist < 0.3 {
+                    5
+                } else {
+                    8
+                } // Steppe, Shrubland, Taiga
             } else if temp < 0.6 {
-                if moist < 0.14 { 2 } else if moist < 0.28 { 17 } else if moist < 0.42 { 4 } else if moist < 0.56 { 5 } else { 6 }
+                if moist < 0.14 {
+                    2
+                } else if moist < 0.28 {
+                    17
+                } else if moist < 0.42 {
+                    4
+                } else if moist < 0.56 {
+                    5
+                } else {
+                    6
+                }
             } else if temp < 0.72 {
-                if moist < 0.15 { 2 } else if moist < 0.24 { 17 } else if moist < 0.38 { 16 } else if moist < 0.52 { 4 } else if moist < 0.74 { 6 } else { 7 }
+                if moist < 0.15 {
+                    2
+                } else if moist < 0.24 {
+                    17
+                } else if moist < 0.38 {
+                    16
+                } else if moist < 0.52 {
+                    4
+                } else if moist < 0.74 {
+                    6
+                } else {
+                    7
+                }
             } else {
                 // Tropical
-                if moist < 0.18 { 2 } else if moist < 0.38 { 3 } else if moist < 0.52 { 5 } else if moist < 0.68 { 6 } else { 7 }
+                if moist < 0.18 {
+                    2
+                } else if moist < 0.38 {
+                    3
+                } else if moist < 0.52 {
+                    5
+                } else if moist < 0.68 {
+                    6
+                } else {
+                    7
+                }
             };
 
             elevation.push(elev);
@@ -262,7 +313,10 @@ fn test_challenge_exhaustive_whittaker_biome_mapping_totality_and_bounds() {
             "backend biome {b} mapped out of frontend range: {front}"
         );
         if b > 10 {
-            assert_eq!(front, 4, "out of range backend biome {b} must fallback to Grassland");
+            assert_eq!(
+                front, 4,
+                "out of range backend biome {b} must fallback to Grassland"
+            );
         }
     }
 
@@ -329,7 +383,10 @@ fn test_challenge_multi_resolution_downsampling_and_alignment() {
                         assert_eq!(tm.moistures[ti], artifact.moisture[si]);
                         assert_eq!(tm.temperatures[ti], artifact.temperature[si]);
                         assert_eq!(tm.flows[ti], artifact.flow[si]);
-                        assert_eq!(tm.biomes[ti], map_biome_frontend_to_backend(artifact.biome[si]));
+                        assert_eq!(
+                            tm.biomes[ti],
+                            map_biome_frontend_to_backend(artifact.biome[si])
+                        );
                     }
                 }
 
@@ -357,13 +414,13 @@ fn test_challenge_fnv1a32_checksum_oracle_and_tampering_rejection() {
     // 1. Bit-flip sensitivity test across all payload segments
     let n = 32 * 32;
     let offsets_to_test = [
-        WORLD_ARTIFACT_HEADER_LEN,                  // first elevation byte
-        WORLD_ARTIFACT_HEADER_LEN + n * 2,          // mid elevation
-        WORLD_ARTIFACT_HEADER_LEN + n * 4,          // first moisture byte
-        WORLD_ARTIFACT_HEADER_LEN + n * 8,          // first temperature byte
-        WORLD_ARTIFACT_HEADER_LEN + n * 12,         // first flow byte
-        WORLD_ARTIFACT_HEADER_LEN + n * 16,         // first biome byte
-        original_bytes.len() - 1,                   // last biome byte
+        WORLD_ARTIFACT_HEADER_LEN,          // first elevation byte
+        WORLD_ARTIFACT_HEADER_LEN + n * 2,  // mid elevation
+        WORLD_ARTIFACT_HEADER_LEN + n * 4,  // first moisture byte
+        WORLD_ARTIFACT_HEADER_LEN + n * 8,  // first temperature byte
+        WORLD_ARTIFACT_HEADER_LEN + n * 12, // first flow byte
+        WORLD_ARTIFACT_HEADER_LEN + n * 16, // first biome byte
+        original_bytes.len() - 1,           // last biome byte
     ];
 
     for &offset in &offsets_to_test {
@@ -384,22 +441,34 @@ fn test_challenge_fnv1a32_checksum_oracle_and_tampering_rejection() {
     bad_magic[1] = b'A';
     bad_magic[2] = b'D';
     bad_magic[3] = b'!';
-    assert!(WorldArtifact::from_bytes(&bad_magic).unwrap_err().contains("bad artifact magic"));
+    assert!(WorldArtifact::from_bytes(&bad_magic)
+        .unwrap_err()
+        .contains("bad artifact magic"));
 
     // 3. Header version tampering
     let mut bad_version = original_bytes.clone();
     bad_version[4..8].copy_from_slice(&999u32.to_le_bytes());
-    assert!(WorldArtifact::from_bytes(&bad_version).unwrap_err().contains("unsupported artifact version"));
+    assert!(WorldArtifact::from_bytes(&bad_version)
+        .unwrap_err()
+        .contains("unsupported artifact version"));
 
     // 4. Truncation at every possible prefix
-    for len in [0, 4, 16, WORLD_ARTIFACT_HEADER_LEN - 1, original_bytes.len() - 1] {
+    for len in [
+        0,
+        4,
+        16,
+        WORLD_ARTIFACT_HEADER_LEN - 1,
+        original_bytes.len() - 1,
+    ] {
         assert!(WorldArtifact::from_bytes(&original_bytes[..len]).is_err());
     }
 
     // 5. Appending garbage trailing bytes
     let mut with_trailing = original_bytes.clone();
     with_trailing.extend_from_slice(&[0x00, 0xFF, 0xAA]);
-    assert!(WorldArtifact::from_bytes(&with_trailing).unwrap_err().contains("trailing byte"));
+    assert!(WorldArtifact::from_bytes(&with_trailing)
+        .unwrap_err()
+        .contains("trailing byte"));
 }
 
 // =================================================================================================
@@ -408,7 +477,8 @@ fn test_challenge_fnv1a32_checksum_oracle_and_tampering_rejection() {
 
 #[test]
 fn test_challenge_bevy_ecs_init_world_multi_run_determinism() {
-    let temp_dir = std::env::temp_dir().join(format!("anima_m1_determinism_test_{}", std::process::id()));
+    let temp_dir =
+        std::env::temp_dir().join(format!("anima_m1_determinism_test_{}", std::process::id()));
     let _ = std::fs::create_dir_all(&temp_dir);
     let artifact_path = temp_dir.join("shared_world_determinism.anmw");
 
@@ -426,15 +496,24 @@ fn test_challenge_bevy_ecs_init_world_multi_run_determinism() {
     for run_idx in 0..runs {
         let world = init_world();
 
-        let identity = *world.get_resource::<WorldIdentity>().expect("WorldIdentity resource");
-        assert_eq!(identity.seed, HD_SEED, "Run {run_idx}: seed must match HD_SEED");
+        let identity = *world
+            .get_resource::<WorldIdentity>()
+            .expect("WorldIdentity resource");
+        assert_eq!(
+            identity.seed, HD_SEED,
+            "Run {run_idx}: seed must match HD_SEED"
+        );
         assert_eq!(identity.width, 256);
         assert_eq!(identity.height, 256);
 
-        let tm = world.get_resource::<TerrainMap>().expect("TerrainMap resource");
+        let tm = world
+            .get_resource::<TerrainMap>()
+            .expect("TerrainMap resource");
         let terrain_id = WorldIdentity::from_terrain(tm, identity.seed, identity.generator_version);
 
-        let res_field = world.get_resource::<ResourceField>().expect("ResourceField resource");
+        let res_field = world
+            .get_resource::<ResourceField>()
+            .expect("ResourceField resource");
         let total_plants = res_field.total_biomass();
 
         identities.push(identity);
@@ -480,7 +559,10 @@ fn test_challenge_cross_seed_divergence_and_identity_mismatch_oracle() {
 
     // 2. Mismatch oracle verification
     let mismatch = id_a.mismatch_against(&id_b);
-    assert!(mismatch.is_some(), "mismatched seeds must trigger a diagnostic report");
+    assert!(
+        mismatch.is_some(),
+        "mismatched seeds must trigger a diagnostic report"
+    );
     let msg = mismatch.unwrap();
     assert!(msg.contains("saved world"));
     assert!(msg.contains("current world"));
@@ -522,8 +604,14 @@ fn test_challenge_coordinate_contract_dense_grid_sweep() {
     }
 
     // Boundary edge cases
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds), Some((0, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds), Some((w - 1, h - 1)));
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds),
+        Some((0, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds),
+        Some((w - 1, h - 1))
+    );
     assert_eq!(world_xz_to_cell(-100.001, 0.0, w, h, &bounds), None);
     assert_eq!(world_xz_to_cell(0.0, 100.001, w, h, &bounds), None);
 }

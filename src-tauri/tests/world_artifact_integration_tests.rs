@@ -11,8 +11,8 @@
 //!
 //! Follows `AGENTS.md` rules: deterministic seed `HD_SEED = 0x5EED`, behavioral assertions.
 
-use anima_engine_lib::core::ecs::init_world;
 use anima_engine_lib::core::ecology::ResourceField;
+use anima_engine_lib::core::ecs::init_world;
 use anima_engine_lib::core::resources::MapBounds;
 use anima_engine_lib::core::sim_rules::{
     cell_center_to_world_xz, cell_center_uv, cell_index, uv_to_cell, world_xz_to_cell,
@@ -20,9 +20,9 @@ use anima_engine_lib::core::sim_rules::{
 };
 use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
 use anima_engine_lib::core::world_artifact::{
-    map_biome_backend_to_frontend, map_biome_frontend_to_backend,
-    write_artifact_bytes_to, WorldArtifact, WorldIdentity, CANONICAL_WORLD_SCALE,
-    WORLD_ARTIFACT_HEADER_LEN, WORLD_ARTIFACT_MAGIC, WORLD_ARTIFACT_VERSION,
+    map_biome_backend_to_frontend, map_biome_frontend_to_backend, write_artifact_bytes_to,
+    WorldArtifact, WorldIdentity, CANONICAL_WORLD_SCALE, WORLD_ARTIFACT_HEADER_LEN,
+    WORLD_ARTIFACT_MAGIC, WORLD_ARTIFACT_VERSION,
 };
 use glam::Vec3;
 use std::path::Path;
@@ -74,7 +74,11 @@ fn make_synthetic_artifact(width: usize, height: usize, seed: u32) -> WorldArtif
             let elev = (radial * 0.7 + rng.next_f32() * 0.3).clamp(0.0, 1.0);
             let moist = (v * 0.8 + rng.next_f32() * 0.2).clamp(0.0, 1.0);
             let temp = ((1.0 - (v - 0.5).abs() * 1.5) - elev * 0.3).clamp(0.0, 1.0);
-            let fl = if rng.next_f32() < 0.05 { rng.next_f32() * 100.0 } else { 0.0 };
+            let fl = if rng.next_f32() < 0.05 {
+                rng.next_f32() * 100.0
+            } else {
+                0.0
+            };
             let b = (rng.next_u32() % 22) as u8;
 
             elevation.push(elev);
@@ -113,10 +117,22 @@ fn test_world_artifact_v2_exact_binary_roundtrip() {
 
         assert_eq!(bytes.len(), WORLD_ARTIFACT_HEADER_LEN + w * h * 17);
         assert_eq!(&bytes[0..4], &WORLD_ARTIFACT_MAGIC);
-        assert_eq!(u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]), WORLD_ARTIFACT_VERSION);
-        assert_eq!(u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]), w as u32);
-        assert_eq!(u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]), h as u32);
-        assert_eq!(u32::from_le_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]), HD_SEED);
+        assert_eq!(
+            u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+            WORLD_ARTIFACT_VERSION
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]),
+            w as u32
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]),
+            h as u32
+        );
+        assert_eq!(
+            u32::from_le_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
+            HD_SEED
+        );
 
         let decoded = WorldArtifact::from_bytes(&bytes).expect("artifact decode must succeed");
         assert_eq!(decoded.width, w);
@@ -183,7 +199,10 @@ fn test_world_artifact_corruption_rejection_and_bounds() {
         let mut corrupted = valid_bytes.clone();
         corrupted[offset] ^= 0x01;
         let err = WorldArtifact::from_bytes(&corrupted).unwrap_err();
-        assert!(err.contains("artifact checksum mismatch"), "offset {offset} corruption must be caught");
+        assert!(
+            err.contains("artifact checksum mismatch"),
+            "offset {offset} corruption must be caught"
+        );
     }
 
     // 7. Peek seed
@@ -202,7 +221,10 @@ fn test_22_canonical_whittaker_to_11_legacy_biome_mapping_totality_and_invariant
     // 1. Totality: every frontend biome 0..=21 maps to a valid backend biome 0..=10
     for front in 0u8..=21 {
         let back = map_biome_frontend_to_backend(front);
-        assert!(back <= 10, "frontend biome {front} mapped to invalid backend {back}");
+        assert!(
+            back <= 10,
+            "frontend biome {front} mapped to invalid backend {back}"
+        );
     }
 
     // 2. Fallback for out-of-range biomes
@@ -211,7 +233,10 @@ fn test_22_canonical_whittaker_to_11_legacy_biome_mapping_totality_and_invariant
     // 3. Totality of reverse lift: every legacy biome 0..=10 maps to 0..=21
     for back in 0u8..=10 {
         let front = map_biome_backend_to_frontend(back);
-        assert!(front <= 21, "backend biome {back} lifted to invalid frontend {front}");
+        assert!(
+            front <= 21,
+            "backend biome {back} lifted to invalid frontend {front}"
+        );
     }
 
     // 4. Round-trip invariant: backend -> frontend -> backend is identity for all except DeepOcean(0)
@@ -227,19 +252,19 @@ fn test_22_canonical_whittaker_to_11_legacy_biome_mapping_totality_and_invariant
     }
 
     // 5. Ecological cluster consistency
-    assert_eq!(map_biome_frontend_to_backend(0), 1);  // Ocean -> Ocean
-    assert_eq!(map_biome_frontend_to_backend(1), 2);  // Beach -> Beach
-    assert_eq!(map_biome_frontend_to_backend(2), 8);  // Desert -> Desert
-    assert_eq!(map_biome_frontend_to_backend(4), 4);  // Grassland -> Grassland
-    assert_eq!(map_biome_frontend_to_backend(6), 5);  // Forest -> TemperateForest
-    assert_eq!(map_biome_frontend_to_backend(7), 7);  // Jungle -> Rainforest
-    assert_eq!(map_biome_frontend_to_backend(8), 6);  // Taiga -> BorealForest
+    assert_eq!(map_biome_frontend_to_backend(0), 1); // Ocean -> Ocean
+    assert_eq!(map_biome_frontend_to_backend(1), 2); // Beach -> Beach
+    assert_eq!(map_biome_frontend_to_backend(2), 8); // Desert -> Desert
+    assert_eq!(map_biome_frontend_to_backend(4), 4); // Grassland -> Grassland
+    assert_eq!(map_biome_frontend_to_backend(6), 5); // Forest -> TemperateForest
+    assert_eq!(map_biome_frontend_to_backend(7), 7); // Jungle -> Rainforest
+    assert_eq!(map_biome_frontend_to_backend(8), 6); // Taiga -> BorealForest
     assert_eq!(map_biome_frontend_to_backend(11), 9); // Rock -> MountainRock
     assert_eq!(map_biome_frontend_to_backend(12), 10); // Snow -> Snow
-    assert_eq!(map_biome_frontend_to_backend(13), 3);  // River -> River
-    assert_eq!(map_biome_frontend_to_backend(14), 1);  // Lake -> Ocean
-    assert_eq!(map_biome_frontend_to_backend(15), 7);  // Mangrove -> Rainforest
-    assert_eq!(map_biome_frontend_to_backend(19), 8);  // Badlands -> Desert
+    assert_eq!(map_biome_frontend_to_backend(13), 3); // River -> River
+    assert_eq!(map_biome_frontend_to_backend(14), 1); // Lake -> Ocean
+    assert_eq!(map_biome_frontend_to_backend(15), 7); // Mangrove -> Rainforest
+    assert_eq!(map_biome_frontend_to_backend(19), 8); // Badlands -> Desert
     assert_eq!(map_biome_frontend_to_backend(20), 10); // Glacier -> Snow
 }
 
@@ -269,8 +294,10 @@ fn test_world_artifact_downsampling_2048_to_256_preserves_features_and_pois() {
     // Target cell (tx, ty) samples source cell sy = (ty + 0.5) * 2048 / 256 = ty * 8 + 4
     let sample_points = [(0, 0), (10, 20), (127, 127), (255, 255)];
     for (tx, ty) in sample_points {
-        let sx = (((tx as f64 + 0.5) * source_w as f64 / target_w as f64) as usize).min(source_w - 1);
-        let sy = (((ty as f64 + 0.5) * source_h as f64 / target_h as f64) as usize).min(source_h - 1);
+        let sx =
+            (((tx as f64 + 0.5) * source_w as f64 / target_w as f64) as usize).min(source_w - 1);
+        let sy =
+            (((ty as f64 + 0.5) * source_h as f64 / target_h as f64) as usize).min(source_h - 1);
 
         let ti = ty * target_w + tx;
         let si = sy * source_w + sx;
@@ -279,7 +306,10 @@ fn test_world_artifact_downsampling_2048_to_256_preserves_features_and_pois() {
         assert_eq!(terrain_map.moistures[ti], artifact.moisture[si]);
         assert_eq!(terrain_map.temperatures[ti], artifact.temperature[si]);
         assert_eq!(terrain_map.flows[ti], artifact.flow[si]);
-        assert_eq!(terrain_map.biomes[ti], map_biome_frontend_to_backend(artifact.biome[si]));
+        assert_eq!(
+            terrain_map.biomes[ti],
+            map_biome_frontend_to_backend(artifact.biome[si])
+        );
     }
 
     // Verify POIs are on land (elevation >= sea_level)
@@ -337,10 +367,22 @@ fn test_coordinate_contract_affine_spaces_and_elevation_lookup() {
     }
 
     // 4. Bounds extreme cell mapping
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds), Some((0, 0)));
-    assert_eq!(world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds), Some((w - 1, h - 1)));
-    assert_eq!(world_xz_to_cell(WORLD_MIN_XZ - 1.0, 0.0, w, h, &bounds), None);
-    assert_eq!(world_xz_to_cell(0.0, WORLD_MAX_XZ + 1.0, w, h, &bounds), None);
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ, WORLD_MIN_XZ, w, h, &bounds),
+        Some((0, 0))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MAX_XZ, WORLD_MAX_XZ, w, h, &bounds),
+        Some((w - 1, h - 1))
+    );
+    assert_eq!(
+        world_xz_to_cell(WORLD_MIN_XZ - 1.0, 0.0, w, h, &bounds),
+        None
+    );
+    assert_eq!(
+        world_xz_to_cell(0.0, WORLD_MAX_XZ + 1.0, w, h, &bounds),
+        None
+    );
 
     // 5. Bilinear height interpolation on TerrainMap
     let artifact = make_synthetic_artifact(w, h, HD_SEED);
@@ -381,19 +423,25 @@ fn test_bevy_ecs_init_world_shared_artifact_sync() {
     let world = init_world();
 
     // 1. Verify TerrainMap resource is loaded (downsampled to backend default 256x256)
-    let tm = world.get_resource::<TerrainMap>().expect("TerrainMap resource");
+    let tm = world
+        .get_resource::<TerrainMap>()
+        .expect("TerrainMap resource");
     assert_eq!(tm.width, 256);
     assert_eq!(tm.height, 256);
     assert_eq!(tm.elevations.len(), 65536);
 
     // 2. Verify WorldIdentity matches artifact
-    let identity = world.get_resource::<WorldIdentity>().expect("WorldIdentity resource");
+    let identity = world
+        .get_resource::<WorldIdentity>()
+        .expect("WorldIdentity resource");
     assert_eq!(identity.seed, HD_SEED);
     assert_eq!(identity.width, 256);
     assert_eq!(identity.height, 256);
 
     // 3. Verify ResourceField carrying capacity
-    let res_field = world.get_resource::<ResourceField>().expect("ResourceField resource");
+    let res_field = world
+        .get_resource::<ResourceField>()
+        .expect("ResourceField resource");
     assert_eq!(res_field.width, 256);
     assert_eq!(res_field.height, 256);
     assert_eq!(res_field.r_max.len(), 65536);
@@ -438,7 +486,8 @@ fn test_cross_language_artifact_fixtures_parity() {
     let path_128 = Path::new(manifest_dir).join("tests/fixtures/world_real_128.anmw");
     if path_128.exists() {
         let bytes_128 = std::fs::read(&path_128).expect("read world_real_128.anmw");
-        let decoded_128 = WorldArtifact::from_bytes(&bytes_128).expect("decode world_real_128.anmw");
+        let decoded_128 =
+            WorldArtifact::from_bytes(&bytes_128).expect("decode world_real_128.anmw");
         assert_eq!(decoded_128.width, 128);
         assert_eq!(decoded_128.height, 128);
         assert_eq!(decoded_128.elevation.len(), 128 * 128);

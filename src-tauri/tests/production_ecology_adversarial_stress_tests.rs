@@ -539,8 +539,14 @@ fn test_challenge_determinism_replay_and_seed_sensitivity() {
         let (tick_a, hash_a) = res_a[i];
         let (tick_b, hash_b) = res_b[i];
         let (tick_c, hash_c) = res_c[i];
-        assert_eq!(tick_a, tick_b, "Tick record mismatch between Run A and Run B");
-        assert_eq!(tick_a, tick_c, "Tick record mismatch between Run A and Run C");
+        assert_eq!(
+            tick_a, tick_b,
+            "Tick record mismatch between Run A and Run B"
+        );
+        assert_eq!(
+            tick_a, tick_c,
+            "Tick record mismatch between Run A and Run C"
+        );
 
         // 1. Bit-identical replay under same seed
         assert_eq!(
@@ -603,14 +609,8 @@ fn test_challenge_biodiversity_coexistence_and_holling_stability() {
             );
 
             // Invariant: Consumer coexistence (producers > 0, prey > 0, predators > 0)
-            assert!(
-                prey > 0,
-                "Prey guild collapsed to 0 at tick {tick}"
-            );
-            assert!(
-                pred > 0,
-                "Predator guild collapsed to 0 at tick {tick}"
-            );
+            assert!(prey > 0, "Prey guild collapsed to 0 at tick {tick}");
+            assert!(pred > 0, "Predator guild collapsed to 0 at tick {tick}");
 
             // Invariant: Shannon diversity H' > 0.5
             assert!(

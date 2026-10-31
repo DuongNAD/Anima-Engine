@@ -148,7 +148,11 @@ fn build_predator_swarmed_world() -> (World, crossbeam_channel::Sender<Evolution
     for i in 0..40 {
         let x_off = (i % 8) as f32 * 3.0;
         let z_off = (i / 8) as f32 * 3.0;
-        let pos = glam::Vec3::new(bounds.min.x + 15.0 + x_off, 0.0, bounds.min.z + 15.0 + z_off);
+        let pos = glam::Vec3::new(
+            bounds.min.x + 15.0 + x_off,
+            0.0,
+            bounds.min.z + 15.0 + z_off,
+        );
         let e = decode_genotype(&mut world, &genotype, pos, glam::Quat::IDENTITY);
         world.entity_mut(e).insert(Predator);
     }
@@ -394,7 +398,10 @@ fn test_holling_type3_asymptotic_rarity_refuge_and_swarm_resilience() {
     let peak_n = 1.0f32 / (CAPTURE_ATTACK * CAPTURE_HANDLING).sqrt(); // 50.0
     let peak_per_capita = holling_type3(peak_n, CAPTURE_ATTACK, CAPTURE_HANDLING) / peak_n;
     assert!((peak_n - 50.0).abs() < 1e-4);
-    assert!((peak_per_capita - 0.5).abs() < 1e-4, "Peak per-capita mortality at N*=50 must be 0.5, got {peak_per_capita}");
+    assert!(
+        (peak_per_capita - 0.5).abs() < 1e-4,
+        "Peak per-capita mortality at N*=50 must be 0.5, got {peak_per_capita}"
+    );
 
     let rare_densities = [
         50.0f32, 20.0, 10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1, 0.05, 0.01, 0.001, 0.0001,
@@ -532,8 +539,7 @@ fn test_live_simulation_extreme_predator_crowding_and_energy_conservation() {
 
         if tick % 500 == 0 {
             let mut prey_count = 0;
-            let mut q_prey =
-                world.query_filtered::<&HomeostaticState, (With<Agent>, With<Prey>)>();
+            let mut q_prey = world.query_filtered::<&HomeostaticState, (With<Agent>, With<Prey>)>();
             for h in q_prey.iter(&world) {
                 if h.energy > 0.0 {
                     prey_count += 1;
@@ -598,8 +604,7 @@ fn test_strided_regrowth_phase_sweep_and_budget_exhaustion_invariants() {
         BiomeType::Beach as u8,
     ];
 
-    let mut field =
-        ResourceField::from_biomes(&biomes, 4, 2, -20.0, -20.0, 20.0, 20.0, 0.05);
+    let mut field = ResourceField::from_biomes(&biomes, 4, 2, -20.0, -20.0, 20.0, 20.0, 0.05);
 
     // Drain all cells to 0
     for r in field.r.iter_mut() {
@@ -866,7 +871,7 @@ fn test_empirical_challenger_catastrophic_starvation_and_mass_dieoff() {
                 let meta_rate = metabolic_rate(agent_masses[i], temp_c, E_ANIMAL_EV);
                 let decay_demand = meta_rate * dt;
                 let debited = debit_reserve(&mut agent_reserves[i], decay_demand);
-                
+
                 // Conserved closed return: debited metabolic energy returns to detritus
                 pool.animals -= debited;
                 pool.detritus += debited;
@@ -878,7 +883,10 @@ fn test_empirical_challenger_catastrophic_starvation_and_mass_dieoff() {
         }
     }
 
-    assert_eq!(alive_count, 0, "All 500 agents must have starved to 0.0 energy");
+    assert_eq!(
+        alive_count, 0,
+        "All 500 agents must have starved to 0.0 energy"
+    );
     let final_total = closed_total_eu(pool.plants, pool.animals, pool.detritus, pool.dormant);
     let residual = final_total - initial_total;
 
@@ -889,11 +897,7 @@ fn test_empirical_challenger_catastrophic_starvation_and_mass_dieoff() {
          Residual after 100% Starvation: {:.12} EU\n\
          Starvation Rounds to Complete Extinction: {}\n\
          Detritus Reclaimed: {:.2} EU",
-        initial_total,
-        final_total,
-        residual,
-        starvation_rounds,
-        pool.detritus
+        initial_total, final_total, residual, starvation_rounds, pool.detritus
     );
 
     assert!(
@@ -1009,4 +1013,3 @@ fn test_empirical_challenger_deep_hibernation_quarantine_and_wake_cycles() {
         final_residual
     );
 }
-
