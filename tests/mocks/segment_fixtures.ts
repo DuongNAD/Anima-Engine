@@ -30,6 +30,15 @@ const AT_REST: SegmentState = {
   agent_id: 0,
   segment_id: 0,
   parent_segment_id: null,
+  // Phenotype dimensions, added to `SegmentState` so the renderer can size an instance from the
+  // gene-derived shape instead of a fixed sphere. Zero is NOT the neutral value here the way it is
+  // for a position or a rotation: a segment with radius 0 is a degenerate shape the backend never
+  // emits, and this file exists precisely so a fixture does not describe something nothing
+  // produces. These are the pair the Rust side's own segment fixture uses
+  // (`src-tauri/src/core/emit.rs:337` in its `#[cfg(test)]` module); the production path reads both
+  // from the collider, so there is no constant default to copy instead.
+  length: 1.0,
+  radius: 0.25,
   x: 0,
   y: 0,
   z: 0,
