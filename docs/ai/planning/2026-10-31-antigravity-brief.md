@@ -137,193 +137,108 @@ If the VERIFY command does not exit 0, say so. Do not describe the task as compl
 > Branch is already at `cargo test --features desktop` → **1153 passed, 0 failed**, and both
 > live-adapter reproducibility gates green. These tasks are hygiene plus one scope decision.
 
-### A1 — Restore the test-target gate
+### A1–A5 — ✅ ĐÃ XONG 2026-10-31, **đừng gửi lại**
 
-```text
-GOAL
-Remove the three committed merge-conflict blocks from scripts/check_test_targets.mjs so the
-gate parses and runs again. Keep BOTH halves of the gate.
+| Task | Gate | Kết quả đo | Commit |
+|---|---|---|---|
+| **A1** | `check_test_targets.mjs` | `exit 0` — 107 target · 3 rỗng (allow-list) · 2 ignore (allow-list) · **8** feature-gated chạy | `bef7768` |
+| **A2** | `cargo fmt --check` | `exit 0` — 67 khối trong 7 file test; token multiset **không đổi**, 48 test của 7 target xanh | `4cc5b8d` |
+| **A3** | QĐ-D `playground/` | **là nháp** — xoá 4 file test kiểm mã không được track, loại `playground` khỏi ESLint | `26c8a96` |
+| **A4** | `lint` + ratchet | `0 errors, 0 warnings (baseline 0)` | `26c8a96` |
+| **A5** | `typecheck:tests` | `exit 0` — **18/19 lỗi là do `tests/node_modules` cũ** (vitest 1.6.1 vs lockfile 4.1.10), sửa bằng `npm ci --prefix tests`; 1 lỗi thật là fixture thiếu `length`/`radius` | `9dfbcd6` |
 
-CONTEXT
-The file was committed with markers at lines 78, 108 and 155. It therefore dies on parse, so
-`npm run lint` reports a parse error and the test-target policy gate cannot run at all. This
-is finding F-017, open since 2026-08.
-The `ours` half is the reasoned allow-list policy (scripts/test_target_policy.mjs).
-The `theirs` half checks that a cargo target which started actually printed a test count —
-that is what a missing native DLL looks like (STATUS_ENTRYPOINT_NOT_FOUND, 0xc0000139).
-Losing either half loses a real check.
+Ngoài ra `QĐ-E` đã quyết: xoá `organism_library.test.tsx` (3 test, cả 3 đỏ, `get_organism_presets` và
+`spawn_preset_organism` không tồn tại bên Rust) — commit `296bcc3`.
 
-FILES
-  scripts/check_test_targets.mjs   (the only file to change)
+**Trạng thái nền để task A6/A7 so với:** `cargo test --features desktop` **1153 passed · 0 failed** ·
+`npm run test` (src) exit 0 · `npm run test:frontend` **6 đỏ** (toàn bộ là A7) · `npm run build` exit 0 ·
+`check_docs_links` 0 gãy.
 
-RULES
-A correctly merged version of this file ALREADY EXISTS upstream at commit 286e45a on
-origin/main. Port that version; do not reinvent the merge:
-    git show origin/main:scripts/check_test_targets.mjs > scripts/check_test_targets.mjs
-Then read the result and confirm both halves are present. Do not change the policy list.
-R5 forbids touching scripts/test_target_policy.mjs in this task.
-
-DONE WHEN
-  1) grep -c '^<<<<<<< \|^=======$\|^>>>>>>> ' scripts/check_test_targets.mjs   -> 0
-  2) cd src-tauri && cmd /c "cargo test --features desktop --no-fail-fast > ../out.txt 2>&1"
-     (on macOS/Linux: cargo test --features desktop --no-fail-fast > ../out.txt 2>&1)
-  3) node scripts/check_test_targets.mjs out.txt --profile desktop   -> exit 0
-  4) npm run lint   -> no parse error for this file
-Paste the raw output of 3) and the exit code.
-```
-
-### A2 — rustfmt
-
-```text
-GOAL
-Make `cargo fmt --check` exit 0.
-
-CONTEXT
-67 formatting diffs, almost all in the test files added by commit c0344c9.
-
-FILES
-  src-tauri/tests/**   (formatting only)
-
-RULES
-Run the formatter; do not hand-edit. Do not change any logic, any assertion, or any test
-name. The diff must contain whitespace and line-break changes only — verify that yourself
-before reporting.
-
-DONE WHEN
-  cd src-tauri && cargo fmt && cargo fmt --check   -> exit 0
-  git diff --stat   (report it; confirm no .rs file outside src-tauri/tests changed)
-```
-
-### A3 — Decide and implement the `playground/` scope
-
-```text
-GOAL
-Resolve the contradiction where .gitignore excludes playground/ while four committed test
-files test modules inside it.
-
-CONTEXT — read this carefully, it is the whole task
-.gitignore line 73 contains `/playground/`. Exactly ONE file under it is tracked:
-playground/RabbitVisualizer.tsx (lazy-imported by src/App.tsx:22 — that path is fine).
-These three modules are NOT tracked and ARE gitignored:
-  playground/fantasy-map/MapViewport.tsx
-  playground/fantasy-map/App.tsx
-  playground/frontend/MockDataGenerator.ts
-And these four COMMITTED test files test them:
-  tests/frontend/map_viewport_stress.test.tsx   -> MapViewport
-  tests/frontend/fantasy_map.test.tsx           -> App
-  tests/frontend/fantasy_map_stress.test.tsx    -> App
-  src/__tests__/MockDataGenerator.test.ts       -> MockDataGenerator
-They pass on the author's machine because the files exist locally. On a fresh clone the
-imports do not resolve. None of these seven files exist on origin/main.
-playground/ also holds 7 of the 8 current ESLint errors.
-
-THIS TASK NEEDS A DECISION THAT IS NOT IN THE CODE. Do not guess. Ask the owner which
-option applies, state the question in one line, and stop until answered:
-
-  Option (a) — playground/fantasy-map and playground/frontend are real product code:
-    remove `/playground/` from .gitignore:73, git add the three modules, declare
-    `echarts-for-react` in the root package.json dependencies, fix the 7 ESLint errors
-    there (no-useless-assignment, ban-ts-comment).
-  Option (b) — they are scratch:
-    git rm the four test files listed above, and exclude playground/ from the ESLint scope
-    in eslint.config.js.
-
-RULES
-FORBIDDEN: `npm install echarts-for-react` while the code stays gitignored. That makes this
-machine greener and changes nothing for anyone else — it is exactly the "optimize for green
-instead of truth" failure this repo documents.
-Whichever option is chosen, the three gates below must pass TOGETHER.
-
-DONE WHEN
-  npm run lint              -> exit 0
-  npm run typecheck:tests   -> exit 0
-  npm run test:frontend     -> exit 0, and report "N files | M passed" verbatim
-```
-
-### A4 — ESLint ratchet back to 0
-
-```text
-GOAL
-Make `node scripts/eslint_ratchet.mjs` exit 0.
-
-CONTEXT
-Current: 8 errors, 72 warnings. Baseline is 0 and may only ever be LOWERED. After A3 the
-playground/ share is gone or fixed; the remainder is in tests/frontend/* — unused imports
-and variables, and `any` annotations.
-
-FILES
-  tests/frontend/**   and whatever A3 left in playground/**
-
-RULES
-Fix the code, never the baseline. Do not add eslint-disable comments to silence a rule
-unless you state the reason in the same line and in your report. Removing an unused import
-is a fix; renaming an unused parameter to `_name` matches the configured pattern.
-
-DONE WHEN
-  npm run lint && node scripts/eslint_ratchet.mjs   -> exit 0, prints "(baseline 0)"
-DEPENDS ON  A3
-```
-
-### A5 — typecheck:tests back to 0
-
-```text
-GOAL
-Make `npm run typecheck:tests` exit 0.
-
-CONTEXT
-27 TypeScript errors. Most are TS6133 (declared but never read). TWO are real type errors
-and need reading, not deleting:
-  tests/frontend/phase3_adversarial.test.tsx:153  TS2344 Type '() => void' does not satisfy
-                                                  the constraint 'any[]'
-  tests/frontend/phase3_adversarial.test.tsx:158  TS2322 Mock<[], void> not assignable to
-                                                  Mock<() => void, any>
-Those two are a vitest Mock generic-arity change: Mock<TArgs extends any[], TReturn> became
-Mock<TFunc>. Fix the type arguments; do not cast to any and do not delete the assertions.
-
-FILES
-  tests/frontend/**
-
-RULES
-R2 applies: an unused variable may be removed, but an unused variable that is the SUBJECT of
-an assertion must not be — read each one before deleting it.
-
-DONE WHEN
-  npm run typecheck:tests   -> exit 0
-DEPENDS ON  A3
-```
+> ⚠️ **Nếu `npm run typecheck:tests` hay `npm run test:frontend` đỏ bất thường trên máy bạn, kiểm
+> `tests/node_modules` trước khi sửa mã:**
+> `node -e "console.log(require('./tests/node_modules/vitest/package.json').version)"` phải in
+> **4.1.10**. Nếu không, chạy `npm ci --prefix tests`. Một lần install cũ làm 18 lỗi kiểu xuất hiện
+> ở 6 file mà không có lỗi mã nào.
 
 ### A6 — Rust advisories
 
 ```text
 GOAL
-Make `cargo audit` exit 0.
+Make `cargo audit` exit 0 from src-tauri/.
 
-CONTEXT
-11 vulnerabilities plus one yanked crate on this branch's lockfile:
-  rustls          RUSTSEC-2026-0285, -0346, -0348, -0349   (fixed upstream in 0.23.46;
-                  origin/main already did this bump in commit 0d224ec — port it)
-  rustls-webpki   RUSTSEC-2026-0382
-  webpki-roots    RUSTSEC-2026-0381
-  zip             RUSTSEC-2026-0367, -0368, -0369
-  zstd-safe       RUSTSEC-2026-0403
-  zstd-sys        RUSTSEC-2026-0410
-  chacha20 0.10.1 yanked
+CONTEXT — the dependency graph was measured on 2026-10-31, so you do not have to
+guess which of these are real. Eleven advisories, and they split cleanly in two.
 
-FILES
-  src-tauri/Cargo.toml, Cargo.lock, src-tauri/.cargo/audit.toml
+GROUP 1 — REACHABLE IN THE SHIPPED BUILD. Five advisories. Bump these.
+  rustls 0.23.42       RUSTSEC-2026-0285  -> needs >=0.23.45
+                       RUSTSEC-2026-0346  -> needs >=0.23.46
+                       RUSTSEC-2026-0348  -> needs >=0.23.46
+                       RUSTSEC-2026-0349  -> needs >=0.23.46
+  rustls-webpki 0.103.13  RUSTSEC-2026-0382
+                       -> needs >=0.103.16,<0.104.0-alpha.1  OR  >=0.104.0-alpha.8
+
+  Both are genuinely in the compiled graph. Measured:
+    cargo tree -i rustls --features desktop -e normal
+      rustls v0.23.42
+      |-- tokio-rustls v0.26.4 -> neo4rs v0.7.3 -> anima-engine
+      `-- ureq v2.12.1 -> anima-engine
+  So rustls arrives TWICE: through neo4rs (the `neo4j` feature) and through ureq,
+  which is a direct dependency of this crate. rustls-webpki comes in under rustls.
+  An exemption is NOT acceptable for either — they ship.
+
+  origin/main already did the rustls half, in commit 0d224ec (0.23.42 -> 0.23.46).
+  Port that rather than resolving it again, so the two trees do not disagree.
+  Then check whether the rustls bump carries rustls-webpki to >=0.103.16 on its
+  own; if it does not, bump it explicitly and say so.
+
+GROUP 2 — LOCKFILE-ONLY. Six advisories. These need a reasoned exemption, NOT a bump.
+  webpki-roots 1.0.9              RUSTSEC-2026-0381
+  zip 0.6.6                       RUSTSEC-2026-0367, -0368, -0369
+  zstd-safe 5.0.2+zstd.1.5.2      RUSTSEC-2026-0403
+  zstd-sys 2.0.16+zstd.1.5.7      RUSTSEC-2026-0410
+
+  Every one of these is in Cargo.lock and in NO dependency tree. Measured per crate:
+    cargo tree -i <crate> --features desktop -e all    -> 0 lines of output
+  `-e all` includes dev- and build-dependencies, so this is not "only a dev dep" —
+  the selected feature set never compiles them at all. src-tauri/.cargo/audit.toml
+  explains why that happens: a lockfile is feature-agnostic and records every
+  optional dependency of every resolved package.
+
+  Note how large those bumps would be if you tried: zip 0.6.6 -> >=9.0.0 and
+  zstd-safe 5.0.2 -> >=8.2.0 are many majors. Do not attempt them for code that is
+  never built.
 
 RULES
-For each row: either bump it, or record a reasoned exemption in audit.toml WITH the evidence
-that no enabled feature compiles the crate. The two existing burn-dataset exemptions are the
-format to follow. An exemption without that evidence is not acceptable.
-chacha20 is load-bearing for determinism (rand_chacha is used directly so a draw position
-can be saved) — if you touch its version, re-run the determinism and snapshot suites and
-report their output, because a different generator changes every trajectory.
+Follow the format already in src-tauri/.cargo/audit.toml exactly. Its two
+burn-dataset entries are the model, and the file states the standard in its own
+words: "Do not add an ignore without recording the check that shows the code is not
+reachable, and re-run that check when dependencies move."
+So each new ignore must carry: the crate and version, the advisory title and CVSS
+if the advisory gives one, why it is unreachable, and THE COMMAND that shows it,
+with its expected output. An ignore without that evidence is worse than a red gate,
+because it is a red gate someone made look green.
+
+chacha20 0.10.1 is reported as `yanked`, not as a vulnerability. audit.toml sets
+`informational_warnings = []`, so yanked findings do not fail the build — it is the
+"1 allowed warning" in the output, not one of the eleven. Leave it alone unless you
+can bump it without touching the generator, and read this first: rand_chacha is used
+DIRECTLY so a draw position can be saved, and every trajectory in the project
+depends on the generator. If you change anything in that area, rule R8 applies — it
+is a simulation-semantics change, needs its own PR, and needs the deterministic
+checksum measured before and after.
 
 DONE WHEN
-  cd src-tauri && cargo audit   -> exit 0
-  cd src-tauri && cargo test --features desktop --no-fail-fast   -> 1153 passed, 0 failed
-  (if the pass count differs from 1153, report the number and which targets changed)
+  cd src-tauri && cargo audit                        -> exit 0
+  cd src-tauri && cargo tree -i rustls --features desktop -e normal
+                                                     -> shows >=0.23.46
+  cd src-tauri && cargo test --features desktop --no-fail-fast
+                                                     -> 1153 passed, 0 failed
+      (if the count differs from 1153, report the number and which targets changed)
+  cd src-tauri && cargo tree --no-default-features -e normal \
+      | grep -E 'neo4rs|tokio-tungstenite|burn-wgpu|naga'   -> no output
+      (a dependency bump must not leak a gated subsystem into the default build)
+  git diff Cargo.lock                                -> report which crates moved
+Report the six ignores you added, one line each, with the command you ran for each.
 ```
 
 ---
@@ -549,3 +464,54 @@ Hợp nhất (HT-C) **cần quyết định của chủ dự án trước** — 
 [roadmap 31/10 §4](../../planning/COMPLETION_ROADMAP_2026-10-31.md). Đừng giao HT-C cho agent
 trước khi có dòng quyết định đó, vì nó quyết định `core/mortality.rs` của nhánh **thay** hay
 **nằm cạnh** `agent_death_system` của `main`, và hai lựa chọn cho ra hai cây mã khác nhau.
+
+### A7 — NOTICE / artifact licence (⚠️ **cần máy Windows**)
+
+```text
+GOAL
+Regenerate the licensing artifacts so noticeInventory and thirdPartyLicenses pass.
+These are the last 6 of the 6 remaining frontend test failures.
+
+READ THIS FIRST — THIS TASK CANNOT BE DONE ON macOS OR LINUX
+scripts/lib/licensing.mjs says so in its own "Host-target caveat" comment:
+`cargo tree` resolves for the HOST target, the committed artifacts describe a
+WINDOWS build, and CI checks them in the Rust job on windows-latest. Regenerating
+on macOS produced 398 Rust crates where the committed inventory has 419 — five
+licence tests would go green locally and the CI gate would go red.
+If you are not on Windows: STOP, report that, and do nothing else. Rule R12.
+
+CONTEXT
+The branch's NOTICE is a 62-line hand-written stub from before OSS-004; it predates
+the generated transitive inventory and says so itself ("maintained by hand and is
+not a generated, transitively complete inventory"). The failing tests expect the
+generated form: an npm section with >=15 versioned components, the string
+licensing/THIRD_PARTY_LICENSES.txt, and a Rust crate count matching
+licensing/third-party-index.json (which currently says 419).
+
+The generator's template was already fixed on this branch in commit a791248 —
+before that, regenerating would have written "Anima-Engine itself is proprietary"
+back into a distributed file. Do not re-fix it; check it says MIT OR Apache-2.0.
+
+FILES
+  NOTICE, licensing/third-party-index.json, licensing/THIRD_PARTY_LICENSES.txt,
+  sbom.cdx.json   (all generated — never hand-edit any of them)
+
+RULES
+Use the project's own command, which regenerates all three in the right order:
+    npm run gen:compliance      (= gen:licenses && gen:sbom && gen:notice)
+Then verify with the check variants. Do not edit a generated file to make a check
+pass; if a check still fails, the generator or the index is what to report on.
+`npm run check:licenses-complete` is EXPECTED to fail: hexf-parse 0.2.1 has no
+upstream licence text and closing that row is a legal decision, not an engineering
+one (STATE_OF_THE_PROJECT.md §1.c). That one failure is not yours to fix.
+
+DONE WHEN
+  npm run check:notice        -> exit 0
+  npm run check:licenses      -> exit 0
+  npm run check:sbom          -> exit 0
+  npm run check:sbom-schema   -> exit 0
+  npm run test:frontend       -> 0 failed   (was 6)
+  and report the Rust crate count the regeneration produced, plus the OS and
+  rustc version you ran it on, so the next reader knows which host the committed
+  artifacts describe.
+```
