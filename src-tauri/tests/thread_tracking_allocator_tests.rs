@@ -15,10 +15,20 @@ fn current_thread_tracking_ignores_allocations_from_other_threads() {
     let worker_finished = Arc::clone(&finished);
     let worker = std::thread::spawn(move || {
         worker_start.wait();
+        worker_finished.wait();
+
+        worker_start.wait();
         let allocation = Box::new([7_u8; 1024]);
         black_box(&allocation);
         worker_finished.wait();
     });
+
+    // Warm both barriers before opening the measurement window (FINDINGS.md F-031): on macOS,
+    // `std::sync::Barrier::wait` allocates once per barrier on first use, which otherwise charges
+    // two synchronisation allocations to the measured thread (`left: 3, right: 1`). Do not remove
+    // this warm-up pair.
+    start.wait();
+    finished.wait();
 
     ALLOCATOR.start_tracking();
     start.wait();
