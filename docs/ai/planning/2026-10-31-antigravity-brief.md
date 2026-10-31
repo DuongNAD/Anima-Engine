@@ -1126,6 +1126,19 @@ verified independently: all eight target gates are green on CI, 25 of its 36 cha
 behaviour-preserving, per-file assertion counts are unchanged, and both suppressions
 it added are narrow and true.
 
+TWO PRE-EXISTING FAILURES ON macOS/LINUX THAT ARE NOT YOURS — read before you build
+  1. src-tauri/icons/: four of the five files are 12-byte placeholder TEXT files, so
+     the crate does not compile on macOS or Linux (FINDINGS.md F-028). Supply valid
+     icons locally and leave them UNCOMMITTED. On Windows you can skip this.
+  2. `cargo test --features desktop --no-fail-fast` on macOS gives 1216 passed and
+     exactly ONE failure: thread_tracking_allocator_tests (FINDINGS.md F-031). The
+     test's own two Barrier::wait() calls sit inside its
+     ALLOCATOR.start_tracking()..stop_tracking() window, and macOS's std::sync::Barrier
+     allocates once on first wait() while the Windows SRWLOCK implementation does not.
+     It passes on windows-latest, which is where CI runs the Rust side. Do NOT "fix"
+     it, do not #[ignore] it, do not touch its assertion. If your count is 1216 passed
+     / 1 failed and the one failure is that test, the suite is green for this task.
+
 ===============================================================================
 TASK 1 — tokio: bump, do not exempt. Do this first; it is one command.
 ===============================================================================
@@ -1277,7 +1290,8 @@ DONE WHEN
   - cargo deny check                               exit 0, grep -cE '^error' = 0
   - npm run check:bundle-closure                   exit 0
   - npm run check:bundle                           exit 0
-  - cargo test --features desktop --no-fail-fast   same 1216 passed / 107 targets
+  - cargo test --features desktop --no-fail-fast   1216 passed / 107 targets, and on
+    macOS exactly one failure: thread_tracking_allocator_tests (F-031, see above)
   - npm run lint && node scripts/eslint_ratchet.mjs   0 errors, 0 warnings
   - the three licensing gates: green, or explicitly reported as pending A7
 
