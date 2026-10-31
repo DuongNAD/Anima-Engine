@@ -1,5 +1,0 @@
-# filepath: docker-compose.yml
-services:
-  test:
-    build: .
-    image: palindrome-checker:latest

@@ -1,3 +1,0 @@
-```json
-{"blocking":false,"findings":[]}
-```
