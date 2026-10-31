@@ -130,6 +130,12 @@ R12 NEVER regenerate the licensing artifacts (NOTICE, licensing/third-party-inde
     committed artifacts describe a WINDOWS build and CI checks them on windows-latest.
     Regenerating elsewhere produces a different, equally correct inventory and turns a
     green CI gate red. See scripts/lib/licensing.mjs, the "Host-target caveat" comment.
+    THOSE THREE FILES AND NO OTHERS. licensing/bundle-closure.json is NOT one of them:
+    it is npm-only, no cargo command feeds it, its gate runs in the frontend job on
+    ubuntu-latest, and it records 20 platform-independent JS packages with zero native
+    bindings — so any host reproduces it. Regenerate it with `npm run build` whenever a
+    lockfile change makes it stale. History: a B3/B4 report cited R12 as forbidding this
+    and left check:bundle-closure red when it was both permitted and one command away.
 
 TOOLING FACTS THAT WILL WASTE YOUR TIME IF YOU GUESS
   - esbuild is NOT installed. Vite 8 bundles with rolldown/oxc. Any script calling esbuild
