@@ -284,39 +284,91 @@ and report the exit code of every `cargo tree` you relied on.
 GOAL
 Make tests/live_experiment_tests.rs pass 17/17 on main. Two tests fail today.
 
-CONTEXT
-CI run 39644804767 on main @ a43872c:
+AUTHORIZATION
+This task writes to src-tauri/src, which AGENTS.md declares read-only. The owner
+has authorized it explicitly for this task (QĐ-B). R5 still applies to CLAUDE.md,
+AGENTS.md, PROJECT.md, STATE_OF_THE_PROJECT.md, docs/reference/ and the ADRs.
+
+STEP 0 — main DOES NOT COMPILE on macOS or Linux. Fix that locally first.
+Measured 2026-10-31:
+    error: proc macro panicked  --> src/lib.rs:194:16  .build(tauri::generate_context!())
+    message: failed to read icon .../src-tauri/icons/32x32.png: Invalid PNG signature.
+Four of five icons on origin/main are 12-byte TEXT files containing the word
+"placeholder" (32x32.png, 128x128.png, 128x128@2x.png, icon.icns). Not Git LFS —
+.gitattributes has zero filter=lfs lines. CI never sees it because the Rust job runs
+only on windows-latest. Full account: FINDINGS.md F-028.
+This is NOT a regression from the 2026-10-22 push: merge-base 043930c already had
+the placeholders and `git log 043930c..origin/main -- src-tauri/icons` is empty.
+So: copy valid icons from branch feat/ecological-selection into your main worktree
+(src-tauri/icons/, they are real PNGs there) as an UNCOMMITTED local build fix. Do
+NOT commit them as part of this task — whether the real icons belong in the
+repository is an open question for the owner, and mixing it into a determinism fix
+would violate R8. If you are on Windows you can skip this step; say which you did.
+
+THE TWO FAILURES — CI run 39644804767 on main @ a43872c
   a_fork_from_a_known_tick_shares_its_prefix_and_diverges_only_afterwards  FAILED
     "a control branch forked at tick 60 diverged from an uninterrupted run"
     left: 1740163834   right: 1989393324
   run_k_then_save_load_then_run_the_rest_matches_an_uninterrupted_run      FAILED
     "some piece of trajectory-relevant state is missing from the snapshot"
-These two assertions are what every scientific claim in this project rests on: that a fork
-shares its prefix, and that save/load is trajectory-exact. They are false on main right now.
-Both tests PASS on branch feat/ecological-selection, with the same 17-test suite size.
+These two assertions are what every scientific claim in this project rests on: that
+a fork shares its prefix, and that save/load is trajectory-exact. They are false on
+main right now. Both PASS on branch feat/ecological-selection, same 17-test suite.
 
-LEADING HYPOTHESIS — treat it as a hypothesis (R9), not an answer:
-  src-tauri/src/core/agent_systems.rs:400  let mut to_despawn: Vec<(String, Entity, ...)>
-  src-tauri/src/core/agent_systems.rs:408  to_despawn.push((lineage_id.0.clone(), e, cause))
-  src-tauri/src/core/agent_systems.rs:411  to_despawn.sort_unstable_by(|a,b| a.0.cmp(&b.0))
-lineage_id is NOT unique between siblings, and sort_unstable_by does not preserve the order
-of equal elements, so despawn order falls out of query iteration order — which does not
-survive a save/load round trip.
+THE BISECT IS ALREADY NARROWED TO TWO COMMITS — measured 2026-10-31
+Last green main is 1b3e7ef ("merge: get main green again (#33)", 2026-10-16). Of the
+20 commits between it and a43872c, exactly TWO touch live_experiment.rs,
+agent_systems.rs, snapshot.rs, simulation_state.rs or simulation_schedule.rs. In
+chronological order:
+
+  1d301c3  feat(core): add live agent demographics, trophic ecology rules, ...
+             agent_systems.rs         +367
+             simulation_schedule.rs   +56/-     <- the ONE place the tick schedule
+                                                   is built; load-bearing for
+                                                   determinism per CLAUDE.md
+             environmental_systems.rs +52       <- the census
+             simulation_loop.rs       +65
+             ecology.rs, components.rs, ecs.rs, sim_rules.rs, world_systems.rs
+
+  add568e  feat(science): add parameter sweeps, causal branch trees, telemetry
+             live_experiment.rs       +165      <- the file under test
+             experiment.rs +183, scenario.rs +61, and new branch_tree.rs,
+             sweeps.rs, telemetry_export.rs
+
+Test at 1d301c3 FIRST. If the two tests are red there, it is the demographics
+commit. If green, it is add568e. That is one or two builds, not a five-step bisect.
+Report which commit turns them red before you change anything.
+
+TWO HYPOTHESES, in order — treat both as hypotheses (R9), not answers:
+  H1 (for 1d301c3): src-tauri/src/core/agent_systems.rs:400 builds a Vec, :408
+     pushes lineage_id.0.clone(), :411 calls sort_unstable_by on that lineage_id.
+     lineage_id is NOT unique between siblings, and sort_unstable_by does not
+     preserve the order of equal elements, so despawn order falls out of query
+     iteration order — which does not survive a save/load round trip.
+  H2 (for either): the schedule changed ORDER rather than only adding systems, or
+     an observables() read was inserted into the resume path and is perturbing the
+     world it reads. The roadmap raised the second one; nobody has checked it.
+Say which hypothesis the bisect supports, and say so even if it is neither.
 
 RULES
-1. FIRST reproduce and localise. Bisect the 2026-10-22 commit range on main by cluster
-   (demographics, telemetry, sweeps, branch tree, interventions, Map 2, dashboard) and
-   report WHICH commit turns the two tests red. Do not fix before you can name it.
-2. Then fix the cause. If it is the sort, the fix is a totally-ordered key, not a stable
-   sort bolted on top — explain which key you chose and why it is unique.
+1. Reproduce and localise BEFORE fixing. Do not fix what you cannot name.
+2. If the cause is the sort, the fix is a TOTALLY ORDERED key, not a stable sort
+   bolted on top. Explain which key you chose and why it is unique per entity.
+   Read src-tauri/src/core/mortality.rs on branch feat/ecological-selection first:
+   it solves the same problem with no Vec, no clone and no sort, by queueing the
+   existing ReclaimAndDespawnAgentCommand and letting the command queue order it.
 3. R2: do not touch either test. They are the specification.
-4. R8: this is a simulation-semantics change. Report the deterministic checksum before and
-   after, and say whether published experiment evidence is affected.
+4. R8: this is a simulation-semantics change. Report the deterministic checksum
+   before and after, and state the effect on already-published experiment evidence
+   (artifacts/experiments/e2-evolved-brain-default/RESULT.md).
+5. Do not fix the other red CI gates here (fmt, clippy, audit, feature separation).
+   Those are B3 and B4. One task, one concern.
 
 DONE WHEN
   cd src-tauri && cargo test --features desktop -p anima-engine --test live_experiment_tests
     -> "test result: ok. 17 passed; 0 failed"
-  Paste the bisect result (the commit that broke it) and both checksums.
+  and paste: the commit the bisect names, the checksum before and after, which
+  hypothesis held, and whether you were on Windows or supplied local icons.
 ```
 
 ### B2 — The allocation the gate did not catch

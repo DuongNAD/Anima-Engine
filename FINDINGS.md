@@ -30,6 +30,43 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-028 — `origin/main` không compile được trên macOS: 4/5 icon là file text `placeholder`
+- **Ngày:** 2026-10-31
+- **Loại:** BUG (chặn build trên một nền tảng)
+- **Vị trí:** `src-tauri/icons/` trên `origin/main`; panic ở `src-tauri/src/lib.rs:194`
+- **Phát hiện bởi:** dựng worktree tại `origin/main` để tái hiện hai gate tái lập đỏ (task B1)
+- **Triệu chứng:**
+  ```
+  error: proc macro panicked
+     --> src/lib.rs:194:16
+      |  .build(tauri::generate_context!())
+      = help: message: failed to read icon .../src-tauri/icons/32x32.png: Invalid PNG signature.
+  error: could not compile `anima-engine` (lib) due to 1 previous error
+  ```
+  Bốn trong năm icon trên `origin/main` là **file text 12 byte chứa đúng chữ `placeholder`**
+  (`32x32.png`, `128x128.png`, `128x128@2x.png`, `icon.icns`); `icon.ico` là 72 byte `\x01` lặp.
+  Không liên quan Git LFS — `.gitattributes` có **0** dòng `filter=lfs`.
+- **Vì sao không ai thấy:** CI chạy job Rust **chỉ trên `windows-latest`**, và ở đó
+  `generate_context!` không chết vì cùng mấy file đó. Lượt CI `39644804767` trên `main` compile
+  được và chạy test (15 pass, 2 fail), nên nhìn từ CI thì build hoàn toàn bình thường.
+- **Không phải hồi quy của đợt 22/10:** merge-base `043930c` (2026-08-08) **đã** là placeholder, và
+  `git log 043930c..origin/main -- src-tauri/icons` **trống**. Tức `main` chưa từng build được trên
+  macOS kể từ ít nhất 08-08. Nhánh `feat/ecological-selection` build được chỉ vì `fddbdee`
+  (2026-08-10, *"commit toàn bộ công việc dở dang"*) tình cờ đưa icon thật vào.
+- **Hệ quả thực tế:** không thể bisect hay chạy test `main` trên máy macOS/Linux mà không cấp icon
+  hợp lệ trước. Đây là tiền đề của task B1.
+- **Tái hiện:**
+  ```
+  git worktree add --detach /tmp/wt-main origin/main
+  cd /tmp/wt-main/src-tauri && cargo test --features desktop --test live_experiment_tests
+  ```
+- **Test khoá lại:** chưa có. Gate đúng là một job CI trên `ubuntu-latest` hoặc `macos-latest` chỉ
+  cần `cargo check --features desktop` — rẻ, và nó bắt đúng lớp lỗi "chỉ đỏ ở nền tảng không ai
+  chạy CI". Đây là lần thứ **tư** trong một phiên gặp hình dạng đó (xem F-025, F-026, F-027).
+- **Trạng thái:** OPEN — cần quyết định: icon thật là tài sản của dự án (thì commit chúng) hay bị
+  cố ý lược khỏi bản nguồn mở (thì `generate_context!` phải chịu được placeholder, hoặc build phải
+  khai rõ yêu cầu). Chủ dự án quyết.
+
 ### F-026 — `justfile:151` gọi `verify_dataflow.py --count`, một cờ không tồn tại, nên dòng tổng kết luôn in bản dự phòng
 - **Ngày:** 2026-10-31
 - **Loại:** SMELL
