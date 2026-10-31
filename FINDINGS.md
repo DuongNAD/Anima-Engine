@@ -30,6 +30,45 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-029 — Thứ tự rút `SimRng` của thế giới sống phụ thuộc tiến trình: `1d301c3` thêm system thứ năm không có cạnh thứ tự, và gate ambiguity chỉ canh năng lượng
+- **Ngày:** 2026-10-31
+- **Loại:** BUG (vi phạm hợp đồng tất định)
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:441` (`autonomous_reproduction_system`),
+  `src-tauri/src/core/world_systems.rs:190`, `:761`, `environmental_systems.rs:217`,
+  `agent_systems.rs:677`; lịch dựng ở `core/simulation_schedule.rs`; gate ở
+  `src-tauri/tests/schedule_ambiguity_tests.rs`
+- **Phát hiện bởi:** agent làm task B1, trong lúc truy nguyên hai gate tái lập đỏ (báo ở SURPRISES)
+- **Triệu chứng:** **năm** system nhận `ResMut<SimRng>` trên `origin/main`, và `1d301c3` thêm
+  `autonomous_reproduction_system` **không** khai cạnh thứ tự nào với `spawn_food_system` /
+  `seed_dropping_system` — những cái cũng rút cùng stream ở tick 1. Bevy topological-sort các
+  system xung đột mà không có cạnh theo một thứ tự phụ thuộc hash seed **của từng tiến trình**, nên
+  khoảng **một nửa** số tiến trình chạy thứ tự này, nửa còn lại chạy thứ tự kia. Hệ quả đo được:
+  cùng seed, cùng manifest, con non `live-founder-0005.1` sinh ra ở `x = 75.77` hoặc `x = 71.47`
+  tuỳ tiến trình.
+- **Vì sao nó lọt:** chú thích của chính `SimRng` (`core/resources.rs:347`) phát biểu bất biến
+  **có điều kiện** và điều kiện đó đã bị phá: *"same seed plus **same tick order** yields the same
+  run"*, và *"Systems take `ResMut<SimRng>`, which makes Bevy serialise them against one another."*
+  Serialisation chặn hai system **rút song song** — nó **không** quyết định thứ tự giữa chúng. Thứ
+  tự phải do `build_tick_schedule` khai tường minh, và `1d301c3` không khai.
+- **Vì sao gate không đỏ:** `tests/schedule_ambiguity_tests.rs` có đúng hai test —
+  `report_every_ambiguous_pair_in_the_tick_schedule` chỉ **in ra**, không assert; và
+  `no_two_systems_that_move_energy_are_left_unordered` chỉ assert về system **chuyển EU**. Phạm vi
+  đó là một quyết định có chủ ý, ghi trong module doc: *"An ambiguity is only a bug if the two
+  orders give different answers. Most do not."* Đúng — nhưng system rút RNG là lớp **còn lại** mà
+  thứ tự luôn có nghĩa, và không gì canh nó.
+- **Quan hệ với bản sửa B1:** bản sửa B1 (populate `SpatialHashGrid` khi restore) làm
+  `from_snapshot` khớp `uninterrupted` dưới **cả hai** thứ tự, nên hai test xanh 10/10 lượt. Nó
+  **không** sửa F-029: hai thứ tự vẫn cho hai thế giới khác nhau. Bộ test không thấy vì mỗi tiến
+  trình test tự nhất quán bên trong nó.
+- **Tái hiện:** chạy `live_experiment_tests` nhiều tiến trình và in vị trí `live-founder-0005.1` ở
+  tick 1; hoặc đọc `build_tick_schedule` và tìm cặp system cùng nhận `ResMut<SimRng>` mà không có
+  `.before()`/`.after()` giữa chúng.
+- **Test khoá lại cần có:** mở rộng `schedule_ambiguity_tests.rs` thêm một test đối xứng với test
+  năng lượng — *không hai system nào rút `SimRng` được để không có thứ tự*. Đây là gate rẻ và nó
+  bắt đúng lớp lỗi này ở lần sau.
+- **Trạng thái:** OPEN — **chưa sửa**. Đây là việc riêng, không thuộc B1 (R8: đổi thứ tự lịch là
+  thay đổi ngữ nghĩa mô phỏng, phải có PR riêng kèm checksum trước/sau).
+
 ### F-028 — `origin/main` không compile được trên macOS: 4/5 icon là file text `placeholder`
 - **Ngày:** 2026-10-31
 - **Loại:** BUG (chặn build trên một nền tảng)
