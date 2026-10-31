@@ -36,7 +36,9 @@ THE VERIFICATION TRIAD — all three, every step, no exceptions
 V1  GRAPH    just dataflow-truth && just dataflow-verify 1     -> exit 0
              The real module dependency graph must match the declared contract in
              dataflow.json. A new edge or a cycle makes this red and names the edge.
-V2  TESTS    total test count must GO UP by exactly the number of tests moved into the
+V2  TESTS    baseline measured 2026-10-31 on this branch: 1153 passed, 0 failed, across
+             107 targets, with 3 allow-listed empty and 2 allow-listed ignored.
+             total test count must GO UP by exactly the number of tests moved into the
              new crate, and:
                cargo test --features desktop --no-fail-fast > out.txt 2>&1
                node scripts/check_test_targets.mjs out.txt --profile desktop   -> exit 0
@@ -62,9 +64,14 @@ S4  A new crate must not depend on anima-engine. Check it:
 S5  Features must stay separated. After every step:
       cargo tree --no-default-features -e normal | grep -E 'neo4rs|tokio-tungstenite|burn-wgpu|naga'
     -> no output. A new crate that unconditionally pulls a gated dependency breaks a CI gate.
-S6  Seven test targets carry crate-level #![cfg(feature = ...)] plus a matching [[test]]
-    required-features entry. If a step moves any of them, check_test_targets.mjs must still
-    report 7/7 feature-gated targets running under --profile desktop. Report that number.
+S6  Eight test targets on this branch carry a crate-level #![cfg(feature = ...)] plus a
+    matching [[test]] required-features entry. Measured 2026-10-31, the gate prints:
+      test targets: 107, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2),
+      feature-gated running under "desktop": 8
+    READ that number from the gate output; do not assume it. CLAUDE.md and
+    STATE_OF_THE_PROJECT.md §1.a both still say seven — a number measured 2026-07-27,
+    before commit c0344c9 added adversarial_challenger_tests.rs. If your step changes the
+    count in either direction, name which target moved and why.
 S7  If a step turns out to need a behaviour change to work, STOP and report. Do not make
     the behaviour change. It belongs in its own PR, before or after, with its own evidence.
 
@@ -343,7 +350,8 @@ từ đường cũ, cập nhật dataflow.json, rồi V1/V2/V3/S4/S5.
                                                   không chứa burn-wgpu/naga.
   S3.1  anima-persistence  ~4k                    snapshot 1687, simulation_state 1397,
                                                   world_artifact 780, sha256 173.
-                                                  Kiểm thêm: 7/7 target feature-gated vẫn chạy.
+                                                  Kiểm thêm: 8 target feature-gated vẫn chạy
+                                                  (đo 2026-10-31; đọc từ output của gate).
   S4.1  anima-lab          ~16k                   trait ExperimentModel + experiment_runner 4497
                                                   + experiment 2783
   S4.2  anima-lab (tiếp)                          reference_world 1628, scenario 849,
