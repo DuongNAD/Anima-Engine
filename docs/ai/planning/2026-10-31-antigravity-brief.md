@@ -601,6 +601,36 @@ What this means for your work here: do NOT mirror exemptions between the two fil
 advisory, decide which tool actually sees the crate, and exempt only there, with the check
 that shows the code is unreachable recorded beside it. Then run BOTH tools and paste both.
 
+THE DECISION TABLE, PRECOMPUTED — measured 2026-10-31 on feat/ecological-selection with the
+FORWARD check, which is the only one that works here (`cargo tree -i <crate>` exits non-zero
+with "specification is ambiguous" when a crate has two lock entries, and prints nothing while
+doing it — webpki-roots has two. An empty output with a non-zero exit is not a negative
+result. F-025):
+    cargo tree -e all --features desktop --target all | grep -c " <crate> v"
+
+  crate            in Cargo.lock   in graph   where its exemption belongs
+  gix-fs                       1          0   audit.toml ONLY  (never deny.toml)
+  gix-features                 1          0   audit.toml ONLY
+  zip                          1          0   audit.toml ONLY
+  zstd-safe                    1          0   audit.toml ONLY
+  zstd-sys                     1          0   audit.toml ONLY
+  chacha20                     1          0   audit.toml ONLY
+  rustls-webpki                1          3   IN GRAPH — deny sees it; do NOT exempt, FIX it
+  webpki-roots                 2          2   IN GRAPH — deny sees it; do NOT exempt, FIX it
+  tokio                        1         22   IN GRAPH — deny sees it; do NOT exempt, FIX it
+
+Read the two halves differently. Every one of audit.toml's seven current exemptions is in the
+lockfile-only class, which is why they are legitimate there — and why all seven would be
+errors if copied into deny.toml. Exactly two were copied (the gix pair), which is exactly how
+many unmatched entries deny reports.
+The three graph-visible crates are the opposite case: deny sees them, so an exemption there
+would be suppressing a SHIPPED vulnerability. RUSTSEC-2026-0381 and -0382 (webpki-roots,
+rustls-webpki) and -0386 (tokio) must be fixed by moving the version, not exempted. This is
+not hypothetical: earlier in this project a `webpki-roots` exemption was nearly written on the
+strength of `cargo tree -i` printing nothing — it printed nothing because it had EXITED
+NON-ZERO on an ambiguous spec, and the crate ships through neo4rs and ureq. Use the forward
+check above.
+
 CLUSTER 3 — npm audit AND THE ESLint RATCHET PULL AGAINST EACH OTHER
   npm audit (root)   15 vulnerabilities (13 moderate, 2 high)   -> --audit-level=high fails
   npm audit (tests)  1 high severity vulnerability              -> fails
