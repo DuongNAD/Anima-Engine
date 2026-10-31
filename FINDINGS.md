@@ -64,6 +64,17 @@ Quy tắc ghi:
   loại crate proc-macro khỏi inventory — mà `tauri-macros`, `syn`, `quote`, `proc-macro2`,
   `serde_derive`, `thiserror-impl` **đang có trong** `third-party-index.json`. Bỏ chúng là đổi điều
   tài liệu tuân thủ khẳng định về phạm vi, tức **quyết định pháp lý**, không phải sửa lỗi kỹ thuật.
+- **Đường thứ ba cũng đã đóng (đo 2026-10-31):** bỏ `cargo tree`, dùng
+  `cargo metadata --filter-platform` làm nguồn duy nhất, cũng **không** được —
+  `metadata` lọc được **nền tảng** nhưng **không lọc feature**. Đi từ root theo dep bình thường
+  trên metadata đã filter cho **530** third-party thay vì 419; 114 crate dư toàn là optional
+  dependency không bật (`burn-candle`, `burn-dataset`, `burn-tch`, `burn-train`, `aes`, `bs58`…).
+  Đây đúng điều `.cargo/audit.toml` đã ghi về lockfile feature-agnostic, và cũng là lý do
+  `zip`/`zstd` hiện trong `cargo audit` mà không có trong `cargo tree`.
+  **Kết luận: hai lệnh bù nhau theo bắt buộc** — `tree` lọc feature, `metadata` lọc nền tảng —
+  nên muốn cả hai đúng cho một nền tảng không phải host thì phải chạy trên nền tảng đó.
+  (Có thể hình dung một allow-list hai crate để bỏ qua phần rò proc-macro, nhưng nó phải được bảo
+  trì mỗi lần đồ thị đổi, và nó là dạng vá cho gate xanh mà R3 cấm về tinh thần. Không đề xuất.)
 - **Test khoá lại:** guard `licensing.mjs:243` đã là test khoá — nó bắt đúng chế độ hỏng này và
   **chặn** việc publish một inventory sai. Đây là lần nó chứng minh giá trị.
 - **Trạng thái:** CLOSED-WONTFIX — artifact licence **phải** sinh trên Windows (task A7). Bản thử
