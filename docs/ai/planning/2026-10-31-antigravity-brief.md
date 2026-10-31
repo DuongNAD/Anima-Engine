@@ -577,16 +577,29 @@ failure, and audit reports the zip/zstd set, which deny does not. Same lockfile,
 policies, two allow-lists (src-tauri/.cargo/audit.toml and src-tauri/deny.toml, whose
 comment says it "Mirrors .cargo/audit.toml"). An exemption written in one does not cover
 the other. Satisfy BOTH, and say which file each exemption went in and why.
-Measured on branch feat/ecological-selection for comparison: `cargo audit` exits 0 there
-(A6 bumped the lockfile and wrote five verified lockfile-only exemptions), but `cargo deny`
-exits 1 there for a DIFFERENT reason — deny.toml:109 and :110 still list RUSTSEC-2024-0350
-and RUSTSEC-2025-0021 and `no crate matched advisory criteria` any more. cargo audit ignores
-a stale exemption; cargo deny errors on it. That is a two-line deletion on that branch, and
-it is the shape of bug to expect when you move the lockfile here: fixing audit can leave
-deny red on exemptions that stopped applying.
-Rule: an exemption needs the check that shows the code is unreachable, recorded beside it —
-that is what .cargo/audit.toml's own header demands. Do not write one you cannot justify,
-and do not keep one that no longer matches.
+THE TWO TOOLS DO NOT SCOPE THE SAME THING, AND AN EXEMPTION IS NOT PORTABLE BETWEEN THEM.
+Measured on branch feat/ecological-selection: `cargo audit` exits 0 there (A6 bumped the
+lockfile and wrote verified lockfile-only exemptions), but `cargo deny` exits 1, pointing at
+deny.toml:109 and :110 — RUSTSEC-2024-0350 and RUSTSEC-2025-0021 — with
+`no crate matched advisory criteria`.
+Those exemptions are NOT stale. `gix-fs 0.8.1` and `gix-features 0.36.1` are both in
+Cargo.lock at exactly the versions the advisories name. Measured (checking the exit code,
+not just the empty output):
+    cargo tree -i gix-fs -e normal                      -> exit 0, "nothing to print"
+    cargo tree -i gix-fs -e normal --features desktop   -> exit 0, "nothing to print"
+    cargo tree -i gix-fs -e all --target all            -> exit 0, "nothing to print"
+The crate is in the lockfile and in NO dependency graph. So `cargo audit`, which reads
+Cargo.lock, sees it and the ignore matches; `cargo deny`, which builds the graph, never sees
+it and the ignore matches nothing — which deny treats as an error.
+The defect is therefore deny.toml's own premise. Its comment says it "Mirrors
+.cargo/audit.toml". It must not: audit.toml's header exists precisely to document
+lockfile-only exemptions ("a lockfile is feature-agnostic ... an advisory can be reported
+against a crate that is provably never built"), and an exemption of that kind is meaningless
+in a graph-scoped tool. Introduced by 043930c, which copied the entries across; a8e6b0e had
+written them correctly in audit.toml alone. A6 did not cause it.
+What this means for your work here: do NOT mirror exemptions between the two files. For each
+advisory, decide which tool actually sees the crate, and exempt only there, with the check
+that shows the code is unreachable recorded beside it. Then run BOTH tools and paste both.
 
 CLUSTER 3 — npm audit AND THE ESLint RATCHET PULL AGAINST EACH OTHER
   npm audit (root)   15 vulnerabilities (13 moderate, 2 high)   -> --audit-level=high fails

@@ -30,6 +30,45 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-032 — `deny.toml` phản chiếu miễn trừ của `audit.toml`, nhưng hai công cụ không soi cùng một thứ: `cargo deny` đỏ vì một miễn trừ **đúng**
+- **Ngày:** 2026-10-31
+- **Loại:** BUG (gate đỏ vì tiền đề sai, không vì lỗ hổng)
+- **Vị trí:** `src-tauri/deny.toml:104-111` (`[advisories] ignore`, kèm chú thích
+  *"Mirrors `.cargo/audit.toml`"*), đối chiếu `src-tauri/.cargo/audit.toml`
+- **Phát hiện bởi:** tay — đo trạng thái 8 gate đỏ của main để viết prompt B3/B4, rồi soát lại
+  chính khẳng định của mình
+- **Triệu chứng:** `cd src-tauri && cargo deny check` → exit 1,
+  `advisories FAILED, bans ok, licenses ok, sources ok`, trỏ vào `deny.toml:109` và `:110`
+  (`RUSTSEC-2024-0350`, `RUSTSEC-2025-0021`) với `no crate matched advisory criteria`. Cùng cây,
+  `cargo audit` → exit **0**.
+- **Chẩn đoán sai đã loại bỏ:** hai miễn trừ đó **không** hết hạn. `gix-fs 0.8.1` và
+  `gix-features 0.36.1` vẫn nằm trong `Cargo.lock` **đúng phiên bản advisory nêu**. Đo (có kiểm mã
+  thoát, bài học F-025 — lệnh in rỗng mà exit 0 không phải kết quả âm):
+  | lệnh | kết quả |
+  |---|---|
+  | `cargo tree -i gix-fs -e normal` | exit 0, `nothing to print` |
+  | `cargo tree -i gix-fs -e normal --features desktop` | exit 0, `nothing to print` |
+  | `cargo tree -i gix-fs -e all --target all` | exit 0, `nothing to print` |
+- **Nguyên nhân thật:** crate có trong lockfile và **không có trong graph nào**. `cargo audit` đọc
+  `Cargo.lock` → thấy crate → miễn trừ khớp → vô hại. `cargo deny` **dựng graph** → không thấy
+  crate → miễn trừ không khớp gì → deny coi đó là **error**. Hai công cụ, một lockfile, hai phạm vi
+  khác nhau.
+- **Lỗi nằm ở tiền đề của `deny.toml`:** chú thích của nó tự nhận *"Mirrors `.cargo/audit.toml`"*.
+  Nó **không được** phản chiếu. Phần đầu `audit.toml` tồn tại chính là để ghi loại miễn trừ
+  chỉ-có-trong-lockfile (*"a lockfile is feature-agnostic ... an advisory can be reported against a
+  crate that is provably never built"*), và một miễn trừ loại đó **vô nghĩa** trong công cụ soi
+  graph. Một miễn trừ đúng ở file này là lỗi ở file kia.
+- **Xuất xứ:** `a8e6b0e` viết hai entry vào `audit.toml` — đúng chỗ. `043930c` (commit đổi giấy
+  phép) chép chúng sang `deny.toml` — sai chỗ. **A6 (`f73086c`) không gây ra việc này**; tôi đã nói
+  ngược hai lần trước khi đo, và đó là cùng một kiểu lỗi với F-025: đọc một dòng grep khớp rồi suy
+  ra nguyên nhân thay vì kiểm.
+- **Tái hiện:** `cd src-tauri && cargo deny check; echo $?` → 1, rồi
+  `cargo tree -i gix-fs -e all --target all; echo $?` → exit 0 không in gì.
+- **Cách sửa:** xoá hai entry khỏi `deny.toml` và sửa chú thích "Mirrors" — hai file phải nói rõ
+  mỗi advisory được miễn trừ ở công cụ **thực sự thấy** crate đó, không phải ở cả hai. Chưa làm:
+  `deny.toml` là build config, `AGENTS.md` chặn, cần người chủ mở quyền.
+- **Trạng thái:** OPEN
+
 ### F-031 — `thread_tracking_allocator_tests` đỏ trên macOS: chính hai `Barrier::wait()` của test nằm trong cửa sổ đo
 - **Ngày:** 2026-10-31
 - **Loại:** TEST-GAP (lỗi tính khả chuyển của dụng cụ đo, không phải lỗi hot loop)
