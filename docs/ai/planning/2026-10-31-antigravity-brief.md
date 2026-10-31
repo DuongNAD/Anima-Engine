@@ -557,3 +557,101 @@ endings and path separators are the usual causes and both have bitten this proje
 before — scripts/check_test_targets.mjs exists partly because PowerShell wrapped
 cargo's output and made a gate under-report.
 ```
+
+### A7′ — Make the licensing artifacts reproducible on any host (**thay cho A7**)
+
+> Thay thế A7. A7 nói "chạy lại trên Windows"; task này sửa nguyên nhân để **mọi máy** chạy được,
+> nên artifact licence không còn chỉ kiểm được ở runner Windows. Hai lệnh cargo đã được xác minh
+> chạy trên macOS trước khi viết block này.
+
+```text
+GOAL
+Make the licensing generator resolve the WINDOWS dependency graph explicitly, so
+`npm run gen:compliance` produces the committed artifacts on any host, not only on
+Windows. Then regenerate and report hashes so the owner can confirm byte-identity
+against a real Windows run.
+
+AUTHORIZATION — READ THIS
+This task edits scripts/, which AGENTS.md lists under "Cấm tuyệt đối". The owner
+has directed this work explicitly. That authorization covers scripts/lib/licensing.mjs
+and the generated artifacts named under FILES, and nothing else. R5 still applies to
+CLAUDE.md, AGENTS.md, PROJECT.md, STATE_OF_THE_PROJECT.md, docs/reference/ and the ADRs.
+
+WHY THIS EXISTS
+scripts/lib/licensing.mjs:27 states the problem in its own words — "`cargo tree`
+resolves for the host target. This repository's desktop target is Windows and CI
+runs the Rust job on windows-latest, so the committed artifacts describe a Windows
+build." It is recorded as a property of the product. The consequence was not: a
+developer on macOS or Linux CANNOT run `npm run check:notice` and get a meaningful
+answer — they get the macOS inventory and a red gate. So CI is the only place that
+gate means anything, which is the "a gate that only fails where nobody is looking"
+pattern this repository has already paid for several times.
+
+MEASURED ON macOS 2026-10-31, BOTH WORK — you are not exploring, you are implementing:
+  cargo tree --features desktop -e normal --target x86_64-pc-windows-msvc
+      -> exit 0, 19 occurrences of windows-sys/webview2 in the output
+  cargo metadata --format-version 1 --features desktop \
+      --filter-platform x86_64-pc-windows-msvc
+      -> exit 0, 577 packages, windows-sys present, no objc2 and no gtk
+Neither needs `rustup target add`: resolution evaluates cfg, it does not need the
+target's std. If either DOES demand an installed target on your machine, stop and
+report that instead of installing one.
+
+WHAT TO CHANGE — two call sites, both in scripts/lib/licensing.mjs
+  :195  cargo tree  ['tree', ...CARGO_FEATURES, '-e','normal','--prefix','none','--no-dedupe']
+        add the target
+  :207  cargo metadata  ['metadata','--format-version','1', ...CARGO_FEATURES]
+        add --filter-platform with the same triple
+Put the triple in ONE named constant next to CARGO_FEATURES, with a comment saying
+why Windows (the desktop target, and the platform CI's Rust job checks). Do NOT add
+an env-var override: these artifacts describe one platform by design, and a knob
+invites two developers to commit two different inventories.
+
+Then UPDATE the "Host-target caveat" comment at :24-32. It currently explains that
+the artifacts describe Windows because that is where the generator happened to run.
+After this change they describe Windows because the code says so. That comment is
+load-bearing — the A7 task block and two planning documents cite it — so it has to
+stop describing the old behaviour.
+
+FILES
+  scripts/lib/licensing.mjs          (the change)
+  NOTICE, licensing/third-party-index.json, licensing/THIRD_PARTY_LICENSES.txt,
+  sbom.cdx.json                      (regenerated — NEVER hand-edit any of them)
+
+DO NOT EXPECT 419
+The committed index says counts.cargo = 419. A rough count on macOS with the
+Windows target gives 423, and the host count is 400. The 423-vs-419 gap is NOT
+explained yet and you are not expected to make it 419:
+  - task A6 (commit f73086c) moved rustls to 0.23.46, rustls-webpki to 0.103.16 and
+    webpki-roots to 1.0.11, and a version bump can add transitive dependencies;
+  - or `--target` resolution may differ from native Windows resolution.
+Those two causes are indistinguishable from one host, which is why the hashes below
+matter. Report the number the generator produces and do not reverse-engineer it.
+
+RULES
+Use the project's own command: npm run gen:compliance (= gen:licenses && gen:sbom
+&& gen:notice), in that order. If a check still fails afterwards, report on the
+generator or the index — never edit a generated file to make a check pass.
+`npm run check:licenses-complete` is EXPECTED to fail on hexf-parse 0.2.1: upstream
+never published a licence text for that release and closing the row is a legal
+decision, not an engineering one (STATE_OF_THE_PROJECT.md §1.c). Not yours to fix.
+
+DONE WHEN
+  npm run check:notice        -> exit 0
+  npm run check:licenses      -> exit 0
+  npm run check:sbom          -> exit 0
+  npm run check:sbom-schema   -> exit 0
+  npm run test:frontend       -> 0 failed   (was 6: noticeInventory 5 + thirdPartyLicenses 1)
+  cd src-tauri && cargo test --features desktop --no-fail-fast
+                              -> 1153 passed, 0 failed  (nothing here touches Rust,
+                                 so a different number is a red flag, not a result)
+AND REPORT, so a Windows run can be compared byte for byte:
+  shasum -a 256 NOTICE licensing/third-party-index.json \
+                licensing/THIRD_PARTY_LICENSES.txt sbom.cdx.json
+  plus counts.cargo from the regenerated index, your OS, and `rustc --version`.
+The owner will run the identical command on Windows. If the four hashes match, the
+--target path is proven faithful and these artifacts become verifiable anywhere. If
+they do NOT match, that is a more valuable finding than this task: it means a second
+platform axis exists that --target does not capture, and it must be named before any
+licensing artifact is trusted. Say so plainly rather than adjusting anything.
+```
