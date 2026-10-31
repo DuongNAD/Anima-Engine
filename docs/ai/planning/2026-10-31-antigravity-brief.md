@@ -517,12 +517,14 @@ generated form: an npm section with >=15 versioned components, the string
 licensing/THIRD_PARTY_LICENSES.txt, and a Rust crate count matching
 licensing/third-party-index.json.
 
-Do NOT expect that count to be 419. The committed index says 419, but task A6
-(commit f73086c) moved rustls 0.23.42->0.23.46, rustls-webpki ->0.103.16 and
-webpki-roots 1.0.9->1.0.11, and a version bump can add or drop transitive
-dependencies. `gen:compliance` regenerates the index and NOTICE together, so the
-two agree whatever the new number is. Report the number you get; a difference from
-419 is expected, not a defect.
+EXPECT 419, and corrected 2026-10-31: an earlier version of this block said not
+to. That was wrong. Counting the crate set of
+`cargo tree --features desktop -e normal --target x86_64-pc-windows-msvc` gives 423,
+which decomposes exactly as 2 workspace crates + 2 host-resolved proc-macro leaks
+(swift-rs@1.0.7, base64@0.21.7 — see FINDINGS.md F-025) + **419** third-party. The
+difference from the committed index is only three TLS version swaps, so task A6
+added no crate at all. If your regeneration on Windows produces anything other than
+419, that is a finding worth reporting, not a number to accept quietly.
 
 The generator's template was already fixed on this branch in commit a791248 —
 before that, regenerating would have written "Anima-Engine itself is proprietary"
@@ -557,6 +559,33 @@ endings and path separators are the usual causes and both have bitten this proje
 before — scripts/check_test_targets.mjs exists partly because PowerShell wrapped
 cargo's output and made a gate under-report.
 ```
+
+### A7′ — ❌ **ĐÃ THỬ VÀ BỊ TỪ CHỐI 2026-10-31. Đừng gửi lại.** → dùng **A7**
+
+> Thí nghiệm đã **thành công ở chỗ quan trọng**: nó trả lời dứt khoát câu hỏi "sinh artifact licence
+> trên Mac được không". Đáp án là **không**, và lý do là một hành vi cargo, không phải lỗi dự án.
+>
+> Ghim `cargo tree --target x86_64-pc-windows-msvc` và `cargo metadata --filter-platform` làm
+> `gen:compliance` **exit 1** ở guard có sẵn `licensing.mjs:243`. Nguyên nhân: `cargo tree` resolve
+> crate **proc-macro và cây con của chúng theo HOST**, vì proc-macro chạy trong tiến trình compiler.
+> `tauri-utils` khai `swift-rs` dưới `cfg(target_os = "macos")`; qua proc-macro `tauri-macros`,
+> cargo đánh giá cfg đó theo macOS và kéo `swift-rs@1.0.7` + `base64@0.21.7` vào — mà
+> `--filter-platform` thì loại. Hai lệnh bất đồng **theo thiết kế** khi cross-resolve.
+>
+> `-e no-proc-macro` sẽ làm chúng khớp lại, nhưng nó loại `tauri-macros`, `syn`, `quote`,
+> `proc-macro2`, `serde_derive`, `thiserror-impl` — những crate **đang có trong** inventory. Đó là
+> đổi phạm vi tài liệu tuân thủ, tức quyết định pháp lý, không phải sửa lỗi.
+>
+> **Hai thứ thí nghiệm này để lại, giá trị hơn việc nó định làm:**
+> 1. **419 nay được chứng minh**, không còn là "con số đã commit": 423 crate của
+>    `cargo tree --target windows` = 2 workspace + 2 rò host + **419** third-party.
+> 2. **A6 không thêm crate nào** — hiệu với index chỉ là ba cặp đổi phiên bản TLS. Nên lời dặn
+>    *"DO NOT EXPECT 419"* trong block A7 là **sai**; 419 mới là đúng, và A7 đã được sửa.
+>
+> Đầy đủ ở [FINDINGS.md F-025](../../../FINDINGS.md). Bản thử còn trong `git stash@{0}`.
+
+<details>
+<summary>Block gốc, giữ làm bản ghi lịch sử — <b>không dùng</b></summary>
 
 ### A7′ — Make the licensing artifacts reproducible on any host (**thay cho A7**)
 
@@ -655,3 +684,5 @@ they do NOT match, that is a more valuable finding than this task: it means a se
 platform axis exists that --target does not capture, and it must be named before any
 licensing artifact is trusted. Say so plainly rather than adjusting anything.
 ```
+
+</details>

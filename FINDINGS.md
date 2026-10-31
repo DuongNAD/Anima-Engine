@@ -30,6 +30,45 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-025 — `cargo tree --target X` không độc lập host: proc-macro được resolve theo host, nên artifact licence không sinh được từ máy khác
+- **Ngày:** 2026-10-31
+- **Loại:** SMELL (hành vi cargo, không phải lỗi dự án)
+- **Vị trí:** `scripts/lib/licensing.mjs:195` (`cargo tree`), `:207` (`cargo metadata`), guard `:243`
+- **Phát hiện bởi:** thí nghiệm A7′ — thử sinh artifact licence Windows từ máy macOS
+- **Triệu chứng:** ghim cả hai lệnh vào `x86_64-pc-windows-msvc` (`cargo tree --target`,
+  `cargo metadata --filter-platform`) làm `npm run gen:compliance` **exit 1** ở guard có sẵn:
+  *"cargo tree lists base64@0.21.7 but cargo metadata does not resolve it. The two commands
+  disagree about the graph; do not publish an inventory from this state."*
+- **Nguyên nhân:** `cargo tree -e normal --target <X>` resolve dependency thường theo target X,
+  **nhưng resolve crate proc-macro và toàn bộ cây con của chúng theo HOST**, vì proc-macro chạy
+  trong tiến trình compiler trên host. `tauri-utils` khai `swift-rs` dưới
+  `[target.'cfg(target_os = "macos")'.dependencies]`; đi qua proc-macro `tauri-macros`, cargo đánh
+  giá `cfg(target_os = "macos")` theo **host macOS** → true → kéo `swift-rs@1.0.7` và
+  `base64@0.21.7` vào. `cargo metadata --filter-platform` thì lọc mọi node theo **một** platform và
+  bỏ qua chuyện host-vs-target của proc-macro, nên loại cả hai. Hai lệnh bất đồng theo thiết kế.
+- **Tái hiện:**
+  ```
+  cd src-tauri
+  cargo tree -i base64@0.21.7 --features desktop --target x86_64-pc-windows-msvc -e normal
+      -> base64 v0.21.7 <- swift-rs v1.0.7 <- tauri-utils <- tauri-macros (proc-macro) <- tauri
+  cargo metadata --format-version 1 --features desktop --filter-platform x86_64-pc-windows-msvc
+      -> không có swift-rs; chỉ có base64 0.22.1
+  ```
+- **Hệ quả tốt — con số 419 nay được chứng minh, không còn là "số đã commit":** đếm tập crate của
+  `cargo tree --target x86_64-pc-windows-msvc` trên macOS cho **423**, và nó phân tách đúng:
+  **2** crate workspace (`anima-engine`, `anima-domain`) + **2** crate rò theo host
+  (`swift-rs@1.0.7`, `base64@0.21.7`) + **419** third-party = 423. Hiệu với index đã commit **chỉ**
+  là ba cặp đổi phiên bản TLS (`rustls` 0.23.42→0.23.46, `rustls-webpki` 0.103.13→0.103.16,
+  `webpki-roots` 1.0.9→1.0.11), tức **A6 không thêm crate nào**.
+- **Vì sao không sửa bằng `-e no-proc-macro`:** cờ đó tồn tại và sẽ làm hai lệnh khớp lại, nhưng nó
+  loại crate proc-macro khỏi inventory — mà `tauri-macros`, `syn`, `quote`, `proc-macro2`,
+  `serde_derive`, `thiserror-impl` **đang có trong** `third-party-index.json`. Bỏ chúng là đổi điều
+  tài liệu tuân thủ khẳng định về phạm vi, tức **quyết định pháp lý**, không phải sửa lỗi kỹ thuật.
+- **Test khoá lại:** guard `licensing.mjs:243` đã là test khoá — nó bắt đúng chế độ hỏng này và
+  **chặn** việc publish một inventory sai. Đây là lần nó chứng minh giá trị.
+- **Trạng thái:** CLOSED-WONTFIX — artifact licence **phải** sinh trên Windows (task A7). Bản thử
+  A7′ còn trong `git stash` (`stash@{0}`) nếu cần đọc lại.
+
 ### F-023 — `adversarial_coverage_tests` đỏ flaky: counter toàn tiến trình bị test anh em nhiễu
 - **Ngày:** 2026-08-26
 - **Loại:** BUG
