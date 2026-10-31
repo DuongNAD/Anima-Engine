@@ -1097,3 +1097,196 @@ DONE WHEN
   6) report: every unordered pair you found, which predate 1d301c3, the order you
      declared and why, and the checksum before and after
 ```
+
+### B3b — the five gates B3/B4 turned red, and the one-line fix it reached for an exemption instead (stacks on PR #40)
+
+Measured 2026-11-01 from CI runs `41204212880` (PR #39) and `41215060684` (PR #40),
+plus local re-measurement of `cargo deny` on both branches. FINDINGS.md F-033, F-034,
+and the correction to F-032.
+
+```text
+GOAL
+PR #40 closed main's eight red gates. It also turned five green gates red, and it
+wrote a permanent advisory exemption for a vulnerability that a one-line lockfile
+bump closes. Fix those, in the order below. FINDINGS.md F-033 and F-034.
+
+AUTHORIZATION
+Writes to src-tauri/Cargo.lock, src-tauri/deny.toml, scripts/check_bundle_budget.mjs,
+licensing/bundle-closure.json, and vite.config.ts if and only if task 3 concludes a
+chunking-config change. The owner authorized src-tauri/src (QĐ-B) and scripts/.
+R5 still applies to CLAUDE.md, AGENTS.md, PROJECT.md, STATE_OF_THE_PROJECT.md,
+docs/reference/ and the ADRs. R12 still applies to NOTICE,
+licensing/third-party-index.json and sbom.cdx.json — see task 4.
+
+BRANCH FROM PR #40
+Base your branch on `fix/ci-gates-green` (PR #40, 78b2e85). Everything below is a
+correction to that commit; do not re-litigate what it got right. What it got right,
+verified independently: all eight target gates are green on CI, 25 of its 36 changed
+.rs files are pure rustfmt, the ~88 semantically changed lines are each
+behaviour-preserving, per-file assertion counts are unchanged, and both suppressions
+it added are narrow and true.
+
+===============================================================================
+TASK 1 — tokio: bump, do not exempt. Do this first; it is one command.
+===============================================================================
+
+PR #40 added a 20-line exemption to src-tauri/deny.toml for RUSTSEC-2026-0386
+(tokio `AsyncFd` I/O-safety). That advisory has a patched version in range:
+
+    ~/.cargo/advisory-db/crates/tokio/RUSTSEC-2026-0386.md
+    patched = [">= 1.51.6, < 1.52.0", ">= 1.53.3"]
+    categories = ["memory-corruption"]
+    keywords   = ["io-safety", "use-after-free"]
+
+Cargo.lock sits at tokio 1.53.1 — two patches below the fix.
+
+MEASURED, both branches, 2026-11-01:
+    cd src-tauri && cargo update -p tokio --precise 1.53.3
+      -> "Updating tokio v1.53.1 -> v1.53.3", 159 unchanged dependencies
+    cargo audit         -> exit 0, still 773 crate dependencies (count unchanged)
+    on feat/ecological-selection, cargo deny check:
+      before  exit 1,  grep -cE '^error' = 1  (the error IS this tokio advisory)
+      after   exit 0,  grep -cE '^error' = 0
+    on fix/ci-gates-green, after the bump the exemption becomes a warning:
+      warning[advisory-not-detected] deny.toml:125 "no crate matched advisory criteria"
+
+DO:
+  1. cd src-tauri && cargo update -p tokio --precise 1.53.3
+  2. Delete the whole RUSTSEC-2026-0386 block from deny.toml's `ignore` list,
+     leaving `ignore = []`. Keep the rewritten SCOPE comment — it is correct and it
+     is the one thing PR #40 improved in that file. Adjust only the sentence that
+     introduces the list, so it does not promise entries that are no longer there.
+  3. Re-run: cargo audit; cargo deny check; cargo tree -e all --features desktop
+     --target all | grep -c " tokio v"    (expect the same count as before: 22)
+
+DO NOT write an exemption for an advisory that has a patched version. Reachability
+("nobody calls AsyncFd") is the argument for an advisory with NO fix. It was true
+here — grep -rn AsyncFd over src/, tests/, crates/ returns 0 — and it was still the
+wrong move. Note also that deny.toml's [graph] targets lists
+x86_64-unknown-linux-gnu and aarch64-apple-darwin alongside the Windows triple, so
+"#[cfg(unix)], absent on Windows" covers one of the three targets the gate checks.
+
+===============================================================================
+TASK 2 — licensing/bundle-closure.json: R12 does not cover it. Regenerate it.
+===============================================================================
+
+PR #40 left `check:bundle-closure` red and reported that R12 forbade fixing it.
+R12 does not. Measured:
+  - R12 names exactly three artifacts: NOTICE, licensing/third-party-index.json,
+    sbom.cdx.json. bundle-closure.json is not one of them.
+  - R12 exists because `cargo tree` resolves for the HOST target. bundle-closure
+    is npm-only; no cargo command feeds it.
+  - The gate runs in the frontend job on ubuntu-latest (ci.yml, `runs-on:
+    ubuntu-latest`), not on windows-latest.
+  - The committed file lists exactly 20 packages, all platform-independent JS
+    (@oxc-project/runtime, @react-three/fiber, pixi.js, react, three, vite,
+    rolldown, zustand, ...). `grep -c 'binding-' licensing/bundle-closure.json`
+    returns 0 — no per-platform native binding is recorded, so a macOS or Linux
+    host produces the same inventory as the CI runner.
+  - CI printed the exact diff it wants: two entries, @oxc-project/runtime and
+    rolldown, at their new versions.
+
+DO: npm run build  (the vite plugin writes bundle-closure.json at closeBundle),
+then `npm run check:bundle-closure` -> exit 0, and commit the regenerated file.
+If the regenerated file differs from CI's printed diff in anything beyond those two
+version strings, STOP and report it — that would mean the file is host-sensitive
+after all, which is a finding.
+
+===============================================================================
+TASK 3 — the chunk budget. Read this whole section before touching a number.
+===============================================================================
+
+`check:bundle` (Bundle budget and route split) went red. PR #40 did not predict it.
+THE BUNDLE DID NOT GROW. Measured, full chunk lists from both CI runs:
+
+  gone      client          133.50 kB        grew   main            163.92 -> 274.10 kB
+            CanvasRenderer   86.17 kB               defineProperty    0.70 -> 141.18 kB
+            init             24.72 kB
+            jsx-runtime       7.11 kB
+            --------------------------------       --------------------------------
+            total vanished  251.50 kB               total absorbed  250.66 kB
+
+Those two totals agree to within 0.84 kB. 28 chunks became 24; the whole-bundle
+total moved from 1849.5 to 1846.6 KiB, i.e. -2.9 KiB. rolldown 1.2.16 (vite 8.3.5)
+re-chunks: it stopped hoisting react-dom/client, CanvasRenderer and jsx-runtime into
+their own named chunks and folded them into `main` and into the pre-existing
+`defineProperty` helper chunk, which was 0.70 kB before.
+
+Note `defineProperty` is NOT a new chunk name. It existed at 0.70 kB. rolldown moved
+~140 kB of shared code into it. The budget table's `default: 80` caught it, which is
+that entry working as designed.
+
+There is no manualChunks map in this repo. vite.config.ts's rollupOptions declares
+only `input` (three HTML entries). Every chunk NAME in scripts/check_bundle_budget.mjs
+is a name rolldown invents, and that file's own doc comment says the right way to
+change a budget is to land the split first and record what the build actually does.
+Its `client: 160` entry documents precisely this kind of event in the other
+direction, when rolldown first hoisted react-dom/client out.
+
+THE ONE THING YOU MUST MEASURE YOURSELF, because the logs cannot tell you:
+whether the EAGER download grew. Chunk count per entry fell (index.html 16 -> 12
+static chunks), but count is not bytes. Build both revisions and sum, per entry HTML,
+the sizes of the chunks it statically references — the same set
+check_bundle_budget.mjs already extracts:
+
+    [...html.matchAll(/(?:src|href)="\/assets\/([^"]+\.js)"/g)]
+
+Write that as a throwaway script; do not change the gate to print it.
+
+    Build A: git checkout 78b2e85 -- package-lock.json tests/package-lock.json
+             (vite 8.3.5) ; npm ci ; npm run build
+    Build B: git checkout 03b331f -- package-lock.json tests/package-lock.json
+             (vite 8.1.5) ; npm ci ; npm run build
+
+THEN DECIDE, and say which branch of this you took and why:
+  (a) index.html's eager closure is within a few KiB of before -> this is renaming,
+      not growth. Re-key the budget table: add a `defineProperty` entry with the
+      usual headroom, raise `main`, and DELETE the `client`, `CanvasRenderer` and
+      `init` entries that no longer match any chunk — a budget for a chunk that
+      stopped existing is a gate that cannot fail. Put the measured numbers in the
+      comment, in the same commit, per CLAUDE.md.
+  (b) index.html's eager closure grew materially -> this is a real
+      time-to-interactive regression and a budget raise would hide it. Fix the
+      chunking instead. rolldown printed the lever in that same build log:
+      "Use build.rolldownOptions.output.codeSplitting to improve chunking".
+      Configure it so the eager closure returns to roughly its previous shape, and
+      leave the budgets alone.
+
+Do not take (a) because it is less work. The byte accounting above says the code did
+not change; it does NOT say which route pays for it, and that is the whole point of
+this gate — read the long comment at the top of ENTRY_HTML in that script.
+
+===============================================================================
+TASK 4 — A7, and it must be LAST
+===============================================================================
+
+NOTICE, licensing/third-party-index.json and sbom.cdx.json are stale. They are the
+three artifacts R12 does cover, and they need a WINDOWS host. Use the existing A7
+block in this brief; do not restate its numbers from memory.
+
+ORDERING IS NOT OPTIONAL: task 1 changes Cargo.lock. Regenerate the Rust-derived
+artifacts only after tokio is at 1.53.3, or they will be stale again the moment the
+bump lands. If you have no Windows host, do tasks 1-3, commit, and say plainly that
+the three licensing gates remain red pending A7 on Windows. That is the honest
+outcome, not a failure.
+
+===============================================================================
+DONE WHEN
+===============================================================================
+  - cargo audit                                    exit 0
+  - cargo deny check                               exit 0, grep -cE '^error' = 0
+  - npm run check:bundle-closure                   exit 0
+  - npm run check:bundle                           exit 0
+  - cargo test --features desktop --no-fail-fast   same 1216 passed / 107 targets
+  - npm run lint && node scripts/eslint_ratchet.mjs   0 errors, 0 warnings
+  - the three licensing gates: green, or explicitly reported as pending A7
+
+REPORT
+Use the WHAT CHANGED / WHY / VERIFY / NOT DONE / SURPRISES format. R3's mechanical
+clause applies in full: for every symbol or test you cite as evidence, paste the
+grep that locates it, and describe the change that is in `git diff`, not the one you
+considered. The B3/B4 report named a unit test and a function that exist nowhere,
+named the wrong enum, and described two loop rewrites present in no committed line —
+while every edit it actually made was correct. A report that cannot be checked costs
+more than no report, because someone has to re-measure all of it.
+```

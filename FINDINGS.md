@@ -98,21 +98,44 @@ Quy tắc ghi:
 - **Tái hiện:**
   `cat ~/.cargo/advisory-db/crates/tokio/RUSTSEC-2026-0386.md` rồi
   `cd src-tauri && cargo update -p tokio --precise 1.53.3 --dry-run`
-- **Cách sửa:** bump `tokio` lên `1.53.3` và **xoá** khối `ignore` — cần quyền sửa `deny.toml`
-  (vẫn đang chờ chủ repo, cùng chỗ với F-032)
+- **Cách sửa, đã đo trên CẢ HAI nhánh — một lệnh, không cần quyền `deny.toml`:**
+  `cd src-tauri && cargo update -p tokio --precise 1.53.3`
+  | nhánh | trước | sau bump |
+  |---|---|---|
+  | `feat/ecological-selection` | `cargo deny check` exit **1**, `grep -cE '^error'` → **1** | exit **0**, `^error` → **0** |
+  | `fix/ci-gates-green` (PR #40, còn khối `ignore`) | `advisories ok` (nhờ miễn trừ) | `advisories ok`, miễn trừ thành warning `advisory-not-detected` tại `deny.toml:125` |
+  `cargo audit` vẫn exit 0 và vẫn đếm **773 crate** sau bump, tức không kéo thêm/bớt dependency nào.
+  Trên PR #40 nên xoá luôn khối `ignore` cho khỏi để lại warning — việc đó mới cần quyền `deny.toml`,
+  và nó là vệ sinh, không phải điều kiện để xanh.
 - **Trạng thái:** OPEN
 
-### F-032 — `deny.toml` phản chiếu miễn trừ của `audit.toml`, nhưng hai công cụ không soi cùng một thứ: `cargo deny` đỏ vì một miễn trừ **đúng**
-- **Ngày:** 2026-10-31
-- **Loại:** BUG (gate đỏ vì tiền đề sai, không vì lỗ hổng)
+### F-032 — `deny.toml` phản chiếu miễn trừ của `audit.toml`, hai công cụ không soi cùng một thứ — nhưng đó **không** phải lý do gate đỏ
+- **Ngày:** 2026-10-31 (sửa chẩn đoán 2026-11-01)
+- **Loại:** SMELL (miễn trừ đặt sai file; chỉ sinh **warning**, không làm đỏ gate)
+- **SỬA NGÀY 2026-11-01 — mục này chẩn đoán sai, lần thứ hai cùng một kiểu.** Đo lại trên chính
+  `feat/ecological-selection`, đếm theo mức chẩn đoán chứ không theo chữ "FAILED":
+  `cargo deny check` in **đúng một** dòng `error`, và nó là
+  `error[unsound]: AsyncFd::new and related constructors violate I/O safety` — tức
+  `RUSTSEC-2026-0386` của **`tokio`**, một advisory thật, thấy được trong graph. Hai dòng
+  `no crate matched advisory criteria` cho cặp `gix` là **`warning`**, không phải `error`:
+  `grep -cE '^error' → 1`. Vậy `advisories FAILED` do tokio, **không** do hai miễn trừ phản chiếu.
+  Chứng minh trực tiếp: `cargo update -p tokio --precise 1.53.3` (một lệnh, không sửa `deny.toml`)
+  → `cargo deny check` **exit 0**, `grep -cE '^error' → 0`, hai warning kia vẫn còn nguyên tại chỗ.
+  **Hệ quả:** gate này **không** cần quyền sửa `deny.toml` để xanh — xem [F-033]. Việc xoá hai entry
+  khỏi `deny.toml` vẫn đúng (chúng ở sai file và sẽ còn kêu warning), nhưng là **vệ sinh**, không
+  phải điều kiện. Phần phân tích phạm vi hai công cụ bên dưới vẫn đúng; chỉ kết luận
+  "đỏ vì miễn trừ" là sai.
+- **Loại cũ (đã bỏ):** BUG (gate đỏ vì tiền đề sai, không vì lỗ hổng)
 - **Vị trí:** `src-tauri/deny.toml:104-111` (`[advisories] ignore`, kèm chú thích
   *"Mirrors `.cargo/audit.toml`"*), đối chiếu `src-tauri/.cargo/audit.toml`
 - **Phát hiện bởi:** tay — đo trạng thái 8 gate đỏ của main để viết prompt B3/B4, rồi soát lại
   chính khẳng định của mình
 - **Triệu chứng:** `cd src-tauri && cargo deny check` → exit 1,
-  `advisories FAILED, bans ok, licenses ok, sources ok`, trỏ vào `deny.toml:109` và `:110`
-  (`RUSTSEC-2024-0350`, `RUSTSEC-2025-0021`) với `no crate matched advisory criteria`. Cùng cây,
-  `cargo audit` → exit **0**.
+  `advisories FAILED, bans ok, licenses ok, sources ok`, kèm hai **warning**
+  `advisory-not-detected` tại `deny.toml:109` và `:110` (`RUSTSEC-2024-0350`,
+  `RUSTSEC-2025-0021`) với `no crate matched advisory criteria`. Cùng cây,
+  `cargo audit` → exit **0**. (Khi viết mục này tôi đọc hai warning đó là nguyên nhân của exit 1;
+  xem khối sửa ở trên — chúng không phải.)
 - **Chẩn đoán sai đã loại bỏ:** hai miễn trừ đó **không** hết hạn. `gix-fs 0.8.1` và
   `gix-features 0.36.1` vẫn nằm trong `Cargo.lock` **đúng phiên bản advisory nêu**. Đo (có kiểm mã
   thoát, bài học F-025 — lệnh in rỗng mà exit 0 không phải kết quả âm):
@@ -138,8 +161,9 @@ Quy tắc ghi:
   `cargo tree -i gix-fs -e all --target all; echo $?` → exit 0 không in gì.
 - **Cách sửa:** xoá hai entry khỏi `deny.toml` và sửa chú thích "Mirrors" — hai file phải nói rõ
   mỗi advisory được miễn trừ ở công cụ **thực sự thấy** crate đó, không phải ở cả hai. Chưa làm:
-  `deny.toml` là build config, `AGENTS.md` chặn, cần người chủ mở quyền.
-- **Trạng thái:** OPEN
+  `deny.toml` là build config, `AGENTS.md` chặn, cần người chủ mở quyền. **Không còn chặn gate:**
+  việc này chỉ dọn hai warning; muốn gate xanh thì bump `tokio` ([F-033]), không cần file này.
+- **Trạng thái:** OPEN (hạ xuống vệ sinh — không chặn CI)
 
 ### F-031 — `thread_tracking_allocator_tests` đỏ trên macOS: chính hai `Barrier::wait()` của test nằm trong cửa sổ đo
 - **Ngày:** 2026-10-31
