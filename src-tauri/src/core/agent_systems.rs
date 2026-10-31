@@ -111,7 +111,7 @@ pub struct SpawnGenotypeCommand {
 /// removes the window entirely: nothing can observe a reserve that has been banked but not yet
 /// destroyed.
 pub struct ReclaimAndDespawnAgentCommand {
-    /// The agent's root entity. Its segments are found by `ParentAgent` and go with it.
+    /// The agent's root entity. Its segments are found by `ChildrenLinks` and go with it.
     pub root: Entity,
 }
 
@@ -134,20 +134,22 @@ impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
             }
         }
 
-        let mut doomed: Vec<Entity> = Vec::new();
-        let mut q = world.query::<(Entity, &ParentAgent)>();
-        for (entity, parent) in q.iter(world) {
-            if parent.0 == self.root {
-                doomed.push(entity);
+        let mut stack = smallvec::SmallVec::<[Entity; 64]>::new();
+        let mut doomed = smallvec::SmallVec::<[Entity; 64]>::new();
+        stack.push(self.root);
+        while let Some(current) = stack.pop() {
+            if doomed.contains(&current) {
+                continue;
+            }
+            doomed.push(current);
+            if let Some(children) = world.get::<crate::core::ecs::ChildrenLinks>(current) {
+                stack.extend(children.0.iter().copied());
             }
         }
         for entity in doomed {
             if let Some(e) = world.get_entity_mut(entity) {
                 e.despawn();
             }
-        }
-        if let Some(e) = world.get_entity_mut(self.root) {
-            e.despawn();
         }
     }
 }
@@ -342,29 +344,24 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
         };
         world.entity_mut(entity).insert(sex);
 
-        // Synchronize root RigidBody velocity
-        if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(entity) {
-            body.velocity = vel_vec;
-            body.force = glam::Vec3::ZERO;
-        }
-
-        // Synchronize child segment RigidBody and Velocity
-        let mut child_entities = Vec::new();
-        let mut q = world.query::<(Entity, &ParentAgent)>();
-        for (e, parent) in q.iter(world) {
-            if parent.0 == entity {
-                child_entities.push(e);
+        // Synchronize root and child segment RigidBody and Velocity via stack-allocated ChildrenLinks traversal.
+        let mut stack = smallvec::SmallVec::<[Entity; 64]>::new();
+        let mut visited = smallvec::SmallVec::<[Entity; 64]>::new();
+        stack.push(entity);
+        while let Some(current) = stack.pop() {
+            if visited.contains(&current) {
+                continue;
             }
-        }
-        for child_e in child_entities {
-            if let Some(mut child_vel) = world.get_mut::<Velocity>(child_e) {
-                child_vel.0 = vel_vec;
+            visited.push(current);
+            if let Some(mut vel) = world.get_mut::<Velocity>(current) {
+                vel.0 = vel_vec;
             }
-            if let Some(mut child_body) =
-                world.get_mut::<crate::physics::dynamics::RigidBody>(child_e)
-            {
-                child_body.velocity = vel_vec;
-                child_body.force = glam::Vec3::ZERO;
+            if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(current) {
+                body.velocity = vel_vec;
+                body.force = glam::Vec3::ZERO;
+            }
+            if let Some(children) = world.get::<crate::core::ecs::ChildrenLinks>(current) {
+                stack.extend(children.0.iter().copied());
             }
         }
 
