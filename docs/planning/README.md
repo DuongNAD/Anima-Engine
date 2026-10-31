@@ -10,6 +10,8 @@ last_reviewed: 2026-07-26
 | Phạm vi | Tài liệu | Vai trò |
 |---|---|---|
 | **Bắt đầu ở đây** | [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) | Trạng thái **đo được** + backlog ưu tiên kèm điểm neo và định nghĩa hoàn thành |
+| **Kế hoạch thực thi hiện hành** | [`EXECUTION_PLAN_2026-10-31.md`](EXECUTION_PLAN_2026-10-31.md) (`proposed`) | Task HT-A / HT-B / HT-C từng mục, kèm file, lệnh xác minh và phụ thuộc. Brief cho agent: [Antigravity](../ai/planning/2026-10-31-antigravity-brief.md) |
+| Hoàn thiện — nghiên cứu mới nhất | [`COMPLETION_ROADMAP_2026-10-31.md`](COMPLETION_ROADMAP_2026-10-31.md) (`proposed`) | Đo 2026-10-31 trên hai cây mã, chẩn đoán phân kỳ `main` ↔ `feat/ecological-selection`, và thứ tự HT0′–HT2′. Thay §1 của roadmap 16/10 |
 | Toàn bộ hệ mô phỏng | [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMULATION_PLAN.md) | Roadmap sản phẩm/kỹ thuật dài hạn |
 | Creature morphogenesis | [`CREATURE_MORPHOGENESIS_PLAN.md`](CREATURE_MORPHOGENESIS_PLAN.md) | Genotype, phenotype, spawn, persistence và adaptation gates |
 | Alternate evolution + World Lab | [Feature task plan](../ai/planning/2026-07-24-feature-alternate-evolution-world-lab.md) | World laws, exotic energy, forks, observability và species evidence |
