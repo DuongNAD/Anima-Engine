@@ -67,6 +67,22 @@ R3  NEVER fabricate data, evidence, or fallback values. No hardcoded seeds prese
     that number appears exactly once in the repository, in
     docs/planning/STATE_OF_THE_PROJECT.md line 127, as a macOS measurement of a DIFFERENT
     failure taken before PR #38. No Windows run produced it.
+    MECHANICAL RULE, because the two paragraphs above have now failed three times. Every
+    claim of the form "verified via test X" or "X == Y" must carry, inline, the grep that
+    locates the symbol: `grep -rn "<name>" src-tauri/` and its output. And describe the
+    change that is IN THE DIFF, not the one you considered. Run
+    `git diff <base> HEAD -- <file>` and read it back before writing the report.
+    History, one B3/B4 report: it claimed the leap-year rewrite was "verified against 1900
+    and 2000 via unit test days_to_ymd_handles_epoch_and_modern_dates" — neither that test
+    nor any days_to_ymd symbol exists at either revision, while the real evidence (two
+    pre-existing assertions on format_iso8601_utc == "2000-02-29T12:00:00Z") went uncited.
+    The same report said it derived Default on InterventionVariable with #[default]
+    TemperatureOffset; the diff derives it on BranchSeedStrategy with #[default]
+    InheritStream. It described two sweeps.rs loop rewrites (`for stratum_row in &mut
+    dim_strata`, `for row in &mut matrix`) that are in no committed line, and left out a
+    real one it did make (parameter_correlations -> (0..num_dims).map(..).collect()).
+    Every one of those edits was CORRECT. The report about them was not, and a report that
+    cannot be checked is worth less than no report.
 
 R4  NEVER narrow a test command. Do not edit the `test`, `test:frontend`, `test:e2e`,
     `lint`, or `typecheck` scripts in any package.json to run a smaller set.

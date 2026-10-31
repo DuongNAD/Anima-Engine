@@ -30,6 +30,78 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-034 — PR #40 đóng 8 gate đỏ nhưng làm đỏ 5 gate đang xanh, và một trong năm cái đó **không phải** staleness
+- **Ngày:** 2026-11-01
+- **Loại:** BUG (hồi quy gate, một nửa là quyết định chưa ai ra)
+- **Vị trí:** `licensing/bundle-closure.json`, `scripts/check_bundle_budget.mjs:189`,
+  `package-lock.json` (vite `8.1.5 → 8.3.5`, rolldown `1.1.5 → 1.2.16`,
+  `@oxc-project/runtime` `0.139.0 → 0.156.0`)
+- **Phát hiện bởi:** tay — đọc hai log CI thật thay vì tin bản báo cáo
+- **Triệu chứng:** đo trước/sau từ chính log CI, không đo lại trên máy:
+  - PR #39 (`03b331f`, run `41204212880`): đỏ **đúng 8** gate — `npm audit` (root),
+    `npm audit` (tests), ESLint ratchet, `cargo fmt --check`, `cargo audit`, `cargo deny check`,
+    `cargo clippy --all-targets`, và gate tách feature. Năm gate compliance **xanh**.
+  - PR #40 (`78b2e85`, run `41215060684`): tám gate trên **xanh**, và năm gate compliance
+    **đỏ** — `check:licenses`, `check:sbom`, `check:notice`, `check:bundle-closure`,
+    `check:bundle`.
+  Bản báo cáo của Gemini đoán trước **bốn** cái, thiếu `check:bundle` (Bundle budget).
+- **Đo thật về bundle — và nó **không** phình:**
+  | | chunk | tổng | `main` | chunk mới |
+  |---|---|---|---|---|
+  | trước (xanh) | 28 | 1849.5 KiB | 160.1 KiB (80% / 200) | — |
+  | sau (ĐỎ) | 24 | 1846.6 KiB | **267.7 KiB (134% / 200)** | **`defineProperty` 137.9 KiB (172% / 80)** |
+  Tổng dịch **−2.9 KiB**. `client` (130.4), `CanvasRenderer` (84.2) và `init` (24.1) **biến mất**.
+  Nghĩa là rolldown 1.2.16 **chia lại chunk**, không ai thêm code. Bảng budget khoá theo *tên*
+  chunk, nên ba tên có budget mất đi còn một tên mới xuất hiện và ăn budget `default` 80 KiB.
+  Chính rolldown in lời khuyên trong cùng log đó:
+  `Use build.rolldownOptions.output.codeSplitting to improve chunking`.
+- **Hệ quả:** quyết định trước mặt chủ repo **không phải** "nhận thêm 107 KiB" (không có 107 KiB
+  nào) mà là "khoá lại bảng budget theo tên chunk mới, và/hoặc cấu hình `codeSplitting` để lái
+  chunk về hình cũ". Rẻ hơn hẳn, nhưng vẫn là quyết định — CLAUDE.md: nâng budget phải nâng trong
+  **cùng commit** gây ra nó, kèm lý do.
+- **`check:bundle-closure` KHÔNG thuộc R12, và đóng được ngay trên macOS:** R12 chỉ nêu `NOTICE`,
+  `licensing/third-party-index.json`, `sbom.cdx.json`, và lý do của nó là `cargo tree` resolve
+  theo host target. Gate này chạy ở job **frontend trên `ubuntu-latest`** (`ci.yml:313`,
+  `runs-on: ubuntu-latest` ở `:219`), và file đã commit ghi **đúng 20 package JS**, `grep -c
+  'binding-'` → **0**, tức không có binding theo nền tảng nào. Gemini áp R12 quá rộng rồi bỏ đỏ
+  một gate mà nó vừa **được phép** vừa **làm được**.
+- **Tái hiện:** `gh run view 41204212880 --log | grep KiB` so với
+  `gh run view 41215060684 --log-failed | grep -E 'bundle budget|KiB'`
+- **Trạng thái:** OPEN — ba gate licensing cần Windows (A7); `bundle-closure` đóng được tại chỗ;
+  `check:bundle` chờ quyết định chủ repo
+
+### F-033 — Miễn trừ `tokio` vừa viết vào `deny.toml` có **bản vá** trong tầm với: `1.53.3`
+- **Ngày:** 2026-11-01
+- **Loại:** BUG (lỗ hổng được miễn trừ thay vì được sửa)
+- **Vị trí:** `src-tauri/deny.toml:107-127` (`[advisories] ignore = ["RUSTSEC-2026-0386"]`),
+  `src-tauri/Cargo.lock` (`tokio 1.53.1`)
+- **Phát hiện bởi:** tay — kiểm chính file advisory trong `~/.cargo/advisory-db` thay vì tin lập luận
+- **Triệu chứng:** `RUSTSEC-2026-0386` khai rõ
+  `patched = [">= 1.51.6, < 1.52.0", ">= 1.53.3"]`; lockfile đang ở `1.53.1`, tức **thấp hơn bản vá
+  đúng hai patch**. `cargo update -p tokio --precise 1.53.3 --dry-run` →
+  `Updating tokio v1.53.1 -> v1.53.3`, resolve sạch, không kéo theo gì khác
+  (`159 unchanged dependencies`). Một dòng lệnh đóng được advisory mà một khối miễn trừ 20 dòng
+  vừa được viết để sống chung với nó.
+- **Hai chỗ lập luận trong chú thích yếu hơn vẻ ngoài:**
+  1. Chú thích viết `AsyncFd` nằm trong `tokio::io::unix` (`#[cfg(unix)]`, *"absent on the primary
+     `x86_64-pc-windows-msvc` target"*) — đúng với **một** trong **ba** target mà gate thật sự soi.
+     `deny.toml [graph] targets` liệt kê cả `x86_64-unknown-linux-gnu` và `aarch64-apple-darwin`,
+     đều là unix, nên ở hai target đó `AsyncFd` **có** được biên dịch.
+  2. Nửa còn lại — không ai dựng `AsyncFd` — thì **đúng**: `grep -rn AsyncFd src-tauri/src
+     src-tauri/tests src-tauri/crates` → 0 khớp. Nhưng "không ai gọi" là lập luận dành cho advisory
+     **không có** bản vá. Tiền lệ trong CLAUDE.md cũng vậy: hai miễn trừ Rust đang có là
+     *lockfile-only*, tức không build nào chạm tới.
+- **Và nó không nhẹ như chữ `unsound` gợi ra:** cùng file advisory ghi
+  `categories = ["memory-corruption"]`, `keywords = ["io-safety", "use-after-free"]`.
+  `cargo audit` coi `unsound` là informational nên im; `cargo deny` thì đỏ — đó là lý do khối miễn
+  trừ xuất hiện, chứ không phải vì không sửa được.
+- **Tái hiện:**
+  `cat ~/.cargo/advisory-db/crates/tokio/RUSTSEC-2026-0386.md` rồi
+  `cd src-tauri && cargo update -p tokio --precise 1.53.3 --dry-run`
+- **Cách sửa:** bump `tokio` lên `1.53.3` và **xoá** khối `ignore` — cần quyền sửa `deny.toml`
+  (vẫn đang chờ chủ repo, cùng chỗ với F-032)
+- **Trạng thái:** OPEN
+
 ### F-032 — `deny.toml` phản chiếu miễn trừ của `audit.toml`, nhưng hai công cụ không soi cùng một thứ: `cargo deny` đỏ vì một miễn trừ **đúng**
 - **Ngày:** 2026-10-31
 - **Loại:** BUG (gate đỏ vì tiền đề sai, không vì lỗ hổng)
