@@ -43,19 +43,21 @@ task **B6** và **QĐ-2**, không thuộc kế hoạch này.
 
 ## 1. Nguyên nhân thật: type nằm cạnh system
 
-F-005 ghi **ba** cặp phụ thuộc vòng (`ai ↔ core`, `ai ↔ physics`, `core ↔ physics`). Đo lại
-2026-10-31 bằng cách đếm module đích của từng `use crate::<mod>::`: **cả sáu** cặp trong
-{`ai`, `core`, `physics`, `evolution`} đều trỏ hai chiều. F-005 nói thiếu vì nó không tính
-`evolution`.
+F-005 ghi **ba** cặp phụ thuộc vòng (`ai ↔ core`, `ai ↔ physics`, `core ↔ physics`).
 
-| Cạnh | Số module đích | Cạnh ngược | Số module đích |
-|---|---|---|---|
-| `core → evolution` | 8 | `evolution → core` | 7 |
-| `ai → core` | 5 | `core → ai` | 4 |
-| `evolution → ai` | 5 *(ký hiệu)* | `ai → evolution` | 1 *(ký hiệu)* |
-| `physics → core` | 2 | `core → physics` | 1 |
-| `physics → ai` | 2 | — | — |
-| `evolution → physics` | 1 | `physics → evolution` | 1 |
+**Đo lại 2026-10-31 bằng chính công cụ có thẩm quyền** (`cargo modules dependencies --lib
+--no-externs --package anima-engine`, gộp về mức module): **16 cạnh `uses`**, **6 cặp vòng**:
+
+```
+ai       ↔ core          core ↔ evolution
+ai       ↔ evolution     core ↔ physics
+ai       ↔ physics       commands ↔ core      ← cặp F-005 không có
+```
+
+> ⚠️ **Bản đếm thủ công đầu tiên của tài liệu này sai ở hai chỗ, và `cargo-modules` đúng.** Đếm bằng
+> `grep 'crate::<mod>::'` cho ra `evolution ↔ physics` (không tồn tại trong đồ thị lib — grep bắt
+> import nằm trong `cfg(test)`) và **bỏ sót** `commands ↔ core` (vòng lặp không đưa `commands` vào).
+> Bài học giống F-025: một phép đếm bằng văn bản không thay được công cụ đọc đồ thị thật.
 
 **Đọc nội dung từng cạnh mỏng thì ra một mẫu duy nhất — gần như mọi cạnh là một *type component*, không phải logic:**
 

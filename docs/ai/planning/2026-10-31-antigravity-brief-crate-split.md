@@ -87,45 +87,96 @@ SURPRISES and move on.
 
 ```text
 GOAL
-Create dataflow.json describing the module dependency graph AS IT IS TODAY, make
-`just dataflow-verify 1` pass against it, and add that check to CI.
+Fix the producer, then create dataflow.json describing the module dependency graph
+AS IT IS TODAY, make `just dataflow-verify 1` pass against it, and add that check
+to CI.
 
-CONTEXT
-All the machinery exists and none of it is wired up:
-  cargo-modules 0.27.0                       installed
-  just dataflow-truth                        runs `cargo modules dependencies --lib --no-externs`
-                                             into dataflow-truth.dot
-  just dataflow-verify [depth]               runs scripts/verify_dataflow.py comparing
-                                             dataflow.json against dataflow-truth.dot
-  dataflow.json                              DOES NOT EXIST
-  "dataflow" in .github/workflows/ci.yml     0 occurrences
-Finding F-005 says this is the missing piece, in its own words: "Test khoá lại: chưa có —
-cần khai contract phụ thuộc rồi cho CI chặn."
-The raw graph has 788 edges; filtering "owns" (module nesting, not data flow) and collapsing
-to module level leaves 11 `uses` edges. 11 is small enough to declare by hand and to read in
-a pull request. scripts/verify_dataflow.py does the filtering.
+AUTHORIZATION
+This task edits justfile and .github/workflows/ci.yml. AGENTS.md lists justfile
+under "Cấm tuyệt đối". The owner has directed this work explicitly, and that
+authorization covers justfile, dataflow.json and ci.yml — nothing else. R5 still
+applies to CLAUDE.md, AGENTS.md, PROJECT.md, STATE_OF_THE_PROJECT.md,
+docs/reference/ and the ADRs. Do NOT change scripts/verify_dataflow.py: read it,
+and if it is wrong, report that instead of patching around it.
 
-CRITICAL — declare REALITY, not the target
-The current graph CONTAINS CYCLES. All six pairs among {ai, core, physics, evolution} point
-both ways (measured 2026-10-31; F-005 reports only three because it omits evolution).
-dataflow.json must describe that cyclic reality so the gate is GREEN on the first run.
-A gate that is red the day it lands gets ignored. The cycles get removed in S1, and
-dataflow.json is updated in the same PR that removes them (task S1.6).
+STEP 0 — THE PRODUCER IS BROKEN. FIX IT FIRST.
+`just dataflow-truth` exits 1 today:
+    Error: Multiple packages present in workspace,
+    please explicitly select one via --package flag.
+    Packages present in workspace:
+    - anima-engine
+    - anima-domain
+The recipe at justfile:150 runs `cargo modules dependencies --lib --no-externs`
+with no package selection. It was written before crates/anima-domain existed, so
+adding that member broke it and nobody noticed — the gate it feeds was never wired
+to CI. Add `--package anima-engine`. Verified working on macOS 2026-10-31:
+    cd src-tauri && cargo modules dependencies --lib --no-externs --package anima-engine
+    -> exit 0, 4665 lines of DOT
+This is the same shape as a trap already recorded in STATE_OF_THE_PROJECT.md: "a
+gate placed on an artifact cannot see that the artifact's producer has died."
+
+MEASURED TRUTH — you are not discovering this, you are declaring it
+Collapsed to module level, the graph has 16 `uses` edges:
+    anima_engine_lib            -> core
+    anima_engine_lib::AppState  -> core
+    ai        -> core | evolution | physics
+    commands  -> AppState | core | evolution
+    core      -> ai | commands | evolution | physics
+    evolution -> ai | core
+    physics   -> ai | core
+and SIX cyclic pairs:
+    ai <-> core        ai <-> evolution    ai <-> physics
+    core <-> evolution core <-> physics    commands <-> core
+
+Note two things, because a hand count got both wrong before cargo-modules was run:
+  - `commands <-> core` IS a cycle. F-005 does not mention it.
+  - `evolution <-> physics` is NOT a cycle in the lib graph, even though
+    `grep 'crate::physics'` finds a hit in evolution/ — that import is inside a
+    cfg(test) module, which cargo-modules does not analyse.
+Declare what cargo-modules prints. If your run disagrees with the 16/6 above, say
+so and stop: that means the graph moved since 2026-10-31 and the numbers in
+docs/planning/CRATE_SPLIT_PLAN_2026-10-31.md need updating too.
+
+DECLARE REALITY, NOT THE TARGET
+The current graph CONTAINS those six cycles and dataflow.json must describe them,
+so the gate is GREEN on its first run. A gate that is red the day it lands gets
+ignored. The cycles are removed later, in S1, and dataflow.json is updated in the
+same PR that removes them (S1.6). scripts/verify_dataflow.py already prints the
+cyclic pairs on success as a LUU Y notice — so a green gate still names them.
+
+THE FILE FORMAT — read scripts/verify_dataflow.py before writing it
+    { "edges": [ { "from": "...", "to": "...", "invariant": "..." }, ... ] }
+The verifier fails in four ways and you must satisfy all four:
+  1. an edge in your claim that is not in the truth  -> "edge BIA"
+  2. an edge in the truth you did not claim          -> "edge BO SOT"
+  3. an `invariant` of fewer than three words        -> "invariant rong tuech"
+  4. an `invariant` containing the word "flow"       -> same
+So every edge needs a CHECKABLE invariant, and "data flows from A to B" is
+explicitly rejected. Write what must hold, e.g. for physics -> core something like
+"physics reads ECS component types only, never calls a tick system" — a claim a
+reader could disprove. Do not write 16 variations of one sentence; if you cannot
+say what an edge guarantees, say so in SURPRISES.
 
 FILES
-  dataflow.json              (new)
+  justfile          (recipe at :150, add --package)
+  dataflow.json     (new, repo root — the path scripts/verify_dataflow.py expects)
   .github/workflows/ci.yml   (one new step in the Rust job)
-  scripts/verify_dataflow.py (read it first; do not change it unless it is broken, and if
-                              it is, report that instead of patching around it)
 
 DONE WHEN
-  1) just dataflow-truth && just dataflow-verify 1        -> exit 0
-  2) NEGATIVE CONTROL, required: add a throwaway `use crate::physics::spatial;` to some
-     file in ai/, re-run 1), confirm it goes RED and NAMES the ai -> physics edge, then
-     revert the throwaway. Paste that red output — a gate nobody saw fail is not a gate.
-  3) the new CI step runs in the Rust job and is green
-  4) cargo test --features desktop --no-fail-fast         -> 1153 passed, 0 failed
-Report the 11 edges you declared, one line each.
+  1) just dataflow-truth                 -> exit 0
+  2) just dataflow-verify 1              -> exit 0, prints
+                                            "QUA CONG — 16 edge khop hoan toan"
+                                            and lists the 6 cyclic pairs as LUU Y
+  3) NEGATIVE CONTROL, required: add a throwaway `use crate::physics::spatial;` to
+     some file in ai/ that does not already import it, re-run 1) and 2), confirm it
+     goes RED and NAMES the new ai -> physics edge, then revert the throwaway and
+     confirm green again. Paste both outputs. A gate nobody has seen fail is not a
+     gate — this project has shipped three of those.
+  4) the new CI step runs in the Rust job and is green
+  5) cd src-tauri && cargo test --features desktop --no-fail-fast
+     -> 1153 passed, 0 failed   (nothing here touches Rust; a different number
+        means you changed more than this task)
+Report the 16 invariants you wrote, one line each.
 ```
 
 ## S0.3 — Xoá shim `core/engine.rs`
