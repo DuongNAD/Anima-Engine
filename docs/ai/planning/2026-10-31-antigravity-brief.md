@@ -405,8 +405,9 @@ DONE WHEN
 ```text
 GOAL
 Two halves, both required. (1) Repair the allocation instrument: it is red on macOS because
-it counts its own synchronisation (FINDINGS.md F-031). (2) Remove the per-death heap
-allocation in the agent death path and point a gate at it that would have caught it.
+it counts its own synchronisation (FINDINGS.md F-031). (2) Remove the heap allocations on the
+agent birth and death paths — THREE sites, enumerated in PART 2 — and point a gate at them
+that would have caught them.
 
 AUTHORIZATION
 Writes to src-tauri/src and src-tauri/tests. The owner authorized src-tauri/src (QĐ-B).
@@ -451,8 +452,9 @@ whether `feat`'s `core/mortality.rs::mortality_system` REPLACES
 So: do site 2 and the gate with full confidence. Do site 1 too, but keep it in its own commit
 so it can be dropped cheaply if QĐ-A′ goes the other way, and say in your report that you did
 that and why.
-main also does not compile on macOS: four of five src-tauri/icons/ files are 12-byte
-placeholder text files (F-028). Supply valid icons locally, UNCOMMITTED. On Windows, skip it.
+macOS AND LINUX DO NOT COMPILE THIS CRATE AS CHECKED OUT, on any branch: four of five
+src-tauri/icons/ files are 12-byte placeholder text files (F-028). Supply valid icons locally,
+UNCOMMITTED. On Windows, skip it.
 
 PART 1 — THE INSTRUMENT MEASURES ITSELF (F-031)
 src-tauri/tests/thread_tracking_allocator_tests.rs:11 asserts that the tracking window counts
@@ -484,9 +486,10 @@ still fails when the allocation returns.
 Checked for you: every file that asserts a count of 0 does declare `#[global_allocator]`, so
 none of them passes vacuously for THAT reason. The vacuity is elsewhere — see Part 2.
 
-PART 2 — THE ALLOCATION, AND WHY NOTHING WENT RED
-The old version of this task named `agent_death_system` at agent_systems.rs:400. That symbol
-does not exist. Re-measured 2026-10-31 on the main lineage:
+PART 2 — THE ALLOCATIONS, AND WHY NOTHING WENT RED
+An older version of this task named `agent_death_system` at agent_systems.rs:400. That symbol
+exists on NEITHER branch — `git grep -c agent_death_system -- src-tauri/src` returns 0 on both.
+If you find it cited anywhere else in this repository's docs, that doc is stale.
 
 RE-MEASURED 2026-11-01 on `78b2e85` (PR #40 reformatted this file, so every number moved;
 the numbers below are the current ones). AND THERE ARE THREE SITES, NOT TWO:
@@ -564,17 +567,20 @@ red on this base.
 
 DONE WHEN
   1) thread_tracking_allocator_tests passes on macOS with the assertion still `== 1`
-  2) a gate covers the death path, FORCES at least two deaths in the measured window, and
-     passes
+  2) a gate covers the birth AND death paths, FORCES at least two deaths and at least one
+     birth inside the measured window, and passes
   3) NEGATIVE CONTROL, required: revert your fix, show the gate RED, and paste the non-zero
-     allocation count it reports. Then restore.
+     allocation count it reports. Then restore. Do this per site, so the gate is shown to
+     cover each one rather than any one of them.
   4) cd src-tauri && cargo test --features desktop --no-fail-fast  -> 0 failed
      (baseline on this branch: 1216 passed · 1 failed · 2 ignored, 107 targets; the one
      failure is the F-031 test you are fixing, so 0 failed is the target)
-  5) report: both allocating sites and what you did to each; which of the three instruments
-     each assertion runs under; how you settled the lineage-id uniqueness question; the
-     checksum before and after
-DEPENDS ON  B1b (PR #39)
+  5) report: all THREE allocating sites and what you did to each, with site 1 in its own
+     commit per the QĐ-A′ note above; which of the three instruments each assertion runs
+     under; whether the claim that no existing gate covers the command path held up when you
+     checked it; how you settled the lineage-id uniqueness question; the checksum before and
+     after
+DEPENDS ON  B1b (PR #39), and branch from the stack tip — see the branching note above
 ```
 
 ### B3+B4 — main's eight red gates, in the order the gates force
