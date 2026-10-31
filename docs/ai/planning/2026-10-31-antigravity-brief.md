@@ -807,6 +807,13 @@ Hợp nhất (HT-C) **cần quyết định của chủ dự án trước** — 
 trước khi có dòng quyết định đó, vì nó quyết định `core/mortality.rs` của nhánh **thay** hay
 **nằm cạnh** `agent_death_system` của `main`, và hai lựa chọn cho ra hai cây mã khác nhau.
 
+Bề mặt hợp nhất đã được **đo** ngày 2026-11-01 —
+[2026-11-01-merge-surface-measurement.md](2026-11-01-merge-surface-measurement.md). Tóm tắt: 9
+file xung đột, đúng **một** là code (`genotype.rs`, 14 dòng, và trình biên dịch chặn bản sai),
+nhưng **19 file `.rs` do cả hai nhánh sửa** và 18 trong số đó tự gộp không xung đột — gồm cả
+`simulation_schedule.rs`. Phần máy móc nhỏ; phần phải kiểm là checksum tất định, nhiều process,
+trên cả hai cha và bản gộp. Đọc tài liệu đó trước khi viết prompt HT-C.
+
 ### A7 — NOTICE / artifact licence (⚠️ **cần máy Windows**)
 
 ```text
