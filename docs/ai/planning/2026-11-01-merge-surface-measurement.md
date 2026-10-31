@@ -111,3 +111,46 @@ PR **không chứa gì khác**, và lấy phép đo checksum làm bằng chứng
 [F-030]: ../../../FINDINGS.md
 [F-031]: ../../../FINDINGS.md
 [F-032]: ../../../FINDINGS.md
+
+## 6. Hai hệ tử vong, không một dòng xung đột — đo bổ sung cùng ngày
+
+Đây là thứ nguy hiểm nhất của lần gộp, và `git merge-tree` báo **sạch**.
+
+| | hàm tử vong | khai báo trong schedule |
+|---|---|---|
+| nền `043930c` | **không có cái nào** | — |
+| `feat` | `core/mortality.rs:32::mortality_system` | `simulation_schedule.rs:223` |
+| chồng PR | `core/agent_systems.rs:394::agent_mortality_system` | `simulation_schedule.rs:246` |
+
+Kiểm tên bằng grep, không suy từ tài liệu:
+
+```
+git grep -c 'agent_death_system' <cả hai nhánh> -- src-tauri/src   -> 0   (tên này KHÔNG tồn tại)
+git grep -n 'fn agent_mortality_system' feat                        -> none
+git grep -n 'pub fn mortality_system' origin/fix/ci-gates-green     -> none
+git ls-tree origin/fix/ci-gates-green src-tauri/src/core/mortality.rs -> rỗng (file không có)
+```
+
+Cả hai đều là **thêm mới so với nền**, ở **cùng một file** (`simulation_schedule.rs`), tại
+**hai vị trí khác nhau**. Gộp ba chiều với hai lần thêm độc lập ở hai chỗ khác nhau thì Git
+lấy **cả hai**. Nên cây gộp sẽ **khai báo hai hệ tử vong cùng tick**, và cả hai đều xếp hàng
+`ReclaimAndDespawnAgentCommand` — thứ mà doc comment của `mortality.rs` gọi là *"the only
+sanctioned way to end an agent"*.
+
+**Đường mặc định thì an toàn**, và đó là lý do nó khó thấy. `mortality_system` của `feat` có
+hai lớp chặn:
+
+```rust
+let Some(policy) = policy else { return; };   // thiếu MortalityPolicy -> thoát ngay
+if !policy.enabled { return; }
+```
+
+Không có resource `MortalityPolicy` — tức mặc định — thì nó thoát ngay, chỉ hệ của chồng PR
+chạy, và hành vi **giống chồng PR từng bit**. Bật `MortalityPolicy{enabled: true}` thì **cả
+hai** chạy trong cùng một tick và cùng xếp hàng command cho cùng những agent.
+
+**Chuyện gì xảy ra sau đó thì CHƯA ĐO.** Không khẳng định ở đây là nó cộng đôi vào bể
+detritus (tạo EU từ không khí, vi phạm hợp đồng EU đóng) hay là command thứ hai không tìm
+thấy entity nữa và thành vô hại — `ReclaimAndDespawnAgentCommand::apply` tự quét world một
+lượt mỗi lần chết, nên cả hai kết cục đều có thể. Đó chính là phép đo HT-C phải làm, và là
+nửa chưa quyết **QĐ-A′**: hai hệ này phải **thay** nhau, không **nằm cạnh** nhau.

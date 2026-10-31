@@ -1317,3 +1317,157 @@ named the wrong enum, and described two loop rewrites present in no committed li
 while every edit it actually made was correct. A report that cannot be checked costs
 more than no report, because someone has to re-measure all of it.
 ```
+
+### HT-C — gộp chồng PR vào `feat/ecological-selection` (QĐ-A đã quyết 2026-11-01)
+
+Chiều gộp đã được chủ dự án quyết: **chồng PR #38→#39→#40 gộp VÀO
+`feat/ecological-selection`**, nhánh là nền. Bề mặt đã đo trước ở
+[2026-11-01-merge-surface-measurement.md](2026-11-01-merge-surface-measurement.md) — đọc nó
+trước, đừng đo lại.
+
+```text
+GOAL
+Merge the PR stack (#38 -> #39 -> #40, tip of `fix/ci-gates-green`) INTO
+`feat/ecological-selection`. The owner decided this direction on 2026-11-01. The
+conflicts are small and already enumerated. The work is the verification, and the
+single most important thing in this merge has NO textual conflict at all.
+
+AUTHORIZATION
+Writes to src-tauri/src, src-tauri/tests, src-tauri/.cargo/audit.toml, and the
+conflicted docs. The owner authorized src-tauri/src (QĐ-B). R5 still applies to
+CLAUDE.md, PROJECT.md, AGENTS.md, STATE_OF_THE_PROJECT.md, docs/reference/ and the
+ADRs — AND THREE OF THOSE CONFLICT. See "the docs conflicts" below; do not resolve
+them yourself.
+
+DO NOT START until B3b has landed on `fix/ci-gates-green`. B3b changes Cargo.lock,
+deny.toml, the bundle budget and the licensing artifacts. Merging before it means
+merging twice.
+
+===============================================================================
+THE CONFLICTS — 9 files, already measured, do not re-survey
+===============================================================================
+`git merge-tree --write-tree --name-only feat/ecological-selection
+origin/fix/ci-gates-green` -> 29 files auto-merge, 9 conflict, every one
+CONFLICT (content). No renames, no modify/delete, no binaries.
+
+  code   (1)  src-tauri/src/evolution/genotype.rs      1 hunk,  14 lines
+  config (1)  src-tauri/.cargo/audit.toml              5 hunks, 25 lines
+  docs   (7)  PROJECT.md (265), AGENTS.md (71),
+              docs/planning/STATE_OF_THE_PROJECT.md (7),
+              docs/planning/README.md, docs/ai/ORIGINAL_REQUEST.md,
+              docs/ai/TEST_INFRA.md, docs/ai/TEST_READY.md
+
+genotype.rs: the two sides are `HomeostaticState { energy: 100.0, ...,
+starving_ticks: 0 }` (feat) and `HomeostaticState::default()` (stack). EITHER IS
+CORRECT, but only after you fix a compile error the merge will hand you. Measured:
+`HomeostaticState` in src/ai/hrrl.rs has 7 fields plus a hand-written `impl Default`
+on the stack, and 8 fields with NO `Default` on feat — feat adds
+`starving_ticks: u32`. hrrl.rs auto-merges, so the merged tree has the 8-field struct
+and the 7-field impl, which does not compile, and rustc names the missing field. Add
+`starving_ticks: 0` to the Default impl. Then `::default()` equals feat's literal
+exactly and the conflict is cosmetic.
+
+DO NOT clear that compile error by deleting `starving_ticks` from the struct. It
+makes `mortality_system` stop counting starvation while EVERY CHECKSUM STAYS
+IDENTICAL — the field is deliberately outside `world_checksum` so that
+policy-off runs are bit-identical. Read its doc comment in hrrl.rs.
+
+audit.toml: both lines edited the exemption list. Keep the union, and re-derive each
+entry's verdict with the FORWARD check, never `cargo tree -i` (it exits non-zero with
+"specification is ambiguous" on a crate with two lock entries, printing nothing —
+F-025):
+    cargo tree -e all --features desktop --target all | grep -c " <crate> v"
+0 in graph -> the exemption belongs in audit.toml only. >0 in graph -> it does NOT
+belong in audit.toml as "lockfile-only"; check for a patched version first (F-033).
+
+the docs conflicts: PROJECT.md, AGENTS.md and STATE_OF_THE_PROJECT.md are R5 files.
+Leave the conflict markers in place, commit NOTHING for those three, and list them
+in your report for the owner to resolve. The other four docs you may merge, keeping
+both sides' content where it does not contradict.
+
+===============================================================================
+THE THING WITH NO CONFLICT — this is the actual task
+===============================================================================
+TWO MORTALITY SYSTEMS. Measured:
+
+  base 043930c   neither exists
+  feat           core/mortality.rs:32::mortality_system        registered at
+                                                 simulation_schedule.rs:223
+  stack          core/agent_systems.rs:394::agent_mortality_system  registered at
+                                                 simulation_schedule.rs:246
+
+Both are ADDITIONS relative to the base, in the SAME file, at DIFFERENT lines. A
+three-way merge takes both. So the merged schedule registers two mortality systems in
+the same tick, and both queue `ReclaimAndDespawnAgentCommand` — which mortality.rs's
+own doc comment calls "the only sanctioned way to end an agent".
+
+The default path is safe, which is exactly why this is easy to miss:
+    let Some(policy) = policy else { return; };   // no MortalityPolicy -> returns
+    if !policy.enabled { return; }
+With no `MortalityPolicy` resource, feat's system returns immediately, only the
+stack's runs, and behaviour is bit-identical to the stack. With
+`MortalityPolicy{enabled: true}`, BOTH run on the same agents in the same tick.
+
+MEASURE, do not assume, and report the raw numbers:
+  1. With no MortalityPolicy: does the merged world match the stack's world? Run the
+     180-tick checksum in SEVERAL PROCESSES (see below).
+  2. With MortalityPolicy{enabled: true}: write a failing test first that spawns one
+     agent, starves it, and asserts the detritus pool gains that agent's energy
+     EXACTLY ONCE. Then see whether it passes. Do not reason about it from the source;
+     `ReclaimAndDespawnAgentCommand::apply` re-queries the whole world per death, so
+     both "double credit" and "harmless no-op" are plausible and only a test decides.
+  3. QĐ-A′ is still open: the owner has NOT decided whether these two systems replace
+     each other or sit side by side. Do not pick for them. Deliver the measurement and
+     say which outcome your test shows.
+
+===============================================================================
+THE CHECKSUM, AND WHY ONE RUN PROVES NOTHING
+===============================================================================
+19 .rs files were edited by BOTH lines and 18 auto-merge with no conflict, including
+the whole determinism surface: simulation_schedule.rs (the single place the live
+schedule is built, and the file B1b added five ordering edges to), simulation_loop.rs,
+agent_systems.rs, world_systems.rs, environmental_systems.rs, ecs.rs,
+live_experiment.rs, live_experiment_tests.rs, tests/common/allocator.rs.
+
+A textual auto-merge of the schedule builder can produce a schedule that compiles,
+runs, and orders SimRng draws like NEITHER parent. That is F-029, and three measured
+facts make it invisible:
+  - the gate that catches it (SIMRNG_SYSTEMS in tests/schedule_ambiguity_tests.rs,
+    present on the stack, absent on feat) asserts `offenders.is_empty()` — that no
+    SimRng pair is UNORDERED. It never pins WHICH order. A fully-ordered but
+    different schedule passes it.
+  - no test anywhere in src-tauri/tests freezes a checksum literal.
+  - the checksum differs PER PROCESS while any pair is unordered: 8 processes gave
+    4 distinct 180-tick checksums before B1b.
+
+So R8 applies in full. Run the 180-tick checksum at a fixed seed in at least SIX
+SEPARATE PROCESSES on each of: `feat/ecological-selection`,
+`origin/fix/ci-gates-green`, and the merge. Report all three sets. One value per
+branch is not a measurement.
+  - all six agree within a branch = that branch is order-stable
+  - the merge's value differing from both parents is EXPECTED (the schedule changed)
+    and must be RECORDED, with a sentence on the effect on published experiment
+    evidence, per R8
+  - the merge's six values disagreeing with each other is a BUG: the merge
+    reintroduced an unordered SimRng pair. Fix the order in
+    core::simulation_schedule::build_tick_schedule, never in a test's own .chain().
+
+===============================================================================
+DONE WHEN
+===============================================================================
+  - the merge commit exists on a branch of its own, containing NOTHING but the merge
+  - cargo build --features desktop                 compiles
+  - cargo test --features desktop --no-fail-fast   report the count; on macOS expect
+    exactly one failure, thread_tracking_allocator_tests (F-031) — do not touch it
+  - npm run test && npm run test:frontend && npm run lint && eslint_ratchet
+  - cargo audit; cargo deny check                  exit 0
+  - the 180-tick checksum, six processes, three branches, all values pasted
+  - the one-agent starvation test from step 2, with its result either way
+  - PROJECT.md, AGENTS.md, STATE_OF_THE_PROJECT.md left UNRESOLVED and listed
+
+REPORT
+WHAT CHANGED / WHY / VERIFY / NOT DONE / SURPRISES. R3's mechanical clause in full:
+paste the grep that locates every symbol you cite, and describe what is in `git diff`,
+not what you considered. If your report says a checksum came from a platform, say
+which machine ran it.
+```
