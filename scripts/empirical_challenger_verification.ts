@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import {
   Map2TerrainMathEngine,
-  sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   Map2Biome,
@@ -14,9 +11,6 @@ import {
   Map2CameraPhysicsController,
   PHYSICS_CONSTANTS,
   SpatialFloraColliderIndex,
-  resolveFloraOverlap,
-  computeBearing,
-  computePitch,
 } from '../src/components/Map2/utils/map2Physics';
 import {
   computeCelestialState,
@@ -36,7 +30,7 @@ class DeterministicRNG {
 interface StressResult {
   suite: string;
   passed: boolean;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   errors: string[];
 }
 
@@ -194,7 +188,7 @@ const startT3 = performance.now();
 for (let i = 0; i < nNormals; i++) {
   const x = (rng3.next() * 2 - 1) * 300.0;
   const z = (rng3.next() * 2 - 1) * 300.0;
-  const { normal, steepness } = engine.getNormalAndSteepness(x, z);
+  const { normal } = engine.getNormalAndSteepness(x, z);
 
   const len = normal.length();
   const dev = Math.abs(len - 1.0);
@@ -445,7 +439,7 @@ console.log(` -> Result: ${p6 ? 'PASSED' : 'FAILED'} (Steps: ${nWalkSteps}, Pene
 // ------------------------------------------------------------------------------------------
 console.log('\n[7/8] Verifying Spawn Point Topography, Elevation, and Tree Clearance...');
 const spawnH = engine.getHeight(0, 0);
-const { normal: spawnNorm, steepness: spawnSteep } = engine.getNormalAndSteepness(0, 0);
+const { steepness: spawnSteep } = engine.getNormalAndSteepness(0, 0);
 const spawnSample = engine.sample(0, 0);
 
 // Check clearance around spawn (D < 6.0m)

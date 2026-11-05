@@ -1,29 +1,18 @@
-import * as THREE from 'three';
 import {
-  Map2TerrainMathEngine,
   sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   Map2Biome,
   BIOME_METADATA,
-  Map2BiomeEcologySystem,
 } from '../src/components/Map2/utils/map2BiomeConfig';
 import {
   Map2FloraSpecies,
-  FLORA_CANOPY_RADII,
-  FLORA_TRUNK_COLLIDER_RADII,
-  isTallFlora,
-  isGroundCoverFlora,
 } from '../src/components/Map2/utils/map2FloraGeometry';
 
 import {
   generatePlacements,
   FloraPlacement,
-  ALL_SPECIES,
-  hash2D,
-} from '../src/components/Map2/Map2Vegetation';
+} from '../src/components/Map2/utils/map2FloraPlacement';
 
 
 console.log('========================================================================');
@@ -92,6 +81,7 @@ const gladePct = (gladeSamples / totalLandSamples) * 100;
 const grovePct = (groveSamples / totalLandSamples) * 100;
 
 console.log(`- Total Sample Probes across $[-96, 96]^2$: ${sampleRes * sampleRes} (400x400 grid, 0.48m step)`);
+console.log(`- Water samples skipped: ${totalWaterSamples}`);
 console.log(`- Total Dry Land Samples: ${totalLandSamples} (${((totalLandSamples / (sampleRes * sampleRes)) * 100).toFixed(2)}% of map)`);
 console.log(`- Open Grassy Glades & Meadows: ${gladeSamples} samples -> ${gladePct.toFixed(2)}% of land (Requirement: >= 50.0%)`);
 console.log(`- Organic Tree Groves: ${groveSamples} samples -> ${grovePct.toFixed(2)}% of land`);

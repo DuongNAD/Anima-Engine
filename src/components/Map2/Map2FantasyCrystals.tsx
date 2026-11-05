@@ -11,7 +11,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 export interface Map2FantasyCrystalsProps {
   size?: number;
-  waterLevel?: number;
   pulseSpeed?: number;
   showPointLights?: boolean;
 }
@@ -102,14 +101,25 @@ function makeStalactiteGeometry(): THREE.BufferGeometry {
 /**
  * Creates a pulsating emissive crystal material with chromatic breathing shifts.
  */
-function createPulsingCrystalMaterial(
-  uniforms: {
-    uTime: { value: number };
-    uGlowColor1: { value: THREE.Color };
-    uGlowColor2: { value: THREE.Color };
-    uPulseSpeed: { value: number };
-  },
-): THREE.MeshStandardMaterial {
+interface CrystalUniforms {
+  uTime: { value: number };
+  uGlowColor1: { value: THREE.Color };
+  uGlowColor2: { value: THREE.Color };
+  uPulseSpeed: { value: number };
+}
+
+function newCrystalUniforms(): CrystalUniforms {
+  return {
+    uTime: { value: 0 },
+    uGlowColor1: { value: new THREE.Color('#a855f7') }, // Amethyst
+    uGlowColor2: { value: new THREE.Color('#00f0ff') }, // Electric Cyan
+    uPulseSpeed: { value: 1.0 },
+  };
+}
+
+/** Builds the shared crystal material. The uniforms it closes over are kept on
+ * `userData.crystalUniforms`, so the component can drive them after mount without touching render. */
+function createPulsingCrystalMaterial(uniforms: CrystalUniforms): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 0.25,
@@ -152,12 +162,12 @@ function createPulsingCrystalMaterial(
     );
   };
 
+  mat.userData.crystalUniforms = uniforms;
   return mat;
 }
 
 export const Map2FantasyCrystals: React.FC<Map2FantasyCrystalsProps> = ({
   size = 200,
-  waterLevel = 12.0,
   pulseSpeed = 1.0,
   showPointLights = true,
 }) => {
@@ -165,24 +175,24 @@ export const Map2FantasyCrystals: React.FC<Map2FantasyCrystalsProps> = ({
   const stalactiteMeshRef = useRef<THREE.InstancedMesh>(null);
   const pointLightGroupRef = useRef<THREE.Group>(null);
 
-  // Shared crystal uniforms created once via ref
-  const crystalUniformsRef = useRef({
-    uTime: { value: 0 },
-    uGlowColor1: { value: new THREE.Color('#a855f7') }, // Amethyst
-    uGlowColor2: { value: new THREE.Color('#00f0ff') }, // Electric Cyan
-    uPulseSpeed: { value: pulseSpeed },
-  });
-
-  // Geometries, materials, and uniforms created once
+  // Geometries and the shared material are created once. The material's uniforms are owned by a
+  // ref, written from effects and the frame loop only: reading a ref during render (which building
+  // the material from `ref.current` inside `useMemo` did) is what React's rules forbid.
+  const crystalUniformsRef = useRef<CrystalUniforms | null>(null);
   const { spireGeom, stalactiteGeom, crystalMat } = useMemo(() => {
     const sGeom = makeCrystalSpireGeometry();
     const stGeom = makeStalactiteGeometry();
-    const cMat = createPulsingCrystalMaterial(crystalUniformsRef.current);
+    const cMat = createPulsingCrystalMaterial(newCrystalUniforms());
     return { spireGeom: sGeom, stalactiteGeom: stGeom, crystalMat: cMat };
   }, []);
 
-  useEffect(() => {
-    crystalUniformsRef.current.uPulseSpeed.value = pulseSpeed;
+  useLayoutEffect(() => {
+    crystalUniformsRef.current = crystalMat.userData.crystalUniforms as CrystalUniforms;
+  }, [crystalMat]);
+
+  useLayoutEffect(() => {
+    const uniforms = crystalUniformsRef.current;
+    if (uniforms) uniforms.uPulseSpeed.value = pulseSpeed;
   }, [pulseSpeed]);
 
   useEffect(() => {
@@ -274,7 +284,7 @@ export const Map2FantasyCrystals: React.FC<Map2FantasyCrystalsProps> = ({
     }
 
     return { spires: spiresList, stalactites: stalactitesList, lightPositions: lights };
-  }, [size, waterLevel]);
+  }, [size]);
 
   // Update instance matrices
   useLayoutEffect(() => {
@@ -315,7 +325,8 @@ export const Map2FantasyCrystals: React.FC<Map2FantasyCrystalsProps> = ({
 
   useFrame((state) => {
     const t = state.clock.getElapsedTime();
-    crystalUniformsRef.current.uTime.value = t;
+    const uniforms = crystalUniformsRef.current;
+    if (uniforms) uniforms.uTime.value = t;
 
     // Animate point light intensities
     if (pointLightGroupRef.current) {

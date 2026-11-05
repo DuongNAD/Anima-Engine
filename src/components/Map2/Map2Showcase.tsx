@@ -128,7 +128,6 @@ const Map2SceneContent: React.FC<SceneContentProps> = ({
         {showCrystals && (
           <Map2FantasyCrystals
             size={200}
-            waterLevel={seaLevel}
             pulseSpeed={1.0}
             showPointLights={true}
           />

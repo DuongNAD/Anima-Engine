@@ -1,12 +1,5 @@
-import * as THREE from 'three';
 import { sampleMap2Terrain } from '../src/components/Map2/utils/map2TerrainGen';
-import { Map2Biome, BIOME_METADATA } from '../src/components/Map2/utils/map2BiomeConfig';
-import {
-  Map2FloraSpecies,
-  isTallFlora,
-  FLORA_CANOPY_RADII,
-} from '../src/components/Map2/utils/map2FloraGeometry';
-import { generatePlacements, FloraPlacement } from '../src/components/Map2/Map2Vegetation';
+import { generatePlacements } from '../src/components/Map2/utils/map2FloraPlacement';
 
 console.log('========================================================================');
 console.log('ADVERSARIAL STRESS TEST: Map 2 Vegetation Exhaustive Invariants Check');

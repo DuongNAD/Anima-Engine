@@ -1,13 +1,9 @@
 import {
   Map2TerrainMathEngine,
-  sampleMap2Terrain,
-  getMap2Height,
-  getMap2NormalAndSteepness,
 } from '../src/components/Map2/utils/map2TerrainGen';
 import {
   computeAtmosphereLapseRate,
   computeOrographicRainShadow,
-  computeAtmosphericMicroclimate,
 } from '../src/components/Map2/utils/map2AtmosphereMath';
 import { evaluateDendriticRiverNetwork } from '../src/components/Map2/utils/map2WaterMath';
 import * as THREE from 'three';
@@ -239,6 +235,8 @@ console.log(`Total Queries: ${N_BENCH.toLocaleString()}`);
 console.log(`Total Execution Time: ${tElapsed.toFixed(2)}ms`);
 console.log(`Mean Latency: ${(avgLatencyMs * 1000).toFixed(2)} µs (${avgLatencyMs.toFixed(5)} ms/query)`);
 console.log(`Throughput: ${queriesPerSec.toLocaleString()} queries/sec`);
+// Read the accumulator so the benchmarked calls cannot be optimised away as dead code.
+console.log(`Accumulator (anti-DCE): ${dummyAcc.toFixed(3)}`);
 console.log(`Performance Budget: < 0.100 ms (100.0 µs)`);
 const inv7Pass = avgLatencyMs < 0.1;
 console.log(`Verdict: ${inv7Pass ? 'PASS (Sub-microsecond performance)' : 'FAIL'}\n`);
