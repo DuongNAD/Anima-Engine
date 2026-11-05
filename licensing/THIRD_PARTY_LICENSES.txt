@@ -2382,12 +2382,12 @@ pkg:cargo/rustls-pki-types@1.15.1
     text       : T0078  cargo-registry:rustls-pki-types-1.15.1/LICENSE-APACHE
     text       : T0148  cargo-registry:rustls-pki-types-1.15.1/LICENSE-MIT
 
-pkg:cargo/rustls-webpki@0.103.15
-    name       : rustls-webpki 0.103.15
+pkg:cargo/rustls-webpki@0.103.16
+    name       : rustls-webpki 0.103.16
     ecosystem  : cargo (cargo-registry)
     SPDX       : ISC
     repository : https://github.com/rustls/webpki
-    text       : T0092  cargo-registry:rustls-webpki-0.103.15/LICENSE
+    text       : T0092  cargo-registry:rustls-webpki-0.103.16/LICENSE
 
 pkg:cargo/rustls@0.23.46
     name       : rustls 0.23.46
@@ -2911,12 +2911,12 @@ pkg:cargo/tokio-tungstenite@0.21.0
     repository : https://github.com/snapview/tokio-tungstenite
     text       : T0264  cargo-registry:tokio-tungstenite-0.21.0/LICENSE
 
-pkg:cargo/tokio@1.53.1
-    name       : tokio 1.53.1
+pkg:cargo/tokio@1.53.3
+    name       : tokio 1.53.3
     ecosystem  : cargo (cargo-registry)
     SPDX       : MIT
     repository : https://github.com/tokio-rs/tokio
-    text       : T0049  cargo-registry:tokio-1.53.1/LICENSE
+    text       : T0049  cargo-registry:tokio-1.53.3/LICENSE
 
 pkg:cargo/toml@1.1.3+spec-1.1.0
     name       : toml 1.1.3+spec-1.1.0
@@ -3194,12 +3194,12 @@ pkg:cargo/webpki-roots@0.26.11
     repository : https://github.com/rustls/webpki-roots
     text       : T0232  cargo-registry:webpki-roots-0.26.11/LICENSE
 
-pkg:cargo/webpki-roots@1.0.9
-    name       : webpki-roots 1.0.9
+pkg:cargo/webpki-roots@1.0.10
+    name       : webpki-roots 1.0.10
     ecosystem  : cargo (cargo-registry)
     SPDX       : CDLA-Permissive-2.0
     repository : https://github.com/rustls/webpki-roots
-    text       : T0232  cargo-registry:webpki-roots-1.0.9/LICENSE
+    text       : T0232  cargo-registry:webpki-roots-1.0.10/LICENSE
 
 pkg:cargo/webview2-com-macros@0.8.1
     name       : webview2-com-macros 0.8.1
@@ -3864,8 +3864,8 @@ pkg:npm/tiny-lru@11.4.7   [NOT DISTRIBUTED - installed only]
     SPDX       : BSD-3-Clause
     repository : git://github.com/avoidwork/tiny-lru.git
 
-pkg:npm/vite@8.1.5
-    name       : vite 8.1.5
+pkg:npm/vite@8.1.6
+    name       : vite 8.1.6
     ecosystem  : npm (toolchain-injected)
     SPDX       : MIT
     repository : git+https://github.com/vitejs/vite.git
@@ -7177,7 +7177,7 @@ SOFTWARE.
 ------------------------------------------------------------------------------------------------
 T0049   sha256:253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552
 applies to 1 component file(s):
-  pkg:cargo/tokio@1.53.1  (LICENSE)
+  pkg:cargo/tokio@1.53.3  (LICENSE)
 ------------------------------------------------------------------------------------------------
 
 MIT License
@@ -10097,7 +10097,7 @@ THE SOFTWARE.
 ------------------------------------------------------------------------------------------------
 T0092   sha256:5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a
 applies to 1 component file(s):
-  pkg:cargo/rustls-webpki@0.103.15  (LICENSE)
+  pkg:cargo/rustls-webpki@0.103.16  (LICENSE)
 ------------------------------------------------------------------------------------------------
 
 Except as otherwise noted, this project is licensed under the following
@@ -16889,7 +16889,7 @@ limitations under the License.
 ------------------------------------------------------------------------------------------------
 T0180   sha256:b1d741c26b53de1bbc0d4d7d3365b79888f9fe511527544a8a7b8e24dec43147
 applies to 1 component file(s):
-  pkg:npm/vite@8.1.5  (LICENSE.md)
+  pkg:npm/vite@8.1.6  (LICENSE.md)
 ------------------------------------------------------------------------------------------------
 
 # Vite core license
@@ -22304,7 +22304,7 @@ DEALINGS IN THE SOFTWARE.
 T0232   sha256:e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8
 applies to 2 component file(s):
   pkg:cargo/webpki-roots@0.26.11  (LICENSE)
-  pkg:cargo/webpki-roots@1.0.9  (LICENSE)
+  pkg:cargo/webpki-roots@1.0.10  (LICENSE)
 ------------------------------------------------------------------------------------------------
 
 # Community Data License Agreement - Permissive - Version 2.0

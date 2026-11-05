@@ -354,7 +354,7 @@ at the pinned release is packaged, not one option out of several.
 - synstructure 0.13.2 — https://github.com/mystor/synstructure
 - text_placeholder 0.5.1 — https://github.com/bernardoamc/text-placeholder
 - tiff 0.9.1 — https://github.com/image-rs/image-tiff
-- tokio 1.53.1 — https://github.com/tokio-rs/tokio
+- tokio 1.53.3 — https://github.com/tokio-rs/tokio
 - tokio-macros 2.7.1 — https://github.com/tokio-rs/tokio
 - tokio-tungstenite 0.21.0 — https://github.com/snapview/tokio-tungstenite
 - tracing 0.1.44 — https://github.com/tokio-rs/tracing
@@ -492,7 +492,7 @@ at the pinned release is packaged, not one option out of several.
 
 - libloading 0.7.4 — https://github.com/nagisa/rust_libloading/
 - libloading 0.8.9 — https://github.com/nagisa/rust_libloading/
-- rustls-webpki 0.103.15 — https://github.com/rustls/webpki
+- rustls-webpki 0.103.16 — https://github.com/rustls/webpki
 - untrusted 0.9.0 — https://github.com/briansmith/untrusted
 
 #### Apache-2.0 OR ISC OR MIT (3)
@@ -515,7 +515,7 @@ at the pinned release is packaged, not one option out of several.
 #### CDLA-Permissive-2.0 (2)
 
 - webpki-roots 0.26.11 — https://github.com/rustls/webpki-roots
-- webpki-roots 1.0.9 — https://github.com/rustls/webpki-roots
+- webpki-roots 1.0.10 — https://github.com/rustls/webpki-roots
 
 #### Unlicense/MIT (2)
 
@@ -598,7 +598,7 @@ at the pinned release is packaged, not one option out of several.
 - scheduler 0.23.2 — https://github.com/facebook/react.git
 - suspend-react 0.1.3 — pmndrs/suspend-react
 - three 0.184.0 — https://github.com/mrdoob/three.js
-- vite 8.1.5 — git+https://github.com/vitejs/vite.git
+- vite 8.1.6 — git+https://github.com/vitejs/vite.git
 - zustand 3.7.2 — git+https://github.com/pmndrs/zustand.git
 
 #### Apache-2.0 OR MIT (1)

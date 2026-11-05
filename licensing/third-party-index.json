@@ -8142,9 +8142,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/rustls-webpki@0.103.15",
+      "purl": "pkg:cargo/rustls-webpki@0.103.16",
       "name": "rustls-webpki",
-      "version": "0.103.15",
+      "version": "0.103.16",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -8157,7 +8157,7 @@
           "id": "T0092",
           "filename": "LICENSE",
           "origin": "installed",
-          "provenance": "cargo-registry:rustls-webpki-0.103.15/LICENSE",
+          "provenance": "cargo-registry:rustls-webpki-0.103.16/LICENSE",
           "sourceSha256": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a",
           "sourceBytes": 916,
           "textSha256": "5b698ca13897be3afdb7174256fa1574f8c6892b8bea1a66dd6469d3fe27885a"
@@ -10195,9 +10195,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/tokio@1.53.1",
+      "purl": "pkg:cargo/tokio@1.53.3",
       "name": "tokio",
-      "version": "1.53.1",
+      "version": "1.53.3",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -10210,7 +10210,7 @@
           "id": "T0049",
           "filename": "LICENSE",
           "origin": "installed",
-          "provenance": "cargo-registry:tokio-1.53.1/LICENSE",
+          "provenance": "cargo-registry:tokio-1.53.3/LICENSE",
           "sourceSha256": "253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552",
           "sourceBytes": 1070,
           "textSha256": "253cd04c6714889df2d32f3f64d669179a1c95c76ac43c40882c52eb06bc3552"
@@ -11444,9 +11444,9 @@
       ]
     },
     {
-      "purl": "pkg:cargo/webpki-roots@1.0.9",
+      "purl": "pkg:cargo/webpki-roots@1.0.10",
       "name": "webpki-roots",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "ecosystem": "cargo",
       "origin": "cargo-registry",
       "distributed": true,
@@ -11459,7 +11459,7 @@
           "id": "T0232",
           "filename": "LICENSE",
           "origin": "installed",
-          "provenance": "cargo-registry:webpki-roots-1.0.9/LICENSE",
+          "provenance": "cargo-registry:webpki-roots-1.0.10/LICENSE",
           "sourceSha256": "e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8",
           "sourceBytes": 2371,
           "textSha256": "e271993808fec50ab29350b39539cdec611a9103f827e0aa26d61da70e2d33f8"
@@ -13842,9 +13842,9 @@
       "texts": []
     },
     {
-      "purl": "pkg:npm/vite@8.1.5",
+      "purl": "pkg:npm/vite@8.1.6",
       "name": "vite",
-      "version": "8.1.5",
+      "version": "8.1.6",
       "ecosystem": "npm",
       "origin": "toolchain-injected",
       "distributed": true,

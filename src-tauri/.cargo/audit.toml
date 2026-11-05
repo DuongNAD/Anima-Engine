@@ -34,6 +34,27 @@ ignore = [
     # gix-features 0.36.1 — RUSTSEC-2025-0021, SHA-1 collision attacks are not detected (CVSS 6.8).
     # Same dependency path, same reasoning: pulled in only by gix-fs above, never compiled.
     "RUSTSEC-2025-0021",
+    # zip 0.6.6 — RUSTSEC-2026-0367 (SUID/SGID bits preserved on extraction), RUSTSEC-2026-0368
+    # (symlink targets outside the destination), RUSTSEC-2026-0369 (Unix permissions applied through
+    # symlinks), RUSTSEC-2026-0429 (abort on a symlink entry with a large declared size); fixed only
+    # in zip >= 9. zstd-safe 5.0.2 — RUSTSEC-2026-0403 (uninitialised memory on a failed legacy-frame
+    # decompression); zstd-sys 2.0.16 — RUSTSEC-2026-0410 (wasm allocator shim). All published after
+    # main's last green run.
+    #
+    # Same shape as the gix entries above: lockfile-only. In `Cargo.lock` `zip` is depended on by
+    # `torch-sys` and `zip` itself, and `zstd` by `candle-core` and `zip`; those arrive only through
+    # burn-core's optional `burn-tch` and `burn-candle` backends, which no feature of this crate
+    # enables. Verified 2026-11-05 at the commit that added these lines:
+    #   cargo tree --target all --all-features -e all -i zip        -> "nothing to print"
+    #   cargo tree --target all --all-features -e all -i zstd-safe  -> "nothing to print"
+    #   cargo tree --target all --all-features -e all -i zstd-sys   -> "nothing to print"
+    #   cargo test --features desktop --no-run 2>&1 | grep -ciE "compiling (zip|zstd)"  -> 0
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+    "RUSTSEC-2026-0403",
+    "RUSTSEC-2026-0410",
 ]
 
 # Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals

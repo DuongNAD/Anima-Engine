@@ -8039,9 +8039,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls-webpki@0.103.15",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.16",
       "name": "rustls-webpki",
-      "version": "0.103.15",
+      "version": "0.103.16",
       "description": "Web PKI X.509 Certificate Verification.",
       "scope": "required",
       "licenses": [
@@ -8051,7 +8051,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/rustls-webpki@0.103.15",
+      "purl": "pkg:cargo/rustls-webpki@0.103.16",
       "externalReferences": [
         {
           "type": "vcs",
@@ -10121,9 +10121,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/tokio@1.53.1",
+      "bom-ref": "pkg:cargo/tokio@1.53.3",
       "name": "tokio",
-      "version": "1.53.1",
+      "version": "1.53.3",
       "description": "An event-driven, non-blocking I/O platform for writing asynchronous I/O\nbacked applications.\n",
       "scope": "required",
       "licenses": [
@@ -10133,7 +10133,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/tokio@1.53.1",
+      "purl": "pkg:cargo/tokio@1.53.3",
       "externalReferences": [
         {
           "type": "vcs",
@@ -11203,9 +11203,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/webpki-roots@1.0.9",
+      "bom-ref": "pkg:cargo/webpki-roots@1.0.10",
       "name": "webpki-roots",
-      "version": "1.0.9",
+      "version": "1.0.10",
       "description": "Mozilla's CA root certificates for use with webpki",
       "scope": "required",
       "licenses": [
@@ -11215,7 +11215,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/webpki-roots@1.0.9",
+      "purl": "pkg:cargo/webpki-roots@1.0.10",
       "externalReferences": [
         {
           "type": "vcs",
@@ -14052,9 +14052,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/vite@8.1.5",
+      "bom-ref": "pkg:npm/vite@8.1.6",
       "name": "vite",
-      "version": "8.1.5",
+      "version": "8.1.6",
       "description": "Native-ESM powered web dev build tool",
       "scope": "required",
       "licenses": [
@@ -14064,7 +14064,7 @@
           }
         }
       ],
-      "purl": "pkg:npm/vite@8.1.5",
+      "purl": "pkg:npm/vite@8.1.6",
       "externalReferences": [
         {
           "type": "vcs",
@@ -14141,7 +14141,7 @@
         "pkg:cargo/tauri-plugin-shell@2.3.5",
         "pkg:cargo/tauri@2.11.5",
         "pkg:cargo/tokio-tungstenite@0.21.0",
-        "pkg:cargo/tokio@1.53.1",
+        "pkg:cargo/tokio@1.53.3",
         "pkg:cargo/ts-rs@10.1.0",
         "pkg:cargo/ureq@2.12.1",
         "pkg:cargo/uuid@1.24.0",
@@ -14153,7 +14153,7 @@
         "pkg:npm/react@18.3.1",
         "pkg:npm/rolldown@1.1.5",
         "pkg:npm/three@0.184.0",
-        "pkg:npm/vite@8.1.5"
+        "pkg:npm/vite@8.1.6"
       ]
     },
     {
@@ -14779,7 +14779,7 @@
         "pkg:cargo/deadpool-runtime@0.1.4",
         "pkg:cargo/num_cpus@1.17.0",
         "pkg:cargo/retain_mut@0.1.9",
-        "pkg:cargo/tokio@1.53.1"
+        "pkg:cargo/tokio@1.53.3"
       ]
     },
     {
@@ -15561,7 +15561,7 @@
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/thiserror@1.0.69",
         "pkg:cargo/tokio-rustls@0.26.4",
-        "pkg:cargo/tokio@1.53.1",
+        "pkg:cargo/tokio@1.53.3",
         "pkg:cargo/url@2.5.8",
         "pkg:cargo/webpki-roots@0.26.11"
       ]
@@ -15981,7 +15981,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls-webpki@0.103.15",
+      "ref": "pkg:cargo/rustls-webpki@0.103.16",
       "dependsOn": [
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.1",
@@ -15995,7 +15995,7 @@
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.1",
-        "pkg:cargo/rustls-webpki@0.103.15",
+        "pkg:cargo/rustls-webpki@0.103.16",
         "pkg:cargo/subtle@2.6.1",
         "pkg:cargo/zeroize@1.9.0"
       ]
@@ -16365,7 +16365,7 @@
         "pkg:cargo/shared_child@1.1.1",
         "pkg:cargo/tauri@2.11.5",
         "pkg:cargo/thiserror@2.0.19",
-        "pkg:cargo/tokio@1.53.1"
+        "pkg:cargo/tokio@1.53.3"
       ]
     },
     {
@@ -16464,7 +16464,7 @@
         "pkg:cargo/tauri-runtime@2.11.3",
         "pkg:cargo/tauri-utils@2.9.3",
         "pkg:cargo/thiserror@2.0.19",
-        "pkg:cargo/tokio@1.53.1",
+        "pkg:cargo/tokio@1.53.3",
         "pkg:cargo/url@2.5.8",
         "pkg:cargo/webview2-com@0.38.2",
         "pkg:cargo/window-vibrancy@0.6.0",
@@ -16581,7 +16581,7 @@
       "ref": "pkg:cargo/tokio-rustls@0.26.4",
       "dependsOn": [
         "pkg:cargo/rustls@0.23.46",
-        "pkg:cargo/tokio@1.53.1"
+        "pkg:cargo/tokio@1.53.3"
       ]
     },
     {
@@ -16589,12 +16589,12 @@
       "dependsOn": [
         "pkg:cargo/futures-util@0.3.33",
         "pkg:cargo/log@0.4.33",
-        "pkg:cargo/tokio@1.53.1",
+        "pkg:cargo/tokio@1.53.3",
         "pkg:cargo/tungstenite@0.21.0"
       ]
     },
     {
-      "ref": "pkg:cargo/tokio@1.53.1",
+      "ref": "pkg:cargo/tokio@1.53.3",
       "dependsOn": [
         "pkg:cargo/bytes@1.12.1",
         "pkg:cargo/libc@0.2.189",
@@ -16824,11 +16824,11 @@
     {
       "ref": "pkg:cargo/webpki-roots@0.26.11",
       "dependsOn": [
-        "pkg:cargo/webpki-roots@1.0.9"
+        "pkg:cargo/webpki-roots@1.0.10"
       ]
     },
     {
-      "ref": "pkg:cargo/webpki-roots@1.0.9",
+      "ref": "pkg:cargo/webpki-roots@1.0.10",
       "dependsOn": [
         "pkg:cargo/rustls-pki-types@1.15.1"
       ]
@@ -17446,7 +17446,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/vite@8.1.5",
+      "ref": "pkg:npm/vite@8.1.6",
       "dependsOn": []
     },
     {
@@ -17454,5 +17454,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:cd17863f-7b77-5d51-b276-578bffa5c78a"
+  "serialNumber": "urn:uuid:b1882b74-9716-5e2b-bd3b-9898f2be3d80"
 }
