@@ -492,6 +492,8 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            // A newborn has not been at the bottom yet. See the field's doc in ai/hrrl.rs.
+            starving_ticks: 0,
         };
 
         let vel_vec = glam::Vec3::new(vx, 0.0, vz);
@@ -507,6 +509,10 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
                 total_energy_expended: 0.0,
                 survival_ticks: 0,
                 last_position: self.initial_pos,
+                // Bookkeeping only (outside world_checksum): a newborn has gained nothing yet,
+                // the same value a pre-F snapshot reads back as.
+                total_energy_gained: 0.0,
+                prey_energy_gained: 0.0,
             },
             FeatureTracker::default(),
             CognitiveState::Ready,

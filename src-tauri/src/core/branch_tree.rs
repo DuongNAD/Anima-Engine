@@ -841,6 +841,11 @@ pub fn run_branch_tree<M: ExperimentModel>(
             registry_fingerprint: registry.fingerprint(),
             model_version: M::model_version().to_string(),
             build_id: build_id(),
+            // Every node inherits the base manifest's declared initial conditions, so it ranks
+            // epoch replacement by the same rule.
+            fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
+                &manifest.base_manifest.initial_conditions,
+            ),
         };
 
         let run_result = RunResult {

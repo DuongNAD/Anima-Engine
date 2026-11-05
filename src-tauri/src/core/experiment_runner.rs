@@ -198,7 +198,9 @@ impl RunProvenance {
 /// Feature ecological-selection F: which fitness rule the manifest declares, from the
 /// initial-condition key alone. Absent ⇒ locomotion, which is what an absent key means
 /// everywhere else in this feature.
-fn declared_fitness_rule(initial: &crate::core::experiment::InitialConditionSet) -> String {
+pub(crate) fn declared_fitness_rule(
+    initial: &crate::core::experiment::InitialConditionSet,
+) -> String {
     use crate::core::live_experiment::LIVE_KEY_ECOLOGICAL_FITNESS;
     for (key, value) in &initial.values {
         if key == LIVE_KEY_ECOLOGICAL_FITNESS && *value == 1.0 {
