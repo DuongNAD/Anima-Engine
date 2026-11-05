@@ -22,6 +22,21 @@ pub struct HomeostaticState {
     pub starving_ticks: u32,
 }
 
+impl Default for HomeostaticState {
+    fn default() -> Self {
+        Self {
+            energy: 100.0,
+            energy_target: 100.0,
+            hydration: 100.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+            starving_ticks: 0,
+        }
+    }
+}
+
 impl HomeostaticState {
     // Tính tổng độ lệch sinh lý (Homeostatic deviation)
     pub fn compute_deviation(&self) -> f32 {

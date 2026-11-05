@@ -326,6 +326,9 @@ fn intersect_sphere(
 ) -> Option<f32> {
     let v = ray_origin - sphere_center;
     let a = ray_direction.dot(ray_direction);
+    if a <= 0.0 {
+        return None;
+    }
     let b = 2.0 * v.dot(ray_direction);
     let c = v.dot(v) - sphere_radius * sphere_radius;
     let disc = b * b - 4.0 * a * c;
@@ -338,6 +341,9 @@ fn intersect_sphere(
     if t1 >= 0.0 {
         Some(t1)
     } else {
+        // A ray starting inside the sphere (t1 < 0) must not register a hit: the agent
+        // carries its own SpatialCollider at the ray origin, so returning a hit here
+        // makes raycast return the agent itself at distance 0 and blinds every sensor.
         None
     }
 }

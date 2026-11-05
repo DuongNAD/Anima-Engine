@@ -1,0 +1,764 @@
+{
+  "_generated": {
+    "by": "scripts/verify_map2_evidence.ts",
+    "seed": "anima_map2_photorealistic_v1",
+    "timestamp": "2026-08-16T00:00:00.000Z",
+    "worldGenVersion": 21,
+    "dimensions": [
+      200,
+      90,
+      200
+    ],
+    "resolution": [
+      256,
+      256
+    ],
+    "note": "Authoritative Map 2 procedural open world manifest with 8 canonical views, biomes taxonomy, and verified ecology & navigation."
+  },
+  "spawnClearance": {
+    "position": [
+      0,
+      20.1,
+      0
+    ],
+    "bearing": 0,
+    "clearRadius": 6,
+    "terrainHeight": 18,
+    "slope": 0,
+    "nearestTrunkDistance": 8
+  },
+  "navigationGraph": {
+    "gridDim": 64,
+    "totalNodes": 4096,
+    "walkableNodes": 3991,
+    "connectivityRatio": 1,
+    "reachableBiomes": [
+      "arid_savanna",
+      "tropical_rainforest",
+      "temperate_plains",
+      "rocky_cliffs",
+      "hydrology_river_lake",
+      "desert_dunes",
+      "snow_peaks",
+      "bioluminescent_caves"
+    ],
+    "sampleRoute": [
+      [
+        1.6,
+        18,
+        1.6
+      ],
+      [
+        4.7,
+        18.4,
+        1.6
+      ],
+      [
+        -1.6,
+        18,
+        1.6
+      ],
+      [
+        1.6,
+        18.4,
+        4.7
+      ],
+      [
+        1.6,
+        18,
+        -1.6
+      ],
+      [
+        4.7,
+        18.9,
+        4.7
+      ],
+      [
+        4.7,
+        18.4,
+        -1.6
+      ],
+      [
+        -1.6,
+        18.4,
+        4.7
+      ],
+      [
+        -1.6,
+        18,
+        -1.6
+      ],
+      [
+        7.8,
+        19.2,
+        1.6
+      ],
+      [
+        7.8,
+        19.8,
+        4.7
+      ],
+      [
+        7.8,
+        19.3,
+        -1.6
+      ],
+      [
+        -4.7,
+        18.4,
+        1.6
+      ],
+      [
+        -4.7,
+        18.6,
+        4.7
+      ],
+      [
+        -4.7,
+        18.3,
+        -1.6
+      ],
+      [
+        1.6,
+        19.3,
+        7.8
+      ],
+      [
+        4.7,
+        19.9,
+        7.8
+      ],
+      [
+        -1.6,
+        19.2,
+        7.8
+      ],
+      [
+        1.6,
+        18.2,
+        -4.7
+      ],
+      [
+        4.7,
+        18.6,
+        -4.7
+      ]
+    ]
+  },
+  "biomeCoverage": [
+    {
+      "id": "snow_peaks",
+      "enumId": 0,
+      "nameVi": "Đỉnh Tuyết Vĩnh Cửu",
+      "nameEn": "Glacial Snow Peaks",
+      "emoji": "❄️",
+      "color": "#f8fbff",
+      "coveragePercentage": 3.8,
+      "temperatureRange": [
+        -25,
+        -2
+      ],
+      "moistureRange": [
+        0.1,
+        0.4
+      ],
+      "elevationRange": [
+        72,
+        90
+      ],
+      "floraList": [],
+      "faunaList": [
+        "SnowLeopard",
+        "MountainGoat",
+        "AlpineEagle"
+      ]
+    },
+    {
+      "id": "rocky_cliffs",
+      "enumId": 1,
+      "nameVi": "Vách Đá Dốc Đứng",
+      "nameEn": "Alpine Rocky Cliffs",
+      "emoji": "🧗",
+      "color": "#4a4742",
+      "coveragePercentage": 7.3,
+      "temperatureRange": [
+        -10,
+        15
+      ],
+      "moistureRange": [
+        0.1,
+        0.5
+      ],
+      "elevationRange": [
+        25,
+        80
+      ],
+      "floraList": [
+        "CliffMoss",
+        "GnarledPine"
+      ],
+      "faunaList": [
+        "MountainGoat",
+        "PeregrineFalcon"
+      ]
+    },
+    {
+      "id": "temperate_plains",
+      "enumId": 2,
+      "nameVi": "Đồng Cỏ Ôn Đới",
+      "nameEn": "Lush Temperate Plains",
+      "emoji": "🌿",
+      "color": "#5ea844",
+      "coveragePercentage": 36.9,
+      "temperatureRange": [
+        10,
+        24
+      ],
+      "moistureRange": [
+        0.35,
+        0.65
+      ],
+      "elevationRange": [
+        12,
+        45
+      ],
+      "floraList": [
+        "OakTree",
+        "BirchTree",
+        "FieldGrass",
+        "Wildflower"
+      ],
+      "faunaList": [
+        "Rabbit",
+        "Deer",
+        "Songbird",
+        "Fox"
+      ]
+    },
+    {
+      "id": "tropical_rainforest",
+      "enumId": 3,
+      "nameVi": "Rừng Mưa Nhiệt Đới",
+      "nameEn": "Dense Tropical Rainforest",
+      "emoji": "🌴",
+      "color": "#146328",
+      "coveragePercentage": 28.2,
+      "temperatureRange": [
+        24,
+        35
+      ],
+      "moistureRange": [
+        0.65,
+        1
+      ],
+      "elevationRange": [
+        12,
+        40
+      ],
+      "floraList": [
+        "JunglePalm",
+        "FernTree",
+        "LushCanopyTree",
+        "ExoticFlower"
+      ],
+      "faunaList": [
+        "Toucan",
+        "Jaguar",
+        "TreeFrog",
+        "Monkey"
+      ]
+    },
+    {
+      "id": "arid_savanna",
+      "enumId": 4,
+      "nameVi": "Thảo Nguyên Khô Cằn",
+      "nameEn": "Arid Savanna",
+      "emoji": "🌾",
+      "color": "#cbb25b",
+      "coveragePercentage": 15.4,
+      "temperatureRange": [
+        25,
+        42
+      ],
+      "moistureRange": [
+        0.2,
+        0.5
+      ],
+      "elevationRange": [
+        15,
+        45
+      ],
+      "floraList": [
+        "AcaciaTree",
+        "BaobabTree",
+        "DryGrass"
+      ],
+      "faunaList": [
+        "Lion",
+        "Zebra",
+        "Giraffe",
+        "Vulture"
+      ]
+    },
+    {
+      "id": "desert_dunes",
+      "enumId": 5,
+      "nameVi": "Cồn Cát Sa Mạc",
+      "nameEn": "Desert Sand Dunes",
+      "emoji": "🏜️",
+      "color": "#e8ba60",
+      "coveragePercentage": 3.8,
+      "temperatureRange": [
+        28,
+        50
+      ],
+      "moistureRange": [
+        0,
+        0.25
+      ],
+      "elevationRange": [
+        12,
+        35
+      ],
+      "floraList": [
+        "SaguaroCactus",
+        "BarrelCactus",
+        "DesertShrub"
+      ],
+      "faunaList": [
+        "DesertFox",
+        "Camel",
+        "Rattlesnake",
+        "Scorpion"
+      ]
+    },
+    {
+      "id": "hydrology_river_lake",
+      "enumId": 6,
+      "nameVi": "Lưu Vực Sông Hồ",
+      "nameEn": "River & Lake Hydrology",
+      "emoji": "💧",
+      "color": "#3a84a7",
+      "coveragePercentage": 1.9,
+      "temperatureRange": [
+        5,
+        22
+      ],
+      "moistureRange": [
+        0.8,
+        1
+      ],
+      "elevationRange": [
+        0,
+        12
+      ],
+      "floraList": [],
+      "faunaList": [
+        "RiverTrout",
+        "Salmon",
+        "Otter",
+        "Heron"
+      ]
+    },
+    {
+      "id": "bioluminescent_caves",
+      "enumId": 7,
+      "nameVi": "Hang Pha Lê Phát Quang",
+      "nameEn": "Bioluminescent Crystal Caves",
+      "emoji": "🔮",
+      "color": "#9d4edd",
+      "coveragePercentage": 2.6,
+      "temperatureRange": [
+        8,
+        18
+      ],
+      "moistureRange": [
+        0.7,
+        1
+      ],
+      "elevationRange": [
+        0,
+        25
+      ],
+      "floraList": [
+        "GlowingMushroom",
+        "CrystalSpire",
+        "BioluminescentMoss"
+      ],
+      "faunaList": [
+        "GlowBat",
+        "CaveSalamander",
+        "CrystalBeetle"
+      ]
+    }
+  ],
+  "colliders": {
+    "cliffSlopeLimit": 0.45,
+    "totalTrunkColliders": 210,
+    "nearestTrunkDistanceToSpawn": 8,
+    "sampleColliders": [
+      {
+        "x": -88,
+        "z": -96,
+        "radius": 0.28,
+        "species": "lush_jungle_tree"
+      },
+      {
+        "x": 8,
+        "z": -96,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": 24,
+        "z": -96,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 32,
+        "z": -96,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 40,
+        "z": -96,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 56,
+        "z": -96,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 64,
+        "z": -96,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 88,
+        "z": -96,
+        "radius": 0.22,
+        "species": "saguaro_cactus"
+      },
+      {
+        "x": -96,
+        "z": -88,
+        "radius": 0.28,
+        "species": "lush_jungle_tree"
+      },
+      {
+        "x": -88,
+        "z": -88,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": -64,
+        "z": -88,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": -16,
+        "z": -88,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": 0,
+        "z": -88,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": 16,
+        "z": -88,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": 96,
+        "z": -88,
+        "radius": 0.14,
+        "species": "umbrella_acacia"
+      },
+      {
+        "x": -72,
+        "z": -80,
+        "radius": 0.28,
+        "species": "lush_jungle_tree"
+      },
+      {
+        "x": -40,
+        "z": -80,
+        "radius": 0.28,
+        "species": "lush_jungle_tree"
+      },
+      {
+        "x": -24,
+        "z": -80,
+        "radius": 0.28,
+        "species": "lush_jungle_tree"
+      },
+      {
+        "x": 0,
+        "z": -80,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      },
+      {
+        "x": 24,
+        "z": -80,
+        "radius": 0.18,
+        "species": "broadleaf_deciduous"
+      }
+    ]
+  },
+  "views": [
+    {
+      "id": "overview",
+      "name": "Whole World Aerial Overview",
+      "description": "Panoramic landscape view from high elevation showing all 8 biomes, mountain relief, and hydrology network.",
+      "imagePath": "artifacts/maps/map2/views/overview.png",
+      "camera": {
+        "position": [
+          0,
+          110,
+          110
+        ],
+        "target": [
+          0,
+          15,
+          0
+        ],
+        "fov": 55
+      },
+      "captured": true,
+      "bearing": 0,
+      "pitch": -40.8,
+      "distance": 145.34,
+      "validationRules": [
+        "all_biomes_visible",
+        "no_mesh_seams",
+        "horizon_sky_coverage"
+      ],
+      "bytes": 117,
+      "checksum": "sha256:3506491dc43d751f2511d68c1a731d48f54b9f6faef97bc603d63d9cdaabc20e"
+    },
+    {
+      "id": "navigation",
+      "name": "Valley Navigation Pathway",
+      "description": "Pathfinding route through plains and river valley along connected walkable terrain.",
+      "imagePath": "artifacts/maps/map2/views/navigation.png",
+      "camera": {
+        "position": [
+          -15,
+          18,
+          20
+        ],
+        "target": [
+          0,
+          17,
+          -10
+        ],
+        "fov": 60
+      },
+      "captured": true,
+      "bearing": 26.6,
+      "pitch": -1.7,
+      "distance": 33.56,
+      "validationRules": [
+        "continuous_walkway",
+        "gradient_under_0.45",
+        "no_impassable_bottlenecks"
+      ],
+      "bytes": 119,
+      "checksum": "sha256:eb8054f19810d0492b595121483cd2293dbc8a5afeeb8ca021ba6a2eefdcab6c"
+    },
+    {
+      "id": "collision",
+      "name": "Rocky Cliff & Flora Collision Face",
+      "description": "Player walk capsule near steep rocky cliff face and tree trunks testing push-out and slide physics.",
+      "imagePath": "artifacts/maps/map2/views/collision.png",
+      "camera": {
+        "position": [
+          40,
+          25,
+          -30
+        ],
+        "target": [
+          55,
+          35,
+          -30
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 90,
+      "pitch": 33.7,
+      "distance": 18.03,
+      "validationRules": [
+        "capsule_pushout_active",
+        "slope_slide_on_cliff",
+        "no_trunk_penetration"
+      ],
+      "bytes": 118,
+      "checksum": "sha256:faf12e8735dfe1d557f374762a47c1d2ecc1b6d2fb13563b44e2a3768115777f"
+    },
+    {
+      "id": "lighting",
+      "name": "Atmospheric Sunset Golden Hour",
+      "description": "Atmospheric sunset / dusk lighting with long shadows, Mie scattering sun disk, and Rayleigh scattering.",
+      "imagePath": "artifacts/maps/map2/views/lighting.png",
+      "camera": {
+        "position": [
+          -45,
+          30,
+          45
+        ],
+        "target": [
+          10,
+          40,
+          -10
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 45,
+      "pitch": 7.3,
+      "distance": 78.42,
+      "validationRules": [
+        "rayleigh_gradient",
+        "shadow_casters_active",
+        "sun_direction_aligned"
+      ],
+      "bytes": 117,
+      "checksum": "sha256:caea06d1b95406e5ca1f493ca94beaf6c3263e840378fdb4aab5fbdee1840052"
+    },
+    {
+      "id": "spawn",
+      "name": "Initial Player Spawn Clearing",
+      "description": "Player spawn location (0, 0) in safe temperate clearing with clear canopy radius (D >= 6m).",
+      "imagePath": "artifacts/maps/map2/views/spawn.png",
+      "camera": {
+        "position": [
+          0,
+          16.7,
+          0
+        ],
+        "target": [
+          0,
+          16.7,
+          -20
+        ],
+        "fov": 65
+      },
+      "captured": true,
+      "bearing": 0,
+      "pitch": 0,
+      "distance": 20,
+      "validationRules": [
+        "clear_radius_ge_6m",
+        "above_water_level",
+        "slope_under_0.25"
+      ],
+      "bytes": 114,
+      "checksum": "sha256:dbddd09b847d62c91ca7d8f0b8191a3b354ba3dadacfbdd07a4e4338c04eda7e"
+    },
+    {
+      "id": "water",
+      "name": "Waterfall and Lake Shoreline",
+      "description": "Lake and river basin showing Gerstner wave ripples, shoreline foam, and waterfall spray.",
+      "imagePath": "artifacts/maps/map2/views/water.png",
+      "camera": {
+        "position": [
+          -25,
+          8,
+          -15
+        ],
+        "target": [
+          -10,
+          4,
+          5
+        ],
+        "fov": 55
+      },
+      "captured": true,
+      "bearing": 143.1,
+      "pitch": -9.1,
+      "distance": 25.32,
+      "validationRules": [
+        "gerstner_displacement",
+        "foam_at_contact_edges",
+        "waterfall_spray_particles"
+      ],
+      "bytes": 114,
+      "checksum": "sha256:86d422fb44a271212e9c76e23d37712149344dabfd048198b86b91e096482ca5"
+    },
+    {
+      "id": "biome_transition",
+      "name": "Plains to Rainforest to Cliffs Ecotone",
+      "description": "Smooth continuous ecotone transition between plains, rainforest, and rocky cliffs.",
+      "imagePath": "artifacts/maps/map2/views/biome_transition.png",
+      "camera": {
+        "position": [
+          50,
+          20,
+          40
+        ],
+        "target": [
+          20,
+          15,
+          10
+        ],
+        "fov": 50
+      },
+      "captured": true,
+      "bearing": 315,
+      "pitch": -6.7,
+      "distance": 42.72,
+      "validationRules": [
+        "soft_splatting_weights",
+        "partition_of_unity",
+        "no_hard_boundaries"
+      ],
+      "bytes": 125,
+      "checksum": "sha256:4288adfcd94064179fd4ab7f5cefe2a0923a3198b4f7fff45388a8be3ca922fb"
+    },
+    {
+      "id": "ecosystem",
+      "name": "Active Wildlife and Flora Coexistence",
+      "description": "Active wildlife and flora coexistence in lush temperate valley and crystal cavern.",
+      "imagePath": "artifacts/maps/map2/views/ecosystem.png",
+      "camera": {
+        "position": [
+          -60,
+          12,
+          -60
+        ],
+        "target": [
+          -50,
+          10,
+          -50
+        ],
+        "fov": 60
+      },
+      "captured": true,
+      "bearing": 135,
+      "pitch": -8,
+      "distance": 14.28,
+      "validationRules": [
+        "boids_aloft",
+        "shoals_submerged",
+        "terrestrial_herds_grounded"
+      ],
+      "bytes": 118,
+      "checksum": "sha256:9e4d70e95d92d2c265aa2e54f601272157113d03a862c387d031cd9a34f1612b"
+    }
+  ]
+}

@@ -2,16 +2,18 @@
 #
 # Run:  cargo deny --all-features check licenses bans sources     (from src-tauri/)
 #
-# SCOPE. This file does NOT own advisories -- `cargo audit` does, and its reasoning lives in
-# `.cargo/audit.toml`, where each ignore records the command that proves the code is never compiled.
-# Two gates disagreeing about the same advisory is worse than one gate, so the `[advisories]`
-# section below only mirrors those two ignores, to keep a bare `cargo deny check` from failing on
-# findings that were already investigated and closed elsewhere. Add new advisory reasoning to
-# `.cargo/audit.toml`, not here.
+# SCOPE. `cargo audit` and `cargo deny` do not scope the same thing: `cargo audit` reads Cargo.lock
+# (feature-agnostic, including optional subtrees no feature enables), whereas `cargo deny` builds
+# the resolved dependency graph for the configured targets and features. Lockfile-only exemptions
+# live in `.cargo/audit.toml` and must NOT be mirrored here — `cargo deny` never sees a crate that
+# is absent from the resolved graph and reports an unmatched ignore (`advisory-not-detected`).
+# Conversely, `[advisories]` below records only graph-visible advisories that `cargo deny` gates
+# (such as `unsound` findings that `cargo audit` treats as informational) once verified unreachable.
 #
-# What this file is for is the half `cargo audit` cannot see: which LICENSES the dependency graph
-# actually drags in, and whether anything is being pulled from a source nobody vetted. That question
-# only became answerable once Anima-Engine chose its own license -- see the root README.
+# What this file is primarily for is the half `cargo audit` cannot see: which LICENSES the
+# dependency graph actually drags in, and whether anything is being pulled from a source nobody
+# vetted. That question only became answerable once Anima-Engine chose its own license -- see the
+# root README.
 
 [graph]
 # Empty means "every target that exists", which reports crates that are provably never compiled.
@@ -102,12 +104,25 @@ allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
 
 [advisories]
-# Mirrors `.cargo/audit.toml`. See the SCOPE note at the top: `cargo audit` is the gate that owns
-# these, and the verification for both lives there. Both are lockfile-only entries for the
-# burn-dataset -> gix chain, which no enabled feature compiles.
+# Do NOT mirror `.cargo/audit.toml` here: `cargo audit` is lockfile-scoped (it sees uncompiled
+# optional subtrees like `burn-dataset -> gix-*` and `burn-candle -> zip -> zstd-*`), whereas
+# `cargo deny` is graph-scoped and rejects ignores for crates absent from the resolved graph.
+#
+# Entries here must be in the resolved graph AND verified unreachable:
 ignore = [
-    "RUSTSEC-2024-0350",
-    "RUSTSEC-2025-0021",
+    # tokio 1.53.1 — RUSTSEC-2026-0386 (`unsound`), `tokio::io::unix::AsyncFd` safe constructors
+    # (`new`, `with_interest`, `try_new`, `try_with_interest`) accept any `T: AsRawFd` without
+    # proof of FD ownership.
+    #
+    # `cargo audit` treats `unsound` advisories as informational (`informational_warnings = []`),
+    # whereas `cargo deny` fails on them. `tokio` is in the resolved graph, but `AsyncFd` is inside
+    # `tokio::io::unix` (`#[cfg(unix)]`, absent on the primary `x86_64-pc-windows-msvc` target) and
+    # is never constructed anywhere in this workspace or by our enabled `tokio` consumers (`neo4rs`,
+    # `tokio-tungstenite`, `tauri`, which use `tokio::net::TcpStream` / `mio` directly).
+    #
+    # Verified:
+    #   grep -rn "AsyncFd" src/ tests/ crates/   -> 0 matches
+    "RUSTSEC-2026-0386",
 ]
 
 # cargo-deny fails on "unmaintained" by default; cargo audit reports it and does not. Same repo,

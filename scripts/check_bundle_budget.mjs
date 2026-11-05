@@ -56,6 +56,11 @@ const CHUNK_BUDGET_KIB = {
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
   WorldShowcase: 130,
+  Map2Showcase: 130,
+  map2: 120,
+  // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
+  // Measured at 88.6 KiB (21.5 KiB gzipped); 120 gives standard headroom.
+  ResearchDashboard: 120,
   // `react-dom/client`, which is why the chunk is called `client`. It appeared as a chunk of its own
   // when both entries started rendering the same scene: rolldown hoisted the renderer into shared
   // code instead of leaving a copy inside each entry. That is the split improving, not the bundle
@@ -133,7 +138,11 @@ if (total > TOTAL_BUDGET_KIB) {
 //
 // The remaining 836 KiB is three.js itself, and it is honestly still 836 KiB — that debt is scored,
 // not resolved. What this gate adds is that the debt cannot silently spread to the dashboard.
-const ENTRY_HTML = { 'index.html': '2D dashboard', 'landscape.html': 'landscape scene' };
+const ENTRY_HTML = {
+  'index.html': '2D dashboard',
+  'landscape.html': 'landscape scene',
+  'map2.html': 'map 2 scene',
+};
 /** Chunks that must never be reachable from the dashboard entry's static preload graph. */
 const THREE_D_CHUNK = /^react-three-fiber/;
 
@@ -154,7 +163,7 @@ for (const [file, label] of Object.entries(ENTRY_HTML)) {
         `it lazily, or the dashboard pays 836 KiB for a renderer it does not use.`,
     );
   }
-  if (file === 'landscape.html' && !loadsThreeD) {
+  if ((file === 'landscape.html' || file === 'map2.html') && !loadsThreeD) {
     // The other direction, so the check above cannot pass because the chunk stopped existing.
     failures.push(
       `the ${label} (${file}) does not reference the three.js chunk. Either the 3D scene stopped ` +

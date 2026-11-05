@@ -482,6 +482,18 @@ export const Vegetation: React.FC<VegetationProps> = ({
     setWindAngle(uniforms, currentWindDirection);
   }, [currentWindDirection, uniforms]);
 
+  useEffect(() => {
+    return () => {
+      // Guard dispose calls against non-standard or mock environments
+      Object.values(geometries).forEach((g) => {
+        if (g && typeof g.dispose === 'function') g.dispose();
+      });
+      Object.values(materials).forEach((m) => {
+        if (m && typeof m.dispose === 'function') m.dispose();
+      });
+    };
+  }, [geometries, materials]);
+
   // Update clock time on frame ticks. `materials` is declared above rather than below: a `const`
   // read from a callback declared before it is a temporal-dead-zone reference, safe today only
   // because frames happen to fire after the whole body has run.
@@ -640,6 +652,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={oakTRef}
         name="vegetation-instanced-mesh-oak"
         args={[null, null, Math.max(1, speciesCounts.Oak)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.OakTrunk} attach="geometry" />
         <primitive object={materials.OakTrunk} attach="material" />
@@ -648,6 +661,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={oakLRef}
         name="vegetation-instanced-mesh-oak-leaves"
         args={[null, null, Math.max(1, speciesCounts.Oak)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.OakLeaves} attach="geometry" />
         <primitive object={materials.OakLeaves} attach="material" />
@@ -657,6 +671,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={pineTRef}
         name="vegetation-instanced-mesh-pine"
         args={[null, null, Math.max(1, speciesCounts.Pine)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PineTrunk} attach="geometry" />
         <primitive object={materials.PineTrunk} attach="material" />
@@ -665,6 +680,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={pineL1Ref}
         name="vegetation-instanced-mesh-pine-leaves-1"
         args={[null, null, Math.max(1, speciesCounts.Pine)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PineLeaves1} attach="geometry" />
         <primitive object={materials.PineLeaves1} attach="material" />
@@ -673,6 +689,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={pineL2Ref}
         name="vegetation-instanced-mesh-pine-leaves-2"
         args={[null, null, Math.max(1, speciesCounts.Pine)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PineLeaves2} attach="geometry" />
         <primitive object={materials.PineLeaves2} attach="material" />
@@ -681,6 +698,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={pineL3Ref}
         name="vegetation-instanced-mesh-pine-leaves-3"
         args={[null, null, Math.max(1, speciesCounts.Pine)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PineLeaves3} attach="geometry" />
         <primitive object={materials.PineLeaves3} attach="material" />
@@ -690,6 +708,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={bushRef}
         name="vegetation-instanced-mesh-bush"
         args={[null, null, Math.max(1, speciesCounts.Bush)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.Bush} attach="geometry" />
         <primitive object={materials.Bush} attach="material" />
@@ -699,6 +718,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={rockRef}
         name="vegetation-instanced-mesh-rock"
         args={[null, null, Math.max(1, speciesCounts.Rock)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.Rock} attach="geometry" />
         <primitive object={materials.Rock} attach="material" />
@@ -708,6 +728,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={palmTRef}
         name="vegetation-instanced-mesh-palm"
         args={[null, null, Math.max(1, speciesCounts.Palm)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PalmTrunk} attach="geometry" />
         <primitive object={materials.PalmTrunk} attach="material" />
@@ -716,6 +737,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={palmLRef}
         name="vegetation-instanced-mesh-palm-leaves"
         args={[null, null, Math.max(1, speciesCounts.Palm)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.PalmLeaves} attach="geometry" />
         <primitive object={materials.PalmLeaves} attach="material" />
@@ -725,6 +747,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={cactusRef}
         name="vegetation-instanced-mesh-cactus"
         args={[null, null, Math.max(1, speciesCounts.Cactus)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.Cactus} attach="geometry" />
         <primitive object={materials.Cactus} attach="material" />
@@ -734,6 +757,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={jungleTRef}
         name="vegetation-instanced-mesh-jungle"
         args={[null, null, Math.max(1, speciesCounts.Jungle)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.JungleTrunk} attach="geometry" />
         <primitive object={materials.JungleTrunk} attach="material" />
@@ -742,6 +766,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={jungleLRef}
         name="vegetation-instanced-mesh-jungle-leaves"
         args={[null, null, Math.max(1, speciesCounts.Jungle)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.JungleLeaves} attach="geometry" />
         <primitive object={materials.JungleLeaves} attach="material" />
@@ -751,6 +776,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={birchTRef}
         name="vegetation-instanced-mesh-birch"
         args={[null, null, Math.max(1, speciesCounts.Birch)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.BirchTrunk} attach="geometry" />
         <primitive object={materials.BirchTrunk} attach="material" />
@@ -759,6 +785,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={birchLRef}
         name="vegetation-instanced-mesh-birch-leaves"
         args={[null, null, Math.max(1, speciesCounts.Birch)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.BirchLeaves} attach="geometry" />
         <primitive object={materials.BirchLeaves} attach="material" />
@@ -768,6 +795,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={flowersRef}
         name="vegetation-instanced-mesh-flowers"
         args={[null, null, Math.max(1, speciesCounts.Flowers)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.Flowers} attach="geometry" />
         <primitive object={materials.Flowers} attach="material" />
@@ -777,6 +805,7 @@ export const Vegetation: React.FC<VegetationProps> = ({
         ref={grassRef}
         name="vegetation-instanced-mesh-grass"
         args={[null, null, Math.max(1, speciesCounts.Grass)]}
+        frustumCulled={false}
       >
         <primitive object={geometries.Grass} attach="geometry" />
         <primitive object={materials.Grass} attach="material" />

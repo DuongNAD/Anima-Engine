@@ -11,9 +11,7 @@
       "description": "Real-time GPU-accelerated Artificial Life & Evolution simulator (Tauri v2 desktop app).",
       "licenses": [
         {
-          "license": {
-            "name": "Proprietary — see LICENSE"
-          }
+          "expression": "MIT OR Apache-2.0"
         }
       ]
     },
@@ -8041,9 +8039,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls-webpki@0.103.13",
+      "bom-ref": "pkg:cargo/rustls-webpki@0.103.15",
       "name": "rustls-webpki",
-      "version": "0.103.13",
+      "version": "0.103.15",
       "description": "Web PKI X.509 Certificate Verification.",
       "scope": "required",
       "licenses": [
@@ -8053,7 +8051,7 @@
           }
         }
       ],
-      "purl": "pkg:cargo/rustls-webpki@0.103.13",
+      "purl": "pkg:cargo/rustls-webpki@0.103.15",
       "externalReferences": [
         {
           "type": "vcs",
@@ -8073,9 +8071,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:cargo/rustls@0.23.42",
+      "bom-ref": "pkg:cargo/rustls@0.23.46",
       "name": "rustls",
-      "version": "0.23.42",
+      "version": "0.23.46",
       "description": "Rustls is a modern TLS library written in Rust.",
       "scope": "required",
       "licenses": [
@@ -8083,7 +8081,7 @@
           "expression": "Apache-2.0 OR ISC OR MIT"
         }
       ],
-      "purl": "pkg:cargo/rustls@0.23.42",
+      "purl": "pkg:cargo/rustls@0.23.46",
       "externalReferences": [
         {
           "type": "vcs",
@@ -13255,9 +13253,9 @@
     },
     {
       "type": "library",
-      "bom-ref": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "bom-ref": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "name": "@xmldom/xmldom",
-      "version": "0.8.13",
+      "version": "0.8.15",
       "description": "A pure JavaScript W3C standard-based (XML DOM Level 2 Core) DOMParser and XMLSerializer module.",
       "scope": "excluded",
       "licenses": [
@@ -13267,7 +13265,7 @@
           }
         }
       ],
-      "purl": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "purl": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "externalReferences": [
         {
           "type": "vcs",
@@ -15983,7 +15981,7 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls-webpki@0.103.13",
+      "ref": "pkg:cargo/rustls-webpki@0.103.15",
       "dependsOn": [
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.1",
@@ -15991,13 +15989,13 @@
       ]
     },
     {
-      "ref": "pkg:cargo/rustls@0.23.42",
+      "ref": "pkg:cargo/rustls@0.23.46",
       "dependsOn": [
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/ring@0.17.14",
         "pkg:cargo/rustls-pki-types@1.15.1",
-        "pkg:cargo/rustls-webpki@0.103.13",
+        "pkg:cargo/rustls-webpki@0.103.15",
         "pkg:cargo/subtle@2.6.1",
         "pkg:cargo/zeroize@1.9.0"
       ]
@@ -16582,7 +16580,7 @@
     {
       "ref": "pkg:cargo/tokio-rustls@0.26.4",
       "dependsOn": [
-        "pkg:cargo/rustls@0.23.42",
+        "pkg:cargo/rustls@0.23.46",
         "pkg:cargo/tokio@1.53.1"
       ]
     },
@@ -16760,7 +16758,7 @@
         "pkg:cargo/log@0.4.33",
         "pkg:cargo/once_cell@1.21.4",
         "pkg:cargo/rustls-pki-types@1.15.1",
-        "pkg:cargo/rustls@0.23.42",
+        "pkg:cargo/rustls@0.23.46",
         "pkg:cargo/serde@1.0.229",
         "pkg:cargo/serde_json@1.0.151",
         "pkg:cargo/url@2.5.8",
@@ -17316,7 +17314,7 @@
       "dependsOn": []
     },
     {
-      "ref": "pkg:npm/%40xmldom/xmldom@0.8.13",
+      "ref": "pkg:npm/%40xmldom/xmldom@0.8.15",
       "dependsOn": []
     },
     {
@@ -17386,7 +17384,7 @@
         "pkg:npm/%40pixi/colord@2.9.6",
         "pkg:npm/%40types/earcut@3.0.0",
         "pkg:npm/%40webgpu/types@0.1.70",
-        "pkg:npm/%40xmldom/xmldom@0.8.13",
+        "pkg:npm/%40xmldom/xmldom@0.8.15",
         "pkg:npm/earcut@3.0.2",
         "pkg:npm/eventemitter3@5.0.4",
         "pkg:npm/gifuct-js@2.1.2",
@@ -17456,5 +17454,5 @@
       "dependsOn": []
     }
   ],
-  "serialNumber": "urn:uuid:ca1963dd-0488-5592-80e5-5e5894bc00fa"
+  "serialNumber": "urn:uuid:cd17863f-7b77-5d51-b276-578bffa5c78a"
 }

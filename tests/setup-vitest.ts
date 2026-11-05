@@ -10,7 +10,13 @@ import {
   mockRaycastTelemetry,
   mockLineageGraph,
   mockChronicleHistory,
-  mockEnvironmentalState
+  mockEnvironmentalState,
+  mockDemographicCensusState,
+  mockEnergyFluxReport,
+  mockSpatialDensityReport,
+  mockScientificExportResponse,
+  mockNewickTree,
+  mockCausalBranchTreeState,
 } from './mocks/mock_ipc_payloads';
 import { tickPayloadIsAdapted } from './mocks/tick-adaptation';
 
@@ -41,6 +47,12 @@ type MockCanvasContext = Pick<
   | 'font'
   | 'textAlign'
   | 'textBaseline'
+  | 'scale'
+  | 'save'
+  | 'restore'
+  | 'translate'
+  | 'rotate'
+  | 'setLineDash'
 >;
 
 const mockContexts = new Map<HTMLCanvasElement, MockCanvasContext>();
@@ -76,6 +88,12 @@ canvasProto.getContext = vi.fn(function (this: HTMLCanvasElement, contextId: str
         fillRect: vi.fn(),
         strokeRect: vi.fn(),
         closePath: vi.fn(),
+        scale: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        translate: vi.fn(),
+        rotate: vi.fn(),
+        setLineDash: vi.fn(),
         fillStyle: '',
         strokeStyle: '',
         lineWidth: 1,
@@ -386,6 +404,25 @@ beforeEach(() => {
           niche_divergence: 0.15,
           archive_coverage: 42,
         };
+      case 'get_demographic_census':
+        return mockDemographicCensusState;
+      case 'get_energy_flux_matrix':
+        return mockEnergyFluxReport;
+      case 'get_spatial_density_matrix':
+        return mockSpatialDensityReport;
+      case 'export_scientific_dataset': {
+        const req = invokeArg(args, 'req');
+        if (!req || typeof req !== 'object') {
+          throw new Error("Missing or invalid req argument.");
+        }
+        return mockScientificExportResponse;
+      }
+      case 'export_phylogenetic_tree':
+        return mockNewickTree;
+      case 'get_causal_branch_tree':
+        return mockCausalBranchTreeState;
+      case 'dispatch_causal_intervention':
+        return true;
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

@@ -19,10 +19,8 @@ impl CpgOscillator {
     }
 
     pub fn tick(&mut self, delta_time: f32) {
-        self.phase += 2.0 * std::f32::consts::PI * self.frequency * delta_time;
-        if self.phase > 2.0 * std::f32::consts::PI {
-            self.phase -= 2.0 * std::f32::consts::PI;
-        }
+        let two_pi = 2.0 * std::f32::consts::PI;
+        self.phase = (self.phase + two_pi * self.frequency * delta_time).rem_euclid(two_pi);
         self.output = self.amplitude * self.phase.sin();
     }
 }

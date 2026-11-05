@@ -27,6 +27,21 @@ export type { EvolutionSettings } from './generated/EvolutionSettings';
 export type { EliteIndividualState } from './generated/EliteIndividualState';
 export type { MapElitesGridState } from './generated/MapElitesGridState';
 export type { EcosystemState } from './generated/EcosystemState';
+export type { AgeCohort } from './generated/AgeCohort';
+export type { AgeFecundity } from './generated/AgeFecundity';
+export type { MortalityCauseCount } from './generated/MortalityCauseCount';
+export type { DemographicCensusState } from './generated/DemographicCensusState';
+export type { EnergyFluxNode } from './generated/EnergyFluxNode';
+export type { EnergyFluxLink } from './generated/EnergyFluxLink';
+export type { EnergyFluxReport } from './generated/EnergyFluxReport';
+export type { SpatialDensityReport } from './generated/SpatialDensityReport';
+export type { MapElitesSummary } from './generated/MapElitesSummary';
+export type { NewickExportRequest } from './generated/NewickExportRequest';
+export type { RunProvenance } from './generated/RunProvenance';
+export type { TimeSeriesSample } from './generated/TimeSeriesSample';
+export type { ScientificDatasetPackage } from './generated/ScientificDatasetPackage';
+export type { ScientificExportRequest } from './generated/ScientificExportRequest';
+export type { ScientificExportResponse } from './generated/ScientificExportResponse';
 
 // ---- Not generated ------------------------------------------------------------------------------
 // These have no single Rust struct to derive from: they are either assembled ad hoc by a command, or

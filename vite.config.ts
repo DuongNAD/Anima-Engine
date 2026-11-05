@@ -246,6 +246,7 @@ export default defineConfig(({ mode }) => ({
       input: {
         main: path.resolve(__dirname, "index.html"),
         landscape: path.resolve(__dirname, "landscape.html"),
+        map2: path.resolve(__dirname, "map2.html"),
       },
     },
   },

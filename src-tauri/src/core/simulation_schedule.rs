@@ -97,9 +97,13 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
     ));
     schedule.add_systems((
         update_agent_evaluation_system.after(integrate_physics_system),
-        crate::core::ecs::check_migration_boundaries_system.after(integrate_physics_system),
-        apply_deferred.after(crate::core::ecs::check_migration_boundaries_system),
-        wrap_coordinates_system.after(apply_deferred),
+        (
+            crate::core::ecs::check_migration_boundaries_system,
+            apply_deferred,
+            wrap_coordinates_system,
+        )
+            .chain()
+            .after(integrate_physics_system),
         rebuild_spatial_grid_system.after(wrap_coordinates_system),
         crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
         // ---- The energy pipeline, declared end to end -------------------------------------------
@@ -126,7 +130,48 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         metabolic_decay_system
             .after(integrate_physics_system)
             .after(combat_system),
-        spawn_food_system.after(apply_environmental_effects_system),
+        // ---- The SimRng stream, declared end to end ---------------------------------------------
+        //
+        // Five systems in the tick schedule take `ResMut<SimRng>`: `manual_migration_system`,
+        // `spawn_food_system`, `seed_dropping_system`, `autonomous_reproduction_system` and
+        // `check_epoch_completion_system`. Taking `ResMut` on a shared resource makes Bevy's
+        // executor serialise them, NOT order them — without explicit `.after(...)` edges,
+        // `ScheduleGraph::topsort` picks which system draws first from the shared `ChaCha12Rng`
+        // stream using `FixedState::default()`, which is seeded per process (FINDINGS.md F-029).
+        //
+        // Measured before this chain existed: Bevy reported six unordered conflicting pairs among
+        // these systems (three predating `1d301c3` between `spawn_food_system`,
+        // `seed_dropping_system` and `check_epoch_completion_system`, plus three added when
+        // `1d301c3` introduced `autonomous_reproduction_system`). Six unordered pairs admit many
+        // sort orders, not two: one binary at one seed produced **four** distinct 180-tick
+        // checksums across eight processes — 3667697632, 3611111189, 1299407149 and 67815791 —
+        // and moved tick-1 offspring `live-founder-0005.1` between `x = 71.47` and `x = 75.77`.
+        // `spawn_food_system` draws 100 times on tick 1 (50 food items, two `gen_range` each), so
+        // whether it draws before or after the reproduction systems shifts the whole stream.
+        //
+        // The reproducibility tests stayed green through all of it, because each one compares two
+        // runs made inside the *same* process, and a process is self-consistent.
+        //
+        // The declared draw order follows the causal phases of a tick — migration handoff →
+        // environmental substrate replenishment (ground food, then tree saplings) → intra-tick
+        // reproduction → epoch-boundary evaluation:
+        //
+        //   manual_migration → spawn_food → seed_dropping
+        //     → autonomous_reproduction → check_epoch_completion
+        //
+        // The six pairs were among **four** of the five: Bevy reported no ambiguity between
+        // `manual_migration_system` and any of the others, so the sort already had a path to it.
+        // The chain is still written out in full — including that edge and
+        // `autonomous_reproduction.after(spawn_food)`, which `seed_dropping` already implies — so
+        // the whole draw order reads in one place instead of being reassembled from edges in four
+        // separate `add_systems` blocks. `no_two_systems_that_draw_simrng_are_left_unordered`
+        // guards the invariant either way.
+        //
+        // Running `spawn_food_system` ahead of `autonomous_reproduction_system` also preserves the
+        // tick-1 `SimRng` prefix (`0..100`) that `spawn_food_system` consumed before `1d301c3`.
+        spawn_food_system
+            .after(apply_environmental_effects_system)
+            .after(crate::core::ecs::manual_migration_system),
         detect_food_collisions_system
             .after(integrate_physics_system)
             .after(resource_field_regrowth_system),
@@ -134,7 +179,9 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .after(integrate_physics_system)
             .after(detect_food_collisions_system),
         hrrl_learning_system.after(metabolic_decay_system),
-        check_epoch_completion_system.after(metabolic_decay_system),
+        check_epoch_completion_system
+            .after(metabolic_decay_system)
+            .after(autonomous_reproduction_system),
         apply_staggered_evolution_system.after(check_epoch_completion_system),
         // An explicit observer request wins a contested queue slot over automatic boundary traffic.
         // The order also makes the two producers deterministic with respect to each other.
@@ -143,7 +190,9 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
             .before(crate::core::ecs::check_migration_boundaries_system),
         fruit_growth_system.after(apply_environmental_effects_system),
         lake_replenishment_system.after(apply_environmental_effects_system),
-        seed_dropping_system.after(apply_environmental_effects_system),
+        seed_dropping_system
+            .after(apply_environmental_effects_system)
+            .after(spawn_food_system),
         detect_environmental_collisions_system.after(integrate_physics_system),
     ));
 
@@ -188,30 +237,31 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         crate::core::aggregate_population::dormant_cohort_ecology_system
             .after(herbivore_grazing_system)
             .before(resource_field_regrowth_system),
-        // The census does not accumulate, it takes a **snapshot** — `pool.animals = Σ reserves`,
-        // recomputed from scratch — so unlike `plants` and `detritus`, which are carried
-        // incrementally, its value is entirely a function of *when* in the tick it is taken.
-        //
-        // It used to declare only the two edges below, and nothing about the systems that move
-        // agent reserves. Two systems with no edge between them are ordered by the schedule's
-        // topological sort, and that sort is not a declared property of the schedule — so the order
-        // was chosen per process. Measured at commit `0bcb330`: five runs of one release binary at
-        // one seed gave two distinct `live.animals_eu` trajectories, 0.186 EU apart, which is one
-        // tick of metabolic decay across ten agents. Every other observable, and the world
-        // checksum, were bit-identical; `world_checksum` covers reserves and the resource field but
-        // not `EcosystemBiomass`, which is why no existing gate saw it.
-        //
-        // Every system that moves EU into or out of an agent's reserve is named here. Grazing is
-        // already transitively ordered through regrowth; it is stated anyway, because a reader
-        // checking this list should not have to prove a path through a third system, and because
-        // regrowth's edge could change without anyone thinking about the census.
-        ecosystem_census_system
-            .after(resource_field_regrowth_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+    ));
+
+    // Closed-loop energy conservation: mortality & autonomous continuous reproduction
+    // flush deferred commands before the ecosystem census snapshot.
+    schedule.add_systems(
+        (
+            agent_mortality_system,
+            autonomous_reproduction_system,
+            apply_deferred,
+            ecosystem_census_system,
+        )
+            .chain()
             .after(metabolic_decay_system)
-            .after(detect_food_collisions_system)
+            .after(resource_field_regrowth_system)
             .after(combat_system)
-            .after(herbivore_grazing_system),
+            .after(detect_food_collisions_system)
+            .after(herbivore_grazing_system)
+            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+            .after(spawn_food_system)
+            .after(seed_dropping_system),
+    );
+
+    schedule.add_systems((
+        demographic_census_system.after(ecosystem_census_system),
+        energy_flux_aggregation_system.after(ecosystem_census_system),
     ));
 
     // Death sits inside the declared energy chain: after metabolism (an animal that just ate is

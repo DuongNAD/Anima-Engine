@@ -5,7 +5,7 @@
   "license": "MIT OR Apache-2.0",
   "scripts": {
     "test:frontend": "vitest run --config vitest.config.ts",
-    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e": "playwright test e2e/tiers/ --config e2e/playwright.config.ts",
     "test:all": "npm run test:frontend && npm run test:e2e",
     "capture:views": "playwright test --config e2e/capture.config.ts"
   },

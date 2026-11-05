@@ -16,6 +16,9 @@ const RIVER_FLOOR_Y = 5.5 * HEIGHT_CONV; // minimum river / lake water surface
 const RIVER_BLEND_TOP = 12.0 * HEIGHT_CONV; // blend rivers toward terrain above this
 const RIVER_BLEND_RANGE = 6.5 * HEIGHT_CONV;
 
+const scratchSunDir = new THREE.Vector3();
+const scratchMoonDir = new THREE.Vector3();
+
 interface WaterProps {
   windSpeed?: number;
   reflectionColor?: string;
@@ -496,6 +499,12 @@ export const Water: React.FC<WaterProps> = ({
     return { geom, positions };
   }, [terrain, width, height, getRiverVertexHeight]);
 
+  useEffect(() => {
+    return () => {
+      riverData.geom.dispose();
+    };
+  }, [riverData]);
+
   // Waterfall Points and Particles setup (remains unchanged)
   const waterfallPoints = useMemo(() => {
     const points: { x: number; y: number; z: number }[] = [];
@@ -581,14 +590,14 @@ export const Water: React.FC<WaterProps> = ({
     const skyParams = getSkyParams(timeOfDay);
     const angle = ((timeOfDay - 6) / 24) * Math.PI * 2;
     
-    const sunDir = new THREE.Vector3(
+    const sunDir = scratchSunDir.set(
       Math.cos(angle),
       Math.sin(angle),
       Math.sin(angle) * 0.1
     ).normalize();
     
     const moonAngle = angle + Math.PI;
-    const moonDir = new THREE.Vector3(
+    const moonDir = scratchMoonDir.set(
       Math.cos(moonAngle),
       Math.sin(moonAngle),
       Math.sin(moonAngle) * 0.1
@@ -682,11 +691,20 @@ export const Water: React.FC<WaterProps> = ({
   });
 
   useEffect(() => {
+    const oceanMat = oceanMaterialRef.current;
+    const riverMat = riverMaterialRef.current;
+    const particles = particlesRef.current;
     return () => {
       heightMapTexture.dispose();
       oceanGeometry.dispose();
       if (riverData.geom) {
         riverData.geom.dispose();
+      }
+      // Under jsdom tests, the R3F mock backs intrinsics with plain DOM elements that lack dispose methods
+      if (oceanMat && typeof oceanMat.dispose === 'function') oceanMat.dispose();
+      if (riverMat && typeof riverMat.dispose === 'function') riverMat.dispose();
+      if (particles?.geometry && typeof particles.geometry.dispose === 'function') {
+        particles.geometry.dispose();
       }
     };
   }, [heightMapTexture, oceanGeometry, riverData.geom]);
