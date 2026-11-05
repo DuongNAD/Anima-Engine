@@ -76,6 +76,36 @@ pub fn executor_name(mode: DeterministicMode) -> &'static str {
 /// purpose is to be reproducible; an interactive session leaves determinism off and keeps the
 /// multi-threaded executor.
 pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
+    build_tick_schedule_with(deterministic, LiveDemographics::Off)
+}
+
+/// Whether the tick includes the live-demographics systems (starvation death and autonomous
+/// reproduction) that arrived with the 2026-08-16 block in `1d301c3`.
+///
+/// **`Off` is the default and is what the app and the experiment adapter run.** With `Off` the
+/// schedule is the one [`build_tick_schedule`] built before that block: the population changes only
+/// through `EvolutionaryReplacement` (ADR-0001, D06), and no system below is registered at all —
+/// not registered-and-idle, because an idle system with `Commands` would still bring an automatic
+/// sync point and new ordering edges into the default tick.
+///
+/// `On` exists so the code stays reachable while the owner's decision QĐ-A′ (revert it, or fix it
+/// in place) is open; see the section comment above `agent_systems::agent_mortality_system` for
+/// what is known to be wrong with it. Nothing outside the tests that exercise it asks for `On`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum LiveDemographics {
+    /// The default tick: no births, no starvation death.
+    #[default]
+    Off,
+    /// Adds `agent_mortality_system` and `autonomous_reproduction_system` before the census.
+    On,
+}
+
+/// [`build_tick_schedule`], with the live-demographics systems when `demographics` is
+/// [`LiveDemographics::On`]. Still the one place the live schedule is built.
+pub fn build_tick_schedule_with(
+    deterministic: DeterministicMode,
+    demographics: LiveDemographics,
+) -> Schedule {
     let mut schedule = Schedule::default();
     if deterministic.is_enabled() {
         schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
@@ -97,15 +127,10 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
     ));
     schedule.add_systems((
         update_agent_evaluation_system.after(integrate_physics_system),
-        (
-            crate::core::ecs::check_migration_boundaries_system,
-            apply_deferred,
-            wrap_coordinates_system,
-        )
-            .chain()
-            .after(integrate_physics_system),
+        crate::core::ecs::check_migration_boundaries_system.after(integrate_physics_system),
+        apply_deferred.after(crate::core::ecs::check_migration_boundaries_system),
+        wrap_coordinates_system.after(apply_deferred),
         rebuild_spatial_grid_system.after(wrap_coordinates_system),
-
         crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
         // ---- The energy pipeline, declared end to end -------------------------------------------
         //
@@ -193,32 +218,31 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         crate::core::aggregate_population::dormant_cohort_ecology_system
             .after(herbivore_grazing_system)
             .before(resource_field_regrowth_system),
-    ));
-
-    // Closed-loop energy conservation: mortality & autonomous continuous reproduction
-    // flush deferred commands before the ecosystem census snapshot.
-    schedule.add_systems(
-        (
-            agent_mortality_system,
-            autonomous_reproduction_system,
-            apply_deferred,
-            ecosystem_census_system,
-        )
-            .chain()
-            .after(metabolic_decay_system)
+        // The census does not accumulate, it takes a **snapshot** — `pool.animals = Σ reserves`,
+        // recomputed from scratch — so unlike `plants` and `detritus`, which are carried
+        // incrementally, its value is entirely a function of *when* in the tick it is taken.
+        //
+        // It used to declare only the two edges below, and nothing about the systems that move
+        // agent reserves. Two systems with no edge between them are ordered by the schedule's
+        // topological sort, and that sort is not a declared property of the schedule — so the order
+        // was chosen per process. Measured at commit `0bcb330`: five runs of one release binary at
+        // one seed gave two distinct `live.animals_eu` trajectories, 0.186 EU apart, which is one
+        // tick of metabolic decay across ten agents. Every other observable, and the world
+        // checksum, were bit-identical; `world_checksum` covers reserves and the resource field but
+        // not `EcosystemBiomass`, which is why no existing gate saw it.
+        //
+        // Every system that moves EU into or out of an agent's reserve is named here. Grazing is
+        // already transitively ordered through regrowth; it is stated anyway, because a reader
+        // checking this list should not have to prove a path through a third system, and because
+        // regrowth's edge could change without anyone thinking about the census.
+        ecosystem_census_system
             .after(resource_field_regrowth_system)
-            .after(combat_system)
+            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+            .after(metabolic_decay_system)
             .after(detect_food_collisions_system)
-            .after(herbivore_grazing_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system),
-    );
-
-    schedule.add_systems((
-        demographic_census_system.after(ecosystem_census_system),
-        energy_flux_aggregation_system.after(ecosystem_census_system),
+            .after(combat_system)
+            .after(herbivore_grazing_system),
     ));
-
-
 
     // A declared experiment's interventions reach the world here. `.before(...)` only — see the
     // module docs — and inert without a `LiveInterventions` resource, which only the experiment
@@ -260,6 +284,24 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
         )
             .chain(),
     );
+
+    // Opt-in only — see `LiveDemographics`. Death and birth move EU between reserves and detritus,
+    // so both run after every system that moves reserve EU and before the census that snapshots it;
+    // the census anchors above are repeated here for the same reason they are stated there. Bevy
+    // inserts the sync points that make a despawn or spawn visible to the census.
+    if demographics == LiveDemographics::On {
+        schedule.add_systems(
+            (agent_mortality_system, autonomous_reproduction_system)
+                .chain()
+                .after(resource_field_regrowth_system)
+                .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
+                .after(metabolic_decay_system)
+                .after(detect_food_collisions_system)
+                .after(combat_system)
+                .after(herbivore_grazing_system)
+                .before(ecosystem_census_system),
+        );
+    }
 
     schedule
 }

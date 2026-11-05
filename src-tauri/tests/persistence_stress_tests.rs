@@ -367,9 +367,10 @@ fn test_100_save_load_cycles() {
         .expect("initial save must not be refused");
 
     assert!(current_state.tick_count > 0);
-    assert!(
-        current_state.agents.len() >= 10,
-        "Should spawn at least 10 agents by default"
+    assert_eq!(
+        current_state.agents.len(),
+        10,
+        "Should spawn 10 agents by default"
     );
 
     engine.stop();

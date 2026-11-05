@@ -11,12 +11,6 @@ pub struct Predator;
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Prey;
 
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum AgentSex {
-    Male,
-    Female,
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AgentClass {
     Predator,

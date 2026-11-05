@@ -7,7 +7,6 @@
 //! 4. Holling III vs Holling II rarity refuge mathematical oracle verification.
 //! 5. Phase space non-trivial trajectory and energy drift bounded < 1e-3 EU.
 
-use std::sync::Arc;
 use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::{HomeostaticState, TransitionSender};
 use anima_engine_lib::ai::model::{BrainInferenceBuffer, BrainModel};
@@ -31,12 +30,13 @@ use anima_engine_lib::core::energy_ledger::{
 };
 use anima_engine_lib::core::live_experiment::LiveInferencePump;
 use anima_engine_lib::core::resources::{manual_migration_channel, FoodSpawnSettings};
-use anima_engine_lib::core::simulation_schedule::build_tick_schedule;
+use anima_engine_lib::core::simulation_schedule::{build_tick_schedule_with, LiveDemographics};
 use anima_engine_lib::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use anima_engine_lib::evolution::map_elites::MapElitesArchive;
 use bevy_ecs::prelude::*;
+use std::sync::Arc;
 
 fn create_herbivore_genotype() -> MorphologyGenotype {
     let mut g = MorphologyGenotype::new();
@@ -150,24 +150,32 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
         recycle_res_rx,
     ));
 
-    let (trans_tx, _trans_rx) = crossbeam_channel::unbounded::<anima_engine_lib::ai::hrrl::Transition>();
+    let (trans_tx, _trans_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::ai::hrrl::Transition>();
     world.insert_resource(TransitionSender(trans_tx));
 
-    let (stats_tx, _stats_rx) = crossbeam_channel::unbounded::<Vec<anima_engine_lib::core::resources::AgentEpochStats>>();
-    let (_spawn_tx, spawn_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::resources::EvolutionSpawn>();
+    let (stats_tx, _stats_rx) =
+        crossbeam_channel::unbounded::<Vec<anima_engine_lib::core::resources::AgentEpochStats>>();
+    let (_spawn_tx, spawn_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::resources::EvolutionSpawn>();
     world.insert_resource(EvolutionSender(stats_tx));
     world.insert_resource(EvolutionReceiver(spawn_rx));
     world.insert_resource(EvolutionQueue::default());
 
-    let (_env_tx, env_rx) = crossbeam_channel::unbounded::<anima_engine_lib::evolution::meta_ai::EnvironmentalEvent>();
+    let (_env_tx, env_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::evolution::meta_ai::EnvironmentalEvent>();
     world.insert_resource(EnvironmentalEventReceiver(env_rx));
 
-    let (_inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::components::AgentMigrationData>();
-    let (outbound_tx, _outbound_rx) = crossbeam_channel::unbounded::<anima_engine_lib::core::components::OutboundMigration>();
+    let (_inbound_tx, inbound_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::components::AgentMigrationData>();
+    let (outbound_tx, _outbound_rx) =
+        crossbeam_channel::unbounded::<anima_engine_lib::core::components::OutboundMigration>();
     let (_migration_tx, migration_rx) = manual_migration_channel();
     world.insert_resource(InboundMigrationReceiver(inbound_rx));
     world.insert_resource(OutboundMigrationSender(outbound_tx));
-    world.insert_resource(ShardingResource(Arc::new(std::sync::RwLock::new(ShardingConfig::default()))));
+    world.insert_resource(ShardingResource(Arc::new(std::sync::RwLock::new(
+        ShardingConfig::default(),
+    ))));
     world.insert_resource(BevyMigrationTrigger(migration_rx));
 
     let evolution_settings = Arc::new(std::sync::Mutex::new(EvolutionSettings {
@@ -176,11 +184,15 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
         grid_resolution: 50,
     }));
     world.insert_resource(BevyEvolutionSettings(evolution_settings));
-    world.insert_resource(BevyEvolutionRunning(Arc::new(std::sync::atomic::AtomicBool::new(false))));
-    world.insert_resource(BevyMapElitesGrid(Arc::new(std::sync::Mutex::new(MapElitesGridState {
-        grid: std::collections::HashMap::new(),
-        grid_resolution: 50,
-    }))));
+    world.insert_resource(BevyEvolutionRunning(Arc::new(
+        std::sync::atomic::AtomicBool::new(false),
+    )));
+    world.insert_resource(BevyMapElitesGrid(Arc::new(std::sync::Mutex::new(
+        MapElitesGridState {
+            grid: std::collections::HashMap::new(),
+            grid_resolution: 50,
+        },
+    ))));
     world.insert_resource(ActiveEvolutionSettings {
         mutation_rate: 0.15,
         selection_bias: 1.5,
@@ -263,7 +275,9 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
             }
         }
         for child_e in child_entities {
-            if let Some(mut rb) = world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e) {
+            if let Some(mut rb) =
+                world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e)
+            {
                 rb.velocity = vel;
             }
         }
@@ -323,7 +337,9 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
             }
         }
         for child_e in child_entities {
-            if let Some(mut rb) = world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e) {
+            if let Some(mut rb) =
+                world.get_mut::<anima_engine_lib::physics::dynamics::RigidBody>(child_e)
+            {
                 rb.velocity = vel;
             }
         }
@@ -337,7 +353,7 @@ fn test_multi_seed_coexistence_stress() {
     let seeds = [101u64, 777u64, 99999u64, 314159u64];
     for &seed in &seeds {
         let mut world = setup_stress_world(32, 8, seed);
-        let mut schedule = build_tick_schedule(DeterministicMode::on());
+        let mut schedule = build_tick_schedule_with(DeterministicMode::on(), LiveDemographics::On);
 
         schedule.run(&mut world);
         let baseline = world
@@ -366,16 +382,25 @@ fn test_multi_seed_coexistence_stress() {
             "Seed {seed:6} verified: min_H={min_h}, final_H={final_h}, min_P={min_p}, final_P={final_p}, Residual={residual:.9} EU"
         );
 
-        assert!(residual <= RESIDUAL_ABS_TOLERANCE_EU, "Seed {seed} leaked energy: {residual}");
-        assert!(final_h >= 5, "Seed {seed} final herbivores too low: {final_h}");
-        assert!(final_p >= 2, "Seed {seed} final predators too low: {final_p}");
+        assert!(
+            residual <= RESIDUAL_ABS_TOLERANCE_EU,
+            "Seed {seed} leaked energy: {residual}"
+        );
+        assert!(
+            final_h >= 5,
+            "Seed {seed} final herbivores too low: {final_h}"
+        );
+        assert!(
+            final_p >= 2,
+            "Seed {seed} final predators too low: {final_p}"
+        );
     }
 }
 
 #[test]
 fn test_extended_10000_tick_unforced_coexistence() {
     let mut world = setup_stress_world(32, 8, 888888);
-    let mut schedule = build_tick_schedule(DeterministicMode::on());
+    let mut schedule = build_tick_schedule_with(DeterministicMode::on(), LiveDemographics::On);
 
     schedule.run(&mut world);
     let baseline = world
@@ -412,14 +437,18 @@ fn test_extended_10000_tick_unforced_coexistence() {
 
         if tick == 1 || tick == 100 || tick == 500 {
             let mut h_pos = Vec::new();
-            let mut q = world.query_filtered::<&anima_engine_lib::core::ecs::Position, With<Prey>>();
+            let mut q =
+                world.query_filtered::<&anima_engine_lib::core::ecs::Position, With<Prey>>();
             for p in q.iter(&world) {
                 h_pos.push((p.0.x, p.0.z));
             }
-            println!("Tick {tick}: First 3 Herbivore positions: {:?}", &h_pos[..3.min(h_pos.len())]);
+            println!(
+                "Tick {tick}: First 3 Herbivore positions: {:?}",
+                &h_pos[..3.min(h_pos.len())]
+            );
         }
 
-        if tick % 1000 == 0 || (tick >= 6500 && tick <= 6610) {
+        if tick % 1000 == 0 || (6500..=6610).contains(&tick) {
             let mut pred_energies = Vec::new();
             let mut q = world.query_filtered::<&HomeostaticState, With<Predator>>();
             for h in q.iter(&world) {
@@ -452,7 +481,7 @@ fn test_skewed_initial_ratios_stability() {
     // Case 1: High Herbivore / Low Predator (40 H vs 4 P)
     {
         let mut world = setup_stress_world(40, 4, 111222);
-        let mut schedule = build_tick_schedule(DeterministicMode::on());
+        let mut schedule = build_tick_schedule_with(DeterministicMode::on(), LiveDemographics::On);
         schedule.run(&mut world);
         for tick in 1..=3000 {
             schedule.run(&mut world);
@@ -467,7 +496,7 @@ fn test_skewed_initial_ratios_stability() {
     // Case 2: Low Herbivore / High Predator (20 H vs 12 P)
     {
         let mut world = setup_stress_world(20, 12, 333444);
-        let mut schedule = build_tick_schedule(DeterministicMode::on());
+        let mut schedule = build_tick_schedule_with(DeterministicMode::on(), LiveDemographics::On);
         schedule.run(&mut world);
         for tick in 1..=3000 {
             schedule.run(&mut world);

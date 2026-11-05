@@ -179,19 +179,6 @@ impl bevy_ecs::system::Command for SpawnGenotypeCommand {
             }
         }
 
-        let sex = match world.get_resource_mut::<crate::core::resources::SimRng>() {
-            Some(mut rng) => {
-                use rand::Rng;
-                if rng.rng().gen_bool(0.5) {
-                    crate::core::components::AgentSex::Male
-                } else {
-                    crate::core::components::AgentSex::Female
-                }
-            }
-            None => crate::core::components::AgentSex::Female,
-        };
-        world.entity_mut(entity).insert(sex);
-
         // Invariant D06: evolutionary replacement is NOT a birth, and its energy must come from
         // the individual it replaces. `decode_genotype` hands every new body a flat starting
         // reserve; before G1.1 that reserve came from nowhere while the replaced individual's own
@@ -311,7 +298,6 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
                 survival_ticks: 0,
                 last_position: self.initial_pos,
             },
-
             FeatureTracker::default(),
             CognitiveState::Ready,
             InertiaComponent::default(),
@@ -329,19 +315,6 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
                 world.entity_mut(entity).insert(Prey);
             }
         }
-
-        let sex = match world.get_resource_mut::<crate::core::resources::SimRng>() {
-            Some(mut rng) => {
-                use rand::Rng;
-                if rng.rng().gen_bool(0.5) {
-                    crate::core::components::AgentSex::Male
-                } else {
-                    crate::core::components::AgentSex::Female
-                }
-            }
-            None => crate::core::components::AgentSex::Female,
-        };
-        world.entity_mut(entity).insert(sex);
 
         // Synchronize root RigidBody velocity
         if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(entity) {
@@ -390,58 +363,68 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
     }
 }
 
-/// Starvation and natural mortality reclaim system:
+// ---- Live demographics (opt-in, QĐ-A′ open) ---------------------------------------------------
+//
+// `SpawnOffspringCommand`, `agent_mortality_system` and `autonomous_reproduction_system` arrived in
+// `1d301c3` as part of the 2026-08-16 block and were, until 2026-11-05, registered in the **default**
+// tick. They are now scheduled only by
+// `simulation_schedule::build_tick_schedule_with(_, LiveDemographics::On)`; the app, the experiment
+// adapter and every other caller of `build_tick_schedule` run the pre-block tick, in which the
+// population changes only through `EvolutionaryReplacement` (ADR-0001, D06).
+//
+// Kept rather than deleted because whether this implementation is reverted or fixed in place is the
+// owner's open decision QĐ-A′ (`docs/planning/STATE_OF_THE_PROJECT.md` §1.g). Known defects of the
+// opt-in path, none of which reach the default tick: a `Vec` and a `String` clone per tick in both
+// systems (the zero-heap-allocation rule), a sort on `AgentLineageId`, which siblings share, and
+// reproduction overhead written straight to `EcosystemBiomass::detritus` rather than through the
+// ledger. Biological reproduction itself also still needs the ADR that QĐ-5 asks for.
+
+/// Starvation and natural mortality reclaim system (opt-in, see the section comment above):
 /// Detects agents with energy <= 0.0, reclaims any residual reserve into detritus, and despawns them intra-tick.
 pub fn agent_mortality_system(
     mut commands: Commands,
-    agent_query: Query<(Entity, &HomeostaticState, &AgentLineageId, Option<&AgentEvaluation>), With<Agent>>,
-    mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+    agent_query: Query<(Entity, &HomeostaticState, &AgentLineageId), With<Agent>>,
 ) {
-    let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
-    for (e, homeo, lineage_id, opt_eval) in agent_query.iter() {
+    let mut to_despawn: Vec<(String, Entity)> = Vec::new();
+    for (e, homeo, lineage_id) in agent_query.iter() {
         if homeo.energy <= 0.0 {
-            let cause = if opt_eval.map(|ev| ev.survival_ticks >= 300).unwrap_or(false) {
-                "Senescence"
-            } else {
-                "Starvation"
-            };
-            to_despawn.push((lineage_id.0.clone(), e, cause));
+            to_despawn.push((lineage_id.0.clone(), e));
         }
     }
     to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
 
-    for (_, entity, cause) in to_despawn {
-        if let Some(ref mut trk) = tracker {
-            trk.record_death(cause);
-        }
+    for (_, entity) in to_despawn {
         commands.add(ReclaimAndDespawnAgentCommand { root: entity });
     }
 }
 
-/// Autonomous continuous intra-tick reproduction on energy surplus:
+/// Autonomous continuous intra-tick reproduction on energy surplus (opt-in, see the section comment
+/// above `agent_mortality_system`):
 /// When an agent's reserve exceeds the reproduction threshold (>= 0.80 * energy_target),
 /// it splits a fraction of its energy reserve, funds an offspring through Lindeman transfer
 /// efficiency (eta ~= 0.20), routes the non-assimilated remainder (1 - eta) directly to
 /// detritus with zero leakage, and queues a SpawnOffspringCommand.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
-    mut agent_query: Query<(
-        Entity,
-        &mut HomeostaticState,
-        &AgentGenotype,
-        Option<&crate::core::components::AgentBrain>,
-        &Position,
-        &AgentLineageId,
-        &AgentGeneration,
-        Option<&Predator>,
-        Option<&Prey>,
-        Option<&AgentEvaluation>,
-    ), With<Agent>>,
+    mut agent_query: Query<
+        (
+            Entity,
+            &mut HomeostaticState,
+            &AgentGenotype,
+            Option<&crate::core::components::AgentBrain>,
+            &Position,
+            &AgentLineageId,
+            &AgentGeneration,
+            Option<&Predator>,
+            Option<&Prey>,
+            Option<&AgentEvaluation>,
+        ),
+        With<Agent>,
+    >,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     mut sim_rng: Option<ResMut<crate::core::resources::SimRng>>,
     bounds: Option<Res<crate::core::ecs::MapBounds>>,
     mut next_node_id: Option<ResMut<NextNodeId>>,
-    mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
 ) {
     use rand::Rng;
 
@@ -474,8 +457,9 @@ pub fn autonomous_reproduction_system(
             generation,
             opt_pred,
             _opt_prey,
-            opt_eval,
-        )) = agent_query.get_mut(entity) else {
+            _opt_eval,
+        )) = agent_query.get_mut(entity)
+        else {
             continue;
         };
 
@@ -559,27 +543,19 @@ pub fn autonomous_reproduction_system(
             }
 
             // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
-            let child_brain =
-                if let (Some(brain), Some(ref mut rng_res)) = (opt_brain, sim_rng.as_mut()) {
-                    let mut brain_geno = (*brain.genotype).clone();
-                    let r = rng_res.rng();
-                    let _ = crate::evolution::brain_genotype::mutate_brain(
-                        &mut brain_geno,
-                        0.05,
-                        0.02,
-                        r,
-                    );
-                    Some(std::sync::Arc::new(brain_geno))
-                } else {
-                    opt_brain.map(|b| b.genotype.clone())
-                };
+            let child_brain = if let (Some(brain), Some(ref mut rng_res)) =
+                (opt_brain, sim_rng.as_mut())
+            {
+                let mut brain_geno = (*brain.genotype).clone();
+                let r = rng_res.rng();
+                let _ =
+                    crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
+                Some(std::sync::Arc::new(brain_geno))
+            } else {
+                opt_brain.map(|b| b.genotype.clone())
+            };
 
             let child_lineage = format!("{}.{}", lineage_id.0, generation.0 + 1);
-
-            if let Some(ref mut trk) = demographic_tracker {
-                let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
-                trk.record_birth(parent_age);
-            }
 
             commands.add(SpawnOffspringCommand {
                 parent_entity: entity,
@@ -597,7 +573,6 @@ pub fn autonomous_reproduction_system(
         }
     }
 }
-
 
 pub fn sync_evolution_settings_system(
     shared_settings: Res<BevyEvolutionSettings>,

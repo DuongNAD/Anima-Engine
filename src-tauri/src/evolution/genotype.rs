@@ -145,7 +145,6 @@ pub fn decode_genotype(
                 mass: root_node.mass,
             },
             HomeostaticState::default(),
-
             LastTransitionState {
                 state: [0.0; 15],
                 action: [0.0; 4],

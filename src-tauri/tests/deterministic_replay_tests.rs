@@ -1,15 +1,20 @@
-//! Integration tests for Deterministic Replay and State Digest Parity (Feature 8 & Feature 7).
+//! Integration tests for deterministic replay of the reference world through the shared runner.
+//!
+//! Until 2026-11-05 the first two tests drove the `ToxicityPlume`, `GeneticInjection` and
+//! `PathogenTransmission` intervention kinds. Those kinds were removed from `main` (one created EU
+//! on the live world, one recorded a change it never made — `STATE_OF_THE_PROJECT.md` §1.g), so the
+//! tests now drive the kinds that exist; what they assert is unchanged.
 
 use anima_engine_lib::core::experiment::{
-    ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy, WorldIdentity,
-    WorldLawSet, MANIFEST_SCHEMA_VERSION,
+    ExperimentManifest, InitialConditionSet, ObservableRegistry, WorldLawSet,
+    MANIFEST_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment_runner::{run_ensemble, run_manifest_seed};
-use anima_engine_lib::core::intervention::{
-    Curve, InterventionCommand, InterventionKind, Region, TraitMod,
-};
+use anima_engine_lib::core::intervention::{Curve, InterventionCommand, InterventionKind, Region};
+use anima_engine_lib::core::observer::ObserverPolicy;
 use anima_engine_lib::core::reference_world::ReferenceEvolutionWorld;
 use anima_engine_lib::core::sim_clock::ECOLOGY_PERIOD;
+use anima_engine_lib::core::world_artifact::WorldIdentity;
 
 fn create_test_manifest(interventions: Vec<InterventionCommand>) -> ExperimentManifest {
     ExperimentManifest {
@@ -49,13 +54,7 @@ fn bit_exact_replay_parity_across_repeated_runs() {
         InterventionCommand {
             id: 1,
             cause_id: 10,
-            kind: InterventionKind::ToxicityPlume {
-                center_x: 8.0,
-                center_y: 8.0,
-                radius: 4.0,
-                toxicity_level: 0.8,
-                decay_rate: 0.05,
-            },
+            kind: InterventionKind::Deforest,
             region: Region::Global,
             start_tick: 120,
             duration_ticks: 180,
@@ -67,14 +66,7 @@ fn bit_exact_replay_parity_across_repeated_runs() {
         InterventionCommand {
             id: 2,
             cause_id: 20,
-            kind: InterventionKind::GeneticInjection {
-                target_species: Some(1),
-                trait_modifications: vec![
-                    TraitMod::ScaleMorphology(1.2),
-                    TraitMod::MetabolicEfficiencyDelta(0.15),
-                ],
-                count: 30,
-            },
+            kind: InterventionKind::AddNutrient,
             region: Region::Global,
             start_tick: 300,
             duration_ticks: 120,
@@ -102,53 +94,49 @@ fn bit_exact_replay_parity_across_repeated_runs() {
 }
 
 #[test]
-fn altering_extended_interventions_causes_deterministic_checksum_divergence() {
+fn altering_an_intervention_changes_the_checksum() {
     let registry = ObservableRegistry::reference_default();
 
-    let manifest_a = create_test_manifest(vec![
-        InterventionCommand {
-            id: 1,
-            cause_id: 10,
-            kind: InterventionKind::PathogenTransmission {
-                pathogen_id: 1,
-                transmission_rate: 0.5,
-                mortality_multiplier: 1.0,
-            },
-            region: Region::Global,
-            start_tick: 60,
-            duration_ticks: 180,
-            intensity: 1.0,
-            signed_negative: true,
-            curve: Curve::Step,
-            reversible: false,
-        },
-    ]);
+    let manifest_a = create_test_manifest(vec![InterventionCommand {
+        id: 1,
+        cause_id: 10,
+        kind: InterventionKind::RemovePredators,
+        region: Region::Global,
+        start_tick: 60,
+        duration_ticks: 180,
+        intensity: 0.5,
+        signed_negative: true,
+        curve: Curve::Step,
+        reversible: false,
+    }]);
 
-    let manifest_b = create_test_manifest(vec![
-        InterventionCommand {
-            id: 1,
-            cause_id: 10,
-            kind: InterventionKind::PathogenTransmission {
-                pathogen_id: 1,
-                transmission_rate: 0.9, // Altered transmission rate
-                mortality_multiplier: 1.5,
-            },
-            region: Region::Global,
-            start_tick: 60,
-            duration_ticks: 180,
-            intensity: 1.0,
-            signed_negative: true,
-            curve: Curve::Step,
-            reversible: false,
-        },
-    ]);
+    let manifest_b = create_test_manifest(vec![InterventionCommand {
+        id: 1,
+        cause_id: 10,
+        kind: InterventionKind::RemovePredators,
+        region: Region::Global,
+        start_tick: 60,
+        duration_ticks: 180,
+        intensity: 0.9, // the only difference from manifest_a
+        signed_negative: true,
+        curve: Curve::Step,
+        reversible: false,
+    }]);
 
     let seed = 12345;
-    let run_a = run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_a, &registry, seed, None, None);
-    let run_b = run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_b, &registry, seed, None, None);
+    let run_a =
+        run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_a, &registry, seed, None, None);
+    let run_b =
+        run_manifest_seed::<ReferenceEvolutionWorld>(&manifest_b, &registry, seed, None, None);
 
-    assert_eq!(run_a.status, anima_engine_lib::core::experiment_runner::RunStatus::Completed);
-    assert_eq!(run_b.status, anima_engine_lib::core::experiment_runner::RunStatus::Completed);
+    assert_eq!(
+        run_a.status,
+        anima_engine_lib::core::experiment_runner::RunStatus::Completed
+    );
+    assert_eq!(
+        run_b.status,
+        anima_engine_lib::core::experiment_runner::RunStatus::Completed
+    );
     assert_ne!(run_a.final_checksum, run_b.final_checksum);
 }
 

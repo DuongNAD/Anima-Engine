@@ -1,6 +1,5 @@
 pub mod agent_systems;
 pub mod aggregate_population;
-pub mod branch_tree;
 pub mod build_identity;
 pub mod causal;
 pub mod components;
@@ -32,8 +31,6 @@ pub mod simulation_loop;
 pub mod simulation_schedule;
 pub mod simulation_state;
 pub mod snapshot;
-pub mod sweeps;
-pub mod telemetry_export;
 pub mod terrain;
 pub mod thread_supervisor;
 pub mod tick_capture;
