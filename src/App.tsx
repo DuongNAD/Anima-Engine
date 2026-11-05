@@ -27,7 +27,6 @@ const RabbitVisualizer = lazy(() => import("../playground/RabbitVisualizer"));
 // map". `WorldShowcase` also carries `LiveAgents`, so the population is drawn where it lives.
 const LandscapeShowcase = lazy(() => import("./components/Landscape/WorldShowcase"));
 const Map2Showcase = lazy(() => import("./components/Map2/Map2Showcase"));
-const ResearchDashboard = lazy(() => import("./components/ResearchDashboard").then((m) => ({ default: m.ResearchDashboard })));
 
 
 // ---------------------------------------------------------------------------------------
@@ -133,7 +132,6 @@ export function App() {
   const [showRabbitTest, setShowRabbitTest] = useState<boolean>(false);
   const [showLandscape, setShowLandscape] = useState<boolean>(false);
   const [showMap2, setShowMap2] = useState<boolean>(false);
-  const [showDashboard, setShowDashboard] = useState<boolean>(false);
   /** False until the shared world has been generated and handed to the backend. Starting the
    * simulation before then boots it on the fallback terrain, silently. */
   const [worldReady, setWorldReady] = useState<boolean>(false);
@@ -562,7 +560,6 @@ export function App() {
               setShowMap2(!showMap2);
               if (showRabbitTest) setShowRabbitTest(false);
               if (showLandscape) setShowLandscape(false);
-              if (showDashboard) setShowDashboard(false);
             }}
             style={{
               padding: "10px 20px",
@@ -578,29 +575,6 @@ export function App() {
             }}
           >
             {showMap2 ? "⬅️ Trở về Simulation" : "🌍 Bản đồ thế giới 2 (Map 2)"}
-          </button>
-          <button
-            onClick={() => {
-              setShowDashboard(!showDashboard);
-              if (showRabbitTest) setShowRabbitTest(false);
-              if (showLandscape) setShowLandscape(false);
-              if (showMap2) setShowMap2(false);
-            }}
-            data-testid="toggle-research-dashboard-btn"
-            style={{
-              padding: "10px 20px",
-              fontSize: "14px",
-              fontWeight: "bold",
-              backgroundColor: showDashboard ? "#3182ce" : "#0d9488",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              transition: "background-color 0.2s",
-              marginLeft: "10px"
-            }}
-          >
-            {showDashboard ? "⬅️ Trở về Simulation" : "🔬 Research Dashboard"}
           </button>
         </div>
       </header>
@@ -686,12 +660,6 @@ export function App() {
         <div style={{ marginBottom: "20px", height: "78vh", minHeight: "480px" }}>
           <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Bản đồ thế giới 2 (Map 2)...</div>}>
             <Map2Showcase />
-          </Suspense>
-        </div>
-      ) : showDashboard ? (
-        <div style={{ marginBottom: "20px" }}>
-          <Suspense fallback={<div style={{ color: "white", padding: "20px" }}>Đang tải Research Dashboard...</div>}>
-            <ResearchDashboard onClose={() => setShowDashboard(false)} />
           </Suspense>
         </div>
       ) : (

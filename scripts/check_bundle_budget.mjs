@@ -56,11 +56,12 @@ const CHUNK_BUDGET_KIB = {
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
   WorldShowcase: 130,
+  // Map 2, a second procedural scene with its own entry (`map2.html`) and a lazy button in the app.
+  // Both budgets arrived with the 2026-08-16 block on 2026-10-22 without a measurement; measured
+  // 2026-11-05: `Map2Showcase` 107.1 KiB, so 130 is WorldShowcase's headroom; the `map2` entry
+  // chunk 0.5 KiB, so 120 could never fire and is now 10. Whether Map 2 ships at all is QĐ-2.
   Map2Showcase: 130,
-  map2: 120,
-  // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
-  // Measured at 88.6 KiB (21.5 KiB gzipped); 120 gives standard headroom.
-  ResearchDashboard: 120,
+  map2: 10,
   // `react-dom/client`, which is why the chunk is called `client`. It appeared as a chunk of its own
   // when both entries started rendering the same scene: rolldown hoisted the renderer into shared
   // code instead of leaving a copy inside each entry. That is the split improving, not the bundle
