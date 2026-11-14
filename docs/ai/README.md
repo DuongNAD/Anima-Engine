@@ -52,6 +52,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-01 | [Bề mặt hợp nhất giữa hai cây](planning/2026-11-01-merge-surface-measurement.md) | đo | `active` |
 | 2026-11-05 | [Kế hoạch tổng cho swarm Antigravity](planning/2026-11-05-swarm-master-plan.md) — mọi thẻ, chia đợt | kế hoạch thẻ | `proposed` |
 | 2026-11-05 | [Prompt cho swarm Antigravity](planning/2026-11-05-swarm-prompts.md) — lead, luật swarm, verifier, từng thẻ | prompt | `proposed` |
+| 2026-11-14 | [Kiểm toán PR mở và nhánh remote ngày 2026-11-14](monitoring/pr-branch-audit-2026-11-14.md) — 10 PR mở, 102 nhánh remote và mọi hunk chưa lên thân cây của PR #35–#37 | monitoring | `active` |
 
 Hai file swarm được đưa từ nhánh `origin/claude/funny-thompson-jj42fe` (`a82b996`) vào thân cây ngày
 2026-11-14, nguyên văn (bước MP-0.6 của kế hoạch 13/11). Cách dùng chúng ngày hôm nay:
