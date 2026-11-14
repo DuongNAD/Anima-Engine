@@ -3,6 +3,7 @@ title: Hợp đồng tất định (deterministic mode)
 status: active
 owner: maintainers
 last_reviewed: 2026-07-25
+review_cycle: per-release
 ---
 
 # Hợp đồng tất định
@@ -124,6 +125,11 @@ sai.
 - `meta_ai::add_chronicle_event` vẫn dùng `Uuid::new_v4()` + `SystemTime::now()`: nó không nhận
   `DeterministicMode` hay tick. Chronicle từ đường đó là log UI chứ không nằm trong quỹ đạo mà gate
   đo, nhưng nó **có** vào saved state, nên cần nối nốt.
+  *Ghi chú 2026-11-14 (chưa đối chứng):* hàm này không còn trong `src-tauri/src` trên
+  `feat/ecological-selection`, và `evolution/meta_ai.rs` không còn gọi `Uuid::new_v4()` hay
+  `SystemTime::now()`. Chưa rõ khoảng hở đã đóng hay chỉ chuyển chỗ —
+  `core/networking_systems.rs:273` vẫn ghi timestamp bằng đồng hồ tường. Đối chứng trước khi trích
+  dòng này làm hiện trạng.
 - `networking_systems.rs` còn nhiều `SystemTime::now()`; nằm ngoài danh sách file cho phép của G1 và
   ngoài quỹ đạo single-node.
 - Physics/CPG chạy song song trong schedule live khi tắt determinism — đó là đường mặc định, và nó

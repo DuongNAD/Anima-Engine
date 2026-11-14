@@ -87,9 +87,9 @@ Cắt một nhánh mới từ `origin/main`. **Không** mở tính năng nào �
 
 | ID | Việc | Định nghĩa xong |
 |---|---|---|
-| **C1** | **Quyết định nền** ([QĐ-A](COMPLETION_ROADMAP_2026-10-31.md)). Khuyến nghị: `main` là nền; bốn file của nhánh (`core/mortality.rs`, `core/rng.rs`, `core/spawn.rs`, `evolution/fitness.rs`) **thay** phần demographics của khối 22/10, không nằm cạnh nó | Một dòng quyết định ghi vào roadmap 31/10 |
+| **C1** | **⚠️ Đã bị quyết ngược 2026-11-01** (ghi chú 2026-11-14): QĐ-A chọn `feat/ecological-selection` làm nền, chồng PR #38→#40 gộp **vào** nó — xem [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được). Văn bản gốc: **Quyết định nền** ([QĐ-A](COMPLETION_ROADMAP_2026-10-31.md)). Khuyến nghị: `main` là nền; bốn file của nhánh (`core/mortality.rs`, `core/rng.rs`, `core/spawn.rs`, `evolution/fitness.rs`) **thay** phần demographics của khối 22/10, không nằm cạnh nó | Một dòng quyết định ghi vào roadmap 31/10 |
 | **C2** | **`evolution/fitness.rs` + `FitnessRuleSetting`** vào `main`. Đây là **F-018** — gốc của kết quả null ở E2. Tắt cờ ⇒ checksum trùng bit với trước khi merge | checksum tất định **trùng bit** khi cờ tắt; một test cho thấy sinh thái đổi ⇒ fitness đổi khi cờ bật |
-| **C3** | **`core/mortality.rs` + `MortalityPolicy`** vào `main`, thay `agent_death_system`. Đo hai gate tái lập **trước và sau** | `live_experiment_tests` `17 passed`; residual EU ≤ `1e-3` ở **mọi** cấu hình cờ |
+| **C3** | **`core/mortality.rs` + `MortalityPolicy`** vào `main`, thay `agent_death_system` *(tên thật trên `main`: `agent_systems.rs::agent_mortality_system`; ghi chú 2026-11-14. Chiều gộp nay ngược lại — xem C1)*. Đo hai gate tái lập **trước và sau** | `live_experiment_tests` `17 passed`; residual EU ≤ `1e-3` ở **mọi** cấu hình cờ |
 | **C4** | **Bộ test nhánh O / Q / H** (observables, trục MAP-Elites thứ hai, O(agent×segment) → O(segment)) | `check_test_targets.mjs` sống (A1) rồi mới tin số target; mọi gate của STATE §5 xanh tại **một** commit |
 | **C5** | **Đo lại toàn bộ** và chuyển số vào `STATE_OF_THE_PROJECT.md` **§1.g**; xoá bảng §1 của roadmap 31/10 và trỏ về §1.g | STATE §1 có một lượt đo đầy đủ, mọi hàng cùng một commit |
 
@@ -111,4 +111,4 @@ tất định. Chạy E3 **trước** C2/C3 là lặp lại E2: đo phương sai
 | H1 | **HT-A7** — regenerate `NOTICE` + `licensing/third-party-index.json` + SBOM trên **Windows** | Artifact licence là theo host target; repo nhắm Windows, CI kiểm trên `windows-latest` |
 | H2 | Chạy app desktop **bản release** với `ANIMA_TICK_CAPTURE` ở 1.000 agent | `CLAUDE.md` cấm chạy full backend trên máy dev; cần một người bấm chạy |
 | H3 | Xác minh app khởi động dưới CSP mới | `npm run check:csp` chỉ kiểm artifact, không chứng minh app boot |
-| H4 | **QĐ-A…QĐ-D** ở §4 roadmap 31/10, và **QĐ-B** (phạm vi `AGENTS.md`) trước khi bất kỳ agent nào ghi vào `src-tauri/src` | Quyết định phạm vi và hợp đồng, không phải việc kỹ thuật |
+| H4 | *(Ghi chú 2026-11-14: QĐ-A — nửa "cây nào là nền" — QĐ-D, QĐ-E đã quyết; QĐ-A′, QĐ-B và QĐ-F028 quyết ngày 2026-11-14; còn mở QĐ-C — xem §4 roadmap 31/10.)* **QĐ-A…QĐ-D** ở §4 roadmap 31/10, và **QĐ-B** (phạm vi `AGENTS.md`) trước khi bất kỳ agent nào ghi vào `src-tauri/src` | Quyết định phạm vi và hợp đồng, không phải việc kỹ thuật |

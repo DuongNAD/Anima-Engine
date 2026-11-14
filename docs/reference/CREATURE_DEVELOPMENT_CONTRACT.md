@@ -52,6 +52,27 @@ Nó được gọi ở bốn đường:
 `core::ecs::init_world` trước genesis. Seed runtime lấy từ `WorldIdentity.seed`;
 `MapSettings` hiện không phải resource.
 
+### Trạng thái triển khai — tên nào đã có trong mã
+
+> Đối chiếu bằng `git grep -w` ngày **2026-11-14** trên `feat/ecological-selection` (nền đã chọn ở
+> QĐ-A) và `origin/main`. Hợp đồng này `accepted` vì **quyết định** đã được chấp nhận
+> ([ADR-0001](../decisions/ADR-0001-creature-development-lifecycle.md)); phần lớn **kiểu dữ liệu** mà
+> các invariant D01… nêu tên thì **chưa được hiện thực**. Đọc các invariant như ràng buộc cho việc
+> xây tới đích, không phải mô tả mã hiện tại. Thiếu một kiểu không có nghĩa invariant đã lỗi thời,
+> cũng không phải giấy phép thêm kiểu đó tuỳ hứng — việc đó thuộc
+> [kế hoạch morphogenesis](../planning/CREATURE_MORPHOGENESIS_PLAN.md).
+
+| Tên | Có trong mã? | Ghi chú |
+|---|---|---|
+| `MorphologyGenotype` | ✅ có | |
+| `decode_genotype`, `SpawnGenotypeCommand`, `spawn_serialized_agent`, `SpawnMigrationCommand` | ✅ có | Bốn đường gọi ở bảng trên |
+| `DevelopedPhenotype` | ❌ chưa | Chỉ có trên nhánh chưa gộp `origin/fix/ht0-5c-sim-semantics` (`d396555`) |
+| `EnvSample`, `RuntimeState` | ❌ chưa | |
+| `develop_at_birth` | ❌ chưa | D01 ràng buộc hàm này khi nó được tạo |
+| `LocomotionMedium`, `HabitatPreference`, `DynamicChromatophore` | ❌ chưa | |
+
+Sửa bảng này khi một tên được thêm vào mã, trong cùng commit.
+
 ## Invariant bắt buộc
 
 ### D01 — Development chỉ xảy ra một lần

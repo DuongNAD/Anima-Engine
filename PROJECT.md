@@ -74,41 +74,62 @@ Anima-Engine is an autonomous natural world simulation and ecological AI platfor
 
 ## Interface Contracts
 
+Each contract below has one canonical source; this section summarises it and links there. The
+previous version of this section restated all four inline and three of them had drifted from the
+code — the `.anmw` header, both biome lists, and render-space numbers that no frontend code uses.
+Re-checked against the code on 2026-11-14.
+
 ### 1. World Artifact Binary Format (`.anmw` v2)
-- Header (36 bytes LE):
-  - `0..4`: Magic `ANMW` (`[0x41, 0x4E, 0x4D, 0x57]`)
-  - `4..6`: Version `0x0002` (u16)
-  - `6..8`: Flags `0x0000` (u16)
-  - `8..12`: Grid width $W$ (u32)
-  - `12..16`: Grid height $H$ (u32)
-  - `16..20`: World seed (u32)
-  - `20..24`: Sea level (f32)
-  - `24..28`: Max elevation (f32)
-  - `28..32`: Payload byte length (u32)
-  - `32..36`: FNV-1a 32-bit checksum of payload (u32)
-- Payload layout:
-  - Elevation plane: $W \times H \times 2$ bytes (`u16` normalized $[0, 65535]$)
-  - Moisture plane: $W \times H \times 1$ byte (`u8` normalized $[0, 255]$)
-  - Temperature plane: $W \times H \times 1$ byte (`u8` normalized $[0, 255]$)
-  - Biome plane: $W \times H \times 1$ byte (`u8`, 22 canonical biomes)
-  - Flow accumulation plane: $W \times H \times 2$ bytes (`u16`)
+
+Canonical: the layout comment at the top of
+[`src-tauri/src/core/world_artifact.rs`](src-tauri/src/core/world_artifact.rs), mirrored by
+[`src/components/Landscape/utils/worldArtifact.ts`](src/components/Landscape/utils/worldArtifact.ts);
+a committed fixture plus a cross-language test keep the two in sync.
+
+- Header, 36 bytes (`WORLD_ARTIFACT_HEADER_LEN`), little-endian:
+
+  | Offset | Type | Field |
+  |---|---|---|
+  | 0 | `[u8; 4]` | magic `ANMW` |
+  | 4 | `u32` | version (`WORLD_ARTIFACT_VERSION` = 2) |
+  | 8 | `u32` | width $W$ |
+  | 12 | `u32` | height $H$ |
+  | 16 | `f32` | sea level |
+  | 20 | `u32` | world seed |
+  | 24 | `u32` | generator version |
+  | 28 | `f32` | world scale (world-units per axis; canonical 200) |
+  | 32 | `u32` | FNV-1a 32 checksum of the payload (offset 36 to end) |
+
+- Payload, $n = W \times H$, in this order: elevation, moisture, temperature, flow as `f32[n]`
+  each, then biome as `u8[n]` (canonical 22-biome indices).
+- A v1 artifact is rejected with a "regenerate the world" message; there is no in-place migration.
 
 ### 2. Biome Taxonomy Translation (22 Canonical ↔ 11 Legacy)
-- 22 Canonical (Frontend/WorldGen):
-  `DeepOcean(0)`, `Ocean(1)`, `Beach(2)`, `Savanna(3)`, `Grassland(4)`, `Shrubland(5)`, `TemperateSeasonalForest(6)`, `Jungle(7)`, `TropicalRainforest(8)`, `Tundra(9)`, `Swamp(10)`, `MountainRock(11)`, `Snow(12)`, `Taiga(13)`, `Woodland(14)`, `Mangrove(15)`, `TemperateRainforest(16)`, `River(17)`, `Alpine(18)`, `Badlands(19)`, `Glacier(20)`, `Desert(21)`.
-- 11 Legacy (Bevy Simulation):
-  `DeepOcean(0)`, `Ocean(1)`, `Beach(2)`, `River(3)`, `Grassland(4)`, `TemperateForest(5)`, `BorealForest(6)`, `Rainforest(7)`, `Desert(8)`, `MountainRock(9)`, `Snow(10)`.
 
-### 3. Coordinate Contract (Affine Transformations)
-- Simulation World Space: $X \in [-100, 100], Z \in [-100, 100], Y \in [0, 10]$.
-- Render Space (Three.js): $X \in [-600, 600], Z \in [-600, 600], Y \in [0, 156]$.
-- Grid Cell Space: $U \in [0, W-1], V \in [0, H-1]$.
-- Transformation Formula:
-  $$\text{RenderX} = \text{SimX} \times 6.0, \quad \text{RenderZ} = \text{SimZ} \times 6.0, \quad \text{RenderY} = \text{SimY} \times 15.6$$
+Canonical: [`BIOME_TAXONOMY.md`](BIOME_TAXONOMY.md). The 22 canonical biomes are the `Biome` enum in
+`src/components/Landscape/utils/worldGen.ts` (frontend world generation and rendering); the 11 legacy
+biomes are `BiomeType` in the Bevy simulation. Two maps join them — `map_biome_backend_to_frontend`
+(lift) and `map_biome_frontend_to_backend` (downsample). Read the index tables there rather than
+copying them here: they are the part that drifted.
 
-### 4. Meshy AI Prompt Grammar IR (`MorphoSpec`)
-- Deterministic 9-slot string format:
-  `[size_class] [body_build] [limb_description] [integument_covering] [primary_secondary_colors] [craniofacial_features] [thermo_adaptation] [distinctive_traits], stylized low-poly game creature, clean topology, PBR textures`
+### 3. Coordinate Contract
+
+Canonical: [`COORDINATE_CONTRACT.md`](COORDINATE_CONTRACT.md). Four spaces — cell, uv, world and
+render. The simulation's world space is $x, z \in$ `MapBounds` (canonical extent 200, i.e.
+$[-100, 100]$) and $y \in [0, 10]$. Render space is a pure per-axis scale of world space defined on
+the frontend: no rotation, no shear.
+
+### 4. Creature Prompt Grammar IR (`MorphoSpec`) — *proposed, not in code*
+
+Canonical: [`docs/reference/CREATURE_PROMPT_CONTRACT.md`](docs/reference/CREATURE_PROMPT_CONTRACT.md)
+(status `proposed`). `MorphoSpec` does not exist in the code yet; treat the contract as a design
+target, not an interface you can call.
+
+### 5. Tauri IPC (commands and events)
+
+Canonical: [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). It lists every command
+registered in `generate_handler!` and every event the backend emits; `npm run check:docs` fails when
+the code and that list disagree.
 
 ---
 

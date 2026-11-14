@@ -2,7 +2,8 @@
 title: Trung tâm tài liệu Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-07-24
+last_reviewed: 2026-11-14
+review_cycle: per-release
 ---
 
 # Trung tâm tài liệu Anima Engine
@@ -38,13 +39,16 @@ flowchart TD
 
 | Tôi muốn… | Đi tới |
 |---|---|
+| **Biết dự án đang ở đâu và làm gì tiếp** | [`STATE_OF_THE_PROJECT.md`](planning/STATE_OF_THE_PROJECT.md) — đọc banner đầu §1 trước |
+| **Giao việc cho coding agent** | [Hướng dẫn chạy agent](how-to/AGENT_WORKFLOW.md) — hàng đợi thẻ, quyết định đã điền, luật, lệnh xác minh |
 | Chạy và hiểu dự án lần đầu | [Tutorials](tutorials/README.md) |
 | Build, test, benchmark hoặc tạo artifact | [How-to](how-to/README.md) |
 | Tra cứu luật mô phỏng, biome, tọa độ, manifest | [Reference](reference/README.md) |
 | Sửa genotype, phenotype, spawn, save hoặc migration sinh vật | [Creature Development Contract](reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 | Tạo thế giới khác luật, nguồn “mana”, fork và so sánh tiến hóa | [Evolution Experiment Contract](reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
 | Sửa bộ não agent, gen não, hoặc không gian hành động | [ADR-0003](decisions/ADR-0003-evolved-per-agent-brains.md) |
-| Xem requirements/design/testing/task của feature đang phát triển | [AI lifecycle docs](ai/requirements/2026-07-24-feature-alternate-evolution-world-lab.md) |
+| Xem requirements/design/testing/task của feature đang phát triển | [Chỉ mục `docs/ai`](ai/README.md) — mọi feature, mọi pha, kèm trạng thái |
+| Tra bug thật đã chứng minh, có lệnh tái hiện | [`FINDINGS.md`](../FINDINGS.md) |
 | Hiểu kiến trúc và nguyên nhân của quyết định | [Explanation](explanation/README.md) |
 | Xem việc cần làm và thứ tự phụ thuộc | [Planning](planning/README.md) |
 | Xem bằng chứng bên ngoài và khảo sát | [Research](research/README.md) |
@@ -54,6 +58,7 @@ flowchart TD
 | Xem quy tắc duy trì hệ thống | [Governance](governance/README.md) |
 | Duy trì và tái cấu trúc tài liệu | [Documentation policy](governance/DOCUMENTATION_POLICY.md) |
 | Thêm dependency hoặc sao chép mã/asset | [Open-source policy](governance/OPEN_SOURCE_POLICY.md) |
+| Truy nguyên một tài liệu cũ đã bị thay | [Archive](archive/README.md) — không dùng làm nguồn triển khai |
 
 ## Nguồn sự thật
 
@@ -67,9 +72,12 @@ flowchart TD
 | Artifact ảnh và góc nhìn chuẩn | [`MAP_MANIFEST.md`](../MAP_MANIFEST.md) |
 | Baseline hiệu năng | [`BENCHMARK_BASELINE.md`](../BENCHMARK_BASELINE.md) |
 | Lộ trình mô phỏng | [`WORLD_SIMULATION_PLAN.md`](../WORLD_SIMULATION_PLAN.md) |
-| Công việc có thể thực thi | [`TODO.md`](../TODO.md) |
+| Trạng thái đo được và backlog ưu tiên | [`STATE_OF_THE_PROJECT.md`](planning/STATE_OF_THE_PROJECT.md) §1 và §3 |
+| Nhật ký công việc (đã làm gì, khi nào) | [`TODO.md`](../TODO.md) |
+| Bug thật đã chứng minh | [`FINDINGS.md`](../FINDINGS.md) |
 | Vòng đời genotype → phenotype → spawn | [`CREATURE_DEVELOPMENT_CONTRACT.md`](reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 | World laws, exotic energy và thí nghiệm tiến hóa | [`EVOLUTION_EXPERIMENT_CONTRACT.md`](reference/EVOLUTION_EXPERIMENT_CONTRACT.md) *(proposed)* |
+| Tất định, sổ cái năng lượng, snapshot | [Reference](reference/README.md) — ba hợp đồng `active` |
 
 Các tài liệu chuẩn đang ở thư mục gốc được giữ nguyên để không phá liên kết và thay
 đổi đang thực hiện. Việc di chuyển chỉ diễn ra theo từng đợt có redirect stub, được

@@ -1,9 +1,18 @@
+---
+title: Kế hoạch thực thi Phase 1 (M3–M7) — lưu trữ
+status: superseded
+archive_state: do-not-use
+owner: maintainers
+last_reviewed: 2026-10-31
+superseded_by: ../planning/STATE_OF_THE_PROJECT.md
+---
+
 > ⚠️ **LỊCH SỬ — không dùng làm kế hoạch hiện hành.** Đây là kế hoạch thực thi của Phase 1 (M3–M7),
 > đã hoàn tất từ lâu. `src-tauri/src/core/engine.rs` nói tới bên dưới nay chỉ còn là một shim 4 dòng
 > re-export; mã thật đã tách sang `agent_systems.rs`, `networking_systems.rs`, `resources.rs` và
 > `simulation_lifecycle.rs`.
-> Kế hoạch hiện hành: [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md)
-> và [chỉ mục kế hoạch](docs/planning/README.md).
+> Kế hoạch hiện hành: [`docs/planning/STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md)
+> và [chỉ mục kế hoạch](../planning/README.md).
 
 # Execution Plan - Anima-Engine Phase 1
 

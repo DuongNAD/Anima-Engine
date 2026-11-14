@@ -1,0 +1,78 @@
+---
+title: Chỉ mục working set theo feature (docs/ai)
+status: active
+owner: maintainers
+last_reviewed: 2026-11-14
+---
+
+# Working set theo feature
+
+`docs/ai/` giữ tài liệu **vòng đời của từng feature**: requirements → design → planning →
+implementation → testing → deployment → monitoring, cùng các bản giao việc cho agent. Đây là
+**working set**, không phải nguồn sự thật: khi một quyết định được chấp nhận, nguồn chuẩn là
+[reference](../reference/README.md) và [ADR](../decisions/README.md) (quy tắc 7 của
+[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md)). Khi thân một tài liệu ở đây mâu
+thuẫn với [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md), tài liệu trạng thái thắng.
+
+Trạng thái trong bảng lấy từ front matter của từng file ngày 2026-11-14. `README.md` trong mỗi thư
+mục pha (`requirements/`, `design/`…) là **template thượng nguồn** của quy trình lifecycle, không
+phải tài liệu dự án.
+
+## Feature
+
+| Feature | Requirements | Design | Planning | Implementation | Testing | Deployment / Monitoring |
+|---|---|---|---|---|---|---|
+| **Alternate evolution & World Lab** (07-24) | [`proposed`](requirements/2026-07-24-feature-alternate-evolution-world-lab.md) | [`proposed`](design/2026-07-24-feature-alternate-evolution-world-lab.md) | [`active`](planning/2026-07-24-feature-alternate-evolution-world-lab.md) | [`active`](implementation/2026-07-24-feature-alternate-evolution-world-lab.md) | [`active`](testing/2026-07-24-feature-alternate-evolution-world-lab.md) | [`proposed`](deployment/2026-07-24-feature-alternate-evolution-world-lab.md) / [`proposed`](monitoring/2026-07-24-feature-alternate-evolution-world-lab.md) |
+| **Completion & Hardening** (07-27) | [`active`](requirements/2026-07-27-feature-anima-completion.md) | [`active`](design/2026-07-27-feature-anima-completion.md) | [`active`](planning/2026-07-27-feature-anima-completion.md) | [`active`](implementation/2026-07-27-feature-anima-completion.md) | [`active`](testing/2026-07-27-feature-anima-completion.md) | [`active`](deployment/2026-07-27-feature-anima-completion.md) / [`active`](monitoring/2026-07-27-feature-anima-completion.md) |
+| **Thí nghiệm E2** — não tiến hoá làm mặc định (07-27) | [`active`](requirements/2026-07-27-experiment-e2-evolved-brain-default.md) | [`active`](design/2026-07-27-experiment-e2-evolved-brain-default.md) | [`active`](planning/2026-07-27-experiment-e2-evolved-brain-default.md) | [`active`](implementation/2026-07-27-experiment-e2-evolved-brain-default.md) | [`active`](testing/2026-07-27-experiment-e2-evolved-brain-default.md) | — |
+| **Anima Menagerie** (08-04) | — | [`proposed`](design/2026-08-04-feature-anima-menagerie.md) | — | — | — | — |
+| **Đóng vòng sinh thái** (08-25) | [`proposed`](requirements/2026-08-25-feature-ecological-selection.md) | [`proposed`](design/2026-08-25-feature-ecological-selection.md) | [`proposed`](planning/2026-08-25-feature-ecological-selection.md) | [`proposed`](implementation/2026-08-25-feature-ecological-selection.md) | [`proposed`](testing/2026-08-25-feature-ecological-selection.md) | — |
+| **Thế giới sống** (08-25) | [`proposed`](requirements/2026-08-25-feature-living-world.md) | ba design con, bên dưới | [`proposed`](planning/2026-08-25-feature-living-world.md) | [`proposed`](implementation/2026-08-25-feature-living-world-tasks.md) | [`proposed`](testing/2026-08-25-feature-living-world.md) | — |
+| ↳ Từ genome tới mesh | | [`proposed`](design/2026-08-25-feature-genome-to-mesh.md) | | | | |
+| ↳ Animation sinh vật | | [`proposed`](design/2026-08-25-feature-creature-animation.md) | | | | |
+| ↳ Tính toán phân tán theo thiết bị | | [`proposed`](design/2026-08-25-feature-federated-compute.md) | | | | |
+| **Thí nghiệm E3** — gradient năng suất và khối lượng cơ thể (08-26) | — | — | [`proposed`](planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md) | — | — | — |
+
+## Bản giao việc, bản ghi phiên và đo lường
+
+Bản ghi phiên (`kind: agent-goal`, `kind: review-findings`) là kế hoạch **tại thời điểm đó**; thân
+của chúng không được sửa cho khớp hiện tại.
+
+| Ngày | Tài liệu | Loại | Trạng thái |
+|---|---|---|---|
+| 2026-07-24 | [Overnight goal — AE1–AE2](planning/2026-07-24-claude-overnight-goal-ae1-ae2.md) | agent-goal | `completed` |
+| 2026-07-25 | [Overnight goal — AE2.5](planning/2026-07-25-claude-overnight-goal-ae25.md) | agent-goal | `active` |
+| 2026-07-25 | [Overnight goal — AE3](planning/2026-07-25-claude-overnight-goal-ae3.md) | agent-goal | `completed` |
+| 2026-07-25 | [Overnight goal — G0–G4 remediation](planning/2026-07-25-claude-overnight-goal-g0-g4-remediation.md) | agent-goal | `active` |
+| 2026-07-27 | [Supervisor findings — Completion pass](planning/2026-07-27-review-anima-completion-supervisor-findings.md) | review-findings | `completed` |
+| 2026-08-25 | [Bản giao việc — Đóng vòng sinh thái](planning/2026-08-25-agent-goal-ecological-selection.md) | brief | `proposed` |
+| 2026-08-25 | [Agent goal — Thế giới sống](planning/2026-08-25-agent-goal-living-world.md) | agent-goal | `proposed` |
+| 2026-10-31 | [Brief cho Antigravity — HT-A và HT-B](planning/2026-10-31-antigravity-brief.md) | brief | `active` |
+| 2026-10-31 | [Brief cho Antigravity — tách crate con (S0–S5)](planning/2026-10-31-antigravity-brief-crate-split.md) | brief | `active` |
+| 2026-11-01 | [Bề mặt hợp nhất giữa hai cây](planning/2026-11-01-merge-surface-measurement.md) | đo | `active` |
+| 2026-11-05 | [Kế hoạch tổng cho swarm Antigravity](planning/2026-11-05-swarm-master-plan.md) — mọi thẻ, chia đợt | kế hoạch thẻ | `proposed` |
+| 2026-11-05 | [Prompt cho swarm Antigravity](planning/2026-11-05-swarm-prompts.md) — lead, luật swarm, verifier, từng thẻ | prompt | `proposed` |
+
+Hai file swarm được đưa từ nhánh `origin/claude/funny-thompson-jj42fe` (`a82b996`) vào thân cây ngày
+2026-11-14, nguyên văn (bước MP-0.6 của kế hoạch 13/11). Cách dùng chúng ngày hôm nay:
+[hướng dẫn chạy coding agent](../how-to/AGENT_WORKFLOW.md).
+
+## File do agent sở hữu
+
+Bốn file dưới đây được chuyển từ gốc repo vào đây ở `c8ebec2` và **cố ý không có front matter**:
+công cụ agent đọc hoặc đồng bộ chúng. Lý do từng file nằm trong `NO_FRONT_MATTER` của
+[`scripts/check_docs_metadata.mjs`](../../scripts/check_docs_metadata.mjs).
+
+| File | Nội dung |
+|---|---|
+| [`AI_Context.md`](AI_Context.md) | Bối cảnh hệ thống và hướng dẫn cho agent, viết ở Phase 0 (2026-06-12). Mục tiêu hiệu năng trong đó là mục tiêu lúc ấy, không phải số đo |
+| [`ORIGINAL_REQUEST.md`](ORIGINAL_REQUEST.md) | Nhật ký yêu cầu gốc gửi cho agent, do công cụ đồng bộ |
+| [`TEST_INFRA.md`](TEST_INFRA.md) | Ma trận thiết kế bộ E2E — số đếm là **kế hoạch**, không phải kết quả chạy |
+| [`TEST_READY.md`](TEST_READY.md) | Ghi chú sẵn sàng của bộ E2E — cùng lưu ý như trên |
+
+## Thêm tài liệu mới
+
+Đặt tên `YYYY-MM-DD-feature-<slug>.md` trong đúng thư mục pha, dùng front matter của
+[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md#metadata-tối-thiểu), rồi thêm một ô
+vào bảng trên. `npm run check:docs` đỏ nếu thiếu front matter hoặc nếu tài liệu không có trong chỉ
+mục nào.

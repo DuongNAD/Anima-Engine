@@ -8,6 +8,10 @@ review_cycle: per-release
 
 # How-to
 
+> **Giao việc cho coding agent:** [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) — hàng đợi thẻ, quyết định
+> của chủ dự án đã điền sẵn, luật cho agent và lệnh xác minh trên macOS. Đo hiệu năng trong app:
+> [BENCHMARKING.md](BENCHMARKING.md).
+
 ## Cài và chạy frontend
 
 ```powershell

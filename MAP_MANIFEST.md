@@ -60,7 +60,7 @@ Thiếu **bất kỳ** field bắt buộc nào ở dưới đây làm manifest *
 > Vì sao phải sinh ra: bản viết tay trước đây trỏ tới `artifacts/world_128.anmw` (không tồn tại,
 > thư mục `artifacts/` cũng không), mang `sha256:` + 64 số 0, và liệt kê 8 ảnh `map-views/*.png`
 > không có thật. Test S05 khi đó dựng một bản sao inline rồi kiểm bản sao đó, nên file thật mục nát
-> tuỳ ý mà không có gate nào đỏ. Nay `src/__tests__/mapManifestEvidence.test.ts` mở **chính file đã
+> tuỳ ý mà không có gate nào đỏ. Nay `tests/frontend/mapManifestEvidence.test.ts` mở **chính file đã
 > commit**, băm **chính các byte** artifact trỏ tới, và đối chiếu header ANMW.
 >
 > **`captured`**: mỗi view mang cờ này. Repo **chưa có** pipeline chụp ảnh 3D, nên cả 8 view đều

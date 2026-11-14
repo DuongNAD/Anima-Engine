@@ -376,3 +376,14 @@ jobs:
       - name: Docs link check
         if: ${{ !cancelled() }}
         run: node scripts/check_docs_links.mjs
+
+      # Front matter, status/review_cycle values and index coverage per DOCUMENTATION_POLICY.md.
+      # Runs its own negative controls first, so a checker that stopped looking fails here.
+      - name: Docs metadata check
+        if: ${{ !cancelled() }}
+        run: node scripts/check_docs_metadata.mjs
+
+      # docs/reference/IPC_CONTRACT.md must list exactly the registered commands and emitted events.
+      - name: IPC reference check
+        if: ${{ !cancelled() }}
+        run: node scripts/check_ipc_reference.mjs

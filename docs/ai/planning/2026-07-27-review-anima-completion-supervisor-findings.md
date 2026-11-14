@@ -3,7 +3,7 @@ kind: review-findings
 feature: anima-completion
 title: Supervisor findings — independent review after the first completion session
 description: The acceptance addendum the completion pass was held to, tracked verbatim
-status: historical
+status: completed
 created: 2026-07-27
 owner: maintainers
 reconciled_in: ./2026-07-27-feature-anima-completion.md

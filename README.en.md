@@ -110,8 +110,8 @@ bare commands ship a `default = []` binary: no Neo4j lineage, no cross-shard mig
 learner. All three have working fallbacks, so nothing fails loudly.
 
 > ⚠️ Building and running the full Bevy/Tauri backend is heavy and **has crashed the current
-> development machine**. To look at 3D models or the landscape only, use `npm run dev`, or serve
-> `rabbit-standalone/` statically with `py -m http.server 8000`.
+> development machine**. To look at 3D models or the landscape only, use `npm run dev`. (The
+> `rabbit-standalone/` page an older version of this note suggested was deleted at `fddbdee`.)
 
 ## Verification
 
@@ -144,11 +144,15 @@ Playwright E2E starts the Vite dev server itself (`webServer` in
 Three constraints below are not stylistic preferences:
 
 - `--features desktop`: seven test files carry a crate-level `#![cfg(feature = "networking")]` or
-  `"ml-wgpu"`. Without the flag they compile to empty binaries, report `running 0 tests` and
-  **exit 0** — silently skipping 1,877 lines of migration / cross-shard / GPU-fallback coverage. To
-  check: capture the output and run `node scripts/check_test_targets.mjs <file>`.
-- `-j 2`: a fully parallel build exhausts the paging file on the current development machine and
-  cargo fails mid-way with `LNK1104` / `os error 1455`.
+  `"ml-wgpu"` **and** a matching `[[test]] required-features` entry in `Cargo.toml`, so without the
+  flag Cargo does **not schedule** them — 1,877 lines of migration / cross-shard / GPU-fallback
+  coverage do not run and nothing says so. (They used to compile to empty binaries that reported
+  `running 0 tests` and exited 0.) `tests/feature_gated_targets_tests.rs` keeps the two halves in
+  sync. To check: capture the output and run
+  `node scripts/check_test_targets.mjs <file> --profile desktop`.
+- `-j 2` (on Windows): a fully parallel build exhausts the paging file and cargo fails mid-way with
+  `LNK1104` / `os error 1455`. This was measured on the earlier Windows development machine; nobody
+  has measured macOS, so keep `-j 2` until someone does.
 - Run **one `cargo test` process at a time**: several suites swap the global allocator to count
   allocations, or read and write environment variables. They lock themselves per file with a mutex,
   but two concurrent processes still contend over the `.exe` (`os error 32`).

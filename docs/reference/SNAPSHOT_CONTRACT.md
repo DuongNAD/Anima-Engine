@@ -3,6 +3,7 @@ title: Hợp đồng snapshot (checkpoint khoa học)
 status: active
 owner: maintainers
 last_reviewed: 2026-07-25
+review_cycle: per-release
 ---
 
 # Hợp đồng snapshot

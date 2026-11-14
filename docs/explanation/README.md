@@ -3,6 +3,7 @@ title: Chỉ mục explanation
 status: active
 owner: architecture
 last_reviewed: 2026-07-24
+review_cycle: quarterly
 ---
 
 # Explanation

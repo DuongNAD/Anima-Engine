@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Start here
 
-`docs/planning/STATE_OF_THE_PROJECT.md` is the living status doc: what was last **measured** green (not what a doc claims), what rung each subsystem has reached, and the prioritized backlog with file-level anchors and a definition of done per item. Read it before picking up work, and update it when you finish something — it is what the next session reads first.
+`docs/planning/STATE_OF_THE_PROJECT.md` is the living status doc: what was last **measured** green (not what a doc claims), what rung each subsystem has reached, and the prioritized backlog with file-level anchors and a definition of done per item. Read it before picking up work, and update it when you finish something — it is what the next session reads first. Start with the banner at the top of its §1: while `main` and `feat/ecological-selection` are still unmerged, it points to where newer measurements temporarily live. If you were dispatched as one of several coding agents, or are about to dispatch them, read `docs/how-to/AGENT_WORKFLOW.md` next: the card queue, the owner's recorded decisions and the authorization lines live there.
 
 This file (CLAUDE.md) holds the rules that do not change between sessions. That one holds the state that does.
 
@@ -19,10 +19,11 @@ Frontend (run from repo root):
 - `npm run build` — `tsc && vite build`; typechecks first, builds two entries (`index.html`, `landscape.html`).
 - `npm run test` — Vitest over `src/**`.
 - `npm run test:frontend` — Vitest over the dedicated `tests/` suite (`--root tests`). This is the suite handoff docs use.
-- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; `any`, unused-var and React Compiler issues are warnings. `node scripts/eslint_ratchet.mjs` holds the baseline at **0** — measured `0 errors, 0 warnings (baseline 0)` on 2026-07-27 at `2285a92` — so a warning means the commit in front of you introduced it. Fix it there; the baseline may only ever be lowered, and it is already at the floor. Current status for every gate: [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền), which is the only place a live count is maintained.
+- `npm run lint` — ESLint (flat config in `eslint.config.js`). Errors block; `any`, unused-var and React Compiler issues are warnings. `node scripts/eslint_ratchet.mjs` holds the baseline at **0**, so when the ratchet was green on the commit before yours, a warning means your commit introduced it. Fix it there; the baseline may only ever be lowered, and it is already at the floor. Whether it is green *today* is a measurement, and measurements do not live in this file. Current status for every gate: [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền), which is the only place a live count is maintained.
 - `npm run check:csp` — validates the shipped `dist/` against the CSP declared in `tauri.conf.json`: no external origins, no inline `<script>` bodies, hardening directives present. It checks *artifacts against policy*; it cannot prove the app boots under that policy, which needs `npm run tauri:dev` and a human.
 - `npm run check:bundle` — per-chunk and total JS budgets. Raising a budget is a decision: change the number in the same commit that causes the growth, and say why.
 - `node scripts/gen_notice.mjs [--check]` — regenerates `NOTICE` from `cargo tree --features desktop -e normal` plus npm `dependencies`. `--check` fails when it is stale.
+- `npm run check:docs` — docs link check plus `scripts/check_docs_metadata.mjs`: required front matter, allowed `status`/`review_cycle` values, a README index in every `docs/` directory, and every document linked from an index. Both scripts also read untracked files, so a new document is checked before it is staged. The metadata checker runs its own negative controls first and exits 2 if one of them passes. The rules it enforces are in `docs/governance/DOCUMENTATION_POLICY.md` ("Metadata tối thiểu"); change the two together. `--report` lists overdue reviews, which are reported but never fail the run.
 - `npm run gen:world-manifest` — regenerates `map_manifest.json` **and** `artifacts/world_256.anmw` together, with a real SHA-256. Never hand-edit that manifest; `tests/frontend/mapManifestEvidence.test.ts` hashes the bytes it names.
 
 **`esbuild` is not installed** — Vite 8 bundles with rolldown/oxc (the same reason `build.minify` must stay `true`). Any script invoking `esbuild` fails with `'esbuild' is not recognized`; `gen:manifest` did, silently, for as long as it existed. Run TypeScript scripts with `node scripts/run_ts.mjs <file.ts> [args]`.
@@ -31,7 +32,7 @@ Frontend (run from repo root):
 
 Backend (run from `src-tauri/`):
 - `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** seven test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
-- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture with `cmd /c "cargo test ... > out.txt 2>&1"`, not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
+- `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
 
@@ -39,7 +40,7 @@ Dependency advisories are gated: `cargo audit` (backend, config in `src-tauri/.c
 
 **burn is pinned at 0.13.2 and the upgrade is not a security fix.** Checked 2026-07-26: 0.14 still resolves the same vulnerable `gix-tempfile`, and it breaks `ai/model.rs` and `core/training.rs` (`Data` → `TensorData`, and `Wgpu` lost its third generic parameter). The version is many releases behind and worth moving for its own reasons, but it touches the numerically sensitive learner and buys nothing on the advisory front. `bevy_ecs` is likewise at 0.13 with no advisory pressure.
 
-There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`); it runs the gates above plus a `cargo tree` check that a default build really excludes the gated crates. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.ps1`).
+There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`, frontend on `ubuntu-latest`); it runs the gates above plus a `cargo tree` check that a default build really excludes the gated crates. `tsc` strict mode runs on build; ESLint (frontend) and clippy (backend) are the linters. Edited `.rs` files are auto-formatted by rustfmt via a PostToolUse hook (`.claude/hooks/rustfmt-on-edit.mjs`, run with `node` so it works on macOS, Linux and Windows). Until 2026-11-14 the hook called `powershell.exe` and did nothing off Windows, so `.rs` files edited on a Mac before then may not be formatted — run `cargo fmt --check` from `src-tauri/` rather than assuming they are. The hook only loads when a session starts.
 
 ## Gotchas
 
@@ -48,7 +49,7 @@ There is no Makefile. CI is `.github/workflows/ci.yml` (Rust on `windows-latest`
 - **Vite 8 bundles with rolldown/oxc and does not ship esbuild.** Naming `"esbuild"` in `build.minify` routes through the deprecated `transformWithEsbuild` and fails with `Cannot find package 'esbuild'`. Leave `minify: true`.
 - **Zero-heap-allocation hot loop.** Simulation tick systems (physics, CPG, collision) must not allocate on the heap; use pre-allocated buffers. Tests assert `allocs == 0` — don't introduce allocations in tick paths.
 - **Two Vitest configs.** Root `vite.config.ts` includes `src/**`; `tests/vitest.config.ts` includes `tests/frontend/**` and re-pins `react`/`react-dom`. Both set `testTimeout: 15000`: the first `render(<App />)` in a file pays for the whole lazy module graph plus world generation under jsdom — ~4s on a dev machine, ~11s on a GitHub ubuntu runner — while later renders in the same file are ~150ms. The root config lacked it and the src suite timed out on CI while passing locally.
-- **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.** For 3D model / rabbit work, serve `rabbit-standalone/` statically instead (e.g. `py -m http.server 8000`).
+- **Running the full Bevy/Tauri backend (`npm run tauri dev` / `cargo run`) is heavy and has crashed the dev machine.** Prefer the headless paths — `cargo test`, the Vitest suites — and launch the app only when a human has to see it. (`rabbit-standalone/`, the static page older notes suggest serving for 3D/rabbit work, was deleted at `fddbdee`; the only rabbit visualizer left is `playground/RabbitVisualizer.tsx`, and `playground/` was declared scratch by QĐ-D on 2026-10-31.)
 - Ignore build-artifact noise: `src-tauri/target_*` dirs, `*.log`, `err*.txt`, `out*.txt`, and the root `.agents/` / `$.agents/` vendored cargo dirs.
 
 ## Required reading for creature spawn and morphology
@@ -63,6 +64,17 @@ migration, pigment, creature physics geometry, live-agent rendering, **agent bra
 4. `docs/planning/CREATURE_MORPHOGENESIS_PLAN.md`
 5. `docs/decisions/ADR-0003-evolved-per-agent-brains.md` (accepted) — for anything touching
    `BrainGenotype`, `AgentBrain`, `ActionGates`, `BrainPolicy`, inference or lifetime learning
+
+**Target versus code — read before grepping.** The development types these rules name —
+`DevelopedPhenotype`, `EnvSample`, `RuntimeState`, `LocomotionMedium`, `develop_at_birth` — are the
+accepted *target* of ADR-0001 and **do not exist in the code** on this branch or on `origin/main`
+(checked 2026-11-14; `DevelopedPhenotype` exists only on `origin/fix/ht0-5c-sim-semantics`). Today
+genotype → ECS still goes through `decode_genotype` at four call sites: genesis in
+`SimulationEngine::start`, `SpawnGenotypeCommand::apply`, `spawn_serialized_agent` and
+`SpawnMigrationCommand::apply`. So a missing type does not mean a rule is obsolete, and it is not a
+licence to add the type ad hoc: introducing it is planned work in
+`docs/planning/CREATURE_MORPHOGENESIS_PLAN.md`. The contract's "Trạng thái triển khai" table says
+which names exist.
 
 Hard rules:
 
@@ -132,7 +144,8 @@ Hard rules:
 - `WorldLawSet` is immutable within a run. In the shipped headless slice, a changed law requires a
   new genesis manifest/run; a checkpoint branch changes declared runtime interventions/forcings
   with `CauseId`s, never the law fingerprint.
-- Core code uses generic `ExoticEnergy`; “Mana” is a scenario/UI display name.
+- Core code uses the generic `core::exotic_energy` module (`ExoticEnergyField`, `EnergySourceId`);
+  “Mana” is a scenario/UI display name. There is no type called `ExoticEnergy`.
 - MU is not EU. Keep the accepted closed-EU contract and audit exotic sources/sinks separately.
 - Exotic energy must not rewrite genotype, species id, population or fitness directly. Effects go
   through field → pathway/cost → performance → survival/reproduction → trait/lineage change.
@@ -176,4 +189,4 @@ Hard rules:
 
 ## Tauri IPC contract
 
-Commands and events are documented in `PROJECT.md` ("Interface Contracts") — read it before changing the IPC surface. Commands include `get_simulation_status`, `toggle_simulation`, `get_map_elites_grid`, `get_pheromone_grid`, `get_lineage_graph`, `save_simulation_state`/`load_simulation_state`; events include `simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`, `migration-event`.
+Every command and event is listed in `docs/reference/IPC_CONTRACT.md` — read it before changing the IPC surface. The source of truth is the code: `tauri::generate_handler![…]` in `src-tauri/src/lib.rs` (29 commands, bodies in `src-tauri/src/commands/`) and the `handle.emit("…")` calls under `src-tauri/src/` (7 events). `scripts/check_ipc_reference.mjs` (in `npm run check:docs`) fails when the code and that list disagree, so add or remove a command and its row in the same commit. Argument keys are camelCase on the JS side (`file_path` → `filePath`); `npm run check:ipc` checks every `invoke(...)` call site.

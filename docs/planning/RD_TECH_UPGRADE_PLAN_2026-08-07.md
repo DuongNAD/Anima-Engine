@@ -3,6 +3,7 @@ title: Kế hoạch thử nghiệm nâng cấp data plane, Meta-AI và asset 3D
 status: proposed
 owner: maintainers
 last_reviewed: 2026-08-07
+review_cycle: quarterly
 ---
 
 # Kế hoạch nâng cấp từ đánh giá R&D 2026-08-07

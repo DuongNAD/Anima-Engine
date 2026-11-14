@@ -21,6 +21,24 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
+> ## ⚠️ Đọc trước — bảng dưới đây là đo **2026-07-27**, không phải trạng thái hôm nay
+>
+> *Ghi chú thêm 2026-11-14; không đo lại gì.* Từ cuối tháng 10 dự án có **hai cây mã phân kỳ**
+> (`main` và `feat/ecological-selection`), và các phép đo mới hơn chưa được đưa về đây. Cho tới khi
+> hai cây hợp nhất, đọc theo thứ tự:
+>
+> 1. [`COMPLETION_ROADMAP_2026-10-31.md` §1](COMPLETION_ROADMAP_2026-10-31.md#1-đo-hôm-nay) — đo
+>    2026-10-31 trên cả hai cây, mỗi hàng có lệnh + ngày. Đọc luôn §4 của tài liệu đó: các quyết
+>    định QĐ-D và QĐ-E cùng ngày đã đổi vài hàng của §1, và số đo sau quyết định nằm ở §4.
+> 2. [`FINDINGS.md`](../../FINDINGS.md) — bug đã chứng minh; mục mới nhất ở trên cùng.
+> 3. [Bề mặt hợp nhất, đo 2026-11-01](../ai/planning/2026-11-01-merge-surface-measurement.md) — căn
+>    cứ của QĐ-A, mà chủ dự án đã quyết: **`feat/ecological-selection` là nền**, chồng PR #38→#40
+>    gộp vào nó.
+>
+> Đây là ngoại lệ **có thời hạn** của quy tắc 8 ("một con số chỉ có một nhà"), do chính roadmap
+> 31/10 khai: khi hai cây hợp nhất, số của nó chuyển về đây thành `§1.g` và banner này bị xoá.
+> Banner **không** chép số nào — nó chỉ trỏ.
+
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
 >
 > Mọi tài liệu khác **trỏ về đây** thay vì chép lại một con số dễ ôi. Nếu bạn thấy một con số
@@ -153,6 +171,18 @@ kỳ mục nào ngoài danh sách **hoặc** bất kỳ mục nào trong danh s�
 bao giờ publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải việc
 kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và §3.16.
 
+### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
+
+| Khẳng định | Trạng thái thật |
+|---|---|
+| Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (đo lại 2026-07-27 tại `068a750`: `tests/live_experiment_tests.rs` chạy **17 test**, 0 fail). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
+| Hiệu năng tick trong app | 📏 **Đã đo 2026-07-27** — `full_tick` p50 **1642,2 µs**, 1800 mẫu, bản **debug**, executor multi-threaded, 256², **10 agent**. Đóng 3 hàng `chưa đo`; hàng `Full-brain agents MVP` **vẫn mở** vì nó định nghĩa ở 1.000 agent. Chưa có lần chạy **release** nào — xem [BENCHMARK_BASELINE.md § Đo trong app](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug) |
+| Hạ tầng thí nghiệm | 🔧 Manifest/runner/fork/ledger **tồn tại và có test**. Đó **không phải** một kết quả khoa học — chưa có run nào được thiết kế, chạy và diễn giải như một thí nghiệm |
+| App khởi động dưới CSP mới | 📏 **Đã xác minh 2026-07-27.** Chủ dự án mở app, reload để Console phủ trọn một lần tải trang: **0 vi phạm CSP**, chỉ 4 cảnh báo `[TAURI] Couldn't find callback id …` (hệ quả bình thường của reload). IPC chạy thật từ webview — 4 lệnh capture đều trả giá trị. Xem [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
+| Ảnh chụp / bằng chứng thị giác của app | 📏 **Có, 2026-07-27** — một ảnh gồm tiêu đề cửa sổ, `Số Ticks 91 781` và Console sạch. **Ảnh do chủ dự án giữ; repo vẫn chưa có chỗ commit ảnh app** và BENCHMARKING.md cố ý không tạo ra một chỗ mới |
+| Map đã hoàn tất | ❌ **Không có review map nào trong gói này.** Đừng suy ra trạng thái map từ bảng trên |
+| `hexf-parse` | ❌ **Chưa giải quyết** — xem §1.c |
+
 ### 1.e Sau PR #21 — đo 2026-07-27 tại `0f5b4d3`
 
 > Ba commit sau `068a750` đều là **hạ tầng test**, và cả ba sửa cùng một loại lỗi: một gate xanh trên
@@ -187,18 +217,6 @@ kỹ thuật. Xem [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) và
 >    được**. Không gate nào đỏ, vì gate CI (`mapManifestEvidence.test.ts`) **hash ảnh đã commit** chứ
 >    không sinh lại chúng. **Một gate đặt trên artifact không thể phát hiện producer của artifact đó
 >    đã chết** — hàng `capture:views` ở bảng trên tồn tại để lần sau có người thực sự chạy nó.
-
-### 1.d Điều **chưa** được đo — đừng đọc bảng trên thành nhiều hơn nó nói
-
-| Khẳng định | Trạng thái thật |
-|---|---|
-| Thế giới Bevy sống chạy được thí nghiệm | **Headless adapter verified** (đo lại 2026-07-27 tại `068a750`: `tests/live_experiment_tests.rs` chạy **17 test**, 0 fail). **Không** gọi là "experiment-ready": chưa có lần chạy app desktop nào dưới executor đa luồng — xem §3.3 |
-| Hiệu năng tick trong app | 📏 **Đã đo 2026-07-27** — `full_tick` p50 **1642,2 µs**, 1800 mẫu, bản **debug**, executor multi-threaded, 256², **10 agent**. Đóng 3 hàng `chưa đo`; hàng `Full-brain agents MVP` **vẫn mở** vì nó định nghĩa ở 1.000 agent. Chưa có lần chạy **release** nào — xem [BENCHMARK_BASELINE.md § Đo trong app](../../BENCHMARK_BASELINE.md#đo-trong-app--2026-07-27-bản-debug) |
-| Hạ tầng thí nghiệm | 🔧 Manifest/runner/fork/ledger **tồn tại và có test**. Đó **không phải** một kết quả khoa học — chưa có run nào được thiết kế, chạy và diễn giải như một thí nghiệm |
-| App khởi động dưới CSP mới | 📏 **Đã xác minh 2026-07-27.** Chủ dự án mở app, reload để Console phủ trọn một lần tải trang: **0 vi phạm CSP**, chỉ 4 cảnh báo `[TAURI] Couldn't find callback id …` (hệ quả bình thường của reload). IPC chạy thật từ webview — 4 lệnh capture đều trả giá trị. Xem [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md) |
-| Ảnh chụp / bằng chứng thị giác của app | 📏 **Có, 2026-07-27** — một ảnh gồm tiêu đề cửa sổ, `Số Ticks 91 781` và Console sạch. **Ảnh do chủ dự án giữ; repo vẫn chưa có chỗ commit ảnh app** và BENCHMARKING.md cố ý không tạo ra một chỗ mới |
-| Map đã hoàn tất | ❌ **Không có review map nào trong gói này.** Đừng suy ra trạng thái map từ bảng trên |
-| `hexf-parse` | ❌ **Chưa giải quyết** — xem §1.c |
 
 ### 1.1 Phân loại mọi con số trong tài liệu
 
@@ -341,6 +359,23 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 
 ### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
 
+> **⚠️ Bàn giao dưới đây là của 2026-07-27 và đã cũ** *(ghi chú 2026-11-14)*. Việc hiện hành không
+> còn nằm ở bảng này. Đọc theo thứ tự:
+>
+> 1. [Roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) —
+>    quyết định của chủ dự án. QĐ-A (nửa "cây nào là nền"), QĐ-D, QĐ-E đã quyết; QĐ-A′, QĐ-B,
+>    QĐ-F028 quyết ngày 2026-11-14; **QĐ-C còn mở**.
+> 2. [`EXECUTION_PLAN_2026-10-31.md`](EXECUTION_PLAN_2026-10-31.md) — task HT-A / HT-B / HT-C, mỗi
+>    task có file, lệnh xác minh và phụ thuộc.
+> 3. [Kế hoạch định hướng và điều phối 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md)
+>    (`proposed`) — chặng, luật điều phối giữa các kế hoạch, hàng đợi quyết định QĐ-M.
+>
+> **Giao việc cho coding agent:** đọc [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md) — hàng đợi
+> thẻ chạy được ngay, khối `DECISIONS` đã điền sẵn để dán, luật và lệnh xác minh.
+>
+> Bảng và các bẫy bên dưới được giữ nguyên làm bản ghi bàn giao ngày đó; trạng thái từng việc phải
+> đối chiếu với ba tài liệu trên.
+
 > **PR #21 đã merge vào `main` tại `a053083`** (2026-07-27), sau ba commit sửa hạ tầng test mà
 > `068a750` chưa có. Bảng §1 vẫn đúng; cái mới nằm ở [§1.e](#1e-sau-pr-21--đo-2026-07-27-tại-0f5b4d3)
 > — lượt CI đầy đủ đầu tiên xanh trên runner GitHub, và tám view chuẩn đo lại byte-identical.
@@ -390,8 +425,6 @@ vì CLAUDE.md cấm chạy full backend trên máy này.
   MAP-Elites.
 - **Số `cargo bench` in ra là *slope estimate*, không phải trung vị.** Chênh thật: `step_water`
   297,6 µs (slope) so với 271,5 µs (trung vị). Bảng số dùng trung vị, đọc từ `estimates.json`.
-
-**Một finding đang mở, chưa ai đối chứng:**
 
 **Hai finding đang mở — cái thứ hai nay ĐÃ đối chứng (2026-07-29):**
 

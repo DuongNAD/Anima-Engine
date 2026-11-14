@@ -3,6 +3,7 @@ title: Kế hoạch triển khai Creature Morphogenesis
 status: active
 owner: simulation-architecture
 last_reviewed: 2026-07-24
+review_cycle: per-release
 target: M5-M7
 contract: ../reference/CREATURE_DEVELOPMENT_CONTRACT.md
 decision: ../decisions/ADR-0001-creature-development-lifecycle.md

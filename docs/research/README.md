@@ -2,7 +2,7 @@
 title: Chỉ mục nghiên cứu
 status: active
 owner: architecture
-last_reviewed: 2026-07-26
+last_reviewed: 2026-11-14
 review_cycle: quarterly
 ---
 
@@ -17,6 +17,8 @@ ghi thành [ADR](../decisions/README.md), còn tài liệu nghiên cứu giữ l
 |---|---|---|
 | [`OPEN_SOURCE_LANDSCAPE.md`](OPEN_SOURCE_LANDSCAPE.md) | Đánh giá từng dự án nguồn mở theo hạng Adopt / Pilot / Oracle / Reference / Reject, kèm biên tích hợp và hạng rủi ro license | `accepted` · review 2026-07-26 |
 | [`MAP_AND_ML_UPGRADE_RESEARCH.md`](MAP_AND_ML_UPGRADE_RESEARCH.md) | Đào sâu hai mảng: sinh thế giới/bản đồ, và mô hình machine (ML/tiến hoá) | `proposed` |
+| [`RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md`](RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md) | Đánh giá ứng viên R&D cho đường dữ liệu, Meta-AI và sinh asset 3D; kế hoạch thử nghiệm ở [planning](../planning/RD_TECH_UPGRADE_PLAN_2026-08-07.md) | `proposed` |
+| [`RESEARCH_SYNTHESIS_2026-11-13.md`](RESEARCH_SYNTHESIS_2026-11-13.md) | Tổng hợp năm báo cáo ngoài: thiết kế thí nghiệm, áp lực chọn lọc, tất định, thế giới nhiều thiết bị, phát hành. Ghi rõ điều nào đã kiểm, chưa kiểm hoặc sai; không chứa số đo của repo | `proposed` · 2026-11-13 |
 
 ## Cách đọc
 

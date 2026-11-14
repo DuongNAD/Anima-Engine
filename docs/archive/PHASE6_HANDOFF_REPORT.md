@@ -1,7 +1,16 @@
+---
+title: Báo cáo bàn giao Phase 6 (Milestone T13) — lưu trữ
+status: superseded
+archive_state: do-not-use
+owner: maintainers
+last_reviewed: 2026-10-31
+superseded_by: ../planning/STATE_OF_THE_PROJECT.md
+---
+
 > ⚠️ **LỊCH SỬ — không dùng làm tài liệu hiện hành.** Đây là báo cáo bàn giao của Phase 6 (Milestone T13),
 > đã hoàn tất từ lâu. Số dòng trích dẫn bên dưới là của cây mã nguồn **lúc đó** và phần lớn đã trôi.
-> Trạng thái hiện tại và việc cần làm: [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
-> Giữ lại làm bằng chứng về một quyết định trong quá khứ, đúng như [chính sách tài liệu](docs/governance/DOCUMENTATION_POLICY.md) yêu cầu.
+> Trạng thái hiện tại và việc cần làm: [`docs/planning/STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
+> Giữ lại làm bằng chứng về một quyết định trong quá khứ, đúng như [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md) yêu cầu.
 
 # Handoff Report — Phase 6 Full Tier Coverage Analysis (Milestone T13)
 

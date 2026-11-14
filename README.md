@@ -118,8 +118,8 @@ feature — nên lệnh trần ship một binary `default = []`: không phả h�
 cross-shard, và learner chạy CPU. Cả ba đều có fallback hoạt động, nên không có gì báo lỗi.
 
 > ⚠️ Build và chạy toàn bộ backend Bevy/Tauri rất nặng và **đã từng làm treo máy phát triển
-> hiện tại**. Khi chỉ cần xem mô hình 3D hoặc cảnh quan, dùng `npm run dev`, hoặc serve tĩnh
-> `rabbit-standalone/` bằng `py -m http.server 8000`.
+> hiện tại**. Khi chỉ cần xem mô hình 3D hoặc cảnh quan, dùng `npm run dev`. (`rabbit-standalone/` mà bản cũ
+> của mục này gợi ý đã bị xoá ở `fddbdee`.)
 
 ## Kiểm chứng
 
@@ -151,11 +151,14 @@ không cần binary release.
 Hai ràng buộc dưới đây không phải tuỳ chọn thẩm mỹ:
 
 - `--features desktop`: bảy file test mang `#![cfg(feature = "networking")]` hoặc `"ml-wgpu"` ở cấp
-  crate. Thiếu cờ này chúng biên dịch thành binary rỗng, báo `running 0 tests` và **exit 0** — 1.877
-  dòng test migration / cross-shard / GPU-fallback bị bỏ qua trong im lặng. Muốn kiểm tra: hứng
-  output rồi chạy `node scripts/check_test_targets.mjs <file>`.
-- `-j 2`: build song song đầy đủ làm cạn paging file trên máy phát triển hiện tại và cargo báo
-  `LNK1104` / `os error 1455` giữa chừng.
+  crate **và** một mục `[[test]] required-features` tương ứng trong `Cargo.toml`, nên thiếu cờ này
+  Cargo **không lên lịch** chúng — 1.877 dòng test migration / cross-shard / GPU-fallback không chạy
+  mà không có gì báo. (Trước đây chúng biên dịch thành binary rỗng báo `running 0 tests` và exit 0.)
+  `tests/feature_gated_targets_tests.rs` giữ hai nửa khai báo đó khớp nhau. Muốn kiểm tra: hứng
+  output rồi chạy `node scripts/check_test_targets.mjs <file> --profile desktop`.
+- `-j 2` (trên máy Windows): build song song đầy đủ làm cạn paging file và cargo báo `LNK1104` /
+  `os error 1455` giữa chừng. Ràng buộc này đo trên máy phát triển Windows trước đây; trên macOS chưa
+  ai đo, nên giữ `-j 2` cho tới khi có số.
 - Chạy **một tiến trình `cargo test` tại một thời điểm**: vài suite thay global allocator để đếm
   cấp phát, hoặc đọc/ghi biến môi trường. Chúng đã tự khoá bằng mutex trong từng file, nhưng hai
   tiến trình song song vẫn tranh chấp file `.exe` (`os error 32`).

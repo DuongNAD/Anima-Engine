@@ -1,3 +1,12 @@
+---
+phase: planning
+title: Bề mặt hợp nhất giữa hai cây — đo ngày 2026-11-01
+description: Đo bằng git merge-tree giữa feat/ecological-selection và chồng PR #38→#40, làm căn cứ cho QĐ-A
+status: active
+owner: maintainers
+last_reviewed: 2026-11-01
+---
+
 # Bề mặt hợp nhất giữa hai cây — đo ngày 2026-11-01
 
 Tài liệu này **không** đưa ra QĐ-A. Nó đo cái mà QĐ-A cần biết để trả lời được, vì cho đến

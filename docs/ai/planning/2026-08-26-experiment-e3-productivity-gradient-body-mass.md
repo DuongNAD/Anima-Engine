@@ -3,7 +3,7 @@ phase: planning
 feature: experiment-e3-productivity-gradient
 title: Kế hoạch — E3, gradient năng suất theo không gian có làm phân tán khối lượng cơ thể không
 description: Dự thảo tiền đăng ký E3 — nhân tố, N, seed, T, metric chính, ngưỡng vật chất, và hai dụng cụ còn thiếu so với câu hỏi gốc
-status: draft
+status: proposed
 owner: simulation-architecture
 last_reviewed: 2026-08-26
 ---

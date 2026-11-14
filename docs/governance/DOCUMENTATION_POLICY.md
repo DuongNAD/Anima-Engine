@@ -2,7 +2,7 @@
 title: Chính sách tài liệu
 status: accepted
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-11-14
 review_cycle: quarterly
 ---
 
@@ -38,11 +38,41 @@ title: Tên rõ nghĩa
 status: proposed | active | accepted | completed | deprecated | superseded
 owner: team-or-role
 last_reviewed: YYYY-MM-DD
-review_cycle: monthly | quarterly | per-release
+review_cycle: weekly | monthly | quarterly | per-release
 ---
 ```
 
-`last_reviewed` là ngày nội dung được xác minh, không phải ngày chỉnh chính tả.
+`last_reviewed` là ngày nội dung được xác minh, không phải ngày chỉnh chính tả. Thêm hay sửa
+front matter mà không xác minh lại nội dung thì **không** đổi `last_reviewed`.
+
+`review_cycle` nhận thêm một chú thích YAML khi chu kỳ còn kèm một điều kiện kích hoạt, ví dụ
+`review_cycle: monthly  # và sau mỗi chặng`. Giá trị trước dấu `#` phải nằm trong bốn giá trị trên.
+
+### Cưỡng chế bằng gate (2026-11-14)
+
+Hai mục ở trên và quy tắc "mỗi thư mục có `README.md`" ở [Liên kết và đặt tên](#liên-kết-và-đặt-tên)
+đã nằm trong chính sách từ tháng 7 nhưng chưa từng được kiểm, nên đã trôi. Đến 2026-11-14, 7 tài
+liệu không có front matter, 65 thiếu `review_cycle` (phần lớn ở `docs/ai/` và ADR — nay được
+miễn, lý do ở bảng dưới), 2 dùng trạng thái ngoài danh sách, 4 hợp đồng
+`reference/` không có trong chỉ mục, và `docs/ai/` không có chỉ mục. Nay
+`npm run check:docs` (CI: bước *Docs metadata check*) cưỡng chế:
+
+| Nhóm | Bắt buộc |
+|---|---|
+| Mọi tài liệu trong `docs/` | `title`, `status`, `owner`, `last_reviewed` (ngày thật, không ở tương lai); `status` trong danh sách trên; `completed` chỉ trong `docs/ai/` |
+| Ngoài `docs/ai/`, `docs/decisions/`, `docs/archive/` | Thêm `review_cycle`. `docs/ai/` là working set và ADR là bản ghi bất biến: chúng được thay bằng supersede, không được review định kỳ |
+| `kind: agent-goal` và `kind: review-findings` | Bản ghi phiên: `created` thay cho `last_reviewed`; `status` là `proposed`, `active` hoặc `completed`; agent-goal `completed` cần ngày `completed` |
+| `docs/archive/` | `status` là `superseded` hoặc `deprecated`, và `superseded_by` trỏ tới một file có thật |
+| Mọi thư mục trong `docs/` có tài liệu | Có `README.md` làm chỉ mục |
+| Mọi tài liệu | Được link từ `docs/README.md` hoặc một `docs/**/README.md` (điều kiện "Definition of done" bên dưới) |
+
+Được miễn: template (`docs/ai/*/README.md`, `ADR-0000-template.md`) và bốn file do agent sở hữu ở
+gốc `docs/ai/`. Danh sách miễn nằm trong `NO_FRONT_MATTER` của
+[`scripts/check_docs_metadata.mjs`](../../scripts/check_docs_metadata.mjs), mỗi mục kèm lý do; một
+mục không còn đúng (file đã mất, hoặc đã có front matter) làm gate đỏ, nên danh sách không phình
+lặng lẽ. Tài liệu quá hạn review chỉ được **báo** (`node scripts/check_docs_metadata.mjs --report`),
+không làm gate đỏ — đúng với mục [Nhịp bảo trì](#nhịp-bảo-trì). Đổi quy tắc ở đây thì đổi hằng số
+trong script trong cùng commit.
 
 ### `completed` và schema mở rộng cho `docs/ai/` (chuẩn hoá 2026-07-26)
 
@@ -69,6 +99,8 @@ owner: team-or-role
 predecessor: <tên file>    # tuỳ chọn, tạo chuỗi thời gian
 ---
 ```
+
+`kind: review-findings` (bản ghi một đợt review độc lập) dùng cùng schema này.
 
 Đây là **bản ghi phiên làm việc**, không phải nguồn sự thật. Khi thân tài liệu và
 [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) mâu thuẫn, tài liệu trạng thái
@@ -174,7 +206,8 @@ trong đợt quy hoạch này. Migration về sau làm từng nhóm:
 
 ## Nhịp bảo trì
 
-- Mỗi PR: kiểm tra link nội bộ và file được ảnh hưởng theo ma trận.
+- Mỗi PR: `npm run check:docs` (CI chạy sẵn) và kiểm file được ảnh hưởng theo ma trận.
 - Mỗi release: kiểm tra tutorial/how-to và artifact migration.
-- Hàng quý: review research, dependency, license, ADR proposed lâu ngày.
+- Hàng quý: review research, dependency, license, ADR proposed lâu ngày, và danh sách
+  `node scripts/check_docs_metadata.mjs --report`.
 - Tài liệu quá hạn không tự sai, nhưng phải hiện owner và được đưa vào backlog review.

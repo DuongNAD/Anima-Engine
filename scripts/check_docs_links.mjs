@@ -2,7 +2,7 @@
 //
 // The contracts in docs/ are only binding if the pointers to them resolve. CLAUDE.md names a
 // required-reading order by path, ADRs cite contracts, and planning docs cite ADRs -- a renamed or
-// deleted file turns that chain into a dead end silently. This walks every tracked markdown file and
+// deleted file turns that chain into a dead end silently. This walks every markdown file git sees and
 // fails on a relative link whose target does not exist.
 //
 // External links (http/https/mailto) are not fetched. Pure `#anchor` links are not resolved.
@@ -14,10 +14,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-const files = execFileSync('git', ['ls-files', '*.md'], { encoding: 'utf8' })
+// Untracked-but-not-ignored files are included so a new document is checked before it is staged;
+// on CI the two sets are the same. The existsSync filter drops a tracked file deleted in the tree.
+const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '*.md'], {
+  encoding: 'utf8',
+})
   .split('\n')
   .map((l) => l.trim())
   .filter(Boolean)
+  .filter((f) => fs.existsSync(f))
   // Superseded drafts are kept verbatim as a record of past decisions; their links are historical.
   .filter((f) => !f.startsWith('docs/archive/'))
   // Vendored upstream licence and notice text, stored byte-for-byte as fetched from a pinned
