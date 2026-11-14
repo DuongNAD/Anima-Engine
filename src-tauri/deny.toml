@@ -108,22 +108,8 @@ allow-git = []
 # optional subtrees like `burn-dataset -> gix-*` and `burn-candle -> zip -> zstd-*`), whereas
 # `cargo deny` is graph-scoped and rejects ignores for crates absent from the resolved graph.
 #
-# Entries here must be in the resolved graph AND verified unreachable:
-ignore = [
-    # tokio 1.53.1 — RUSTSEC-2026-0386 (`unsound`), `tokio::io::unix::AsyncFd` safe constructors
-    # (`new`, `with_interest`, `try_new`, `try_with_interest`) accept any `T: AsRawFd` without
-    # proof of FD ownership.
-    #
-    # `cargo audit` treats `unsound` advisories as informational (`informational_warnings = []`),
-    # whereas `cargo deny` fails on them. `tokio` is in the resolved graph, but `AsyncFd` is inside
-    # `tokio::io::unix` (`#[cfg(unix)]`, absent on the primary `x86_64-pc-windows-msvc` target) and
-    # is never constructed anywhere in this workspace or by our enabled `tokio` consumers (`neo4rs`,
-    # `tokio-tungstenite`, `tauri`, which use `tokio::net::TcpStream` / `mio` directly).
-    #
-    # Verified:
-    #   grep -rn "AsyncFd" src/ tests/ crates/   -> 0 matches
-    "RUSTSEC-2026-0386",
-]
+# Any entry added here must be in the resolved graph AND verified unreachable (currently none).
+ignore = []
 
 # cargo-deny fails on "unmaintained" by default; cargo audit reports it and does not. Same repo,
 # same dependency graph, opposite verdicts -- so this side yields to the one that already wrote down

@@ -22,7 +22,7 @@ require to accompany the distribution — are in
 installed versions with a SHA-256 per source file recorded in
 [`licensing/third-party-index.json`](licensing/third-party-index.json).
 
-Coverage: **439 of 440** distributed components
+Coverage: **442 of 443** distributed components
 have their licence text packaged. **31** of those publish no licence file in their artifact
 at all; for them the text is taken from the upstream repository at the immutable commit the release
 was published from, vendored verbatim under [`licensing/upstream/`](licensing/upstream/) and hashed,
@@ -38,7 +38,7 @@ The remaining **1** are enumerated with the reason, and with what was searched, 
 Three closures, which are genuinely different sets. Conflating them is the error this section exists
 to prevent — the earlier version of this file did, in both directions at once.
 
-- **Rust — 419 crates.** Everything reachable by
+- **Rust — 422 crates.** Everything reachable by
   `cargo tree --features desktop -e normal`. `desktop` is the feature set `npm run tauri:build`
   passes, so it is what ships. `-e normal` excludes dev-dependencies (test-only) and
   build-dependencies (run at build time, not linked). `cargo tree` resolves for the **host target**,
@@ -66,9 +66,9 @@ at the pinned release is packaged, not one option out of several.
 
 ## Rust components
 
-### Crates linked into the desktop binary — 419 component(s)
+### Crates linked into the desktop binary — 422 component(s)
 
-#### MIT OR Apache-2.0 (225)
+#### MIT OR Apache-2.0 (228)
 
 - ahash 0.8.12 — https://github.com/tkaitchuck/ahash
 - allocator-api2 0.2.21 — https://github.com/zakarumych/allocator-api2
@@ -282,16 +282,19 @@ at the pinned release is packaged, not one option out of several.
 - windows-numerics 0.2.0 — https://github.com/microsoft/windows-rs
 - windows-result 0.3.4 — https://github.com/microsoft/windows-rs
 - windows-strings 0.4.2 — https://github.com/microsoft/windows-rs
+- windows-sys 0.45.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.48.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.52.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.59.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.60.2 — https://github.com/microsoft/windows-rs
 - windows-sys 0.61.2 — https://github.com/microsoft/windows-rs
+- windows-targets 0.42.2 — https://github.com/microsoft/windows-rs
 - windows-targets 0.48.5 — https://github.com/microsoft/windows-rs
 - windows-targets 0.52.6 — https://github.com/microsoft/windows-rs
 - windows-targets 0.53.5 — https://github.com/microsoft/windows-rs
 - windows-threading 0.1.0 — https://github.com/microsoft/windows-rs
 - windows-version 0.1.7 — https://github.com/microsoft/windows-rs
+- windows_x86_64_msvc 0.42.2 — https://github.com/microsoft/windows-rs
 - windows_x86_64_msvc 0.48.5 — https://github.com/microsoft/windows-rs
 - windows_x86_64_msvc 0.52.6 — https://github.com/microsoft/windows-rs
 - windows_x86_64_msvc 0.53.1 — https://github.com/microsoft/windows-rs
@@ -354,7 +357,7 @@ at the pinned release is packaged, not one option out of several.
 - synstructure 0.13.2 — https://github.com/mystor/synstructure
 - text_placeholder 0.5.1 — https://github.com/bernardoamc/text-placeholder
 - tiff 0.9.1 — https://github.com/image-rs/image-tiff
-- tokio 1.53.1 — https://github.com/tokio-rs/tokio
+- tokio 1.53.3 — https://github.com/tokio-rs/tokio
 - tokio-macros 2.7.1 — https://github.com/tokio-rs/tokio
 - tokio-tungstenite 0.21.0 — https://github.com/snapview/tokio-tungstenite
 - tracing 0.1.44 — https://github.com/tokio-rs/tracing
@@ -492,7 +495,7 @@ at the pinned release is packaged, not one option out of several.
 
 - libloading 0.7.4 — https://github.com/nagisa/rust_libloading/
 - libloading 0.8.9 — https://github.com/nagisa/rust_libloading/
-- rustls-webpki 0.103.15 — https://github.com/rustls/webpki
+- rustls-webpki 0.103.16 — https://github.com/rustls/webpki
 - untrusted 0.9.0 — https://github.com/briansmith/untrusted
 
 #### Apache-2.0 OR ISC OR MIT (3)
@@ -515,7 +518,7 @@ at the pinned release is packaged, not one option out of several.
 #### CDLA-Permissive-2.0 (2)
 
 - webpki-roots 0.26.11 — https://github.com/rustls/webpki-roots
-- webpki-roots 1.0.9 — https://github.com/rustls/webpki-roots
+- webpki-roots 1.0.11 — https://github.com/rustls/webpki-roots
 
 #### Unlicense/MIT (2)
 
@@ -581,7 +584,7 @@ at the pinned release is packaged, not one option out of several.
 
 #### MIT (19)
 
-- @oxc-project/runtime 0.139.0
+- @oxc-project/runtime 0.156.0
 - @pixi/colord 2.9.6 — omgovich/colord
 - @react-three/fiber 8.18.0 — git+https://github.com/pmndrs/react-three-fiber.git
 - eventemitter3 5.0.4 — git://github.com/primus/eventemitter3.git
@@ -593,12 +596,12 @@ at the pinned release is packaged, not one option out of several.
 - react-dom 18.3.1 — https://github.com/facebook/react.git
 - react-reconciler 0.27.0 — https://github.com/facebook/react.git
 - react-use-measure 2.1.7 — https://github.com/pmndrs/react-use-measure
-- rolldown 1.1.5 — git+https://github.com/rolldown/rolldown.git
+- rolldown 1.2.16 — git+https://github.com/rolldown/rolldown.git
 - scheduler 0.21.0 — https://github.com/facebook/react.git
 - scheduler 0.23.2 — https://github.com/facebook/react.git
 - suspend-react 0.1.3 — pmndrs/suspend-react
 - three 0.184.0 — https://github.com/mrdoob/three.js
-- vite 8.1.5 — git+https://github.com/vitejs/vite.git
+- vite 8.3.5 — git+https://github.com/vitejs/vite.git
 - zustand 3.7.2 — git+https://github.com/pmndrs/zustand.git
 
 #### Apache-2.0 OR MIT (1)
