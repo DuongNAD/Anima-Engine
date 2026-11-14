@@ -549,6 +549,28 @@ impl MortalityPolicy {
     }
 }
 
+/// Whether continuous intra-tick `autonomous_reproduction_system` is active in this world.
+///
+/// Defaults to `enabled: true` when present via `Default` (or when absent from the `World`), while
+/// headless manifest worlds (`build_live_world`) insert [`Self::disabled`] until `QD-4` (Wave 3
+/// Card S1) decides how continuous intra-tick reproduction interacts with epochal evolution.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReproductionPolicy {
+    pub enabled: bool,
+}
+
+impl Default for ReproductionPolicy {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl ReproductionPolicy {
+    pub const fn disabled() -> Self {
+        Self { enabled: false }
+    }
+}
+
 /// Whether newly created agents get their own heritable brain, and what shape it takes.
 ///
 /// **Off by default.** With `evolved = false` nothing spawns a [`crate::core::components::AgentBrain`]

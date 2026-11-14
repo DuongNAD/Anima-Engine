@@ -601,7 +601,11 @@ pub fn agent_mortality_system(
         With<Agent>,
     >,
     mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+    policy: Option<Res<crate::core::resources::MortalityPolicy>>,
 ) {
+    if policy.as_deref().is_some_and(|p| !p.enabled) {
+        return;
+    }
     let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
     for (e, homeo, lineage_id, opt_eval) in agent_query.iter() {
         if homeo.energy <= 0.0 {
@@ -650,7 +654,11 @@ pub fn autonomous_reproduction_system(
     bounds: Option<Res<crate::core::ecs::MapBounds>>,
     mut next_node_id: Option<ResMut<NextNodeId>>,
     mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+    reproduction_policy: Option<Res<crate::core::resources::ReproductionPolicy>>,
 ) {
+    if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
+        return;
+    }
     use rand::Rng;
 
     // Count living trophic populations for density-dependent fecundity regulation

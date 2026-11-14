@@ -277,7 +277,7 @@ fn test_biodiversity_diagnostics_and_map_elites_hypervolume() {
     );
 
     // MAP-Elites 2D niche descriptors
-    let [mass_norm, range_norm] = ecological_descriptors(10.0, 100.0);
+    let [mass_norm, range_norm] = ecological_descriptors(10.0, 0.5);
     assert!((mass_norm - 0.5).abs() < 1e-4);
     assert!((range_norm - 0.5).abs() < 1e-4);
 

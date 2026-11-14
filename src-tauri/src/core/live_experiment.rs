@@ -1559,6 +1559,9 @@ fn build_live_world(
         starve_ticks: config.starve_ticks,
         dehydration_ticks: config.dehydration_ticks,
     });
+    // Continuous intra-tick reproduction (`autonomous_reproduction_system`) stays off in declared
+    // manifest worlds until QD-4 (Wave 3 Card S1) resolves its interaction with epochal selection.
+    world.insert_resource(crate::core::resources::ReproductionPolicy::disabled());
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
     // locomotion ranking — bit-identical to every run made before branch F existed.
