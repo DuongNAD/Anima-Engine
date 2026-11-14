@@ -30,7 +30,7 @@ bảng dưới đây và mã lệch nhau theo **cả hai chiều**: lệnh/event
 thành `None` và lệnh lặng lẽ đi đường mặc định. `npm run check:ipc` kiểm mọi `invoke(...)` của
 frontend theo quy tắc này. Cột "Tham số JS" dưới đây đã viết sẵn ở dạng camelCase.
 
-## Lệnh (29)
+## Lệnh (34)
 
 Lệnh không có doc comment trong mã được mô tả bằng kiểu trả về, không đoán ngữ nghĩa.
 
@@ -48,6 +48,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `set_lod_focus` | `focus: LodFocus` | — | `enabled: false` trả engine về độ chi tiết đồng đều (mặc định) |
 | `get_lod_focus` | — | `LodFocus` | |
 | `get_lod_bands` | — | `LodBands` | Ranh giới tầng LOD của bản build |
+| `export_scientific_dataset` | `req: ScientificExportRequest` | `ScientificExportResponse` | |
 
 ### Môi trường — `commands/environment.rs`
 
@@ -60,6 +61,9 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `get_active_raycasts` | — | `RaycastTelemetry[]` | |
 | `get_chronicle_history` | — | `ChronicleEvent[]` | |
 | `save_world_artifact` | `bytes: number[]` | `string` | Ghi World Artifact do frontend sinh ra vào đường dẫn chuẩn, để `init_world` khởi động trên **đúng** thế giới đang render. Định dạng: [`PROJECT.md` §Interface Contracts 1](../../PROJECT.md) |
+| `get_demographic_census` | — | `DemographicCensusState` | |
+| `get_energy_flux_matrix` | — | `EnergyFluxReport` | |
+| `get_spatial_density_matrix` | `width?: number`, `height?: number` | `SpatialDensityReport` | |
 
 ### Tiến hoá — `commands/evolution.rs`
 
@@ -69,6 +73,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `update_evolution_settings` | `settings: EvolutionSettings` | `bool` | |
 | `toggle_evolution` | — | `bool` | |
 | `get_lineage_graph` | — | `LineageGraphPayload` | |
+| `export_phylogenetic_tree` | `req?: NewickExportRequest` | `string` | |
 
 ### Mạng / sharding — `commands/networking.rs`
 

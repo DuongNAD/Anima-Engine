@@ -133,7 +133,8 @@ serial number derived from content.
   release is packaged; no option is selected on the owner's behalf, and no MIT or Apache-2.0 text is
   supplied for options upstream did not publish.
 - **No legal review has been performed.** This is an inventory and a text bundle, not an assessment
-  of whether each licence is compatible with proprietary distribution. The MPL-2.0 and
+  of whether each third-party licence is compatible with the project's `MIT OR Apache-2.0`
+  distribution. The MPL-2.0 and
   copyleft-adjacent components in the graph are in the "needs explicit review" class of
   [`../docs/governance/OPEN_SOURCE_POLICY.md`](../docs/governance/OPEN_SOURCE_POLICY.md), and that
   review has not happened. Nothing here constitutes legal sign-off.

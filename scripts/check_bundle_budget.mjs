@@ -39,12 +39,26 @@ const CHUNK_BUDGET_KIB = {
   // three.js + the R3F reconciler. Lazy: not fetched until a 3D view mounts.
   'react-three-fiber.esm': 900,
   // The main entry. This is the one that gates time-to-interactive, so it is the tight one.
-  main: 200,
+  //
+  // Re-measured 2026-11-14 across Vite 8.1.5 (03b331f, rolldown 1.1.5) vs Vite 8.3.5 (78b2e85,
+  // rolldown 1.2.16): rolldown 1.2.16 stopped hoisting `react-dom/client` (`client`, 130.38 KiB),
+  // `CanvasRenderer` (84.16 KiB), one `init` chunk (24.15 KiB) and `jsx-runtime` (6.95 KiB) into
+  // separate chunks, folding them into `main` (160.08 -> 267.68 KiB) and the pre-existing
+  // `defineProperty` chunk (0.69 -> 137.88 KiB). Measured static eager-preload totals actually
+  // decreased slightly from 03b331f to 78b2e85 (`index.html`: 632,413 B / 617.59 KiB across 16
+  // chunks -> 631,399 B / 616.60 KiB across 12 chunks; `landscape.html`: 1106.40 -> 1104.33 KiB;
+  // `map2.html`: 1105.37 -> 1103.04 KiB; all-JS total: 1849.90 -> 1846.55 KiB). Raised from 200
+  // to 320 (~20% headroom above 267.68 KiB) and removed the vanished `client` and `CanvasRenderer`
+  // keys; `init` remains emitted (`15.15 KiB`) under `default: 80`.
+  main: 320,
+  // Shared rolldown/oxc runtime helper chunk into which rolldown 1.2.16 folded shared Pixi/app code
+  // formerly in `CanvasRenderer` (`0.69 KiB` in 03b331f -> `137.88 KiB` in 78b2e85). Budget 170
+  // gives ~23% headroom, matching the former `client: 160` entry.
+  defineProperty: 170,
   // Deterministic world generation, shared by the app and the landscape entry.
   sharedWorld: 200,
   landscape: 120,
   Geometry: 140,
-  CanvasRenderer: 120,
   RenderTargetSystem: 110,
   LandscapeShowcase: 90,
   // The shared-world scene. It became a chunk of the *dashboard's* graph when the Landscape button
@@ -56,12 +70,11 @@ const CHUNK_BUDGET_KIB = {
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
   WorldShowcase: 130,
-  // `react-dom/client`, which is why the chunk is called `client`. It appeared as a chunk of its own
-  // when both entries started rendering the same scene: rolldown hoisted the renderer into shared
-  // code instead of leaving a copy inside each entry. That is the split improving, not the bundle
-  // growing — `landscape` fell from 78.8 KiB to 429 bytes in the same build and the total dropped
-  // from 1711.3 to 1652.3 KiB. Measured at 130.4 KiB; 160 is the usual headroom.
-  client: 160,
+  Map2Showcase: 130,
+  map2: 120,
+  // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
+  // Measured at 88.6 KiB (21.5 KiB gzipped); 120 gives standard headroom.
+  ResearchDashboard: 120,
   default: 80,
 };
 
@@ -133,7 +146,11 @@ if (total > TOTAL_BUDGET_KIB) {
 //
 // The remaining 836 KiB is three.js itself, and it is honestly still 836 KiB — that debt is scored,
 // not resolved. What this gate adds is that the debt cannot silently spread to the dashboard.
-const ENTRY_HTML = { 'index.html': '2D dashboard', 'landscape.html': 'landscape scene' };
+const ENTRY_HTML = {
+  'index.html': '2D dashboard',
+  'landscape.html': 'landscape scene',
+  'map2.html': 'map 2 scene',
+};
 /** Chunks that must never be reachable from the dashboard entry's static preload graph. */
 const THREE_D_CHUNK = /^react-three-fiber/;
 
@@ -154,7 +171,7 @@ for (const [file, label] of Object.entries(ENTRY_HTML)) {
         `it lazily, or the dashboard pays 836 KiB for a renderer it does not use.`,
     );
   }
-  if (file === 'landscape.html' && !loadsThreeD) {
+  if ((file === 'landscape.html' || file === 'map2.html') && !loadsThreeD) {
     // The other direction, so the check above cannot pass because the chunk stopped existing.
     failures.push(
       `the ${label} (${file}) does not reference the three.js chunk. Either the 3D scene stopped ` +

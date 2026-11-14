@@ -7,6 +7,7 @@ import type { ChronicleEvent } from '../../src/types/generated/ChronicleEvent';
 import type { EcosystemState } from '../../src/types/generated/EcosystemState';
 import type { EnvironmentalState } from '../../src/types/generated/EnvironmentalState';
 import type { LegacyImportListing } from '../../src/types/generated/LegacyImportListing';
+import type { LineageGraphPayload } from '../../src/types/generated/LineageGraphPayload';
 import type { MapElitesGridState } from '../../src/types/generated/MapElitesGridState';
 import type { PheromoneGridState } from '../../src/types/generated/PheromoneGridState';
 import type { RaycastTelemetry } from '../../src/types/generated/RaycastTelemetry';
@@ -89,7 +90,7 @@ const DETERMINISTIC_REPLIES: Record<string, unknown> = {
   } satisfies PheromoneGridState,
   get_active_raycasts: [] satisfies RaycastTelemetry[],
   get_environmental_elements: { elements: [] } satisfies EnvironmentalState,
-  get_lineage_graph: { nodes: [], edges: [] },
+  get_lineage_graph: { nodes: [], links: [], db_connected: false } satisfies LineageGraphPayload,
   get_chronicle_history: [] satisfies ChronicleEvent[],
   get_ecosystem_state: {
     detritus: 25,

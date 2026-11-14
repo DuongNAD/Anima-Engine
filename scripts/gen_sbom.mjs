@@ -168,7 +168,7 @@ const body = {
       version: rootPkg.version ?? '0.0.0',
       description:
         'Real-time GPU-accelerated Artificial Life & Evolution simulator (Tauri v2 desktop app).',
-      licenses: [{ license: { name: 'Proprietary — see LICENSE' } }],
+      licenses: [{ expression: 'MIT OR Apache-2.0' }],
     },
     properties: [
       { name: 'anima:cargo:features', value: 'desktop' },

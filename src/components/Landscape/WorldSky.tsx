@@ -222,7 +222,11 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     const safeDelta = Math.min(delta, 0.1);
     // Background follows the sky colour so night actually goes dark beyond the dome. Reached
     // through `state.scene`, the handle r3f gives the frame loop for imperative work.
-    state.scene.background = new THREE.Color(params.skyColor);
+    if (state.scene.background instanceof THREE.Color) {
+      state.scene.background.set(params.skyColor);
+    } else {
+      state.scene.background = new THREE.Color(params.skyColor);
+    }
 
     // Drive the gradient + halo from the day/night palette.
     applySkyUniforms(

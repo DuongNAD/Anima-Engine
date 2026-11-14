@@ -3,8 +3,8 @@
 //! The export exists for two reasons, and only the second one needs a test file this size.
 //!
 //! The first is interop: `ape`, `ggtree`, DendroPy and Biopython all read Newick, so a lineage
-//! becomes analysable without importing anything (Newick is a format, so no licence enters into it —
-//! which matters for a proprietary product).
+//! becomes analysable without importing anything (Newick is a format, so no third-party library
+//! licence enters into the engine).
 //!
 //! The second is that **a foreign parser is an independent check on whether the lineage graph is
 //! well-formed at all**. A cycle, an orphan edge or a duplicate id can sit in the in-memory tracker
