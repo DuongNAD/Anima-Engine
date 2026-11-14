@@ -148,7 +148,7 @@ Tài liệu này thực hiện `CARD D1` (bổn phận **chỉ đọc và đối
 
 #### `REND-01` — `OPEN`
 - **Thực tế tại `9dd4214c`**: `src/components/Landscape/Terrain.tsx:147-184` vẫn chạy `animateLOD` bên trong `useFrame` (cho step 1, 4, 16) và gọi `geom.computeVertexNormals()` (`:177`) mỗi khung hình khi `cell.elevation < 3.0 && !cell.isRiver` (mặc định `width=500, height=500` ở `:23` -> tới 250.000 đỉnh ở LOD 0).
-- **Phạm vi**: `Terrain.tsx` được dùng bởi `src/components/Landscape/LandscapeShowcase.tsx:208` cũ, **không** nằm trong scene M0 hiện hành `WorldShowcase.tsx` (dùng `WorldTerrain.tsx:474`).
+- **Phạm vi**: `Terrain.tsx` được dùng bởi `src/components/Landscape/LandscapeShowcase.tsx:208` cũ, **không** nằm trong scene M0 hiện hành `src/components/Landscape/WorldShowcase.tsx:461-480` (mount `<WorldTerrainLod>` ở `:462` hoặc `<WorldTerrain>` ở `:474`, định nghĩa tại `src/components/Landscape/WorldTerrain.tsx:1-158`).
 
 #### `REND-02` — `OPEN` (kết quả khác nhau theo từng component)
 - **Thực tế tại `9dd4214c`**:
@@ -652,7 +652,7 @@ Stop `Terrain.tsx` from mutating geometry vertices and calling `geom.computeVert
 
 CONTEXT
 - Observed 2026-11-14 at `9dd4214c`: `src/components/Landscape/Terrain.tsx:147-184` executes `animateLOD` inside `useFrame` (steps 1, 4, 16) and invokes `geom.computeVertexNormals()` (`:177`) each frame whenever `cell.elevation < 3.0 && !cell.isRiver`.
-- `Terrain.tsx` is mounted by legacy `src/components/Landscape/LandscapeShowcase.tsx:208`, NOT by the active M0 showcase `WorldShowcase.tsx` (`WorldTerrain.tsx:474`).
+- `Terrain.tsx` is mounted by legacy `src/components/Landscape/LandscapeShowcase.tsx:208`, NOT by the active M0 showcase `src/components/Landscape/WorldShowcase.tsx:461-480` (which mounts `<WorldTerrainLod>` at `:462` or `<WorldTerrain>` at `:474`, defined in `src/components/Landscape/WorldTerrain.tsx:1-158`).
 - Open PR `#36` (`fix/ht0-5b-landscape-dispose`, `a5b7960d`, unmerged on `9dd4214c`) overlaps this item.
 
 STEPS
