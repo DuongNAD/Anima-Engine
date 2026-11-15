@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-035 — `run_inference_batch` bỏ qua WGPU cho mọi `BrainGenotype` tiến hoá riêng từng agent
+- **Ngày:** 2026-11-14
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/ai/model.rs:356-394` và `src-tauri/src/ai/model.rs:421-445`
+- **Phát hiện bởi:** tay
+- **Triệu chứng:** `run_inference_batch` lọc `req.brain.is_none()` trước khi xếp batch cho `BrainModel` (`BrainModelBackend::Wgpu`); mọi request có `Some(BrainGenotype)` đều bỏ qua `BrainModel` và chạy tuần tự trên CPU qua `brain.forward_into`, đồng thời có sẵn parity với batched 3D tensor matmul `[N, 1, 15] -> [N, 15, 64] -> [N, 64, 64] -> [N, 64, 8]`.
+- **Tái hiện:** `just verify`
+- **Test khoá lại:** `gpu_brain_batch_parity_tests::evolved_brains_in_run_inference_batch_bypass_shared_brain_model`, `gpu_brain_batch_parity_tests::batched_3d_tensor_forward_matches_per_agent_brain_genotype_loop_on_ndarray`, `gpu_brain_batch_parity_tests::batched_3d_tensor_forward_on_wgpu_matches_per_agent_brain_genotype_loop`
+- **Trạng thái:** OPEN
+
 ### F-034 — PR #40 đóng 8 gate đỏ nhưng làm đỏ 5 gate đang xanh, và một trong năm cái đó **không phải** staleness
 - **Ngày:** 2026-11-01
 - **Loại:** BUG (hồi quy gate, một nửa là quyết định chưa ai ra)
