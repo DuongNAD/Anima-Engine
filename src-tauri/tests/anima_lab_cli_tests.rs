@@ -221,19 +221,26 @@ fn a_committed_fixture_produces_a_machine_readable_report() {
 }
 
 /// Process-level form of `a_closed_stdout_is_a_reported_error_not_a_panic`, also deleted by
-/// 4e618b9. The original handed `render_to_writer` a writer that always fails. Here the read end of
-/// stdout is closed before the child can finish, so its write fails with a broken pipe: the child
-/// must report that and exit 1, not panic (101) and not die of a signal (no exit code).
+/// 4e618b9. The original handed `render_to_writer` a writer that always fails. Here the child's
+/// stdout is a pipe whose read end was closed before the child started, so its write fails with a
+/// broken pipe: the child must report that and exit 1, not panic (101) and not die of a signal (no
+/// exit code).
+///
+/// The read end has to be gone before the spawn. Spawning with `Stdio::piped()` and dropping
+/// `child.stdout` afterwards races the child: on a busy runner the parent can be preempted between
+/// `spawn` and the drop for longer than a one-tick run takes, the small report fits in the pipe
+/// buffer, and the child exits 0. The ubuntu `determinism` job of PR #49 failed exactly that way.
 #[test]
 fn a_closed_stdout_is_a_reported_error_not_a_panic() {
     let manifest = shortened_fixture_manifest("closed-stdout", 1);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_anima-lab"))
+    let (reader, writer) = std::io::pipe().expect("an anonymous pipe");
+    drop(reader);
+    let child = Command::new(env!("CARGO_BIN_EXE_anima-lab"))
         .arg(&manifest.0)
-        .stdout(Stdio::piped())
+        .stdout(writer)
         .stderr(Stdio::piped())
         .spawn()
         .expect("anima-lab starts");
-    drop(child.stdout.take());
     let output = child.wait_with_output().expect("anima-lab exits");
 
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -247,8 +254,15 @@ fn a_closed_stdout_is_a_reported_error_not_a_panic() {
         "a closed stdout is a failed command, not a signal or a panic: {stderr}"
     );
     assert!(stderr.contains("anima-lab:"), "{stderr}");
+    // The OS's own words for a write to a pipe nobody reads: EPIPE on Unix; on Windows
+    // ERROR_NO_DATA (232, what windows-latest reported) or ERROR_BROKEN_PIPE (109).
+    let closed_pipe: &[&str] = if cfg!(windows) {
+        &["os error 232", "os error 109"]
+    } else {
+        &["Broken pipe"]
+    };
     assert!(
-        stderr.contains("Broken pipe"),
-        "the reason must be the closed pipe: {stderr}"
+        closed_pipe.iter().any(|reason| stderr.contains(reason)),
+        "the reason must be the closed pipe ({closed_pipe:?}): {stderr}"
     );
 }
