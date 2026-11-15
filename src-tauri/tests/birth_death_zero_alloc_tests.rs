@@ -1,9 +1,15 @@
 //! Zero-allocation gate for the agent birth and death command paths (B2).
 //!
-//! Covers all three sites in `core::agent_systems`:
-//!   - Site 1: `agent_mortality_system` (`src/core/agent_systems.rs:394`)
-//!   - Site 2: `ReclaimAndDespawnAgentCommand::apply` (`src/core/agent_systems.rs:119`)
-//!   - Site 3: `SpawnOffspringCommand::apply` (`src/core/agent_systems.rs:271`)
+//! Covers all three sites in `core::agent_systems`, and both mortality systems the trunk schedule
+//! runs (`build_tick_schedule` registers `agent_mortality_system` AND `core::mortality::
+//! mortality_system`; QD-A' keeps the second and drops the first only later, so the gate is written
+//! against the observable — N agents die, a child is born, the window allocates nothing — rather
+//! than against whichever system does the killing):
+//!   - Site 1: `agent_mortality_system` (per tick, with deaths)
+//!   - Site 2: `ReclaimAndDespawnAgentCommand::apply` (per death, whichever system queues it)
+//!   - Site 3: `SpawnOffspringCommand::apply` (per birth)
+//!   - Window 3: `core::mortality::mortality_system`, the policy-driven system, which queues the
+//!     same Site 2 command.
 //!
 //! Uses `ThreadTrackingAllocator` (thread-scoped) and a single `#[test]` entry point per
 //! `tests/common/allocator.rs` so unrelated process threads cannot contaminate the window.
@@ -27,7 +33,8 @@ use anima_engine_lib::core::ecs::{
     Agent, AgentClass, AgentParentLineageIds, ChildrenLinks, FeatureTracker, ParentAgent, Prey,
     Segment, Velocity,
 };
-use anima_engine_lib::core::resources::{BrainPolicy, SimRng};
+use anima_engine_lib::core::mortality::mortality_system;
+use anima_engine_lib::core::resources::{BrainPolicy, MortalityPolicy, SimRng, VitalStatistics};
 use anima_engine_lib::core::telemetry_export::DemographicTracker;
 use anima_engine_lib::evolution::brain_genotype::BrainGenotype;
 use anima_engine_lib::evolution::genotype::{
@@ -80,6 +87,7 @@ fn spawn_dying_two_segment_agent(
             temperature: 37.0,
             temp_target: 37.0,
             previous_deviation: 0.0,
+            starving_ticks: 0,
         },
         AgentGenotype(genotype.clone()),
         AgentEvaluation {
@@ -88,6 +96,8 @@ fn spawn_dying_two_segment_agent(
             total_energy_expended: 0.0,
             survival_ticks,
             last_position: Vec3::ZERO,
+            prey_energy_gained: 0.0,
+            total_energy_gained: 0.0,
         },
         FeatureTracker::default(),
         AgentLineageId(lineage.to_string()),
@@ -135,10 +145,25 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
     world.insert_resource(EcosystemBiomass::default());
     world.insert_resource(DemographicTracker::default());
     world.insert_resource(SimRng::from_seed(4242));
+    // Enabled and instant (`starve_ticks == 0`): `mortality_system` kills any agent whose energy is
+    // already zero. `agent_mortality_system` only returns early when the policy is *disabled*, so
+    // an enabled policy leaves its behaviour, and Windows 1 and 2, unchanged.
+    world.insert_resource(MortalityPolicy {
+        enabled: true,
+        starve_ticks: 0,
+        dehydration_ticks: u32::MAX,
+    });
+    world.insert_resource(VitalStatistics::default());
 
     let mut schedule = Schedule::default();
     schedule.set_executor_kind(ExecutorKind::SingleThreaded);
     schedule.add_systems((agent_mortality_system, apply_deferred).chain());
+
+    // The policy-driven death system the trunk keeps (QD-A'), in its own schedule so a window can
+    // exercise exactly one mortality system at a time.
+    let mut policy_schedule = Schedule::default();
+    policy_schedule.set_executor_kind(ExecutorKind::SingleThreaded);
+    policy_schedule.add_systems((mortality_system, apply_deferred).chain());
 
     let genotype = two_segment_genotype();
     let inherited_brain: Arc<BrainGenotype> = {
@@ -181,6 +206,13 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
     // Run the mortality schedule after all archetypes exist so its internal `QueryState` bitsets
     // cover every archetype table in `world`.
     schedule.run(&mut world);
+    // Warm the policy schedule the same way: initialise its systems and size its command buffer
+    // with several concurrent deaths. The run above only killed the zero-energy warm agents, so
+    // spawn fresh zero-energy ones for it.
+    for i in 0..4 {
+        spawn_dying_two_segment_agent(&mut world, &genotype, &format!("warm-policy-{i}"), 0);
+    }
+    policy_schedule.run(&mut world);
 
     // Clean up remaining warm-up agents via ReclaimAndDespawnAgentCommand, then run `schedule` one
     // more time on the warmed world.
@@ -192,6 +224,7 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
         ReclaimAndDespawnAgentCommand { root }.apply(&mut world);
     }
     schedule.run(&mut world);
+    policy_schedule.run(&mut world);
     // `EntityWorldMut::despawn` pushes to `world.removed_components` (`Events<RemovedComponentEntity>`),
     // which in standalone `bevy_ecs` is cleared by `world.clear_trackers()`. Clear after warm-up
     // (after warming > 8 despawns into the event buffers) and swap back so the active event buffer
@@ -236,6 +269,31 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
         world.query::<&Segment>().iter(&world).count(),
         0,
         "both dying agents' child segments must be despawned by ReclaimAndDespawnAgentCommand"
+    );
+
+    // ---- Window 3: Policy-driven death path (`mortality_system` + Site 2) -----------------------
+    // The mortality system the trunk keeps under QD-A'. It queues the same
+    // `ReclaimAndDespawnAgentCommand`, so Site 2 must be clean under it too.
+    let _p1 = spawn_dying_two_segment_agent(&mut world, &genotype, "policy-z", 15);
+    let _p2 = spawn_dying_two_segment_agent(&mut world, &genotype, "policy-a", 350);
+    assert_eq!(world.query::<&Agent>().iter(&world).count(), 2);
+    assert_eq!(world.query::<&Segment>().iter(&world).count(), 4);
+    let policy_deaths_before = world.resource::<VitalStatistics>().total_deaths;
+
+    ALLOCATOR.start_tracking();
+    policy_schedule.run(&mut world);
+    let policy_death_allocs = ALLOCATOR.stop_tracking();
+
+    assert_eq!(
+        world.resource::<VitalStatistics>().total_deaths - policy_deaths_before,
+        2,
+        "window 3 must force at least two deaths through mortality_system"
+    );
+    assert_eq!(world.query::<&Agent>().iter(&world).count(), 0);
+    assert_eq!(
+        world.query::<&Segment>().iter(&world).count(),
+        0,
+        "mortality_system's deaths must take their child segments with them"
     );
 
     // ---- Window 2: Combined Birth + Death window (Sites 1, 2, and 3 in one tick) ----------------
@@ -323,9 +381,95 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
     );
 
     let command_overhead_allocs = combined_window_allocs.saturating_sub(decode_baseline_allocs);
+    // One assertion over all three windows, so a red run reports every count at once and the
+    // pattern names the site: Window 1 alone => Site 1 or 2 under `agent_mortality_system`;
+    // Window 3 as well => Site 2; only the combined window => Site 3.
     assert_eq!(
-        (death_allocs, command_overhead_allocs),
-        (0, 0),
-        "birth/death zero-alloc gate failed: death_window_allocs={death_allocs} (2 multi-segment deaths), combined_window_excess_allocs={command_overhead_allocs} (2 deaths + 1 birth, total={combined_window_allocs}, decode_genotype_baseline={decode_baseline_allocs})"
+        (death_allocs, policy_death_allocs, command_overhead_allocs),
+        (0, 0, 0),
+        "birth/death zero-alloc gate failed: \
+         window 1 [agent_mortality_system + ReclaimAndDespawnAgentCommand::apply, 2 deaths] allocs={death_allocs}; \
+         window 3 [mortality_system + ReclaimAndDespawnAgentCommand::apply, 2 deaths] allocs={policy_death_allocs}; \
+         window 2 [2 deaths via agent_mortality_system + 1 birth via SpawnOffspringCommand::apply] excess allocs={command_overhead_allocs} (total={combined_window_allocs}, decode_genotype_baseline={decode_baseline_allocs})"
     );
+}
+
+/// Correctness companion to the gate. `ReclaimAndDespawnAgentCommand` and `SpawnOffspringCommand`
+/// now find an agent's segments by walking `ChildrenLinks` instead of scanning every entity for
+/// `ParentAgent`. That is only the same set if the two links agree, so pin it on a branched,
+/// multi-level tree, and on one longer than the 64-entry inline `SmallVec` capacity the walk uses
+/// (which spills to the heap rather than losing entities).
+#[test]
+fn despawn_takes_every_segment_of_branched_and_oversized_trees() {
+    fn node(id: u32) -> MorphologyNode {
+        MorphologyNode {
+            id,
+            length: 0.5,
+            radius: 0.1,
+            mass: 0.2,
+        }
+    }
+    fn edge(source_node: u32, target_node: u32) -> MorphologyEdge {
+        MorphologyEdge {
+            source_node,
+            target_node,
+            joint_anchor: Vec3::new(0.0, 0.0, 0.5),
+            joint_axis: Vec3::X,
+        }
+    }
+
+    // Branched: 0 -> {1, 2}, 1 -> {3, 4}, 2 -> 5. Six nodes, three levels.
+    let mut branched = MorphologyGenotype::new();
+    for id in 0..6 {
+        branched.add_node(node(id));
+    }
+    for (s, t) in [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5)] {
+        branched.add_edge(edge(s, t));
+    }
+    // Longer than the inline capacity: a 70-node chain.
+    let mut chain = MorphologyGenotype::new();
+    for id in 0..70 {
+        chain.add_node(node(id));
+    }
+    for id in 0..69 {
+        chain.add_edge(edge(id, id + 1));
+    }
+
+    for (name, genotype, expected_segments) in [("branched", branched, 5), ("chain70", chain, 69)] {
+        let mut world = World::new();
+        world.insert_resource(EcosystemBiomass::default());
+        let root = spawn_dying_two_segment_agent(&mut world, &genotype, name, 0);
+        let bystander =
+            spawn_dying_two_segment_agent(&mut world, &two_segment_genotype(), "bystander", 0);
+
+        let by_parent_agent: Vec<Entity> = world
+            .query::<(Entity, &ParentAgent)>()
+            .iter(&world)
+            .filter_map(|(e, p)| (p.0 == root && e != root).then_some(e))
+            .collect();
+        assert_eq!(
+            by_parent_agent.len(),
+            expected_segments,
+            "{name}: ParentAgent scan must find every segment"
+        );
+
+        ReclaimAndDespawnAgentCommand { root }.apply(&mut world);
+
+        assert!(world.get_entity(root).is_none(), "{name}: root despawned");
+        for e in &by_parent_agent {
+            assert!(
+                world.get_entity(*e).is_none(),
+                "{name}: segment {e:?} found by ParentAgent survived despawn"
+            );
+        }
+        assert!(
+            world.get_entity(bystander).is_some(),
+            "{name}: another agent's entity must not be despawned"
+        );
+        assert_eq!(
+            world.query::<&Segment>().iter(&world).count(),
+            2,
+            "{name}: only the bystander's root and its one child segment remain"
+        );
+    }
 }
