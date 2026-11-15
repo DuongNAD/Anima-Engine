@@ -16,6 +16,12 @@ extend({ OrbitControls });
 // which is not a duplicate of that declaration so much as a hole in it — interface merging keeps
 // both, and `any` wins every check.
 
+const scratchEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+const scratchForward = new THREE.Vector3();
+const scratchRight = new THREE.Vector3();
+const scratchWish = new THREE.Vector3();
+const UP_VECTOR = new THREE.Vector3(0, 1, 0);
+
 // ---------------------------------------------------------------------------------------
 // WorldCameraRig — five ways to see the world:
 //   orbit  classic inspect camera (drag to orbit, wheel to zoom, right-drag to pan)
@@ -355,34 +361,35 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
       teleportRef.current = null;
     }
 
-    camera.quaternion.setFromEuler(new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ'));
+    scratchEuler.set(look.pitch, look.yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(scratchEuler);
 
     const sprinting = keys.has('ShiftLeft') || keys.has('ShiftRight');
 
     // Direction the player wants to go (screen-forward projected flat for walking).
-    const forward = new THREE.Vector3();
-    camera.getWorldDirection(forward);
+    scratchForward.set(0, 0, 0);
+    camera.getWorldDirection(scratchForward);
     if (mode === 'walk') {
-      forward.y = 0;
-      forward.normalize();
+      scratchForward.y = 0;
+      scratchForward.normalize();
     }
-    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    scratchRight.crossVectors(scratchForward, UP_VECTOR).normalize();
 
-    const wish = new THREE.Vector3();
-    if (keys.has('KeyW') || keys.has('ArrowUp')) wish.add(forward);
-    if (keys.has('KeyS') || keys.has('ArrowDown')) wish.sub(forward);
-    if (keys.has('KeyA') || keys.has('ArrowLeft')) wish.sub(right);
-    if (keys.has('KeyD') || keys.has('ArrowRight')) wish.add(right);
-    const moving = wish.lengthSq() > 1e-9;
-    if (moving) wish.normalize();
+    scratchWish.set(0, 0, 0);
+    if (keys.has('KeyW') || keys.has('ArrowUp')) scratchWish.add(scratchForward);
+    if (keys.has('KeyS') || keys.has('ArrowDown')) scratchWish.sub(scratchForward);
+    if (keys.has('KeyA') || keys.has('ArrowLeft')) scratchWish.sub(scratchRight);
+    if (keys.has('KeyD') || keys.has('ArrowRight')) scratchWish.add(scratchRight);
+    const moving = scratchWish.lengthSq() > 1e-9;
+    if (moving) scratchWish.normalize();
 
     // Top speed (units/s): same magnitudes as before, now reached via smoothed acceleration.
     const maxSpeed =
       mode === 'fly'
         ? renderSize * 0.1 * (sprinting ? 3.2 : 1)
         : renderSize * 0.02 * (sprinting ? 2.2 : 1);
-    const targetVx = moving ? wish.x * maxSpeed : 0;
-    const targetVz = moving ? wish.z * maxSpeed : 0;
+    const targetVx = moving ? scratchWish.x * maxSpeed : 0;
+    const targetVz = moving ? scratchWish.z * maxSpeed : 0;
     const lambda =
       mode === 'walk' && !phys.grounded ? AIR_LAMBDA : moving ? ACCEL_LAMBDA : FRICTION_LAMBDA;
     const k = 1 - Math.exp(-lambda * dt);
@@ -479,8 +486,8 @@ export const WorldCameraRig: React.FC<WorldCameraRigProps> = ({
 
     v.camX = camera.position.x;
     v.camZ = camera.position.z;
-    v.targetX = camera.position.x + forward.x * 60;
-    v.targetZ = camera.position.z + forward.z * 60;
+    v.targetX = camera.position.x + scratchForward.x * 60;
+    v.targetZ = camera.position.z + scratchForward.z * 60;
     v.biome = biomeAt(world, camera.position.x, camera.position.z, renderSize);
   });
 

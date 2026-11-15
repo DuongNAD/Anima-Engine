@@ -17,6 +17,9 @@ export const PositionalAudio: React.FC<PositionalAudioProps> = ({
 }) => {
   useEffect(() => {
     audioManager.createSpatialSource(id);
+    return () => {
+      audioManager.destroySpatialSource(id);
+    };
   }, [id]);
 
   useFrame(() => {

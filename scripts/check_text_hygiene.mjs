@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // Refuse to ship source files containing raw control bytes.
 //
 // # The bug this exists for

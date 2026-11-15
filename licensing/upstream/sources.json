@@ -315,17 +315,17 @@
       "retrieved": "2026-07-27"
     },
     {
-      "id": "github.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE",
-      "url": "https://raw.githubusercontent.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE",
+      "id": "github.com/oxc-project/oxc/75efdca4747c4ad9b252542743098d4894f8005b/LICENSE",
+      "url": "https://raw.githubusercontent.com/oxc-project/oxc/75efdca4747c4ad9b252542743098d4894f8005b/LICENSE",
       "repository": "https://github.com/oxc-project/oxc",
-      "commit": "69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d",
+      "commit": "75efdca4747c4ad9b252542743098d4894f8005b",
       "pathInRepo": "LICENSE",
       "filename": "LICENSE",
       "materialType": "licence-text",
       "spdx": "MIT",
       "bytes": 1119,
       "sha256": "95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3",
-      "retrieved": "2026-07-27"
+      "retrieved": "2026-11-14"
     },
     {
       "id": "github.com/pmndrs/react-three-fiber/f81bfe8cb29373d2687433c6130e0ce1daf7222c/LICENSE",
@@ -1120,23 +1120,23 @@
       "material": "Both licence-bearing files present at this commit are packaged rather than one option being chosen: LICENSE.md carries the copyright line and the tri-licence statement, LICENSE-ZLIB the Zlib text. The repository publishes no MIT or Apache-2.0 text at this commit, so none is supplied for those two options and none is reconstructed."
     },
     {
-      "purl": "pkg:npm/%40oxc-project/runtime@0.139.0",
+      "purl": "pkg:npm/%40oxc-project/runtime@0.156.0",
       "name": "@oxc-project/runtime",
-      "version": "0.139.0",
+      "version": "0.156.0",
       "ecosystem": "npm",
       "declaredSpdx": "MIT",
       "provenance": {
         "kind": "release-tree",
         "repository": "https://github.com/oxc-project/oxc",
-        "commit": "69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d",
-        "tag": "crates_v0.139.0",
+        "commit": "75efdca4747c4ad9b252542743098d4894f8005b",
+        "tag": "crates_v0.156.0",
         "evidence": [
-          "git ls-remote --tags resolves the upstream tag crates_v0.139.0 to 69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d.",
-          "The tag crates_v0.139.0 points at this commit, whose message is \"release(crates): oxc v0.139.0 (#24218)\" and which is the commit that set npm/runtime/package.json to version 0.139.0 (name \"@oxc-project/runtime\", license \"MIT\"). Proof that this revision produced the shipped helper code: the published tarball @oxc-project/runtime@0.139.0 has sha512 integrity WnuGdceWtRdqD7f3alOIDXN6bnGuGtFjtQf/dHjzgn2im7eKaYRJTEl2T1kFEWPhBWCDk+UDYgsTLUE5L6jc0w== as recorded by the registry, and its src/helpers/esm/{typeof,interopRequireDefault,defineProperty,objectSpread2}.js are byte-identical to npm/runtime/src/helpers/esm/ at this commit. The tarball’s own package/LICENSE is byte-identical to the repository-root LICENSE vendored here (sha256 95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3); npm/runtime/ itself contains no LICENSE, so the root file is what the publish tooling ships."
+          "git ls-remote --tags resolves the upstream tag crates_v0.156.0 to 75efdca4747c4ad9b252542743098d4894f8005b.",
+          "The tag crates_v0.156.0 points at this commit, whose message is \"release(crates): oxc v0.156.0 (#28190)\" and which corresponds to npm tarball @oxc-project/runtime@0.156.0 (sha512 integrity 6C8Bl8OZJJKYJFbo2l9Qjn8WGi0OW1mmiErR0b+n8684ZLXegZZ2Ul4LW5aoapIX0a2ri2nIDz4RpCgRleb04w==). Its src/helpers/esm/{typeof,interopRequireDefault,defineProperty,objectSpread2}.js are byte-identical to npm/runtime/src/helpers/esm/ at this commit, and the tarball's package/LICENSE is byte-identical to the repository-root LICENSE vendored here (sha256 95ced5ecf1133fbf41d409b5555c86c344f83f3b019926057ddbc07cfdcc27b3)."
         ]
       },
       "sources": [
-        "github.com/oxc-project/oxc/69b2dfc1810e6ad9d5508ae9a20bc773ba5aa18d/LICENSE"
+        "github.com/oxc-project/oxc/75efdca4747c4ad9b252542743098d4894f8005b/LICENSE"
       ],
       "material": "This component is compiled into dist/ by rolldown and is not in the install tree, so its licence cannot be read from node_modules. licensing/bundle-closure.json records the version from the module id rolldown emits. The vendored text also supplies the SPDX expression the local manifest cannot: the registry publishes license \"MIT\" for this version."
     },

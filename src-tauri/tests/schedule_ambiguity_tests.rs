@@ -40,6 +40,17 @@ const ENERGY_SYSTEMS: [&str; 6] = [
     "ecosystem_census_system",
 ];
 
+/// Systems that take `ResMut<SimRng>`. `ResMut` makes Bevy serialise them, not order them: two of
+/// these with no declared edge between them draw from the shared stream in an order chosen by the
+/// schedule's topological sort, which depends on a per-process hash seed.
+const SIMRNG_SYSTEMS: [&str; 5] = [
+    "autonomous_reproduction_system",
+    "check_epoch_completion_system",
+    "manual_migration_system",
+    "seed_dropping_system",
+    "spawn_food_system",
+];
+
 fn short(name: &str) -> String {
     // `System::name()` is a full path, sometimes with generic parameters.
     name.rsplit("::").next().unwrap_or(name).to_string()
@@ -130,12 +141,13 @@ fn report_every_ambiguous_pair_in_the_tick_schedule() {
     println!("\n{} ambiguous pairs in build_tick_schedule:", pairs.len());
     for (x, y, n) in &pairs {
         let energy = ENERGY_SYSTEMS.contains(&x.as_str()) && ENERGY_SYSTEMS.contains(&y.as_str());
-        println!(
-            "  {}{} <-> {} ({n} conflicting components)",
-            if energy { "ENERGY  " } else { "        " },
-            x,
-            y
-        );
+        let simrng = SIMRNG_SYSTEMS.contains(&x.as_str()) && SIMRNG_SYSTEMS.contains(&y.as_str());
+        let tag = match (energy, simrng) {
+            (true, _) => "ENERGY  ",
+            (false, true) => "SIMRNG  ",
+            (false, false) => "        ",
+        };
+        println!("  {tag}{x} <-> {y} ({n} conflicting components)");
     }
 }
 
@@ -155,6 +167,26 @@ fn no_two_systems_that_move_energy_are_left_unordered() {
          by the schedule's topological sort rather than by the schedule: {offenders:#?}\n\n\
          Two orders that give different answers is not an optimisation detail — it is a trajectory \
          that depends on a per-process hash seed. Declare the order in \
+         `core::simulation_schedule::build_tick_schedule`."
+    );
+}
+
+#[test]
+fn no_two_systems_that_draw_simrng_are_left_unordered() {
+    let mut a = built_adapter();
+    let offenders: Vec<String> = ambiguous_pairs(&mut a)
+        .into_iter()
+        .filter(|(x, y, _)| {
+            SIMRNG_SYSTEMS.contains(&x.as_str()) && SIMRNG_SYSTEMS.contains(&y.as_str())
+        })
+        .map(|(x, y, _)| format!("{x} <-> {y}"))
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "these pairs both draw from `SimRng` and have no declared order, so which one draws first \
+         is decided by the schedule's topological sort rather than by the schedule: {offenders:#?}\n\n\
+         `ResMut<SimRng>` serialises draws, it does not order them — two orders give two different \
+         random sequences per process. Declare the order in \
          `core::simulation_schedule::build_tick_schedule`."
     );
 }

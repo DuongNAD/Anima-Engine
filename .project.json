@@ -1,0 +1,7 @@
+{
+  "name": "Anima-Engine",
+  "category": "03_Engines_Simulation",
+  "tech": "Node.js",
+  "command": "npm run dev",
+  "description": "Engine giả lập sinh thái học và chọn lọc tự nhiên"
+}

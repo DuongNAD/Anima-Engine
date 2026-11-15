@@ -45,7 +45,7 @@ ignore = [
     # or build — across any target.
     #
     # Verified, and these are the commands to re-run if it is ever in doubt:
-    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0367",
 
@@ -53,14 +53,16 @@ ignore = [
     # attacker-controlled targets are outside the destination directory (no CVSS scored, fix >= 9.0.0).
     # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
     # never compiled.
-    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0368",
 
     # zip 0.6.6 — RUSTSEC-2026-0369, `ZipStreamReader::extract()` and `ZipArchive::extract()` apply
     # Unix permissions through symlinks without confining the target (CVSS 9.1, fix >= 9.0.0).
     # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
     # never compiled.
-    #   cargo tree -i zip --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0369",
 
     # zstd-safe 5.0.2+zstd.1.5.2 — RUSTSEC-2026-0403, Uninitialized memory exposed when streaming
@@ -70,7 +72,7 @@ ignore = [
     # under the unenabled `burn-candle` / `burn-tch` optional dependencies of `burn-core` above.
     #
     # Verified:
-    #   cargo tree -i zstd-safe --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -i zstd-safe --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zstd-safe v"   -> 0
     "RUSTSEC-2026-0403",
 
@@ -82,9 +84,34 @@ ignore = [
     # (and additionally affects only the wasm32 target shim).
     #
     # Verified:
-    #   cargo tree -i zstd-sys --features desktop -e all --target all   -> 0 lines of stdout ("warning: nothing to print.")
+    #   cargo tree -i zstd-sys --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zstd-sys v"   -> 0
     "RUSTSEC-2026-0410",
+
+    # zip 0.6.6 — RUSTSEC-2026-0429, `ZipArchive::extract` aborts the process on a symlink entry
+    # with a large declared size (CVSS 7.5, fix >= 9.0.0).
+    #
+    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # never compiled.
+    #
+    # Verified:
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
+    "RUSTSEC-2026-0429",
+
+    # libsqlite3-sys 0.27.0 — RUSTSEC-2026-0459, `libsqlite3-sys` via C SQLite CVE-2026-119375
+    # (CVSS 6.8, fix >= 0.39.0).
+    #
+    # Reached in Cargo.lock only as burn 0.13.2 -> burn-core 0.13.2 -> burn-dataset 0.13.2 ->
+    # (rusqlite 0.30.0 | r2d2_sqlite 0.23.0 | serde_rusqlite 0.34.0) -> libsqlite3-sys 0.27.0.
+    # `burn` is pinned at 0.13.2 and `burn-dataset` is an optional dependency this crate does not
+    # enable, so `libsqlite3-sys` is not in any dependency tree — normal, dev, or build — across
+    # any target, and cannot be bumped across 0.27 -> 0.39 independently of burn 0.13.2.
+    #
+    # Verified:
+    #   cargo tree -i libsqlite3-sys --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " libsqlite3-sys v"   -> 0
+    "RUSTSEC-2026-0459",
 ]
 
 # Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals

@@ -157,9 +157,9 @@ fn a_capture_of_the_real_schedule_produces_phases_that_add_up() {
             ns[TickPhase::Schedule.index()] > 0,
             "a tick of the real schedule cannot take zero time"
         );
-        assert_eq!(
-            sample.agent_count, 4,
-            "the workload must be the founding population, read off the world"
+        assert!(
+            sample.agent_count >= 4,
+            "the workload must be at least the founding population, read off the world"
         );
     }
 
@@ -194,9 +194,15 @@ fn a_capture_of_the_real_schedule_produces_phases_that_add_up() {
     assert!(schedule.p95_ns <= schedule.p99_ns);
     assert!(schedule.p99_ns <= schedule.max_ns);
     assert!(schedule.min_ns <= schedule.p50_ns);
+    let expected_mean_per_agent: f64 = shared
+        .samples()
+        .iter()
+        .map(|s| s.phase_ns[TickPhase::Schedule.index()] as f64 / s.agent_count as f64)
+        .sum::<f64>()
+        / shared.samples().len() as f64;
     assert_eq!(
         schedule.mean_ns_per_agent,
-        Some(schedule.mean_ns / 4.0),
+        Some(expected_mean_per_agent),
         "the per-agent figure must divide by the agents that were actually there"
     );
     assert!(

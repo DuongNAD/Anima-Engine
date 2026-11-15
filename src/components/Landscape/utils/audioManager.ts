@@ -25,6 +25,7 @@ export interface SpatialPanner {
   positionZ?: AudioParam;
   /** Pre-`AudioParam` browsers only. */
   setPosition?(x: number, y: number, z: number): void;
+  disconnect?(): void;
 }
 
 /**
@@ -60,6 +61,7 @@ export class AudioManager {
    * is the same access with the type checking removed.
    */
   public readonly panners: Map<string, SpatialPanner> = new Map();
+  private readonly sources: Map<string, AudioNode[]> = new Map();
 
   // Procedural wind synthesizer elements
   private windGain: GainNode | null = null;
@@ -185,6 +187,7 @@ export class AudioManager {
 
   private connectSynthesizer(id: string, panner: PannerNode): void {
     if (!this.ctx) return;
+    const nodes: AudioNode[] = [];
     try {
       if (id === 'waterfall') {
         // Rushing water white noise for the waterfall
@@ -204,6 +207,7 @@ export class AudioManager {
 
         src.connect(filter).connect(panner);
         src.start();
+        nodes.push(src, filter);
       } else if (id === 'ambient-forest') {
         // Low frequency forest hum
         const osc = this.ctx.createOscillator();
@@ -215,6 +219,7 @@ export class AudioManager {
 
         osc.connect(gain).connect(panner);
         osc.start();
+        nodes.push(osc, gain);
       } else {
         // Fallback generator for test-src or other dynamically created spatial sources
         const osc = this.ctx.createOscillator();
@@ -226,7 +231,9 @@ export class AudioManager {
 
         osc.connect(gain).connect(panner);
         osc.start();
+        nodes.push(osc, gain);
       }
+      this.sources.set(id, nodes);
     } catch (err) {
       console.error(`Failed to connect synthesizer for ${id}`, err);
     }
@@ -272,6 +279,57 @@ export class AudioManager {
       legacy.setPosition(x, y, z);
       legacy.setOrientation(forwardX, forwardY, forwardZ, upX, upY, upZ);
     }
+  }
+
+  public destroySpatialSource(id: string): void {
+    const panner = this.panners.get(id);
+    if (panner) {
+      try {
+        panner.disconnect?.();
+      } catch {
+        // ignore
+      }
+      this.panners.delete(id);
+    }
+    const nodes = this.sources.get(id);
+    if (nodes) {
+      for (const node of nodes) {
+        try {
+          if ('stop' in node && typeof (node as AudioScheduledSourceNode).stop === 'function') {
+            (node as AudioScheduledSourceNode).stop();
+          }
+          node.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+      this.sources.delete(id);
+    }
+  }
+
+  public dispose(): void {
+    for (const [, panner] of this.panners.entries()) {
+      try {
+        panner.disconnect?.();
+      } catch {
+        // ignore
+      }
+    }
+    this.panners.clear();
+
+    for (const [, nodes] of this.sources.entries()) {
+      for (const node of nodes) {
+        try {
+          if ('stop' in node && typeof (node as AudioScheduledSourceNode).stop === 'function') {
+            (node as AudioScheduledSourceNode).stop();
+          }
+          node.disconnect();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    this.sources.clear();
   }
 }
 

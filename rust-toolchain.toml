@@ -1,0 +1,14 @@
+# The one Rust toolchain CI and every local build use.
+#
+# Pinned because clippy gains lints between releases and CI runs clippy with `-D warnings`. Before
+# this file, CI used whatever stable the runner image shipped: 1.97.1 on 2026-08-08, and 1.98 added
+# `chunks_exact_to_as_chunks`, so `core/sha256.rs` and `core/world_artifact.rs` would have turned
+# main's clippy step red without anyone touching them. A toolchain bump is now a commit of its own,
+# reviewed like any other change, instead of something a runner image does to you.
+#
+# rustup reads this file from `src-tauri/` too (it searches parent directories), and installs the
+# pinned toolchain on first use.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

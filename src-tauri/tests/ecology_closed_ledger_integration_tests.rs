@@ -474,14 +474,14 @@ fn test_holling_functional_responses_and_lindeman_rarity_refuge_dynamics() {
         "Type III sigmoid response must shield rare prey: loss_ratio_rare={loss_ratio_rare} vs loss_ratio_healthy={loss_ratio_healthy}"
     );
 
-    // 3. Lindeman 30% Trophic Transfer Efficiency & Detritus Return
-    assert_eq!(LINDEMAN_EFFICIENCY, 0.30);
+    // 3. Lindeman 40% Trophic Transfer Efficiency & Detritus Return
+    assert_eq!(LINDEMAN_EFFICIENCY, 0.40);
     let captured = 20.0f64;
-    let assimilated = captured * LINDEMAN_EFFICIENCY as f64; // ~6.0 EU
-    let unassimilated = captured - assimilated; // ~14.0 EU
+    let assimilated = captured * LINDEMAN_EFFICIENCY as f64; // ~8.0 EU
+    let unassimilated = captured - assimilated; // ~12.0 EU
 
-    assert!((assimilated - 6.0).abs() < 1e-5);
-    assert!((unassimilated - 14.0).abs() < 1e-5);
+    assert!((assimilated - 8.0).abs() < 1e-5);
+    assert!((unassimilated - 12.0).abs() < 1e-5);
 
     let mut prey_reserve = 50.0f32;
     let mut pred_reserve = 10.0f32;
@@ -496,11 +496,11 @@ fn test_holling_functional_responses_and_lindeman_rarity_refuge_dynamics() {
     let final_trophic_sum = prey_reserve as f64 + pred_reserve as f64 + detritus_pool;
     assert!(
         (final_trophic_sum - initial_trophic_sum).abs() <= RESIDUAL_ABS_TOLERANCE_EU,
-        "Predation + 30% Lindeman transfer must conserve exact total energy"
+        "Predation + 40% Lindeman transfer must conserve exact total energy"
     );
     assert_eq!(prey_reserve, 30.0);
-    assert_eq!(pred_reserve, 16.0);
-    assert_eq!(detritus_pool, 114.0);
+    assert_eq!(pred_reserve, 18.0);
+    assert_eq!(detritus_pool, 112.0);
 }
 
 // ----------------------------------------------------------------------------------------

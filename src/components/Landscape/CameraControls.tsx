@@ -10,6 +10,12 @@ import { diagnostics } from './utils/diagnosticsWindow';
 
 extend({ OrbitControls });
 
+const scratchForward = new THREE.Vector3();
+const scratchRight = new THREE.Vector3();
+const scratchMoveDir = new THREE.Vector3();
+const scratchGazeDir = new THREE.Vector3();
+const scratchUpVec = new THREE.Vector3();
+
 // The `orbitControls` intrinsic is declared once, in `src/r3f-intrinsics.d.ts`, alongside every
 // other three element this project uses. A second `declare global` here said `orbitControls: any`,
 // which is not a duplicate of that declaration so much as a hole in it — interface merging keeps
@@ -224,10 +230,10 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
       let { x, y, z } = camera.position;
       const baseSpeed = 0.5;
       const speed = keysPressed.current['shift'] ? baseSpeed * 3 : baseSpeed;
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+      const forward = scratchForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      const right = scratchRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
 
-      const moveDir = new THREE.Vector3();
+      const moveDir = scratchMoveDir.set(0, 0, 0);
       if (keysPressed.current['w']) moveDir.add(forward);
       if (keysPressed.current['s']) moveDir.sub(forward);
       if (keysPressed.current['a']) moveDir.sub(right);
@@ -265,7 +271,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
       flyPos.current.copy(camera.position);
 
       // Keep active target in front of camera
-      const gazeDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const gazeDir = scratchGazeDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
       activeTarget.current.copy(camera.position).addScaledVector(gazeDir, 15);
     } else if (cameraMode === 'cinematic') {
       const time = state.clock.getElapsedTime();
@@ -302,8 +308,8 @@ export const CameraControls: React.FC<CameraControlsProps> = ({
     }
 
     // Update Web Audio Listener
-    const forwardVec = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    const upVec = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+    const forwardVec = scratchForward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    const upVec = scratchUpVec.set(0, 1, 0).applyQuaternion(camera.quaternion);
     audioManager.updateListener(
       camera.position.x, camera.position.y, camera.position.z,
       forwardVec.x, forwardVec.y, forwardVec.z,

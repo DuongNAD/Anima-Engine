@@ -1,9 +1,11 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { sampleElevation } from './utils/worldSample';
 import { sceneElapsed } from './utils/sceneClock';
+
+const scratchDummy = new THREE.Object3D();
 
 // ---------------------------------------------------------------------------------------
 // WorldFish — schools of fish circling in the sunlit shallows, seen through the transparent
@@ -51,6 +53,9 @@ export const WorldFish: React.FC<WorldFishProps> = ({
 }) => {
   const ref = useRef<THREE.InstancedMesh>(null);
   const geom = useMemo(() => makeFishGeometry(), []);
+
+  useEffect(() => () => geom.dispose(), [geom]);
+
   const heightUnits = renderSize * heightRatio;
   const seaY = world.seaLevel * heightUnits;
 
@@ -136,7 +141,7 @@ export const WorldFish: React.FC<WorldFishProps> = ({
     const inst = ref.current;
     if (!inst || typeof inst.setMatrixAt !== 'function' || count === 0) return;
     const t = sceneElapsed(state.clock);
-    const dummy = new THREE.Object3D();
+    const dummy = scratchDummy;
     let k = 0;
     for (let s = 0; s < flights.length; s++) {
       const f = flights[s];
