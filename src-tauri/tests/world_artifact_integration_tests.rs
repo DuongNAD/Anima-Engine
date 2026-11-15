@@ -347,8 +347,8 @@ fn test_coordinate_contract_affine_spaces_and_elevation_lookup() {
     for iy in [0, 10, 128, 255] {
         for ix in [0, 10, 128, 255] {
             let (u, v) = cell_center_uv(ix, iy, w, h);
-            assert!(u >= 0.0 && u <= 1.0);
-            assert!(v >= 0.0 && v <= 1.0);
+            assert!((0.0..=1.0).contains(&u));
+            assert!((0.0..=1.0).contains(&v));
             let (rx, ry) = uv_to_cell(u, v, w, h);
             assert_eq!(rx, ix);
             assert_eq!(ry, iy);
@@ -359,8 +359,8 @@ fn test_coordinate_contract_affine_spaces_and_elevation_lookup() {
     for iy in [0, 64, 128, 192, 255] {
         for ix in [0, 64, 128, 192, 255] {
             let (wx, wz) = cell_center_to_world_xz(ix, iy, w, h, &bounds);
-            assert!(wx >= WORLD_MIN_XZ && wx <= WORLD_MAX_XZ);
-            assert!(wz >= WORLD_MIN_XZ && wz <= WORLD_MAX_XZ);
+            assert!((WORLD_MIN_XZ..=WORLD_MAX_XZ).contains(&wx));
+            assert!((WORLD_MIN_XZ..=WORLD_MAX_XZ).contains(&wz));
             let cell = world_xz_to_cell(wx, wz, w, h, &bounds);
             assert_eq!(cell, Some((ix, iy)));
         }
@@ -394,7 +394,7 @@ fn test_coordinate_contract_affine_spaces_and_elevation_lookup() {
             let (wx, wz) = cell_center_to_world_xz(ix, iy, w, h, &bounds);
             let elev = tm.get_elevation_at_pos(Vec3::new(wx, 0.0, wz), &bounds);
             assert!(elev.is_finite());
-            assert!(elev >= 0.0 && elev <= 1.0);
+            assert!((0.0..=1.0).contains(&elev));
         }
     }
 

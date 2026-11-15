@@ -22,8 +22,8 @@ use anima_engine_lib::core::components::{AgentParentLineageIds, FeatureTracker};
 use anima_engine_lib::core::determinism::DeterministicMode;
 use anima_engine_lib::core::ecology::{
     boltzmann_factor, ecological_descriptors, herbivore_intake, metabolic_rate, predation_capture,
-    shannon_index, simpson_index, trophic_ratio, EcosystemBiomass, ResourceField, SeasonClock,
-    E_ANIMAL_EV, SEASON_AMPLITUDE,
+    shannon_index, trophic_ratio, EcosystemBiomass, ResourceField, SeasonClock, E_ANIMAL_EV,
+    SEASON_AMPLITUDE,
 };
 use anima_engine_lib::core::ecs::{
     init_world, Agent, EpochManager, MapBounds, Position, Predator, Prey, Tree,
@@ -373,7 +373,7 @@ fn test_adversarial_every_single_tick_shannon_biodiversity_10k_ticks() {
 
                 let is_pred = world.get::<Predator>(victim).is_some();
                 let replacement_genotype = if is_pred {
-                    if (tick / REPLACE_INTERVAL) % 2 == 0 {
+                    if (tick / REPLACE_INTERVAL).is_multiple_of(2) {
                         g1.clone()
                     } else {
                         g2.clone()
@@ -630,8 +630,10 @@ fn test_adversarial_saturated_agent_reserves_and_overflow_defense() {
 // ---------------------------------------------------------------------------------------------
 #[test]
 fn test_adversarial_annual_seasonal_fertility_extremes() {
-    let mut clock = SeasonClock::default();
-    clock.phase = 0.0;
+    let mut clock = SeasonClock {
+        phase: 0.0,
+        ..Default::default()
+    };
 
     let mut global_min = 100.0f32;
     let mut global_max = -100.0f32;
@@ -661,13 +663,13 @@ fn test_adversarial_annual_seasonal_fertility_extremes() {
     // Extreme dt values: dt = 0.0, dt = 1e7, dt = -10.0
     let mut extreme_clock = SeasonClock::default();
     let f_zero_dt = extreme_clock.tick(0.0);
-    assert!(f_zero_dt >= 0.0 && f_zero_dt <= 1.5);
+    assert!((0.0..=1.5).contains(&f_zero_dt));
 
     let f_huge_dt = extreme_clock.tick(1.0e7);
-    assert!(f_huge_dt.is_finite() && f_huge_dt >= 0.0 && f_huge_dt <= 1.5);
+    assert!(f_huge_dt.is_finite() && (0.0..=1.5).contains(&f_huge_dt));
 
     let f_neg_dt = extreme_clock.tick(-10.0);
-    assert!(f_neg_dt.is_finite() && f_neg_dt >= 0.0 && f_neg_dt <= 1.5);
+    assert!(f_neg_dt.is_finite() && (0.0..=1.5).contains(&f_neg_dt));
 
     // Extreme phase direct checks
     for test_phase in [
@@ -681,7 +683,7 @@ fn test_adversarial_annual_seasonal_fertility_extremes() {
         1.0e6,
     ] {
         let expected = (1.0 + SEASON_AMPLITUDE * test_phase.sin()).max(0.0);
-        assert!(expected >= 0.5 - 1e-4 && expected <= 1.5 + 1e-4);
+        assert!((0.5 - 1e-4..=1.5 + 1e-4).contains(&expected));
         assert!(expected.is_finite());
     }
 }
