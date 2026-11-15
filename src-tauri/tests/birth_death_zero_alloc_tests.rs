@@ -10,6 +10,9 @@
 //!   - Site 3: `SpawnOffspringCommand::apply` (per birth)
 //!   - Window 3: `core::mortality::mortality_system`, the policy-driven system, which queues the
 //!     same Site 2 command.
+//!   - Max-size windows: Sites 2 and 3 again, on bodies of `MAX_MIGRATION_MORPHOLOGY_NODES`
+//!     segments — the largest restore and migration admit — because a two-segment body never fills
+//!     a body-walk buffer and so cannot show one spilling to the heap.
 //!
 //! Uses `ThreadTrackingAllocator` (thread-scoped) and a single `#[test]` entry point per
 //! `tests/common/allocator.rs` so unrelated process threads cannot contaminate the window.
@@ -28,6 +31,7 @@ use anima_engine_lib::core::agent_systems::{
     agent_mortality_system, autonomous_reproduction_system, AgentEvaluation, AgentGeneration,
     AgentGenotype, AgentLineageId, ReclaimAndDespawnAgentCommand, SpawnOffspringCommand,
 };
+use anima_engine_lib::core::components::MAX_MIGRATION_MORPHOLOGY_NODES;
 use anima_engine_lib::core::ecology::EcosystemBiomass;
 use anima_engine_lib::core::ecs::{
     Agent, AgentClass, AgentParentLineageIds, ChildrenLinks, FeatureTracker, ParentAgent, Prey,
@@ -107,6 +111,167 @@ fn spawn_dying_two_segment_agent(
     root
 }
 
+fn limb_node(id: u32) -> MorphologyNode {
+    MorphologyNode {
+        id,
+        length: 0.5,
+        radius: 0.1,
+        mass: 0.2,
+    }
+}
+
+fn limb_edge(source_node: u32, target_node: u32) -> MorphologyEdge {
+    MorphologyEdge {
+        source_node,
+        target_node,
+        joint_anchor: Vec3::new(0.0, 0.0, 0.5),
+        joint_axis: Vec3::X,
+    }
+}
+
+/// `nodes` segments in a line: the walk's stack holds one entry at a time, while the set of
+/// entities already reached grows as long as the body.
+fn chain_genotype(nodes: u32) -> MorphologyGenotype {
+    let mut g = MorphologyGenotype::new();
+    for id in 0..nodes {
+        g.add_node(limb_node(id));
+    }
+    for id in 1..nodes {
+        g.add_edge(limb_edge(id - 1, id));
+    }
+    g
+}
+
+/// A root with `nodes - 1` limbs: the walk pushes every limb onto its stack at once.
+fn star_genotype(nodes: u32) -> MorphologyGenotype {
+    let mut g = MorphologyGenotype::new();
+    for id in 0..nodes {
+        g.add_node(limb_node(id));
+    }
+    for id in 1..nodes {
+        g.add_edge(limb_edge(0, id));
+    }
+    g
+}
+
+/// Allocation counts for the largest bodies restore and migration admit.
+struct MaxBodyAllocs {
+    chain_despawn: usize,
+    star_despawn: usize,
+    star_birth_excess: usize,
+    star_birth_total: usize,
+    star_decode_baseline: usize,
+}
+
+/// Sites 2 and 3 on bodies of `MAX_MIGRATION_MORPHOLOGY_NODES` segments, in a world of their own.
+///
+/// An agent has one entity per node, so this is the most a body walk can hold for any morphology
+/// the engine admits. Both shapes go through the death command — the chain fills the reached set,
+/// the star fills the stack — and the star goes through the birth command, where it fills both.
+fn measure_max_size_bodies() -> MaxBodyAllocs {
+    let max_nodes = MAX_MIGRATION_MORPHOLOGY_NODES as u32;
+    let chain = chain_genotype(max_nodes);
+    let star = star_genotype(max_nodes);
+    let offspring = |lineage: &str| SpawnOffspringCommand {
+        parent_entity: Entity::PLACEHOLDER,
+        genotype: star.clone(),
+        initial_pos: Vec3::new(3.0, 0.0, 3.0),
+        initial_rot: Quat::IDENTITY,
+        agent_class: AgentClass::Prey,
+        lineage_id: lineage.to_string(),
+        generation: 1,
+        parent_ids: Vec::new(),
+        starting_energy: 40.0,
+        energy_target: 100.0,
+        brain: None,
+    };
+
+    let mut world = World::new();
+    world.insert_resource(EcosystemBiomass::default());
+    world.insert_resource(SimRng::from_seed(4243));
+
+    // Warm-up: two of every body alive at once, then all killed, so the archetype tables, the
+    // entity free list and the removal-event buffers have room for more entities than any window
+    // below touches.
+    for round in 0..2 {
+        spawn_dying_two_segment_agent(&mut world, &chain, &format!("warm-chain-{round}"), 0);
+        spawn_dying_two_segment_agent(&mut world, &star, &format!("warm-star-{round}"), 0);
+        offspring(&format!("warm-child-{round}")).apply(&mut world);
+    }
+    let warm_roots: Vec<Entity> = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(&world)
+        .collect();
+    assert_eq!(warm_roots.len(), 6);
+    for root in warm_roots {
+        ReclaimAndDespawnAgentCommand { root }.apply(&mut world);
+    }
+    // Two swaps leave the removal-event buffer that the warm-up grew as the active one (see the
+    // same step in the main test).
+    world.clear_trackers();
+    world.clear_trackers();
+    assert_eq!(world.query::<&Segment>().iter(&world).count(), 0);
+
+    fn despawn_window(world: &mut World, genotype: &MorphologyGenotype, name: &str) -> usize {
+        let root = spawn_dying_two_segment_agent(world, genotype, name, 0);
+        assert_eq!(
+            world.query::<&Segment>().iter(&*world).count(),
+            MAX_MIGRATION_MORPHOLOGY_NODES,
+            "{name}: one entity per node"
+        );
+        ALLOCATOR.start_tracking();
+        ReclaimAndDespawnAgentCommand { root }.apply(world);
+        let allocs = ALLOCATOR.stop_tracking();
+        assert_eq!(
+            world.query::<&Segment>().iter(&*world).count(),
+            0,
+            "{name}: every segment despawned"
+        );
+        world.clear_trackers();
+        world.clear_trackers();
+        allocs
+    }
+    let chain_despawn = despawn_window(&mut world, &chain, "max-chain");
+    let star_despawn = despawn_window(&mut world, &star, "max-star");
+
+    ALLOCATOR.start_tracking();
+    let probe = decode_genotype(&mut world, &star, Vec3::ZERO, Quat::IDENTITY);
+    let star_decode_baseline = ALLOCATOR.stop_tracking();
+    ReclaimAndDespawnAgentCommand { root: probe }.apply(&mut world);
+    world.clear_trackers();
+    world.clear_trackers();
+
+    let cmd = offspring("max-star-child");
+    ALLOCATOR.start_tracking();
+    cmd.apply(&mut world);
+    let star_birth_total = ALLOCATOR.stop_tracking();
+
+    // The walk must still reach every limb, not merely stop allocating.
+    let child = world
+        .query::<(Entity, &AgentLineageId)>()
+        .iter(&world)
+        .find_map(|(e, id)| (id.0 == "max-star-child").then_some(e))
+        .expect("max-size offspring exists");
+    let root_vel = world.get::<Velocity>(child).unwrap().0;
+    let limbs = &world.get::<ChildrenLinks>(child).unwrap().0;
+    assert_eq!(limbs.len(), MAX_MIGRATION_MORPHOLOGY_NODES - 1);
+    for limb in limbs {
+        assert_eq!(
+            world.get::<RigidBody>(*limb).unwrap().velocity,
+            root_vel,
+            "every limb of a max-size newborn must get the root's velocity"
+        );
+    }
+
+    MaxBodyAllocs {
+        chain_despawn,
+        star_despawn,
+        star_birth_excess: star_birth_total.saturating_sub(star_decode_baseline),
+        star_birth_total,
+        star_decode_baseline,
+    }
+}
+
 fn assert_agent_lineage_id_is_not_unique_across_live_agents() {
     let mut world = World::new();
     world.insert_resource(SimRng::from_seed(4242));
@@ -140,6 +305,7 @@ fn assert_agent_lineage_id_is_not_unique_across_live_agents() {
 #[test]
 fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
     assert_agent_lineage_id_is_not_unique_across_live_agents();
+    let max_body = measure_max_size_bodies();
 
     let mut world = World::new();
     world.insert_resource(EcosystemBiomass::default());
@@ -381,61 +547,70 @@ fn birth_and_death_command_paths_allocate_nothing_beyond_decode_genotype() {
     );
 
     let command_overhead_allocs = combined_window_allocs.saturating_sub(decode_baseline_allocs);
-    // One assertion over all three windows, so a red run reports every count at once and the
-    // pattern names the site: Window 1 alone => Site 1 or 2 under `agent_mortality_system`;
-    // Window 3 as well => Site 2; only the combined window => Site 3.
+    // One assertion over every window, so a red run reports every count at once and the pattern
+    // names the site: Window 1 alone => Site 1 or 2 under `agent_mortality_system`; Window 3 as
+    // well => Site 2; only the combined window => Site 3; only a max-size window => a body-walk
+    // buffer too small for the largest admitted body (Site 2 for the despawns, Site 3 for the birth).
+    let MaxBodyAllocs {
+        chain_despawn,
+        star_despawn,
+        star_birth_excess,
+        star_birth_total,
+        star_decode_baseline,
+    } = max_body;
     assert_eq!(
-        (death_allocs, policy_death_allocs, command_overhead_allocs),
-        (0, 0, 0),
+        (
+            death_allocs,
+            policy_death_allocs,
+            command_overhead_allocs,
+            chain_despawn,
+            star_despawn,
+            star_birth_excess
+        ),
+        (0, 0, 0, 0, 0, 0),
         "birth/death zero-alloc gate failed: \
          window 1 [agent_mortality_system + ReclaimAndDespawnAgentCommand::apply, 2 deaths] allocs={death_allocs}; \
          window 3 [mortality_system + ReclaimAndDespawnAgentCommand::apply, 2 deaths] allocs={policy_death_allocs}; \
-         window 2 [2 deaths via agent_mortality_system + 1 birth via SpawnOffspringCommand::apply] excess allocs={command_overhead_allocs} (total={combined_window_allocs}, decode_genotype_baseline={decode_baseline_allocs})"
+         window 2 [2 deaths via agent_mortality_system + 1 birth via SpawnOffspringCommand::apply] excess allocs={command_overhead_allocs} (total={combined_window_allocs}, decode_genotype_baseline={decode_baseline_allocs}); \
+         max-size chain [ReclaimAndDespawnAgentCommand::apply, {MAX_MIGRATION_MORPHOLOGY_NODES} segments] allocs={chain_despawn}; \
+         max-size star [ReclaimAndDespawnAgentCommand::apply, {MAX_MIGRATION_MORPHOLOGY_NODES} segments] allocs={star_despawn}; \
+         max-size star birth [SpawnOffspringCommand::apply] excess allocs={star_birth_excess} (total={star_birth_total}, decode_genotype_baseline={star_decode_baseline})"
     );
 }
 
 /// Correctness companion to the gate. `ReclaimAndDespawnAgentCommand` and `SpawnOffspringCommand`
 /// now find an agent's segments by walking `ChildrenLinks` instead of scanning every entity for
 /// `ParentAgent`. That is only the same set if the two links agree, so pin it on a branched,
-/// multi-level tree, and on one longer than the 64-entry inline `SmallVec` capacity the walk uses
-/// (which spills to the heap rather than losing entities).
+/// multi-level tree, and on bodies past `MAX_MIGRATION_MORPHOLOGY_NODES`, the inline capacity of
+/// the walk's buffer: no admitted body is that large, but `decode_genotype` called directly will
+/// build one, and the walk must spill to the heap rather than lose entities. The star is the case
+/// that actually spills, since it holds every limb on the stack at once; the chain is the long one.
 #[test]
 fn despawn_takes_every_segment_of_branched_and_oversized_trees() {
-    fn node(id: u32) -> MorphologyNode {
-        MorphologyNode {
-            id,
-            length: 0.5,
-            radius: 0.1,
-            mass: 0.2,
-        }
-    }
-    fn edge(source_node: u32, target_node: u32) -> MorphologyEdge {
-        MorphologyEdge {
-            source_node,
-            target_node,
-            joint_anchor: Vec3::new(0.0, 0.0, 0.5),
-            joint_axis: Vec3::X,
-        }
-    }
-
     // Branched: 0 -> {1, 2}, 1 -> {3, 4}, 2 -> 5. Six nodes, three levels.
     let mut branched = MorphologyGenotype::new();
     for id in 0..6 {
-        branched.add_node(node(id));
+        branched.add_node(limb_node(id));
     }
     for (s, t) in [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5)] {
-        branched.add_edge(edge(s, t));
+        branched.add_edge(limb_edge(s, t));
     }
-    // Longer than the inline capacity: a 70-node chain.
-    let mut chain = MorphologyGenotype::new();
-    for id in 0..70 {
-        chain.add_node(node(id));
-    }
-    for id in 0..69 {
-        chain.add_edge(edge(id, id + 1));
-    }
+    let oversized = MAX_MIGRATION_MORPHOLOGY_NODES as u32 + 2;
+    let segments_past_root = MAX_MIGRATION_MORPHOLOGY_NODES + 1;
 
-    for (name, genotype, expected_segments) in [("branched", branched, 5), ("chain70", chain, 69)] {
+    for (name, genotype, expected_segments) in [
+        ("branched", branched, 5),
+        (
+            "chain-oversized",
+            chain_genotype(oversized),
+            segments_past_root,
+        ),
+        (
+            "star-oversized",
+            star_genotype(oversized),
+            segments_past_root,
+        ),
+    ] {
         let mut world = World::new();
         world.insert_resource(EcosystemBiomass::default());
         let root = spawn_dying_two_segment_agent(&mut world, &genotype, name, 0);

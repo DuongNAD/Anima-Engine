@@ -13,6 +13,17 @@ use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
 use bevy_ecs::prelude::*;
 use std::sync::Arc;
 
+/// Inline capacity of the buffers that walk one agent's body through `ChildrenLinks` on the birth
+/// and death paths.
+///
+/// An agent has one entity per morphology node, and restore and migration refuse a morphology with
+/// more than `MAX_MIGRATION_MORPHOLOGY_NODES` (`validate_morphology_payload`; live mutation stops
+/// far below it, at 15). So a walk over any body those paths admit holds at most this many
+/// entities and stays on the stack. Naming the cap rather than a number keeps the two together if
+/// the cap moves. A larger body, reachable only by calling `decode_genotype` directly, spills to the
+/// heap rather than losing segments.
+const BODY_WALK_CAPACITY: usize = crate::core::components::MAX_MIGRATION_MORPHOLOGY_NODES;
+
 #[derive(Resource)]
 pub struct BevyEvolutionSettings(pub Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>);
 
@@ -145,22 +156,21 @@ impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
             }
         }
 
-        let mut stack = smallvec::SmallVec::<[Entity; 64]>::new();
-        let mut doomed = smallvec::SmallVec::<[Entity; 64]>::new();
+        // Despawn each entity as the walk reaches it. A despawned entity is its own visited mark —
+        // `get_entity_mut` no longer finds it — so a duplicate or cyclic link ends the walk instead
+        // of looping, with no second buffer of what was already taken. Entities are despawned in
+        // the walk's pop order, the order the old collect-then-despawn loop used, so the entity
+        // free list, and with it the id of every later spawn, is unchanged.
+        let mut stack = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
         stack.push(self.root);
         while let Some(current) = stack.pop() {
-            if doomed.contains(&current) {
+            let Some(entity) = world.get_entity_mut(current) else {
                 continue;
-            }
-            doomed.push(current);
-            if let Some(children) = world.get::<crate::core::ecs::ChildrenLinks>(current) {
+            };
+            if let Some(children) = entity.get::<crate::core::ecs::ChildrenLinks>() {
                 stack.extend(children.0.iter().copied());
             }
-        }
-        for entity in doomed {
-            if let Some(e) = world.get_entity_mut(entity) {
-                e.despawn();
-            }
+            entity.despawn();
         }
     }
 }
@@ -542,9 +552,10 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
         };
         world.entity_mut(entity).insert(sex);
 
-        // Synchronize root and child segment RigidBody and Velocity via stack-allocated ChildrenLinks traversal.
-        let mut stack = smallvec::SmallVec::<[Entity; 64]>::new();
-        let mut visited = smallvec::SmallVec::<[Entity; 64]>::new();
+        // Synchronize root and child segment RigidBody and Velocity via stack-allocated ChildrenLinks
+        // traversal, sized to the morphology cap (`BODY_WALK_CAPACITY`).
+        let mut stack = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
+        let mut visited = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
         stack.push(entity);
         while let Some(current) = stack.pop() {
             if visited.contains(&current) {
