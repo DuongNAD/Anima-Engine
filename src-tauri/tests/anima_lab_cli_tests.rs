@@ -2,7 +2,7 @@ use anima_engine_lib::core::experiment::ExperimentManifest;
 use anima_engine_lib::core::experiment_runner::EnsembleSummary;
 use serde_json::Value;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct TempManifest(PathBuf);
@@ -67,6 +67,33 @@ fn live_success_manifest() -> TempManifest {
         .as_nanos();
     let path = std::env::temp_dir().join(format!(
         "anima-lab-live-success-{}-{nonce}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&manifest).expect("manifest serialises"),
+    )
+    .expect("temporary manifest is writable");
+    TempManifest(path)
+}
+
+/// `baseline-no-exotic.json` cut down to one seed, as the pre-2026-10-22 unit tests did.
+fn shortened_fixture_manifest(label: &str, duration_ticks: u64) -> TempManifest {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/experiments/baseline-no-exotic.json");
+    let mut manifest: ExperimentManifest =
+        serde_json::from_str(&std::fs::read_to_string(fixture).expect("fixture is readable"))
+            .expect("fixture is a manifest");
+    manifest.seeds.truncate(1);
+    manifest.duration_ticks = duration_ticks;
+    manifest.sample_period = duration_ticks;
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock is after the epoch")
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!(
+        "anima-lab-{label}-{}-{nonce}.json",
         std::process::id()
     ));
     std::fs::write(
@@ -155,5 +182,73 @@ fn a_live_manifest_runs_through_the_headless_cli() {
             .and_then(|entry| entry[1].as_f64())
             .is_some_and(|agents| agents > 0.0),
         "LiveExperimentAdapter must produce a non-empty population: {report}"
+    );
+}
+
+/// Process-level form of `a_committed_fixture_produces_a_machine_readable_report`, one of the four
+/// `anima-lab` unit tests deleted by 4e618b9. The original called `render_to_writer` inside the
+/// binary; an integration test cannot reach a binary's private functions, so this runs the binary.
+/// 600 ticks establishes the report's shape; the numbers are the runner's tests to make.
+#[test]
+fn a_committed_fixture_produces_a_machine_readable_report() {
+    let manifest = shortened_fixture_manifest("fixture-report", 600);
+    let output = Command::new(env!("CARGO_BIN_EXE_anima-lab"))
+        .arg(&manifest.0)
+        .output()
+        .expect("anima-lab starts");
+
+    assert!(
+        output.status.success(),
+        "the fixture run failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let v: Value = serde_json::from_slice(&output.stdout).expect("stdout must be JSON");
+    assert_eq!(v["tool"], "anima-lab");
+    assert_eq!(v["model"], "reference");
+    assert_eq!(
+        v["registry"],
+        "core::experiment::ObservableRegistry::reference_default"
+    );
+    assert_eq!(v["experiment_id"], "exp-1");
+    assert_eq!(v["completed_runs"], 1);
+    assert_eq!(v["runs"].as_array().map(Vec::len), Some(1));
+    assert!(
+        v["failed"].as_array().unwrap().is_empty(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(v["runs"][0]["series"].is_array(), "the series survives");
+}
+
+/// Process-level form of `a_closed_stdout_is_a_reported_error_not_a_panic`, also deleted by
+/// 4e618b9. The original handed `render_to_writer` a writer that always fails. Here the read end of
+/// stdout is closed before the child can finish, so its write fails with a broken pipe: the child
+/// must report that and exit 1, not panic (101) and not die of a signal (no exit code).
+#[test]
+fn a_closed_stdout_is_a_reported_error_not_a_panic() {
+    let manifest = shortened_fixture_manifest("closed-stdout", 1);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_anima-lab"))
+        .arg(&manifest.0)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("anima-lab starts");
+    drop(child.stdout.take());
+    let output = child.wait_with_output().expect("anima-lab exits");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !stderr.contains("panicked"),
+        "a closed stdout must not panic: {stderr}"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "a closed stdout is a failed command, not a signal or a panic: {stderr}"
+    );
+    assert!(stderr.contains("anima-lab:"), "{stderr}");
+    assert!(
+        stderr.contains("Broken pipe"),
+        "the reason must be the closed pipe: {stderr}"
     );
 }

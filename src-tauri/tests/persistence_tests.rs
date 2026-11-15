@@ -140,7 +140,16 @@ fn test_engine_save_load_lifecycle() {
         .expect("a world with no dormant cohorts must save");
 
     assert!(saved_state.tick_count > 0);
-    assert!(saved_state.agents.len() >= 10);
+    // Exact, and 17 on purpose. Genesis spawns the 10 founders (7 Prey, 3 Predator). On tick 1
+    // `autonomous_reproduction_system` lets every Prey whose reserve is at or above 65% of its
+    // target reproduce, and the 7 founding Prey all are, so 7 generation-1 Prey are born. The 3
+    // Predators do not: that system skips a Predator while `prey_count < pred_count * 5`
+    // (7 < 15). 10 + 7 = 17. Reproduction is gated on energy, not on a random draw (the RNG only
+    // jitters the offspring position), so the count does not depend on the seed. Measured
+    // 2026-11-15 on macOS arm64: 17 agents at tick 2 in 20 of 20 process runs, and the same 17 at
+    // ticks 7, 22, 62 and 122 of a single run (it was 18 by tick 302, so this value is a property
+    // of the first ~100 ticks, not of the world forever).
+    assert_eq!(saved_state.agents.len(), 17);
     assert!(
         saved_state.evolution_worker.is_some(),
         "a live schema-6 save must include its evolution worker checkpoint"
@@ -188,7 +197,9 @@ fn test_engine_save_load_lifecycle() {
 
     assert!(loaded_state.tick_count >= 1000);
     assert_eq!(loaded_state.epoch_manager.current_epoch, 99);
-    assert!(loaded_state.agents.len() >= 10);
+    // The restore carries the 17 it was given (no founders are re-spawned, no brain re-rolled) and
+    // the save lands at tick ~1002, a few ticks after the restore; measured 17 in 20 of 20 runs.
+    assert_eq!(loaded_state.agents.len(), 17);
     assert!(
         loaded_state.shared_learning.is_some(),
         "the restored learner must be checkpointable again"
