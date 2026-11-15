@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-037 — Khi bật tử vong, ân hạn `starve_ticks` không bao giờ chạy và `live.deaths` báo 0 trong khi sinh vật chết đói
+- **Ngày:** 2026-11-16
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/simulation_schedule.rs:246` và `:273` (lịch đăng ký **cả hai** hệ tử vong); `src-tauri/src/core/agent_systems.rs:606-624` (`agent_mortality_system`: chỉ dừng khi policy có mặt **và tắt**, giết ngay khi `energy <= 0.0`, chỉ ghi vào `DemographicTracker`); `src-tauri/src/core/mortality.rs:54-62` (`mortality_system`: chờ `starving_ticks >= starve_ticks`, là nơi **duy nhất** ghi `VitalStatistics`); `src-tauri/src/core/live_experiment.rs:1088` (`live.deaths`, `live.mean_lifespan` rút từ `VitalStatistics`)
+- **Phát hiện bởi:** tay (khi xem QĐ-A′ còn treo)
+- **Triệu chứng:** Khi khai báo luật chết (`live.mortality = 1` trong manifest, `ANIMA_MORTALITY` trong app), `agent_mortality_system` cũng chạy và giết con vật đúng tick năng lượng chạm đáy, trước khi `mortality_system` kịp đếm tới `starve_ticks`. Đo với một con, không thức ăn, `live.starve_ticks = 30`: nó chết ở tick 167 mà không sống thêm tick nào ở đáy, `DemographicTracker` ghi 1 ca chết đói, còn `live.deaths` cộng qua mọi cửa sổ là **0**. `ensure_observables_supported` (`live_experiment.rs:322`) từ chối `live.deaths` khi không có luật chết, chính để không bao giờ báo một số 0 bịa; có luật chết thì nó vẫn báo số 0 đó. Các test sẵn có (`observables_tests.rs`, `sentence_to_death` ở dòng 165) không bắt được vì chúng giết bằng **mất nước**, giữ năng lượng 500, mà `agent_mortality_system` không xét mất nước. Hệ quả: mọi run có tử vong trên lịch hiện tại đếm chết đói bằng 0 và bỏ qua ân hạn đã khai.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test dual_mortality_grace_tests -- --nocapture` (dòng `F037 death_tick=167 most_bottom_ticks_alive=0 starve_ticks=30 tracker_starvation=1 live_deaths=0`)
+- **Test khoá lại:** `dual_mortality_grace_tests::a_declared_starvation_grace_is_bypassed_and_live_deaths_reports_zero` ghim hành vi hôm nay `(0, 1, 0.0)`. `dual_mortality_grace_tests::mortality_system_alone_honours_the_grace_and_records_the_death` là đối chứng: chạy riêng, luật của `mortality_system` đúng (sống 29 tick ở đáy, chết ở tick 30, có trong `VitalStatistics`), nên lỗi nằm ở việc lịch chạy hai hệ cạnh nhau, không nằm ở luật.
+- **Trạng thái:** OPEN. Cách sửa đã được quyết: QĐ-A′ (2026-11-14) bỏ `agent_mortality_system` khỏi lịch. Việc đó sửa `src-tauri/src` nên cần dòng uỷ quyền; khi nó vào, test thứ nhất phải được **đảo** để khẳng định `(29, 0, 1.0)` (sống 29 tick ở đáy như đối chứng) chứ không xoá.
+
 ### F-035 — `run_inference_batch` bỏ qua WGPU cho mọi `BrainGenotype` tiến hoá riêng từng agent
 - **Ngày:** 2026-11-14
 - **Loại:** SMELL
