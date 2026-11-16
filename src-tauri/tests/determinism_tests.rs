@@ -110,3 +110,61 @@ fn determinism_hash_ghim() {
         "world_hash doi -> sim mat tinh tat dinh hoac hanh vi da doi"
     );
 }
+// ---------------------------------------------------------------------------------------------
+// The schedule the app really runs (F-041 test gap)
+// ---------------------------------------------------------------------------------------------
+//
+// Everything above drives a hand-chained subset (`spawn_food_system`, `update_positions_system`,
+// `wrap_coordinates_system`), which is a different schedule from the one the app runs: it has no
+// `detect_food_collisions_system`, no `Commands` spawn/despawn pair and no reproduction, so it could
+// not have seen F-041. These tests drive `core::simulation_schedule::build_tick_schedule` through
+// `LiveExperimentAdapter`. They are in-process comparisons by construction, so they cannot see a
+// per-process hash seed on their own — `tests/schedule_total_order_tests.rs` is the cross-process
+// gate, and `tests/schedule_ambiguity_tests.rs` is what makes the claim "one order" checkable.
+// Absolute checksums are platform-dependent, so nothing here pins one.
+
+mod live_schedule {
+    use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
+    use anima_engine_lib::core::experiment_runner::ExperimentModel;
+    use anima_engine_lib::core::live_experiment::LiveExperimentAdapter;
+    use anima_engine_lib::core::resources::ReproductionPolicy;
+
+    fn run(ticks: u32, breed: bool) -> u32 {
+        let initial = InitialConditionSet::new(vec![
+            ("live.mortality".to_string(), 1.0),
+            ("live.founders".to_string(), 10.0),
+        ]);
+        let mut a = LiveExperimentAdapter::from_manifest(
+            &WorldLawSet::baseline(),
+            &initial,
+            &[],
+            1,
+            (16, 16),
+            0,
+        )
+        .expect("the live world builds");
+        if breed {
+            a.world()
+                .insert_resource(ReproductionPolicy { enabled: true });
+        }
+        for _ in 0..ticks {
+            a.run_schedule_once();
+        }
+        a.checksum()
+    }
+
+    #[test]
+    fn build_tick_schedule_is_deterministic_in_process_with_reproduction() {
+        let sums: Vec<u32> = (0..3).map(|_| run(400, true)).collect();
+        assert!(
+            sums.windows(2).all(|p| p[0] == p[1]),
+            "the app's own schedule gave different worlds for one seed: {sums:#010x?}"
+        );
+    }
+
+    #[test]
+    fn the_live_checksum_distinguishes_one_tick_from_many() {
+        // The same vacuity guard as `world_hash_bat_duoc_thay_doi_that`, on the real schedule.
+        assert_ne!(run(1, true), run(200, true));
+    }
+}
