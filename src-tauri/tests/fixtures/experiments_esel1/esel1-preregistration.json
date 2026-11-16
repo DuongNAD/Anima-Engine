@@ -66,6 +66,8 @@
     "live.thirst_steering": 1.0,
     "live.evolved_brains": 0.0,
     "live.predator_fraction": 0.0,
+    "live.trees": 8.0,
+    "live.lakes": 2.0,
     "live.founders": "[SMOKE: N0, >= 30]"
   },
   "placeholders": {
