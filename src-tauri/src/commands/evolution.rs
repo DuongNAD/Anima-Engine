@@ -2,6 +2,14 @@ use crate::evolution::lineage::LineageTracker;
 use crate::AppState;
 use tauri::State;
 
+// Every lineage-analysis command below takes a SINGLE-WORD parameter name on purpose.
+//
+// `#[tauri::command]` defaults to `ArgumentCase::Camel`, so a Rust parameter `file_path` arrives
+// from JS as `filePath`, and a call site spelling it `file_path` silently never delivers the
+// argument. That is the bug class `scripts/check_ipc_arg_case.mjs` exists for, and it had four
+// commands broken in the real app while every mocked test stayed green. A name with no underscore
+// has one spelling in both languages, so here the class is unreachable rather than merely caught.
+
 #[derive(ts_rs::TS)]
 #[ts(export, export_to = "../../src/types/generated/")]
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
@@ -81,6 +89,39 @@ pub struct LineageGraphPayload {
     pub links: Vec<LineageLinkPayload>,
     /// False when the tracker is running offline in memory, so the UI can say which it is showing.
     pub db_connected: bool,
+}
+
+/// One maximal common ancestor, as `get_lineage_mrca` publishes it.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LineageMrcaAncestor {
+    pub id: String,
+    pub generation: u32,
+    /// Graph edges down to the closest queried individual. **Edges, not reproduction events** — on
+    /// a compacted graph one edge stands for a spliced path, so this is a lower bound. Generation
+    /// deltas stay exact.
+    pub nearest_edges: u32,
+    /// The same measure for the farthest queried individual.
+    pub farthest_edges: u32,
+}
+
+/// Where a set of individuals last shared an ancestor.
+#[derive(ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LineageMrcaPayload {
+    /// Most recent first. **Empty is an answer**, not a failure: genesis creates one root per
+    /// founder, so two individuals from different founding lines genuinely never coalesce.
+    pub ancestors: Vec<LineageMrcaAncestor>,
+    /// Nodes ancestral to every queried individual, maximal or not — the shared trunk above the
+    /// coalescence point.
+    pub common_ancestors: usize,
+    /// **More than one answer.** Crossover gives an individual two parents, so the lineage is a DAG
+    /// and its common ancestors can be incomparable — none of them "more recent" than the rest.
+    /// A consumer rendering a single value must not just take `ancestors[0]`; see
+    /// `evolution/mrca.rs` for the shape that produces this.
+    pub ambiguous: bool,
 }
 
 #[tauri::command]
@@ -176,6 +217,45 @@ pub fn get_lineage_graph(state: State<'_, AppState>) -> Result<LineageGraphPaylo
         nodes: payload_nodes,
         links: payload_links,
         db_connected,
+    })
+}
+
+/// Where `individuals` last shared an ancestor (OSS-072).
+///
+/// # Why the caller has to name them
+///
+/// There is no "the living population" default, and that is deliberate. The tracker only ever sees
+/// writes, so it does not know who is alive — the same reason `LineageTracker::compact` makes the
+/// caller supply its sample set. Defaulting to the graph's childless nodes would look like an
+/// answer about the population and be an answer about the graph.
+///
+/// # Reading the result
+///
+/// [`LineageMrcaPayload::ancestors`] is a **set**: empty means no shared ancestor (ordinary in a
+/// founder forest), and more than one means the lineage branched and rejoined through crossover.
+/// See `evolution/mrca.rs` for the conventions, including that a node counts as its own ancestor.
+#[tauri::command]
+pub fn get_lineage_mrca(
+    state: State<'_, AppState>,
+    individuals: Vec<String>,
+) -> Result<LineageMrcaPayload, String> {
+    let (nodes, relations) = state.engine.lineage_tracker.get_lineage_graph()?;
+    let result = crate::evolution::mrca::mrca(&nodes, &relations, &individuals)
+        .map_err(|e| e.to_string())?;
+
+    Ok(LineageMrcaPayload {
+        ambiguous: result.is_ambiguous(),
+        common_ancestors: result.common_ancestors,
+        ancestors: result
+            .ancestors
+            .into_iter()
+            .map(|a| LineageMrcaAncestor {
+                id: a.id,
+                generation: a.generation,
+                nearest_edges: a.nearest_edges,
+                farthest_edges: a.farthest_edges,
+            })
+            .collect(),
     })
 }
 

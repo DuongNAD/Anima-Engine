@@ -14,6 +14,13 @@
 
 ---
 
+# ⏪ OSS-072 MRCA (2026-07-29, chuyển lên trunk 2026-11-16)
+
+`evolution/mrca.rs` + lệnh `get_lineage_mrca(individuals)` + `tests/lineage_mrca_tests.rs`. MRCA của một DAG là một **tập**
+(crossover cho hai cha); rỗng = không có tổ tiên chung; tổ tiên có tính phản xạ; truy vấn rỗng bị từ chối.
+Chỉ MRCA được chuyển: hai lệnh `export_lineage_newick`/`get_simplified_lineage` của PR #31 **không** lên trunk
+(trunk đã có `export_phylogenetic_tree`). OSS-073 giờ không còn bị chặn.
+
 # ⏪ [MỚI NHẤT] Một ngày gộp, sửa và tìm ra nút thắt khoa học (2026-11-16)
 
 `main` được fast-forward lên thân cây; CI thân cây xanh trở lại cả `check:e2` (#59: đính chính có

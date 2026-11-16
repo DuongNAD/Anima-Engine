@@ -99,7 +99,7 @@ giờ gặp chuyện này; đây là nợ riêng của nhánh, do commit test cu
 Vì vậy cụm 4 **không** sửa được bằng `npm i echarts-for-react`: cài một phụ thuộc cho mã bị
 gitignore chỉ làm máy này xanh thêm. Việc thật là một **quyết định**: hoặc `playground/` trở thành
 mã thật (track, khai phụ thuộc, vào phạm vi lint), hoặc bốn file test kia bị loại. Xem
-[QĐ-D](#4-bốn-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+[QĐ-D](#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
 
 `playground/` cũng là nơi **7 trong 8 lỗi ESLint** nằm. Một thư mục `.gitignore` đã loại đang kéo đỏ
 **ba** gate cùng lúc (lint, test, typecheck).

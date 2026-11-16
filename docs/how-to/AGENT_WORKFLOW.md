@@ -34,8 +34,11 @@ tài liệu ở bảng thắng; sửa trang này.
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Đã quyết 2026-11-16:** QĐ-E2M = B (đính chính có ngày + chạy lại thật E2, PR
-  #59). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-4, QĐ-5, QĐ-P1…P3, QĐ-M1…M8.
+  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-P1…P3, QĐ-M1…M8.
+- **Đã quyết 2026-11-16** (phiên lead theo uỷ quyền của chủ dự án trong chat): QĐ-E2M = B (#59),
+  QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
+  ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
+  ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)).
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
   được chuyển nguyên byte sang nhánh **local** `wip/hardening-m2-m4-tests` (`f9ff5f1`, chưa push).
 
@@ -75,8 +78,14 @@ QD-B      = per-card authorization. AGENTS.md stays the default (src-tauri/src r
             names its exact paths (owner, 2026-11-14)
 QD-C      =
 QD-2/QD-H =
-QD-4      =
-QD-5      =
+QD-4      = A: continuous energy-gated reproduction in the live adapter behind manifest key
+            live.reproduction (absent/0 = off); ADR-0005 (owner's delegate in chat, 2026-11-16)
+QD-5      = yes: ADR-0005, scope = continuous reproduction in live experiments only;
+            EvolutionaryReplacement unchanged (owner's delegate in chat, 2026-11-16)
+QD-LOC    = A: a steering drive writes InertiaComponent.target_velocity; speed from the agent's own
+            CPG/brain output, not a per-class constant; ADR-0006 (owner's delegate in chat, 2026-11-16)
+QD-ECO    = A: opt-in live keys for a steering drive floor and thirst steering so founders can move
+            and reach water; default world unchanged; ADR-0007 (owner's delegate in chat, 2026-11-16)
 QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_reference.mjs, in
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry

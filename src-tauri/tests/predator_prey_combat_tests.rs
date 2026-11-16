@@ -370,7 +370,12 @@ fn test_zero_allocation_combat_hot_path() {
         schedule.run(&mut world);
     }
 
-    ALLOCATOR.start_tracking();
+    // Count only this thread. The counter is process-wide by default, and this binary holds several
+    // `#[test]`s: libtest's own threads and sibling tests allocating during the window were counted
+    // as if combat had done it (CI run 43883098875: "made 3"). `combat_system` runs on the
+    // single-threaded executor and hands no work to another thread, which is the case
+    // `common::allocator` names for `start_tracking_this_thread`.
+    ALLOCATOR.start_tracking_this_thread();
     for _ in 0..10 {
         schedule.run(&mut world);
     }

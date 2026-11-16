@@ -537,58 +537,54 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 - **#50** — F-037 ân hạn đói, F-038 trần kích thước lai ghép, F-039 `live.births`.
 - **#64** — F-040: restore sau ca chết đi đúng quỹ đạo gốc.
 - **#65** — F-041: MỘT thứ tự tổng cho lịch tick; cùng seed là cùng một thế giới ở mọi tiến trình.
-- **#51, #57** — kế hoạch "thế giới đọc được" và §1.g.
+- **#70** — F-042 được ghi nhận kèm test đặc tả; **#72, #74** — hai test CI chập chờn được làm tất định.
+- **#75** — OSS-072: MRCA của DAG là một tập (lệnh IPC `get_lineage_mrca`; thay #31).
+- **#61** — ADR-0005 và ADR-0006 `accepted` (QĐ-4 = A, QĐ-5 = có, QĐ-LOC = A), do phiên lead quyết theo
+  uỷ quyền của chủ dự án trong chat; chủ dự án đảo lại được (xem [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1, §4).
+- **#66** — Card S1: khoá `live.reproduction` (vắng = tắt) và test (a)–(e) của thẻ.
+- **#76** — bộ lái vận động **opt-in** (`live.locomotion`, ADR-0006 phương án A): sinh vật dịch chuyển thật
+  khi bật; thế giới mặc định không đổi. Chi tiết và số đo ở F-042.
+- **#51, #57, #71** — kế hoạch "thế giới đọc được", §1.g, và mục này.
 - **Thẻ thế giới đọc được** ([kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md)):
-  RW-A1 #54, RW-A2 #60, RW-A3 #63, RW-B1 #52, RW-B2 #55, RW-B3 #62, RW-C1 #53, RW-C2 #58, RW-C3 #67.
-  RW-C4 là PR #69 (đang mở khi viết).
+  RW-A1 #54, RW-A2 #60, RW-A3 #63, RW-B1 #52, RW-B2 #55, RW-B3 #62, RW-C1 #53, RW-C2 #58, RW-C3 #67, RW-C4 #69.
 
-#### P1 — F-042: chọn và cài một cơ chế vận động (chướng ngại chính của nhánh khoa học)
+#### P1 — Thú săn sống được: cân bằng năng lượng và nguồn nước (điều kiện của S43)
 
-**Vì sao.** Sinh vật không tự dịch chuyển được: lực khớp là nội lực, vật lý không có tiếp xúc nền, ma
-sát hay cản, và không hệ nào ghi `InertiaComponent.target_velocity`, nên CPG dao động mà không có dịch
-chuyển ròng (chi tiết và số đo ở F-042, PR #70). Hệ quả: thú săn không bao giờ tới được con mồi và
-tuyệt chủng khi bật luân chuyển quần thể, và fitness sinh thái mặc định (Locomotion) không có gì để
-chọn lọc. **Việc này đứng trước QD-4** — một thí nghiệm chọn lọc trên thế giới không ai đi được chỉ đo
-nhiễu. Xung ngẫu nhiên ban đầu đã được đo và **không** phải cách sửa.
+**Vì sao.** Có vận động rồi (#76) thú săn vẫn tuyệt chủng ở mọi lượt đo thăm dò: thu nhập bằng 15–30% chi
+phí (con mồi bị hút cạn và nơi trú Holling III che nó), và **không có nguồn nước** (hồ ở xa, thú săn không
+ăn Food) nên chúng chết khát khi còn năng lượng. Không núm đơn lẻ hay kết hợp nào đã thử cho cùng tồn tại.
+Bằng chứng: phần "Follow-up evidence" của PR #73/#61 và ADR-0006 §"không quyết".
 
-**Quyết định của chủ dự án trước:** (a) ma sát/tiếp xúc nền dị hướng để sóng uốn tạo lực đẩy,
-(b) bộ lái ghi `target_velocity` từ đầu ra não/CPG, hay (c) cả hai. Không tự chọn thay chủ dự án.
+**Quyết định của chủ dự án trước** (mọi lựa chọn đổi ngữ nghĩa sinh thái và checksum): nước cho thú săn
+(uống từ con mồi bị giết, giảm hao nước, hay đường tới hồ), thu nhập mỗi lần ăn (Lindeman, trần bắt),
+nơi trú Holling, chi phí hoạt động. Một đề xuất ADR có số đo là bước đầu.
 
-**Điểm neo:** `src-tauri/src/physics/dynamics.rs` (`resolve_joints_system`, `integrate_physics_system`),
-`src-tauri/src/core/components.rs` (`InertiaComponent`), `src-tauri/src/core/agent_systems.rs`,
-`src-tauri/tests/no_locomotion_characterization_tests.rs` (cùng PR #70; nếu #70 chưa merge, bắt đầu từ
-nhánh `finding/f042-no-locomotion`). Đọc ADR-0001 và ADR-0003 trước (hành động và não).
+**Định nghĩa hoàn thành:** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
+cùng sống tới t = 6.000 ở ≥ 3 seed, EU kín, tất định nhiều tiến trình; test hành vi khoá lại.
 
-**Định nghĩa hoàn thành:** test `founders_oscillate_but_do_not_translate` được **đảo** (founder dịch
-chuyển ròng đo được, ngưỡng ghi cùng test) kèm một test hành vi thứ hai (thú săn tới được con mồi) ·
-`LIVE_MODEL_VERSION` mới, mọi checksum vàng đổi **có chủ đích** và ghi trong commit · F-041 vẫn xanh (một
-seed, một thế giới) · đường mặc định/legacy vẫn tới được (CLAUDE.md, ADR-0003) · F-042 chuyển FIXED.
+#### P2 — E-SEL1: từ bản nháp tới thí nghiệm đã đăng ký
 
-#### P2 — QĐ-4/QĐ-5: quyết định luân chuyển quần thể trong adapter sống, rồi merge Card S1
+**Điểm neo:** PR #77 (bản nháp đăng ký trước, chưa đóng băng). Còn chặn: (1) chương trình chạy
+`run_esel1_experiment` (thẻ riêng), (2) nên có khoá `live.mutation_rate` cho nhánh đối chứng trôi dạt,
+(3) chạy smoke trên seed loại trừ rồi **đóng băng** đăng ký (fixture + test hình dạng + script kiểm
+artifact) **trước** mọi seed thí nghiệm.
 
-**Điểm neo:** PR #61 (ADR-0005, đề xuất, phương án A được khuyến nghị) và PR #66 (Card S1: khoá
-`live.reproduction` + test (a)–(e), bản nháp, CI xanh). **Chỉ merge #66 nếu QĐ-4 = A.** Quyết định là của
-chủ dự án; ghi nó vào ADR-0005 rồi chuyển `status`.
+**Định nghĩa hoàn thành:** đăng ký trước được commit thành fixture và có gate artifact tương đương `check:e2`
+· chỉ sau đó mới chạy · kết quả (kể cả null) báo cáo theo mẫu E2.
 
-**Định nghĩa hoàn thành:** ADR-0005 `accepted` (hoặc bị thay) với QĐ-4/QĐ-5 được ghi · #66 merge hoặc
-đóng có lý do · không có đường nào bật sinh sản mà không qua khoá khai báo.
+#### P3 — Câu hỏi mở nhỏ đi kèm #76
 
-#### P3 — Đăng ký trước thí nghiệm chọn lọc đầu tiên
-
-**Chỉ bắt đầu sau P1 và P2.** ADR-0005 phác thảo thí nghiệm; việc là viết preregistration (giả thuyết,
-ngưỡng, số seed, quy tắc dừng) **trước** khi chạy, theo mẫu E2 và sửa đổi 1. Thế giới phải có vận động
-thật (P1) và luân chuyển được khai báo (P2), nếu không kết quả null là hiệu ứng sàn lần nữa (§3.19).
-
-**Định nghĩa hoàn thành:** preregistration được commit và `check:e2`-tương-đương cưỡng chế artifact so với
-nó · mới sau đó mới chạy.
+`LIVE_MODEL_VERSION` chưa tăng vì đường mặc định không đổi (chủ dự án xác nhận hay tăng) · cảm biến và bộ lái
+dùng khoảng cách Euclid không bọc biên, nên agent sát biên có thể đi đường vòng · chưa có test riêng cho việc
+`target_velocity` về 0 khi năng lượng ≤ 0 (mã đúng, đã kiểm) · bật vận động mặc định trong app là một quyết
+định riêng sau khi xem số đo.
 
 #### P4 — Phần còn lại của "thế giới đọc được" (phần cứng/quota, không phải thiết kế)
 
 Ba tác tử Antigravity dùng chung một hạn mức, hết ngày 2026-11-16 (làm mới 2026-11-21 09:24 +07). Còn:
 **RW-A4** (cần quyết định RW-G-A trên `anima-mac` sau RW-A3), **RW-B4** (chụp lại 8 ảnh chuẩn trên RTX 5060
-Ti), **RW-C5** (bảng FPS của ba máy; cần RW-A4, RW-B3, RW-C4). Neo và điều kiện từng thẻ ở
-[kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md); RW-C4 (#69) merge hay chưa
-phải kiểm lại trên thân cây.
+Ti), **RW-C5** (bảng FPS của ba máy; cần RW-A4, RW-B3, RW-C4 — RW-C4 đã merge, #69). Neo và điều kiện từng thẻ ở
+[kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md).
 
 **Định nghĩa hoàn thành:** từng thẻ theo phần "xong khi" của nó trong kế hoạch ba máy.
 
@@ -1231,7 +1227,7 @@ kia thành thừa **và** nhanh hơn.
 một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
 fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 
-**(2) OSS-072 — truy vấn MRCA.**
+**(2) OSS-072 — truy vấn MRCA.** ✅ Xong trên nhánh `feat/oss-072-mrca-trunk` (`evolution/mrca.rs`, lệnh `get_lineage_mrca`, `tests/lineage_mrca_tests.rs`); đáp án là một **tập**, không phải một node. Chưa đo trên trunk — xem số đo ở commit hợp nhất. OSS-073 nay không còn bị chặn.
 
 *Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
 
