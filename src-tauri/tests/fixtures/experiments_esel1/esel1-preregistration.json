@@ -2,6 +2,7 @@
   "schema_version": 1,
   "preregistration_id": "e-sel1-food-scarcity-body-mass",
   "status": "FROZEN",
+  "registration_outcome": "CLOSED_WITHOUT_EXPERIMENT (amendment 2, 2026-11-17: the smoke stopped twice at step C; no experimental seed ever ran)",
   "registered_on": "2026-11-17",
   "registered_at_parent_commit": "8a3558a",
   "registered_at_parent_commit_note": "8a3558a is the trunk (origin/feat/ecological-selection, merge of PR #82) that the freeze commit merges; no smoke or experimental run existed at this commit.",
@@ -170,6 +171,33 @@
       "execution-lock.json's manifest_sha256 is optional in the runner; amendment 2 will record it anyway.",
       "The smoke writes each run's final checksum, which depends on the whole state; it carries no body-mass value."
     ]
+  },
+  "amendment_2_2026-11-17_smoke_run_2_stopped_registration_closed": {
+    "attribution": "Amendment 2, made by the lead session under the owner's delegation on 2026-11-17, after smoke run 2. No experimental manifest has been run in any build; the experimental manifests still hold their sentinels and cannot be run.",
+    "smoke_run_2": {
+      "build_commit": "7a825cc56135df83d5a513ecf59fe3b2e9f1dd92",
+      "profile": "release",
+      "host": "macOS arm64 (anima-mac), 1-minute load average 4 to 7",
+      "driver": "scripts/esel1_smoke_driver.mjs at the same commit, with the manipulation check of amendment 1",
+      "record": "artifacts/experiments/e-sel1-smoke-record/run-2-stopped/ (excluded from every analysis)",
+      "manipulation_check": "passed in every trial: the abundant arm (cap 50) ended on checksum 1859816024 and the scarce arms (caps 25, 17, 13, 6) on 212870692, 1699954573, 4171667680 and 1554494529, so live.food_cap now changes the world",
+      "step_A": "N0 = 30, F = 50: max live.agent_count at tick <= 1200 = 74 (<= 80), F_hi candidate = 50",
+      "step_B": "N0 = 30: min live.agent_count over all samples = 13 (abundant, F 50) and 30 (scarce, F 25), N0 candidate = 30",
+      "step_C": "r = 0.9583 (c = 1/2, F 25), 0.9739 (1/3, F 17), 0.9429 (1/4, F 13), 1.0274 (1/8, F 6); scarce min live.agent_count 30, 26, 33, 24. No c gives 0.4 <= r <= 0.6, so the smoke STOPPED as the algorithm requires.",
+      "max_us_per_tick_by_trial": {
+        "n0-30_fa-50_fs-25": 467.1,
+        "n0-30_fa-50_fs-17": 291.1,
+        "n0-30_fa-50_fs-13": 307.3,
+        "n0-30_fa-50_fs-6": 314.7
+      },
+      "body_mass_consulted": false
+    },
+    "outcome": "Per amendment 1 (if_run_2_stops_again): live.food_cap is a real but weak scarcity factor for this world. Cutting the food-item cap from 50 to 6 moves the grazing field's standing crop by at most 6 percent, far from the registered 40 to 60 percent of abundant. E-SEL1 therefore does NOT run under this registration. Its experimental manifests keep their sentinels (PLACEHOLDERS_OPEN stays true), so they remain unrunnable.",
+    "observations_not_used_for_any_choice": [
+      "The drift arm (scarce food, live.mutation_rate = 0) went extinct in every trial of run 2 (ticks 3600, 2400, 4800, 6600), and in run 1 (tick 7200), while the same configuration at the default rate 0.05 never went extinct. Single seed (999971); an exploratory diagnosis on other seeds was started separately and is not part of this registration.",
+      "The abundant arm's minimum live.agent_count (13) was lower than every scarce arm's (24 to 33). Single seed."
+    ],
+    "what_a_new_registration_needs": "A scarcity factor that actually depresses the food supply the population lives on (the grazing field, whose standing crop the smoke measures) needs a new manifest key and a new registration, which is the owner's decision. Nothing here licenses changing this registration's factor."
   },
   "hypotheses": [
     {

@@ -32,3 +32,15 @@ The run directory contains:
 | `trials/<key>/smoke/` | One runner invocation's output. `<key>` is `n0-<N0>_fa-<abundant cap>_fs-<scarce cap>`. |
 | `smoke-decisions.json` | Every quantity the driver consulted, and each step's decision. |
 | `driver-stdout.txt` | The driver's console output. |
+
+## run-2-stopped/
+
+Smoke run 2 used build `7a825cc56135df83d5a513ecf59fe3b2e9f1dd92` (release, macOS arm64), which includes the F-043 fix. It was driven by the in-repo driver, with the manipulation check.
+
+The manipulation check passed: every scarce arm ended on a final checksum different from the abundant arm's.
+
+The run still stopped at step C. Across food caps 25, 17, 13 and 6, r ran from 0.943 to 1.027, against a required 0.4 to 0.6.
+
+Per amendment 1, the registration is closed without an experiment. The preregistration records this in its block `amendment_2_2026-11-17_smoke_run_2_stopped_registration_closed`.
+
+Run 2's console output was not saved to a file. `smoke-decisions.json` holds every quantity the driver consulted.

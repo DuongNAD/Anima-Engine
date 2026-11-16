@@ -122,7 +122,7 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 > (G2, G1, G7), ba bản sửa tất định/sinh sản (F-037…F-041 trong [`FINDINGS.md`](../../FINDINGS.md)) và
 > phần lớn thẻ "thế giới đọc được". **Không có lượt CI toàn bộ nào được ghi lại sau §1.g trong tài liệu
 > này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. Việc tiếp theo và
-> chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-16).
+> chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 ---
 
@@ -498,12 +498,19 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
 
-### 3.00 Việc kế tiếp — cập nhật 2026-11-16
+### 3.00 Việc kế tiếp — cập nhật 2026-11-17
 
 > Mục này **thay thứ tự ưu tiên** của bàn giao 2026-07-27 ở §3.0 bên dưới; các mục §3.x còn lại giữ làm
 > bối cảnh. Nó trỏ tới PR và finding thay vì chép số (quy tắc 8). Quyết định thuộc chủ dự án nằm ở
 > [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) và
 > [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md).
+
+#### Đã xong 2026-11-17 (đã merge vào `feat/ecological-selection`)
+
+- **#77** — E-SEL1: đăng ký trước được **đóng băng** (fixture, test hình dạng, `run_esel1_experiment`,
+  `scripts/verify_esel1_artifacts.mjs`) và siết tám kẽ hở G1–G8; người kiểm chứng độc lập: VERIFIED.
+- **#83** — **F-043**: `live.food_cap` chưa từng có tác dụng (bị ghi đè về 50 mỗi tick); sửa bằng `LiveFoodCap`,
+  đường mặc định không đổi. Kèm sửa đổi 1 của E-SEL1 (ghi lại smoke lần 1, thêm kiểm tra thao tác).
 
 #### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
 
@@ -538,15 +545,26 @@ nơi trú Holling, chi phí hoạt động. Một đề xuất ADR có số đo 
 **Định nghĩa hoàn thành:** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
 cùng sống tới t = 6.000 ở ≥ 3 seed, EU kín, tất định nhiều tiến trình; test hành vi khoá lại.
 
-#### P2 — E-SEL1: từ bản nháp tới thí nghiệm đã đăng ký
+#### P2 — E-SEL1: ĐÃ ĐÓNG tại smoke, không có thí nghiệm (2026-11-17)
 
-**Điểm neo:** PR #77 (bản nháp đăng ký trước, chưa đóng băng). Còn chặn: (1) chương trình chạy
-`run_esel1_experiment` (thẻ riêng), (2) nên có khoá `live.mutation_rate` cho nhánh đối chứng trôi dạt,
-(3) chạy smoke trên seed loại trừ rồi **đóng băng** đăng ký (fixture + test hình dạng + script kiểm
-artifact) **trước** mọi seed thí nghiệm.
+**Đã xảy ra.** Smoke lần 1 dừng ở bước C và tìm ra F-043 (#83). Smoke lần 2 trên bản đã sửa qua kiểm tra thao
+tác, tức trần thức ăn giờ thay đổi thế giới thật. Nhưng hạ trần từ 50 xuống 25 / 17 / 13 / 6 chỉ làm standing crop
+của đồng cỏ đổi ±6 % (r từ 0,943 đến 1,027; thuật toán cần 0,4–0,6). Theo điều sửa đổi 1 đã cam kết trước, bản đăng
+ký **đóng, không có thí nghiệm** (sửa đổi 2). Các manifest thí nghiệm giữ giá trị đệm âm nên không chạy được, có test
+khẳng định. Không seed thí nghiệm nào chạy; không giá trị khối lượng cơ thể nào được đọc. Bản ghi hai lần smoke ở
+`artifacts/experiments/e-sel1-smoke-record/`; chi tiết ở
+[kế hoạch E-SEL1](../ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md).
 
-**Định nghĩa hoàn thành:** đăng ký trước được commit thành fixture và có gate artifact tương đương `check:e2`
-· chỉ sau đó mới chạy · kết quả (kể cả null) báo cáo theo mẫu E2.
+**Quyết định của chủ dự án.** Có làm một bản đăng ký mới với yếu tố khan hiếm đánh vào đồng cỏ không. Đồng cỏ là
+nguồn sống thật của quần thể; yếu tố đó cần một khoá manifest mới. Một chẩn đoán thăm dò, không đọc khối lượng cơ
+thể, đang đo hai thứ: cái gì giới hạn quần thể, và núm nào hạ được standing crop. Kết quả sẽ ghi vào đây.
+
+Có hai quan sát từ một seed, chưa kết luận:
+- Nhánh `live.mutation_rate = 0` tuyệt chủng ở mọi lượt smoke.
+- Nhánh dồi dào có quần thể tối thiểu thấp hơn nhánh khan hiếm.
+
+**Định nghĩa hoàn thành, nếu làm bản đăng ký mới:** đăng ký trước mới thành fixture; smoke qua kiểm tra thao tác và
+bước C trước mọi seed thí nghiệm; kết quả, kể cả null, báo cáo theo mẫu E2.
 
 #### P3 — Câu hỏi mở nhỏ đi kèm #76
 
