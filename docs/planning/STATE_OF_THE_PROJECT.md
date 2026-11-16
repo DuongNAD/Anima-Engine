@@ -514,6 +514,9 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 - **#84** — sửa đổi 2: E-SEL1 **đóng tại smoke, không có thí nghiệm**. Có test giữ cho manifest thí nghiệm không
   chạy được.
 - **#85** — test: agent hết năng lượng có `target_velocity` bằng 0 (P3).
+- **#86** — cổng zero-alloc của emit chỉ đếm luồng của chính test (flake trên CI của #84, như #80).
+- **#87** — thẻ B của ADR-0007: ba khoá opt-in cho thu nhập và nước của thú săn (QĐ-ECO-B = opt-in).
+- **#88** — chẩn đoán sau E-SEL1, QĐ-SEL1b, F-044.
 
 #### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
 
@@ -534,18 +537,29 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 - **Thẻ thế giới đọc được** ([kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md)):
   RW-A1 #54, RW-A2 #60, RW-A3 #63, RW-B1 #52, RW-B2 #55, RW-B3 #62, RW-C1 #53, RW-C2 #58, RW-C3 #67, RW-C4 #69.
 
-#### P1 — Thú săn sống được: cân bằng năng lượng và nguồn nước (điều kiện của S43)
+#### P1 — Thú săn sống được: ĐÃ ĐẠT định nghĩa hoàn thành (2026-11-17); S43 vẫn mở
 
-**Vì sao.** Có vận động rồi (#76) thú săn vẫn tuyệt chủng ở mọi lượt đo thăm dò: thu nhập bằng 15–30% chi
-phí (con mồi bị hút cạn và nơi trú Holling III che nó), và **không có nguồn nước** (hồ ở xa, thú săn không
-ăn Food) nên chúng chết khát khi còn năng lượng. Không núm đơn lẻ hay kết hợp nào đã thử cho cùng tồn tại.
-Bằng chứng: phần "Follow-up evidence" của PR #73/#61 và ADR-0006 §"không quyết".
+**Đã làm.**
+- **#87**: thẻ B của ADR-0007, ba khoá opt-in `live.kill_hydration`, `live.kill_efficiency`,
+  `live.target_min_energy`. Mặc định không đổi; QĐ-ECO-B = opt-in.
+- **Test khoá P1** (`predator_prey_coexistence_tests`, PR này): cấu hình thẻ A + B cho thú săn và con mồi cùng
+  sống tới t = 6.000 ở **5/10 seed**. Bỏ thẻ B thì chỉ còn **1/10**, và test đỏ.
+- EU kín, tất định nhiều tiến trình và restore đã được `eco_card_b_tests` kiểm.
 
-**Quyết định của chủ dự án trước** (mọi lựa chọn đổi ngữ nghĩa sinh thái và checksum): nước cho thú săn
-(uống từ con mồi bị giết, giảm hao nước, hay đường tới hồ), thu nhập mỗi lần ăn (Lindeman, trần bắt),
-nơi trú Holling, chi phí hoạt động. Một đề xuất ADR có số đo là bước đầu.
+Vậy định nghĩa hoàn thành dưới đây đã đạt. Nó **không** có nghĩa S43 hay Red Queen đã có.
 
-**Định nghĩa hoàn thành:** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
+**Còn lại.**
+- **Bằng chứng cho phương án C** ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), phần "Khoá
+  P1 và bằng chứng cho phương án C"):
+  - Thú săn founder sinh sản trước lần săn đầu tiên, rồi chết đói trên đường tới con mồi.
+  - Giảm chi phí thú săn × 0,5 kèm bán kính đòn 5 cho 8/10 seed.
+  - Seed còn hỏng là do con mồi thiếu nước.
+- **Quyết định của chủ dự án:**
+  - QĐ-ECO-C1: có làm thẻ opt-in `live.predator_cost_mult` + `live.strike_radius` không, kèm phép đo đăng ký trước
+    trên ≥ 20 seed.
+  - Có làm một khoá về nguồn nước không. Khoá đó phục vụ cả S43 lẫn thí nghiệm chọn lọc.
+
+**Định nghĩa hoàn thành (đạt):** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
 cùng sống tới t = 6.000 ở ≥ 3 seed, EU kín, tất định nhiều tiến trình; test hành vi khoá lại.
 
 #### P2 — E-SEL1: ĐÃ ĐÓNG tại smoke, không có thí nghiệm (2026-11-17)
