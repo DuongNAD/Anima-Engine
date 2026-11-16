@@ -205,3 +205,72 @@ Cùng tồn tại ở **2/5 seed** (2 và 4), khớp bằng chứng thăm dò �
 thú săn tuyệt chủng. Đây vẫn là **một phần**, chưa đủ cho S43. Kiểm chứng: tất định 3 tiến trình khớp
 với cả ba khoá, EU kín (lệch tương đối ~4e-15 trên 3.000 tick), restore giữ chính sách và quỹ đạo,
 khoá vắng = khai báo mặc định tường minh; từng cơ chế bị tắt thì test tương ứng đỏ. Test: `tests/eco_card_b_tests.rs`.
+
+## Quyết định thẻ B (2026-11-17)
+
+**QĐ-ECO-B = opt-in.** Ba khoá của thẻ B (#87) được merge để thăm dò S43, **không** thành mặc định. Đây là
+"quyết định riêng" mà phần Quyết định (2026-11-16) nói tới. Phiên lead đưa ra theo uỷ quyền của chủ dự án trong
+chat ngày 2026-11-17 ("làm theo bản kế hoạch"), đúng khuyến nghị của ADR này. Chủ dự án có thể đảo lại: đổi dòng
+`QD-ECO-B` trong khối `DECISIONS` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
+## Khoá P1 và bằng chứng cho phương án C (2026-11-17, thăm dò, chưa đăng ký)
+
+**Khoá P1.** `tests/predator_prey_coexistence_tests.rs` dùng cấu hình thẻ A + B (k = 1, e = 0.6, E = 10),
+10 founder, `predator_fraction` 0.3, 8 cây, 2 hồ, tử vong, sinh sản, vận động, chạy seed 1–10 tới t = 6.000. Test
+đòi ≥ 3 seed có thú săn và con mồi cùng sống.
+
+| Cấu hình | Seed cùng tồn tại (macOS arm64, bản debug) |
+| --- | --- |
+| A + B | **5/10**: seed 2, 4, 6, 8, 10 |
+| Chỉ A (bỏ ba khoá B) | **1/10**: chỉ seed 10, nên test đỏ |
+
+Ngưỡng là một số đếm có biên, không phải danh sách seed, vì quỹ đạo hỗn loạn và checksum khác nhau giữa các
+nền tảng. Cùng với EU kín, tất định nhiều tiến trình và restore (`eco_card_b_tests`), test này đáp ứng định nghĩa
+hoàn thành của P1 trong STATE. Nó **không** khẳng định S43, Red Queen hay sự ổn định sau t = 6.000.
+
+**Vì sao các seed còn lại hỏng.** Số liệu từ bộ đếm tạm, không commit, seed 1–10, bản release, EU lệch
+≤ 2,1e-14; không đọc khối lượng cơ thể.
+
+- **Seed 1 và 5: thú săn founder chết đói với 0 đòn.** Founder đầy năng lượng nên **sinh sản ngay khi cổng
+  "con mồi ≥ 5 × thú săn" mở** (khoảng tick 170, khi có 15 con mồi), trước lần săn đầu tiên. Năng lượng tụt từ 97
+  xuống khoảng 34 rồi chia cho con.
+  - Tốc độ thú săn là 2,0 × sàn 0,5 ≈ 1 đơn vị/s. Trong khoảng 1.500 tick chúng chỉ đi được khoảng 23 đơn vị.
+  - Con mồi gần nhất thì cách 18–54 đơn vị. Ở seed 5 không con thú săn nào vào được bán kính 3,0.
+  - Kết quả là cả nhóm chết đói ở khoảng tick 1.590.
+- **Seed 3 và 9: con mồi bị nước giới hạn, không phải thú săn.** Thế giới chỉ con mồi cũng chỉ còn 12 và 20 con.
+  Chết khát chiếm phần lớn ca chết của con mồi ở mọi seed.
+- **Seed 7:** thú săn có thu nhập nhưng chết lẫn đói lẫn khát.
+- **Thu nhập mỗi đòn rất nhỏ** (0,08–0,2 EU), vì trần thâm hụt nhỏ khi thú săn gần no: đòn chủ yếu là "nạp thêm".
+- **Cổng chặn sinh sản là tỉ lệ con mồi:** khoảng 99 % số tick thú săn đủ năng lượng bị cổng 5× chặn. Cổng
+  `pred_count >= 8` không chặn lần nào.
+
+**Độ nhạy.** Mỗi thay đổi là một hằng tạm đặt riêng trên nền A + B; số trong bảng là số seed cùng tồn tại trên 10.
+
+| Thay đổi | x/10 |
+| --- | --- |
+| nền A + B | 5 |
+| chi phí trao đổi chất của thú săn × 0,5 (cũng như × 0,35 / 0,25 / 0,7) | 7 |
+| Holling loại II | 6 |
+| bỏ trần bắt `deficit / 0.40` | 5 (không ràng buộc ở e = 0,6) |
+| bán kính đòn 5,0 | 5 |
+| nơi trú 0 | 4 |
+| ngưỡng sinh sản 0,75 | 4 |
+| E = 0 | 4 |
+| cổng tỉ lệ 3× | 3 |
+| bỏ cổng tỉ lệ | 3 |
+| tốc độ thú săn × 1,5 | 2 |
+| tốc độ thú săn × 2 | 1 (nhanh hơn thì ăn quá tay) |
+| chỉ sinh sau khi đã ăn (đòn đầu tiên, hoặc ≥ 20 / 50 EU từ con mồi) | 3–6; kèm chi phí × 0,5: 7 |
+| **chi phí × 0,5 + bán kính 5,0** | **8** |
+| **chi phí × 0,5 + cổng 3×** | **8** |
+
+Không thay đổi đơn hay cặp nào đạt 9–10/10. Seed 3 và 9 không cùng tồn tại ở bất kỳ lượt nào, vì con mồi bị nước
+giới hạn. Lưu ý: chi phí × 0,5 cũng làm chậm mất nước của thú săn, vì hao nước tính từ `total_cost`.
+
+**Hệ quả cho C.** Thẻ tiếp theo, nếu chủ dự án chọn, là **C1 (opt-in)**: hai khoá `live.predator_cost_mult` (nhân
+vào phần chi phí của thú săn trong `total_cost` ở `metabolic_decay_system`, đúng quy tắc năng lượng của CLAUDE.md)
+và `live.strike_radius`. Sau đó cần một phép đo trên ≥ 20 seed, đăng ký trước. Gốc chung của các seed còn hỏng là
+**nước**, cùng kết luận với
+[chẩn đoán sau E-SEL1](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md). Một khoá về nguồn nước (dung tích
+hoặc bổ sung hồ) có lẽ phục vụ cả S43 lẫn thí nghiệm chọn lọc. Không gì ở đây thành mặc định.
+

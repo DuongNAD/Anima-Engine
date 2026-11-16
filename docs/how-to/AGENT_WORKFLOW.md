@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 review_cycle: monthly
 ---
 
@@ -39,6 +39,10 @@ tài liệu ở bảng thắng; sửa trang này.
   QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
   ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
   ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)).
+- **Đã quyết 2026-11-17** (phiên lead theo uỷ quyền "làm theo bản kế hoạch"): QĐ-ECO-B = opt-in (thẻ B của
+  [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87; chỉ cho thăm dò S43, không mặc định).
+  **Còn trống, chờ chủ dự án:** QĐ-SEL1b (thí nghiệm chọn lọc theo khan hiếm làm lại hay không, với yếu tố
+  nào; xem chẩn đoán sau E-SEL1) và việc có làm thẻ C1 của ADR-0007 không.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
   được chuyển nguyên byte sang nhánh **local** `wip/hardening-m2-m4-tests` (`f9ff5f1`, chưa push).
 
@@ -86,6 +90,10 @@ QD-LOC    = A: a steering drive writes InertiaComponent.target_velocity; speed f
             CPG/brain output, not a per-class constant; ADR-0006 (owner's delegate in chat, 2026-11-16)
 QD-ECO    = A: opt-in live keys for a steering drive floor and thirst steering so founders can move
             and reach water; default world unchanged; ADR-0007 (owner's delegate in chat, 2026-11-16)
+QD-ECO-B  = opt-in: live.kill_hydration, live.kill_efficiency, live.target_min_energy (ADR-0007 card B,
+            #87); for S43 exploration only, never default (owner's delegate in chat, 2026-11-17)
+QD-SEL1b  =
+QD-ECO-C1 =
 QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_reference.mjs, in
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry
