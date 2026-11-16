@@ -220,9 +220,11 @@ bản `release`, biên dịch `-j 2`; vượt trần thì hạ bậc §7.
 - **P1** — `live.reproduction` có trên trunk: PR **#66** đã merge vào `feat/ecological-selection`;
   `grep -n LIVE_KEY_REPRODUCTION src-tauri/src/core/live_experiment.rs` có kết quả và
   `build_live_world` không còn `ReproductionPolicy::disabled()` cắm cứng.
-- **P2** — `live.locomotion` (ADR-0006, đang cài) đã merge: `LIVE_KEY_LOCOMOTION` có mặt,
-  `LIVE_MODEL_VERSION` đã tăng, và test ghim `founders_oscillate_but_do_not_translate` đã được đảo
-  như ADR-0006 yêu cầu.
+- **P2** — `live.locomotion` (ADR-0006, PR #76) đã merge: `LIVE_KEY_LOCOMOTION` có mặt và các test
+  `locomotion_steering_tests` (vận động thật khi bật, đường mặc định không đổi, tất định qua nhiều tiến
+  trình, EU kín) xanh trên thân cây. Bộ lái được cài ở dạng **opt-in**: thế giới mặc định không đổi,
+  nên `LIVE_MODEL_VERSION` không tăng và test `founders_oscillate_but_do_not_translate` (thế giới mặc
+  định) vẫn giữ nguyên. E-SEL1 bật nó tường minh bằng `live.locomotion = 1` ở cả hai nhánh.
 - **P3** — Có **chương trình chạy biên dịch sẵn** theo mẫu `run_e2_brain_experiment`, tên dự kiến
   `run_esel1_experiment` (`src-tauri/examples/`), hỗ trợ `--smoke`, `--ensemble`, `--replay`, ghi
   `execution-lock.json`; **không bao giờ `cargo run`**. Cần **một thẻ** riêng để dựng nó (số thẻ gán
@@ -387,7 +389,7 @@ seed. Đầu ra dưới `artifacts/experiments/e-sel1-food-scarcity/`.
   "smoke_exclusion": "seed 999971 only in smoke_* manifests; absent from every experimental manifest",
   "blocking_preconditions": [
     "P1: live.reproduction exists on the trunk (PR #66 merged; LIVE_KEY_REPRODUCTION present; build_live_world no longer hard-codes ReproductionPolicy::disabled()).",
-    "P2: live.locomotion exists on the trunk (ADR-0006 implementation merged; LIVE_MODEL_VERSION bumped; founders_oscillate_but_do_not_translate inverted).",
+    "P2: live.locomotion exists on the trunk (ADR-0006 implementation, PR #76, merged; opt-in: default world unchanged, so LIVE_MODEL_VERSION and the F-042 characterization test stay as they are; locomotion_steering_tests green). Both arms set live.locomotion = 1.",
     "P3: the compiled runner example run_esel1_experiment exists (--smoke, --ensemble, --replay, execution-lock.json); needs its own card; never cargo run.",
     "P4 (preferred): live.mutation_rate manifest key (absent == 0.05) so a mutation-off drift arm can exist; if absent, the no-drift-control limitation is stated and this is recorded BEFORE freezing.",
     "P5: F-039 live.births fix on the trunk (verify at freeze time)."
