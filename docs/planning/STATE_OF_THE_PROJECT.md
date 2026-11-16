@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-07-27
+last_reviewed: 2026-11-16
 review_cycle: per-release
 ---
 
@@ -23,9 +23,11 @@ gate chưa xanh.
 
 > ## ⚠️ Đọc trước — bảng dưới đây là đo **2026-07-27**, không phải trạng thái hôm nay
 >
-> *Ghi chú thêm 2026-11-14; không đo lại gì.* Từ cuối tháng 10 dự án có **hai cây mã phân kỳ**
-> (`main` và `feat/ecological-selection`), và các phép đo mới hơn chưa được đưa về đây. Cho tới khi
-> hai cây hợp nhất, đọc theo thứ tự:
+> *Ghi chú cập nhật 2026-11-16; không đo lại gì.* Hai cây mã đã được **hợp nhất ngày 2026-11-16**:
+> `main` được fast-forward lên thân cây `feat/ecological-selection` (a43872c → bb78e63; `main` là
+> tổ tiên trực tiếp, 0 commit riêng). Thân cây vẫn giữ tên và các PR vẫn nhắm vào nó. Bảng dưới vẫn là
+> đo 2026-07-27; việc đo lại toàn bộ gate trên thân cây **chưa làm**. Cho tới khi nó được ghi thành
+> `§1.g`, số mới nhất vẫn nằm ở các tài liệu sau, đọc theo thứ tự:
 >
 > 1. [`COMPLETION_ROADMAP_2026-10-31.md` §1](COMPLETION_ROADMAP_2026-10-31.md#1-đo-hôm-nay) — đo
 >    2026-10-31 trên cả hai cây, mỗi hàng có lệnh + ngày. Đọc luôn §4 của tài liệu đó: các quyết
@@ -36,7 +38,8 @@ gate chưa xanh.
 >    gộp vào nó.
 >
 > Đây là ngoại lệ **có thời hạn** của quy tắc 8 ("một con số chỉ có một nhà"), do chính roadmap
-> 31/10 khai: khi hai cây hợp nhất, số của nó chuyển về đây thành `§1.g` và banner này bị xoá.
+> 31/10 khai: khi phép đo lại trên thân cây xong, số của nó chuyển về đây thành `§1.g` và banner này
+> bị xoá.
 > Banner **không** chép số nào — nó chỉ trỏ.
 
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
