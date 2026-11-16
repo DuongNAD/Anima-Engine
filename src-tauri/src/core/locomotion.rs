@@ -72,6 +72,7 @@ fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOsci
 #[allow(clippy::type_complexity)]
 pub fn steering_drive_system(
     policy: Option<Res<LocomotionPolicy>>,
+    income: Option<Res<crate::core::resources::PredatorIncomePolicy>>,
     lake_query: Query<(&Position, &Lake)>,
     mut agents: Query<
         (
@@ -92,6 +93,9 @@ pub fn steering_drive_system(
         return;
     };
     let drive_floor = policy.drive_floor.clamp(0.0, 1.0);
+    // ADR-0007 option B: predators only chase prey holding at least this much energy. `0.0` (or no
+    // resource) admits every living prey, which is the historical rule.
+    let target_min_energy = income.map(|p| p.target_min_energy).unwrap_or(0.0);
     let (prey_cache, food_cache, lake_cache) = &mut *caches;
     lake_cache.clear();
     if policy.thirst_steering {
@@ -103,7 +107,7 @@ pub fn steering_drive_system(
     }
     prey_cache.clear();
     for (pos, homeo) in prey_query.iter() {
-        if homeo.energy > 0.0 {
+        if homeo.energy > 0.0 && homeo.energy >= target_min_energy {
             prey_cache.push(pos.0);
         }
     }

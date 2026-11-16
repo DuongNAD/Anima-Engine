@@ -2,7 +2,7 @@
 title: ADR-0007 — Duy trì quần thể trong thế giới live (QĐ-ECO)
 status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 decision_date: none
 supersedes: none
 superseded_by: none
@@ -169,3 +169,39 @@ không được chọn ở đây: B chỉ được dùng làm thăm dò cho S43 
 ("bạn được phép tự làm theo bản kế hoạch và xử lý sao cho tốt nhất"). Chủ dự án có thể đảo lại: đổi `status`
 và dòng QD-ECO trong khối `DECISIONS` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
 
+
+## Thẻ B (2026-11-17)
+
+Thẻ B (phương án B) đã được cài đặt như **ba khoá opt-in**, mặc định không đổi (khoá vắng = đường hiện tại,
+checksum bằng thế giới không khoá). **B vẫn là opt-in, không thành mặc định**, `LIVE_MODEL_VERSION` không bump,
+và QĐ-ECO vẫn là A: B chỉ dành cho việc thăm dò S43.
+
+| Khoá | Giá trị | Mặc định | Ngữ nghĩa |
+| --- | --- | --- | --- |
+| `live.kill_hydration` | k >= 0 | 0 (tắt) | Đòn đánh chuyển ΔE EU (sau hiệu suất, phần **thực sự** đổi, `gained`) cho thú săn thì cộng thêm `k × ΔE` vào hydration của nó, chặn ở `hydration_target`. Hydration nằm ngoài sổ EU. |
+| `live.kill_efficiency` | e trong (0, 1] | 0.40 (`LINDEMAN_EFFICIENCY`) | Thay hằng Lindeman trong **cả hai** nhánh đòn đánh của `combat_system`, chỉ cho thế giới này; hằng toàn cục không đổi. Phần `(1 − e)` vẫn về detritus qua `removed − gained` đo lại. |
+| `live.target_min_energy` | E >= 0 | 0 (tắt) | Bộ lái của thú săn chỉ nhắm con mồi còn sống có `energy >= E`; không con nào đủ thì như hiện nay khi không có mục tiêu (đứng yên). Chỉ có tác dụng khi `live.locomotion = 1`. |
+
+**Chọn ngữ nghĩa**: `target_min_energy` chỉ lọc **lái** (`locomotion.rs`, `steering_drive_system`), **không** lọc
+`combat_system`: thú săn vẫn đánh con mồi đầu tiên trong thứ tự truy vấn trong bán kính 3.0, đúng định nghĩa
+của thăm dò ("chỉ nhắm con mồi có E ≥ 10"). Chính sách nằm trong resource `PredatorIncomePolicy`
+(`resources.rs`), chèn ở `install_runtime_resources` nên cả genesis lẫn restore đều nhận (bài học F-043).
+`predation_capture` giữ nguyên trần `deficit / 0.40`, nên ở e > 0.40 phần vượt trần dinh dưỡng của thú săn
+chảy về detritus chứ không mất. `LIVE_KEYS` từ 16 lên 19.
+
+**Đo (thăm dò, không đăng ký, không phải assertion)**: seed 1-5, 6.000 tick, 10 founder, `predator_fraction` 0.3,
+8 cây, 2 hồ, mortality/reproduction/locomotion 1, `drive_floor` 0.5, `thirst_steering` 1; B tại điểm tốt nhất
+(k = 1, e = 0.6, E = 10), so với cùng cấu hình không có B:
+
+| seed | thú săn / con mồi còn sống ở t = 6.000 (có B) | min-max thú săn | min-max con mồi | không B (thú săn / con mồi) |
+| --- | --- | --- | --- | --- |
+| 1 | 0 / 83 | 0-4 | 10-86 | 0 / 44 |
+| 2 | 4 / 40 | 3-5 | 14-40 | 0 / 43 |
+| 3 | 0 / 0 | 0-3 | 0-26 | 0 / 0 (giống hệt) |
+| 4 | 2 / 82 | 1-6 | 14-83 | 0 / 75 |
+| 5 | 0 / 70 | 0-6 | 14-73 | 0 / 70 (giống hệt) |
+
+Cùng tồn tại ở **2/5 seed** (2 và 4), khớp bằng chứng thăm dò ở trên; seed 3 cả hai loài tuyệt chủng, seed 1 và 5
+thú săn tuyệt chủng. Đây vẫn là **một phần**, chưa đủ cho S43. Kiểm chứng: tất định 3 tiến trình khớp
+với cả ba khoá, EU kín (lệch tương đối ~4e-15 trên 3.000 tick), restore giữ chính sách và quỹ đạo,
+khoá vắng = khai báo mặc định tường minh; từng cơ chế bị tắt thì test tương ứng đỏ. Test: `tests/eco_card_b_tests.rs`.
