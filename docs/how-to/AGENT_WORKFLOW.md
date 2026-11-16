@@ -30,7 +30,7 @@ tài liệu ở bảng thắng; sửa trang này.
   phát hành → nhiều máy.
 - **Thân cây là `feat/ecological-selection`** (QĐ-A, 2026-11-01). Chồng PR #38 → #40 trên
   `fix/ci-gates-green` sẽ được gộp **vào** thân cây (thẻ T2).
-- **2026-11-16:** T2 (HT-C) đã merge thành PR #45, và `main` đã được fast-forward lên thân cây
+- **2026-11-16:** T2 (HT-C) đã merge thành PR #45 (2026-11-15), và `main` đã được fast-forward lên thân cây
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
@@ -55,7 +55,7 @@ tài liệu ở bảng thắng; sửa trang này.
 | **D0** | Kiểm kê PR mở và nhánh remote (chỉ đọc) | ✅ ngay | — | Báo cáo mới cần front matter và một dòng trong [`docs/ai/README.md`](../ai/README.md), nếu không `npm run check:docs` đỏ — uỷ quyền ở §4 |
 | **D1** | Phân loại finding của `AUDIT_REPORT.md` (chỉ đọc) | ✅ ngay | — | File chỉ có trên `origin/main`; thẻ nói cách đọc |
 | **T1** `[RUST]` | **B3b** — năm gate mà PR #40 làm đỏ | ✅ khi đã dán §4 | QĐ-B ✓, QĐ-F028 ✓ | Base `origin/fix/ci-gates-green`. Nhánh đó còn icon `placeholder` (F-028): **chép `src-tauri/icons/` từ thân cây trước**, nếu không sẽ không biên dịch trên macOS |
-| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ PR #45 (2026-11-16) | T1 đã merge; dòng uỷ quyền T2 | Xung đột ở `PROJECT.md`, `AGENTS.md`, `STATE` để chủ dự án giải. Giữ mục IPC và `.anmw` của `PROJECT.md` thân cây — bản trên `main` đã bị ghi đè |
+| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ PR #45 (2026-11-15) | T1 đã merge; dòng uỷ quyền T2 | Xung đột ở `PROJECT.md`, `AGENTS.md`, `STATE` để chủ dự án giải. Giữ mục IPC và `.anmw` của `PROJECT.md` thân cây — bản trên `main` đã bị ghi đè |
 | **G8** | Hợp đồng IPC | ✅ **phần lớn đã làm 2026-11-14** trên thân cây | — | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
 | **P1–P3** | Bài báo | ⛔ | QĐ-P1, QĐ-P2 trống | Luật L4: ô quyết định trống thì không chạy |
 
