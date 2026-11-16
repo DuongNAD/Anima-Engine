@@ -225,10 +225,7 @@ fn the_lineage_analysis_commands_are_reachable() {
     // OSS-072 named specifically: `mrca` was tested and callable from no command at all unless it
     // is in `generate_handler!`. Naming it here is what stops that from silently recurring.
     let registered = all_registered();
-    for command in [
-        "get_lineage_graph",
-        "get_lineage_mrca",
-    ] {
+    for command in ["get_lineage_graph", "get_lineage_mrca"] {
         assert!(
             registered.contains(command),
             "{command} is not reachable from the webview"
