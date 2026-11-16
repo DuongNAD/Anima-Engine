@@ -15,7 +15,7 @@ last_reviewed: 2026-07-24
 | [`ADR-0004`](ADR-0004-observer-as-declared-intervention.md) | accepted | Người quan sát nhập vai là can thiệp được khai báo |
 | [`ADR-0005`](ADR-0005-live-population-turnover.md) | accepted | Vòng đời quần thể (sinh sản/chết) trong adapter thí nghiệm live (QĐ-4, QĐ-5) |
 | [`ADR-0006`](ADR-0006-locomotion-actuation.md) | accepted | Vận động của sinh vật: lái ghi `target_velocity` hay ma sát dị hướng (F-042, QĐ-LOC) |
-| [`ADR-0007`](ADR-0007-live-ecology-sustainability.md) | proposed | Duy trì quần thể live: sàn lực lái, lái tới nước, thú săn (QĐ-ECO) |
+| [`ADR-0007`](ADR-0007-live-ecology-sustainability.md) | accepted | Duy trì quần thể live: sàn lực lái, lái tới nước, thú săn (QĐ-ECO) |
 
 Tạo ADR mới từ [`ADR-0000-template.md`](ADR-0000-template.md). Không viết lại quyết
 định accepted để đổi kết luận; tạo ADR mới và dùng `supersedes`/`superseded_by`.

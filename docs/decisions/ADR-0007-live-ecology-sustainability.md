@@ -1,6 +1,6 @@
 ---
 title: ADR-0007 — Duy trì quần thể trong thế giới live (QĐ-ECO)
-status: proposed
+status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-16
 decision_date: none
@@ -160,3 +160,12 @@ QĐ-ECO (owner, <ngày>) = D: keep as is; live populations are not sustained; E-
 ```
 
 Sau khi chủ dự án điền: đổi `status` thành `accepted`, điền `decision_date`, cập nhật chỉ mục.
+
+## Quyết định (2026-11-16)
+
+**QĐ-ECO = A**: hai khoá opt-in cho sàn lực lái và lái tới nước khi khát; thế giới mặc định không đổi. B và C
+không được chọn ở đây: B chỉ được dùng làm thăm dò cho S43 sau một quyết định riêng, C là thẻ nghiên cứu có
+đăng ký trước. Quyết định do phiên Claude lead đưa ra theo uỷ quyền của chủ dự án trong chat ngày 2026-11-16
+("bạn được phép tự làm theo bản kế hoạch và xử lý sao cho tốt nhất"). Chủ dự án có thể đảo lại: đổi `status`
+và dòng QD-ECO trong khối `DECISIONS` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
