@@ -116,6 +116,30 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 
 **Không tìm thấy trong log:** phiên bản rustc của job `determinism`; giá trị golden hash; tổng thời lượng từng suite ngoài các mốc giờ trong bảng; số lần lặp lại ổn định ở mức từng test.
 
+#### Sau §1.g — `check:e2` sau PR #59 (QĐ-E2M = B), đo 2026-11-16
+
+> Hàng `check:e2` đỏ ở §1.g đã được PR #59 sửa: thêm khối đính chính `amendment_1_live_dormant_eu`
+> và chạy lại thật toàn bộ ensemble E2 (xem QĐ-E2M ở
+> [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)).
+> Bảng này đo **sau** merge đó. Các hàng cục bộ chạy trên macOS, rustc **1.98.1**, Node
+> **24.19.0**, tại `df7c30f` cộng thêm đúng hai thứ: file test mới
+> `src-tauri/tests/e2_frozen_manifest_tests.rs` và chú thích "đã đóng băng" trên `LIVE_OBSERVABLE_IDS`.
+> Lượt này không đo frontend cục bộ, E2E, audit hay `cargo test` profile mặc định.
+
+| Loại | Gate | Lệnh/Nguồn | Kết quả |
+|---|---|---|---|
+| 📏 | Artifact E2 (CI) | Actions run `43837617631` trên `main` @ `df7c30f`, job Frontend, bước "E2 artifacts match the committed preregistration" | **success**. Cả job Frontend success; job Rust của run này **chưa xong** lúc ghi, nên không ghi kết quả của nó |
+| 📏 | Artifact E2 (cục bộ) | `npm run check:e2` | **exit 0**: tính lại 264 delta theo seed (analysis) và 22 (smoke) |
+| 📏 | Backend test | `cargo test --features desktop --no-fail-fast` | **1318 passed · 0 failed · 2 ignored**, **128** dòng `test result`, exit 0. Gồm 2 test của `e2_frozen_manifest_tests` |
+| 📏📋 | Chính sách target | `node scripts/check_test_targets.mjs <capture> --profile desktop` | exit 0: 128 target, 3 rỗng và 2 ignore, tất cả đều có trong allow-list; 8 target feature-gated chạy |
+| 📏 | Lint backend · Tách feature · Format | `cargo clippy --all-targets --features desktop -- -D warnings` · `cargo clippy --all-targets --no-default-features -- -D warnings` · `cargo fmt --check` | exit 0 · exit 0 · exit 0 |
+| 📏 | Đối chứng âm | `cargo test --features desktop --test e2_frozen_manifest_tests`, với `e2-control-shared-brain.json` tạm lấy bản tháng 7 (`970d963^`, chưa có `live.dormant_eu`) | **FAILED** đúng như cần, chỉ ra dòng 65 (run dùng `live.dormant_eu`, fixture có `live.closed_eu_total`). Sau đó fixture được trả lại byte của HEAD |
+
+Vì sao có test mới: `check:e2` chỉ chạy trong job Frontend. Tác giả `970d963` đã chạy
+`cargo test --features desktop` (94/94 target xanh, theo commit message) mà vẫn làm hỏng bằng chứng.
+`e2_frozen_manifest_tests` so từng fixture với bản chép trong artifact, nên lần sửa fixture sau sẽ đỏ
+ngay ở `cargo test`.
+
 ---
 
 ### 1.f Đo 2026-10-16 — `main` đỏ, cây làm việc đỏ hai gate tái lập

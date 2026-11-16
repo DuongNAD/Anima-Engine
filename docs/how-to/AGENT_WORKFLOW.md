@@ -34,7 +34,8 @@ tài liệu ở bảng thắng; sửa trang này.
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-4, QĐ-5, QĐ-P1…P3, QĐ-M1…M8.
+  (commit icon thật). **Đã quyết 2026-11-16:** QĐ-E2M = B (đính chính có ngày + chạy lại thật E2, PR
+  #59). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-4, QĐ-5, QĐ-P1…P3, QĐ-M1…M8.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
   được chuyển nguyên byte sang nhánh **local** `wip/hardening-m2-m4-tests` (`f9ff5f1`, chưa push).
 
@@ -80,6 +81,12 @@ QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_r
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry
 QD-F028   = yes: copy src-tauri/icons/ from origin/feat/ecological-selection (owner, 2026-11-14)
+QD-E2M    = B: amendment_1_live_dormant_eu in e2-preregistration.json plus a real re-run of the
+            whole E2 ensemble (PR #59). The four manifests in src-tauri/tests/fixtures/experiments_e2/
+            must stay byte-identical to the copies under artifacts/experiments/e2-evolved-brain-default/
+            (check:e2 and tests/e2_frozen_manifest_tests.rs); never edit either side. LIVE_OBSERVABLE_IDS
+            is frozen; a new live observable goes in LIVE_EXTENDED_OBSERVABLE_IDS (owner's delegate,
+            2026-11-16; confirmed by the owner the same day)
 QD-EN     =
 QD-P1     =
 QD-P2     =
