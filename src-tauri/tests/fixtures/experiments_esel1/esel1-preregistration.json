@@ -89,6 +89,8 @@
   },
   "smoke_may_set_only": {
     "may_consult_only": ["live.agent_count", "live.standing_crop"],
+    "mechanical_enforcement": "in --smoke mode the runner restricts every smoke manifest's observable_ids in memory to the allow-list below and writes nothing else: no live.trait_mass_* value, no H1/H2 effect, no paired-report.json, no per-seed-deltas.csv, no manifest copy (manifests name every observable; their sha256 is recorded in provenance.json instead). The runner refuses (returns an error) to print or write any smoke text containing 'trait_mass'. Files written: runs.csv (header line states the allow-list), smoke-series.csv, smoke-report.json, provenance.json, summary.md, checksums.sha256.",
+    "smoke_output_allow_list": ["live.agent_count", "live.standing_crop", "live.closed_eu_total", "live.births", "live.deaths"],
     "must_not_consult": "any live.trait_mass_* observable (mean, var, p10, p90), in any smoke run, for any choice; the amendment that records smoke results reports only live.agent_count and live.standing_crop (and the measured microseconds per tick)",
     "T_smoke": "18000 ticks (the top rung, the duration the smoke manifests carry and plan section 6 prescribes) for every smoke run of steps B and C; step A reads only the samples with tick <= 1200 of its abundant run. Samples exist at the registered sample_period (600), so step A sees the samples at ticks 600 and 1200. The smoke never changes sample_period.",
     "rounding": "a candidate food_cap is round-half-up to the nearest integer, at least 1: max(1, floor(x + 0.5))",
@@ -130,6 +132,8 @@
       "G6: smoke drift manifest esel1-smoke-drift-scarce-mutation-off.json added (seed 999971 only, scarce food at F_hi / 2, live.mutation_rate = 0) and listed as manifests.smoke_drift, so the runner's smoke exercises the drift path once; its result is never used for any choice",
       "G2: the runner refuses --ensemble when execution-lock.json lacks duration_ticks, N0, F_hi or F_lo, or when they disagree with the manifests in --manifest-dir; execution-lock.json is listed in checksums.sha256 and its sha256 is recorded in provenance.json",
       "G1/G7: scripts/verify_esel1_artifacts.mjs fails on an existing but empty or incomplete artifact directory, recomputes the H1 statistics from per-seed-deltas.csv and the materiality verdict, and checks the lock hash against provenance.json",
+      "G4 (mechanical): the smoke's ban on consulting live.trait_mass_* is enforced by the runner, not by discipline. In --smoke mode no live.trait_mass_* value (or H1/H2 effect computed from one) is written to any file or stdout: only the allow-listed observables (agent_count, standing_crop, closed_eu_total, births, deaths), the timing (us/tick per run), checksums and provenance. A test asserts that a --smoke invocation on synthetic manifests that request every observable produces no file containing 'trait_mass'; verify_esel1_artifacts.mjs re-checks this on a real smoke directory",
+      "G4 (Step A floor, decided by the coordinator): at F = 20 with a maximum agent_count still above 80 the smoke stops and files a finding",
       "G8: a shape test asserts that smoke manifests differ from the experimental ones only in live.founders, live.food_cap, seeds (and live.mutation_rate for the smoke drift manifest)"
     ]
   },

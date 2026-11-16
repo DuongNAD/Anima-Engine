@@ -156,14 +156,23 @@ không đổi nó). Seed này **vắng** khỏi mọi manifest thí nghiệm; `r
 
 **Smoke chỉ được đọc hai quan sát: `live.agent_count` và `live.standing_crop`.** Không được tham khảo bất kỳ
 giá trị `live.trait_mass_*` nào (mean, var, p10, p90) cho bất kỳ lựa chọn nào; bản sửa đổi ghi lại kết quả smoke
-chỉ được báo cáo hai quan sát đó (và µs/tick đo được). Làm tròn ứng viên `food_cap`: làm tròn nửa lên về số
+chỉ được báo cáo hai quan sát đó (và µs/tick đo được). **Điều này do runner cưỡng chế, không dựa vào kỷ luật:**
+ở chế độ `--smoke` runner thu hẹp `observable_ids` của mọi manifest smoke (trong bộ nhớ) về danh sách cho phép
+(`live.agent_count`, `live.standing_crop`, `live.closed_eu_total`, `live.births`, `live.deaths`) và **không ghi**
+bất kỳ giá trị `live.trait_mass_*` nào, cũng không ghi hiệu ứng H1/H2 tính từ nó, vào tệp hay stdout nào: không có
+`effects.json`, `paired-report.json`, `per-seed-deltas.csv`, và không sao chép manifest (manifest liệt kê mọi
+quan sát; sha256 của chúng nằm trong `provenance.json`). Tệp smoke: `runs.csv` (dòng đầu nêu danh sách cho phép),
+`smoke-series.csv`, `smoke-report.json` (các đại lượng thuật toán đọc: `max agent_count` ở `tick ≤ 1 200`,
+`min agent_count` mọi mẫu, trung bình `standing_crop` ở `tick > T/2`, µs/tick từng lần chạy), `provenance.json`,
+`summary.md`, `checksums.sha256`. Runner trả lỗi thay vì in/ghi văn bản chứa `trait_mass`; một test và
+`verify_esel1_artifacts.mjs` kiểm lại điều đó. Làm tròn ứng viên `food_cap`: làm tròn nửa lên về số
 nguyên gần nhất, tối thiểu 1 (`max(1, floor(x + 0.5))`).
 
 **Thuật toán (ghi y hệt trong `smoke_may_set_only.algorithm` của JSON):**
 
 - **Bước A (`F_hi`).** `N0 = 30`, `food_cap F = 50` (mặc định). Tính `max live.agent_count` trên các mẫu smoke có
   `tick ≤ 1 200`. Nếu `> 80` thì `F := F − 10` rồi lặp lại (sàn 20; nếu `F = 20` vẫn `> 80`, dừng và ghi finding,
-  không thí nghiệm). `F_hi` = `F` đầu tiên thoả.
+  không thí nghiệm; đây là lựa chọn thận trọng đã được xác nhận). `F_hi` = `F` đầu tiên thoả.
 - **Bước B (`N0`).** Với `N0` lần lượt `30, 40, 50, 60, 70, 80`: chạy smoke abundant tại `F_hi` và smoke scarce
   tại `round(F_hi / 2)`; nhận `N0` **đầu tiên** mà `min live.agent_count` trên **mọi** mẫu `≥ 5` ở **cả hai**.
   Không `N0` nào thoả: dừng, ghi finding (không thí nghiệm).

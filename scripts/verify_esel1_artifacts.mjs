@@ -129,7 +129,15 @@ const ROOT_FILES = [
   'checksums.sha256',
   'execution-lock.json',
 ];
-const SMOKE_FILES = ROOT_FILES.filter((f) => f !== 'execution-lock.json');
+// The smoke writes allow-listed observables only (no body mass, no effects, no manifest copies).
+const SMOKE_FILES = [
+  'runs.csv',
+  'smoke-series.csv',
+  'smoke-report.json',
+  'provenance.json',
+  'summary.md',
+  'checksums.sha256',
+];
 
 /** Missing required files are failures. Returns true when every one is present. */
 function requireFiles(dir, label, files, manifestNames) {
@@ -495,6 +503,33 @@ function verifyLock(dir, ensembleExists) {
   }
 }
 
+/** The smoke directory: allow-listed outputs only, and provably free of any body-mass observable. */
+function verifySmoke(dir, label, prereg) {
+  if (!requireFiles(dir, label, SMOKE_FILES, [])) return;
+  const covered = verifyChecksums(dir, label);
+  verifyNothingUncovered(dir, covered, label);
+  for (const entry of readdirSync(dir)) {
+    const text = readFileSync(join(dir, entry), 'utf8');
+    if (text.includes('trait_mass')) {
+      fail(`${label}: ${entry} names a body-mass observable; the smoke may not consult or write one`);
+    }
+  }
+  for (const banned of ['effects.json', 'paired-report.json', 'per-seed-deltas.csv', 'manifests']) {
+    if (existsSync(join(dir, banned))) fail(`${label}: ${banned} must not exist in a smoke directory`);
+  }
+  const prov = readJson(join(dir, 'provenance.json'));
+  const report = readJson(join(dir, 'smoke-report.json'));
+  if (report.contains_body_mass !== false) fail(`${label}: smoke-report.json does not state contains_body_mass = false`);
+  const ran = [...new Set(prov.seeds.executed)];
+  if (JSON.stringify(ran) !== JSON.stringify([prereg.seeds.smoke_seed])) {
+    fail(`${label}: a smoke run must run exactly [${prereg.seeds.smoke_seed}], but ran ${JSON.stringify(ran)}`);
+  }
+  if (prov.build.profile !== 'release') {
+    fail(`${label}: built as "${prov.build.profile}"; timing measured outside release is not usable for the rung`);
+  }
+  note(`${label}: ${report.runs.length} smoke run(s), max ${report.max_us_per_tick?.toFixed?.(1)} us/tick`);
+}
+
 function verifyDirectory(dir, label, opts) {
   if (!existsSync(dir)) {
     fail(`${label}: ${dir} does not exist`);
@@ -506,10 +541,11 @@ function verifyDirectory(dir, label, opts) {
     prereg.manifests.treatment,
     prereg.manifests.drift_control_optional_requires_P4,
   ].filter(Boolean);
-  const smoke = [prereg.manifests.smoke_control, prereg.manifests.smoke_treatment, prereg.manifests.smoke_drift].filter(Boolean);
-  const present = opts.isSmoke
-    ? requireFiles(dir, label, SMOKE_FILES, smoke)
-    : requireFiles(dir, label, ROOT_FILES, exp);
+  if (opts.isSmoke) {
+    verifySmoke(dir, label, prereg);
+    return;
+  }
+  const present = requireFiles(dir, label, ROOT_FILES, exp);
   if (!present) return; // nothing further can be read
   const covered = verifyChecksums(dir, label);
   if (!opts.isSmoke && !covered.has('execution-lock.json')) {
@@ -578,6 +614,26 @@ function selfTest() {
     writeFileSync(join(partial, 'runs.csv'), 'seed\n');
     const p = run(partial);
     expect(p.code === 1 && /paired-report\.json is missing/.test(p.err), 'a directory lacking required files fails');
+    // 3b. A smoke directory with a body-mass name in any file fails verifySmoke.
+    const smoke = join(root, 'smoke');
+    mkdirpSync(smoke);
+    const files = {
+      'runs.csv': 'seed,arm\n',
+      'smoke-series.csv': 'seed,arm,tick,live.trait_mass_mean\n',
+      'smoke-report.json': '{"contains_body_mass":false,"runs":[]}',
+      'provenance.json': '{"seeds":{"executed":[999971]},"build":{"profile":"release"}}',
+      'summary.md': '# smoke\n',
+    };
+    const sums = [];
+    for (const [n, t] of Object.entries(files)) {
+      writeFileSync(join(smoke, n), t);
+      sums.push(`${sha256(Buffer.from(t))}  ${n}`);
+    }
+    writeFileSync(join(smoke, 'checksums.sha256'), sums.join('\n') + '\n');
+    failures.length = 0;
+    verifySmoke(smoke, 'smoke', committedPrereg());
+    expect(failures.some((f) => /body-mass observable/.test(f)), 'a smoke file naming a body-mass observable fails');
+    failures.length = 0;
     // 4. A directory that does not exist is the only "no artifacts yet" pass.
     const absent = run(join(root, 'does-not-exist'));
     expect(absent.code === 0, 'a missing directory is "no artifacts yet" (exit 0)');

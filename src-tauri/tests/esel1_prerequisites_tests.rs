@@ -538,11 +538,73 @@ fn the_smoke_runs_the_drift_arm_when_the_plan_names_a_smoke_drift_manifest() {
     runner::run_with_args(args(&["--smoke"], &dir, &out)).expect("smoke with drift runs");
     let runs = read(&out.join("smoke").join("runs.csv"));
     // One seed x three arms + header.
-    assert_eq!(runs.lines().count(), 1 + 3, "{runs}");
+    assert_eq!(runs.lines().count(), 2 + 3, "{runs}");
     assert!(runs.lines().any(|l| l.contains("drift")), "{runs}");
     let prov: serde_json::Value =
         serde_json::from_str(&read(&out.join("smoke").join("provenance.json"))).unwrap();
-    assert!(!prov["manifests"]["drift_fingerprint_as_run"].is_null());
+    assert!(prov["manifests"]["initial_conditions_by_arm"]["drift"].is_array());
     assert!(!out.join("runs.csv").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+/// The smoke's "may not consult live.trait_mass_*" rule is mechanical: no file the smoke writes
+/// contains a body-mass observable name or value (the fixture manifests request every observable).
+#[test]
+fn the_smoke_writes_no_body_mass_anywhere() {
+    let dir = fixture("smokemass", 8.0, true, &EXP_SEEDS);
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    // The runner also refuses (Err) to print or write any text naming a body-mass observable, so a
+    // successful smoke means no stdout line contained one either.
+    runner::run_with_args(args(&["--smoke"], &dir, &out)).expect("smoke runs");
+    let smoke = out.join("smoke");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&smoke).unwrap() {
+        let path = entry.unwrap().path();
+        let text = read(&path);
+        assert!(
+            !text.contains("trait_mass"),
+            "{} names a body-mass observable",
+            path.display()
+        );
+        checked += 1;
+    }
+    // No manifest copy, paired report, effects or per-seed deltas: those carry or derive from body mass.
+    for absent in [
+        "effects.json",
+        "paired-report.json",
+        "per-seed-deltas.csv",
+        "manifests",
+    ] {
+        assert!(
+            !smoke.join(absent).exists(),
+            "{absent} must not exist in smoke/"
+        );
+    }
+    for present in [
+        "runs.csv",
+        "smoke-series.csv",
+        "smoke-report.json",
+        "provenance.json",
+        "summary.md",
+        "checksums.sha256",
+    ] {
+        assert!(smoke.join(present).is_file(), "{present}");
+    }
+    assert_eq!(checked, 6);
+    // The header of runs.csv says what it is limited to.
+    assert!(read(&smoke.join("runs.csv")).starts_with("# SMOKE: allow-listed observables only"));
+    // The quantities the algorithm reads are present.
+    let report: serde_json::Value =
+        serde_json::from_str(&read(&smoke.join("smoke-report.json"))).unwrap();
+    assert_eq!(report["contains_body_mass"], false);
+    let run0 = &report["runs"][0];
+    for k in [
+        "min_live_agent_count_all_samples",
+        "max_live_agent_count_tick_le_1200",
+        "mean_live_standing_crop_tick_gt_half_T",
+        "us_per_tick",
+    ] {
+        assert!(run0.get(k).is_some(), "{k}");
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
