@@ -6,7 +6,27 @@ import { FloraType } from './utils/worldGen';
 import { makeFloraGeometry } from './utils/floraGeometry';
 import { VEGETATION_BASE_SIZE } from './utils/floraClearance';
 import { sampleMeshHeight } from './utils/worldSample';
-import { installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
+import { debugFloraDensityScale, installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
+import {
+  CASTS_SHADOW,
+  buildFloraSources,
+  floraTint,
+  hash01,
+  makeImpostorGeometry,
+  type FloraSources,
+} from './utils/floraChunks';
+import { isCaptureRequested } from './utils/captureMode';
+import { getQualityTierConfig, type QualityTier } from './utils/qualityTiers';
+import {
+  CELL_FAR,
+  CELL_MID,
+  CELL_NEAR,
+  FLORA_CELLS_PER_SIDE,
+  frustumPlanesFromViewProjection,
+  multiplyMat4,
+  selectFloraCells,
+  collectCellRanges,
+} from './utils/chunkLod';
 
 export interface WorldVegetationProps {
   world: World;
@@ -16,8 +36,14 @@ export interface WorldVegetationProps {
   meshResolution?: number;
   /** Base size (world units) of a flora instance before its per-instance scale. */
   baseSize?: number;
-  /** 'low' keeps every other instance and skips the shadow pass (light-GPU mode). */
+  /** 'low' keeps every other instance and skips the shadow pass (light-GPU mode). Legacy path. */
   quality?: 'high' | 'low';
+  /**
+   * Quality tier (RW4-1 table). When given, flora is chunked by distance with impostors and the
+   * density follows the tier (`vegetationDensity`). Absent, or in capture mode, the legacy
+   * all-instances path runs unchanged.
+   */
+  tier?: QualityTier;
 }
 
 const TYPES: FloraType[] = [
@@ -36,25 +62,6 @@ const TYPES: FloraType[] = [
   FloraType.Kelp,
   FloraType.Seagrass,
 ];
-
-/** Tall types cast sun shadows; ground cover (bushes, reeds, tufts, boulders) skips the
- *  shadow pass — it reads fine without and roughly halves the shadow-map vertex load. */
-const CASTS_SHADOW = new Set<FloraType>([
-  FloraType.Pine,
-  FloraType.Round,
-  FloraType.Jungle,
-  FloraType.Cactus,
-  FloraType.Acacia,
-  FloraType.Palm,
-  FloraType.DeadTree,
-]);
-
-/** Deterministic per-instance hash in [0, 1) from the flora's world position. */
-function hash01(a: number, b: number): number {
-  let h = Math.imul((a * 1024) | 0, 374761393) + Math.imul((b * 1024) | 0, 668265263);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
 
 const TypedInstances: React.FC<{
   world: World;
@@ -112,28 +119,7 @@ const TypedInstances: React.FC<{
       if (typeof inst.setColorAt === 'function') {
         const h = hash01(world.floraX[i], world.floraZ[i]);
         const h2 = hash01(world.floraZ[i], world.floraX[i]);
-        if (type === FloraType.Tuft) {
-          // Meadow mix over the pale neutral base: mostly grass greens, a scattering of
-          // pink / yellow / white wildflowers.
-          if (h < 0.055) tint.setRGB(1.05, 0.6, 0.78); // pink
-          else if (h < 0.1) tint.setRGB(1.12, 1.02, 0.42); // yellow
-          else if (h < 0.13) tint.setRGB(1.12, 1.1, 1.05); // white
-          else {
-            const g = 0.5 + h2 * 0.18;
-            tint.setRGB(g * 0.78, g * 1.05, g * 0.55); // grass green range
-          }
-        } else if (type === FloraType.Coral) {
-          // Reef palette over the pale base: pink / orange / purple / red / cream heads.
-          if (h < 0.3) tint.setRGB(1.25, 0.55, 0.72);
-          else if (h < 0.55) tint.setRGB(1.3, 0.75, 0.4);
-          else if (h < 0.75) tint.setRGB(0.85, 0.55, 1.15);
-          else if (h < 0.9) tint.setRGB(1.3, 0.45, 0.45);
-          else tint.setRGB(1.1, 1.05, 0.88);
-        } else {
-          const lum = 0.82 + h * 0.36; // ±18% brightness
-          const warm = 0.96 + h2 * 0.08; // slight hue drift
-          tint.setRGB(lum * warm, lum, lum * (2 - warm));
-        }
+        floraTint(type, h, h2, tint);
         inst.setColorAt(k, tint);
       }
     }
@@ -154,6 +140,220 @@ const TypedInstances: React.FC<{
     >
       <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
     </instancedMesh>
+  );
+};
+
+/** Make sure an instanced mesh owns a colour attribute and dynamic buffers sized to its capacity. */
+function prepareInstanceBuffers(mesh: THREE.InstancedMesh, capacity: number): void {
+  if (!mesh.instanceMatrix) return;
+  mesh.instanceMatrix.setUsage?.(THREE.DynamicDrawUsage);
+  if (!mesh.instanceColor && typeof THREE.InstancedBufferAttribute === 'function') {
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    mesh.instanceColor.setUsage?.(THREE.DynamicDrawUsage);
+  }
+}
+
+/** Copy `[start, end)` ranges of the source buffers into the mesh; returns the instance count. */
+function uploadRanges(
+  mesh: THREE.InstancedMesh,
+  matrices: Float32Array,
+  colors: Float32Array,
+  ranges: readonly number[],
+): number {
+  const mArr = mesh.instanceMatrix?.array as Float32Array | undefined;
+  const cArr = mesh.instanceColor?.array as Float32Array | undefined;
+  let dst = 0;
+  const cap = mArr ? mArr.length / 16 : 0;
+  for (let r = 0; r < ranges.length; r += 2) {
+    const start = ranges[r];
+    const n = Math.min(ranges[r + 1] - start, cap - dst);
+    if (n <= 0) break;
+    mArr?.set(matrices.subarray(start * 16, (start + n) * 16), dst * 16);
+    cArr?.set(colors.subarray(start * 3, (start + n) * 3), dst * 3);
+    dst += n;
+  }
+  mesh.count = dst;
+  mesh.visible = dst > 0;
+  if (mesh.instanceMatrix) {
+    mesh.instanceMatrix.clearUpdateRanges?.();
+    if (dst > 0) mesh.instanceMatrix.addUpdateRange?.(0, dst * 16);
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+  if (mesh.instanceColor) {
+    mesh.instanceColor.clearUpdateRanges?.();
+    if (dst > 0) mesh.instanceColor.addUpdateRange?.(0, dst * 3);
+    mesh.instanceColor.needsUpdate = true;
+  }
+  return dst;
+}
+
+/** Re-select only after the camera moved this far (world units) or turned past `TURN_COS`. */
+const MOVE_EPS = 5;
+const TURN_COS = Math.cos((3 * Math.PI) / 180);
+/** Frustum slack covering motion between selections (~3° at 500 units plus `MOVE_EPS`). */
+const FRUSTUM_PAD = 40;
+
+const ChunkedFlora: React.FC<{
+  world: World;
+  geoms: ReadonlyArray<{ type: FloraType; geometry: THREE.BufferGeometry }>;
+  renderSize: number;
+  heightRatio: number;
+  meshResolution: number;
+  baseSize: number;
+  tier: QualityTier;
+}> = ({ world, geoms, renderSize, heightRatio, meshResolution, baseSize, tier }) => {
+  const cfg = getQualityTierConfig(tier);
+  // Test-only (RW-C4 negative control); `1` in every production build.
+  const densityScale = useMemo(() => debugFloraDensityScale(), []);
+  const sources = useMemo(
+    () =>
+      buildFloraSources(world, geoms, {
+        renderSize,
+        heightRatio,
+        meshResolution,
+        baseSize,
+        density: cfg.vegetationDensity * densityScale,
+      }),
+    [world, geoms, renderSize, heightRatio, meshResolution, baseSize, cfg.vegetationDensity, densityScale],
+  );
+  const impostorGeometry = useMemo(() => makeImpostorGeometry(), []);
+  useEffect(() => () => impostorGeometry.dispose(), [impostorGeometry]);
+
+  const meshes = useRef<Array<THREE.InstancedMesh | null>>([]);
+  const impostorMesh = useRef<THREE.InstancedMesh | null>(null);
+  const last = useRef<{
+    classes: Uint8Array | null;
+    pos: [number, number, number];
+    fwd: [number, number, number];
+    sources: FloraSources | null;
+    tier: QualityTier | null;
+  }>({ classes: null, pos: [0, 0, 0], fwd: [0, 0, -1], sources: null, tier: null });
+  const scratch = useRef<{ classes: Uint8Array; ranges: number[] }>({
+    classes: new Uint8Array(FLORA_CELLS_PER_SIDE * FLORA_CELLS_PER_SIDE),
+    ranges: [],
+  });
+
+  useFrame((state) => {
+    const cam = state.camera as THREE.Camera | undefined;
+    const proj = cam?.projectionMatrix?.elements;
+    const view = cam?.matrixWorldInverse?.elements;
+    if (!cam || !proj || !view) return;
+    const l = last.current;
+    const px = cam.position.x;
+    const py = cam.position.y;
+    const pz = cam.position.z;
+    const fx = -view[2];
+    const fy = -view[6];
+    const fz = -view[10];
+    const fresh = l.sources !== sources || l.tier !== tier || l.classes === null;
+    if (!fresh) {
+      const moved = Math.hypot(px - l.pos[0], py - l.pos[1], pz - l.pos[2]);
+      const turn = fx * l.fwd[0] + fy * l.fwd[1] + fz * l.fwd[2];
+      if (moved < MOVE_EPS && turn > TURN_COS) return;
+    }
+    const planes = frustumPlanesFromViewProjection(multiplyMat4(proj, view));
+    const classes = selectFloraCells(
+      {
+        cellsPerSide: FLORA_CELLS_PER_SIDE,
+        renderSize,
+        cellYMin: sources.cellYMin,
+        cellYMax: sources.cellYMax,
+        camX: px,
+        camY: py,
+        camZ: pz,
+        planes,
+        nearRadius: cfg.floraNearRadius,
+        midRadius: cfg.floraMidRadius,
+        frustumPad: FRUSTUM_PAD,
+      },
+      scratch.current.classes,
+    );
+    l.pos = [px, py, pz];
+    l.fwd = [fx, fy, fz];
+    const prev = l.classes;
+    let same = !fresh && prev !== null;
+    if (same && prev) {
+      for (let k = 0; k < classes.length; k++) {
+        if (prev[k] !== classes[k]) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) return;
+    l.classes = Uint8Array.from(classes);
+    l.sources = sources;
+    l.tier = tier;
+
+    const ranges = scratch.current.ranges;
+    sources.types.forEach((src, k) => {
+      const mesh = meshes.current[k];
+      if (!mesh) return;
+      collectCellRanges(src.cellStart, classes, (c) => c === CELL_NEAR, ranges);
+      uploadRanges(mesh, src.matrices, src.colors, ranges);
+    });
+    const imp = impostorMesh.current;
+    if (imp) {
+      // MID cells: trees + shrubs (slots 2c, 2c+1); FAR cells: trees only (slot 2c).
+      const ss = sources.impostor.slotStart;
+      const flat: number[] = [];
+      for (let c = 0; c < classes.length; c++) {
+        const cl = classes[c];
+        if (cl !== CELL_MID && cl !== CELL_FAR) continue;
+        const s = ss[2 * c];
+        const e = cl === CELL_MID ? ss[2 * c + 2] : ss[2 * c + 1];
+        if (e <= s) continue;
+        if (flat.length && flat[flat.length - 1] === s) flat[flat.length - 1] = e;
+        else flat.push(s, e);
+      }
+      uploadRanges(imp, sources.impostor.matrices, sources.impostor.colors, flat);
+    }
+  });
+
+  const shadows = cfg.shadows;
+  return (
+    <>
+      {sources.types.map((src, k) =>
+        src.count === 0 ? null : (
+          <instancedMesh
+            key={`${src.type}-${src.count}`}
+            ref={(m: THREE.InstancedMesh | null) => {
+              meshes.current[k] = m;
+              if (m && m.instanceColor === null) {
+                prepareInstanceBuffers(m, src.count);
+                m.count = 0;
+                m.visible = false;
+              }
+            }}
+            args={[geoms[k].geometry, null, src.count]}
+            name={`flora-${src.type}`}
+            castShadow={shadows && CASTS_SHADOW.has(src.type)}
+            frustumCulled={false}
+          >
+            <meshStandardMaterial vertexColors roughness={0.9} metalness={0} flatShading />
+          </instancedMesh>
+        ),
+      )}
+      {sources.impostor.count > 0 ? (
+        <instancedMesh
+          key={`impostor-${sources.impostor.count}`}
+          ref={(m: THREE.InstancedMesh | null) => {
+            impostorMesh.current = m;
+            if (m && m.instanceColor === null) {
+              prepareInstanceBuffers(m, sources.impostor.count);
+              m.count = 0;
+              m.visible = false;
+            }
+          }}
+          args={[impostorGeometry, null, sources.impostor.count]}
+          name="flora-impostor"
+          castShadow={false}
+          frustumCulled={false}
+        >
+          <meshStandardMaterial vertexColors roughness={0.95} metalness={0} flatShading />
+        </instancedMesh>
+      ) : null}
+    </>
   );
 };
 
@@ -188,6 +388,7 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   meshResolution = 256,
   baseSize = VEGETATION_BASE_SIZE,
   quality = 'high',
+  tier,
 }) => {
   const geoms = useMemo(() => TYPES.map((type) => ({ type, geometry: makeFloraGeometry(type) })), []);
 
@@ -197,22 +398,38 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
     };
   }, [geoms]);
 
+  // Capture mode (`?capture=1`) keeps the full legacy drawing path so the canonical views do not
+  // depend on camera-driven selection (RW4-4); so does a caller that passes no `tier`.
+  const chunked = tier !== undefined && !isCaptureRequested(window.location.search);
+
   return (
     <group name="world-vegetation">
       <FrameDiagnostics renderSize={renderSize} heightRatio={heightRatio} />
-      {geoms.map((d) => (
-        <TypedInstances
-          key={d.type}
+      {chunked ? (
+        <ChunkedFlora
           world={world}
-          type={d.type}
-          geometry={d.geometry}
+          geoms={geoms}
           renderSize={renderSize}
           heightRatio={heightRatio}
           meshResolution={meshResolution}
           baseSize={baseSize}
-          lowQuality={quality === 'low'}
+          tier={tier}
         />
-      ))}
+      ) : (
+        geoms.map((d) => (
+          <TypedInstances
+            key={d.type}
+            world={world}
+            type={d.type}
+            geometry={d.geometry}
+            renderSize={renderSize}
+            heightRatio={heightRatio}
+            meshResolution={meshResolution}
+            baseSize={baseSize}
+            lowQuality={quality === 'low'}
+          />
+        ))
+      )}
     </group>
   );
 };

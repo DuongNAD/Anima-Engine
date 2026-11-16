@@ -73,6 +73,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `update_evolution_settings` | `settings: EvolutionSettings` | `bool` | |
 | `toggle_evolution` | — | `bool` | |
 | `get_lineage_graph` | — | `LineageGraphPayload` | |
+| `get_lineage_mrca` | `individuals: string[]` | `LineageMrcaPayload` | OSS-072. Chỉ đọc. Kết quả là **tập** tổ tiên chung gần nhất (phả hệ là DAG vì crossover): rỗng = không có tổ tiên chung (bình thường ở rừng nhiều gốc), `ambiguous: true` = nhiều hơn một. Tổ tiên có tính phản xạ; truy vấn rỗng bị từ chối. Xem `evolution/mrca.rs` |
 | `export_phylogenetic_tree` | `req?: NewickExportRequest` | `string` | |
 
 ### Mạng / sharding — `commands/networking.rs`

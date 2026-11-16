@@ -266,3 +266,191 @@ export function buildChunkGeometry(
   geom.computeVertexNormals();
   return geom;
 }
+
+// ---------------------------------------------------------------------------------------
+// Flora chunking (RW4-2). Pure arithmetic, no three: the render loop and the tests share it.
+//
+// Flora is binned into the same CxC grid the terrain uses. Per frame each cell is classified by
+// (a) the 3D distance from the camera to the cell's bounding box and (b) whether that box is inside
+// the (padded) view frustum:
+//   NEAR   full per-type instanced meshes (shadow casting where the tier allows it)
+//   MID    ≤ 8-triangle impostors for trees and shrubs; ground cover is dropped
+//   FAR    ≤ 8-triangle impostors for trees only (continent scale: at the overview pose the camera is
+//          further from every cell than `floraMidRadius`, so a hard cull there would strip every tree)
+//   HIDDEN outside the frustum
+// ---------------------------------------------------------------------------------------
+
+export const CELL_HIDDEN = 0;
+export const CELL_NEAR = 1;
+export const CELL_MID = 2;
+export const CELL_FAR = 3;
+
+/** Triangle count of the single flora impostor (the plan's ceiling is 8). */
+export const FLORA_IMPOSTOR_TRIANGLES = 6;
+/** Grid resolution of the flora cells. 16x16 over a 1200-unit world is 75-unit cells. */
+export const FLORA_CELLS_PER_SIDE = 16;
+
+/**
+ * Deterministic decimation: should the `seen`-th item of a type be kept at `density` in (0, 1]?
+ * Keeps exactly `floor(n * density)` of `n` items, evenly spread.
+ */
+export function floraDensityKeep(seen: number, density: number): boolean {
+  if (density >= 1) return true;
+  if (density <= 0) return false;
+  return Math.floor((seen + 1) * density + 1e-9) > Math.floor(seen * density + 1e-9);
+}
+
+/** Number of items `floraDensityKeep` keeps out of `n`. */
+export function floraDensityCount(n: number, density: number): number {
+  if (density >= 1) return n;
+  if (density <= 0) return 0;
+  return Math.floor(n * density + 1e-9);
+}
+
+/** Cell index (iz * C + ix) of a render-space (x, z) in a world spanning [-R/2, R/2]. */
+export function floraCellOf(x: number, z: number, renderSize: number, cellsPerSide: number): number {
+  const C = cellsPerSide;
+  const ix = Math.min(C - 1, Math.max(0, Math.floor((x / renderSize + 0.5) * C)));
+  const iz = Math.min(C - 1, Math.max(0, Math.floor((z / renderSize + 0.5) * C)));
+  return iz * C + ix;
+}
+
+/** Column-major 4x4 product `a * b` (same layout as `THREE.Matrix4.elements`). */
+export function multiplyMat4(a: ArrayLike<number>, b: ArrayLike<number>): Float64Array {
+  const out = new Float64Array(16);
+  for (let c = 0; c < 4; c++) {
+    for (let r = 0; r < 4; r++) {
+      let s = 0;
+      for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+      out[c * 4 + r] = s;
+    }
+  }
+  return out;
+}
+
+/**
+ * Six normalised frustum planes (a, b, c, d per plane, inside = positive) from a column-major
+ * view-projection matrix (Gribb-Hartmann).
+ */
+export function frustumPlanesFromViewProjection(m: ArrayLike<number>): Float64Array {
+  const planes = new Float64Array(24);
+  const row = (i: number, j: number) => m[j * 4 + i];
+  const set = (p: number, sign: number, axis: number) => {
+    let a = row(3, 0) + sign * row(axis, 0);
+    let b = row(3, 1) + sign * row(axis, 1);
+    let c = row(3, 2) + sign * row(axis, 2);
+    let d = row(3, 3) + sign * row(axis, 3);
+    const len = Math.hypot(a, b, c) || 1;
+    a /= len;
+    b /= len;
+    c /= len;
+    d /= len;
+    planes[p * 4] = a;
+    planes[p * 4 + 1] = b;
+    planes[p * 4 + 2] = c;
+    planes[p * 4 + 3] = d;
+  };
+  set(0, 1, 0); // left
+  set(1, -1, 0); // right
+  set(2, 1, 1); // bottom
+  set(3, -1, 1); // top
+  set(4, 1, 2); // near
+  set(5, -1, 2); // far
+  return planes;
+}
+
+/** Is an axis-aligned box at least partly inside every plane (each pushed out by `pad`)? */
+export function aabbInFrustum(
+  planes: ArrayLike<number>,
+  minX: number,
+  minY: number,
+  minZ: number,
+  maxX: number,
+  maxY: number,
+  maxZ: number,
+  pad: number,
+): boolean {
+  for (let p = 0; p < 6; p++) {
+    const a = planes[p * 4];
+    const b = planes[p * 4 + 1];
+    const c = planes[p * 4 + 2];
+    const d = planes[p * 4 + 3];
+    const px = a >= 0 ? maxX : minX;
+    const py = b >= 0 ? maxY : minY;
+    const pz = c >= 0 ? maxZ : minZ;
+    if (a * px + b * py + c * pz + d < -pad) return false;
+  }
+  return true;
+}
+
+export interface FloraCellSelectionInput {
+  cellsPerSide: number;
+  renderSize: number;
+  /** Per-cell vertical extent of the flora actually in the cell (length C*C). */
+  cellYMin: ArrayLike<number>;
+  cellYMax: ArrayLike<number>;
+  camX: number;
+  camY: number;
+  camZ: number;
+  /** Frustum planes, or `null` to skip the view test (everything counts as visible). */
+  planes: ArrayLike<number> | null;
+  nearRadius: number;
+  midRadius: number;
+  /** Slack (world units) added to the frustum test so small camera motion does not pop cells. */
+  frustumPad: number;
+}
+
+/** Classify every cell as hidden / near / mid / far. Writes into `out` when given (no allocation). */
+export function selectFloraCells(i: FloraCellSelectionInput, out?: Uint8Array): Uint8Array {
+  const C = i.cellsPerSide;
+  const res = out && out.length === C * C ? out : new Uint8Array(C * C);
+  const cell = i.renderSize / C;
+  const half = i.renderSize / 2;
+  for (let iz = 0; iz < C; iz++) {
+    for (let ix = 0; ix < C; ix++) {
+      const idx = iz * C + ix;
+      const y0 = i.cellYMin[idx];
+      const y1 = i.cellYMax[idx];
+      if (y0 > y1) {
+        res[idx] = CELL_HIDDEN; // empty cell
+        continue;
+      }
+      const x0 = ix * cell - half;
+      const z0 = iz * cell - half;
+      const x1 = x0 + cell;
+      const z1 = z0 + cell;
+      if (i.planes && !aabbInFrustum(i.planes, x0, y0, z0, x1, y1, z1, i.frustumPad)) {
+        res[idx] = CELL_HIDDEN;
+        continue;
+      }
+      const dx = Math.max(x0 - i.camX, 0, i.camX - x1);
+      const dy = Math.max(y0 - i.camY, 0, i.camY - y1);
+      const dz = Math.max(z0 - i.camZ, 0, i.camZ - z1);
+      const dist = Math.hypot(dx, dy, dz);
+      res[idx] = dist <= i.nearRadius ? CELL_NEAR : dist <= i.midRadius ? CELL_MID : CELL_FAR;
+    }
+  }
+  return res;
+}
+
+/**
+ * Merge a cell selection into contiguous `[start, end)` ranges of a cell-sorted buffer, so an upload
+ * is a handful of block copies. `cellStart` has C*C+1 entries; `want(cellClass)` picks the cells.
+ */
+export function collectCellRanges(
+  cellStart: ArrayLike<number>,
+  classes: ArrayLike<number>,
+  want: (cellClass: number) => boolean,
+  out: number[] = [],
+): number[] {
+  out.length = 0;
+  for (let c = 0; c < classes.length; c++) {
+    if (!want(classes[c])) continue;
+    const s = cellStart[c];
+    const e = cellStart[c + 1];
+    if (e <= s) continue;
+    if (out.length && out[out.length - 1] === s) out[out.length - 1] = e;
+    else out.push(s, e);
+  }
+  return out;
+}

@@ -116,6 +116,14 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 
 **Không tìm thấy trong log:** phiên bản rustc của job `determinism`; giá trị golden hash; tổng thời lượng từng suite ngoài các mốc giờ trong bảng; số lần lặp lại ổn định ở mức từng test.
 
+> **Ghi chú 2026-11-16 (cuối ngày) — sau §1.g, chưa phải một lượt đo mới.** Bước `check:e2` đỏ ở §1.g đã
+> được sửa bởi PR #59 (preregistration có sửa đổi và chạy lại thật tập mẫu E2; kết quả ở đó, không chép
+> lại). Cùng ngày thân cây còn nhận #46–#51, #54, #55, #57, #58, #60, #62–#65 và #67, tức hạ tầng cổng
+> (G2, G1, G7), ba bản sửa tất định/sinh sản (F-037…F-041 trong [`FINDINGS.md`](../../FINDINGS.md)) và
+> phần lớn thẻ "thế giới đọc được". **Không có lượt CI toàn bộ nào được ghi lại sau §1.g trong tài liệu
+> này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. Việc tiếp theo và
+> chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-16).
+
 ---
 
 ### 1.f Đo 2026-10-16 — `main` đỏ, cây làm việc đỏ hai gate tái lập
@@ -489,6 +497,78 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
+
+### 3.00 Việc kế tiếp — cập nhật 2026-11-16
+
+> Mục này **thay thứ tự ưu tiên** của bàn giao 2026-07-27 ở §3.0 bên dưới; các mục §3.x còn lại giữ làm
+> bối cảnh. Nó trỏ tới PR và finding thay vì chép số (quy tắc 8). Quyết định thuộc chủ dự án nằm ở
+> [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) và
+> [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md).
+
+#### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
+
+- **#59** — E2 chạy lại theo sửa đổi 1 (QĐ-E2M = B): H1 vẫn null, `check:e2` xanh trên thân cây.
+- **#46, #47, #48, #49** — cổng: clippy của thân cây, spec E2E được khoá danh sách (G2), zero-alloc khi
+  sinh/chết (G1), khôi phục các assertion đã nới (G7).
+- **#50** — F-037 ân hạn đói, F-038 trần kích thước lai ghép, F-039 `live.births`.
+- **#64** — F-040: restore sau ca chết đi đúng quỹ đạo gốc.
+- **#65** — F-041: MỘT thứ tự tổng cho lịch tick; cùng seed là cùng một thế giới ở mọi tiến trình.
+- **#51, #57** — kế hoạch "thế giới đọc được" và §1.g.
+- **Thẻ thế giới đọc được** ([kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md)):
+  RW-A1 #54, RW-A2 #60, RW-A3 #63, RW-B1 #52, RW-B2 #55, RW-B3 #62, RW-C1 #53, RW-C2 #58, RW-C3 #67.
+  RW-C4 là PR #69 (đang mở khi viết).
+
+#### P1 — F-042: chọn và cài một cơ chế vận động (chướng ngại chính của nhánh khoa học)
+
+**Vì sao.** Sinh vật không tự dịch chuyển được: lực khớp là nội lực, vật lý không có tiếp xúc nền, ma
+sát hay cản, và không hệ nào ghi `InertiaComponent.target_velocity`, nên CPG dao động mà không có dịch
+chuyển ròng (chi tiết và số đo ở F-042, PR #70). Hệ quả: thú săn không bao giờ tới được con mồi và
+tuyệt chủng khi bật luân chuyển quần thể, và fitness sinh thái mặc định (Locomotion) không có gì để
+chọn lọc. **Việc này đứng trước QD-4** — một thí nghiệm chọn lọc trên thế giới không ai đi được chỉ đo
+nhiễu. Xung ngẫu nhiên ban đầu đã được đo và **không** phải cách sửa.
+
+**Quyết định của chủ dự án trước:** (a) ma sát/tiếp xúc nền dị hướng để sóng uốn tạo lực đẩy,
+(b) bộ lái ghi `target_velocity` từ đầu ra não/CPG, hay (c) cả hai. Không tự chọn thay chủ dự án.
+
+**Điểm neo:** `src-tauri/src/physics/dynamics.rs` (`resolve_joints_system`, `integrate_physics_system`),
+`src-tauri/src/core/components.rs` (`InertiaComponent`), `src-tauri/src/core/agent_systems.rs`,
+`src-tauri/tests/no_locomotion_characterization_tests.rs` (cùng PR #70; nếu #70 chưa merge, bắt đầu từ
+nhánh `finding/f042-no-locomotion`). Đọc ADR-0001 và ADR-0003 trước (hành động và não).
+
+**Định nghĩa hoàn thành:** test `founders_oscillate_but_do_not_translate` được **đảo** (founder dịch
+chuyển ròng đo được, ngưỡng ghi cùng test) kèm một test hành vi thứ hai (thú săn tới được con mồi) ·
+`LIVE_MODEL_VERSION` mới, mọi checksum vàng đổi **có chủ đích** và ghi trong commit · F-041 vẫn xanh (một
+seed, một thế giới) · đường mặc định/legacy vẫn tới được (CLAUDE.md, ADR-0003) · F-042 chuyển FIXED.
+
+#### P2 — QĐ-4/QĐ-5: quyết định luân chuyển quần thể trong adapter sống, rồi merge Card S1
+
+**Điểm neo:** PR #61 (ADR-0005, đề xuất, phương án A được khuyến nghị) và PR #66 (Card S1: khoá
+`live.reproduction` + test (a)–(e), bản nháp, CI xanh). **Chỉ merge #66 nếu QĐ-4 = A.** Quyết định là của
+chủ dự án; ghi nó vào ADR-0005 rồi chuyển `status`.
+
+**Định nghĩa hoàn thành:** ADR-0005 `accepted` (hoặc bị thay) với QĐ-4/QĐ-5 được ghi · #66 merge hoặc
+đóng có lý do · không có đường nào bật sinh sản mà không qua khoá khai báo.
+
+#### P3 — Đăng ký trước thí nghiệm chọn lọc đầu tiên
+
+**Chỉ bắt đầu sau P1 và P2.** ADR-0005 phác thảo thí nghiệm; việc là viết preregistration (giả thuyết,
+ngưỡng, số seed, quy tắc dừng) **trước** khi chạy, theo mẫu E2 và sửa đổi 1. Thế giới phải có vận động
+thật (P1) và luân chuyển được khai báo (P2), nếu không kết quả null là hiệu ứng sàn lần nữa (§3.19).
+
+**Định nghĩa hoàn thành:** preregistration được commit và `check:e2`-tương-đương cưỡng chế artifact so với
+nó · mới sau đó mới chạy.
+
+#### P4 — Phần còn lại của "thế giới đọc được" (phần cứng/quota, không phải thiết kế)
+
+Ba tác tử Antigravity dùng chung một hạn mức, hết ngày 2026-11-16 (làm mới 2026-11-21 09:24 +07). Còn:
+**RW-A4** (cần quyết định RW-G-A trên `anima-mac` sau RW-A3), **RW-B4** (chụp lại 8 ảnh chuẩn trên RTX 5060
+Ti), **RW-C5** (bảng FPS của ba máy; cần RW-A4, RW-B3, RW-C4). Neo và điều kiện từng thẻ ở
+[kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md); RW-C4 (#69) merge hay chưa
+phải kiểm lại trên thân cây.
+
+**Định nghĩa hoàn thành:** từng thẻ theo phần "xong khi" của nó trong kế hoạch ba máy.
+
+---
 
 ### 3.0 Phiên sau bắt đầu ở đây (bàn giao **2026-07-27**)
 
@@ -1127,7 +1207,7 @@ kia thành thừa **và** nhanh hơn.
 một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
 fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 
-**(2) OSS-072 — truy vấn MRCA.**
+**(2) OSS-072 — truy vấn MRCA.** ✅ Xong trên nhánh `feat/oss-072-mrca-trunk` (`evolution/mrca.rs`, lệnh `get_lineage_mrca`, `tests/lineage_mrca_tests.rs`); đáp án là một **tập**, không phải một node. Chưa đo trên trunk — xem số đo ở commit hợp nhất. OSS-073 nay không còn bị chặn.
 
 *Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
 
