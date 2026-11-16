@@ -137,6 +137,40 @@
       "G8: a shape test asserts that smoke manifests differ from the experimental ones only in live.founders, live.food_cap, seeds (and live.mutation_rate for the smoke drift manifest)"
     ]
   },
+  "amendment_1_2026-11-17_smoke_run_1_stopped_F043": {
+    "attribution": "Amendment 1, made by the lead session under the owner's delegation on 2026-11-17, after smoke run 1 stopped and BEFORE any experimental seed ran. No experimental manifest has been run in any build.",
+    "smoke_run_1": {
+      "build_commit": "13209396e6fb8a0e696ca9c023e70531df305634",
+      "profile": "release",
+      "host": "macOS arm64 (anima-mac)",
+      "driver": "scripts/esel1_smoke_driver.mjs (applies smoke_may_set_only.algorithm; reads only live.agent_count, live.standing_crop, us/tick and the final checksum)",
+      "record": "artifacts/experiments/e-sel1-smoke-record/run-1-stopped/ (excluded from every analysis)",
+      "step_A": "N0 = 30, F = 50: max live.agent_count at tick <= 1200 = 74 (<= 80), so F_hi candidate = 50",
+      "step_B": "N0 = 30: min live.agent_count over all samples = 13 in the abundant run (F 50) and 13 in the scarce run (F 25), so N0 candidate = 30",
+      "step_C": "r = 1 exactly for c = 1/2, 1/3, 1/4 and 1/8 (food caps 25, 17, 13, 6): the scarce runs' mean live.standing_crop over tick > 9000 equalled the abundant run's (123973.79). No c passed, so the smoke STOPPED as the algorithm requires.",
+      "max_us_per_tick_by_trial": {
+        "n0-30_fa-50_fs-25": 283.7,
+        "n0-30_fa-50_fs-17": 283.8,
+        "n0-30_fa-50_fs-13": 293.9,
+        "n0-30_fa-50_fs-6": 527.3
+      },
+      "body_mass_consulted": false,
+      "values_from_run_1_are_void": "None of N0 = 30 or F_hi = 50 from run 1 is carried forward: run 2 re-runs the algorithm from step A."
+    },
+    "cause": "F-043 (FINDINGS.md): apply_environmental_effects_system rewrote FoodSpawnSettings::max_food_count as 50 x event multiplier on every tick, so a declared live.food_cap lived only until the first tick. In run 1 the abundant and scarce arms of every trial ended on the same final checksum, bit for bit: the declared factor did nothing.",
+    "change_to_the_model": "fix(live): the adapter inserts LiveFoodCap(live.food_cap) on genesis and restore, and the system scales that base instead of the literal 50. A world without LiveFoodCap (every app run, every manifest that omits live.food_cap) keeps the literal 50, so the default path is unchanged (live_food_cap_tests).",
+    "unchanged": "The question, declared factor (live.food_cap), primary metric, tail window, thresholds, H1 (two_sided), seeds and their order, N, the smoke algorithm (steps A, B, C), the duration ladder and the 90-minute budget are all unchanged.",
+    "added_precondition": "Manipulation check, applied by the driver to every smoke trial: when the abundant and scarce arms differ in food cap but end on the same final checksum, the smoke stops (the factor is inert). It can stop the smoke; it can never choose a value.",
+    "re_arm": "Smoke run 2 runs the unchanged algorithm from step A on the commit that merges this amendment, on a clean checkout, with the driver above. Its N0, F_hi, F_lo and rung are then written in amendment 2 with execution-lock.json, before any experimental seed.",
+    "if_run_2_stops_again": "If run 2 stops at step C with the manipulation check passing (the cap now changes the world but live.standing_crop does not fall to 0.4-0.6 of abundant), live.food_cap is a real but weak scarcity factor for this world. That is filed as a finding and the experiment does not run under this registration; a different scarcity factor needs a new registration, which is the owner's decision.",
+    "minor_gaps_noted_by_the_independent_verifier_of_2026-11-17": [
+      "Step A's 80-agent gate is checked at N0 = 30 only; step B may raise N0 at F_hi without re-checking it. The algorithm is followed literally.",
+      "Step A reads two samples (ticks 600 and 1200), as registered.",
+      "The runner's refusal of sentinel manifests is indirect (the live config parser rejects negatives); scripts/verify_esel1_artifacts.mjs also rejects a lock against sentinel manifests.",
+      "execution-lock.json's manifest_sha256 is optional in the runner; amendment 2 will record it anyway.",
+      "The smoke writes each run's final checksum, which depends on the whole state; it carries no body-mass value."
+    ]
+  },
   "hypotheses": [
     {
       "id": "H1",

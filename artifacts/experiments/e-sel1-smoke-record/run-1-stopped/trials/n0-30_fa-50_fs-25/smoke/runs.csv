@@ -1,0 +1,5 @@
+# SMOKE: allow-listed observables only (live.agent_count, live.standing_crop, live.closed_eu_total, live.births, live.deaths); no body-mass value is written (plan section 6)
+seed,arm,status,extinct_tick,min_agent_count,max_agent_count,max_agent_count_tick_le_1200,standing_crop_tail_mean_tick_gt_half_T,us_per_tick,final_checksum
+999971,control,completed,,13,114,74,123973.79411301282,263.366,1859816024
+999971,treatment,completed,,13,114,74,123973.79411301282,283.692,1859816024
+999971,drift,completed,7200,0,74,74,150084.743281781,156.004,1135380634

@@ -1,0 +1,52 @@
+{
+  "T_smoke": 18000,
+  "contains_body_mass": false,
+  "kind": "e-sel1-smoke-report-EXCLUDED-FROM-ANALYSIS",
+  "max_us_per_tick": 283.75430327777775,
+  "observables_written": [
+    "live.agent_count",
+    "live.standing_crop",
+    "live.closed_eu_total",
+    "live.births",
+    "live.deaths"
+  ],
+  "runs": [
+    {
+      "arm": "control",
+      "extinct_tick": null,
+      "final_checksum": 1859816024,
+      "max_live_agent_count_all_samples": 114.0,
+      "max_live_agent_count_tick_le_1200": 74.0,
+      "mean_live_standing_crop_tick_gt_half_T": 123973.79411301282,
+      "min_live_agent_count_all_samples": 13.0,
+      "seed": 999971,
+      "status": "completed",
+      "us_per_tick": 276.2528657222222
+    },
+    {
+      "arm": "treatment",
+      "extinct_tick": null,
+      "final_checksum": 1859816024,
+      "max_live_agent_count_all_samples": 114.0,
+      "max_live_agent_count_tick_le_1200": 74.0,
+      "mean_live_standing_crop_tick_gt_half_T": 123973.79411301282,
+      "min_live_agent_count_all_samples": 13.0,
+      "seed": 999971,
+      "status": "completed",
+      "us_per_tick": 283.75430327777775
+    },
+    {
+      "arm": "drift",
+      "extinct_tick": 7200,
+      "final_checksum": 1135380634,
+      "max_live_agent_count_all_samples": 74.0,
+      "max_live_agent_count_tick_le_1200": 74.0,
+      "mean_live_standing_crop_tick_gt_half_T": 150084.743281781,
+      "min_live_agent_count_all_samples": 0.0,
+      "seed": 999971,
+      "status": "completed",
+      "us_per_tick": 151.85749305555555
+    }
+  ],
+  "step_A_window_max_tick": 1200
+}

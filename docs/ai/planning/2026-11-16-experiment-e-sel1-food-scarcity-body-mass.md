@@ -34,6 +34,16 @@ last_reviewed: 2026-11-17
 > Mọi chỗ ghi `[SMOKE]` dưới đây là chỗ trống có chủ đích đó.
 > **Không con số nào ở đây là kết quả quan sát: chưa có lần chạy nào.**
 >
+> **Sửa đổi 1 (2026-11-17, sau smoke lần 1, trước mọi seed thí nghiệm).** Smoke lần 1 (commit `1320939`, bản
+> release) dừng ở bước C, đúng như thuật toán quy định: ở cả bốn c, r = 1, vì nhánh khan hiếm và nhánh dồi dào
+> kết thúc ở cùng một checksum, bit cho bit. Nguyên nhân là **F-043**: `live.food_cap` không có tác dụng, vì
+> `apply_environmental_effects_system` ghi đè trần thức ăn về 50 ở mỗi tick. Đã sửa (`LiveFoodCap`); đường mặc
+> định không đổi. Câu hỏi, yếu tố, metric, ngưỡng, H1, seed, thuật toán smoke và bậc thang **không đổi**. Thêm một
+> kiểm tra thao tác: smoke dừng khi hai nhánh khác trần thức ăn mà cho cùng checksum. Smoke lần 2 chạy lại từ bước
+> A trên bản đã sửa; mọi giá trị của lần 1 bị huỷ. Chi tiết nằm trong khối `amendment_1_…` của JSON và trong
+> `artifacts/experiments/e-sel1-smoke-record/run-1-stopped/`. Smoke chưa từng đọc giá trị khối lượng cơ thể nào, và
+> vẫn chưa có kết quả thí nghiệm.
+>
 > Tên **E-SEL1**, không dùng "E3": tên E3 đang mơ hồ (E3 cũ là
 > [dự thảo gradient năng suất](2026-08-26-experiment-e3-productivity-gradient-body-mass.md), QĐ-EN
 > còn mở). Soạn trên nhánh `feat/ecological-selection`, theo đề xuất nghiên cứu 2026-11-16.
