@@ -214,15 +214,12 @@ test.describe('Phase 6 E2E - Challenger Adversarial & Stress Tests', () => {
     await expect(zoomInBtn).toBeVisible();
     await expect(zoomOutBtn).toBeVisible();
 
-    // Click Zoom In 150 times
-    for (let i = 0; i < 150; i++) {
-      await zoomInBtn.click();
-    }
-
-    // Click Zoom Out 150 times
-    for (let i = 0; i < 150; i++) {
-      await zoomOutBtn.click();
-    }
+    // 150 real clicks each, as ONE action per button: `clickCount` sends 150 down/up pairs after a
+    // single actionability check. Looping `click()` 300 times re-ran visible/stable/enabled/
+    // hit-target checks (a round trip each) and, on a loaded runner, spent the whole 30 s test
+    // budget on that overhead rather than on the clamp being tested.
+    await zoomInBtn.click({ clickCount: 150 });
+    await zoomOutBtn.click({ clickCount: 150 });
 
     // Confirm no errors occurred during extreme zooming
     expect(pageError).toBeNull();
