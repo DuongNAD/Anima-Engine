@@ -36,11 +36,30 @@ pub fn resolve_joints_system(
         Option<&CpgOscillator>,
         Option<&mut SegmentJointForce>,
     )>,
+    segment_ids: Query<(Entity, &Segment), With<JointConstraint>>,
     time_step: Res<TimeStep>,
     bounds: Option<Res<crate::core::ecs::MapBounds>>,
+    mut order: Local<Vec<(u32, Entity)>>,
 ) {
     let dt = time_step.0;
-    for (child_entity, constraint, opt_axis, opt_cpg, opt_joint_force) in joint_query.iter_mut() {
+    // Forces are summed into the joint's parent and child bodies, and float addition is not
+    // associative, so the visiting order of joints is part of the result. ECS table row order
+    // is not a stable key: after despawns it follows swap_remove history, while a restore
+    // rebuilds the tables in serialized order (F-040). Visit joints by segment id instead.
+    // Segment ids are unique within one agent and agents share no body, so any order between
+    // agents is equivalent. `order` keeps its capacity across ticks, so this stays
+    // allocation-free once warm.
+    order.clear();
+    for (entity, segment) in segment_ids.iter() {
+        order.push((segment.id, entity));
+    }
+    order.sort_unstable();
+    for &(_, joint_entity) in order.iter() {
+        let Ok((child_entity, constraint, opt_axis, opt_cpg, opt_joint_force)) =
+            joint_query.get_mut(joint_entity)
+        else {
+            continue;
+        };
         let parent_entity = constraint.parent_entity;
         if let Ok(
             [(mut child_body, child_pos, mut child_rot, child_vel, child_segment), (mut parent_body, parent_pos, parent_rot, parent_vel, _parent_segment)],
