@@ -30,6 +30,17 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-043 — `live.food_cap` không có tác dụng: `apply_environmental_effects_system` ghi đè trần thức ăn bằng hằng 50 ở mỗi tick
+- **Ngày:** 2026-11-17
+- **Loại:** BUG (yếu tố khai báo trong manifest không tới được thế giới)
+- **Vị trí:** `src-tauri/src/core/world_systems.rs:21` (trước khi sửa: `food_settings.max_food_count = (50.0 * max_food_multiplier) as usize`, chạy mỗi tick trong `build_tick_schedule`); `src-tauri/src/core/live_experiment.rs` (adapter chỉ đặt `FoodSpawnSettings { max_food_count: config.food_cap }` lúc genesis, nên giá trị khai báo sống đúng tới tick đầu tiên)
+- **Phát hiện bởi:** smoke E-SEL1 lần 1 (commit `1320939`, seed 999971, bản release, `scripts/esel1_smoke_driver.mjs`)
+- **Triệu chứng:** nhánh khan hiếm (`live.food_cap` 25, 17, 13, 6) và nhánh dồi dào (50) kết thúc ở **cùng một checksum cuối** sau 18.000 tick, bit cho bit; `min live.agent_count` 13 ở cả hai, trung bình `live.standing_crop` nửa sau 123.973,79 ở cả hai, nên tỉ số r của bước C bằng đúng 1 ở cả bốn c, và smoke dừng theo thuật toán đã đóng băng. Không giá trị khối lượng cơ thể nào được đọc hay ghi (runner cưỡng chế ở chế độ `--smoke`).
+- **Hệ quả:** mọi manifest live khai `live.food_cap` khác 50 đã chạy với trần 50. Không artifact nào đã commit bị ảnh hưởng (E2 khai đúng 50). Tiền đề "không có thức ăn" của `dual_mortality_grace_tests` (`food_cap = 0`) trước đây không đúng (thức ăn vẫn sinh ra); test vẫn xanh sau khi sửa. Test tự chèn `FoodSpawnSettings` rồi chạy hệ này mà không qua adapter (vd. `meta_ai_tests`) vẫn dùng cơ số 50 như trước, đúng như chúng đang khẳng định.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop -j 2 --test live_food_cap_tests` trên code cũ: 3/4 test đỏ (đã đo bằng cách trả dòng cũ về tạm thời); bản ghi smoke ở `artifacts/experiments/e-sel1-smoke-record/run-1-stopped/`.
+- **Test khoá lại:** `live_food_cap_tests::{a_declared_food_cap_is_the_cap_in_force_on_every_tick, a_scarce_cap_changes_the_world_and_feeds_it_less, a_resumed_run_keeps_its_declared_cap}` (đỏ trên code cũ) và `omitting_the_key_and_declaring_the_default_cap_run_the_same_world` (chốt đường mặc định, xanh ở cả hai phía). Không test nào ghim checksum tuyệt đối.
+- **Trạng thái:** FIXED bởi commit `fix(live): live.food_cap reaches the world instead of being reset to 50 every tick (F-043)` (nhánh `fix/f043-live-food-cap`). Adapter chèn tài nguyên `LiveFoodCap(config.food_cap)` trong `install_runtime_resources`, chạy cả lúc genesis lẫn lúc restore; hệ đọc nó qua `Option<Res<..>>` và nhân hệ số sự kiện lên cơ số đó. Thế giới không có tài nguyên này (mọi lần chạy app) giữ hằng 50, nên đường mặc định không đổi; vì thế không bump `LIVE_MODEL_VERSION`. Bài học cho tiền đăng ký: smoke phải có một kiểm tra thao tác (manipulation check), vì thế driver smoke giờ dừng khi control và treatment của cùng một lượt thử có cùng checksum cuối.
+
 ### F-042 — Sinh vật không tự di chuyển được: lực khớp là nội lực, vật lý không có lực ngoài, và không hệ nào ghi `target_velocity`
 - **Ngày:** 2026-11-16
 - **Loại:** BUG

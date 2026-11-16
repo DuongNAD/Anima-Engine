@@ -605,6 +605,18 @@ impl Default for LiveForcings {
     }
 }
 
+/// The food-item cap a manifest declared with `live.food_cap`, before the active environmental
+/// event scales it.
+///
+/// `apply_environmental_effects_system` rewrites `FoodSpawnSettings::max_food_count` on every tick
+/// as `base × event multiplier`. Its base used to be a literal `50`, so a declared cap was
+/// overwritten on the first tick and `live.food_cap` changed nothing (F-043). The adapter inserts
+/// this resource on genesis and on restore alike; the system reads it through `Option<Res<..>>`,
+/// so a world without it — every app run — keeps the literal base of 50 and behaves exactly as it
+/// did.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiveFoodCap(pub usize);
+
 // ---- The intervention system --------------------------------------------------------------------
 
 /// Apply the tick's declared interventions to the live world.
@@ -1990,6 +2002,10 @@ fn install_runtime_resources(
         InferenceResponseBatch, NextNodeId,
     };
     use crate::core::resources::{EvolutionQueue, EvolutionReceiver, EvolutionSender};
+
+    // On genesis and on restore alike: the declared cap is part of the manifest, not of the saved
+    // state, and `apply_environmental_effects_system` would otherwise reset it to 50 (F-043).
+    world.insert_resource(LiveFoodCap(config.food_cap));
 
     let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
     let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
