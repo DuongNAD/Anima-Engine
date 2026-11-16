@@ -27,9 +27,7 @@ use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
 use anima_engine_lib::core::world_artifact::{
     map_biome_backend_to_frontend, map_biome_frontend_to_backend, write_artifact_bytes_to,
     WorldArtifact, WorldIdentity, CANONICAL_WORLD_SCALE, WORLD_ARTIFACT_HEADER_LEN,
-    WORLD_ARTIFACT_MAGIC, WORLD_ARTIFACT_VERSION,
 };
-use glam::Vec3;
 
 const HD_SEED: u32 = 0x5EED;
 
@@ -587,16 +585,16 @@ fn test_challenge_coordinate_contract_dense_grid_sweep() {
             assert_eq!(idx, iy * w + ix);
 
             let (u, v) = cell_center_uv(ix, iy, w, h);
-            assert!(u >= 0.0 && u <= 1.0);
-            assert!(v >= 0.0 && v <= 1.0);
+            assert!((0.0..=1.0).contains(&u));
+            assert!((0.0..=1.0).contains(&v));
 
             let (cx, cy) = uv_to_cell(u, v, w, h);
             assert_eq!(cx, ix);
             assert_eq!(cy, iy);
 
             let (wx, wz) = cell_center_to_world_xz(ix, iy, w, h, &bounds);
-            assert!(wx >= WORLD_MIN_XZ && wx <= WORLD_MAX_XZ);
-            assert!(wz >= WORLD_MIN_XZ && wz <= WORLD_MAX_XZ);
+            assert!((WORLD_MIN_XZ..=WORLD_MAX_XZ).contains(&wx));
+            assert!((WORLD_MIN_XZ..=WORLD_MAX_XZ).contains(&wz));
 
             let mapped_cell = world_xz_to_cell(wx, wz, w, h, &bounds);
             assert_eq!(mapped_cell, Some((ix, iy)));

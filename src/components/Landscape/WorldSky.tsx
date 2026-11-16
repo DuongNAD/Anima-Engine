@@ -1,7 +1,7 @@
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { getSkyParams, type SkyParams } from './utils/skyParams';
+import { getWorldLightRig, type SkyParams } from './utils/skyParams';
 import { makeSceneRandom, sceneDelta } from './utils/sceneClock';
 
 // Gradient sky dome: zenith deepens, horizon pales into haze, and a soft halo wraps the sun.
@@ -147,7 +147,8 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
   const CLOUD_SPREAD = worldScale * 2.4; // 960
 
   // Sun / moon orbit (same tilt convention as legacy Sky).
-  const angle = ((timeOfDay - 6) / 24) * Math.PI * 2;
+  const safeTime = Number.isFinite(timeOfDay) ? ((timeOfDay % 24) + 24) % 24 : 0;
+  const angle = ((safeTime - 6) / 24) * Math.PI * 2;
   const sunDirUnit = useMemo(
     () => new THREE.Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle) * 0.1).normalize(),
     [angle],
@@ -164,9 +165,9 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
     moonDirY * ORBIT_R,
     Math.sin(moonAngle) * 0.1 * ORBIT_R,
   ];
-  const showMoon = moonDirY > 0;
 
-  const params = getSkyParams(timeOfDay);
+  const lightRig = getWorldLightRig(safeTime);
+  const { params, showMoon } = lightRig;
   const showStars = params.starOpacity > 0;
 
   const starPositions = useMemo(() => {
@@ -264,7 +265,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         name="world-sun-light"
         position={sunPosition}
         color={params.sunColor}
-        intensity={params.sunIntensity * 0.8}
+        intensity={lightRig.sunIntensity}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -280,7 +281,7 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
           name="world-moon-light"
           position={moonPosition}
           color="#dbeafe"
-          intensity={0.25 * moonDirY}
+          intensity={lightRig.moonIntensity}
         />
       )}
 
@@ -291,9 +292,9 @@ export const WorldSky: React.FC<WorldSkyProps> = ({
         name="world-hemi-light"
         color={params.hemiSkyColor}
         groundColor={params.hemiGroundColor}
-        intensity={params.hemiIntensity * 0.35}
+        intensity={lightRig.hemiIntensity}
       />
-      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={params.ambientIntensity * 0.4} />
+      <ambientLight name="world-ambient-light" color={params.ambientColor} intensity={lightRig.ambientIntensity} />
 
       {showMoon && (
         <mesh name="world-moon-mesh" position={moonPosition}>
