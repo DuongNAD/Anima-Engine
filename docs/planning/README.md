@@ -10,7 +10,7 @@ review_cycle: monthly
 
 | Phạm vi | Tài liệu | Vai trò |
 |---|---|---|
-| **Bắt đầu ở đây** | [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) | Trạng thái **đo được** + backlog ưu tiên kèm điểm neo và định nghĩa hoàn thành. Hai cây đã hợp nhất 2026-11-16 nhưng chưa đo lại trên thân cây; tới khi có `§1.g`, số đo mới nhất nằm tạm ở roadmap 31/10 §1 — banner đầu STATE §1 nói rõ |
+| **Bắt đầu ở đây** | [`STATE_OF_THE_PROJECT.md`](STATE_OF_THE_PROJECT.md) | Trạng thái **đo được** + backlog ưu tiên kèm điểm neo và định nghĩa hoàn thành. Hai cây đã hợp nhất 2026-11-16; số đo mới nhất (CI của thân cây tại `bb78e63`) nằm ở STATE `§1.g`, banner đầu §1 trỏ tới |
 | **Giao việc cho coding agent** | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) | Hàng đợi thẻ chạy được ngay, khối `DECISIONS` đã điền để dán vào prompt lead, luật và lệnh xác minh. Thẻ và prompt: [kế hoạch swarm 05/11](../ai/planning/2026-11-05-swarm-master-plan.md), [file prompt](../ai/planning/2026-11-05-swarm-prompts.md) |
 | **Kế hoạch thực thi hiện hành** | [`EXECUTION_PLAN_2026-10-31.md`](EXECUTION_PLAN_2026-10-31.md) (`proposed`) | Task HT-A / HT-B / HT-C từng mục, kèm file, lệnh xác minh và phụ thuộc. Brief cho agent: [Antigravity](../ai/planning/2026-10-31-antigravity-brief.md) |
 | Tách crate con | [`CRATE_SPLIT_PLAN_2026-10-31.md`](CRATE_SPLIT_PLAN_2026-10-31.md) (`proposed`) | S0–S5: phá sáu vòng phụ thuộc bằng một tầng type còn thiếu, rồi tách 6 crate. Bộ ba kiểm V1/V2/V3 mỗi bước. Brief: [Antigravity](../ai/planning/2026-10-31-antigravity-brief-crate-split.md) |
