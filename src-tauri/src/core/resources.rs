@@ -571,6 +571,26 @@ impl ReproductionPolicy {
     }
 }
 
+/// The offspring body-mutation probability `autonomous_reproduction_system` historically hard-coded.
+pub const DEFAULT_MUTATION_RATE: f64 = 0.05;
+
+/// Probability that a continuous-reproduction offspring's body genotype is mutated (E-SEL1 P4,
+/// `live.mutation_rate`). **Absent resource == [`DEFAULT_MUTATION_RATE`]**, so the desktop app and
+/// every earlier manifest are bit-identical. Exactly `0.0` means "offspring are exact copies":
+/// the system then also skips the brain mutation pass.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct MutationPolicy {
+    pub rate: f64,
+}
+
+impl Default for MutationPolicy {
+    fn default() -> Self {
+        Self {
+            rate: DEFAULT_MUTATION_RATE,
+        }
+    }
+}
+
 /// Whether `steering_drive_system` writes `InertiaComponent.target_velocity` (ADR-0006 option A,
 /// F-042).
 ///

@@ -139,6 +139,16 @@ pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
 /// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
 /// `live.locomotion = 1`.**
 pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
+/// Per-birth probability that `autonomous_reproduction_system` mutates the offspring's body
+/// genotype (E-SEL1 precondition P4), a **declared** input in `[0, 1]`.
+///
+/// Absent keeps `DEFAULT_MUTATION_RATE` (`0.05`, the value that system hard-coded before this
+/// key existed), so every manifest written earlier stays bit-identical. `0.0` is the drift-control
+/// setting: the offspring is an exact copy of its parent, body **and** brain (the brain's own
+/// mutation pass is skipped at exactly `0.0`; at any positive rate the brain keeps its historical
+/// fixed per-weight rate, because this key is the body-mutation experiment variable, not a global
+/// scale). Consulted only when `live.reproduction` is on.
+pub const LIVE_KEY_MUTATION_RATE: &str = "live.mutation_rate";
 /// Consecutive bottom ticks (energy exhausted) before starvation kills, when mortality is on.
 /// Absent keeps the policy's default of 120.
 pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
@@ -153,7 +163,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 15] = [
+pub const LIVE_KEYS: [&str; 16] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -165,6 +175,7 @@ pub const LIVE_KEYS: [&str; 15] = [
     LIVE_KEY_LOCOMOTION,
     LIVE_KEY_DRIVE_FLOOR,
     LIVE_KEY_THIRST_STEERING,
+    LIVE_KEY_MUTATION_RATE,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
     LIVE_KEY_ECOLOGICAL_FITNESS,
@@ -202,6 +213,10 @@ pub struct LiveWorldConfig {
     /// ADR-0007 option A: thirsty agents steer to the nearest lake. Needs `locomotion`.
     #[serde(default)]
     pub thirst_steering: bool,
+    /// Offspring body-mutation probability (see [`LIVE_KEY_MUTATION_RATE`]); absent reads back as
+    /// the historical `0.05`.
+    #[serde(default = "default_mutation_rate")]
+    pub mutation_rate: f64,
     /// Declared thresholds; absent reads back as the policy's own defaults.
     #[serde(default = "default_starve_ticks")]
     pub starve_ticks: u32,
@@ -214,6 +229,10 @@ pub struct LiveWorldConfig {
     /// Weight of the net-surplus term of the ecological rule; absent reads back as 1.0.
     #[serde(default = "default_w_surplus")]
     pub w_surplus: f32,
+}
+
+fn default_mutation_rate() -> f64 {
+    crate::core::resources::DEFAULT_MUTATION_RATE
 }
 
 fn default_starve_ticks() -> u32 {
@@ -246,6 +265,7 @@ impl Default for LiveWorldConfig {
             locomotion: false,
             drive_floor: 0.0,
             thirst_steering: false,
+            mutation_rate: default_mutation_rate(),
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
             ecological_fitness: false,
@@ -368,6 +388,17 @@ impl LiveWorldConfig {
                         })
                     }
                 },
+                LIVE_KEY_MUTATION_RATE => {
+                    if !(0.0..=1.0).contains(value) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: 1.0,
+                        });
+                    }
+                    config.mutation_rate = *value;
+                }
                 LIVE_KEY_STARVE_TICKS => {
                     config.starve_ticks = bounded_count(key, *value, 0.0, 65_536.0)? as u32
                 }
@@ -1664,6 +1695,10 @@ fn build_live_world(
     // (`live.reproduction`, ADR-0005 option A). Absent/0 keeps the historical disabled policy.
     world.insert_resource(crate::core::resources::ReproductionPolicy {
         enabled: config.reproduction,
+    });
+    // Offspring body-mutation probability (`live.mutation_rate`); absent == the historical 0.05.
+    world.insert_resource(crate::core::resources::MutationPolicy {
+        rate: config.mutation_rate,
     });
     // The steering drive is a declared input (`live.locomotion`, ADR-0006 option A). Absent/0 is
     // the disabled policy: `steering_drive_system` returns at once and `target_velocity` stays 0.
