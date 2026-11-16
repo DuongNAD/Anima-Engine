@@ -122,6 +122,13 @@ pub const LIVE_KEY_MORTALITY: &str = "live.mortality";
 /// `ReproductionPolicy::disabled()` every live run made before this key existed, bit-identical.
 /// Exact-boolean reading, like `live.mortality`. Declared, never read from the environment.
 pub const LIVE_KEY_REPRODUCTION: &str = "live.reproduction";
+/// Whether creatures steer toward their sensory target (`steering_drive_system`), as a
+/// **declared** input (ADR-0006 option A, F-042).
+///
+/// `1.0` inserts `LocomotionPolicy { enabled: true }`; `0.0` or absent keeps the policy disabled,
+/// which is every live run made before this key existed, bit-identical. Exact-boolean reading,
+/// like `live.mortality`. Declared, never read from the environment.
+pub const LIVE_KEY_LOCOMOTION: &str = "live.locomotion";
 /// Consecutive bottom ticks (energy exhausted) before starvation kills, when mortality is on.
 /// Absent keeps the policy's default of 120.
 pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
@@ -136,7 +143,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 12] = [
+pub const LIVE_KEYS: [&str; 13] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -145,6 +152,7 @@ pub const LIVE_KEYS: [&str; 12] = [
     LIVE_KEY_EVOLVED_BRAINS,
     LIVE_KEY_MORTALITY,
     LIVE_KEY_REPRODUCTION,
+    LIVE_KEY_LOCOMOTION,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
     LIVE_KEY_ECOLOGICAL_FITNESS,
@@ -172,6 +180,10 @@ pub struct LiveWorldConfig {
     /// historical `ReproductionPolicy::disabled()`, so older serialized configs read back unchanged.
     #[serde(default)]
     pub reproduction: bool,
+    /// Steering drive (ADR-0006 option A), off unless a manifest asks. Off is the historical
+    /// "creatures never translate" world, so older serialized configs read back unchanged.
+    #[serde(default)]
+    pub locomotion: bool,
     /// Declared thresholds; absent reads back as the policy's own defaults.
     #[serde(default = "default_starve_ticks")]
     pub starve_ticks: u32,
@@ -213,6 +225,7 @@ impl Default for LiveWorldConfig {
             evolved_brains: false,
             mortality: false,
             reproduction: false,
+            locomotion: false,
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
             ecological_fitness: false,
@@ -291,6 +304,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_REPRODUCTION => match *value {
                     0.0 => config.reproduction = false,
                     1.0 => config.reproduction = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_LOCOMOTION => match *value {
+                    0.0 => config.locomotion = false,
+                    1.0 => config.locomotion = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -1596,6 +1621,11 @@ fn build_live_world(
     // (`live.reproduction`, ADR-0005 option A). Absent/0 keeps the historical disabled policy.
     world.insert_resource(crate::core::resources::ReproductionPolicy {
         enabled: config.reproduction,
+    });
+    // The steering drive is a declared input (`live.locomotion`, ADR-0006 option A). Absent/0 is
+    // the disabled policy: `steering_drive_system` returns at once and `target_velocity` stays 0.
+    world.insert_resource(crate::core::resources::LocomotionPolicy {
+        enabled: config.locomotion,
     });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
