@@ -30,6 +30,17 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-038 — Lai ghép tạo được thân lớn hơn mức restore và migration chấp nhận, và không chỗ nào ở giữa kiểm kích thước
+- **Ngày:** 2026-11-16
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/evolution/crossover.rs:32` (`crossover_genotypes`: đổi cây con của A lấy cây con của B, con có thể tới `|A| - 1 + |B|` node, không có trần); `src-tauri/src/core/simulation_loop.rs:801` (worker tiến hoá gọi nó, không kiểm kích thước sau đó); `src-tauri/src/evolution/map_elites.rs:151` (ô archive là `floor(body_mass / resolution)`, trục khối lượng không có trần, nên một con nặng hơn mọi elite luôn rơi vào ô trống và luôn được giữ); `src-tauri/src/core/components.rs:192` (`MAX_MIGRATION_MORPHOLOGY_NODES = 128`, mà restore, đánh thức, migration và nạp archive đều cưỡng chế); `src-tauri/src/core/simulation_loop.rs:1404` (restore huỷ **toàn bộ** khi một agent bị từ chối)
+- **Phát hiện bởi:** tay (verifier của commit `5cfa5eb` nêu đường `crossover_genotypes` chưa qua kiểm tra)
+- **Triệu chứng:** Từ thân 15 node, cỡ lớn nhất `mutate_genotype` dựng được, lai ghép lặp lại với chọn lọc "giữ con nặng hơn" vượt trần 128 sau **7 thế hệ** (138 node), mọi bước đều là cây hợp lệ. Nếu một lần chạy thật đi tới đó, thế giới vẫn lưu được (serialize không kiểm), nhưng không restore được nữa. Agent đó cũng không di cư được, và không đánh thức được nếu nó ngủ đông. Vòng thân của G1 (`BODY_WALK_CAPACITY`) sẽ cấp phát trên heap cho thân ấy.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test crossover_body_size_cap_tests -- --nocapture` (dòng `F038 generations=7 nodes=138 cap=128 start=15`)
+- **Test khoá lại:** `crossover_body_size_cap_tests::repeated_crossover_from_a_mutation_sized_body_passes_the_restore_cap`. Việc từ chối thân quá trần đã được ghim ở `migration_enqueue_atomicity_tests.rs:863`.
+- **Chưa chứng minh:** "giữ con nặng hơn" chỉ đứng thay cho trục khối lượng không trần của archive, không phải chính archive. Chưa đo xem một lần chạy thật có chạm 128 không. Vì vậy loại là SMELL, chưa phải BUG.
+- **Trạng thái:** OPEN. Hướng sửa cần chủ dự án chọn, và cả hai đều sửa `src-tauri/src`: (a) đặt trần kích thước trong `crossover_genotypes`, hoặc bỏ con quá trần trong worker tiến hoá; (b) cho restore chấp nhận đúng những gì tiến hoá tạo ra.
+
 ### F-037 — Khi bật tử vong, ân hạn `starve_ticks` không bao giờ chạy và `live.deaths` báo 0 trong khi sinh vật chết đói
 - **Ngày:** 2026-11-16
 - **Loại:** BUG
