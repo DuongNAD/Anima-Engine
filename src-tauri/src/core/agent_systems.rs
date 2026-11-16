@@ -655,6 +655,7 @@ pub fn autonomous_reproduction_system(
     mut next_node_id: Option<ResMut<NextNodeId>>,
     mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
     reproduction_policy: Option<Res<crate::core::resources::ReproductionPolicy>>,
+    mut vital_stats: Option<ResMut<crate::core::resources::VitalStatistics>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
@@ -793,6 +794,11 @@ pub fn autonomous_reproduction_system(
             if let Some(ref mut trk) = demographic_tracker {
                 let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
                 trk.record_birth(parent_age);
+            }
+            // F-039: `live.births` drains `VitalStatistics`; record every continuous birth there
+            // too, beside the tracker's. Absent resource = no-op (legacy path).
+            if let Some(ref mut vitals) = vital_stats {
+                vitals.record_birth();
             }
 
             commands.add(SpawnOffspringCommand {

@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-039 — Sinh sản liên tục không ghi vào `VitalStatistics`, nên `live.births` báo 0 trong khi vật nuôi đẻ
+- **Ngày:** 2026-11-16
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/core/agent_systems.rs:795` (`autonomous_reproduction_system` chỉ gọi `DemographicTracker::record_birth`); `src-tauri/src/core/agent_systems.rs:1029` (chỗ duy nhất gọi `VitalStatistics::record_birth`, là đường thay thế tiến hoá theo kỷ nguyên); `src-tauri/src/core/live_experiment.rs:1086` (`live.births` rút từ `VitalStatistics::sample_window`)
+- **Phát hiện bởi:** đo (S1 bước 0, thăm dò, bản release)
+- **Triệu chứng:** Trong thế giới live (`LiveExperimentAdapter::from_manifest`, `live.mortality=1`) với `ReproductionPolicy{enabled:true}` đặt lại sau khi dựng, qua 6.000 tick `DemographicTracker` đếm 74 / 232 / 32 / 239 ca sinh (seed 1, 2, 3 và seed 1 với 60 founder), còn `VitalStatistics` (nguồn của `live.births`) luôn 0. Số ca chết thì hai bên khớp. Cùng loại số 0 bịa như F-037. Hiện ở trạng thái ngầm trên trunk vì adapter ép `ReproductionPolicy::disabled()` cho tới QĐ-4, và thành lỗi thật ngay khi bật sinh sản.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test live_births_bookkeeping_tests -- --nocapture` (dòng `F039 ticks=1000 seed=1 tracker_births=9 live_births_summed=...`; trước khi sửa là `0`, sau khi sửa là `9`)
+- **Test khoá lại:** `live_births_bookkeeping_tests::continuous_births_reach_live_births` (tổng `live.births` bằng số ca sinh của `DemographicTracker` và > 0). Đối chứng `disabled_reproduction_keeps_live_births_zero_and_checksum_unchanged`: tắt sinh sản thì `live.births` vẫn 0 và checksum thế giới sau 1.000 tick là `0x94692e63`, đo trên commit cha trước khi sửa.
+- **Trạng thái:** FIXED bởi commit `fix(core): count continuous births in VitalStatistics so live.births is not zero (F-039)` (nhánh `fix/f039-live-births`, xếp trên `finding/f037-dual-mortality-grace`). `autonomous_reproduction_system` nhận thêm `Option<ResMut<VitalStatistics>>` và ghi sinh ngay cạnh `DemographicTracker`; thiếu resource thì không làm gì.
+
 ### F-038 — Lai ghép tạo được thân lớn hơn mức restore và migration chấp nhận, và không chỗ nào ở giữa kiểm kích thước
 - **Ngày:** 2026-11-16
 - **Loại:** SMELL
