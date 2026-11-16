@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-044 — Ân hạn chết đói và ân hạn chết khát dùng chung một bộ đếm, nên chúng không độc lập khi khác nhau
+- **Ngày:** 2026-11-17
+- **Loại:** SMELL
+- **Vị trí:** `src-tauri/src/core/mortality.rs:57-58` (`starved = energy <= 0 && starving_ticks >= starve_ticks`, `dehydrated = hydration <= 0 && starving_ticks >= dehydration_ticks`); `src-tauri/src/core/world_systems.rs` trong `metabolic_decay_system` (`starving_ticks` tăng khi năng lượng **hoặc** nước ở đáy, về 0 khi cả hai dương); `mortality.rs:71-76` (chết khát ghi vào `DemographicTracker` là "Starvation"/"Senescence")
+- **Phát hiện bởi:** tay (chẩn đoán thăm dò sau E-SEL1, rồi đọc lại code)
+- **Triệu chứng:** khi `live.starve_ticks` khác `live.dehydration_ticks`, mức ân hạn của đáy này bị tính từ lúc chạm đáy kia. Ví dụ `starve_ticks` 1.000 và `dehydration_ticks` 10: một con đã đói 500 tick (nước vẫn còn) chết khát **ngay** tick nước chạm 0, không có 10 tick ân hạn nào. Với mặc định 120 / 120, quy tắc tương đương "120 tick liên tiếp ở đáy, bất kể đáy nào", nên mọi lần chạy đã có (E2, E-SEL1 smoke, cấu hình mặc định) không bị ảnh hưởng. `dual_mortality_grace_tests` đặt `dehydration_ticks` 65.536 nên cũng không chạm tới. Chết khát bị ghi sai nguyên nhân chỉ ảnh hưởng telemetry; code tự chú thích điều đó.
+- **Tái hiện:** chưa có test. Cấu hình để thấy: `live.mortality = 1`, `live.starve_ticks = 1000`, `live.dehydration_ticks = 10`, một agent năng lượng 0 và nước dương trong 500 tick, rồi nước về 0.
+- **Test khoá lại:** chưa có.
+- **Trạng thái:** OPEN. Sửa đúng là hai bộ đếm riêng. Việc đó thêm một trường vào `HomeostaticState`, chạm định dạng lưu và đổi quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau, nên cần quyết định của chủ dự án và một thẻ riêng.
+
 ### F-043 — `live.food_cap` không có tác dụng: `apply_environmental_effects_system` ghi đè trần thức ăn bằng hằng 50 ở mỗi tick
 - **Ngày:** 2026-11-17
 - **Loại:** BUG (yếu tố khai báo trong manifest không tới được thế giới)
