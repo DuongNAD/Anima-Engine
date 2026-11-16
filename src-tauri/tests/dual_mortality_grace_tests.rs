@@ -12,9 +12,9 @@
 //! `LiveExperimentAdapter::ensure_observables_supported` refuses `live.deaths` without a death rule
 //! precisely so it can never report a fabricated zero; with one declared, it reports one.
 //!
-//! This file pins today's behaviour so it cannot drift silently. QĐ-A′ (owner, 2026-11-14) drops
-//! `agent_mortality_system` from the schedule. When that lands every pinned value below flips, and
-//! the test must be inverted to assert the grace and the counted death, not deleted.
+//! FIXED by QD-A' (owner, 2026-11-14): `agent_mortality_system` is no longer scheduled, so the
+//! first test below now asserts the grace and the counted death (it was a characterization test
+//! pinning the bug, inverted rather than deleted).
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
@@ -72,7 +72,7 @@ fn starving_founder_world() -> LiveExperimentAdapter {
             "the manifest keys are what reaches the world"
         );
         // Live worlds do not carry the app's tracker. It is inserted here only to attribute the
-        // death: `agent_mortality_system` is its sole writer.
+        // death: `mortality_system` is its writer.
         world.insert_resource(DemographicTracker::default());
         {
             let mut field = world.resource_mut::<ResourceField>();
@@ -107,7 +107,7 @@ fn observable(sample: &[(String, f64)], id: &str) -> f64 {
 }
 
 #[test]
-fn a_declared_starvation_grace_is_bypassed_and_live_deaths_reports_zero() {
+fn a_declared_starvation_grace_is_honoured_and_live_deaths_counts_the_death() {
     let mut adapter = starving_founder_world();
 
     // The most consecutive bottom ticks the founder was ever seen alive with, after a tick ran.
@@ -143,22 +143,25 @@ fn a_declared_starvation_grace_is_bypassed_and_live_deaths_reports_zero() {
          starve_ticks={STARVE_TICKS} tracker_starvation={tracker_starvation} live_deaths={live_deaths}"
     );
 
-    // One assertion, so a change reports all three values at once. Pinned today:
-    // - 0 bottom ticks survived: killed the tick its energy ran out, not after `STARVE_TICKS`;
-    // - 1 death in `DemographicTracker`, so `agent_mortality_system` did the killing;
-    // - 0 in `live.deaths`: `mortality_system`, the only writer of `VitalStatistics`, never fired.
-    // After QD-A' expect (STARVE_TICKS - 1, 0, 1.0), what the control below measures: invert this
-    // test then, do not delete it.
+    // One assertion, so a change reports all three values at once. Since QD-A' (F-037) only
+    // `mortality_system` is scheduled:
+    // - STARVE_TICKS - 1 bottom ticks survived: the grace is honoured, as in the control below;
+    // - 1 death in `DemographicTracker`, recorded by `mortality_system` itself;
+    // - 1.0 in `live.deaths`: the death reaches `VitalStatistics`.
     assert_eq!(
-        (most_bottom_ticks_alive, tracker_starvation, live_deaths),
-        (0, 1, 0.0),
+        (
+            most_bottom_ticks_alive,
+            tracker_starvation,
+            live_deaths
+        ),
+        (STARVE_TICKS - 1, 1, 1.0),
         "(bottom ticks survived, DemographicTracker starvation deaths, summed live.deaths) changed: \
-         if agent_mortality_system has left the schedule (QD-A'), invert this test"
+         has a second mortality system been scheduled again (F-037)?"
     );
 }
 
 /// Control: `mortality_system` alone honours the grace and records the death, so the pinned values
-/// above come from the schedule running `agent_mortality_system` beside it, not from this rule.
+/// of the scheduled world match this rule alone.
 ///
 /// A hand-built one-system schedule, on purpose: it isolates the rule and claims nothing about the
 /// app's schedule. The test advances `starving_ticks` itself, as `metabolic_decay_system` does for
