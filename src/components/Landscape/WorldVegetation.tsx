@@ -6,7 +6,7 @@ import { FloraType } from './utils/worldGen';
 import { makeFloraGeometry } from './utils/floraGeometry';
 import { VEGETATION_BASE_SIZE } from './utils/floraClearance';
 import { sampleMeshHeight } from './utils/worldSample';
-import { installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
+import { debugFloraDensityScale, installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
 import {
   CASTS_SHADOW,
   buildFloraSources,
@@ -203,6 +203,8 @@ const ChunkedFlora: React.FC<{
   tier: QualityTier;
 }> = ({ world, geoms, renderSize, heightRatio, meshResolution, baseSize, tier }) => {
   const cfg = getQualityTierConfig(tier);
+  // Test-only (RW-C4 negative control); `1` in every production build.
+  const densityScale = useMemo(() => debugFloraDensityScale(), []);
   const sources = useMemo(
     () =>
       buildFloraSources(world, geoms, {
@@ -210,9 +212,9 @@ const ChunkedFlora: React.FC<{
         heightRatio,
         meshResolution,
         baseSize,
-        density: cfg.vegetationDensity,
+        density: cfg.vegetationDensity * densityScale,
       }),
-    [world, geoms, renderSize, heightRatio, meshResolution, baseSize, cfg.vegetationDensity],
+    [world, geoms, renderSize, heightRatio, meshResolution, baseSize, cfg.vegetationDensity, densityScale],
   );
   const impostorGeometry = useMemo(() => makeImpostorGeometry(), []);
   useEffect(() => () => impostorGeometry.dispose(), [impostorGeometry]);
