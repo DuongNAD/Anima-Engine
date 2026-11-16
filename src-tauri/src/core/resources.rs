@@ -571,6 +571,24 @@ impl ReproductionPolicy {
     }
 }
 
+/// Whether `steering_drive_system` writes `InertiaComponent.target_velocity` (ADR-0006 option A,
+/// F-042).
+///
+/// **Off by default and when absent.** With no resource, or `enabled == false`, the system
+/// returns before touching anything, so `target_velocity` stays zero and the legacy trajectory
+/// (creatures that oscillate but never translate) is bit-identical to every run made before the
+/// drive existed. The desktop app inserts nothing; a live manifest opts in with `live.locomotion`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LocomotionPolicy {
+    pub enabled: bool,
+}
+
+impl LocomotionPolicy {
+    pub const fn disabled() -> Self {
+        Self { enabled: false }
+    }
+}
+
 /// Whether newly created agents get their own heritable brain, and what shape it takes.
 ///
 /// **Off by default.** With `evolved = false` nothing spawns a [`crate::core::components::AgentBrain`]
