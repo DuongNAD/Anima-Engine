@@ -511,6 +511,9 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
   `scripts/verify_esel1_artifacts.mjs`) và siết tám kẽ hở G1–G8; người kiểm chứng độc lập: VERIFIED.
 - **#83** — **F-043**: `live.food_cap` chưa từng có tác dụng (bị ghi đè về 50 mỗi tick); sửa bằng `LiveFoodCap`,
   đường mặc định không đổi. Kèm sửa đổi 1 của E-SEL1 (ghi lại smoke lần 1, thêm kiểm tra thao tác).
+- **#84** — sửa đổi 2: E-SEL1 **đóng tại smoke, không có thí nghiệm**. Có test giữ cho manifest thí nghiệm không
+  chạy được.
+- **#85** — test: agent hết năng lượng có `target_velocity` bằng 0 (P3).
 
 #### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
 
@@ -555,9 +558,19 @@ khẳng định. Không seed thí nghiệm nào chạy; không giá trị khối
 `artifacts/experiments/e-sel1-smoke-record/`; chi tiết ở
 [kế hoạch E-SEL1](../ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md).
 
-**Quyết định của chủ dự án.** Có làm một bản đăng ký mới với yếu tố khan hiếm đánh vào đồng cỏ không. Đồng cỏ là
-nguồn sống thật của quần thể; yếu tố đó cần một khoá manifest mới. Một chẩn đoán thăm dò, không đọc khối lượng cơ
-thể, đang đo hai thứ: cái gì giới hạn quần thể, và núm nào hạ được standing crop. Kết quả sẽ ghi vào đây.
+**Quyết định của chủ dự án: QĐ-SEL1b.** Có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
+Bằng chứng là [chẩn đoán sau E-SEL1](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md): đo thăm dò, mù với
+khối lượng cơ thể, seed 1–6. Nó cho thấy:
+- Gặm đồng cỏ là 90–93 % thu nhập của con mồi; `Food` chỉ vài phần trăm.
+- Đồng cỏ không bao giờ cạn, vì sinh sản dừng cứng ở 80 con mồi (`agent_systems.rs:715`).
+- Nước, không phải thức ăn, giới hạn quần thể.
+- Chỉ hạ sức chứa đồng cỏ mới đưa standing crop vào dải 0,4–0,6.
+
+Phương án:
+- **A** (khuyến nghị): khoá trần sinh sản `live.prey_cap`, rồi khan hiếm đồng cỏ; đo thăm dò trước khi đăng ký.
+- **B**: khan hiếm nước.
+- **C**: chỉ hạ sức chứa.
+- **D**: dừng dòng này, dồn sức cho S43.
 
 Có hai quan sát từ một seed, chưa kết luận:
 - Nhánh `live.mutation_rate = 0` tuyệt chủng ở mọi lượt smoke.
@@ -569,9 +582,8 @@ bước C trước mọi seed thí nghiệm; kết quả, kể cả null, báo c
 #### P3 — Câu hỏi mở nhỏ đi kèm #76
 
 `LIVE_MODEL_VERSION` chưa tăng vì đường mặc định không đổi (chủ dự án xác nhận hay tăng) · cảm biến và bộ lái
-dùng khoảng cách Euclid không bọc biên, nên agent sát biên có thể đi đường vòng · chưa có test riêng cho việc
-`target_velocity` về 0 khi năng lượng ≤ 0 (mã đúng, đã kiểm) · bật vận động mặc định trong app là một quyết
-định riêng sau khi xem số đo.
+dùng khoảng cách Euclid không bọc biên, nên agent sát biên có thể đi đường vòng · bật vận động mặc định trong app
+là một quyết định riêng sau khi xem số đo. (Test cho `target_velocity` về 0 khi năng lượng ≤ 0: xong ở #85.)
 
 #### P4 — Phần còn lại của "thế giới đọc được" (phần cứng/quota, không phải thiết kế)
 
