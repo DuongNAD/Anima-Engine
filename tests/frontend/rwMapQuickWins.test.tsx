@@ -112,7 +112,7 @@ describe('RW-B1 — map quick wins', () => {
       expect(setDprCalls).toContain(1.5);
       expect(shadowState.enabled).toBe(true);
 
-      const lowBtn = screen.getByRole('button', { name: 'Nhẹ' });
+      const lowBtn = screen.getByRole('button', { name: 'Thấp' });
       act(() => {
         fireEvent.click(lowBtn);
       });
@@ -142,7 +142,7 @@ describe('RW-B1 — map quick wins', () => {
       expect(setDprCalls[setDprCalls.length - 1]).toBe(1);
       expect(shadowState.enabled).toBe(false);
 
-      const highBtn = screen.getByRole('button', { name: 'Đẹp' });
+      const highBtn = screen.getByRole('button', { name: 'Cao' });
       act(() => {
         fireEvent.click(highBtn);
       });

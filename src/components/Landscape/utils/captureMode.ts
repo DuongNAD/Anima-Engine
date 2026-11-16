@@ -1,5 +1,6 @@
 import { CANONICAL_VIEW_CAMERAS, CANONICAL_VIEW_IDS } from './mapManifest';
 import type { CanonicalPoint, CanonicalViewId } from './mapManifest';
+import { QUALITY_TIERS, type QualityTier } from './qualityTiers';
 
 // ---------------------------------------------------------------------------------------
 // Deterministic capture mode for the canonical map views.
@@ -28,7 +29,7 @@ import type { CanonicalPoint, CanonicalViewId } from './mapManifest';
 /** Weather states `WorldWeather` accepts. */
 export type CaptureWeather = 'clear' | 'rain' | 'snow' | 'fog';
 /** Quality presets `WorldShowcase` accepts. */
-export type CaptureQuality = 'low' | 'high';
+export type CaptureQuality = QualityTier;
 
 /** A fully specified, reproducible shot. */
 export interface CaptureRequest {
@@ -55,7 +56,7 @@ export const CAPTURE_DEFAULT_WEATHER: CaptureWeather = 'clear';
 export const CAPTURE_DEFAULT_QUALITY: CaptureQuality = 'high';
 
 const WEATHERS: readonly CaptureWeather[] = ['clear', 'rain', 'snow', 'fog'];
-const QUALITIES: readonly CaptureQuality[] = ['low', 'high'];
+const QUALITIES: readonly CaptureQuality[] = QUALITY_TIERS;
 
 function isCanonicalView(v: string): v is CanonicalViewId {
   return (CANONICAL_VIEW_IDS as readonly string[]).includes(v);
