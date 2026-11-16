@@ -229,15 +229,14 @@ fn test_real_simulation_engine_start_stop() {
     // Verify agent segment telemetry data
     {
         let states = engine.agent_states.read().unwrap();
-        assert!(
-            states.len() >= 30,
-            "Should track at least 30 segments (10 agents * 3 segments, found {})",
-            states.len()
-        );
+        // Exact, and 51 on purpose: every agent has 3 segments, and by the end of tick 1 the world
+        // holds 17 agents (10 founders plus the 7 Prey that reproduce on tick 1; see
+        // `persistence_tests::test_engine_save_load_lifecycle` for why 17). 17 * 3 = 51.
+        // Measured 2026-11-15 on macOS arm64: 51 in 30 of 30 process runs.
         assert_eq!(
-            states.len() % 3,
-            0,
-            "Segments count should be a multiple of 3 per agent"
+            states.len(),
+            51,
+            "Should track exactly 51 segments (17 agents * 3 segments)"
         );
 
         // Find segment with ID 1 and verify parent

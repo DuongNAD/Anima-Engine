@@ -234,6 +234,27 @@ fn test_predator_prey_collision_and_combat() {
         (gained - lost * anima_engine_lib::core::ecology::LINDEMAN_EFFICIENCY).abs() < 1e-3,
         "gained {gained} should be 40% of lost {lost}"
     );
+
+    // The ratio above only relates two numbers the system produced to each other. These pin the
+    // numbers themselves. The prey strip must equal what `predation_capture` returns for this
+    // contact (prey reserve 30, predator deficit 100 - 50), and the predator must be credited
+    // exactly that times LINDEMAN_EFFICIENCY. Both sides of each comparison are computed by the
+    // code under test; neither is a literal restated from the assertion's own constant.
+    let captured = anima_engine_lib::core::ecology::predation_capture(30.0, 100.0 - 50.0);
+    assert!(
+        (lost - captured).abs() < 1e-4,
+        "prey lost {lost} but predation_capture says {captured}"
+    );
+    assert!(
+        (gained - captured * anima_engine_lib::core::ecology::LINDEMAN_EFFICIENCY).abs() < 1e-4,
+        "predator gained {gained} but should gain {captured} * LINDEMAN_EFFICIENCY"
+    );
+    // Measured 2026-11-15 on macOS arm64: lost = 11.53846, gained = 4.615383, i.e. the Type III
+    // capture at (30, 50) is 11.538461. A change to the Holling constants moves this on purpose.
+    assert!(
+        (lost - 11.538461).abs() < 1e-4,
+        "the Type III capture for (prey 30, deficit 50) changed: lost {lost}"
+    );
 }
 
 #[test]
