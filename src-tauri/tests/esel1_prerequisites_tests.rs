@@ -275,6 +275,11 @@ fn fixture(tag: &str, founders: f64, with_drift: bool, seeds: &[u64]) -> PathBuf
         "smoke-treatment.json",
         &manifest("t::st", &smoke, &arm(20.0, founders, None)),
     );
+    put(
+        &dir,
+        "smoke-drift.json",
+        &manifest("t::sd", &smoke, &arm(20.0, founders, Some(0.0))),
+    );
     let prereg = serde_json::json!({
         "seeds": { "execution_order": EXP_SEEDS, "smoke_seed": SMOKE_SEED,
                    "min_complete_pairs_for_a_decision": 2 },
@@ -283,11 +288,21 @@ fn fixture(tag: &str, founders: f64, with_drift: bool, seeds: &[u64]) -> PathBuf
         "manifests": {
             "control": "control.json", "treatment": "treatment.json",
             "drift_control_optional_requires_P4": if with_drift { serde_json::json!("drift.json") } else { serde_json::Value::Null },
-            "smoke_control": "smoke-control.json", "smoke_treatment": "smoke-treatment.json"
+            "smoke_control": "smoke-control.json", "smoke_treatment": "smoke-treatment.json",
+            "smoke_drift": if with_drift { serde_json::json!("smoke-drift.json") } else { serde_json::Value::Null }
         }
     });
     std::fs::write(dir.join("esel1-preregistration.json"), prereg.to_string()).unwrap();
     dir
+}
+
+/// A complete lock for a `fixture(..)` of `founders` (control 60, treatment and drift 20).
+fn lock_json(founders: f64) -> serde_json::Value {
+    serde_json::json!({ "duration_ticks": RUNG, "N0": founders, "F_hi": 60, "F_lo": 20 })
+}
+
+fn write_lock(out: &Path, lock: &serde_json::Value) {
+    std::fs::write(out.join("execution-lock.json"), lock.to_string()).unwrap();
 }
 
 fn args(parts: &[&str], dir: &Path, out: &Path) -> Vec<String> {
@@ -308,7 +323,7 @@ fn the_runner_writes_a_parseable_artifact_set_with_a_drift_arm() {
     let dir = fixture("full", 12.0, true, &EXP_SEEDS);
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
-    std::fs::write(out.join("execution-lock.json"), r#"{"duration_ticks":100}"#).unwrap();
+    write_lock(&out, &lock_json(12.0));
     runner::run_with_args(args(&["--ensemble"], &dir, &out)).expect("ensemble runs");
 
     for f in [
@@ -333,12 +348,24 @@ fn the_runner_writes_a_parseable_artifact_set_with_a_drift_arm() {
     assert_eq!(effects["extinction"]["n_extinct_runs_total"], 0);
     // 2 seeds x 3 arms + header.
     assert_eq!(read(&out.join("runs.csv")).lines().count(), 1 + 6);
-    // Every file listed in checksums.sha256 hashes to its line.
+    // Every file listed in checksums.sha256 hashes to its line, and the lock is one of them.
+    let mut listed = Vec::new();
     for line in read(&out.join("checksums.sha256")).lines() {
         let (digest, name) = line.split_once("  ").unwrap();
         let actual = anima_engine_lib::core::sha256::sha256_file(&out.join(name)).unwrap();
         assert_eq!(digest, actual, "{name}");
+        listed.push(name.to_string());
     }
+    assert!(
+        listed.iter().any(|n| n == "execution-lock.json"),
+        "the lock must be covered by checksums.sha256: {listed:?}"
+    );
+    // provenance.json records the lock's sha256.
+    let prov: serde_json::Value =
+        serde_json::from_str(&read(&out.join("provenance.json"))).unwrap();
+    let lock_digest =
+        anima_engine_lib::core::sha256::sha256_file(&out.join("execution-lock.json")).unwrap();
+    assert_eq!(prov["execution_lock_sha256"], lock_digest.as_str());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -348,7 +375,7 @@ fn an_extinct_population_drops_its_pair_and_is_counted() {
     let dir = fixture("extinct", 0.0, false, &EXP_SEEDS);
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
-    std::fs::write(out.join("execution-lock.json"), "{}").unwrap();
+    write_lock(&out, &lock_json(0.0));
     runner::run_with_args(args(&["--ensemble"], &dir, &out)).expect("ensemble runs");
     let effects: serde_json::Value =
         serde_json::from_str(&read(&out.join("effects.json"))).unwrap();
@@ -382,9 +409,49 @@ fn ensemble_is_refused_without_an_execution_lock() {
         "nothing may run before the lock check"
     );
     // A lock for a different rung is refused too.
-    std::fs::write(out.join("execution-lock.json"), r#"{"duration_ticks":60}"#).unwrap();
+    let mut l = lock_json(8.0);
+    l["duration_ticks"] = serde_json::json!(60);
+    write_lock(&out, &l);
     let e = runner::run_with_args(args(&["--ensemble"], &dir, &out)).unwrap_err();
     assert!(e.contains("locks duration_ticks"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// One refusal per field the lock must state, and one per disagreement with the manifests.
+#[test]
+fn ensemble_is_refused_for_an_incomplete_or_disagreeing_lock() {
+    let dir = fixture("badlock", 8.0, true, &EXP_SEEDS);
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let refused = |lock: serde_json::Value, needle: &str| {
+        write_lock(&out, &lock);
+        let e = runner::run_with_args(args(&["--ensemble"], &dir, &out)).unwrap_err();
+        assert!(e.contains(needle), "lock {lock}: {e}");
+        assert!(
+            !out.join("runs.csv").exists(),
+            "nothing may run when the lock is refused"
+        );
+    };
+    // Lacking a field.
+    for field in ["duration_ticks", "N0", "F_hi", "F_lo"] {
+        let mut l = lock_json(8.0);
+        l.as_object_mut().unwrap().remove(field);
+        refused(l, &format!("lacks {field}"));
+    }
+    // A non-numeric field counts as lacking it.
+    let mut l = lock_json(8.0);
+    l["F_lo"] = serde_json::json!("twenty");
+    refused(l, "lacks F_lo");
+    // Disagreeing with the manifests in --manifest-dir.
+    let mut l = lock_json(8.0);
+    l["N0"] = serde_json::json!(9);
+    refused(l, "locks N0 = 9");
+    let mut l = lock_json(8.0);
+    l["F_hi"] = serde_json::json!(61);
+    refused(l, "locks F_hi = 61");
+    let mut l = lock_json(8.0);
+    l["F_lo"] = serde_json::json!(19);
+    refused(l, "locks F_lo = 19");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -394,7 +461,7 @@ fn undeclared_seeds_are_refused() {
     let dir = fixture("badseed", 8.0, false, &[11, 99]);
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
-    std::fs::write(out.join("execution-lock.json"), "{}").unwrap();
+    write_lock(&out, &lock_json(8.0));
     let e = runner::run_with_args(args(&["--ensemble"], &dir, &out)).unwrap_err();
     assert!(e.contains("preregistered execution order"), "{e}");
 
@@ -426,7 +493,7 @@ fn the_runner_refuses_a_second_undeclared_factor() {
     );
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
-    std::fs::write(out.join("execution-lock.json"), "{}").unwrap();
+    write_lock(&out, &lock_json(8.0));
     let e = runner::run_with_args(args(&["--ensemble"], &dir, &out)).unwrap_err();
     assert!(
         e.contains("exactly the initial condition live.food_cap"),
@@ -459,5 +526,85 @@ fn smoke_and_replay_write_only_under_their_own_directories() {
         .join("replay")
         .join("replay-treatment-seed-11-t100.json")
         .is_file());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// G6: the smoke exercises the drift path once when the plan names a smoke drift manifest.
+#[test]
+fn the_smoke_runs_the_drift_arm_when_the_plan_names_a_smoke_drift_manifest() {
+    let dir = fixture("smokedrift", 8.0, true, &EXP_SEEDS);
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    runner::run_with_args(args(&["--smoke"], &dir, &out)).expect("smoke with drift runs");
+    let runs = read(&out.join("smoke").join("runs.csv"));
+    // One seed x three arms + header.
+    assert_eq!(runs.lines().count(), 2 + 3, "{runs}");
+    assert!(runs.lines().any(|l| l.contains("drift")), "{runs}");
+    let prov: serde_json::Value =
+        serde_json::from_str(&read(&out.join("smoke").join("provenance.json"))).unwrap();
+    assert!(prov["manifests"]["initial_conditions_by_arm"]["drift"].is_array());
+    assert!(!out.join("runs.csv").exists());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+/// The smoke's "may not consult live.trait_mass_*" rule is mechanical: no file the smoke writes
+/// contains a body-mass observable name or value (the fixture manifests request every observable).
+#[test]
+fn the_smoke_writes_no_body_mass_anywhere() {
+    let dir = fixture("smokemass", 8.0, true, &EXP_SEEDS);
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    // The runner also refuses (Err) to print or write any text naming a body-mass observable, so a
+    // successful smoke means no stdout line contained one either.
+    runner::run_with_args(args(&["--smoke"], &dir, &out)).expect("smoke runs");
+    let smoke = out.join("smoke");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&smoke).unwrap() {
+        let path = entry.unwrap().path();
+        let text = read(&path);
+        assert!(
+            !text.contains("trait_mass"),
+            "{} names a body-mass observable",
+            path.display()
+        );
+        checked += 1;
+    }
+    // No manifest copy, paired report, effects or per-seed deltas: those carry or derive from body mass.
+    for absent in [
+        "effects.json",
+        "paired-report.json",
+        "per-seed-deltas.csv",
+        "manifests",
+    ] {
+        assert!(
+            !smoke.join(absent).exists(),
+            "{absent} must not exist in smoke/"
+        );
+    }
+    for present in [
+        "runs.csv",
+        "smoke-series.csv",
+        "smoke-report.json",
+        "provenance.json",
+        "summary.md",
+        "checksums.sha256",
+    ] {
+        assert!(smoke.join(present).is_file(), "{present}");
+    }
+    assert_eq!(checked, 6);
+    // The header of runs.csv says what it is limited to.
+    assert!(read(&smoke.join("runs.csv")).starts_with("# SMOKE: allow-listed observables only"));
+    // The quantities the algorithm reads are present.
+    let report: serde_json::Value =
+        serde_json::from_str(&read(&smoke.join("smoke-report.json"))).unwrap();
+    assert_eq!(report["contains_body_mass"], false);
+    let run0 = &report["runs"][0];
+    for k in [
+        "min_live_agent_count_all_samples",
+        "max_live_agent_count_tick_le_1200",
+        "mean_live_standing_crop_tick_gt_half_T",
+        "us_per_tick",
+    ] {
+        assert!(run0.get(k).is_some(), "{k}");
+    }
     let _ = std::fs::remove_dir_all(&dir);
 }
