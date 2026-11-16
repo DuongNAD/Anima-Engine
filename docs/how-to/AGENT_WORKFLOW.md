@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-14
+last_reviewed: 2026-11-16
 review_cycle: monthly
 ---
 
@@ -19,7 +19,7 @@ hoạch mới. Nó gom những gì cần để bắt đầu và trỏ về đún
 | Prompt lead, luật swarm, verifier, từng thẻ | [File prompt swarm](../ai/planning/2026-11-05-swarm-prompts.md) |
 | Prompt chi tiết của B3b, HT-C…; BLOCK 0 (luật đứng) | [Brief 31/10](../ai/planning/2026-10-31-antigravity-brief.md) |
 | Quyết định của chủ dự án | [Roadmap 31/10 §4](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) |
-| Số đo | [Roadmap 31/10 §1](../planning/COMPLETION_ROADMAP_2026-10-31.md#1-đo-hôm-nay) cho tới khi hai cây hợp nhất; sau đó [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) |
+| Số đo | [STATE §1.g](../planning/STATE_OF_THE_PROJECT.md#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main) (CI của thân cây tại `bb78e63`, 2026-11-16) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
 
 Trạng thái trong trang này ghi ngày **2026-11-14**. Khi trang và một tài liệu ở bảng trên lệch nhau,
 tài liệu ở bảng thắng; sửa trang này.
@@ -30,6 +30,9 @@ tài liệu ở bảng thắng; sửa trang này.
   phát hành → nhiều máy.
 - **Thân cây là `feat/ecological-selection`** (QĐ-A, 2026-11-01). Chồng PR #38 → #40 trên
   `fix/ci-gates-green` sẽ được gộp **vào** thân cây (thẻ T2).
+- **2026-11-16:** T2 (HT-C) đã merge thành PR #45 (2026-11-15), và `main` đã được fast-forward lên thân cây
+  (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
+  trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
   (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-4, QĐ-5, QĐ-P1…P3, QĐ-M1…M8.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
@@ -52,7 +55,7 @@ tài liệu ở bảng thắng; sửa trang này.
 | **D0** | Kiểm kê PR mở và nhánh remote (chỉ đọc) | ✅ ngay | — | Báo cáo mới cần front matter và một dòng trong [`docs/ai/README.md`](../ai/README.md), nếu không `npm run check:docs` đỏ — uỷ quyền ở §4 |
 | **D1** | Phân loại finding của `AUDIT_REPORT.md` (chỉ đọc) | ✅ ngay | — | File chỉ có trên `origin/main`; thẻ nói cách đọc |
 | **T1** `[RUST]` | **B3b** — năm gate mà PR #40 làm đỏ | ✅ khi đã dán §4 | QĐ-B ✓, QĐ-F028 ✓ | Base `origin/fix/ci-gates-green`. Nhánh đó còn icon `placeholder` (F-028): **chép `src-tauri/icons/` từ thân cây trước**, nếu không sẽ không biên dịch trên macOS |
-| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ⏳ | T1 đã merge; dòng uỷ quyền T2 | Xung đột ở `PROJECT.md`, `AGENTS.md`, `STATE` để chủ dự án giải. Giữ mục IPC và `.anmw` của `PROJECT.md` thân cây — bản trên `main` đã bị ghi đè |
+| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ PR #45 (2026-11-15) | T1 đã merge; dòng uỷ quyền T2 | Xung đột ở `PROJECT.md`, `AGENTS.md`, `STATE` để chủ dự án giải. Giữ mục IPC và `.anmw` của `PROJECT.md` thân cây — bản trên `main` đã bị ghi đè |
 | **G8** | Hợp đồng IPC | ✅ **phần lớn đã làm 2026-11-14** trên thân cây | — | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
 | **P1–P3** | Bài báo | ⛔ | QĐ-P1, QĐ-P2 trống | Luật L4: ô quyết định trống thì không chạy |
 
@@ -161,7 +164,7 @@ Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14.
 - **STATE §1 là đo ngày 27/07.** Số mới hơn ở roadmap 31/10 §1 và §4; banner đầu STATE §1 nói rõ.
 - **`fix/ci-gates-green` không biên dịch trên macOS** vì `src-tauri/icons/32x32.png` ở đó là file text
   12 byte `placeholder` (F-028). Thân cây có icon PNG thật.
-- **`PROJECT.md` trên `main` đã bị ghi đè** bằng một tài liệu khác (kế hoạch swarm §1). Khi T2 gộp,
+- **~~`PROJECT.md` trên `main` đã bị ghi đè~~ — đã hết hiệu lực 2026-11-16:** `main` nay mang `PROJECT.md` của thân cây. Trước đó nó đã bị ghi đè bằng một tài liệu khác (kế hoạch swarm §1). Khi T2 gộp,
   giữ bản thân cây; mục Interface Contracts của nó đã được đối chiếu với mã ngày 2026-11-14.
 - **Hook rustfmt trước 2026-11-14 không chạy trên macOS** (gọi `powershell.exe`). File `.rs` sửa trên
   Mac trước ngày đó có thể chưa format; roadmap 31/10 đo được 67 khối lệch `cargo fmt`.
@@ -173,5 +176,5 @@ Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14.
 
 ## 8. Sau mỗi đợt
 
-Chủ dự án merge, ghi số đo vào roadmap 31/10 §1 (hoặc STATE §1.g sau khi hai cây hợp nhất), thêm
+Chủ dự án merge, ghi số đo vào STATE §1 (một tiểu mục `§1.x` mới, tiếp sau §1.g), thêm
 một dòng vào [`TODO.md`](../../TODO.md), rồi sửa §1 và §3 của trang này.

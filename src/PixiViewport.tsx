@@ -676,93 +676,165 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
       });
     }
 
-    // 4. Draw segment connections/linkages
-    if (Array.isArray(segments)) {
-      segments.forEach((s) => {
-        if (s && s.parent_segment_id !== null && s.parent_segment_id !== undefined) {
-          const parent = segments.find(
-            (p) => p && p.agent_id === s.agent_id && p.segment_id === s.parent_segment_id
-          );
-          if (parent) {
-            const pyVal = proj === 'xy' ? parent.y : parent.z;
-            const syVal = proj === 'xy' ? s.y : s.z;
-            const [px, py] = getCoords(parent.x, pyVal);
-            const [cx, cy] = getCoords(s.x, syVal);
+    // 4 & 5. Draw articulated 2D creatures grouped per `agent_id` (`RW1-4`, `RW2-8`):
+    // Each N-segment creature draws N-1 body segment strokes sized by `length` and `radius`,
+    // 1 species-distinct head shape + color, and 1 hydration bar per creature.
+    if (Array.isArray(segments) && segments.length > 0) {
+      const lengthRatio = (len: number): number =>
+        typeof len === 'number' && Number.isFinite(len) && len > 0 ? len : 1.0;
+      const radiusRatio = (rad: number): number =>
+        typeof rad === 'number' && Number.isFinite(rad) && rad > 0 ? rad / 0.25 : 1.0;
+      const creatureGroups = new Map<number, SegmentState[]>();
+      const ungrouped: SegmentState[] = [];
 
-            const opacity = 0.3 + ((s.energy || 0) / 100.0) * 0.7;
-            lineStyle(graphics, 3.5 * zoomRef.current, 0x888888, opacity);
-            moveTo(graphics, px, py);
-            lineTo(graphics, cx, cy);
-            strokePath(graphics);
-          }
-        }
-      });
-    }
-
-    // 5. Draw segment geometries (Predators and Prey with direction indicators)
-    if (Array.isArray(segments)) {
       segments.forEach((s) => {
         if (!s) return;
-        const yVal = proj === 'xy' ? s.y : s.z;
-        const [cx, cy] = getCoords(s.x, yVal);
-        const opacity = 0.3 + ((s.energy || 0) / 100.0) * 0.7;
+        if (typeof s.agent_id === 'number' && Number.isFinite(s.agent_id)) {
+          const existing = creatureGroups.get(s.agent_id);
+          if (existing) existing.push(s);
+          else creatureGroups.set(s.agent_id, [s]);
+        } else {
+          ungrouped.push(s);
+        }
+      });
 
-        const angle = Array.isArray(s.head_direction)
-          ? Math.atan2(proj === 'xy' ? s.head_direction[1] : s.head_direction[2], s.head_direction[0])
+      const renderCreature = (agentSegments: SegmentState[]): void => {
+        if (agentSegments.length === 0) return;
+        let root = agentSegments[0];
+        for (let i = 0; i < agentSegments.length; i++) {
+          const candidate = agentSegments[i];
+          if (candidate.parent_segment_id === null || candidate.parent_segment_id === undefined) {
+            root = candidate;
+            break;
+          }
+        }
+
+        const segById = new Map<number, SegmentState>();
+        for (let i = 0; i < agentSegments.length; i++) {
+          const seg = agentSegments[i];
+          segById.set(seg.segment_id, seg);
+        }
+
+        const rootYVal = proj === 'xy' ? root.y : root.z;
+        const [cx, cy] = getCoords(root.x, rootYVal);
+        const opacity = 0.3 + ((root.energy || 0) / 100.0) * 0.7;
+        const angle = Array.isArray(root.head_direction)
+          ? Math.atan2(
+              proj === 'xy' ? root.head_direction[1] : root.head_direction[2],
+              root.head_direction[0],
+            )
           : 0;
 
-        if (s.agent_type === 'predator') {
-          const predSize = ((s.energy || 50) / 100.0 * 10 + 10) * zoomRef.current;
-          beginFill(graphics, 0xffffff, opacity);
-          const p1_x = cx + Math.cos(angle) * predSize;
-          const p1_y = cy + Math.sin(angle) * predSize;
-          const p2_x = cx + Math.cos(angle + 2.3) * predSize * 0.7;
-          const p2_y = cy + Math.sin(angle + 2.3) * predSize * 0.7;
-          const p3_x = cx + Math.cos(angle - 2.3) * predSize * 0.7;
-          const p3_y = cy + Math.sin(angle - 2.3) * predSize * 0.7;
-          drawPolygon(graphics, [p1_x, p1_y, p2_x, p2_y, p3_x, p3_y]);
+        const isPredator = root.agent_type === 'predator';
+        const isPrey = root.agent_type === 'prey';
+        const headColor = isPredator ? 0xe2554f : isPrey ? 0x5ad67d : 0xcfd6dd;
+        const bodyColor = isPredator ? 0xc8433d : isPrey ? 0x43b566 : 0x9aa4b0;
+
+        const bodySegments: SegmentState[] = [];
+        for (let i = 0; i < agentSegments.length; i++) {
+          const seg = agentSegments[i];
+          if (seg !== root) bodySegments.push(seg);
+        }
+
+        // Draw N-1 body segment strokes first so the head reads cleanly on top.
+        for (let i = 0; i < bodySegments.length; i++) {
+          const seg = bodySegments[i];
+          const parent =
+            seg.parent_segment_id !== null && seg.parent_segment_id !== undefined
+              ? (segById.get(seg.parent_segment_id) ?? root)
+              : root;
+          const pyVal = proj === 'xy' ? parent.y : parent.z;
+          const syVal = proj === 'xy' ? seg.y : seg.z;
+          const [px, py] = getCoords(parent.x, pyVal);
+          const [sx, sy] = getCoords(seg.x, syVal);
+
+          const dx = sx - px;
+          const dy = sy - py;
+          const dist = Math.hypot(dx, dy);
+          const ux = dist > 1e-4 ? dx / dist : Math.cos(angle);
+          const uy = dist > 1e-4 ? dy / dist : Math.sin(angle);
+
+          const lenMul = lengthRatio(seg.length);
+          const radMul = radiusRatio(seg.radius);
+          const halfLenPx =
+            Math.max(4 * lenMul * zoomRef.current, lenMul * currentScale * zoomRef.current) * 0.5;
+          const strokeW = 3.5 * radMul * zoomRef.current;
+          const segOpacity = 0.3 + ((seg.energy ?? root.energy ?? 0) / 100.0) * 0.7;
+
+          lineStyle(graphics, strokeW, bodyColor, segOpacity);
+          moveTo(graphics, sx - ux * halfLenPx, sy - uy * halfLenPx);
+          lineTo(graphics, sx + ux * halfLenPx, sy + uy * halfLenPx);
+          strokePath(graphics);
+        }
+
+        // Draw 1 head shape per creature, sized from root length & radius (`RW2-8`).
+        const rootLenMul = lengthRatio(root.length);
+        const rootRadMul = radiusRatio(root.radius);
+        let headRadiusPx = 10 * rootRadMul * zoomRef.current;
+
+        if (isPredator) {
+          const baseSize = (((root.energy || 50) / 100.0) * 10 + 10) * zoomRef.current;
+          const predLen = baseSize * rootLenMul;
+          const predWing = baseSize * 0.7 * rootRadMul;
+          headRadiusPx = Math.max(predLen * 0.55, predWing);
+
+          beginFill(graphics, headColor, opacity);
+          const p1x = cx + Math.cos(angle) * predLen;
+          const p1y = cy + Math.sin(angle) * predLen;
+          const p2x = cx + Math.cos(angle + 2.3) * predWing;
+          const p2y = cy + Math.sin(angle + 2.3) * predWing;
+          const p3x = cx + Math.cos(angle - 2.3) * predWing;
+          const p3y = cy + Math.sin(angle - 2.3) * predWing;
+          drawPolygon(graphics, [p1x, p1y, p2x, p2y, p3x, p3y]);
           endFill(graphics);
 
-          // Head arrow indicator line
-          lineStyle(graphics, 2 * zoomRef.current, 0xffffff, 0.7);
+          lineStyle(graphics, 2 * rootRadMul * zoomRef.current, headColor, 0.7);
           moveTo(graphics, cx, cy);
-          lineTo(graphics, cx + Math.cos(angle) * predSize * 1.4, cy + Math.sin(angle) * predSize * 1.4);
+          lineTo(graphics, cx + Math.cos(angle) * predLen * 1.4, cy + Math.sin(angle) * predLen * 1.4);
           strokePath(graphics);
-        } else if (s.agent_type === 'prey') {
-          const preySize = 10 * zoomRef.current;
-          beginFill(graphics, 0x777777, opacity);
+        } else if (isPrey) {
+          const preySize = 10 * rootRadMul * zoomRef.current;
+          headRadiusPx = preySize;
+          beginFill(graphics, headColor, opacity);
           drawCircle(graphics, cx, cy, preySize);
           endFill(graphics);
 
-          // Tail indicator pointing backward
-          lineStyle(graphics, 2.5 * zoomRef.current, 0x777777, opacity * 0.8);
-          moveTo(graphics, cx, cy);
-          lineTo(graphics, cx - Math.cos(angle) * preySize * 1.6, cy - Math.sin(angle) * preySize * 1.6);
-          strokePath(graphics);
-
-          // Prey hydration bar
-          if (s.hydration !== undefined) {
-            const barW = 16 * zoomRef.current;
-            const barH = 3 * zoomRef.current;
-            const bx = cx - barW / 2;
-            const by = cy - preySize - 6 * zoomRef.current;
-
-            beginFill(graphics, 0x333333, 0.85); // Backing dark gray
-            drawRect(graphics, bx, by, barW, barH);
-            endFill(graphics);
-
-            beginFill(graphics, 0xdddddd, 0.95); // Hydration level light gray
-            drawRect(graphics, bx, by, barW * (s.hydration / 100.0), barH);
-            endFill(graphics);
+          if (bodySegments.length === 0) {
+            lineStyle(graphics, 2.5 * rootRadMul * zoomRef.current, headColor, opacity * 0.8);
+            moveTo(graphics, cx, cy);
+            lineTo(
+              graphics,
+              cx - Math.cos(angle) * preySize * 1.6 * rootLenMul,
+              cy - Math.sin(angle) * preySize * 1.6 * rootLenMul,
+            );
+            strokePath(graphics);
           }
         } else {
-          const isRoot = s.parent_segment_id === null || s.parent_segment_id === undefined;
-          const color = isRoot ? 0x888888 : 0xaaaaaa;
-          beginFill(graphics, color, opacity);
-          drawCircle(graphics, cx, cy, 10 * zoomRef.current);
+          beginFill(graphics, headColor, opacity);
+          drawCircle(graphics, cx, cy, headRadiusPx);
           endFill(graphics);
         }
-      });
+
+        // Draw 1 hydration bar per creature (`RW1-4`).
+        if (root.hydration !== undefined && Number.isFinite(cx) && Number.isFinite(cy)) {
+          const barW = 16 * zoomRef.current;
+          const barH = 3 * zoomRef.current;
+          const bx = cx - barW / 2;
+          const by = cy - headRadiusPx - 6 * zoomRef.current;
+          const fillRatio = Math.min(1, Math.max(0, root.hydration / 100.0));
+
+          beginFill(graphics, 0x1e293b, 0.85);
+          drawRect(graphics, bx, by, barW, barH);
+          endFill(graphics);
+
+          beginFill(graphics, 0x38bdf8, 0.95);
+          drawRect(graphics, bx, by, barW * fillRatio, barH);
+          endFill(graphics);
+        }
+      };
+
+      creatureGroups.forEach(renderCreature);
+      ungrouped.forEach((seg) => renderCreature([seg]));
     }
 
     // 6. Draw Minimap corner overlay widget
@@ -810,7 +882,9 @@ export const PixiViewport: React.FC<PixiViewportProps> = ({
         const [mx, my] = getMinimapCoords(s.x, sy);
         const isRoot = s.parent_segment_id === null || s.parent_segment_id === undefined;
         if (isRoot) {
-          beginFill(graphics, s.agent_type === 'predator' ? 0xffffff : 0x777777, 1.0);
+          const dotColor =
+            s.agent_type === 'predator' ? 0xe2554f : s.agent_type === 'prey' ? 0x5ad67d : 0xcfd6dd;
+          beginFill(graphics, dotColor, 1.0);
           drawCircle(graphics, mx, my, 2.5);
           endFill(graphics);
         }

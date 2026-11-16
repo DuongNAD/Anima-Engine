@@ -22,8 +22,6 @@ import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
-import { CAPTURE_READY_FLAG, CAPTURE_SETTLE_FRAMES, readCaptureRequest } from './utils/captureMode';
-import type { CaptureRequest } from './utils/captureMode';
 import CaptureEvidenceOverlay from './CaptureEvidenceOverlay';
 import { readInjectedEvidence } from './utils/mapEvidence';
 import {
@@ -41,7 +39,28 @@ import {
   type LodFocusPayload,
 } from '../../utils/lodFocus';
 import { sunDirectionForTime } from './utils/skyParams';
-import { ALWAYS_DAY_HOUR, stepTimeOfDay } from './utils/sceneClock';
+import { ALWAYS_DAY_HOUR, sceneDelta, stepTimeOfDay } from './utils/sceneClock';
+import {
+  QUALITY_SELECTIONS,
+  QUALITY_SELECTION_LABELS,
+  createAutoQualityState,
+  getCanvasDprProp,
+  getQualityTierConfig,
+  legacyVegetationQuality,
+  readInitialQualitySelection,
+  resolveDeviceDpr,
+  resolveEffectiveQualityState,
+  stepAutoQualityState,
+  type QualitySelection,
+  type QualityTier,
+} from './utils/qualityTiers';
+import {
+  CAPTURE_READY_FLAG,
+  CAPTURE_SETTLE_FRAMES,
+  isAutoQualityAllowed,
+  readCaptureRequest,
+} from './utils/captureMode';
+import type { CaptureRequest } from './utils/captureMode';
 import { audioManager } from './utils/audioManager';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
@@ -72,8 +91,6 @@ const TERRAIN_DYNAMIC_LOD = true;
 // chunks). Bounds GPU/mesh memory for worlds bigger than one in-memory mesh, but unloads distant
 // terrain — suits ground-level (walk/fly, fogged horizon) views, not the whole-map overview.
 const TERRAIN_LOAD_RADIUS = 0;
-
-type Quality = 'high' | 'low';
 
 const CAM_MODES: Array<{ key: CameraMode; label: string }> = [
   { key: 'orbit', label: '🌀 Quay' },
@@ -115,16 +132,37 @@ function applyShadowPass(
 }
 
 /** Applies the quality preset LIVE (no GL-context remount): render scale + shadow pass. */
-const QualityApplier: React.FC<{ quality: Quality }> = ({ quality }) => {
+const QualityApplier: React.FC<{ tier: QualityTier; dprOverride?: number }> = ({
+  tier,
+  dprOverride,
+}) => {
   const { gl, scene, setDpr } = useThree();
   useEffect(() => {
-    const targetDpr =
-      quality === 'high'
-        ? Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.5)
-        : 1;
-    setDpr(targetDpr);
-    applyShadowPass(gl, scene, quality === 'high');
-  }, [quality, gl, scene, setDpr]);
+    const tierConfig = getQualityTierConfig(tier);
+    setDpr(resolveDeviceDpr(tier, window.devicePixelRatio || 1, dprOverride));
+    applyShadowPass(gl, scene, tierConfig.shadows);
+  }, [tier, dprOverride, gl, scene, setDpr]);
+  return null;
+};
+
+/** Monitors live frame times when `qualitySelection === 'auto'` (never mounted in capture mode). */
+const AutoQualityMonitor: React.FC<{
+  onChange: (next: { tier: QualityTier; dprOverride: number | undefined }) => void;
+}> = ({ onChange }) => {
+  const stateRef = useRef(
+    createAutoQualityState({
+      devicePixelRatio: typeof window === 'undefined' ? 1.5 : window.devicePixelRatio || 1,
+    }),
+  );
+  useFrame((_state, rawDelta) => {
+    const dtSeconds = sceneDelta(rawDelta);
+    const prev = stateRef.current;
+    const next = stepAutoQualityState(prev, dtSeconds * 1000);
+    stateRef.current = next;
+    if (next.tier !== prev.tier || next.dprOverride !== prev.dprOverride) {
+      onChange({ tier: next.tier, dprOverride: next.dprOverride });
+    }
+  });
   return null;
 };
 
@@ -216,7 +254,22 @@ export const WorldShowcase: React.FC = () => {
   const [alwaysDay, setAlwaysDay] = useState(false);
   const [weather, setWeather] = useState<WeatherKind>(capture?.weather ?? 'clear');
   const [camMode, setCamMode] = useState<CameraMode>('orbit');
-  const [quality, setQuality] = useState<Quality>(capture?.quality ?? 'high');
+  const [qualitySelection, setQualitySelection] = useState<QualitySelection>(() =>
+    readInitialQualitySelection(
+      typeof window === 'undefined' ? '' : window.location.search,
+      capture?.quality,
+    ),
+  );
+  const [autoQuality, setAutoQuality] = useState<{
+    tier: QualityTier;
+    dprOverride: number | undefined;
+  }>({ tier: 'high', dprOverride: undefined });
+  const { tier: effectiveQuality, dprOverride: activeDprOverride } = resolveEffectiveQualityState(
+    qualitySelection,
+    autoQuality,
+    capture?.quality,
+  );
+  const qualityConfig = getQualityTierConfig(effectiveQuality);
   const [muted, setMuted] = useState(false);
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
 
@@ -397,11 +450,11 @@ export const WorldShowcase: React.FC = () => {
       <Canvas
         // `shadows` (bare) asks react-three-fiber for PCFSoftShadowMap, which three 0.184
         // deprecated: `WebGLShadowMap` warns and silently uses PCFShadowMap instead
-        // (three.module.js:9135). Naming the percentage filter avoids that warning, and toggling
-        // `shadows` and `dpr` from `quality` here stops R3F's `configure()` from resetting low
-        // quality's DPR=1 and disabled shadow map on every parent render.
-        shadows={quality === 'high' ? 'percentage' : false}
-        dpr={quality === 'high' ? [1, 1.5] : 1}
+        // (three.module.js:9135). Naming the percentage filter avoids that warning, and reading
+        // `shadows` and `dpr` from `qualityTiers` here stops R3F's `configure()` from resetting
+        // low/medium tiers' DPR=1 and disabled shadow map on every parent render.
+        shadows={qualityConfig.shadows ? 'percentage' : false}
+        dpr={getCanvasDprProp(effectiveQuality, activeDprOverride)}
         gl={{
           powerPreference: 'high-performance',
           // ---- three capture-only context flags, each closing one source of frame variance -----
@@ -452,7 +505,10 @@ export const WorldShowcase: React.FC = () => {
           }
         }}
       >
-        <QualityApplier quality={quality} />
+        <QualityApplier tier={effectiveQuality} dprOverride={activeDprOverride} />
+        {isAutoQualityAllowed(capture) && qualitySelection === 'auto' ? (
+          <AutoQualityMonitor onChange={setAutoQuality} />
+        ) : null}
 
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
         <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
@@ -489,7 +545,7 @@ export const WorldShowcase: React.FC = () => {
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
-          quality={quality}
+          quality={legacyVegetationQuality(effectiveQuality)}
         />
 
         {/* Shader-based ocean/lakes (depth colour + swell + foam), waterfall curtains on the
@@ -641,7 +697,7 @@ export const WorldShowcase: React.FC = () => {
         alwaysDay={alwaysDay}
         weather={weather}
         camMode={camMode}
-        quality={quality}
+        qualitySelection={qualitySelection}
         coords={camReadout}
         fps={camReadout.fps}
         muted={muted}
@@ -653,7 +709,12 @@ export const WorldShowcase: React.FC = () => {
         }}
         onWeather={setWeather}
         onCamMode={setCamMode}
-        onQuality={setQuality}
+        onQualitySelection={(sel) => {
+          setQualitySelection(sel);
+          if (sel === 'auto') {
+            setAutoQuality({ tier: 'high', dprOverride: undefined });
+          }
+        }}
         onMute={() => setMuted((m) => !m)}
         // Reset returns to the validated spawn, or does not exist. There is no third option and
         // specifically no origin fallback: `{ x: 0, z: 0 }` is the middle of the map, the middle of
@@ -699,7 +760,7 @@ const WorldHud: React.FC<{
   alwaysDay: boolean;
   weather: WeatherKind;
   camMode: CameraMode;
-  quality: Quality;
+  qualitySelection: QualitySelection;
   coords: { x: number; z: number };
   fps: number;
   muted: boolean;
@@ -707,11 +768,11 @@ const WorldHud: React.FC<{
   onToggleAlwaysDay: () => void;
   onWeather: (w: WeatherKind) => void;
   onCamMode: (m: CameraMode) => void;
-  onQuality: (q: Quality) => void;
+  onQualitySelection: (q: QualitySelection) => void;
   onMute: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, quality, coords, fps, muted, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQuality, onMute, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -787,7 +848,7 @@ const WorldHud: React.FC<{
           {fps} FPS
         </span>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.85 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', opacity: 0.85 }}>
         <button
           style={{ ...HUD_BTN(false), opacity: onReset ? 1 : 0.45, cursor: onReset ? 'pointer' : 'default' }}
           disabled={onReset === null}
@@ -800,8 +861,17 @@ const WorldHud: React.FC<{
           {muted ? '🔇' : '🔊'}
         </button>
         <span style={{ opacity: 0.7 }}>GPU</span>
-        <button style={HUD_BTN(quality === 'high')} onClick={() => onQuality('high')}>Đẹp</button>
-        <button style={HUD_BTN(quality === 'low')} onClick={() => onQuality('low')}>Nhẹ</button>
+        {QUALITY_SELECTIONS.map((sel) => (
+          <button
+            key={sel}
+            data-testid={`quality-btn-${sel}`}
+            aria-pressed={qualitySelection === sel}
+            style={HUD_BTN(qualitySelection === sel)}
+            onClick={() => onQualitySelection(sel)}
+          >
+            {QUALITY_SELECTION_LABELS[sel]}
+          </button>
+        ))}
       </div>
     </div>
   );

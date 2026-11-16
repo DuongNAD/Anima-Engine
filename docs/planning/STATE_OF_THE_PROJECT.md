@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-07-27
+last_reviewed: 2026-11-16
 review_cycle: per-release
 ---
 
@@ -21,23 +21,21 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
-> ## ⚠️ Đọc trước — bảng dưới đây là đo **2026-07-27**, không phải trạng thái hôm nay
+> ## ⚠️ Đọc trước — bảng 2026-07-27 dưới đây đã cũ; số mới nhất là [§1.g](#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main)
 >
-> *Ghi chú thêm 2026-11-14; không đo lại gì.* Từ cuối tháng 10 dự án có **hai cây mã phân kỳ**
-> (`main` và `feat/ecological-selection`), và các phép đo mới hơn chưa được đưa về đây. Cho tới khi
-> hai cây hợp nhất, đọc theo thứ tự:
+> Hai cây mã đã được **hợp nhất ngày 2026-11-16**: `main` được fast-forward lên thân cây
+> `feat/ecological-selection` (a43872c → bb78e63; `main` là tổ tiên trực tiếp, 0 commit riêng). Thân
+> cây vẫn giữ tên và các PR vẫn nhắm vào nó. Lần CI của chính lần fast-forward đó đã được ghi thành
+> **§1.g** ngay dưới: đó là số mới nhất có thẩm quyền, đọc nó trước. Bảng 2026-07-27 (§1.a–§1.e) và
+> §1.f (2026-10-16) là **lịch sử** của từng thời điểm, không phải trạng thái hôm nay.
 >
-> 1. [`COMPLETION_ROADMAP_2026-10-31.md` §1](COMPLETION_ROADMAP_2026-10-31.md#1-đo-hôm-nay) — đo
->    2026-10-31 trên cả hai cây, mỗi hàng có lệnh + ngày. Đọc luôn §4 của tài liệu đó: các quyết
->    định QĐ-D và QĐ-E cùng ngày đã đổi vài hàng của §1, và số đo sau quyết định nằm ở §4.
-> 2. [`FINDINGS.md`](../../FINDINGS.md) — bug đã chứng minh; mục mới nhất ở trên cùng.
-> 3. [Bề mặt hợp nhất, đo 2026-11-01](../ai/planning/2026-11-01-merge-surface-measurement.md) — căn
->    cứ của QĐ-A, mà chủ dự án đã quyết: **`feat/ecological-selection` là nền**, chồng PR #38→#40
->    gộp vào nó.
+> Ngoài số đo, bug đã chứng minh nằm ở [`FINDINGS.md`](../../FINDINGS.md) (mục mới nhất ở trên cùng).
+> Căn cứ của quyết định hợp nhất (QĐ-A: `feat/ecological-selection` là nền) ở
+> [bề mặt hợp nhất, đo 2026-11-01](../ai/planning/2026-11-01-merge-surface-measurement.md); lượt đo
+> 2026-10-31 trên hai cây còn ở [`COMPLETION_ROADMAP_2026-10-31.md` §1](COMPLETION_ROADMAP_2026-10-31.md#1-đo-hôm-nay)
+> (đọc cả §4 của nó: QĐ-D và QĐ-E đã đổi vài hàng).
 >
-> Đây là ngoại lệ **có thời hạn** của quy tắc 8 ("một con số chỉ có một nhà"), do chính roadmap
-> 31/10 khai: khi hai cây hợp nhất, số của nó chuyển về đây thành `§1.g` và banner này bị xoá.
-> Banner **không** chép số nào — nó chỉ trỏ.
+> Banner **không** chép số nào — nó chỉ trỏ (quy tắc 8, "một con số chỉ có một nhà").
 
 > ## 📌 Đây là **bảng số duy nhất có thẩm quyền** của dự án.
 >
@@ -68,6 +66,57 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.g Đo 2026-11-16 trên thân cây `bb78e63` — CI của lần fast-forward `main`
+
+> Đây là **số mới nhất có thẩm quyền**, thay cho các số của banner đầu §1 trỏ tới. Nó là kết quả của
+> **một lần CI GitHub** trên đúng commit `bb78e63d93c5ad2c680427bacc7209ce201c8f48`, được kích hoạt bởi
+> chính lần push fast-forward `main` lên thân cây `feat/ecological-selection` (2026-11-16). Số được
+> chép từ log của hai run, không tính lại gì ngoài tổng các dòng `test result:`.
+>
+> - **Rust (`windows-latest`): xanh.** Mọi bước success.
+> - **Frontend (`ubuntu-latest`): đỏ, và chỉ đỏ ở đúng một bước** — `check:e2`
+>   ("E2 artifacts match the committed preregistration"). Mọi bước còn lại của job, kể cả lint,
+>   hai suite Vitest, build, CSP, bundle, Playwright, docs và IPC, đều success. Bản sửa là PR #59
+>   (`fix/e2-amendment-1-rerun`: sửa preregistration có ghi nhận + chạy lại thật tập mẫu E2); **tại thời
+>   điểm viết, PR #59 chưa merge** nên lượt đo này không gồm nó.
+> - **Workflow `hardening` (job `determinism`): xanh.**
+>
+> **Lượt này không phủ:** chạy cục bộ trên macOS; ứng dụng desktop (`tauri:dev`, không có lượt chạy app
+> thật nào); các PR đang mở #47–#50 và #59; `cargo audit`/`npm audit` chỉ ở mức CI cho phép (xem hàng
+> audit). Toolchain Rust trong CI được ghim: rustc/cargo **1.98.1**, clippy **0.1.98**; Node **22.23.4**
+> (job Frontend). Log của job `determinism` **không in** phiên bản rustc (dùng `dtolnay/rust-toolchain@stable`).
+
+| Loại | Gate | Lệnh/Nguồn | Kết quả |
+|---|---|---|---|
+| 📏 | Toàn run | Actions run `43817056729`, workflow `CI`, event `push` vào `main`, 2026-11-16 | **failure** — job Rust success (06:31–07:02 UTC), job Frontend failure (06:30–06:35 UTC), bước đỏ duy nhất là `check:e2` |
+| 📏 | Format | `cargo fmt --check` (run `43817056729`, 2026-11-16) | success |
+| 📏 | Advisory Rust | `cargo audit` · `cargo deny check` (cùng run) | success — quét 773 crate với 1509 advisory; chỉ 2 cảnh báo *yanked* được cho phép (`async-executor`, `chacha20`); deny: `advisories ok, bans ok, licenses ok, sources ok` |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` (cùng run) | success — `Finished` sau 2m 03s, không cảnh báo |
+| 📏 | Tách feature (G2 #2) | `cargo clippy --all-targets --no-default-features -- -D warnings` + `cargo tree --no-default-features -e normal` (cùng run) | success — `gated crates present in a default build: 0` |
+| 📏 | Parity binding | `cargo test --lib export_bindings` rồi `git diff --exit-code -- ../src/types/generated` (cùng run) | success — 48 test `export_bindings` passed, `git diff` không lệch |
+| 📏 | Backend test | `cargo test --features desktop -- --nocapture` (cùng run, Windows) | **1306 passed · 0 failed · 2 ignored**, 123 dòng `test result` (tổng các dòng `test result:`) |
+| 📏📋 | Chính sách target | `node ../scripts/check_test_targets.mjs ../cargo-test-output.txt` (cùng run) | success — `test targets: 123, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2)`. Log ghi rõ CI gọi **không có `--profile`**, nên việc lên lịch target feature-gated **không** được kiểm trong run này |
+| 📏 | Licence · SBOM · schema · NOTICE · flora | `check:licenses` / `check:sbom` / `check:sbom-schema` / `check:notice` / `check:flora-footprint` (cùng run) | success cả năm — 443 thành phần phân phối, 266 văn bản, 1 chưa giải quyết · 461 thành phần, 462 bản ghi phụ thuộc · CycloneDX 1.5 hợp lệ · 422 crate, 21 gói npm phân phối, 18 cài-không-ship, 1 văn bản chưa giải quyết · 7 loại thực vật đặc, drift lớn nhất 3,9e-5 |
+| 📏 | Đồ thị module | `check` đồ thị phụ thuộc so với `dataflow.json` (cùng run) | success — 16 cạnh khớp hoàn toàn với `cargo-modules`; 6 cặp phụ thuộc vòng được ghi là SMELL, không phải lỗi (`ai`↔`core`, `ai`↔`evolution`, `ai`↔`physics`, `commands`↔`core`, `core`↔`evolution`, `core`↔`physics`) |
+| 📏 | Advisory npm | `npm audit --audit-level=high` root và `--prefix tests` (cùng run) | success ở ngưỡng `high`: root báo **9 moderate** (chuỗi `minimatch` → `@typescript-eslint`), 0 high; `tests/`: `found 0 vulnerabilities` |
+| 📏 | Vệ sinh văn bản | `check:text-hygiene` (cùng run) | success — 829 file đã track, không có byte điều khiển thô |
+| 📏 | **Artifact E2** | `npm run check:e2` → `node scripts/verify_e2_artifacts.mjs` (cùng run, bước "E2 artifacts match the committed preregistration") | 🔴 **failure, exit 1, 4 FAIL**, cả bốn cùng một lỗi — manifest mà lượt chạy đã dùng không phải file đã commit ("The run used a manifest that is not the committed file"): `analysis: manifests/e2-control-shared-brain.json` (sha256 lượt chạy `b5c68207…`, file commit `30b86653…`), `analysis: manifests/e2-treatment-evolved-brain.json` (`b5618a58…` so với `61b87222…`), `smoke: manifests/e2-smoke-control-shared-brain.json` (`9513382f…` so với `86113ca9…`), `smoke: manifests/e2-smoke-treatment-evolved-brain.json` (`03c9d4e5…` so với `78a4f960…`). Trước đó có hai dòng `note`: tính lại 132 delta per-seed (analysis) và 11 (smoke). Chỉ chép 8 ký tự đầu mỗi hash; hash đầy đủ ở log run `43817056729` |
+| 📏 | Lint frontend | `npm run lint` + `eslint_ratchet.mjs` (cùng run) | **0 error, 0 warning** (baseline 0) |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` (cùng run) | success |
+| 📏 | Test frontend | `npm run test` · `npm run test:frontend` (cùng run) | 14 file · **109 passed** · 61 file · **648 passed** |
+| 📏 | Build + artifact | `npm run build` · `check:bundle-closure` · `check:csp` · `check:bundle` (cùng run) | success — 21 gói có byte trong `dist/` (3 do toolchain chèn); 3 HTML ship, 0 origin ngoài, 0 inline script; 24 chunk, **1852,5 / 2000 KiB** |
+| 📏 | E2E Playwright | `npm run test:e2e` (cùng run) | **270 passed** (38,9 s), 2 worker |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` (cùng run) | 974 link / 155 file, 0 gãy |
+| 📏 | Metadata tài liệu | `node scripts/check_docs_metadata.mjs` (cùng run) | 107 file, 0 lỗi, 14 review quá hạn (chỉ báo, không làm đỏ); 19 negative control OK |
+| 📏 | IPC | `node scripts/check_ipc_reference.mjs` (cùng run) | **34 command · 7 event · 0 khác biệt** |
+| 📏 | Hardening — tất định | Actions run `43817057094`, workflow `hardening`, job `determinism`, 2026-11-16 | success (06:36–06:51 UTC). `cargo test --release` rồi bước "kiểm ổn định (5 lần)" (`RAYON_NUM_THREADS=1`, 5 lượt) đều success: 575 dòng `test result` trong 5 lượt, tổng 6400 passed, 0 dòng có test fail |
+| 📏 | Hardening — golden hash | `cargo test --release --test determinism_tests` (cùng run) | success — 3 passed (`determinism_hash_ghim`, `world_hash_bat_duoc_thay_doi_that` và một test nữa). **Log không in giá trị hash**, chỉ in kết quả test |
+| 📏 | Hardening — nguồn phi tất định | grep `rand::thread_rng()` dưới `src-tauri/src` (cùng run) | success; log không in con số |
+
+**Không tìm thấy trong log:** phiên bản rustc của job `determinism`; giá trị golden hash; tổng thời lượng từng suite ngoài các mốc giờ trong bảng; số lần lặp lại ổn định ở mức từng test.
+
+---
 
 ### 1.f Đo 2026-10-16 — `main` đỏ, cây làm việc đỏ hai gate tái lập
 
@@ -612,6 +661,13 @@ van mở so với bố cục trước bước 4. Lý do bỏ mốc cũ và cái 
 (`evolved: true` hay giữ opt-in) cần **bằng chứng đối chứng nhiều seed được tiền đăng ký trước khi
 chạy**. Re-baseline chỉ trả lại một baseline có thật để so; nó không nói gì về hướng của treatment.
 
+> **Bổ sung 2026-11-16 (QD-E2M = B):** các manifest bị `970d963` thêm `live.dormant_eu`, nên artifact
+> tháng 7 không còn khớp byte (gate `check:e2` đỏ). Đã sửa bằng **đính chính có ngày**
+> (`amendment_1_live_dormant_eu`, không đổi tham số khoa học) và **chạy lại thật** tại `900ba2d`
+> trên macOS arm64: H1 vẫn **null**, delta đúng 0 trên 12/12 cặp, thời điểm chạm sàn trùng từng seed
+> (kiểm bằng so sánh). Artifact tháng 7 được giữ ở `superseded/`. So sánh và các điều chưa kiểm:
+> `artifacts/experiments/e2-evolved-brain-default/RESULT.md`.
+>
 > ### ✅ E2 ĐÃ CHẠY 2026-07-27 tại `9c57184` — H1 **null**, mặc định **giữ opt-in**
 >
 > Chạy **một lần**, 12/12 cặp hoàn chỉnh, 157,2 s (2,62 phút) trên trần 90 phút, T = 18.000 (bậc

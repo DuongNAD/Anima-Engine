@@ -4,6 +4,7 @@ import {
   SIM_BOUNDS_HALF,
   isInsideSimBounds,
   renderToSim,
+  simScale,
   simToRender,
 } from '../../src/components/Landscape/utils/liveAgentTransform';
 
@@ -31,6 +32,12 @@ describe('simulation ↔ render coordinates', () => {
     for (const world of [-100, -37.5, 0, 12.25, 99.9]) {
       expect(renderToSim(simToRender(world, RENDER_SIZE), RENDER_SIZE)).toBeCloseTo(world, 10);
     }
+  });
+
+  it('exposes uniform simScale matching simToRender(1, renderSize)', () => {
+    expect(simScale(RENDER_SIZE)).toBe(6);
+    expect(simScale(200)).toBe(1);
+    expect(simScale(RENDER_SIZE)).toBe(simToRender(1, RENDER_SIZE));
   });
 
   it('follows renderSize rather than hard-coding six', () => {

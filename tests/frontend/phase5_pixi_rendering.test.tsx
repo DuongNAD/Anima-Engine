@@ -119,8 +119,8 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
     expect(coords[4]).toBeCloseTo(118.0);
     expect(coords[5]).toBeCloseTo(292.17);
 
-    // Verify predator fill color and opacity
-    expect(mockGraphicsMethods.beginFill).toHaveBeenCalledWith(0xffffff, 0.3);
+    // Verify predator fill color and opacity (RW1-4 distinct species color)
+    expect(mockGraphicsMethods.beginFill).toHaveBeenCalledWith(0xe2554f, 0.3);
 
     // Verify predator direction line
     expect(mockGraphicsMethods.moveTo).toHaveBeenCalledWith(125, 300);
@@ -128,7 +128,7 @@ describe('Phase 5 PixiJS Rendering Canvas Container', () => {
 
     // Check prey rendering (drawn as circle via drawCircle)
     expect(mockGraphicsMethods.drawCircle).toHaveBeenCalledWith(375, 50, 10);
-    expect(mockGraphicsMethods.beginFill).toHaveBeenCalledWith(0x777777, 0.3);
+    expect(mockGraphicsMethods.beginFill).toHaveBeenCalledWith(0x5ad67d, 0.3);
 
     // Verify prey tail indicator line
     expect(mockGraphicsMethods.moveTo).toHaveBeenCalledWith(375, 50);
