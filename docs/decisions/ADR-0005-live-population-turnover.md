@@ -1,9 +1,9 @@
 ---
 title: ADR-0005 — Vòng đời quần thể (sinh sản và chết) trong adapter thí nghiệm live
-status: proposed
+status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-16
-decision_date: pending
+decision_date: 2026-11-16
 supersedes: none
 superseded_by: none
 ---
@@ -203,3 +203,11 @@ QD-5 (owner, <ngày>) = yes: docs/decisions/ADR-0005-live-population-turnover.md
 ```
 
 Sau khi chủ dự án điền: đổi `status` thành `accepted`, điền `decision_date`, cập nhật chỉ mục.
+
+## Quyết định (2026-11-16)
+
+**QD-4 = A, QD-5 = có**, đúng phương án khuyến nghị ở trên. Quyết định do phiên Claude lead đưa ra theo uỷ quyền của chủ
+dự án trong chat ngày 2026-11-16 ("bạn được phép tự làm theo bản kế hoạch và xử lý sao cho tốt nhất").
+Chủ dự án có thể đảo lại bất cứ lúc nào: đổi `status`, ghi dòng quyết định mới vào khối `DECISIONS` của
+[`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md#4-khối-decisions-để-dán-vào-prompt-0).
+
