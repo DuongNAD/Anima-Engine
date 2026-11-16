@@ -367,9 +367,20 @@ fn test_100_save_load_cycles() {
         .expect("initial save must not be refused");
 
     assert!(current_state.tick_count > 0);
-    assert!(
-        current_state.agents.len() >= 10,
-        "Should spawn at least 10 agents by default"
+    // Exact, and 17 on purpose. Genesis spawns the 10 founders (7 Prey, 3 Predator). On tick 1
+    // `autonomous_reproduction_system` lets every Prey whose reserve is at or above 65% of its
+    // target reproduce, and the 7 founding Prey all are, so 7 generation-1 Prey are born. The 3
+    // Predators do not: that system skips a Predator while `prey_count < pred_count * 5`
+    // (7 < 15). 10 + 7 = 17. Reproduction is gated on energy, not on a random draw (the RNG only
+    // jitters the offspring position), so the count does not depend on the seed. Measured
+    // 2026-11-15 on macOS arm64: 17 agents at tick 2 in this test, in 20 of 20 process runs of
+    // `persistence_tests::test_engine_save_load_lifecycle` (same genesis), and the same 17 at ticks
+    // 7, 22, 62 and 122 of a single run (it was 18 by tick 302, so this value is a property
+    // of the first ~100 ticks, not of the world forever).
+    assert_eq!(
+        current_state.agents.len(),
+        17,
+        "10 founders plus the 7 first-generation Prey born on tick 1"
     );
 
     engine.stop();

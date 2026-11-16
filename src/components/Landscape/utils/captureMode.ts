@@ -178,3 +178,11 @@ export const CAPTURE_READY_FLAG = '__animaCaptureReady';
  * frame, so "settled" is a fixed number of renders rather than a duration.
  */
 export const CAPTURE_SETTLE_FRAMES = 90;
+
+/**
+ * Capture mode bypasses automatic quality/DPR adaptation so canonical views always render along the
+ * explicit capture preset (`CAPTURE_DEFAULT_QUALITY = 'high'`, `RW4-4`).
+ */
+export function isAutoQualityAllowed(capture: CaptureRequest | null): boolean {
+  return capture === null;
+}

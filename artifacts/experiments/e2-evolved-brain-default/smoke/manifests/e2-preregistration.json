@@ -175,6 +175,16 @@
     "scientific_parameters_changed": "none - the question, hypotheses, metrics, thresholds, seeds, N, smoke seed, duration ladder, sample period, failure handling and decision rule are untouched by this correction",
     "enforced_by": "src-tauri/tests/e2_seam_tests.rs::the_preregistered_reproduction_never_launches_the_app"
   },
+  "amendment_1_live_dormant_eu": {
+    "amended_on": "2026-11-16",
+    "amended_by": "owner's delegate, decision QD-E2M = B (re-register by dated amendment and a real re-run); executed by an agent session",
+    "what_changed": "The four manifest fixtures (control, treatment, smoke control, smoke treatment) gained one line, \"live.dormant_eu\", in observable_ids, in commit 970d963 on 2026-08-25 (M3 dormancy). The cargo test prereg_e2_manifest_tests::the_requested_metrics_are_exactly_what_the_live_adapter_emits pins the manifest's observable list to LIVE_OBSERVABLE_IDS, so the manifests had to follow the adapter. The 2026-07-27 artifacts were produced from manifests WITHOUT that line and were never regenerated.",
+    "reason": "Make the committed manifests and the published artifacts describe the same bytes again, honestly: by running the ensemble again with the current fixtures, not by copying the new manifests beside old results.",
+    "scientific_parameters_changed": "none - the question, hypotheses (none names live.dormant_eu), metrics, thresholds, seeds, N, smoke seed, duration ladder, sample period, failure handling and decision rule are untouched. This file was edited only to add this block.",
+    "code_changed_since_the_original_run": "The engine itself has moved on since 2026-07-27 (M3 dormancy and other work on feat/ecological-selection). The re-run therefore measures the current code, and any difference from the original numbers is not attributable to the platform alone.",
+    "consequence": "The 2026-07-27 artifacts are superseded, not deleted: they are kept under artifacts/experiments/e2-evolved-brain-default/superseded/2026-07-27-original-run-windows-pre-dormant-eu/ with their original checksums. The smoke calibration, the duration lock and the twelve-seed ensemble are re-run from the top under this amendment, on a different platform (macOS arm64) from the original (Windows x86_64). The duration rung is again chosen once from the new smoke, before any experimental seed runs. The decision rule is applied to the new ensemble; the original result is not pooled with it.",
+    "enforced_by": "scripts/verify_e2_artifacts.mjs (manifests in the artifact directory must be byte-identical to the committed fixtures)"
+  },
   "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment; then execute src-tauri/target/release/examples/run_e2_brain_experiment.exe --smoke --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
   "blocking_preconditions": [
     "P1: core::live_experiment::build_live_world hard-codes BrainPolicy::default(), so no manifest can request evolved=true.",

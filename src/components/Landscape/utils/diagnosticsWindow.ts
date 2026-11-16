@@ -544,3 +544,26 @@ export function setCanonicalPose(view: CanonicalViewId | null): boolean {
   setter(view);
   return true;
 }
+
+/** URL parameter of the budget gate's negative control (`RW-C4`): multiplies flora density. */
+export const FLORA_DENSITY_SCALE_PARAM = 'floraDensityScale' as const;
+
+/** Largest multiplier the debug switch accepts; keeps a typo from allocating the whole world. */
+export const FLORA_DENSITY_SCALE_MAX = 8;
+
+/**
+ * Test-only multiplier on the tier's flora density, read from `?floraDensityScale=N`.
+ *
+ * It exists so `tests/e2e/rw_budget.spec.ts` can prove its own negative control: a gate that has
+ * never been seen to go red proves nothing. It is inert in a production build, where
+ * `import.meta.env.DEV` is not `true` and the whole body is dead code, and it returns `1` (no change)
+ * for a missing, non-numeric, non-positive or out-of-range value. `dev`/`test` builds only.
+ */
+export function debugFloraDensityScale(search: string = typeof window === 'undefined' ? '' : window.location.search): number {
+  // No `vite/client` types in this tsconfig, hence the narrow cast. Absent or false means inert.
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV !== true) return 1;
+  const raw = new URLSearchParams(search).get(FLORA_DENSITY_SCALE_PARAM);
+  if (raw === null) return 1;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n <= FLORA_DENSITY_SCALE_MAX ? n : 1;
+}

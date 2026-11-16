@@ -22,8 +22,6 @@ import { getMemoizedWorld, loadOrGenerateWorld } from './utils/worldCache';
 import { findSpawn } from './utils/worldSample';
 import { FLORA_RADIUS_REFERENCE_EXTENT } from './utils/floraClearance';
 import { canonicalCameraToRender } from './utils/mapManifest';
-import { CAPTURE_READY_FLAG, CAPTURE_SETTLE_FRAMES, readCaptureRequest } from './utils/captureMode';
-import type { CaptureRequest } from './utils/captureMode';
 import CaptureEvidenceOverlay from './CaptureEvidenceOverlay';
 import { readInjectedEvidence } from './utils/mapEvidence';
 import {
@@ -41,19 +39,28 @@ import {
   type LodFocusPayload,
 } from '../../utils/lodFocus';
 import { sunDirectionForTime } from './utils/skyParams';
-import { ALWAYS_DAY_HOUR, stepTimeOfDay } from './utils/sceneClock';
+import { ALWAYS_DAY_HOUR, sceneDelta, stepTimeOfDay } from './utils/sceneClock';
 import {
   QUALITY_SELECTIONS,
   QUALITY_SELECTION_LABELS,
+  createAutoQualityState,
   getCanvasDprProp,
   getQualityTierConfig,
   legacyVegetationQuality,
   readInitialQualitySelection,
   resolveDeviceDpr,
-  resolveEffectiveQualityTier,
+  resolveEffectiveQualityState,
+  stepAutoQualityState,
   type QualitySelection,
   type QualityTier,
 } from './utils/qualityTiers';
+import {
+  CAPTURE_READY_FLAG,
+  CAPTURE_SETTLE_FRAMES,
+  isAutoQualityAllowed,
+  readCaptureRequest,
+} from './utils/captureMode';
+import type { CaptureRequest } from './utils/captureMode';
 import { audioManager } from './utils/audioManager';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
@@ -125,13 +132,37 @@ function applyShadowPass(
 }
 
 /** Applies the quality preset LIVE (no GL-context remount): render scale + shadow pass. */
-const QualityApplier: React.FC<{ tier: QualityTier }> = ({ tier }) => {
+const QualityApplier: React.FC<{ tier: QualityTier; dprOverride?: number }> = ({
+  tier,
+  dprOverride,
+}) => {
   const { gl, scene, setDpr } = useThree();
   useEffect(() => {
     const tierConfig = getQualityTierConfig(tier);
-    setDpr(resolveDeviceDpr(tier, window.devicePixelRatio || 1));
+    setDpr(resolveDeviceDpr(tier, window.devicePixelRatio || 1, dprOverride));
     applyShadowPass(gl, scene, tierConfig.shadows);
-  }, [tier, gl, scene, setDpr]);
+  }, [tier, dprOverride, gl, scene, setDpr]);
+  return null;
+};
+
+/** Monitors live frame times when `qualitySelection === 'auto'` (never mounted in capture mode). */
+const AutoQualityMonitor: React.FC<{
+  onChange: (next: { tier: QualityTier; dprOverride: number | undefined }) => void;
+}> = ({ onChange }) => {
+  const stateRef = useRef(
+    createAutoQualityState({
+      devicePixelRatio: typeof window === 'undefined' ? 1.5 : window.devicePixelRatio || 1,
+    }),
+  );
+  useFrame((_state, rawDelta) => {
+    const dtSeconds = sceneDelta(rawDelta);
+    const prev = stateRef.current;
+    const next = stepAutoQualityState(prev, dtSeconds * 1000);
+    stateRef.current = next;
+    if (next.tier !== prev.tier || next.dprOverride !== prev.dprOverride) {
+      onChange({ tier: next.tier, dprOverride: next.dprOverride });
+    }
+  });
   return null;
 };
 
@@ -229,9 +260,15 @@ export const WorldShowcase: React.FC = () => {
       capture?.quality,
     ),
   );
-  const effectiveQuality: QualityTier = capture
-    ? capture.quality
-    : resolveEffectiveQualityTier(qualitySelection, 'high');
+  const [autoQuality, setAutoQuality] = useState<{
+    tier: QualityTier;
+    dprOverride: number | undefined;
+  }>({ tier: 'high', dprOverride: undefined });
+  const { tier: effectiveQuality, dprOverride: activeDprOverride } = resolveEffectiveQualityState(
+    qualitySelection,
+    autoQuality,
+    capture?.quality,
+  );
   const qualityConfig = getQualityTierConfig(effectiveQuality);
   const [muted, setMuted] = useState(false);
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
@@ -417,7 +454,7 @@ export const WorldShowcase: React.FC = () => {
         // `shadows` and `dpr` from `qualityTiers` here stops R3F's `configure()` from resetting
         // low/medium tiers' DPR=1 and disabled shadow map on every parent render.
         shadows={qualityConfig.shadows ? 'percentage' : false}
-        dpr={getCanvasDprProp(effectiveQuality)}
+        dpr={getCanvasDprProp(effectiveQuality, activeDprOverride)}
         gl={{
           powerPreference: 'high-performance',
           // ---- three capture-only context flags, each closing one source of frame variance -----
@@ -468,7 +505,10 @@ export const WorldShowcase: React.FC = () => {
           }
         }}
       >
-        <QualityApplier tier={effectiveQuality} />
+        <QualityApplier tier={effectiveQuality} dprOverride={activeDprOverride} />
+        {isAutoQualityAllowed(capture) && qualitySelection === 'auto' ? (
+          <AutoQualityMonitor onChange={setAutoQuality} />
+        ) : null}
 
         {/* Sky owns scene.background + lighting; weather owns scene.fog + precipitation. */}
         <WorldSky timeOfDay={timeOfDay} speed={speed} worldScale={RENDER_SIZE} />
@@ -506,6 +546,7 @@ export const WorldShowcase: React.FC = () => {
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
           quality={legacyVegetationQuality(effectiveQuality)}
+          tier={effectiveQuality}
         />
 
         {/* Shader-based ocean/lakes (depth colour + swell + foam), waterfall curtains on the
@@ -669,7 +710,12 @@ export const WorldShowcase: React.FC = () => {
         }}
         onWeather={setWeather}
         onCamMode={setCamMode}
-        onQualitySelection={setQualitySelection}
+        onQualitySelection={(sel) => {
+          setQualitySelection(sel);
+          if (sel === 'auto') {
+            setAutoQuality({ tier: 'high', dprOverride: undefined });
+          }
+        }}
         onMute={() => setMuted((m) => !m)}
         // Reset returns to the validated spawn, or does not exist. There is no third option and
         // specifically no origin fallback: `{ x: 0, z: 0 }` is the middle of the map, the middle of

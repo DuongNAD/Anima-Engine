@@ -13,6 +13,17 @@ use crate::evolution::genotype::{decode_genotype, MorphologyGenotype};
 use bevy_ecs::prelude::*;
 use std::sync::Arc;
 
+/// Inline capacity of the buffers that walk one agent's body through `ChildrenLinks` on the birth
+/// and death paths.
+///
+/// An agent has one entity per morphology node, and restore and migration refuse a morphology with
+/// more than `MAX_MIGRATION_MORPHOLOGY_NODES` (`validate_morphology_payload`; live mutation stops
+/// far below it, at 15). So a walk over any body those paths admit holds at most this many
+/// entities and stays on the stack. Naming the cap rather than a number keeps the two together if
+/// the cap moves. A larger body, reachable only by calling `decode_genotype` directly, spills to the
+/// heap rather than losing segments.
+const BODY_WALK_CAPACITY: usize = crate::core::components::MAX_MIGRATION_MORPHOLOGY_NODES;
+
 #[derive(Resource)]
 pub struct BevyEvolutionSettings(pub Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>);
 
@@ -122,7 +133,7 @@ pub struct SpawnGenotypeCommand {
 /// removes the window entirely: nothing can observe a reserve that has been banked but not yet
 /// destroyed.
 pub struct ReclaimAndDespawnAgentCommand {
-    /// The agent's root entity. Its segments are found by `ParentAgent` and go with it.
+    /// The agent's root entity. Its segments are found by `ChildrenLinks` and go with it.
     pub root: Entity,
 }
 
@@ -145,20 +156,21 @@ impl bevy_ecs::system::Command for ReclaimAndDespawnAgentCommand {
             }
         }
 
-        let mut doomed: Vec<Entity> = Vec::new();
-        let mut q = world.query::<(Entity, &ParentAgent)>();
-        for (entity, parent) in q.iter(world) {
-            if parent.0 == self.root {
-                doomed.push(entity);
+        // Despawn each entity as the walk reaches it. A despawned entity is its own visited mark —
+        // `get_entity_mut` no longer finds it — so a duplicate or cyclic link ends the walk instead
+        // of looping, with no second buffer of what was already taken. Entities are despawned in
+        // the walk's pop order, the order the old collect-then-despawn loop used, so the entity
+        // free list, and with it the id of every later spawn, is unchanged.
+        let mut stack = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
+        stack.push(self.root);
+        while let Some(current) = stack.pop() {
+            let Some(entity) = world.get_entity_mut(current) else {
+                continue;
+            };
+            if let Some(children) = entity.get::<crate::core::ecs::ChildrenLinks>() {
+                stack.extend(children.0.iter().copied());
             }
-        }
-        for entity in doomed {
-            if let Some(e) = world.get_entity_mut(entity) {
-                e.despawn();
-            }
-        }
-        if let Some(e) = world.get_entity_mut(self.root) {
-            e.despawn();
+            entity.despawn();
         }
     }
 }
@@ -540,29 +552,25 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
         };
         world.entity_mut(entity).insert(sex);
 
-        // Synchronize root RigidBody velocity
-        if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(entity) {
-            body.velocity = vel_vec;
-            body.force = glam::Vec3::ZERO;
-        }
-
-        // Synchronize child segment RigidBody and Velocity
-        let mut child_entities = Vec::new();
-        let mut q = world.query::<(Entity, &ParentAgent)>();
-        for (e, parent) in q.iter(world) {
-            if parent.0 == entity {
-                child_entities.push(e);
+        // Synchronize root and child segment RigidBody and Velocity via stack-allocated ChildrenLinks
+        // traversal, sized to the morphology cap (`BODY_WALK_CAPACITY`).
+        let mut stack = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
+        let mut visited = smallvec::SmallVec::<[Entity; BODY_WALK_CAPACITY]>::new();
+        stack.push(entity);
+        while let Some(current) = stack.pop() {
+            if visited.contains(&current) {
+                continue;
             }
-        }
-        for child_e in child_entities {
-            if let Some(mut child_vel) = world.get_mut::<Velocity>(child_e) {
-                child_vel.0 = vel_vec;
+            visited.push(current);
+            if let Some(mut vel) = world.get_mut::<Velocity>(current) {
+                vel.0 = vel_vec;
             }
-            if let Some(mut child_body) =
-                world.get_mut::<crate::physics::dynamics::RigidBody>(child_e)
-            {
-                child_body.velocity = vel_vec;
-                child_body.force = glam::Vec3::ZERO;
+            if let Some(mut body) = world.get_mut::<crate::physics::dynamics::RigidBody>(current) {
+                body.velocity = vel_vec;
+                body.force = glam::Vec3::ZERO;
+            }
+            if let Some(children) = world.get::<crate::core::ecs::ChildrenLinks>(current) {
+                stack.extend(children.0.iter().copied());
             }
         }
 
@@ -606,32 +614,27 @@ pub fn agent_mortality_system(
     if policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
     }
-    let mut to_despawn: Vec<(String, Entity, &'static str)> = Vec::new();
-    for (e, homeo, lineage_id, opt_eval) in agent_query.iter() {
+    for (e, homeo, _lineage_id, opt_eval) in agent_query.iter() {
         if homeo.energy <= 0.0 {
             let cause = if opt_eval.map(|ev| ev.survival_ticks >= 300).unwrap_or(false) {
                 "Senescence"
             } else {
                 "Starvation"
             };
-            to_despawn.push((lineage_id.0.clone(), e, cause));
+            if let Some(ref mut trk) = tracker {
+                trk.record_death(cause);
+            }
+            commands.add(ReclaimAndDespawnAgentCommand { root: e });
         }
-    }
-    to_despawn.sort_unstable_by(|a, b| a.0.cmp(&b.0));
-
-    for (_, entity, cause) in to_despawn {
-        if let Some(ref mut trk) = tracker {
-            trk.record_death(cause);
-        }
-        commands.add(ReclaimAndDespawnAgentCommand { root: entity });
     }
 }
 
 /// Autonomous continuous intra-tick reproduction on energy surplus:
-/// When an agent's reserve exceeds the reproduction threshold (>= 0.80 * energy_target),
-/// it splits a fraction of its energy reserve, funds an offspring through Lindeman transfer
-/// efficiency (eta ~= 0.20), routes the non-assimilated remainder (1 - eta) directly to
-/// detritus with zero leakage, and queues a SpawnOffspringCommand.
+/// When an agent's reserve reaches the reproduction threshold (0.65 * energy_target for prey,
+/// 0.95 for predators) and exceeds its safe reserve, it invests part of that reserve, funds an
+/// offspring through `ecology::REPRODUCTION_EFFICIENCY` (eta = 0.60), routes the remainder
+/// (1 - eta) directly to detritus with zero leakage, and queues a SpawnOffspringCommand.
+/// The numbers live in the body below and in `ecology.rs`; this comment only names them.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
     mut agent_query: Query<
@@ -655,6 +658,7 @@ pub fn autonomous_reproduction_system(
     mut next_node_id: Option<ResMut<NextNodeId>>,
     mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
     reproduction_policy: Option<Res<crate::core::resources::ReproductionPolicy>>,
+    mut vital_stats: Option<ResMut<crate::core::resources::VitalStatistics>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
@@ -793,6 +797,11 @@ pub fn autonomous_reproduction_system(
             if let Some(ref mut trk) = demographic_tracker {
                 let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
                 trk.record_birth(parent_age);
+            }
+            // F-039: `live.births` drains `VitalStatistics`; record every continuous birth there
+            // too, beside the tracker's. Absent resource = no-op (legacy path).
+            if let Some(ref mut vitals) = vital_stats {
+                vitals.record_birth();
             }
 
             commands.add(SpawnOffspringCommand {

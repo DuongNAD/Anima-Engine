@@ -255,6 +255,7 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
 
     for (let i = 0; i < sequence.length; i++) {
       await act(async () => {
+        if (i > 0) vi.advanceTimersByTime(33);
         tauriHandler?.({ payload: sequence[i] });
       });
       advanceFrames();
@@ -414,7 +415,7 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
     }
   });
 
-  it('RW0-2: renders synthetic creatures in an ordinary browser and labels them "synthetic" on screen', () => {
+  it('RW0-2: renders synthetic creatures in an ordinary browser and labels them "synthetic" on screen', async () => {
     vi.useFakeTimers();
     const parsed = parseSyntheticReplaySearch('?replay=synthetic&agents=5&segments=4');
     expect(parsed).toEqual({ agents: 5, ticks: 180, seed: 0x517e2026, segmentsPerAgent: 4 });
@@ -423,6 +424,11 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
     const { container, unmount } = render(
       <LiveAgents world={world} renderSize={1200} heightRatio={0.14} meshResolution={64} />,
     );
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
     advanceFrames();
     const groupedMeshEl = container.querySelector(
@@ -517,6 +523,8 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
     );
 
     await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
       await Promise.resolve();
     });
     expect(activeTauriCb).not.toBeNull();
@@ -623,10 +631,18 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
       expect(document.querySelector('[data-testid="rw-synthetic-banner"]')).not.toBeNull();
     });
 
-    advanceFrames();
-    const meshEl = container.querySelector('instancedmesh') as MockInstancedElement | null;
-    expect(meshEl).not.toBeNull();
-    expect(meshEl!.count).toBeGreaterThan(0);
+    // The banner and the instanced mesh are committed by separate async state
+    // updates (file fetch -> parse -> replay frame -> mesh), so the banner being
+    // visible does not imply the mesh exists yet on a slow runner. Drive frames
+    // inside the poll and wait on the mesh condition itself instead of assuming
+    // how many ticks the pipeline needs.
+    let meshEl: MockInstancedElement | null = null;
+    await waitFor(() => {
+      advanceFrames();
+      meshEl = container.querySelector('instancedmesh') as MockInstancedElement | null;
+      expect(meshEl).not.toBeNull();
+      expect(meshEl!.count).toBeGreaterThan(0);
+    });
 
     // Uploading a recording file via the file input updates the replay source too.
     const fileInput = document.querySelector(

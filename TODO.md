@@ -14,7 +14,19 @@
 
 ---
 
-# ⏪ [MỚI NHẤT] Relicense: proprietary → `MIT OR Apache-2.0` (2026-08-08)
+# ⏪ [MỚI NHẤT] Một ngày gộp, sửa và tìm ra nút thắt khoa học (2026-11-16)
+
+`main` được fast-forward lên thân cây; CI thân cây xanh trở lại cả `check:e2` (#59: đính chính có
+ngày cho E2 và chạy lại thật — H1 vẫn null, thời điểm chạm sàn trùng cả 24 lượt với tháng 7). Bốn bug
+sim được sửa: F-037/F-038/F-039 (#50), F-040 restore sau ca chết (#64), F-041 cùng seed ra một thế giới
+ở mọi tiến trình (#65). Đợt readable-world merge chín thẻ. Điều quan trọng nhất tìm được là **F-042**
+(#70): sinh vật không tự di chuyển được — lực khớp là nội lực, vật lý không có lực ngoài, không hệ nào ghi
+`target_velocity` — nên thú săn không bao giờ tới được con mồi và fitness Locomotion không có gì để chọn.
+Thứ tự việc kế tiếp: [`STATE_OF_THE_PROJECT.md` §3.00](docs/planning/STATE_OF_THE_PROJECT.md).
+
+---
+
+# ⏪ Relicense: proprietary → `MIT OR Apache-2.0` (2026-08-08)
 
 Chủ sở hữu đổi Anima Engine sang **nguồn mở, cấp phép kép**. Việc này hợp lệ với **toàn bộ lịch sử
 commit**, không chỉ code từ nay: dự án có một tác giả duy nhất giữ toàn bộ copyright, không
