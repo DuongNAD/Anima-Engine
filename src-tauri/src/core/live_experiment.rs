@@ -115,6 +115,13 @@ pub const LIVE_KEY_EVOLVED_BRAINS: &str = "live.evolved_brains";
 /// a run's trajectory must not depend on ambient variables. Absent means off, which is exactly
 /// today's behaviour, so every live manifest written before this key existed stays bit-identical.
 pub const LIVE_KEY_MORTALITY: &str = "live.mortality";
+/// Whether continuous intra-tick reproduction (`autonomous_reproduction_system`) runs, as a
+/// **declared** input (ADR-0005 option A, Card S1; proposed, in force only if QD-4 = A).
+///
+/// `1.0` inserts `ReproductionPolicy { enabled: true }`; `0.0` or absent keeps the
+/// `ReproductionPolicy::disabled()` every live run made before this key existed, bit-identical.
+/// Exact-boolean reading, like `live.mortality`. Declared, never read from the environment.
+pub const LIVE_KEY_REPRODUCTION: &str = "live.reproduction";
 /// Consecutive bottom ticks (energy exhausted) before starvation kills, when mortality is on.
 /// Absent keeps the policy's default of 120.
 pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
@@ -129,7 +136,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 11] = [
+pub const LIVE_KEYS: [&str; 12] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -137,6 +144,7 @@ pub const LIVE_KEYS: [&str; 11] = [
     LIVE_KEY_FOOD_CAP,
     LIVE_KEY_EVOLVED_BRAINS,
     LIVE_KEY_MORTALITY,
+    LIVE_KEY_REPRODUCTION,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
     LIVE_KEY_ECOLOGICAL_FITNESS,
@@ -160,6 +168,10 @@ pub struct LiveWorldConfig {
     /// serialized before these fields existed reads back as the world that never dies of hunger.
     #[serde(default)]
     pub mortality: bool,
+    /// Continuous reproduction (ADR-0005 option A), off unless a manifest asks. Off is the
+    /// historical `ReproductionPolicy::disabled()`, so older serialized configs read back unchanged.
+    #[serde(default)]
+    pub reproduction: bool,
     /// Declared thresholds; absent reads back as the policy's own defaults.
     #[serde(default = "default_starve_ticks")]
     pub starve_ticks: u32,
@@ -200,6 +212,7 @@ impl Default for LiveWorldConfig {
             food_cap: crate::core::ecs::FoodSpawnSettings::default().max_food_count,
             evolved_brains: false,
             mortality: false,
+            reproduction: false,
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
             ecological_fitness: false,
@@ -275,6 +288,18 @@ impl LiveWorldConfig {
                         })
                     }
                 },
+                LIVE_KEY_REPRODUCTION => match *value {
+                    0.0 => config.reproduction = false,
+                    1.0 => config.reproduction = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
                 LIVE_KEY_STARVE_TICKS => {
                     config.starve_ticks = bounded_count(key, *value, 0.0, 65_536.0)? as u32
                 }
@@ -326,6 +351,14 @@ impl LiveWorldConfig {
                     id: id.clone(),
                     reason: "the run declares no death rule (live.mortality absent or 0.0); \
                              nobody can die, so a death count would be a fabricated zero"
+                        .to_owned(),
+                });
+            }
+            if id == "live.births" && !self.reproduction {
+                return Err(ExperimentError::InvalidObservableRequest {
+                    id: id.clone(),
+                    reason: "the run declares no birth rule (live.reproduction absent or 0.0); \
+                             nobody can be born, so a birth count would be a fabricated zero"
                         .to_owned(),
                 });
             }
@@ -1559,9 +1592,11 @@ fn build_live_world(
         starve_ticks: config.starve_ticks,
         dehydration_ticks: config.dehydration_ticks,
     });
-    // Continuous intra-tick reproduction (`autonomous_reproduction_system`) stays off in declared
-    // manifest worlds until QD-4 (Wave 3 Card S1) resolves its interaction with epochal selection.
-    world.insert_resource(crate::core::resources::ReproductionPolicy::disabled());
+    // Continuous intra-tick reproduction (`autonomous_reproduction_system`) is a declared input
+    // (`live.reproduction`, ADR-0005 option A). Absent/0 keeps the historical disabled policy.
+    world.insert_resource(crate::core::resources::ReproductionPolicy {
+        enabled: config.reproduction,
+    });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
     // locomotion ranking — bit-identical to every run made before branch F existed.
