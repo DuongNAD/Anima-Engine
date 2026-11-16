@@ -366,6 +366,13 @@ jobs:
         run: npx playwright install --with-deps chromium
         working-directory: tests
 
+      # Fails when `test:e2e` schedules a different set of specs than scripts/e2e_spec_policy.mjs
+      # commits, in either direction. `test:e2e` was narrowed to one directory once and CI stayed
+      # green while four specs, ipc_contract among them, stopped running.
+      - name: E2E spec list matches what test:e2e schedules
+        if: ${{ !cancelled() }}
+        run: node scripts/check_e2e_specs.mjs
+
       - name: npm run test:e2e (Playwright)
         if: ${{ !cancelled() }}
         run: npm run test:e2e
