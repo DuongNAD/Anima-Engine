@@ -1,0 +1,261 @@
+{
+  "kind": "e-sel1-smoke-decisions-EXCLUDED-FROM-ANALYSIS",
+  "consulted_only": [
+    "live.agent_count",
+    "live.standing_crop",
+    "us_per_tick"
+  ],
+  "git_commit": "13209396e6fb8a0e696ca9c023e70531df305634",
+  "algorithm_source": "esel1-preregistration.json smoke_may_set_only.algorithm",
+  "trials": [
+    {
+      "key": "n0-30_fa-50_fs-25",
+      "n0": 30,
+      "f_abundant": 50,
+      "f_scarce": 25,
+      "T_smoke": 18000,
+      "arms": {
+        "control": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 263.3659467222222
+        },
+        "treatment": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 283.6923657222222
+        },
+        "drift": {
+          "status": "completed",
+          "extinct_tick": 7200,
+          "min_agents": 0,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 150084.743281781,
+          "us_per_tick": 156.00416205555555
+        }
+      },
+      "host_load": {
+        "before": [
+          16.6748046875,
+          63.66796875,
+          83.28857421875
+        ],
+        "after": [
+          14.59765625,
+          60.90771484375,
+          81.96044921875
+        ]
+      }
+    },
+    {
+      "key": "n0-30_fa-50_fs-17",
+      "n0": 30,
+      "f_abundant": 50,
+      "f_scarce": 17,
+      "T_smoke": 18000,
+      "arms": {
+        "control": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 276.2528657222222
+        },
+        "treatment": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 283.75430327777775
+        },
+        "drift": {
+          "status": "completed",
+          "extinct_tick": 7200,
+          "min_agents": 0,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 150084.743281781,
+          "us_per_tick": 151.85749305555555
+        }
+      },
+      "host_load": {
+        "before": [
+          14.59765625,
+          60.90771484375,
+          81.96044921875
+        ],
+        "after": [
+          12.17529296875,
+          58.10302734375,
+          80.591796875
+        ]
+      }
+    },
+    {
+      "key": "n0-30_fa-50_fs-13",
+      "n0": 30,
+      "f_abundant": 50,
+      "f_scarce": 13,
+      "T_smoke": 18000,
+      "arms": {
+        "control": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 286.9611550555556
+        },
+        "treatment": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 293.9321458333333
+        },
+        "drift": {
+          "status": "completed",
+          "extinct_tick": 7200,
+          "min_agents": 0,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 150084.743281781,
+          "us_per_tick": 166.3009837777778
+        }
+      },
+      "host_load": {
+        "before": [
+          12.17529296875,
+          58.10302734375,
+          80.591796875
+        ],
+        "after": [
+          11.15185546875,
+          56.37060546875,
+          79.7138671875
+        ]
+      }
+    },
+    {
+      "key": "n0-30_fa-50_fs-6",
+      "n0": 30,
+      "f_abundant": 50,
+      "f_scarce": 6,
+      "T_smoke": 18000,
+      "arms": {
+        "control": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 527.3145370555557
+        },
+        "treatment": {
+          "status": "completed",
+          "extinct_tick": null,
+          "min_agents": 13,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 123973.79411301282,
+          "us_per_tick": 315.7751481666666
+        },
+        "drift": {
+          "status": "completed",
+          "extinct_tick": 7200,
+          "min_agents": 0,
+          "max_agents_le_1200": 74,
+          "crop_tail_mean": 150084.743281781,
+          "us_per_tick": 167.32563194444444
+        }
+      },
+      "host_load": {
+        "before": [
+          11.15185546875,
+          56.37060546875,
+          79.7138671875
+        ],
+        "after": [
+          9.6318359375,
+          53.091796875,
+          77.994140625
+        ]
+      }
+    }
+  ],
+  "steps": [
+    {
+      "step": "A",
+      "trial": "n0-30_fa-50_fs-25",
+      "F": 50,
+      "max_agent_count_tick_le_1200": 74,
+      "pass": true
+    },
+    {
+      "step": "B",
+      "trial": "n0-30_fa-50_fs-25",
+      "N0": 30,
+      "min_agents_abundant": 13,
+      "min_agents_scarce": 13,
+      "pass": true
+    },
+    {
+      "step": "C",
+      "trial": "n0-30_fa-50_fs-25",
+      "c": "1/2",
+      "F_scarce": 25,
+      "standing_crop_tail_mean_scarce": 123973.79411301282,
+      "standing_crop_tail_mean_abundant": 123973.79411301282,
+      "r": 1,
+      "min_agents_scarce": 13,
+      "pass": false
+    },
+    {
+      "step": "C",
+      "trial": "n0-30_fa-50_fs-17",
+      "c": "1/3",
+      "F_scarce": 17,
+      "standing_crop_tail_mean_scarce": 123973.79411301282,
+      "standing_crop_tail_mean_abundant": 123973.79411301282,
+      "r": 1,
+      "min_agents_scarce": 13,
+      "pass": false
+    },
+    {
+      "step": "C",
+      "trial": "n0-30_fa-50_fs-13",
+      "c": "1/4",
+      "F_scarce": 13,
+      "standing_crop_tail_mean_scarce": 123973.79411301282,
+      "standing_crop_tail_mean_abundant": 123973.79411301282,
+      "r": 1,
+      "min_agents_scarce": 13,
+      "pass": false
+    },
+    {
+      "step": "C",
+      "trial": "n0-30_fa-50_fs-6",
+      "c": "1/8",
+      "F_scarce": 6,
+      "standing_crop_tail_mean_scarce": 123973.79411301282,
+      "standing_crop_tail_mean_abundant": 123973.79411301282,
+      "r": 1,
+      "min_agents_scarce": 13,
+      "pass": false
+    },
+    {
+      "step": "stop",
+      "finding": "step C: no c in 1/2, 1/3, 1/4, 1/8 gives 0.4 <= r <= 0.6 with min live.agent_count >= 5"
+    }
+  ],
+  "result": {
+    "outcome": "stopped",
+    "finding": "step C: no c in 1/2, 1/3, 1/4, 1/8 gives 0.4 <= r <= 0.6 with min live.agent_count >= 5"
+  }
+}
