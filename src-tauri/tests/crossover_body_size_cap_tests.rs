@@ -1,24 +1,15 @@
-//! F-038 (SMELL) — crossover builds bodies larger than restore and migration accept, and nothing
-//! between the two checks the size.
+//! F-038 (SMELL, fixed by owner decision 2026-11-16, direction (a)) — `crossover_genotypes` no
+//! longer returns a body larger than restore and migration accept.
 //!
-//! Restore (`spawn_serialized_agent`), waking a hibernated agent, migration and the MAP-Elites
-//! archive load all refuse a morphology above `MAX_MIGRATION_MORPHOLOGY_NODES`
-//! (`validate_morphology_payload`; the refusal itself is pinned by
-//! `migration_enqueue_atomicity_tests`). Live evolution has no such cap:
+//! Restore, waking a hibernated agent, migration and the MAP-Elites archive load all refuse a
+//! morphology above `MAX_MIGRATION_MORPHOLOGY_NODES` (`validate_morphology_payload`). A crossover
+//! child can hold up to `|A| - 1 + |B|` nodes, and the archive's unbounded mass axis keeps a
+//! heavier child, so unchecked drift would eventually build an agent that saves but cannot be
+//! restored. Now a child over the node cap (or with edges >= cap) is refused exactly as an invalid
+//! child is: the id counter is restored and `parent_a` is returned.
 //!
-//! - `mutate_genotype` adds a node only below 15, but never removes one;
-//! - `crossover_genotypes` swaps a subtree of parent A for a subtree of parent B, so the child
-//!   can hold up to `|A| - 1 + |B|` nodes, and nothing after it in the evolution worker checks;
-//! - the archive cell is `floor(body_mass / resolution)` with no upper bound
-//!   (`map_elites.rs:151`), so a child heavier than every elite always lands in an empty cell and
-//!   is always kept. Upward drift in body size is retained, never competed away.
-//!
-//! What this file proves is the operator half: starting from the largest body mutation builds,
-//! repeated crossover under "keep the heavier" selection passes the restore cap with every
-//! intermediate body a valid tree. "Keep the heavier" is a stand-in for the archive's unbounded
-//! mass axis, not the archive itself; whether a real run reaches the cap is not measured here.
-//! A world holding such an agent saves (serialisation does not validate) and then cannot be
-//! restored: `simulation_loop.rs` aborts the whole restore on the first refused agent.
+//! "Keep the heavier" below is a stand-in for the archive's unbounded mass axis, not the archive
+//! itself; whether a real run reaches the cap was never measured, hence the finding stays SMELL.
 
 use anima_engine_lib::core::components::MAX_MIGRATION_MORPHOLOGY_NODES;
 use anima_engine_lib::evolution::crossover::crossover_genotypes;
@@ -31,7 +22,7 @@ use rand::SeedableRng;
 const HD_SEED: u64 = 0x5EED;
 /// The largest body `mutate_genotype` builds: its add-node operator requires `nodes.len() < 15`.
 const MUTATION_BUILDS_UP_TO: u32 = 15;
-const MAX_GENERATIONS: u32 = 200;
+const GENERATIONS: u32 = 50;
 
 fn chain(nodes: u32) -> MorphologyGenotype {
     let mut g = MorphologyGenotype::new();
@@ -54,36 +45,60 @@ fn chain(nodes: u32) -> MorphologyGenotype {
     g
 }
 
+fn within_restore_limits(g: &MorphologyGenotype) -> bool {
+    g.nodes.len() <= MAX_MIGRATION_MORPHOLOGY_NODES
+        && g.edges.len() < MAX_MIGRATION_MORPHOLOGY_NODES
+        && is_valid_genotype(g)
+}
+
 #[test]
-fn repeated_crossover_from_a_mutation_sized_body_passes_the_restore_cap() {
+fn repeated_crossover_from_a_mutation_sized_body_never_exceeds_the_restore_cap() {
     let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(HD_SEED);
     let mut node_id_counter = MUTATION_BUILDS_UP_TO;
     let mut heaviest = chain(MUTATION_BUILDS_UP_TO);
     assert!(is_valid_genotype(&heaviest));
 
-    let mut generations = 0_u32;
-    while heaviest.nodes.len() <= MAX_MIGRATION_MORPHOLOGY_NODES && generations < MAX_GENERATIONS {
+    for generation in 0..GENERATIONS {
         let child = crossover_genotypes(&heaviest, &heaviest, &mut node_id_counter, &mut rng)
             .expect("the node-id counter is far from exhaustion");
         assert!(
-            is_valid_genotype(&child),
-            "generation {generations}: crossover must keep a valid tree"
+            within_restore_limits(&child),
+            "generation {generation}: child has {} nodes, cap {MAX_MIGRATION_MORPHOLOGY_NODES}",
+            child.nodes.len()
         );
         if child.total_mass() > heaviest.total_mass() {
             heaviest = child;
         }
-        generations += 1;
     }
     println!(
-        "F038 generations={generations} nodes={} cap={MAX_MIGRATION_MORPHOLOGY_NODES} start={MUTATION_BUILDS_UP_TO}",
+        "F038 generations={GENERATIONS} nodes={} cap={MAX_MIGRATION_MORPHOLOGY_NODES} start={MUTATION_BUILDS_UP_TO}",
         heaviest.nodes.len()
     );
+    assert!(within_restore_limits(&heaviest));
+}
 
+#[test]
+fn an_oversized_child_is_refused_with_parent_a_and_the_counter_unchanged() {
+    let parent_a = chain(100);
+    let parent_b = chain(120); // 100 + 120 > cap: many draws would build > 128 nodes
+    let a_json = serde_json::to_string(&parent_a).unwrap();
+    let mut refused = 0;
+    for seed in 0..200_u64 {
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(seed);
+        let mut counter = 1_000_u32;
+        let child = crossover_genotypes(&parent_a, &parent_b, &mut counter, &mut rng)
+            .expect("counter is far from exhaustion");
+        assert!(
+            within_restore_limits(&child),
+            "seed {seed}: {} nodes",
+            child.nodes.len()
+        );
+        if serde_json::to_string(&child).unwrap() == a_json && counter == 1_000 {
+            refused += 1;
+        }
+    }
     assert!(
-        heaviest.nodes.len() > MAX_MIGRATION_MORPHOLOGY_NODES,
-        "after {generations} generations the heaviest body has {} nodes, within the cap of \
-         {MAX_MIGRATION_MORPHOLOGY_NODES}: crossover no longer outgrows it (has a size cap been \
-         added? then F-038 is fixed and this test should assert the cap instead)",
-        heaviest.nodes.len()
+        refused > 0,
+        "no seed produced an over-cap child; the rejection branch was never exercised"
     );
 }
