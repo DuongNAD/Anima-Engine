@@ -16,14 +16,11 @@
 
 use anima_engine_lib::core::resources::MapBounds;
 use anima_engine_lib::core::sim_rules::{
-    cell_center_to_world_xz, cell_center_uv, cell_index, uv_to_cell, world_xz_to_cell,
-    WORLD_MAX_XZ, WORLD_MAX_Y, WORLD_MIN_XZ, WORLD_MIN_Y,
+    cell_center_to_world_xz, world_xz_to_cell, WORLD_MAX_XZ, WORLD_MIN_XZ,
 };
-use anima_engine_lib::core::terrain::TerrainMap;
 use anima_engine_lib::core::world_artifact::{
-    fnv1a_32, map_biome_backend_to_frontend, map_biome_frontend_to_backend, WorldArtifact,
-    WorldIdentity, CANONICAL_WORLD_SCALE, WORLD_ARTIFACT_HEADER_LEN, WORLD_ARTIFACT_MAGIC,
-    WORLD_ARTIFACT_VERSION,
+    map_biome_backend_to_frontend, map_biome_frontend_to_backend, WorldArtifact, WorldIdentity,
+    CANONICAL_WORLD_SCALE, WORLD_ARTIFACT_HEADER_LEN,
 };
 use glam::Vec3;
 
@@ -184,7 +181,7 @@ fn test_adversarial_artifact_truncation_and_trailing_sweep() {
     // 2. Trailing garbage from 1 to 128 extra bytes
     for extra in [1, 2, 3, 4, 7, 16, 64, 128] {
         let mut padded = valid.clone();
-        padded.extend(std::iter::repeat(0xEE).take(extra));
+        padded.extend(std::iter::repeat_n(0xEE, extra));
         let err = WorldArtifact::from_bytes(&padded).unwrap_err();
         assert!(
             err.contains("trailing byte"),
@@ -262,7 +259,7 @@ fn test_adversarial_artifact_extreme_floats_and_seeds() {
     assert_eq!(decoded.flow[0], 10000.0);
 
     // Seed 0
-    let mut artifact_zero_seed = create_test_artifact(4, 4, 0);
+    let artifact_zero_seed = create_test_artifact(4, 4, 0);
     let bytes_zero = artifact_zero_seed.to_bytes();
     let decoded_zero = WorldArtifact::from_bytes(&bytes_zero).expect("seed 0 must decode");
     assert_eq!(decoded_zero.seed, 0);
@@ -407,7 +404,7 @@ fn test_adversarial_terrain_elevation_interpolation_robustness() {
             "elevation lookup at {pos:?} must yield finite float, got {elev}"
         );
         assert!(
-            elev >= 0.0 && elev <= 1.0,
+            (0.0..=1.0).contains(&elev),
             "elevation lookup at {pos:?} must be clamped in [0,1], got {elev}"
         );
     }

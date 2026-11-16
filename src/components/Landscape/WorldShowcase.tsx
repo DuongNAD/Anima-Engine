@@ -41,6 +41,7 @@ import {
   type LodFocusPayload,
 } from '../../utils/lodFocus';
 import { sunDirectionForTime } from './utils/skyParams';
+import { ALWAYS_DAY_HOUR, stepTimeOfDay } from './utils/sceneClock';
 import { audioManager } from './utils/audioManager';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
@@ -117,7 +118,11 @@ function applyShadowPass(
 const QualityApplier: React.FC<{ quality: Quality }> = ({ quality }) => {
   const { gl, scene, setDpr } = useThree();
   useEffect(() => {
-    setDpr(quality === 'high' ? Math.min(window.devicePixelRatio || 1, 1.5) : 1);
+    const targetDpr =
+      quality === 'high'
+        ? Math.min(Math.max(window.devicePixelRatio || 1, 1), 1.5)
+        : 1;
+    setDpr(targetDpr);
     applyShadowPass(gl, scene, quality === 'high');
   }, [quality, gl, scene, setDpr]);
   return null;
@@ -208,6 +213,7 @@ export const WorldShowcase: React.FC = () => {
 
   const [timeOfDay, setTimeOfDay] = useState(capture?.timeOfDay ?? 11.0);
   const [speed, setSpeed] = useState(capture ? 0 : 1.0); // 0 = paused
+  const [alwaysDay, setAlwaysDay] = useState(false);
   const [weather, setWeather] = useState<WeatherKind>(capture?.weather ?? 'clear');
   const [camMode, setCamMode] = useState<CameraMode>('orbit');
   const [quality, setQuality] = useState<Quality>(capture?.quality ?? 'high');
@@ -261,12 +267,12 @@ export const WorldShowcase: React.FC = () => {
     };
   }, [world]);
 
-  // Advance the day/night clock (24h) at `speed`. Paused when speed is 0.
+  // Advance the day/night clock (24h, 10 minutes per cycle at 1x) unless paused, captured, or pinned to day.
   useEffect(() => {
-    if (speed === 0) return;
-    const id = setInterval(() => setTimeOfDay((t) => (t + 0.05 * speed) % 24), 100);
+    if (capture || alwaysDay || speed === 0) return;
+    const id = setInterval(() => setTimeOfDay((t) => stepTimeOfDay(t, speed, 0.1, false)), 100);
     return () => clearInterval(id);
-  }, [speed]);
+  }, [capture, alwaysDay, speed]);
 
   // Throttled readout of the camera telemetry for the HUD (avoids per-frame React re-renders).
   useEffect(() => {
@@ -391,12 +397,11 @@ export const WorldShowcase: React.FC = () => {
       <Canvas
         // `shadows` (bare) asks react-three-fiber for PCFSoftShadowMap, which three 0.184
         // deprecated: `WebGLShadowMap` warns and silently uses PCFShadowMap instead
-        // (three.module.js:9135). The warning fires on every shadow-map rebuild, so a running
-        // scene emitted it continuously — and it was telling the truth: the soft filter had not
-        // been in use for some time. Naming the filter three actually applies removes the noise
-        // and changes no pixels.
-        shadows="percentage"
-        dpr={[1, 1.5]}
+        // (three.module.js:9135). Naming the percentage filter avoids that warning, and toggling
+        // `shadows` and `dpr` from `quality` here stops R3F's `configure()` from resetting low
+        // quality's DPR=1 and disabled shadow map on every parent render.
+        shadows={quality === 'high' ? 'percentage' : false}
+        dpr={quality === 'high' ? [1, 1.5] : 1}
         gl={{
           powerPreference: 'high-performance',
           // ---- three capture-only context flags, each closing one source of frame variance -----
@@ -633,6 +638,7 @@ export const WorldShowcase: React.FC = () => {
       <WorldHud
         timeOfDay={timeOfDay}
         speed={speed}
+        alwaysDay={alwaysDay}
         weather={weather}
         camMode={camMode}
         quality={quality}
@@ -640,6 +646,11 @@ export const WorldShowcase: React.FC = () => {
         fps={camReadout.fps}
         muted={muted}
         onSpeed={setSpeed}
+        onToggleAlwaysDay={() => {
+          const next = !alwaysDay;
+          setAlwaysDay(next);
+          if (next) setTimeOfDay(ALWAYS_DAY_HOUR);
+        }}
         onWeather={setWeather}
         onCamMode={setCamMode}
         onQuality={setQuality}
@@ -685,6 +696,7 @@ const HUD_BTN = (active: boolean): React.CSSProperties => ({
 const WorldHud: React.FC<{
   timeOfDay: number;
   speed: number;
+  alwaysDay: boolean;
   weather: WeatherKind;
   camMode: CameraMode;
   quality: Quality;
@@ -692,13 +704,14 @@ const WorldHud: React.FC<{
   fps: number;
   muted: boolean;
   onSpeed: (s: number) => void;
+  onToggleAlwaysDay: () => void;
   onWeather: (w: WeatherKind) => void;
   onCamMode: (m: CameraMode) => void;
   onQuality: (q: Quality) => void;
   onMute: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, weather, camMode, quality, coords, fps, muted, onSpeed, onWeather, onCamMode, onQuality, onMute, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, quality, coords, fps, muted, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQuality, onMute, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -722,11 +735,18 @@ const WorldHud: React.FC<{
         userSelect: 'none',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums' }}>🕑 {clock}</span>
         <span style={{ opacity: 0.85 }}>{phase}</span>
         <button style={HUD_BTN(false)} onClick={() => onSpeed(speed === 0 ? 1 : 0)}>
           {speed === 0 ? '▶ Play' : '⏸ Pause'}
+        </button>
+        <button
+          style={HUD_BTN(alwaysDay)}
+          aria-pressed={alwaysDay}
+          onClick={onToggleAlwaysDay}
+        >
+          ☀ Luôn ban ngày
         </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

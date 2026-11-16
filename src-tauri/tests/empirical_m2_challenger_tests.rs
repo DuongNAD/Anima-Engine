@@ -283,7 +283,7 @@ fn test_mte_thermal_extremes_scaling_and_monotonicity() {
     // At T=20°C -> T=30°C
     let q10_20 = boltzmann_factor(30.0, E_ANIMAL_EV) / boltzmann_factor(20.0, E_ANIMAL_EV);
     assert!(
-        q10_20 >= 2.0 && q10_20 <= 3.0,
+        (2.0..=3.0).contains(&q10_20),
         "Q10 between 20°C and 30°C must be in [2.0, 3.0], got {q10_20}"
     );
 

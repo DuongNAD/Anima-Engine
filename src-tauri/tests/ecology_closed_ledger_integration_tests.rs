@@ -60,8 +60,6 @@ use anima_engine_lib::evolution::genotype::{
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::Schedule;
 
-const TEST_SEED: u64 = 0x5EED;
-
 fn test_genotype() -> MorphologyGenotype {
     let mut g = MorphologyGenotype::new();
     g.add_node(MorphologyNode {
@@ -374,7 +372,7 @@ fn test_metabolic_theory_of_ecology_kleiber_and_arrhenius_temperature_scaling() 
     let bf_30 = boltzmann_factor(30.0, E_ANIMAL_EV);
     let q10 = bf_30 / bf_ref;
     assert!(
-        q10 >= 2.0 && q10 <= 3.0,
+        (2.0..=3.0).contains(&q10),
         "Biological Q10 for animal metabolism with E=0.65 eV must fall in [2.0, 3.0], got {q10}"
     );
 
