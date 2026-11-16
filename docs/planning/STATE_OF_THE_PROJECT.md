@@ -1207,7 +1207,7 @@ kia thành thừa **và** nhanh hơn.
 một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
 fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 
-**(2) OSS-072 — truy vấn MRCA.**
+**(2) OSS-072 — truy vấn MRCA.** ✅ Xong trên nhánh `feat/oss-072-mrca-trunk` (`evolution/mrca.rs`, lệnh `get_lineage_mrca`, `tests/lineage_mrca_tests.rs`); đáp án là một **tập**, không phải một node. Chưa đo trên trunk — xem số đo ở commit hợp nhất. OSS-073 nay không còn bị chặn.
 
 *Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
 
