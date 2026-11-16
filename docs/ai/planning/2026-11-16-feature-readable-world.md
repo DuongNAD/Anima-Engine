@@ -96,22 +96,52 @@ Hai nguyên tắc đi kèm:
   trang trí, tất định theo `agent_id`, và không bao giờ thay cho tư thế mà backend phát. Đây là ràng
   buộc §2 của [thiết kế animation](../design/2026-08-25-feature-creature-animation.md).
 
-## 4. Ngân sách hiệu năng (đề xuất)
+## 4. Ngân sách hiệu năng (chốt tại RW0-5)
 
-Số mỗi khung, tính cả lượt bóng đổ, đo ở ba tư thế camera chuẩn `overview`, `ecosystem` và `spawn`
-(`CANONICAL_VIEW_CAMERAS`), với fixture 1000 con × 3 đốt. Các trần này là **đề xuất**; RW0-5 chốt
-chúng bằng số đo.
+Số mỗi khung, tính cả lượt bóng đổ (`window.__animaFrameCounters`), đo ở ba tư thế camera chuẩn
+`overview`, `ecosystem` và `spawn` (`CANONICAL_VIEW_CAMERAS`), với fixture tổng hợp `1000 con × 3 đốt`
+(`3000` đốt). Trần dưới đây được chốt bằng số đo phần cứng trên máy sàn mức Thấp: `Dell Vostro 3530`
+(`DESKTOP-IT8UKCD`, cắm điện AC), WebGL GPU
+`ANGLE (Intel, Intel(R) Iris(R) Xe Graphics (0x0000A7A1) Direct3D11 vs_5_0 ps_5_0, D3D11)`,
+`Chromium 151.0.7922.34`, khung `1024×768` CSS (`deviceScaleFactor = 1,5`), ghim ban ngày `11:00`
+(`☀ Luôn ban ngày`), tại commit sạch `bb78e63d93c5ad2c680427bacc7209ce201c8f48` (`git status --porcelain`
+rỗng; vì `RW-A1` chưa lên thân cây ở commit này nên fixture `1000 × 3` đốt tổng hợp phát ở `30 Hz`
+qua mock sự kiện Tauri `simulation-tick`, vẫn vẽ bằng lưới cầu `SphereGeometry(1.6, 10, 8)` `140` tam
+giác/đốt trước `RW-A2`).
 
-| Mức | Tam giác tổng | Trong đó sinh vật | Lệnh vẽ | DPR | Bóng đổ | Cây cỏ | Mục tiêu FPS |
+### 4a. Trần ngân sách từng mức và từng lớp (RW-C3, RW-A4, RW-C4)
+
+| Mức | Tam giác tổng | Trong đó cây cỏ | Trong đó sinh vật | Lớp cố định (địa hình / nước / khác) | Lệnh vẽ tổng | DPR | Bóng đổ | Cây cỏ | Mục tiêu & số đo FPS |
+|---|---|---|---|---|---|---|---|---|---|
+| Thấp | ≤ 1.200.000 | ≤ 530.000 (≤ 16 lệnh) | ≤ 300.000 (≤ 5 lệnh) | 294.912 / 38.750 / 27.236 (360.898, 16 lệnh) | ≤ 60 | 0,75–1,0 (1,0 mặc định) | tắt, dùng bóng tròn giả | 1/4, chia ô + impostor tầm vừa & bản đồ | ≥ 30 FPS trên `Intel(R) Iris(R) Xe Graphics` (probe ≤ 530k cây cỏ + 420k cầu đạt `59,88` trung vị / `29,90–39,92` 1% thấp nhất FPS) |
+| Vừa | ≤ 2.500.000 | ≤ 1.730.000 (≤ 16 lệnh) | ≤ 400.000 (≤ 5 lệnh) | ≤ 367.556 (≤ 21 lệnh) | ≤ 60 | 1,0 (1024×768 đệm) | tắt, dùng bóng tròn giả | 1/2, chia ô + impostor tầm xa | 60 FPS (đo đủ 3 máy ở `RW6-1`) |
+| Cao | ≤ 6.000.000 | ≤ 5.030.000 (≤ 23 lệnh gồm bóng đổ) | ≤ 600.000 (≤ 5 lệnh chính / ≤ 8 gồm bóng đổ) | 294.912 / 38.750 / 33.824 (367.486, 20 lệnh) | ≤ 70 | tới 1,5 (1536×1152 đệm) | bật (`percentage`) | đủ 1/1 tầm gần, chia ô + impostor tầm xa | 60 FPS trên GPU rời (`RTX 5060 Ti` máy case) hoặc Apple Silicon (`MacBook Air M5`, `RW6-1`) |
+
+### 4b. Số đo hiện trạng thân cây & thử nghiệm mức Thấp trên Dell Vostro 3530 (`bb78e63d`, `Intel(R) Iris(R) Xe Graphics`)
+
+Mọi mẫu đối chiếu với cách bọc `WebGL2RenderingContext.prototype.draw*` cho sai lệch `0,0000%` (`0` lỗi trang).
+
+| Cấu hình (`bb78e63d`) | Sinh vật (tổng hợp) | Tư thế | Bộ đệm | Tổng tam giác (lệnh) | Cây cỏ (lệnh) | Sinh vật (lệnh) | FPS trung vị / 1% thấp nhất |
 |---|---|---|---|---|---|---|---|
-| Thấp | ≤ 1,2 triệu | ≤ 300 nghìn | ≤ 60 | 0,75–1 | tắt, dùng bóng tròn giả | 1/4, tầm gần | 30 trên GPU tích hợp (Dell Vostro 3530) |
-| Vừa | ≤ 2,5 triệu | ≤ 400 nghìn | ≤ 60 | 1 | tắt, dùng bóng tròn giả | 1/2 | 60 |
-| Cao | ≤ 6 triệu | ≤ 600 nghìn | ≤ 70 | tới 1,5 | bật | đủ | 60 trên GPU rời (RTX 5060 Ti của máy case) hoặc Apple Silicon |
-| Hôm nay "Nhẹ" | 3,6 triệu | — | 33 | 1,5 (lỗi) | tắt | 1/2 | |
-| Hôm nay "Đẹp" | 10,7 triệu | — | 40 | 1,5 | bật | đủ | |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 0 | `overview` | 1024×768 | 3.617.258 (30) | 3.256.360 (14) | 0 (0) | 59,88 / 29,94 |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 0 | `ecosystem` | 1024×768 | 3.617.258 (30) | 3.256.360 (14) | 0 (0) | 59,88 / 29,90 |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 0 | `spawn` | 1024×768 | 3.617.258 (30) | 3.256.360 (14) | 0 (0) | 59,88 / 39,92 |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 1000 × 3 | `overview` | 1024×768 | 4.037.258 (31) | 3.256.360 (14) | 420.000 (1) | 59,88 / 29,94 |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 1000 × 3 | `ecosystem` | 1024×768 | 4.037.258 (31) | 3.256.360 (14) | 420.000 (1) | 59,88 / 29,94 |
+| `"Nhẹ"` sau `RW-B1` (baseline) | 1000 × 3 | `spawn` | 1024×768 | 4.037.258 (31) | 3.256.360 (14) | 420.000 (1) | 59,88 / 29,94 |
+| `"Đẹp"` (baseline) | 0 | `overview` | 1536×1152 | 10.671.260 (41) | 10.303.774 (21) | 0 (0) | 20,00 / 14,99 |
+| `"Đẹp"` (baseline) | 0 | `ecosystem` | 1536×1152 | 10.671.260 (41) | 10.303.774 (21) | 0 (0) | 20,00 / 19,96 |
+| `"Đẹp"` (baseline) | 0 | `spawn` | 1536×1152 | 10.671.260 (41) | 10.303.774 (21) | 0 (0) | 20,04 / 19,96 |
+| `"Đẹp"` (baseline) | 1000 × 3 | `overview` | 1536×1152 | 11.511.260 (43) | 10.303.774 (21) | 840.000 (2) | 20,00 / 14,99 |
+| `"Đẹp"` (baseline) | 1000 × 3 | `ecosystem` | 1536×1152 | 11.511.260 (43) | 10.303.774 (21) | 840.000 (2) | 20,04 / 19,96 |
+| `"Đẹp"` (baseline) | 1000 × 3 | `spawn` | 1536×1152 | 11.511.260 (43) | 10.303.774 (21) | 840.000 (2) | 20,00 / 14,99 |
+| Probe Thấp (lọc cây cỏ ≤ 530k) | 1000 × 3 | `overview` | 1024×768 | 1.300.640 (26)* | 519.742 (9) | 420.000 (1) | 59,88 / 29,90 |
+| Probe Thấp (lọc cây cỏ ≤ 530k) | 1000 × 3 | `ecosystem` | 1024×768 | 1.233.226 (30)* | 452.328 (13) | 420.000 (1) | 59,88 / 39,92 |
+| Probe Thấp (lọc cây cỏ ≤ 530k) | 1000 × 3 | `spawn` | 1024×768 | 1.204.108 (31)* | 423.210 (14) | 420.000 (1) | 59,88 / 39,84 |
 
-Sinh vật không được vượt 5 lệnh vẽ ở bất kỳ số con nào: thân trụ, cầu khớp và mắt, mõm, bóng tròn,
-dấu nhìn từ xa.
+\* Ở `bb78e63d` chưa có `RW-A2`, mỗi đốt sinh vật còn dùng `SphereGeometry(1.6, 10, 8)` (`140` tam giác/đốt × `3000` = `420.000` thay vì trần `≤ 300.000`), nên tổng probe cao hơn `4.108–100.640` tam giác so với `1.200.000`; khi sinh vật đạt trần `≤ 300.000` thì ba tư thế probe còn `1.180.640` / `1.113.226` / `1.084.108` (`≤ 1.200.000`). Ngoài ra, đo phân bố bán kính ở `bb78e63d` cho thấy: (1) ở `overview` camera cách gốc `(0, 672, 672)` > `675` đơn vị nên cắt thuần theo bán kính `280`/`420` sẽ làm mất toàn bộ cây ở `overview` nếu `RW-C3` không giữ lớp impostor 6 tam giác toàn bản đồ (`117.558` tam giác mức Thấp); (2) ở `Cao`, giữ đủ tán `1/1` tới `360` đơn vị kèm bóng đổ cho `5.154.552` tam giác cây cỏ tại `spawn`, hơi vượt `5.030.000`, nên `RW-C3` phải giữ cây cỏ mức Cao trong trần `≤ 5.030.000`.
+
+Sinh vật không được vượt 5 mesh instanced (`≤ 5` lệnh vẽ lượt chính ở bất kỳ số con nào: thân trụ, cầu khớp và mắt, mõm, bóng tròn, dấu nhìn từ xa; khi bật bóng đổ thật ở mức Cao và tắt bóng tròn thì `creatures.calls` tính cả bóng đổ `≤ 8`).
 
 ## 5. Các gói việc
 
