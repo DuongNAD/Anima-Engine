@@ -203,6 +203,11 @@ bản `release`, biên dịch `-j 2`; vượt trần thì hạ bậc §7.
   không có nghĩa là "không có tác động".
 - **Phụ thuộc ADR-0006**: nếu vận động làm con mồi tuyệt chủng (phương án (a) của ADR-0006 đã làm
   vậy 3/3), smoke sẽ chặn thí nghiệm; đó là kết quả smoke, không phải lý do hạ ràng buộc.
+- **Đo thăm dò 2026-11-16, sau khi #76 merge (chưa đăng ký):** với `live.locomotion = 1`, tử vong và sinh sản
+  bật, 10 founder, 6.000 tick, **chỉ con mồi** (`predator_fraction = 0`) vẫn **tuyệt chủng ở 2/5 seed** —
+  chết khát, vì bộ lái chỉ hướng tới thức ăn, không bao giờ tới nước. Founder ở 3/5 seed gần như đứng yên vì
+  biên độ CPG chỉ ≈ 0,05–0,1, mà tốc độ của #76 lấy theo biên độ. Hai việc này (sàn tốc độ + lái tới nước khi
+  khát) là phương án A của đề xuất ADR-0007; nếu chưa có, smoke rất có thể chặn E-SEL1 vì tuyệt chủng lấn át.
 
 ## 12. Sẽ KHÔNG được tuyên bố
 
