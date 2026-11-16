@@ -3,15 +3,17 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { surfaceHeight } from './utils/worldSample';
-import { resolveTickSourceFromSearch, type TickSource } from './utils/tickRecording';
+import type { TickSource } from './utils/tickRecording';
 import { isCaptureRequested } from './utils/captureMode';
 import {
-  buildAgentPoses,
+  TickInterpolationBuffer,
+  type InterpolatedAgentView,
+} from './agentInterpolation';
+import {
   computeCreatureColor,
   computeFarMarkerScale,
   computeHeadBasis,
   isBeyondFarMarkerDistance,
-  type AgentRenderPose,
 } from './utils/agentPose';
 import type { AgentType } from '../../types/generated/AgentType';
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
@@ -35,6 +37,7 @@ export interface LiveAgentsProps {
   heightRatio: number;
   meshResolution: number;
   tickSource?: TickSource | null;
+  nowMs?: () => number;
 }
 
 interface SelectedAgentSummary {
@@ -61,6 +64,46 @@ const INITIAL_CAPACITY = 4096;
 const EYE_COLOR = new THREE.Color('#11161d');
 const SELECTION_RING_COLOR = new THREE.Color('#fde047');
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
+const FALLBACK_CAM_POS = { x: 0, y: 0, z: 0 } as const;
+
+const defaultNowMs = (): number =>
+  typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+function needsReplayOrRecorderModule(search: string): boolean {
+  if (!search) return false;
+  const params = new URLSearchParams(search);
+  const replay = params.get('replay');
+  return (replay !== null && replay.trim() !== '') || params.get('record') === '1';
+}
+
+function createDefaultLiveTauriSource(): TickSource {
+  return {
+    kind: 'tauri',
+    screenLabel: null,
+    subscribe(listener) {
+      if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+        return () => {};
+      }
+      let unlisten: (() => void) | undefined;
+      let cancelled = false;
+      void import('@tauri-apps/api/event')
+        .then(({ listen }) =>
+          listen<SimulationTickPayload>('simulation-tick', (event) => {
+            if (!cancelled) listener(event.payload);
+          }),
+        )
+        .then((stop) => {
+          if (cancelled) stop();
+          else unlisten = stop;
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+        unlisten?.();
+      };
+    },
+  };
+}
 
 function nextCapacity(needed: number): number {
   let capacity = INITIAL_CAPACITY;
@@ -98,35 +141,35 @@ function createLookups(capacity: number): AgentIdLookups {
   };
 }
 
-function findSelectedSummary(
-  poses: readonly AgentRenderPose[],
+function updateSelectedSummaryInto(
+  out: SelectedAgentSummary,
+  agents: readonly InterpolatedAgentView[],
+  agentCount: number,
   agentId: number,
-  prev: SelectedAgentSummary | null,
 ): SelectedAgentSummary {
-  for (let i = 0; i < poses.length; i++) {
-    const p = poses[i];
+  for (let i = 0; i < agentCount; i++) {
+    const p = agents[i];
     if (p.agentId === agentId) {
-      return {
-        agentId: p.agentId,
-        agentType: p.agentType,
-        energy: p.energy,
-        hydration: p.hydration,
-        segmentCount: p.segmentCount,
-        alive: true,
-      };
+      out.agentId = p.agentId;
+      out.agentType = p.agentType;
+      out.energy = p.energy;
+      out.hydration = p.hydration;
+      out.segmentCount = p.segmentCount;
+      out.alive = true;
+      return out;
     }
   }
-  if (prev && prev.agentId === agentId) {
-    return { ...prev, alive: false };
+  if (out.agentId === agentId) {
+    out.alive = false;
+    return out;
   }
-  return {
-    agentId,
-    agentType: null,
-    energy: 0,
-    hydration: 0,
-    segmentCount: 0,
-    alive: false,
-  };
+  out.agentId = agentId;
+  out.agentType = null;
+  out.energy = 0;
+  out.hydration = 0;
+  out.segmentCount = 0;
+  out.alive = false;
+  return out;
 }
 
 function updateHudDom(els: HudFieldRefs, summary: SelectedAgentSummary): void {
@@ -229,6 +272,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   heightRatio,
   meshResolution,
   tickSource,
+  nowMs = defaultNowMs,
 }) => {
   const segmentsMeshRef = useRef<THREE.InstancedMesh>(null);
   const spheresMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -237,9 +281,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   const markersMeshRef = useRef<THREE.InstancedMesh>(null);
   const selectionRingRef = useRef<THREE.Mesh>(null);
 
-  const payloadRef = useRef<SimulationTickPayload | null>(null);
-  const builtPayloadRef = useRef<SimulationTickPayload | null>(null);
-  const posesRef = useRef<AgentRenderPose[]>([]);
+  const bufferRef = useRef<TickInterpolationBuffer | null>(null);
 
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
   const [connected, setConnected] = useState(false);
@@ -250,21 +292,66 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
 
   const [search] = useState(() => (typeof window === 'undefined' ? '' : window.location.search));
   const captureMode = useMemo(() => isCaptureRequested(search), [search]);
-  const activeSource = useMemo(
-    () => (tickSource !== undefined ? tickSource : resolveTickSourceFromSearch(search)),
-    [tickSource, search],
-  );
+  const [lazyUrlState, setLazyUrlState] = useState<{
+    search: string;
+    source: TickSource | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (tickSource !== undefined || !needsReplayOrRecorderModule(search)) return;
+    let cancelled = false;
+    void import('./utils/tickRecording').then((mod) => {
+      if (!cancelled) {
+        setLazyUrlState({ search, source: mod.resolveTickSourceFromSearch(search) });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tickSource, search]);
+
+  const activeSource = useMemo(() => {
+    if (tickSource !== undefined) return tickSource;
+    if (needsReplayOrRecorderModule(search)) {
+      return lazyUrlState && lazyUrlState.search === search ? lazyUrlState.source : null;
+    }
+    if (captureMode) return null;
+    return createDefaultLiveTauriSource();
+  }, [tickSource, search, lazyUrlState, captureMode]);
 
   const sphereCapacity = capacity * 3;
+
+  const ensureBuffer = useCallback((): TickInterpolationBuffer => {
+    if (!bufferRef.current) {
+      bufferRef.current = new TickInterpolationBuffer();
+    }
+    return bufferRef.current;
+  }, []);
+
+  const ensureSummary = useCallback((): SelectedAgentSummary => {
+    if (!selectedSummaryRef.current) {
+      selectedSummaryRef.current = {
+        agentId: 0,
+        agentType: null,
+        energy: 0,
+        hydration: 0,
+        segmentCount: 0,
+        alive: false,
+      };
+    }
+    return selectedSummaryRef.current;
+  }, []);
 
   // Lookup tables held in a ref (resized when capacity grows, never inside useFrame steady-state)
   // so raycast clicks map instanceId -> agentId with zero per-frame allocations.
   const lookupsRef = useRef<AgentIdLookups | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    ensureBuffer();
+    ensureSummary();
     if (!lookupsRef.current || lookupsRef.current.capacity < capacity) {
       lookupsRef.current = createLookups(capacity);
     }
-  }, [capacity]);
+  }, [capacity, ensureBuffer, ensureSummary]);
 
   // Scratch math objects allocated once and reused across frames.
   const scratch = useMemo(
@@ -382,22 +469,43 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     assignRaycastSphere(markersMeshRef.current, worldBoundsSphere);
   }, [connected, capacity, worldBoundsSphere]);
 
+  const sampleGroundY = useCallback(
+    (rx: number, rz: number): number =>
+      surfaceHeight(world, rx, rz, renderSize, heightRatio, meshResolution),
+    [world, renderSize, heightRatio, meshResolution],
+  );
+
+  const renderSizeRef = useRef(renderSize);
+  const sampleGroundYRef = useRef(sampleGroundY);
+  const nowMsRef = useRef(nowMs);
+
+  // Sync world/clock refs and rebuild cached buffered snapshots whenever terrain parameters change.
+  useEffect(() => {
+    renderSizeRef.current = renderSize;
+    sampleGroundYRef.current = sampleGroundY;
+    nowMsRef.current = nowMs;
+    ensureBuffer().rebuildForWorld(renderSize, sampleGroundY);
+  }, [renderSize, sampleGroundY, nowMs, ensureBuffer]);
+
   useEffect(() => {
     selectedAgentIdRef.current = selectedAgentId;
     if (selectedAgentId === null || captureMode || typeof document === 'undefined') {
-      selectedSummaryRef.current = null;
       hudRefs.current = null;
       return;
     }
 
     const showcaseEl = document.querySelector('[data-testid="world-showcase"]');
     const host = showcaseEl instanceof HTMLElement ? showcaseEl : document.body;
-    const summary = findSelectedSummary(posesRef.current, selectedAgentId, selectedSummaryRef.current);
-    selectedSummaryRef.current = summary;
+    const latest = ensureBuffer().sampleLatest();
+    const summary = updateSelectedSummaryInto(
+      ensureSummary(),
+      latest.agents,
+      latest.agentCount,
+      selectedAgentId,
+    );
 
     const els = buildSelectionHud(() => {
       selectedAgentIdRef.current = null;
-      selectedSummaryRef.current = null;
       setSelectedAgentId(null);
     });
     updateHudDom(els, summary);
@@ -408,15 +516,28 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
       if (hudRefs.current === els) hudRefs.current = null;
       els.root.remove();
     };
-  }, [selectedAgentId, captureMode]);
+  }, [selectedAgentId, captureMode, ensureBuffer, ensureSummary]);
 
   useEffect(() => {
+    const buffer = ensureBuffer();
+    buffer.clear();
     if (!activeSource) return;
-    return activeSource.subscribe((payload) => {
-      payloadRef.current = payload;
-      if (payload.segments.length > 0) setConnected(true);
+    const stop = activeSource.subscribe((payload) => {
+      buffer.push(
+        payload,
+        nowMsRef.current(),
+        renderSizeRef.current,
+        sampleGroundYRef.current,
+      );
+      if (payload.segments.length > 0 || buffer.hasActiveAgents()) {
+        setConnected(true);
+      }
     });
-  }, [activeSource]);
+    return () => {
+      stop();
+      buffer.clear();
+    };
+  }, [activeSource, ensureBuffer]);
 
   useEffect(() => {
     if (!activeSource?.mountOverlay || typeof document === 'undefined') return;
@@ -424,17 +545,6 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     const host = showcaseEl instanceof HTMLElement ? showcaseEl : document.body;
     return activeSource.mountOverlay(host);
   }, [activeSource]);
-
-  const sampleGroundY = useCallback(
-    (rx: number, rz: number): number =>
-      surfaceHeight(world, rx, rz, renderSize, heightRatio, meshResolution),
-    [world, renderSize, heightRatio, meshResolution],
-  );
-
-  // Invalidating cached poses when terrain/world props change ensures re-grounding stays exact.
-  useEffect(() => {
-    builtPayloadRef.current = null;
-  }, [sampleGroundY, renderSize]);
 
   const selectByLookup = useCallback(
     (lookup: Int32Array | undefined, e: THREE.Intersection & { stopPropagation(): void }) => {
@@ -477,35 +587,20 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     const markerMesh = markersMeshRef.current;
     if (!segMesh || !sphereMesh || !snoutMesh || !shadowMesh || !markerMesh) return;
 
-    const payload = payloadRef.current;
-    if (!payload) return;
+    const buffer = bufferRef.current;
+    const lookups = lookupsRef.current;
+    if (!buffer || !buffer.hasSnapshots() || !lookups) return;
 
-    if (builtPayloadRef.current !== payload) {
-      posesRef.current = buildAgentPoses(
-        payload.segments,
-        renderSize,
-        sampleGroundY,
-        payload.head_directions,
-      );
-      builtPayloadRef.current = payload;
-    }
+    const frame = captureMode
+      ? buffer.sampleLatest()
+      : buffer.sample(nowMsRef.current(), renderSize, sampleGroundY);
 
-    const poses = posesRef.current;
-    let totalSegments = 0;
-    for (let i = 0; i < poses.length; i++) {
-      totalSegments += poses[i].segments.length;
-    }
-    if (totalSegments > capacity) {
-      setCapacity(nextCapacity(totalSegments));
+    if (frame.totalSegments > capacity) {
+      setCapacity(nextCapacity(frame.totalSegments));
       return;
     }
 
-    if (!lookupsRef.current || lookupsRef.current.capacity < capacity) {
-      lookupsRef.current = createLookups(capacity);
-    }
-    const lookups = lookupsRef.current;
-
-    const camPos = state.camera?.position ?? { x: 0, y: 0, z: 0 };
+    const camPos = state.camera?.position ?? FALLBACK_CAM_POS;
     const camQuat = state.camera?.quaternion;
     const camFov =
       state.camera && 'fov' in state.camera && typeof state.camera.fov === 'number'
@@ -522,10 +617,12 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     let markerDrawn = 0;
 
     const currentSelectedId = selectedAgentIdRef.current;
-    let selectedPose: AgentRenderPose | null = null;
+    let selectedPose: InterpolatedAgentView | null = null;
+    const agents = frame.agents;
+    const agentCount = frame.agentCount;
 
-    for (let pIdx = 0; pIdx < poses.length; pIdx++) {
-      const pose = poses[pIdx];
+    for (let pIdx = 0; pIdx < agentCount; pIdx++) {
+      const pose = agents[pIdx];
       if (currentSelectedId !== null && pose.agentId === currentSelectedId) {
         selectedPose = pose;
       }
@@ -562,15 +659,28 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
       }
 
       // Near mode: articulated cylinders sized by (radius, length) + joints + eyes + snout/head + contact shadow.
-      for (let sIdx = 0; sIdx < pose.segments.length; sIdx++) {
+      const segCount = pose.segmentCount;
+      for (let sIdx = 0; sIdx < segCount; sIdx++) {
         const segPose = pose.segments[sIdx];
-        matrix.fromArray(segPose.matrixElements);
+        pos.set(
+          segPose.renderPosition[0],
+          segPose.renderPosition[1],
+          segPose.renderPosition[2],
+        );
+        quat.set(
+          segPose.quaternion[0],
+          segPose.quaternion[1],
+          segPose.quaternion[2],
+          segPose.quaternion[3],
+        );
+        scale.set(segPose.renderRadius, segPose.renderRadius, segPose.renderLength);
+        matrix.compose(pos, quat, scale);
         segMesh.setMatrixAt(segDrawn, matrix);
         segMesh.setColorAt(segDrawn, color);
         lookups.segmentAgentIds[segDrawn] = pose.agentId;
         segDrawn++;
 
-        if (segPose.jointRenderPosition && sphereDrawn < sphereCapacity) {
+        if (segPose.hasJoint && sphereDrawn < sphereCapacity) {
           pos.set(
             segPose.jointRenderPosition[0],
             segPose.jointRenderPosition[1],
@@ -620,7 +730,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         const eyeFwd = rLen * 0.48 + snoutLen * 0.14;
         const eyeUp = rRad * 0.56;
         const eyeSide = rRad * 0.64;
-        for (const sideSign of [-1, 1]) {
+        for (let sideSign = -1; sideSign < 2; sideSign += 2) {
           if (sphereDrawn >= sphereCapacity) break;
           pos.set(
             rRx + forward.x * eyeFwd + up.x * eyeUp + right.x * eyeSide * sideSign,
@@ -656,7 +766,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         const eyeFwd = headFwd + rRad * 0.72;
         const eyeUp = headUp + rRad * 0.45;
         const eyeSide = rRad * 0.62;
-        for (const sideSign of [-1, 1]) {
+        for (let sideSign = -1; sideSign < 2; sideSign += 2) {
           if (sphereDrawn >= sphereCapacity) break;
           pos.set(
             rRx + forward.x * eyeFwd + up.x * eyeUp + right.x * eyeSide * sideSign,
@@ -712,9 +822,11 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     // Selection ring & payload-only HUD sync (RW2-7).
     const ringMesh = selectionRingRef.current;
     if (currentSelectedId !== null) {
-      const summary = findSelectedSummary(poses, currentSelectedId, selectedSummaryRef.current);
-      selectedSummaryRef.current = summary;
-      if (hudRefs.current) updateHudDom(hudRefs.current, summary);
+      const summaryOut = selectedSummaryRef.current;
+      if (summaryOut) {
+        updateSelectedSummaryInto(summaryOut, agents, agentCount, currentSelectedId);
+        if (hudRefs.current) updateHudDom(hudRefs.current, summaryOut);
+      }
       if (ringMesh) {
         if (selectedPose) {
           const ringRadius = Math.max(
