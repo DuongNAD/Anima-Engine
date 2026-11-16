@@ -7,7 +7,7 @@ Model: `core::live_experiment::LiveExperimentAdapter` — **headless adapter ver
 - seeds run: `[999983]`
 - duration: **18000 ticks** (committed 18000, ladder [18000, 12000, 6000]), sample period 600
 - complete pairs: **1 of 1** (decision needs 10)
-- wall clock: **10.2 s** (0.17 min) against a registered ceiling of 90 min
+- wall clock: **5.4 s** (0.09 min) against a registered ceiling of 90 min
 - declared factors: `["initial_conditions"]`
 
 ## Integrity (gates E2-G1, E2-G3, E2-G6)
@@ -25,17 +25,28 @@ Roles were fixed before the numbers existed and cannot move afterwards. `delta` 
 
 | observable | role | n | control mean | treatment mean | delta | median delta | SD | SE | 95% CI | d_z | rel. shift | material |
 |---|---|--:|--:|--:|--:|--:|--:|--:|:--:|--:|--:|:--:|
-| `detritus` | reported | 1 | 1018.747442 | 1018.747442 | 1.312e-10 | 1.312e-10 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `detritus` | reported | 1 | 1019.997442 | 1019.997442 | -3.070e-11 | -3.070e-11 | n/a | n/a | n/a | n/a | -0.00% | no |
 | `live.agent_count` | secondary | 1 | 10.000000 | 10.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
 | `live.animals_eu` | secondary | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
-| `live.closed_eu_total` | harness integrity | 1 | 154587.249863 | 154587.249863 | 5.821e-10 | 5.821e-10 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.archive_coverage` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
+| `live.births` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
+| `live.closed_eu_total` | harness integrity | 1 | 155971.799862 | 155971.799862 | 1.106e-9 | 1.106e-9 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.deaths` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
+| `live.dormant_eu` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
 | `live.food_items` | reported | 1 | 50.000000 | 50.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
 | `live.herbivore_count` | reported | 1 | 7.000000 | 7.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
 | `live.mean_agent_energy` | primary | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
+| `live.mean_lifespan` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
 | `live.predator_count` | secondary | 1 | 3.000000 | 3.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
 | `live.season_phase` | reported | 1 | 6.282562 | 6.282562 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
-| `live.standing_crop` | reported | 1 | 153568.502421 | 153568.502421 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
-| `plants` | reported | 1 | 153568.502421 | 153568.502421 | 4.657e-10 | 4.657e-10 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.shannon` | reported | 1 | 0.610864 | 0.610864 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.simpson` | reported | 1 | 0.420000 | 0.420000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.standing_crop` | reported | 1 | 154951.802420 | 154951.802420 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.trait_mass_mean` | reported | 1 | 3.300000 | 3.300000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.trait_mass_p10` | reported | 1 | 3.300000 | 3.300000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.trait_mass_p90` | reported | 1 | 3.300000 | 3.300000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | +0.00% | no |
+| `live.trait_mass_var` | reported | 1 | 0.000000 | 0.000000 | 0.000000 | 0.000000 | n/a | n/a | n/a | n/a | n/a | no |
+| `plants` | reported | 1 | 154951.802420 | 154951.802420 | 1.135e-9 | 1.135e-9 | n/a | n/a | n/a | n/a | +0.00% | no |
 
 ## The primary metric, against the three registered conditions
 

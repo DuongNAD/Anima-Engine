@@ -612,6 +612,13 @@ van mở so với bố cục trước bước 4. Lý do bỏ mốc cũ và cái 
 (`evolved: true` hay giữ opt-in) cần **bằng chứng đối chứng nhiều seed được tiền đăng ký trước khi
 chạy**. Re-baseline chỉ trả lại một baseline có thật để so; nó không nói gì về hướng của treatment.
 
+> **Bổ sung 2026-11-16 (QD-E2M = B):** các manifest bị `970d963` thêm `live.dormant_eu`, nên artifact
+> tháng 7 không còn khớp byte (gate `check:e2` đỏ). Đã sửa bằng **đính chính có ngày**
+> (`amendment_1_live_dormant_eu`, không đổi tham số khoa học) và **chạy lại thật** tại `900ba2d`
+> trên macOS arm64: H1 vẫn **null**, delta đúng 0 trên 12/12 cặp, thời điểm chạm sàn trùng từng seed
+> (kiểm bằng so sánh). Artifact tháng 7 được giữ ở `superseded/`. So sánh và các điều chưa kiểm:
+> `artifacts/experiments/e2-evolved-brain-default/RESULT.md`.
+>
 > ### ✅ E2 ĐÃ CHẠY 2026-07-27 tại `9c57184` — H1 **null**, mặc định **giữ opt-in**
 >
 > Chạy **một lần**, 12/12 cặp hoàn chỉnh, 157,2 s (2,62 phút) trên trần 90 phút, T = 18.000 (bậc
