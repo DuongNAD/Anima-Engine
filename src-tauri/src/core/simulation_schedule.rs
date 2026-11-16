@@ -140,6 +140,7 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
                 crate::core::tick_capture::capture_checkpoint_sensor_brain_system,
                 update_cpg_system,
                 resolve_joints_system,
+                crate::core::locomotion::steering_drive_system,
                 integrate_physics_system,
                 crate::core::aggregate_population::dehydrate_cold_agents_system,
                 herbivore_grazing_system,
