@@ -11,11 +11,14 @@
 //! matter — the ones that move EU — are asserted absent by
 //! `no_two_systems_that_move_energy_are_left_unordered`.
 //!
-//! **130 ambiguous pairs** were reported at the time of writing. Most are benign and this file does
-//! not claim otherwise; the count is printed rather than asserted precisely because driving it to
-//! zero is a separate and much larger piece of work than declaring the energy ordering. One of those
-//! remaining pairs does move the trajectory — `tests/live_cross_process_probe.rs` shows the world
-//! checksum changing in roughly one process in twelve — and finding which is open work.
+//! **Zero ambiguous pairs** since F-041: the tick schedule is one total order, and
+//! `the_tick_schedule_has_no_ambiguous_pair_at_all` asserts that Bevy reports none. Before that
+//! change it reported 128 (about 80 with real component conflicts, the rest only through
+//! `Commands` spawn/despawn), the executed order differed between processes, and mortality plus
+//! continuous reproduction gave two different worlds from one seed. The energy and `SimRng` gates
+//! below are now implied by it but are kept: they name the invariant that matters if someone ever
+//! relaxes the chain. `declared_order_keeps_the_causal_sequences` pins, by position in the executed
+//! order, the readings the old per-system `.after(...)` edges stated.
 //!
 //! # Why the energy systems specifically
 //!
@@ -189,4 +192,138 @@ fn no_two_systems_that_draw_simrng_are_left_unordered() {
          random sequences per process. Declare the order in \
          `core::simulation_schedule::build_tick_schedule`."
     );
+}
+/// The whole point of F-041: with one total order there is nothing left for the per-process
+/// topological sort to choose, whether the pair conflicts on a component, on `World` access, or
+/// only through `Commands` spawn/despawn (the last kind is invisible to Bevy's conflict report
+/// *unless* the pair is unordered, which is why zero unordered pairs is the right assertion).
+#[test]
+fn the_tick_schedule_has_no_ambiguous_pair_at_all() {
+    let mut a = built_adapter();
+    let pairs = ambiguous_pairs(&mut a);
+    assert!(
+        pairs.is_empty(),
+        "{} ambiguous pairs in build_tick_schedule; the executed order of each is chosen per \
+         process (F-029, F-041). Put every system in the chain in \
+         `core::simulation_schedule::build_tick_schedule`: {pairs:#?}",
+        pairs.len()
+    );
+}
+
+/// The executed order, by name. `Schedule::systems` yields `executable.system_ids`, which is the
+/// topological order the single-threaded executor walks.
+fn executed_order(a: &mut LiveExperimentAdapter) -> Vec<String> {
+    a.schedule_mut()
+        .systems()
+        .expect("the schedule has been initialized by run_schedule_once")
+        .map(|(_, s)| short(s.name().as_ref()))
+        .collect()
+}
+
+fn assert_in_order(order: &[String], chain: &[&str]) {
+    let pos = |n: &str| {
+        order
+            .iter()
+            .position(|x| x == n)
+            .unwrap_or_else(|| panic!("{n} is not in the tick schedule"))
+    };
+    for w in chain.windows(2) {
+        assert!(
+            pos(w[0]) < pos(w[1]),
+            "{} must run before {} in the tick schedule",
+            w[0],
+            w[1]
+        );
+    }
+}
+
+#[test]
+fn declared_order_keeps_the_causal_sequences() {
+    let mut a = built_adapter();
+    let order = executed_order(&mut a);
+    // Energy: acquire -> contest -> spend -> count.
+    assert_in_order(
+        &order,
+        &[
+            "herbivore_grazing_system",
+            "resource_field_regrowth_system",
+            "detect_food_collisions_system",
+            "combat_system",
+            "metabolic_decay_system",
+            "ecosystem_census_system",
+        ],
+    );
+    // SimRng draws: migration -> food -> seeds -> reproduction -> epoch.
+    assert_in_order(
+        &order,
+        &[
+            "manual_migration_system",
+            "spawn_food_system",
+            "seed_dropping_system",
+            "autonomous_reproduction_system",
+            "check_epoch_completion_system",
+        ],
+    );
+    // Body: sense -> act -> CPG -> joints -> physics -> wrap -> grid.
+    assert_in_order(
+        &order,
+        &[
+            "sensory_system",
+            "action_resolution_system",
+            "update_cpg_system",
+            "resolve_joints_system",
+            "integrate_physics_system",
+            "wrap_coordinates_system",
+            "rebuild_spatial_grid_system",
+        ],
+    );
+    // Interventions reach the world before the systems they perturb.
+    for later in [
+        "apply_environmental_effects_system",
+        "resource_field_regrowth_system",
+        "metabolic_decay_system",
+    ] {
+        assert_in_order(&order, &["apply_live_interventions_system", later]);
+    }
+    // Death sits between metabolism and census; reproduction is flushed before the census.
+    assert_in_order(
+        &order,
+        &[
+            "metabolic_decay_system",
+            "mortality_system",
+            "autonomous_reproduction_system",
+            "ecosystem_census_system",
+        ],
+    );
+    assert_in_order(
+        &order,
+        &[
+            "dehydrate_cold_agents_system",
+            "rehydrate_wakeable_chunks_system",
+        ],
+    );
+}
+
+/// Flush points are declared (`auto_insert_apply_deferred` is off), so a `Commands` system's
+/// effects must not be left for the end of the tick between a spawner and an observer.
+#[test]
+fn spawns_are_flushed_before_their_observers() {
+    let mut a = built_adapter();
+    let order = executed_order(&mut a);
+    let pos = |n: &str| order.iter().position(|x| x == n).unwrap();
+    let flush_between =
+        |x: &str, y: &str| order[pos(x)..pos(y)].iter().any(|n| n == "apply_deferred");
+    assert!(flush_between(
+        "autonomous_reproduction_system",
+        "ecosystem_census_system"
+    ));
+    assert!(flush_between("spawn_food_system", "combat_system"));
+    assert!(flush_between(
+        "mortality_system",
+        "autonomous_reproduction_system"
+    ));
+    assert!(flush_between(
+        "dehydrate_cold_agents_system",
+        "rehydrate_wakeable_chunks_system"
+    ));
 }

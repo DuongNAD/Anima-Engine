@@ -21,6 +21,7 @@ export const SCHEDULED_SPECS = [
   'tests/e2e/ipc_contract.spec.ts',
   'tests/e2e/phase3_adversarial.spec.ts',
   'tests/e2e/phase6_adversarial_stress.spec.ts',
+  'tests/e2e/rw_budget.spec.ts',
   'tests/e2e/tiers/tier1_features.spec.ts',
   'tests/e2e/tiers/tier2_boundaries.spec.ts',
   'tests/e2e/tiers/tier3_combinations.spec.ts',

@@ -546,6 +546,7 @@ export const WorldShowcase: React.FC = () => {
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
           quality={legacyVegetationQuality(effectiveQuality)}
+          tier={effectiveQuality}
         />
 
         {/* Shader-based ocean/lakes (depth colour + swell + foam), waterfall curtains on the
