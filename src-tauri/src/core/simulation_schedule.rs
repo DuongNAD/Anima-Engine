@@ -241,9 +241,12 @@ pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
 
     // Closed-loop energy conservation: mortality & autonomous continuous reproduction
     // flush deferred commands before the ecosystem census snapshot.
+    //
+    // Agent deaths go through `mortality::mortality_system` only (F-037, QD-A'): the former
+    // `agent_mortality_system` killed at `energy <= 0` on the first tick and bypassed the declared
+    // `starve_ticks` grace, so it is deliberately not scheduled.
     schedule.add_systems(
         (
-            agent_mortality_system,
             autonomous_reproduction_system,
             apply_deferred,
             ecosystem_census_system,

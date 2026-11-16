@@ -154,7 +154,14 @@ pub fn crossover_genotypes(
         }
     }
 
-    if is_valid_genotype(&child) {
+    // Refuse a child restore/migration would refuse (F-038): the same node and edge limits as
+    // `core::components::validate_morphology_payload`, applied through the constant. The rest of
+    // that predicate is not reused so a run that never reaches the cap keeps its exact behaviour.
+    // No RNG draw happens here.
+    let within_restore_cap = child.nodes.len()
+        <= crate::core::components::MAX_MIGRATION_MORPHOLOGY_NODES
+        && child.edges.len() < crate::core::components::MAX_MIGRATION_MORPHOLOGY_NODES;
+    if within_restore_cap && is_valid_genotype(&child) {
         Ok(child)
     } else {
         *node_id_counter = backup_counter;
