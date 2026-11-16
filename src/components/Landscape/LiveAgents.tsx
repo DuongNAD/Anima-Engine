@@ -4,8 +4,8 @@ import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { surfaceHeight } from './utils/worldSample';
 import { isInsideSimBounds, simToRender } from './utils/liveAgentTransform';
+import { resolveTickSourceFromSearch, type TickSource } from './utils/tickRecording';
 import type { SegmentState } from '../../types/generated/SegmentState';
-import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 
 // ---------------------------------------------------------------------------------------
 // LiveAgents — the running simulation's creatures, drawn on the world they actually live in.
@@ -18,12 +18,14 @@ import type { SimulationTickPayload } from '../../types/generated/SimulationTick
 // water, flora and wildlife had no idea the simulation existed. Two renderings of one world, and
 // the good one was empty.
 //
-// # Why this renders nothing outside the desktop app
+// # Tick sources (RW0-1, RW0-2, RW0-3)
 //
-// It listens on a Tauri event. `landscape.html` opened in an ordinary browser has no transport, so
-// this mounts, finds none, and draws nothing — which is what keeps the canonical view capture
-// byte-identical: that harness drives a plain Chromium, so no agent can appear in an image whose
-// SHA-256 is a gate. The same property makes the standalone showcase keep working with no backend.
+// Creatures arrive through a `TickSource`:
+// - desktop app: Tauri `simulation-tick` events (optionally recorded with `?record=1`);
+// - ordinary browser replay: a recorded JSON file (`?replay=<file>`) or the deterministic
+//   SYNTHETIC fixture (`?replay=synthetic&agents=N`), labeled as synthetic on screen;
+// - canonical map capture (`?capture=1` without `replay=`): `null`, so canonical views stay
+//   byte-identical.
 // ---------------------------------------------------------------------------------------
 
 export interface LiveAgentsProps {
@@ -31,6 +33,7 @@ export interface LiveAgentsProps {
   renderSize: number;
   heightRatio: number;
   meshResolution: number;
+  tickSource?: TickSource | null;
 }
 
 /**
@@ -63,6 +66,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   renderSize,
   heightRatio,
   meshResolution,
+  tickSource,
 }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   // The payload lands in a ref rather than state: the emit thread publishes far faster than a React
@@ -70,6 +74,11 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   const segmentsRef = useRef<SegmentState[]>([]);
   const [capacity, setCapacity] = useState(INITIAL_CAPACITY);
   const [connected, setConnected] = useState(false);
+  const [search] = useState(() => (typeof window === 'undefined' ? '' : window.location.search));
+  const activeSource = useMemo(
+    () => (tickSource !== undefined ? tickSource : resolveTickSourceFromSearch(search)),
+    [tickSource, search],
+  );
 
   // Scratch objects, allocated once. `useFrame` runs every frame over every segment, so anything
   // constructed inside it would be garbage at 60 Hz.
@@ -84,35 +93,19 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   useEffect(() => () => material.dispose(), [material]);
 
   useEffect(() => {
-    // No Tauri transport means no simulation to draw. Checked rather than caught: an ordinary
-    // browser load must not depend on an import rejecting.
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+    if (!activeSource) return;
+    return activeSource.subscribe((payload) => {
+      segmentsRef.current = payload.segments;
+      if (payload.segments.length > 0) setConnected(true);
+    });
+  }, [activeSource]);
 
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-
-    void import('@tauri-apps/api/event')
-      .then(({ listen }) =>
-        listen<SimulationTickPayload>('simulation-tick', (event) => {
-          segmentsRef.current = event.payload.segments;
-          if (event.payload.segments.length > 0) setConnected(true);
-        }),
-      )
-      .then((stop) => {
-        if (cancelled) stop();
-        else unlisten = stop;
-      })
-      .catch(() => {
-        // A transport that is present but refuses to subscribe leaves the scene as it was: empty.
-        // Nothing is logged, because `console_hygiene.spec.ts` holds this scene to zero Anima-owned
-        // console output and a backend that is simply not running is not a defect to report.
-      });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+  useEffect(() => {
+    if (!activeSource?.mountOverlay || typeof document === 'undefined') return;
+    const showcaseEl = document.querySelector('[data-testid="world-showcase"]');
+    const host = showcaseEl instanceof HTMLElement ? showcaseEl : document.body;
+    return activeSource.mountOverlay(host);
+  }, [activeSource]);
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -169,14 +162,17 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   if (!connected) return null;
 
   return (
-    <instancedMesh
-      key={capacity}
-      ref={meshRef}
-      args={[geometry, material, capacity]}
-      frustumCulled={false}
-      castShadow
-      receiveShadow
-    />
+    <group name="live-agents">
+      <instancedMesh
+        name="live-agents-segments"
+        key={capacity}
+        ref={meshRef}
+        args={[geometry, material, capacity]}
+        frustumCulled={false}
+        castShadow
+        receiveShadow
+      />
+    </group>
   );
 };
 
