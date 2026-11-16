@@ -33,7 +33,7 @@ use glam::Vec3;
 use crate::ai::cpg::CpgOscillator;
 use crate::ai::hrrl::HomeostaticState;
 use crate::core::components::{
-    Agent, ChildrenLinks, Food, InertiaComponent, ParentLink, Position, Predator, Prey,
+    Agent, ChildrenLinks, Food, InertiaComponent, Lake, ParentLink, Position, Predator, Prey,
 };
 use crate::core::resources::LocomotionPolicy;
 
@@ -45,6 +45,11 @@ pub const PREY_MAX_SPEED: f32 = 1.5;
 pub const CPG_AMPLITUDE_SCALE: f32 = 1.5;
 /// Within this distance of its target the agent stops pushing.
 pub const ARRIVAL_RADIUS: f32 = 0.3;
+
+/// With `LocomotionPolicy::thirst_steering` on, an agent whose `hydration` is below this fraction
+/// of its `hydration_target` steers to the nearest non-empty lake instead of its food/prey target
+/// (ADR-0007 option A). Above it the agent returns to its normal target.
+pub const THIRST_STEERING_FRACTION: f32 = 0.5;
 
 /// Normalised drive in `[0, 1]` from the mean amplitude of the agent's direct body segments.
 fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOscillator>) -> f32 {
@@ -67,6 +72,7 @@ fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOsci
 #[allow(clippy::type_complexity)]
 pub fn steering_drive_system(
     policy: Option<Res<LocomotionPolicy>>,
+    lake_query: Query<(&Position, &Lake)>,
     mut agents: Query<
         (
             &Position,
@@ -80,12 +86,21 @@ pub fn steering_drive_system(
     prey_query: Query<(&Position, &HomeostaticState), (With<Agent>, With<Prey>)>,
     food_query: Query<&Position, With<Food>>,
     oscillators: Query<&CpgOscillator>,
-    mut caches: Local<(Vec<Vec3>, Vec<Vec3>)>,
+    mut caches: Local<(Vec<Vec3>, Vec<Vec3>, Vec<Vec3>)>,
 ) {
-    if !policy.is_some_and(|p| p.enabled) {
+    let Some(policy) = policy.filter(|p| p.enabled) else {
         return;
+    };
+    let drive_floor = policy.drive_floor.clamp(0.0, 1.0);
+    let (prey_cache, food_cache, lake_cache) = &mut *caches;
+    lake_cache.clear();
+    if policy.thirst_steering {
+        for (pos, lake) in lake_query.iter() {
+            if lake.current_water > 0.0 {
+                lake_cache.push(pos.0);
+            }
+        }
     }
-    let (prey_cache, food_cache) = &mut *caches;
     prey_cache.clear();
     for (pos, homeo) in prey_query.iter() {
         if homeo.energy > 0.0 {
@@ -102,10 +117,19 @@ pub fn steering_drive_system(
             inertia.target_velocity = Vec3::ZERO;
             continue;
         }
-        let (candidates, max_speed) = if predator.is_some() {
-            (&*prey_cache, PREDATOR_MAX_SPEED)
+        let max_speed = if predator.is_some() {
+            PREDATOR_MAX_SPEED
         } else {
-            (&*food_cache, PREY_MAX_SPEED)
+            PREY_MAX_SPEED
+        };
+        let thirsty = policy.thirst_steering
+            && homeo.hydration < homeo.hydration_target * THIRST_STEERING_FRACTION;
+        let candidates = if thirsty && !lake_cache.is_empty() {
+            &*lake_cache
+        } else if predator.is_some() {
+            &*prey_cache
+        } else {
+            &*food_cache
         };
         let mut nearest: Option<Vec3> = None;
         let mut min_dist_sq = f32::MAX;
@@ -118,7 +142,7 @@ pub fn steering_drive_system(
         }
         inertia.target_velocity = match nearest {
             Some(target) if min_dist_sq > ARRIVAL_RADIUS * ARRIVAL_RADIUS => {
-                let speed = max_speed * drive_from_cpg(children, &oscillators);
+                let speed = max_speed * drive_from_cpg(children, &oscillators).max(drive_floor);
                 (target - pos.0).normalize_or_zero() * speed
             }
             _ => Vec3::ZERO,
