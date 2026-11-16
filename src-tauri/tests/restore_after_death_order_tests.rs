@@ -1,7 +1,7 @@
 //! F-040 characterization: a live world restored from its own snapshot is *not* a faithful
 //! continuation once agents have died, even though the checksum matches the instant it is restored.
 //!
-//! These tests PASS today because they pin the defect. They are to be inverted by the fix.
+//! FIXED: these tests now assert the restore follows the original (they pinned the defect before).
 //!
 //! What was measured (seed 1, default genesis, `live.mortality = 1`, serialization and restore
 //! through `LiveExperimentAdapter::snapshot` / `from_snapshot`, checkpointed every 25 loop iterations; each checkpoint also steps the original one extra tick,
@@ -15,7 +15,7 @@
 //!   in the opposite order (the original's segment table rows were permuted by earlier despawns);
 //!   one tick later that agent's energy differs by ~0.006 EU.
 //!
-//! The mechanism (indicated, not proven): ECS table row order is history-dependent, a restore
+//! The mechanism (confirmed by the fix: forcing a stable joint order removes every divergence): ECS table row order is history-dependent, a restore
 //! rebuilds it from scratch, and an order-dependent system (`resolve_joints_system` iterates its
 //! joint query in table order) turns the permutation into a different trajectory.
 
@@ -94,17 +94,24 @@ fn diverging_samples(a: &mut LiveExperimentAdapter, until: u64, resume_policy: b
 }
 
 #[test]
-fn a_restore_after_deaths_matches_at_k_but_diverges_on_the_next_tick() {
+fn a_restore_after_deaths_follows_the_original_on_the_next_tick() {
     let mut a = mortality_world();
     let bad = diverging_samples(&mut a, 1900, false);
     println!("F040 mortality-only diverging checkpoints: {bad:?}");
-    // F-040: this pins the defect (measured: 1850 and 1875). A correct restore gives an empty list;
-    // invert on fix.
-    assert_eq!(
-        bad,
-        vec![1850, 1875],
-        "F-040 behaviour changed; if the list is empty the restore is fixed"
-    );
+    // F-040 (fixed): before the fix this was [1850, 1875] on macOS arm64 (tick lists are platform-specific; only the empty-list property is asserted). `resolve_joints_system` now visits
+    // joints by segment id instead of ECS table order.
+    assert!(bad.is_empty(), "restore diverged at {bad:?}");
+}
+
+#[test]
+fn a_restore_after_deaths_and_births_follows_the_original_on_the_next_tick() {
+    // Before the fix 41 of 100 checkpoints diverged with mortality and reproduction both on.
+    let mut a = mortality_world();
+    a.world()
+        .insert_resource(ReproductionPolicy { enabled: true });
+    let bad = diverging_samples(&mut a, 2500, true);
+    println!("F040 mortality+births diverging checkpoints: {bad:?}");
+    assert!(bad.is_empty(), "restore diverged at {bad:?}");
 }
 
 #[test]
