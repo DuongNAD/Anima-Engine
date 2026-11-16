@@ -957,7 +957,16 @@ pub fn live_inference_pump_system(
 
 // ---- Observables ---------------------------------------------------------------------------------
 
-/// Every observable id the live world emits, in emission order.
+/// The legacy observables, emitted first and in this order: exactly the twelve the E2
+/// preregistration requests, as amended on 2026-11-16 (`amendment_1_live_dormant_eu`).
+///
+/// **Frozen. Never add, remove or reorder an id here.** `tests/prereg_e2_manifest_tests.rs` asserts
+/// that the committed E2 manifests request this list and nothing else, and
+/// `tests/e2_frozen_manifest_tests.rs` asserts that those manifests are byte-identical to the copies
+/// the E2 run published beside its results. Commit `970d963` inserted `live.dormant_eu` here and
+/// edited the four registered manifests to keep the first test green, a month after E2 had run.
+/// `npm run check:e2` stayed red until the owner's decision QD-E2M amended the preregistration and
+/// re-ran the whole ensemble. A new observable goes in [`LIVE_EXTENDED_OBSERVABLE_IDS`].
 pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
     "plants",
     "detritus",
