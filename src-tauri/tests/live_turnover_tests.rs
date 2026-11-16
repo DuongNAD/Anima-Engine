@@ -5,7 +5,8 @@
 //! test drives `LiveExperimentAdapter` through the real tick schedule
 //! (`simulation_schedule::build_tick_schedule`).
 //!
-//! * (a) off is bit-identical to the base commit (a pinned checksum measured BEFORE the key existed)
+//! * (a) off is bit-identical to the base: key absent == `live.reproduction = 0` == a world whose
+//!   policy is forced to the historical disabled value (platform-independent; no absolute pin)
 //! * (b) on + mortality: real turnover, founders replaced
 //! * (c) on: the checksum agrees across 6 separate OS processes
 //! * (d) fork / save-load after the first death and first birth match the uninterrupted run
@@ -38,9 +39,9 @@ const SEED: u64 = 1;
 const TICKS: u64 = 3_000;
 const OFF_TICKS: u64 = 600;
 
-/// The world checksum of the default (key absent) manifest after `OFF_TICKS` ticks, measured on
-/// the base commit (origin/finding/f037-dual-mortality-grace) BEFORE `live.reproduction` existed.
-const BASE_OFF_CHECKSUM: u32 = 0x09ed_e909;
+// Measured on macOS at the base commit (origin/finding/f037-dual-mortality-grace), kept for the
+// record only: the default checksum after OFF_TICKS ticks was 0x09ede909. Absolute world checksums
+// are platform-dependent, so nothing asserts it.
 
 const CHILD_ROLE: &str = "ANIMA_S1_TURNOVER_CHILD";
 const MARKER: &str = "S1_TURNOVER_CHECKSUM";
@@ -131,15 +132,25 @@ fn checksum_after(initial: &InitialConditionSet, ticks: u64) -> u32 {
 fn a_default_world_and_reproduction_zero_are_bit_identical_to_the_base_commit() {
     let _l = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let absent = checksum_after(&initial(&[]), OFF_TICKS);
-    println!("S1_OFF_CHECKSUM absent {absent:#010x}");
-    assert_eq!(
-        absent, BASE_OFF_CHECKSUM,
-        "the default trajectory changed: LIVE_MODEL_VERSION would have to be bumped"
-    );
     let zero = checksum_after(&initial(&[("live.reproduction", 0.0)]), OFF_TICKS);
     assert_eq!(
-        zero, BASE_OFF_CHECKSUM,
+        zero, absent,
         "live.reproduction = 0 must equal the key being absent"
+    );
+
+    // The base hard-coded the disabled policy; force exactly that on a world built without the key.
+    let mut forced = build(&initial(&[]), OFF_TICKS);
+    forced
+        .world()
+        .insert_resource(anima_engine_lib::core::resources::ReproductionPolicy { enabled: false });
+    let mut d = Driver::new(0);
+    for _ in 0..OFF_TICKS {
+        d.step(&mut forced);
+    }
+    assert_eq!(
+        absent,
+        forced.checksum(),
+        "the default trajectory changed: LIVE_MODEL_VERSION would have to be bumped"
     );
 }
 
