@@ -34,6 +34,8 @@ const PREREG_DIR: &str = "tests/fixtures/experiments_esel1";
 const SMOKE_SEED: u64 = 999971;
 
 /// `true` while the smoke has not yet set N0, F_hi, F_lo. The amendment that sets them flips this.
+/// Amendment 2 closed the registration without an experiment (the smoke stopped twice at step C),
+/// so this stays `true` for good: the experimental manifests keep their sentinels and cannot run.
 const PLACEHOLDERS_OPEN: bool = true;
 
 const SENTINEL_FOUNDERS: f64 = -3.0;
@@ -654,6 +656,37 @@ fn an_unamended_experimental_manifest_is_refused_by_the_live_config_parser() {
             parsed.is_ok(),
             "{name} must be runnable: {:?}",
             parsed.err()
+        );
+    }
+}
+
+#[test]
+fn a_closed_registration_keeps_its_experimental_manifests_unrunnable() {
+    // Amendment 2 (2026-11-17) closed E-SEL1 at the smoke. A closed registration must never be
+    // run by accident, so it may not fill its sentinels (`PLACEHOLDERS_OPEN` stays `true`): the
+    // live config parser keeps refusing the three experimental manifests, and no execution lock
+    // may exist.
+    let p = prereg();
+    let outcome = p["registration_outcome"].as_str().unwrap_or("");
+    if outcome.starts_with("CLOSED_WITHOUT_EXPERIMENT") {
+        for name in [CONTROL, TREATMENT, DRIFT] {
+            let parsed = LiveWorldConfig::from_initial_conditions(&load(name).initial_conditions);
+            assert!(
+                parsed.is_err(),
+                "{name}: a closed registration's experimental manifest became runnable"
+            );
+        }
+        let amendment = &p["amendment_2_2026-11-17_smoke_run_2_stopped_registration_closed"];
+        assert_eq!(
+            amendment["smoke_run_2"]["body_mass_consulted"],
+            serde_json::json!(false)
+        );
+        let lock = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../artifacts/experiments/e-sel1-food-scarcity/execution-lock.json");
+        assert!(
+            !lock.exists(),
+            "a closed registration has an execution lock at {}",
+            lock.display()
         );
     }
 }

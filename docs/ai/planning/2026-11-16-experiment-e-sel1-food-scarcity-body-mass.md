@@ -2,13 +2,26 @@
 phase: planning
 feature: experiment-e-sel1-food-scarcity
 title: Kế hoạch — E-SEL1, khan hiếm thức ăn có dịch chuyển khối lượng cơ thể di truyền của quần thể không
-description: Tiền đăng ký (đã đóng băng 2026-11-17) thí nghiệm chọn lọc đầu tiên trên thế giới live — hai nhánh food_cap, sinh sản và chết đói bật, tiền điều kiện chặn, giao thức smoke, quy tắc quyết định
-status: active
+description: Tiền đăng ký (đóng băng 2026-11-17, ĐÓNG KHÔNG THÍ NGHIỆM cùng ngày — smoke dừng hai lần ở bước C) thí nghiệm chọn lọc đầu tiên trên thế giới live — hai nhánh food_cap, sinh sản và chết đói bật, tiền điều kiện chặn, giao thức smoke, quy tắc quyết định
+status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-17
 ---
 
 # Kế hoạch — E-SEL1: khan hiếm thức ăn và khối lượng cơ thể
+
+> ⛔ **ĐÃ ĐÓNG, KHÔNG CÓ THÍ NGHIỆM (sửa đổi 2, 2026-11-17).** Smoke lần 2 (commit `7a825cc`, bản đã sửa F-043)
+> qua được kiểm tra thao tác: `live.food_cap` giờ đã thay đổi thế giới. Nhưng nó vẫn dừng ở bước C, vì hạ trần
+> thức ăn từ 50 xuống 25 / 17 / 13 / 6 chỉ làm standing crop của đồng cỏ đổi trong khoảng ±6 % (r từ 0,943 đến 1,027).
+> Mức thuật toán yêu cầu là 0,4–0,6. Theo điều sửa đổi 1 đã cam kết trước, trần thức ăn là một yếu tố khan hiếm có
+> thật nhưng quá yếu trong thế giới này, nên E-SEL1 **không chạy** dưới bản đăng ký này. Các manifest thí nghiệm
+> giữ nguyên giá trị đệm âm, không chạy được, và một test khẳng định điều đó. Chưa có seed thí nghiệm nào chạy, và
+> chưa giá trị khối lượng cơ thể nào được đọc. Một yếu tố khan hiếm khác (đánh vào đồng cỏ, nguồn sống thật của
+> quần thể) cần khoá manifest mới và một bản đăng ký mới. **Đó là quyết định của chủ dự án.** Chi tiết nằm trong
+> khối `amendment_2_…` của JSON và trong `artifacts/experiments/e-sel1-smoke-record/run-2-stopped/`.
+> Có hai quan sát chỉ ghi lại, không dùng cho lựa chọn nào, và chỉ từ một seed:
+> - Nhánh drift (`live.mutation_rate = 0`) tuyệt chủng ở mọi lượt thử của cả hai lần smoke.
+> - Nhánh dồi dào có quần thể tối thiểu thấp hơn mọi nhánh khan hiếm.
 
 > ✅ **Đã đóng băng 2026-11-17.** Tiền đăng ký này nay có đủ ba thứ theo tiền lệ E2: tài liệu này, fixture JSON
 > máy đọc được cùng các manifest tại
