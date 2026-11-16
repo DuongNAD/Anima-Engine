@@ -272,6 +272,7 @@ fn declared_order_keeps_the_causal_sequences() {
             "action_resolution_system",
             "update_cpg_system",
             "resolve_joints_system",
+            "steering_drive_system",
             "integrate_physics_system",
             "wrap_coordinates_system",
             "rebuild_spatial_grid_system",

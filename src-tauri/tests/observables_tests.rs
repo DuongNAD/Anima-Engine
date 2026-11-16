@@ -254,14 +254,37 @@ fn death_observables_are_refused_when_the_run_declares_no_death_rule() {
     let cfg_on =
         anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(&on)
             .expect("valid");
+    // Mortality only: the death observables are legal, live.births is not (no birth rule declared,
+    // so it would be a fabricated zero, F-039's class).
     cfg_on
+        .ensure_observables_supported(&[
+            "live.deaths".to_string(),
+            "live.mean_lifespan".to_string(),
+            "live.shannon".to_string(),
+        ])
+        .expect("with a declared death rule the death observables are legal");
+    let err = cfg_on
+        .ensure_observables_supported(&["live.births".to_string()])
+        .expect_err("live.births without a declared birth rule must fail preflight");
+    assert!(matches!(
+        err,
+        anima_engine_lib::core::experiment::ExperimentError::InvalidObservableRequest { .. }
+    ));
+
+    // Mortality AND reproduction declared: every turnover observable is legal.
+    let mut both = mortality_manifest_initials(true);
+    both.values.push(("live.reproduction".to_string(), 1.0));
+    let cfg_both =
+        anima_engine_lib::core::live_experiment::LiveWorldConfig::from_initial_conditions(&both)
+            .expect("valid");
+    cfg_both
         .ensure_observables_supported(&[
             "live.deaths".to_string(),
             "live.mean_lifespan".to_string(),
             "live.births".to_string(),
             "live.shannon".to_string(),
         ])
-        .expect("with a declared death rule every turnover observable is legal");
+        .expect("with death and birth rules declared every turnover observable is legal");
 
     // Unrelated ids are never refused by this check.
     cfg_off
