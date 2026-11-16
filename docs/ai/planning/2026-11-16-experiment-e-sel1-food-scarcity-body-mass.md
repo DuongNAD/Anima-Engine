@@ -2,20 +2,31 @@
 phase: planning
 feature: experiment-e-sel1-food-scarcity
 title: Kế hoạch — E-SEL1, khan hiếm thức ăn có dịch chuyển khối lượng cơ thể di truyền của quần thể không
-description: Dự thảo tiền đăng ký thí nghiệm chọn lọc đầu tiên trên thế giới live — hai nhánh food_cap, sinh sản và chết đói bật, tiền điều kiện chặn, giao thức smoke, quy tắc quyết định
-status: proposed
+description: Tiền đăng ký (đã đóng băng 2026-11-17) thí nghiệm chọn lọc đầu tiên trên thế giới live — hai nhánh food_cap, sinh sản và chết đói bật, tiền điều kiện chặn, giao thức smoke, quy tắc quyết định
+status: active
 owner: simulation-architecture
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 ---
 
 # Kế hoạch — E-SEL1: khan hiếm thức ăn và khối lượng cơ thể
 
-> ⚠️ **ĐÂY CHƯA PHẢI TIỀN ĐĂNG KÝ. Nó là DỰ THẢO, chưa đóng băng.** Theo tiền lệ E2, một tiền đăng ký
-> chỉ có hiệu lực khi có đủ ba thứ: tài liệu này, một fixture JSON máy đọc được, và một test khẳng
-> định hai bên khớp. Hiện có **một** (tài liệu). JSON ở [Phụ lục A](#phụ-lục-a--dự-thảo-json-tiền-đăng-ký)
-> **chưa được commit làm fixture**; đóng băng = commit nó trước mọi lần chạy smoke.
-> **Không con số nào ở đây là kết quả quan sát: chưa có lần chạy nào.** Mọi giá trị đánh dấu
-> `[SMOKE]` được chọn từ smoke theo quy tắc ở §6, một lần, trước mọi seed thí nghiệm.
+> ✅ **Đã đóng băng 2026-11-17.** Tiền đăng ký này nay có đủ ba thứ theo tiền lệ E2: tài liệu này, fixture JSON
+> máy đọc được cùng các manifest tại
+> [`src-tauri/tests/fixtures/experiments_esel1/`](../../../src-tauri/tests/fixtures/experiments_esel1/)
+> (`esel1-preregistration.json`, ba manifest thí nghiệm, hai manifest smoke), và test hình dạng
+> `src-tauri/tests/prereg_esel1_manifest_tests.rs` khẳng định hai bên khớp. Được commit **trước mọi lần
+> chạy smoke hay thí nghiệm**; **không có kết quả nào tồn tại** (`"contains_results": false`).
+> Các quyết định cố định do phiên điều phối đưa ra theo uỷ quyền của chủ dự án (ghi trong JSON, khối
+> `decisions_taken_by_lead_session`): cấu hình chung mọi nhánh gồm `live.mortality=1`, `live.reproduction=1`,
+> `live.locomotion=1`, `live.drive_floor=0.5`, `live.thirst_steering=1` (ADR-0007 phương án A), `live.evolved_brains=0`,
+> `predator_fraction=0`; nhánh thứ ba `drift` (= `scarce` + `live.mutation_rate=0`) **có**, vì P4 đã có (PR #81);
+> seed `760001 + 1000·k`; seed smoke 999971. P1–P5 đã đáp ứng trên thân cây (PR #66, #76, #81, #82, F-039
+> `b0a8c4d`), mỗi mục kèm bằng chứng trong JSON.
+> Chỉ **smoke** được đặt `N0`, `F_hi`, `F_lo`, bậc thang thời lượng và chiều H1 (§6), theo quy tắc đã viết. Trong các manifest thí nghiệm
+> chúng là **giá trị đệm âm** (`live.founders = -3`, `F_hi = -1`, `F_lo = -2`): bộ phân tích khoá `live.*` của adapter
+> từ chối chúng nên không thể chạy nhầm trước khi được điền bằng một sửa đổi có ngày.
+> Mọi chỗ ghi `[SMOKE]` dưới đây là chỗ trống có chủ đích đó.
+> **Không con số nào ở đây là kết quả quan sát: chưa có lần chạy nào.**
 >
 > Tên **E-SEL1**, không dùng "E3": tên E3 đang mơ hồ (E3 cũ là
 > [dự thảo gradient năng suất](2026-08-26-experiment-e3-productivity-gradient-body-mass.md), QĐ-EN
@@ -255,7 +266,7 @@ Chỉ biên dịch rồi chạy tệp nhị phân (không `cargo run`); xem `rep
 dạng. 3. Chạy smoke, điền `[SMOKE]`, khoá bậc thang và chiều H1 bằng khối sửa đổi có ngày. 4. Chạy 12
 seed. Đầu ra dưới `artifacts/experiments/e-sel1-food-scarcity/`.
 
-## Phụ lục A — Dự thảo JSON tiền đăng ký
+## Phụ lục A — Dự thảo JSON tiền đăng ký (LỊCH SỬ — bản đóng băng là fixture)
 
 > **DRAFT — freeze by committing it as a fixture before any smoke run.** Các giá trị `"[SMOKE...]"` là
 > chỗ trống có chủ đích; chúng được điền bằng khối sửa đổi có ngày, không sửa im lặng.

@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "preregistration_id": "e-sel1-food-scarcity-body-mass",
+  "status": "FROZEN",
+  "registered_on": "2026-11-17",
+  "registered_at_parent_commit": "8a3558a",
+  "registered_at_parent_commit_note": "8a3558a is the trunk (origin/feat/ecological-selection, merge of PR #82) that the freeze commit merges; no smoke or experimental run existed at this commit.",
+  "contains_results": false,
+  "question": "In the live world with energy-limited reproduction and starvation mortality, does food scarcity (live.food_cap) shift the population's mean body mass (live.trait_mass_mean)?",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "harness": "core::experiment_runner::run_paired_ensemble_with_control",
+  "plan_document": "docs/ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md",
+  "decisions_taken_by_lead_session": {
+    "attribution": "Fixed by the lead session under the project owner's delegation, 2026-11-17, before any smoke or experimental run. They are facts of this preregistration, not smoke outputs.",
+    "common_configuration_of_every_arm": {
+      "live.mortality": 1.0,
+      "live.reproduction": 1.0,
+      "live.locomotion": 1.0,
+      "live.drive_floor": 0.5,
+      "live.thirst_steering": 1.0,
+      "live.evolved_brains": 0.0,
+      "live.predator_fraction": 0.0,
+      "live.starve_ticks": "absent (policy default)",
+      "live.dehydration_ticks": "absent (policy default)",
+      "rationale": "ADR-0007 option A (QD-ECO = A, PR #82): without the drive floor and thirst steering a prey-only world went extinct in 2-4 of 5 seeds. Predators do not persist yet, so the experiment is prey-only; that is a stated limitation (plan section 11), not a strength."
+    },
+    "arms": {
+      "control": "abundant food, live.food_cap = F_hi",
+      "treatment": "scarce food, live.food_cap = F_lo",
+      "drift": "scarce food + live.mutation_rate = 0.0 (P4 exists since PR #81)"
+    },
+    "h1": "treatment - control on the tail mean of live.trait_mass_mean (samples with tick > 0.8 * T), with the materiality triple of thresholds below",
+    "h2": "descriptive only: drift vs treatment (scarce_mut0 - scarce)",
+    "seeds": "seed_k = 760001 + 1000*k, k = 0..11; smoke seed 999971 (absent from every experimental manifest)",
+    "duration_ladder": "18000 / 12000 / 6000 ticks, sample period 600, rung chosen ONCE from the smoke and locked in execution-lock.json before any experimental seed"
+  },
+  "manifests": {
+    "control": "esel1-control-abundant.json",
+    "treatment": "esel1-treatment-scarce.json",
+    "drift_control_optional_requires_P4": "esel1-drift-scarce-mutation-off.json",
+    "smoke_control": "esel1-smoke-abundant.json",
+    "smoke_treatment": "esel1-smoke-scarce.json"
+  },
+  "declared_factor": {
+    "factor_diff_allowed_paths": ["initial_conditions"],
+    "exact_initial_condition_difference": {
+      "key": "live.food_cap",
+      "control_value": "[SMOKE: F_hi]",
+      "treatment_value": "[SMOKE: F_lo]"
+    },
+    "drift_contrast_exact_initial_condition_difference": {
+      "key": "live.mutation_rate",
+      "treatment_value": null,
+      "drift_value": 0.0,
+      "note": "absent == 0.05 (DEFAULT_MUTATION_RATE); compared against the scarce treatment, same seeds"
+    },
+    "every_other_initial_condition_must_match": true
+  },
+  "common_initial_conditions": {
+    "live.mortality": 1.0,
+    "live.reproduction": 1.0,
+    "live.locomotion": 1.0,
+    "live.drive_floor": 0.5,
+    "live.thirst_steering": 1.0,
+    "live.evolved_brains": 0.0,
+    "live.predator_fraction": 0.0,
+    "live.founders": "[SMOKE: N0, >= 30]"
+  },
+  "placeholders": {
+    "marker": "[SMOKE]",
+    "explanation": "A manifest holds numbers only (it is parsed as ExperimentManifest), so a value the smoke must set is committed as a NEGATIVE SENTINEL no live key can accept: the live adapter refuses it at model construction, so an experimental manifest with a sentinel cannot be run by accident. The sentinel is replaced by the smoke-chosen value in a dated amendment commit (a block named amendment_N_smoke_set below plus the manifest edit), once, before any experimental seed.",
+    "sentinels": {
+      "live.founders": -3.0,
+      "live.food_cap_control": -1.0,
+      "live.food_cap_treatment_and_drift": -2.0
+    },
+    "placeholder_paths_allowed": [
+      "manifests esel1-control-abundant / esel1-treatment-scarce / esel1-drift-scarce-mutation-off: initial_conditions live.founders and live.food_cap only",
+      "hypotheses[H1].direction",
+      "declared_factor.exact_initial_condition_difference.control_value and treatment_value",
+      "common_initial_conditions.live.founders",
+      "duration.duration_ticks (the experimental manifests carry the top rung 18000 until a --duration-rung step-down is locked in execution-lock.json)"
+    ],
+    "everything_else_is_frozen": true
+  },
+  "smoke_may_set_only": {
+    "N0": {
+      "key": "live.founders",
+      "rule": "smallest value >= 30 such that the smoke population never falls below 5 agents at ANY sample at either food_cap value tried"
+    },
+    "F_hi": {
+      "key": "live.food_cap (control)",
+      "rule": "FoodSpawnSettings::default().max_food_count (50) unless it overshoots the 80-prey reproduction gate within the first 1000 ticks, in which case the nearest lower value, stated explicitly"
+    },
+    "F_lo": {
+      "key": "live.food_cap (treatment and drift)",
+      "rule": "largest of {1/2, 1/3, 1/4, 1/8} * F_hi whose smoke mean live.standing_crop (or live.food_items) over the second half of the smoke is within +-20% of half of F_hi's, AND the smoke population does not go extinct; if none satisfies both, stop and file a finding; the extinction constraint is never relaxed"
+    },
+    "duration_rung": {
+      "rule": "highest rung of 18000 / 12000 / 6000 whose estimated total run time is <= 90 minutes (smoke measures microseconds per tick on the top rung); never lower N"
+    },
+    "h1_direction": {
+      "rule": "two_sided unless the smoke at seed 999971 plus the stated mechanism (small bodies are cheaper to run vs large bodies buffer starvation) justifies one direction; fixed once in a dated direction_fixed_after_smoke block, never changed after an experimental seed has run"
+    },
+    "must_not_be_chosen_by": "any body-mass outcome (F_lo is chosen by food and survival only)",
+    "smoke_must_not_change": ["the question", "the metric", "the thresholds", "N (n_requested)", "the seed list", "the tail-window rule", "the common configuration"],
+    "smoke_starting_candidates_in_smoke_manifests": "esel1-smoke-abundant.json carries live.founders = 30, live.food_cap = 50; esel1-smoke-scarce.json carries live.food_cap = 25 (the 1/2 candidate). These are the first candidates, not results; further candidates of the grid may be tried by editing ONLY those two keys in the smoke manifests, which are excluded from analysis."
+  },
+  "direction_fixed_after_smoke": null,
+  "hypotheses": [
+    {
+      "id": "H1",
+      "role": "primary",
+      "observable": "live.trait_mass_mean",
+      "statistic": "paired_mean_delta_of_tail_window_mean",
+      "tail_window": "samples with tick > 0.8 * duration_ticks",
+      "direction": "[SMOKE: fixed once after smoke, else two_sided]",
+      "arm_order": "delta = scarce - abundant"
+    },
+    {
+      "id": "H2",
+      "role": "secondary",
+      "observable": "live.trait_mass_mean",
+      "statistic": "paired_mean_delta_of_tail_window_mean",
+      "direction": "two_sided",
+      "contrast": "drift (scarce, mutation off) vs treatment (scarce): delta = scarce_mut0 - scarce",
+      "decision_effect": "none",
+      "rationale": "descriptive only; does not separate selection from drift (plan section 5.3)"
+    },
+    {
+      "id": "H3",
+      "role": "descriptive",
+      "observables": ["live.agent_count", "live.standing_crop", "live.food_items", "live.births", "live.deaths", "live.mean_lifespan", "live.trait_mass_var", "live.trait_mass_p10", "live.trait_mass_p90"],
+      "decision_effect": "none"
+    },
+    {
+      "id": "H4",
+      "role": "harness_integrity",
+      "observable": "live.closed_eu_total",
+      "statistic": "constant_within_each_run",
+      "decision_effect": "none",
+      "rationale": "a drift in closed EU, or live.births == 0 while the population grew, is filed as a defect finding, not as biology"
+    }
+  ],
+  "seeds": {
+    "n_requested": 12,
+    "min_complete_pairs_for_a_decision": 10,
+    "execution_order": [760001, 761001, 762001, 763001, 764001, 765001, 766001, 767001, 768001, 769001, 770001, 771001],
+    "rule": "seed_k = 760001 + 1000*k for k in 0..11, fixed before any run; disjoint from E2 700001.., E3 draft 730001.., E2R 750001..",
+    "smoke_seed": 999971,
+    "smoke_seed_is_excluded_from_analysis": true,
+    "smoke_seed_exclusion_is_mechanical": "999971 is absent from every experimental manifest's seed list, and run_manifest_seed returns RunStatus::Failed{SeedNotInManifest} for a seed the manifest does not declare."
+  },
+  "duration": {
+    "duration_ticks": "[SMOKE: one of the ladder]",
+    "duration_ticks_ladder": [18000, 12000, 6000],
+    "ladder_rule": "Chosen ONCE from the smoke, before any experimental seed runs, written to execution-lock.json. Never changed after an experimental seed has run.",
+    "sample_period": 600,
+    "warmup_ticks": 3000,
+    "warmup_samples_excluded_from_time_averages": 5
+  },
+  "extinction_rule": {
+    "definition": "live.agent_count == 0 at any sample",
+    "handling": "recorded outcome; the pair is dropped from the paired statistic and counted in the report with seed, arm and tick; never silently",
+    "fewer_than_10_complete_pairs": "insufficient_evidence; no replacement seeds, N is never changed"
+  },
+  "thresholds": {
+    "materiality_rule": "all_of",
+    "conditions": [
+      "ci95 on paired_mean_delta excludes 0",
+      "abs(paired_dz) >= 0.8",
+      "abs(paired_mean_delta) >= 0.05 * abs(control_mean)"
+    ],
+    "null_result_rule": "ci95 includes 0, OR abs(paired_mean_delta) < 0.05 * abs(control_mean)",
+    "between_rule": "detectable but below the preregistered materiality threshold; counts as NOT different enough"
+  },
+  "reporting": {
+    "per_observable_fields": ["n_requested", "n_complete_pairs", "n_extinct_pairs_dropped", "control_mean", "treatment_mean", "paired_mean_delta", "paired_sd", "paired_se", "ci95_low", "ci95_high", "paired_dz"],
+    "additional_derived": ["median_of_per_seed_deltas", "between_seed_variance_of_deltas", "per_seed_delta_table", "extinction_table_by_arm"],
+    "failed_runs": "every failed run is reported with its seed and reason; none is dropped",
+    "negative_and_null_results_are_valid_results": true,
+    "metric_switching_after_results": "forbidden"
+  },
+  "cost": {
+    "reference_measured": "E2: 24 runs x 18000 ticks at 10 agents = 157 s (Windows, July) and 66.9 s (macOS arm64, 2026-11-16 re-run)",
+    "this_experiment": "larger populations (>= 30 founders, reproduction on) cost more per tick; UNMEASURED, to be measured in the smoke and recorded in cost.measured_us_per_tick_release",
+    "runs": "36 (control, treatment and drift arms x 12 seeds)",
+    "max_wall_clock_minutes": 90,
+    "build_profile_required": "release",
+    "on_budget_exceeded": "step down the duration ladder using the smoke only, before any experimental seed runs; never lower N"
+  },
+  "artifacts": {
+    "root": "artifacts/experiments/e-sel1-food-scarcity/",
+    "files": ["paired-report.json", "effects.json", "per-seed-deltas.csv", "runs.csv", "execution-lock.json", "provenance.json", "summary.md", "checksums.sha256", "manifests/", "smoke/"]
+  },
+  "reproduction_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_esel1_experiment -j 2; then execute src-tauri/target/release/examples/run_esel1_experiment --ensemble --manifest-dir src-tauri/tests/fixtures/experiments_esel1 --out artifacts/experiments/e-sel1-food-scarcity",
+  "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_esel1_experiment -j 2; then execute src-tauri/target/release/examples/run_esel1_experiment --smoke --manifest-dir src-tauri/tests/fixtures/experiments_esel1 --out artifacts/experiments/e-sel1-food-scarcity",
+  "smoke_exclusion": "seed 999971 only in smoke manifests; absent from every experimental manifest",
+  "blocking_preconditions": [
+    {"id": "P1", "status": "satisfied", "evidence": "live.reproduction on the trunk: PR #66 (merge 0f9c361)."},
+    {"id": "P2", "status": "satisfied", "evidence": "live.locomotion (ADR-0006) on the trunk: PR #76 (merge 55ce76c), opt-in; plus the ADR-0007 option A drive floor and thirst steering, PR #82 (merge 8a3558a, feature commit 40aefe1). Every arm sets live.locomotion = 1, live.drive_floor = 0.5, live.thirst_steering = 1."},
+    {"id": "P3", "status": "satisfied", "evidence": "src-tauri/examples/run_esel1_experiment.rs (--smoke, --ensemble, --replay, execution-lock.json) with its tests, PR #81 (merge 6c2891d); never cargo run."},
+    {"id": "P4", "status": "satisfied", "evidence": "live.mutation_rate manifest key (absent == 0.05), PR #81 (merge 6c2891d); the drift arm exists and is included."},
+    {"id": "P5", "status": "satisfied", "evidence": "F-039 live.births counts continuous births: commit b0a8c4d on the trunk (PR #66 line); re-confirmed at freeze time by src-tauri/tests/live_births_bookkeeping_tests.rs."}
+  ],
+  "decision_rule": {
+    "shift_in_model_only_if": "H1 reaches materiality AND >= 10 complete pairs AND no harness-integrity finding is open AND cargo test --features desktop is green",
+    "null_if": "H1 is null or below materiality with >= 10 complete pairs",
+    "insufficient_evidence_if": "fewer than 10 complete pairs, or a blocking precondition was satisfied in a way that departs from this preregistration",
+    "defects_are_not_insufficiency": "a real defect found during the run is recorded and fixed as a defect"
+  },
+  "limitations_stated_in_advance": [
+    "prey only (predator_fraction = 0): predators do not persist yet; no predation pressure",
+    "one terrain (the adapter's fixed map seed) and the headless adapter",
+    "body mutation probability is a declared constant per arm (0.05 or 0.0), not an experimental dose",
+    "drive floor 0.5 makes speed less heritable (a viability aid, ADR-0007)"
+  ],
+  "will_not_be_claimed": [
+    "adaptation or local adaptation (CM-S11 not run)",
+    "speciation or species",
+    "anything about predators, Red-Queen coevolution (S43) or brains",
+    "generality beyond one terrain seed and the headless adapter"
+  ]
+}
