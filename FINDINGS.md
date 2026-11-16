@@ -30,6 +30,16 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-042 — Sinh vật không tự di chuyển được: lực khớp là nội lực, vật lý không có lực ngoài, và không hệ nào ghi `target_velocity`
+- **Ngày:** 2026-11-16
+- **Loại:** BUG
+- **Vị trí:** `src-tauri/src/physics/dynamics.rs:110-111` (`child_body.force += f_spring; parent_body.force -= f_spring`: nội lực, tổng bằng 0, không dịch được khối tâm); `src-tauri/src/physics/dynamics.rs:121` và `:195-212` (`integrate_physics_system` chỉ làm `velocity += force/mass*dt`, không có tiếp xúc nền, ma sát, cản dị hướng hay lực ngoài nào khác); `src-tauri/src/physics/dynamics.rs:153-156` (lực hướng tới `InertiaComponent.target_velocity` là lực ngoài duy nhất); `src-tauri/src/core/components.rs:465` và `:475` (`target_velocity` mặc định `Vec3::ZERO`); `src-tauri/src/core/simulation_state.rs:196` (chỉ kiểm tra hữu hạn, không ghi); toàn bộ `src/` không có chỗ nào ghi `target_velocity`; nguồn dịch chuyển duy nhất là xung sinh trong `src-tauri/src/core/agent_systems.rs:478-494` (hướng ngẫu nhiên, 2.0 đơn vị/s thú săn, 1.5 con mồi) áp lên mọi segment tại `:569`
+- **Phát hiện bởi:** đo (điều tra thú săn tuyệt chủng khi bật sinh sản, thăm dò)
+- **Triệu chứng:** CPG chạy thật (biên độ khoảng 1.3, tần số khoảng 2.8-2.9, vận tốc segment khoảng 1 đơn vị/s dao động) nhưng gốc của founder gần như không đi đâu. Seed 1, adapter live, 10 founder (3 thú săn + 7 con mồi, thân 3 segment giống nhau): độ dịch ròng của gốc qua tick 0-200 khoảng 0.035-0.040, qua tick 0-1.000 khoảng 0.025-0.028 (đường đi khoảng 0.5), CẢ HAI lớp; seed 2 ròng khoảng 0.000. Hệ quả: thú săn founder không bao giờ tới được con mồi (năng lượng thu từ con mồi bằng 0 tới khi chết đói ở khoảng 2.000 tick, seed 1 và 3), và fitness sinh thái mặc định (Locomotion) không có vận động nào để chọn lọc. Con non sinh ra chỉ trôi đạn đạo theo xung sinh (không có lực cản) tới khi năng lượng về 0 thì vận tốc bị xoá. Xung ngẫu nhiên ban đầu KHÔNG phải cách sửa: đã đo, nó làm thú săn chết đói nhanh hơn.
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop -j 2 --test no_locomotion_characterization_tests -- --nocapture` (dòng `F042 ticks=1000 founders=10 max_net=0.030283825 mean_path=0.5258204`)
+- **Test khoá lại:** `no_locomotion_characterization_tests::founders_oscillate_but_do_not_translate`. Test này GHIM hành vi hiện tại (max_net < 0.5 sau 1.000 tick trong khi CPG hoạt động) và phải được ĐẢO khi có vận động.
+- **Trạng thái:** OPEN. Sửa là đổi ngữ nghĩa vật lý: cần `LIVE_MODEL_VERSION` mới và mọi checksum đổi. Lựa chọn cho chủ dự án: (a) mô hình ma sát/tiếp xúc nền dị hướng để sóng uốn tạo lực đẩy; (b) một bộ lái ghi `InertiaComponent.target_velocity` từ đầu ra của não/CPG; (c) cả hai.
+
 ### F-041 — Thế giới live cùng seed cho checksum khác nhau giữa các tiến trình khi có sinh sản: `spawn_food_system` không có cạnh thứ tự với `detect_food_collisions_system`, và còn hàng chục cặp ambiguity khác ngoài hai lớp gate đang canh
 - **Ngày:** 2026-11-16
 - **Loại:** BUG (vi phạm hợp đồng tất định; cùng họ F-029/F-030)
