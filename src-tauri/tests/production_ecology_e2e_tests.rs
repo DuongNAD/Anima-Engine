@@ -416,7 +416,7 @@ fn test_production_closed_ledger_energy_audit_and_biodiversity_10k_ticks() {
 
                 let is_pred = world.get::<Predator>(victim).is_some();
                 let replacement_genotype = if is_pred {
-                    if (tick / REPLACE_INTERVAL) % 2 == 0 {
+                    if (tick / REPLACE_INTERVAL).is_multiple_of(2) {
                         g1.clone()
                     } else {
                         g2.clone()
@@ -945,9 +945,10 @@ fn test_boundary_and_corner_cases_ecological_limits() {
     // Subcase C: Winter Troughs & Annual Seasonal Oscillation
     // -------------------------------------------------------------------------
     // Annual cycle phase sweep phi in [0, 2pi]
-    let mut clock = SeasonClock::default();
-    clock.phase = 0.0;
-    clock.rate = std::f32::consts::TAU / 100.0;
+    let mut clock = SeasonClock {
+        phase: 0.0,
+        rate: std::f32::consts::TAU / 100.0,
+    };
 
     let mut min_fertility = 10.0f32;
     let mut max_fertility = -10.0f32;

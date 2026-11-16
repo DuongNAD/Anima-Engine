@@ -334,12 +334,10 @@ fn test_challenge_energy_conservation_extreme_thermal_and_trophic_stress() {
     // Inject thermal fluctuation: heat up half the agents to 42.0°C to accelerate metabolic decay
     {
         let mut q = world.query_filtered::<&mut HomeostaticState, With<Agent>>();
-        let mut count = 0;
-        for mut homeo in q.iter_mut(&mut world) {
-            if count % 2 == 0 {
+        for (count, mut homeo) in q.iter_mut(&mut world).enumerate() {
+            if count.is_multiple_of(2) {
                 homeo.temperature = 42.0;
             }
-            count += 1;
         }
     }
 

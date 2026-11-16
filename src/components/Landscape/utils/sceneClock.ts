@@ -174,6 +174,40 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** Default simulated day-night cycle length in wall-clock seconds at 1x speed (10 minutes). */
+export const DEFAULT_DAY_LENGTH_SECONDS = 600;
+
+/** Fixed daytime hour pinned when "Always day" ("Luôn ban ngày") is enabled. */
+export const ALWAYS_DAY_HOUR = 11;
+
+/**
+ * Advance `currentHour` over `dtSeconds` at `speed`, wrapping into `[0, 24)`.
+ *
+ * When `alwaysDay` is true, always returns `ALWAYS_DAY_HOUR` (`11`).
+ */
+export function stepTimeOfDay(
+  currentHour: number,
+  speed: number,
+  dtSeconds: number,
+  alwaysDay = false,
+  dayLengthSeconds = DEFAULT_DAY_LENGTH_SECONDS,
+): number {
+  if (alwaysDay) return ALWAYS_DAY_HOUR;
+  const base = Number.isFinite(currentHour) ? ((currentHour % 24) + 24) % 24 : ALWAYS_DAY_HOUR;
+  if (
+    !Number.isFinite(speed) ||
+    speed <= 0 ||
+    !Number.isFinite(dtSeconds) ||
+    dtSeconds <= 0 ||
+    !Number.isFinite(dayLengthSeconds) ||
+    dayLengthSeconds <= 0
+  ) {
+    return base;
+  }
+  const deltaHours = (24 / dayLengthSeconds) * dtSeconds * speed;
+  return (((base + deltaHours) % 24) + 24) % 24;
+}
+
 /**
  * A random source for scattering scenery: `Math.random` normally, a seeded stream under capture.
  *
