@@ -139,6 +139,19 @@ pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
 /// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
 /// `live.locomotion = 1`.**
 pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
+/// ADR-0007 option B (thẻ B): a predator strike that credits it `ΔE` EU also adds `k × ΔE` to its
+/// hydration, capped at its hydration target. `k >= 0`; absent/`0.0` = off, bit-identical.
+/// Hydration is outside the EU ledger. Acts in `combat_system`, so it does not need
+/// `live.locomotion`.
+pub const LIVE_KEY_KILL_HYDRATION: &str = "live.kill_hydration";
+/// ADR-0007 option B: assimilation efficiency of a strike, in `(0, 1]`, replacing
+/// `ecology::LINDEMAN_EFFICIENCY` (0.40) in this world only (both strike branches). Absent =
+/// `0.40`, bit-identical. The unassimilated remainder still returns to detritus; EU stays closed.
+pub const LIVE_KEY_KILL_EFFICIENCY: &str = "live.kill_efficiency";
+/// ADR-0007 option B: predator steering only targets living prey with `energy >= E` (`E >= 0`);
+/// absent/`0.0` = every living prey, bit-identical. Steering only: the strike in `combat_system`
+/// is not filtered. **Only takes effect when `live.locomotion = 1`.**
+pub const LIVE_KEY_TARGET_MIN_ENERGY: &str = "live.target_min_energy";
 /// Per-birth probability that `autonomous_reproduction_system` mutates the offspring's body
 /// genotype (E-SEL1 precondition P4), a **declared** input in `[0, 1]`.
 ///
@@ -163,7 +176,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 16] = [
+pub const LIVE_KEYS: [&str; 19] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -180,6 +193,9 @@ pub const LIVE_KEYS: [&str; 16] = [
     LIVE_KEY_DEHYDRATION_TICKS,
     LIVE_KEY_ECOLOGICAL_FITNESS,
     LIVE_KEY_W_SURPLUS,
+    LIVE_KEY_KILL_HYDRATION,
+    LIVE_KEY_KILL_EFFICIENCY,
+    LIVE_KEY_TARGET_MIN_ENERGY,
 ];
 
 /// The genesis the manifest asked for.
@@ -229,6 +245,19 @@ pub struct LiveWorldConfig {
     /// Weight of the net-surplus term of the ecological rule; absent reads back as 1.0.
     #[serde(default = "default_w_surplus")]
     pub w_surplus: f32,
+    /// ADR-0007 option B: hydration gained per EU a predator assimilates from a kill; `0.0` = off.
+    #[serde(default)]
+    pub kill_hydration: f32,
+    /// ADR-0007 option B: strike assimilation efficiency; absent reads back as the Lindeman 0.40.
+    #[serde(default = "default_kill_efficiency")]
+    pub kill_efficiency: f32,
+    /// ADR-0007 option B: minimum prey energy for predator steering; `0.0` = off.
+    #[serde(default)]
+    pub target_min_energy: f32,
+}
+
+fn default_kill_efficiency() -> f32 {
+    crate::core::ecology::LINDEMAN_EFFICIENCY
 }
 
 fn default_mutation_rate() -> f64 {
@@ -270,6 +299,9 @@ impl Default for LiveWorldConfig {
             dehydration_ticks: default_dehydration_ticks(),
             ecological_fitness: false,
             w_surplus: default_w_surplus(),
+            kill_hydration: 0.0,
+            kill_efficiency: default_kill_efficiency(),
+            target_min_energy: 0.0,
         }
     }
 }
@@ -427,6 +459,41 @@ impl LiveWorldConfig {
                         });
                     }
                     config.w_surplus = *value as f32;
+                }
+                LIVE_KEY_KILL_HYDRATION => {
+                    if !(0.0..=1_000.0).contains(value) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: 1_000.0,
+                        });
+                    }
+                    config.kill_hydration = *value as f32;
+                }
+                LIVE_KEY_KILL_EFFICIENCY => {
+                    // (0, 1]: zero efficiency would make a strike pure destruction, above one
+                    // would create energy.
+                    if !(*value > 0.0 && *value <= 1.0) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: f64::MIN_POSITIVE,
+                            max: 1.0,
+                        });
+                    }
+                    config.kill_efficiency = *value as f32;
+                }
+                LIVE_KEY_TARGET_MIN_ENERGY => {
+                    if !(0.0..=1_000_000.0).contains(value) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: 1_000_000.0,
+                        });
+                    }
+                    config.target_min_energy = *value as f32;
                 }
                 _ => unreachable!("key membership was checked above"),
             }
@@ -2006,6 +2073,13 @@ fn install_runtime_resources(
     // On genesis and on restore alike: the declared cap is part of the manifest, not of the saved
     // state, and `apply_environmental_effects_system` would otherwise reset it to 50 (F-043).
     world.insert_resource(LiveFoodCap(config.food_cap));
+    // Same reasoning (F-043): the predator-income knobs are part of the manifest, not of the saved
+    // state, so genesis and restore must both declare them. Defaults equal the legacy behaviour.
+    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
+        kill_hydration: config.kill_hydration,
+        kill_efficiency: config.kill_efficiency,
+        target_min_energy: config.target_min_energy,
+    });
 
     let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
     let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();

@@ -624,6 +624,36 @@ impl LocomotionPolicy {
     }
 }
 
+/// Predator income knobs (ADR-0007 option B, "thẻ B"). **Every field defaults to today's behaviour
+/// and a world without the resource behaves exactly as before** (the app inserts nothing; a live
+/// manifest opts in with `live.kill_hydration`, `live.kill_efficiency`, `live.target_min_energy`).
+///
+/// * `kill_hydration`: a strike that credits the predator `gained` EU also adds
+///   `kill_hydration * gained` to its hydration, capped at `hydration_target`. Hydration is not in
+///   the EU ledger, so this cannot affect EU closure. `0.0` = off.
+/// * `kill_efficiency`: replaces `ecology::LINDEMAN_EFFICIENCY` in **both** strike branches of
+///   `combat_system` for this world only. The unassimilated remainder keeps flowing to detritus
+///   through the measured `removed - gained`, so EU stays closed. Default = the Lindeman constant.
+/// * `target_min_energy`: predator steering only targets living prey with `energy >= value`.
+///   `combat_system` is deliberately **not** filtered: it still strikes the first prey in range.
+///   `0.0` = off. Inert unless `LocomotionPolicy::enabled`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct PredatorIncomePolicy {
+    pub kill_hydration: f32,
+    pub kill_efficiency: f32,
+    pub target_min_energy: f32,
+}
+
+impl Default for PredatorIncomePolicy {
+    fn default() -> Self {
+        Self {
+            kill_hydration: 0.0,
+            kill_efficiency: crate::core::ecology::LINDEMAN_EFFICIENCY,
+            target_min_energy: 0.0,
+        }
+    }
+}
+
 /// Whether newly created agents get their own heritable brain, and what shape it takes.
 ///
 /// **Off by default.** With `evolved = false` nothing spawns a [`crate::core::components::AgentBrain`]
