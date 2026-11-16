@@ -27,13 +27,23 @@ export const SIM_BOUNDS_EXTENT = 200;
 export const SIM_BOUNDS_HALF = SIM_BOUNDS_EXTENT / 2;
 
 /**
+ * Uniform conversion factor from simulation world units to render units (`renderSize / 200`).
+ *
+ * Equal to `6` at the shipped `RENDER_SIZE = 1200`. Sharing this ratio keeps segment dimensions,
+ * joint offsets, and intra-creature vertical offsets in the exact same scale as positions.
+ */
+export function simScale(renderSize: number): number {
+  return renderSize / SIM_BOUNDS_EXTENT;
+}
+
+/**
  * Convert one simulation axis coordinate into render units.
  *
  * @param world - Coordinate in `[-100, 100]`, as the backend publishes it.
  * @param renderSize - The scene's `RENDER_SIZE`.
  */
 export function simToRender(world: number, renderSize: number): number {
-  return (world * renderSize) / SIM_BOUNDS_EXTENT;
+  return world * simScale(renderSize);
 }
 
 /**
@@ -44,7 +54,7 @@ export function simToRender(world: number, renderSize: number): number {
  * site and getting it upside down.
  */
 export function renderToSim(render: number, renderSize: number): number {
-  return (render * SIM_BOUNDS_EXTENT) / renderSize;
+  return render / simScale(renderSize);
 }
 
 /**
