@@ -631,10 +631,18 @@ describe('RW-A1 tick sources, synthetic fixture, and 30s tick recorder', () => {
       expect(document.querySelector('[data-testid="rw-synthetic-banner"]')).not.toBeNull();
     });
 
-    advanceFrames();
-    const meshEl = container.querySelector('instancedmesh') as MockInstancedElement | null;
-    expect(meshEl).not.toBeNull();
-    expect(meshEl!.count).toBeGreaterThan(0);
+    // The banner and the instanced mesh are committed by separate async state
+    // updates (file fetch -> parse -> replay frame -> mesh), so the banner being
+    // visible does not imply the mesh exists yet on a slow runner. Drive frames
+    // inside the poll and wait on the mesh condition itself instead of assuming
+    // how many ticks the pipeline needs.
+    let meshEl: MockInstancedElement | null = null;
+    await waitFor(() => {
+      advanceFrames();
+      meshEl = container.querySelector('instancedmesh') as MockInstancedElement | null;
+      expect(meshEl).not.toBeNull();
+      expect(meshEl!.count).toBeGreaterThan(0);
+    });
 
     // Uploading a recording file via the file input updates the replay source too.
     const fileInput = document.querySelector(
