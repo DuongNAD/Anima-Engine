@@ -12,6 +12,13 @@
 //! [`crate::core::live_experiment`] and the app are now provably the same schedule, because they
 //! call the same function.
 //!
+//! **F-041 update.** The paragraph above and the "two additions" section below describe the
+//! schedule as a set of `.after(...)` / `.before(...)` edges. That is no longer how it is built:
+//! edges left pairs unordered, and the per-process topological sort chose an order for them, which
+//! made one seed give different worlds in different processes. The schedule is now a single chain
+//! (see [`build_tick_schedule`]); the "only `.after`" rule below is moot because every system has a
+//! declared place, but the capture and intervention systems remain inert without their resources.
+//!
 //! # The two additions, and why they cannot perturb anything
 //!
 //! Two things are here that were not in `start`: the tick-capture checkpoints
@@ -70,254 +77,124 @@ pub fn executor_name(mode: DeterministicMode) -> &'static str {
 /// residual whose *sign* changed between runs because of it, and G1.2's checkpoint gate had to
 /// declare its own order to get a stable checksum at all.
 ///
-/// The single-threaded executor walks the schedule's topological order, which is a function of the
-/// declared constraints and insertion order alone — the same binary and manifest therefore produce
-/// the same order every time. It costs parallelism, which is the correct trade for a run whose
-/// purpose is to be reproducible; an interactive session leaves determinism off and keeps the
-/// multi-threaded executor.
+/// The single-threaded executor walks the schedule's topological order. That order is a function
+/// of the declared constraints **only where the constraints leave no freedom**: for two systems
+/// with no edge between them, `ScheduleGraph::topsort` picks by a hash seeded per process
+/// (FINDINGS.md F-029, F-041). Twelve processes of one binary produced twelve different executed
+/// orders of these 52 nodes. That is not harmless: two systems that conflict on a component, or one
+/// that counts entities while another spawns or despawns them through `Commands` (F-041:
+/// `spawn_food_system` counting `Food` against `detect_food_collisions_system` despawning it), give
+/// different worlds in different orders.
+///
+/// # One total order (F-041)
+///
+/// So the order is no longer a set of edges with gaps: **every system, and every flush point, is
+/// in one sequence** that is chained, which leaves the topological sort exactly one answer in every
+/// process. (`((a, b), (c, d)).chain()` orders the *groups* only — each group is chained by its own
+/// `.chain()` below; a group without one is an unordered set. The first draft of this change got
+/// that wrong and the gate in `schedule_ambiguity_tests.rs` is what caught it.)
+///
+/// The sequence is a real execution order, taken from a process whose world matched the
+/// majority of twelve processes in the configuration that used to vary (mortality + continuous
+/// reproduction; nine of the twelve distinct orders in that cohort gave the same checksum). Because
+/// the former per-system `.after(...)` edges were a subset of that order, nothing that was
+/// already process-invariant changes: the trunk default world, the E2 control and the 60-founder
+/// mortality world keep exactly the checksums they had before.
+///
+/// `auto_insert_apply_deferred` is **off** and the five `apply_deferred` nodes are declared in the
+/// sequence. With it on, a sync point is inserted after every `Commands` system a chain edge
+/// touches, which moves every spawn/despawn flush and changes the trajectory; with it off the
+/// flush points are exactly where this list puts them. A system that spawns or despawns therefore
+/// has its `Commands` applied at the next `apply_deferred` below, or at the end of the tick.
+///
+/// The causal reading of the sequence, which the old edges used to state:
+/// energy pipeline acquire -> contest -> spend -> count (grazing, regrowth, food collisions,
+/// combat, metabolism, census); `SimRng` draw order manual_migration -> spawn_food ->
+/// seed_dropping -> autonomous_reproduction -> check_epoch_completion; capture checkpoints after
+/// the phase they bound; interventions before environmental effects, regrowth and metabolism.
+/// `tests/schedule_ambiguity_tests.rs` asserts each of these by position, so a reordering that
+/// breaks one fails loudly.
+///
+/// A system added without a place in this sequence is caught by
+/// `the_tick_schedule_has_no_ambiguous_pair_at_all`; put it in the chain and re-run the
+/// multi-process gates in `schedule_total_order_tests.rs`.
 pub fn build_tick_schedule(deterministic: DeterministicMode) -> Schedule {
     let mut schedule = Schedule::default();
     if deterministic.is_enabled() {
         schedule.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
     }
-    schedule.add_systems((
-        sync_evolution_settings_system,
-        receive_environmental_events_system,
-        apply_environmental_effects_system.after(receive_environmental_events_system),
-        sensory_system,
-        action_resolution_system,
-        update_cpg_system.after(action_resolution_system),
-        resolve_joints_system.after(update_cpg_system),
-        integrate_physics_system.after(resolve_joints_system),
-        crate::ai::pheromone::agent_release_pheromone_system.after(integrate_physics_system),
-        crate::ai::pheromone::update_pheromone_grid_system
-            .after(crate::ai::pheromone::agent_release_pheromone_system),
-        crate::ai::pheromone::agent_read_pheromone_system
-            .after(crate::ai::pheromone::update_pheromone_grid_system),
-    ));
-    schedule.add_systems((
-        update_agent_evaluation_system.after(integrate_physics_system),
-        (
-            crate::core::ecs::check_migration_boundaries_system,
-            apply_deferred,
-            wrap_coordinates_system,
-        )
-            .chain()
-            .after(integrate_physics_system),
-        rebuild_spatial_grid_system.after(wrap_coordinates_system),
-        crate::core::ecs::process_inbound_migrations_system.after(integrate_physics_system),
-        // ---- The energy pipeline, declared end to end -------------------------------------------
-        //
-        // These four plus `herbivore_grazing_system`, `resource_field_regrowth_system` and
-        // `ecosystem_census_system` are every system that moves EU into or out of an agent reserve
-        // or a biomass compartment. Bevy reported **seven** unordered conflicting pairs among them,
-        // which meant the order was picked by topological sort — per process, not by this file — and
-        // the orders do not commute: whether an agent eats before or after it burns decides whether
-        // it starves, and `f32` reserves clamped at zero do not add associatively.
-        //
-        // Measured before this chain existed: twelve processes of one binary at one seed produced
-        // two different world checksums and two different `live.mean_agent_energy` values. That is
-        // the primary observable of experiment E2 moving because of a hash seed.
-        //
-        // The declared order is acquire → contest → spend → count:
-        //
-        //   herbivore_grazing → resource_field_regrowth → detect_food_collisions
-        //     → combat → metabolic_decay → ecosystem_census
-        //
-        // Any total order would remove the ambiguity; this one is chosen because it reads as a tick
-        // of an animal's day and because grazing-before-regrowth was already declared for its own
-        // reason (both consumers draw on the same standing field before it grows back).
-        metabolic_decay_system
-            .after(integrate_physics_system)
-            .after(combat_system),
-        // ---- The SimRng stream, declared end to end ---------------------------------------------
-        //
-        // Five systems in the tick schedule take `ResMut<SimRng>`: `manual_migration_system`,
-        // `spawn_food_system`, `seed_dropping_system`, `autonomous_reproduction_system` and
-        // `check_epoch_completion_system`. Taking `ResMut` on a shared resource makes Bevy's
-        // executor serialise them, NOT order them — without explicit `.after(...)` edges,
-        // `ScheduleGraph::topsort` picks which system draws first from the shared `ChaCha12Rng`
-        // stream using `FixedState::default()`, which is seeded per process (FINDINGS.md F-029).
-        //
-        // Measured before this chain existed: Bevy reported six unordered conflicting pairs among
-        // these systems (three predating `1d301c3` between `spawn_food_system`,
-        // `seed_dropping_system` and `check_epoch_completion_system`, plus three added when
-        // `1d301c3` introduced `autonomous_reproduction_system`). Six unordered pairs admit many
-        // sort orders, not two: one binary at one seed produced **four** distinct 180-tick
-        // checksums across eight processes — 3667697632, 3611111189, 1299407149 and 67815791 —
-        // and moved tick-1 offspring `live-founder-0005.1` between `x = 71.47` and `x = 75.77`.
-        // `spawn_food_system` draws 100 times on tick 1 (50 food items, two `gen_range` each), so
-        // whether it draws before or after the reproduction systems shifts the whole stream.
-        //
-        // The reproducibility tests stayed green through all of it, because each one compares two
-        // runs made inside the *same* process, and a process is self-consistent.
-        //
-        // The declared draw order follows the causal phases of a tick — migration handoff →
-        // environmental substrate replenishment (ground food, then tree saplings) → intra-tick
-        // reproduction → epoch-boundary evaluation:
-        //
-        //   manual_migration → spawn_food → seed_dropping
-        //     → autonomous_reproduction → check_epoch_completion
-        //
-        // The six pairs were among **four** of the five: Bevy reported no ambiguity between
-        // `manual_migration_system` and any of the others, so the sort already had a path to it.
-        // The chain is still written out in full — including that edge and
-        // `autonomous_reproduction.after(spawn_food)`, which `seed_dropping` already implies — so
-        // the whole draw order reads in one place instead of being reassembled from edges in four
-        // separate `add_systems` blocks. `no_two_systems_that_draw_simrng_are_left_unordered`
-        // guards the invariant either way.
-        //
-        // Running `spawn_food_system` ahead of `autonomous_reproduction_system` also preserves the
-        // tick-1 `SimRng` prefix (`0..100`) that `spawn_food_system` consumed before `1d301c3`.
-        spawn_food_system
-            .after(apply_environmental_effects_system)
-            .after(crate::core::ecs::manual_migration_system),
-        detect_food_collisions_system
-            .after(integrate_physics_system)
-            .after(resource_field_regrowth_system),
-        combat_system
-            .after(integrate_physics_system)
-            .after(detect_food_collisions_system),
-        hrrl_learning_system.after(metabolic_decay_system),
-        check_epoch_completion_system
-            .after(metabolic_decay_system)
-            .after(autonomous_reproduction_system),
-        apply_staggered_evolution_system.after(check_epoch_completion_system),
-        // An explicit observer request wins a contested queue slot over automatic boundary traffic.
-        // The order also makes the two producers deterministic with respect to each other.
-        crate::core::ecs::manual_migration_system
-            .after(integrate_physics_system)
-            .before(crate::core::ecs::check_migration_boundaries_system),
-        fruit_growth_system.after(apply_environmental_effects_system),
-        lake_replenishment_system.after(apply_environmental_effects_system),
-        seed_dropping_system
-            .after(apply_environmental_effects_system)
-            .after(spawn_food_system),
-        detect_environmental_collisions_system.after(integrate_physics_system),
-    ));
-
-    // Ecosystem-dynamics systems (Phase 7) in their own tuple — Bevy caps a single
-    // add_systems tuple at 20, and `.after(...)` ordering resolves across calls.
-    schedule.add_systems((
-        herbivore_grazing_system.after(integrate_physics_system),
-        resource_field_regrowth_system.after(herbivore_grazing_system),
-        // The app's focus reaches the world here, ahead of both readers — `sensory_system`,
-        // which tiers inference, and the dormancy systems below. Ordered explicitly rather
-        // than left to Bevy: an unconstrained sync would let a tick tier agents against
-        // last tick's camera, which is harmless for a moving observer and confusing to
-        // debug.
-        crate::core::simulation_lod::sync_lod_focus_system
-            .before(sensory_system)
-            .before(crate::core::aggregate_population::dehydrate_cold_agents_system),
-        // ADR-0004 O2. Records what the world actually saw of the observer, so it must run
-        // *after* the policy has had its say — reading the raw shared focus instead would
-        // file a camera path the world never experienced.
-        crate::core::observer::record_observer_trace_system
-            .after(crate::core::simulation_lod::sync_lod_focus_system),
-        // Ordered after the focus recorder so a tick's samples and that tick's actions land
-        // in the same trace in a fixed order — two runs of the same session then produce the
-        // same record, which is what makes a trace comparable at all.
-        crate::core::observer::drain_observer_actions_system
-            .after(crate::core::observer::record_observer_trace_system),
-        // Simulation LOD tier two. Both return immediately without a `DormantCohorts`
-        // resource, which is absent unless `ANIMA_AGGREGATE_LOD` is set, so a stock run is
-        // unaffected.
-        //
-        // After physics, so an agent is tiered on the position it actually reached this
-        // tick; before the census, because the census is the only place a dormant cohort's
-        // energy is counted and it has to see the result of both. Bevy inserts the sync
-        // point that applies their commands from these ordering constraints.
-        crate::core::aggregate_population::dehydrate_cold_agents_system
-            .after(integrate_physics_system),
-        crate::core::aggregate_population::rehydrate_wakeable_chunks_system
-            .after(crate::core::aggregate_population::dehydrate_cold_agents_system),
-        // The dormant cohorts' own ecology, sitting where its live counterparts sit: after
-        // live grazing and before regrowth, so both consumers draw on the same standing
-        // field before it grows back.
-        crate::core::aggregate_population::dormant_cohort_ecology_system
-            .after(herbivore_grazing_system)
-            .before(resource_field_regrowth_system),
-    ));
-
-    // Closed-loop energy conservation: mortality & autonomous continuous reproduction
-    // flush deferred commands before the ecosystem census snapshot.
-    //
-    // Agent deaths go through `mortality::mortality_system` only (F-037, QD-A'): the former
-    // `agent_mortality_system` killed at `energy <= 0` on the first tick and bypassed the declared
-    // `starve_ticks` grace, so it is deliberately not scheduled.
+    schedule.set_build_settings(bevy_ecs::schedule::ScheduleBuildSettings {
+        auto_insert_apply_deferred: false,
+        ..Default::default()
+    });
     schedule.add_systems(
         (
-            autonomous_reproduction_system,
-            apply_deferred,
-            ecosystem_census_system,
-        )
-            .chain()
-            .after(metabolic_decay_system)
-            .after(resource_field_regrowth_system)
-            .after(combat_system)
-            .after(detect_food_collisions_system)
-            .after(herbivore_grazing_system)
-            .after(crate::core::aggregate_population::rehydrate_wakeable_chunks_system)
-            .after(spawn_food_system)
-            .after(seed_dropping_system),
-    );
-
-    schedule.add_systems((
-        demographic_census_system.after(ecosystem_census_system),
-        energy_flux_aggregation_system.after(ecosystem_census_system),
-    ));
-
-    // Death sits inside the declared energy chain: after metabolism (an animal that just ate is
-    // not killed by last tick's numbers) and before the census (the census counts the world
-    // after the corpse has become detritus, not a half-finished one). Both new edges refine the
-    // already-declared metabolic_decay → census edge, and the system is inert without an
-    // enabled `MortalityPolicy`, so a stock run is unaffected.
-    schedule.add_systems(
-        crate::core::mortality::mortality_system
-            .after(metabolic_decay_system)
-            .before(ecosystem_census_system),
-    );
-
-    // A declared experiment's interventions reach the world here. `.before(...)` only — see the
-    // module docs — and inert without a `LiveInterventions` resource, which only the experiment
-    // adapter inserts.
-    schedule.add_systems(
-        crate::core::live_experiment::apply_live_interventions_system
-            .before(apply_environmental_effects_system)
-            .before(resource_field_regrowth_system)
-            .before(metabolic_decay_system),
-    );
-
-    // A declared experiment answers its own inference, in the tick that asked for it, so a
-    // checkpoint boundary holds no in-flight work — see `core::live_experiment::LiveInferencePump`.
-    // Inert without the pump resource, which only the experiment adapter inserts.
-    //
-    // This is the one addition that carries **both** an `.after` and a `.before`, and therefore the
-    // one that adds an edge between two pre-existing systems: `sensory_system` before
-    // `action_resolution_system`. That is deliberate and it changes nothing, because the two
-    // already conflict on `&mut CognitiveState` and so were already serialised — only *which* of
-    // them went first was undeclared, and the single-threaded executor already picked this order
-    // from insertion order. G1.3's whole argument is that an order the engine relies on should be
-    // declared rather than incidental; this declares one it already relied on.
-    schedule.add_systems(
-        crate::core::live_experiment::live_inference_pump_system
-            .after(sensory_system)
-            .before(action_resolution_system),
-    );
-
-    // Tick-capture checkpoints. `.after(...)` only, plus a chain among themselves — see the module
-    // docs — and inert without a `TickCaptureSink` resource.
-    schedule.add_systems(
-        (
-            crate::core::tick_capture::capture_checkpoint_sensor_brain_system
-                .after(action_resolution_system),
-            crate::core::tick_capture::capture_checkpoint_physics_system
-                .after(rebuild_spatial_grid_system),
-            crate::core::tick_capture::capture_checkpoint_ecology_system
-                .after(ecosystem_census_system),
+            (
+                crate::core::simulation_lod::sync_lod_focus_system,
+                crate::core::observer::record_observer_trace_system,
+                crate::core::observer::drain_observer_actions_system,
+                crate::core::live_experiment::apply_live_interventions_system,
+                sensory_system,
+                crate::core::live_experiment::live_inference_pump_system,
+                action_resolution_system,
+                crate::core::tick_capture::capture_checkpoint_sensor_brain_system,
+                update_cpg_system,
+                resolve_joints_system,
+                integrate_physics_system,
+                crate::core::aggregate_population::dehydrate_cold_agents_system,
+                herbivore_grazing_system,
+            )
+                .chain(),
+            (
+                crate::core::aggregate_population::dormant_cohort_ecology_system,
+                detect_environmental_collisions_system,
+                crate::core::ecs::manual_migration_system,
+                apply_deferred,
+                resource_field_regrowth_system,
+                detect_food_collisions_system,
+                crate::core::ecs::process_inbound_migrations_system,
+                crate::core::ecs::check_migration_boundaries_system,
+                apply_deferred,
+                wrap_coordinates_system,
+                rebuild_spatial_grid_system,
+                crate::core::tick_capture::capture_checkpoint_physics_system,
+                update_agent_evaluation_system,
+            )
+                .chain(),
+            (
+                crate::ai::pheromone::agent_release_pheromone_system,
+                crate::ai::pheromone::update_pheromone_grid_system,
+                crate::ai::pheromone::agent_read_pheromone_system,
+                crate::core::aggregate_population::rehydrate_wakeable_chunks_system,
+                receive_environmental_events_system,
+                apply_environmental_effects_system,
+                lake_replenishment_system,
+                fruit_growth_system,
+                spawn_food_system,
+                apply_deferred,
+                seed_dropping_system,
+                combat_system,
+                metabolic_decay_system,
+            )
+                .chain(),
+            (
+                hrrl_learning_system,
+                crate::core::mortality::mortality_system,
+                apply_deferred,
+                autonomous_reproduction_system,
+                apply_deferred,
+                check_epoch_completion_system,
+                apply_staggered_evolution_system,
+                apply_deferred,
+                ecosystem_census_system,
+                demographic_census_system,
+                crate::core::tick_capture::capture_checkpoint_ecology_system,
+                energy_flux_aggregation_system,
+                sync_evolution_settings_system,
+            )
+                .chain(),
         )
             .chain(),
     );
-
     schedule
 }
