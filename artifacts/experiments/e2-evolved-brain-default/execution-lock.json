@@ -1,0 +1,56 @@
+{
+  "kind": "e2-execution-lock",
+  "locked_on": "2026-11-16",
+  "amendment": "amendment_1_live_dormant_eu in e2-preregistration.json",
+  "contains_experimental_data": false,
+  "statement": "The duration rung for the amended E2 twelve-seed re-run, chosen ONCE from the new excluded smoke calibration (macOS arm64), BEFORE any experimental seed was run in this re-run. Written by hand after the smoke and before the ensemble. It may never be changed once experimental data exists.",
+
+  "selected_duration_ticks": 18000,
+  "selected_rung_index": 0,
+  "registered_ladder": [18000, 12000, 6000],
+  "rung_stepped_down": false,
+  "sample_period": 600,
+  "n_seeds": 12,
+  "n_never_lowered": true,
+
+  "why_this_rung": "The smoke (1 seed x 2 arms x 18000 ticks) took 5.4 s of ensemble time; the ensemble is exactly 12x that tick work, about 65 s, against a registered ceiling of 90 minutes. Nothing had to be given up.",
+
+  "calibration": {
+    "seed": 999983,
+    "seed_is_excluded_from_every_analysis": true,
+    "arms": ["control", "treatment"],
+    "duration_ticks": 18000,
+    "measured_ensemble_seconds": 5.4,
+    "projected_ensemble_seconds": 64.8,
+    "registered_max_wall_clock_minutes": 90
+  },
+
+  "not_repeated_from_the_original_lock": "The original lock recorded a 24-process cross-process reproducibility acceptance. That was not repeated here; cross-process identity on this platform is instead checked by the two --replay runs after the ensemble.",
+
+  "build": {
+    "git_commit": "900ba2dff0d20f1e1215f0553548286d483d156e",
+    "git_tree_clean_at_build": true,
+    "git_tree_dirty_at_smoke_run": "true, only because the smoke run's own untracked outputs were the change",
+    "profile": "release",
+    "features": "desktop",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "binary_path": "src-tauri/target/release/examples/run_e2_brain_experiment",
+    "binary_sha256": "44b9c370813e4c05044daf36dbc683939957c5ec8f49fea7bdd4ea1b8ea8b203",
+    "platform": "macOS arm64 (original: Windows x86_64)"
+  },
+
+  "manifest_sha256": {
+    "e2-control-shared-brain.json": "30b86653ec6d99a15ea6e83ac020c7fc1450acf4cedf2bd02ad5d9c2b74dd5ad",
+    "e2-treatment-evolved-brain.json": "61b87222506dd7312b1e74d9231e2cd24cdd902e6ac973ad90dff48147561db1",
+    "e2-smoke-control-shared-brain.json": "86113ca934bef0f832b8bd1aeef49e9f3c00d3386f0b9d783392404bcd35ef9c",
+    "e2-smoke-treatment-evolved-brain.json": "78a4f960f448dcf35940e43a51d341e491f9641ce939ad0f6cf17a570c369c03",
+    "e2-preregistration.json": "25a5c46417d9191e3c8e764dd203d67f4f2a0519fa3c0e64dfdbde255c828610"
+  },
+
+  "commands": {
+    "build": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_e2_brain_experiment -j 2",
+    "smoke": "run_e2_brain_experiment --smoke --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+    "ensemble": "run_e2_brain_experiment --ensemble --manifest-dir src-tauri/tests/fixtures/experiments_e2 --out artifacts/experiments/e2-evolved-brain-default",
+    "never": "cargo run is forbidden; the example is built and its compiled binary executed directly"
+  }
+}

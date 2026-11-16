@@ -1,0 +1,6715 @@
+{
+  "control_law_fingerprint": 11173561918340764083,
+  "control_manifest_fingerprint": 3223438374701077034,
+  "control_only": [],
+  "declared_factors": [
+    "initial_conditions"
+  ],
+  "effects": [
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 1019.9974421173067,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "detritus",
+      "paired_dz": null,
+      "paired_mean_delta": -3.069544618483633e-11,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 1019.997442117276
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 10.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.agent_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 10.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.animals_eu",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.archive_coverage",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.births",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 155971.7998623848,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.closed_eu_total",
+      "paired_dz": null,
+      "paired_mean_delta": 1.1059455573558807e-9,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 155971.7998623859
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.deaths",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.dormant_eu",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 50.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.food_items",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 50.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 7.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.herbivore_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 7.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.mean_agent_energy",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.mean_lifespan",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 3.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.predator_count",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 3.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 6.282561779022217,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.season_phase",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 6.282561779022217
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.6108643412590027,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.shannon",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.6108643412590027
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.42000001668930054,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.simpson",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.42000001668930054
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 154951.80242026754,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.standing_crop",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 154951.80242026754
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 3.299999952316284,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.trait_mass_mean",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 3.299999952316284
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 3.299999952316284,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.trait_mass_p10",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 3.299999952316284
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 3.299999952316284,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.trait_mass_p90",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 3.299999952316284
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 0.0,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "live.trait_mass_var",
+      "paired_dz": null,
+      "paired_mean_delta": 0.0,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 0.0
+    },
+    {
+      "ci95_high": null,
+      "ci95_low": null,
+      "ci95_method": null,
+      "control_mean": 154951.8024202675,
+      "n_complete_pairs": 1,
+      "n_requested": 1,
+      "observable": "plants",
+      "paired_dz": null,
+      "paired_mean_delta": 1.1350493878126144e-9,
+      "paired_sd": null,
+      "paired_se": null,
+      "treatment_mean": 154951.80242026862
+    }
+  ],
+  "experiment_id": "e2-evolved-brain-default::smoke-treatment",
+  "pairs": [
+    {
+      "control": {
+        "exotic_budget": null,
+        "final_checksum": 454068571,
+        "final_observables": [
+          [
+            "plants",
+            154951.8024202675
+          ],
+          [
+            "detritus",
+            1019.9974421173067
+          ],
+          [
+            "live.animals_eu",
+            0.0
+          ],
+          [
+            "live.dormant_eu",
+            0.0
+          ],
+          [
+            "live.closed_eu_total",
+            155971.7998623848
+          ],
+          [
+            "live.agent_count",
+            10.0
+          ],
+          [
+            "live.herbivore_count",
+            7.0
+          ],
+          [
+            "live.predator_count",
+            3.0
+          ],
+          [
+            "live.food_items",
+            50.0
+          ],
+          [
+            "live.standing_crop",
+            154951.80242026754
+          ],
+          [
+            "live.mean_agent_energy",
+            0.0
+          ],
+          [
+            "live.season_phase",
+            6.282561779022217
+          ],
+          [
+            "live.trait_mass_mean",
+            3.299999952316284
+          ],
+          [
+            "live.trait_mass_var",
+            0.0
+          ],
+          [
+            "live.trait_mass_p10",
+            3.299999952316284
+          ],
+          [
+            "live.trait_mass_p90",
+            3.299999952316284
+          ],
+          [
+            "live.shannon",
+            0.6108643412590027
+          ],
+          [
+            "live.simpson",
+            0.42000001668930054
+          ],
+          [
+            "live.births",
+            0.0
+          ],
+          [
+            "live.deaths",
+            0.0
+          ],
+          [
+            "live.mean_lifespan",
+            0.0
+          ],
+          [
+            "live.archive_coverage",
+            0.0
+          ]
+        ],
+        "ledger": {
+          "effects": []
+        },
+        "observable_specs": [
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "plants",
+            "id": "plants",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "detritus",
+            "id": "detritus",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.animals_eu",
+            "id": "live.animals_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.dormant_eu",
+            "id": "live.dormant_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.closed_eu_total",
+            "id": "live.closed_eu_total",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.agent_count",
+            "id": "live.agent_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.herbivore_count",
+            "id": "live.herbivore_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.predator_count",
+            "id": "live.predator_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.food_items",
+            "id": "live.food_items",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.standing_crop",
+            "id": "live.standing_crop",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_agent_energy",
+            "id": "live.mean_agent_energy",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.season_phase",
+            "id": "live.season_phase",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "fraction",
+            "valid_max": 1.0,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_mean",
+            "id": "live.trait_mass_mean",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_var",
+            "id": "live.trait_mass_var",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_p10",
+            "id": "live.trait_mass_p10",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_p90",
+            "id": "live.trait_mass_p90",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.shannon",
+            "id": "live.shannon",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.simpson",
+            "id": "live.simpson",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.births",
+            "id": "live.births",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.deaths",
+            "id": "live.deaths",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_lifespan",
+            "id": "live.mean_lifespan",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.archive_coverage",
+            "id": "live.archive_coverage",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          }
+        ],
+        "provenance": {
+          "build_id": "0.1.0+900ba2dff0d20f1e1215f0553548286d483d156e.src-13ab682ae20ae77b.cfg-eaa3807d7f0e7ca9",
+          "experiment_id": "e2-evolved-brain-default::smoke-control",
+          "fitness_rule": "locomotion",
+          "fork_tick": null,
+          "law_fingerprint": 11173561918340764083,
+          "manifest_fingerprint": 3223438374701077034,
+          "model_version": "live-bevy-world/1",
+          "parent_run_id": null,
+          "registry_fingerprint": 1577805101270354115,
+          "run_id": "e2-evolved-brain-default::smoke-control#2cbbf41f8f6b922a#r15e57d614a04c8c3#mb68025777d37890f#bc122b96b44c1aa88#s999983",
+          "seed": 999983
+        },
+        "series": [
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                98.47882639465038
+              ],
+              [
+                "live.animals_eu",
+                921.5186157226562
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                92.15186157226563
+              ],
+              [
+                "live.season_phase",
+                0.6283166408538818
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                202.18110453185741
+              ],
+              [
+                "live.animals_eu",
+                817.8163375854492
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                81.78163375854493
+              ],
+              [
+                "live.season_phase",
+                1.2566477060317993
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 1200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                309.4218844085664
+              ],
+              [
+                "live.animals_eu",
+                710.5755577087402
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                71.05755577087402
+              ],
+              [
+                "live.season_phase",
+                1.8849998712539673
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 1800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                421.69827448425
+              ],
+              [
+                "live.animals_eu",
+                598.2991676330566
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                59.82991676330566
+              ],
+              [
+                "live.season_phase",
+                2.513293504714966
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 2400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                542.6741884857149
+              ],
+              [
+                "live.animals_eu",
+                477.3232536315918
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                47.73232536315918
+              ],
+              [
+                "live.season_phase",
+                3.1415741443634033
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 3000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                674.8178433090181
+              ],
+              [
+                "live.animals_eu",
+                345.1795988082886
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                34.517959880828855
+              ],
+              [
+                "live.season_phase",
+                3.769854784011841
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 3600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                809.6891553312273
+              ],
+              [
+                "live.animals_eu",
+                210.3082867860794
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                21.03082867860794
+              ],
+              [
+                "live.season_phase",
+                4.398135662078857
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 4200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                916.082798829648
+              ],
+              [
+                "live.animals_eu",
+                103.91464328765869
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                10.391464328765869
+              ],
+              [
+                "live.season_phase",
+                5.026416301727295
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 4800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1000.9381447344751
+              ],
+              [
+                "live.animals_eu",
+                19.059297382831573
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                1.9059297382831573
+              ],
+              [
+                "live.season_phase",
+                5.654696941375732
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 5400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.28297758102417
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 6000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6281086802482605
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 6600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2564396858215332
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 7200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8847918510437012
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 7800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5130856037139893
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 8400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.1413662433624268
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 9000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7696468830108643
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 9600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397927761077881
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 10200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026208400726318
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 10800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654489040374756
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 11400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282769680023193
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 12000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6279007792472839
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 12600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2562317848205566
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 13200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8845839500427246
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 13800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5128777027130127
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 14400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.14115834236145
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 15000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7694389820098877
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 15600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397719860076904
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 16200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026000499725342
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 16800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654281139373779
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 17400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.8024202675
+              ],
+              [
+                "detritus",
+                1019.9974421173067
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623848
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282561779022217
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 18000
+          }
+        ],
+        "status": "Completed",
+        "warnings": []
+      },
+      "seed": 999983,
+      "treatment": {
+        "exotic_budget": null,
+        "final_checksum": 1257130731,
+        "final_observables": [
+          [
+            "plants",
+            154951.80242026862
+          ],
+          [
+            "detritus",
+            1019.997442117276
+          ],
+          [
+            "live.animals_eu",
+            0.0
+          ],
+          [
+            "live.dormant_eu",
+            0.0
+          ],
+          [
+            "live.closed_eu_total",
+            155971.7998623859
+          ],
+          [
+            "live.agent_count",
+            10.0
+          ],
+          [
+            "live.herbivore_count",
+            7.0
+          ],
+          [
+            "live.predator_count",
+            3.0
+          ],
+          [
+            "live.food_items",
+            50.0
+          ],
+          [
+            "live.standing_crop",
+            154951.80242026754
+          ],
+          [
+            "live.mean_agent_energy",
+            0.0
+          ],
+          [
+            "live.season_phase",
+            6.282561779022217
+          ],
+          [
+            "live.trait_mass_mean",
+            3.299999952316284
+          ],
+          [
+            "live.trait_mass_var",
+            0.0
+          ],
+          [
+            "live.trait_mass_p10",
+            3.299999952316284
+          ],
+          [
+            "live.trait_mass_p90",
+            3.299999952316284
+          ],
+          [
+            "live.shannon",
+            0.6108643412590027
+          ],
+          [
+            "live.simpson",
+            0.42000001668930054
+          ],
+          [
+            "live.births",
+            0.0
+          ],
+          [
+            "live.deaths",
+            0.0
+          ],
+          [
+            "live.mean_lifespan",
+            0.0
+          ],
+          [
+            "live.archive_coverage",
+            0.0
+          ]
+        ],
+        "ledger": {
+          "effects": []
+        },
+        "observable_specs": [
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "plants",
+            "id": "plants",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "detritus",
+            "id": "detritus",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.animals_eu",
+            "id": "live.animals_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "ClosedEu",
+            "display_name": "live.dormant_eu",
+            "id": "live.dormant_eu",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.closed_eu_total",
+            "id": "live.closed_eu_total",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.agent_count",
+            "id": "live.agent_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.herbivore_count",
+            "id": "live.herbivore_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.predator_count",
+            "id": "live.predator_count",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.food_items",
+            "id": "live.food_items",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.standing_crop",
+            "id": "live.standing_crop",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_agent_energy",
+            "id": "live.mean_agent_energy",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.season_phase",
+            "id": "live.season_phase",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "fraction",
+            "valid_max": 1.0,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_mean",
+            "id": "live.trait_mass_mean",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_var",
+            "id": "live.trait_mass_var",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_p10",
+            "id": "live.trait_mass_p10",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.trait_mass_p90",
+            "id": "live.trait_mass_p90",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.shannon",
+            "id": "live.shannon",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.simpson",
+            "id": "live.simpson",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.births",
+            "id": "live.births",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.deaths",
+            "id": "live.deaths",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "ecology",
+            "cadence_period": 60,
+            "conservation": "None",
+            "display_name": "live.mean_lifespan",
+            "id": "live.mean_lifespan",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "EU",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          },
+          {
+            "aggregation": "Instant",
+            "cadence_name": "physics",
+            "cadence_period": 1,
+            "conservation": "None",
+            "display_name": "live.archive_coverage",
+            "id": "live.archive_coverage",
+            "scope": "World",
+            "source": "core::live_experiment::LiveExperimentAdapter",
+            "unit": "individuals",
+            "valid_max": 1e+300,
+            "valid_min": 0.0
+          }
+        ],
+        "provenance": {
+          "build_id": "0.1.0+900ba2dff0d20f1e1215f0553548286d483d156e.src-13ab682ae20ae77b.cfg-eaa3807d7f0e7ca9",
+          "experiment_id": "e2-evolved-brain-default::smoke-treatment",
+          "fitness_rule": "locomotion",
+          "fork_tick": null,
+          "law_fingerprint": 11173561918340764083,
+          "manifest_fingerprint": 17985461424741662480,
+          "model_version": "live-bevy-world/1",
+          "parent_run_id": null,
+          "registry_fingerprint": 1577805101270354115,
+          "run_id": "e2-evolved-brain-default::smoke-treatment#f99931dfef37bf10#r15e57d614a04c8c3#mb68025777d37890f#bc122b96b44c1aa88#s999983",
+          "seed": 999983
+        },
+        "series": [
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                154.2743586211823
+              ],
+              [
+                "live.animals_eu",
+                865.7230834960938
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                86.57230834960937
+              ],
+              [
+                "live.season_phase",
+                0.6283166408538818
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                308.9735239654206
+              ],
+              [
+                "live.animals_eu",
+                711.0239181518555
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                71.10239181518554
+              ],
+              [
+                "live.season_phase",
+                1.2566477060317993
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 1200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                435.4480684905671
+              ],
+              [
+                "live.animals_eu",
+                584.549373626709
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                58.4549373626709
+              ],
+              [
+                "live.season_phase",
+                1.8849998712539673
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 1800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                540.7298792510651
+              ],
+              [
+                "live.animals_eu",
+                479.26756286621094
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                47.92675628662109
+              ],
+              [
+                "live.season_phase",
+                2.513293504714966
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 2400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                606.3506258636139
+              ],
+              [
+                "live.animals_eu",
+                413.6468162536621
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                41.36468162536621
+              ],
+              [
+                "live.season_phase",
+                3.1415741443634033
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 3000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                671.9237192779206
+              ],
+              [
+                "live.animals_eu",
+                348.07372283935547
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                34.80737228393555
+              ],
+              [
+                "live.season_phase",
+                3.769854784011841
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 3600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                737.6216957479141
+              ],
+              [
+                "live.animals_eu",
+                282.3757463693619
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                28.237574636936188
+              ],
+              [
+                "live.season_phase",
+                4.398135662078857
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 4200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                792.5924566894196
+              ],
+              [
+                "live.animals_eu",
+                227.40498542785645
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                22.740498542785645
+              ],
+              [
+                "live.season_phase",
+                5.026416301727295
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 4800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                845.5506352096222
+              ],
+              [
+                "live.animals_eu",
+                174.4468069076538
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                17.44468069076538
+              ],
+              [
+                "live.season_phase",
+                5.654696941375732
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 5400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                896.9384268432282
+              ],
+              [
+                "live.animals_eu",
+                123.05901527404785
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                12.305901527404785
+              ],
+              [
+                "live.season_phase",
+                6.28297758102417
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 6000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                935.7527025848053
+              ],
+              [
+                "live.animals_eu",
+                84.2447395324707
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                8.42447395324707
+              ],
+              [
+                "live.season_phase",
+                0.6281086802482605
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 6600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                965.848853936734
+              ],
+              [
+                "live.animals_eu",
+                54.14858818054199
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                5.414858818054199
+              ],
+              [
+                "live.season_phase",
+                1.2564396858215332
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 7200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                995.7092832236908
+              ],
+              [
+                "live.animals_eu",
+                24.288158893585205
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                2.4288158893585203
+              ],
+              [
+                "live.season_phase",
+                1.8847918510437012
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 7800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1013.6648462920807
+              ],
+              [
+                "live.animals_eu",
+                6.3325958251953125
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.6332595825195313
+              ],
+              [
+                "live.season_phase",
+                2.5130856037139893
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 8400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.1413662433624268
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 9000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7696468830108643
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 9600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397927761077881
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 10200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026208400726318
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 10800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654489040374756
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 11400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282769680023193
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 12000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                0.6279007792472839
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 12600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.2562317848205566
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 13200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                1.8845839500427246
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 13800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                2.5128777027130127
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 14400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.14115834236145
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 15000
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                3.7694389820098877
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 15600
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                4.397719860076904
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 16200
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.026000499725342
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 16800
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                5.654281139373779
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 17400
+          },
+          {
+            "observables": [
+              [
+                "plants",
+                154951.80242026862
+              ],
+              [
+                "detritus",
+                1019.997442117276
+              ],
+              [
+                "live.animals_eu",
+                0.0
+              ],
+              [
+                "live.dormant_eu",
+                0.0
+              ],
+              [
+                "live.closed_eu_total",
+                155971.7998623859
+              ],
+              [
+                "live.agent_count",
+                10.0
+              ],
+              [
+                "live.herbivore_count",
+                7.0
+              ],
+              [
+                "live.predator_count",
+                3.0
+              ],
+              [
+                "live.food_items",
+                50.0
+              ],
+              [
+                "live.standing_crop",
+                154951.80242026754
+              ],
+              [
+                "live.mean_agent_energy",
+                0.0
+              ],
+              [
+                "live.season_phase",
+                6.282561779022217
+              ],
+              [
+                "live.trait_mass_mean",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_var",
+                0.0
+              ],
+              [
+                "live.trait_mass_p10",
+                3.299999952316284
+              ],
+              [
+                "live.trait_mass_p90",
+                3.299999952316284
+              ],
+              [
+                "live.shannon",
+                0.6108643412590027
+              ],
+              [
+                "live.simpson",
+                0.42000001668930054
+              ],
+              [
+                "live.births",
+                0.0
+              ],
+              [
+                "live.deaths",
+                0.0
+              ],
+              [
+                "live.mean_lifespan",
+                0.0
+              ],
+              [
+                "live.archive_coverage",
+                0.0
+              ]
+            ],
+            "tick": 18000
+          }
+        ],
+        "status": "Completed",
+        "warnings": []
+      }
+    }
+  ],
+  "registry_fingerprint": 1577805101270354115,
+  "seed_order": [
+    999983
+  ],
+  "treatment_law_fingerprint": 11173561918340764083,
+  "treatment_manifest_fingerprint": 17985461424741662480,
+  "treatment_only": []
+}

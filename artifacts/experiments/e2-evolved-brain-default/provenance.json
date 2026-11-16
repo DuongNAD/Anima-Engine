@@ -1,0 +1,255 @@
+{
+  "build": {
+    "binary_path": "/Users/duongnad/Documents/project/Anima-Engine/src-tauri/target/release/examples/run_e2_brain_experiment",
+    "binary_sha256": "44b9c370813e4c05044daf36dbc683939957c5ec8f49fea7bdd4ea1b8ea8b203",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "features": "desktop",
+    "git_commit": "900ba2dff0d20f1e1215f0553548286d483d156e",
+    "git_describe": "900ba2d",
+    "git_tree_dirty": true,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "duration": {
+    "duration_ticks_as_committed": 18000,
+    "duration_ticks_as_run": 18000,
+    "ladder_registered": [
+      18000,
+      12000,
+      6000
+    ],
+    "rung_stepped_down": false,
+    "sample_period": 600,
+    "sample_period_registered": 600,
+    "total_ticks": 432000
+  },
+  "experiment_id": "e2-evolved-brain-default::treatment",
+  "harness": "core::experiment_runner::run_paired_ensemble_with_control",
+  "host": {
+    "arch": "aarch64",
+    "cpu": null,
+    "machine": null,
+    "os": "macos"
+  },
+  "integrity": {
+    "brains_present_only_in_treatment": true,
+    "control_agents": 10,
+    "control_brains": 0,
+    "control_rng": {
+      "next_draws": [
+        4626501471933395026,
+        9527881504234034425,
+        14252519622111348836,
+        15729742238481436511,
+        3311685981011892340,
+        4015179329574090896,
+        6403070034115187857,
+        17080957482300899023
+      ],
+      "seed": 700001,
+      "stream_pos": "0"
+    },
+    "ecology_stream_identical_after_genesis": true,
+    "probe_seed": 700001,
+    "treatment_agents": 10,
+    "treatment_brains": 10,
+    "treatment_rng": {
+      "next_draws": [
+        4626501471933395026,
+        9527881504234034425,
+        14252519622111348836,
+        15729742238481436511,
+        3311685981011892340,
+        4015179329574090896,
+        6403070034115187857,
+        17080957482300899023
+      ],
+      "seed": 700001,
+      "stream_pos": "0"
+    }
+  },
+  "kind": "e2-provenance",
+  "manifests": {
+    "control_file": "e2-control-shared-brain.json",
+    "control_fingerprint_as_committed": 1267090158732392360,
+    "control_fingerprint_as_run": 1267090158732392360,
+    "control_initial_conditions": [
+      [
+        "live.founders",
+        10.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ]
+    ],
+    "control_law_fingerprint": 11173561918340764083,
+    "control_sha256_as_committed": "30b86653ec6d99a15ea6e83ac020c7fc1450acf4cedf2bd02ad5d9c2b74dd5ad",
+    "declared_factors": [
+      "initial_conditions"
+    ],
+    "preregistration_sha256": "25a5c46417d9191e3c8e764dd203d67f4f2a0519fa3c0e64dfdbde255c828610",
+    "registry_fingerprint": 1577805101270354115,
+    "treatment_file": "e2-treatment-evolved-brain.json",
+    "treatment_fingerprint_as_committed": 850550162241756582,
+    "treatment_fingerprint_as_run": 850550162241756582,
+    "treatment_initial_conditions": [
+      [
+        "live.founders",
+        10.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.evolved_brains",
+        1.0
+      ]
+    ],
+    "treatment_law_fingerprint": 11173561918340764083,
+    "treatment_sha256_as_committed": "61b87222506dd7312b1e74d9231e2cd24cdd902e6ac973ad90dff48147561db1"
+  },
+  "mode": "ensemble",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "model_version": {
+    "model_actually_run": "live-bevy-world/1",
+    "note": "Finding E2-F1: RunProvenance::derive hard-codes the reference model's version for every run, so every RunResult in paired-report.json names the wrong model. The true version of the model that ran is recorded here. The fix is filed separately and is not part of this experiment.",
+    "recorded_in_run_provenance": "live-bevy-world/1"
+  },
+  "observables": {
+    "registry_ids": [
+      "plants",
+      "detritus",
+      "live.animals_eu",
+      "live.dormant_eu",
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.herbivore_count",
+      "live.predator_count",
+      "live.food_items",
+      "live.standing_crop",
+      "live.mean_agent_energy",
+      "live.season_phase"
+    ],
+    "requested": [
+      "plants",
+      "detritus",
+      "live.animals_eu",
+      "live.dormant_eu",
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.herbivore_count",
+      "live.predator_count",
+      "live.food_items",
+      "live.standing_crop",
+      "live.mean_agent_energy",
+      "live.season_phase"
+    ],
+    "specs": 1577805101270354115
+  },
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "seeds": {
+    "execution_order": [
+      700001,
+      701001,
+      702001,
+      703001,
+      704001,
+      705001,
+      706001,
+      707001,
+      708001,
+      709001,
+      710001,
+      711001
+    ],
+    "min_complete_pairs_for_a_decision": 10,
+    "n_complete_pairs": 12,
+    "n_incomplete_pairs": 0,
+    "n_requested": 12,
+    "registered_execution_order": [
+      700001,
+      701001,
+      702001,
+      703001,
+      704001,
+      705001,
+      706001,
+      707001,
+      708001,
+      709001,
+      710001,
+      711001
+    ],
+    "smoke_seed": 999983,
+    "smoke_seed_present_in_this_run": false
+  },
+  "timing": {
+    "ended_unix_seconds": 1794811887,
+    "ended_utc": "2026-11-16T06:51:27Z",
+    "ensemble_wall_clock_minutes": 1.1156360236166667,
+    "ensemble_wall_clock_seconds": 66.938161417,
+    "max_wall_clock_minutes_registered": 90.0,
+    "started_unix_seconds": 1794811820,
+    "started_utc": "2026-11-16T06:50:20Z",
+    "within_registered_budget": true
+  },
+  "what_this_run_does_not_claim": [
+    "No full desktop-app run was made; no Tauri handle, window, GPU device, renderer, learner thread or evolution thread exists in this process.",
+    "The adapter runs no evolutionary replacement, so nothing here is evidence about selection, adaptation or speciation.",
+    "N seeds under one world identity are N stochastic samples of ONE world design, not N worlds.",
+    "Numerical agreement with ReferenceEvolutionWorld is not claimed."
+  ],
+  "world_identity_observed": {
+    "control_observed": {
+      "checksum": 1212187560,
+      "generator_version": 1,
+      "height": 256,
+      "seed": 1337,
+      "width": 256
+    },
+    "declared_in_manifest": {
+      "checksum": 0,
+      "generator_version": 0,
+      "height": 0,
+      "seed": 0,
+      "width": 0
+    },
+    "identical_across_arms": true,
+    "note": "Finding E2-F2: LiveExperimentAdapter never checks a manifest's declared world_identity against the world init_world builds, so 'same world' is recorded from the world that was actually constructed (gate E2-G6).",
+    "treatment_observed": {
+      "checksum": 1212187560,
+      "generator_version": 1,
+      "height": 256,
+      "seed": 1337,
+      "width": 256
+    }
+  }
+}
