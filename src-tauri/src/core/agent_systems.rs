@@ -628,10 +628,11 @@ pub fn agent_mortality_system(
 }
 
 /// Autonomous continuous intra-tick reproduction on energy surplus:
-/// When an agent's reserve exceeds the reproduction threshold (>= 0.80 * energy_target),
-/// it splits a fraction of its energy reserve, funds an offspring through Lindeman transfer
-/// efficiency (eta ~= 0.20), routes the non-assimilated remainder (1 - eta) directly to
-/// detritus with zero leakage, and queues a SpawnOffspringCommand.
+/// When an agent's reserve reaches the reproduction threshold (0.65 * energy_target for prey,
+/// 0.95 for predators) and exceeds its safe reserve, it invests part of that reserve, funds an
+/// offspring through `ecology::REPRODUCTION_EFFICIENCY` (eta = 0.60), routes the remainder
+/// (1 - eta) directly to detritus with zero leakage, and queues a SpawnOffspringCommand.
+/// The numbers live in the body below and in `ecology.rs`; this comment only names them.
 pub fn autonomous_reproduction_system(
     mut commands: Commands,
     mut agent_query: Query<
