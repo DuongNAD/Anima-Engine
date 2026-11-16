@@ -77,7 +77,10 @@ rand = "0.8"
 rand_chacha = "0.3"
 neo4rs = { version = "0.7.0", optional = true }
 uuid = { version = "1.0", features = ["v4", "serde"] }
-tokio = { version = "1.36", features = ["full"] }
+# Narrowed from "full" (STATE 3.5). Used: rt-multi-thread (runtime::Builder in simulation_loop.rs and
+# evolution/lineage.rs), macros (#[tokio::test], select!, join!), sync (Mutex, Semaphore),
+# time (sleep/timeout/Instant, and enable_all() needs it), net (TcpListener/TcpStream).
+tokio = { version = "1.36", default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
 ureq = { version = "2.9", features = ["json"] }
 dotenvy = "0.15"
 tokio-tungstenite = { version = "0.21", optional = true }
