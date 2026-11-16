@@ -1510,7 +1510,7 @@ fn conservative_student_t_critical_95(df: f64) -> f64 {
 }
 
 /// Build a [`PairedEffect`], honouring the defined-ness contract documented on that type.
-fn paired_effect(
+pub fn paired_effect(
     name: &str,
     n_requested: usize,
     control: &[f64],
