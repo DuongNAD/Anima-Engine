@@ -658,12 +658,18 @@ pub fn autonomous_reproduction_system(
     mut next_node_id: Option<ResMut<NextNodeId>>,
     mut demographic_tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
     reproduction_policy: Option<Res<crate::core::resources::ReproductionPolicy>>,
+    mutation_policy: Option<Res<crate::core::resources::MutationPolicy>>,
     mut vital_stats: Option<ResMut<crate::core::resources::VitalStatistics>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
     }
     use rand::Rng;
+    // Absent policy == the historical 5%. Exactly 0.0 == offspring are exact copies (no body or
+    // brain mutation); see `live.mutation_rate`.
+    let mutation_rate = mutation_policy
+        .as_deref()
+        .map_or(crate::core::resources::DEFAULT_MUTATION_RATE, |p| p.rate);
 
     // Count living trophic populations for density-dependent fecundity regulation
     let mut prey_count = 0usize;
@@ -774,14 +780,14 @@ pub fn autonomous_reproduction_system(
                 let _ = crate::evolution::mutation::mutate_genotype(
                     &mut child_genotype,
                     &mut node_id_res.0,
-                    0.05,
+                    mutation_rate,
                     r,
                 );
             }
 
             // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
-            let child_brain = if let (Some(brain), Some(ref mut rng_res)) =
-                (opt_brain, sim_rng.as_mut())
+            let child_brain = if let (Some(brain), Some(ref mut rng_res), true) =
+                (opt_brain, sim_rng.as_mut(), mutation_rate > 0.0)
             {
                 let mut brain_geno = (*brain.genotype).clone();
                 let r = rng_res.rng();
