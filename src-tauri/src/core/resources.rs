@@ -598,14 +598,29 @@ impl Default for MutationPolicy {
 /// returns before touching anything, so `target_velocity` stays zero and the legacy trajectory
 /// (creatures that oscillate but never translate) is bit-identical to every run made before the
 /// drive existed. The desktop app inserts nothing; a live manifest opts in with `live.locomotion`.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// `drive_floor` and `thirst_steering` (ADR-0007 option A, QD-ECO) refine the drive and **only act
+/// while `enabled`**: with `enabled == false` they are never read. Both default to "off"
+/// (`0.0` / `false`), which is today's behaviour exactly.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Default)]
 pub struct LocomotionPolicy {
     pub enabled: bool,
+    /// Lower bound in `[0, 1]` on the steering drive fraction: `max(drive_from_cpg, drive_floor)`.
+    /// `0.0` is the heritable-only rule. A nonzero floor makes speed less heritable (selection
+    /// only acts on the part above it); it is a viability aid, not evolved locomotion.
+    pub drive_floor: f32,
+    /// When set, an agent whose hydration is below `THIRST_STEERING_FRACTION` of its target steers
+    /// to the nearest non-empty lake instead of its food/prey target.
+    pub thirst_steering: bool,
 }
 
 impl LocomotionPolicy {
     pub const fn disabled() -> Self {
-        Self { enabled: false }
+        Self {
+            enabled: false,
+            drive_floor: 0.0,
+            thirst_steering: false,
+        }
     }
 }
 

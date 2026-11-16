@@ -129,6 +129,16 @@ pub const LIVE_KEY_REPRODUCTION: &str = "live.reproduction";
 /// which is every live run made before this key existed, bit-identical. Exact-boolean reading,
 /// like `live.mortality`. Declared, never read from the environment.
 pub const LIVE_KEY_LOCOMOTION: &str = "live.locomotion";
+/// Lower bound in `[0, 1]` on the steering drive fraction (ADR-0007 option A, QD-ECO): the drive
+/// becomes `max(drive_from_cpg, floor)`. Absent = `0.0` = the heritable-only rule, bit-identical.
+/// **Only takes effect when `live.locomotion = 1`.** A nonzero floor makes speed less heritable
+/// (selection acts only on the part above it): a viability aid, not evolved locomotion.
+pub const LIVE_KEY_DRIVE_FLOOR: &str = "live.drive_floor";
+/// `1.0` makes a thirsty agent (hydration below `locomotion::THIRST_STEERING_FRACTION` = 50% of its
+/// target) steer to the nearest non-empty lake instead of its food/prey target (ADR-0007 option
+/// A). Exact boolean; absent/`0.0` = off, bit-identical. **Only takes effect when
+/// `live.locomotion = 1`.**
+pub const LIVE_KEY_THIRST_STEERING: &str = "live.thirst_steering";
 /// Per-birth probability that `autonomous_reproduction_system` mutates the offspring's body
 /// genotype (E-SEL1 precondition P4), a **declared** input in `[0, 1]`.
 ///
@@ -153,7 +163,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 14] = [
+pub const LIVE_KEYS: [&str; 16] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -163,6 +173,8 @@ pub const LIVE_KEYS: [&str; 14] = [
     LIVE_KEY_MORTALITY,
     LIVE_KEY_REPRODUCTION,
     LIVE_KEY_LOCOMOTION,
+    LIVE_KEY_DRIVE_FLOOR,
+    LIVE_KEY_THIRST_STEERING,
     LIVE_KEY_MUTATION_RATE,
     LIVE_KEY_STARVE_TICKS,
     LIVE_KEY_DEHYDRATION_TICKS,
@@ -195,6 +207,12 @@ pub struct LiveWorldConfig {
     /// "creatures never translate" world, so older serialized configs read back unchanged.
     #[serde(default)]
     pub locomotion: bool,
+    /// ADR-0007 option A: floor on the steering drive fraction; `0.0` = off. Needs `locomotion`.
+    #[serde(default)]
+    pub drive_floor: f32,
+    /// ADR-0007 option A: thirsty agents steer to the nearest lake. Needs `locomotion`.
+    #[serde(default)]
+    pub thirst_steering: bool,
     /// Offspring body-mutation probability (see [`LIVE_KEY_MUTATION_RATE`]); absent reads back as
     /// the historical `0.05`.
     #[serde(default = "default_mutation_rate")]
@@ -245,6 +263,8 @@ impl Default for LiveWorldConfig {
             mortality: false,
             reproduction: false,
             locomotion: false,
+            drive_floor: 0.0,
+            thirst_steering: false,
             mutation_rate: default_mutation_rate(),
             starve_ticks: default_starve_ticks(),
             dehydration_ticks: default_dehydration_ticks(),
@@ -336,6 +356,29 @@ impl LiveWorldConfig {
                 LIVE_KEY_LOCOMOTION => match *value {
                     0.0 => config.locomotion = false,
                     1.0 => config.locomotion = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_DRIVE_FLOOR => {
+                    if !(0.0..=1.0).contains(value) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: 1.0,
+                        });
+                    }
+                    config.drive_floor = *value as f32;
+                }
+                LIVE_KEY_THIRST_STEERING => match *value {
+                    0.0 => config.thirst_steering = false,
+                    1.0 => config.thirst_steering = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -1661,6 +1704,8 @@ fn build_live_world(
     // the disabled policy: `steering_drive_system` returns at once and `target_velocity` stays 0.
     world.insert_resource(crate::core::resources::LocomotionPolicy {
         enabled: config.locomotion,
+        drive_floor: config.drive_floor,
+        thirst_steering: config.thirst_steering,
     });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
