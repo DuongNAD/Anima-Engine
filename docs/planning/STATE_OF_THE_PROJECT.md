@@ -517,6 +517,10 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 - **#86** — cổng zero-alloc của emit chỉ đếm luồng của chính test (flake trên CI của #84, như #80).
 - **#87** — thẻ B của ADR-0007: ba khoá opt-in cho thu nhập và nước của thú săn (QĐ-ECO-B = opt-in).
 - **#88** — chẩn đoán sau E-SEL1, QĐ-SEL1b, F-044.
+- **#89** — test khoá P1 (thú săn và con mồi cùng sống tới t = 6.000 ở ≥ 3/10 seed; xanh trên CI Windows), QĐ-ECO-B,
+  bằng chứng cho phương án C trong ADR-0007.
+- **#90** — test đặc tả F-044 (founder đói lâu chết ngay khi cạn nước; đối chứng no sống trọn 9 tick ân hạn).
+- **#91** — `tokio` thu hẹp từ `full` về năm feature đang dùng (§3.5).
 
 #### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
 
@@ -1288,13 +1292,13 @@ vẫn trả đồ thị **đầy đủ**.
 
 | # | Việc | Điểm neo | Vì sao đáng làm |
 |---|---|---|---|
-| 3.9 | Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`, hoặc bỏ nếu không còn cần | [`ai/model.rs:360`](../../src-tauri/src/ai/model.rs) | Đây là **2/2** khối unsafe của cả backend, và không cái nào có luận chứng. Type này ôm `WgpuDevice` |
+| ~~3.9~~ | ~~Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`~~ **XONG** (`0d6b4b2`, 2026-07-27; ghi nhận 2026-11-17) | [`ai/model.rs`](../../src-tauri/src/ai/model.rs) | `unsafe impl Send` đã bị bỏ (mọi trường tự `Send`; test `brain_model_is_send_without_an_unsafe_impl` giữ cho nó không quay lại). Còn đúng **một** `unsafe impl Sync for BrainModel`, kèm luận chứng `// SAFETY:` và hai yêu cầu được test cấu trúc giữ. Dòng cũ ở đây ("2/2 khối không có luận chứng") đã lỗi thời |
 | 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
 | ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
 | ~~3.18~~ | ~~Bỏ mọi lối thoát kiểu (`as any` / `as unknown as` / `as never` / `eslint-disable`) và bật typecheck cho `tests/`~~ **XONG** (2026-07-27, `feature-anima-completion`) | `npm run typecheck:tests` (gate mới trong CI) · [`src/window-globals.d.ts`](../../src/window-globals.d.ts) · [`tests/mocks/segment_fixtures.ts`](../../tests/mocks/segment_fixtures.ts) | Grep chính xác trên `src`/`tests`/`playground` **= 0** cho cả bốn mẫu, kể cả trong comment. Không suppress, không nới rule, không xoá test. Mỗi chỗ được gỡ bằng cách **làm cho điều đang bị khẳng định trở thành đúng**: các thuộc tính `window` được khai báo thật; `buildAgentHierarchy` nhận `readonly unknown[]` đúng như dữ liệu IPC nó vốn phòng thủ (lộ ra 2 lỗi thật: `segment_id` không phải số bị key bằng `undefined`, và `s.x \|\| 0` cho chuỗi lọt vào trường `number`); `biomeAt`/`findSpawn` nhận đúng các field chúng đọc; mock r3f dựng `THREE.Scene`/`PerspectiveCamera` thật. **Phát hiện phụ:** gói `tests/` chưa từng được typecheck — **86 lỗi** không lệnh nào báo, nay = 0 và có gate | |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
-| 3.14 | Dọn tài liệu cũ ở root | [`PHASE6_HANDOFF_REPORT.md`](../archive/PHASE6_HANDOFF_REPORT.md), [`PHASE1_EXECUTION_PLAN.md`](../archive/PHASE1_EXECUTION_PLAN.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
+| ~~3.14~~ | ~~Dọn tài liệu cũ ở root~~ **XONG** (ghi nhận 2026-11-17) | [`PHASE6_HANDOFF_REPORT.md`](../archive/PHASE6_HANDOFF_REPORT.md), [`PHASE1_EXECUTION_PLAN.md`](../archive/PHASE1_EXECUTION_PLAN.md) | Cả hai đã nằm trong `docs/archive/`; root không còn bản nào |
 | 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE-MIT`](../../LICENSE-MIT) / [`LICENSE-APACHE`](../../LICENSE-APACHE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) licence của dự án vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
 | 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
 
@@ -1325,7 +1329,9 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   *test anh em*. `observer_trace_zero_alloc_tests` **đã** là một `#[test]` duy nhất và vẫn fail
   ("made 2 heap allocations") trong lượt chạy đầy đủ 2026-07-29, pass 3/3 khi chạy riêng — vì
   **thread chính của libtest** sống suốt tiến trình và có cấp phát. Đã thêm
-  `start_tracking_this_thread()` (chỉ đếm thread gọi) và chuyển suite đó sang dùng nó.
+  `start_tracking_this_thread()` (chỉ đếm thread gọi) và chuyển suite đó sang dùng nó. Cổng combat
+  (#80, 2026-11-16) và cổng emit (#86, 2026-11-17, flake trên CI của một PR chỉ sửa tài liệu) đã đi
+  cùng đường đó, vì mọi hàm chúng đo đều chạy trên thread gọi.
 
   **Đừng chuyển bừa mọi suite sang nó.** `map_generation_zero_alloc_tests` và
   `terrain_challenger_tests` **phải** giữ `start_tracking()` process-wide: `TerrainMap::generate`
@@ -1361,7 +1367,10 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
     Windows là ~15,6ms, nên biên an toàn mỏng theo thiết kế chứ không do hồi quy.
 
   Chạy riêng: **3/3 pass, ba lần liên tiếp.** Cách sửa đúng là gộp về một `#[test]` (nửa zero-alloc)
-  và cho test thời gian một trần rộng hơn hoặc bỏ `sleep` khỏi phép đo — **chưa làm**.
+  và cho test thời gian một trần rộng hơn hoặc bỏ `sleep` khỏi phép đo. **Nửa đầu đã làm** (`c6e8f42`,
+  2026-07-29): ba phần nay là một `#[test]` (`challenger_meta_ai_contracts`). Cổng zero-alloc ở đó **phải**
+  giữ `start_tracking()` toàn tiến trình, vì `Schedule::default()` chạy hệ trên pool luồng. **Nửa sau
+  chưa làm:** test thời gian vẫn cộng `sleep(16ms)` với trần 1.200 ms.
 - **Hỏi máy đang chạy gì, bằng lệnh, trước khi gọi một lần đỏ là hồi quy.** Lúc hai test trên đỏ,
   máy có **2 `cargo` + 1 `rustc` + 6 `MSBuild` + 17 `node`** của phiên khác, và 3 worktree vừa được
   ghi trong 2 giờ. Suite `tests/` cùng lúc đó cho 6 lỗi — 3 lỗi là `Test timed out in 15000ms` thật,
