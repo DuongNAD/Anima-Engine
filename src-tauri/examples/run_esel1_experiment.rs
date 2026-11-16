@@ -31,8 +31,10 @@
 //! | `--replay` | one seed of one arm | `<out>/replay/` | nothing |
 //!
 //! `execution-lock.json` is written **by hand** after the smoke (draft section 7). `--ensemble`
-//! refuses to start without it, and, when the lock states `duration_ticks`, refuses a different
-//! effective duration, so the rung cannot drift after the lock. Seeds are bound to the
+//! refuses to start without it, refuses a lock that lacks `duration_ticks`, `N0`, `F_hi` or `F_lo`,
+//! and refuses one that disagrees with the effective duration or with the founders and food caps of
+//! the manifests in `--manifest-dir`, so nothing can drift after the lock. The lock is hashed into
+//! `checksums.sha256` and its sha256 is recorded in `provenance.json`. Seeds are bound to the
 //! preregistration: an ensemble whose manifests declare anything but the registered execution order
 //! (or the smoke seed) is refused before a tick runs, and `--replay` refuses a seed its manifest does
 //! not declare.
@@ -75,6 +77,7 @@ const PREREG_FILE: &str = "esel1-preregistration.json";
 const LOCK_FILE: &str = "execution-lock.json";
 const ALLOWED_FACTOR_PATH: &str = "initial_conditions";
 const FOOD_KEY: &str = "live.food_cap";
+const FOUNDERS_KEY: &str = "live.founders";
 const MUTATION_KEY: &str = "live.mutation_rate";
 
 const PRIMARY_OBSERVABLE: &str = "live.trait_mass_mean";
@@ -231,17 +234,15 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
             ));
         }
         let lock = read_json(&lock_path)?;
-        if let Some(t) = lock.get("duration_ticks").and_then(|v| v.as_u64()) {
-            if t != rung {
-                return Err(format!(
-                    "execution-lock.json locks duration_ticks = {t} but this run would use {rung}; \
-                     the rung is chosen once and never changed"
-                ));
-            }
-        }
-        Some(lock)
+        validate_lock(&lock, rung, &control, &treatment, drift.as_ref())?;
+        let digest = sha256_file(&lock_path).map_err(|e| format!("hash {LOCK_FILE}: {e}"))?;
+        Some((lock, digest))
     } else {
         None
+    };
+    let (lock, lock_sha256) = match lock {
+        Some((l, d)) => (Some(l), Some(d)),
+        None => (None, None),
     };
 
     let out_dir = match args.mode {
@@ -313,6 +314,7 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         drift_runs: drift_runs.as_deref(),
         analysis: &analysis,
         lock: lock.as_ref(),
+        lock_sha256: lock_sha256.as_deref(),
         registry: &registry,
         started,
         ended,
@@ -516,6 +518,69 @@ impl Plan {
         }
         Ok(())
     }
+}
+
+/// The value of one initial condition of a manifest, if declared.
+fn ic_value(m: &ExperimentManifest, key: &str) -> Option<f64> {
+    m.initial_conditions
+        .values
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| *v)
+}
+
+/// The execution lock is written by hand after the smoke and gates the ensemble. It must state
+/// `duration_ticks`, `N0`, `F_hi` and `F_lo`, and each must agree with what this run would use: the
+/// effective duration, and the founders and food caps of the manifests in `--manifest-dir`. A lock
+/// that is silent on a value, or disagrees with the manifests, was not written against them.
+fn validate_lock(
+    lock: &serde_json::Value,
+    rung: u64,
+    control: &ExperimentManifest,
+    treatment: &ExperimentManifest,
+    drift: Option<&ExperimentManifest>,
+) -> Result<(), String> {
+    let need_num = |field: &str| -> Result<f64, String> {
+        lock.get(field).and_then(|v| v.as_f64()).ok_or_else(|| {
+            format!("{LOCK_FILE} lacks {field} (a number); the run was never fully locked")
+        })
+    };
+    let t = lock
+        .get("duration_ticks")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            format!("{LOCK_FILE} lacks duration_ticks (an integer); the run was never fully locked")
+        })?;
+    if t != rung {
+        return Err(format!(
+            "{LOCK_FILE} locks duration_ticks = {t} but this run would use {rung}; the rung is \
+             chosen once and never changed"
+        ));
+    }
+    let (n0, f_hi, f_lo) = (need_num("N0")?, need_num("F_hi")?, need_num("F_lo")?);
+    let check = |what: &str, locked: f64, m: &ExperimentManifest, key: &str| {
+        let held = ic_value(m, key);
+        if held == Some(locked) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{LOCK_FILE} locks {what} = {locked}, but '{}' holds {key} = {held:?}",
+                m.experiment_id
+            ))
+        }
+    };
+    for m in [Some(control), Some(treatment), drift]
+        .into_iter()
+        .flatten()
+    {
+        check("N0", n0, m, FOUNDERS_KEY)?;
+    }
+    check("F_hi", f_hi, control, FOOD_KEY)?;
+    check("F_lo", f_lo, treatment, FOOD_KEY)?;
+    if let Some(d) = drift {
+        check("F_lo", f_lo, d, FOOD_KEY)?;
+    }
+    Ok(())
 }
 
 /// Exactly one initial condition differs per contrast: `live.food_cap` between control and
@@ -994,6 +1059,8 @@ struct WriteInput<'a> {
     drift_runs: Option<&'a [RunResult]>,
     analysis: &'a Analysis,
     lock: Option<&'a serde_json::Value>,
+    /// sha256 of `execution-lock.json` exactly as read; `Some` iff the lock exists (ensemble).
+    lock_sha256: Option<&'a str>,
     registry: &'a ObservableRegistry,
     started: SystemTime,
     ended: SystemTime,
@@ -1033,6 +1100,10 @@ fn write_artifacts(w: &WriteInput<'_>) -> Result<(), String> {
     ];
     for name in w.file_names {
         names.push(format!("manifests/{name}"));
+    }
+    if w.lock.is_some() {
+        // The hand-written lock is part of the evidence: hash it with the rest.
+        names.push(LOCK_FILE.to_string());
     }
     names.sort();
     let mut lines = String::new();
@@ -1218,6 +1289,7 @@ fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
             "sample_period": w.control.sample_period,
         },
         "execution_lock": w.lock,
+        "execution_lock_sha256": w.lock_sha256,
         "manifests": {
             "sha256_as_committed": w.manifest_hashes,
             "control_fingerprint_as_run": w.report.control_manifest_fingerprint,

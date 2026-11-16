@@ -16,13 +16,19 @@ last_reviewed: 2026-11-17
 > (`esel1-preregistration.json`, ba manifest thí nghiệm, hai manifest smoke), và test hình dạng
 > `src-tauri/tests/prereg_esel1_manifest_tests.rs` khẳng định hai bên khớp. Được commit **trước mọi lần
 > chạy smoke hay thí nghiệm**; **không có kết quả nào tồn tại** (`"contains_results": false`).
+> **Sửa đổi 2026-11-17 (`pre_run_tightening_2026-11-17` trong JSON), thực hiện trước mọi lần chạy, sau khi một người
+> kiểm chứng độc lập chỉ ra các lỗ hổng:** chiều H1 cố định **hai phía** ngay bây giờ (smoke không còn được đặt
+> chiều); mọi quy tắc smoke thành thuật toán máy móc (§6), chỉ đọc `live.agent_count` và `live.standing_crop`;
+> thêm manifest smoke `drift`; runner từ chối `--ensemble` khi khoá thiếu/lệch; bộ kiểm chứng artifact chặt hơn.
+> Không có lần chạy smoke hay thí nghiệm nào đã được thực hiện.
 > Các quyết định cố định do phiên điều phối đưa ra theo uỷ quyền của chủ dự án (ghi trong JSON, khối
 > `decisions_taken_by_lead_session`): cấu hình chung mọi nhánh gồm `live.mortality=1`, `live.reproduction=1`,
 > `live.locomotion=1`, `live.drive_floor=0.5`, `live.thirst_steering=1` (ADR-0007 phương án A), `live.evolved_brains=0`,
 > `predator_fraction=0`; nhánh thứ ba `drift` (= `scarce` + `live.mutation_rate=0`) **có**, vì P4 đã có (PR #81);
 > seed `760001 + 1000·k`; seed smoke 999971. P1–P5 đã đáp ứng trên thân cây (PR #66, #76, #81, #82, F-039
 > `b0a8c4d`), mỗi mục kèm bằng chứng trong JSON.
-> Chỉ **smoke** được đặt `N0`, `F_hi`, `F_lo`, bậc thang thời lượng và chiều H1 (§6), theo quy tắc đã viết. Trong các manifest thí nghiệm
+> Chỉ **smoke** được đặt `N0`, `F_hi`, `F_lo` và bậc thang thời lượng (§6), theo thuật toán đã viết; chiều H1 là
+> `two_sided`, đã cố định (§5.1). Trong các manifest thí nghiệm
 > chúng là **giá trị đệm âm** (`live.founders = -3`, `F_hi = -1`, `F_lo = -2`): bộ phân tích khoá `live.*` của adapter
 > từ chối chúng nên không thể chạy nhầm trước khi được điền bằng một sửa đổi có ngày.
 > Mọi chỗ ghi `[SMOKE]` dưới đây là chỗ trống có chủ đích đó.
@@ -107,12 +113,10 @@ confound; đây là **giới hạn** được nêu, không phải điểm mạnh
 
 Khối lượng cơ thể trung bình cuối cửa sổ khác nhau giữa `scarce` và `abundant`.
 
-**Chiều (dấu) của H1 CHƯA được cố định.** Cơ chế hợp lý đi cả hai hướng (thân nhỏ rẻ chi phí chuyển
-hoá nên sống sót hơn khi khan hiếm; hoặc thân lớn đủ dự trữ qua đói). Chiều được **cố định một lần,
-sau smoke, trước mọi seed thí nghiệm**, ghi vào fixture bằng một khối sửa đổi có ngày
-(`direction_fixed_after_smoke`) và chỉ được dựa vào quan sát smoke ở seed 999971 cộng cơ chế đã
-nêu. Nếu smoke không đủ để chọn: H1 giữ `two_sided`. Không được đổi chiều sau khi một seed thí
-nghiệm đã chạy.
+**Chiều của H1 là hai phía (`two_sided`), cố định trong tiền đăng ký này trước mọi lần chạy** (sửa đổi
+2026-11-17, `pre_run_tightening_2026-11-17`). Cơ chế hợp lý đi cả hai hướng (thân nhỏ rẻ chi phí chuyển hoá
+nên sống sót hơn khi khan hiếm; hoặc thân lớn đủ dự trữ qua đói), nên không có lý do tiên nghiệm để chọn
+một phía. **Smoke không bao giờ được đặt hay đổi chiều này**, và không còn khối `direction_fixed_after_smoke`.
 
 ### 5.2 Ngưỡng vật chất (giống E2/E3)
 
@@ -144,32 +148,68 @@ biến dị founder và/hoặc trôi**, chưa tách được. Nó **không** ch�
 
 ## 6. Giao thức smoke: được và không được đặt gì
 
-Smoke: seed **999971**, **một** lần chạy mỗi nhánh, đủ T của bậc thang cao nhất. Seed này
-**vắng** khỏi cả hai manifest thí nghiệm; `run_manifest_seed` trả
+Smoke: seed **999971**, một lần chạy mỗi manifest mỗi lượt thử, mỗi lần chạy `T_smoke = 18 000` tick (bậc cao
+nhất, đúng độ dài mà các manifest smoke mang và mà bản nháp ban đầu đã quy định; bước A chỉ đọc các mẫu có
+`tick ≤ 1 200` của lần chạy abundant, tức hai mẫu tại tick 600 và 1 200 vì `sample_period` = 600 cố định, smoke
+không đổi nó). Seed này **vắng** khỏi mọi manifest thí nghiệm; `run_manifest_seed` trả
 `RunStatus::Failed{SeedNotInManifest}` cho seed lạ nên nó không thể lọt vào tập phân tích.
 
-**Smoke được phép đặt (và chỉ những thứ này):**
+**Smoke chỉ được đọc hai quan sát: `live.agent_count` và `live.standing_crop`.** Không được tham khảo bất kỳ
+giá trị `live.trait_mass_*` nào (mean, var, p10, p90) cho bất kỳ lựa chọn nào; bản sửa đổi ghi lại kết quả smoke
+chỉ được báo cáo hai quan sát đó (và µs/tick đo được). Làm tròn ứng viên `food_cap`: làm tròn nửa lên về số
+nguyên gần nhất, tối thiểu 1 (`max(1, floor(x + 0.5))`).
 
-1. `N0` (`live.founders`): giá trị nhỏ nhất ≥ 30 sao cho ở **cả hai** giá trị `food_cap` thử, quần thể
-   smoke không xuống dưới 5 agent ở bất kỳ mẫu nào (bằng chứng ADR-0005: 10 founder đã có run xuống 3).
-2. `F_hi`: giá trị mặc định (`FoodSpawnSettings::default().max_food_count`) trừ khi nó làm quần thể
-   vượt xa cổng sinh 80 con mồi trong 1 000 tick đầu (khi đó chọn giá trị thấp hơn gần nhất, ghi rõ).
-3. `F_lo`: ứng viên lớn nhất trong lưới {1/2, 1/3, 1/4, 1/8}·`F_hi` mà **`live.standing_crop` (hoặc
-   `live.food_items`) trung bình trên nửa sau smoke xấp xỉ một nửa so với `F_hi`** (trong ±20%) **và**
-   quần thể smoke không tuyệt chủng. Nếu không ứng viên nào thoả cả hai: dừng, ghi finding, **không**
-   hạ ràng buộc tuyệt chủng.
-4. Bậc thang thời lượng (§7) và chiều của H1 (§5.1).
+**Thuật toán (ghi y hệt trong `smoke_may_set_only.algorithm` của JSON):**
 
-**Smoke KHÔNG được:** đổi câu hỏi, metric, ngưỡng, N, danh sách seed, quy tắc cửa sổ đuôi, hoặc chọn
-`F_lo` theo kết quả **khối lượng** (chỉ theo thức ăn và sống sót). Không dùng seed thí nghiệm để
-hiệu chỉnh. Đầu ra smoke nằm ở `smoke/`, không bao giờ trộn vào phân tích.
+- **Bước A (`F_hi`).** `N0 = 30`, `food_cap F = 50` (mặc định). Tính `max live.agent_count` trên các mẫu smoke có
+  `tick ≤ 1 200`. Nếu `> 80` thì `F := F − 10` rồi lặp lại (sàn 20; nếu `F = 20` vẫn `> 80`, dừng và ghi finding,
+  không thí nghiệm). `F_hi` = `F` đầu tiên thoả.
+- **Bước B (`N0`).** Với `N0` lần lượt `30, 40, 50, 60, 70, 80`: chạy smoke abundant tại `F_hi` và smoke scarce
+  tại `round(F_hi / 2)`; nhận `N0` **đầu tiên** mà `min live.agent_count` trên **mọi** mẫu `≥ 5` ở **cả hai**.
+  Không `N0` nào thoả: dừng, ghi finding (không thí nghiệm).
+- **Bước C (`F_lo`).** Với `N0` đã nhận, với `c` lần lượt `1/2, 1/3, 1/4, 1/8`: chạy smoke scarce tại
+  `round(c · F_hi)` (lượt `c = 1/2` chính là lần chạy scarce của bước B, dùng lại, không chạy lại). Đặt
+  `r` = (trung bình `live.standing_crop` trên các mẫu `tick > T_smoke / 2` của lần chạy scarce) / (cùng đại
+  lượng ở lần chạy abundant tại `F_hi` và `N0` đã nhận). Nhận `c` **đầu tiên** có `0,4 ≤ r ≤ 0,6` **và**
+  `min live.agent_count ≥ 5` trên mọi mẫu của lần chạy scarce. `F_lo = round(c · F_hi)`. Không `c` nào thoả: dừng,
+  ghi finding; ràng buộc sống sót không bao giờ bị nới.
+- **Bậc thang thời lượng (§7, G5).** Đo µs/tick của **mọi** lần chạy smoke (bản `release`;
+  `provenance.timing.us_per_tick` của từng lần gọi smoke, trung bình các lần chạy trong lần gọi đó). Ước tính
+  tổng `= 36 lần chạy × T × (max µs/tick trên các lần chạy smoke ở N0 và F đã chọn)`, **không tính song song**.
+  Chọn bậc **cao nhất** trong 18 000 / 12 000 / 6 000 mà ước tính `≤ 90 phút`. `N` không bao giờ bị hạ. Nếu cả
+  6 000 vẫn vượt: dừng, ghi finding.
+
+**Chạy smoke manifest `drift` (G6).** `esel1-smoke-drift-scarce-mutation-off.json` (seed 999971, thức ăn scarce
+tại ứng viên `F_hi/2`, `live.mutation_rate = 0`) được `manifests.smoke_drift` trỏ tới, nên `--smoke` chạy luôn nhánh
+drift để đường đi này được thực thi một lần. **Kết quả của nó không bao giờ dùng cho bất kỳ lựa chọn nào.** Runner
+đòi manifest drift smoke khác manifest scarce smoke đúng một khoá (`live.mutation_rate`), nên lần gọi smoke cuối
+(lần thực thi đường drift) mang cùng `live.founders` và `live.food_cap` ở cả hai.
+
+**Smoke manifest chỉ được khác manifest thí nghiệm ở** `live.founders`, `live.food_cap`, `seeds` (và
+`live.mutation_rate` cho manifest drift smoke, giữ đúng giá trị 0 như manifest drift thí nghiệm); test hình dạng
+khẳng định điều này.
+
+**Smoke KHÔNG được:** đổi câu hỏi, metric, ngưỡng, N, danh sách seed, quy tắc cửa sổ đuôi, chiều của H1,
+`sample_period`, hoặc chọn bất cứ thứ gì theo kết quả **khối lượng**. Không dùng seed thí nghiệm để hiệu chỉnh.
+Đầu ra smoke nằm ở `smoke/`, không bao giờ trộn vào phân tích.
 
 ## 7. Bậc thang thời lượng và khoá thực thi
 
 Bậc thang: **18 000 / 12 000 / 6 000 tick**, chọn **một lần** từ smoke (bậc cao nhất mà tổng ước
-tính chạy ≤ 90 phút; smoke đo µs/tick, §10). Ghi `execution-lock.json` (bậc, `N0`, `F_hi`, `F_lo`,
-chiều H1, hash manifest) **trước** seed thí nghiệm đầu tiên; sau khi một seed thí nghiệm đã chạy,
-không được đổi T. Khi vượt ngân sách: hạ bậc theo smoke, **không** hạ N.
+tính chạy ≤ 90 phút; smoke đo µs/tick, §10). Ghi `execution-lock.json` (khoá `duration_ticks`, `N0`, `F_hi`, `F_lo`, tuỳ chọn hash manifest) **trước** seed
+thí nghiệm đầu tiên; sau khi một seed thí nghiệm đã chạy, không được đổi T. Khi vượt ngân sách: hạ bậc theo
+smoke, **không** hạ N. **Runner từ chối `--ensemble`** khi khoá thiếu `duration_ticks`, `N0`, `F_hi` hoặc
+`F_lo`, hoặc khi chúng không khớp với manifest trong `--manifest-dir` (founders của cả ba nhánh = `N0`,
+`food_cap` của control = `F_hi`, của treatment và drift = `F_lo`, thời lượng hiệu lực = `duration_ticks`).
+Khoá được băm vào `checksums.sha256` và sha256 của nó ghi trong `provenance.json`
+(`execution_lock_sha256`); `scripts/verify_esel1_artifacts.mjs` kiểm hai thứ đó.
+
+**Tệp artifact** (dưới `artifacts/experiments/e-sel1-food-scarcity/`): `paired-report.json`, `effects.json`,
+`per-seed-deltas.csv`, `runs.csv`, `execution-lock.json`, `provenance.json`, `summary.md`, `checksums.sha256`,
+`manifests/`, `smoke/`. Runner **không** ghi `timeseries.csv`.
+`scripts/verify_esel1_artifacts.mjs` thoát 0 với "no artifacts yet" **chỉ khi thư mục không tồn tại**; một thư mục
+tồn tại nhưng rỗng hoặc thiếu tệp bắt buộc thì **thất bại**, và nó tự tính lại thống kê H1 (trung bình hiệu, SD, SE,
+CI95, d_z) từ `per-seed-deltas.csv` cùng kết luận vật chất để đối chiếu với `effects.json`.
 
 ## 8. Tuyệt chủng
 
@@ -263,7 +303,7 @@ Chỉ biên dịch rồi chạy tệp nhị phân (không `cargo run`); xem `rep
 
 1. P1–P3 xong và quyết định về P4 được ghi. 2. Commit Phụ lục A làm
 `src-tauri/tests/fixtures/experiments_esel1/esel1-preregistration.json` cùng các manifest và test hình
-dạng. 3. Chạy smoke, điền `[SMOKE]`, khoá bậc thang và chiều H1 bằng khối sửa đổi có ngày. 4. Chạy 12
+dạng. 3. Chạy smoke theo thuật toán §6, điền `[SMOKE]`, khoá bậc thang bằng khối sửa đổi có ngày (chiều H1 đã là `two_sided`). 4. Chạy 12
 seed. Đầu ra dưới `artifacts/experiments/e-sel1-food-scarcity/`.
 
 ## Phụ lục A — Dự thảo JSON tiền đăng ký (LỊCH SỬ — bản đóng băng là fixture)
@@ -398,7 +438,7 @@ seed. Đầu ra dưới `artifacts/experiments/e-sel1-food-scarcity/`.
   },
   "artifacts": {
     "root": "artifacts/experiments/e-sel1-food-scarcity/",
-    "files": ["paired-report.json", "effects.json", "per-seed-deltas.csv", "timeseries.csv", "execution-lock.json", "provenance.json", "summary.md", "smoke/"]
+    "files": ["paired-report.json", "effects.json", "per-seed-deltas.csv", "execution-lock.json", "provenance.json", "summary.md", "smoke/"]
   },
   "reproduction_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_esel1_experiment; then execute src-tauri/target/release/examples/run_esel1_experiment --ensemble --manifest-dir src-tauri/tests/fixtures/experiments_esel1 --out artifacts/experiments/e-sel1-food-scarcity",
   "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_esel1_experiment; then execute src-tauri/target/release/examples/run_esel1_experiment --smoke --manifest-dir src-tauri/tests/fixtures/experiments_esel1 --out artifacts/experiments/e-sel1-food-scarcity",

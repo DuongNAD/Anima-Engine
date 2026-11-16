@@ -10,8 +10,10 @@
 //!
 //! # Placeholders
 //!
-//! The smoke may set exactly `N0` (`live.founders`), `F_hi` / `F_lo` (`live.food_cap`), the duration
-//! rung and the H1 direction (plan section 6). A manifest holds numbers only, so the experimental
+//! The smoke may set exactly `N0` (`live.founders`), `F_hi` / `F_lo` (`live.food_cap`) and the
+//! duration rung (plan section 6), each by a mechanical algorithm that reads only
+//! `live.agent_count` and `live.standing_crop`. The H1 direction is two-sided, fixed before any run;
+//! the smoke never sets it. A manifest holds numbers only, so the experimental
 //! manifests carry NEGATIVE SENTINELS for the first three; nothing else may be a sentinel, and the
 //! live adapter refuses a sentinel at model construction, so an unamended experimental manifest
 //! cannot be run by accident. When the smoke values are locked, the sentinels are replaced in a
@@ -43,6 +45,7 @@ const TREATMENT: &str = "esel1-treatment-scarce.json";
 const DRIFT: &str = "esel1-drift-scarce-mutation-off.json";
 const SMOKE_CONTROL: &str = "esel1-smoke-abundant.json";
 const SMOKE_TREATMENT: &str = "esel1-smoke-scarce.json";
+const SMOKE_DRIFT: &str = "esel1-smoke-drift-scarce-mutation-off.json";
 
 fn path(name: &str) -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -76,7 +79,14 @@ fn diff_keys(a: &ExperimentManifest, b: &ExperimentManifest) -> Vec<String> {
         .collect()
 }
 
-const ALL: [&str; 5] = [CONTROL, TREATMENT, DRIFT, SMOKE_CONTROL, SMOKE_TREATMENT];
+const ALL: [&str; 6] = [
+    CONTROL,
+    TREATMENT,
+    DRIFT,
+    SMOKE_CONTROL,
+    SMOKE_TREATMENT,
+    SMOKE_DRIFT,
+];
 
 // ---- Real manifests --------------------------------------------------------------------------
 
@@ -184,21 +194,41 @@ fn all_arms_share_everything_the_pairing_depends_on() {
 
 #[test]
 fn the_smoke_manifests_differ_from_the_experiment_only_where_the_smoke_may_set() {
-    // The smoke may set N0, F_hi, F_lo (and the rung, via the duration field the runner overrides).
-    let may_set = [LIVE_KEY_FOUNDERS, LIVE_KEY_FOOD_CAP];
-    for (smoke, exp) in [(SMOKE_CONTROL, CONTROL), (SMOKE_TREATMENT, TREATMENT)] {
+    // The smoke may set N0 and the food cap (and, by construction, the seed list); the smoke drift
+    // manifest additionally carries live.mutation_rate, which the experimental drift manifest holds
+    // at the same 0. Nothing else may differ: not the duration, sampling, laws, world or observables.
+    let may_set = [LIVE_KEY_FOUNDERS, LIVE_KEY_FOOD_CAP, LIVE_KEY_MUTATION_RATE];
+    for (smoke, exp) in [
+        (SMOKE_CONTROL, CONTROL),
+        (SMOKE_TREATMENT, TREATMENT),
+        (SMOKE_DRIFT, DRIFT),
+    ] {
         let (s, e) = (load(smoke), load(exp));
         for k in diff_keys(&s, &e) {
             assert!(
                 may_set.contains(&k.as_str()),
                 "{smoke} differs from {exp} in '{k}', which the smoke may not set"
             );
+            // live.mutation_rate is allowed to differ only because the smoke drift manifest holds
+            // it; it holds the same 0 as the experimental drift manifest, so it never differs.
+            assert_ne!(
+                k, LIVE_KEY_MUTATION_RATE,
+                "{smoke} and {exp} must hold the same mutation rate"
+            );
         }
-        assert_eq!(s.sample_period, e.sample_period);
-        assert_eq!(s.observable_ids, e.observable_ids);
-        assert_eq!(s.laws, e.laws);
-        assert_eq!(s.world_identity, e.world_identity);
-        // Same two-key set on both sides.
+        assert_ne!(
+            s.seeds, e.seeds,
+            "{smoke} must use the smoke seed, {exp} the registered ones"
+        );
+        assert_eq!(s.duration_ticks, e.duration_ticks, "{smoke} duration");
+        assert_eq!(s.sample_period, e.sample_period, "{smoke} sample period");
+        assert_eq!(s.observable_ids, e.observable_ids, "{smoke} observables");
+        assert_eq!(s.laws, e.laws, "{smoke} laws");
+        assert_eq!(s.world_identity, e.world_identity, "{smoke} world");
+        assert_eq!(s.interventions, e.interventions, "{smoke} interventions");
+        assert_eq!(s.exotic_interventions, e.exotic_interventions, "{smoke}");
+        assert_eq!(s.observer, e.observer, "{smoke} observer");
+        // Same key set on both sides.
         let keys = |m: &ExperimentManifest| ic(m).into_keys().collect::<Vec<_>>();
         assert_eq!(
             keys(&s),
@@ -206,10 +236,20 @@ fn the_smoke_manifests_differ_from_the_experiment_only_where_the_smoke_may_set()
             "{smoke} and {exp} must declare the same keys"
         );
     }
+    // The smoke drift manifest holds live.mutation_rate = 0 exactly like the experimental one.
+    assert_eq!(
+        ic(&load(SMOKE_DRIFT)).get(LIVE_KEY_MUTATION_RATE),
+        Some(&0.0)
+    );
     // The two smoke arms differ in the food cap only, like the experiment.
     assert_eq!(
         diff_keys(&load(SMOKE_CONTROL), &load(SMOKE_TREATMENT)),
         vec![LIVE_KEY_FOOD_CAP.to_string()]
+    );
+    // The smoke drift arm is the smoke scarce arm with the mutation rate off, nothing else.
+    assert_eq!(
+        diff_keys(&load(SMOKE_TREATMENT), &load(SMOKE_DRIFT)),
+        vec![LIVE_KEY_MUTATION_RATE.to_string()]
     );
     // Smoke candidates respect the written constraints they are chosen under.
     let (sc, st) = (ic(&load(SMOKE_CONTROL)), ic(&load(SMOKE_TREATMENT)));
@@ -222,8 +262,76 @@ fn the_smoke_manifests_differ_from_the_experiment_only_where_the_smoke_may_set()
         st[LIVE_KEY_FOOD_CAP] < sc[LIVE_KEY_FOOD_CAP],
         "scarce < abundant"
     );
+    // The starting candidates are the algorithm's first ones: N0 = 30, F = 50, scarce = round(F/2).
+    assert_eq!(sc[LIVE_KEY_FOUNDERS], 30.0);
+    assert_eq!(sc[LIVE_KEY_FOOD_CAP], 50.0);
+    assert_eq!(st[LIVE_KEY_FOOD_CAP], 25.0);
 }
 
+#[test]
+fn the_smoke_algorithm_is_mechanical_and_never_reads_body_mass() {
+    let p = prereg();
+    let s = &p["smoke_may_set_only"];
+    let consult: Vec<&str> = s["may_consult_only"]
+        .as_array()
+        .expect("may_consult_only")
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    assert_eq!(consult, vec!["live.agent_count", "live.standing_crop"]);
+    assert!(s["must_not_consult"]
+        .as_str()
+        .unwrap()
+        .contains("live.trait_mass_"));
+    let alg = s["algorithm"].as_object().expect("algorithm");
+    for step in ["step_A_F_hi", "step_B_N0", "step_C_F_lo", "duration_rung"] {
+        let text = alg[step].as_str().unwrap_or_else(|| panic!("{step}"));
+        assert!(!text.is_empty(), "{step}");
+        assert!(
+            !text.contains("trait_mass"),
+            "{step} must not consult body mass"
+        );
+    }
+    let a = alg["step_A_F_hi"].as_str().unwrap();
+    assert!(a.contains("N0 = 30") && a.contains("food_cap F = 50") && a.contains("tick <= 1200"));
+    assert!(a.contains("> 80") && a.contains("F - 10") && a.contains("floor 20"));
+    let b = alg["step_B_N0"].as_str().unwrap();
+    assert!(
+        b.contains("30, 40, 50, 60, 70, 80") && b.contains(">= 5") && b.contains("ALL samples")
+    );
+    let c = alg["step_C_F_lo"].as_str().unwrap();
+    assert!(
+        c.contains("1/2, 1/3, 1/4, 1/8") && c.contains("0.4 <= r <= 0.6") && c.contains("FIRST")
+    );
+    let d = alg["duration_rung"].as_str().unwrap();
+    assert!(d.contains("36 runs") && d.contains("<= 90") && d.contains("HIGHEST"));
+    assert!(d.contains("no parallelism credit") && d.contains("N is never lowered"));
+    assert!(s["T_smoke"].as_str().unwrap().starts_with("18000"));
+    // The smoke has no say over the direction: not a key, not a rule.
+    assert!(s.get("h1_direction").is_none());
+    assert!(!s.to_string().contains("direction_fixed_after_smoke"));
+    // The amendment block exists and states that no run had been made.
+    let amend = &p["pre_run_tightening_2026-11-17"];
+    assert!(amend["no_smoke_or_experimental_run_had_been_made"]
+        .as_str()
+        .unwrap()
+        .contains("no smoke or experimental run had been made"));
+    assert!(amend["changes"].as_array().unwrap().len() >= 7);
+}
+
+#[test]
+fn h1_is_two_sided_and_no_smoke_output_can_change_that() {
+    let p = prereg();
+    let h1 = p["hypotheses"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|h| h["id"] == "H1")
+        .expect("H1");
+    assert_eq!(h1["direction"].as_str(), Some("two_sided"));
+    assert!(p.get("direction_fixed_after_smoke").is_none());
+    assert!(p["h1_direction"].as_str().unwrap().starts_with("two_sided"));
+}
 // ---- Placeholders ----------------------------------------------------------------------------
 
 #[test]
@@ -284,7 +392,7 @@ fn placeholders_exist_only_where_the_plan_allows_them() {
         assert!(ic(&load(TREATMENT))[LIVE_KEY_FOOD_CAP] < c[LIVE_KEY_FOOD_CAP]);
     }
     // Smoke manifests carry concrete starting candidates, never sentinels.
-    for name in [SMOKE_CONTROL, SMOKE_TREATMENT] {
+    for name in [SMOKE_CONTROL, SMOKE_TREATMENT, SMOKE_DRIFT] {
         for (k, v) in ic(&load(name)) {
             assert!(v >= 0.0, "{name}: '{k}' is a sentinel in a smoke manifest");
         }
@@ -300,7 +408,6 @@ fn placeholders_exist_only_where_the_plan_allows_them() {
         "declared_factor.exact_initial_condition_difference.control_value",
         "declared_factor.exact_initial_condition_difference.treatment_value",
         "duration.duration_ticks",
-        "hypotheses.0.direction",
     ];
     for f in &found {
         // `placeholders.*` and `smoke_may_set_only.*` describe the rule and may quote the marker.
@@ -319,7 +426,6 @@ fn placeholders_exist_only_where_the_plan_allows_them() {
                 "expected an open placeholder at '{a}'"
             );
         }
-        assert!(p["direction_fixed_after_smoke"].is_null());
     }
 }
 
@@ -366,7 +472,7 @@ fn twelve_seeds_follow_the_stated_rule_and_the_smoke_seed_is_excluded() {
             "{name} must not declare the smoke seed"
         );
     }
-    for name in [SMOKE_CONTROL, SMOKE_TREATMENT] {
+    for name in [SMOKE_CONTROL, SMOKE_TREATMENT, SMOKE_DRIFT] {
         assert_eq!(load(name).seeds, vec![SMOKE_SEED], "{name}");
     }
     // Disjoint from E2 (700001..), E3 draft (730001..), E2R (750001..): all of those are < 760001
@@ -494,6 +600,7 @@ fn the_preregistration_agrees_with_the_manifests_it_describes() {
     );
     assert_eq!(files["smoke_control"].as_str(), Some(SMOKE_CONTROL));
     assert_eq!(files["smoke_treatment"].as_str(), Some(SMOKE_TREATMENT));
+    assert_eq!(files["smoke_drift"].as_str(), Some(SMOKE_DRIFT));
 
     // The thresholds the runner hard-codes are the registered ones.
     let conds = p["thresholds"]["conditions"].as_array().unwrap();
@@ -541,7 +648,7 @@ fn an_unamended_experimental_manifest_is_refused_by_the_live_config_parser() {
             assert!(parsed.is_ok(), "{name}: {:?}", parsed.err());
         }
     }
-    for name in [SMOKE_CONTROL, SMOKE_TREATMENT] {
+    for name in [SMOKE_CONTROL, SMOKE_TREATMENT, SMOKE_DRIFT] {
         let parsed = LiveWorldConfig::from_initial_conditions(&load(name).initial_conditions);
         assert!(
             parsed.is_ok(),

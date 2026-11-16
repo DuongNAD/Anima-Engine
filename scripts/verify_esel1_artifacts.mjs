@@ -11,23 +11,32 @@
 // arithmetic, and that execution-lock.json was written against the committed manifests.
 //
 //   node scripts/verify_esel1_artifacts.mjs [artifact-dir]
+//   node scripts/verify_esel1_artifacts.mjs --self-test
 //
 // Defaults to `artifacts/experiments/e-sel1-food-scarcity`.
 //
 // NOT WIRED INTO CI OR package.json. No E-SEL1 artifact exists yet (the preregistration is frozen
-// before any smoke or experimental run). When the artifact directory does not exist this prints
-// "no artifacts yet" and exits 0; if it exists but is empty or incomplete that is a failure.
+// before any smoke or experimental run). ONLY when the artifact directory does not exist this
+// prints "no artifacts yet" and exits 0. An existing directory that is empty, or that lacks any
+// required file (paired-report.json, effects.json, runs.csv, per-seed-deltas.csv, provenance.json,
+// checksums.sha256, execution-lock.json and the three experimental manifests under manifests/) is a
+// FAILURE, never a pass. Beyond the byte-level checks it recomputes the H1 statistics (mean delta,
+// SD, SE, 95% CI, d_z) from per-seed-deltas.csv, re-derives the materiality verdict, and checks the
+// execution lock's sha256 against provenance.json. `--self-test` runs its negative controls.
 // Wire it into CI/package.json in the same commit that first commits artifacts.
 
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SELF_TEST = process.argv[2] === '--self-test';
 const artifactDir = resolve(
-  process.argv[2] ?? join(repoRoot, 'artifacts/experiments/e-sel1-food-scarcity'),
+  (SELF_TEST ? undefined : process.argv[2]) ??
+    join(repoRoot, 'artifacts/experiments/e-sel1-food-scarcity'),
 );
 const committedManifestDir = 'src-tauri/tests/fixtures/experiments_esel1';
 const PREREG = 'esel1-preregistration.json';
@@ -63,6 +72,134 @@ function committedManifest(name) {
   return bytes === null ? null : JSON.parse(bytes.toString('utf8'));
 }
 
+/** Two-sided 95% Student-t critical values, df 1..30, as the runner's conservative table holds them. */
+const T_975 = [
+  12.706204736432095, 4.302652729696142, 3.1824463052842638, 2.7764451051977987, 2.570581835636314,
+  2.4469118487916806, 2.3646242510102993, 2.306004135204166, 2.2621571628540993, 2.2281388519649385,
+  2.200985160082949, 2.1788128296634177, 2.1603686564610127, 2.1447866879169273, 2.131449545559323,
+  2.1199052992210112, 2.109815577833181, 2.10092204024096, 2.093024054408263, 2.0859634472658364,
+  2.079613844727662, 2.073873067904015, 2.068657610419041, 2.063898561628021, 2.059538552753294,
+  2.055529438642871, 2.051830516480289, 2.048407141795244, 2.045229642132703, 2.042272456301238,
+];
+
+/** Paired statistics of a list of per-seed deltas, recomputed independently of the runner. */
+export function pairedStats(control, treatment) {
+  const n = control.length;
+  const deltas = control.map((c, i) => treatment[i] - c);
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const out = { n, controlMean: null, treatmentMean: null, delta: null, sd: null, se: null, lo: null, hi: null, dz: null };
+  if (n === 0) return out;
+  out.controlMean = mean(control);
+  out.treatmentMean = mean(treatment);
+  out.delta = mean(deltas);
+  if (n < 2) return out;
+  out.sd = Math.sqrt(deltas.reduce((a, d) => a + (d - out.delta) ** 2, 0) / (n - 1));
+  out.se = out.sd / Math.sqrt(n);
+  if (n - 1 <= 30) {
+    const half = T_975[n - 2] * out.se;
+    out.lo = out.delta - half;
+    out.hi = out.delta + half;
+  }
+  if (out.sd > 0) out.dz = out.delta / out.sd;
+  return out;
+}
+
+/** The preregistered materiality verdict: all_of(ci excludes 0, |dz| >= 0.8, |delta| >= 5% |control|). */
+export function materiality(st) {
+  const ci = st.lo !== null && st.hi !== null && (st.lo > 0 || st.hi < 0);
+  const dz = st.dz !== null && Math.abs(st.dz) >= 0.8;
+  const rel = st.delta !== null && st.controlMean !== null && Math.abs(st.delta) >= 0.05 * Math.abs(st.controlMean);
+  return { ci, dz, rel, material: ci && dz && rel };
+}
+
+/** Relative tolerance 1e-9 (absolute 1e-12 near zero); null must match null. */
+function close(a, b) {
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return (a ?? null) === (b ?? null);
+  }
+  return Math.abs(a - b) <= Math.max(1e-9 * Math.max(Math.abs(a), Math.abs(b)), 1e-12);
+}
+
+const ROOT_FILES = [
+  'paired-report.json',
+  'effects.json',
+  'runs.csv',
+  'per-seed-deltas.csv',
+  'provenance.json',
+  'checksums.sha256',
+  'execution-lock.json',
+];
+const SMOKE_FILES = ROOT_FILES.filter((f) => f !== 'execution-lock.json');
+
+/** Missing required files are failures. Returns true when every one is present. */
+function requireFiles(dir, label, files, manifestNames) {
+  let ok = true;
+  for (const f of files) {
+    if (!existsSync(join(dir, f))) {
+      fail(`${label}: required file ${f} is missing`);
+      ok = false;
+    }
+  }
+  for (const m of manifestNames) {
+    if (!existsSync(join(dir, 'manifests', m))) {
+      fail(`${label}: required manifests/${m} is missing`);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
+/** H1 recomputed from per-seed-deltas.csv alone, compared with effects.json (tolerance 1e-9). */
+function verifyH1Recompute(dir, label) {
+  const lines = readFileSync(join(dir, 'per-seed-deltas.csv'), 'utf8').trim().split('\n');
+  lines.shift();
+  const control = [];
+  const treatment = [];
+  for (const row of lines) {
+    const [, contrast, , c, t] = row.split(',');
+    if (!contrast.startsWith('H1')) continue;
+    control.push(Number(c));
+    treatment.push(Number(t));
+  }
+  const effects = readJson(join(dir, 'effects.json'));
+  const h1 = effects.h1;
+  if (!h1) {
+    fail(`${label}: effects.json has no h1 block`);
+    return;
+  }
+  const st = pairedStats(control, treatment);
+  if (h1.n_complete_pairs !== st.n) {
+    fail(`${label}: effects.h1.n_complete_pairs ${h1.n_complete_pairs} != ${st.n} rows of per-seed-deltas.csv`);
+  }
+  for (const [field, got] of [
+    ['control_mean', st.controlMean],
+    ['treatment_mean', st.treatmentMean],
+    ['paired_mean_delta', st.delta],
+    ['paired_sd', st.sd],
+    ['paired_se', st.se],
+    ['ci95_low', st.lo],
+    ['ci95_high', st.hi],
+    ['paired_dz', st.dz],
+  ]) {
+    if (!close(h1[field], got)) {
+      fail(`${label}: effects.h1.${field} = ${h1[field]} but per-seed-deltas.csv recomputes ${got}`);
+    }
+  }
+  const m = materiality(st);
+  const claimed = h1.materiality ?? {};
+  for (const [field, got] of [
+    ['ci95_excludes_zero', m.ci],
+    ['abs_dz_at_least_0_8', m.dz],
+    ['abs_delta_at_least_5pc_of_control_mean', m.rel],
+    ['material', m.material],
+  ]) {
+    if (claimed[field] !== got) {
+      fail(`${label}: effects.h1.materiality.${field} = ${claimed[field]} but the verdict recomputes ${got}`);
+    }
+  }
+  note(`${label}: H1 recomputed from ${st.n} per-seed deltas: material = ${m.material}`);
+}
+
 /** Recompute every digest in a `checksums.sha256` file with node:crypto. */
 function verifyChecksums(dir, label) {
   const file = join(dir, 'checksums.sha256');
@@ -95,7 +232,7 @@ function verifyChecksums(dir, label) {
 
 /** Every artifact must be covered by a checksum; hand-written files are checked on content. */
 function verifyNothingUncovered(dir, covered, label) {
-  const skip = new Set(['checksums.sha256', 'execution-lock.json', 'RESULT.md']);
+  const skip = new Set(['checksums.sha256', 'RESULT.md']);
   const walk = (rel) => {
     for (const entry of readdirSync(join(dir, rel), { withFileTypes: true })) {
       const child = rel ? `${rel}/${entry.name}` : entry.name;
@@ -301,6 +438,16 @@ function verifyLock(dir, ensembleExists) {
   }
   const lock = readJson(lockPath);
   const prereg = committedPrereg();
+  for (const field of ['duration_ticks', 'N0', 'F_hi', 'F_lo']) {
+    if (typeof lock[field] !== 'number') fail(`lock: execution-lock.json lacks ${field}`);
+  }
+  if (ensembleExists) {
+    const prov = readJson(join(dir, 'provenance.json'));
+    const actual = sha256(readFileSync(lockPath));
+    if (prov.execution_lock_sha256 !== actual) {
+      fail(`lock: execution-lock.json hashes to ${actual}, but provenance.json records ${prov.execution_lock_sha256}`);
+    }
+  }
   if (!prereg.duration.duration_ticks_ladder.includes(lock.duration_ticks)) {
     fail(`lock: duration_ticks ${lock.duration_ticks} is not on the registered ladder`);
   }
@@ -329,7 +476,7 @@ function verifyLock(dir, ensembleExists) {
       ['F_hi', val(ctrl, 'live.food_cap')],
       ['F_lo', val(trt, 'live.food_cap')],
     ]) {
-      if (lock[field] !== undefined && lock[field] !== expected) {
+      if (lock[field] !== expected) {
         fail(`lock: ${field} = ${lock[field]} but the committed manifests hold ${expected}`);
       }
     }
@@ -353,36 +500,115 @@ function verifyDirectory(dir, label, opts) {
     fail(`${label}: ${dir} does not exist`);
     return;
   }
+  const prereg = committedPrereg();
+  const exp = [
+    prereg.manifests.control,
+    prereg.manifests.treatment,
+    prereg.manifests.drift_control_optional_requires_P4,
+  ].filter(Boolean);
+  const smoke = [prereg.manifests.smoke_control, prereg.manifests.smoke_treatment, prereg.manifests.smoke_drift].filter(Boolean);
+  const present = opts.isSmoke
+    ? requireFiles(dir, label, SMOKE_FILES, smoke)
+    : requireFiles(dir, label, ROOT_FILES, exp);
+  if (!present) return; // nothing further can be read
   const covered = verifyChecksums(dir, label);
+  if (!opts.isSmoke && !covered.has('execution-lock.json')) {
+    fail(`${label}: checksums.sha256 does not cover execution-lock.json`);
+  }
   verifyNothingUncovered(dir, covered, label);
   verifyManifestsAreTheCommittedOnes(dir, label);
   verifyAgainstPreregistration(dir, label, opts);
   verifyDeltasAreArithmetic(dir, label);
+  if (!opts.isSmoke) verifyH1Recompute(dir, label);
+}
+
+function verifyAll(dir) {
+  verifyDirectory(dir, 'analysis', { isSmoke: false });
+  const smokeDir = join(dir, 'smoke');
+  if (existsSync(smokeDir)) verifyDirectory(smokeDir, 'smoke', { isSmoke: true });
+  else note('smoke: no smoke/ directory present');
+  if (existsSync(join(dir, 'execution-lock.json'))) {
+    verifyLock(dir, existsSync(join(dir, 'provenance.json')));
+  }
+}
+
+function report() {
+  for (const line of notes) console.log(`note  ${line}`);
+  if (failures.length === 0) return 0;
+  console.error('');
+  for (const line of failures) console.error(`FAIL  ${line}`);
+  console.error(`\n${failures.length} failure(s).`);
+  return 1;
+}
+
+// ---- Self-test: negative controls --------------------------------------------------------------
+
+function selfTest() {
+  let bad = 0;
+  const expect = (cond, what) => {
+    if (!cond) {
+      bad += 1;
+      console.error(`SELF-TEST FAIL  ${what}`);
+    } else console.log(`self-test ok    ${what}`);
+  };
+  // 1. The statistics reproduce a hand-computed case: deltas 1,2,3 -> mean 2, sd 1, se 1/sqrt3.
+  const st = pairedStats([0, 0, 0], [1, 2, 3]);
+  expect(close(st.delta, 2) && close(st.sd, 1) && close(st.se, 1 / Math.sqrt(3)), 'mean, sd, se of deltas 1,2,3');
+  expect(close(st.dz, 2) && close(st.hi - st.delta, 4.302652729696142 / Math.sqrt(3)), 'dz and t-interval of deltas 1,2,3 (df = 2)');
+  expect(materiality(st).material === false, 'three pairs with a CI of [-2.4, 6.4] are not material');
+  expect(materiality(pairedStats([10, 10, 10, 10], [11, 11.2, 10.9, 11.1])).material === true, 'a consistent 10% shift is material');
+  // 2. The empty directory case: an existing, empty directory must FAIL (exit 1), not pass.
+  const root = mkdtempSync(join(tmpdir(), 'esel1-verify-selftest-'));
+  const run = (dir) => {
+    try {
+      execFileSync(process.execPath, [fileURLToPath(import.meta.url), dir], { stdio: ['ignore', 'pipe', 'pipe'] });
+      return { code: 0 };
+    } catch (e) {
+      return { code: e.status, err: String(e.stderr) };
+    }
+  };
+  try {
+    const empty = join(root, 'empty');
+    mkdirpSync(empty);
+    const r = run(empty);
+    expect(r.code === 1 && /required file .* is missing/.test(r.err), 'an existing EMPTY artifact directory fails');
+    // 3. An incomplete directory (one file only) fails too.
+    const partial = join(root, 'partial');
+    mkdirpSync(partial);
+    writeFileSync(join(partial, 'runs.csv'), 'seed\n');
+    const p = run(partial);
+    expect(p.code === 1 && /paired-report\.json is missing/.test(p.err), 'a directory lacking required files fails');
+    // 4. A directory that does not exist is the only "no artifacts yet" pass.
+    const absent = run(join(root, 'does-not-exist'));
+    expect(absent.code === 0, 'a missing directory is "no artifacts yet" (exit 0)');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  return bad === 0 ? 0 : 1;
+}
+
+function mkdirpSync(p) {
+  mkdirSync(p, { recursive: true });
 }
 
 // ---- Run ---------------------------------------------------------------------------------------
+
+if (SELF_TEST) {
+  process.exit(selfTest());
+}
 
 if (!existsSync(artifactDir)) {
   console.log(`no artifacts yet: ${artifactDir} does not exist (E-SEL1 is frozen, not yet run).`);
   process.exit(0);
 }
 
-const ensembleExists = existsSync(join(artifactDir, 'paired-report.json'));
-if (ensembleExists) verifyDirectory(artifactDir, 'analysis', { isSmoke: false });
-else note('analysis: no ensemble has been run yet (no paired-report.json at the artifact root)');
-
-const smokeDir = join(artifactDir, 'smoke');
-if (existsSync(smokeDir)) verifyDirectory(smokeDir, 'smoke', { isSmoke: true });
-else note('smoke: no smoke/ directory present');
-
-verifyLock(artifactDir, ensembleExists);
-
-for (const line of notes) console.log(`note  ${line}`);
-if (failures.length === 0) {
-  console.log(`\nOK - every E-SEL1 artifact in ${artifactDir} verifies against node:crypto and the preregistration.`);
-  process.exit(0);
+try {
+  verifyAll(artifactDir);
+} catch (e) {
+  fail(`verification aborted: ${e instanceof Error ? e.message : String(e)}`);
 }
-console.error('');
-for (const line of failures) console.error(`FAIL  ${line}`);
-console.error(`\n${failures.length} failure(s).`);
-process.exit(1);
+const code = report();
+if (code === 0) {
+  console.log(`\nOK - every E-SEL1 artifact in ${artifactDir} verifies against node:crypto and the preregistration.`);
+}
+process.exit(code);
