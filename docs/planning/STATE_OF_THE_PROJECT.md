@@ -1038,13 +1038,22 @@ grep còn lại là văn xuôi khớp chữ "burned energy".
 **Định nghĩa hoàn thành:** `cargo tree --no-default-features` không còn `burn-wgpu`/`naga` ·
 gate `cargo tree` trong CI mở rộng để phủ chúng · fallback CPU vẫn chạy.
 
-#### 3.5 Thu hẹp `tokio = { features = ["full"] }`
+#### 3.5 Thu hẹp `tokio = { features = ["full"] }` — ✅ **XONG (2026-11-17)**
 
-[`src-tauri/Cargo.toml:56`](../../src-tauri/Cargo.toml). Hai hệ con cần tokio đã nằm sau feature
-(`networking`, `neo4j`), nên `full` giờ là thừa. Đây là bước tự nhiên tiếp theo sau G2 gate #2.
+[`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) giờ là
+`default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "net"]`.
+Mỗi feature có điểm dùng thật: `rt-multi-thread` (`runtime::Builder::new_multi_thread` ở
+`core/simulation_loop.rs` và `evolution/lineage.rs`), `macros` (`#[tokio::test]`, `select!`, `join!`),
+`sync` (`Mutex`, `Semaphore`), `time` (`sleep`/`timeout`/`Instant`, và `enable_all()` cần nó),
+`net` (`TcpListener`/`TcpStream` trong `core/networking_systems.rs` và test migration). Không có
+chỗ nào dùng `tokio::io`, `fs`, `process`, `signal`.
 
-**Định nghĩa hoàn thành:** chỉ liệt kê feature thật sự dùng · cả hai cấu hình
-(`--no-default-features` và `--features desktop`) đều clippy sạch và test xanh.
+**Bằng chứng (macOS, 2026-11-17):** `cargo clippy --all-targets -- -D warnings` sạch ở cả cấu hình
+mặc định và `--features desktop` · `cargo test --features desktop` 1434 pass / 0 fail / 2 ignored và
+`check_test_targets.mjs --profile desktop` xanh · `cargo test` mặc định 1408 pass / 0 fail / 2 ignored và
+`--profile default` xanh · `cargo build --release --features desktop` xanh · `Cargo.lock` không đổi · `cargo tree --no-default-features` vẫn 0 crate bị gate.
+Lưu ý: `NOTICE` báo cũ khi chạy `gen_notice.mjs --check` trên macOS **cả trước lẫn sau** thay đổi này
+(file được sinh từ đồ thị host Windows), nên không được tái sinh ở đây.
 
 #### 3.6 G2 gate #1 — một thay đổi luật đổi cả hai engine
 
