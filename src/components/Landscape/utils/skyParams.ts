@@ -12,29 +12,49 @@ export interface SkyParams {
   starOpacity: number;
 }
 
+/** Minimum total light intensity across all 24h so night terrain and coastlines stay readable. */
+export const NIGHT_LIGHT_FLOOR = 0.35;
+
+export interface WorldLightRig {
+  params: SkyParams;
+  sunIntensity: number;
+  moonDirY: number;
+  showMoon: boolean;
+  moonIntensity: number;
+  hemiIntensity: number;
+  ambientIntensity: number;
+  totalIntensity: number;
+}
+
+function normalizeTimeOfDay(timeOfDay: number): number {
+  if (!Number.isFinite(timeOfDay)) return 0;
+  return ((timeOfDay % 24) + 24) % 24;
+}
+
 /** Unit direction TO the sun for a given time of day (shared by sky + water shaders). */
 export function sunDirectionForTime(timeOfDay: number): [number, number, number] {
-  const angle = ((timeOfDay - 6) / 24) * Math.PI * 2;
+  const angle = ((normalizeTimeOfDay(timeOfDay) - 6) / 24) * Math.PI * 2;
   const v = new THREE.Vector3(Math.cos(angle), Math.sin(angle), Math.sin(angle) * 0.1).normalize();
   return [v.x, v.y, v.z];
 }
 
 export function getSkyParams(timeOfDay: number): SkyParams {
+  const safeTime = normalizeTimeOfDay(timeOfDay);
   const keyframes = [
-    { time: 0, skyColor: '#02020a', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#050510', ambientIntensity: 0.05, hemiSkyColor: '#050510', hemiGroundColor: '#020205', hemiIntensity: 0.05, starOpacity: 1.0 },
-    { time: 4.5, skyColor: '#02020a', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#050510', ambientIntensity: 0.05, hemiSkyColor: '#050510', hemiGroundColor: '#020205', hemiIntensity: 0.05, starOpacity: 1.0 },
+    { time: 0, skyColor: '#0b1528', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#9fb6d8', ambientIntensity: 0.48, hemiSkyColor: '#7ea2ce', hemiGroundColor: '#1e293b', hemiIntensity: 0.48, starOpacity: 1.0 },
+    { time: 4.5, skyColor: '#0b1528', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#9fb6d8', ambientIntensity: 0.48, hemiSkyColor: '#7ea2ce', hemiGroundColor: '#1e293b', hemiIntensity: 0.48, starOpacity: 1.0 },
     { time: 6.0, skyColor: '#f97316', sunColor: '#fdba74', sunIntensity: 0.4, ambientColor: '#fed7aa', ambientIntensity: 0.3, hemiSkyColor: '#fdba74', hemiGroundColor: '#451a03', hemiIntensity: 0.3, starOpacity: 0.0 },
     { time: 8.0, skyColor: '#bae6fd', sunColor: '#fef08a', sunIntensity: 0.9, ambientColor: '#bae6fd', ambientIntensity: 0.6, hemiSkyColor: '#bae6fd', hemiGroundColor: '#1e3a8a', hemiIntensity: 0.6, starOpacity: 0.0 },
     { time: 12.0, skyColor: '#0ea5e9', sunColor: '#ffffff', sunIntensity: 1.2, ambientColor: '#e0f2fe', ambientIntensity: 0.8, hemiSkyColor: '#0ea5e9', hemiGroundColor: '#0f172a', hemiIntensity: 0.8, starOpacity: 0.0 },
     { time: 16.0, skyColor: '#38bdf8', sunColor: '#fef08a', sunIntensity: 0.9, ambientColor: '#bae6fd', ambientIntensity: 0.6, hemiSkyColor: '#38bdf8', hemiGroundColor: '#1e3a8a', hemiIntensity: 0.6, starOpacity: 0.0 },
     { time: 18.0, skyColor: '#f97316', sunColor: '#fdba74', sunIntensity: 0.5, ambientColor: '#ffedd5', ambientIntensity: 0.4, hemiSkyColor: '#f97316', hemiGroundColor: '#431407', hemiIntensity: 0.4, starOpacity: 0.0 },
-    { time: 19.5, skyColor: '#1e1b4b', sunColor: '#a5b4fc', sunIntensity: 0.0, ambientColor: '#111827', ambientIntensity: 0.1, hemiSkyColor: '#1e1b4b', hemiGroundColor: '#090514', hemiIntensity: 0.1, starOpacity: 0.8 },
-    { time: 24.0, skyColor: '#02020a', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#050510', ambientIntensity: 0.05, hemiSkyColor: '#050510', hemiGroundColor: '#020205', hemiIntensity: 0.05, starOpacity: 1.0 },
+    { time: 19.5, skyColor: '#1e1b4b', sunColor: '#a5b4fc', sunIntensity: 0.0, ambientColor: '#9fb6d8', ambientIntensity: 0.5, hemiSkyColor: '#7ea2ce', hemiGroundColor: '#1e293b', hemiIntensity: 0.5, starOpacity: 0.8 },
+    { time: 24.0, skyColor: '#0b1528', sunColor: '#0a0d1a', sunIntensity: 0.0, ambientColor: '#9fb6d8', ambientIntensity: 0.48, hemiSkyColor: '#7ea2ce', hemiGroundColor: '#1e293b', hemiIntensity: 0.48, starOpacity: 1.0 },
   ];
 
   let idx = 0;
   for (let i = 0; i < keyframes.length - 1; i++) {
-    if (timeOfDay >= keyframes[i].time && timeOfDay <= keyframes[i + 1].time) {
+    if (safeTime >= keyframes[i].time && safeTime <= keyframes[i + 1].time) {
       idx = i;
       break;
     }
@@ -42,7 +62,7 @@ export function getSkyParams(timeOfDay: number): SkyParams {
 
   const kf1 = keyframes[idx];
   const kf2 = keyframes[idx + 1];
-  const t = (timeOfDay - kf1.time) / (kf2.time - kf1.time);
+  const t = (safeTime - kf1.time) / (kf2.time - kf1.time);
 
   const lerpNum = (a: number, b: number, factor: number) => a + (b - a) * factor;
   const lerpColor = (c1: string, c2: string, factor: number) => {
@@ -62,5 +82,36 @@ export function getSkyParams(timeOfDay: number): SkyParams {
     hemiGroundColor: lerpColor(kf1.hemiGroundColor, kf2.hemiGroundColor, t),
     hemiIntensity: lerpNum(kf1.hemiIntensity, kf2.hemiIntensity, t),
     starOpacity: lerpNum(kf1.starOpacity, kf2.starOpacity, t),
+  };
+}
+
+/**
+ * Pure lighting intensities consumed by `WorldSky` at `timeOfDay`.
+ *
+ * Daytime values (`t = 10`) match the canonical capture path unchanged while night adds a
+ * moonlit ambient/hemisphere baseline and directional moonlight so total irradiance stays
+ * `>= NIGHT_LIGHT_FLOOR` (`0.35`).
+ */
+export function getWorldLightRig(timeOfDay: number): WorldLightRig {
+  const safeTime = normalizeTimeOfDay(timeOfDay);
+  const params = getSkyParams(safeTime);
+  const angle = ((safeTime - 6) / 24) * Math.PI * 2;
+  const moonDirY = Math.sin(angle + Math.PI);
+  const showMoon = moonDirY > 0;
+
+  const sunIntensity = params.sunIntensity * 0.8;
+  const moonIntensity = showMoon ? 0.42 * Math.pow(moonDirY, 0.6) : 0;
+  const hemiIntensity = params.hemiIntensity * 0.35;
+  const ambientIntensity = params.ambientIntensity * 0.4;
+
+  return {
+    params,
+    sunIntensity,
+    moonDirY,
+    showMoon,
+    moonIntensity,
+    hemiIntensity,
+    ambientIntensity,
+    totalIntensity: sunIntensity + moonIntensity + hemiIntensity + ambientIntensity,
   };
 }
