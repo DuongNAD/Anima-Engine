@@ -22,6 +22,8 @@
 import type * as THREE from 'three';
 import type { World } from './components/Landscape/utils/worldGen';
 import type {
+  CanonicalPoseSetter,
+  FrameRenderCounters,
   TerrainHeightProbe,
   TeleportCameraTarget,
 } from './components/Landscape/utils/diagnosticsWindow';
@@ -49,6 +51,10 @@ declare global {
     __world?: World | null;
     /** The showcase's scene graph, published on `onCreated` for the same readers. */
     __worldScene?: THREE.Scene;
+    /** Latest completed per-layer WebGL draw-call and triangle totals (`RW-C1`). */
+    __animaFrameCounters?: FrameRenderCounters;
+    /** Pins or clears a canonical camera pose for per-pose performance measurements (`RW-C1`). */
+    __animaSetCanonicalPose?: CanonicalPoseSetter;
 
     // ---- the canonical-view capture handshake --------------------------------------------------
     //

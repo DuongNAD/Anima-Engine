@@ -1,10 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
 import { makeFloraGeometry } from './utils/floraGeometry';
 import { VEGETATION_BASE_SIZE } from './utils/floraClearance';
 import { sampleMeshHeight } from './utils/worldSample';
+import { installFrameCounters, type FrameCountersHandle } from './utils/diagnosticsWindow';
 
 export interface WorldVegetationProps {
   world: World;
@@ -155,6 +157,29 @@ const TypedInstances: React.FC<{
   );
 };
 
+const FrameDiagnostics: React.FC<{ renderSize: number; heightRatio: number }> = ({
+  renderSize,
+  heightRatio,
+}) => {
+  const { gl, scene } = useThree();
+  const handleRef = useRef<FrameCountersHandle | null>(null);
+
+  useLayoutEffect(() => {
+    const handle = installFrameCounters(gl, scene, { renderSize, heightRatio });
+    handleRef.current = handle;
+    return () => {
+      handleRef.current = null;
+      handle.dispose();
+    };
+  }, [gl, scene, renderSize, heightRatio]);
+
+  useFrame((state) => {
+    handleRef.current?.applyPinnedPose(state.camera);
+  });
+
+  return null;
+};
+
 /** Renders the world's flora (SoA) as instanced low-poly meshes, one InstancedMesh per type. */
 export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   world,
@@ -174,6 +199,7 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
 
   return (
     <group name="world-vegetation">
+      <FrameDiagnostics renderSize={renderSize} heightRatio={heightRatio} />
       {geoms.map((d) => (
         <TypedInstances
           key={d.type}
