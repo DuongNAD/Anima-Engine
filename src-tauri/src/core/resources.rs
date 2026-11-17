@@ -494,17 +494,26 @@ impl VitalStatistics {
         self.total_births += 1;
     }
 
-    /// `(births_in_window, deaths_in_window, mean_lifespan_of_window_deaths)`. The mean is
-    /// `None` when the window holds no deaths — absent information, not a fabricated zero.
+    /// `(births_in_window, deaths_in_window, mean_lifespan_of_window_deaths)`, and the window
+    /// closes: the next sample starts from here. The mean is `None` when the window holds no deaths
+    /// — absent information, not a fabricated zero.
     pub fn sample_window(&mut self) -> (u64, u64, Option<f32>) {
-        let births = self.total_births - self.sampled_births;
-        let deaths = self.total_deaths - self.sampled_deaths;
-        let lsum = self.lifespan_sum - self.sampled_lifespan_sum;
-        let lcount = self.lifespan_count - self.sampled_lifespan_count;
+        let window = self.peek_window();
         self.sampled_births = self.total_births;
         self.sampled_deaths = self.total_deaths;
         self.sampled_lifespan_sum = self.lifespan_sum;
         self.sampled_lifespan_count = self.lifespan_count;
+        window
+    }
+
+    /// The same figures as [`Self::sample_window`] without closing the window, for a read that is
+    /// not a sample (the runner's per-tick finiteness check). Reading through this any number of
+    /// times leaves the next sample's counts unchanged.
+    pub fn peek_window(&self) -> (u64, u64, Option<f32>) {
+        let births = self.total_births - self.sampled_births;
+        let deaths = self.total_deaths - self.sampled_deaths;
+        let lsum = self.lifespan_sum - self.sampled_lifespan_sum;
+        let lcount = self.lifespan_count - self.sampled_lifespan_count;
         let mean = if lcount > 0 {
             Some(lsum as f32 / lcount as f32)
         } else {

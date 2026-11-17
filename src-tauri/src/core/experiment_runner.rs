@@ -136,8 +136,19 @@ pub trait ExperimentModel: Sized {
     /// A deterministic content fingerprint of the current state.
     fn checksum(&self) -> u32;
 
-    /// Named scalar observables in a STABLE order.
+    /// Named scalar observables in a STABLE order. The runner calls this on every **sample** tick
+    /// and once at the end of the run.
     fn observables(&self) -> Vec<(String, f64)>;
+
+    /// The observables on a tick that is **not** sampled, read only to check that every value is
+    /// finite and every name unique. The default is [`Self::observables`].
+    ///
+    /// A model whose observables count events since the previous read (a window that each read
+    /// closes) must override this with a read that leaves the window open. Otherwise the per-tick
+    /// check closes the window on every tick, and each sample counts only its own tick.
+    fn observables_unsampled(&self) -> Vec<(String, f64)> {
+        self.observables()
+    }
 
     /// The current MU budget, if this model has an exotic-energy field (`None` on the baseline path).
     fn exotic_budget(&self) -> Option<ExoticEnergyBudget> {
@@ -436,14 +447,19 @@ fn drive<M: ExperimentModel>(
         let tick_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
             model.step(clock, &active, ledger, rng);
-            let observables = model.observables();
+            let sampled = sample_period != 0 && tick.is_multiple_of(sample_period);
+            let observables = if sampled {
+                model.observables()
+            } else {
+                model.observables_unsampled()
+            };
             if let Some((name, _)) = observables.iter().find(|(_, value)| !value.is_finite()) {
                 return Some(format!("observable '{name}' became non-finite"));
             }
             if let Some(name) = duplicate_observable_name(&observables) {
                 return Some(format!("observable '{name}' was emitted more than once"));
             }
-            if sample_period != 0 && tick.is_multiple_of(sample_period) {
+            if sampled {
                 series.push(StateSample { tick, observables });
             }
             None
