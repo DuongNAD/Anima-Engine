@@ -95,9 +95,9 @@ tài liệu ở bảng thắng; sửa trang này.
 | **G1** `[RUST]` | **B2** — zero-alloc ở đường sinh/tử | ✅ #48 | — | |
 | **G2** | **B5** — `test:e2e` đủ bộ, gate danh sách spec | ✅ #47 | — | |
 | **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ⬜ chưa có PR | `agent-win`, sau G5 | |
-| **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | 🔄 nhánh cục bộ `mac/g4-dashboard-real-data`, chưa push | `agent-mac` | QĐ-2/QĐ-H quyết 2026-11-17 |
+| **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | 🔄 PR #98 | `agent-mac` | QĐ-2/QĐ-H quyết 2026-11-17 |
 | **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | 🔄 draft PR #95 | `agent-win` | G1 đã merge. Viết test đỏ trước |
-| **G6** | Gỡ bằng chứng giả của Map 2 | 🔄 PR #94 | `agent-mac` | |
+| **G6** | Gỡ bằng chứng giả của Map 2 | ✅ #94 (2026-11-17) | — | |
 | **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
 | **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
 | **G9** | Gate vệ sinh thư mục gốc | ⬜ chưa có PR | `agent-mac`, sau G4 | |
