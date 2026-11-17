@@ -88,6 +88,7 @@ fn spawn_agent(world: &mut World, brain: Option<AgentBrain>) -> Entity {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             CognitiveState::Ready,
             InertiaComponent::default(),

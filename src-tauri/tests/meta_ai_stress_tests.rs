@@ -73,6 +73,7 @@ fn test_stress_environmental_transitions_and_boundaries() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();
@@ -89,6 +90,7 @@ fn test_stress_environmental_transitions_and_boundaries() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();
@@ -312,6 +314,7 @@ fn test_zero_dynamic_allocations_on_hot_path() {
                     temp_target: 37.0,
                     previous_deviation: 0.0,
                     starving_ticks: 0,
+                    dehydrating_ticks: Some(0),
                 },
                 FeatureTracker::default(),
             ))

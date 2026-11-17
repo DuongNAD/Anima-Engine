@@ -31,6 +31,7 @@ fn decode_genotype_to_ecs(world: &mut World, genotype: &MorphologyGenotype) -> E
             temp_target: 37.0,
             previous_deviation: 0.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         },))
         .id();
 

@@ -22,6 +22,7 @@ fn test_ecs_world_initialization_and_tick() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             CpgOscillator::new(1.0, 0.5),
         ))
