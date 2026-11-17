@@ -485,7 +485,8 @@ fn mortality_is_expressible_through_the_manifest_and_absent_means_off() {
     )
     .expect("the live world builds");
     endow_all_agents(&mut b, 7.5, 0.0);
-    set_every_agent_state(&mut b, 7.5, 2);
+    // The same thirst streak as world `a`: only the manifest keys differ.
+    dehydrate_everyone(&mut b, 2);
     b.run_schedule_once();
     assert_eq!(
         agent_count(&b),

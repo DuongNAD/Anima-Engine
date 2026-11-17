@@ -20,7 +20,10 @@ pub struct HomeostaticState {
     /// written before the field existed load as "not starving".
     ///
     /// Until F-044 was fixed this one counter also counted thirst (energy **or** hydration at the
-    /// bottom) and served both graces, so a long hunger used up the thirst grace.
+    /// bottom) and served both graces, so a long hunger used up the thirst grace. A save from that
+    /// era restores the shared count here too, so it can include thirst-only ticks. That matches
+    /// the old rule, and it lasts only until the animal has energy again, because the next metabolic
+    /// tick then resets the counter to 0.
     #[serde(default)]
     pub starving_ticks: u32,
     /// Consecutive ticks with **hydration** exhausted, compared with
