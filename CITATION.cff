@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use Anima Engine in your research or build on it, please cite it as below."
+type: software
+title: "Anima Engine"
+abstract: >-
+  A real-time artificial-life and evolution simulator: terrain, water, climate,
+  soil, plants and animals, and the knock-on effects between those systems,
+  inside a Tauri v2 desktop app. Creatures develop from a genotype-encoded
+  morphology and can carry evolved per-agent brains. The simulation core is
+  Rust (Bevy ECS + Burn); the presentation layer is React + TypeScript.
+authors:
+  - family-names: "Nguyen"
+    given-names: "Anh Duong"
+    alias: "DuongNAD"
+repository-code: "https://github.com/DuongNAD/Anima-Engine"
+license:
+  - MIT
+  - Apache-2.0
+version: "0.1.0"
+keywords:
+  - artificial life
+  - evolution
+  - ecosystem simulation
+  - agent-based modeling
+  - neuroevolution
+  - Rust
+  - Bevy
+  - Tauri
