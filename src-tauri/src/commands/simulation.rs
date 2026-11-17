@@ -683,15 +683,22 @@ pub fn build_scientific_export(
     map_elites: crate::core::telemetry_export::MapElitesSummary,
     req: &ScientificExportRequest,
 ) -> Result<ScientificExportParts, String> {
-    let status = engine.get_status();
-    // The run's seed as the simulation thread published it. An engine that has never run has none, and
-    // an export of no run must say so: this used to write 42 for every run, which made a dataset
-    // claim a trajectory it did not come from.
+    // The run's seed as the simulation thread published it, read FIRST. The thread publishes a run's
+    // first tick (segments, ecosystem, census, flux, status) and then the seed, so everything read
+    // after the seed is at least as new as the seed and belongs to the same run. Read the other way
+    // round, an export preempted between the two reads pairs the new run's seed with the previous
+    // run's status.
+    //
+    // An engine with no published seed has no run to export (it was never started, it is still
+    // starting, or its run stopped before its first tick), and an export of no run must say so: this
+    // used to write 42 for every run, which made a dataset claim a trajectory it did not come from.
     let seed = (*engine.run_seed.read().unwrap_or_else(|e| e.into_inner())).ok_or_else(|| {
-        "no simulation run to export: the simulation thread has not published its seed yet, so the \
-         run's provenance cannot be stated. Start the simulation first."
+        "no simulation run to export: no run has published its first tick yet (the simulation was \
+         never started, is still starting, or stopped before its first tick), so the run's \
+         provenance cannot be stated. Start the simulation and wait for its first tick."
             .to_string()
     })?;
+    let status = engine.get_status();
     let provenance = RunProvenance::new(seed, status.tick_count);
 
     let eco = engine

@@ -314,7 +314,9 @@ impl EnergyFluxReport {
 /// What the report holds is what was measured and nothing else:
 ///
 /// - `total_system_energy` and `energy_drift_percent` come from the ledger's compartments and its
-///   locked baseline. They are reported whether or not a matrix exists.
+///   locked baseline. They are filled in whether or not a matrix exists, but they live in the report
+///   object only: `get_energy_flux_matrix` and the export withhold an unmeasured report as a whole,
+///   so while no matrix exists no consumer receives them.
 /// - With **no matrix** the report has no nodes and no links (see
 ///   [`EnergyFluxReport::is_measured`]). Nothing in the running app writes an `EnergyFluxMatrix`, so
 ///   this is the case the app is in. It used to return nine fixed flows (350, 120, 25, ...) that read

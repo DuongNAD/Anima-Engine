@@ -48,7 +48,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `set_lod_focus` | `focus: LodFocus` | — | `enabled: false` trả engine về độ chi tiết đồng đều (mặc định) |
 | `get_lod_focus` | — | `LodFocus` | |
 | `get_lod_bands` | — | `LodBands` | Ranh giới tầng LOD của bản build |
-| `export_scientific_dataset` | `req: ScientificExportRequest` | `ScientificExportResponse` | Gói `schemaVersion` 2. `provenance.seed` là seed thật mà luồng mô phỏng công bố (`SimulationEngine::run_seed`); **lỗi** khi chưa có lượt chạy nào, thay cho seed 42 cũ. `preyBiomass` / `predatorBiomass` là reserve của các agent sống theo vai trò. Bốn trường hằng số (`energyResidual`, hai tốc độ trao đổi chất, `ambientTemperatureC`) đã bỏ. `energyFlux` là `null` khi chưa đo được flux |
+| `export_scientific_dataset` | `req: ScientificExportRequest` | `ScientificExportResponse` | Gói `schemaVersion` 2. `provenance.seed` là seed thật mà luồng mô phỏng công bố (`SimulationEngine::run_seed`); **lỗi** khi chưa có lượt chạy nào công bố tick đầu tiên (chưa khởi động, đang khởi động, hoặc dừng trước tick đầu), thay cho seed 42 cũ; seed chỉ hiện sau tick đầu nên luôn đi cùng dữ liệu của chính lượt chạy đó. `preyBiomass` / `predatorBiomass` là reserve của các agent sống theo vai trò. Bốn trường hằng số (`energyResidual`, hai tốc độ trao đổi chất, `ambientTemperatureC`) đã bỏ. `energyFlux` là `null` khi chưa đo được flux. **Chưa sạch:** `spatialDensity.vegetationDensity` luôn 0.5 mỗi ô và số đực/cái của `demographics` được chia theo chẵn lẻ (chưa đo); `newickTree` là phả hệ của cả tiến trình, không reset khi `start`, nên sau một lần khởi động lại nó còn nhánh của lượt chạy trước |
 
 ### Môi trường — `commands/environment.rs`
 
