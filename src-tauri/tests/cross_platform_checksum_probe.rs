@@ -24,8 +24,11 @@
 //! QD-SEL1b is open), and this probe's output lands in CI logs and a committed table. The checksum
 //! still covers that state, so a platform difference there is still caught, only not shown.
 //!
-//! By default it runs a quick subset (seed 1, tick 180) so that the ordinary `cargo test` stays
-//! cheap. `ANIMA_M1_FULL=1` runs the full matrix: seeds 1, 2, 3 and ticks 180, 1800 and 18000.
+//! By default it runs a quick subset (seed 1, ticks 0 and 180) so that the ordinary `cargo test`
+//! stays cheap. `ANIMA_M1_FULL=1` runs the full matrix: seeds 1, 2, 3 and ticks 0, 180, 1800 and
+//! 18000. Tick 0 is the world straight after genesis, before any schedule run, so a difference there
+//! is in world generation rather than in the tick dynamics. The reference world has no tick-0 row:
+//! the runner refuses a zero-tick manifest.
 //! Run it in release, as the workflow does:
 //!
 //! ```text
@@ -53,9 +56,9 @@ use serde_json::json;
 
 const FULL_ENV: &str = "ANIMA_M1_FULL";
 const FULL_SEEDS: [u64; 3] = [1, 2, 3];
-const FULL_TICKS: [u64; 3] = [180, 1_800, 18_000];
+const FULL_TICKS: [u64; 4] = [0, 180, 1_800, 18_000];
 const QUICK_SEEDS: [u64; 1] = [1];
-const QUICK_TICKS: [u64; 1] = [180];
+const QUICK_TICKS: [u64; 2] = [0, 180];
 /// The field grid both live configurations are built with, as in the other live probes.
 const GRID: (usize, usize) = (16, 16);
 /// Observables never printed (see the module docs). Matched as a substring of the name.
@@ -187,7 +190,7 @@ fn live_rows(model: &str, world: &InitialConditionSet, seed: u64, ticks: &[u64])
 fn reference_rows(seed: u64, ticks: &[u64]) -> usize {
     let registry = ObservableRegistry::reference_default();
     let mut rows = 0;
-    for &tick in ticks {
+    for &tick in ticks.iter().filter(|&&t| t > 0) {
         let manifest = reference_manifest(seed, tick);
         let result =
             run_manifest_seed::<ReferenceEvolutionWorld>(&manifest, &registry, seed, None, None);
@@ -237,9 +240,10 @@ fn m1_print_world_checksums_for_cross_platform_comparison() {
         rows += live_rows("live.p1", &live_p1_world(), seed, ticks);
         rows += reference_rows(seed, ticks);
     }
+    let reference_ticks = ticks.iter().filter(|&&t| t > 0).count();
     assert_eq!(
         rows,
-        3 * seeds.len() * ticks.len(),
+        seeds.len() * (2 * ticks.len() + reference_ticks),
         "the probe must print one row per model, seed and checkpoint"
     );
 }
