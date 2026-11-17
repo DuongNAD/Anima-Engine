@@ -14,27 +14,14 @@ export type InterventionKindName =
   | 'ToxicityPlume'
   | 'PathogenTransmission';
 
-export interface ScheduledIntervention {
-  id: number;
-  kind: InterventionKindName;
-  regionType: 'Global' | 'Rect' | 'Radius' | 'Cell';
-  startTick: number;
-  durationTicks: number;
-  intensity: number;
-  curve: CurveKind;
-  signedNegative: boolean;
-  reversible: boolean;
-  status: 'Pending' | 'Active' | 'Completed';
-}
-
-export interface CausalInterventionPanelProps {
-  currentTick?: number;
-  isRunning?: boolean;
-}
-
-export const CausalInterventionPanel: React.FC<CausalInterventionPanelProps> = ({
-  currentTick = 0,
-}) => {
+/**
+ * Interventions cannot be dispatched from the desktop app: the backend has no
+ * `dispatch_causal_intervention` command. The panel keeps what is real (the region picker over the
+ * live spatial density raster, and the curve preview) and says plainly that dispatch is not
+ * available. It used to start with a pre-filled "Active" RainfallDelta row, and when the missing
+ * command threw it reported the intervention as "registered in active ledger".
+ */
+export const CausalInterventionPanel: React.FC = () => {
   const [spatialDensity, setSpatialDensity] = useState<SpatialDensityReport | null>(null);
   const [regionMode, setRegionMode] = useState<'Global' | 'Rect' | 'Radius' | 'Cell'>('Global');
   const [regionParams, setRegionParams] = useState<SpatialRegionParams>({
@@ -57,23 +44,6 @@ export const CausalInterventionPanel: React.FC<CausalInterventionPanelProps> = (
   const [startTickOffset, setStartTickOffset] = useState<number>(0);
   const [reversible, setReversible] = useState<boolean>(true);
 
-  const [ledger, setLedger] = useState<ScheduledIntervention[]>([
-    {
-      id: 1,
-      kind: 'RainfallDelta',
-      regionType: 'Global',
-      startTick: 100,
-      durationTicks: 500,
-      intensity: 0.3,
-      curve: 'Step',
-      signedNegative: true,
-      reversible: true,
-      status: 'Active',
-    },
-  ]);
-
-  const [dispatchStatus, setDispatchStatus] = useState<string | null>(null);
-
   // Fetch Spatial Density Raster
   useEffect(() => {
     let alive = true;
@@ -93,70 +63,6 @@ export const CausalInterventionPanel: React.FC<CausalInterventionPanelProps> = (
       alive = false;
     };
   }, []);
-
-  const handleApplyIntervention = async () => {
-    const newId = Date.now() % 100000;
-    const startTick = currentTick + startTickOffset;
-
-    const newIntervention: ScheduledIntervention = {
-      id: newId,
-      kind,
-      regionType: regionMode,
-      startTick,
-      durationTicks,
-      intensity,
-      curve,
-      signedNegative,
-      reversible,
-      status: startTickOffset === 0 ? 'Active' : 'Pending',
-    };
-
-    try {
-      await invoke('dispatch_causal_intervention', {
-        cmd: {
-          id: newId,
-          cause_id: 4294967295, // CAUSE_OBSERVER
-          kind: kind === 'RainfallDelta'
-            ? 'RainfallDelta'
-            : kind === 'TemperatureDelta'
-            ? 'TemperatureDelta'
-            : kind === 'Deforest'
-            ? 'Deforest'
-            : kind === 'RemovePredators'
-            ? 'RemovePredators'
-            : kind === 'AddNutrient'
-            ? 'AddNutrient'
-            : kind === 'GeneticInjection'
-            ? { GeneticInjection: { target_species: null, trait_modifications: [], count: 10 } }
-            : kind === 'ToxicityPlume'
-            ? { ToxicityPlume: { center_x: regionParams.cx, center_y: regionParams.cy, radius: regionParams.r, toxicity_level: intensity, decay_rate: 0.05 } }
-            : { PathogenTransmission: { pathogen_id: 1, transmission_rate: intensity, mortality_multiplier: 1.5 } },
-          region: regionMode === 'Global'
-            ? { Global: true }
-            : regionMode === 'Cell'
-            ? { Cell: { x: regionParams.cellX, y: regionParams.cellY } }
-            : regionMode === 'Rect'
-            ? { Rect: { min_x: Math.round(regionParams.minX * 16), min_y: Math.round(regionParams.minY * 16), max_x: Math.round(regionParams.maxX * 16), max_y: Math.round(regionParams.maxY * 16) } }
-            : { Radius: { cx: regionParams.cx * 16, cy: regionParams.cy * 16, r: regionParams.r * 16 } },
-          start_tick: startTick,
-          duration_ticks: durationTicks,
-          intensity,
-          signed_negative: signedNegative,
-          curve,
-          reversible,
-        },
-      });
-      setDispatchStatus(`Intervention #${newId} dispatched successfully.`);
-    } catch {
-      setDispatchStatus(`Intervention #${newId} registered in active ledger.`);
-    }
-
-    setLedger((prev) => [newIntervention, ...prev]);
-  };
-
-  const handleCancelIntervention = (id: number) => {
-    setLedger((prev) => prev.filter((it) => it.id !== id));
-  };
 
   return (
     <div
@@ -388,114 +294,29 @@ export const CausalInterventionPanel: React.FC<CausalInterventionPanelProps> = (
 
             <button
               data-testid="apply-intervention-btn"
-              onClick={handleApplyIntervention}
+              disabled
+              title="Not available in this build"
               className="hud-btn"
               style={{
                 padding: '6px 16px',
-                backgroundColor: '#0284c7',
-                color: '#ffffff',
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                color: '#94a3b8',
                 borderRadius: '6px',
-                border: 'none',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
                 fontWeight: 600,
                 fontSize: '12px',
-                cursor: 'pointer',
+                cursor: 'not-allowed',
               }}
             >
               ⚡ Dispatch Causal Intervention
             </button>
           </div>
 
-          {dispatchStatus && (
-            <div data-testid="dispatch-status-msg" style={{ fontSize: '11px', color: '#10b981', marginTop: '2px' }}>
-              {dispatchStatus}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Active Interventions Ledger Table */}
-      <div
-        data-testid="active-interventions-ledger"
-        style={{
-          backgroundColor: 'rgba(15, 23, 42, 0.55)',
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: '8px',
-          padding: '12px',
-        }}
-      >
-        <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc', marginBottom: '8px' }}>
-          Active &amp; Scheduled Causal Interventions Ledger
-        </div>
-
-        {ledger.length === 0 ? (
-          <div style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
-            No active interventions in ledger.
+          <div data-testid="intervention-dispatch-unavailable" style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+            Dispatch is not available in this build: the desktop backend has no command that applies an
+            intervention. Headless runs declare interventions in an experiment manifest for <code>anima-lab</code>.
           </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: '#cbd5e1' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', textAlign: 'left' }}>
-                  <th style={{ padding: '6px' }}>ID</th>
-                  <th style={{ padding: '6px' }}>Kind</th>
-                  <th style={{ padding: '6px' }}>Region</th>
-                  <th style={{ padding: '6px' }}>Start Tick</th>
-                  <th style={{ padding: '6px' }}>Duration</th>
-                  <th style={{ padding: '6px' }}>Intensity</th>
-                  <th style={{ padding: '6px' }}>Curve</th>
-                  <th style={{ padding: '6px' }}>Status</th>
-                  <th style={{ padding: '6px', textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ledger.map((it) => (
-                  <tr key={it.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={{ padding: '6px', fontWeight: 600, color: '#38bdf8' }}>#{it.id}</td>
-                    <td style={{ padding: '6px' }}>{it.kind}</td>
-                    <td style={{ padding: '6px' }}>{it.regionType}</td>
-                    <td style={{ padding: '6px' }}>t = {it.startTick}</td>
-                    <td style={{ padding: '6px' }}>{it.durationTicks} ticks</td>
-                    <td style={{ padding: '6px', color: it.signedNegative ? '#fca5a5' : '#a7f3d0' }}>
-                      {it.signedNegative ? '−' : '+'}{(it.intensity * 100).toFixed(0)}%
-                    </td>
-                    <td style={{ padding: '6px' }}>{it.curve}</td>
-                    <td style={{ padding: '6px' }}>
-                      <span
-                        style={{
-                          padding: '2px 6px',
-                          borderRadius: '3px',
-                          backgroundColor: it.status === 'Active' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                          color: it.status === 'Active' ? '#a7f3d0' : '#fef08a',
-                          fontWeight: 600,
-                          fontSize: '10px',
-                        }}
-                      >
-                        {it.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '6px', textAlign: 'right' }}>
-                      <button
-                        onClick={() => handleCancelIntervention(it.id)}
-                        data-testid={`cancel-intervention-${it.id}`}
-                        style={{
-                          padding: '2px 6px',
-                          backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          color: '#fca5a5',
-                          borderRadius: '4px',
-                          fontSize: '10px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

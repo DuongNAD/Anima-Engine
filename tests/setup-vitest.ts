@@ -16,7 +16,6 @@ import {
   mockSpatialDensityReport,
   mockScientificExportResponse,
   mockNewickTree,
-  mockCausalBranchTreeState,
 } from './mocks/mock_ipc_payloads';
 import { tickPayloadIsAdapted } from './mocks/tick-adaptation';
 
@@ -419,10 +418,8 @@ beforeEach(() => {
       }
       case 'export_phylogenetic_tree':
         return mockNewickTree;
-      case 'get_causal_branch_tree':
-        return mockCausalBranchTreeState;
-      case 'dispatch_causal_intervention':
-        return true;
+      // get_causal_branch_tree and dispatch_causal_intervention are not mocked: neither exists in the
+      // backend (src-tauri/src/lib.rs), so a call to either must fail here as it would in the app.
       case 'plugin:event|listen':
         return 0;
       case 'plugin:event|emit':

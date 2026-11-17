@@ -22,8 +22,9 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
 
   // Rolling time-series buffers
   const [plantsHistory, setPlantsHistory] = useState<number[]>([]);
-  const [preyBiomassHistory, setPreyBiomassHistory] = useState<number[]>([]);
-  const [predBiomassHistory, setPredBiomassHistory] = useState<number[]>([]);
+  // One consumer series: the backend reports animal energy as a single pool. It used to be split
+  // 75/25 into "prey" and "predator" biomass here, which no part of the simulation measures.
+  const [animalBiomassHistory, setAnimalBiomassHistory] = useState<number[]>([]);
   const [detritusHistory, setDetritusHistory] = useState<number[]>([]);
   const [totalEnergyHistory, setTotalEnergyHistory] = useState<number[]>([]);
   const [preyCountHistory, setPreyCountHistory] = useState<number[]>([]);
@@ -31,17 +32,13 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
   const [shannonHistory, setShannonHistory] = useState<number[]>([]);
   const [simpsonHistory, setSimpsonHistory] = useState<number[]>([]);
   const [residualHistory, setResidualHistory] = useState<number[]>([]);
-  const [baselineEnergyState, setBaselineEnergyState] = useState<number | null>(
-    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
+  // Baseline = the first finite total reported, the same rule as the dashboard header.
+  const initialBaseline =
+    initialEcosystemState && typeof initialEcosystemState.total === 'number' && Number.isFinite(initialEcosystemState.total)
       ? initialEcosystemState.total
-      : null,
-  );
-
-  const baselineEnergyRef = useRef<number | null>(
-    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
-      ? initialEcosystemState.total
-      : null,
-  );
+      : null;
+  const [baselineEnergyState, setBaselineEnergyState] = useState<number | null>(initialBaseline);
+  const baselineEnergyRef = useRef<number | null>(initialBaseline);
 
   // Polling loop
   useEffect(() => {
@@ -53,17 +50,16 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
         if (!alive || !eco) return;
         setEcoState(eco);
 
-        if (baselineEnergyRef.current === null && typeof eco.total === 'number' && eco.total > 0) {
+        if (baselineEnergyRef.current === null && typeof eco.total === 'number' && Number.isFinite(eco.total)) {
           baselineEnergyRef.current = eco.total;
           setBaselineEnergyState(eco.total);
         }
 
-        const baseline = baselineEnergyRef.current || eco.total || 900;
+        const baseline = baselineEnergyRef.current ?? eco.total;
         const residual = Math.abs(eco.total - baseline);
 
         setPlantsHistory((prev) => [...prev, eco.plants].slice(-1000));
-        setPreyBiomassHistory((prev) => [...prev, eco.animals * 0.75].slice(-1000));
-        setPredBiomassHistory((prev) => [...prev, eco.animals * 0.25].slice(-1000));
+        setAnimalBiomassHistory((prev) => [...prev, eco.animals].slice(-1000));
         setDetritusHistory((prev) => [...prev, eco.detritus].slice(-1000));
         setTotalEnergyHistory((prev) => [...prev, eco.total].slice(-1000));
         setPreyCountHistory((prev) => [...prev, eco.prey_count].slice(-1000));
@@ -96,16 +92,25 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
     };
   }, [isRunning]);
 
-  // Energy conservation metrics
-  const currentTotalEnergy = ecoState?.total ?? 900;
-  const baselineEnergy = baselineEnergyState ?? 900;
-  const currentResidual = Math.abs(currentTotalEnergy - baselineEnergy);
-  const driftPercent = baselineEnergy > 0 ? (currentResidual / baselineEnergy) * 100 : 0;
+  // Energy conservation metrics. With no telemetry yet there is no residual to show; this panel
+  // used to fall back to 900 EU for both the total and the baseline.
+  const currentTotalEnergy = ecoState?.total ?? null;
+  const baselineEnergy = baselineEnergyState;
+  const currentResidual =
+    currentTotalEnergy !== null && baselineEnergy !== null ? Math.abs(currentTotalEnergy - baselineEnergy) : null;
+  const driftPercent =
+    currentResidual !== null && baselineEnergy !== null && baselineEnergy > 0
+      ? (currentResidual / baselineEnergy) * 100
+      : null;
 
-  const isStrictlyConserved = currentResidual <= 0.001 && driftPercent < 0.01;
-  const isWarning = !isStrictlyConserved && currentResidual <= 0.01;
+  const isStrictlyConserved = currentResidual !== null && currentResidual <= 0.001;
+  const isWarning = currentResidual !== null && !isStrictlyConserved && currentResidual <= 0.01;
 
-  const residualStatusClass = isStrictlyConserved ? 'conserved' : isWarning ? 'warning' : 'violation';
+  const residualStatusClass =
+    currentResidual === null ? 'unknown' : isStrictlyConserved ? 'conserved' : isWarning ? 'warning' : 'violation';
+
+  const fmt = (v: number | null | undefined, digits: number): string =>
+    v === null || v === undefined || !Number.isFinite(v) ? '—' : v.toFixed(digits);
 
   return (
     <div
@@ -129,12 +134,15 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
         <div
           data-testid={`conservation-gauge-${residualStatusClass}`}
           style={{
-            backgroundColor: isStrictlyConserved
-              ? 'rgba(6, 78, 59, 0.45)'
-              : isWarning
-              ? 'rgba(120, 53, 15, 0.45)'
-              : 'rgba(127, 29, 29, 0.45)',
-            border: `1px solid ${isStrictlyConserved ? '#10b981' : isWarning ? '#f59e0b' : '#ef4444'}`,
+            backgroundColor:
+              currentResidual === null
+                ? 'rgba(255, 255, 255, 0.04)'
+                : isStrictlyConserved
+                  ? 'rgba(6, 78, 59, 0.45)'
+                  : isWarning
+                    ? 'rgba(120, 53, 15, 0.45)'
+                    : 'rgba(127, 29, 29, 0.45)',
+            border: `1px solid ${currentResidual === null ? 'rgba(255, 255, 255, 0.12)' : isStrictlyConserved ? '#10b981' : isWarning ? '#f59e0b' : '#ef4444'}`,
             borderRadius: '8px',
             padding: '12px',
             boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
@@ -144,11 +152,18 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
             Closed-Loop Energy Residual |E(t) - E(0)|
           </div>
           <div style={{ fontSize: '18px', fontWeight: 700, color: '#f8fafc', margin: '4px 0' }}>
-            {currentResidual.toFixed(5)} EU
+            {fmt(currentResidual, 5)} EU
           </div>
-          <div style={{ fontSize: '11px', color: isStrictlyConserved ? '#a7f3d0' : isWarning ? '#fef08a' : '#fecaca' }}>
-            Status: {isStrictlyConserved ? 'CONSERVED (≤ 10⁻³ EU)' : isWarning ? 'TOLERANCE WARNING' : 'CONSERVATION DRIFT'}
-            {' '}({driftPercent.toFixed(4)}% drift)
+          <div style={{ fontSize: '11px', color: currentResidual === null ? '#94a3b8' : isStrictlyConserved ? '#a7f3d0' : isWarning ? '#fef08a' : '#fecaca' }}>
+            Status:{' '}
+            {currentResidual === null
+              ? 'NO TELEMETRY YET'
+              : isStrictlyConserved
+                ? 'CONSERVED (≤ 10⁻³ EU)'
+                : isWarning
+                  ? 'TOLERANCE WARNING'
+                  : 'CONSERVATION DRIFT'}
+            {' '}({fmt(driftPercent, 4)}% drift)
           </div>
         </div>
 
@@ -163,10 +178,10 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
         >
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Biodiversity Indices</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8', margin: '4px 0' }}>
-            Shannon H&apos;: {(ecoState?.shannon ?? 0.5).toFixed(2)} | Simpson D: {(ecoState?.simpson ?? 0.4).toFixed(2)}
+            Shannon H&apos;: {fmt(ecoState?.shannon, 2)} | Simpson D: {fmt(ecoState?.simpson, 2)}
           </div>
           <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
-            Niche Divergence: {(ecoState?.niche_divergence ?? 0.15).toFixed(2)}
+            Niche Divergence: {fmt(ecoState?.niche_divergence, 2)}
           </div>
         </div>
 
@@ -181,11 +196,11 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
         >
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Active Population Census</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', margin: '4px 0' }}>
-            Prey: <span style={{ color: '#3b82f6' }}>{ecoState?.prey_count ?? 12}</span> | 
-            Predator: <span style={{ color: '#ef4444' }}>{ecoState?.predator_count ?? 3}</span>
+            Prey: <span style={{ color: '#3b82f6' }}>{ecoState?.prey_count ?? '—'}</span> | 
+            Predator: <span style={{ color: '#ef4444' }}>{ecoState?.predator_count ?? '—'}</span>
           </div>
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-            Sex Ratio (M/F): {demographics?.sexRatio ? demographics.sexRatio.toFixed(2) : '1.00'}
+            Sex Ratio (M/F): {fmt(demographics?.sexRatio, 2)}
           </div>
         </div>
       </div>
@@ -199,11 +214,12 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
           height={220}
           timeWindow={timeWindow}
           onTimeWindowChange={setTimeWindow}
-          referenceLine={{ y: baselineEnergy, label: 'E_total (Baseline)', color: '#cbd5e1' }}
+          referenceLine={
+            baselineEnergy !== null ? { y: baselineEnergy, label: 'E_total (Baseline)', color: '#cbd5e1' } : undefined
+          }
           series={[
             { label: 'Plants (NPP)', color: '#10b981', values: plantsHistory },
-            { label: 'Prey Biomass', color: '#3b82f6', values: preyBiomassHistory },
-            { label: 'Predator Biomass', color: '#ef4444', values: predBiomassHistory },
+            { label: 'Animals (all consumers)', color: '#3b82f6', values: animalBiomassHistory },
             { label: 'Detritus', color: '#a855f7', values: detritusHistory },
             { label: 'Total Energy', color: '#cbd5e1', values: totalEnergyHistory, strokeDash: '4 4' },
           ]}
@@ -264,12 +280,12 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
             Demographic Age Cohorts Pyramid
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {(demographics?.ageCohorts || [
-              { minAge: 0, maxAge: 50, count: 12 },
-              { minAge: 51, maxAge: 150, count: 8 },
-              { minAge: 151, maxAge: 300, count: 3 },
-              { minAge: 301, maxAge: 1000, count: 1 },
-            ]).map((cohort, idx) => {
+            {!demographics && (
+              <div data-testid="age-cohorts-unreported" style={{ fontSize: '11px', color: '#94a3b8' }}>
+                No demographic census reported yet.
+              </div>
+            )}
+            {(demographics?.ageCohorts ?? []).map((cohort, idx) => {
               const maxCohort = 20;
               const widthPct = Math.min(100, (cohort.count / maxCohort) * 100);
               return (
@@ -309,13 +325,12 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
             Mortality Cause Distribution
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {(demographics?.mortalityCauses || [
-              { cause: 'Starvation', count: 4n },
-              { cause: 'Predation', count: 12n },
-              { cause: 'Senescence', count: 2n },
-              { cause: 'Toxicity', count: 0n },
-              { cause: 'Pathogen', count: 0n },
-            ]).map((m, idx) => {
+            {!demographics && (
+              <div data-testid="mortality-causes-unreported" style={{ fontSize: '11px', color: '#94a3b8' }}>
+                No mortality census reported yet.
+              </div>
+            )}
+            {(demographics?.mortalityCauses ?? []).map((m, idx) => {
               const countNum = Number(m.count);
               const maxMort = 25;
               const widthPct = Math.min(100, (countNum / maxMort) * 100);

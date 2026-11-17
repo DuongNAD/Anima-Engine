@@ -506,21 +506,3 @@ export interface CausalBranchTreeState {
     rmsd: number;
   };
 }
-
-export const mockCausalBranchTreeState: CausalBranchTreeState = {
-  rootRunId: 1001,
-  nodes: [
-    { id: 1001, parentId: null, forkTick: 0, label: 'Baseline (Control)', seedStrategy: 'InheritStream', status: 'Completed', children: [1002, 1003] },
-    { id: 1002, parentId: 1001, forkTick: 500, label: 'Intervention: Drought +30%', seedStrategy: 'DerivedStream (1)', status: 'Completed', children: [] },
-    { id: 1003, parentId: 1001, forkTick: 500, label: 'Intervention: Nutrient Spike', seedStrategy: 'DerivedStream (2)', status: 'Completed', children: [] },
-  ],
-  divergenceMetrics: {
-    branchA: 1002,
-    branchB: 1003,
-    biomassDelta: -145.2,
-    populationDelta: -18,
-    shannonDivergence: 0.14,
-    dtwDistance: 24.8,
-    rmsd: 12.3,
-  },
-};
