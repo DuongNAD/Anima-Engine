@@ -148,7 +148,7 @@ nightly time="14400":
 # scripts/verify_dataflow.py.
 dataflow-truth:
     cd "$HD_CRATE" && cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot
-    @echo "canh 'uses' muc module: $(python3 scripts/verify_dataflow.py --count dataflow-truth.dot 2>/dev/null || echo '(chay dataflow-verify de xem)')"
+    @echo "canh 'uses' muc module: $(python3 scripts/verify_dataflow.py --count dataflow-truth.dot || echo '(loi o dong tren)')"
 
 # depth=1 -> so sánh ở mức "core", "ai". depth=2 -> "core::ecs".
 dataflow-verify depth="1":

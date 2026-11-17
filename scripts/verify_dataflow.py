@@ -63,9 +63,27 @@ def load_claim(p: Path):
     return edges, d
 
 
+def count_truth(truth_p: Path) -> int:
+    """`--count <dataflow-truth.dot> [depth]`: in so canh 'uses' muc module, khong can dataflow.json.
+
+    `just dataflow-truth` goi che do nay. Truoc day script khong co co `--count` nen dong tong ket
+    luon in ban du phong (F-026). File thieu hoac khong co canh nao -> exit 1, co thong bao.
+    """
+    if not truth_p.exists():
+        sys.exit(f"FAIL: thieu {truth_p}")
+    truth = load_truth(truth_p)
+    if not truth:
+        sys.exit(f"FAIL: khong doc duoc canh 'uses' nao tu {truth_p}")
+    print(len(truth))
+    return 0
+
+
 def main():
+    if len(sys.argv) >= 3 and sys.argv[1] == "--count":
+        return count_truth(Path(sys.argv[2]))
     if len(sys.argv) < 3:
-        sys.exit("dung: verify_dataflow.py <dataflow.json> <dataflow-truth.dot> [depth]")
+        sys.exit("dung: verify_dataflow.py <dataflow.json> <dataflow-truth.dot> [depth]\n"
+                 "     verify_dataflow.py --count <dataflow-truth.dot> [depth]")
     claim_p, truth_p = Path(sys.argv[1]), Path(sys.argv[2])
     for p in (claim_p, truth_p):
         if not p.exists():
