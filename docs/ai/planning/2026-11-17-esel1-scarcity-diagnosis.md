@@ -3,7 +3,7 @@ phase: planning
 feature: experiment-e-sel1-food-scarcity
 title: Chẩn đoán sau E-SEL1 — cái gì giới hạn quần thể con mồi, và yếu tố khan hiếm nào dùng được
 description: Đo thăm dò, không đọc khối lượng cơ thể, sau khi E-SEL1 đóng tại smoke. Kết quả - đồng cỏ là nguồn sống và không bao giờ cạn vì sinh sản dừng ở 80 con mồi; nước giới hạn quần thể; chỉ sức chứa đồng cỏ hạ được standing crop. Đầu vào cho quyết định QĐ-SEL1b của chủ dự án
-status: active
+status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-17
 ---
@@ -132,6 +132,10 @@ kín.
 - Mọi thứ về khối lượng cơ thể, cố ý.
 
 ## 8. Quyết định cho chủ dự án: QĐ-SEL1b
+
+> **Đã quyết 2026-11-17: phương án A.** Bản ghi ở
+> [roadmap 31/10 §4.1](../../planning/COMPLETION_ROADMAP_2026-10-31.md#41-quyết-định-sau-2026-11-14-ghi-thêm-2026-11-17);
+> thẻ S6 và SEL2 trong kế hoạch swarm. Phần dưới là câu hỏi như đã đặt ra.
 
 Câu hỏi: có làm lại thí nghiệm chọn lọc theo khan hiếm không, và nếu có thì với yếu tố nào? Mọi phương án đều
 cần khoá manifest mới (vắng khoá thì như cũ) và một bản đăng ký mới. Không phương án nào sửa bản E-SEL1 đã đóng.

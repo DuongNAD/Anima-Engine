@@ -2,7 +2,7 @@
 phase: monitoring
 title: Triage báo cáo AUDIT_REPORT.md trên origin/feat/ecological-selection
 description: Đối chiếu hai bản sao AUDIT_REPORT.md trên main, xác minh 27 mục trên thân cây 9dd4214c và đề xuất 21 thẻ tiếp theo theo mẫu §6
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-11-14
 ---

@@ -554,6 +554,21 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
 | Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
 
+Các hàng dưới đây được thêm ngày **2026-11-17**, cho những vùng đạt bậc sau tháng 7. Chúng trỏ tới PR, ADR
+và file test có trên thân cây tại `6f14124`; **không test nào được chạy lại để viết chúng**, và chúng không
+mang số đo. "Opt-in" nghĩa là khoá manifest vắng thì thế giới chạy như trước.
+
+| Vùng | Bậc đạt được | Ghi chú |
+|---|---|---|
+| Tử vong và fitness sinh thái (F-018…F-022) | Headless, opt-in | `live.mortality`, `live.ecological_fitness`; gate ở `mortality_tests.rs`, `fitness_tests.rs`, `qd_tests.rs`, `observables_tests.rs`. Chi tiết và phần còn mở ở §3.19 |
+| Tất định của lịch tick giữa các tiến trình | Live integrated | Một thứ tự tổng cho lịch (F-041, #65) và restore sau ca chết (F-040, #64); gate ở `schedule_total_order_tests.rs`, `schedule_ambiguity_tests.rs`. Giữa các nền tảng thì hợp đồng tất định vẫn **không hứa** |
+| Quần thể luân chuyển trong adapter sống | Headless, opt-in | `live.reproduction` (thẻ S1, #66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md)); gate ở `live_turnover_tests.rs`. `EvolutionaryReplacement` của app không đổi |
+| Vận động | Headless, opt-in | `live.locomotion` (#76, [ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)); gate ở `locomotion_steering_tests.rs` và bản zero-alloc. Chưa bật mặc định trong app; ba câu hỏi mở ở §3.00 P3 |
+| Sinh thái sống được cho thú săn và con mồi | Headless, opt-in | Sàn bộ lái, lái theo khát và ba khoá thu nhập của thú săn (#82, #87, [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)); test khoá P1 là `predator_prey_coexistence_tests.rs` (#89). **Không** phải S43 hay Red Queen |
+| Phả hệ | Live integrated, trừ OSS-073 | Newick, `simplify`, nén trong tracker sống và MRCA (#75, lệnh `get_lineage_mrca`). Line of descent (OSS-073) chưa làm — xem §3.15 |
+| Bảo vệ nhánh và CI bắt buộc | Live integrated | Hai nhánh được bảo vệ từ 2026-11-17 — xem §3.00 |
+| Thế giới đọc được (frontend) | Đã merge mười thẻ | RW-A1…A3, RW-B1…B3, RW-C1…C4. Ba thẻ cần phần cứng còn lại ở §3.00 P4 |
+
 ### 2.1 Vì sao bộ gate này đáng tin
 
 Ghi lại để phiên sau không vô tình gỡ mất:
@@ -585,6 +600,40 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 > bối cảnh. Nó trỏ tới PR và finding thay vì chép số (quy tắc 8). Quyết định thuộc chủ dự án nằm ở
 > [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) và
 > [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md).
+
+#### Bảng tiến độ theo chặng (đối chiếu 2026-11-17)
+
+Thứ tự chặng và cổng ra là của
+[kế hoạch 13/11 §5](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#5-lộ-trình-theo-chặng); bảng này chỉ ghi
+mỗi chặng đang ở đâu. Trạng thái từng thẻ nằm ở
+[hàng đợi thẻ](../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ). Nguồn đối chiếu: `gh pr list --state all`,
+`git branch -r` và mã trên thân cây tại `6f14124`, ngày 2026-11-17; trạng thái thẻ ở hàng chặng 3 và 4
+được đối chiếu lại cùng ngày tại `28c45ef`. **Không lệnh build hay test nào được chạy cho bảng này**; nó
+không mang số đo.
+
+| Chặng | Cổng ra | Trạng thái | Còn lại |
+|---|---|---|---|
+| 0. Dọn bàn và quyết định | Không còn ô quyết định trống cho chặng 1 và 2; mọi PR mở có trạng thái | **Cổng đã qua.** Mười PR mở ngày 13/11 đã xử lý: #38 merge; #30, #31, #34–#37, #39–#41 đóng. Kiểm kê nhánh là thẻ D0 (#42). Cây làm việc đã dọn (MP-0.5) | MP-0.2 xong: QĐ-C, QĐ-1 và QĐ-EN được chủ dự án quyết ngày 2026-11-17. MP-0.6: QĐ-M1 chưa quyết, nên mọi tài liệu kế hoạch vẫn `proposed` |
+| 1. Một cây xanh | CI xanh hai job trên thân cây, rồi bảo vệ nhánh | **Đóng 2026-11-17** (mục ngay dưới) | — |
+| 2. Gộp hai thân | `C5`: đo lại toàn bộ vào §1.g | **Đóng 2026-11-16.** T2 là #45; `main` được fast-forward lên thân cây | §1.g đỏ đúng một bước (`check:e2`), #59 sửa sau đó. Lượt đo toàn bộ mới nhất là §1.h, tại `6f14124` |
+| 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm.** Xong: G1 (#48), G2 (#47), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G8 phần lớn (2026-11-14) | G9 có nhánh `mac/g9-root-hygiene`, chưa có PR. G3 chưa có PR. R0 chạy sau khi cả đợt merge |
+| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. QĐ-EN, QĐ-SEL1b và QĐ-ECO-C1 đã quyết ngày 2026-11-17; thẻ sinh ra là S6, S7, S8 và SEL2. Cùng ngày S8 (#106) và S6 (#110) đã merge; lượt đo của S6 không tìm ra chế độ khan hiếm thức ăn khả thi, nên SEL2 chờ một quyết định mới |
+| 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | QĐ-C = C và QĐ-1 = mức 2 đã quyết ngày 2026-11-17; thẻ R1c (nâng `burn`) phải xong trước chặng này. Còn trống: QĐ-P1…P3, QĐ-M4, QĐ-M8 |
+| 6. Bản 1.0 | `H11`: tag `v1.0.0` | Chưa bắt đầu | Thẻ V0–V11, chạy sau R0 |
+| 7. Thế giới nhiều máy | `contribute_matches_solo` xanh với hai máy thật | Chưa bắt đầu | QĐ-M3, QĐ-M5, QĐ-M6, QĐ-M7 |
+
+Ba điều bảng trên không tự nói ra:
+
+- **Thứ tự đã bị đi trước ở một chỗ.** Kế hoạch swarm đặt S1 và S4 sau R0. Cả hai, cùng ba ADR 0005–0007 và
+  bản đăng ký E-SEL1, đã merge ngày 16–17/11 khi Đợt 2 chưa xong, theo quyết định của phiên lead dưới uỷ
+  quyền trong chat ([`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1). §1.h đã đo một commit có cả những
+  thay đổi này, nhưng việc đó không làm chặng 3 qua cổng: cổng là R0, chạy sau khi Đợt 2 merge.
+- **E2 không tính vào cổng chặng 4.** Cổng nhận kết quả null, nhưng chỉ khi thí nghiệm có sức mạnh đã khai
+  trước. E2 và lượt chạy lại theo sửa đổi 1 (#59) null do hiệu ứng sàn (§3.1), nên chúng không phải thí
+  nghiệm mà cổng này đòi.
+- **Hai PR từng nhắm `main` thay vì thân cây** (luật L1 của kế hoạch 13/11) **đã được xử lý ngày 2026-11-17**
+  theo quyết định của chủ dự án. Cả hai được đổi nhánh đích và merge vào thân cây: #56 (`CITATION.cff`), và
+  #68 (test Rust khoá fixture E2 theo bản manifest của lượt chạy) sau khi CI của nó chạy lại xanh trên nền mới.
 
 #### Chặng 1 đã đóng: bảo vệ nhánh bật ngày 2026-11-17
 
@@ -669,7 +718,9 @@ Vậy định nghĩa hoàn thành dưới đây đã đạt. Nó **không** có 
   - Thú săn founder sinh sản trước lần săn đầu tiên, rồi chết đói trên đường tới con mồi.
   - Giảm chi phí thú săn × 0,5 kèm bán kính đòn 5 cho 8/10 seed.
   - Seed còn hỏng là do con mồi thiếu nước.
-- **Quyết định của chủ dự án:**
+- **Quyết định của chủ dự án — đã ra ngày 2026-11-17: làm cả hai, opt-in** (thẻ S7; bản ghi ở
+  [roadmap 31/10 §4.1](COMPLETION_ROADMAP_2026-10-31.md#41-quyết-định-sau-2026-11-14-ghi-thêm-2026-11-17)).
+  Câu hỏi gốc:
   - QĐ-ECO-C1: có làm thẻ opt-in `live.predator_cost_mult` + `live.strike_radius` không, kèm phép đo đăng ký trước
     trên ≥ 20 seed.
   - Có làm một khoá về nguồn nước không. Khoá đó phục vụ cả S43 lẫn thí nghiệm chọn lọc.
@@ -687,7 +738,8 @@ khẳng định. Không seed thí nghiệm nào chạy; không giá trị khối
 `artifacts/experiments/e-sel1-smoke-record/`; chi tiết ở
 [kế hoạch E-SEL1](../ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md).
 
-**Quyết định của chủ dự án: QĐ-SEL1b.** Có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
+**Quyết định của chủ dự án: QĐ-SEL1b — đã ra ngày 2026-11-17: phương án A** (thẻ S6, rồi SEL2; F-044 sửa
+trước ở thẻ S8). Câu hỏi gốc: có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
 Bằng chứng là [chẩn đoán sau E-SEL1](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md): đo thăm dò, mù với
 khối lượng cơ thể, seed 1–6. Nó cho thấy:
 - Gặm đồng cỏ là 90–93 % thu nhập của con mồi; `Food` chỉ vài phần trăm.
@@ -1079,6 +1131,28 @@ một lần chạy app desktop dưới executor đa luồng.
 > lượng có rò không, RNG có tái lập không, lịch trình có ổn định không. Không gate nào bắt lỗi kiểu
 > "sinh thái này có ảnh hưởng tới tiến hoá kia không". Năm finding dưới đây đều exit 0 hôm nay.
 
+> **Cập nhật 2026-11-17: phần cơ chế của mục này đã có trên thân cây, ở dạng opt-in.** Văn bản bên dưới
+> mô tả mã ngày 2026-08-25 và được giữ nguyên làm bối cảnh. Đối chiếu mã và file test trên thân cây tại
+> `6f14124`; không chạy lại test nào cho ghi chú này.
+>
+> - **Đã có, tắt mặc định.** Tử vong: `core/mortality.rs` với `MortalityPolicy` (khoá `live.mortality`,
+>   `live.starve_ticks`), gate CA-S02 ở `tests/mortality_tests.rs`. Fitness sinh thái:
+>   `evolution/fitness.rs` (khoá `live.ecological_fitness`, `live.w_surplus`), gate FI-S01…S04 và CA-S01 ở
+>   `tests/fitness_tests.rs`. Trục MAP-Elites thứ hai nay là `trophic_ratio` (QD-S01…S03 ở
+>   `tests/qd_tests.rs`). Observable tiến hoá và CA-S03 ở `tests/observables_tests.rs`. Nhánh H (F-022) đã
+>   sửa từ `0b29312`. Bảng task từng nhánh M, F, Q, O, H ở
+>   [task backlog](../ai/implementation/2026-08-25-feature-ecological-selection.md).
+> - **Đường mặc định không đổi.** `FitnessRuleSetting::default()` vẫn là `Locomotion` và
+>   `MortalityPolicy::default()` vẫn là tắt. Vì vậy câu "không cá thể nào chết đói" và "sinh thái không chạm
+>   fitness" bên dưới vẫn đúng cho một run không khai khoá nào, và sai cho một run có khai.
+> - **Nhánh R (sinh sản theo ngưỡng) vẫn 🔒 trong bảng task.** Sinh sản liên tục đã vào bằng đường khác:
+>   khoá `live.reproduction` của thẻ S1 (#66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md)).
+> - **Hai điều kiện tiên quyết ở cuối mục đã được giải quyết.** `AGENTS.md`: QĐ-B quyết ngày 2026-11-14
+>   (uỷ quyền theo thẻ). F-017: conflict marker đã gỡ ở `bef7768`.
+> - **Còn mở của định nghĩa hoàn thành:** số đo `full_tick` p50 ở 1.000 agent trên bản release. Đó là việc
+>   của con người (thẻ H6). CA-S01 và CA-S03 tự khai phạm vi hẹp hơn dạng đầy đủ trong chính file test của
+>   chúng; đọc ghi chú ở đầu hai file đó trước khi trích.
+
 **Khẳng định trung tâm, đọc mã 2026-08-25 (📋 chưa đo bằng lệnh nào):** toàn bộ tầng sinh thái —
 NPP theo biome, Kleiber, Boltzmann, Holling II/III, Lindeman, mùa vụ — **không có đường nào chạm
 tới hàm fitness**. Cả crate có đúng một định nghĩa fitness và nó là
@@ -1226,6 +1300,10 @@ và không nói gì — nhưng đó là đánh đổi, không phải bản sửa
 
 #### 3.8 Hai ADR đang ở trạng thái `proposed`, và cả hai đều đang đỡ tải
 
+> *Cập nhật 2026-11-17:* tiêu đề mục này đã cũ. ADR-0004 được chấp nhận từ 2026-07-26, và **ADR-0002 được
+> chủ dự án chấp nhận ngày 2026-11-17, trong phạm vi lát headless** (mục "Quyết định (2026-11-17)" của ADR).
+> Không còn ADR nào đang đỡ tải mà ở trạng thái `proposed`. Văn bản dưới đây giữ làm bối cảnh.
+
 `proposed` chỉ vô hại khi chưa có gì dựa lên nó. Hiện không còn như vậy:
 
 - **[ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md)** — AE1–AE3 đã ship trên nó
@@ -1371,7 +1449,7 @@ kia thành thừa **và** nhanh hơn.
 một save v4 cũ vẫn đọc được và cho đúng số · `compact` đưa số node về cận `2·samples` trên một
 fixture đã biết · `tests/lineage_compaction_tests.rs` vẫn xanh.
 
-**(2) OSS-072 — truy vấn MRCA.** ✅ Xong trên nhánh `feat/oss-072-mrca-trunk` (`evolution/mrca.rs`, lệnh `get_lineage_mrca`, `tests/lineage_mrca_tests.rs`); đáp án là một **tập**, không phải một node. Chưa đo trên trunk — xem số đo ở commit hợp nhất. OSS-073 nay không còn bị chặn.
+**(2) OSS-072 — truy vấn MRCA.** ✅ Xong và **đã merge vào thân cây ở #75** (2026-11-16): `evolution/mrca.rs`, lệnh `get_lineage_mrca`, `tests/lineage_mrca_tests.rs`; đáp án là một **tập**, không phải một node. Lượt đo toàn bộ đầu tiên có nó là §1.h. OSS-073 nay không còn bị chặn.
 
 *Neo:* `evolution/simplify.rs` đã có sẵn cấu trúc cha/con và phép kiểm chu trình để dùng lại.
 
@@ -1391,8 +1469,10 @@ Sau đó mới tới OSS-073 (giao thức đo "line of descent" kiểu Avida) �
   MAP-Elites, vì một elite có thể được chọn làm cha ở epoch sau mà không phải tổ tiên của ai đang
   sống.
 
-**Chưa nối vào IPC.** `to_newick` và `simplify` đều chưa có lệnh Tauri nào gọi. Cần sửa hợp đồng ở
-[`PROJECT.md`](../../PROJECT.md) §"Interface Contracts".
+**IPC — câu cũ ở đây đã lỗi thời (đối chiếu 2026-11-17).** Nó nói `to_newick` và `simplify` chưa có lệnh
+Tauri nào gọi. Trên thân cây, xuất Newick đã có lệnh `export_phylogenetic_tree` và MRCA có
+`get_lineage_mrca`; cả hai có hàng trong [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md), nơi giữ hợp đồng
+IPC từ 2026-11-14 thay cho `PROJECT.md`. `simplify` vẫn chưa có lệnh riêng: nó chạy bên trong `compact`.
 
 **Neo4j:** `compact` chỉ co bộ nhớ trong. Khi Neo4j online, `get_lineage_graph` đọc từ database nên
 vẫn trả đồ thị **đầy đủ**.
@@ -1404,17 +1484,14 @@ vẫn trả đồ thị **đầy đủ**.
 | # | Việc | Điểm neo | Vì sao đáng làm |
 |---|---|---|---|
 | ~~3.9~~ | ~~Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`~~ **XONG** (`0d6b4b2`, 2026-07-27; ghi nhận 2026-11-17) | [`ai/model.rs`](../../src-tauri/src/ai/model.rs) | `unsafe impl Send` đã bị bỏ (mọi trường tự `Send`; test `brain_model_is_send_without_an_unsafe_impl` giữ cho nó không quay lại). Còn đúng **một** `unsafe impl Sync for BrainModel`, kèm luận chứng `// SAFETY:` và hai yêu cầu được test cấu trúc giữ. Dòng cũ ở đây ("2/2 khối không có luận chứng") đã lỗi thời |
-| 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
+| ~~3.10~~ | ~~Hoà giải trạng thái ADR-0002~~ **XONG 2026-11-17**: chủ dự án chấp nhận ADR trong phạm vi lát headless; mục "Quyết định (2026-11-17)" của ADR ghi phần nào được chấp nhận và phần nào vẫn là mục tiêu | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md), trước đó `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
 | ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
 | ~~3.18~~ | ~~Bỏ mọi lối thoát kiểu (`as any` / `as unknown as` / `as never` / `eslint-disable`) và bật typecheck cho `tests/`~~ **XONG** (2026-07-27, `feature-anima-completion`) | `npm run typecheck:tests` (gate mới trong CI) · [`src/window-globals.d.ts`](../../src/window-globals.d.ts) · [`tests/mocks/segment_fixtures.ts`](../../tests/mocks/segment_fixtures.ts) | Grep chính xác trên `src`/`tests`/`playground` **= 0** cho cả bốn mẫu, kể cả trong comment. Không suppress, không nới rule, không xoá test. Mỗi chỗ được gỡ bằng cách **làm cho điều đang bị khẳng định trở thành đúng**: các thuộc tính `window` được khai báo thật; `buildAgentHierarchy` nhận `readonly unknown[]` đúng như dữ liệu IPC nó vốn phòng thủ (lộ ra 2 lỗi thật: `segment_id` không phải số bị key bằng `undefined`, và `s.x \|\| 0` cho chuỗi lọt vào trường `number`); `biomeAt`/`findSpawn` nhận đúng các field chúng đọc; mock r3f dựng `THREE.Scene`/`PerspectiveCamera` thật. **Phát hiện phụ:** gói `tests/` chưa từng được typecheck — **86 lỗi** không lệnh nào báo, nay = 0 và có gate | |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
 | ~~3.14~~ | ~~Dọn tài liệu cũ ở root~~ **XONG** (ghi nhận 2026-11-17) | [`PHASE6_HANDOFF_REPORT.md`](../archive/PHASE6_HANDOFF_REPORT.md), [`PHASE1_EXECUTION_PLAN.md`](../archive/PHASE1_EXECUTION_PLAN.md) | Cả hai đã nằm trong `docs/archive/`; root không còn bản nào |
-| 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE-MIT`](../../LICENSE-MIT) / [`LICENSE-APACHE`](../../LICENSE-APACHE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) licence của dự án vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
-| 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
-
-| 3.16 | ~~Đóng phần còn nợ của OSS-003~~ ✅ **Xong 2026-08-08 — relicense** | [`LICENSE-MIT`](../../LICENSE-MIT) + [`LICENSE-APACHE`](../../LICENSE-APACHE) + [`NOTICE`](../../NOTICE) + [`CONTRIBUTING.md`](../../CONTRIBUTING.md); `LICENSE` proprietary đã xoá | Dự án chuyển sang nguồn mở `MIT OR Apache-2.0`. Phạm vi code / asset / định dạng `.anmw` tách trong README; `license` khai trong `[workspace.package]` và cả hai `package.json`. **Còn nợ, chuyển sang 3.17:** `NOTICE` duy trì thủ công và chỉ phủ dependency trực tiếp, chưa phải inventory sinh tự động theo nhánh transitive |
-| 3.17 | Inventory dependency (OSS-004) | [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | Lỗ hổng đã có bằng chứng: `burn`/`burn-wgpu` là **runtime dep đang chạy** nhưng vắng khỏi ma trận khảo sát tới 2026-07-26, trong khi ma trận có cả những thứ chưa từng thêm |
+| 3.16 | Đóng phần còn nợ của OSS-003 *(hai hàng 3.16 trùng nhau được gộp 2026-11-17)* | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE-MIT`](../../LICENSE-MIT) / [`LICENSE-APACHE`](../../LICENSE-APACHE) · [`NOTICE`](../../NOTICE) · [`CONTRIBUTING.md`](../../CONTRIBUTING.md) | **Licence của chính dự án: xong 2026-08-08.** Relicense sang `MIT OR Apache-2.0`; `LICENSE` proprietary đã xoá; phạm vi code / asset / định dạng `.anmw` tách trong README; `license` khai trong `[workspace.package]` và cả hai `package.json`. **Hồ sơ bên thứ ba: phần kỹ thuật xong 2026-07-27.** `NOTICE`, `licensing/THIRD_PARTY_LICENSES.txt` và SBOM đều **sinh tự động** và có gate CI; 31/32 khoảng trống văn bản đã đóng bằng kho vendor `licensing/upstream/` (39 file lấy từ đúng commit bất biến của bản phát hành; `npm run verify:upstream-licenses` đối chiếu lại byte). Một hàng trùng ở đây từng viết "`NOTICE` duy trì thủ công và chỉ phủ dependency trực tiếp"; câu đó sai từ `766609e`. **Còn nợ, vẫn chặn phát hành:** (a) `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý** (QĐ-C), xem `UNRESOLVED.md` và §1.c; (b) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
+| 3.17 | Inventory dependency (OSS-004) *(hai hàng 3.17 trùng nhau được gộp 2026-11-17)* | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động cho dependency code đã có** (2026-07-27): SBOM CycloneDX với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim; số thành phần hiện hành ở §1. Lỗ hổng cũ (`burn`/`burn-wgpu` là runtime dep nhưng vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime. **Còn nợ:** ma trận khảo sát thủ công cho **model / dataset / asset**; SBOM không thay thế được nó |
 
 ---
 

@@ -40,7 +40,7 @@ u = (ix + 0.5) / W
 v = (iy + 0.5) / H
 ```
 
-Rust: `cell_center_uv` ([sim_rules.rs:83](src-tauri/src/core/sim_rules.rs#L83)).
+Rust: `cell_center_uv` ([sim_rules.rs](src-tauri/src/core/sim_rules.rs)).
 TS: `cellCenterUv` ([coordinate.ts](src/components/Landscape/utils/coordinate.ts)).
 
 ### uv → cell (luật **cell-bucket**, floor)
@@ -52,7 +52,7 @@ iy = clamp(floor(v · H), 0, H-1)
 
 Rust dùng `((u * W as f32) as usize).min(W-1)`; cast `as usize` của Rust *saturate* về 0 với số âm,
 nên bản TS `clamp(..., 0, ...)` tái hiện đúng hành vi đó.
-Rust: `uv_to_cell` ([sim_rules.rs:93](src-tauri/src/core/sim_rules.rs#L93)). TS: `uvToCell`.
+Rust: `uv_to_cell` ([sim_rules.rs](src-tauri/src/core/sim_rules.rs)). TS: `uvToCell`.
 
 ### cell → world (tâm ô)
 
@@ -62,7 +62,7 @@ x = minX + u · (maxX - minX)
 z = minZ + v · (maxZ - minZ)
 ```
 
-Rust: `cell_center_to_world_xz` ([sim_rules.rs:101](src-tauri/src/core/sim_rules.rs#L101)).
+Rust: `cell_center_to_world_xz` ([sim_rules.rs](src-tauri/src/core/sim_rules.rs)).
 TS: `cellCenterToWorldXz`.
 
 ### world → cell (luật **cell-bucket**, nghịch đảo)
@@ -76,8 +76,8 @@ ngược lại                             → uv_to_cell(u, v, W, H)
 ```
 
 Kiểm tra `[0,1]` **bao gồm cả hai đầu**, nên góc `max` phân giải về ô cực đại (`W-1, H-1`).
-Rust: `world_xz_to_cell` ([sim_rules.rs:119](src-tauri/src/core/sim_rules.rs#L119)) —
-**giống hệt** `TerrainMap::get_map_indices` ([terrain.rs:563](src-tauri/src/core/terrain.rs#L563)).
+Rust: `world_xz_to_cell` ([sim_rules.rs](src-tauri/src/core/sim_rules.rs)) —
+**giống hệt** `TerrainMap::get_map_indices` ([terrain.rs](src-tauri/src/core/terrain.rs)).
 TS: `worldXzToCell` (trả `null` khi ngoài biên).
 
 ---
@@ -86,14 +86,14 @@ TS: `worldXzToCell` (trả `null` khi ngoài biên).
 
 Đây là điểm dễ nhầm nhất, phải phân biệt rõ:
 
-### (a) Luật **cell-bucket** — `get_map_indices` ([terrain.rs:563](src-tauri/src/core/terrain.rs#L563))
+### (a) Luật **cell-bucket** — `get_map_indices` ([terrain.rs](src-tauri/src/core/terrain.rs))
 
 - Câu hỏi: *"điểm này thuộc **ô** nào?"* (quyền sở hữu ô: biome, occupancy, spatial hashing…).
 - Chia miền thành `W × H` ô bằng nhau; `floor(coord · dim)` rồi clamp về ô cuối.
 - Rời rạc, không nội suy. Đây là luật mà `sim_rules.rs` và `coordinate.ts` tái hiện, và là luật mà
   tính chất **S03** kiểm chứng.
 
-### (b) Luật **node-interpolate** — `get_elevation_at_pos` ([terrain.rs:579](src-tauri/src/core/terrain.rs#L579))
+### (b) Luật **node-interpolate** — `get_elevation_at_pos` ([terrain.rs](src-tauri/src/core/terrain.rs))
 
 - Câu hỏi: *"giá trị **trường** (elevation) *trơn* tại vị trí này là bao nhiêu?"*
 - Coi các giá trị ô như mẫu tại **nút** trên lưới `(W-1) × (H-1)`: `fx = clamp(u,0,1) · (W-1)`,
@@ -147,7 +147,7 @@ Trường `y` (độ cao): `elevation ∈ [0,1]` chuẩn hoá → `y = elevation
 
 **Không gian:**
 
-- Lưới backend mặc định 128 × 128, seed 1337 (`MapSettings::default`, terrain.rs).
+- Lưới backend mặc định 256 × 256, seed 1337 (`MapSettings::default`, terrain.rs).
 - Ngang: `x, z ∈ [-100, 100]` (200 × 200 world-units). Dọc: `y ∈ [0, 10]` từ `elevation·10`.
 - Frontend: các trường chuẩn hoá `[0,1]`, `seaLevel: f32` theo từng world; kích thước ∈ {128, 256,
   1024, 2048}.
@@ -177,9 +177,12 @@ Kéo theo: `world → cell → world-centre → cell` là **điểm bất độn
 
 - Backend đã kiểm chứng:
   `core::sim_rules::tests::s03_cell_center_round_trips_through_world`
-  (+ `s03_out_of_bounds_world_point_has_no_cell`), [sim_rules.rs:350](src-tauri/src/core/sim_rules.rs#L350).
+  (+ `s03_out_of_bounds_world_point_has_no_cell`, `s03_default_grid_dim_tracks_map_settings_default`,
+  `s03_units_per_cell_at_the_default_resolution`,
+  `s03_round_trip_holds_at_non_default_and_degenerate_dimensions`,
+  `s03_borders_and_corners_at_the_default_resolution`), trong [sim_rules.rs](src-tauri/src/core/sim_rules.rs).
 - Frontend đã kiểm chứng: [`src/__tests__/coordinateContract.test.ts`](src/__tests__/coordinateContract.test.ts)
-  chạy qua `npm run test` (Vitest + jsdom), sweep các lưới `{1², 4², 16², 128², 200×137}` cộng round-trip
+  chạy qua `npm run test` (Vitest + jsdom), sweep các lưới `{1², 4², 16², 128², 256², 200×137}` cộng round-trip
   world và các trường hợp biên/ngoài-biên.
 
 Vì `coordinate.ts` là bản mirror thuần của `sim_rules.rs`, hai phía FE/BE luôn chọn cùng một ô cho

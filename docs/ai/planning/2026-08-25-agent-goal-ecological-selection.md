@@ -3,7 +3,7 @@ phase: planning
 feature: ecological-selection
 title: Bản giao việc — Đóng vòng sinh thái
 description: Hợp đồng cho agent triển khai, kèm bẫy đã biết, ranh giới file và điều kiện dừng
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-ecological-selection.md

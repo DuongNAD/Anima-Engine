@@ -3,7 +3,7 @@ phase: implementation
 feature: living-world
 title: Task Backlog — Thế giới sống
 description: Danh sách đầy đủ việc cần làm, có neo file, phụ thuộc và định nghĩa hoàn thành cho từng mục
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-living-world.md
@@ -59,7 +59,7 @@ Sửa cái thứ nhất sẽ compile sạch, test xanh, và **không thay đổi
 | ⬜ A1-3 | Sinh lại binding ts-rs | `src/types/generated/SegmentState.ts` | `cargo test` rồi `git diff --exit-code -- src/types/generated` **fail trước, pass sau khi commit binding** |
 | ⬜ A1-4 | Bỏ hằng `SEGMENT_RADIUS`; scale instance theo `radius`, kéo dài theo `length` | `src/components/Landscape/LiveAgents.tsx:44,47,77` | Vitest khẳng định hai agent khác `radius` cho hai matrix khác nhau |
 | ⬜ A1-5 | `PixiViewport` 2D vẽ theo cùng số đo | `src/PixiViewport.tsx` | Vitest draw-spy |
-| ⬜ A1-6 | Cập nhật mô tả IPC | `PROJECT.md` §Interface Contracts | review link/schema |
+| ⬜ A1-6 | Cập nhật mô tả IPC | `docs/reference/IPC_CONTRACT.md` (hợp đồng IPC đã rời `PROJECT.md` ngày 2026-11-14) | review link/schema |
 
 **Gate A1:** `cargo test --features desktop` · `npm run test` · `npm run test:frontend` · `npm run build` · parity binding.
 
@@ -214,9 +214,9 @@ nối, 1 MiB/frame) đủ cho LAN và nhóm tin nhau, chưa đủ cho mạng m�
 
 | ID | Việc | Neo | Khi nào |
 |---|---|---|---|
-| ⬜ X1 | ADR: nguồn rò rỉ **thứ sáu** (API 3D ngoài) và cách nó bị chặn | `docs/decisions/ADR-0005-…` | **trước** khi bật A3 mặc định |
+| ⬜ X1 | ADR: nguồn rò rỉ **thứ sáu** (API 3D ngoài) và cách nó bị chặn | một ADR mới, số kế tiếp còn trống (ADR-0005 đến 0007 đã được dùng cho việc khác) | **trước** khi bật A3 mặc định |
 | ⬜ X2 | ADR: `FederationPolicy`, hoặc mở rộng ADR-0004 | `docs/decisions/` | **trước** F3-10 |
-| ⬜ X3 | Cập nhật IPC contract | `PROJECT.md` | cùng PR với A1-1, A2-6, N3-1 |
+| ⬜ X3 | Cập nhật IPC contract | `docs/reference/IPC_CONTRACT.md` | cùng PR với A1-1, A2-6, N3-1 |
 | ⬜ X4 | Thêm mục vào backlog trạng thái | `docs/planning/STATE_OF_THE_PROJECT.md` §3 | khi bắt đầu |
 | ⬜ X5 | `node scripts/gen_notice.mjs` nếu thêm dependency (blake3, gltf, …) | `NOTICE` | cùng PR thêm dep |
 | ⬜ X6 | Đăng ký target rỗng / `#[ignore]` mới | `scripts/test_target_policy.mjs` | cùng PR tạo target |

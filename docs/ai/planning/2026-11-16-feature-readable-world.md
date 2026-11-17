@@ -3,7 +3,7 @@ phase: planning
 feature: readable-world
 title: Kế hoạch — Thế giới nhìn rõ: sinh vật và bản đồ đẹp, nhẹ, mượt
 description: Vẽ sinh vật bằng khối ghép theo đốt thật với chuyển động lấy từ mô phỏng, giữ bản đồ low-poly, ba mức chất lượng tự chọn theo máy, và ngân sách đo được cho từng mức
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-11-16
 ---
@@ -17,7 +17,12 @@ Hướng đi: giữ phong cách low-poly tô màu phẳng mà bản đồ đang 
 ghép theo **đúng từng đốt thật**, chuyển động lấy từ **chính mô phỏng**. Cảnh có ba mức chất lượng,
 tự chọn theo máy, mỗi mức có ngân sách kiểm được bằng gate.
 
-Chưa có dòng mã nào của kế hoạch này được viết. Mọi số ở §2 là số đo; mọi số ở §4 là đề xuất.
+*Cập nhật 2026-11-17:* mười thẻ của kế hoạch này đã merge — RW-A1…A3, RW-B1…B3, RW-C1…C4 (#52–#55, #58,
+#60, #62, #63, #67, #69). Còn lại RW-A4, RW-B4 và RW-C5. §2 là số đo ngày 2026-11-16, trước các thẻ đó;
+§4 là ngân sách đã chốt ở thẻ RW-C2.
+
+Câu gốc, viết ngày 2026-11-16: chưa có dòng mã nào của kế hoạch này được viết. Mọi số ở §2 là số đo; mọi
+số ở §4 là đề xuất.
 
 ## 1. Mục tiêu và phạm vi
 
@@ -217,7 +222,7 @@ Payload không mang số tick hay dấu thời gian, nên RW3-1 dùng thời đi
 | RW4-7 | Sinh vật theo khoảng cách: xa thì không nội suy đốt con, rất xa thì là dấu phẳng (RW2-6) | | Đạt ngân sách sinh vật §4 với fixture 1000 con × 15 đốt |
 
 Số tam giác và lệnh vẽ không phụ thuộc GPU, nên RW4-6 chạy được trên CI. FPS thì không; nó thuộc
-RW6. Khi PR #47 đã vào thân cây, spec mới phải được ghi vào danh sách spec của
+RW6. PR #47 đã vào thân cây (2026-11-16), nên spec mới phải được ghi vào danh sách spec của
 `scripts/e2e_spec_policy.mjs` trong cùng commit.
 
 Kế hoạch này **không** bật `TERRAIN_CHUNKED` (`WorldShowcase.tsx:65`). Địa hình chỉ chiếm 294.912 tam
@@ -273,8 +278,8 @@ Thêm vào đó:
 
 - E2E đủ bộ, kể cả `console_hygiene.spec.ts`: cảnh landscape không được in gì ra console.
 - Tăng ngân sách bundle là một quyết định: đổi con số trong cùng commit gây ra mức tăng và nêu lý do.
-- Job Frontend của CI đang đỏ ở `check:e2` trên thân cây (chờ QD-E2M). Cho tới khi việc đó được
-  quyết, PR của kế hoạch này cũng sẽ hiện đỏ ở bước ấy.
+- ~~Job Frontend của CI đang đỏ ở `check:e2` trên thân cây (chờ QD-E2M). Cho tới khi việc đó được
+  quyết, PR của kế hoạch này cũng sẽ hiện đỏ ở bước ấy.~~ Đã xanh từ #59 (QD-E2M = B, 2026-11-16).
 
 ## 8. Quyết định cần chủ dự án
 
@@ -317,6 +322,9 @@ Thêm vào đó:
 
 ## 11. Điều kế hoạch này không tuyên bố
 
+- *(Cập nhật 2026-11-17: hai gạch có chữ "MacBook Air M5" và "đề xuất" trong mục này đã cũ. FPS nay đã đo
+  trên MacBook Air M5 (§2) và Dell Vostro 3530 (§4, thẻ RW-C2); máy case chưa đo, đó là RW-C5. Ngân sách §4
+  đã chốt bằng số đo Dell; gate RW-C4 kiểm số tam giác và lệnh vẽ, chưa kiểm FPS.)*
 - Không có số đo nào trên máy khác ngoài MacBook Air M5. Mục tiêu FPS cho máy yếu chưa được kiểm.
 - Chưa ai nhìn thấy chuyển động thật của các đốt trên màn hình. Backend chưa được chạy cho việc này.
 - Ngân sách ở §4 là đề xuất, chưa phải số đã đạt được.

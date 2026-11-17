@@ -9,7 +9,8 @@ review_cycle: per-release
 # Hợp đồng sổ cái năng lượng
 
 Tài liệu này định nghĩa **cách EU được phép di chuyển trong thế giới sống (live Bevy world)** và
-tolerance của cổng bảo toàn G1.1. Nguồn code: `src-tauri/src/core/energy_ledger.rs`.
+tolerance của cổng bảo toàn G1.1. Nguồn code: `src-tauri/crates/anima-domain/src/energy.rs`;
+`src-tauri/src/core/energy_ledger.rs` chỉ re-export nó từ khi sổ cái chuyển vào crate domain (G2 task 1).
 
 Đọc kèm: `SIMULATION_RULES.md` (bảng đơn vị), `docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md`
 (invariant **D06**), `src-tauri/src/core/sim_rules.rs` (`STATE_VARIABLES`, `Conservation`).
@@ -36,6 +37,31 @@ closed_total_eu = ResourceField::total_biomass()
 **Không có ngăn thứ tư.** Food entity chưa ăn và quả chưa hái là *quyền rút* trên detritus, thanh
 toán tại thời điểm bị ăn — không phải kho riêng. Thêm ngăn thứ tư đồng nghĩa thêm một đại lượng
 chưa khai báo vào bảng đơn vị.
+
+### 1.1 Ngăn ngủ đông — câu "không có ngăn thứ tư" ở trên đã hết đúng (ghi 2026-11-17)
+
+Từ lát F1 của thế giới sống, mã có một ngăn thứ tư, và nó **là kho thẩm quyền**:
+
+| Ngăn | Kho thẩm quyền | Vào và ra |
+|---|---|---|
+| dormant | `EcosystemBiomass::dormant` | Chỉ `HibernateAgentCommand` đưa vào; chỉ `WakeAgentCommand` lấy ra |
+
+Một agent ngủ đông bị despawn thân, nên dự trữ của nó không còn nằm trong `animals` được: census chỉ cộng
+dự trữ của thân đang sống. Nó cũng chưa chết, nên EU đó không được chảy vào `detritus`. Nó chờ ở ngăn này.
+Tổng đóng vì thế có bốn số hạng, đúng như `closed_total_eu(plant_biomass, animal_energy, detritus,
+dormant)` trong mã:
+
+```text
+closed_total_eu = ResourceField::total_biomass()
+                + Σ agent.HomeostaticState.energy
+                + EcosystemBiomass::detritus
+                + EcosystemBiomass::dormant
+```
+
+Trên một run không ai ngủ đông, `dormant` bằng 0 và công thức ba số hạng ở trên cho cùng kết quả. Snapshot
+mang ngăn này từ schema 4 (`eco_dormant`), và adapter thí nghiệm sống phát nó thành observable
+`live.dormant_eu`. Gate của nó ở `tests/living_world_dormancy_tests.rs`. Phần còn lại của đoạn "không có
+ngăn thứ tư" vẫn đúng: food chưa ăn và quả chưa hái vẫn là quyền rút trên detritus, không phải kho.
 
 ## 2. Quy tắc: đo đích đến, đừng giả định
 
@@ -118,6 +144,10 @@ mục 3 chỉ lộ ra khi executor đa luồng của Bevy tự do chọn thứ t
 mà cổng này tồn tại để bắt.
 
 ## 7. Chưa đóng
+
+> *Ghi chú 2026-11-17:* gạch đầu tiên bên dưới đã đóng. `SnapshotEnvelope` có version và checksum từ G1.2,
+> và snapshot nay mang bốn scalar closed-EU; xem [`SNAPSHOT_CONTRACT.md`](SNAPSHOT_CONTRACT.md) §5 và §6.
+> Hai gạch còn lại chưa được đối chứng lại trong lượt này.
 
 - `SavedSimulationState` mới chỉ mang ba scalar closed-EU và vector `ResourceField::r`. Đây là mức
   tối thiểu để cổng save/load chạy được; **G1.2** thay bằng `SnapshotEnvelope` có version + checksum.

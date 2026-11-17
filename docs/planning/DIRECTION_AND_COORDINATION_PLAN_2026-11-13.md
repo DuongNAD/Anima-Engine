@@ -2,7 +2,7 @@
 title: Kế hoạch định hướng và điều phối — từ một cây xanh tới thế giới nhiều máy
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-13
+last_reviewed: 2026-11-17
 review_cycle: monthly  # và sau mỗi chặng
 ---
 
@@ -23,6 +23,16 @@ review_cycle: monthly  # và sau mỗi chặng
 > [bản tổng hợp nghiên cứu 13/11](../research/RESEARCH_SYNTHESIS_2026-11-13.md): chặng 4, 5 và 7,
 > ba luồng ở §6, và thêm QĐ-M6 đến QĐ-M8. Chặng 0 đến 3 không đổi; bảng hai tuần đầu chỉ thêm một
 > ghi chú. Bản tổng hợp là tài liệu nghiên cứu, không phải một kế hoạch mới (L6, L7).
+>
+> **Ghi chú 2026-11-17 — tiến độ không nằm ở đây.** Tài liệu này giữ thứ tự chặng, cổng ra và luật; nội
+> dung của nó không đổi. Mỗi chặng đang ở đâu được ghi ở
+> [STATE §3.00, bảng tiến độ theo chặng](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17);
+> trạng thái từng thẻ ở [`AGENT_WORKFLOW.md` §3](../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ); quyết định đã
+> ra và còn trống ở [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+> §2 (hiện trạng) và §11 (hai tuần đầu) là ảnh chụp ngày 2026-11-13. Ba chỗ của tài liệu đã hết đúng, đều
+> do hai cây hợp nhất ngày 2026-11-16: ở §12, mâu thuẫn "roadmap 16/10 không có trên thân cây"; ở Phụ lục
+> A, dòng "chỉ trên `main`" của roadmap 16/10 và dòng "nhánh chưa gộp" của kế hoạch swarm. Cả hai tài liệu
+> đó nay có trên thân cây.
 
 ## 0. Tóm tắt một trang
 

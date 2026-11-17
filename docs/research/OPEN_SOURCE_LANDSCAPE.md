@@ -190,6 +190,18 @@ headless chứ không boot Tauri.
 > `ResourceField::REGROWTH_STRIDE` **không tái lập được** — release build cho ~0,36 ms. Cái sau là
 > finding cần đối chứng, không phải lỗi đã xác định; việc stride vẫn đúng (đo được 3,97×).
 
+### Rà lại 2026-11-17 — bốn điều đã đổi sau các mục F1–F7
+
+Đối chiếu `src-tauri/Cargo.toml`, `src-tauri/deny.toml` và danh sách PR; không ứng viên nào được đánh
+giá lại, và không license nào được xác minh thêm.
+
+- **F5:** `cargo-deny` đã được nhận (OSS-012, 2026-08-08): `src-tauri/deny.toml` và một bước CI. Câu
+  "với một sản phẩm proprietary" trong F5 viết trước relicense; lý do kiểm license của cây phụ thuộc vẫn
+  đứng với một dự án `MIT OR Apache-2.0`.
+- **F6:** `burn` vẫn ghim ở 0.13.2 và `bevy_ecs` ở 0.13.0.
+- **F7:** `tracing` (OSS-011) vẫn chưa có trong `Cargo.toml`.
+- **Miền 5, phả hệ:** OSS-070, OSS-071 và OSS-072 (MRCA, #75) đã có trên thân cây. OSS-073 chưa làm.
+
 ## Việc còn nợ của đợt review này
 
 Ghi ra để không ai nhầm bảng này là đã kiểm license:

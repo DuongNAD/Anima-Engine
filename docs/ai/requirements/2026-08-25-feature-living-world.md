@@ -3,7 +3,7 @@ phase: requirements
 feature: living-world
 title: Requirements — Thế giới sống
 description: Sinh vật có hình thật, cử động thật, và một thế giới chạy trên sức tính toán góp từ nhiều máy
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 design: ../design/2026-08-25-feature-genome-to-mesh.md

@@ -24,8 +24,9 @@ Kết quả mong đợi: giải thích được đường tác động
 ### 2. Chạy một vòng kiểm tra
 
 Làm theo [How-to](../how-to/README.md): cài dependency, chạy frontend test và Cargo
-test. Đọc [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) rồi tạo một report
-baseline trên máy của bạn.
+test. Đọc [`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md) trước khi tạo một report baseline trên
+máy của bạn: script cần output của `cargo bench` và sẽ từ chối chạy trên một clone chưa bench (xem
+How-to).
 
 Kết quả mong đợi: biết test nào bảo vệ Rust, TypeScript và biên artifact.
 
@@ -37,7 +38,8 @@ Chọn một scenario nhỏ trong [`WORLD_SIMULATION_PLAN.md`](../../WORLD_SIMUL
 2. tìm component/system liên quan trong `src-tauri/src/core/`;
 3. tìm artifact/renderer consumer tương ứng;
 4. xác định invariant, fixture và benchmark cần cập nhật;
-5. ghi task vào `TODO.md`, không định nghĩa lại luật ở đó.
+5. ghi việc cần làm vào backlog ở [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) §3
+   (`TODO.md` chỉ là nhật ký việc đã làm); không định nghĩa lại luật ở đó.
 
 ### 4. Đề xuất một tích hợp nguồn mở
 

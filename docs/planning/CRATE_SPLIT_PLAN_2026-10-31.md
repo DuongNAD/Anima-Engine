@@ -17,6 +17,17 @@ review_cycle: weekly
 > Kế hoạch này **không remake**. Lý do ở [§0](#0-vì-sao-không-viết-lại).
 > Thứ tự việc chung của dự án: [`EXECUTION_PLAN_2026-10-31.md`](EXECUTION_PLAN_2026-10-31.md).
 
+> **Trạng thái 2026-11-17: chưa bắt đầu, và đang chờ một quyết định.** Không bước nào từ S0 đến S5 có
+> PR; `src-tauri/crates/` vẫn chỉ có `anima-domain`. Kế hoạch này chờ **QĐ-M2** (tách crate trước hay
+> sau `v1.0.0`) trong
+> [hàng đợi quyết định](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được); đề
+> xuất của kế hoạch 13/11 là **sau** `v1.0.0`, và kế hoạch swarm xếp nó là thẻ X1. Ba điều đã đổi từ
+> khi viết: thứ tự việc chung nay do
+> [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ; điều kiện tiên quyết S0.1 (hồi
+> sinh `check_test_targets.mjs`) đã xong; và bảng "đo được 2026-10-31" ở §0 là đo lịch sử, số hiện hành
+> ở STATE §1. Trước khi bắt đầu S0, đo lại số vòng phụ thuộc: sáu cặp mà kế hoạch này nhắm tới là số
+> của ngày viết.
+
 ---
 
 ## 0. Vì sao không viết lại

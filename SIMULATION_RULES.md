@@ -38,7 +38,7 @@ MVP **chỉ** phủ vertical slice “**lưu vực – đồng cỏ – thỏ �
 **Có trong MVP:**
 
 - một World Artifact quyền lực duy nhất (elevation, biome, moisture, field-temperature, flow, water);
-- pool **năng lượng/sinh khối đóng** (plants + animals + detritus);
+- pool **năng lượng/sinh khối đóng** (plants + animals + detritus, cộng ngăn `dormant` cho cá thể ngủ đông);
 - vòng đời tối thiểu cho thỏ (herbivore/prey) và sói (predator);
 - decomposer cohort + carcass trả sinh khối về detritus;
 - season clock điều khiển độ màu mỡ;
@@ -59,9 +59,11 @@ Theo Mục 2.3 của kế hoạch, có hai lựa chọn. **Chốt: năng lượn
 - Năng lượng mất do hô hấp, phần săn mồi không hấp thụ và cái chết **được tái chế thành detritus**,
   không biến mất.
 - Cây tái sinh bằng cách **rút từ pool detritus** (biomass-gated regrowth), nên tổng bảo toàn.
-- Đây đúng là mô hình đang chạy: `EcosystemBiomass { detritus, plants, animals }` với
-  `total() = detritus + plants + animals` giữ ~hằng số
-  ([`core/ecology.rs`](src-tauri/src/core/ecology.rs)).
+- Đây đúng là mô hình đang chạy: `EcosystemBiomass { detritus, plants, animals, dormant }` với
+  `total() = detritus + plants + animals + dormant` giữ ~hằng số
+  ([`crates/anima-domain/src/energy.rs`](src-tauri/crates/anima-domain/src/energy.rs), re-export qua
+  `core/ecology.rs`). `dormant` là EU của cá thể đang ngủ đông; chỉ `WakeAgentCommand` rút được nó ra.
+  Chi tiết: [hợp đồng sổ cái §1.1](docs/reference/ENERGY_LEDGER_CONTRACT.md).
 
 > Không được vừa gọi “energy” là năng lượng vật lý (Joule) vừa dùng như vật chất tuần hoàn. Trong MVP
 > nó là **một đại lượng sinh khối-tương đương duy nhất**, ký hiệu **EU**. Việc tách nhiệt thất thoát
@@ -71,7 +73,7 @@ Theo Mục 2.3 của kế hoạch, có hai lựa chọn. **Chốt: năng lượn
 
 | Pool | Thành phần | Bất biến | Nguồn/Sink hợp lệ duy nhất |
 |---|---|---|---|
-| **Năng lượng/sinh khối (EU)** | `plants` + `animals` + `detritus` | `total` hằng số (± tolerance) | can thiệp `add/remove` cá thể; NPP forcing khai báo tường minh |
+| **Năng lượng/sinh khối (EU)** | `plants` + `animals` + `detritus` + `dormant` | `total` hằng số (± tolerance) | can thiệp `add/remove` cá thể; NPP forcing khai báo tường minh |
 
 ### 2.3. Pool **đã khai báo nhưng CHƯA bảo toàn** (đến M3)
 
@@ -114,6 +116,10 @@ nutrient-mass / pollutant-mass (deferred M3).
 | `soil_nutrient` | NM *(deferred M3)* | ≥0 | ⏳ | chưa theo dõi |
 | `toxin` | PM *(deferred M3)* | ≥0 | ⏳ | chưa theo dõi |
 
+> *Ghi chú 2026-11-17:* sổ năng lượng trong mã có thêm ngăn `dormant` (EU của cá thể ngủ đông), nhưng
+> registry `STATE_VARIABLES` trong `sim_rules.rs` **chưa** có hàng cho nó, nên bảng này, vốn phải khớp
+> registry (test S01), cũng chưa có. Thêm hàng đó là một thay đổi mã, phải làm ở cả hai nơi cùng lúc.
+
 > **Mơ hồ được xóa quan trọng nhất:** có **HAI** đại lượng tên “temperature”. `field_temperature`
 > là **normalized [0,1]** (trường địa lý); `body_temperature` là **°C** (nội môi cá thể). Không
 > được trộn hai đại lượng này.
@@ -122,13 +128,14 @@ nutrient-mass / pollutant-mass (deferred M3).
 
 ## 4. Thang thời gian (time scale)
 
-Hằng số ở [`sim_rules.rs`](src-tauri/src/core/sim_rules.rs); **S01** khẳng định chúng tự nhất quán.
+Hằng số định nghĩa ở [`crates/anima-domain/src/laws.rs`](src-tauri/crates/anima-domain/src/laws.rs) và được
+[`sim_rules.rs`](src-tauri/src/core/sim_rules.rs) re-export; **S01** khẳng định chúng tự nhất quán.
 
 | Đại lượng | Giá trị | Nguồn |
 |---|---|---|
 | Tick rate | **60 Hz** (`TICK_HZ`) | `TimeStep(1.0/60.0)`, `core/ecs.rs` |
 | Bước thời gian cố định | **1/60 s ≈ 0.016667** sim-giây (`TICK_DT_SECONDS`) | như trên |
-| Epoch | **1000 tick** (`TICKS_PER_EPOCH`) | `EpochManager`, `core/simulation_loop.rs` |
+| Epoch | **1000 tick** (`TICKS_PER_EPOCH`) | `EpochManager`, `core/resources.rs` |
 | Một năm mô phỏng | **100 sim-giây = 6000 tick** (`SECONDS_PER_YEAR`, `TICKS_PER_YEAR`) | `SeasonClock rate = τ/100`, `core/ecology.rs` |
 
 Các **tần suất cập nhật mục tiêu** (ngân sách, [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) §10.2):
@@ -173,8 +180,10 @@ Chi tiết ở [BIOME_TAXONOMY.md](BIOME_TAXONOMY.md); map + round-trip test (**
 | Field normalized | luôn nằm trong [0,1] | S17 (M3) canh biên |
 | Hot-loop allocation | **0** | Test `allocs == 0` hiện có |
 
-> Con số hiệu năng (frame/tick/RAM) **không** được khóa trước khi chạy M0.4 trên phần cứng đích
-> (Dell Vostro 3530). Xem [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
+> Con số hiệu năng (frame/tick/RAM) **không** được khóa trước khi chạy M0.4 trên phần cứng đích.
+> Chủ dự án quyết ngày 2026-11-17: **Dell Vostro 3530 là máy tối thiểu** (mục tiêu "chạy được"), còn
+> **Intel Core i5-14600KF là máy đo**, nơi các số của baseline được lấy. Xem
+> [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
 
 ---
 
@@ -184,7 +193,7 @@ Chi tiết ở [BIOME_TAXONOMY.md](BIOME_TAXONOMY.md); map + round-trip test (**
 |---|---|---|
 | **S01** | pool bảo toàn + đơn vị machine-check | `core::sim_rules::tests::s01_*` (2 test) |
 | **S02** | mọi biome legacy map sang taxonomy mới | `core::world_artifact::tests::s02_legacy_biome_lift_is_total_and_round_trips` |
-| **S03** | round-trip world↔grid↔render coordinate | `core::sim_rules::tests::s03_*` (2 test) |
+| **S03** | round-trip world↔grid↔render coordinate | `core::sim_rules::tests::s03_*` (6 test, đếm 2026-11-17) |
 | **S04** | benchmark baseline có seed/config/hardware | [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md) |
 | **S05** | manifest thiếu field bắt buộc phải fail | [MAP_MANIFEST.md](MAP_MANIFEST.md) |
 

@@ -13,6 +13,7 @@ versioned world state, reproducible results, and evidence attached to each chang
 
 | If you want to | Read |
 |---|---|
+| Know where the project stands and what comes next | [Project state](docs/planning/STATE_OF_THE_PROJECT.md): measurements in §1, the stage progress board in §3.00 (Vietnamese) |
 | Understand the product and current architecture | [PROJECT.md](PROJECT.md) |
 | Understand the world vision | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
 | See the long-range simulation roadmap | [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) |
@@ -31,6 +32,22 @@ name the code symbols and file paths, which are the parts that matter for readin
 The table below lists **what exists in the code**, not what has been measured or proven. Measured
 status lives in [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 
+Five boundaries worth keeping in mind, as of **2026-11-17** (each comes from that document, §1.d, §2
+and §3.00; this README carries no measurements):
+
+- The experiment adapter for the live world is **headless adapter verified**, not
+  "experiment-ready". No experiment has been run inside the desktop app.
+- The app has been run and its tick measured once, on 2026-07-27: a **debug** build with 10 agents.
+  There is no **release** run and no measurement at 1,000 agents.
+- The experiment infrastructure exists; the project **does not yet have a powered scientific
+  result**. Experiment E2 was null because of a floor effect, and the E-SEL1 preregistration was
+  closed before any experiment ran.
+- Mortality, ecological fitness, continuous reproduction and locomotion **are in the code but off
+  by default**, and are verified on the headless path only. A default world still has no death and
+  scores fitness by distance.
+- One license text (`hexf-parse` 0.2.1) is **unresolved** and blocks a release; see
+  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
+
 | Layer | Contents |
 |---|---|
 | **World** | Multi-octave noise terrain + hydrology (rivers, spillways, delta, endorheic lakes); biome classification; dynamic climate/water/soil fields with conserved water and nutrient budgets |
@@ -38,8 +55,8 @@ status lives in [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF
 | **Creatures** | `MorphologyGenotype` → multi-segment phenotype, joint constraints, CPG oscillators driving gait; metabolism follows MTE (Kleiber + Arrhenius) instead of a linear mass term |
 | **Brains** | A shared actor-critic (Burn — `burn-wgpu` on GPU or `burn-ndarray` on CPU) is the default; **per-agent evolved brains** (`BrainGenotype`) and lifetime learning are opt-in behind flags ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
 | **Social behaviour** | Raycasting through a spatial hash, a 1D pheromone grid with diffusion/decay, predator–prey dynamics, combat |
-| **Ecology** | A **closed** energy ledger (EU): plants → herbivory → detritus → plants; Holling II/III functional responses; ~30% Lindeman transfer; logistic NPP regrowth per biome; seasonal cycle |
-| **Evolution** | MAP-Elites over an **ecological niche** grid (body mass × foraging range); generational replacement; lineage persisted to Neo4j with an in-memory fallback |
+| **Ecology** | A **closed** energy ledger (EU): plants → herbivory → detritus → plants; Holling II/III functional responses; ~30% Lindeman transfer; logistic NPP regrowth per biome; seasonal cycle. **Opt-in, off by default:** death by starvation and thirst (`ANIMA_MORTALITY`, manifest key `live.mortality`), continuous reproduction, a steering drive for locomotion, and the predator–prey ecology keys ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
+| **Evolution** | MAP-Elites over an **ecological niche** grid (body mass × the share of energy that came from predation, `trophic_ratio`); generational replacement; the default fitness is distance travelled, and an **ecological fitness** rule is opt-in (`ANIMA_FITNESS`, key `live.ecological_fitness`); lineage persisted to Neo4j with an in-memory fallback, with Newick export and a most-recent-common-ancestor (MRCA) query |
 | **Experiments** | Experiment manifest + headless runner, checkpoint forking, intervention queue + causal ledger, generic exotic energy ("mana") **off by default** |
 | **Interface** | 2D PixiJS 8 viewport; 3D landscape on three + R3F (`landscape.html`) with a day–night cycle, weather, instanced vegetation, first-person explore mode; ecosystem / evolution / lineage / chronicle panels |
 | **Infrastructure** | A 60 FPS background tick loop, **zero heap allocation on the hot path**, seeded RNG split per stream, versioned snapshots usable as checkpoints (draw position restored), deterministic mode for replay |
@@ -190,8 +207,9 @@ The frontend talks to the Rust core with Tauri commands and events — for examp
 the events `simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`,
 `migration-event`.
 
-The full list with payloads is in [PROJECT.md § Interface Contracts](PROJECT.md) — read it before
-changing the IPC surface, and update it in the same change.
+The full list with payloads is in [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md).
+Read it before changing the IPC surface, and update it in the same change: `npm run check:docs` fails
+when that list and the code disagree.
 
 ## Rules for changes
 
@@ -210,17 +228,24 @@ Full text in the [documentation policy](docs/governance/DOCUMENTATION_POLICY.md)
 ## Status
 
 - **Phases 0–7** (foundation → morphology → neural control + MAP-Elites → social → distribution and
-  meta-AI → GPU + PixiJS → landscape → ecosystem dynamics): done; detailed table in
-  [PROJECT.md](PROJECT.md).
+  meta-AI → GPU + PixiJS → landscape → ecosystem dynamics): done. Architecture is in [PROJECT.md](PROJECT.md); measured status is in
+  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 - **Simulation foundation M0–M3** (unit/conservation contracts, checksummed World Artifact,
   multi-rate clock + interventions + causal ledger, dynamic climate/water/soil fields): done in the
   headless core.
 - **Evolution lab AE1–AE3** (manifest/runner, exotic energy, energy pathway + selection): done and
-  **off by default**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) is still
-  `proposed`.
+  **off by default**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) was
+  accepted on 2026-11-17 for the headless slice only; the live world, persistence and the UI remain targets.
 - **ADR-0003** (per-agent brains + action space): accepted and implemented behind flags.
-- Open work and its dependency order: [TODO.md](TODO.md) and
-  [docs/planning](docs/planning/README.md).
+- **Ecology wired into selection** (mortality, ecological fitness, a niche axis independent of
+  fitness), **population turnover**, **locomotion** and **predator–prey ecology**: in the code, off by
+  default, verified on the headless path. ADR-0005, 0006 and 0007 are `accepted`.
+- **Branches:** the trunk is `feat/ecological-selection`; `main` is fast-forwarded onto it at
+  milestones. Both are protected, so every change lands through a pull request with both CI jobs green.
+- Open work and its priority order:
+  [`STATE_OF_THE_PROJECT.md` §3](docs/planning/STATE_OF_THE_PROJECT.md) and the
+  [planning index](docs/planning/README.md). [TODO.md](TODO.md) is a journal of work done, not a
+  backlog.
 
 ## Contributing
 

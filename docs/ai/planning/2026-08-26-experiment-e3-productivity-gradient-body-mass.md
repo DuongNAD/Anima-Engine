@@ -79,7 +79,7 @@ Cùng manifest, cùng seed, khác đúng **một** nhân tố — cường độ
 | `reversible` | `false` | giống hệt |
 
 Control **giữ nguyên hai lệnh** với cường độ 0 thay vì bỏ chúng đi. `validate_intervention` chấp
-nhận `intensity == 0.0` (chỉ từ chối số âm hoặc phi hữu hạn — `core/experiment.rs:1067–1072`), và giữ lệnh
+nhận `intensity == 0.0` (chỉ từ chối số âm hoặc phi hữu hạn — `validate_intervention` trong `core/experiment/interventions.rs`; neo dòng cũ `core/experiment.rs:1067–1072` đã chết khi file được tách), và giữ lệnh
 lại nghĩa là hai arm đi qua **cùng một đường mã**, chỉ khác độ lớn. Bỏ lệnh đi sẽ biến "cường độ" và
 "có hay không một lệnh trong hàng đợi" thành hai nhân tố lẫn vào nhau.
 
@@ -180,7 +180,7 @@ chất: một quan sát **chưa đăng ký**, sinh giả thuyết, không phải
 | WP-1 | Fixture JSON máy đọc được `src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json` | có file, và một test kiểu `prereg_e2_manifest_tests.rs` khẳng định nó khớp tài liệu này |
 | WP-2 | **Lượt chạy smoke ở seed 999979** | chứng minh được ba điều: (a) `ResourceField` có mặt trong thế giới headless, (b) hai can thiệp thật sự đổi `live.standing_crop` giữa hai arm, (c) `detritus` > 0 trước tick 3.000. Thiếu (b) thì nhân tố **không tồn tại** và cả thiết kế vô nghĩa |
 | WP-3 | Chốt `T` và cửa sổ khởi động theo kết quả WP-2, ghi vào `provenance.json` | trước khi seed thí nghiệm đầu tiên chạy; sau đó không đổi |
-| WP-4 | Đóng băng tài liệu này (`status: frozen`), ghi commit cha | không sửa nội dung sau khi seed đầu tiên chạy |
+| WP-4 | Đóng băng tài liệu này, ghi commit cha. *(Ghi chú 2026-11-17: `frozen` **không** phải giá trị `status` hợp lệ theo chính sách tài liệu và sẽ làm `check:docs` đỏ; dùng một giá trị hợp lệ và ghi dòng đóng băng có ngày trong thân.)* | không sửa nội dung sau khi seed đầu tiên chạy |
 | WP-5 | Chạy ensemble 12 cặp, phân tích theo §7 | có `summary.md`, mọi con số truy được về một file trong thư mục artifact |
 
 Thứ tự là bắt buộc. WP-2 có quyền **giết** thiết kế này: nếu can thiệp theo vùng không dịch được

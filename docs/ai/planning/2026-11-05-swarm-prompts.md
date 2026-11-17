@@ -1,6 +1,6 @@
 ---
 title: Prompt cho swarm Antigravity — lead, verifier, luật swarm và thẻ task
-status: proposed
+status: active
 owner: maintainers
 last_reviewed: 2026-11-05
 review_cycle: weekly
@@ -14,6 +14,20 @@ review_cycle: weekly
 >
 > Prompt viết bằng tiếng Anh, theo quy ước của brief 31/10 (brief đó từng ghi việc lẫn tiếng Việt vào
 > prompt tiếng Anh là một lỗi). Phần giải thích quanh prompt viết bằng tiếng Việt.
+
+> **Ghi chú 2026-11-17.** Thân các thẻ bên dưới không được sửa theo tiến độ. Trước khi dán một thẻ, xem
+> nó đã merge, đang làm hay bị chặn ở
+> [`AGENT_WORKFLOW.md` §3](../../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ), và lấy khối `DECISIONS` đã
+> điền ở §4 của trang đó. Ba điều đã đổi so với lúc viết: `main` và thân cây đã hợp nhất (2026-11-16) và
+> cả hai được bảo vệ, nên mọi thẻ kết thúc bằng một PR vào `feat/ecological-selection`; nhiều thẻ đã merge
+> (danh sách sống ở trang hàng đợi, không chép ở đây); và từ 2026-11-17 việc chạy trên hai máy (`agent-mac`,
+> `agent-win`) với nhánh `mac/…` và `win/…`, mô tả ở §1 của cùng trang.
+>
+> **Một đường dẫn trong các thẻ đã đổi nghĩa.** Các thẻ P1, P3, S1, E2R-P nhắc
+> `artifacts/experiments/e2-evolved-brain-default/RESULT.md` kèm số mục §4, §6, §7, §10, §11. Từ 2026-11-16
+> file đó là báo cáo của lượt **chạy lại theo sửa đổi 1** và chỉ có sáu mục. Bản 2026-07-27 mà các số mục ấy
+> trỏ tới nằm ở
+> `artifacts/experiments/e2-evolved-brain-default/superseded/2026-07-27-original-run-windows-pre-dormant-eu/RESULT.md`.
 
 ## Cách dùng
 

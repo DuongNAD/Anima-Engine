@@ -3,8 +3,9 @@ kind: agent-goal
 agent: claude-code-background
 feature: alternate-evolution-world-lab
 title: Overnight Goal — Headless AE2.5 (runtime exotic-source forcings, effect size, fixtures)
-status: active
+status: completed
 created: 2026-07-25
+completed: 2026-07-25
 owner: simulation-architecture
 predecessor: 2026-07-24-claude-overnight-goal-ae1-ae2.md
 ---

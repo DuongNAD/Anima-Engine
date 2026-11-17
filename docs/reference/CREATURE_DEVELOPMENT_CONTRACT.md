@@ -27,7 +27,8 @@ nguồn mâu thuẫn trước khi triển khai.
 | Thuật ngữ | Ý nghĩa |
 |---|---|
 | `MorphologyGenotype` | Dữ liệu di truyền: node/edge và các trait có thể di truyền |
-| `EnvSample` | Ảnh chụp môi trường tại vị trí/thời điểm phát triển |
+| `EnvSample` | Ảnh chụp môi trường tại vị trí/thời điểm phát triển: **đầu vào** của `develop_at_birth`, do `sample_environment` trả về |
+| `EnvironmentSnapshot` | Bản của `EnvSample` được **lưu trong phenotype** lúc sinh (trường `birth_environment`), để restore, migration và renderer đọc lại mà không lấy mẫu môi trường lần nữa |
 | `DevelopedPhenotype` | Hình học và trait đã phát triển từ genotype + môi trường sinh |
 | `RuntimeState` | Position, velocity, homeostasis, CPG và trạng thái thay đổi mỗi tick |
 | Genesis | Tạo quần thể ban đầu hoặc loài hoàn toàn mới |
@@ -48,6 +49,21 @@ Nó được gọi ở bốn đường:
 | Restore save | `spawn_serialized_agent` | Spawn phenotype đã lưu; không develop lại |
 | Migration | `SpawnMigrationCommand::apply` | Spawn phenotype đã truyền; không develop lại |
 
+**Đối chiếu 2026-11-17: bảng trên thiếu ba đường gọi.** `git grep 'decode_genotype('` trên thân cây cho
+**bảy** chỗ gọi ngoài test, không phải bốn. Ba đường dưới đây vào mã sau khi bảng được viết. Cột cuối
+là điều các định nghĩa ở đầu hợp đồng này suy ra cho chúng; chưa có quyết định riêng nào ghi cho từng
+đường, nên hãy đọc nó là đề xuất cho tới khi kế hoạch morphogenesis nhận.
+
+| Luồng | Symbol hiện tại | Ngữ nghĩa suy ra |
+|---|---|---|
+| Sinh (sinh sản liên tục, opt-in qua `live.reproduction`) | `SpawnOffspringCommand::apply` trong `core/agent_systems.rs` | Đây là **birth** đúng nghĩa của hợp đồng: develop đúng một lần, rồi spawn |
+| Genesis của adapter thí nghiệm sống | `genesis` trong `core/live_experiment.rs` | Như genesis của app: develop một lần rồi spawn |
+| Dựng lại một cá thể từ cohort ngủ đông (tầng LOD tổng hợp) | `RehydrateCommand::apply` trong `core/aggregate_population.rs` | Cá thể đã tồn tại, nên theo D01 **không** develop lại; cohort phải mang đủ để dựng lại đúng nó |
+
+Hệ quả cho người hiện thực `develop_at_birth`: "áp development vào mọi call-site" sai ở **bốn** trong
+bảy đường (restore, migration, rehydrate, và `WakeAgentCommand`, vốn đi qua `spawn_serialized_agent`).
+Đếm lại call-site bằng lệnh trên trước khi bắt đầu; con số này đã lỗi thời một lần.
+
 `TerrainMap`, `ResourceField`, `WorldIdentity` và `MapBounds` đã được insert trong
 `core::ecs::init_world` trước genesis. Seed runtime lấy từ `WorldIdentity.seed`;
 `MapSettings` hiện không phải resource.
@@ -55,7 +71,7 @@ Nó được gọi ở bốn đường:
 ### Trạng thái triển khai — tên nào đã có trong mã
 
 > Đối chiếu bằng `git grep -w` ngày **2026-11-14** trên `feat/ecological-selection` (nền đã chọn ở
-> QĐ-A) và `origin/main`. Hợp đồng này `accepted` vì **quyết định** đã được chấp nhận
+> QĐ-A) và `origin/main`, và lại ngày **2026-11-17** trên thân cây đã hợp nhất: các hàng ❌ vẫn ❌. Hợp đồng này `accepted` vì **quyết định** đã được chấp nhận
 > ([ADR-0001](../decisions/ADR-0001-creature-development-lifecycle.md)); phần lớn **kiểu dữ liệu** mà
 > các invariant D01… nêu tên thì **chưa được hiện thực**. Đọc các invariant như ràng buộc cho việc
 > xây tới đích, không phải mô tả mã hiện tại. Thiếu một kiểu không có nghĩa invariant đã lỗi thời,
@@ -65,9 +81,10 @@ Nó được gọi ở bốn đường:
 | Tên | Có trong mã? | Ghi chú |
 |---|---|---|
 | `MorphologyGenotype` | ✅ có | |
-| `decode_genotype`, `SpawnGenotypeCommand`, `spawn_serialized_agent`, `SpawnMigrationCommand` | ✅ có | Bốn đường gọi ở bảng trên |
+| `decode_genotype`, `SpawnGenotypeCommand`, `spawn_serialized_agent`, `SpawnMigrationCommand` | ✅ có | Bốn đường gọi ở bảng đầu |
+| `SpawnOffspringCommand`, `RehydrateCommand`, `live_experiment::genesis` | ✅ có | Ba đường gọi thêm, đối chiếu 2026-11-17 |
 | `DevelopedPhenotype` | ❌ chưa | Chỉ có trên nhánh chưa gộp `origin/fix/ht0-5c-sim-semantics` (`d396555`) |
-| `EnvSample`, `RuntimeState` | ❌ chưa | |
+| `EnvSample`, `EnvironmentSnapshot`, `RuntimeState` | ❌ chưa | `EnvSample` và `EnvironmentSnapshot` là **hai kiểu**, đúng như task CM-102 của [kế hoạch morphogenesis](../planning/CREATURE_MORPHOGENESIS_PLAN.md) liệt kê; định nghĩa của từng kiểu ở bảng thuật ngữ đầu hợp đồng (làm rõ 2026-11-17). Kiểu lưu có cùng các trường với kiểu đầu vào hay chỉ một tập con thì **chưa định**; chốt khi làm CM-102 |
 | `develop_at_birth` | ❌ chưa | D01 ràng buộc hàm này khi nó được tạo |
 | `LocomotionMedium`, `HabitatPreference`, `DynamicChromatophore` | ❌ chưa | |
 
