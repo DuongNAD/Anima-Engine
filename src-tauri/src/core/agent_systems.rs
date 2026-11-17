@@ -751,24 +751,21 @@ pub fn autonomous_reproduction_system(
             // transaction (G5, `tests/ledger_bypass_tests.rs`).
             if overhead_waste > 0.0 {
                 if let Some(ref mut pool) = biomass {
-                    use crate::core::energy_ledger::{Compartment, EnergyEvent};
-                    // `transfer` clamps to what its `Animals` mirror holds, and that mirror is last
-                    // tick's census plus ledger credits, not the reserves as they stand now. If it
-                    // ever held less than the overhead, the shortfall must still reach detritus:
-                    // the reserve has already been debited, so dropping it would destroy EU. With no
-                    // ledger resource (the legacy path) the whole overhead takes this route, which is
-                    // exactly the old write.
-                    let routed = match ledger.as_mut() {
-                        Some(ledger) if pool.animals >= overhead_waste => ledger.transfer(
-                            pool,
-                            Compartment::Animals,
-                            Compartment::Detritus,
-                            overhead_waste,
-                            EnergyEvent::BiologicalReproduction,
-                        ),
-                        _ => 0.0,
-                    };
-                    pool.detritus += overhead_waste - routed;
+                    match ledger.as_mut() {
+                        // `settle_reserve_outflow_to_detritus` also covers the first tick, when the
+                        // `Animals` mirror is still zero and a plain `transfer` would be clamped to
+                        // nothing.
+                        Some(ledger) => {
+                            crate::core::energy_ledger::settle_reserve_outflow_to_detritus(
+                                ledger,
+                                pool,
+                                overhead_waste,
+                                crate::core::energy_ledger::EnergyEvent::BiologicalReproduction,
+                            );
+                        }
+                        // No ledger resource: the legacy write, unchanged.
+                        None => pool.detritus += overhead_waste,
+                    }
                 }
             }
 

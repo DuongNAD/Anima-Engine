@@ -1005,21 +1005,15 @@ pub fn apply_live_interventions_system(
                     }
                 }
                 if stripped > 0.0 {
-                    // Same shape as the reproduction overhead: through the ledger, with any
-                    // shortfall against the `Animals` mirror still reaching detritus, because the
-                    // reserves have already been debited and dropping it would destroy EU.
-                    let routed = if pool.animals >= stripped {
-                        energy.transfer(
-                            pool,
-                            Compartment::Animals,
-                            Compartment::Detritus,
-                            stripped,
-                            EnergyEvent::Intervention,
-                        )
-                    } else {
-                        0.0
-                    };
-                    pool.detritus += stripped - routed;
+                    // Same routing as the reproduction overhead: the reserves have already been
+                    // debited, so the amount is settled through the ledger whether or not the
+                    // `Animals` mirror is fresh.
+                    crate::core::energy_ledger::settle_reserve_outflow_to_detritus(
+                        energy,
+                        pool,
+                        stripped,
+                        EnergyEvent::Intervention,
+                    );
                     state.ledger.record(
                         cmd.cause_id,
                         None,
