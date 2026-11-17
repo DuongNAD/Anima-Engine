@@ -49,6 +49,12 @@ agent mù; checklist đo bản release không đặt `ANIMA_FRESH_START`, nên s
 thể; `MAP_MANIFEST.md` nói cả 8 view chưa chụp trong khi cả 8 đã chụp. Mười bảy tài liệu `docs/ai` được đổi
 trạng thái cho khớp việc đã merge.
 
+Đợt bốn cùng ngày, theo mười bốn quyết định tiếp của chủ dự án: xoá `TASK.md`; chuyển `AUDIT_REPORT.md` vào
+`docs/archive/`; bỏ hai bảng tính năng và mốc của `PROJECT.md`; ghi Vostro 3530 là máy tối thiểu và i5-14600KF
+là máy đo; `AGENTS.md` nhận ngoại lệ thứ ba theo QĐ-B; **ADR-0002 được chấp nhận trong phạm vi lát headless**;
+năm bản ghi một lần chuyển `completed`; nhóm việc R đóng; bản nháp bài báo để ở repo riêng tư (QĐ-P2) và
+`docs/paper/AI_USE_LOG.md` được mở (QĐ-P3).
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

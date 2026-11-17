@@ -32,51 +32,17 @@ Anima-Engine is an autonomous natural world simulation and ecological AI platfor
 
 ---
 
-## Feature Inventory
+## Status
 
-> **Read this table and the Milestones table below as a claim list, not as measured status.** Both were
-> written by one agent pass. A check against the code on 2026-11-17 found these rows wrong: 9 (Lindeman
-> is 40%, not 30%), 12 and 13 (the prompt generator and the `.glb` archetype cache are a proposed design,
-> not code), 16 (the weathers are `clear`/`rain`/`snow`/`fog`), 17 (no caustics; Beer-Lambert only in
-> Map 2), 18 (chunk LOD is switched off), 20 (CI is Windows + Ubuntu and builds no installer). The
-> "Source: Survey" column points at no document in this repository, and the milestone numbers M1–M6 here
-> are not the M0–M11 of `WORLD_SIMULATION_PLAN.md`. Measured status lives in
-> [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
-| # | Feature | Description | Milestone | Source |
-|---|---|---|---|---|
-| 1 | 2048x2048 Procedural Terrain | 8-octave fBm, ridged multifractals, hydraulic erosion | M1 | Survey 1 |
-| 2 | D8 River Routing & Meanders | Flow accumulation, counting-sort descent, channel carving | M1 | Survey 1 |
-| 3 | Barnes Priority-Flood Lakes | Lake basin filling, spillway overflow, endorheic salt lakes | M1 | Survey 1 |
-| 4 | 22 Whittaker Biomes | Ecotones mapped from temperature lapse & orographic moisture | M1 | Survey 1 |
-| 5 | Binary World Artifact (.anmw) | Version 2, 36-byte header, FNV-1a checksum, 22↔11 biome mapping | M1 | Survey 1 |
-| 6 | Bevy ECS Terrain Sync | Ingest .anmw into `TerrainMap`, bind `WorldIdentity` seed | M1 | Survey 1 |
-| 7 | Closed-EU Energy Ledger | Conserve EU across 4 compartments (detritus, plants, animals, dormant) | M2 | Survey 2 |
-| 8 | MTE Metabolic Scaling | Kleiber's $M^{3/4}$ allometry $\times$ Arrhenius temperature factor | M2 | Survey 2 |
-| 9 | Holling II & III Dynamics | Type II grazing, Type III predation rarity refuge, 30% Lindeman | M2 | Survey 2 |
-| 10 | 10k+ Ticks Population Stability | Seasonal fertility, Whittaker NPP, Shannon/Simpson index > 0 | M2 | Survey 2 |
-| 11 | Procedural 3D Mesh Fallback | CPG oscillator + joint constraints + SLERP/IK at 60 FPS | M3 | Survey 2 |
-| 12 | 9-Slot Meshy Prompt Generator | Genotype to concise descriptive text prompt ($\le 500$ chars) | M3 | Survey 2 |
-| 13 | Local Archetype Model Caching | BLAKE3 hash indexing, local `.glb` storage, A1–A7 gates | M3 | Survey 2 |
-| 14 | Terrain-Following Locomotion | Raycast surface height and normal slope-following orientation | M3 | Survey 2 |
-| 15 | Celestial Day/Night Cycle | 4-phase sun/moon orbits, dynamic lighting & shadow tracking | M4 | Survey 3 |
-| 16 | Biome Weather Particles | Desert sandstorm, snow frost, rainforest spores, volcanic ash | M4 | Survey 3 |
-| 17 | Realistic Water GLSL Shader | Depth absorption (Beer-Lambert), wave foam, caustics | M4 | Survey 3 |
-| 18 | Distance Chunking & Frustum LOD | 6x6 chunk grid, distance tiers, skirts, >70% draw reduction | M4 | Survey 3 |
-| 19 | Tauri v2 Packaging & Security | CSP verification, window permissions, macOS `.app`/`.dmg` | M5 | Survey 3 |
-| 20 | Multi-Platform CI/CD Workflows | GitHub Actions matrix for macOS, Windows, and Linux | M5 | Survey 3 |
-| 21 | Verification & Hardening Gate | Passing `just verify` ("QUA CONG"), full Vitest & Cargo tests | M5 | Survey 3 |
+This file describes the architecture. It does not track what is done. The Feature Inventory and
+Milestones tables that used to sit here were removed on 2026-11-17 by the owner's decision: a check
+against the code found seven of their rows false, and their M1–M6 numbering collided with the
+M0–M11 of [`WORLD_SIMULATION_PLAN.md`](WORLD_SIMULATION_PLAN.md).
 
----
-
-## Milestones
-| # | Name | Scope | Dependencies | Status |
-|---|---|---|---|---|
-| M1 | Unified Natural Map & Binary Sync | 2048² world generation, D8 flow, Barnes lakes, 22 biomes, `.anmw` format, Bevy ECS `init_world` sync | none | DONE |
-| M2 | Closed Ecology & Population Dynamics | Closed-EU ledger ($\le 10^{-3}$ EU), MTE metabolic rate, Holling II/III, 10k-tick stability ($H>0$) | M1 | DONE |
-| M3 | Creature Morphogenesis & Meshy AI | Hybrid procedural IK/CPG mesh fallback, 9-slot prompt generator, BLAKE3 cache, terrain locomotion | M1, M2 | DONE |
-| M4 | Cinematic Atmosphere, Water & LOD | Day/night cycle, 4-biome particle systems, water shader (depth/caustics), 6x6 chunk LOD & culling | M1 | DONE |
-| M5 | Desktop Packaging & Hardening | Tauri v2 configuration, CSP/IPC permissions, macOS packaging, CI/CD scripts, `just verify` | M1, M2, M3, M4 | DONE |
-| M6 | Final Integration & E2E Acceptance | 100% pass across E2E Tiers 1-4, Tier 5 adversarial coverage hardening | M1, M2, M3, M4, M5, E2E | DONE |
+- Measured status, per gate, with the command and the date:
+  [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md).
+- What each subsystem has reached, and the stage the project is in: §2 and §3.00 of the same file.
+- The long-range simulation roadmap: [`WORLD_SIMULATION_PLAN.md`](WORLD_SIMULATION_PLAN.md).
 
 ---
 

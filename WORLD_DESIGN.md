@@ -5,6 +5,9 @@
 > Tối ưu để chừa tài nguyên cho **hàng triệu mô hình ML** động–thực vật, chạy được trên
 > Dell Vostro 3530 (i7-1355U, iGPU Iris Xe + dGPU rời) mà không full-load máy.*
 >
+> *Quyết định 2026-11-17:* Dell Vostro 3530 nêu ở trên là **máy tối thiểu**; máy đo của baseline hiệu năng là
+> Intel Core i5-14600KF ([BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md)).
+>
 > Tài liệu này là bản khảo sát hiện trạng + tham chiếu kỹ thuật + kiến trúc mục tiêu + roadmap.
 > Ngày lập: 2026-07-24.
 

@@ -322,6 +322,26 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-P1 | **Có viết** bài báo phương pháp (chủ dự án trả lời "có viết" ngày 2026-11-17). Chủ đề theo đề xuất của kế hoạch swarm: kỷ luật bằng chứng cho mô phỏng ALife, E2 rồi E2R làm case study | Mở luồng thẻ P. QĐ-P2 (chỗ để bản nháp) và QĐ-P3 (khai báo dùng AI) **còn trống** |
 | Người ghi tài liệu | Phiên rà soát tài liệu được giao rà và sửa **toàn bộ** tài liệu trong đợt 2026-11-17, kể cả `STATE`, `TODO.md`, `FINDINGS.md` và trang hàng đợi thẻ. Ngoài đợt đó, bốn file này vẫn thuộc `agent-mac` | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
 
+**Lượt hai cùng ngày** ("theo đề xuất hết", trả lời mười bốn câu hỏi sau đợt rà toàn bộ tài liệu):
+
+| # | Quyết định | Đã làm trong tài liệu |
+|---|---|---|
+| `TASK.md` | Xoá | Đã xoá; lịch sử git giữ nó |
+| `AUDIT_REPORT.md` | Chuyển vào `docs/archive/` | [`docs/archive/AUDIT_REPORT.md`](../archive/AUDIT_REPORT.md), kèm banner và ghi chú bác SIM-01 |
+| Bảng tính năng và mốc của `PROJECT.md` | Bỏ, trỏ sang STATE | Thay bằng mục "Status" |
+| Phần cứng mục tiêu | **Dell Vostro 3530 là máy tối thiểu; Intel Core i5-14600KF là máy đo** | Ghi vào `SIMULATION_RULES.md`, `BENCHMARK_BASELINE.md`, `WORLD_DESIGN.md` |
+| `AGENTS.md` và QĐ-B | `AGENTS.md` trỏ sang QĐ-B | Thêm "ngoại lệ thứ ba": thẻ có dòng `AUTHORIZATION` |
+| ADR-0002 | **Chấp nhận trong phạm vi lát headless** | Mục "Quyết định (2026-11-17)" của ADR; STATE §3.10 đóng |
+| Bản ghi một lần đã xong | Chuyển `completed` | Hai bản kiểm kê 14/11, đo bề mặt gộp, chẩn đoán E-SEL1, mục tiêu G0–G4. **E2 chờ #68 merge** |
+| Nhóm việc R (sinh sản theo ngưỡng) | Đóng; thay bằng ADR-0005 và thẻ S6 | Backlog ecological-selection |
+| QĐ-P2 | Bản nháp bài báo để ở **một repo riêng tư**, vì repo này công khai | [`docs/paper/README.md`](../paper/README.md) |
+| QĐ-P3 | Mở nhật ký dùng AI ngay | [`docs/paper/AI_USE_LOG.md`](../paper/AI_USE_LOG.md) |
+
+Ba câu trong mười bốn không có đề xuất sẵn nên **vẫn còn trống**: tài liệu swarm ba máy qua Google Drive còn
+dùng hay đã bị thay; ảnh chụp môi trường là một kiểu hay hai (`EnvSample`, `EnvironmentSnapshot`); và có viết
+bản macOS cho các how-to không. Với công cụ `animal-map-vision`, `AGENTS.md` chỉ được thêm một ghi chú rằng
+nó nằm ngoài repo; khối quy tắc giữ nguyên.
+
 Các thẻ mã sinh ra từ bảng này được định nghĩa ở
 [kế hoạch swarm §3](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 Chưa thẻ nào trong số đó có dòng `AUTHORIZATION`: chủ dự án ghi dòng đó khi giao thẻ.
@@ -335,11 +355,13 @@ hai dòng cuối):
 | Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
 | Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
-| Chặng 5 | QĐ-P2, QĐ-P3 — chỗ để bản nháp bài báo (repo này đang public), và khai báo dùng AI | Thẻ P1–P9. QĐ-P1 đã quyết: có viết |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Trước AE4 | QĐ-PAST — chỉ còn thiết kế lưu trữ | §4.2 ngay dưới |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
+| Không gắn chặng | Tài liệu swarm ba máy qua Drive: còn dùng hay `superseded` | [`docs/ai/README.md`](../ai/README.md) |
+| Trước thẻ V0 | `EnvSample` và `EnvironmentSnapshot`: một kiểu hay hai | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+| Không gắn chặng | Có viết bản macOS cho các how-to không (cần chạy thử từng lệnh) | [`docs/how-to/`](../how-to/README.md) |
 
 ### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
 

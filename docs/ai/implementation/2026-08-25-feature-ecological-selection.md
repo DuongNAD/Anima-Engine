@@ -106,15 +106,19 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 > (thẻ S1, #66, [ADR-0005](../../decisions/ADR-0005-live-population-turnover.md)). `ANIMA_REPRODUCTION` và
 > `births_suppressed_by_cap` thì chưa có. Trần sinh sản của con mồi là việc của thẻ S6 (QĐ-SEL1b = A). Nhóm
 > R giữ nguyên, đóng lại hay thu hẹp về phần S1 chưa làm là việc chủ dự án quyết.
+>
+> **Chủ dự án quyết ngày 2026-11-17: đóng nhóm R.** Nó được thay bằng ADR-0005 (sinh sản liên tục, đã merge)
+> và thẻ S6 (trần sinh sản của con mồi). Sáu hàng dưới đây giữ làm bản ghi và **không** còn là việc cần làm;
+> các bẫy ghi ở cột cuối vẫn đáng đọc khi làm S6.
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| R-1 | 🔒 | `ReproductionPolicy` + `ANIMA_REPRODUCTION` | `src-tauri/src/core/resources.rs` | M, F xanh | cờ unset ⇒ epoch replacement như cũ | |
-| R-2 | 🔒 | `SpawnOffspringCommand` — **một** command, hai vế ledger | `src-tauri/src/core/agent_systems.rs` | R-1 | RE-S01: residual ≤ 1e-3 sau 120k tick | ⚠️ hai bước qua `Commands` = đúng chế độ hỏng mà `ReclaimAndDespawn` đã sửa |
-| R-3 | 🔒 | `reproduction_system` + trần + `births_suppressed_by_cap` | file mới | R-2 | RE-S02, RE-S03 | ⚠️ trần im lặng làm mọi kết luận quần thể sai không phát hiện được |
-| R-4 | 🔒 | Ghi cạnh lineage **trong cùng** command | `src-tauri/src/evolution/lineage.rs` | R-2 | RE-S04: không cạnh mồ côi | ⚠️ một cạnh mồ côi phá **toàn bộ** đồ thị: `to_newick` và `simplify` đều từ chối |
-| R-5 | 🔒 | Preflight: R + epoch replacement cùng bật là lỗi | `src-tauri/src/core/experiment.rs` | R-1 | RE-S05 | |
-| R-6 | 🔒 | Không Lamarck: con nhận genome, không nhận `learned` | `src-tauri/src/evolution/brain_genotype.rs` | R-2 | test khẳng định `.genotype` không bị ghi | [ADR-0003](../../decisions/ADR-0003-evolved-per-agent-brains.md) |
+| R-1 | ✖ đóng | `ReproductionPolicy` + `ANIMA_REPRODUCTION` | `src-tauri/src/core/resources.rs` | M, F xanh | cờ unset ⇒ epoch replacement như cũ | |
+| R-2 | ✖ đóng | `SpawnOffspringCommand` — **một** command, hai vế ledger | `src-tauri/src/core/agent_systems.rs` | R-1 | RE-S01: residual ≤ 1e-3 sau 120k tick | ⚠️ hai bước qua `Commands` = đúng chế độ hỏng mà `ReclaimAndDespawn` đã sửa |
+| R-3 | ✖ đóng | `reproduction_system` + trần + `births_suppressed_by_cap` | file mới | R-2 | RE-S02, RE-S03 | ⚠️ trần im lặng làm mọi kết luận quần thể sai không phát hiện được |
+| R-4 | ✖ đóng | Ghi cạnh lineage **trong cùng** command | `src-tauri/src/evolution/lineage.rs` | R-2 | RE-S04: không cạnh mồ côi | ⚠️ một cạnh mồ côi phá **toàn bộ** đồ thị: `to_newick` và `simplify` đều từ chối |
+| R-5 | ✖ đóng | Preflight: R + epoch replacement cùng bật là lỗi | `src-tauri/src/core/experiment.rs` | R-1 | RE-S05 | |
+| R-6 | ✖ đóng | Không Lamarck: con nhận genome, không nhận `learned` | `src-tauri/src/evolution/brain_genotype.rs` | R-2 | test khẳng định `.genotype` không bị ghi | [ADR-0003](../../decisions/ADR-0003-evolved-per-agent-brains.md) |
 
 ---
 

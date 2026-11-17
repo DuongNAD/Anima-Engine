@@ -238,13 +238,13 @@ Xem đầy đủ tại [chính sách tài liệu](docs/governance/DOCUMENTATION_
 ## Trạng thái
 
 - **Phase 0–7** (nền tảng → hình thái → điều khiển neural + MAP-Elites → xã hội → phân tán và
-  meta-AI → GPU + PixiJS → cảnh quan → động lực hệ sinh thái): xong; bảng chi tiết ở
-  [PROJECT.md](PROJECT.md).
+  meta-AI → GPU + PixiJS → cảnh quan → động lực hệ sinh thái): xong. Kiến trúc ở [PROJECT.md](PROJECT.md); trạng thái đo được ở
+  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 - **Nền mô phỏng M0–M3** (hợp đồng đơn vị/bảo toàn, World Artifact có checksum, đồng hồ đa nhịp
   + can thiệp + sổ nhân quả, trường khí hậu/nước/đất động): xong ở lõi headless.
 - **Phòng thí nghiệm tiến hoá AE1–AE3** (manifest/runner, năng lượng ngoại lai, đường dẫn năng
   lượng + chọn lọc): xong và **mặc định tắt**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md)
-  vẫn ở trạng thái `proposed`.
+  được chấp nhận ngày 2026-11-17 trong phạm vi lát không cửa sổ; thế giới sống, lưu trữ và giao diện vẫn là mục tiêu.
 - **ADR-0003** (não theo từng cá thể + không gian hành động): accepted và đã triển khai sau cờ.
 - **Sinh thái nối vào chọn lọc** (tử vong, fitness sinh thái, trục niche độc lập với fitness), **quần
   thể luân chuyển**, **vận động** và **sinh thái thú săn – con mồi**: có trong mã, tắt mặc định, kiểm ở

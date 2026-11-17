@@ -1277,6 +1277,10 @@ và không nói gì — nhưng đó là đánh đổi, không phải bản sửa
 
 #### 3.8 Hai ADR đang ở trạng thái `proposed`, và cả hai đều đang đỡ tải
 
+> *Cập nhật 2026-11-17:* tiêu đề mục này đã cũ. ADR-0004 được chấp nhận từ 2026-07-26, và **ADR-0002 được
+> chủ dự án chấp nhận ngày 2026-11-17, trong phạm vi lát headless** (mục "Quyết định (2026-11-17)" của ADR).
+> Không còn ADR nào đang đỡ tải mà ở trạng thái `proposed`. Văn bản dưới đây giữ làm bối cảnh.
+
 `proposed` chỉ vô hại khi chưa có gì dựa lên nó. Hiện không còn như vậy:
 
 - **[ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md)** — AE1–AE3 đã ship trên nó
@@ -1457,7 +1461,7 @@ vẫn trả đồ thị **đầy đủ**.
 | # | Việc | Điểm neo | Vì sao đáng làm |
 |---|---|---|---|
 | ~~3.9~~ | ~~Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`~~ **XONG** (`0d6b4b2`, 2026-07-27; ghi nhận 2026-11-17) | [`ai/model.rs`](../../src-tauri/src/ai/model.rs) | `unsafe impl Send` đã bị bỏ (mọi trường tự `Send`; test `brain_model_is_send_without_an_unsafe_impl` giữ cho nó không quay lại). Còn đúng **một** `unsafe impl Sync for BrainModel`, kèm luận chứng `// SAFETY:` và hai yêu cầu được test cấu trúc giữ. Dòng cũ ở đây ("2/2 khối không có luận chứng") đã lỗi thời |
-| 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
+| ~~3.10~~ | ~~Hoà giải trạng thái ADR-0002~~ **XONG 2026-11-17**: chủ dự án chấp nhận ADR trong phạm vi lát headless; mục "Quyết định (2026-11-17)" của ADR ghi phần nào được chấp nhận và phần nào vẫn là mục tiêu | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md), trước đó `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
 | ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
 | ~~3.18~~ | ~~Bỏ mọi lối thoát kiểu (`as any` / `as unknown as` / `as never` / `eslint-disable`) và bật typecheck cho `tests/`~~ **XONG** (2026-07-27, `feature-anima-completion`) | `npm run typecheck:tests` (gate mới trong CI) · [`src/window-globals.d.ts`](../../src/window-globals.d.ts) · [`tests/mocks/segment_fixtures.ts`](../../tests/mocks/segment_fixtures.ts) | Grep chính xác trên `src`/`tests`/`playground` **= 0** cho cả bốn mẫu, kể cả trong comment. Không suppress, không nới rule, không xoá test. Mỗi chỗ được gỡ bằng cách **làm cho điều đang bị khẳng định trở thành đúng**: các thuộc tính `window` được khai báo thật; `buildAgentHierarchy` nhận `readonly unknown[]` đúng như dữ liệu IPC nó vốn phòng thủ (lộ ra 2 lỗi thật: `segment_id` không phải số bị key bằng `undefined`, và `s.x \|\| 0` cho chuỗi lọt vào trường `number`); `biomeAt`/`findSpawn` nhận đúng các field chúng đọc; mock r3f dựng `THREE.Scene`/`PerspectiveCamera` thật. **Phát hiện phụ:** gói `tests/` chưa từng được typecheck — **86 lỗi** không lệnh nào báo, nay = 0 và có gate | |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |

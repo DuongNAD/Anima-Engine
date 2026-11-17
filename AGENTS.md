@@ -1,6 +1,12 @@
 <!-- BEGIN ANIMAL MAP VISION -->
 # Animal Map Vision MCP — required workflow
 
+> Note, 2026-11-17: the `animal-map-review` skill and the `animal-map-vision` MCP server are **external
+> tools**. Neither is shipped in this repository (`.agents/skills/` holds other skills, and there is no
+> `.mcp.json`). When they are not connected, the rule below still stands: do not claim a map was reviewed.
+> What the repository can check on its own is the manifest gate (`map_manifest.schema.json`,
+> `tests/frontend/mapManifestEvidence.test.ts`) and the eight canonical views (`npm run capture:views`).
+
 For any task involving world generation, terrain, biomes, ecosystems, vegetation,
 animals, navigation, collisions, water, lighting, map screenshots, or map quality:
 
@@ -38,6 +44,10 @@ Layout repo này (sinh tự động, đừng sửa tay):
 Giao diện lệnh duy nhất là `just`. Chạy `just` để xem danh sách.
 KHÔNG tự chế lệnh cargo/pytest khác.
 
+> Ghi chú 2026-11-17: `just test` chạy `cargo test --release` **không** có `--features desktop`, nên các
+> file test bị gate theo feature `networking` hoặc `ml-wgpu` không nằm trong cổng `just`. CI chạy chúng bằng
+> `cargo test --features desktop`. Đây là giới hạn đã biết của cổng hardening, chưa được sửa trong `justfile`.
+
 ## Cấm tuyệt đối
 - Sửa bất kỳ file nào trong `src-tauri/src`. Vi phạm = task fail, không ngoại lệ.
 - Sửa `justfile`, `AGENTS.md`, `scripts/`, `.hardening.env`, file config build.
@@ -65,8 +75,14 @@ Hai skill dưới đây được sửa `src-tauri/src`, và **chỉ khi cả ba 
 | `determinism-fixer` | `hardening/phase0-determinism` | chỉ **nguồn** ngẫu nhiên / đồng hồ, không đổi thuật toán | `just test` giữ nguyên số test pass, `just flaky 5` = 5/5 |
 | `perf-guard` | `hardening/perf-*` | chỉ hot path đã có dữ liệu profiler | `just perf-gate` |
 
-Ngoài hai dòng trên — mọi skill khác, mọi nhánh khác — **cấm tuyệt đối**, không
-bàn. Nếu prompt yêu cầu sửa code nguồn mà không khớp bảng này, hãy từ chối và
+**Ngoại lệ thứ ba, do chủ dự án quyết ngày 2026-11-14 (QĐ-B) và xác nhận lại ngày 2026-11-17:** một thẻ
+công việc được sửa `src-tauri/src`, hoặc một file R5, khi và chỉ khi prompt của nó mang một dòng
+`AUTHORIZATION (owner, <ngày>)` liệt kê **đúng** các path được phép, chỉ cho thẻ đó. Mẫu dòng và các dòng
+đang có hiệu lực nằm ở [`docs/how-to/AGENT_WORKFLOW.md`](docs/how-to/AGENT_WORKFLOW.md) §4. Không có dòng
+đó thì thẻ không được chạm `src-tauri/src`.
+
+Ngoài ba trường hợp trên — mọi skill khác, mọi nhánh khác, mọi prompt không có dòng uỷ quyền — **cấm tuyệt
+đối**, không bàn. Nếu prompt yêu cầu sửa code nguồn mà không khớp trường hợp nào, hãy từ chối và
 nói rõ điều kiện nào không thoả.
 
 ## Khi bí

@@ -2,6 +2,11 @@
 
 > **Cập nhật 2026-07-26 — hai thay đổi lớn.**
 >
+> *Quyết định 2026-11-17 của chủ dự án, đọc trước mục 1 bên dưới:* **i5-14600KF là máy đo**, nơi mọi số
+> của file này được lấy; **Dell Vostro 3530 là máy tối thiểu** mà dự án nhắm chạy được. Câu "khai báo cũ
+> không còn hiệu lực" ở mục 1 chỉ đúng cho vai *máy đo*. Chưa có số đo engine nào trên Vostro; riêng phần
+> hiển thị 3D đã được đo trên nó ở thẻ RW-C2.
+>
 > 1. **Phần cứng mục tiêu nay là Intel Core i5-14600KF** (desktop, 14 nhân / 20 luồng, 47,8 GB,
 >    Windows 11 Pro 10.0.26200). Khai báo cũ — *Dell Vostro 3530 (i7-1355U, Iris Xe iGPU + dGPU)* —
 >    **không còn hiệu lực** và đã được thay ở mọi chỗ trong tài liệu này. Máy capture và máy mục

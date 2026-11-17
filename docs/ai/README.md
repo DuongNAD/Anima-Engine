@@ -46,20 +46,20 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-07-24 | [Overnight goal — AE1–AE2](planning/2026-07-24-claude-overnight-goal-ae1-ae2.md) | agent-goal | `completed` |
 | 2026-07-25 | [Overnight goal — AE2.5](planning/2026-07-25-claude-overnight-goal-ae25.md) | agent-goal | `completed` |
 | 2026-07-25 | [Overnight goal — AE3](planning/2026-07-25-claude-overnight-goal-ae3.md) | agent-goal | `completed` |
-| 2026-07-25 | [Overnight goal — G0–G4 remediation](planning/2026-07-25-claude-overnight-goal-g0-g4-remediation.md) | agent-goal | `active` |
+| 2026-07-25 | [Overnight goal — G0–G4 remediation](planning/2026-07-25-claude-overnight-goal-g0-g4-remediation.md) | agent-goal | `completed` |
 | 2026-07-27 | [Supervisor findings — Completion pass](planning/2026-07-27-review-anima-completion-supervisor-findings.md) | review-findings | `completed` |
 | 2026-08-25 | [Bản giao việc — Đóng vòng sinh thái](planning/2026-08-25-agent-goal-ecological-selection.md) | brief | `active` |
 | 2026-08-25 | [Agent goal — Thế giới sống](planning/2026-08-25-agent-goal-living-world.md) | agent-goal | `active` |
 | 2026-10-31 | [Brief cho Antigravity — HT-A và HT-B](planning/2026-10-31-antigravity-brief.md) | brief | `active` |
 | 2026-10-31 | [Brief cho Antigravity — tách crate con (S0–S5)](planning/2026-10-31-antigravity-brief-crate-split.md) | brief | `active` |
-| 2026-11-01 | [Bề mặt hợp nhất giữa hai cây](planning/2026-11-01-merge-surface-measurement.md) | đo | `active` |
+| 2026-11-01 | [Bề mặt hợp nhất giữa hai cây](planning/2026-11-01-merge-surface-measurement.md) | đo | `completed` |
 | 2026-11-05 | [Kế hoạch tổng cho swarm Antigravity](planning/2026-11-05-swarm-master-plan.md) — mọi thẻ, chia đợt | kế hoạch thẻ | `active` |
 | 2026-11-05 | [Prompt cho swarm Antigravity](planning/2026-11-05-swarm-prompts.md) — lead, luật swarm, verifier, từng thẻ | prompt | `active` |
 | 2026-11-15 | [Swarm ba máy qua Google Drive](planning/2026-11-15-three-machine-drive-swarm.md) — giao thức BLOCK D, prompt lead/trạm/tiếp tục, khối DECISIONS Đợt 2 | prompt | `proposed` |
-| 2026-11-14 | [Kiểm toán PR mở và nhánh remote ngày 2026-11-14](monitoring/pr-branch-audit-2026-11-14.md) — 10 PR mở, 102 nhánh remote và mọi hunk chưa lên thân cây của PR #35–#37 | monitoring | `active` |
-| 2026-11-14 | [Triage báo cáo AUDIT_REPORT.md trên thân cây ngày 2026-11-14](monitoring/audit-triage-2026-11-14.md) — đối chiếu 2 bản sao trên `main`, xác minh 27 mục và đề xuất 21 thẻ `§6` | monitoring | `active` |
+| 2026-11-14 | [Kiểm toán PR mở và nhánh remote ngày 2026-11-14](monitoring/pr-branch-audit-2026-11-14.md) — 10 PR mở, 102 nhánh remote và mọi hunk chưa lên thân cây của PR #35–#37 | monitoring | `completed` |
+| 2026-11-14 | [Triage báo cáo AUDIT_REPORT.md trên thân cây ngày 2026-11-14](monitoring/audit-triage-2026-11-14.md) — đối chiếu 2 bản sao trên `main`, xác minh 27 mục và đề xuất 21 thẻ `§6` | monitoring | `completed` |
 | 2026-11-16 | [Thế giới nhìn rõ trên ba máy](planning/2026-11-16-readable-world-three-machines.md) — lane, file sở hữu, thẻ RW-A1 … RW-C5 cho `anima-mac`, `anima-case`, `anima-dell` | kế hoạch thẻ | `active` |
-| 2026-11-17 | [Chẩn đoán sau E-SEL1](planning/2026-11-17-esel1-scarcity-diagnosis.md) — cái gì giới hạn quần thể con mồi (đồng cỏ không cạn vì trần sinh sản 80, nước giới hạn), yếu tố khan hiếm nào dùng được, QĐ-SEL1b | đo | `active` |
+| 2026-11-17 | [Chẩn đoán sau E-SEL1](planning/2026-11-17-esel1-scarcity-diagnosis.md) — cái gì giới hạn quần thể con mồi (đồng cỏ không cạn vì trần sinh sản 80, nước giới hạn), yếu tố khan hiếm nào dùng được, QĐ-SEL1b | đo | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),

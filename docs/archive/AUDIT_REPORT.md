@@ -1,3 +1,16 @@
+---
+title: Báo cáo kiểm toán mã nguồn ngày 2026-08-14 — lưu trữ
+status: superseded
+archive_state: do-not-use
+owner: maintainers
+last_reviewed: 2026-11-17
+superseded_by: ../ai/monitoring/audit-triage-2026-11-14.md
+---
+
+> ⚠️ **LỊCH SỬ — không dùng làm tài liệu hiện hành.** Đây là báo cáo kiểm toán một thời điểm của một lượt
+> agent, từng nằm ở gốc repo với tên `AUDIT_REPORT.md`; chủ dự án quyết chuyển nó vào đây ngày 2026-11-17.
+> Bản phân loại từng finding: [`audit-triage-2026-11-14.md`](../ai/monitoring/audit-triage-2026-11-14.md).
+
 # Comprehensive Codebase Audit & Technical Health Report
 
 > **Point-in-time audit, 2026-08-14. Do not act on a finding or a roadmap checkbox below without checking it
@@ -8,7 +21,7 @@
 >   markers remain), SIM-02, SIM-03, SIM-04, SIM-05, SIM-06, REND-01 and DATA-01. RUST-02 names a file
 >   that does not exist.
 > - The triage of this report is
->   [`docs/ai/monitoring/audit-triage-2026-11-14.md`](docs/ai/monitoring/audit-triage-2026-11-14.md); some of
+>   [`docs/ai/monitoring/audit-triage-2026-11-14.md`](../ai/monitoring/audit-triage-2026-11-14.md); some of
 >   the fixes above landed after that triage was written.
 >
 > A finding of an automated audit is a hypothesis: reproduce it with a test before changing code.

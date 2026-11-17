@@ -19,7 +19,8 @@ một nhánh không có nguồn năng lượng đặc biệt và một nhánh c�
 
 Mọi implementation liên quan `WorldLawSet`, điều kiện `t=0`, nguồn năng lượng mới, khả năng sử dụng
 nguồn đó, phân nhánh scenario, quan sát tiến hóa hoặc kết luận “loài mới” phải tuân theo contract này
-sau khi ADR-0002 được accepted.
+sau khi ADR-0002 được accepted. *(ADR-0002 được chấp nhận ngày 2026-11-17 trong phạm vi lát headless tham
+chiếu; contract này vẫn `proposed` cho phần còn lại.)*
 
 ## Thứ tự đọc cho AI agent
 
@@ -110,7 +111,8 @@ Mỗi `ExoticEnergyLaw` phải khai báo:
 - source model: `Finite`, `Renewable`, `Pulsed` hoặc `Disabled`;
   *(Trạng thái 2026-11-17: `ExoticSourceModel` trong mã chỉ có `Renewable`. Tắt nguồn được biểu diễn bằng
   `exotic_energy = None`, cố ý không có biến thể `Disabled`; `Finite` và `Pulsed` chưa hiện thực. Sửa dòng
-  luật này cho khớp mã hay giữ nó làm mục tiêu là việc của ADR-0002, vốn còn `proposed`.)*
+  luật này cho khớp mã hay giữ nó làm mục tiêu chưa được quyết; ADR-0002 được chấp nhận ngày 2026-11-17
+  chỉ trong phạm vi lát headless và ghi rõ chỗ lệch này.)*
 - spatial topology và initial amount/flux;
 - uptake, release, decay/dissipation;
 - conversion rule nếu có;

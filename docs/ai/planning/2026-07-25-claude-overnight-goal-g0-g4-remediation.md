@@ -3,14 +3,20 @@ kind: agent-goal
 agent: claude-code-background
 feature: g0-g4-remediation
 title: Overnight Goal — G0–G4 Remediation Program (post-audit)
-status: active
+status: completed
 created: 2026-07-25
+completed: 2026-11-17
 last_reviewed: 2026-07-26
 owner: simulation-architecture
 predecessor: 2026-07-25-claude-overnight-goal-ae3.md
 ---
 
 # Claude Overnight Goal — G0–G4 Remediation Program (post-audit)
+
+> **Closed on 2026-11-17 by the owner's decision.** This one-night goal reached G0, G1.1–G1.4 and G2;
+> G2 gate #1 is recorded as not met, and G3 and G4 were never started under it. The open parts live on in
+> `docs/planning/STATE_OF_THE_PROJECT.md` (§3.2, §3.6) and in the swarm plan's cards. The body below is the
+> record as written and is not updated.
 
 > ## 📜 Historical package record — not current status
 >

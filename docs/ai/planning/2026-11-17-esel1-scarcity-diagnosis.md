@@ -3,7 +3,7 @@ phase: planning
 feature: experiment-e-sel1-food-scarcity
 title: Chẩn đoán sau E-SEL1 — cái gì giới hạn quần thể con mồi, và yếu tố khan hiếm nào dùng được
 description: Đo thăm dò, không đọc khối lượng cơ thể, sau khi E-SEL1 đóng tại smoke. Kết quả - đồng cỏ là nguồn sống và không bao giờ cạn vì sinh sản dừng ở 80 con mồi; nước giới hạn quần thể; chỉ sức chứa đồng cỏ hạ được standing crop. Đầu vào cho quyết định QĐ-SEL1b của chủ dự án
-status: active
+status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-17
 ---

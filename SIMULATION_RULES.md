@@ -180,8 +180,10 @@ Chi tiết ở [BIOME_TAXONOMY.md](BIOME_TAXONOMY.md); map + round-trip test (**
 | Field normalized | luôn nằm trong [0,1] | S17 (M3) canh biên |
 | Hot-loop allocation | **0** | Test `allocs == 0` hiện có |
 
-> Con số hiệu năng (frame/tick/RAM) **không** được khóa trước khi chạy M0.4 trên phần cứng đích
-> (Dell Vostro 3530). Xem [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
+> Con số hiệu năng (frame/tick/RAM) **không** được khóa trước khi chạy M0.4 trên phần cứng đích.
+> Chủ dự án quyết ngày 2026-11-17: **Dell Vostro 3530 là máy tối thiểu** (mục tiêu "chạy được"), còn
+> **Intel Core i5-14600KF là máy đo**, nơi các số của baseline được lấy. Xem
+> [BENCHMARK_BASELINE.md](BENCHMARK_BASELINE.md).
 
 ---
 

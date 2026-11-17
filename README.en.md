@@ -228,14 +228,14 @@ Full text in the [documentation policy](docs/governance/DOCUMENTATION_POLICY.md)
 ## Status
 
 - **Phases 0–7** (foundation → morphology → neural control + MAP-Elites → social → distribution and
-  meta-AI → GPU + PixiJS → landscape → ecosystem dynamics): done; detailed table in
-  [PROJECT.md](PROJECT.md).
+  meta-AI → GPU + PixiJS → landscape → ecosystem dynamics): done. Architecture is in [PROJECT.md](PROJECT.md); measured status is in
+  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 - **Simulation foundation M0–M3** (unit/conservation contracts, checksummed World Artifact,
   multi-rate clock + interventions + causal ledger, dynamic climate/water/soil fields): done in the
   headless core.
 - **Evolution lab AE1–AE3** (manifest/runner, exotic energy, energy pathway + selection): done and
-  **off by default**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) is still
-  `proposed`.
+  **off by default**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) was
+  accepted on 2026-11-17 for the headless slice only; the live world, persistence and the UI remain targets.
 - **ADR-0003** (per-agent brains + action space): accepted and implemented behind flags.
 - **Ecology wired into selection** (mortality, ecological fitness, a niche axis independent of
   fitness), **population turnover**, **locomotion** and **predator–prey ecology**: in the code, off by

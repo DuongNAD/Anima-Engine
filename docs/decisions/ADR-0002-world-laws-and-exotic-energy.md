@@ -1,9 +1,9 @@
 ---
 title: ADR-0002 — World laws, exotic energy và World Lab
-status: proposed
+status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-07-24
-decision_date: pending
+last_reviewed: 2026-11-17
+decision_date: 2026-11-17
 supersedes: none
 superseded_by: none
 ---
@@ -109,6 +109,35 @@ Rollback không xóa reader/schema. Tắt exotic law, giữ parser cho artifact 
 | Observability | AE-S12/AE-S13/AE-S14 |
 | Persistence | AE-S15 |
 | Map/ecology placement | Animal Map Vision; hiện blocked vì MCP không khả dụng |
+
+## Quyết định (2026-11-17)
+
+**Chấp nhận, trong phạm vi lát headless tham chiếu.** Chủ dự án quyết ngày 2026-11-17, trong chat, theo
+đề xuất của phiên rà soát tài liệu. Thân ADR ở trên không bị sửa; mục này chỉ ghi phạm vi của việc chấp nhận.
+
+Được chấp nhận: các điểm 1 đến 8 của "Quyết định đề xuất", và nửa đầu của điểm 10 (làm lát headless trước).
+Đó là phần đã có trong mã và có bằng chứng theo bảng "Bằng chứng cần trước khi accepted":
+
+| Hạng mục | Bằng chứng | Trạng thái ngày 2026-11-17 |
+|---|---|---|
+| Baseline compatibility | AE-S01 | Có |
+| Budget semantics | AE-S04, AE-S05 | Có |
+| Evolution mechanism | AE-S06, AE-S07, AE-S10 | Có, trên quần thể tham chiếu AE3 |
+| Experiment reproducibility | AE-S02, AE-S03, AE-S08, AE-S09 | Có |
+| Observability | AE-S12, AE-S14 | AE-S14 có; AE-S12 mới một phần (luật → trường) |
+| Observability | AE-S13 (ngang hàng backend ↔ UI) | **Chưa có.** Thuộc AE6 |
+| Persistence | AE-S15 | **Chưa có.** Thuộc AE4 |
+| Map/ecology placement | Animal Map Vision | **Chưa có.** Không áp cho lát headless |
+
+Trạng thái trong bảng lấy từ bảng bằng chứng của
+[tài liệu testing](../ai/testing/2026-07-24-feature-alternate-evolution-world-lab.md); không test nào được
+chạy lại để viết mục này.
+
+**Chưa được chấp nhận, vẫn là mục tiêu:** điểm 9 (detector loài, AE-S11), nửa sau của điểm 10 (nối thế giới
+Bevy sống và renderer), lưu trữ (AE-S15) và World Lab UI (AE-S13). Mỗi phần đó cần bằng chứng của nó trước
+khi được coi là đã quyết. Hai chỗ thân ADR lệch với mã, ghi ra để không ai sửa mã theo thân: tên lõi trong
+mã là module `core::exotic_energy`, không có kiểu `ExoticEnergy`; và mô hình nguồn chỉ có `Renewable`, tắt
+nguồn bằng `exotic_energy = None`.
 
 ## Tài liệu liên quan
 
