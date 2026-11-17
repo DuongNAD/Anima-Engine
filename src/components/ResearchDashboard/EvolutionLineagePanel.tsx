@@ -29,6 +29,9 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
   const [evolutionRunning, setEvolutionRunning] = useState<boolean>(false);
   const [newickExportResult, setNewickExportResult] = useState<string | null>(null);
   const [isExportingNewick, setIsExportingNewick] = useState<boolean>(false);
+  // A failed command is shown, never papered over: this panel used to flip the evolution state
+  // and print a made-up Newick tree when the backend call failed.
+  const [evolutionError, setEvolutionError] = useState<string | null>(null);
 
   // Polling lineage & MAP-Elites
   useEffect(() => {
@@ -76,8 +79,9 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
           grid_resolution: gridResolution,
         },
       });
-    } catch {
-      // Ignore
+      setEvolutionError(null);
+    } catch (e) {
+      setEvolutionError(`Mutation rate not applied: ${String(e)}`);
     }
   };
 
@@ -91,8 +95,9 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
           grid_resolution: gridResolution,
         },
       });
-    } catch {
-      // Ignore
+      setEvolutionError(null);
+    } catch (e) {
+      setEvolutionError(`Selection bias not applied: ${String(e)}`);
     }
   };
 
@@ -100,8 +105,9 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
     try {
       const running = await invoke<boolean>('toggle_evolution');
       setEvolutionRunning(running);
-    } catch {
-      setEvolutionRunning(!evolutionRunning);
+      setEvolutionError(null);
+    } catch (e) {
+      setEvolutionError(`Evolution state unchanged: ${String(e)}`);
     }
   };
 
@@ -116,8 +122,10 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
         },
       });
       setNewickExportResult(nwk);
-    } catch {
-      setNewickExportResult(`((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);`);
+      setEvolutionError(null);
+    } catch (e) {
+      setNewickExportResult(null);
+      setEvolutionError(`Newick export failed: ${String(e)}`);
     } finally {
       setIsExportingNewick(false);
     }
@@ -224,6 +232,12 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
         </div>
       </div>
 
+      {evolutionError && (
+        <div data-testid="evolution-error" role="alert" style={{ fontSize: '11px', color: '#ef4444' }}>
+          {evolutionError}
+        </div>
+      )}
+
       {/* Main Grid: Phylogenetic Lineage DAG + MAP-Elites Behavioral QD Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '16px', alignItems: 'start' }}>
         {/* Left: Phylogenetic DAG Visualizer */}
@@ -297,8 +311,6 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
                 <div>Parent ID: <strong>{selectedNode.parent_id || 'Root Genotype'}</strong></div>
                 <div>Fitness: <strong>{selectedNode.fitness.toFixed(3)}</strong></div>
                 <div>Mutations: <strong>{selectedNode.mutations_count}</strong></div>
-                <div>CPG Central Pattern: <strong>Oscillator active</strong></div>
-                <div>Morphology: <strong>Multi-segment articulated</strong></div>
               </div>
             </div>
           )}

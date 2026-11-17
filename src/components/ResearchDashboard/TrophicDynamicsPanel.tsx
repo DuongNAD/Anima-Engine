@@ -51,20 +51,25 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
     };
   }, [isRunning]);
 
-  const detritus = ecoState?.detritus ?? 100;
-  const plants = ecoState?.plants ?? 500;
-  const herbivores = (ecoState?.animals ?? 300) * 0.75;
-  const carnivores = (ecoState?.animals ?? 300) * 0.25;
+  // Only values the backend reported. Before telemetry arrives every figure is "—"; this panel used
+  // to fill the gap with invented numbers (detritus 100, plants 500, animals 300, respiration 125,
+  // drift 0.002 %, body masses 6 and 9) and to split animals 75/25 into herbivores and carnivores.
+  const detritus = ecoState?.detritus ?? null;
+  const plants = ecoState?.plants ?? null;
+  const animals = ecoState?.animals ?? null;
 
-  const respirationLoss = fluxReport?.respirationLoss ?? 125.0;
-  const totalEnergy = fluxReport?.totalSystemEnergy ?? (detritus + plants + herbivores + carnivores);
-  const driftPct = fluxReport?.energyDriftPercent ?? 0.002;
+  const respirationLoss = fluxReport?.respirationLoss ?? null;
+  const totalEnergy = fluxReport?.totalSystemEnergy ?? ecoState?.total ?? null;
+  const driftPct = fluxReport?.energyDriftPercent ?? null;
 
-  // Kleiber scaling calculations (M^(3/4))
-  const avgPreyMass = ecoState?.prey_mass ?? 6.0;
-  const avgPredMass = ecoState?.predator_mass ?? 9.0;
-  const preyKleiberScaling = Math.pow(avgPreyMass, 0.75);
-  const predKleiberScaling = Math.pow(avgPredMass, 0.75);
+  // Kleiber scaling (M^(3/4)) of the guild mean body masses the backend reports.
+  const avgPreyMass = ecoState?.prey_mass ?? null;
+  const avgPredMass = ecoState?.predator_mass ?? null;
+  const preyKleiberScaling = avgPreyMass === null ? null : Math.pow(avgPreyMass, 0.75);
+  const predKleiberScaling = avgPredMass === null ? null : Math.pow(avgPredMass, 0.75);
+
+  const fmt = (v: number | null, digits: number): string =>
+    v === null || !Number.isFinite(v) ? '—' : v.toFixed(digits);
 
   return (
     <div
@@ -94,10 +99,10 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
         >
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Total System Energy & Drift</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', margin: '4px 0' }}>
-            {totalEnergy.toFixed(1)} EU
+            {fmt(totalEnergy, 1)} EU
           </div>
           <div style={{ fontSize: '11px', color: '#10b981' }}>
-            Conservation Drift: {driftPct.toFixed(4)}% (&lt; 0.01% law)
+            Conservation Drift: {fmt(driftPct, 4)}% (&lt; 0.01% law)
           </div>
         </div>
 
@@ -111,7 +116,7 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
         >
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Metabolic Respiration Sink</div>
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#f59e0b', margin: '4px 0' }}>
-            {respirationLoss.toFixed(1)} EU/tick
+            {fmt(respirationLoss, 1)} EU/tick
           </div>
           <div style={{ fontSize: '11px', color: '#cbd5e1' }}>
             MTE Kleiber Scaling: M^(3/4) allometry
@@ -128,10 +133,10 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
         >
           <div style={{ fontSize: '11px', color: '#94a3b8' }}>Guild Body Masses</div>
           <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc', margin: '4px 0' }}>
-            Prey: {avgPreyMass.toFixed(1)} MU (B ∝ {preyKleiberScaling.toFixed(2)})
+            Prey: {fmt(avgPreyMass, 1)} MU (B ∝ {fmt(preyKleiberScaling, 2)})
           </div>
           <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
-            Predator: {avgPredMass.toFixed(1)} MU (B ∝ {predKleiberScaling.toFixed(2)})
+            Predator: {fmt(avgPredMass, 1)} MU (B ∝ {fmt(predKleiberScaling, 2)})
           </div>
         </div>
       </div>
@@ -143,8 +148,9 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
           data={{
             detritus,
             plants,
-            herbivores,
-            carnivores,
+            herbivores: null,
+            carnivores: null,
+            consumers: animals,
           }}
           width={340}
           height={280}

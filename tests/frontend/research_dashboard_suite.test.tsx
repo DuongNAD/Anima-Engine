@@ -36,19 +36,23 @@ describe('Frontend Integration Test: Research Dashboard Suite (Milestone 4)', ()
       expect(screen.getByTestId('map-elites-qd-grid')).toBeInTheDocument();
     });
 
-    // Verify Tab 4: Causal Interventions
+    // Verify Tab 4: Causal Interventions. The region picker is real; dispatch is not available in
+    // this build, because the backend has no dispatch_causal_intervention command.
     fireEvent.click(screen.getByTestId('dashboard-tab-interventions'));
     await waitFor(() => {
       expect(screen.getByTestId('causal-intervention-panel')).toBeInTheDocument();
       expect(screen.getByTestId('causal-spatial-canvas')).toBeInTheDocument();
+      expect(screen.getByTestId('apply-intervention-btn')).toBeDisabled();
+      expect(screen.getByTestId('intervention-dispatch-unavailable')).toBeInTheDocument();
     });
 
-    // Verify Tab 5: Checkpoint Studio
+    // Verify Tab 5: Checkpoint Studio says it is unavailable instead of drawing an invented tree.
     fireEvent.click(screen.getByTestId('dashboard-tab-checkpoints'));
     await waitFor(() => {
       expect(screen.getByTestId('checkpoint-studio-panel')).toBeInTheDocument();
-      expect(screen.getByTestId('causal-branch-tree-svg')).toBeInTheDocument();
+      expect(screen.getByTestId('checkpoint-studio-unavailable')).toBeInTheDocument();
     });
+    expect(screen.queryByTestId('causal-branch-tree-svg')).not.toBeInTheDocument();
   });
 
   it('performs end-to-end dataset export pipeline calling export_scientific_dataset IPC', async () => {

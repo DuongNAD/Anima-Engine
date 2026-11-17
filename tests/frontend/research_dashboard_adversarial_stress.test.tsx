@@ -30,6 +30,14 @@ import type { EnergyFluxReport } from '../../src/types/generated/EnergyFluxRepor
 import type { SpatialDensityReport } from '../../src/types/generated/SpatialDensityReport';
 import type { CausalBranchTreeState, CausalBranchNode } from '../../src/components/ResearchDashboard/types';
 
+// tests/setup-vitest.ts installs the Tauri IPC mock with mockIPC, which routes every invoke() through
+// window.__TAURI_INTERNALS__.invoke. Spying there records the commands a component really sends.
+function spyOnIpc() {
+  const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, ...rest: unknown[]) => unknown } })
+    .__TAURI_INTERNALS__;
+  return vi.spyOn(internals, 'invoke');
+}
+
 describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -474,8 +482,12 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
       expect(screen.getByTestId('dashboard-tab-body')).toBeInTheDocument();
     });
 
-    it('T2.2: handles 50 rapid causal intervention dispatches and cancellations in CausalInterventionPanel', async () => {
-      render(<CausalInterventionPanel currentTick={500} isRunning={true} />);
+    it('T2.2: survives rapid changes to every intervention control while dispatch stays unavailable', async () => {
+      // The backend has no dispatch_causal_intervention command. This test used to click Apply ten
+      // times and cancel the rows, which only exercised a ledger the panel kept in local state and
+      // reported as "registered" when the command threw.
+      const ipc = spyOnIpc();
+      render(<CausalInterventionPanel />);
 
       expect(screen.getByTestId('causal-intervention-panel')).toBeInTheDocument();
 
@@ -498,7 +510,10 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
       const curveSelect = screen.getByTestId('intervention-curve-select');
       const applyBtn = screen.getByTestId('apply-intervention-btn');
 
-      // Rapidly dispatch 10 varied interventions
+      expect(applyBtn).toBeDisabled();
+      expect(screen.getByTestId('intervention-dispatch-unavailable')).toBeInTheDocument();
+
+      // Rapidly vary every control, and press Apply each time
       for (let i = 0; i < 10; i++) {
         fireEvent.click(screen.getByTestId(`region-mode-${modes[i % modes.length].toLowerCase()}`));
         fireEvent.change(kindSelect, { target: { value: kinds[i % kinds.length] } });
@@ -507,33 +522,26 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
         fireEvent.click(applyBtn);
       }
 
-      expect(screen.getByTestId('active-interventions-ledger')).toBeInTheDocument();
-
-      // Cancel all interventions in rapid succession
-      const cancelBtns = screen.getAllByText(/Cancel/i);
-      for (const btn of cancelBtns) {
-        fireEvent.click(btn);
-      }
-
-      expect(screen.getByText(/No active interventions in ledger/i)).toBeInTheDocument();
+      expect((curveSelect as HTMLSelectElement).value).toBe(curves[9 % curves.length]);
+      expect(applyBtn).toBeDisabled();
+      expect(screen.queryByTestId('active-interventions-ledger')).not.toBeInTheDocument();
+      const sent = ipc.mock.calls.map((call) => call[0]);
+      // Positive control: the spy does see this panel's one real command.
+      expect(sent).toContain('get_spatial_density_matrix');
+      expect(sent).not.toContain('dispatch_causal_intervention');
     });
 
-    it('T2.3: handles rapid timeline scrubber changes (100 steps) and bookmark creations in CheckpointStudioPanel', () => {
-      render(<CheckpointStudioPanel currentTick={2500} />);
+    it('T2.3: CheckpointStudioPanel says it is unavailable and calls no backend command', () => {
+      // The backend has no get_causal_branch_tree command. The panel used to offer a scrubber,
+      // bookmarks with invented checksums and a fork button that ran nothing.
+      const ipc = spyOnIpc();
+      render(<CheckpointStudioPanel />);
 
-      const slider = screen.getByTestId('timeline-scrubber-slider');
-      const bookmarkBtn = screen.getByTestId('save-snapshot-bookmark-btn');
-
-      // Rapidly scrub through 50 ticks and add bookmarks
-      for (let t = 0; t < 50; t += 5) {
-        fireEvent.change(slider, { target: { value: t * 50 } });
-        if (t % 10 === 0) {
-          fireEvent.click(bookmarkBtn);
-        }
-      }
-
-      expect(screen.getByTestId('timeline-scrubber-card')).toBeInTheDocument();
-      expect(screen.getByText(/Inspecting Tick: t = 2250/i)).toBeInTheDocument();
+      expect(screen.getByTestId('checkpoint-studio-unavailable')).toBeInTheDocument();
+      expect(screen.queryByTestId('timeline-scrubber-slider')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('save-snapshot-bookmark-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('fork-branch-open-modal-btn')).not.toBeInTheDocument();
+      expect(ipc).not.toHaveBeenCalled();
     });
   });
 
@@ -560,10 +568,10 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
         const { unmount: u3 } = render(<EvolutionLineagePanel isRunning={false} />);
         u3();
 
-        const { unmount: u4 } = render(<CausalInterventionPanel isRunning={false} />);
+        const { unmount: u4 } = render(<CausalInterventionPanel />);
         u4();
 
-        const { unmount: u5 } = render(<CheckpointStudioPanel currentTick={100} />);
+        const { unmount: u5 } = render(<CheckpointStudioPanel />);
         u5();
 
         const { unmount: u6 } = render(<DataExportDialog onClose={() => {}} />);
@@ -707,7 +715,7 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
 
     it('T4.2: tests DataExportDialog with rapid toggles, unchecks, and keyboard shortcuts', async () => {
       const onClose = vi.fn();
-      render(<DataExportDialog onClose={onClose} defaultSeed={999} />);
+      render(<DataExportDialog onClose={onClose} />);
 
       expect(screen.getByTestId('data-export-dialog-modal')).toBeInTheDocument();
 
@@ -860,7 +868,7 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
       document.body.removeChild(input);
     });
 
-    it('T5.6: CheckpointStudioPanel handles deep multi-tier branch DAG with recursive siblings', () => {
+    it('T5.6: BranchTreeCanvas handles deep multi-tier branch DAG with recursive siblings', () => {
       const multiTierNodes = [
         { id: 1, parentId: null, forkTick: 0, label: 'Root 0', seedStrategy: 'InheritStream', status: 'Completed' as const, children: [2, 3] },
         { id: 2, parentId: 1, forkTick: 100, label: 'Branch 1.1', seedStrategy: 'DerivedStream (1)', status: 'Completed' as const, children: [4] },
@@ -883,9 +891,13 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
         },
       };
 
-      render(<CheckpointStudioPanel currentTick={500} initialBranchTree={treeState} />);
-      expect(screen.getByTestId('checkpoint-studio-panel')).toBeInTheDocument();
+      // The canvas is the part of the old panel that renders a real tree when one is given; the
+      // panel itself no longer accepts one, because nothing in the app can produce it.
+      render(<BranchTreeCanvas tree={treeState} testid="causal-branch-tree-svg" />);
       expect(screen.getByTestId('causal-branch-tree-svg')).toBeInTheDocument();
+      for (const node of multiTierNodes) {
+        expect(screen.getAllByText(node.label).length).toBeGreaterThan(0);
+      }
     });
   });
 });
