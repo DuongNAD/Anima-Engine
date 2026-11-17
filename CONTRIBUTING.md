@@ -102,8 +102,9 @@ is the policy gate: every zero-test target and every `#[ignore]`d test must be n
 `scripts/test_target_policy.mjs`, and anything unlisted fails. Run one `cargo test` at a time; a full
 Rust build is heavy.
 
-Advisories are gated too: `cargo audit` in `src-tauri/` and
-`npm audit --audit-level=high` in both npm packages.
+Advisories are gated too: `cargo audit` in `src-tauri/` and `npm run check:audit`, which audits both
+npm packages. A high or critical npm advisory fails unless `scripts/npm_audit_policy.mjs` names it
+with a reason, and a named one must stay out of `npm audit --omit=dev` (what ships).
 
 Adding a Rust dependency also has to pass the license and source gate, from `src-tauri/`:
 
