@@ -242,6 +242,45 @@ Không chặn v1.0. Mỗi hàng là **một feature**: trước khi giao cho swa
 | X11 | Thí nghiệm kế tiếp: dụng cụ ở §10 dự thảo E3 (observable theo vùng đầy đủ, can thiệp chạm `r_max`) | dự thảo E3 trên thân cây | Mở câu hỏi gốc của nhánh ecological-selection |
 | X12 | Bài báo thứ hai (kết quả khoa học) khi E2R/E3 có kết luận | §3 Đợt 5 | Theo QĐ-P1 |
 
+### Thẻ thêm ngày 2026-11-17 (từ quyết định của chủ dự án)
+
+Chủ dự án ra các quyết định này trong chat ngày 2026-11-17; bản ghi ở
+[roadmap 31/10 §4.1–§4.3](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+Bảng dưới là **định nghĩa ở mức thẻ**. Chưa thẻ nào có prompt trong file prompt, và chưa thẻ nào có dòng
+`AUTHORIZATION`: lead soạn prompt theo mẫu thẻ, chủ dự án ghi dòng uỷ quyền, rồi mới giao. Mọi khoá mới đều
+opt-in: khoá vắng thì thế giới phải chạy đúng như trước, và thẻ phải chứng minh điều đó bằng so sánh các
+lượt chạy với nhau, không ghim checksum tuyệt đối.
+
+| ID | Việc | Loại | Phụ thuộc | Xong khi |
+|---|---|---|---|---|
+| S8 `[RUST]` | **F-044** — tách bộ đếm ân hạn đói và ân hạn khát thành hai | 🤖 | Làm **trước** mọi bản đăng ký thí nghiệm mới | Test đặc tả `f044_shared_bottom_counter_tests` được đảo thành test của hành vi đúng; trường mới có `#[serde(default)]` và save cũ nạp được; thay đổi quỹ đạo của cấu hình có hai mức ân hạn khác nhau được khai trong PR |
+| S6 `[RUST]` | **QĐ-SEL1b = A** — khoá trần sinh sản của con mồi (STATE §3.00 P2 đề xuất tên `live.prey_cap`), rồi một lượt đo thăm dò mù với khối lượng cơ thể | 🤖 | S8 | Khoá vắng thì bit-identical với hôm nay; báo cáo thăm dò cho biết khan hiếm đồng cỏ có đưa standing crop vào dải mà bản đăng ký cần hay không. **Không** chạy seed thí nghiệm nào |
+| SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | S6 | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
+| S7 `[RUST]` | **QĐ-ECO-C1** — khoá `live.predator_cost_mult`, `live.strike_radius` và một khoá nguồn nước | 🤖 | ADR-0007 được cập nhật (file R5: agent soạn, chủ dự án duyệt) | Mỗi khoá vắng thì bit-identical; EU kín; tất định nhiều tiến trình; một phép đo **tiền đăng ký** trên ít nhất 20 seed |
+| R1c `[RUST]` | **QĐ-C = C** — nâng `burn` từ 0.13.2 lên dòng 0.22. **Thay thẻ R1**, vốn giả định QĐ-C = A | 🤖 + 🧑 | Uỷ quyền R5 cho `src-tauri/Cargo.toml`, `Cargo.lock` và các file dùng `burn` | Xem danh sách ngay dưới bảng |
+| L0 | ADR cho QĐ-PAST (kể cả thiết kế lưu trữ) và QĐ-TIME | 🤖 soạn, 🧑 duyệt | — | ADR ở trạng thái `accepted` |
+| L1 `[RUST]` | Phần AE4 mà thí nghiệm rẽ luật cần: trường năng lượng ngoại lai trên thế giới sống | 🤖 | L0; R0; ADR-0002 còn `proposed` phải được hoà giải trước (STATE §3.10) | Adapter sống thôi từ chối `laws.exotic_energy`; `exotic_energy=None` bit-identical; MU kiểm toán tách khỏi EU; các luật ER02–ER05 có gate |
+| L2-P, L2-X `[RUST]` | **QĐ-LAW1** — bản đăng ký và lượt chạy thí nghiệm rẽ luật đầu tiên | 🤖, 🧑 duyệt bản đăng ký | L1; SEL2-X đã có kết quả | Cùng bản đồ và seed, một nhánh đối chứng và một nhánh có nguồn năng lượng lạ, nhiều seed, `RESULT.md` |
+
+**R1c xong khi** (mỗi dòng là một điều kiện, không dòng nào được bỏ):
+
+1. `cargo tree --features desktop -e normal -i hexf-parse` báo không còn gói đó trong cây.
+2. `brain_parity_tests`, `gpu_brain_batch_parity_tests`, `a2c_loss_direction_tests`, `burn_neural_net_tests` và
+   `phase5_burn_wgpu_fallback` xanh, không assertion nào bị nới. Gate parity EB-S02 là thứ bảo vệ bố cục
+   trọng số `w[out * fan_in + in]`.
+3. **Save cũ vẫn đọc được, hoặc có migration khai rõ.** Snapshot schema 7 lưu learner dùng chung thành hai
+   bản ghi nhị phân của `burn` (`training_model_record`, `optimizer_record`, ghi bằng `BinBytesRecorder`).
+   Định dạng đó thuộc về phiên bản `burn`, nên đây là chỗ dễ vỡ im lặng nhất của cả thẻ.
+4. So checksum trước và sau ở đường CPU, cho thế giới mặc định và cho một thế giới có học. Nếu khác thì
+   khai trong PR; có tăng `LIVE_MODEL_VERSION` hay không là việc chủ dự án quyết.
+5. Đo rò bộ nhớ của đường GPU ở bản mới theo cách của PR #30 (bộ đếm cấp phát, không dùng RSS). GPU giữ
+   tắt mặc định trừ khi đo được là phẳng.
+6. Hồ sơ giấy phép được sinh lại **trên Windows** (thẻ H5) và `npm run check:licenses-complete` exit 0.
+7. Một nháp ADR cho việc nâng, và một bản vá cho đoạn "burn is pinned at 0.13.2" của `CLAUDE.md` (file R5).
+
+Thứ tự đề xuất: S8, rồi S6 và S7 song song, rồi SEL2. R1c không phụ thuộc các thẻ đó và phải xong trước chặng
+5. L0 làm được ngay vì không chạm mã; L1 và L2 đi sau SEL2-X.
+
 ---
 
 ## 4. Danh sách toàn bộ phép đo cần có

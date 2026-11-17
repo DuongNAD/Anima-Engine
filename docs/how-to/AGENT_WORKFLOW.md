@@ -39,18 +39,22 @@ tài liệu ở bảng thắng; sửa trang này.
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-P1…P3, QĐ-M1…M8 (QĐ-2/H quyết 2026-11-17, dưới).
+  (commit icon thật). **Còn trống:** QĐ-P1…P3, QĐ-M1…M8 (các ô khác quyết 2026-11-17, dưới).
 - **Đã quyết 2026-11-16** (phiên lead theo uỷ quyền của chủ dự án trong chat): QĐ-E2M = B (#59),
   QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
   ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
   ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)).
 - **Đã quyết 2026-11-17** (phiên lead theo uỷ quyền "làm theo bản kế hoạch"): QĐ-ECO-B = opt-in (thẻ B của
   [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87; chỉ cho thăm dò S43, không mặc định).
-  **Còn trống, chờ chủ dự án:** QĐ-SEL1b (thí nghiệm chọn lọc theo khan hiếm làm lại hay không, với yếu tố
-  nào; xem chẩn đoán sau E-SEL1) và việc có làm thẻ C1 của ADR-0007 không.
+  QĐ-SEL1b và thẻ C1 của ADR-0007, lúc đó còn trống, được chủ dự án quyết cùng ngày (dòng dưới).
 - **Đã quyết 2026-11-17** (phiên lead, cùng uỷ quyền "theo bản kế hoạch"): **QĐ-2/QĐ-H** theo đề xuất của
   [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md) §2: gỡ mọi bằng chứng và dữ liệu giả ngay
   (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau. Chủ dự án đảo lại được.
+- **Chủ dự án quyết trực tiếp 2026-11-17, trong chat:** xác nhận mọi quyết định mà phiên lead đã ra theo
+  uỷ quyền ở trên; QĐ-SEL1b = A; QĐ-ECO-C1 = có; QĐ-EN = E2R và E3; F-044 = tách bộ đếm; QĐ-C = C (nâng
+  `burn`); QĐ-1 = mức 2; QĐ-PAST, QĐ-TIME và QĐ-LAW1. Bản ghi đầy đủ:
+  [roadmap 31/10 §4.1–§4.3](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+  Thẻ sinh ra từ đó: [kế hoạch swarm, "Thẻ thêm ngày 2026-11-17"](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 - **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
   còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi R0
   khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
@@ -112,6 +116,10 @@ là cổng ra của chặng 3 và chạy sau khi Đợt 2 merge.
 ở các mốc. **M1** (ma trận tái lập đa nền tảng) cũng đã merge trước R0, ở #100 và #102. Các thẻ còn lại
 của Đợt 3 (S2, S3, M2–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
 
+Chín thẻ được thêm ngày 2026-11-17 từ quyết định của chủ dự án (S6, S7, S8, SEL2-P, SEL2-X, R1c, L0, L1,
+L2) chưa có prompt và chưa có dòng uỷ quyền; định nghĩa của chúng ở
+[kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
+
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
 bản đăng ký E-SEL1, các thẻ "thế giới đọc được") được liệt kê ở
 [STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
@@ -129,7 +137,8 @@ QD-A'     = keep core/mortality.rs::mortality_system (trunk); drop main's
 QD-B      = per-card authorization. AGENTS.md stays the default (src-tauri/src read-only); a card
             may write src-tauri/src or an R5 file only with an AUTHORIZATION line in R5-AUTH that
             names its exact paths (owner, 2026-11-14)
-QD-C      =
+QD-C      = C: upgrade burn from 0.13.2 to the 0.22 line so hexf-parse leaves the dependency tree and
+            the GPU learner stays; neither A nor B. Card R1c replaces R1 (owner in chat, 2026-11-17)
 QD-2/QD-H = remove every piece of fabricated evidence and data now (G4, G6); keep the code;
             ship-or-not decided later (lead session under the owner's "follow the plan", 2026-11-17)
 QD-4      = A: continuous energy-gated reproduction in the live adapter behind manifest key
@@ -142,16 +151,27 @@ QD-ECO    = A: opt-in live keys for a steering drive floor and thirst steering s
             and reach water; default world unchanged; ADR-0007 (owner's delegate in chat, 2026-11-16)
 QD-ECO-B  = opt-in: live.kill_hydration, live.kill_efficiency, live.target_min_energy (ADR-0007 card B,
             #87); for S43 exploration only, never default (owner's delegate in chat, 2026-11-17)
-QD-SEL1b  =
-QD-ECO-C1 =
+QD-SEL1b  = A: a prey reproduction cap key, then pasture scarcity; an exploratory measurement before
+            any new preregistration. Cards S6, SEL2-P, SEL2-X (owner in chat, 2026-11-17)
+QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
+            preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
+QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
+            Card S8 (owner in chat, 2026-11-17)
+QD-PAST   = the past of a world that has run is immutable; going back means a fork; the exception
+            table is in roadmap 31/10 section 4.2. Storage design still open (owner in chat, 2026-11-17)
+QD-TIME   = "one day is two real hours" is a viewing speed, not a simulation law; the calendar is a
+            declared world parameter. Needs an ADR, card L0 (owner in chat, 2026-11-17)
+QD-LAW1   = the first law-fork experiment runs right after the first powered experiment, before
+            v1.0.0. Cards L1, L2-P, L2-X (owner in chat, 2026-11-17)
 QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_reference.mjs, in
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry
 QD-F028   = yes: copy src-tauri/icons/ from origin/feat/ecological-selection (owner, 2026-11-14)
-QD-EN     =
+QD-EN     = E2R is the rerun of the brain question; E3 is the productivity gradient (owner in
+            chat, 2026-11-17)
 QD-P1     =
 QD-P2     =
-QD-1      =
+QD-1      = level 2: a single-machine 0.9 first, then 1.0 (owner in chat, 2026-11-17)
 R5-AUTH   =
   AUTHORIZATION (owner, 2026-11-14): for card T1 only, you may write to the paths in its
   ALLOWED PATHS (src-tauri/Cargo.lock, src-tauri/deny.toml, scripts/check_bundle_budget.mjs,

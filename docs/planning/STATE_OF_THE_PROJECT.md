@@ -589,12 +589,12 @@ không mang số đo.
 
 | Chặng | Cổng ra | Trạng thái | Còn lại |
 |---|---|---|---|
-| 0. Dọn bàn và quyết định | Không còn ô quyết định trống cho chặng 1 và 2; mọi PR mở có trạng thái | **Cổng đã qua.** Mười PR mở ngày 13/11 đã xử lý: #38 merge; #30, #31, #34–#37, #39–#41 đóng. Kiểm kê nhánh là thẻ D0 (#42). Cây làm việc đã dọn (MP-0.5) | MP-0.2: QĐ-C, QĐ-1, QĐ-EN còn trống. MP-0.6: QĐ-M1 chưa quyết, nên mọi tài liệu kế hoạch vẫn `proposed` |
+| 0. Dọn bàn và quyết định | Không còn ô quyết định trống cho chặng 1 và 2; mọi PR mở có trạng thái | **Cổng đã qua.** Mười PR mở ngày 13/11 đã xử lý: #38 merge; #30, #31, #34–#37, #39–#41 đóng. Kiểm kê nhánh là thẻ D0 (#42). Cây làm việc đã dọn (MP-0.5) | MP-0.2 xong: QĐ-C, QĐ-1 và QĐ-EN được chủ dự án quyết ngày 2026-11-17. MP-0.6: QĐ-M1 chưa quyết, nên mọi tài liệu kế hoạch vẫn `proposed` |
 | 1. Một cây xanh | CI xanh hai job trên thân cây, rồi bảo vệ nhánh | **Đóng 2026-11-17** (mục ngay dưới) | — |
 | 2. Gộp hai thân | `C5`: đo lại toàn bộ vào §1.g | **Đóng 2026-11-16.** T2 là #45; `main` được fast-forward lên thân cây | §1.g đỏ đúng một bước (`check:e2`), #59 sửa sau đó. Lượt đo toàn bộ mới nhất là §1.h, tại `6f14124` |
 | 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm.** Xong: G1 (#48), G2 (#47), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G8 phần lớn (2026-11-14) | G9 có nhánh `mac/g9-root-hygiene`, chưa có PR. G3 chưa có PR. R0 chạy sau khi cả đợt merge |
-| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. Chờ QĐ-EN, QĐ-SEL1b, QĐ-ECO-C1 |
-| 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | Cần trước chặng: QĐ-C, QĐ-1, QĐ-P1…P3, QĐ-M4, QĐ-M8 |
+| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. QĐ-EN, QĐ-SEL1b và QĐ-ECO-C1 đã quyết ngày 2026-11-17; thẻ sinh ra là S6, S7, S8 và SEL2 |
+| 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | QĐ-C = C và QĐ-1 = mức 2 đã quyết ngày 2026-11-17; thẻ R1c (nâng `burn`) phải xong trước chặng này. Còn trống: QĐ-P1…P3, QĐ-M4, QĐ-M8 |
 | 6. Bản 1.0 | `H11`: tag `v1.0.0` | Chưa bắt đầu | Thẻ V0–V11, chạy sau R0 |
 | 7. Thế giới nhiều máy | `contribute_matches_solo` xanh với hai máy thật | Chưa bắt đầu | QĐ-M3, QĐ-M5, QĐ-M6, QĐ-M7 |
 
@@ -607,9 +607,10 @@ Ba điều bảng trên không tự nói ra:
 - **E2 không tính vào cổng chặng 4.** Cổng nhận kết quả null, nhưng chỉ khi thí nghiệm có sức mạnh đã khai
   trước. E2 và lượt chạy lại theo sửa đổi 1 (#59) null do hiệu ứng sàn (§3.1), nên chúng không phải thí
   nghiệm mà cổng này đòi.
-- **Hai PR mở đang nhắm `main`, không nhắm thân cây** (luật L1 của kế hoạch 13/11): #56 (`CITATION.cff`)
-  và #68 (test Rust khoá fixture E2 theo bản manifest của lượt chạy). Cả hai mở ngày 2026-11-16 và CI của
-  chúng xanh. Chúng cần một dòng quyết định của chủ dự án: đổi nhánh đích sang thân cây rồi merge, hoặc đóng.
+- **Hai PR từng nhắm `main` thay vì thân cây** (luật L1 của kế hoạch 13/11) **đã được xử lý ngày 2026-11-17**
+  theo quyết định của chủ dự án. #56 (`CITATION.cff`) được đổi nhánh đích và merge vào thân cây. #68 (test
+  Rust khoá fixture E2 theo bản manifest của lượt chạy) được đổi nhánh đích và cập nhật theo thân cây; nó có
+  mã Rust nên chờ CI chạy lại trên nền mới rồi mới merge.
 
 #### Chặng 1 đã đóng: bảo vệ nhánh bật ngày 2026-11-17
 
@@ -694,7 +695,9 @@ Vậy định nghĩa hoàn thành dưới đây đã đạt. Nó **không** có 
   - Thú săn founder sinh sản trước lần săn đầu tiên, rồi chết đói trên đường tới con mồi.
   - Giảm chi phí thú săn × 0,5 kèm bán kính đòn 5 cho 8/10 seed.
   - Seed còn hỏng là do con mồi thiếu nước.
-- **Quyết định của chủ dự án:**
+- **Quyết định của chủ dự án — đã ra ngày 2026-11-17: làm cả hai, opt-in** (thẻ S7; bản ghi ở
+  [roadmap 31/10 §4.1](COMPLETION_ROADMAP_2026-10-31.md#41-quyết-định-sau-2026-11-14-ghi-thêm-2026-11-17)).
+  Câu hỏi gốc:
   - QĐ-ECO-C1: có làm thẻ opt-in `live.predator_cost_mult` + `live.strike_radius` không, kèm phép đo đăng ký trước
     trên ≥ 20 seed.
   - Có làm một khoá về nguồn nước không. Khoá đó phục vụ cả S43 lẫn thí nghiệm chọn lọc.
@@ -712,7 +715,8 @@ khẳng định. Không seed thí nghiệm nào chạy; không giá trị khối
 `artifacts/experiments/e-sel1-smoke-record/`; chi tiết ở
 [kế hoạch E-SEL1](../ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md).
 
-**Quyết định của chủ dự án: QĐ-SEL1b.** Có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
+**Quyết định của chủ dự án: QĐ-SEL1b — đã ra ngày 2026-11-17: phương án A** (thẻ S6, rồi SEL2; F-044 sửa
+trước ở thẻ S8). Câu hỏi gốc: có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
 Bằng chứng là [chẩn đoán sau E-SEL1](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md): đo thăm dò, mù với
 khối lượng cơ thể, seed 1–6. Nó cho thấy:
 - Gặm đồng cỏ là 90–93 % thu nhập của con mồi; `Food` chỉ vài phần trăm.

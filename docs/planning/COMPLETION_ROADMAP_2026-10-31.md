@@ -280,7 +280,7 @@ mảnh nó cần — một fitness mà sinh thái chạm được, và một cá
 | ~~**QĐ-F028**~~ | ✅ **ĐÃ QUYẾT 2026-11-14 bởi chủ dự án: commit icon thật.** Thân cây đã có icon PNG/ICNS thật; `origin/fix/ci-gates-green` còn file text `placeholder` (F-028) nên không biên dịch trên macOS. Thẻ T1 được chép `src-tauri/icons/` từ `origin/feat/ecological-selection` sang nhánh của nó | Kiểm 2026-11-14: `file src-tauri/icons/32x32.png` trên thân cây cho `PNG image data, 32 x 32`; trên `fix/ci-gates-green` blob là 12 byte `placeholder\n` |
 | ~~**QĐ-D**~~ | ✅ **ĐÃ QUYẾT 2026-10-31 tại `26c8a96`: `playground/` là nháp.** Căn cứ là so hai viewport, không phải sở thích: `src/PixiViewport.tsx` (1296 dòng, track, `src/App.tsx:3` import, 7 file test) là *presentational* — nhận `zoom`/pan làm prop, **không** có wheel/drag/inertia/clamp. `playground/fantasy-map/MapViewport.tsx` (1182 dòng, không track) tự giữ tất cả, kể cả `Math.max(1.0, Math.min(5.0, …))` ở `:1108`. Nên 8 test tính chất kia **không có đối tượng tương ứng** ở bản ship — không port được, vì hành vi đó không ở đó. Đã xoá 4 file test và loại `playground` khỏi phạm vi ESLint | Đo: lint **8 error · 72 warning → 0 · 0**, ratchet xanh; `test:frontend` **17 đỏ → 9 đỏ** |
 | ~~**QĐ-E**~~ | ✅ **ĐÃ QUYẾT 2026-10-31: bỏ test.** `tests/frontend/organism_library.test.tsx` có đúng 3 test và **cả 3 đỏ**, nên xoá cả file không mất coverage nào. Tính năng vắng ở **cả hai phía**: `get_organism_presets` và `spawn_preset_organism` đều không có trong `src-tauri/src`, và không có `"Thư viện Sinh vật"` nào trong `src/`. Nếu sau này muốn Organism Library thì viết test lại cùng lúc với tính năng — đó là thứ tự TDD đúng, còn giữ một test không có đối tượng chỉ làm gate đỏ mãi | Đo: `test:frontend` **9 đỏ → 6 đỏ**; 6 cái còn lại đều là HT-A7 (cần Windows) |
-| **QĐ-C** | **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
+| ~~**QĐ-C**~~ | ✅ **ĐÃ QUYẾT 2026-11-17 bởi chủ dự án: lối C, nâng `burn`** (xem §4.3). Hàng này vẫn chặn phát hành cho tới khi thẻ nâng `burn` merge và hồ sơ giấy phép được sinh lại. Văn bản gốc: **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
 
 ### 4.1 Quyết định sau 2026-11-14 (ghi thêm 2026-11-17)
 
@@ -288,9 +288,8 @@ Kế hoạch 13/11 (MP-0.1) đặt sổ quyết định ở mục này, nhưng c
 [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 và §4 và trong ADR. Bảng dưới gom chúng về một chỗ,
 mỗi dòng trỏ tới nơi ghi đầy đủ. Nó không thêm quyết định nào.
 
-**Trừ QĐ-6 (khối `DECISIONS` không ghi ai quyết), mọi dòng trong bảng này do phiên lead quyết theo uỷ
-quyền của chủ dự án trong chat, không phải do chủ dự án ghi trực tiếp.** Chủ dự án đảo lại được từng dòng; cho tới khi có một dòng xác nhận của chủ dự án ở
-đây, hãy đọc chúng là "đang áp dụng", chưa phải "chủ dự án đã ký".
+Trừ QĐ-6 (khối `DECISIONS` không ghi ai quyết), mọi dòng trong bảng này do phiên lead quyết theo uỷ
+quyền của chủ dự án trong chat. Dòng xác nhận của chủ dự án nằm ngay dưới bảng.
 
 | # | Quyết định | Ngày | Ghi đầy đủ ở |
 |---|---|---|---|
@@ -303,39 +302,55 @@ quyền của chủ dự án trong chat, không phải do chủ dự án ghi tr�
 | QĐ-2 / QĐ-H | Gỡ mọi bằng chứng và dữ liệu giả ngay (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau | 2026-11-17 | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
 | QĐ-6 | Hợp đồng IPC ở `docs/reference/IPC_CONTRACT.md` | 2026-11-14 | [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) |
 
+**Chủ dự án xác nhận toàn bộ bảng trên ngày 2026-11-17, trong chat.** Từ dòng này, các quyết định đó là
+quyết định của chủ dự án, không còn là "đang áp dụng theo uỷ quyền".
+
+**Chủ dự án quyết thêm ngày 2026-11-17, trong chat** ("tất cả những đề xuất trên tôi đồng ý"), theo mười hai
+câu hỏi của phiên rà soát tài liệu:
+
+| # | Quyết định | Hệ quả |
+|---|---|---|
+| QĐ-SEL1b | **A**: thêm khoá trần sinh sản của con mồi, rồi tạo khan hiếm đồng cỏ; đo thăm dò trước khi đăng ký | Một bản đăng ký mới cho thí nghiệm chọn lọc theo khan hiếm. Chẩn đoán: [`2026-11-17-esel1-scarcity-diagnosis.md`](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md) |
+| QĐ-ECO-C1 | **Có**, cả hai: thẻ `live.predator_cost_mult` + `live.strike_radius`, và một khoá nguồn nước. Opt-in; đo tiền đăng ký trên ít nhất 20 seed | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), phương án C |
+| QĐ-EN | **E2R** là lượt làm lại câu hỏi về não; **E3** là gradient năng suất | Hết nhập nhằng tên "E3" (kế hoạch 13/11 §12) |
+| F-044 | **Tách** bộ đếm ân hạn đói và khát thành hai, **trước** khi đăng ký thí nghiệm kế tiếp | Đổi định dạng lưu và quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau; phải khai, xem [`FINDINGS.md`](../../FINDINGS.md) F-044 |
+| QĐ-LAW1 | Thí nghiệm rẽ luật chạy **ngay sau thí nghiệm có sức mạnh đầu tiên, trước `v1.0.0`** | Phần AE4 mà thí nghiệm cần (trường năng lượng lạ trên thế giới sống) được kéo lên trước thẻ X9. Chi tiết ở §4.2 |
+| QĐ-TIME | "Một ngày bằng 2 giờ thực" là **tốc độ xem**; lịch của thế giới là tham số khai báo | Chi tiết ở §4.2. Cần ADR trước khi có mã |
+| QĐ-C | **C**: nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc và giữ được GPU. Không chọn A, không chọn B | Thẻ R1 của kế hoạch swarm không chạy; thay bằng thẻ nâng `burn`. Chi tiết ở §4.3 |
+| QĐ-1 | **Mức 2**: bản 0.9 chạy một máy trước, rồi mới tới 1.0 | Thẻ R2; chặng 5 của kế hoạch 13/11 |
+| #56, #68 | Đổi nhánh đích sang thân cây rồi merge | Luật L1. Cùng ngày: #56 đã merge; #68 đã đổi nhánh đích và được cập nhật theo thân cây, chờ CI chạy lại |
+| Người ghi tài liệu | Phiên rà soát tài liệu được giao rà và sửa **toàn bộ** tài liệu trong đợt 2026-11-17, kể cả `STATE`, `TODO.md`, `FINDINGS.md` và trang hàng đợi thẻ. Ngoài đợt đó, bốn file này vẫn thuộc `agent-mac` | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
+
+Các thẻ mã sinh ra từ bảng này được định nghĩa ở
+[kế hoạch swarm §3](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
+Chưa thẻ nào trong số đó có dòng `AUTHORIZATION`: chủ dự án ghi dòng đó khi giao thẻ.
+
 **Còn trống ngày 2026-11-17, xếp theo chặng cần tới** (câu hỏi và đề xuất ở
 [kế hoạch 13/11 §7](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#7-hàng-đợi-quyết-định-của-chủ-dự-án), trừ
-ba dòng cuối):
+hai dòng cuối):
 
 | Cần trước | Quyết định | Chặn |
 |---|---|---|
 | Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
 | Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
-| Chặng 4 | QĐ-EN — tên thí nghiệm (E2R, E3) | Thẻ E2R-*, E3-* |
-| Chặng 4 | QĐ-SEL1b — có làm lại thí nghiệm chọn lọc theo khan hiếm không, với yếu tố nào | Bản đăng ký mới; xem STATE §3.00 P2 |
-| Chặng 4 | QĐ-ECO-C1 — có làm thẻ `live.predator_cost_mult` + `live.strike_radius` không; có làm khoá nguồn nước không | S43; xem STATE §3.00 P1 |
-| Chặng 4 | F-044 — tách bộ đếm ân hạn đói và khát thành hai (đổi định dạng lưu và quỹ đạo) | [`FINDINGS.md`](../../FINDINGS.md) F-044 |
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
-| Chặng 5 | **QĐ-C** — `hexf-parse` (hàng cuối của bảng §4 ở trên; ba lựa chọn ở §4.3) | Phát hành |
-| Chặng 5 | QĐ-1 — dừng ở mức hoàn thiện nào | Thẻ R2 |
-| Chặng 5 | QĐ-P1, QĐ-P2, QĐ-P3 — loại bài báo, chỗ để bản nháp, khai báo dùng AI | Thẻ P1–P9 |
+| Chặng 5 | QĐ-P1, QĐ-P2, QĐ-P3 — có viết bài báo phương pháp không; nếu có thì loại bài, chỗ để bản nháp, khai báo dùng AI | Thẻ P1–P9 |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
+| Trước AE4 | QĐ-PAST — chỉ còn thiết kế lưu trữ | §4.2 ngay dưới |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
-| Không gắn chặng | #56 và #68 đang nhắm `main`: đổi nhánh đích rồi merge, hay đóng | Luật L1; STATE §3.00 |
-| Trước AE4 | QĐ-PAST (chỉ còn thiết kế lưu trữ), QĐ-TIME, QĐ-LAW1 | §4.2 ngay dưới |
 
 ### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
 
-Mục này ghi một nguyên tắc chủ dự án nêu trực tiếp và hai đề xuất chủ dự án đồng ý đưa vào sổ. Phần "đọc
+Mục này ghi một nguyên tắc chủ dự án nêu trực tiếp và hai đề xuất mà chủ dự án đã nhận cùng ngày. Phần "đọc
 mã" được đối chiếu trên thân cây ngày 2026-11-17; không lệnh build hay test nào được chạy, và mục này không
 mang số đo. Cả ba cần một ADR trước khi có dòng mã nào.
 
 | # | Nội dung | Trạng thái |
 |---|---|---|
 | **QĐ-PAST** | **Quá khứ của một thế giới đã chạy là bất biến.** Không sửa trạng thái ở một tick đã qua; chỉ một số trường hợp đặc biệt được phép. Lưu trữ phải đủ để dựng lại quá khứ và nhẹ nhất có thể | **Nguyên tắc và bảng ngoại lệ: chủ dự án quyết 2026-11-17**, đúng như đề xuất. Thiết kế lưu trữ **còn trống** |
-| **QĐ-TIME** | Tách ba thứ: tick và vòng đời sinh vật; lịch của thế giới (bao nhiêu tick là một ngày, một năm); tốc độ xem. "Một ngày bằng 2 giờ thực" là **tốc độ xem**, không phải luật mô phỏng | Đề xuất; **còn trống** |
-| **QĐ-LAW1** | Thí nghiệm "rẽ luật" đầu tiên trên thế giới sống: cùng bản đồ và seed, một nhánh đối chứng và một nhánh thêm một nguồn năng lượng lạ, tiền đăng ký, nhiều seed. Chạy **sau** khi chọn lọc trên thế giới sống đo được | Đề xuất; **còn trống**. Phụ thuộc QĐ-SEL1b và AE4 |
+| **QĐ-TIME** | Tách ba thứ: tick và vòng đời sinh vật; lịch của thế giới (bao nhiêu tick là một ngày, một năm); tốc độ xem. "Một ngày bằng 2 giờ thực" là **tốc độ xem**, không phải luật mô phỏng | **Chủ dự án quyết 2026-11-17**, đúng như đề xuất |
+| **QĐ-LAW1** | Thí nghiệm "rẽ luật" đầu tiên trên thế giới sống: cùng bản đồ và seed, một nhánh đối chứng và một nhánh thêm một nguồn năng lượng lạ, tiền đăng ký, nhiều seed. Chạy **sau** khi chọn lọc trên thế giới sống đo được | **Chủ dự án quyết 2026-11-17**: chạy ngay sau thí nghiệm có sức mạnh đầu tiên, trước `v1.0.0`. Phụ thuộc bản đăng ký của QĐ-SEL1b và phần AE4 nó cần |
 
 #### QĐ-PAST — cái đã khớp, cái chưa, phần đã chốt và đề xuất lưu trữ
 
@@ -409,15 +424,16 @@ hay một loại khí mới đều là tên hiển thị của cùng một thứ
 sách riêng, tác động qua hấp thụ có chi phí, không sửa thẳng gen hay fitness (ER03). Hai chỗ còn thiếu:
 
 - Thế giới sống chưa có trường đó; adapter của nó từ chối `laws.exotic_energy`. Nối sang là AE4, kế hoạch
-  swarm xếp là X9, sau `v1.0.0`. Chạy QĐ-LAW1 sớm hơn là đổi thứ tự đó, và là việc chủ dự án quyết.
+  swarm xếp là X9, sau `v1.0.0`. Chủ dự án đã quyết đổi thứ tự đó: phần AE4 mà thí nghiệm cần được làm
+  trước `v1.0.0`.
 - Đổi luật chỉ tạo ra hướng tiến hoá khác khi chọn lọc hoạt động. Hôm nay tử vong, fitness sinh thái và sinh
   sản liên tục tắt mặc định; E2 null; E-SEL1 đóng mà không có thí nghiệm (STATE §3.00, §3.1). Thêm một nguồn
   năng lượng lúc này nhiều khả năng cho thêm quỹ đạo, chưa chắc cho thêm kiểu kết cục.
 
 ### 4.3 QĐ-C — một lối thứ ba: nâng `burn` thì `hexf-parse` tự biến mất (kiểm 2026-11-17)
 
-Chủ dự án nói trong chat ngày 2026-11-17 rằng muốn **giữ GPU**. QĐ-C vẫn còn trống; mục này ghi một dữ kiện
-mới làm đổi các lựa chọn.
+Chủ dự án nói trong chat ngày 2026-11-17 rằng muốn **giữ GPU**, rồi **chọn lối C** cùng ngày. Mục này ghi
+dữ kiện đã dẫn tới lựa chọn đó.
 
 **Vấn đề pháp lý là gì, nói cho đúng cỡ.** Dùng GPU không phải vấn đề pháp lý. Vấn đề là **một** thư viện
 nhỏ, `hexf-parse` 0.2.1, khai giấy phép CC0-1.0 nhưng chưa từng phát hành kèm văn bản giấy phép, trong khi
@@ -444,7 +460,7 @@ Nghĩa là nâng `burn` từ 0.13.2 lên dòng 0.22 sẽ kéo `naga` lên 30 và
 không cần quyết định pháp lý nào. **Chưa kiểm:** đây là danh sách phụ thuộc đã khai, chưa phải một lần build
 thật của dự án ở bản mới; và chưa ai đo bản `wgpu` mới có còn rò bộ nhớ hay không.
 
-**Ba lựa chọn sau dữ kiện này:**
+**Ba lựa chọn sau dữ kiện này (chủ dự án chọn C):**
 
 | | Nội dung | Giữ GPU trong bản cài? | Cái giá |
 |---|---|---|---|
