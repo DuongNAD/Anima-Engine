@@ -30,8 +30,52 @@ Ba điều rút ra, theo đúng mức bằng chứng:
    trùng tuyệt đối. Thế giới live có các lời gọi đó ở cả bộ sinh địa hình (`terrain.rs`: `powf(1.15)`
    cho độ cao) lẫn mỗi tick (`ecology.rs`: `exp` và `powf` trong tốc độ trao đổi chất MTE/Kleiber;
    `cpg.rs` và mùa: `sin`). Rust chuyển các hàm này cho libm của nền tảng (glibc, MSVC CRT, Apple
-   libm), và chúng không bắt buộc trả về cùng một bit. Đó là **giả thuyết khớp với dữ liệu, chưa được
-   cô lập**: lượt đo này không thay hàm nào để chứng minh hàm nào gây lệch.
+   libm), và chúng không bắt buộc trả về cùng một bit.
+4. **Chính các hàm đó trả về khác nhau, đã đo trực tiếp** (bảng [Các hàm toán](#các-hàm-toán)). Với
+   cùng 2.048 input:
+   - `sqrt`, đối chứng mà IEEE 754 bắt buộc làm tròn đúng, và `ln` trùng tuyệt đối;
+   - `sin`, `cos`, `exp`, `powf`, `atan2` và `tanh` trả về khác nhau ở một phần input, luôn đúng
+     **1 ULP**. `f32::sin` lệch ở 289/2048 input; `f32::powf(x, 1.15)` của bộ sinh địa hình lệch ở
+     19/2048.
+
+   Phần **chưa** được chứng minh là quan hệ nhân quả cụ thể: lượt đo không thay hàm nào trong mô phỏng
+   để xem thế giới có hết lệch không. Nhưng mọi điều đo được đều khớp với cách giải thích này, và
+   không điều nào chống lại nó.
+
+## Các hàm toán
+
+Run `44040775729` của workflow `determinism-matrix`, commit `abfccf2` (nhánh
+`swarm/m1-libm-fingerprint`), cùng ba runner và cùng rustc 1.98.1. Test
+`m1_print_libm_result_bits_for_cross_platform_comparison` in bit kết quả cho 2.048 input sinh bằng
+LCG, nên giống hệt nhau trên mọi nền tảng. Khoảng giá trị bám theo thứ mô phỏng thực sự truyền vào:
+- pha của CPG và của mùa;
+- số mũ Boltzmann;
+- `m^0,75` của Kleiber;
+- `elevation^1,15` của địa hình trên [0, 1].
+
+"ULP" là khoảng cách giữa hai kết quả, tính bằng số giá trị float liền kề.
+
+| Hàm | Input | Input lệch bit giữa các nền tảng | Lệch lớn nhất (ULP) |
+|---|---:|---:|---:|
+| `f32::sqrt` (đối chứng) | 2048 | 0 | 0 |
+| `f32::sin` | 2048 | 289 | 1 |
+| `f32::cos` | 2048 | 30 | 1 |
+| `f32::exp` | 2048 | 19 | 1 |
+| `f32::ln` | 2048 | 0 | 0 |
+| `f32::powf(x, 0.75)` | 2048 | 7 | 1 |
+| `f32::powf(x, 1.15)` | 2048 | 19 | 1 |
+| `f32::atan2(x, 1.5)` | 2048 | 3 | 1 |
+| `f32::tanh` | 2048 | 41 | 1 |
+| `f64::sqrt` (đối chứng) | 2048 | 0 | 0 |
+| `f64::sin` | 2048 | 127 | 1 |
+| `f64::cos` | 2048 | 148 | 1 |
+| `f64::exp` | 2048 | 9 | 1 |
+| `f64::ln` | 2048 | 0 | 0 |
+| `f64::powf(x, 0.75)` | 2048 | 5 | 1 |
+
+Lệch 1 ULP là nhỏ nhất có thể, nhưng mô phỏng là một hệ hỗn loạn: ma trận ở trên cho thấy một bit
+khác ở `powf` lúc sinh địa hình đủ đổi biome của vài ô, và vài bit khác ở trao đổi chất đủ đổi quỹ
+đạo trước tick 180.
 
 ## Hệ quả
 
@@ -55,6 +99,8 @@ hai đổi checksum của mọi thế giới live:
 - **ghim thế giới** trong manifest (đường dẫn hoặc hash của artifact) và để adapter từ chối khi thế giới
   dựng ra không khớp; việc này cũng đóng E2-F2;
 - **thư viện toán tất định** cho mã mô phỏng, ví dụ một bản libm thuần Rust, thay cho libm của nền tảng.
+  Bảng trên cho biết phạm vi phải thay: `sin`, `cos`, `exp`, `powf`, `atan2`, `tanh` (không cần thay
+  `sqrt` hay các phép tính cơ bản).
 
 ## Đo thế nào
 
