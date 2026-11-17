@@ -167,7 +167,7 @@ Mục này từng là danh sách **đề xuất**. Đối chiếu `.github/workf
 |---|---|---|
 | Rust — advisory | `cargo audit`, cấu hình ở `src-tauri/.cargo/audit.toml` | Gate CI |
 | Rust — license, bans, sources | `cargo deny check`, allow-list ở `src-tauri/deny.toml` | Gate CI từ 2026-08-08 |
-| JavaScript — advisory | `npm audit --audit-level=high` ở cả hai gói npm | Gate CI. Không auto-fix major version trong cùng PR tính năng |
+| JavaScript — advisory | `npm run check:audit` (`scripts/check_npm_audit.mjs`): `npm audit` ở cả hai gói npm, ngưỡng `high` | Gate CI. Một advisory mức high hoặc critical chỉ được miễn khi `scripts/npm_audit_policy.mjs` nêu tên nó kèm lý do, và gate kiểm lại ở mỗi lượt rằng nó vắng khỏi `npm audit --omit=dev` (phần được ship). Không auto-fix major version trong cùng PR tính năng |
 | Hồ sơ bên thứ ba | `NOTICE`, văn bản license, SBOM và schema của nó, ranh giới bundle; cục bộ gom trong `npm run check:compliance` | Gate CI, mỗi kiểm tra là một bước riêng. Hồ sơ mô tả bản build Windows và phải sinh lại trên Windows |
 | Văn bản license vendor từ upstream | `npm run verify:upstream-licenses` | Chạy tay, cần mạng; **không** nằm trong CI |
 | Link tài liệu | `scripts/check_docs_links.mjs`, trong `npm run check:docs` | Gate CI. Thay cho lychee mà bản trước của mục này đề xuất |
