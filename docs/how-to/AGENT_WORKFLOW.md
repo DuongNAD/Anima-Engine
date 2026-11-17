@@ -21,7 +21,7 @@ hoạch mới. Nó gom những gì cần để bắt đầu và trỏ về đún
 | Quyết định của chủ dự án | [Roadmap 31/10 §4](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) |
 | Số đo | [STATE §1.h](../planning/STATE_OF_THE_PROJECT.md#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos) (CI của `main` = thân cây tại `6f14124` cộng một lượt chạy cục bộ macOS, 2026-11-17) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
 
-Trạng thái trong trang này ghi ngày **2026-11-14**. Khi trang và một tài liệu ở bảng trên lệch nhau,
+Trạng thái trong trang này ghi ngày **2026-11-17**. Khi trang và một tài liệu ở bảng trên lệch nhau,
 tài liệu ở bảng thắng; sửa trang này.
 
 ## 1. Đang ở đâu
@@ -31,7 +31,10 @@ tài liệu ở bảng thắng; sửa trang này.
   Chặng 0 vẫn còn các ô quyết định trống ở dưới. Theo thứ tự, chặng kế là chặng 3. Thứ tự không đổi:
   xanh → gộp → đo lại → khoa học → phát hành → nhiều máy.
 - **Thân cây là `feat/ecological-selection`** (QĐ-A, 2026-11-01). Chồng PR #38 → #40 trên
-  `fix/ci-gates-green` sẽ được gộp **vào** thân cây (thẻ T2).
+  `fix/ci-gates-green` **đã được gộp vào** thân cây ở #45 (thẻ T2, 2026-11-15).
+- **Tiến độ từng chặng** nằm ở một bảng duy nhất:
+  [STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#bảng-tiến-độ-theo-chặng-đối-chiếu-2026-11-17).
+  Trang này chỉ giữ trạng thái từng thẻ (§3).
 - **2026-11-16:** T2 (HT-C) đã merge thành PR #45 (2026-11-15), và `main` đã được fast-forward lên thân cây
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
@@ -68,16 +71,49 @@ tài liệu ở bảng thắng; sửa trang này.
    bằng khối ở §4 dưới đây.
 4. Đọc diff và merge từng PR. Agent không bao giờ merge.
 
-## 3. Hàng đợi thẻ — Đợt 1
+## 3. Hàng đợi thẻ
 
-| Thẻ | Việc | Chạy được? | Điều kiện | Ghi chú |
+Đối chiếu `gh pr list --state all` và `git branch -r` ngày **2026-11-17**. Định nghĩa từng thẻ ở
+[kế hoạch swarm §3](../ai/planning/2026-11-05-swarm-master-plan.md); prompt ở
+[file prompt](../ai/planning/2026-11-05-swarm-prompts.md). Ký hiệu: ✅ đã merge · 🔄 đang làm ·
+⬜ chưa bắt đầu · ⛔ bị chặn.
+
+### Đợt 1 — đã đóng
+
+| Thẻ | Việc | Trạng thái |
+|---|---|---|
+| **D0** | Kiểm kê PR mở và nhánh remote | ✅ #42 |
+| **D1** | Phân loại finding của `AUDIT_REPORT.md` | ✅ #43 |
+| **T1** `[RUST]` | **B3b** — năm gate mà PR #40 làm đỏ | ✅ #44 |
+| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ #45 (2026-11-15) |
+| **P1–P3** | Bài báo | ⛔ QĐ-P1, QĐ-P2 trống. Luật L4: ô quyết định trống thì không chạy |
+
+### Đợt 2 — đang chạy (chặng 3)
+
+| Thẻ | Việc | Trạng thái | Máy | Ghi chú |
 |---|---|---|---|---|
-| **D0** | Kiểm kê PR mở và nhánh remote (chỉ đọc) | ✅ ngay | — | Báo cáo mới cần front matter và một dòng trong [`docs/ai/README.md`](../ai/README.md), nếu không `npm run check:docs` đỏ — uỷ quyền ở §4 |
-| **D1** | Phân loại finding của `AUDIT_REPORT.md` (chỉ đọc) | ✅ ngay | — | File chỉ có trên `origin/main`; thẻ nói cách đọc |
-| **T1** `[RUST]` | **B3b** — năm gate mà PR #40 làm đỏ | ✅ khi đã dán §4 | QĐ-B ✓, QĐ-F028 ✓ | Base `origin/fix/ci-gates-green`. Nhánh đó còn icon `placeholder` (F-028): **chép `src-tauri/icons/` từ thân cây trước**, nếu không sẽ không biên dịch trên macOS |
-| **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ PR #45 (2026-11-15) | T1 đã merge; dòng uỷ quyền T2 | Xung đột ở `PROJECT.md`, `AGENTS.md`, `STATE` để chủ dự án giải. Giữ mục IPC và `.anmw` của `PROJECT.md` thân cây — bản trên `main` đã bị ghi đè |
-| **G8** | Hợp đồng IPC | ✅ **phần lớn đã làm 2026-11-14** trên thân cây | — | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
-| **P1–P3** | Bài báo | ⛔ | QĐ-P1, QĐ-P2 trống | Luật L4: ô quyết định trống thì không chạy |
+| **G1** `[RUST]` | **B2** — zero-alloc ở đường sinh/tử | ✅ #48 | — | |
+| **G2** | **B5** — `test:e2e` đủ bộ, gate danh sách spec | ✅ #47 | — | |
+| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ⬜ chưa có PR | `agent-win`, sau G5 | |
+| **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | 🔄 nhánh cục bộ `mac/g4-dashboard-real-data`, chưa push | `agent-mac` | QĐ-2/QĐ-H quyết 2026-11-17 |
+| **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | 🔄 draft PR #95 | `agent-win` | G1 đã merge. Viết test đỏ trước |
+| **G6** | Gỡ bằng chứng giả của Map 2 | 🔄 PR #94 | `agent-mac` | |
+| **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
+| **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
+| **G9** | Gate vệ sinh thư mục gốc | ⬜ chưa có PR | `agent-mac`, sau G4 | |
+| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⛔ chờ cả Đợt 2 merge | `agent-win` | Cổng ra của chặng 3 |
+
+### Đợt 3 trở đi
+
+Hai thẻ của Đợt 3 đã merge **trước** R0, theo quyết định của phiên lead ngày 2026-11-16 (§1): **S1**
+(#66, `live.reproduction`) và **S4** (#75, OSS-072 MRCA). STATE §1.h đã đo một commit có cả hai; R0 vẫn
+là cổng ra của chặng 3 và chạy sau khi Đợt 2 merge.
+**T3** (mở PR thân cây → `main`) đã được thay bằng cách làm thực tế: `main` được fast-forward lên thân cây
+ở các mốc. Các thẻ còn lại của Đợt 3 (S2, S3, M1–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
+
+Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
+bản đăng ký E-SEL1, các thẻ "thế giới đọc được") được liệt kê ở
+[STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 Lead chạy tối đa **hai** thẻ `[RUST]` cùng lúc, mỗi thẻ một worktree riêng. Build Rust đầy đủ nặng
 và đã từng làm treo máy phát triển; nếu chỉ có máy này, chạy **một**.
@@ -125,10 +161,11 @@ R5-AUTH   =
   AUTHORIZATION (owner, 2026-11-14): for card D0 only, you may also add one row for the report you
   write to docs/ai/README.md. The report needs the front matter of
   docs/governance/DOCUMENTATION_POLICY.md; npm run check:docs must exit 0.
-CURRENT WAVE = 1
+CURRENT WAVE = 2
 ```
 
-Khi T1 đã merge, thêm dòng cho T2 vào `R5-AUTH` (sửa ngày):
+Dòng uỷ quyền của T2 dưới đây **đã dùng xong** (T2 merge ngày 2026-11-15) và được giữ làm mẫu cho
+dòng uỷ quyền của thẻ sau:
 
 ```text
   AUTHORIZATION (owner, <YYYY-MM-DD>): for card T2 only, you may write the merge commit on
@@ -190,20 +227,22 @@ xong khi thấy chuỗi `QUA CONG`.
 
 ## 7. Bẫy đã biết khi giao việc
 
-Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14.
+Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14; dòng nào ghi ngày khác thì được kiểm lại ngày đó.
 
-- **STATE §1 là đo ngày 27/07.** Số mới hơn ở roadmap 31/10 §1 và §4; banner đầu STATE §1 nói rõ.
-- **`fix/ci-gates-green` không biên dịch trên macOS** vì `src-tauri/icons/32x32.png` ở đó là file text
-  12 byte `placeholder` (F-028). Thân cây có icon PNG thật.
+- **Số mới nhất của STATE là §1.h, đo tại `6f14124`** *(kiểm 2026-11-17)*. Mọi thứ merge sau commit đó
+  chưa nằm trong lượt đo nào. Đừng suy số từ danh sách PR; lượt đo lại sau Đợt 2 là việc của thẻ R0.
+- **~~`fix/ci-gates-green` không biên dịch trên macOS~~ — đã hết hiệu lực 2026-11-15:** nhánh đó đã
+  gộp vào thân cây ở #45, và cả thân cây lẫn `main` mang icon PNG thật (F-028 đã đóng).
 - **~~`PROJECT.md` trên `main` đã bị ghi đè~~ — đã hết hiệu lực 2026-11-16:** `main` nay mang `PROJECT.md` của thân cây. Trước đó nó đã bị ghi đè bằng một tài liệu khác (kế hoạch swarm §1). Khi T2 gộp,
   giữ bản thân cây; mục Interface Contracts của nó đã được đối chiếu với mã ngày 2026-11-14.
 - **Hook rustfmt trước 2026-11-14 không chạy trên macOS** (gọi `powershell.exe`). File `.rs` sửa trên
   Mac trước ngày đó có thể chưa format; roadmap 31/10 đo được 67 khối lệch `cargo fmt`.
 - **`npm run check:docs` đọc cả file chưa `git add`.** Một tài liệu mới thiếu front matter hoặc thiếu
   dòng chỉ mục sẽ làm gate đỏ ngay trên máy, trước khi lên CI.
-- **Còn ba mâu thuẫn giữa các tài liệu kế hoạch chưa sửa** (kế hoạch 13/11 §12): tên "E3" chỉ hai thí
-  nghiệm khác nhau (chờ QĐ-EN); roadmap 16/10 không có trên thân cây; `H1`–`H4` chỉ những việc khác
-  nhau trong `EXECUTION_PLAN` và kế hoạch swarm — khi trích phải ghi kèm tên tài liệu.
+- **Còn hai mâu thuẫn giữa các tài liệu kế hoạch chưa sửa** (kế hoạch 13/11 §12, kiểm lại 2026-11-17):
+  tên "E3" chỉ hai thí nghiệm khác nhau (chờ QĐ-EN); `H1`–`H4` chỉ những việc khác nhau trong
+  `EXECUTION_PLAN` và kế hoạch swarm — khi trích phải ghi kèm tên tài liệu. Mâu thuẫn thứ ba đã hết:
+  roadmap 16/10 có trên thân cây từ khi hai cây hợp nhất.
 
 ## 8. Sau mỗi đợt
 

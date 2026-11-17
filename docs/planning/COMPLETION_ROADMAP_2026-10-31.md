@@ -2,7 +2,7 @@
 title: Nghiên cứu nâng cấp và hoàn thiện Anima Engine (đo 2026-10-31)
 status: proposed
 owner: maintainers
-last_reviewed: 2026-10-31
+last_reviewed: 2026-11-17
 review_cycle: monthly
 ---
 
@@ -25,6 +25,19 @@ review_cycle: monthly
 > Khi hai cây mã hợp nhất lại thành một, các số này phải được chuyển vào
 > [`STATE_OF_THE_PROJECT.md` §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) thành
 > một mục `§1.g` và tài liệu này trỏ về đó thay vì giữ bảng riêng.
+>
+> **Cập nhật 2026-11-17 — hai cây đã hợp nhất, nên ba điều ở trên đã đổi.**
+>
+> - `main` được fast-forward lên `feat/ecological-selection` ngày 2026-11-16. Chẩn đoán "hai cây phân
+>   kỳ" ở §2 và lộ trình HT0′–HT1′ ở §3 nay là **bản ghi lịch sử** của việc đã làm xong: T1 là #44, T2
+>   (HT-C) là #45.
+> - [`COMPLETION_ROADMAP_2026-10-16.md`](COMPLETION_ROADMAP_2026-10-16.md) nay có trong cây này. Các chỗ
+>   nhắc tới nó bên dưới vẫn để dạng chữ như lúc viết; link ở dòng này là link chuẩn.
+> - §1 dưới đây **không** được chuyển vào STATE. `§1.g` và `§1.h` của STATE là các lượt đo mới trên thân
+>   cây (2026-11-16 và 2026-11-17), không phải bản chép của bảng này. §1 ở đây là **đo lịch sử** ngày
+>   2026-10-31; số hiện hành ở [bảng mới nhất của STATE §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+> - Phần còn sống của tài liệu này là **§4, sổ quyết định của chủ dự án**. Tiến độ theo chặng ở
+>   [STATE §3.00](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 ---
 
@@ -268,6 +281,48 @@ mảnh nó cần — một fitness mà sinh thái chạm được, và một cá
 | ~~**QĐ-D**~~ | ✅ **ĐÃ QUYẾT 2026-10-31 tại `26c8a96`: `playground/` là nháp.** Căn cứ là so hai viewport, không phải sở thích: `src/PixiViewport.tsx` (1296 dòng, track, `src/App.tsx:3` import, 7 file test) là *presentational* — nhận `zoom`/pan làm prop, **không** có wheel/drag/inertia/clamp. `playground/fantasy-map/MapViewport.tsx` (1182 dòng, không track) tự giữ tất cả, kể cả `Math.max(1.0, Math.min(5.0, …))` ở `:1108`. Nên 8 test tính chất kia **không có đối tượng tương ứng** ở bản ship — không port được, vì hành vi đó không ở đó. Đã xoá 4 file test và loại `playground` khỏi phạm vi ESLint | Đo: lint **8 error · 72 warning → 0 · 0**, ratchet xanh; `test:frontend` **17 đỏ → 9 đỏ** |
 | ~~**QĐ-E**~~ | ✅ **ĐÃ QUYẾT 2026-10-31: bỏ test.** `tests/frontend/organism_library.test.tsx` có đúng 3 test và **cả 3 đỏ**, nên xoá cả file không mất coverage nào. Tính năng vắng ở **cả hai phía**: `get_organism_presets` và `spawn_preset_organism` đều không có trong `src-tauri/src`, và không có `"Thư viện Sinh vật"` nào trong `src/`. Nếu sau này muốn Organism Library thì viết test lại cùng lúc với tính năng — đó là thứ tự TDD đúng, còn giữ một test không có đối tượng chỉ làm gate đỏ mãi | Đo: `test:frontend` **9 đỏ → 6 đỏ**; 6 cái còn lại đều là HT-A7 (cần Windows) |
 | **QĐ-C** | **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
+
+### 4.1 Quyết định sau 2026-11-14 (ghi thêm 2026-11-17)
+
+Kế hoạch 13/11 (MP-0.1) đặt sổ quyết định ở mục này, nhưng các quyết định từ 2026-11-16 mới chỉ được ghi ở
+[`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 và §4 và trong ADR. Bảng dưới gom chúng về một chỗ,
+mỗi dòng trỏ tới nơi ghi đầy đủ. Nó không thêm quyết định nào.
+
+**Trừ QĐ-6 (khối `DECISIONS` không ghi ai quyết), mọi dòng trong bảng này do phiên lead quyết theo uỷ
+quyền của chủ dự án trong chat, không phải do chủ dự án ghi trực tiếp.** Chủ dự án đảo lại được từng dòng; cho tới khi có một dòng xác nhận của chủ dự án ở
+đây, hãy đọc chúng là "đang áp dụng", chưa phải "chủ dự án đã ký".
+
+| # | Quyết định | Ngày | Ghi đầy đủ ở |
+|---|---|---|---|
+| QĐ-E2M | **B**: đính chính có ngày cho bản đăng ký E2, rồi chạy lại thật | 2026-11-16 | #59; `artifacts/experiments/e2-evolved-brain-default/RESULT.md` |
+| QĐ-4 | **A**: sinh sản liên tục có điều kiện năng lượng trong adapter sống, sau khoá `live.reproduction` | 2026-11-16 | [ADR-0005](../decisions/ADR-0005-live-population-turnover.md) |
+| QĐ-5 | **Có**, phạm vi chỉ là sinh sản liên tục trong thí nghiệm sống; `EvolutionaryReplacement` không đổi | 2026-11-16 | [ADR-0005](../decisions/ADR-0005-live-population-turnover.md) |
+| QĐ-LOC | **A**: bộ lái ghi `target_velocity`, tốc độ lấy từ CPG/não của chính sinh vật | 2026-11-16 | [ADR-0006](../decisions/ADR-0006-locomotion-actuation.md) |
+| QĐ-ECO | **A**: khoá opt-in cho sàn bộ lái và lái theo khát; thế giới mặc định không đổi | 2026-11-16 | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md) |
+| QĐ-ECO-B | **Opt-in**: ba khoá thu nhập của thú săn, chỉ để thăm dò S43, không bao giờ mặc định | 2026-11-17 | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87 |
+| QĐ-2 / QĐ-H | Gỡ mọi bằng chứng và dữ liệu giả ngay (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau | 2026-11-17 | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
+| QĐ-6 | Hợp đồng IPC ở `docs/reference/IPC_CONTRACT.md` | 2026-11-14 | [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) |
+
+**Còn trống ngày 2026-11-17, xếp theo chặng cần tới** (câu hỏi và đề xuất ở
+[kế hoạch 13/11 §7](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#7-hàng-đợi-quyết-định-của-chủ-dự-án), trừ
+ba dòng cuối):
+
+| Cần trước | Quyết định | Chặn |
+|---|---|---|
+| Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
+| Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
+| Chặng 4 | QĐ-EN — tên thí nghiệm (E2R, E3) | Thẻ E2R-*, E3-* |
+| Chặng 4 | QĐ-SEL1b — có làm lại thí nghiệm chọn lọc theo khan hiếm không, với yếu tố nào | Bản đăng ký mới; xem STATE §3.00 P2 |
+| Chặng 4 | QĐ-ECO-C1 — có làm thẻ `live.predator_cost_mult` + `live.strike_radius` không; có làm khoá nguồn nước không | S43; xem STATE §3.00 P1 |
+| Chặng 4 | F-044 — tách bộ đếm ân hạn đói và khát thành hai (đổi định dạng lưu và quỹ đạo) | [`FINDINGS.md`](../../FINDINGS.md) F-044 |
+| Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
+| Chặng 5 | **QĐ-C** — `hexf-parse` (hàng cuối của bảng §4 ở trên) | Phát hành |
+| Chặng 5 | QĐ-1 — dừng ở mức hoàn thiện nào | Thẻ R2 |
+| Chặng 5 | QĐ-P1, QĐ-P2, QĐ-P3 — loại bài báo, chỗ để bản nháp, khai báo dùng AI | Thẻ P1–P9 |
+| Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
+| Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
+| Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
+| Không gắn chặng | #56 và #68 đang nhắm `main`: đổi nhánh đích rồi merge, hay đóng | Luật L1; STATE §3.00 |
 
 Hai việc **cần tay người** (không phải quyết định): chạy app desktop bản **release** với
 `ANIMA_TICK_CAPTURE` ở 1.000 agent (HT4.1), và xác minh app khởi động dưới CSP. Cả hai vẫn mở.

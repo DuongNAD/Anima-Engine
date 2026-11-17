@@ -2,11 +2,30 @@
 title: Kế hoạch thực thi chi tiết — từ hai cây đỏ về một cây xanh
 status: proposed
 owner: maintainers
-last_reviewed: 2026-10-31
+last_reviewed: 2026-11-17
 review_cycle: weekly
 ---
 
 # Kế hoạch thực thi chi tiết
+
+> **Trạng thái 2026-11-17: gần hết kế hoạch này đã được thực hiện; đọc nó như bản ghi, không như hàng đợi.**
+> Đối chiếu danh sách PR, không chạy lại lệnh xác minh nào.
+>
+> | Phần | Trạng thái | Ở đâu |
+> |---|---|---|
+> | HT-A (A1–A7) | Xong. A7 (hồ sơ giấy phép trên Windows) nằm trong thẻ T1 | #44, rồi #45 |
+> | HT-B: B1 | Xong | #38 |
+> | HT-B: B2 | Xong, dưới tên thẻ G1 | #48 |
+> | HT-B: B3, B4 | Xong (PR #40, rồi B3b) | #44 |
+> | HT-B: B5 | Xong, dưới tên thẻ G2 | #47 |
+> | HT-B: **B6** | **Chưa xong.** Chạy tiếp dưới tên thẻ G3 (a), G4 (b), G5 (c) | [`AGENT_WORKFLOW.md` §3](../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ) |
+> | HT-C: C1–C4 | Xong, theo chiều gộp ngược với văn bản gốc (QĐ-A) | #45 |
+> | HT-C: C5 | Xong về số đo: STATE có §1.g (CI, 2026-11-16) rồi §1.h (CI cộng một lượt cục bộ, 2026-11-17). Bảng §1 của roadmap 31/10 được giữ làm lịch sử thay vì bị xoá | STATE §1.h |
+> | HT-D | Thứ tự chặng nay do [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ (chặng 4) | STATE §3.00 |
+> | Việc của con người H2, H3 | Roadmap 31/10 §4 ghi cả hai còn mở (lượt app release 1.000 agent; boot dưới CSP). Chưa có bản ghi nào sau đó | — |
+>
+> `COMPLETION_ROADMAP_2026-10-16.md` mà tài liệu này nhắc là "trên `origin/main`" nay có trong cây này:
+> [link](COMPLETION_ROADMAP_2026-10-16.md).
 
 > **Chẩn đoán và số đo nền cho kế hoạch này ở
 > [`COMPLETION_ROADMAP_2026-10-31.md`](COMPLETION_ROADMAP_2026-10-31.md).** Tài liệu đó trả lời

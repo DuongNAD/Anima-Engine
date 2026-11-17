@@ -14,6 +14,16 @@
 
 ---
 
+# ⏪ Rà soát tiến độ, lộ trình và tài liệu (2026-11-17)
+
+Một lượt đối chiếu tài liệu kế hoạch với `gh pr list`, `git branch -r` và mã trên thân cây tại `6f14124`;
+không build hay test nào được chạy. Thêm **bảng tiến độ theo chặng** vào `STATE_OF_THE_PROJECT.md` §3.00
+(chặng 1 và 2 đã đóng, chặng 3 đang làm, chặng 4 chưa qua cổng dù một phần đã làm trước R0) và tám hàng mới
+ở §2. `AGENT_WORKFLOW.md` §3 nay là hàng đợi thẻ của cả ba đợt thay cho bảng Đợt 1 đã cũ. Roadmap 31/10 có
+§4.1: sổ quyết định sau 2026-11-14 và hàng đợi còn trống xếp theo chặng. Tám finding đã sửa nhưng còn ghi
+`OPEN` được đổi trạng thái, mỗi cái kèm commit hoặc PR: F-017, F-018, F-019, F-020, F-021, F-028, F-031, F-034.
+Ba kế hoạch cũ (thực thi 31/10, định hướng 13/11, swarm 05/11) nhận một ghi chú có ngày thay vì bị viết lại.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

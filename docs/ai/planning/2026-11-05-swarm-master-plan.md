@@ -2,7 +2,7 @@
 title: Kế hoạch tổng cho swarm Antigravity — mọi việc, mọi phép đo, chia đợt song song
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-17
 review_cycle: weekly
 ---
 
@@ -91,6 +91,12 @@ Mỗi quyết định chặn các thẻ ghi ở cột cuối. Lead **không** ch
 ---
 
 ## 3. Danh sách toàn bộ việc
+
+> **Ghi chú 2026-11-17.** Các bảng dưới đây là **định nghĩa** thẻ và phụ thuộc, và không được sửa theo
+> tiến độ. Thẻ nào đã merge, đang làm hay bị chặn thì xem
+> [`AGENT_WORKFLOW.md` §3](../../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ). §1 ở trên là quan sát ngày
+> 2026-11-05 và nay là lịch sử: hai cây đã hợp nhất ngày 2026-11-16. Quyết định ở §2 đã ra tới đâu thì xem
+> [roadmap 31/10 §4](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
 
 **Ký hiệu.** Loại: 🤖 agent · 🧑 chỉ con người · ⚖️ quyết định. `[RUST]` là thẻ chạy `cargo`
 build/test nặng; lead chạy tối đa **hai** thẻ `[RUST]` cùng lúc. "Prompt" chỉ chỗ lấy nội dung task:
