@@ -3,7 +3,7 @@ phase: testing
 feature: ecological-selection
 title: Testing — Đóng vòng sinh thái
 description: Gate MO · FI · QD · RE · OB · PF, và ba gate chứng minh kênh nhân quả thật sự tồn tại
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-ecological-selection.md

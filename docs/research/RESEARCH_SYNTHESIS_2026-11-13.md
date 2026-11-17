@@ -321,6 +321,11 @@ suy luận của não, nên kết luận là suy luận.
 Chương trình chỉ nhận `--model` và một đường dẫn manifest (đã kiểm trong
 `src-tauri/src/bin/anima-lab.rs`). Không chạy các công thức đó nguyên văn.
 
+*Đính chính 2026-11-17:* câu "chỉ nhận `--model` và một đường dẫn manifest" thiếu. `anima-lab` nhận ba lệnh
+con `ensemble`, `sweep` và `branch`, cờ `--model`, và riêng `sweep` có `--format` và `--threads` (đọc
+`parse_args` cùng ngày). Kết luận không đổi: đối chiếu từng công thức của báo cáo E với `parse_args` trước
+khi chạy; chưa ai làm việc đối chiếu đó.
+
 ## 14. Sai hoặc đáng ngờ, gom lại
 
 - Báo cáo C đề xuất mortality và chi phí như thể chưa có; thân cây đã có sau khoá manifest.

@@ -1,7 +1,9 @@
 # Kế hoạch tổng thể — Mô phỏng thế giới sống có quan hệ nhân–quả
 
 > Dự án: **Anima Engine**
-> Trạng thái: **Bản kế hoạch đề xuất**
+> Trạng thái: **Bản kế hoạch đề xuất**. Lập ngày 2026-07-24; M0–M2E phần lớn đã thi công từ đó. Các bảng
+> "hiện có" và "khoảng trống" ở §1 là điểm xuất phát của ngày lập; hiện trạng ở
+> [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 > Ngày lập: **2026-07-24**
 > Phạm vi: thế giới, khí hậu, nước, đất, thực vật, sinh vật, quần thể, tiến hóa,
 > biến cố và tác động dây chuyền khi người dùng can thiệp.
@@ -73,10 +75,15 @@ Chặt 40% rừng đầu nguồn
 | Mùa vụ | `SeasonClock` điều khiển độ màu mỡ theo chu kỳ |
 | Quan sát | Dashboard sinh khối, quần thể, Shannon, Simpson, niche divergence |
 | World 3D | World generator 22 biome, thủy văn, hồ, sông, bờ biển, thực vật và wildlife trang trí |
-| World backend | Terrain 256×256 (`MapSettings::default`), 11 biome; phần cache ra đĩa đang được bổ sung |
+| World backend | Terrain 256×256 (`MapSettings::default`), 11 biome; cache ra đĩa qua `TerrainMap::load_or_generate` |
 | Kiểm thử | Rust unit/integration tests, Vitest và Playwright |
 
 ### 1.2. Khoảng trống cần giải quyết
+
+> **Bảng này là điểm xuất phát ngày 2026-07-24** *(ghi chú 2026-11-17, đối chiếu mã)*. Đã đóng từ đó: frontend
+> và backend dùng chung một thế giới qua World Artifact; save mang sổ EU, resource field, mùa và world
+> identity; có causal ledger (`anima-domain/src/causal.rs`); có map manifest và schema của nó. Simulation LOD
+> có mã hai tầng nhưng tắt mặc định. Các hàng còn lại chưa được đối chiếu lại.
 
 | Khoảng trống | Hệ quả |
 |---|---|
@@ -634,7 +641,7 @@ cao chiều rất thưa.
 
 ### 5.9. Nguồn năng lượng thay thế và tiến hóa theo chế độ thế giới
 
-Core gọi nguồn tổng quát là `ExoticEnergy`; “Mana” chỉ là tên scenario/UI. Nguồn có field spatial,
+Core dùng module tổng quát `core::exotic_energy` (`ExoticEnergyField`, `ExoticEnergyLaw`, `EnergySourceId`); không có kiểu nào tên `ExoticEnergy`. “Mana” chỉ là tên scenario/UI. Nguồn có field spatial,
 đơn vị MU và budget riêng:
 
 ```text
@@ -761,8 +768,9 @@ gate AE-S01…AE-S15 nằm trong
 | M2E.4 | Exotic field Disabled/Renewable/Patchy + MU budget | M2E.1 | Baseline parity và budget audit | AE-S01/04/05 |
 | M2E.5 | Reference pathway/selection vertical slice | M2E.2–M2E.4 | Mechanism→reproduction→trait frequency | AE-S06/07/10/12 |
 
-**Gate:** headless experiment không được tuyên bố là live-world evolution; live Bevy adapter,
-persistence và species evidence vẫn thuộc các phase AE4/AE5.
+**Gate:** headless experiment không được tuyên bố là live-world evolution. *(Cập nhật 2026-11-17:)* adapter
+Bevy sống (`core/live_experiment.rs`) đã có và được kiểm ở đường headless; chưa có lần chạy app desktop đầy
+đủ, adapter từ chối `laws.exotic_energy`, và species evidence vẫn thuộc AE5.
 
 ### Milestone M3 — Khí hậu, nước và đất động
 
@@ -1176,7 +1184,7 @@ Không đợi tới M9 mới tạo experiment contract. Làm M2E headless trư�
 2. genesis/checkpoint fork;
 3. observable registry;
 4. seed-set ensemble;
-5. ExoticEnergy Disabled/Renewable + MU budget;
+5. năng lượng ngoại lai (`core::exotic_energy`): tắt bằng `exotic_energy = None`, nguồn `Renewable`, kèm MU budget;
 6. reference selection slice.
 
 Thứ tự task chính xác nằm trong

@@ -2,6 +2,11 @@
 
 > **Cập nhật 2026-07-26 — hai thay đổi lớn.**
 >
+> *Quyết định 2026-11-17 của chủ dự án, đọc trước mục 1 bên dưới:* **i5-14600KF là máy đo**, nơi mọi số
+> của file này được lấy; **Dell Vostro 3530 là máy tối thiểu** mà dự án nhắm chạy được. Câu "khai báo cũ
+> không còn hiệu lực" ở mục 1 chỉ đúng cho vai *máy đo*. Chưa có số đo engine nào trên Vostro; riêng phần
+> hiển thị 3D đã được đo trên nó ở thẻ RW-C2.
+>
 > 1. **Phần cứng mục tiêu nay là Intel Core i5-14600KF** (desktop, 14 nhân / 20 luồng, 47,8 GB,
 >    Windows 11 Pro 10.0.26200). Khai báo cũ — *Dell Vostro 3530 (i7-1355U, Iris Xe iGPU + dGPU)* —
 >    **không còn hiệu lực** và đã được thay ở mọi chỗ trong tài liệu này. Máy capture và máy mục
@@ -24,11 +29,12 @@
 > test ở `tick_capture_tests.rs`, xanh trong lần chạy 2026-07-27 ghi ở
 > [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền)).
 >
-> 🔧 **"Instrumentation đã ship" KHÔNG phải "đã có một phép đo phần cứng".** Tính đến 2026-07-27
-> **chưa có lần chạy app desktop nào**, nên **không tồn tại** một số đo tick nào từ app đang chạy —
-> mọi hàng "Physics tick" / "Brain/sensor" / "Full-brain agents" dưới đây vẫn trống hoặc là proxy.
-> Thủ tục ba bước để lấy số nằm ở [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md); nó
-> cần một con người mở app, việc mà CLAUDE.md cấm tự động hoá trên máy này.
+> 🔧 **"Instrumentation đã ship" KHÔNG phải "đã có một phép đo phần cứng".** *Sửa 2026-11-17: đoạn này
+> từng viết "chưa có lần chạy app desktop nào", mâu thuẫn với mục "Đo trong app" ở dưới cùng file.* Ngày
+> 2026-07-27 app desktop đã chạy **một lần, bản debug, 10 agent**; `Physics tick`, `Brain/sensor` và
+> `UI telemetry` có số in-app từ lần đó. `Full-brain agents MVP` (1.000 agent, bản release) **vẫn chưa
+> đo**. Thủ tục lấy số nằm ở [`docs/how-to/BENCHMARKING.md`](docs/how-to/BENCHMARKING.md); nó cần một con
+> người mở app, việc mà CLAUDE.md cấm tự động hoá trên máy này.
 
 Tài liệu này mô tả *reproducible benchmark scaffold* của Anima-Engine: cách capture
 seed + config + hardware + timings một cách **rẻ và trung thực**, và cách thay các số
@@ -79,8 +85,8 @@ Các biến môi trường tuỳ chọn (đều có default, không bắt buộc
 ## Phương pháp (methodology)
 
 1. **Reproducibility envelope.** Report luôn ghi lại `seed`, `config`
-   (`gridDim=128`, `tickHz=60`, `ticksPerEpoch=1000` — trùng hằng số trong
-   [`src-tauri/src/core/sim_rules.rs`](src-tauri/src/core/sim_rules.rs)) và `hardware`
+   (`gridDim=256`, `tickHz=60`, `ticksPerEpoch=1000` — trùng `DEFAULT_GRID_DIM` trong
+   [`src-tauri/src/core/sim_rules.rs`](src-tauri/src/core/sim_rules.rs) và các hằng thời gian nó re-export) và `hardware`
    (`platform`/`release`/`arch`/`cpuModel`/`cpuCount`/`totalMemMB` lấy từ `os.*`).
    Đây là phần bắt buộc để một số đo có thể tái lập.
    > **Finding đã đóng 2026-07-27.** Trước đây `gridDim=128` khớp `DEFAULT_GRID_DIM`, nhưng hằng số

@@ -3,7 +3,7 @@ phase: implementation
 feature: ecological-selection
 title: Task Backlog — Đóng vòng sinh thái
 description: Danh sách đầy đủ việc cần làm, có neo file, phụ thuộc và định nghĩa hoàn thành cho từng mục
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-ecological-selection.md
@@ -67,6 +67,12 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 | M-5 | ✅ | Khai lịch trình: sau `metabolic_decay`, trước `ecosystem_census` | `src-tauri/src/core/simulation_schedule.rs` | M-4 | test thứ tự; census đếm thế giới sau khi xác thành detritus | ⚠️ khai ở **một** chỗ duy nhất — `build_tick_schedule` |
 | M-6 | ✅ | Cập nhật `ENERGY_LEDGER_CONTRACT` nếu đường EU mới xuất hiện | `docs/reference/ENERGY_LEDGER_CONTRACT.md` | M-4 | — | nếu làm đúng thì **không** có đường mới, và đó là câu trả lời |
 
+> *Ghi chú 2026-11-17 (F-044, thẻ S8):* bộ đếm của M-1/M-2 từng đếm tick ở đáy của **cả** năng lượng lẫn
+> nước, và `mortality_system` so nó với cả hai ngưỡng, nên ân hạn khát không độc lập với ân hạn đói. Nay
+> có hai bộ đếm: `starving_ticks` chỉ đếm năng lượng cạn, và `dehydrating_ticks: Option<u32>` (có
+> `serde(default)`) đếm nước cạn. `None` là save cũ; tick trao đổi chất đầu tiên sau khi restore lấy bộ
+> đếm chung làm chuỗi khát nếu con vật đang cạn nước. Test: `tests/f044_shared_bottom_counter_tests.rs`.
+
 ---
 
 ## 2. F — Fitness sinh thái
@@ -101,14 +107,24 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 
 ## 4. R — Sinh sản theo ngưỡng
 
+> *Ghi chú 2026-11-17:* nhóm R vẫn 🔒 và các gate RE-S0x chưa có. Nhưng sinh sản liên tục **đã vào mã bằng
+> đường khác**: `ReproductionPolicy` và `SpawnOffspringCommand` tồn tại, bật bằng khoá `live.reproduction`
+> (thẻ S1, #66, [ADR-0005](../../decisions/ADR-0005-live-population-turnover.md)). `ANIMA_REPRODUCTION` và
+> `births_suppressed_by_cap` thì chưa có. Trần sinh sản của con mồi là việc của thẻ S6 (QĐ-SEL1b = A). Nhóm
+> R giữ nguyên, đóng lại hay thu hẹp về phần S1 chưa làm là việc chủ dự án quyết.
+>
+> **Chủ dự án quyết ngày 2026-11-17: đóng nhóm R.** Nó được thay bằng ADR-0005 (sinh sản liên tục, đã merge)
+> và thẻ S6 (trần sinh sản của con mồi). Sáu hàng dưới đây giữ làm bản ghi và **không** còn là việc cần làm;
+> các bẫy ghi ở cột cuối vẫn đáng đọc khi làm S6.
+
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|
-| R-1 | 🔒 | `ReproductionPolicy` + `ANIMA_REPRODUCTION` | `src-tauri/src/core/resources.rs` | M, F xanh | cờ unset ⇒ epoch replacement như cũ | |
-| R-2 | 🔒 | `SpawnOffspringCommand` — **một** command, hai vế ledger | `src-tauri/src/core/agent_systems.rs` | R-1 | RE-S01: residual ≤ 1e-3 sau 120k tick | ⚠️ hai bước qua `Commands` = đúng chế độ hỏng mà `ReclaimAndDespawn` đã sửa |
-| R-3 | 🔒 | `reproduction_system` + trần + `births_suppressed_by_cap` | file mới | R-2 | RE-S02, RE-S03 | ⚠️ trần im lặng làm mọi kết luận quần thể sai không phát hiện được |
-| R-4 | 🔒 | Ghi cạnh lineage **trong cùng** command | `src-tauri/src/evolution/lineage.rs` | R-2 | RE-S04: không cạnh mồ côi | ⚠️ một cạnh mồ côi phá **toàn bộ** đồ thị: `to_newick` và `simplify` đều từ chối |
-| R-5 | 🔒 | Preflight: R + epoch replacement cùng bật là lỗi | `src-tauri/src/core/experiment.rs` | R-1 | RE-S05 | |
-| R-6 | 🔒 | Không Lamarck: con nhận genome, không nhận `learned` | `src-tauri/src/evolution/brain_genotype.rs` | R-2 | test khẳng định `.genotype` không bị ghi | [ADR-0003](../../decisions/ADR-0003-evolved-per-agent-brains.md) |
+| R-1 | ✖ đóng | `ReproductionPolicy` + `ANIMA_REPRODUCTION` | `src-tauri/src/core/resources.rs` | M, F xanh | cờ unset ⇒ epoch replacement như cũ | |
+| R-2 | ✖ đóng | `SpawnOffspringCommand` — **một** command, hai vế ledger | `src-tauri/src/core/agent_systems.rs` | R-1 | RE-S01: residual ≤ 1e-3 sau 120k tick | ⚠️ hai bước qua `Commands` = đúng chế độ hỏng mà `ReclaimAndDespawn` đã sửa |
+| R-3 | ✖ đóng | `reproduction_system` + trần + `births_suppressed_by_cap` | file mới | R-2 | RE-S02, RE-S03 | ⚠️ trần im lặng làm mọi kết luận quần thể sai không phát hiện được |
+| R-4 | ✖ đóng | Ghi cạnh lineage **trong cùng** command | `src-tauri/src/evolution/lineage.rs` | R-2 | RE-S04: không cạnh mồ côi | ⚠️ một cạnh mồ côi phá **toàn bộ** đồ thị: `to_newick` và `simplify` đều từ chối |
+| R-5 | ✖ đóng | Preflight: R + epoch replacement cùng bật là lỗi | `src-tauri/src/core/experiment.rs` | R-1 | RE-S05 | |
+| R-6 | ✖ đóng | Không Lamarck: con nhận genome, không nhận `learned` | `src-tauri/src/evolution/brain_genotype.rs` | R-2 | test khẳng định `.genotype` không bị ghi | [ADR-0003](../../decisions/ADR-0003-evolved-per-agent-brains.md) |
 
 ---
 

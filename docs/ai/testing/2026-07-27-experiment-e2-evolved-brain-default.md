@@ -3,7 +3,7 @@ phase: testing
 feature: experiment-e2-evolved-brain-default
 title: Testing & Evidence — E2 preregistration, and the gates E2-B must pass
 description: What E2-A verified with commands and exit codes, what it deliberately did not run, and the gate list for the run session
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-07-27
 requirements: ../requirements/2026-07-27-experiment-e2-evolved-brain-default.md

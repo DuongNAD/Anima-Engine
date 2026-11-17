@@ -2,7 +2,7 @@
 phase: monitoring
 title: Kiểm toán PR mở và nhánh remote — đo ngày 2026-11-14
 description: Phân loại toàn bộ 10 PR mở, 102 nhánh remote và liệt kê đủ mọi hunk chưa lên thân cây của PR #35-#37
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-11-14
 ---

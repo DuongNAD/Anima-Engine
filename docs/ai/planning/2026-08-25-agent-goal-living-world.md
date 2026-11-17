@@ -3,7 +3,7 @@ kind: agent-goal
 agent: unassigned
 feature: living-world
 title: Agent Goal — Thế giới sống (hình thái · animation · tính toán phân tán)
-status: proposed
+status: active
 created: 2026-08-25
 owner: project owner
 tasks: ../implementation/2026-08-25-feature-living-world-tasks.md

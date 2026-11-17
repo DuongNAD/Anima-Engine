@@ -13,6 +13,7 @@ với trạng thái thế giới có phiên bản, kết quả tái lập đư�
 
 | Nhu cầu | Tài liệu |
 |---|---|
+| Biết dự án đang ở đâu và việc gì kế tiếp | [Trạng thái dự án](docs/planning/STATE_OF_THE_PROJECT.md) — số đo ở §1, bảng tiến độ theo chặng ở §3.00 |
 | Hiểu sản phẩm và kiến trúc hiện tại | [PROJECT.md](PROJECT.md) |
 | Hiểu tầm nhìn thế giới | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
 | Xem lộ trình mô phỏng dài hạn | [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) |
@@ -33,8 +34,8 @@ với trạng thái thế giới có phiên bản, kết quả tái lập đư�
 | **Sinh vật** | `MorphologyGenotype` → phenotype nhiều đốt, ràng buộc khớp, dao động CPG điều khiển dáng đi; chuyển hoá theo MTE (Kleiber + Arrhenius) thay cho số hạng khối lượng tuyến tính |
 | **Bộ não** | Actor-critic dùng chung (Burn — `burn-wgpu` GPU hoặc `burn-ndarray` CPU) là mặc định; **não di truyền theo từng cá thể** (`BrainGenotype`) và học-trong-đời là tuỳ chọn sau cờ ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
 | **Hành vi xã hội** | Raycast qua spatial hash, lưới pheromone 1D có khuếch tán/phân rã, động lực thú săn – con mồi, chiến đấu |
-| **Sinh thái** | Sổ cái năng lượng **đóng** (EU): thực vật → ăn cỏ → xác mục → thực vật; phản ứng chức năng Holling II/III; chuyển hoá Lindeman ~30%; trường NPP tái sinh logistic theo biome; chu kỳ mùa |
-| **Tiến hoá** | MAP-Elites trên trục **niche sinh thái** (khối lượng cơ thể × tầm kiếm ăn); thay thế theo thế hệ; phả hệ lưu Neo4j với fallback in-memory |
+| **Sinh thái** | Sổ cái năng lượng **đóng** (EU): thực vật → ăn cỏ → xác mục → thực vật; phản ứng chức năng Holling II/III; chuyển hoá Lindeman ~30%; trường NPP tái sinh logistic theo biome; chu kỳ mùa. **Tuỳ chọn, mặc định tắt:** tử vong vì đói và khát (`ANIMA_MORTALITY`, khoá manifest `live.mortality`), sinh sản liên tục, bộ lái vận động và các khoá sinh thái cho thú săn và con mồi ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
+| **Tiến hoá** | MAP-Elites trên trục **niche sinh thái** (khối lượng cơ thể × tỉ lệ năng lượng đến từ săn mồi, `trophic_ratio`); thay thế theo thế hệ; fitness mặc định là quãng đường, **fitness sinh thái** là tuỳ chọn (`ANIMA_FITNESS`, khoá `live.ecological_fitness`); phả hệ lưu Neo4j với fallback in-memory, xuất Newick và truy vấn tổ tiên chung gần nhất (MRCA) |
 | **Thí nghiệm** | Manifest thí nghiệm + runner headless, fork từ checkpoint, hàng đợi can thiệp + sổ nhân quả, năng lượng ngoại lai (“mana”) **mặc định tắt**; thế giới Bevy sống có adapter thí nghiệm — **headless adapter verified**, xem cảnh báo bên dưới |
 | **Giao diện** | Viewport 2D PixiJS 8; cảnh quan 3D three + R3F (`landscape.html`) với chu kỳ ngày–đêm, thời tiết, thảm thực vật instanced, chế độ khám phá góc nhìn thứ nhất; bảng hệ sinh thái / tiến hoá / phả hệ / chronicle |
 | **Hạ tầng** | Vòng tick 60 FPS chạy nền, **không cấp phát heap trên hot path**, RNG có seed tách theo stream, snapshot có phiên bản dùng làm checkpoint (khôi phục cả vị trí draw), chế độ tất định để replay |
@@ -43,13 +44,18 @@ với trạng thái thế giới có phiên bản, kết quả tái lập đư�
 > Trạng thái đo được — kèm lệnh, ngày chạy và cấu hình — chỉ ở một chỗ:
 > [`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
 >
-> Bốn ranh giới đáng nhớ, tính đến **2026-07-27**:
+> Năm ranh giới đáng nhớ, tính đến **2026-11-17** (nguồn của từng dòng là `STATE_OF_THE_PROJECT.md`
+> §1.d, §2 và §3.00; README này không mang số đo):
 >
 > - Adapter thí nghiệm cho thế giới sống là **headless adapter verified** — **không** phải
->   "experiment-ready". Chưa có lần chạy app desktop nào.
-> - Đo tick trong tiến trình là **instrumentation đã ship**, **không** phải "đã có số đo phần cứng".
->   Chưa tồn tại số đo hiệu năng nào từ app đang chạy, và cũng chưa có ảnh chụp app.
-> - Hạ tầng thí nghiệm **tồn tại**; đó không phải một **kết quả khoa học**.
+>   "experiment-ready". Chưa có thí nghiệm nào chạy trong app desktop.
+> - App đã được chạy và đo tick một lần, ngày 2026-07-27: bản **debug**, 10 agent. Chưa có lượt
+>   chạy bản **release** nào, và chưa có số đo nào ở 1.000 agent.
+> - Hạ tầng thí nghiệm **tồn tại**; dự án **chưa có một kết quả khoa học có sức mạnh**. Thí nghiệm E2
+>   cho kết quả null vì hiệu ứng sàn, và bản đăng ký E-SEL1 được đóng trước khi chạy thí nghiệm.
+> - Tử vong, fitness sinh thái, sinh sản liên tục và vận động **có trong mã nhưng tắt mặc định**, và
+>   mới được kiểm ở đường headless. Một thế giới mặc định vẫn không có cái chết, và chấm fitness bằng
+>   quãng đường.
 > - Một văn bản license (`hexf-parse` 0.2.1) **vẫn chưa giải quyết** và vẫn chặn phát hành —
 >   [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
 
@@ -210,8 +216,9 @@ Frontend nói chuyện với lõi Rust bằng lệnh và sự kiện Tauri — v
 > `<app_data_dir>/saves/` rồi load bằng tên. Không có bước migrate tự động, vì tự động đọc một đường
 > dẫn tuỳ ý chính là lỗ hổng vừa đóng.
 
-Danh sách đầy đủ kèm payload nằm ở [PROJECT.md § Interface Contracts](PROJECT.md) — đọc trước
-khi đổi bề mặt IPC, và cập nhật nó trong cùng thay đổi.
+Danh sách đầy đủ kèm payload nằm ở [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md) —
+đọc trước khi đổi bề mặt IPC, và cập nhật nó trong cùng thay đổi. `npm run check:docs` đỏ khi danh sách
+đó lệch với mã.
 
 ## Quy tắc thay đổi
 
@@ -231,15 +238,22 @@ Xem đầy đủ tại [chính sách tài liệu](docs/governance/DOCUMENTATION_
 ## Trạng thái
 
 - **Phase 0–7** (nền tảng → hình thái → điều khiển neural + MAP-Elites → xã hội → phân tán và
-  meta-AI → GPU + PixiJS → cảnh quan → động lực hệ sinh thái): xong; bảng chi tiết ở
-  [PROJECT.md](PROJECT.md).
+  meta-AI → GPU + PixiJS → cảnh quan → động lực hệ sinh thái): xong. Kiến trúc ở [PROJECT.md](PROJECT.md); trạng thái đo được ở
+  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 - **Nền mô phỏng M0–M3** (hợp đồng đơn vị/bảo toàn, World Artifact có checksum, đồng hồ đa nhịp
   + can thiệp + sổ nhân quả, trường khí hậu/nước/đất động): xong ở lõi headless.
 - **Phòng thí nghiệm tiến hoá AE1–AE3** (manifest/runner, năng lượng ngoại lai, đường dẫn năng
   lượng + chọn lọc): xong và **mặc định tắt**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md)
-  vẫn ở trạng thái `proposed`.
+  được chấp nhận ngày 2026-11-17 trong phạm vi lát không cửa sổ; thế giới sống, lưu trữ và giao diện vẫn là mục tiêu.
 - **ADR-0003** (não theo từng cá thể + không gian hành động): accepted và đã triển khai sau cờ.
-- Việc đang mở và thứ tự phụ thuộc: [TODO.md](TODO.md) và [docs/planning](docs/planning/README.md).
+- **Sinh thái nối vào chọn lọc** (tử vong, fitness sinh thái, trục niche độc lập với fitness), **quần
+  thể luân chuyển**, **vận động** và **sinh thái thú săn – con mồi**: có trong mã, tắt mặc định, kiểm ở
+  đường headless. ADR-0005, 0006 và 0007 ở trạng thái `accepted`.
+- **Nhánh phát triển:** thân cây là `feat/ecological-selection`; `main` được kéo lên nó ở các mốc. Cả hai
+  được bảo vệ, nên mọi thay đổi đi qua pull request với hai job CI xanh.
+- Việc đang mở và thứ tự ưu tiên: [`STATE_OF_THE_PROJECT.md` §3](docs/planning/STATE_OF_THE_PROJECT.md)
+  và [chỉ mục kế hoạch](docs/planning/README.md). [TODO.md](TODO.md) là nhật ký việc đã làm, không phải
+  backlog.
 
 ## Đóng góp
 

@@ -3,7 +3,7 @@ title: ADR-0007 — Duy trì quần thể trong thế giới live (QĐ-ECO)
 status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-17
-decision_date: none
+decision_date: 2026-11-16
 supersedes: none
 superseded_by: none
 ---

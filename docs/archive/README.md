@@ -2,7 +2,7 @@
 title: Tài liệu lưu trữ
 status: active
 owner: maintainers
-last_reviewed: 2026-11-14
+last_reviewed: 2026-11-17
 ---
 
 # Tài liệu lưu trữ
@@ -25,3 +25,4 @@ dòng hoặc liên kết của phiên bản code cũ.
 | [Bản nháp Claude — Creature Morphogenesis Plan](CREATURE_MORPHOGENESIS_PLAN_CLAUDE_DRAFT.md) | [`planning/CREATURE_MORPHOGENESIS_PLAN.md`](../planning/CREATURE_MORPHOGENESIS_PLAN.md) |
 | [Kế hoạch thực thi Phase 1 (M3–M7)](PHASE1_EXECUTION_PLAN.md) — từng là `plan.md` ở gốc repo | [`planning/STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) |
 | [Báo cáo bàn giao Phase 6 (T13)](PHASE6_HANDOFF_REPORT.md) — từng là `handoff.md` ở gốc repo | [`planning/STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md) |
+| [Báo cáo kiểm toán mã nguồn 2026-08-14](AUDIT_REPORT.md) — từng là `AUDIT_REPORT.md` ở gốc repo. Khuyến nghị SIM-01 của nó **sai** và đã bị bác | [`ai/monitoring/audit-triage-2026-11-14.md`](../ai/monitoring/audit-triage-2026-11-14.md) |

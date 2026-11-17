@@ -1,4 +1,30 @@
+---
+title: Báo cáo kiểm toán mã nguồn ngày 2026-08-14 — lưu trữ
+status: superseded
+archive_state: do-not-use
+owner: maintainers
+last_reviewed: 2026-11-17
+superseded_by: ../ai/monitoring/audit-triage-2026-11-14.md
+---
+
+> ⚠️ **LỊCH SỬ — không dùng làm tài liệu hiện hành.** Đây là báo cáo kiểm toán một thời điểm của một lượt
+> agent, từng nằm ở gốc repo với tên `AUDIT_REPORT.md`; chủ dự án quyết chuyển nó vào đây ngày 2026-11-17.
+> Bản phân loại từng finding: [`audit-triage-2026-11-14.md`](../ai/monitoring/audit-triage-2026-11-14.md).
+
 # Comprehensive Codebase Audit & Technical Health Report
+
+> **Point-in-time audit, 2026-08-14. Do not act on a finding or a roadmap checkbox below without checking it
+> first.** Note added 2026-11-17 after comparing against the code on the trunk:
+>
+> - **SIM-01's remediation is wrong and must not be applied** (see the note under that finding).
+> - Several findings are already fixed or rest on a false premise: INFRA-01 and INFRA-02 (no conflict
+>   markers remain), SIM-02, SIM-03, SIM-04, SIM-05, SIM-06, REND-01 and DATA-01. RUST-02 names a file
+>   that does not exist.
+> - The triage of this report is
+>   [`docs/ai/monitoring/audit-triage-2026-11-14.md`](../ai/monitoring/audit-triage-2026-11-14.md); some of
+>   the fixes above landed after that triage was written.
+>
+> A finding of an automated audit is a hypothesis: reproduce it with a test before changing code.
 **Project**: Anima-Engine (Artificial Life & Evolution Simulation Engine)  
 **Date**: August 14, 2026  
 **Auditor**: Antigravity Orchestrator & Specialist Audit Team  
@@ -114,6 +140,12 @@ Below is the structured breakdown of all findings, severity classifications, lin
 ### 2. Core Simulation & World Logic (Requirement R1)
 
 #### [🔴 CRITICAL] SIM-01: Raycast Sensory Blindness for Enclosing & Overlapping Colliders
+
+> **REJECTED — do not apply (note added 2026-11-17).** Returning `Some(0.0)` for a ray that starts inside a
+> sphere makes every agent hit its own collider at distance 0 and blinds all of its sensors. That change was
+> made once, on this recommendation, and had to be reverted. `intersect_sphere` in
+> `src-tauri/src/physics/spatial.rs` now returns `None` in that case on purpose, with a comment saying why,
+> and `sensor_ray_from_agent_centre_sees_past_its_own_collider` in `src-tauri/tests/physics_tests.rs` guards it.
 - **Location**: `src-tauri/src/physics/spatial.rs:321–343`
 - **Root Cause**: In `intersect_sphere`, ray-sphere intersection quadratic equation roots are evaluated as:
   ```rust
@@ -326,7 +358,7 @@ Below is the structured breakdown of all findings, severity classifications, lin
 - *Verification Gate*: `cargo test --features desktop`, `npm run test:frontend`, and `npm run lint` all pass with 100% success rate.
 
 ### Phase 2: High-Priority Simulation & Rendering Fixes (Next Iteration)
-- [ ] **Fix 2.1**: Update `src-tauri/src/physics/spatial.rs:321–343` to handle enclosing sphere colliders in `intersect_sphere`.
+- [ ] ~~**Fix 2.1**: Update `src-tauri/src/physics/spatial.rs:321–343` to handle enclosing sphere colliders in `intersect_sphere`.~~ **Rejected, see SIM-01.**
 - [ ] **Fix 2.2**: Update `src-tauri/src/physics/dynamics.rs:48–55` with `.try_normalize().unwrap_or(Vec3::Y)` to prevent `NaN` quaternion poisoning.
 - [ ] **Fix 2.3**: Update `src-tauri/src/physics/dynamics.rs:146–157` to apply starvation depletion to predators (`homeo.energy <= 0.0`).
 - [ ] **Fix 2.4**: Remove `animateLOD` CPU vertex calculation loops from `src/components/Landscape/Terrain.tsx:147–184`.

@@ -2,7 +2,7 @@
 title: Nghiên cứu nâng cấp và hoàn thiện Anima Engine (đo 2026-10-31)
 status: proposed
 owner: maintainers
-last_reviewed: 2026-10-31
+last_reviewed: 2026-11-17
 review_cycle: monthly
 ---
 
@@ -25,6 +25,19 @@ review_cycle: monthly
 > Khi hai cây mã hợp nhất lại thành một, các số này phải được chuyển vào
 > [`STATE_OF_THE_PROJECT.md` §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) thành
 > một mục `§1.g` và tài liệu này trỏ về đó thay vì giữ bảng riêng.
+>
+> **Cập nhật 2026-11-17 — hai cây đã hợp nhất, nên ba điều ở trên đã đổi.**
+>
+> - `main` được fast-forward lên `feat/ecological-selection` ngày 2026-11-16. Chẩn đoán "hai cây phân
+>   kỳ" ở §2 và lộ trình HT0′–HT1′ ở §3 nay là **bản ghi lịch sử** của việc đã làm xong: T1 là #44, T2
+>   (HT-C) là #45.
+> - [`COMPLETION_ROADMAP_2026-10-16.md`](COMPLETION_ROADMAP_2026-10-16.md) nay có trong cây này. Các chỗ
+>   nhắc tới nó bên dưới vẫn để dạng chữ như lúc viết; link ở dòng này là link chuẩn.
+> - §1 dưới đây **không** được chuyển vào STATE. `§1.g` và `§1.h` của STATE là các lượt đo mới trên thân
+>   cây (2026-11-16 và 2026-11-17), không phải bản chép của bảng này. §1 ở đây là **đo lịch sử** ngày
+>   2026-10-31; số hiện hành ở [bảng mới nhất của STATE §1](STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+> - Phần còn sống của tài liệu này là **§4, sổ quyết định của chủ dự án**. Tiến độ theo chặng ở
+>   [STATE §3.00](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 ---
 
@@ -267,7 +280,227 @@ mảnh nó cần — một fitness mà sinh thái chạm được, và một cá
 | ~~**QĐ-F028**~~ | ✅ **ĐÃ QUYẾT 2026-11-14 bởi chủ dự án: commit icon thật.** Thân cây đã có icon PNG/ICNS thật; `origin/fix/ci-gates-green` còn file text `placeholder` (F-028) nên không biên dịch trên macOS. Thẻ T1 được chép `src-tauri/icons/` từ `origin/feat/ecological-selection` sang nhánh của nó | Kiểm 2026-11-14: `file src-tauri/icons/32x32.png` trên thân cây cho `PNG image data, 32 x 32`; trên `fix/ci-gates-green` blob là 12 byte `placeholder\n` |
 | ~~**QĐ-D**~~ | ✅ **ĐÃ QUYẾT 2026-10-31 tại `26c8a96`: `playground/` là nháp.** Căn cứ là so hai viewport, không phải sở thích: `src/PixiViewport.tsx` (1296 dòng, track, `src/App.tsx:3` import, 7 file test) là *presentational* — nhận `zoom`/pan làm prop, **không** có wheel/drag/inertia/clamp. `playground/fantasy-map/MapViewport.tsx` (1182 dòng, không track) tự giữ tất cả, kể cả `Math.max(1.0, Math.min(5.0, …))` ở `:1108`. Nên 8 test tính chất kia **không có đối tượng tương ứng** ở bản ship — không port được, vì hành vi đó không ở đó. Đã xoá 4 file test và loại `playground` khỏi phạm vi ESLint | Đo: lint **8 error · 72 warning → 0 · 0**, ratchet xanh; `test:frontend` **17 đỏ → 9 đỏ** |
 | ~~**QĐ-E**~~ | ✅ **ĐÃ QUYẾT 2026-10-31: bỏ test.** `tests/frontend/organism_library.test.tsx` có đúng 3 test và **cả 3 đỏ**, nên xoá cả file không mất coverage nào. Tính năng vắng ở **cả hai phía**: `get_organism_presets` và `spawn_preset_organism` đều không có trong `src-tauri/src`, và không có `"Thư viện Sinh vật"` nào trong `src/`. Nếu sau này muốn Organism Library thì viết test lại cùng lúc với tính năng — đó là thứ tự TDD đúng, còn giữ một test không có đối tượng chỉ làm gate đỏ mãi | Đo: `test:frontend` **9 đỏ → 6 đỏ**; 6 cái còn lại đều là HT-A7 (cần Windows) |
-| **QĐ-C** | **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
+| ~~**QĐ-E2M**~~ | ✅ **ĐÃ QUYẾT 2026-11-16: B — đính chính có ngày và chạy lại thật.** `970d963` (2026-08-25, living-world F1) đã thêm `"live.dormant_eu"` vào bốn manifest E2 **sau** khi E2 chạy (2026-07-27), để giữ xanh `prereg_e2_manifest_tests::the_requested_metrics_are_exactly_what_the_live_adapter_emits`. Từ đó repo không còn giữ các manifest mà run đã dùng, và `check:e2` đỏ ([STATE §1.g](STATE_OF_THE_PROJECT.md#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main)). Người ủy quyền của chủ dự án ở lead session đã chọn B và thực hiện trong PR #59: khối `amendment_1_live_dormant_eu`, chạy lại toàn bộ ensemble, đưa artifact tháng 7 vào `superseded/`. Cùng ngày, ở một phiên khác, chủ dự án lúc đầu chọn A (hoàn nguyên fixture và dời id sang `LIVE_EXTENDED_OBSERVABLE_IDS`) vì chưa biết PR #59 đã merge. Khi được báo, chủ dự án **xác nhận giữ B**. Phiên đó chỉ thêm `src-tauri/tests/e2_frozen_manifest_tests.rs` để `cargo test` cũng bắt được lần sửa fixture sau | Đây là quyết định về tính toàn vẹn của một bản đăng ký trước. Máy chỉ đo được hệ quả của từng phương án, không chọn thay được |
+| ~~**QĐ-C**~~ | ✅ **ĐÃ QUYẾT 2026-11-17 bởi chủ dự án: lối C, nâng `burn`** (xem §4.3). Hàng này vẫn chặn phát hành cho tới khi thẻ nâng `burn` merge và hồ sơ giấy phép được sinh lại. Văn bản gốc: **`hexf-parse`** — vẫn là hàng chặn phát hành duy nhất của §1.c trong STATE, và vẫn là quyết định pháp lý | Không có lời giải kỹ thuật: upstream chưa bao giờ publish văn bản licence cho bản 0.2.1 |
+
+### 4.1 Quyết định sau 2026-11-14 (ghi thêm 2026-11-17)
+
+Kế hoạch 13/11 (MP-0.1) đặt sổ quyết định ở mục này, nhưng các quyết định từ 2026-11-16 mới chỉ được ghi ở
+[`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 và §4 và trong ADR. Bảng dưới gom chúng về một chỗ,
+mỗi dòng trỏ tới nơi ghi đầy đủ. Nó không thêm quyết định nào.
+
+Trừ QĐ-6 (khối `DECISIONS` không ghi ai quyết), mọi dòng trong bảng này do phiên lead quyết theo uỷ
+quyền của chủ dự án trong chat. Dòng xác nhận của chủ dự án nằm ngay dưới bảng.
+
+| # | Quyết định | Ngày | Ghi đầy đủ ở |
+|---|---|---|---|
+| QĐ-E2M | **B**: đính chính có ngày cho bản đăng ký E2, rồi chạy lại thật | 2026-11-16 | #59; `artifacts/experiments/e2-evolved-brain-default/RESULT.md` |
+| QĐ-4 | **A**: sinh sản liên tục có điều kiện năng lượng trong adapter sống, sau khoá `live.reproduction` | 2026-11-16 | [ADR-0005](../decisions/ADR-0005-live-population-turnover.md) |
+| QĐ-5 | **Có**, phạm vi chỉ là sinh sản liên tục trong thí nghiệm sống; `EvolutionaryReplacement` không đổi | 2026-11-16 | [ADR-0005](../decisions/ADR-0005-live-population-turnover.md) |
+| QĐ-LOC | **A**: bộ lái ghi `target_velocity`, tốc độ lấy từ CPG/não của chính sinh vật | 2026-11-16 | [ADR-0006](../decisions/ADR-0006-locomotion-actuation.md) |
+| QĐ-ECO | **A**: khoá opt-in cho sàn bộ lái và lái theo khát; thế giới mặc định không đổi | 2026-11-16 | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md) |
+| QĐ-ECO-B | **Opt-in**: ba khoá thu nhập của thú săn, chỉ để thăm dò S43, không bao giờ mặc định | 2026-11-17 | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87 |
+| QĐ-2 / QĐ-H | Gỡ mọi bằng chứng và dữ liệu giả ngay (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau | 2026-11-17 | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
+| QĐ-6 | Hợp đồng IPC ở `docs/reference/IPC_CONTRACT.md` | 2026-11-14 | [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) |
+
+**Chủ dự án xác nhận toàn bộ bảng trên ngày 2026-11-17, trong chat.** Từ dòng này, các quyết định đó là
+quyết định của chủ dự án, không còn là "đang áp dụng theo uỷ quyền".
+
+**Chủ dự án quyết thêm ngày 2026-11-17, trong chat** ("tất cả những đề xuất trên tôi đồng ý"), theo mười hai
+câu hỏi của phiên rà soát tài liệu:
+
+| # | Quyết định | Hệ quả |
+|---|---|---|
+| QĐ-SEL1b | **A**: thêm khoá trần sinh sản của con mồi, rồi tạo khan hiếm đồng cỏ; đo thăm dò trước khi đăng ký | Một bản đăng ký mới cho thí nghiệm chọn lọc theo khan hiếm. Chẩn đoán: [`2026-11-17-esel1-scarcity-diagnosis.md`](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md) |
+| QĐ-ECO-C1 | **Có**, cả hai: thẻ `live.predator_cost_mult` + `live.strike_radius`, và một khoá nguồn nước. Opt-in; đo tiền đăng ký trên ít nhất 20 seed | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), phương án C |
+| QĐ-EN | **E2R** là lượt làm lại câu hỏi về não; **E3** là gradient năng suất | Hết nhập nhằng tên "E3" (kế hoạch 13/11 §12) |
+| F-044 | **Tách** bộ đếm ân hạn đói và khát thành hai, **trước** khi đăng ký thí nghiệm kế tiếp (đã làm cùng ngày: thẻ S8, #106) | Đổi định dạng lưu và quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau; phải khai, xem [`FINDINGS.md`](../../FINDINGS.md) F-044 |
+| QĐ-LAW1 | Thí nghiệm rẽ luật chạy **ngay sau thí nghiệm có sức mạnh đầu tiên, trước `v1.0.0`** | Phần AE4 mà thí nghiệm cần (trường năng lượng lạ trên thế giới sống) được kéo lên trước thẻ X9. Chi tiết ở §4.2 |
+| QĐ-TIME | "Một ngày bằng 2 giờ thực" là **tốc độ xem**; lịch của thế giới là tham số khai báo | Chi tiết ở §4.2. Cần ADR trước khi có mã |
+| QĐ-C | **C**: nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc và giữ được GPU. Không chọn A, không chọn B | Thẻ R1 của kế hoạch swarm không chạy; thay bằng thẻ nâng `burn`. Chi tiết ở §4.3 |
+| QĐ-1 | **Mức 2**: bản 0.9 chạy một máy trước, rồi mới tới 1.0 | Thẻ R2; chặng 5 của kế hoạch 13/11 |
+| #56, #68 | Đổi nhánh đích sang thân cây rồi merge | Luật L1. Cùng ngày: cả hai đã đổi nhánh đích và merge vào thân cây; #68 được merge sau khi CI của nó chạy lại xanh trên nền mới |
+| QĐ-P1 | **Có viết** bài báo phương pháp (chủ dự án trả lời "có viết" ngày 2026-11-17). Chủ đề theo đề xuất của kế hoạch swarm: kỷ luật bằng chứng cho mô phỏng ALife, E2 rồi E2R làm case study | Mở luồng thẻ P. QĐ-P2 (chỗ để bản nháp) và QĐ-P3 (khai báo dùng AI) **còn trống** |
+| Người ghi tài liệu | Phiên rà soát tài liệu được giao rà và sửa **toàn bộ** tài liệu trong đợt 2026-11-17, kể cả `STATE`, `TODO.md`, `FINDINGS.md` và trang hàng đợi thẻ. Ngoài đợt đó, bốn file này vẫn thuộc `agent-mac` | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
+
+**Lượt hai cùng ngày** ("theo đề xuất hết", trả lời mười bốn câu hỏi sau đợt rà toàn bộ tài liệu):
+
+| # | Quyết định | Đã làm trong tài liệu |
+|---|---|---|
+| `TASK.md` | Xoá | Đã xoá; lịch sử git giữ nó |
+| `AUDIT_REPORT.md` | Chuyển vào `docs/archive/` | [`docs/archive/AUDIT_REPORT.md`](../archive/AUDIT_REPORT.md), kèm banner và ghi chú bác SIM-01 |
+| Bảng tính năng và mốc của `PROJECT.md` | Bỏ, trỏ sang STATE | Thay bằng mục "Status" |
+| Phần cứng mục tiêu | **Dell Vostro 3530 là máy tối thiểu; Intel Core i5-14600KF là máy đo** | Ghi vào `SIMULATION_RULES.md`, `BENCHMARK_BASELINE.md`, `WORLD_DESIGN.md` |
+| `AGENTS.md` và QĐ-B | `AGENTS.md` trỏ sang QĐ-B | Thêm "ngoại lệ thứ ba": thẻ có dòng `AUTHORIZATION` |
+| ADR-0002 | **Chấp nhận trong phạm vi lát headless** | Mục "Quyết định (2026-11-17)" của ADR; STATE §3.10 đóng |
+| Bản ghi một lần đã xong | Chuyển `completed` | Hai bản kiểm kê 14/11, đo bề mặt gộp, chẩn đoán E-SEL1, mục tiêu G0–G4, và năm tài liệu E2 (sau khi #68 merge cùng ngày) |
+| Nhóm việc R (sinh sản theo ngưỡng) | Đóng; thay bằng ADR-0005 và thẻ S6 | Backlog ecological-selection |
+| QĐ-P2 | Bản nháp bài báo để ở **một repo riêng tư**, vì repo này công khai | [`docs/paper/README.md`](../paper/README.md) |
+| QĐ-P3 | Mở nhật ký dùng AI ngay | [`docs/paper/AI_USE_LOG.md`](../paper/AI_USE_LOG.md) |
+
+Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
+lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:
+
+- **Tài liệu swarm ba máy qua Google Drive:** ghi là phương án dự phòng, không phải cách đang chạy. Không đổi
+  sang `superseded`, vì repo không ghi lại nó đã từng được dùng hay chưa.
+- **`EnvSample` và `EnvironmentSnapshot`:** là hai kiểu, đúng như task CM-102 của kế hoạch morphogenesis đã
+  liệt kê. Hợp đồng sinh vật nay định nghĩa cả hai. Quan hệ trường-với-trường giữa chúng vẫn để CM-102 chốt.
+- **Bản macOS cho how-to:** thêm một bảng lệnh tương đương, mỗi dòng ghi đã thử hay chưa. Chưa checklist đo
+  nào được chạy trên macOS. Với công cụ `animal-map-vision`, `AGENTS.md` chỉ được thêm một ghi chú rằng
+nó nằm ngoài repo; khối quy tắc giữ nguyên.
+
+Các thẻ mã sinh ra từ bảng này được định nghĩa ở
+[kế hoạch swarm §3](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
+Chưa thẻ nào trong số đó có dòng `AUTHORIZATION`: chủ dự án ghi dòng đó khi giao thẻ.
+
+**Còn trống ngày 2026-11-17, xếp theo chặng cần tới** (câu hỏi và đề xuất ở
+[kế hoạch 13/11 §7](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#7-hàng-đợi-quyết-định-của-chủ-dự-án), trừ
+hai dòng cuối):
+
+| Cần trước | Quyết định | Chặn |
+|---|---|---|
+| Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
+| Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
+| Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
+| Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
+| Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
+| Trước AE4 | QĐ-PAST (thiết kế lưu trữ) và QĐ-TIME: duyệt [ADR-0008](../decisions/ADR-0008-world-past-and-time.md), đang `proposed` (thẻ L0, #109) | §4.2 ngay dưới |
+| Chặng 4 | Bước kế tiếp của QĐ-SEL1b: lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
+| Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
+| Trước thẻ V0 (CM-102) | Kiểu lưu `EnvironmentSnapshot` có cùng các trường với `EnvSample` hay chỉ một tập con | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+
+### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
+
+Mục này ghi một nguyên tắc chủ dự án nêu trực tiếp và hai đề xuất mà chủ dự án đã nhận cùng ngày. Phần "đọc
+mã" được đối chiếu trên thân cây ngày 2026-11-17; không lệnh build hay test nào được chạy, và mục này không
+mang số đo. Cả ba cần một ADR trước khi có dòng mã nào.
+
+| # | Nội dung | Trạng thái |
+|---|---|---|
+| **QĐ-PAST** | **Quá khứ của một thế giới đã chạy là bất biến.** Không sửa trạng thái ở một tick đã qua; chỉ một số trường hợp đặc biệt được phép. Lưu trữ phải đủ để dựng lại quá khứ và nhẹ nhất có thể | **Nguyên tắc và bảng ngoại lệ: chủ dự án quyết 2026-11-17**, đúng như đề xuất. Thiết kế lưu trữ **còn trống** |
+| **QĐ-TIME** | Tách ba thứ: tick và vòng đời sinh vật; lịch của thế giới (bao nhiêu tick là một ngày, một năm); tốc độ xem. "Một ngày bằng 2 giờ thực" là **tốc độ xem**, không phải luật mô phỏng | **Chủ dự án quyết 2026-11-17**, đúng như đề xuất |
+| **QĐ-LAW1** | Thí nghiệm "rẽ luật" đầu tiên trên thế giới sống: cùng bản đồ và seed, một nhánh đối chứng và một nhánh thêm một nguồn năng lượng lạ, tiền đăng ký, nhiều seed. Chạy **sau** khi chọn lọc trên thế giới sống đo được | **Chủ dự án quyết 2026-11-17**: chạy ngay sau thí nghiệm có sức mạnh đầu tiên, trước `v1.0.0`. Phụ thuộc bản đăng ký của QĐ-SEL1b và phần AE4 nó cần |
+
+#### QĐ-PAST — cái đã khớp, cái chưa, phần đã chốt và đề xuất lưu trữ
+
+**Đã khớp với nguyên tắc** (hợp đồng và mã hiện có):
+
+- Luật thế giới bất biến trong một run; muốn đổi luật thì phải tạo một fork mới
+  ([`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) ER01).
+- Mỗi run mang `run_id`, `parent_run_id` và `fork_tick` (ER08). Fork từ một checkpoint tạo một run **mới**;
+  run gốc không bị chạm.
+- Sổ nhân quả là chỉ-ghi-thêm (`anima-domain/src/causal.rs`), và một can thiệp chỉ có hiệu lực từ tick nó
+  khai trở đi.
+
+**Chưa khớp hôm nay** (đọc mã):
+
+- App desktop giữ đúng một `autosave.json`, ghi khi thoát và nạp lại khi mở. `save_simulation_state` ghi đè
+  một save cùng tên. Một thế giới chạy trong app vì thế **không có lịch sử**: chỉ có trạng thái mới nhất.
+- `LineageTracker::compact` bỏ các nhánh tuyệt chủng và genotype của node bị cắt. Đó là quên chi tiết, không
+  phải sửa quá khứ. Theo bảng ngoại lệ đã chốt bên dưới, việc này được phép; điều bị mất đã được khai ở
+  STATE §3.15.1.
+
+**Đã chốt (chủ dự án, 2026-11-17, trong chat: "như đề xuất") — "quay lại quá khứ" chỉ có một nghĩa: fork.**
+Tạo một thế giới mới từ một checkpoint cũ, với id riêng và `parent_run_id` trỏ về thế giới gốc. Thế giới gốc
+giữ nguyên. Hai dòng thời gian cùng tồn tại nên không có nghịch lý. Các trường hợp đặc biệt:
+
+| Trường hợp | Quyết định |
+|---|---|
+| Đổi định dạng save khi nâng phiên bản (migrate) | Cho phép: đổi cách ghi, không đổi nội dung. Đã là hành vi hiện có ([`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md) §5) |
+| Xoá hẳn một thế giới | Cho phép, cả thế giới, không xoá từng đoạn |
+| Nén lưu trữ làm mất chi tiết (ví dụ nén phả hệ) | Cho phép nếu sự kiện đã ghi không đổi và điều bị mất được khai trước |
+| Một save hỏng | Không sửa tại chỗ. Fork từ checkpoint lành gần nhất |
+| Sửa trạng thái ở một tick đã qua rồi chạy tiếp như cùng một thế giới | **Không bao giờ** |
+
+**Đề xuất, chưa chốt — lưu trữ đủ mà nhẹ: lưu nguyên nhân, không lưu mọi trạng thái.** Vì thế giới tất định, quá khứ
+dựng lại được từ ít dữ liệu hơn nhiều so với lưu từng tick:
+
+1. Manifest, seed và fingerprint của luật: ghi một lần.
+2. Một nhật ký sự kiện chỉ-ghi-thêm: can thiệp và hành động của người quan sát, mỗi mục có tick và `CauseId`.
+3. Checkpoint thưa làm mốc, để không phải phát lại từ khởi nguyên.
+4. Checksum của thế giới ở các mốc định kỳ, để kiểm một lần phát lại có đúng không.
+5. Mỗi bản ghi mang checksum của bản trước nó, nên sửa một mục trong quá khứ sẽ làm gãy chuỗi và lộ ra.
+
+Hai giới hạn phải ghi cùng đề xuất. Phát lại chỉ đúng trên **cùng bản build và cùng lớp nền tảng**
+([`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) §1), nên checkpoint thưa vẫn cần để một
+bản build mới đọc được thế giới cũ. Và đường app mặc định **chưa** tất định (uuid thật, đồng hồ thật, AI
+ngoài), nên một thế giới muốn có quá khứ dựng lại được phải chạy ở `DeterministicMode`. Dung lượng của cách
+lưu này chưa ai đo.
+
+**Nhiều thế giới không cần phần cứng khác.** Mỗi thế giới là một run với manifest và seed riêng. `anima-lab`
+chạy nhiều thế giới trên một máy (ensemble nhiều seed, `sweep` có `--threads`, `branch`). App desktop hiện
+giữ một engine, tức một thế giới tại một thời điểm. Máy thứ hai chỉ cần khi muốn chạy song song nhiều hơn
+một máy kham được. Khi đó cùng một seed trên hai nền tảng khác nhau **không** hứa cho cùng một thế giới, nên
+các thế giới đem so với nhau phải chạy trên cùng lớp nền tảng cho tới khi có QĐ-M6.
+
+#### QĐ-TIME — vì sao 2 giờ một ngày không nên là luật
+
+Hợp đồng thời gian hiện tại ([`SIMULATION_RULES.md`](../../SIMULATION_RULES.md) §4) là 60 tick mỗi giây, một
+epoch 1.000 tick và một năm mô phỏng 6.000 tick. Mô phỏng chưa có đơn vị "ngày"; chu kỳ ngày–đêm của cảnh 3D
+là đồng hồ hiển thị (`sceneClock.ts`). Ở 60 tick mỗi giây, 2 giờ thực là 432.000 tick, tức 72 năm mô phỏng
+theo hằng số hôm nay, và chứa hàng trăm epoch. Nếu kéo vòng đời sinh vật dài ra cho hợp với một ngày như
+vậy, một thế hệ sẽ mất nhiều ngày thực và tiến hoá không còn xem được.
+
+Đề xuất: giữ tick và vòng đời ngắn; đưa lịch thành tham số khai báo của thế giới (vắng thì như cũ); để người
+xem chọn tốc độ, kể cả 2 giờ một ngày; thí nghiệm chạy không cửa sổ, nhanh hết mức. Đưa chu kỳ ngày–đêm vào
+luật (ánh sáng, nhiệt) là đổi luật mô phỏng: cần sửa `SIMULATION_RULES.md` kèm test trong cùng thay đổi.
+
+#### QĐ-LAW1 — vì sao phải sau chọn lọc
+
+Khung cho việc đổi một yếu tố của thế giới đã có: ADR-0002 và
+[`ALTERNATE_EVOLUTIONARY_REGIMES.md`](../explanation/ALTERNATE_EVOLUTIONARY_REGIMES.md). "Linh khí", "mana"
+hay một loại khí mới đều là tên hiển thị của cùng một thứ trong mã: một trường năng lượng ngoại lai có ngân
+sách riêng, tác động qua hấp thụ có chi phí, không sửa thẳng gen hay fitness (ER03). Hai chỗ còn thiếu:
+
+- Thế giới sống chưa có trường đó; adapter của nó từ chối `laws.exotic_energy`. Nối sang là AE4, kế hoạch
+  swarm xếp là X9, sau `v1.0.0`. Chủ dự án đã quyết đổi thứ tự đó: phần AE4 mà thí nghiệm cần được làm
+  trước `v1.0.0`.
+- Đổi luật chỉ tạo ra hướng tiến hoá khác khi chọn lọc hoạt động. Hôm nay tử vong, fitness sinh thái và sinh
+  sản liên tục tắt mặc định; E2 null; E-SEL1 đóng mà không có thí nghiệm (STATE §3.00, §3.1). Thêm một nguồn
+  năng lượng lúc này nhiều khả năng cho thêm quỹ đạo, chưa chắc cho thêm kiểu kết cục.
+
+### 4.3 QĐ-C — một lối thứ ba: nâng `burn` thì `hexf-parse` tự biến mất (kiểm 2026-11-17)
+
+Chủ dự án nói trong chat ngày 2026-11-17 rằng muốn **giữ GPU**, rồi **chọn lối C** cùng ngày. Mục này ghi
+dữ kiện đã dẫn tới lựa chọn đó.
+
+**Vấn đề pháp lý là gì, nói cho đúng cỡ.** Dùng GPU không phải vấn đề pháp lý. Vấn đề là **một** thư viện
+nhỏ, `hexf-parse` 0.2.1, khai giấy phép CC0-1.0 nhưng chưa từng phát hành kèm văn bản giấy phép, trong khi
+gate của chính dự án đòi mọi thành phần được phân phối phải có văn bản gốc
+([`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md)). CC0 không đặt điều kiện ghi công, nên đây là
+một khoảng trống hồ sơ do quy tắc của dự án tự đặt ra, không phải một tranh chấp.
+
+**Dữ kiện mới.** `hexf-parse` vào bản build qua đúng một đường:
+
+```text
+hexf-parse 0.2.1 <- naga 0.19.2 <- wgpu 0.19.4 <- burn-wgpu 0.13.2 <- anima-engine (feature ml-wgpu)
+```
+
+Đường này lấy từ `cargo tree --features desktop -e normal -i hexf-parse` trong `src-tauri/`. Tra danh sách
+phụ thuộc đã khai trên crates.io cùng ngày (`https://crates.io/api/v1/crates/<tên>/<bản>/dependencies`):
+
+| Crate | Bản | Còn phụ thuộc `hexf-parse`? |
+|---|---|---|
+| `naga` | 22.1.0 đến 29.0.1 (tám bản đã tra) | Có |
+| `naga` | 30.0.2 | **Không** |
+| `burn-wgpu` | 0.22.1, bản ổn định mới nhất | Đi qua `cubecl-wgpu` 0.11.4, vốn đòi `wgpu ^30` |
+
+Nghĩa là nâng `burn` từ 0.13.2 lên dòng 0.22 sẽ kéo `naga` lên 30 và `hexf-parse` rời khỏi cây phụ thuộc,
+không cần quyết định pháp lý nào. **Chưa kiểm:** đây là danh sách phụ thuộc đã khai, chưa phải một lần build
+thật của dự án ở bản mới; và chưa ai đo bản `wgpu` mới có còn rò bộ nhớ hay không.
+
+**Ba lựa chọn sau dữ kiện này (chủ dự án chọn C):**
+
+| | Nội dung | Giữ GPU trong bản cài? | Cái giá |
+|---|---|---|---|
+| A | Bỏ `ml-wgpu` khỏi feature `desktop` | Không; chỉ khi tự build | Rẻ nhất. Mã GPU vẫn còn |
+| B | Chủ dự án ghi một quyết định: nhận khai báo CC0-1.0 trên crates.io là đủ | Có | Là quyết định pháp lý của chủ dự án. Đường GPU vẫn rò bộ nhớ |
+| C | Nâng `burn` lên dòng 0.22 | Có | Chín bản minor, làm vỡ `ai/model.rs` và `core/training.rs` (`CLAUDE.md` ghi 0.14 đã vỡ). Chạm learner nhạy số, nên phải giữ gate parity EB-S02 và `a2c_loss_direction_tests` xanh. Cần thẻ riêng có uỷ quyền ghi vào `src-tauri/src` |
+
+C là lối duy nhất có thể đóng cả hai việc cùng lúc: khoảng trống giấy phép, và chỗ rò bộ nhớ của `wgpu-core`
+0.19.4 (ghi chú ở `core/resources.rs`). Ba cách sửa chỗ rò đã được ghi ở PR #30: mặc định CPU (đã làm), nâng
+`burn`/`wgpu`, hoặc cache layout bên trong `burn-wgpu`. Dù chọn gì, lượt chạy khoa học vẫn dùng CPU theo hợp
+đồng tất định.
 
 Hai việc **cần tay người** (không phải quyết định): chạy app desktop bản **release** với
 `ANIMA_TICK_CAPTURE` ở 1.000 agent (HT4.1), và xác minh app khởi động dưới CSP. Cả hai vẫn mở.

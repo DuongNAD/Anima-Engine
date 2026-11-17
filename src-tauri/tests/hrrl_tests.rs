@@ -35,6 +35,7 @@ fn test_metabolic_decay_and_thermoregulation() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();
@@ -133,6 +134,7 @@ fn test_food_spawning_and_collision_replenishment() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();
@@ -190,6 +192,7 @@ fn test_transition_collection_and_sending() {
                 temp_target: 37.0,
                 previous_deviation: 1.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             LastTransitionState {
                 state: [0.1; 15],
@@ -248,6 +251,7 @@ fn non_finite_runtime_state_never_enters_or_contaminates_the_learning_queue() {
                 temp_target: 37.0,
                 previous_deviation: 1.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             LastTransitionState {
                 state: [0.1; 15],
@@ -307,6 +311,7 @@ fn non_finite_runtime_state_cannot_replace_the_last_finite_observation_without_a
                 temp_target: 37.0,
                 previous_deviation: 2.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             LastTransitionState {
                 state: [0.3; 15],
@@ -354,6 +359,7 @@ fn full_learning_queue_never_blocks_the_tick_and_counts_the_rejection() {
             temp_target: 37.0,
             previous_deviation: 1.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         },
         LastTransitionState {
             state: [0.1; 15],
@@ -411,6 +417,7 @@ fn available_learning_slots_rotate_fairly_across_agents() {
                 temp_target: 37.0,
                 previous_deviation: 1.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             LastTransitionState {
                 state,

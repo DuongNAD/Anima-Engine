@@ -38,7 +38,10 @@ Quy tắc ghi:
 - **Triệu chứng:** khi `live.starve_ticks` khác `live.dehydration_ticks`, mức ân hạn của đáy này bị tính từ lúc chạm đáy kia. Ví dụ `starve_ticks` 1.000 và `dehydration_ticks` 10: một con đã đói 500 tick (nước vẫn còn) chết khát **ngay** tick nước chạm 0, không có 10 tick ân hạn nào. Với mặc định 120 / 120, quy tắc tương đương "120 tick liên tiếp ở đáy, bất kể đáy nào", nên mọi lần chạy đã có (E2, E-SEL1 smoke, cấu hình mặc định) không bị ảnh hưởng. `dual_mortality_grace_tests` đặt `dehydration_ticks` 65.536 nên cũng không chạm tới. Chết khát bị ghi sai nguyên nhân chỉ ảnh hưởng telemetry; code tự chú thích điều đó.
 - **Tái hiện:** `cd src-tauri && cargo test --features desktop -j 2 --test f044_shared_bottom_counter_tests -- --nocapture`. Một founder với `starve_ticks` 65.536 và `dehydration_ticks` 10, không có gì để ăn hay uống, được cho nước 200 tick. Nếu nó đói suốt 200 tick đó, nó chết **ngay** tick nước cạn: dòng `F044 hungry: counter_at_thirst=200 ticks_survived_after_thirst=0`. Nếu nó no (đối chứng), nó sống trọn ân hạn khát: `F044 fed: ... ticks_survived_after_thirst=9`.
 - **Test khoá lại:** `f044_shared_bottom_counter_tests::f044_a_long_hungry_animal_gets_no_thirst_grace` là test đặc tả, ghim hành vi hiện tại, và phải được **đảo** khi tách bộ đếm. `f044_control_a_fed_animal_does_get_its_thirst_grace` là đối chứng, cho thấy ân hạn khát hoạt động khi đứng một mình.
-- **Trạng thái:** OPEN. Sửa đúng là hai bộ đếm riêng. Việc đó thêm một trường vào `HomeostaticState`, chạm định dạng lưu và đổi quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau, nên cần quyết định của chủ dự án và một thẻ riêng.
+- **Trạng thái:** FIXED ở thẻ S8, PR #106 (`f3e9e47`, 2026-11-17), theo quyết định của chủ dự án cùng ngày:
+  hai bộ đếm riêng, `starving_ticks` cho năng lượng và `dehydrating_ticks` cho nước; test
+  `f044_a_long_hungry_animal_still_gets_its_full_thirst_grace` khẳng định hành vi đã sửa. Văn bản gốc của
+  dòng này: OPEN. Sửa đúng là hai bộ đếm riêng. Việc đó thêm một trường vào `HomeostaticState`, chạm định dạng lưu và đổi quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau, nên cần quyết định của chủ dự án và một thẻ riêng.
 
 ### F-043 — `live.food_cap` không có tác dụng: `apply_environmental_effects_system` ghi đè trần thức ăn bằng hằng 50 ở mỗi tick
 - **Ngày:** 2026-11-17
@@ -168,8 +171,9 @@ Quy tắc ghi:
   một gate mà nó vừa **được phép** vừa **làm được**.
 - **Tái hiện:** `gh run view 41204212880 --log | grep KiB` so với
   `gh run view 41215060684 --log-failed | grep -E 'bundle budget|KiB'`
-- **Trạng thái:** OPEN — ba gate licensing cần Windows (A7); `bundle-closure` đóng được tại chỗ;
-  `check:bundle` chờ quyết định chủ repo
+- **Trạng thái:** FIXED bởi thẻ T1 (B3b), PR #44 (`62750f3`), vào thân cây qua #45. Ghi nhận
+  2026-11-17 từ lượt CI ở STATE §1.g: năm gate compliance cùng xanh. Dòng gốc: OPEN — ba gate
+  licensing cần Windows (A7); `bundle-closure` đóng được tại chỗ; `check:bundle` chờ quyết định chủ repo
 
 ### F-033 — Miễn trừ `tokio` vừa viết vào `deny.toml` có **bản vá** trong tầm với: `1.53.3`
 - **Ngày:** 2026-11-01
@@ -290,8 +294,9 @@ Quy tắc ghi:
 - **Sửa đúng cách (thuộc B2, không thuộc B1b):** đưa đồng bộ ra **ngoài** cửa sổ đo — hoặc hâm nóng
   cả hai barrier bằng một cặp `wait()` bỏ đi trước `start_tracking()`, rồi mới đo. Tuyệt đối không
   nới assert: con số 1 chính là điều test tồn tại để khẳng định.
-- **Trạng thái:** OPEN — agent B1b gặp, báo ở SURPRISES và **không** sửa (đúng R2). Đây là đầu vào
-  trực tiếp cho B2 (allocation gate).
+- **Trạng thái:** FIXED (`c8afb3f`), ghi nhận 2026-11-17: test nay chạy một vòng khô trên cả hai
+  barrier **trước** `start_tracking()`, và assert vẫn là `== 1`, không bị nới. Dòng gốc: OPEN — agent
+  B1b gặp, báo ở SURPRISES và **không** sửa (đúng R2). Đây là đầu vào trực tiếp cho B2 (allocation gate).
 
 ### F-030 — Gate `SimRng` mới chỉ thấy system **khai** `ResMut<SimRng>`; hai `Command` rút cùng stream qua `&mut World` thì nó không thấy
 - **Ngày:** 2026-10-31
@@ -407,7 +412,11 @@ Quy tắc ghi:
 - **Test khoá lại:** chưa có. Gate đúng là một job CI trên `ubuntu-latest` hoặc `macos-latest` chỉ
   cần `cargo check --features desktop` — rẻ, và nó bắt đúng lớp lỗi "chỉ đỏ ở nền tảng không ai
   chạy CI". Đây là lần thứ **tư** trong một phiên gặp hình dạng đó (xem F-025, F-026, F-027).
-- **Trạng thái:** OPEN — cần quyết định: icon thật là tài sản của dự án (thì commit chúng) hay bị
+- **Trạng thái:** FIXED, ghi nhận 2026-11-17. Chủ dự án quyết QĐ-F028 ngày 2026-11-14: commit icon
+  thật. `main` mang icon PNG thật từ lần fast-forward lên thân cây ngày 2026-11-16
+  (`file src-tauri/icons/32x32.png` → `PNG image data, 32 x 32`). Job `determinism` của workflow
+  `hardening` biên dịch crate trên `ubuntu-latest`, nên lớp lỗi "chỉ đỏ ngoài Windows" nay có một job
+  nhìn thấy. Dòng gốc: OPEN — cần quyết định: icon thật là tài sản của dự án (thì commit chúng) hay bị
   cố ý lược khỏi bản nguồn mở (thì `generate_context!` phải chịu được placeholder, hoặc build phải
   khai rõ yêu cầu). Chủ dự án quyết.
 
@@ -546,7 +555,11 @@ Quy tắc ghi:
 - **Test khoá lại:** chưa có. Gate đề xuất: **CA-S01** ở
   `docs/ai/testing/2026-08-25-feature-ecological-selection.md` — đổi một tham số sinh thái phải đổi
   phân bố tính trạng, và cùng test đó phải **không** đổi trên chế độ fitness cũ.
-- **Trạng thái:** OPEN — feature `ecological-selection` nhánh F.
+- **Trạng thái:** ĐÃ CÀI ĐẶT, OPT-IN (ghi nhận 2026-11-17). `evolution/fitness.rs` (`26a11f6`) có
+  `EcologicalFitness`, bật bằng khoá `live.ecological_fitness`; gate FI-S01…FI-S04 và CA-S01 ở
+  `tests/fitness_tests.rs`. `FitnessRuleSetting::default()` vẫn là `Locomotion`, nên một run không
+  khai khoá vẫn chấm bằng quãng đường như mô tả trên. CA-S01 tự khai phạm vi hẹp hơn dạng đầy đủ ở
+  đầu file test. Dòng gốc: OPEN — feature `ecological-selection` nhánh F.
 
 ### F-019 — Không có cái chết: `energy <= 0` chỉ `continue`, nên không có áp lực chọn lọc nào
 - **Ngày:** 2026-08-25
@@ -562,7 +575,11 @@ Quy tắc ghi:
 - **Tái hiện:** `grep -rn 'energy <= 0' src-tauri/src --include='*.rs'`
 - **Test khoá lại:** chưa có. Gate đề xuất: **CA-S02** — NPP = 0 phải làm quần thể sập về 0, và với
   tử vong tắt thì **không** sập.
-- **Trạng thái:** OPEN — feature `ecological-selection` nhánh M.
+- **Trạng thái:** ĐÃ CÀI ĐẶT, OPT-IN (ghi nhận 2026-11-17). `core/mortality.rs` (`a1c3885`) với
+  `MortalityPolicy`, bật bằng khoá `live.mortality`; gate CA-S02 kèm đối chứng âm ở
+  `tests/mortality_tests.rs`. `MortalityPolicy::default()` vẫn là tắt, nên thế giới mặc định vẫn
+  không có cái chết. Các lỗi sau đó của chính cơ chế này: F-037, F-044. Dòng gốc: OPEN — feature
+  `ecological-selection` nhánh M.
 - **Ghi chú ranh giới:** invariant `"starvation must not kill"` tại
   `src-tauri/src/core/aggregate_population.rs:1653` nói về quần thể tổng hợp AE3, một mô hình khác
   có hợp đồng khác. Nó **không** phải mục tiêu sửa của finding này.
@@ -579,7 +596,9 @@ Quy tắc ghi:
   thay vì nó. Đây là lý do F-018 rẻ để sửa: phần khó đã tồn tại, chỉ là không ai đọc.
 - **Tái hiện:** đọc `src-tauri/src/core/agent_systems.rs:523` và `:452`.
 - **Test khoá lại:** chưa có. Gate đề xuất: **FI-S02**.
-- **Trạng thái:** OPEN — feature `ecological-selection` nhánh F, task F-3.
+- **Trạng thái:** FIXED cho luật sinh thái (ghi nhận 2026-11-17): `EcologicalFitness` đọc
+  `eval.survival_ticks` (task F-2, F-3; gate FI-S02). Luật `Locomotion` mặc định cố ý không đọc nó.
+  Dòng gốc: OPEN — feature `ecological-selection` nhánh F, task F-3.
 
 ### F-021 — Trục MAP-Elites thứ hai bằng đúng hàm fitness trừ một hằng số
 - **Ngày:** 2026-08-25
@@ -597,7 +616,10 @@ Quy tắc ghi:
 - **Tái hiện:** `sed -n '526,532p' src-tauri/src/core/agent_systems.rs`
 - **Test khoá lại:** chưa có. Gate đề xuất: **QD-S02** — tương quan hạng giữa trục 2 và fitness phải
   **không** đơn điệu trên một quần thể fixture.
-- **Trạng thái:** OPEN — feature `ecological-selection` nhánh Q. Sửa F-018 trước; nếu công thức
+- **Trạng thái:** FIXED (ghi nhận 2026-11-17): trục 2 của `ecological_descriptors` nay là
+  `trophic_ratio` (task Q-3), kho lưu mang `descriptor_set_id` và từ chối bộ mô tả lệch (Q-4); gate
+  QD-S01…QD-S03 ở `tests/qd_tests.rs`. `foraging_range` còn trong telemetry nhưng không còn là trục.
+  Dòng gốc: OPEN — feature `ecological-selection` nhánh Q. Sửa F-018 trước; nếu công thức
   fitness mới không chứa quãng đường thì finding này đóng theo.
 
 ### F-022 — Bảy hệ thống chạy O(agent × segment) trong khi mẫu sửa đúng đã có sẵn trong cùng file
@@ -645,7 +667,8 @@ Quy tắc ghi:
   `check_test_targets.mjs` (giữ nhánh `theirs` có chú thích PowerShell-wrap vì
   đó là bản mới hơn có đo đạc), rồi chạy lại `npm run lint`; quyết định riêng
   về 9 lỗi eslint tồn đọng ở `playground/` + `tests/frontend/`.
-- **Trạng thái:** OPEN — chờ owner sửa `scripts/`.
+- **Trạng thái:** FIXED (`bef7768`), ghi nhận 2026-11-17: file không còn conflict marker nào và
+  gate chạy trong CI (STATE §1.g, hàng "Chính sách target"). Dòng gốc: OPEN — chờ owner sửa `scripts/`.
 
 ### F-014 — Không thể quét mutation cho anima-core: crate nằm trong workspace cha nhưng không thuộc members/exclude
 - **Ngày:** 2026-08-24

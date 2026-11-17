@@ -26,6 +26,16 @@ nghiệm tương ứng nằm ở
 
 ## Bằng chứng từ code hiện tại
 
+> **Rà lại 2026-11-17 — mục này mô tả mã ngày 2026-08-07.** Hai điểm được đối chiếu lại bằng cách đọc mã:
+>
+> - **Còn đúng:** `worldCache.ts` vẫn gọi `save_world_artifact` với `Array.from(new Uint8Array(buf))`.
+> - **Đã đổi:** phản hồi Gemini không còn được phân loại bằng chuỗi con như `contains("drought")`.
+>   `parse_environmental_event` trong `evolution/meta_ai.rs` nay so khớp nguyên tên biến thể, không phân
+>   biệt hoa thường, và từ chối mọi thứ khác; thân phản hồi bị chặn kích thước. Phần "pattern nên nhận"
+>   bên dưới vì thế đã được đáp ứng ở điểm 3 và 5 theo một cách hẹp hơn; điểm 1, 2 và 4 thì chưa.
+>
+> Các điểm khác của mục này chưa được đối chiếu lại. Bảng kết luận ở trên không đổi.
+
 ### Đường dữ liệu
 
 - World generation đã chạy trong Web Worker và transfer các `ArrayBuffer` về UI theo zero-copy:

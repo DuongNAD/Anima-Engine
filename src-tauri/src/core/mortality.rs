@@ -25,10 +25,10 @@ use crate::core::resources::MortalityPolicy;
 /// Kills agents whose bottom-streak has outlasted the declared thresholds by queueing
 /// [`ReclaimAndDespawnAgentCommand`] — the only sanctioned way to end an agent.
 ///
-/// The counter (`HomeostaticState::starving_ticks`) is incremented inside
-/// `metabolic_decay_system`, which runs earlier in the same tick, so the check below sees this
-/// tick's post-decay state: an agent floored to zero by *this* tick's metabolism can die in
-/// *this* tick. That timing is what MO-S04 pins.
+/// The two counters (`HomeostaticState::starving_ticks` for energy, `dehydrating_ticks` for
+/// hydration, separate since F-044) are incremented inside `metabolic_decay_system`, which runs
+/// earlier in the same tick, so the check below sees this tick's post-decay state: an agent floored
+/// to zero by *this* tick's metabolism can die in *this* tick. That timing is what MO-S04 pins.
 pub fn mortality_system(
     mut commands: Commands,
     agents: Query<
@@ -55,7 +55,10 @@ pub fn mortality_system(
     // iteration order is deterministic for a given world history.
     for (entity, homeo, opt_eval) in agents.iter() {
         let starved = homeo.energy <= 0.0 && homeo.starving_ticks >= policy.starve_ticks;
-        let dehydrated = homeo.hydration <= 0.0 && homeo.starving_ticks >= policy.dehydration_ticks;
+        // `None` only before the first metabolic tick after restoring a save from the shared-counter
+        // era; that save's single counter is what the old rule compared here.
+        let thirst = homeo.dehydrating_ticks.unwrap_or(homeo.starving_ticks);
+        let dehydrated = homeo.hydration <= 0.0 && thirst >= policy.dehydration_ticks;
         if starved || dehydrated {
             // Turnover bookkeeping for the branch-O observables. The animal's lifespan IS its
             // `survival_ticks` at death — the counter only ever advanced while it was alive, so

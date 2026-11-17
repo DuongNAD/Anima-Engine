@@ -2,15 +2,17 @@
 
 ## Environment (loaded via dotenvy from `.env`, gitignored)
 
-- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (`ai/model.rs`).
+- `ANIMA_USE_GPU` — burn-wgpu GPU vs ndarray CPU fallback (read in `core/resources.rs`, `gpu_backend_requested`; consumed by `ai/model.rs`). Off by default.
 - `GEMINI_API_KEY` — Gemini REST in `evolution/meta_ai.rs`; absent → mock fallback.
 - `GEMINI_WEBSESSION_ENDPOINT` — Gemini Web-Session endpoint for `GeminiWebSessionClient`.
-- Neo4j credentials (`evolution/lineage.rs`) — falls back to in-memory offline mode when Neo4j is unavailable.
+- `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD` (read in `core/simulation_loop.rs`, used by `evolution/lineage.rs`) — falls back to in-memory offline mode when Neo4j is unavailable.
+- `GEMINI_SESSION_TOKEN` (read in `core/simulation_loop.rs`) — session token for the Gemini Web-Session client.
 
 ## Environment (read by the engine thread, not from `.env`)
 
-All three are read once, inside `SimulationEngine::start` — setting them after the window is open
-does nothing. Unset is always the legacy behaviour.
+`ANIMA_AUTOSTART` is read once in `lib.rs`'s `setup`; the others below are read once inside
+`SimulationEngine::start`. Setting any of them after the window is open does nothing. Unset is always
+the legacy behaviour.
 
 - `ANIMA_AUTOSTART` — begin simulating at launch (`core/resources.rs`, `autostart_from_env`; wired in
   `lib.rs`'s `setup`). Unset waits at the Start button, which is the interactive behaviour. Before

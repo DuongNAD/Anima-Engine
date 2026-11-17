@@ -156,6 +156,7 @@ fn endow_healthy(a: &mut LiveExperimentAdapter, energy: f32, hydration: f32) {
         homeo.energy = energy;
         homeo.hydration = hydration;
         homeo.starving_ticks = 0;
+        homeo.dehydrating_ticks = Some(0);
     }
 }
 
@@ -169,7 +170,8 @@ fn sentence_to_death(a: &mut LiveExperimentAdapter, threshold: u32) {
     let mut q = world.query_filtered::<&mut HomeostaticState, With<Agent>>();
     for mut homeo in q.iter_mut(&mut world) {
         homeo.hydration = 0.0;
-        homeo.starving_ticks = threshold;
+        // The thirst streak, which the dehydration grace reads since F-044 split the counters.
+        homeo.dehydrating_ticks = Some(threshold);
     }
 }
 

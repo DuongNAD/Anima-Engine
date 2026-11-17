@@ -246,13 +246,18 @@ jobs:
       # only by someone running `npm audit` by hand. `--audit-level=high` deliberately ignores
       # low/moderate: a gate that fires on every transitive moderate gets muted, and a muted gate is
       # worse than none.
-      - name: npm audit (root)
+      #
+      # The gate is `scripts/check_npm_audit.mjs` rather than a bare `npm audit --audit-level=high`.
+      # On 2026-11-18 an advisory landed against every published version of `picomatch`, which
+      # reaches both lockfiles only through vite, vitest and typescript-eslint. With no version to
+      # upgrade to, the bare command could only be red, on every pull request. The script audits
+      # both packages, fails on any high or critical advisory that is not named with a reason in
+      # `scripts/npm_audit_policy.mjs`, re-checks on every run that a named one is absent from
+      # `npm audit --omit=dev` (what ships), and fails on a stale entry. It runs five negative
+      # controls first and exits 2 if one of them passes.
+      - name: npm audit, root and tests (policy in scripts/npm_audit_policy.mjs)
         if: ${{ !cancelled() }}
-        run: npm audit --audit-level=high
-
-      - name: npm audit (tests)
-        if: ${{ !cancelled() }}
-        run: npm audit --audit-level=high --prefix tests
+        run: node scripts/check_npm_audit.mjs
 
       # `scripts/gen_sbom.mjs` joined a package name to its version with a **literal NUL byte** typed
       # into the source. It worked, and it made git classify the file as binary — `git diff` showed

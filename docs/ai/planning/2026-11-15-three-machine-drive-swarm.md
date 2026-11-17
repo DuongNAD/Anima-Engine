@@ -8,6 +8,14 @@ review_cycle: weekly
 
 # Swarm ba máy giao tiếp qua Google Drive
 
+> **Trạng thái 2026-11-17: đây không phải cách đang chạy; giữ làm phương án dự phòng.** Từ 2026-11-17 Đợt 2
+> chạy trên hai máy Claude Code (`agent-mac`, `agent-win`) theo
+> [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) §1, không qua thư mục Drive. Giao thức ở đây (BLOCK D,
+> ba trạm Gemini trong Antigravity) vẫn dùng lại được nếu swarm Antigravity chạy lại. Hai điều cần biết trước
+> khi dùng lại: khối `DECISIONS` ở §7 đã cũ, lấy khối đã điền ở §4 của `AGENT_WORKFLOW.md`; và các điều kiện
+> tiên quyết ở §2.1 đều đã xong. Tài liệu này không ghi lại nó đã từng được dùng cho thẻ nào, nên đừng trích
+> nó làm bằng chứng rằng một thẻ đã chạy theo giao thức này.
+
 > Tài liệu này **không** thay thẻ, luật hay quyết định nào. Thẻ, PROMPT 0, BLOCK S và VERIFIER vẫn ở
 > [`2026-11-05-swarm-prompts.md`](2026-11-05-swarm-prompts.md); BLOCK 0 vẫn ở
 > [brief 31/10](2026-10-31-antigravity-brief.md); quyết định vẫn ở

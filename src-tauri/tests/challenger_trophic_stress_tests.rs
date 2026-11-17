@@ -249,6 +249,7 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             AgentGenotype(herbivore_geno.clone()),
             AgentEvaluation {
@@ -314,6 +315,7 @@ fn setup_stress_world(num_prey: usize, num_pred: usize, seed: u64) -> World {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             AgentGenotype(predator_geno.clone()),
             AgentEvaluation {

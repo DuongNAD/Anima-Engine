@@ -10,6 +10,15 @@ decision: ../decisions/ADR-0002-world-laws-and-exotic-energy.md
 
 # Alternate Evolutionary Regimes
 
+> **Trạng thái triển khai, rà 2026-11-17.** Tài liệu này giải thích mô hình và không đổi. Phần đã có
+> trong mã là lát headless AE1–AE3: manifest và runner, trường năng lượng ngoại lai có ngân sách, và
+> quần thể tham chiếu có chọn lọc; tất cả opt-in. **Thế giới Bevy sống chưa có trường MU**: adapter thí
+> nghiệm sống từ chối một manifest khai `laws.exotic_energy`. So sánh trong World Lab ở sơ đồ dưới vì
+> thế mới chạy được trên engine tham chiếu, chưa trên thế giới người dùng nhìn thấy.
+> [ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md) được chấp nhận ngày 2026-11-17, trong
+> phạm vi lát headless. Hợp đồng và các
+> gate: [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md).
+
 ## Ý tưởng cốt lõi
 
 Mục tiêu không phải “thêm mana để sinh vật mạnh hơn”. Mục tiêu là cho phép người dùng đặt một luật

@@ -3,7 +3,7 @@ phase: planning
 feature: experiment-e2-evolved-brain-default
 title: Plan — E2 run protocol, thresholds, cost budget and the ADR-0003 decision rule
 description: N, seeds, T, sampling, stopping, failure handling, the materiality threshold, and what each outcome does to ADR-0003
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-07-27
 requirements: ../requirements/2026-07-27-experiment-e2-evolved-brain-default.md

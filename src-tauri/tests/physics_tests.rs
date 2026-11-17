@@ -607,6 +607,7 @@ fn test_decoupled_systems_zero_allocation() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             anima_engine_lib::core::ecs::CognitiveState::default(),
             anima_engine_lib::core::ecs::InertiaComponent::default(),
@@ -784,6 +785,7 @@ fn test_predator_energy_depletion_stops_movement() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();

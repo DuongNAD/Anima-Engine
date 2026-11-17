@@ -11,6 +11,12 @@ target: M0-M4
 
 ## Trạng thái thật (cập nhật 2026-07-26, sau khi OSS-010 ship)
 
+> **Rà lại 2026-11-17.** Bảng dưới và bảng OS0 từng mang **hai hàng** cho OSS-003 và hai hàng cho
+> OSS-004, nói ngược nhau (một hàng viết trước relicense, một hàng sau), do một lần gộp nhánh. Mỗi cặp
+> đã được gộp thành một hàng theo trạng thái hiện tại. Hàng OS7 và hàng OSS-072 được cập nhật: MRCA đã
+> merge vào thân cây ở #75. Các mục có ngày bên dưới là bản ghi của ngày đó và không bị sửa. Số thành
+> phần của `NOTICE` và SBOM nằm ở STATE §1, không chép ở đây.
+
 Kế hoạch này được lập 2026-07-24. Bảng dưới là đối chiếu giữa kế hoạch và code, để phiên sau không
 đọc một `[x]` không tồn tại thành việc đã xong. Bằng chứng chi tiết nằm ở
 [§ Điều đã thay đổi](../research/OPEN_SOURCE_LANDSCAPE.md#điều-đã-thay-đổi-kể-từ-2026-07-24)
@@ -23,11 +29,8 @@ trong khảo sát.
 
 | Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | `LICENSE` **đã có**, proprietary; `NOTICE` + văn bản license **đã sinh tự động** (2026-07-27) | **Gỡ blocker.** Còn nợ: tách phạm vi code/asset/data, và **1 thành phần** chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)); 31/32 đã đóng bằng kho vendor `licensing/upstream/` (2026-07-27) |
-| OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), 458 thành phần, CycloneDX 1.5 đã validate schema | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
-
-| OSS-003 license | Blocker quản trị duy nhất | Đã relicense **`MIT OR Apache-2.0`** (2026-08-08); trước đó là proprietary | **Đóng.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/data tách trong README |
-| OSS-004 inventory | Tạo inventory ban đầu | Chưa có; và `burn`/`burn-wgpu` bị **bỏ sót** khỏi khảo sát | Đã thêm dòng vào khảo sát; inventory tự động vẫn nợ |
+| OSS-003 license | Blocker quản trị duy nhất | Relicense **`MIT OR Apache-2.0`** (2026-08-08), thay bản proprietary 2026-07-26; `NOTICE` + văn bản license bên thứ ba **sinh tự động**, có gate CI (2026-07-27) | **Đóng cho licence của dự án.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README. **Còn nợ, chặn phát hành:** 1 thành phần chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md), quyết định QĐ-C) |
+| OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có cho dependency code (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), CycloneDX 1.5 đã validate schema, sinh từ lockfile | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
 | OSS-012 cargo-deny | Adopt sau khi chọn license | ✅ **XONG 2026-08-08** — `src-tauri/deny.toml` + bước CI; `cargo deny check` xanh cả bốn mục | Mở khoá được nhờ OSS-003: trước khi có license của chính dự án thì không có allow-list nào để check |
@@ -36,7 +39,7 @@ trong khảo sát.
 | OS3 BVH/meshopt | Pilot | Tiền đề bị code bác bỏ | **Park** — xem OS3 |
 | OS4 Rapier | Pilot có feature flag | Đường physics/CPG sống chưa tất định | Thêm tiền điều kiện cứng |
 | OS5 Arrow | Khi ≥100 MB/run | Trigger **chưa đạt** | Giữ Defer |
-| OS7 phả hệ | *(mới)* | ⬜ Chưa bắt đầu | OSS-070 (Newick) là món rẻ nhất còn lại |
+| OS7 phả hệ | *(mới)* | ✅ OSS-070 Newick, OSS-071 `simplify`, OSS-071b nén trong tracker sống (2026-07-26/27); ✅ OSS-072 MRCA trên thân cây (#75, 2026-11-16). ⬜ OSS-073 | Việc còn lại là OSS-073 (line of descent), nay không còn bị chặn |
 
 ### OSS-010 đã ship (2026-07-26)
 
@@ -93,11 +96,8 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 |---|---|---|
 | OSS-001 | Dùng `README.md` và `docs/README.md` làm hai điểm vào duy nhất | Mọi tài liệu chuẩn có đường đi ≤ 2 lần nhấp |
 | OSS-002 | Ban hành quy tắc Diátaxis, metadata, ADR và deprecation | Link nội bộ hợp lệ; không có hai nguồn sự thật |
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong một phần (2026-07-27).** `LICENSE` proprietary đã có; `NOTICE` (458 thành phần) và `licensing/THIRD_PARTY_LICENSES.txt` (văn bản của **439/440** thành phần được phân phối — 408 đọc từ artifact đã cài, 31 vendor từ commit upstream đã ghim) đã sinh tự động và có gate CI. **Còn nợ:** phạm vi riêng cho code/model/dataset/asset, và **1** thành phần mà upstream chưa từng publish văn bản license |
-| OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, 458 thành phần, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
-
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `NOTICE` (attribution bên thứ ba), `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế |
-| OSS-004 | Tạo inventory dependency ban đầu | ⬜ Chưa. Đã lộ một lỗ hổng thật: `burn`/`burn-wgpu` là runtime dep nhưng vắng khỏi khảo sát cho tới 2026-07-26 |
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế. `NOTICE` và `licensing/THIRD_PARTY_LICENSES.txt` sinh tự động và có gate CI từ 2026-07-27. **Còn nợ:** **1** thành phần (`hexf-parse` 0.2.1) mà upstream chưa từng publish văn bản license; đó là quyết định pháp lý QĐ-C, không phải việc kỹ thuật |
+| OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
 khi thêm. Với cấp phép kép `MIT OR Apache-2.0`, thành phần **GPL/AGPL vẫn chặn cứng cho mọi đường
@@ -251,7 +251,7 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 |---|---|---|---|---|
 | OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
 | OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | 🟡 **Thuật toán + đã nối vào tracker sống (2026-07-26)**; chạy **prune-only**, nên bộ nhớ chưa đạt cận O(alive) — xem OSS-071b |
-| OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ⬜ |
+| OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ✅ 2026-11-16, #75: `evolution/mrca.rs`, lệnh `get_lineage_mrca`; đáp án là một **tập** |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
 **Vì sao đáng làm sớm:** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi
@@ -408,6 +408,19 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 - Không có finding critical/high của các gate bản đồ liên quan.
 
 ## Ba hành động tiếp theo
+
+> **Cập nhật 2026-11-17.** Ba việc đánh số bên dưới viết ngày 2026-07-26 và **cả ba đã đổi trạng thái**:
+> (1) số đếm đột biến theo node đã ship ngày 2026-07-27 và nén đã bật; (2) OSS-072 MRCA đã merge vào
+> thân cây ở #75; (3) licence của dự án đã đóng bằng relicense ngày 2026-08-08. Việc nối xuất Newick vào
+> IPC cũng đã có: lệnh `export_phylogenetic_tree`. Ba hành động tiếp theo của kế hoạch này hôm nay là:
+>
+> 1. **OSS-073** — giao thức đo "line of descent" kiểu Avida. MRCA không còn chặn nó. Kế hoạch swarm
+>    gọi là thẻ S5.
+> 2. **`hexf-parse`** — văn bản license cuối cùng còn thiếu. Đây là quyết định QĐ-C của chủ dự án, không
+>    phải việc kỹ thuật, và nó chặn phát hành.
+> 3. **Inventory cho model / dataset / asset** — phần còn nợ của OSS-004.
+>
+> OSS-011 (`tracing`) vẫn mở và vẫn ở ưu tiên thấp.
 
 > **Cập nhật 2026-07-26 (lần 4).** ~~OSS-010 Criterion~~, ~~OSS-070 Newick~~ và ~~OSS-071 thuật toán
 > `simplify`~~ đều đã **xong** trong cùng ngày. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.

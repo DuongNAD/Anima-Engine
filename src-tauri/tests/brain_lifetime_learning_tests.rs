@@ -58,6 +58,7 @@ fn world_with_agent(policy: BrainPolicy, at: Vec3) -> (World, Entity) {
                 // A previous deviation well above the current one makes the reward positive.
                 previous_deviation: 50.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             LastTransitionState {
                 state: [0.3; 15],

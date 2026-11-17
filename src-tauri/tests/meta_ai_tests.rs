@@ -282,6 +282,7 @@ fn test_homeostatic_targets_shift_under_temperature_events() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
         ))
         .id();

@@ -1,6 +1,6 @@
 ---
 title: Thế giới nhìn rõ trên ba máy — chia lane, chia file, thứ tự
-status: proposed
+status: active
 owner: maintainers
 last_reviewed: 2026-11-16
 ---
@@ -95,6 +95,9 @@ khối bổ sung của `PROMPTS_2026-11-16.md`:
 
 ## 7. Điều chưa kiểm
 
+- *(Cập nhật 2026-11-17: đã chạy các thẻ A1–A3, B1–B3 và C1–C4, tất cả đã merge. Chưa chạy: RW-A4, RW-B4,
+  RW-C5. FPS đã đo trên Dell, ghi ở §4 của kế hoạch; máy case chưa đo. Hai gạch dưới đây là câu gốc ngày
+  2026-11-16.)*
 - Chưa có agent nào chạy theo tài liệu này.
 - Chưa đo FPS trên Case hay Dell; số ở §2 của kế hoạch chỉ lấy trên MacBook Air M5.
 - Dell Vostro 3530 có nhiều cấu hình GPU. Tài liệu này giả định GPU tích hợp, chưa kiểm trên máy thật.

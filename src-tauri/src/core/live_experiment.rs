@@ -168,6 +168,26 @@ pub const LIVE_KEY_STARVE_TICKS: &str = "live.starve_ticks";
 /// Consecutive bottom ticks (hydration exhausted) before dehydration kills, when mortality is on.
 /// Absent keeps the policy's default of 120.
 pub const LIVE_KEY_DEHYDRATION_TICKS: &str = "live.dehydration_ticks";
+/// QD-SEL1b = A (card S6): the prey population at which continuous reproduction stops for prey, a
+/// whole number in `[1, 65536]`. Absent keeps `DEFAULT_PREY_CAP` (80), the value
+/// `autonomous_reproduction_system` hard-coded, so every earlier manifest is bit-identical. The
+/// predator rules are unchanged. Consulted only when `live.reproduction` is on.
+///
+/// A soft ceiling, as the constant always was: prey are counted once at the start of the system,
+/// so every prey eligible in that tick can still reproduce, and one tick can overshoot (measured: a
+/// peak of 103 agents at a ceiling of 80, up to 30 births in one tick).
+pub const LIVE_KEY_PREY_CAP: &str = "live.prey_cap";
+/// QD-SEL1b = A (card S6): multiplies the pasture's carrying capacity (`ResourceField::r_max`) and
+/// its standing crop (`r`) once, at genesis, by a factor in `[1e-6, 1]`.
+///
+/// Not a pasture-only factor: `fruit_growth_system` scales tree fruiting by the local `r_max`
+/// (`npp_factor`), so the same factor also slows fruit regrowth (measured: 0.854x at 0.5). A
+/// preregistration that manipulates this key manipulates both food channels and must say so. The
+/// telemetry vegetation index reads `r / r_max`, so a scaled pasture still looks full there. The EU taken out of the pasture
+/// moves to detritus, so the closed-EU total is unchanged. Absent keeps `1.0`, bit-identical. A save
+/// carries the standing crop but not the capacity (`r_max` is derived from the biomes), so a restore
+/// re-applies the factor to `r_max` only and never to the crop or the detritus.
+pub const LIVE_KEY_RESOURCE_CAPACITY_SCALE: &str = "live.resource_capacity_scale";
 /// Branch F: `1.0` ranks epoch replacement by [`crate::evolution::fitness::EcologicalFitness`];
 /// `0.0`/absent keeps the locomotion ranking every pre-F run used. Declared, not ambient —
 /// `build_live_world` never reads `ANIMA_FITNESS`.
@@ -176,7 +196,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 19] = [
+pub const LIVE_KEYS: [&str; 21] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -196,6 +216,8 @@ pub const LIVE_KEYS: [&str; 19] = [
     LIVE_KEY_KILL_HYDRATION,
     LIVE_KEY_KILL_EFFICIENCY,
     LIVE_KEY_TARGET_MIN_ENERGY,
+    LIVE_KEY_PREY_CAP,
+    LIVE_KEY_RESOURCE_CAPACITY_SCALE,
 ];
 
 /// The genesis the manifest asked for.
@@ -254,6 +276,20 @@ pub struct LiveWorldConfig {
     /// ADR-0007 option B: minimum prey energy for predator steering; `0.0` = off.
     #[serde(default)]
     pub target_min_energy: f32,
+    /// Card S6: prey reproduction ceiling; absent reads back as the historical 80.
+    #[serde(default = "default_prey_cap")]
+    pub prey_cap: usize,
+    /// Card S6: pasture capacity factor applied at genesis; absent reads back as `1.0`.
+    #[serde(default = "default_resource_capacity_scale")]
+    pub resource_capacity_scale: f64,
+}
+
+fn default_prey_cap() -> usize {
+    crate::core::resources::DEFAULT_PREY_CAP
+}
+
+fn default_resource_capacity_scale() -> f64 {
+    1.0
 }
 
 fn default_kill_efficiency() -> f32 {
@@ -302,6 +338,8 @@ impl Default for LiveWorldConfig {
             kill_hydration: 0.0,
             kill_efficiency: default_kill_efficiency(),
             target_min_energy: 0.0,
+            prey_cap: default_prey_cap(),
+            resource_capacity_scale: default_resource_capacity_scale(),
         }
     }
 }
@@ -420,6 +458,20 @@ impl LiveWorldConfig {
                         })
                     }
                 },
+                LIVE_KEY_PREY_CAP => config.prey_cap = bounded_count(key, *value, 1.0, 65_536.0)?,
+                LIVE_KEY_RESOURCE_CAPACITY_SCALE => {
+                    // A floor of 1e-6, not "> 0": a subnormal factor passes `> 0` and then becomes 0
+                    // as an `f32`, which silently kills the pasture.
+                    if !(*value >= 1e-6 && *value <= 1.0) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 1e-6,
+                            max: 1.0,
+                        });
+                    }
+                    config.resource_capacity_scale = *value;
+                }
                 LIVE_KEY_MUTATION_RATE => {
                     if !(0.0..=1.0).contains(value) {
                         return Err(ExperimentError::OutOfRange {
@@ -1199,7 +1251,16 @@ pub fn live_inference_pump_system(
 
 // ---- Observables ---------------------------------------------------------------------------------
 
-/// Every observable id the live world emits, in emission order.
+/// The legacy observables, emitted first and in this order: exactly the twelve the E2
+/// preregistration requests, as amended on 2026-11-16 (`amendment_1_live_dormant_eu`).
+///
+/// **Frozen. Never add, remove or reorder an id here.** `tests/prereg_e2_manifest_tests.rs` asserts
+/// that the committed E2 manifests request this list and nothing else, and
+/// `tests/e2_frozen_manifest_tests.rs` asserts that those manifests are byte-identical to the copies
+/// the E2 run published beside its results. Commit `970d963` inserted `live.dormant_eu` here and
+/// edited the four registered manifests to keep the first test green, a month after E2 had run.
+/// `npm run check:e2` stayed red until the owner's decision QD-E2M amended the preregistration and
+/// re-ran the whole ensemble. A new observable goes in [`LIVE_EXTENDED_OBSERVABLE_IDS`].
 pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
     "plants",
     "detritus",
@@ -1835,6 +1896,10 @@ fn build_live_world(
     world.insert_resource(crate::core::resources::MutationPolicy {
         rate: config.mutation_rate,
     });
+    // Prey reproduction ceiling (`live.prey_cap`, card S6); absent == the historical 80.
+    world.insert_resource(crate::core::resources::PreyCapPolicy {
+        cap: config.prey_cap,
+    });
     // The steering drive is a declared input (`live.locomotion`, ADR-0006 option A). Absent/0 is
     // the disabled policy: `steering_drive_system` returns at once and `target_velocity` stays 0.
     world.insert_resource(crate::core::resources::LocomotionPolicy {
@@ -1885,6 +1950,10 @@ fn build_live_world(
                 )?;
             }
             crate::core::simulation_state::restore_energy_state(&mut world, state);
+            // The save carries the standing crop `r` but not the capacity `r_max`, which
+            // `init_world` derives from the biomes. Re-apply the declared factor to the capacity
+            // only: the crop is the saved one, and the EU moved to detritus at genesis stays moved.
+            scale_pasture_capacity_only(&mut world, config.resource_capacity_scale);
             for tree in &state.trees {
                 world.spawn((
                     crate::core::ecs::Tree {
@@ -1949,11 +2018,56 @@ fn build_live_world(
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
+            scale_pasture_capacity(&mut world, config.resource_capacity_scale);
             genesis(&mut world, config, bounds, seed);
         }
     }
 
     Ok(world)
+}
+
+/// `live.resource_capacity_scale` (card S6): scale the pasture's capacity and standing crop once, at
+/// genesis, and move the EU taken out of it to detritus so the closed-EU total does not change. A
+/// factor of exactly `1.0` (the absent key) touches nothing, so the default world is bit-identical.
+fn scale_pasture_capacity(world: &mut World, factor: f64) {
+    if factor == 1.0 {
+        return;
+    }
+    let removed = {
+        let Some(mut field) = world.get_resource_mut::<ResourceField>() else {
+            return;
+        };
+        let before = field.total_biomass();
+        let f = factor as f32;
+        for v in field.r_max.iter_mut() {
+            *v *= f;
+        }
+        for v in field.r.iter_mut() {
+            *v *= f;
+        }
+        before - field.total_biomass()
+    };
+    let plants_now = world
+        .get_resource::<ResourceField>()
+        .map(|f| f.total_biomass())
+        .unwrap_or(0.0);
+    if let Some(mut pool) = world.get_resource_mut::<EcosystemBiomass>() {
+        pool.plants = plants_now;
+        pool.detritus += removed;
+    }
+}
+
+/// The restore half of `live.resource_capacity_scale`: `r_max` only (see [`scale_pasture_capacity`]).
+fn scale_pasture_capacity_only(world: &mut World, factor: f64) {
+    if factor == 1.0 {
+        return;
+    }
+    if let Some(mut field) = world.get_resource_mut::<ResourceField>() {
+        let f = factor as f32;
+        for v in field.r_max.iter_mut() {
+            *v *= f;
+        }
+    }
 }
 
 fn populate_spatial_grid(world: &mut World) {

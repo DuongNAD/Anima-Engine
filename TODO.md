@@ -14,6 +14,57 @@
 
 ---
 
+# ⏪ Rà soát tiến độ, lộ trình và tài liệu (2026-11-17)
+
+Một lượt đối chiếu tài liệu kế hoạch với `gh pr list`, `git branch -r` và mã trên thân cây tại `6f14124`;
+không build hay test nào được chạy. Thêm **bảng tiến độ theo chặng** vào `STATE_OF_THE_PROJECT.md` §3.00
+(chặng 1 và 2 đã đóng, chặng 3 đang làm, chặng 4 chưa qua cổng dù một phần đã làm trước R0) và tám hàng mới
+ở §2. `AGENT_WORKFLOW.md` §3 nay là hàng đợi thẻ của cả ba đợt thay cho bảng Đợt 1 đã cũ. Roadmap 31/10 có
+§4.1: sổ quyết định sau 2026-11-14 và hàng đợi còn trống xếp theo chặng. Tám finding đã sửa nhưng còn ghi
+`OPEN` được đổi trạng thái, mỗi cái kèm commit hoặc PR: F-017, F-018, F-019, F-020, F-021, F-028, F-031, F-034.
+Ba kế hoạch cũ (thực thi 31/10, định hướng 13/11, swarm 05/11) nhận một ghi chú có ngày thay vì bị viết lại.
+
+Đợt hai cùng ngày, vẫn chỉ tài liệu. Ba hợp đồng reference được đưa về khớp mã: hợp đồng snapshot dừng ở
+schema 3 trong khi mã ở **schema 7**; hợp đồng tất định còn ghi thứ tự lịch "chưa được viết ra" dù F-041 đã
+biến lịch thành một chuỗi; hợp đồng sổ cái còn viết "không có ngăn thứ tư" dù mã có ngăn `dormant` và
+`closed_total_eu` có bốn số hạng. Hợp đồng sinh vật ghi bốn chỗ gọi `decode_genotype`; mã có **bảy**, và ba
+chỗ thêm (`SpawnOffspringCommand`, `RehydrateCommand`, `live_experiment::genesis`) nay có trong bảng. Các
+đoạn trùng và nói ngược nhau do một lần gộp nhánh để lại được gộp làm một: hai hàng 3.16 và hai hàng 3.17
+của STATE, hai mục số 2 của chỉ mục quản trị, bốn gạch đầu dòng "proprietary" của chính sách nguồn mở, và
+các hàng OSS-003/OSS-004 của kế hoạch áp dụng nguồn mở. `CONTRIBUTING.md` và hai README nay nói thân cây là
+nhánh nào, PR đi đâu và hợp đồng IPC nằm ở đâu. Tài liệu nào chỉ được rà một phần thì nhận một ghi chú có
+ngày nói rõ đã đối chiếu gì, và **giữ nguyên `last_reviewed` cũ** để vẫn hiện trong báo cáo quá hạn.
+
+Cùng ngày, sổ quyết định (roadmap 31/10) có thêm §4.2: nguyên tắc **quá khứ của một thế giới đã chạy là bất
+biến** do chủ dự án nêu (QĐ-PAST; bảng ngoại lệ được chốt cùng ngày: "quay lại" chỉ có nghĩa là fork), và
+hai đề xuất còn trống là QĐ-TIME (tách lịch khỏi tốc độ xem) và QĐ-LAW1 (thí nghiệm rẽ luật đầu tiên).
+
+Đợt ba cùng ngày: chủ dự án trả lời mười hai câu hỏi của phiên rà soát và các quyết định được ghi vào sổ
+(QĐ-SEL1b = A, QĐ-ECO-C1 = có, QĐ-EN, F-044 = tách bộ đếm, QĐ-LAW1, QĐ-TIME, **QĐ-C = C: nâng `burn`**, QĐ-1 =
+mức 2, QĐ-P1 = có viết bài báo); chín thẻ mới được định nghĩa trong kế hoạch swarm. Ba lượt rà chỉ-đọc so
+từng khẳng định của tài liệu với mã, và mỗi phát hiện được kiểm lại trước khi sửa. Chỗ nặng nhất:
+`PROJECT.md` ghi pipeline Meshy/`.glb`, bốn hệ thời tiết theo biome, caustics và CI đóng gói đa nền tảng là
+"DONE" trong khi không cái nào có trong mã; `AUDIT_REPORT.md` còn khuyên đúng bản sửa SIM-01 từng làm mọi
+agent mù; checklist đo bản release không đặt `ANIMA_FRESH_START`, nên sẽ nạp lại autosave và đo nhầm quần
+thể; `MAP_MANIFEST.md` nói cả 8 view chưa chụp trong khi cả 8 đã chụp. Mười bảy tài liệu `docs/ai` được đổi
+trạng thái cho khớp việc đã merge.
+
+Đợt bốn cùng ngày, theo mười bốn quyết định tiếp của chủ dự án: xoá `TASK.md`; chuyển `AUDIT_REPORT.md` vào
+`docs/archive/`; bỏ hai bảng tính năng và mốc của `PROJECT.md`; ghi Vostro 3530 là máy tối thiểu và i5-14600KF
+là máy đo; `AGENTS.md` nhận ngoại lệ thứ ba theo QĐ-B; **ADR-0002 được chấp nhận trong phạm vi lát headless**;
+năm bản ghi một lần chuyển `completed`; nhóm việc R đóng; bản nháp bài báo để ở repo riêng tư (QĐ-P2) và
+`docs/paper/AI_USE_LOG.md` được mở (QĐ-P3). Ba câu không có đề xuất sẵn được xử lý ở mức tài liệu: tài liệu swarm qua
+Drive ghi là phương án dự phòng; `EnvSample` và `EnvironmentSnapshot` được định nghĩa là hai kiểu theo CM-102;
+how-to có bảng lệnh tương đương cho macOS, mỗi dòng ghi đã thử hay chưa.
+
+Bản đánh giá dự án theo mười hai tiêu chí được ghi ở
+`docs/ai/monitoring/2026-11-17-project-assessment.md`: nền kỹ thuật ở mức 8–9, kết quả khoa học và sẵn sàng
+phát hành ở mức 2. Điểm là nhận định của phiên rà soát, không phải phép đo.
+
+Cuối ngày, thân cây nhận ba thẻ sinh ra từ các quyết định trên: S8 (#106, F-044 đã sửa), S6 (#110, hai khoá
+mới và một lượt đo thăm dò không tìm ra chế độ khan hiếm thức ăn khả thi) và ADR-0008 ở trạng thái `proposed`
+(#109, thẻ L0). Hàng đợi thẻ, STATE và sổ quyết định được cập nhật theo.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên
