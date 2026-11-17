@@ -21,13 +21,15 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
-> ## ⚠️ Đọc trước — bảng 2026-07-27 dưới đây đã cũ; số mới nhất là [§1.g](#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main)
+> ## ⚠️ Đọc trước — bảng 2026-07-27 dưới đây đã cũ; số mới nhất là [§1.h](#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos)
 >
 > Hai cây mã đã được **hợp nhất ngày 2026-11-16**: `main` được fast-forward lên thân cây
 > `feat/ecological-selection` (a43872c → bb78e63; `main` là tổ tiên trực tiếp, 0 commit riêng). Thân
-> cây vẫn giữ tên và các PR vẫn nhắm vào nó. Lần CI của chính lần fast-forward đó đã được ghi thành
-> **§1.g** ngay dưới: đó là số mới nhất có thẩm quyền, đọc nó trước. Bảng 2026-07-27 (§1.a–§1.e) và
-> §1.f (2026-10-16) là **lịch sử** của từng thời điểm, không phải trạng thái hôm nay.
+> cây vẫn giữ tên và các PR vẫn nhắm vào nó; `main` được fast-forward theo nó khi chủ dự án cho phép.
+> Lượt đo mới nhất là **§1.h** ngay dưới (2026-11-17, `6f14124`: CI của lần fast-forward `main` cộng
+> một lượt chạy cục bộ macOS): đó là số có thẩm quyền, đọc nó trước. §1.g (2026-11-16, `bb78e63`),
+> bảng 2026-07-27 (§1.a–§1.e) và §1.f (2026-10-16) là **lịch sử** của từng thời điểm, không phải
+> trạng thái hôm nay.
 >
 > Ngoài số đo, bug đã chứng minh nằm ở [`FINDINGS.md`](../../FINDINGS.md) (mục mới nhất ở trên cùng).
 > Căn cứ của quyết định hợp nhất (QĐ-A: `feat/ecological-selection` là nền) ở
@@ -66,6 +68,60 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.h Đo 2026-11-17 tại `6f14124` — CI của lần fast-forward `main` và một lượt chạy cục bộ macOS
+
+> Đây là **số mới nhất có thẩm quyền**; §1.g trở thành lịch sử. Mọi hàng là **cùng một commit**
+> `6f14124d4a5cc5406c799b99bcd485a784baa390`: thân cây `feat/ecological-selection` sau #92, và cũng là
+> `main` sau lần fast-forward 2026-11-17 (`8a3558a..6f14124`, 32 commit, không force). Hai nguồn độc lập:
+>
+> - **CI GitHub** do chính lần push `main` kích hoạt: run `44012998030` (workflow `CI`: job Rust trên
+>   `windows-latest`, job Frontend trên `ubuntu-latest` với Node 22.23.4) và run `44012998040`
+>   (workflow `hardening`, job `determinism`). Số chép từ log, không tính lại gì ngoài tổng các dòng
+>   `test result:`.
+> - **Lượt chạy cục bộ trên macOS arm64** (10 nhân): rustc/cargo **1.98.1**, Node **24.19.0**, npm
+>   **11.17.0**, Playwright **1.62.0**, sau `npm ci` sạch ở cả hai gói. Mỗi lệnh chạy **một lần**, theo
+>   thứ tự của `ci.yml`, trên cache build Rust có sẵn (không phải build sạch).
+>
+> **Kết quả: xanh ở cả hai nguồn.** CI: run `44012998030` success (job Rust 03:50–04:28 UTC, job
+> Frontend 03:50–03:57 UTC) và run `hardening` `44012998040` success (03:50–04:10 UTC). Cục bộ: mọi gate
+> xanh, trừ đúng một gate không có nghĩa trên macOS (`check:notice`, xem hàng của nó). Backend test cho
+> **cùng một tổng** trên Windows và macOS: 1437 passed · 0 failed · 2 ignored trên 143 target.
+>
+> **Lượt này không phủ:** ứng dụng desktop (`tauri:dev`; không có lượt chạy app thật nào); binary
+> ứng dụng release (`cargo build --release --features desktop`); các PR đang mở #56 và #68; hiệu năng. Cục bộ **không chạy** các bước licence/SBOM/flora, đồ
+> thị module và hardening; với chúng chỉ có cột CI.
+
+| Loại | Gate | Lệnh | CI (`44012998030` / `44012998040`) | Cục bộ macOS |
+|---|---|---|---|---|
+| 📏 | Format | `cargo fmt --check` | success | success |
+| 📏 | Advisory Rust | `cargo audit` · `cargo deny check` | success — quét 773 crate với 1509 advisory; 2 cảnh báo *yanked* được cho phép (`async-executor`, `chacha20`); deny: `advisories ok, bans ok, licenses ok, sources ok` | success — quét 773 crate với 1509 advisory; 2 cảnh báo *yanked* được cho phép (`async-executor`, `chacha20`); deny: `advisories ok, bans ok, licenses ok, sources ok` |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | success — `Finished` sau 45,75 s, không cảnh báo (rustc/cargo 1.98.1, clippy 0.1.98) | success, không cảnh báo |
+| 📏 | Tách feature (G2 #2) | `cargo clippy --all-targets --no-default-features -- -D warnings` + `cargo tree --no-default-features -e normal` | success — `gated crates present in a default build: 0` | success — 0 crate bị gate lọt vào bản build mặc định. Cargo in một báo cáo *future-incompat* cho `block v0.1.6`, crate chỉ có trên macOS; đó không phải cảnh báo clippy và không làm đỏ |
+| 📏 | Parity binding | `cargo test --lib export_bindings` rồi `git diff --exit-code -- ../src/types/generated` | success — 50 test `export_bindings` passed, `git diff` không lệch | 50 test `export_bindings` pass trong lượt `cargo test` dưới đây; cây làm việc sạch sau lượt đó |
+| 📏 | Backend test | `cargo test --features desktop -- --nocapture` | **1437 passed · 0 failed · 2 ignored**, 143 dòng `test result` (bước build test 4m 58s) | **1437 passed · 0 failed · 2 ignored**, 143 dòng `test result` (12 phút 9 giây) |
+| 📏📋 | Chính sách target | `check_test_targets.mjs` (CI gọi không có `--profile`; cục bộ gọi với `--profile desktop`) | success — `test targets: 143, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2)`; log ghi rõ không có `--profile`, nên việc lên lịch target feature-gated **không** được kiểm ở CI (cột cục bộ kiểm nó) | success — `test targets: 143, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2), feature-gated running under "desktop": 8` |
+| 📏 | Licence · SBOM · schema · NOTICE · flora | `check:licenses` / `check:sbom` / `check:sbom-schema` / `check:notice` / `check:flora-footprint` | success cả năm — 443 thành phần phân phối, 266 văn bản, 1 chưa giải quyết · 461 thành phần, 462 bản ghi phụ thuộc · CycloneDX 1.5 hợp lệ · NOTICE: 422 crate, 21 gói npm phân phối, 18 cài-không-ship, 1 văn bản chưa giải quyết · 7 loại thực vật đặc, drift lớn nhất 3,9e-5 | Chỉ chạy `check:notice` (`gen_notice.mjs --check`): **đỏ, và đó là thiết kế, không phải NOTICE cũ**. `cargo tree` phân giải theo target của máy chạy (`ci.yml` ghi rõ các artifact này mô tả bản build Windows), nên trên macOS nó ra 398 crate thay vì 422: có thêm các crate `core-foundation`/`core-graphics`, thiếu các crate Windows/Vulkan như `d3d12` và `ash`. File đã được khôi phục, không commit gì. Gate này chỉ có nghĩa ở cột CI |
+| 📏 | Đồ thị module | so đồ thị phụ thuộc với `dataflow.json` | success — 16 cạnh khớp hoàn toàn với `cargo-modules` 0.28.0; 6 cặp phụ thuộc vòng vẫn được ghi là SMELL, không phải lỗi (cùng 6 cặp như §1.g) | không chạy |
+| 📏 | Advisory npm | `npm audit --audit-level=high` root và `--prefix tests` | success ở ngưỡng `high`: root **9 moderate** (chuỗi `minimatch` → `@typescript-eslint`), 0 high; `tests/`: `found 0 vulnerabilities` | như CI |
+| 📏 | Vệ sinh văn bản | `check:text-hygiene` | success — 929 file đã track, không có byte điều khiển thô | như CI |
+| 📏 | Artifact E2 | `npm run check:e2` | success — tính lại 264 delta per-seed (analysis) và 22 (smoke), mọi artifact khớp preregistration | như CI |
+| 📏 | Lint frontend | `npm run lint` + `eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) | như CI |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | success | success |
+| 📏 | Test frontend | `npm run test` · `npm run test:frontend` | 14 file · **109 passed** · 67 file · **692 passed** | như CI |
+| 📏 | Build + artifact | `npm run build` · `check:bundle-closure` · `check:csp` · `check:bundle` | success — 21 gói có byte trong `dist/` (3 do toolchain chèn); 3 HTML ship, 0 origin ngoài, 0 inline script; 25 chunk, **1905,8 / 2000 KiB** | như CI |
+| 📏 | Danh sách spec E2E | `node scripts/check_e2e_specs.mjs` | 10 file spec được lên lịch khớp danh sách đã commit; 2 file loại trừ có lý do | như CI |
+| 📏 | E2E Playwright | `npm run test:e2e` | **292 passed** (2,5 phút) | **292 passed** (1,2 phút), 5 worker |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | 1021 link tương đối + 83 anchor cùng trang trong 173 file, 0 gãy | như CI |
+| 📏 | Metadata tài liệu | `node scripts/check_docs_metadata.mjs` | 113 file, 0 lỗi, 15 review quá hạn (chỉ báo, không làm đỏ); 19 negative control OK | như CI |
+| 📏 | IPC | `check_ipc_reference.mjs` · `npm run check:ipc` | **35 command · 7 event · 0 khác biệt** (cục bộ thêm `check:ipc`: 39 call site `invoke`, 14 khoá tham số, khớp hết) | như CI |
+| 📏 | Hardening — tất định | `cargo test --release` rồi 5 lượt `RAYON_NUM_THREADS=1` | success, trên rustc **1.100.0** (`dtolnay/rust-toolchain@stable`, khác bản ghim 1.98.1 của job Rust). `cargo test --release` (không `--features desktop`, nên 135 target thay vì 143): 1411 passed · 0 failed · 2 ignored; 5 lượt ổn định: 675 dòng `test result`, 7055 passed, 0 failed | không chạy |
+| 📏 | Hardening — golden hash | `cargo test --release --test determinism_tests` | success — 5 passed (gồm `determinism_hash_ghim`, `world_hash_bat_duoc_thay_doi_that`, `determinism_200_ticks`, `live_schedule::the_live_checksum_distinguishes_one_tick_from_many`). **Log không in giá trị hash.** Bước grep `rand::thread_rng()` dưới `src-tauri/src` cũng success | không chạy |
+
+Hai cột chỉ khác nhau ở môi trường, không ở commit: một hàng đỏ ở một cột và xanh ở cột kia là một
+khác biệt **nền tảng**, cần đọc trước khi coi là bug (như hàng NOTICE). Từ §1.g đến đây số test tăng
+vì các PR #59–#92 thêm test, không phải vì đổi cách đếm: muốn biết PR nào thêm test nào thì đọc PR đó,
+đừng suy từ hiệu hai con số.
 
 ### 1.g Đo 2026-11-16 trên thân cây `bb78e63` — CI của lần fast-forward `main`
 
@@ -121,7 +177,8 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 > lại). Cùng ngày thân cây còn nhận #46–#51, #54, #55, #57, #58, #60, #62–#65 và #67, tức hạ tầng cổng
 > (G2, G1, G7), ba bản sửa tất định/sinh sản (F-037…F-041 trong [`FINDINGS.md`](../../FINDINGS.md)) và
 > phần lớn thẻ "thế giới đọc được". **Không có lượt CI toàn bộ nào được ghi lại sau §1.g trong tài liệu
-> này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. Việc tiếp theo và
+> này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. *(Lượt đo lại
+> đó là [§1.h](#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos), 2026-11-17.)* Việc tiếp theo và
 > chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 ---
