@@ -155,9 +155,9 @@ fn spatial_world(n: usize) -> World {
 // ---- 1. Resource field regrowth ---------------------------------------------------------------
 
 /// The claim under test is written into `ResourceField::REGROWTH_STRIDE`: the unstrided path cost
-/// four full passes per tick, measured at ~4.2 ms, and striding turned that into two passes over a
-/// quarter of the cells. Both variants are benchmarked so the ratio is a measurement rather than an
-/// assertion in a doc comment.
+/// four full passes per tick, and striding turned that into two passes over a quarter of the cells.
+/// The old path (with its `total_biomass()` sandwich), the gated step alone and the strided step are
+/// all benchmarked, so the ratio is a measurement rather than an assertion in a doc comment.
 fn bench_resource_field(c: &mut Criterion) {
     let mut group = c.benchmark_group("tick/resource_field");
     group.throughput(Throughput::Elements((WORLD_W * WORLD_H) as u64));
@@ -172,6 +172,19 @@ fn bench_resource_field(c: &mut Criterion) {
     group.bench_function("step_regrowth_gated/256x256", |b| {
         let mut field = resource_field();
         b.iter(|| field.step_regrowth_gated(black_box(dt), black_box(1.0), black_box(1.0e9)));
+    });
+
+    // The pre-stride path as `REGROWTH_STRIDE`'s doc describes it: the gated step plus the two
+    // `total_biomass()` passes that used to measure what grew. Kept so the claim about the old cost
+    // stays a measurement rather than a sentence.
+    group.bench_function("pre_stride_gated_with_biomass_sandwich/256x256", |b| {
+        let mut field = resource_field();
+        b.iter(|| {
+            let before = field.total_biomass();
+            let grown = field.step_regrowth_gated(black_box(dt), black_box(1.0), black_box(1.0e9));
+            let after = field.total_biomass();
+            black_box((before, grown, after))
+        });
     });
 
     let stride = ResourceField::REGROWTH_STRIDE;
