@@ -256,6 +256,40 @@ fn test_energy_flux_links_have_no_floors_and_no_invented_shares() {
     assert_eq!(animals.biomass, 1000.0);
 }
 
+#[test]
+fn test_trophic_biomass_counts_each_agent_once_by_role() {
+    let seg =
+        |agent_id: u32, segment_id: u32, agent_type: Option<AgentType>, energy: f32| SegmentState {
+            agent_id,
+            segment_id,
+            agent_type,
+            energy,
+            ..Default::default()
+        };
+    let segments = vec![
+        // A three-segment prey body holding 40 EU: every segment repeats the agent's whole reserve.
+        seg(1, 0, Some(AgentType::Prey), 40.0),
+        seg(1, 1, Some(AgentType::Prey), 40.0),
+        seg(1, 2, Some(AgentType::Prey), 40.0),
+        seg(2, 0, Some(AgentType::Prey), 10.0),
+        seg(3, 0, Some(AgentType::Predator), 30.0),
+        seg(3, 1, Some(AgentType::Predator), 30.0),
+        // Neither role: in neither total.
+        seg(4, 0, None, 500.0),
+        // A reserve that is not a number, or is negative, counts as nothing.
+        seg(5, 0, Some(AgentType::Prey), f32::NAN),
+        seg(6, 0, Some(AgentType::Predator), -5.0),
+    ];
+
+    let (prey, predator) = trophic_biomass_from_segments(&segments);
+    assert_eq!(prey, 50.0, "prey agents 1 and 2 hold 40 + 10 EU");
+    assert_eq!(predator, 30.0, "predator agent 3 holds 30 EU, counted once");
+    // Not a fixed share of the total: that is the 70/30 the export used to invent.
+    assert_ne!(prey / (prey + predator), 0.7);
+
+    assert_eq!(trophic_biomass_from_segments(&[]), (0.0, 0.0));
+}
+
 // ===============================================================================================
 // 3. FEATURE 11: SPATIAL DENSITY HEATMAPS
 // ===============================================================================================
@@ -436,14 +470,10 @@ fn test_render_csv_time_series() {
             predator_biomass: 200.0,
             detritus_biomass: 1000.0,
             total_energy: 4700.0,
-            energy_residual: 0.0,
             prey_count: 50,
             predator_count: 10,
             shannon_diversity: 0.69,
             simpson_diversity: 0.50,
-            avg_prey_metabolic_rate: 0.05,
-            avg_predator_metabolic_rate: 0.10,
-            ambient_temperature_c: 21.0,
         },
         TimeSeriesSample {
             tick: 100,
@@ -452,14 +482,10 @@ fn test_render_csv_time_series() {
             predator_biomass: 180.0,
             detritus_biomass: 900.0,
             total_energy: 4880.0,
-            energy_residual: 0.0,
             prey_count: 60,
             predator_count: 9,
             shannon_diversity: 0.70,
             simpson_diversity: 0.52,
-            avg_prey_metabolic_rate: 0.05,
-            avg_predator_metabolic_rate: 0.10,
-            ambient_temperature_c: 21.0,
         },
     ];
 

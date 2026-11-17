@@ -288,6 +288,15 @@ pub struct SimulationEngine {
     pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
     pub demographic_census: Arc<RwLock<crate::core::telemetry_export::DemographicCensusState>>,
     pub energy_flux_report: Arc<RwLock<crate::core::telemetry_export::EnergyFluxReport>>,
+    /// The seed the simulation thread's [`SimRng`](crate::core::resources::SimRng) is actually
+    /// using, published once the world is built and any restore has been applied.
+    ///
+    /// The seed lives only in the simulation thread's world, and commands run on their own thread,
+    /// so this is the one way a command can report it. `None` until a run has started: before that
+    /// there is no seed, and a number invented to fill the gap (the export used to say 42) is worse
+    /// than none. Recomputing it here from `ANIMA_SIM_SEED` or the world file would be wrong after a
+    /// save is loaded, because a checkpoint's own seed takes precedence over both.
+    pub run_seed: Arc<RwLock<Option<u64>>>,
 }
 
 impl Default for SimulationEngine {
@@ -355,6 +364,7 @@ impl SimulationEngine {
             energy_flux_report: Arc::new(RwLock::new(
                 crate::core::telemetry_export::EnergyFluxReport::default(),
             )),
+            run_seed: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -439,6 +449,10 @@ impl SimulationEngine {
         let ecosystem_state_clone = Arc::clone(&self.ecosystem_state);
         let demographic_census_clone = Arc::clone(&self.demographic_census);
         let energy_flux_report_clone = Arc::clone(&self.energy_flux_report);
+        // A restarted engine must not keep reporting the previous run's seed while its new world is
+        // still being built, so the slot is emptied here and refilled by the simulation thread.
+        *self.run_seed.write().unwrap_or_else(|e| e.into_inner()) = None;
+        let run_seed_clone = Arc::clone(&self.run_seed);
 
         let (trans_tx, trans_rx) =
             crossbeam_channel::bounded::<Transition>(TRANSITION_QUEUE_CAPACITY);
@@ -1772,6 +1786,13 @@ impl SimulationEngine {
             let mut local_env_state = crate::core::ecs::EnvironmentalState {
                 elements: Vec::with_capacity(64),
             };
+
+            // The world is built and any checkpoint is restored, so the seed on `SimRng` is final:
+            // read it off the resource rather than resolving it a second time, the way the world
+            // setup above already does. Published before the first counted tick, so a caller that sees
+            // `tick_count > 0` also sees the seed.
+            *run_seed_clone.write().unwrap_or_else(|e| e.into_inner()) =
+                Some(world.resource::<crate::core::resources::SimRng>().seed());
 
             while running_clone.load(Ordering::SeqCst) {
                 let next_tick_count = {

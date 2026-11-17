@@ -684,7 +684,15 @@ pub fn build_scientific_export(
     req: &ScientificExportRequest,
 ) -> Result<ScientificExportParts, String> {
     let status = engine.get_status();
-    let provenance = RunProvenance::new(42, status.tick_count);
+    // The run's seed as the simulation thread published it. An engine that has never run has none, and
+    // an export of no run must say so: this used to write 42 for every run, which made a dataset
+    // claim a trajectory it did not come from.
+    let seed = (*engine.run_seed.read().unwrap_or_else(|e| e.into_inner())).ok_or_else(|| {
+        "no simulation run to export: the simulation thread has not published its seed yet, so the \
+         run's provenance cannot be stated. Start the simulation first."
+            .to_string()
+    })?;
+    let provenance = RunProvenance::new(seed, status.tick_count);
 
     let eco = engine
         .ecosystem_state
@@ -736,27 +744,28 @@ pub fn build_scientific_export(
     let newick_tree =
         crate::core::telemetry_export::export_lineage_newick(&engine.lineage_tracker, None).ok();
 
+    // Biomass by trophic role comes from the agents themselves (each live agent's reserve, once). It
+    // used to be 70% and 30% of the animals pool, a split nothing measures, and the sample also
+    // carried a residual of 0, two metabolic rates and an ambient temperature that were constants.
+    let (prey_biomass, predator_biomass) =
+        crate::core::telemetry_export::trophic_biomass_from_segments(&segments);
     let time_series = vec![TimeSeriesSample {
         tick: status.tick_count,
         plants_biomass: eco.plants,
-        prey_biomass: eco.animals * 0.7,
-        predator_biomass: eco.animals * 0.3,
+        prey_biomass,
+        predator_biomass,
         detritus_biomass: eco.detritus,
         total_energy: eco.total,
-        energy_residual: 0.0,
         prey_count: eco.prey_count as usize,
         predator_count: eco.predator_count as usize,
         shannon_diversity: eco.shannon as f64,
         simpson_diversity: eco.simpson as f64,
-        avg_prey_metabolic_rate: 0.045,
-        avg_predator_metabolic_rate: 0.089,
-        ambient_temperature_c: 20.0,
     }];
 
     let csv_content = crate::core::telemetry_export::render_csv_time_series(&time_series);
 
     let package = ScientificDatasetPackage {
-        schema_version: 1,
+        schema_version: crate::core::telemetry_export::SCIENTIFIC_EXPORT_SCHEMA_VERSION,
         provenance,
         time_series: if req.include_time_series {
             time_series
@@ -768,7 +777,8 @@ pub fn build_scientific_export(
         } else {
             None
         },
-        energy_flux: if req.include_energy_flux {
+        // Null when no flux was measured, rather than a diagram of invented numbers.
+        energy_flux: if req.include_energy_flux && flux.is_measured() {
             Some(flux)
         } else {
             None
