@@ -57,6 +57,10 @@ năm bản ghi một lần chuyển `completed`; nhóm việc R đóng; bản nh
 Drive ghi là phương án dự phòng; `EnvSample` và `EnvironmentSnapshot` được định nghĩa là hai kiểu theo CM-102;
 how-to có bảng lệnh tương đương cho macOS, mỗi dòng ghi đã thử hay chưa.
 
+Bản đánh giá dự án theo mười hai tiêu chí được ghi ở
+`docs/ai/monitoring/2026-11-17-project-assessment.md`: nền kỹ thuật ở mức 8–9, kết quả khoa học và sẵn sàng
+phát hành ở mức 2. Điểm là nhận định của phiên rà soát, không phải phép đo.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên
