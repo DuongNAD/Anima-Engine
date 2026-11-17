@@ -19,7 +19,7 @@ hoạch mới. Nó gom những gì cần để bắt đầu và trỏ về đún
 | Prompt lead, luật swarm, verifier, từng thẻ | [File prompt swarm](../ai/planning/2026-11-05-swarm-prompts.md) |
 | Prompt chi tiết của B3b, HT-C…; BLOCK 0 (luật đứng) | [Brief 31/10](../ai/planning/2026-10-31-antigravity-brief.md) |
 | Quyết định của chủ dự án | [Roadmap 31/10 §4](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) |
-| Số đo | [STATE §1.g](../planning/STATE_OF_THE_PROJECT.md#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main) (CI của thân cây tại `bb78e63`, 2026-11-16) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
+| Số đo | [STATE §1.h](../planning/STATE_OF_THE_PROJECT.md#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos) (CI của `main` = thân cây tại `6f14124` cộng một lượt chạy cục bộ macOS, 2026-11-17) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
 
 Trạng thái trong trang này ghi ngày **2026-11-14**. Khi trang và một tài liệu ở bảng trên lệch nhau,
 tài liệu ở bảng thắng; sửa trang này.
@@ -207,5 +207,5 @@ Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14.
 
 ## 8. Sau mỗi đợt
 
-Chủ dự án merge, ghi số đo vào STATE §1 (một tiểu mục `§1.x` mới, tiếp sau §1.g), thêm
+Chủ dự án merge, ghi số đo vào STATE §1 (một tiểu mục `§1.x` mới, tiếp sau tiểu mục mới nhất, hiện là §1.h), thêm
 một dòng vào [`TODO.md`](../../TODO.md), rồi sửa §1 và §3 của trang này.
