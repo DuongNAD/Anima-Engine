@@ -26,8 +26,10 @@ tài liệu ở bảng thắng; sửa trang này.
 
 ## 1. Đang ở đâu
 
-- **Chặng 0 → chặng 1** của kế hoạch 13/11. Thứ tự không đổi: xanh → gộp → đo lại → khoa học →
-  phát hành → nhiều máy.
+- **2026-11-17: chặng 1 và chặng 2** của kế hoạch 13/11 **đã đóng**. Thân cây và `main` được bảo vệ, hai job
+  CI là gate bắt buộc ([STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17)).
+  Chặng 0 vẫn còn các ô quyết định trống ở dưới. Theo thứ tự, chặng kế là chặng 3. Thứ tự không đổi:
+  xanh → gộp → đo lại → khoa học → phát hành → nhiều máy.
 - **Thân cây là `feat/ecological-selection`** (QĐ-A, 2026-11-01). Chồng PR #38 → #40 trên
   `fix/ci-gates-green` sẽ được gộp **vào** thân cây (thẻ T2).
 - **2026-11-16:** T2 (HT-C) đã merge thành PR #45 (2026-11-15), và `main` đã được fast-forward lên thân cây
@@ -48,8 +50,10 @@ tài liệu ở bảng thắng; sửa trang này.
 
 ## 2. Việc của chủ dự án trước khi bật agent
 
-1. **Commit và push thân cây.** Lead đọc kế hoạch, thẻ và brief bằng `git show origin/…`; thay
-   đổi chưa push thì agent không thấy, và worktree tạo từ `HEAD` không chứa file chưa commit.
+1. **Đưa thay đổi lên thân cây qua PR và merge nó.** Lead đọc kế hoạch, thẻ và brief bằng
+   `git show origin/…`; thay đổi chưa lên thân cây thì agent không thấy, và worktree tạo từ `HEAD` không
+   chứa file chưa commit. Từ 2026-11-17 thân cây được bảo vệ: push thẳng bị từ chối, và PR chỉ merge
+   được khi `Rust (src-tauri)` và `Frontend` cùng xanh.
 2. **Mở phiên Claude Code mới** nếu dùng Claude: hook rustfmt chỉ nạp khi phiên bắt đầu.
 3. Mở teamwork Antigravity, dán **PROMPT 0 (Lead)** từ
    [file prompt swarm §1](../ai/planning/2026-11-05-swarm-prompts.md), rồi điền khối `DECISIONS`
