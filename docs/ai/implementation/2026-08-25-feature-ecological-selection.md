@@ -129,6 +129,15 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 > không thêm trường born_tick. Emission tách thành legacy 12 (đóng băng bởi prereg E2) +
 > extended 10; registry version 1→2; ba test census (e2_seam, live_cross_process_probe,
 > live_experiment_tests) cập nhật theo tập đầy đủ.
+>
+> *Ghi chú 2026-11-17 — cửa sổ bị runner đọc mất.* Mỗi lần đọc observable của thế giới live đều đóng
+> cửa sổ đếm, mà runner dùng chung đọc observable ở **mọi** tick để kiểm giá trị hữu hạn, rồi chỉ giữ
+> những lần đọc rơi vào tick lấy mẫu. Vì vậy trong chuỗi mẫu, `live.births` / `live.deaths` /
+> `live.mean_lifespan` chỉ đếm sự kiện của đúng tick lấy mẫu. Đo được: 0 lần sinh và 1 lần chết, so
+> với 20 và 23 thật, sau 3.000 tick. Đã sửa: `ExperimentModel::observables_unsampled` (mặc định là
+> `observables`) cho các tick không lấy mẫu, và adapter live đọc ở đó mà không đóng cửa sổ
+> (`VitalStatistics::peek_window`). Checksum không đổi, vì `VitalStatistics` nằm ngoài
+> `world_checksum`. Test: `tests/live_windowed_observable_sampling_tests.rs`.
 
 ---
 

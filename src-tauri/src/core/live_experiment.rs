@@ -1271,8 +1271,23 @@ pub fn mass_statistics(masses: &[f32]) -> [f64; 4] {
 /// `live.births` / `live.deaths` count events since the previous sample, and
 /// `live.mean_lifespan` averages `survival_ticks` over window deaths (`0.0` when the window had
 /// none — with the structural O-5 guarantee that a run without a death rule can never be asked
-/// for it).
+/// for it). A read that is not a sample must use [`live_observables_peek`], or it steals the
+/// sample's events.
 pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
+    read_live_observables(world, true)
+}
+
+/// The same values as [`live_observables`] without closing the turnover window.
+///
+/// The shared runner reads a model's observables on every tick to check that they are finite and
+/// unique, and keeps only the reads on sample ticks. When every one of those reads drained the
+/// window, a sampled `live.births` counted the births of its own tick only: 0 against 20 true births
+/// over 3,000 ticks (`tests/live_windowed_observable_sampling_tests.rs`).
+pub fn live_observables_peek(world: &mut World) -> Vec<(String, f64)> {
+    read_live_observables(world, false)
+}
+
+fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
     let (plants, animals, detritus, dormant) = world
@@ -1325,9 +1340,14 @@ pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
-    let (births, deaths, mean_lifespan) = {
+    let (births, deaths, mean_lifespan) = if close_window {
         match world.get_resource_mut::<crate::core::resources::VitalStatistics>() {
             Some(mut v) => v.sample_window(),
+            None => (0, 0, None),
+        }
+    } else {
+        match world.get_resource::<crate::core::resources::VitalStatistics>() {
+            Some(v) => v.peek_window(),
             None => (0, 0, None),
         }
     };
@@ -1723,6 +1743,11 @@ impl ExperimentModel for LiveExperimentAdapter {
     fn observables(&self) -> Vec<(String, f64)> {
         let mut world = self.world.borrow_mut();
         live_observables(&mut world)
+    }
+
+    fn observables_unsampled(&self) -> Vec<(String, f64)> {
+        let mut world = self.world.borrow_mut();
+        live_observables_peek(&mut world)
     }
 }
 
