@@ -316,7 +316,7 @@ ba dòng cuối):
 | Chặng 4 | QĐ-ECO-C1 — có làm thẻ `live.predator_cost_mult` + `live.strike_radius` không; có làm khoá nguồn nước không | S43; xem STATE §3.00 P1 |
 | Chặng 4 | F-044 — tách bộ đếm ân hạn đói và khát thành hai (đổi định dạng lưu và quỹ đạo) | [`FINDINGS.md`](../../FINDINGS.md) F-044 |
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
-| Chặng 5 | **QĐ-C** — `hexf-parse` (hàng cuối của bảng §4 ở trên) | Phát hành |
+| Chặng 5 | **QĐ-C** — `hexf-parse` (hàng cuối của bảng §4 ở trên; ba lựa chọn ở §4.3) | Phát hành |
 | Chặng 5 | QĐ-1 — dừng ở mức hoàn thiện nào | Thẻ R2 |
 | Chặng 5 | QĐ-P1, QĐ-P2, QĐ-P3 — loại bài báo, chỗ để bản nháp, khai báo dùng AI | Thẻ P1–P9 |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
@@ -413,6 +413,49 @@ sách riêng, tác động qua hấp thụ có chi phí, không sửa thẳng ge
 - Đổi luật chỉ tạo ra hướng tiến hoá khác khi chọn lọc hoạt động. Hôm nay tử vong, fitness sinh thái và sinh
   sản liên tục tắt mặc định; E2 null; E-SEL1 đóng mà không có thí nghiệm (STATE §3.00, §3.1). Thêm một nguồn
   năng lượng lúc này nhiều khả năng cho thêm quỹ đạo, chưa chắc cho thêm kiểu kết cục.
+
+### 4.3 QĐ-C — một lối thứ ba: nâng `burn` thì `hexf-parse` tự biến mất (kiểm 2026-11-17)
+
+Chủ dự án nói trong chat ngày 2026-11-17 rằng muốn **giữ GPU**. QĐ-C vẫn còn trống; mục này ghi một dữ kiện
+mới làm đổi các lựa chọn.
+
+**Vấn đề pháp lý là gì, nói cho đúng cỡ.** Dùng GPU không phải vấn đề pháp lý. Vấn đề là **một** thư viện
+nhỏ, `hexf-parse` 0.2.1, khai giấy phép CC0-1.0 nhưng chưa từng phát hành kèm văn bản giấy phép, trong khi
+gate của chính dự án đòi mọi thành phần được phân phối phải có văn bản gốc
+([`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md)). CC0 không đặt điều kiện ghi công, nên đây là
+một khoảng trống hồ sơ do quy tắc của dự án tự đặt ra, không phải một tranh chấp.
+
+**Dữ kiện mới.** `hexf-parse` vào bản build qua đúng một đường:
+
+```text
+hexf-parse 0.2.1 <- naga 0.19.2 <- wgpu 0.19.4 <- burn-wgpu 0.13.2 <- anima-engine (feature ml-wgpu)
+```
+
+Đường này lấy từ `cargo tree --features desktop -e normal -i hexf-parse` trong `src-tauri/`. Tra danh sách
+phụ thuộc đã khai trên crates.io cùng ngày (`https://crates.io/api/v1/crates/<tên>/<bản>/dependencies`):
+
+| Crate | Bản | Còn phụ thuộc `hexf-parse`? |
+|---|---|---|
+| `naga` | 22.1.0 đến 29.0.1 (tám bản đã tra) | Có |
+| `naga` | 30.0.2 | **Không** |
+| `burn-wgpu` | 0.22.1, bản ổn định mới nhất | Đi qua `cubecl-wgpu` 0.11.4, vốn đòi `wgpu ^30` |
+
+Nghĩa là nâng `burn` từ 0.13.2 lên dòng 0.22 sẽ kéo `naga` lên 30 và `hexf-parse` rời khỏi cây phụ thuộc,
+không cần quyết định pháp lý nào. **Chưa kiểm:** đây là danh sách phụ thuộc đã khai, chưa phải một lần build
+thật của dự án ở bản mới; và chưa ai đo bản `wgpu` mới có còn rò bộ nhớ hay không.
+
+**Ba lựa chọn sau dữ kiện này:**
+
+| | Nội dung | Giữ GPU trong bản cài? | Cái giá |
+|---|---|---|---|
+| A | Bỏ `ml-wgpu` khỏi feature `desktop` | Không; chỉ khi tự build | Rẻ nhất. Mã GPU vẫn còn |
+| B | Chủ dự án ghi một quyết định: nhận khai báo CC0-1.0 trên crates.io là đủ | Có | Là quyết định pháp lý của chủ dự án. Đường GPU vẫn rò bộ nhớ |
+| C | Nâng `burn` lên dòng 0.22 | Có | Chín bản minor, làm vỡ `ai/model.rs` và `core/training.rs` (`CLAUDE.md` ghi 0.14 đã vỡ). Chạm learner nhạy số, nên phải giữ gate parity EB-S02 và `a2c_loss_direction_tests` xanh. Cần thẻ riêng có uỷ quyền ghi vào `src-tauri/src` |
+
+C là lối duy nhất có thể đóng cả hai việc cùng lúc: khoảng trống giấy phép, và chỗ rò bộ nhớ của `wgpu-core`
+0.19.4 (ghi chú ở `core/resources.rs`). Ba cách sửa chỗ rò đã được ghi ở PR #30: mặc định CPU (đã làm), nâng
+`burn`/`wgpu`, hoặc cache layout bên trong `burn-wgpu`. Dù chọn gì, lượt chạy khoa học vẫn dùng CPU theo hợp
+đồng tất định.
 
 Hai việc **cần tay người** (không phải quyết định): chạy app desktop bản **release** với
 `ANIMA_TICK_CAPTURE` ở 1.000 agent (HT4.1), và xác minh app khởi động dưới CSP. Cả hai vẫn mở.
