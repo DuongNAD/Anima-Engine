@@ -36,7 +36,7 @@ tài liệu ở bảng thắng; sửa trang này.
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-P1…P3, QĐ-M1…M8.
+  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-P1…P3, QĐ-M1…M8 (QĐ-2/H quyết 2026-11-17, dưới).
 - **Đã quyết 2026-11-16** (phiên lead theo uỷ quyền của chủ dự án trong chat): QĐ-E2M = B (#59),
   QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
   ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
@@ -45,6 +45,14 @@ tài liệu ở bảng thắng; sửa trang này.
   [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87; chỉ cho thăm dò S43, không mặc định).
   **Còn trống, chờ chủ dự án:** QĐ-SEL1b (thí nghiệm chọn lọc theo khan hiếm làm lại hay không, với yếu tố
   nào; xem chẩn đoán sau E-SEL1) và việc có làm thẻ C1 của ADR-0007 không.
+- **Đã quyết 2026-11-17** (phiên lead, cùng uỷ quyền "theo bản kế hoạch"): **QĐ-2/QĐ-H** theo đề xuất của
+  [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md) §2: gỡ mọi bằng chứng và dữ liệu giả ngay
+  (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau. Chủ dự án đảo lại được.
+- **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
+  còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi R0
+  khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
+  trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
   được chuyển nguyên byte sang nhánh **local** `wip/hardening-m2-m4-tests` (`f9ff5f1`, chưa push).
 
@@ -85,7 +93,8 @@ QD-B      = per-card authorization. AGENTS.md stays the default (src-tauri/src r
             may write src-tauri/src or an R5 file only with an AUTHORIZATION line in R5-AUTH that
             names its exact paths (owner, 2026-11-14)
 QD-C      =
-QD-2/QD-H =
+QD-2/QD-H = remove every piece of fabricated evidence and data now (G4, G6); keep the code;
+            ship-or-not decided later (lead session under the owner's "follow the plan", 2026-11-17)
 QD-4      = A: continuous energy-gated reproduction in the live adapter behind manifest key
             live.reproduction (absent/0 = off); ADR-0005 (owner's delegate in chat, 2026-11-16)
 QD-5      = yes: ADR-0005, scope = continuous reproduction in live experiments only;
