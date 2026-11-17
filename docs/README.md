@@ -52,6 +52,7 @@ flowchart TD
 | Hiểu kiến trúc và nguyên nhân của quyết định | [Explanation](explanation/README.md) |
 | Xem việc cần làm và thứ tự phụ thuộc | [Planning](planning/README.md) |
 | Xem bằng chứng bên ngoài và khảo sát | [Research](research/README.md) |
+| Xem số đo cho bài báo (tái lập đa nền tảng, đối chứng gate, quy mô) | [Paper data](paper/README.md) |
 | Xem đánh giá dự án nguồn mở | [Open-source landscape](research/OPEN_SOURCE_LANDSCAPE.md) |
 | Xem đề xuất nâng cấp map và mô hình machine | [Map & ML upgrade research](research/MAP_AND_ML_UPGRADE_RESEARCH.md) *(proposed)* |
 | Ghi hoặc tra cứu quyết định kiến trúc | [ADR index](decisions/README.md) |
