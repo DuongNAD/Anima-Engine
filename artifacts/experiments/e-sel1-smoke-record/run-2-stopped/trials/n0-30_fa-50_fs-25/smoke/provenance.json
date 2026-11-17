@@ -1,0 +1,223 @@
+{
+  "build": {
+    "binary_sha256": "8763f6eb2e5ca12c1cde370ac173c5617e73baefa2cf0f5e816df2058e68aceb",
+    "git_commit": "7a825cc56135df83d5a513ecf59fe3b2e9f1dd92",
+    "git_describe": "7a825cc",
+    "git_tree_dirty": false,
+    "package_version": "0.1.0",
+    "profile": "release",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  },
+  "duration": {
+    "duration_ticks_as_run": 18000,
+    "ladder_registered": [
+      18000,
+      12000,
+      6000
+    ]
+  },
+  "host": {
+    "arch": "aarch64",
+    "os": "macos"
+  },
+  "kind": "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
+  "manifests": {
+    "files": [
+      "esel1-smoke-abundant.json",
+      "esel1-smoke-scarce.json",
+      "esel1-smoke-drift-scarce-mutation-off.json",
+      "esel1-preregistration.json"
+    ],
+    "initial_conditions_by_arm": {
+      "control": [
+        [
+          "live.founders",
+          30.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ],
+        [
+          "live.food_cap",
+          50.0
+        ],
+        [
+          "live.trees",
+          8.0
+        ],
+        [
+          "live.lakes",
+          2.0
+        ],
+        [
+          "live.mortality",
+          1.0
+        ],
+        [
+          "live.reproduction",
+          1.0
+        ],
+        [
+          "live.locomotion",
+          1.0
+        ],
+        [
+          "live.drive_floor",
+          0.5
+        ],
+        [
+          "live.thirst_steering",
+          1.0
+        ],
+        [
+          "live.evolved_brains",
+          0.0
+        ]
+      ],
+      "drift": [
+        [
+          "live.founders",
+          30.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ],
+        [
+          "live.food_cap",
+          25.0
+        ],
+        [
+          "live.trees",
+          8.0
+        ],
+        [
+          "live.lakes",
+          2.0
+        ],
+        [
+          "live.mortality",
+          1.0
+        ],
+        [
+          "live.reproduction",
+          1.0
+        ],
+        [
+          "live.locomotion",
+          1.0
+        ],
+        [
+          "live.drive_floor",
+          0.5
+        ],
+        [
+          "live.thirst_steering",
+          1.0
+        ],
+        [
+          "live.evolved_brains",
+          0.0
+        ],
+        [
+          "live.mutation_rate",
+          0.0
+        ]
+      ],
+      "treatment": [
+        [
+          "live.founders",
+          30.0
+        ],
+        [
+          "live.predator_fraction",
+          0.0
+        ],
+        [
+          "live.food_cap",
+          25.0
+        ],
+        [
+          "live.trees",
+          8.0
+        ],
+        [
+          "live.lakes",
+          2.0
+        ],
+        [
+          "live.mortality",
+          1.0
+        ],
+        [
+          "live.reproduction",
+          1.0
+        ],
+        [
+          "live.locomotion",
+          1.0
+        ],
+        [
+          "live.drive_floor",
+          0.5
+        ],
+        [
+          "live.thirst_steering",
+          1.0
+        ],
+        [
+          "live.evolved_brains",
+          0.0
+        ]
+      ]
+    },
+    "note": "manifests are not copied into smoke/ because they name every observable; their sha256 is recorded here",
+    "sha256_as_read": {
+      "esel1-preregistration.json": "1339ba80333f3757874a716af091091002af21417f72829fded65cda659cc999",
+      "esel1-smoke-abundant.json": "f954824ae8ec214de04df55bdfaddb5ec447e51d431a6e3589d18694d9ccb15a",
+      "esel1-smoke-drift-scarce-mutation-off.json": "ae7ed6771a08a6f7dff3774c30e96b0c206fa1ef0e85506d8f7b14f0238e5b30",
+      "esel1-smoke-scarce.json": "f975fac6b87936e2281195569f36ccc0907810599f6e606e345eab6c7f2e1f42"
+    }
+  },
+  "mode": "smoke",
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "observables_written": [
+    "live.agent_count",
+    "live.standing_crop",
+    "live.closed_eu_total",
+    "live.births",
+    "live.deaths"
+  ],
+  "seeds": {
+    "executed": [
+      999971,
+      999971,
+      999971
+    ],
+    "smoke_seed": 999971
+  },
+  "timing": {
+    "ended_utc": "2026-11-16T19:29:39Z",
+    "max_us_per_tick": 467.09888661111114,
+    "started_utc": "2026-11-16T19:29:23Z",
+    "us_per_tick_by_run": [
+      {
+        "arm": "control",
+        "seed": 999971,
+        "us_per_tick": 316.87809255555555
+      },
+      {
+        "arm": "treatment",
+        "seed": 999971,
+        "us_per_tick": 467.09888661111114
+      },
+      {
+        "arm": "drift",
+        "seed": 999971,
+        "us_per_tick": 117.03342127777776
+      }
+    ]
+  }
+}

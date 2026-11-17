@@ -7,6 +7,7 @@ use smallvec::SmallVec;
 pub fn apply_environmental_effects_system(
     active_event: Res<ActiveEnvironmentEvent>,
     forcings: Option<Res<crate::core::live_experiment::LiveForcings>>,
+    declared_food_cap: Option<Res<crate::core::live_experiment::LiveFoodCap>>,
     mut food_settings: ResMut<FoodSpawnSettings>,
     mut agent_query: Query<&mut crate::ai::hrrl::HomeostaticState, With<Agent>>,
 ) {
@@ -18,7 +19,11 @@ pub fn apply_environmental_effects_system(
         crate::evolution::meta_ai::EnvironmentalEvent::Stable => (1.0, 0.0),
     };
 
-    food_settings.max_food_count = (50.0 * max_food_multiplier) as usize;
+    // The event scales a base cap. A live experiment declares that base (`live.food_cap`,
+    // `LiveFoodCap`); everywhere else it is the literal 50 it always was. Overwriting with a
+    // literal here is what made a declared cap inert (F-043).
+    let base_food_cap = declared_food_cap.map_or(50.0, |cap| cap.0 as f64);
+    food_settings.max_food_count = (base_food_cap * max_food_multiplier) as usize;
 
     // A declared temperature intervention shifts the same homeostatic target the engine's own
     // environmental events shift, rather than writing body temperature directly — see
@@ -306,6 +311,21 @@ pub fn detect_food_collisions_system(
     }
 }
 
+/// ADR-0007 option B: a strike that credited `gained` EU also waters the predator by
+/// `kill_hydration * gained`, never past its target. Shared by both strike branches so they cannot
+/// drift apart. Hydration is outside the EU ledger.
+#[inline]
+fn apply_kill_hydration(
+    homeo: &mut crate::ai::hrrl::HomeostaticState,
+    gained: f32,
+    income: crate::core::resources::PredatorIncomePolicy,
+) {
+    if income.kill_hydration > 0.0 && gained > 0.0 {
+        let cap = homeo.hydration_target.max(homeo.hydration);
+        homeo.hydration = (homeo.hydration + income.kill_hydration * gained).min(cap);
+    }
+}
+
 pub fn combat_system(
     mut predator_query: Query<
         (
@@ -331,7 +351,10 @@ pub fn combat_system(
     // Branch H: per-agent segment centroids, ONE walk shared by both strike branches — bit-exact
     // with the per-agent walks this replaces (same adds, same order), allocation-free.
     mut combat_seg_centroids: Local<bevy_ecs::entity::EntityHashMap<(Vec3, u32)>>,
+    // ADR-0007 option B. Absent (every app run) = Lindeman efficiency and no kill hydration.
+    income: Option<Res<crate::core::resources::PredatorIncomePolicy>>,
 ) {
+    let income = income.map(|r| *r).unwrap_or_default();
     combat_seg_centroids.clear();
     for (seg_pos, parent_agent) in segment_query.iter() {
         let entry = combat_seg_centroids
@@ -427,8 +450,7 @@ pub fn combat_system(
                                     prey_homeo.energy,
                                     needed,
                                 );
-                                let assimilated =
-                                    captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
+                                let assimilated = captured * income.kill_efficiency;
                                 // Both reserves are `f32`, so neither the strip nor the meal is
                                 // exact and "detritus gets captured - assimilated" is only true
                                 // in real arithmetic. Read back what each reserve actually
@@ -444,6 +466,7 @@ pub fn combat_system(
                                     assimilated,
                                     pred_cap,
                                 );
+                                apply_kill_hydration(&mut pred_homeo, gained as f32, income);
                                 // Fitness intake bookkeeping — the measured credit only.
                                 if let Some(mut eval) = pred_eval {
                                     eval.total_energy_gained += gained as f32;
@@ -497,7 +520,7 @@ pub fn combat_system(
                     if needed > 0.0 {
                         let captured =
                             crate::core::ecology::predation_capture(prey_homeo.energy, needed);
-                        let assimilated = captured * crate::core::ecology::LINDEMAN_EFFICIENCY;
+                        let assimilated = captured * income.kill_efficiency;
                         // Same measured transfer as the telemetry branch above — a predator must
                         // not conserve energy in one code path and leak it in the other.
                         let pred_cap = pred_homeo.energy_target;
@@ -510,6 +533,7 @@ pub fn combat_system(
                             assimilated,
                             pred_cap,
                         );
+                        apply_kill_hydration(&mut pred_homeo, gained as f32, income);
                         // Fitness intake bookkeeping — the measured credit only.
                         if let Some(mut eval) = pred_eval {
                             eval.total_energy_gained += gained as f32;

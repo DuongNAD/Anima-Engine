@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 review_cycle: per-release
 ---
 
@@ -21,13 +21,15 @@ gate chưa xanh.
 
 ## 1. Bảng bằng chứng có thẩm quyền
 
-> ## ⚠️ Đọc trước — bảng 2026-07-27 dưới đây đã cũ; số mới nhất là [§1.g](#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main)
+> ## ⚠️ Đọc trước — bảng 2026-07-27 dưới đây đã cũ; số mới nhất là [§1.h](#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos)
 >
 > Hai cây mã đã được **hợp nhất ngày 2026-11-16**: `main` được fast-forward lên thân cây
 > `feat/ecological-selection` (a43872c → bb78e63; `main` là tổ tiên trực tiếp, 0 commit riêng). Thân
-> cây vẫn giữ tên và các PR vẫn nhắm vào nó. Lần CI của chính lần fast-forward đó đã được ghi thành
-> **§1.g** ngay dưới: đó là số mới nhất có thẩm quyền, đọc nó trước. Bảng 2026-07-27 (§1.a–§1.e) và
-> §1.f (2026-10-16) là **lịch sử** của từng thời điểm, không phải trạng thái hôm nay.
+> cây vẫn giữ tên và các PR vẫn nhắm vào nó; `main` được fast-forward theo nó khi chủ dự án cho phép.
+> Lượt đo mới nhất là **§1.h** ngay dưới (2026-11-17, `6f14124`: CI của lần fast-forward `main` cộng
+> một lượt chạy cục bộ macOS): đó là số có thẩm quyền, đọc nó trước. §1.g (2026-11-16, `bb78e63`),
+> bảng 2026-07-27 (§1.a–§1.e) và §1.f (2026-10-16) là **lịch sử** của từng thời điểm, không phải
+> trạng thái hôm nay.
 >
 > Ngoài số đo, bug đã chứng minh nằm ở [`FINDINGS.md`](../../FINDINGS.md) (mục mới nhất ở trên cùng).
 > Căn cứ của quyết định hợp nhất (QĐ-A: `feat/ecological-selection` là nền) ở
@@ -66,6 +68,60 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 - 📋 **Chính sách** — một khoản miễn trừ đã được ghi thành quyết định, không phải một phép đo.
 - 🔧 **Đã ship** — mã/công cụ tồn tại và có test. **Không** đồng nghĩa "đã có số đo".
 - ⏳ **Chưa chạy lại trong gói này** — số gần nhất còn hiệu lực, kèm ngày và lý do không chạy lại.
+
+### 1.h Đo 2026-11-17 tại `6f14124` — CI của lần fast-forward `main` và một lượt chạy cục bộ macOS
+
+> Đây là **số mới nhất có thẩm quyền**; §1.g trở thành lịch sử. Mọi hàng là **cùng một commit**
+> `6f14124d4a5cc5406c799b99bcd485a784baa390`: thân cây `feat/ecological-selection` sau #92, và cũng là
+> `main` sau lần fast-forward 2026-11-17 (`8a3558a..6f14124`, 32 commit, không force). Hai nguồn độc lập:
+>
+> - **CI GitHub** do chính lần push `main` kích hoạt: run `44012998030` (workflow `CI`: job Rust trên
+>   `windows-latest`, job Frontend trên `ubuntu-latest` với Node 22.23.4) và run `44012998040`
+>   (workflow `hardening`, job `determinism`). Số chép từ log, không tính lại gì ngoài tổng các dòng
+>   `test result:`.
+> - **Lượt chạy cục bộ trên macOS arm64** (10 nhân): rustc/cargo **1.98.1**, Node **24.19.0**, npm
+>   **11.17.0**, Playwright **1.62.0**, sau `npm ci` sạch ở cả hai gói. Mỗi lệnh chạy **một lần**, theo
+>   thứ tự của `ci.yml`, trên cache build Rust có sẵn (không phải build sạch).
+>
+> **Kết quả: xanh ở cả hai nguồn.** CI: run `44012998030` success (job Rust 03:50–04:28 UTC, job
+> Frontend 03:50–03:57 UTC) và run `hardening` `44012998040` success (03:50–04:10 UTC). Cục bộ: mọi gate
+> xanh, trừ đúng một gate không có nghĩa trên macOS (`check:notice`, xem hàng của nó). Backend test cho
+> **cùng một tổng** trên Windows và macOS: 1437 passed · 0 failed · 2 ignored trên 143 target.
+>
+> **Lượt này không phủ:** ứng dụng desktop (`tauri:dev`; không có lượt chạy app thật nào); binary
+> ứng dụng release (`cargo build --release --features desktop`); các PR đang mở #56 và #68; hiệu năng. Cục bộ **không chạy** các bước licence/SBOM/flora, đồ
+> thị module và hardening; với chúng chỉ có cột CI.
+
+| Loại | Gate | Lệnh | CI (`44012998030` / `44012998040`) | Cục bộ macOS |
+|---|---|---|---|---|
+| 📏 | Format | `cargo fmt --check` | success | success |
+| 📏 | Advisory Rust | `cargo audit` · `cargo deny check` | success — quét 773 crate với 1509 advisory; 2 cảnh báo *yanked* được cho phép (`async-executor`, `chacha20`); deny: `advisories ok, bans ok, licenses ok, sources ok` | success — quét 773 crate với 1509 advisory; 2 cảnh báo *yanked* được cho phép (`async-executor`, `chacha20`); deny: `advisories ok, bans ok, licenses ok, sources ok` |
+| 📏 | Lint backend | `cargo clippy --all-targets --features desktop -- -D warnings` | success — `Finished` sau 45,75 s, không cảnh báo (rustc/cargo 1.98.1, clippy 0.1.98) | success, không cảnh báo |
+| 📏 | Tách feature (G2 #2) | `cargo clippy --all-targets --no-default-features -- -D warnings` + `cargo tree --no-default-features -e normal` | success — `gated crates present in a default build: 0` | success — 0 crate bị gate lọt vào bản build mặc định. Cargo in một báo cáo *future-incompat* cho `block v0.1.6`, crate chỉ có trên macOS; đó không phải cảnh báo clippy và không làm đỏ |
+| 📏 | Parity binding | `cargo test --lib export_bindings` rồi `git diff --exit-code -- ../src/types/generated` | success — 50 test `export_bindings` passed, `git diff` không lệch | 50 test `export_bindings` pass trong lượt `cargo test` dưới đây; cây làm việc sạch sau lượt đó |
+| 📏 | Backend test | `cargo test --features desktop -- --nocapture` | **1437 passed · 0 failed · 2 ignored**, 143 dòng `test result` (bước build test 4m 58s) | **1437 passed · 0 failed · 2 ignored**, 143 dòng `test result` (12 phút 9 giây) |
+| 📏📋 | Chính sách target | `check_test_targets.mjs` (CI gọi không có `--profile`; cục bộ gọi với `--profile desktop`) | success — `test targets: 143, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2)`; log ghi rõ không có `--profile`, nên việc lên lịch target feature-gated **không** được kiểm ở CI (cột cục bộ kiểm nó) | success — `test targets: 143, empty: 3 (allow-listed 3), ignored: 2 (allow-listed 2), feature-gated running under "desktop": 8` |
+| 📏 | Licence · SBOM · schema · NOTICE · flora | `check:licenses` / `check:sbom` / `check:sbom-schema` / `check:notice` / `check:flora-footprint` | success cả năm — 443 thành phần phân phối, 266 văn bản, 1 chưa giải quyết · 461 thành phần, 462 bản ghi phụ thuộc · CycloneDX 1.5 hợp lệ · NOTICE: 422 crate, 21 gói npm phân phối, 18 cài-không-ship, 1 văn bản chưa giải quyết · 7 loại thực vật đặc, drift lớn nhất 3,9e-5 | Chỉ chạy `check:notice` (`gen_notice.mjs --check`): **đỏ, và đó là thiết kế, không phải NOTICE cũ**. `cargo tree` phân giải theo target của máy chạy (`ci.yml` ghi rõ các artifact này mô tả bản build Windows), nên trên macOS nó ra 398 crate thay vì 422: có thêm các crate `core-foundation`/`core-graphics`, thiếu các crate Windows/Vulkan như `d3d12` và `ash`. File đã được khôi phục, không commit gì. Gate này chỉ có nghĩa ở cột CI |
+| 📏 | Đồ thị module | so đồ thị phụ thuộc với `dataflow.json` | success — 16 cạnh khớp hoàn toàn với `cargo-modules` 0.28.0; 6 cặp phụ thuộc vòng vẫn được ghi là SMELL, không phải lỗi (cùng 6 cặp như §1.g) | không chạy |
+| 📏 | Advisory npm | `npm audit --audit-level=high` root và `--prefix tests` | success ở ngưỡng `high`: root **9 moderate** (chuỗi `minimatch` → `@typescript-eslint`), 0 high; `tests/`: `found 0 vulnerabilities` | như CI |
+| 📏 | Vệ sinh văn bản | `check:text-hygiene` | success — 929 file đã track, không có byte điều khiển thô | như CI |
+| 📏 | Artifact E2 | `npm run check:e2` | success — tính lại 264 delta per-seed (analysis) và 22 (smoke), mọi artifact khớp preregistration | như CI |
+| 📏 | Lint frontend | `npm run lint` + `eslint_ratchet.mjs` | **0 error, 0 warning** (baseline 0) | như CI |
+| 📏 | Typecheck `tests/` | `npm run typecheck:tests` | success | success |
+| 📏 | Test frontend | `npm run test` · `npm run test:frontend` | 14 file · **109 passed** · 67 file · **692 passed** | như CI |
+| 📏 | Build + artifact | `npm run build` · `check:bundle-closure` · `check:csp` · `check:bundle` | success — 21 gói có byte trong `dist/` (3 do toolchain chèn); 3 HTML ship, 0 origin ngoài, 0 inline script; 25 chunk, **1905,8 / 2000 KiB** | như CI |
+| 📏 | Danh sách spec E2E | `node scripts/check_e2e_specs.mjs` | 10 file spec được lên lịch khớp danh sách đã commit; 2 file loại trừ có lý do | như CI |
+| 📏 | E2E Playwright | `npm run test:e2e` | **292 passed** (2,5 phút) | **292 passed** (1,2 phút), 5 worker |
+| 📏 | Link tài liệu | `node scripts/check_docs_links.mjs` | 1021 link tương đối + 83 anchor cùng trang trong 173 file, 0 gãy | như CI |
+| 📏 | Metadata tài liệu | `node scripts/check_docs_metadata.mjs` | 113 file, 0 lỗi, 15 review quá hạn (chỉ báo, không làm đỏ); 19 negative control OK | như CI |
+| 📏 | IPC | `check_ipc_reference.mjs` · `npm run check:ipc` | **35 command · 7 event · 0 khác biệt** (cục bộ thêm `check:ipc`: 39 call site `invoke`, 14 khoá tham số, khớp hết) | như CI |
+| 📏 | Hardening — tất định | `cargo test --release` rồi 5 lượt `RAYON_NUM_THREADS=1` | success, trên rustc **1.100.0** (`dtolnay/rust-toolchain@stable`, khác bản ghim 1.98.1 của job Rust). `cargo test --release` (không `--features desktop`, nên 135 target thay vì 143): 1411 passed · 0 failed · 2 ignored; 5 lượt ổn định: 675 dòng `test result`, 7055 passed, 0 failed | không chạy |
+| 📏 | Hardening — golden hash | `cargo test --release --test determinism_tests` | success — 5 passed (gồm `determinism_hash_ghim`, `world_hash_bat_duoc_thay_doi_that`, `determinism_200_ticks`, `live_schedule::the_live_checksum_distinguishes_one_tick_from_many`). **Log không in giá trị hash.** Bước grep `rand::thread_rng()` dưới `src-tauri/src` cũng success | không chạy |
+
+Hai cột chỉ khác nhau ở môi trường, không ở commit: một hàng đỏ ở một cột và xanh ở cột kia là một
+khác biệt **nền tảng**, cần đọc trước khi coi là bug (như hàng NOTICE). Từ §1.g đến đây số test tăng
+vì các PR #59–#92 thêm test, không phải vì đổi cách đếm: muốn biết PR nào thêm test nào thì đọc PR đó,
+đừng suy từ hiệu hai con số.
 
 ### 1.g Đo 2026-11-16 trên thân cây `bb78e63` — CI của lần fast-forward `main`
 
@@ -121,8 +177,9 @@ Mỗi hàng ghi **lệnh đã chạy**, **ngày chạy**, **cấu hình**, và *
 > lại). Cùng ngày thân cây còn nhận #46–#51, #54, #55, #57, #58, #60, #62–#65 và #67, tức hạ tầng cổng
 > (G2, G1, G7), ba bản sửa tất định/sinh sản (F-037…F-041 trong [`FINDINGS.md`](../../FINDINGS.md)) và
 > phần lớn thẻ "thế giới đọc được". **Không có lượt CI toàn bộ nào được ghi lại sau §1.g trong tài liệu
-> này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. Việc tiếp theo và
-> chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-16).
+> này**, nên §1.g vẫn là bảng số gần nhất; số mới phải đo lại, không suy từ danh sách PR. *(Lượt đo lại
+> đó là [§1.h](#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos), 2026-11-17.)* Việc tiếp theo và
+> chướng ngại chính của nhánh khoa học (F-042) ở [§3.00](#300-việc-kế-tiếp--cập-nhật-2026-11-17).
 
 #### Sau §1.g — `check:e2` sau PR #59 (QĐ-E2M = B), đo 2026-11-16
 
@@ -522,12 +579,59 @@ Ghi lại để phiên sau không vô tình gỡ mất:
 Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi mục có điểm neo cụ thể và một
 định nghĩa hoàn thành kiểm tra được.
 
-### 3.00 Việc kế tiếp — cập nhật 2026-11-16
+### 3.00 Việc kế tiếp — cập nhật 2026-11-17
 
 > Mục này **thay thứ tự ưu tiên** của bàn giao 2026-07-27 ở §3.0 bên dưới; các mục §3.x còn lại giữ làm
 > bối cảnh. Nó trỏ tới PR và finding thay vì chép số (quy tắc 8). Quyết định thuộc chủ dự án nằm ở
 > [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) và
 > [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md).
+
+#### Chặng 1 đã đóng: bảo vệ nhánh bật ngày 2026-11-17
+
+Cổng ra của chặng 1 trong [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) §5 có hai vế.
+Vế đầu là CI xanh cả hai job trên thân cây (§1.g, và mọi PR merge ngày 16–17/11). Vế sau là hai job đó thành
+gate bắt buộc; chủ dự án bật nó ngày 2026-11-17. Kiểm bằng
+`gh api repos/DuongNAD/Anima-Engine/branches/<nhánh>/protection` cùng ngày:
+
+| Nhánh | Check bắt buộc | `enforce_admins` | Force-push · xoá nhánh |
+|---|---|---|---|
+| `feat/ecological-selection` | `Rust (src-tauri)`, `Frontend` | `true`: áp cho mọi người, kể cả admin | cấm · cấm |
+| `main` | `Rust (src-tauri)`, `Frontend` | `false`: chỉ áp cho người không phải admin | cấm · cấm |
+
+Cả hai nhánh: `strict = false` (PR không phải cập nhật theo nhánh đích trước khi merge), không bắt buộc
+review. Job `determinism` của workflow `hardening` **không** nằm trong danh sách bắt buộc.
+
+Hai nhánh đặt khác nhau vì `ci.yml` chỉ chạy khi push vào `main` và khi có PR. PR merge vào thân cây, nên
+check của nó chạy ngay trên PR. Còn commit mà `main` được fast-forward lên thì chưa có check nào cho tới khi
+nó được push lên `main`; nếu bắt cả admin qua gate, GitHub sẽ từ chối chính lượt fast-forward đó.
+
+Hệ quả cho người và agent:
+- Mọi thay đổi vào thân cây phải qua PR, kể cả tài liệu. Push thẳng bị từ chối, vì không CI nào chạy khi push
+  vào thân cây. Kiểm cùng ngày: cả 47 commit first-parent của thân cây từ 2026-11-14 đều là merge PR, nên luật
+  này không đổi cách làm hiện có.
+- PR chỉ merge được khi cả hai job xanh. Job Rust chạy khoảng 31 phút trên Windows (§1.g).
+- Gỡ hoặc nới: GitHub → Settings → Branches, hoặc `gh api -X DELETE …/branches/<nhánh>/protection`.
+
+Chặng 2 đã đóng từ 2026-11-16 (C5 là §1.g). Theo thứ tự của kế hoạch 13/11, chặng kế là chặng 3: các thẻ G3,
+G4, G5, G6, G9 và R0 của [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md) chưa có PR nào
+(đối chiếu danh sách PR ngày 2026-11-17).
+
+#### Đã xong 2026-11-17 (đã merge vào `feat/ecological-selection`)
+
+- **#77** — E-SEL1: đăng ký trước được **đóng băng** (fixture, test hình dạng, `run_esel1_experiment`,
+  `scripts/verify_esel1_artifacts.mjs`) và siết tám kẽ hở G1–G8; người kiểm chứng độc lập: VERIFIED.
+- **#83** — **F-043**: `live.food_cap` chưa từng có tác dụng (bị ghi đè về 50 mỗi tick); sửa bằng `LiveFoodCap`,
+  đường mặc định không đổi. Kèm sửa đổi 1 của E-SEL1 (ghi lại smoke lần 1, thêm kiểm tra thao tác).
+- **#84** — sửa đổi 2: E-SEL1 **đóng tại smoke, không có thí nghiệm**. Có test giữ cho manifest thí nghiệm không
+  chạy được.
+- **#85** — test: agent hết năng lượng có `target_velocity` bằng 0 (P3).
+- **#86** — cổng zero-alloc của emit chỉ đếm luồng của chính test (flake trên CI của #84, như #80).
+- **#87** — thẻ B của ADR-0007: ba khoá opt-in cho thu nhập và nước của thú săn (QĐ-ECO-B = opt-in).
+- **#88** — chẩn đoán sau E-SEL1, QĐ-SEL1b, F-044.
+- **#89** — test khoá P1 (thú săn và con mồi cùng sống tới t = 6.000 ở ≥ 3/10 seed; xanh trên CI Windows), QĐ-ECO-B,
+  bằng chứng cho phương án C trong ADR-0007.
+- **#90** — test đặc tả F-044 (founder đói lâu chết ngay khi cạn nước; đối chứng no sống trọn 9 tick ân hạn).
+- **#91** — `tokio` thu hẹp từ `full` về năm feature đang dùng (§3.5).
 
 #### Đã xong 2026-11-16 (đã merge vào `feat/ecological-selection`)
 
@@ -548,36 +652,67 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 - **Thẻ thế giới đọc được** ([kế hoạch ba máy](../ai/planning/2026-11-16-readable-world-three-machines.md)):
   RW-A1 #54, RW-A2 #60, RW-A3 #63, RW-B1 #52, RW-B2 #55, RW-B3 #62, RW-C1 #53, RW-C2 #58, RW-C3 #67, RW-C4 #69.
 
-#### P1 — Thú săn sống được: cân bằng năng lượng và nguồn nước (điều kiện của S43)
+#### P1 — Thú săn sống được: ĐÃ ĐẠT định nghĩa hoàn thành (2026-11-17); S43 vẫn mở
 
-**Vì sao.** Có vận động rồi (#76) thú săn vẫn tuyệt chủng ở mọi lượt đo thăm dò: thu nhập bằng 15–30% chi
-phí (con mồi bị hút cạn và nơi trú Holling III che nó), và **không có nguồn nước** (hồ ở xa, thú săn không
-ăn Food) nên chúng chết khát khi còn năng lượng. Không núm đơn lẻ hay kết hợp nào đã thử cho cùng tồn tại.
-Bằng chứng: phần "Follow-up evidence" của PR #73/#61 và ADR-0006 §"không quyết".
+**Đã làm.**
+- **#87**: thẻ B của ADR-0007, ba khoá opt-in `live.kill_hydration`, `live.kill_efficiency`,
+  `live.target_min_energy`. Mặc định không đổi; QĐ-ECO-B = opt-in.
+- **Test khoá P1** (`predator_prey_coexistence_tests`, PR này): cấu hình thẻ A + B cho thú săn và con mồi cùng
+  sống tới t = 6.000 ở **5/10 seed**. Bỏ thẻ B thì chỉ còn **1/10**, và test đỏ.
+- EU kín, tất định nhiều tiến trình và restore đã được `eco_card_b_tests` kiểm.
 
-**Quyết định của chủ dự án trước** (mọi lựa chọn đổi ngữ nghĩa sinh thái và checksum): nước cho thú săn
-(uống từ con mồi bị giết, giảm hao nước, hay đường tới hồ), thu nhập mỗi lần ăn (Lindeman, trần bắt),
-nơi trú Holling, chi phí hoạt động. Một đề xuất ADR có số đo là bước đầu.
+Vậy định nghĩa hoàn thành dưới đây đã đạt. Nó **không** có nghĩa S43 hay Red Queen đã có.
 
-**Định nghĩa hoàn thành:** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
+**Còn lại.**
+- **Bằng chứng cho phương án C** ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), phần "Khoá
+  P1 và bằng chứng cho phương án C"):
+  - Thú săn founder sinh sản trước lần săn đầu tiên, rồi chết đói trên đường tới con mồi.
+  - Giảm chi phí thú săn × 0,5 kèm bán kính đòn 5 cho 8/10 seed.
+  - Seed còn hỏng là do con mồi thiếu nước.
+- **Quyết định của chủ dự án:**
+  - QĐ-ECO-C1: có làm thẻ opt-in `live.predator_cost_mult` + `live.strike_radius` không, kèm phép đo đăng ký trước
+    trên ≥ 20 seed.
+  - Có làm một khoá về nguồn nước không. Khoá đó phục vụ cả S43 lẫn thí nghiệm chọn lọc.
+
+**Định nghĩa hoàn thành (đạt):** một cấu hình được khai báo (khoá manifest, vắng = như cũ) cho thú săn và con mồi
 cùng sống tới t = 6.000 ở ≥ 3 seed, EU kín, tất định nhiều tiến trình; test hành vi khoá lại.
 
-#### P2 — E-SEL1: từ bản nháp tới thí nghiệm đã đăng ký
+#### P2 — E-SEL1: ĐÃ ĐÓNG tại smoke, không có thí nghiệm (2026-11-17)
 
-**Điểm neo:** PR #77 (bản nháp đăng ký trước, chưa đóng băng). Còn chặn: (1) chương trình chạy
-`run_esel1_experiment` (thẻ riêng), (2) nên có khoá `live.mutation_rate` cho nhánh đối chứng trôi dạt,
-(3) chạy smoke trên seed loại trừ rồi **đóng băng** đăng ký (fixture + test hình dạng + script kiểm
-artifact) **trước** mọi seed thí nghiệm.
+**Đã xảy ra.** Smoke lần 1 dừng ở bước C và tìm ra F-043 (#83). Smoke lần 2 trên bản đã sửa qua kiểm tra thao
+tác, tức trần thức ăn giờ thay đổi thế giới thật. Nhưng hạ trần từ 50 xuống 25 / 17 / 13 / 6 chỉ làm standing crop
+của đồng cỏ đổi ±6 % (r từ 0,943 đến 1,027; thuật toán cần 0,4–0,6). Theo điều sửa đổi 1 đã cam kết trước, bản đăng
+ký **đóng, không có thí nghiệm** (sửa đổi 2). Các manifest thí nghiệm giữ giá trị đệm âm nên không chạy được, có test
+khẳng định. Không seed thí nghiệm nào chạy; không giá trị khối lượng cơ thể nào được đọc. Bản ghi hai lần smoke ở
+`artifacts/experiments/e-sel1-smoke-record/`; chi tiết ở
+[kế hoạch E-SEL1](../ai/planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md).
 
-**Định nghĩa hoàn thành:** đăng ký trước được commit thành fixture và có gate artifact tương đương `check:e2`
-· chỉ sau đó mới chạy · kết quả (kể cả null) báo cáo theo mẫu E2.
+**Quyết định của chủ dự án: QĐ-SEL1b.** Có làm lại thí nghiệm chọn lọc theo khan hiếm không, và với yếu tố nào.
+Bằng chứng là [chẩn đoán sau E-SEL1](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md): đo thăm dò, mù với
+khối lượng cơ thể, seed 1–6. Nó cho thấy:
+- Gặm đồng cỏ là 90–93 % thu nhập của con mồi; `Food` chỉ vài phần trăm.
+- Đồng cỏ không bao giờ cạn, vì sinh sản dừng cứng ở 80 con mồi (`agent_systems.rs:715`).
+- Nước, không phải thức ăn, giới hạn quần thể.
+- Chỉ hạ sức chứa đồng cỏ mới đưa standing crop vào dải 0,4–0,6.
+
+Phương án:
+- **A** (khuyến nghị): khoá trần sinh sản `live.prey_cap`, rồi khan hiếm đồng cỏ; đo thăm dò trước khi đăng ký.
+- **B**: khan hiếm nước.
+- **C**: chỉ hạ sức chứa.
+- **D**: dừng dòng này, dồn sức cho S43.
+
+Có hai quan sát từ một seed, chưa kết luận:
+- Nhánh `live.mutation_rate = 0` tuyệt chủng ở mọi lượt smoke.
+- Nhánh dồi dào có quần thể tối thiểu thấp hơn nhánh khan hiếm.
+
+**Định nghĩa hoàn thành, nếu làm bản đăng ký mới:** đăng ký trước mới thành fixture; smoke qua kiểm tra thao tác và
+bước C trước mọi seed thí nghiệm; kết quả, kể cả null, báo cáo theo mẫu E2.
 
 #### P3 — Câu hỏi mở nhỏ đi kèm #76
 
 `LIVE_MODEL_VERSION` chưa tăng vì đường mặc định không đổi (chủ dự án xác nhận hay tăng) · cảm biến và bộ lái
-dùng khoảng cách Euclid không bọc biên, nên agent sát biên có thể đi đường vòng · chưa có test riêng cho việc
-`target_velocity` về 0 khi năng lượng ≤ 0 (mã đúng, đã kiểm) · bật vận động mặc định trong app là một quyết
-định riêng sau khi xem số đo.
+dùng khoảng cách Euclid không bọc biên, nên agent sát biên có thể đi đường vòng · bật vận động mặc định trong app
+là một quyết định riêng sau khi xem số đo. (Test cho `target_velocity` về 0 khi năng lượng ≤ 0: xong ở #85.)
 
 #### P4 — Phần còn lại của "thế giới đọc được" (phần cứng/quota, không phải thiết kế)
 
@@ -1018,13 +1153,22 @@ grep còn lại là văn xuôi khớp chữ "burned energy".
 **Định nghĩa hoàn thành:** `cargo tree --no-default-features` không còn `burn-wgpu`/`naga` ·
 gate `cargo tree` trong CI mở rộng để phủ chúng · fallback CPU vẫn chạy.
 
-#### 3.5 Thu hẹp `tokio = { features = ["full"] }`
+#### 3.5 Thu hẹp `tokio = { features = ["full"] }` — ✅ **XONG (2026-11-17)**
 
-[`src-tauri/Cargo.toml:56`](../../src-tauri/Cargo.toml). Hai hệ con cần tokio đã nằm sau feature
-(`networking`, `neo4j`), nên `full` giờ là thừa. Đây là bước tự nhiên tiếp theo sau G2 gate #2.
+[`src-tauri/Cargo.toml`](../../src-tauri/Cargo.toml) giờ là
+`default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "net"]`.
+Mỗi feature có điểm dùng thật: `rt-multi-thread` (`runtime::Builder::new_multi_thread` ở
+`core/simulation_loop.rs` và `evolution/lineage.rs`), `macros` (`#[tokio::test]`, `select!`, `join!`),
+`sync` (`Mutex`, `Semaphore`), `time` (`sleep`/`timeout`/`Instant`, và `enable_all()` cần nó),
+`net` (`TcpListener`/`TcpStream` trong `core/networking_systems.rs` và test migration). Không có
+chỗ nào dùng `tokio::io`, `fs`, `process`, `signal`.
 
-**Định nghĩa hoàn thành:** chỉ liệt kê feature thật sự dùng · cả hai cấu hình
-(`--no-default-features` và `--features desktop`) đều clippy sạch và test xanh.
+**Bằng chứng (macOS, 2026-11-17):** `cargo clippy --all-targets -- -D warnings` sạch ở cả cấu hình
+mặc định và `--features desktop` · `cargo test --features desktop` 1434 pass / 0 fail / 2 ignored và
+`check_test_targets.mjs --profile desktop` xanh · `cargo test` mặc định 1408 pass / 0 fail / 2 ignored và
+`--profile default` xanh · `cargo build --release --features desktop` xanh · `Cargo.lock` không đổi · `cargo tree --no-default-features` vẫn 0 crate bị gate.
+Lưu ý: `NOTICE` báo cũ khi chạy `gen_notice.mjs --check` trên macOS **cả trước lẫn sau** thay đổi này
+(file được sinh từ đồ thị host Windows), nên không được tái sinh ở đây.
 
 #### 3.6 G2 gate #1 — một thay đổi luật đổi cả hai engine
 
@@ -1259,13 +1403,13 @@ vẫn trả đồ thị **đầy đủ**.
 
 | # | Việc | Điểm neo | Vì sao đáng làm |
 |---|---|---|---|
-| 3.9 | Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`, hoặc bỏ nếu không còn cần | [`ai/model.rs:360`](../../src-tauri/src/ai/model.rs) | Đây là **2/2** khối unsafe của cả backend, và không cái nào có luận chứng. Type này ôm `WgpuDevice` |
+| ~~3.9~~ | ~~Thêm `// SAFETY:` cho hai `unsafe impl Send/Sync`~~ **XONG** (`0d6b4b2`, 2026-07-27; ghi nhận 2026-11-17) | [`ai/model.rs`](../../src-tauri/src/ai/model.rs) | `unsafe impl Send` đã bị bỏ (mọi trường tự `Send`; test `brain_model_is_send_without_an_unsafe_impl` giữ cho nó không quay lại). Còn đúng **một** `unsafe impl Sync for BrainModel`, kèm luận chứng `// SAFETY:` và hai yêu cầu được test cấu trúc giữ. Dòng cũ ở đây ("2/2 khối không có luận chứng") đã lỗi thời |
 | 3.10 | Hoà giải trạng thái ADR-0002 | [`ADR-0002`](../decisions/ADR-0002-world-laws-and-exotic-energy.md) vẫn `proposed` | AE1–AE3 đã ship. Theo quy tắc 6 của [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), khi code và tài liệu xung đột thì **mở finding**, không tự coi code là đúng. **Đã lên giá:** ADR-0004 nay dựa vào ER01 của nó — xem §3.8 |
 | ~~3.11~~ | ~~Giảm 491 warning ESLint~~ **XONG** (2026-07-27, `feature-anima-completion`) | `scripts/eslint_ratchet.mjs` baseline = **0** | 491 → 483 → 267 → **0**. Không nới rule, không thêm `eslint-disable`: sáu directive cũ đã biến mất, mọi `any` được thay bằng kiểu thật, và bốn rule React Compiler pass nhờ đổi code — frame loop đọc `state.scene`/`state.camera` thay vì đóng gói giá trị render, phần ghi three.js mệnh lệnh còn lại thành hàm có tên nhận đối tượng qua tham số. Ba finding hoá ra là lỗi thật (xem commit) |
 | ~~3.18~~ | ~~Bỏ mọi lối thoát kiểu (`as any` / `as unknown as` / `as never` / `eslint-disable`) và bật typecheck cho `tests/`~~ **XONG** (2026-07-27, `feature-anima-completion`) | `npm run typecheck:tests` (gate mới trong CI) · [`src/window-globals.d.ts`](../../src/window-globals.d.ts) · [`tests/mocks/segment_fixtures.ts`](../../tests/mocks/segment_fixtures.ts) | Grep chính xác trên `src`/`tests`/`playground` **= 0** cho cả bốn mẫu, kể cả trong comment. Không suppress, không nới rule, không xoá test. Mỗi chỗ được gỡ bằng cách **làm cho điều đang bị khẳng định trở thành đúng**: các thuộc tính `window` được khai báo thật; `buildAgentHierarchy` nhận `readonly unknown[]` đúng như dữ liệu IPC nó vốn phòng thủ (lộ ra 2 lỗi thật: `segment_id` không phải số bị key bằng `undefined`, và `s.x \|\| 0` cho chuỗi lọt vào trường `number`); `biomeAt`/`findSpawn` nhận đúng các field chúng đọc; mock r3f dựng `THREE.Scene`/`PerspectiveCamera` thật. **Phát hiện phụ:** gói `tests/` chưa từng được typecheck — **86 lỗi** không lệnh nào báo, nay = 0 và có gate | |
 | 3.12 | Tách file lớn | `experiment_runner.rs` 3.173 dòng · `experiment.rs` 2.192 · `exotic_energy.rs` 1.839 | Tiền lệ tốt đã có: `aae673e` tách learner và emit thread khỏi `simulation_loop.rs` |
 | 3.13 | Nợ phụ thuộc | `burn` 0.13.2 (ghim, có lý do ghi trong CLAUDE.md) · `bevy_ecs` 0.13 · React 18→19 · `@react-three/fiber` 8→9 · `three` 0.184→0.185 | **Không phải nợ bảo mật** — advisory đã sạch và đã có gate. Là nợ framework |
-| 3.14 | Dọn tài liệu cũ ở root | [`PHASE6_HANDOFF_REPORT.md`](../archive/PHASE6_HANDOFF_REPORT.md), [`PHASE1_EXECUTION_PLAN.md`](../archive/PHASE1_EXECUTION_PLAN.md) | Mô tả công việc Phase 1 / Phase 6 đã xong từ lâu. Đã gắn nhãn lịch sử; bước sau là chuyển vào `docs/archive/` |
+| ~~3.14~~ | ~~Dọn tài liệu cũ ở root~~ **XONG** (ghi nhận 2026-11-17) | [`PHASE6_HANDOFF_REPORT.md`](../archive/PHASE6_HANDOFF_REPORT.md), [`PHASE1_EXECUTION_PLAN.md`](../archive/PHASE1_EXECUTION_PLAN.md) | Cả hai đã nằm trong `docs/archive/`; root không còn bản nào |
 | 3.16 | Đóng phần còn nợ của OSS-003 | [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) · [`LICENSE-MIT`](../../LICENSE-MIT) / [`LICENSE-APACHE`](../../LICENSE-APACHE) | **Phần kỹ thuật đã xong (2026-07-27).** `NOTICE` + `licensing/THIRD_PARTY_LICENSES.txt` + SBOM đã validate schema, tất cả đều sinh tự động và có gate CI. Dòng cũ ở đây viết *"chưa có `NOTICE`"* — **sai sự thật** từ `766609e`. **Cập nhật 2026-07-27 (đợt hai):** 31/32 khoảng trống đã đóng bằng kho vendor `licensing/upstream/` — 39 file license lấy từ đúng commit bất biến của bản phát hành (bằng chứng: `.cargo_vcs_info.json` trong `.crate` đã publish, `gitHead` npm, tag đã resolve), generator đọc fail-closed, `npm run verify:upstream-licenses` đối chiếu lại byte từ URL đã ghim. **Còn nợ, vẫn chặn phát hành:** (a) **1** thành phần — `hexf-parse` 0.2.1 (CC0-1.0) — upstream chưa từng publish văn bản license cho bản đó; đóng dòng này là **quyết định pháp lý**, không phải engineering, xem `UNRESOLVED.md`; (b) licence của dự án vẫn không tách phạm vi code / model / dataset / asset; (c) `neo4rs`/`neo4rs-macros` chỉ có tuyên bố license trong README và `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn — cần pháp lý đọc, xem `licensing/README.md` |
 | 3.17 | Inventory dependency (OSS-004) | [`sbom.cdx.json`](../../sbom.cdx.json) · [`OPEN_SOURCE_LANDSCAPE.md`](../research/OPEN_SOURCE_LANDSCAPE.md) | **Inventory tự động đã có:** 458 thành phần với purl, biểu đồ phụ thuộc và SPDX, sinh từ lockfile đã ghim. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận khảo sát tới 2026-07-26) nay không thể tái diễn cho dep runtime — nhưng ma trận khảo sát thủ công cho **model / dataset / asset** vẫn chưa có, và SBOM không thay thế được nó |
 
@@ -1296,7 +1440,9 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   *test anh em*. `observer_trace_zero_alloc_tests` **đã** là một `#[test]` duy nhất và vẫn fail
   ("made 2 heap allocations") trong lượt chạy đầy đủ 2026-07-29, pass 3/3 khi chạy riêng — vì
   **thread chính của libtest** sống suốt tiến trình và có cấp phát. Đã thêm
-  `start_tracking_this_thread()` (chỉ đếm thread gọi) và chuyển suite đó sang dùng nó.
+  `start_tracking_this_thread()` (chỉ đếm thread gọi) và chuyển suite đó sang dùng nó. Cổng combat
+  (#80, 2026-11-16) và cổng emit (#86, 2026-11-17, flake trên CI của một PR chỉ sửa tài liệu) đã đi
+  cùng đường đó, vì mọi hàm chúng đo đều chạy trên thread gọi.
 
   **Đừng chuyển bừa mọi suite sang nó.** `map_generation_zero_alloc_tests` và
   `terrain_challenger_tests` **phải** giữ `start_tracking()` process-wide: `TerrainMap::generate`
@@ -1332,7 +1478,10 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
     Windows là ~15,6ms, nên biên an toàn mỏng theo thiết kế chứ không do hồi quy.
 
   Chạy riêng: **3/3 pass, ba lần liên tiếp.** Cách sửa đúng là gộp về một `#[test]` (nửa zero-alloc)
-  và cho test thời gian một trần rộng hơn hoặc bỏ `sleep` khỏi phép đo — **chưa làm**.
+  và cho test thời gian một trần rộng hơn hoặc bỏ `sleep` khỏi phép đo. **Nửa đầu đã làm** (`c6e8f42`,
+  2026-07-29): ba phần nay là một `#[test]` (`challenger_meta_ai_contracts`). Cổng zero-alloc ở đó **phải**
+  giữ `start_tracking()` toàn tiến trình, vì `Schedule::default()` chạy hệ trên pool luồng. **Nửa sau
+  chưa làm:** test thời gian vẫn cộng `sleep(16ms)` với trần 1.200 ms.
 - **Hỏi máy đang chạy gì, bằng lệnh, trước khi gọi một lần đỏ là hồi quy.** Lúc hai test trên đỏ,
   máy có **2 `cargo` + 1 `rustc` + 6 `MSBuild` + 17 `node`** của phiên khác, và 3 worktree vừa được
   ghi trong 2 giờ. Suite `tests/` cùng lúc đó cho 6 lỗi — 3 lỗi là `Test timed out in 15000ms` thật,

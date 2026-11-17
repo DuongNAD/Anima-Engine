@@ -2,7 +2,7 @@
 title: Chạy coding agent trên Anima Engine
 status: active
 owner: maintainers
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 review_cycle: monthly
 ---
 
@@ -19,33 +19,49 @@ hoạch mới. Nó gom những gì cần để bắt đầu và trỏ về đún
 | Prompt lead, luật swarm, verifier, từng thẻ | [File prompt swarm](../ai/planning/2026-11-05-swarm-prompts.md) |
 | Prompt chi tiết của B3b, HT-C…; BLOCK 0 (luật đứng) | [Brief 31/10](../ai/planning/2026-10-31-antigravity-brief.md) |
 | Quyết định của chủ dự án | [Roadmap 31/10 §4](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) |
-| Số đo | [STATE §1.g](../planning/STATE_OF_THE_PROJECT.md#1g-đo-2026-11-16-trên-thân-cây-bb78e63--ci-của-lần-fast-forward-main) (CI của thân cây tại `bb78e63`, 2026-11-16) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
+| Số đo | [STATE §1.h](../planning/STATE_OF_THE_PROJECT.md#1h-đo-2026-11-17-tại-6f14124--ci-của-lần-fast-forward-main-và-một-lượt-chạy-cục-bộ-macos) (CI của `main` = thân cây tại `6f14124` cộng một lượt chạy cục bộ macOS, 2026-11-17) là số mới nhất; banner đầu [STATE §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền) trỏ tới nó |
 
 Trạng thái trong trang này ghi ngày **2026-11-14**. Khi trang và một tài liệu ở bảng trên lệch nhau,
 tài liệu ở bảng thắng; sửa trang này.
 
 ## 1. Đang ở đâu
 
-- **Chặng 0 → chặng 1** của kế hoạch 13/11. Thứ tự không đổi: xanh → gộp → đo lại → khoa học →
-  phát hành → nhiều máy.
+- **2026-11-17: chặng 1 và chặng 2** của kế hoạch 13/11 **đã đóng**. Thân cây và `main` được bảo vệ, hai job
+  CI là gate bắt buộc ([STATE §3.00](../planning/STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17)).
+  Chặng 0 vẫn còn các ô quyết định trống ở dưới. Theo thứ tự, chặng kế là chặng 3. Thứ tự không đổi:
+  xanh → gộp → đo lại → khoa học → phát hành → nhiều máy.
 - **Thân cây là `feat/ecological-selection`** (QĐ-A, 2026-11-01). Chồng PR #38 → #40 trên
   `fix/ci-gates-green` sẽ được gộp **vào** thân cây (thẻ T2).
 - **2026-11-16:** T2 (HT-C) đã merge thành PR #45 (2026-11-15), và `main` đã được fast-forward lên thân cây
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-2/H, QĐ-P1…P3, QĐ-M1…M8.
+  (commit icon thật). **Còn trống:** QĐ-C, QĐ-1, QĐ-EN, QĐ-P1…P3, QĐ-M1…M8 (QĐ-2/H quyết 2026-11-17, dưới).
 - **Đã quyết 2026-11-16** (phiên lead theo uỷ quyền của chủ dự án trong chat): QĐ-E2M = B (#59),
   QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
   ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
   ([ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md)).
+- **Đã quyết 2026-11-17** (phiên lead theo uỷ quyền "làm theo bản kế hoạch"): QĐ-ECO-B = opt-in (thẻ B của
+  [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), #87; chỉ cho thăm dò S43, không mặc định).
+  **Còn trống, chờ chủ dự án:** QĐ-SEL1b (thí nghiệm chọn lọc theo khan hiếm làm lại hay không, với yếu tố
+  nào; xem chẩn đoán sau E-SEL1) và việc có làm thẻ C1 của ADR-0007 không.
+- **Đã quyết 2026-11-17** (phiên lead, cùng uỷ quyền "theo bản kế hoạch"): **QĐ-2/QĐ-H** theo đề xuất của
+  [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md) §2: gỡ mọi bằng chứng và dữ liệu giả ngay
+  (G4, G6), giữ mã; Map 2 và Research Dashboard có ship hay không thì quyết sau. Chủ dự án đảo lại được.
+- **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
+  còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi R0
+  khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
+  trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
   được chuyển nguyên byte sang nhánh **local** `wip/hardening-m2-m4-tests` (`f9ff5f1`, chưa push).
 
 ## 2. Việc của chủ dự án trước khi bật agent
 
-1. **Commit và push thân cây.** Lead đọc kế hoạch, thẻ và brief bằng `git show origin/…`; thay
-   đổi chưa push thì agent không thấy, và worktree tạo từ `HEAD` không chứa file chưa commit.
+1. **Đưa thay đổi lên thân cây qua PR và merge nó.** Lead đọc kế hoạch, thẻ và brief bằng
+   `git show origin/…`; thay đổi chưa lên thân cây thì agent không thấy, và worktree tạo từ `HEAD` không
+   chứa file chưa commit. Từ 2026-11-17 thân cây được bảo vệ: push thẳng bị từ chối, và PR chỉ merge
+   được khi `Rust (src-tauri)` và `Frontend` cùng xanh.
 2. **Mở phiên Claude Code mới** nếu dùng Claude: hook rustfmt chỉ nạp khi phiên bắt đầu.
 3. Mở teamwork Antigravity, dán **PROMPT 0 (Lead)** từ
    [file prompt swarm §1](../ai/planning/2026-11-05-swarm-prompts.md), rồi điền khối `DECISIONS`
@@ -77,7 +93,8 @@ QD-B      = per-card authorization. AGENTS.md stays the default (src-tauri/src r
             may write src-tauri/src or an R5 file only with an AUTHORIZATION line in R5-AUTH that
             names its exact paths (owner, 2026-11-14)
 QD-C      =
-QD-2/QD-H =
+QD-2/QD-H = remove every piece of fabricated evidence and data now (G4, G6); keep the code;
+            ship-or-not decided later (lead session under the owner's "follow the plan", 2026-11-17)
 QD-4      = A: continuous energy-gated reproduction in the live adapter behind manifest key
             live.reproduction (absent/0 = off); ADR-0005 (owner's delegate in chat, 2026-11-16)
 QD-5      = yes: ADR-0005, scope = continuous reproduction in live experiments only;
@@ -86,6 +103,10 @@ QD-LOC    = A: a steering drive writes InertiaComponent.target_velocity; speed f
             CPG/brain output, not a per-class constant; ADR-0006 (owner's delegate in chat, 2026-11-16)
 QD-ECO    = A: opt-in live keys for a steering drive floor and thirst steering so founders can move
             and reach water; default world unchanged; ADR-0007 (owner's delegate in chat, 2026-11-16)
+QD-ECO-B  = opt-in: live.kill_hydration, live.kill_efficiency, live.target_min_energy (ADR-0007 card B,
+            #87); for S43 exploration only, never default (owner's delegate in chat, 2026-11-17)
+QD-SEL1b  =
+QD-ECO-C1 =
 QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_reference.mjs, in
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry
@@ -192,5 +213,5 @@ Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14.
 
 ## 8. Sau mỗi đợt
 
-Chủ dự án merge, ghi số đo vào STATE §1 (một tiểu mục `§1.x` mới, tiếp sau §1.g), thêm
+Chủ dự án merge, ghi số đo vào STATE §1 (một tiểu mục `§1.x` mới, tiếp sau tiểu mục mới nhất, hiện là §1.h), thêm
 một dòng vào [`TODO.md`](../../TODO.md), rồi sửa §1 và §3 của trang này.

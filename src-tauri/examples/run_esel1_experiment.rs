@@ -31,8 +31,10 @@
 //! | `--replay` | one seed of one arm | `<out>/replay/` | nothing |
 //!
 //! `execution-lock.json` is written **by hand** after the smoke (draft section 7). `--ensemble`
-//! refuses to start without it, and, when the lock states `duration_ticks`, refuses a different
-//! effective duration, so the rung cannot drift after the lock. Seeds are bound to the
+//! refuses to start without it, refuses a lock that lacks `duration_ticks`, `N0`, `F_hi` or `F_lo`,
+//! and refuses one that disagrees with the effective duration or with the founders and food caps of
+//! the manifests in `--manifest-dir`, so nothing can drift after the lock. The lock is hashed into
+//! `checksums.sha256` and its sha256 is recorded in `provenance.json`. Seeds are bound to the
 //! preregistration: an ensemble whose manifests declare anything but the registered execution order
 //! (or the smoke seed) is refused before a tick runs, and `--replay` refuses a seed its manifest does
 //! not declare.
@@ -75,6 +77,7 @@ const PREREG_FILE: &str = "esel1-preregistration.json";
 const LOCK_FILE: &str = "execution-lock.json";
 const ALLOWED_FACTOR_PATH: &str = "initial_conditions";
 const FOOD_KEY: &str = "live.food_cap";
+const FOUNDERS_KEY: &str = "live.founders";
 const MUTATION_KEY: &str = "live.mutation_rate";
 
 const PRIMARY_OBSERVABLE: &str = "live.trait_mass_mean";
@@ -94,6 +97,20 @@ const DESCRIPTIVE_OBSERVABLES: [&str; 9] = [
     "live.trait_mass_p10",
     "live.trait_mass_p90",
 ];
+
+/// The only observables a smoke run may emit or write. The first two are what the smoke algorithm
+/// consults; the rest are harness integrity and descriptive counts. No `live.trait_mass_*` value, and
+/// no effect computed from one, may reach any smoke output: the rule is enforced here, not by
+/// discipline.
+const SMOKE_ALLOWED_OBSERVABLES: [&str; 5] = [
+    "live.agent_count",
+    "live.standing_crop",
+    "live.closed_eu_total",
+    "live.births",
+    "live.deaths",
+];
+/// Step A of the smoke algorithm reads samples with `tick <= SMOKE_STEP_A_TICKS`.
+const SMOKE_STEP_A_TICKS: u64 = 1200;
 
 const MATERIALITY_DZ: f64 = 0.8;
 const MATERIALITY_RELATIVE_SHIFT: f64 = 0.05;
@@ -203,6 +220,20 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
                 m.experiment_id, m.duration_ticks
             ));
         }
+        if smoke {
+            // The smoke consults only the allow-listed observables (draft section 6).
+            if !SMOKE_ALLOWED_OBSERVABLES
+                .iter()
+                .take(2)
+                .all(|o| m.observable_ids.iter().any(|x| x == o))
+            {
+                return Err(format!(
+                    "smoke arm '{}' must request live.agent_count and live.standing_crop",
+                    m.experiment_id
+                ));
+            }
+            continue;
+        }
         if !m.observable_ids.iter().any(|o| o == PRIMARY_OBSERVABLE)
             || !m.observable_ids.iter().any(|o| o == COUNT_OBSERVABLE)
         {
@@ -231,17 +262,15 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
             ));
         }
         let lock = read_json(&lock_path)?;
-        if let Some(t) = lock.get("duration_ticks").and_then(|v| v.as_u64()) {
-            if t != rung {
-                return Err(format!(
-                    "execution-lock.json locks duration_ticks = {t} but this run would use {rung}; \
-                     the rung is chosen once and never changed"
-                ));
-            }
-        }
-        Some(lock)
+        validate_lock(&lock, rung, &control, &treatment, drift.as_ref())?;
+        let digest = sha256_file(&lock_path).map_err(|e| format!("hash {LOCK_FILE}: {e}"))?;
+        Some((lock, digest))
     } else {
         None
+    };
+    let (lock, lock_sha256) = match lock {
+        Some((l, d)) => (Some(l), Some(d)),
+        None => (None, None),
     };
 
     let out_dir = match args.mode {
@@ -259,6 +288,20 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
             drift.as_ref(),
             &registry,
             &out_dir,
+            rung,
+        );
+    }
+
+    if smoke {
+        return smoke_run(
+            &control,
+            &treatment,
+            drift.as_ref(),
+            &registry,
+            &out_dir,
+            &file_names,
+            &manifest_hashes,
+            &plan,
             rung,
         );
     }
@@ -313,12 +356,323 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         drift_runs: drift_runs.as_deref(),
         analysis: &analysis,
         lock: lock.as_ref(),
+        lock_sha256: lock_sha256.as_deref(),
         registry: &registry,
         started,
         ended,
         elapsed_secs: elapsed,
     })?;
     println!("  artifacts written to {}", out_dir.display());
+    Ok(())
+}
+
+// ---- The smoke: allow-listed outputs only ------------------------------------------------------
+
+/// What the smoke algorithm consults, per run. Nothing here is derived from body mass.
+struct SmokeRun {
+    arm: &'static str,
+    seed: u64,
+    status: RunStatus,
+    checksum: u32,
+    elapsed_secs: f64,
+    /// `(tick, [value of each SMOKE_ALLOWED_OBSERVABLES])`.
+    series: Vec<(u64, [Option<f64>; 5])>,
+}
+
+impl SmokeRun {
+    fn column(&self, i: usize) -> impl Iterator<Item = (u64, f64)> + '_ {
+        self.series
+            .iter()
+            .filter_map(move |(t, v)| v[i].map(|x| (*t, x)))
+    }
+    /// Step A: max live.agent_count over samples with tick <= 1200.
+    fn max_agents_step_a(&self) -> Option<f64> {
+        self.column(0)
+            .filter(|(t, _)| *t <= SMOKE_STEP_A_TICKS)
+            .map(|(_, v)| v)
+            .reduce(f64::max)
+    }
+    /// Steps B and C: min live.agent_count over all samples.
+    fn min_agents(&self) -> Option<f64> {
+        self.column(0).map(|(_, v)| v).reduce(f64::min)
+    }
+    fn max_agents(&self) -> Option<f64> {
+        self.column(0).map(|(_, v)| v).reduce(f64::max)
+    }
+    /// Step C: mean live.standing_crop over samples with tick > T/2.
+    fn standing_crop_tail_mean(&self, duration: u64) -> Option<f64> {
+        let xs: Vec<f64> = self
+            .column(1)
+            .filter(|(t, _)| *t * 2 > duration)
+            .map(|(_, v)| v)
+            .collect();
+        if xs.is_empty() {
+            None
+        } else {
+            Some(xs.iter().sum::<f64>() / xs.len() as f64)
+        }
+    }
+    fn extinct_tick(&self) -> Option<u64> {
+        self.column(0).find(|(_, v)| *v == 0.0).map(|(t, _)| t)
+    }
+    fn us_per_tick(&self, duration: u64) -> f64 {
+        self.elapsed_secs * 1e6 / duration as f64
+    }
+}
+
+/// Refuse to emit text that names a body-mass observable in a smoke run.
+fn guard_no_body_mass(what: &str, text: &str) -> Result<(), String> {
+    if text.contains("trait_mass") {
+        Err(format!(
+            "the smoke may not write a body-mass observable, but {what} would"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Smoke stdout: the same guard as for files.
+fn say(line: &str) -> Result<(), String> {
+    guard_no_body_mass("stdout", line)?;
+    println!("{line}");
+    Ok(())
+}
+
+/// A failure reason is free text from the model; withhold it if it would name a body-mass observable.
+fn scrub(text: &str) -> String {
+    if text.contains("trait_mass") {
+        "reason withheld in the smoke (it names a body-mass observable)".to_string()
+    } else {
+        csv_field(text)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn smoke_run(
+    control: &ExperimentManifest,
+    treatment: &ExperimentManifest,
+    drift: Option<&ExperimentManifest>,
+    registry: &ObservableRegistry,
+    out_dir: &Path,
+    file_names: &[String],
+    manifest_hashes: &BTreeMap<String, String>,
+    plan: &Plan,
+    rung: u64,
+) -> Result<(), String> {
+    let started = SystemTime::now();
+    let mut runs: Vec<SmokeRun> = Vec::new();
+    let arms: [(&'static str, Option<&ExperimentManifest>); 3] = [
+        ("control", Some(control)),
+        ("treatment", Some(treatment)),
+        ("drift", drift),
+    ];
+    for (arm, manifest) in arms {
+        let Some(m) = manifest else { continue };
+        // Never even request a body-mass observable in the smoke.
+        let mut restricted = m.clone();
+        restricted
+            .observable_ids
+            .retain(|o| SMOKE_ALLOWED_OBSERVABLES.contains(&o.as_str()));
+        for &seed in &m.seeds {
+            let clock = Instant::now();
+            let run =
+                run_manifest_seed::<LiveExperimentAdapter>(&restricted, registry, seed, None, None);
+            let elapsed_secs = clock.elapsed().as_secs_f64();
+            let series = run
+                .series
+                .iter()
+                .map(|sample| {
+                    let mut v = [None; 5];
+                    for (i, id) in SMOKE_ALLOWED_OBSERVABLES.iter().enumerate() {
+                        v[i] = sample
+                            .observables
+                            .iter()
+                            .find(|(k, _)| k == id)
+                            .map(|(_, x)| *x);
+                    }
+                    (sample.tick, v)
+                })
+                .collect();
+            let failure = match &run.status {
+                RunStatus::Completed => None,
+                RunStatus::Failed { tick, reason, .. } => Some((*tick, scrub(reason))),
+            };
+            runs.push(SmokeRun {
+                arm,
+                seed,
+                status: run.status.clone(),
+                checksum: run.final_checksum,
+                elapsed_secs,
+                series,
+            });
+            if let Some((tick, reason)) = failure {
+                say(&format!(
+                    "E-SEL1 smoke: {arm} seed {seed} FAILED at tick {tick}: {reason}"
+                ))?;
+            }
+        }
+    }
+    let ended = SystemTime::now();
+    let max_us = runs
+        .iter()
+        .map(|r| r.us_per_tick(rung))
+        .fold(0.0_f64, f64::max);
+    say(&format!(
+        "E-SEL1 smoke: {} runs x {rung} ticks; max {:.1} us/tick; only {:?} were written",
+        runs.len(),
+        max_us,
+        SMOKE_ALLOWED_OBSERVABLES
+    ))?;
+
+    // runs.csv: one row per run, allow-listed columns only.
+    let mut csv = String::from(
+        "# SMOKE: allow-listed observables only (live.agent_count, live.standing_crop, live.closed_eu_total, live.births, live.deaths); no body-mass value is written (plan section 6)\n\
+         seed,arm,status,extinct_tick,min_agent_count,max_agent_count,max_agent_count_tick_le_1200,standing_crop_tail_mean_tick_gt_half_T,us_per_tick,final_checksum\n",
+    );
+    for r in &runs {
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{:.3},{}\n",
+            r.seed,
+            r.arm,
+            status_label(&r.status),
+            r.extinct_tick().map(|t| t.to_string()).unwrap_or_default(),
+            r.min_agents().map(|v| v.to_string()).unwrap_or_default(),
+            r.max_agents().map(|v| v.to_string()).unwrap_or_default(),
+            r.max_agents_step_a()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            r.standing_crop_tail_mean(rung)
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+            r.us_per_tick(rung),
+            r.checksum,
+        ));
+    }
+    // smoke-series.csv: the allow-listed sample series.
+    let mut series = String::from("seed,arm,tick");
+    for id in SMOKE_ALLOWED_OBSERVABLES {
+        series.push(',');
+        series.push_str(id);
+    }
+    series.push('\n');
+    for r in &runs {
+        for (tick, v) in &r.series {
+            series.push_str(&format!("{},{},{tick}", r.seed, r.arm));
+            for x in v {
+                series.push(',');
+                if let Some(x) = x {
+                    series.push_str(&x.to_string());
+                }
+            }
+            series.push('\n');
+        }
+    }
+    // smoke-report.json: exactly the quantities the algorithm reads.
+    let per_run: Vec<serde_json::Value> = runs
+        .iter()
+        .map(|r| {
+            serde_json::json!({
+                "arm": r.arm,
+                "seed": r.seed,
+                "status": status_label(&r.status),
+                "extinct_tick": r.extinct_tick(),
+                "min_live_agent_count_all_samples": r.min_agents(),
+                "max_live_agent_count_all_samples": r.max_agents(),
+                "max_live_agent_count_tick_le_1200": r.max_agents_step_a(),
+                "mean_live_standing_crop_tick_gt_half_T": r.standing_crop_tail_mean(rung),
+                "us_per_tick": r.us_per_tick(rung),
+                "final_checksum": r.checksum,
+            })
+        })
+        .collect();
+    let report = serde_json::json!({
+        "kind": "e-sel1-smoke-report-EXCLUDED-FROM-ANALYSIS",
+        "contains_body_mass": false,
+        "observables_written": SMOKE_ALLOWED_OBSERVABLES,
+        "T_smoke": rung,
+        "step_A_window_max_tick": SMOKE_STEP_A_TICKS,
+        "runs": per_run,
+        "max_us_per_tick": max_us,
+    });
+    let exe = std::env::current_exe().ok();
+    let prov = serde_json::json!({
+        "kind": "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
+        "mode": "smoke",
+        "model": "core::live_experiment::LiveExperimentAdapter",
+        "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "build": {
+            "git_commit": git(&["rev-parse", "HEAD"]),
+            "git_describe": git(&["describe", "--always", "--dirty"]),
+            "git_tree_dirty": git(&["status", "--porcelain"]).map(|s| !s.trim().is_empty()),
+            "profile": if cfg!(debug_assertions) { "debug" } else { "release" },
+            "rustc": tool_version("rustc"),
+            "package_version": env!("CARGO_PKG_VERSION"),
+            "binary_sha256": exe.as_ref().and_then(|p| sha256_file(p).ok()),
+        },
+        "host": { "os": std::env::consts::OS, "arch": std::env::consts::ARCH },
+        "timing": {
+            "started_utc": iso8601_utc(unix_seconds(started)),
+            "ended_utc": iso8601_utc(unix_seconds(ended)),
+            "max_us_per_tick": max_us,
+            "us_per_tick_by_run": runs.iter().map(|r| serde_json::json!({
+                "arm": r.arm, "seed": r.seed, "us_per_tick": r.us_per_tick(rung) })).collect::<Vec<_>>(),
+        },
+        "duration": { "duration_ticks_as_run": rung, "ladder_registered": plan.ladder },
+        "manifests": {
+            "files": file_names,
+            "sha256_as_read": manifest_hashes,
+            "initial_conditions_by_arm": {
+                "control": control.initial_conditions.values,
+                "treatment": treatment.initial_conditions.values,
+                "drift": drift.map(|d| d.initial_conditions.values.clone()),
+            },
+            "note": "manifests are not copied into smoke/ because they name every observable; their sha256 is recorded here",
+        },
+        "seeds": { "executed": runs.iter().map(|r| r.seed).collect::<Vec<_>>(), "smoke_seed": plan.smoke_seed },
+        "observables_written": SMOKE_ALLOWED_OBSERVABLES,
+    });
+    let md = format!(
+        "# E-SEL1 smoke (EXCLUDED from every analysis and from every choice but N0, F_hi, F_lo and the rung)\n\n\
+         Only live.agent_count, live.standing_crop, live.closed_eu_total, live.births and live.deaths are \
+         written; no body-mass value or effect exists in this directory (plan section 6).\n\n\
+         - runs: {}\n- T_smoke: {rung} ticks\n- max us/tick: {:.1}\n\n\
+         See `smoke-report.json` for the quantities the smoke algorithm reads.\n",
+        runs.len(),
+        max_us
+    );
+    let report_text = pretty(&report)? + "\n";
+    let prov_text = pretty(&prov)? + "\n";
+    // The rule is enforced here: nothing naming a body-mass observable reaches any smoke output.
+    for (name, text) in [
+        ("runs.csv", &csv),
+        ("smoke-series.csv", &series),
+        ("smoke-report.json", &report_text),
+        ("provenance.json", &prov_text),
+        ("summary.md", &md),
+    ] {
+        guard_no_body_mass(name, text)?;
+    }
+    write_text(&out_dir.join("runs.csv"), &csv)?;
+    write_text(&out_dir.join("smoke-series.csv"), &series)?;
+    write_text(&out_dir.join("smoke-report.json"), &report_text)?;
+    write_text(&out_dir.join("provenance.json"), &prov_text)?;
+    write_text(&out_dir.join("summary.md"), &md)?;
+    let mut lines = String::new();
+    for name in [
+        "provenance.json",
+        "runs.csv",
+        "smoke-report.json",
+        "smoke-series.csv",
+        "summary.md",
+    ] {
+        let digest = sha256_file(&out_dir.join(name)).map_err(|e| format!("hash {name}: {e}"))?;
+        lines.push_str(&format!("{digest}  {name}\n"));
+    }
+    write_text(&out_dir.join("checksums.sha256"), &lines)?;
+    say(&format!(
+        "  smoke artifacts written to {}",
+        out_dir.display()
+    ))?;
     Ok(())
 }
 
@@ -516,6 +870,69 @@ impl Plan {
         }
         Ok(())
     }
+}
+
+/// The value of one initial condition of a manifest, if declared.
+fn ic_value(m: &ExperimentManifest, key: &str) -> Option<f64> {
+    m.initial_conditions
+        .values
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| *v)
+}
+
+/// The execution lock is written by hand after the smoke and gates the ensemble. It must state
+/// `duration_ticks`, `N0`, `F_hi` and `F_lo`, and each must agree with what this run would use: the
+/// effective duration, and the founders and food caps of the manifests in `--manifest-dir`. A lock
+/// that is silent on a value, or disagrees with the manifests, was not written against them.
+fn validate_lock(
+    lock: &serde_json::Value,
+    rung: u64,
+    control: &ExperimentManifest,
+    treatment: &ExperimentManifest,
+    drift: Option<&ExperimentManifest>,
+) -> Result<(), String> {
+    let need_num = |field: &str| -> Result<f64, String> {
+        lock.get(field).and_then(|v| v.as_f64()).ok_or_else(|| {
+            format!("{LOCK_FILE} lacks {field} (a number); the run was never fully locked")
+        })
+    };
+    let t = lock
+        .get("duration_ticks")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            format!("{LOCK_FILE} lacks duration_ticks (an integer); the run was never fully locked")
+        })?;
+    if t != rung {
+        return Err(format!(
+            "{LOCK_FILE} locks duration_ticks = {t} but this run would use {rung}; the rung is \
+             chosen once and never changed"
+        ));
+    }
+    let (n0, f_hi, f_lo) = (need_num("N0")?, need_num("F_hi")?, need_num("F_lo")?);
+    let check = |what: &str, locked: f64, m: &ExperimentManifest, key: &str| {
+        let held = ic_value(m, key);
+        if held == Some(locked) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{LOCK_FILE} locks {what} = {locked}, but '{}' holds {key} = {held:?}",
+                m.experiment_id
+            ))
+        }
+    };
+    for m in [Some(control), Some(treatment), drift]
+        .into_iter()
+        .flatten()
+    {
+        check("N0", n0, m, FOUNDERS_KEY)?;
+    }
+    check("F_hi", f_hi, control, FOOD_KEY)?;
+    check("F_lo", f_lo, treatment, FOOD_KEY)?;
+    if let Some(d) = drift {
+        check("F_lo", f_lo, d, FOOD_KEY)?;
+    }
+    Ok(())
 }
 
 /// Exactly one initial condition differs per contrast: `live.food_cap` between control and
@@ -994,6 +1411,8 @@ struct WriteInput<'a> {
     drift_runs: Option<&'a [RunResult]>,
     analysis: &'a Analysis,
     lock: Option<&'a serde_json::Value>,
+    /// sha256 of `execution-lock.json` exactly as read; `Some` iff the lock exists (ensemble).
+    lock_sha256: Option<&'a str>,
     registry: &'a ObservableRegistry,
     started: SystemTime,
     ended: SystemTime,
@@ -1033,6 +1452,10 @@ fn write_artifacts(w: &WriteInput<'_>) -> Result<(), String> {
     ];
     for name in w.file_names {
         names.push(format!("manifests/{name}"));
+    }
+    if w.lock.is_some() {
+        // The hand-written lock is part of the evidence: hash it with the rest.
+        names.push(LOCK_FILE.to_string());
     }
     names.sort();
     let mut lines = String::new();
@@ -1218,6 +1641,7 @@ fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
             "sample_period": w.control.sample_period,
         },
         "execution_lock": w.lock,
+        "execution_lock_sha256": w.lock_sha256,
         "manifests": {
             "sha256_as_committed": w.manifest_hashes,
             "control_fingerprint_as_run": w.report.control_manifest_fingerprint,

@@ -494,17 +494,26 @@ impl VitalStatistics {
         self.total_births += 1;
     }
 
-    /// `(births_in_window, deaths_in_window, mean_lifespan_of_window_deaths)`. The mean is
-    /// `None` when the window holds no deaths — absent information, not a fabricated zero.
+    /// `(births_in_window, deaths_in_window, mean_lifespan_of_window_deaths)`, and the window
+    /// closes: the next sample starts from here. The mean is `None` when the window holds no deaths
+    /// — absent information, not a fabricated zero.
     pub fn sample_window(&mut self) -> (u64, u64, Option<f32>) {
-        let births = self.total_births - self.sampled_births;
-        let deaths = self.total_deaths - self.sampled_deaths;
-        let lsum = self.lifespan_sum - self.sampled_lifespan_sum;
-        let lcount = self.lifespan_count - self.sampled_lifespan_count;
+        let window = self.peek_window();
         self.sampled_births = self.total_births;
         self.sampled_deaths = self.total_deaths;
         self.sampled_lifespan_sum = self.lifespan_sum;
         self.sampled_lifespan_count = self.lifespan_count;
+        window
+    }
+
+    /// The same figures as [`Self::sample_window`] without closing the window, for a read that is
+    /// not a sample (the runner's per-tick finiteness check). Reading through this any number of
+    /// times leaves the next sample's counts unchanged.
+    pub fn peek_window(&self) -> (u64, u64, Option<f32>) {
+        let births = self.total_births - self.sampled_births;
+        let deaths = self.total_deaths - self.sampled_deaths;
+        let lsum = self.lifespan_sum - self.sampled_lifespan_sum;
+        let lcount = self.lifespan_count - self.sampled_lifespan_count;
         let mean = if lcount > 0 {
             Some(lsum as f32 / lcount as f32)
         } else {
@@ -620,6 +629,36 @@ impl LocomotionPolicy {
             enabled: false,
             drive_floor: 0.0,
             thirst_steering: false,
+        }
+    }
+}
+
+/// Predator income knobs (ADR-0007 option B, "thẻ B"). **Every field defaults to today's behaviour
+/// and a world without the resource behaves exactly as before** (the app inserts nothing; a live
+/// manifest opts in with `live.kill_hydration`, `live.kill_efficiency`, `live.target_min_energy`).
+///
+/// * `kill_hydration`: a strike that credits the predator `gained` EU also adds
+///   `kill_hydration * gained` to its hydration, capped at `hydration_target`. Hydration is not in
+///   the EU ledger, so this cannot affect EU closure. `0.0` = off.
+/// * `kill_efficiency`: replaces `ecology::LINDEMAN_EFFICIENCY` in **both** strike branches of
+///   `combat_system` for this world only. The unassimilated remainder keeps flowing to detritus
+///   through the measured `removed - gained`, so EU stays closed. Default = the Lindeman constant.
+/// * `target_min_energy`: predator steering only targets living prey with `energy >= value`.
+///   `combat_system` is deliberately **not** filtered: it still strikes the first prey in range.
+///   `0.0` = off. Inert unless `LocomotionPolicy::enabled`.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct PredatorIncomePolicy {
+    pub kill_hydration: f32,
+    pub kill_efficiency: f32,
+    pub target_min_energy: f32,
+}
+
+impl Default for PredatorIncomePolicy {
+    fn default() -> Self {
+        Self {
+            kill_hydration: 0.0,
+            kill_efficiency: crate::core::ecology::LINDEMAN_EFFICIENCY,
+            target_min_energy: 0.0,
         }
     }
 }

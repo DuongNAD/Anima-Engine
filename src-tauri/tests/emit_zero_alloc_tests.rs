@@ -96,8 +96,13 @@ fn empty_grid() -> PheromoneGridState {
 /// and a sibling's start-up lands inside the measured window. That is how this file first appeared:
 /// green three times in isolation, "made 4 heap allocations" inside `cargo test --features desktop`.
 ///
-/// One test means no sibling threads, which makes the measurement deterministic instead of
-/// load-dependent. The phases are separated by `eprintln!` so a failure still says which one broke.
+/// One test means no sibling threads, but it was not enough: the determinism job of PR #84 (a
+/// docs-only change) still saw "made 4 heap allocations" in the second phase, from a thread other
+/// than the test's own (the harness's main thread is still alive while the body runs). Every emit
+/// function measured here runs on the calling thread, so each phase now counts only that thread
+/// (`start_tracking_this_thread`, as the combat gate has since #80). That is the allocation the
+/// emit thread would pay; another thread's start-up is not. The phases are separated by
+/// `eprintln!` so a failure still says which one broke.
 /// The same hazard applies to the other `*_zero_alloc_tests.rs` files; they have simply not lost the
 /// race yet.
 #[test]
@@ -122,7 +127,7 @@ fn tick_payload_refresh_is_allocation_free_in_steady_state() {
         refresh_tick_payload(&mut payload, &segments, &env);
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     for _ in 0..100 {
         refresh_tick_payload(&mut payload, &segments, &env);
     }
@@ -150,7 +155,7 @@ fn refresh_still_allocates_nothing_when_the_population_changes_size() {
         refresh_tick_payload(&mut payload, half, &env);
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     for _ in 0..50 {
         refresh_tick_payload(&mut payload, &full, &env);
         refresh_tick_payload(&mut payload, half, &env);
@@ -178,7 +183,7 @@ fn pheromone_gate_is_allocation_free_whether_or_not_it_sends() {
         gate.poll(&shared, &mut out, start + Duration::from_millis(33 * frame));
     }
 
-    ALLOCATOR.start_tracking();
+    ALLOCATOR.start_tracking_this_thread();
     let mut sent = 0;
     for frame in 6..=200u64 {
         // Changed every frame, so both branches of the gate are exercised: the rate limit rejects

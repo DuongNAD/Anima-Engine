@@ -7,9 +7,8 @@
   "version": "1.0.0",
   "seed": "anima_map2_photorealistic_v1",
   "_generated": {
-    "by": "scripts/verify_map2_evidence.ts",
+    "by": "scripts/gen_map2_manifest.ts",
     "seed": "anima_map2_photorealistic_v1",
-    "timestamp": "2026-08-16T00:00:00.000Z",
     "worldGenVersion": 21,
     "dimensions": [
       200,
@@ -20,7 +19,7 @@
       256,
       256
     ],
-    "note": "Authoritative Map 2 procedural open world manifest with 8 canonical views, biomes taxonomy, and verified ecology & navigation."
+    "note": "Computed from the Map 2 terrain, flora and navigation code. The 8 canonical views are camera definitions only: none has been captured. Map 2 has no .anmw world artifact."
   },
   "bounds": {
     "minX": -100,
@@ -29,33 +28,6 @@
     "maxY": 90,
     "minZ": -100,
     "maxZ": 100
-  },
-  "worldArtifact": {
-    "path": "artifacts/maps/map2/world_256.anmw",
-    "magic": "ANMW",
-    "version": 2,
-    "width": 256,
-    "height": 256,
-    "seaLevel": 12,
-    "elevationRange": [
-      0,
-      90
-    ],
-    "dimensions": [
-      200,
-      90,
-      200
-    ],
-    "resolution": [
-      256,
-      256
-    ],
-    "bounds": [
-      -100,
-      100
-    ],
-    "checksum": "sha256:94641ead70b78ba07c62115129fa7aca6934c83464117e13871575d55b39d8d7",
-    "bytes": 1114148
   },
   "coordinateSystem": {
     "worldMinXZ": -100,
@@ -714,7 +686,7 @@
         ],
         "fov": 55
       },
-      "captured": true,
+      "captured": false,
       "bearing": 0,
       "pitch": -40.8,
       "distance": 145.34,
@@ -722,9 +694,7 @@
         "all_biomes_visible",
         "no_mesh_seams",
         "horizon_sky_coverage"
-      ],
-      "bytes": 117,
-      "checksum": "sha256:3506491dc43d751f2511d68c1a731d48f54b9f6faef97bc603d63d9cdaabc20e"
+      ]
     },
     {
       "id": "navigation",
@@ -744,7 +714,7 @@
         ],
         "fov": 60
       },
-      "captured": true,
+      "captured": false,
       "bearing": 26.6,
       "pitch": -1.7,
       "distance": 33.56,
@@ -752,9 +722,7 @@
         "continuous_walkway",
         "gradient_under_0.45",
         "no_impassable_bottlenecks"
-      ],
-      "bytes": 119,
-      "checksum": "sha256:eb8054f19810d0492b595121483cd2293dbc8a5afeeb8ca021ba6a2eefdcab6c"
+      ]
     },
     {
       "id": "collision",
@@ -774,7 +742,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 90,
       "pitch": 33.7,
       "distance": 18.03,
@@ -782,9 +750,7 @@
         "capsule_pushout_active",
         "slope_slide_on_cliff",
         "no_trunk_penetration"
-      ],
-      "bytes": 118,
-      "checksum": "sha256:faf12e8735dfe1d557f374762a47c1d2ecc1b6d2fb13563b44e2a3768115777f"
+      ]
     },
     {
       "id": "lighting",
@@ -804,7 +770,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 45,
       "pitch": 7.3,
       "distance": 78.42,
@@ -812,9 +778,7 @@
         "rayleigh_gradient",
         "shadow_casters_active",
         "sun_direction_aligned"
-      ],
-      "bytes": 117,
-      "checksum": "sha256:caea06d1b95406e5ca1f493ca94beaf6c3263e840378fdb4aab5fbdee1840052"
+      ]
     },
     {
       "id": "spawn",
@@ -834,7 +798,7 @@
         ],
         "fov": 65
       },
-      "captured": true,
+      "captured": false,
       "bearing": 0,
       "pitch": 0,
       "distance": 20,
@@ -842,9 +806,7 @@
         "clear_radius_ge_6m",
         "above_water_level",
         "slope_under_0.25"
-      ],
-      "bytes": 114,
-      "checksum": "sha256:dbddd09b847d62c91ca7d8f0b8191a3b354ba3dadacfbdd07a4e4338c04eda7e"
+      ]
     },
     {
       "id": "water",
@@ -864,7 +826,7 @@
         ],
         "fov": 55
       },
-      "captured": true,
+      "captured": false,
       "bearing": 143.1,
       "pitch": -9.1,
       "distance": 25.32,
@@ -872,9 +834,7 @@
         "gerstner_displacement",
         "foam_at_contact_edges",
         "waterfall_spray_particles"
-      ],
-      "bytes": 114,
-      "checksum": "sha256:86d422fb44a271212e9c76e23d37712149344dabfd048198b86b91e096482ca5"
+      ]
     },
     {
       "id": "biome_transition",
@@ -894,7 +854,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 315,
       "pitch": -6.7,
       "distance": 42.72,
@@ -902,9 +862,7 @@
         "soft_splatting_weights",
         "partition_of_unity",
         "no_hard_boundaries"
-      ],
-      "bytes": 125,
-      "checksum": "sha256:4288adfcd94064179fd4ab7f5cefe2a0923a3198b4f7fff45388a8be3ca922fb"
+      ]
     },
     {
       "id": "ecosystem",
@@ -924,7 +882,7 @@
         ],
         "fov": 60
       },
-      "captured": true,
+      "captured": false,
       "bearing": 135,
       "pitch": -8,
       "distance": 14.28,
@@ -932,9 +890,7 @@
         "boids_aloft",
         "shoals_submerged",
         "terrestrial_herds_grounded"
-      ],
-      "bytes": 118,
-      "checksum": "sha256:9e4d70e95d92d2c265aa2e54f601272157113d03a862c387d031cd9a34f1612b"
+      ]
     }
   ],
   "canonicalViews": {
@@ -956,7 +912,7 @@
         ],
         "fov": 55
       },
-      "captured": true,
+      "captured": false,
       "bearing": 0,
       "pitch": -40.8,
       "distance": 145.34,
@@ -964,9 +920,7 @@
         "all_biomes_visible",
         "no_mesh_seams",
         "horizon_sky_coverage"
-      ],
-      "bytes": 117,
-      "checksum": "sha256:3506491dc43d751f2511d68c1a731d48f54b9f6faef97bc603d63d9cdaabc20e"
+      ]
     },
     "navigation": {
       "id": "navigation",
@@ -986,7 +940,7 @@
         ],
         "fov": 60
       },
-      "captured": true,
+      "captured": false,
       "bearing": 26.6,
       "pitch": -1.7,
       "distance": 33.56,
@@ -994,9 +948,7 @@
         "continuous_walkway",
         "gradient_under_0.45",
         "no_impassable_bottlenecks"
-      ],
-      "bytes": 119,
-      "checksum": "sha256:eb8054f19810d0492b595121483cd2293dbc8a5afeeb8ca021ba6a2eefdcab6c"
+      ]
     },
     "collision": {
       "id": "collision",
@@ -1016,7 +968,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 90,
       "pitch": 33.7,
       "distance": 18.03,
@@ -1024,9 +976,7 @@
         "capsule_pushout_active",
         "slope_slide_on_cliff",
         "no_trunk_penetration"
-      ],
-      "bytes": 118,
-      "checksum": "sha256:faf12e8735dfe1d557f374762a47c1d2ecc1b6d2fb13563b44e2a3768115777f"
+      ]
     },
     "lighting": {
       "id": "lighting",
@@ -1046,7 +996,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 45,
       "pitch": 7.3,
       "distance": 78.42,
@@ -1054,9 +1004,7 @@
         "rayleigh_gradient",
         "shadow_casters_active",
         "sun_direction_aligned"
-      ],
-      "bytes": 117,
-      "checksum": "sha256:caea06d1b95406e5ca1f493ca94beaf6c3263e840378fdb4aab5fbdee1840052"
+      ]
     },
     "spawn": {
       "id": "spawn",
@@ -1076,7 +1024,7 @@
         ],
         "fov": 65
       },
-      "captured": true,
+      "captured": false,
       "bearing": 0,
       "pitch": 0,
       "distance": 20,
@@ -1084,9 +1032,7 @@
         "clear_radius_ge_6m",
         "above_water_level",
         "slope_under_0.25"
-      ],
-      "bytes": 114,
-      "checksum": "sha256:dbddd09b847d62c91ca7d8f0b8191a3b354ba3dadacfbdd07a4e4338c04eda7e"
+      ]
     },
     "water": {
       "id": "water",
@@ -1106,7 +1052,7 @@
         ],
         "fov": 55
       },
-      "captured": true,
+      "captured": false,
       "bearing": 143.1,
       "pitch": -9.1,
       "distance": 25.32,
@@ -1114,9 +1060,7 @@
         "gerstner_displacement",
         "foam_at_contact_edges",
         "waterfall_spray_particles"
-      ],
-      "bytes": 114,
-      "checksum": "sha256:86d422fb44a271212e9c76e23d37712149344dabfd048198b86b91e096482ca5"
+      ]
     },
     "biome_transition": {
       "id": "biome_transition",
@@ -1136,7 +1080,7 @@
         ],
         "fov": 50
       },
-      "captured": true,
+      "captured": false,
       "bearing": 315,
       "pitch": -6.7,
       "distance": 42.72,
@@ -1144,9 +1088,7 @@
         "soft_splatting_weights",
         "partition_of_unity",
         "no_hard_boundaries"
-      ],
-      "bytes": 125,
-      "checksum": "sha256:4288adfcd94064179fd4ab7f5cefe2a0923a3198b4f7fff45388a8be3ca922fb"
+      ]
     },
     "ecosystem": {
       "id": "ecosystem",
@@ -1166,7 +1108,7 @@
         ],
         "fov": 60
       },
-      "captured": true,
+      "captured": false,
       "bearing": 135,
       "pitch": -8,
       "distance": 14.28,
@@ -1174,9 +1116,7 @@
         "boids_aloft",
         "shoals_submerged",
         "terrestrial_herds_grounded"
-      ],
-      "bytes": 118,
-      "checksum": "sha256:9e4d70e95d92d2c265aa2e54f601272157113d03a862c387d031cd9a34f1612b"
+      ]
     }
   },
   "spawnPoint": {
@@ -2580,6 +2520,5 @@
       "swimmingDepth": 2,
       "drowningDepth": 4.5
     }
-  },
-  "checksum": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
 }

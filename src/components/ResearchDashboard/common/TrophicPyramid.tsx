@@ -1,10 +1,18 @@
 import React from 'react';
 
+/**
+ * Biomass per compartment, in EU. `null` means the backend does not report that compartment: the
+ * tier is drawn as "not reported" and no efficiency involving it is computed. Today the backend
+ * reports animal energy as one pool, so the panel passes `null` for herbivores and carnivores and
+ * the whole pool as `consumers`, rather than inventing a split.
+ */
 export interface TrophicBiomassData {
-  detritus: number;
-  plants: number;
-  herbivores: number;
-  carnivores: number;
+  detritus: number | null;
+  plants: number | null;
+  herbivores: number | null;
+  carnivores: number | null;
+  /** All animals together, shown when the consumer split is not reported. */
+  consumers?: number | null;
 }
 
 export interface TrophicPyramidProps {
@@ -20,11 +28,18 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
   height = 280,
   testid = 'trophic-pyramid-svg',
 }) => {
-  const totalBiomass = Math.max(1, data.detritus + data.plants + data.herbivores + data.carnivores);
+  const splitReported = data.herbivores !== null && data.carnivores !== null;
+  const consumerBiomass = splitReported ? (data.herbivores ?? 0) + (data.carnivores ?? 0) : (data.consumers ?? null);
+  const totalBiomass = Math.max(1, (data.detritus ?? 0) + (data.plants ?? 0) + (consumerBiomass ?? 0));
 
-  // Lindeman transfer efficiencies (%)
-  const l12 = data.plants > 0 ? (data.herbivores / data.plants) * 100 : 0;
-  const l23 = data.herbivores > 0 ? (data.carnivores / data.herbivores) * 100 : 0;
+  // Lindeman transfer efficiencies (%), only where both tiers are reported.
+  const l12 =
+    data.plants !== null && data.herbivores !== null && data.plants > 0 ? (data.herbivores / data.plants) * 100 : null;
+  const l23 =
+    data.herbivores !== null && data.carnivores !== null && data.herbivores > 0
+      ? (data.carnivores / data.herbivores) * 100
+      : null;
+  const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
 
   // Tier definitions: [Index, Key, Label, Color, Biomass]
   const tiers = [
@@ -78,7 +93,8 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
   const minTierWidth = 90;
 
   // Width proportion based on log / linear hybrid to preserve visibility
-  const getTierWidth = (biomass: number) => {
+  const getTierWidth = (biomass: number | null) => {
+    if (biomass === null) return minTierWidth;
     const rawRatio = biomass / totalBiomass;
     const logRatio = Math.log10(1 + biomass) / Math.log10(1 + totalBiomass);
     const blend = rawRatio * 0.4 + logRatio * 0.6;
@@ -106,6 +122,17 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
         </div>
       </div>
 
+      {!splitReported && (
+        <div data-testid="trophic-split-unreported" style={{ fontSize: '11px', color: '#94a3b8', width: '100%', marginBottom: '6px' }}>
+          Consumers (all animals):{' '}
+          <span style={{ color: '#f1f5f9', fontWeight: 600 }}>
+            {consumerBiomass === null ? 'not reported' : `${consumerBiomass.toFixed(1)} EU`}
+          </span>
+          . The backend does not split animal energy by trophic role, so the two consumer tiers below
+          are not reported.
+        </div>
+      )}
+
       <svg
         data-testid={testid}
         viewBox={`0 0 ${W} ${H}`}
@@ -116,7 +143,7 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
           const tWidth = getTierWidth(tier.biomass);
           const tX = (W - tWidth) / 2;
           const tY = 15 + idx * (tierHeight + gap);
-          const pct = ((tier.biomass / totalBiomass) * 100).toFixed(1);
+          const pct = tier.biomass === null ? null : ((tier.biomass / totalBiomass) * 100).toFixed(1);
 
           return (
             <g key={tier.id} data-testid={`trophic-tier-${tier.id}`}>
@@ -130,6 +157,7 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
                 fill={tier.bgColor}
                 stroke={tier.borderColor}
                 strokeWidth={1.5}
+                strokeDasharray={tier.biomass === null ? '4 3' : undefined}
               />
 
               {/* Tier Label */}
@@ -154,7 +182,7 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
                 fill="#cbd5e1"
                 fontFamily="Inter, sans-serif"
               >
-                {tier.biomass.toFixed(1)} EU ({pct}%)
+                {tier.biomass === null ? 'not reported' : `${tier.biomass.toFixed(1)} EU (${pct}%)`}
               </text>
 
               {/* Lindeman Efficiency Badge between tiers */}
@@ -184,7 +212,7 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
                     fill="#fef08a"
                     textAnchor="middle"
                   >
-                    λ₂₃: {l23.toFixed(1)}%
+                    λ₂₃: {pctText(l23)}
                   </text>
                 </g>
               )}
@@ -209,7 +237,7 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
                     fill="#a7f3d0"
                     textAnchor="middle"
                   >
-                    λ₁₂: {l12.toFixed(1)}%
+                    λ₁₂: {pctText(l12)}
                   </text>
                 </g>
               )}
@@ -221,10 +249,10 @@ export const TrophicPyramid: React.FC<TrophicPyramidProps> = ({
       {/* Summary Footnote */}
       <div style={{ display: 'flex', justifyContent: 'space-around', width: '100%', fontSize: '11px', color: '#94a3b8', marginTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '6px' }}>
         <div>
-          Primary Herbivore Transfer: <span style={{ color: '#10b981', fontWeight: 600 }}>{l12.toFixed(1)}%</span>
+          Primary Herbivore Transfer: <span style={{ color: '#10b981', fontWeight: 600 }}>{pctText(l12)}</span>
         </div>
         <div>
-          Secondary Carnivore Transfer: <span style={{ color: '#f59e0b', fontWeight: 600 }}>{l23.toFixed(1)}%</span>
+          Secondary Carnivore Transfer: <span style={{ color: '#f59e0b', fontWeight: 600 }}>{pctText(l23)}</span>
         </div>
       </div>
     </div>
