@@ -14,6 +14,12 @@
 
 ---
 
+# ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
+
+`feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên
+thân cây luật áp cho mọi người, kể cả admin; trên `main` chỉ áp cho người không phải admin, để fast-forward vẫn
+chạy được. Từ nay mọi thay đổi vào thân cây phải qua PR. Chi tiết và lý do ở `STATE_OF_THE_PROJECT.md` §3.00.
+
 # ⏪ OSS-072 MRCA (2026-07-29, chuyển lên trunk 2026-11-16)
 
 `evolution/mrca.rs` + lệnh `get_lineage_mrca(individuals)` + `tests/lineage_mrca_tests.rs`. MRCA của một DAG là một **tập**

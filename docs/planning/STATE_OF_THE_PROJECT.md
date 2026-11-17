@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-17
 review_cycle: per-release
 ---
 
@@ -504,6 +504,36 @@ Thứ tự là **theo giá trị trả về**, không theo độ khó. Mỗi m�
 > bối cảnh. Nó trỏ tới PR và finding thay vì chép số (quy tắc 8). Quyết định thuộc chủ dự án nằm ở
 > [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được) và
 > [hướng dẫn chạy agent](../how-to/AGENT_WORKFLOW.md).
+
+#### Chặng 1 đã đóng: bảo vệ nhánh bật ngày 2026-11-17
+
+Cổng ra của chặng 1 trong [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) §5 có hai vế.
+Vế đầu là CI xanh cả hai job trên thân cây (§1.g, và mọi PR merge ngày 16–17/11). Vế sau là hai job đó thành
+gate bắt buộc; chủ dự án bật nó ngày 2026-11-17. Kiểm bằng
+`gh api repos/DuongNAD/Anima-Engine/branches/<nhánh>/protection` cùng ngày:
+
+| Nhánh | Check bắt buộc | `enforce_admins` | Force-push · xoá nhánh |
+|---|---|---|---|
+| `feat/ecological-selection` | `Rust (src-tauri)`, `Frontend` | `true`: áp cho mọi người, kể cả admin | cấm · cấm |
+| `main` | `Rust (src-tauri)`, `Frontend` | `false`: chỉ áp cho người không phải admin | cấm · cấm |
+
+Cả hai nhánh: `strict = false` (PR không phải cập nhật theo nhánh đích trước khi merge), không bắt buộc
+review. Job `determinism` của workflow `hardening` **không** nằm trong danh sách bắt buộc.
+
+Hai nhánh đặt khác nhau vì `ci.yml` chỉ chạy khi push vào `main` và khi có PR. PR merge vào thân cây, nên
+check của nó chạy ngay trên PR. Còn commit mà `main` được fast-forward lên thì chưa có check nào cho tới khi
+nó được push lên `main`; nếu bắt cả admin qua gate, GitHub sẽ từ chối chính lượt fast-forward đó.
+
+Hệ quả cho người và agent:
+- Mọi thay đổi vào thân cây phải qua PR, kể cả tài liệu. Push thẳng bị từ chối, vì không CI nào chạy khi push
+  vào thân cây. Kiểm cùng ngày: cả 47 commit first-parent của thân cây từ 2026-11-14 đều là merge PR, nên luật
+  này không đổi cách làm hiện có.
+- PR chỉ merge được khi cả hai job xanh. Job Rust chạy khoảng 31 phút trên Windows (§1.g).
+- Gỡ hoặc nới: GitHub → Settings → Branches, hoặc `gh api -X DELETE …/branches/<nhánh>/protection`.
+
+Chặng 2 đã đóng từ 2026-11-16 (C5 là §1.g). Theo thứ tự của kế hoạch 13/11, chặng kế là chặng 3: các thẻ G3,
+G4, G5, G6, G9 và R0 của [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md) chưa có PR nào
+(đối chiếu danh sách PR ngày 2026-11-17).
 
 #### Đã xong 2026-11-17 (đã merge vào `feat/ecological-selection`)
 
