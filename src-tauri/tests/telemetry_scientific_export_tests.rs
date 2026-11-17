@@ -231,6 +231,77 @@ fn a_restarted_engine_never_pairs_its_new_seed_with_the_old_runs_data() {
     );
 }
 
+#[test]
+fn an_export_that_races_a_restart_never_pairs_the_new_seed_with_the_old_runs_status() {
+    let _guard = ENGINE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    std::env::set_var("ANIMA_SIM_SEED", "777");
+    let engine = SimulationEngine::new();
+    start(&engine);
+    await_tick(&engine, 60);
+    std::env::remove_var("ANIMA_SIM_SEED");
+    engine.stop();
+    let previous_ticks = engine.get_status().tick_count;
+    assert!(
+        previous_ticks >= 60,
+        "premise: the first run ticked ({previous_ticks})"
+    );
+
+    // The simulation thread publishes the first tick's state and then the seed, so a reader that
+    // sees the seed may trust the state it reads *afterwards*. That holds only if the reader reads
+    // the seed FIRST. This test makes the race deterministic: it holds the seed's write lock, so an
+    // export that has already read the old status blocks on the seed until the real simulation
+    // thread has published the new run's first tick, and only then lets the seed through.
+    std::env::set_var("ANIMA_SIM_SEED", "888");
+    start(&engine);
+    let mut held = engine.run_seed.write().unwrap_or_else(|e| e.into_inner());
+    assert!(
+        held.is_none(),
+        "premise: `start` emptied the seed and the new run has not published one"
+    );
+    let exported = std::thread::scope(|scope| {
+        let exporter =
+            scope.spawn(|| build_scientific_export(&engine, empty_map_elites(), &everything()));
+
+        // Wait for the real simulation thread to publish the new run's first tick (it then blocks
+        // on the seed's write lock, which this test holds).
+        let waited = Instant::now();
+        loop {
+            let status = engine.get_status();
+            if status.running && status.tick_count < previous_ticks {
+                break;
+            }
+            assert!(
+                waited.elapsed() < READY_DEADLINE,
+                "the new run never published its first tick; status {status:?}"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        // What the simulation thread is about to store, stored by the test so the export can go on.
+        *held = Some(888);
+        drop(held);
+        exporter.join().expect("the export thread did not panic")
+    });
+    std::env::remove_var("ANIMA_SIM_SEED");
+    engine.stop();
+
+    let parts = exported.expect("an engine that published a seed can be exported");
+    let sample = parts
+        .package
+        .time_series
+        .first()
+        .expect("one time-series sample");
+    assert!(
+        parts.package.provenance.duration_ticks < previous_ticks / 2
+            && sample.tick < previous_ticks / 2,
+        "the export pairs seed {} with tick {} (duration {}), the first run's \
+         {previous_ticks} ticks: it read the status before the seed",
+        parts.package.provenance.seed,
+        sample.tick,
+        parts.package.provenance.duration_ticks
+    );
+}
+
 // ---- Trophic biomass ------------------------------------------------------------------------------
 
 #[test]
