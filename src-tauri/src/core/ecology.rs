@@ -403,12 +403,22 @@ impl ResourceField {
     ///
     /// Raising the world to 256² quadrupled the cell count, and the regrowth path was costing four
     /// full passes per tick (two inside the gated step, two more for the `total_biomass()` sandwich
-    /// that measured what actually grew). Measured at ~4.2 ms/tick — a quarter of a 60 FPS frame
-    /// budget for a background field.
+    /// that measured what actually grew).
     ///
     /// Striding turns that into two passes over a quarter of the cells, and the exact accounting
     /// now happens inside the loop so the sandwich is gone entirely: 4·N cell-visits become 0.5·N.
     /// The cost of resolution is paid back without giving the resolution up.
+    ///
+    /// # What the old path cost
+    ///
+    /// This comment used to say "~4.2 ms/tick, a quarter of a 60 FPS frame budget". That figure
+    /// does not reproduce in a release build. The `tick_systems` bench keeps the old path as
+    /// `pre_stride_gated_with_biomass_sandwich/256x256`. On 2026-11-17, on an Apple M5, its
+    /// Criterion median was 0.218 ms, against 0.039 ms for the strided step (5.6× faster).
+    /// `docs/how-to/BENCHMARKING.md` estimates the old path at ≈0.36 ms on the i5-14600KF target.
+    /// The same old path in a *debug* build took 1.9 ms on the M5, so 4.2 ms is consistent with a
+    /// debug measurement on a slower machine. It was never a release cost. The stride is worth
+    /// keeping for the ratio, not for that number.
     pub const REGROWTH_STRIDE: usize = 4;
 
     /// Biomass-gated regrowth over every cell. See [`Self::step_regrowth_gated_strided`].
