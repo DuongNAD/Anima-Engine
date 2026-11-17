@@ -22,6 +22,9 @@ kiện "xong khi" của R1c ở
   R1c, vốn là việc riêng của con người (thẻ H5) nếu thẻ chạy trên macOS, làm được ngay trong thẻ khi nó chạy
   trên Windows.
 - **Windows là nền của job Rust trong CI**, nên kết quả `cargo test` tại chỗ so được với CI.
+- **Thẻ R1 cũ không còn dùng.** Prompt `CARD R1` trong
+  [file prompt swarm](2026-11-05-swarm-prompts.md) giả định QĐ-C = A (bỏ `ml-wgpu` khỏi bản phát hành).
+  Prompt dưới đây thay nó.
 - **R1c gỡ hai thứ đang chặn phát hành:** văn bản giấy phép còn thiếu của `hexf-parse`, và, nếu phép đo ở
   điều kiện 5 cho phép, chỗ rò bộ nhớ của đường GPU. Nó cũng làm `zip` 0.6.6 rời lockfile, tức gỡ được các
   miễn trừ advisory đang phải thêm dần vào `audit.toml`.
@@ -76,10 +79,13 @@ cubecl-wgpu 0.11.4, which requires wgpu ^30. That is a reading of declared depen
 
 STEP 0, BEFORE ANY CODE
 Confirm the premise with a real resolution: on a scratch copy of src-tauri/Cargo.toml, resolve the
-upgraded tree and run `cargo tree --features desktop -e normal -i hexf-parse` from src-tauri/. If
-hexf-parse is still in the tree, stop and report; the decision rests on that fact. If the 0.22 line
-cannot be reached in one step, it is fine to stop at the first version whose tree has no hexf-parse,
-and to say which one.
+upgraded tree and run the FORWARD check from src-tauri/, in Git Bash:
+  cargo tree -e all --features desktop --target all | grep -c " hexf-parse v"     -> 0
+Use the forward form, not `cargo tree -i` alone: `-i` exits non-zero on an ambiguous spec and prints
+nothing, and a command that fails and prints nothing is not a negative result (the same rule CARD R1
+of the swarm prompt file states). If hexf-parse is still in the tree,
+stop and report; the decision rests on that fact. If the 0.22 line cannot be reached in one step, it
+is fine to stop at the first version whose tree has no hexf-parse, and to say which one.
 
 BRANCH AND PR
 Work in your own worktree on branch win/r1c-burn-upgrade, cut from origin/feat/ecological-selection.
@@ -87,8 +93,9 @@ Claim the card by opening a DRAFT pull request against feat/ecological-selection
 Keep the change to what the upgrade forces: no refactor alongside it.
 
 DONE WHEN (each shown in the PR body with the raw command output)
-1. `cargo tree --features desktop -e normal -i hexf-parse` reports the package is not in the tree,
-   and `cargo tree --no-default-features -e normal` still shows no burn-wgpu and no naga.
+1. The forward check of STEP 0 prints 0 on the final lockfile, and the CI step that greps
+   `cargo tree --no-default-features -e normal` for neo4rs, tokio-tungstenite, burn-wgpu and naga
+   still finds none.
 2. `cargo fmt --check`, `cargo clippy --all-targets --features desktop -- -D warnings`,
    `cargo clippy --all-targets --no-default-features -- -D warnings` and
    `cargo test --features desktop` pass. brain_parity_tests, gpu_brain_batch_parity_tests,
@@ -117,7 +124,8 @@ DONE WHEN (each shown in the PR body with the raw command output)
    The last one must exit 0, and licensing/UNRESOLVED.md must list no component. If it still lists
    one, report which and why; do not edit a generated file by hand.
 7. Draft docs/decisions/ADR-0009-<slug>.md from ADR-0000-template.md, status `proposed`, and add its
-   row to docs/decisions/README.md; `npm run check:docs` must pass. Put in the PR body a proposed
+   row to docs/decisions/README.md; `npm run check:docs` must pass. If 0009 is taken on the trunk by
+   then, use the next free number. Put in the PR body a proposed
    replacement for the CLAUDE.md paragraph that begins "burn is pinned at 0.13.2". Do not edit
    CLAUDE.md.
 

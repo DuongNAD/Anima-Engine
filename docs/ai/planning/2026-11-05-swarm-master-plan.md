@@ -265,7 +265,9 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 
 **R1c xong khi** (mỗi dòng là một điều kiện, không dòng nào được bỏ):
 
-1. `cargo tree --features desktop -e normal -i hexf-parse` báo không còn gói đó trong cây.
+1. `hexf-parse` không còn trong cây, kiểm bằng lệnh xuôi (`cargo tree -i` đơn lẻ thoát khác 0 và không in
+   gì khi spec mơ hồ, và một lệnh hỏng mà không in gì không phải kết quả âm): `cargo tree -e all --features desktop --target all | grep -c " hexf-parse v"`
+   in ra 0.
 2. `brain_parity_tests`, `gpu_brain_batch_parity_tests`, `a2c_loss_direction_tests`, `burn_neural_net_tests` và
    `phase5_burn_wgpu_fallback` xanh, không assertion nào bị nới. Gate parity EB-S02 là thứ bảo vệ bố cục
    trọng số `w[out * fan_in + in]`.
