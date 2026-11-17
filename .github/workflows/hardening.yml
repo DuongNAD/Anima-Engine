@@ -16,7 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The pinned toolchain from rust-toolchain.toml, as ci.yml does, so the golden hash and the
+      # stability runs use the same rustc as every other gate. `dtolnay/rust-toolchain@stable`
+      # used to install the newest stable over the pin: STATE §1.h records rustc 1.100.0 here while
+      # the Rust job ran the pinned 1.98.1.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+
+      - name: Show toolchain
+        working-directory: src-tauri
+        run: |
+          rustc --version --verbose
+          cargo --version
 
       - uses: Swatinem/rust-cache@v2
         with:
