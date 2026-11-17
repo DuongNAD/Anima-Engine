@@ -665,53 +665,59 @@ pub use crate::core::telemetry_export::{
     TimeSeriesSample,
 };
 
-#[tauri::command]
-pub fn export_scientific_dataset(
-    state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-    req: ScientificExportRequest,
-) -> Result<ScientificExportResponse, String> {
-    let status = state.engine.get_status();
+/// Everything a scientific export is made of, assembled from the engine but not yet serialized or
+/// written anywhere.
+///
+/// Split out of [`export_scientific_dataset`] so the assembly can be exercised against a real
+/// [`SimulationEngine`](crate::core::engine::SimulationEngine) without a Tauri `AppHandle`, which only
+/// the file write needs.
+pub struct ScientificExportParts {
+    pub package: ScientificDatasetPackage,
+    pub csv_content: String,
+    pub newick_tree: Option<String>,
+}
+
+/// Read what the simulation thread has published and assemble the export package from it.
+pub fn build_scientific_export(
+    engine: &crate::core::engine::SimulationEngine,
+    map_elites: crate::core::telemetry_export::MapElitesSummary,
+    req: &ScientificExportRequest,
+) -> Result<ScientificExportParts, String> {
+    let status = engine.get_status();
     let provenance = RunProvenance::new(42, status.tick_count);
 
-    let eco = state
-        .engine
+    let eco = engine
         .ecosystem_state
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let demo = state
-        .engine
+    let demo = engine
         .demographic_census
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let flux = state
-        .engine
+    let flux = engine
         .energy_flux_report
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let segments = state
-        .engine
+    let segments = engine
         .agent_states
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let bounds = state
-        .engine
+    let bounds = engine
         .terrain_map
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .as_ref()
         .map(|t| t.bounds);
 
-    let combat_events = state
-        .engine
+    let combat_events = engine
         .combat_events
         .read()
         .unwrap_or_else(|e| e.into_inner())
@@ -727,15 +733,8 @@ pub fn export_scientific_dataset(
         &combat_events,
     );
 
-    let map_elites = state
-        .map_elites_grid
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .compute_summary();
-
     let newick_tree =
-        crate::core::telemetry_export::export_lineage_newick(&state.engine.lineage_tracker, None)
-            .ok();
+        crate::core::telemetry_export::export_lineage_newick(&engine.lineage_tracker, None).ok();
 
     let time_series = vec![TimeSeriesSample {
         tick: status.tick_count,
@@ -758,7 +757,7 @@ pub fn export_scientific_dataset(
 
     let package = ScientificDatasetPackage {
         schema_version: 1,
-        provenance: provenance.clone(),
+        provenance,
         time_series: if req.include_time_series {
             time_series
         } else {
@@ -786,6 +785,32 @@ pub fn export_scientific_dataset(
             None
         },
     };
+
+    Ok(ScientificExportParts {
+        package,
+        csv_content,
+        newick_tree,
+    })
+}
+
+#[tauri::command]
+pub fn export_scientific_dataset(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    req: ScientificExportRequest,
+) -> Result<ScientificExportResponse, String> {
+    let map_elites = state
+        .map_elites_grid
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .compute_summary();
+
+    let ScientificExportParts {
+        package,
+        csv_content,
+        newick_tree,
+    } = build_scientific_export(&state.engine, map_elites, &req)?;
+    let provenance = package.provenance.clone();
 
     let json_content = serde_json::to_string_pretty(&package)
         .map_err(|e| format!("JSON serialization error: {e}"))?;

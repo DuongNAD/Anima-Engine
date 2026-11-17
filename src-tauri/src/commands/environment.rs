@@ -148,14 +148,23 @@ pub fn get_demographic_census(
     Ok(shared.clone())
 }
 
-#[tauri::command]
-pub fn get_energy_flux_matrix(state: State<'_, AppState>) -> Result<EnergyFluxReport, String> {
-    let shared = state
-        .engine
+/// The energy-flux report the simulation thread last published.
+///
+/// Split out of [`get_energy_flux_matrix`] so the answer can be checked against a real
+/// [`SimulationEngine`](crate::core::engine::SimulationEngine) without a Tauri `State`.
+pub fn read_energy_flux(
+    engine: &crate::core::engine::SimulationEngine,
+) -> Result<EnergyFluxReport, String> {
+    let shared = engine
         .energy_flux_report
         .read()
         .unwrap_or_else(|e| e.into_inner());
     Ok(shared.clone())
+}
+
+#[tauri::command]
+pub fn get_energy_flux_matrix(state: State<'_, AppState>) -> Result<EnergyFluxReport, String> {
+    read_energy_flux(&state.engine)
 }
 
 #[tauri::command]
