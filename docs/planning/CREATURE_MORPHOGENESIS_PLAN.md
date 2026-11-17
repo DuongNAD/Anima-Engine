@@ -52,9 +52,8 @@ Dùng symbol làm neo; số dòng chỉ để hỗ trợ đọc phiên bản 202
 | Migration spawn | `SpawnMigrationCommand::apply` | `core/world_systems.rs` |
 | Tick IPC | `SegmentState` | `core/simulation_state.rs` |
 | Tick payload builder | `state_buffer.push(SegmentState { ... })` | `core/simulation_loop.rs` |
-| Frontend contract | `SegmentState`, `RenderSegment` | `src/types/index.ts` |
-| Legacy duplicate model | `SegmentState`, `RenderSegment`, `buildAgentHierarchy` | `src/App.tsx` |
-| Shared hierarchy builder | `buildAgentHierarchy` | `src/hooks/useSimulation.ts` |
+| Frontend contract | `SegmentState` (sinh bằng ts-rs, không sửa tay), `RenderSegment` | `src/types/generated/SegmentState.ts`, `src/types/index.ts` |
+| Shared hierarchy builder | `RenderSegment`, `buildAgentHierarchy` | `src/utils/agentHierarchy.ts` (đối chiếu 2026-11-17: `src/hooks/useSimulation.ts` đã bị xoá, và `src/App.tsx` không còn bản sao mà nhập từ file này) |
 | 2D renderer | `PixiViewport` | `src/PixiViewport.tsx` |
 
 ## Dependency graph
