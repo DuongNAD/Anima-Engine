@@ -36,7 +36,7 @@ Backend (run from `src-tauri/`):
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
 
-Dependency advisories are gated: `cargo audit` (backend, config in `src-tauri/.cargo/audit.toml`) and `npm audit --audit-level=high` (both npm packages). Two Rust advisories are ignored there with the verification recorded — they are lockfile-only entries for `burn-dataset`, which no enabled feature compiles.
+Dependency advisories are gated: `cargo audit` (backend, config in `src-tauri/.cargo/audit.toml`) and `npm run check:audit` (`scripts/check_npm_audit.mjs`, both npm packages, threshold `high`). Neither gate has a blanket exemption. Each Rust advisory ignored in `audit.toml` is a lockfile-only entry under an optional `burn` dependency no enabled feature compiles, with the verifying command recorded beside it. An npm advisory is tolerated only when `scripts/npm_audit_policy.mjs` names it with a reason, and the gate re-checks on every run that it is absent from `npm audit --omit=dev` (what ships) and fails on a stale entry. Do not add to either list without recording the check that shows the code cannot reach a user.
 
 **burn is pinned at 0.13.2 and the upgrade is not a security fix.** Checked 2026-07-26: 0.14 still resolves the same vulnerable `gix-tempfile`, and it breaks `ai/model.rs` and `core/training.rs` (`Data` → `TensorData`, and `Wgpu` lost its third generic parameter). The version is many releases behind and worth moving for its own reasons, but it touches the numerically sensitive learner and buys nothing on the advisory front. `bevy_ecs` is likewise at 0.13 with no advisory pressure.
 
