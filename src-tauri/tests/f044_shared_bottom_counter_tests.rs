@@ -145,3 +145,69 @@ fn f044_control_a_fed_animal_does_get_its_thirst_grace() {
         "a fed founder lives through its thirst grace of {DEHYDRATION_TICKS} ticks, got {survived}"
     );
 }
+
+#[test]
+fn a_homeostatic_state_saved_before_the_split_loads_with_no_thirst_streak_recorded() {
+    // The JSON a save from the shared-counter era carries: `starving_ticks`, no `dehydrating_ticks`.
+    let legacy = r#"{"energy":50.0,"energy_target":100.0,"hydration":0.0,"hydration_target":100.0,
+        "temperature":37.0,"temp_target":37.0,"previous_deviation":0.0,"starving_ticks":7}"#;
+    let homeo: HomeostaticState = serde_json::from_str(legacy).expect("an old save still loads");
+    assert_eq!(homeo.starving_ticks, 7);
+    assert_eq!(
+        homeo.dehydrating_ticks, None,
+        "a missing thirst streak must read as unknown, not as 0"
+    );
+}
+
+/// Restore an animal from the shared-counter era that is out of water but fed, with 7 ticks on its
+/// shared counter and a thirst grace of 10, and return the tick it dies on.
+fn death_tick_of_a_restored_thirsty_animal(thirst_streak: Option<u32>) -> u32 {
+    let adapter = lone_founder(50.0);
+    {
+        let mut world = adapter.world();
+        let mut q = world.query_filtered::<&mut HomeostaticState, With<Agent>>();
+        let mut homeo = q.iter_mut(&mut world).next().expect("the founder exists");
+        homeo.hydration = 0.0;
+        homeo.starving_ticks = 7;
+        homeo.dehydrating_ticks = thirst_streak;
+    }
+    let mut adapter = adapter;
+    for tick in 1..=MAX_TICKS_AFTER_THIRST {
+        adapter.run_schedule_once();
+        if tick == 1 {
+            if let Some(homeo) = founder(&adapter) {
+                if thirst_streak.is_none() {
+                    assert_eq!(
+                        homeo.dehydrating_ticks,
+                        Some(8),
+                        "the first tick carries the shared count over as the thirst streak"
+                    );
+                }
+                assert_eq!(homeo.starving_ticks, 0, "a fed animal has no hunger streak");
+            }
+        }
+        if founder(&adapter).is_none() {
+            return tick;
+        }
+    }
+    panic!("an animal without water must die within {MAX_TICKS_AFTER_THIRST} ticks");
+}
+
+#[test]
+fn a_thirsty_animal_restored_from_the_shared_counter_era_keeps_its_progress() {
+    // The old rule charged the shared counter to thirst: 7 ticks already spent of a 10-tick grace,
+    // so the animal dies on the third tick after the restore. A missing field read as a fresh 0
+    // would give it the whole grace again.
+    let carried = death_tick_of_a_restored_thirsty_animal(None);
+    let fresh = death_tick_of_a_restored_thirsty_animal(Some(0));
+    println!("F044 restore: dies_at_tick carried={carried} fresh_counter={fresh}");
+    assert_eq!(
+        carried,
+        DEHYDRATION_TICKS - 7,
+        "a restored animal must die when the old shared counter would have killed it"
+    );
+    assert_eq!(
+        fresh, DEHYDRATION_TICKS,
+        "control: a recorded streak of 0 gets the full grace"
+    );
+}

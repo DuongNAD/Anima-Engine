@@ -503,6 +503,7 @@ impl bevy_ecs::system::Command for SpawnOffspringCommand {
             temp_target: 37.0,
             previous_deviation: 0.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         };
 
         let vel_vec = glam::Vec3::new(vx, 0.0, vz);

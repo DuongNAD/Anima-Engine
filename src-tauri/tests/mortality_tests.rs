@@ -90,6 +90,7 @@ fn endow_all_agents(a: &mut LiveExperimentAdapter, energy: f32, hydration: f32) 
         homeo.energy = energy;
         homeo.hydration = hydration;
         homeo.starving_ticks = 0;
+        homeo.dehydrating_ticks = Some(0);
     }
 }
 
@@ -120,7 +121,8 @@ fn dehydrate_everyone(a: &mut LiveExperimentAdapter, threshold: u32) {
     let mut q = world.query_filtered::<&mut HomeostaticState, With<Agent>>();
     for mut homeo in q.iter_mut(&mut world) {
         homeo.hydration = 0.0;
-        homeo.starving_ticks = threshold;
+        // The thirst streak, which the dehydration grace reads since F-044 split the counters.
+        homeo.dehydrating_ticks = Some(threshold);
     }
 }
 
@@ -209,7 +211,8 @@ fn the_census_counts_the_world_after_the_corpse_is_reclaimed() {
         },
     );
     endow_all_agents(&mut a, 7.5, 0.0);
-    set_every_agent_state(&mut a, 7.5, 2);
+    // Two ticks of thirst already behind them: since F-044 that streak is the thirst counter.
+    dehydrate_everyone(&mut a, 2);
     a.run_schedule_once();
 
     assert_eq!(
@@ -461,7 +464,8 @@ fn mortality_is_expressible_through_the_manifest_and_absent_means_off() {
     )
     .expect("the live world builds");
     endow_all_agents(&mut a, 7.5, 0.0);
-    set_every_agent_state(&mut a, 7.5, 2);
+    // Two ticks of thirst already behind them: since F-044 that streak is the thirst counter.
+    dehydrate_everyone(&mut a, 2);
     a.run_schedule_once();
     assert_eq!(
         agent_count(&a),

@@ -56,6 +56,7 @@ fn test_ecs_simulation_loop() {
                     temp_target: 37.0,
                     previous_deviation: 0.0,
                     starving_ticks: 0,
+                    dehydrating_ticks: Some(0),
                 },
                 CpgOscillator::new(1.0, 0.5),
                 RigidBody {

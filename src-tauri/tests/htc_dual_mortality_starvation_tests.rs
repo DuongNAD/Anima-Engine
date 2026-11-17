@@ -209,7 +209,8 @@ fn dual_reclaim_commands_with_positive_corpse_reserve_credit_detritus_only_once(
         let mut q = world.query_filtered::<&mut HomeostaticState, With<Agent>>();
         for mut homeo in q.iter_mut(&mut world) {
             homeo.hydration = 0.0;
-            homeo.starving_ticks = 2;
+            // The thirst streak, which the dehydration grace reads since F-044 split the counters.
+            homeo.dehydrating_ticks = Some(2);
         }
     }
     adapter_b.run_schedule_once();

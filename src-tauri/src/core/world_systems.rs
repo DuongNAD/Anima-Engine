@@ -176,17 +176,34 @@ pub fn metabolic_decay_system(
         homeo.energy = (homeo.energy - decay).max(0.0);
         respired += (before - homeo.energy) as f64; // actual energy removed (floored at 0)
 
-        // Starvation bookkeeping (feature ecological-selection, branch M): consecutive ticks at
-        // the bottom — energy or hydration exhausted — counted here, where the post-decay state
-        // is authoritative; reset to zero the moment the animal is fed or watered again.
-        // Written unconditionally on purpose: nothing reads the counter without an enabled
-        // `MortalityPolicy`, and the field sits outside `world_checksum`, so flag-off runs stay
-        // bit-identical. `saturating_add` because a run without mortality never consumes it.
-        if homeo.energy <= 0.0 || homeo.hydration <= 0.0 {
-            homeo.starving_ticks = homeo.starving_ticks.saturating_add(1);
+        // Starvation and thirst bookkeeping (feature ecological-selection, branch M; split by
+        // F-044): two streaks of consecutive ticks at the bottom, one per resource, counted here
+        // where the post-decay state is authoritative, and each reset to zero the moment that
+        // resource is above the bottom again. Written unconditionally on purpose: nothing reads them
+        // without an enabled `MortalityPolicy`, and both sit outside `world_checksum`, so flag-off
+        // runs stay bit-identical. `saturating_add` because a run without mortality never consumes
+        // them.
+        //
+        // A thirst streak of `None` comes from a save written when one shared counter served both
+        // graces (see `HomeostaticState::dehydrating_ticks`): the shared count is the streak the old
+        // rule would have charged to thirst, so it is carried over when the animal is out of water.
+        let thirst_before = homeo
+            .dehydrating_ticks
+            .unwrap_or(if homeo.hydration <= 0.0 {
+                homeo.starving_ticks
+            } else {
+                0
+            });
+        homeo.starving_ticks = if homeo.energy <= 0.0 {
+            homeo.starving_ticks.saturating_add(1)
         } else {
-            homeo.starving_ticks = 0;
-        }
+            0
+        };
+        homeo.dehydrating_ticks = Some(if homeo.hydration <= 0.0 {
+            thirst_before.saturating_add(1)
+        } else {
+            0
+        });
 
         if let Some(mut tracker) = opt_tracker {
             let speed = velocity.map(|v| v.0.length()).unwrap_or(0.0);

@@ -12,14 +12,32 @@ pub struct HomeostaticState {
     pub temperature: f32,
     pub temp_target: f32,
     pub previous_deviation: f32,
-    /// Consecutive ticks spent at the bottom — energy or hydration exhausted. Incremented by
-    /// `metabolic_decay_system`, reset to 0 the moment the animal is out of the bottom again.
+    /// Consecutive ticks with **energy** exhausted, compared with `MortalityPolicy::starve_ticks`.
+    /// Incremented by `metabolic_decay_system`, reset to 0 the moment the animal has energy again.
     /// Read by `mortality_system` when a `MortalityPolicy` enables death; written
     /// unconditionally, but nothing observes it without the flag, so flag-off runs stay
     /// bit-identical (the field is outside `world_checksum`). `serde(default)` so snapshots
     /// written before the field existed load as "not starving".
+    ///
+    /// Until F-044 was fixed this one counter also counted thirst (energy **or** hydration at the
+    /// bottom) and served both graces, so a long hunger used up the thirst grace.
     #[serde(default)]
     pub starving_ticks: u32,
+    /// Consecutive ticks with **hydration** exhausted, compared with
+    /// `MortalityPolicy::dehydration_ticks` (F-044, card S8). Same writer, reader and checksum rules
+    /// as `starving_ticks`.
+    ///
+    /// # Why `Option<u32>` and not `u32`
+    ///
+    /// A save written before this field existed has one shared counter, `starving_ticks`, that
+    /// counted thirst too. Reading the missing field as `0` would hand an animal that was already
+    /// dying of thirst a fresh thirst grace on load: finite, plausible, and wrong. `None` means *not
+    /// recorded*. The first `metabolic_decay_system` tick after such a restore takes the old shared
+    /// counter as the thirst streak when the animal is out of water, which is what the old rule
+    /// would have used, and writes `Some` from then on. Everything spawned today starts at
+    /// `Some(0)`.
+    #[serde(default)]
+    pub dehydrating_ticks: Option<u32>,
 }
 
 impl Default for HomeostaticState {
@@ -33,6 +51,7 @@ impl Default for HomeostaticState {
             temp_target: 37.0,
             previous_deviation: 0.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         }
     }
 }

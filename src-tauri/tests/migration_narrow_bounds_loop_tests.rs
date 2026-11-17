@@ -70,6 +70,7 @@ async fn test_migration_narrow_bounds_infinite_loop() {
                 temp_target: 37.0,
                 previous_deviation: 0.0,
                 starving_ticks: 0,
+                dehydrating_ticks: Some(0),
             },
             AgentLineageId("loop-lineage-id".to_string()),
             AgentGeneration(1),
