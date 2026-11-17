@@ -136,8 +136,13 @@ pub trait ExperimentModel: Sized {
     /// A deterministic content fingerprint of the current state.
     fn checksum(&self) -> u32;
 
-    /// Named scalar observables in a STABLE order. The runner calls this on every **sample** tick
-    /// and once at the end of the run.
+    /// Named scalar observables in a STABLE order. `drive` calls this on every **sample** tick and
+    /// once at the end of the run; `run_branch_tree` also calls it at the start of each node.
+    ///
+    /// For a model with window observables (counts since the previous read, such as the live
+    /// world's `live.births`), the end-of-run read in [`RunResult::final_observables`] therefore
+    /// counts the events since the last sample: zero when `duration_ticks` is a multiple of
+    /// `sample_period`, the whole run when `sample_period == 0`.
     fn observables(&self) -> Vec<(String, f64)>;
 
     /// The observables on a tick that is **not** sampled, read only to check that every value is
@@ -146,6 +151,12 @@ pub trait ExperimentModel: Sized {
     /// A model whose observables count events since the previous read (a window that each read
     /// closes) must override this with a read that leaves the window open. Otherwise the per-tick
     /// check closes the window on every tick, and each sample counts only its own tick.
+    ///
+    /// Known limit, for the live world: its snapshot does not carry the window
+    /// (`VitalStatistics` is outside both the checksum and the save format). A checkpoint fork at a
+    /// tick that is not a sample tick therefore starts each branch with an empty window. The events
+    /// of the open window then appear in the prefix's `final_observables`, not in the branch's
+    /// first sample. Checksums are unaffected.
     fn observables_unsampled(&self) -> Vec<(String, f64)> {
         self.observables()
     }
