@@ -99,6 +99,24 @@ ignore = [
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0429",
 
+    # zip 0.6.6 — RUSTSEC-2026-0545, AES entries returned without checking their authentication code
+    # when the data ends early or is empty (fix >= 9.0.0).
+    #
+    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # never compiled. The advisory entered the database on 2026-11-17 and turned `cargo audit` red on
+    # a commit that changed no dependency. Ignore added with the owner's approval the same day.
+    #
+    # Verified 2026-11-17 on macOS, at the commit that adds this entry:
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
+    "RUSTSEC-2026-0545",
+
+    # zip 0.6.6 — RUSTSEC-2026-0548, `ZipStreamReader` extracts entries under local-header names that
+    # can differ from the central directory (fix >= 9.0.5).
+    #
+    # Same lockfile-only path and the same two commands as RUSTSEC-2026-0545 above, run the same day.
+    "RUSTSEC-2026-0548",
+
     # libsqlite3-sys 0.27.0 — RUSTSEC-2026-0459, `libsqlite3-sys` via C SQLite CVE-2026-119375
     # (CVSS 6.8, fix >= 0.39.0).
     #
