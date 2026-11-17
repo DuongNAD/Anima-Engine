@@ -289,13 +289,19 @@ pub struct SimulationEngine {
     pub demographic_census: Arc<RwLock<crate::core::telemetry_export::DemographicCensusState>>,
     pub energy_flux_report: Arc<RwLock<crate::core::telemetry_export::EnergyFluxReport>>,
     /// The seed the simulation thread's [`SimRng`](crate::core::resources::SimRng) is actually
-    /// using, published once the world is built and any restore has been applied.
+    /// using, published at the end of the run's first counted tick.
     ///
     /// The seed lives only in the simulation thread's world, and commands run on their own thread,
-    /// so this is the one way a command can report it. `None` until a run has started: before that
-    /// there is no seed, and a number invented to fill the gap (the export used to say 42) is worse
-    /// than none. Recomputing it here from `ANIMA_SIM_SEED` or the world file would be wrong after a
-    /// save is loaded, because a checkpoint's own seed takes precedence over both.
+    /// so this is the one way a command can report it. `None` until a run has published its first
+    /// tick: before that there is no seed, and a number invented to fill the gap (the export used to
+    /// say 42) is worse than none. Recomputing it here from `ANIMA_SIM_SEED` or the world file would
+    /// be wrong after a save is loaded, because a checkpoint's own seed takes precedence over both.
+    ///
+    /// The seed is published **after** the tick's telemetry, so `Some` means the published state
+    /// (segments, ecosystem, census, flux, status) is this run's. `stop` leaves the last run's seed in
+    /// place, together with that run's last state, which is still consistent; `start` empties it
+    /// before the new run exists. A restore that is refused before the workers start returns before
+    /// that reset, so the previous run's seed and state stay together.
     pub run_seed: Arc<RwLock<Option<u64>>>,
 }
 
@@ -1787,12 +1793,8 @@ impl SimulationEngine {
                 elements: Vec::with_capacity(64),
             };
 
-            // The world is built and any checkpoint is restored, so the seed on `SimRng` is final:
-            // read it off the resource rather than resolving it a second time, the way the world
-            // setup above already does. Published before the first counted tick, so a caller that sees
-            // `tick_count > 0` also sees the seed.
-            *run_seed_clone.write().unwrap_or_else(|e| e.into_inner()) =
-                Some(world.resource::<crate::core::resources::SimRng>().seed());
+            // The seed is published at the end of the first counted tick, not before it (see below).
+            let mut run_seed_published = false;
 
             while running_clone.load(Ordering::SeqCst) {
                 let next_tick_count = {
@@ -2340,6 +2342,19 @@ impl SimulationEngine {
                     stat.tick_count = tick_count;
                     stat.avg_tick_time_ms = avg_tick_time;
                     stat.fps = actual_fps;
+                }
+
+                // Published last, once, after this tick's segments, ecosystem, census, flux and status
+                // are all out. An export treats "a seed exists" as "there is a run to export", so the
+                // state beside the seed has to be this run's already: published earlier, the first
+                // instant of a fresh engine held the `Default` zeros, and the first instant of a
+                // restarted one held the previous run's data beside the new seed. The world is built
+                // and any checkpoint restored by now, so the seed on `SimRng` is final: it is read off
+                // the resource rather than resolved a second time, as the world setup above does.
+                if !run_seed_published {
+                    *run_seed_clone.write().unwrap_or_else(|e| e.into_inner()) =
+                        Some(world.resource::<crate::core::resources::SimRng>().seed());
+                    run_seed_published = true;
                 }
 
                 if let Some(counter) = counter_fault {
