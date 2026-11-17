@@ -2,7 +2,7 @@
 title: Chỉ mục quản trị
 status: active
 owner: maintainers
-last_reviewed: 2026-07-26
+last_reviewed: 2026-11-17
 review_cycle: quarterly
 ---
 
@@ -23,19 +23,22 @@ và một thành phần bên thứ ba được nhận vào theo quy trình nào.
    kể cả đọc source rồi viết lại — nhưng vì một lý do khác: nhận code GPL thì không thể tiếp tục chào
    nhánh MIT nữa. Đổi lại, **MPL-2.0 và LGPL nay là câu hỏi mở chứ không còn mặc định "không"**. Xem
    [chính sách nguồn mở](OPEN_SOURCE_POLICY.md).
-2. **Attribution đã có, văn bản license còn thiếu 1 chỗ.** Một sản phẩm proprietary vẫn phải
-   attribution cho các thành phần permissive được phân phối. [`NOTICE`](../../NOTICE) (inventory 458
-   thành phần) và [`licensing/`](../../licensing/) (văn bản license nguyên văn của **439/440** thành
-   phần được phân phối) đều đã sinh tự động và có gate CI. Trong đó 408 đọc thẳng từ artifact đã
-   cài, còn **31** lấy từ upstream tại đúng **commit bất biến** của bản phát hành, lưu nguyên byte ở
-   [`licensing/upstream/`](../../licensing/upstream/) kèm manifest chứng cứ. Phần **chưa đóng được**
-   còn **1** thành phần (`hexf-parse` 0.2.1) — upstream chưa từng publish văn bản license cho bản
-   đó; [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) ghi đầy đủ những gì đã tìm. Đây là
-   mục 3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
-
-2. **`NOTICE` đã có, nhưng duy trì thủ công.** Nó liệt kê dependency **trực tiếp** của bản build nhị
-   phân, không phải inventory sinh tự động theo nhánh transitive. Phần còn nợ đó là OSS-004; xem mục
+2. **Attribution đã có và sinh tự động; văn bản license còn thiếu 1 chỗ.** Một dự án nguồn mở vẫn phải
+   attribution cho các thành phần permissive nó phân phối. [`NOTICE`](../../NOTICE), văn bản license
+   nguyên văn ở [`licensing/`](../../licensing/) và [`sbom.cdx.json`](../../sbom.cdx.json) đều do
+   script sinh ra và có gate CI; không file nào được sửa tay. Phần lớn văn bản đọc thẳng từ artifact
+   đã cài; phần còn lại lấy từ upstream tại đúng **commit bất biến** của bản phát hành, lưu nguyên byte
+   ở [`licensing/upstream/`](../../licensing/upstream/) kèm manifest chứng cứ. Số thành phần hiện hành
+   ở [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền),
+   không chép ở đây. Phần **chưa đóng được** là **1** thành phần (`hexf-parse` 0.2.1): upstream chưa
+   từng publish văn bản license cho bản đó, và nó vẫn chặn phát hành;
+   [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) ghi đầy đủ những gì đã tìm. Đây là mục
    3.16 trong [`STATE_OF_THE_PROJECT.md`](../planning/STATE_OF_THE_PROJECT.md).
+
+   *Sửa 2026-11-17:* mục này từng có hai bản đánh số 2 nằm cạnh nhau sau một lần gộp nhánh. Bản thứ
+   hai viết rằng `NOTICE` "duy trì thủ công" và chỉ liệt kê dependency trực tiếp; điều đó sai từ khi
+   `scripts/gen_notice.mjs` sinh nó từ `cargo tree`. Phần còn nợ thật của OSS-004 là inventory cho
+   **model / dataset / asset**, mục 3.17 của STATE.
 
 ## Liên kết
 

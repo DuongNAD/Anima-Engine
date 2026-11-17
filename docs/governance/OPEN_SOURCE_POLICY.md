@@ -2,7 +2,7 @@
 title: Chính sách sử dụng nguồn mở
 status: proposed
 owner: maintainers
-last_reviewed: 2026-08-08
+last_reviewed: 2026-11-17
 review_cycle: quarterly
 ---
 
@@ -43,15 +43,40 @@ Tài liệu này là quy trình kỹ thuật, không phải tư vấn pháp lý.
 
 Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. Nó đổi lý do, và nới hàng thứ hai:
 
-- Một sản phẩm **proprietary không phân phối được** code copyleft (GPL/AGPL) đã link vào. Với các dự
-  án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) nghĩa là **đọc bài
-  báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ hai là vùng xám
-  pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý.
-- Điều này áp cho ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
-- Ngược lại, hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Nhưng
-  output không mặc nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
-- Dự án proprietary vẫn phải giữ **attribution/NOTICE** cho mọi thành phần permissive được phân
-  phối.
+> *Sửa 2026-11-17.* Danh sách dưới đây từng mở đầu bằng bốn gạch đầu dòng viết **trước** relicense,
+> nói về "một sản phẩm proprietary", nằm song song với bản viết lại ngày 2026-08-08 sau một lần gộp
+> nhánh. Bốn gạch đó đã được gỡ: nội dung của chúng có đủ trong bản viết lại, với lý do đúng cho một dự
+> án permissive. Ghi chú bằng chứng ngày 2026-07-27 được giữ nguyên, nay nằm dưới gạch "Attribution".
+
+- **GPL/AGPL vẫn chặn cứng cho code tích hợp.** Lý do nay không còn là "proprietary không phân phối
+  được copyleft", mà là: dự án **cam kết** cho người dùng chọn MIT. Link một thư viện GPL vào thì tác
+  phẩm phái sinh phải phát hành theo GPL, tức là **không thể** tiếp tục chào MIT nữa — lời hứa trong
+  `LICENSE-MIT` sẽ thành lời hứa không giữ được. Muốn nhận code GPL thì phải relicense **cả dự án**
+  sang GPL; đó là một quyết định ADR, không phải một pull request.
+- Với các dự án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) vẫn
+  nghĩa là **đọc bài báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ
+  hai là vùng xám pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý. Áp cho
+  ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
+- **Hàng thứ hai (MPL-2.0, LGPL) nay dễ hơn thật.** Copyleft ở mức file (MPL-2.0) hoặc ở mức thư
+  viện liên kết động (LGPL) tương thích được với một dự án permissive theo cách chúng không tương
+  thích được với proprietary. Vẫn cần ADR xác định linking/distribution/modification — nhưng câu trả
+  lời không còn mặc định là "không".
+- Hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Output không mặc
+  nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
+- **Neo4j là tiền lệ đúng của ranh giới tiến trình.** Neo4j Community Edition là GPLv3; engine nói
+  chuyện với nó qua giao thức Bolt tới một tiến trình cài riêng, không link. Vì thế GPLv3 không lan
+  sang mã dự án. Điều kiện để lập luận này đứng vững là **fallback in-memory phải luôn chạy được** —
+  ngày Neo4j trở thành bắt buộc, nó thành một cuộc thảo luận khác.
+- **Attribution vẫn bắt buộc, và hồ sơ của nó sinh tự động.** [`NOTICE`](../../NOTICE),
+  [`licensing/THIRD_PARTY_LICENSES.txt`](../../licensing/THIRD_PARTY_LICENSES.txt) và
+  [`sbom.cdx.json`](../../sbom.cdx.json) đều do script sinh ra và có gate CI
+  (`npm run check:compliance`); không file nào được sửa tay. Chúng mô tả bản build Windows, nên phải
+  sinh lại trên Windows ([`FINDINGS.md`](../../FINDINGS.md) F-025). Số thành phần hiện hành nằm ở
+  [`STATE_OF_THE_PROJECT.md` §1](../planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+
+  *Sửa 2026-11-17:* gạch này từng viết rằng `NOTICE` "được duy trì thủ công" và chỉ liệt kê dependency
+  trực tiếp. Câu đó sai từ `766609e`, và mâu thuẫn với chính ghi chú 2026-07-27 dưới đây. Phần còn nợ
+  thật của OSS-004 là inventory cho **model / dataset / asset**.
 
   > **Sửa 2026-07-27.** Bản trước viết *"Hiện repository **chưa có file `NOTICE`**"*. Câu đó **đã
   > sai sự thật** kể từ `766609e`: [`NOTICE`](../../NOTICE) tồn tại và được sinh tự động. Trạng thái
@@ -88,28 +113,6 @@ Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. 
   > `MIT OR Apache-2.0 OR Zlib` nhưng upstream chỉ publish văn bản Zlib — đóng gói **mọi** file có
   > tại bản phát hành, không tự chọn hộ chủ sở hữu.
 
-- **GPL/AGPL vẫn chặn cứng cho code tích hợp.** Lý do nay không còn là "proprietary không phân phối
-  được copyleft", mà là: dự án **cam kết** cho người dùng chọn MIT. Link một thư viện GPL vào thì tác
-  phẩm phái sinh phải phát hành theo GPL, tức là **không thể** tiếp tục chào MIT nữa — lời hứa trong
-  `LICENSE-MIT` sẽ thành lời hứa không giữ được. Muốn nhận code GPL thì phải relicense **cả dự án**
-  sang GPL; đó là một quyết định ADR, không phải một pull request.
-- Với các dự án đó, hạng `Reference` trong [khảo sát](../research/OPEN_SOURCE_LANDSCAPE.md) vẫn
-  nghĩa là **đọc bài báo và tài liệu mô tả mô hình**, không phải đọc source rồi viết lại — đường thứ
-  hai là vùng xám pháp lý mà chính sách này không cho phép đi vào mà không có ý kiến pháp lý. Áp cho
-  ít nhất **SLiM, Avida, ALIEN và Thrive** trong danh sách ứng viên hiện tại.
-- **Hàng thứ hai (MPL-2.0, LGPL) nay dễ hơn thật.** Copyleft ở mức file (MPL-2.0) hoặc ở mức thư
-  viện liên kết động (LGPL) tương thích được với một dự án permissive theo cách chúng không tương
-  thích được với proprietary. Vẫn cần ADR xác định linking/distribution/modification — nhưng câu trả
-  lời không còn mặc định là "không".
-- Hạng `Oracle` **không** bị chặn khi công cụ chạy tách biệt và chỉ sinh dữ liệu. Output không mặc
-  nhiên thừa hưởng license của tool — xem §"Code, model, data và asset".
-- **Neo4j là tiền lệ đúng của ranh giới tiến trình.** Neo4j Community Edition là GPLv3; engine nói
-  chuyện với nó qua giao thức Bolt tới một tiến trình cài riêng, không link. Vì thế GPLv3 không lan
-  sang mã dự án. Điều kiện để lập luận này đứng vững là **fallback in-memory phải luôn chạy được** —
-  ngày Neo4j trở thành bắt buộc, nó thành một cuộc thảo luận khác.
-- **Attribution vẫn bắt buộc.** [`NOTICE`](../../NOTICE) đã có (2026-08-08) và liệt kê dependency
-  trực tiếp của bản build nhị phân. Nó **được duy trì thủ công**, chưa phải inventory sinh tự động
-  và đầy đủ theo nhánh transitive — đó là OSS-004, vẫn còn nợ.
 - Apache-2.0 chỉ tương thích **một chiều** với GPLv3: hạ nguồn GPLv3 dùng được code Apache-2.0, chiều
   ngược lại thì không. Nhánh MIT là thứ giữ cho hạ nguồn **GPLv2** cũng dùng được.
 
@@ -155,14 +158,20 @@ Hồ sơ có thể bắt đầu trong ADR; khi tooling ổn định, sinh invent
   input data.
 - Không commit package cache, virtual environment hoặc dữ liệu không có provenance.
 
-## Kiểm soát tự động đề xuất
+## Kiểm soát tự động
 
-- Rust: `cargo-deny` cho advisory, bans, licenses và sources.
-- JavaScript: lockfile review và công cụ audit hiện có; không auto-fix major version
-  trong cùng PR tính năng.
-- Tài liệu: lychee kiểm tra link.
-- Release: sinh SBOM khi pipeline phát hành được thiết lập.
-- Renovation/update bot chỉ mở PR; benchmark và compatibility test vẫn là gate.
+Mục này từng là danh sách **đề xuất**. Đối chiếu `.github/workflows/ci.yml` và `package.json` ngày
+2026-11-17, phần lớn đã thành gate thật; cột cuối nói cái nào còn là đề xuất.
+
+| Phạm vi | Kiểm soát | Trạng thái |
+|---|---|---|
+| Rust — advisory | `cargo audit`, cấu hình ở `src-tauri/.cargo/audit.toml` | Gate CI |
+| Rust — license, bans, sources | `cargo deny check`, allow-list ở `src-tauri/deny.toml` | Gate CI từ 2026-08-08 |
+| JavaScript — advisory | `npm audit --audit-level=high` ở cả hai gói npm | Gate CI. Không auto-fix major version trong cùng PR tính năng |
+| Hồ sơ bên thứ ba | `NOTICE`, văn bản license, SBOM và schema của nó, ranh giới bundle; cục bộ gom trong `npm run check:compliance` | Gate CI, mỗi kiểm tra là một bước riêng. Hồ sơ mô tả bản build Windows và phải sinh lại trên Windows |
+| Văn bản license vendor từ upstream | `npm run verify:upstream-licenses` | Chạy tay, cần mạng; **không** nằm trong CI |
+| Link tài liệu | `scripts/check_docs_links.mjs`, trong `npm run check:docs` | Gate CI. Thay cho lychee mà bản trước của mục này đề xuất |
+| Bot cập nhật dependency | Chỉ mở PR; benchmark và compatibility test vẫn là gate | **Vẫn là đề xuất**; repo chưa cấu hình bot nào |
 
 ## Sự cố license hoặc bảo mật
 

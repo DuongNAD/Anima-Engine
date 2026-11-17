@@ -20,6 +20,20 @@ review_cycle: monthly
 > Tên giai đoạn dùng tiền tố **HT** (hoàn thiện) để không trùng với chương trình **G0–G4**, bậc ưu
 > tiên **P0–P2** của STATE, hay milestone **M0–M11** của WORLD_SIMULATION_PLAN.
 
+> **Trạng thái 2026-11-17 — đọc trước khi dùng một giai đoạn nào làm hàng đợi.** Đối chiếu danh sách PR
+> và mã trên thân cây; không lệnh nào được chạy lại. Thứ tự việc hiện hành do
+> [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ, và mỗi chặng đang ở đâu thì xem
+> [STATE §3.00](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+>
+> | Giai đoạn | Trạng thái | Ghi chú |
+> |---|---|---|
+> | §0, §1 (hiện trạng) | **Lịch sử** | Mô tả ngày 2026-10-16. Khối WIP mà §1 dặn không merge cả khối đã lên `main` ngày 2026-10-22; hai cây sau đó được hợp nhất ngày 2026-11-16 |
+> | HT0, HT1 | **Đã được thay** bởi HT0′–HT1′ của [roadmap 31/10](COMPLETION_ROADMAP_2026-10-31.md), và phần đó đã làm xong | #33, #38, #44, #45. HT1.1 (OSS-072 MRCA) vào thân cây ở #75, thay PR #31. HT1.7 (hoà giải tài liệu) làm được một phần: xem nhật ký 2026-11-17 trong `TODO.md` |
+> | HT2 | **Đang làm, vẫn là nguồn chuẩn** | HT2.1 (quần thể luân chuyển) đã có ở dạng opt-in: `live.reproduction`, #66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md). HT2.2 (thí nghiệm kế tiếp), HT2.3 (G2 gate #1) và HT2.4 (OSS-073) chưa làm |
+> | HT3 | Chưa bắt đầu, vẫn là nguồn chuẩn | Lát cắt dọc; kế hoạch swarm gọi là Đợt 6, thẻ V0–V11 |
+> | HT4 | Chưa bắt đầu, vẫn là nguồn chuẩn | HT4.1 (lượt app release ở 1.000 agent) là việc của con người và còn mở |
+> | HT5 | Chưa bắt đầu, vẫn là nguồn chuẩn | Bị chặn bởi QĐ-C (`hexf-parse`) và QĐ-1 |
+
 ## 0. Tóm tắt
 
 **Hiện trạng trong ba câu.** Lõi kỹ thuật mạnh và có bằng chứng: sổ năng lượng đóng bit-exact, lõi

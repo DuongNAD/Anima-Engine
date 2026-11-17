@@ -24,6 +24,17 @@ không build hay test nào được chạy. Thêm **bảng tiến độ theo ch�
 `OPEN` được đổi trạng thái, mỗi cái kèm commit hoặc PR: F-017, F-018, F-019, F-020, F-021, F-028, F-031, F-034.
 Ba kế hoạch cũ (thực thi 31/10, định hướng 13/11, swarm 05/11) nhận một ghi chú có ngày thay vì bị viết lại.
 
+Đợt hai cùng ngày, vẫn chỉ tài liệu. Ba hợp đồng reference được đưa về khớp mã: hợp đồng snapshot dừng ở
+schema 3 trong khi mã ở **schema 7**; hợp đồng tất định còn ghi thứ tự lịch "chưa được viết ra" dù F-041 đã
+biến lịch thành một chuỗi; hợp đồng sổ cái còn viết "không có ngăn thứ tư" dù mã có ngăn `dormant` và
+`closed_total_eu` có bốn số hạng. Hợp đồng sinh vật ghi bốn chỗ gọi `decode_genotype`; mã có **bảy**, và ba
+chỗ thêm (`SpawnOffspringCommand`, `RehydrateCommand`, `live_experiment::genesis`) nay có trong bảng. Các
+đoạn trùng và nói ngược nhau do một lần gộp nhánh để lại được gộp làm một: hai hàng 3.16 và hai hàng 3.17
+của STATE, hai mục số 2 của chỉ mục quản trị, bốn gạch đầu dòng "proprietary" của chính sách nguồn mở, và
+các hàng OSS-003/OSS-004 của kế hoạch áp dụng nguồn mở. `CONTRIBUTING.md` và hai README nay nói thân cây là
+nhánh nào, PR đi đâu và hợp đồng IPC nằm ở đâu. Tài liệu nào chỉ được rà một phần thì nhận một ghi chú có
+ngày nói rõ đã đối chiếu gì, và **giữ nguyên `last_reviewed` cũ** để vẫn hiện trong báo cáo quá hạn.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

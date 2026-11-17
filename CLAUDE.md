@@ -31,7 +31,7 @@ Frontend (run from repo root):
 - `npm run tauri:dev` / `npm run tauri:build` — the desktop app. **Use these, not bare `tauri dev`/`tauri build`:** they pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the bare commands ship a `default = []` binary with no Neo4j lineage, no cross-shard migration and the CPU learner. All three have fallbacks, so nothing fails loudly.
 
 Backend (run from `src-tauri/`):
-- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** seven test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
+- `cargo test --features desktop` — unit + integration tests, across both workspace packages (`default-members` in `Cargo.toml`; without it Cargo would run the root package only). **Pass `--features desktop`, which is what CI runs:** eight test files carry a crate-level `#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]` **and** a matching `[[test]] required-features` entry, so a bare `cargo test` does not schedule them at all rather than compiling them into empty binaries that report `running 0 tests` and exit 0. That silently skipped 1,877 lines of migration, cross-shard and GPU-fallback coverage. `tests/feature_gated_targets_tests.rs` keeps the two halves of that declaration from drifting.
 - `node scripts/check_test_targets.mjs <captured-output> --profile {default|desktop}` — the test-target **policy** gate. Every zero-test target and every `#[ignore]`d test must be named with a reason in `scripts/test_target_policy.mjs`; anything unlisted fails, and so does a listed entry that no longer applies, so the allow-list cannot silently grow or rot. With `--profile` it also checks that the feature-gated targets are absent under `default` and running under `desktop`. **Capture into one file with both streams in write order:** on macOS/Linux a plain `cargo test ... > out.txt 2>&1` in bash/zsh does that; on Windows use `cmd /c "cargo test ... > out.txt 2>&1"`, **not a PowerShell pipeline** — PowerShell buffers cargo's two streams separately, which reorders the `Running` lines away from their counts and makes the script under-report targets.
 - `cargo clippy` — Rust linter (ships with the toolchain).
 - `cargo build --release --features desktop` — required before Playwright E2E (it expects the release binary in `src-tauri/target/release/`).
@@ -69,9 +69,10 @@ migration, pigment, creature physics geometry, live-agent rendering, **agent bra
 `DevelopedPhenotype`, `EnvSample`, `RuntimeState`, `LocomotionMedium`, `develop_at_birth` — are the
 accepted *target* of ADR-0001 and **do not exist in the code** on this branch or on `origin/main`
 (checked 2026-11-14; `DevelopedPhenotype` exists only on `origin/fix/ht0-5c-sim-semantics`). Today
-genotype → ECS still goes through `decode_genotype` at four call sites: genesis in
-`SimulationEngine::start`, `SpawnGenotypeCommand::apply`, `spawn_serialized_agent` and
-`SpawnMigrationCommand::apply`. So a missing type does not mean a rule is obsolete, and it is not a
+genotype → ECS still goes through `decode_genotype` at seven call sites (counted 2026-11-17; the
+contract lists them): genesis in `SimulationEngine::start` and in `live_experiment::genesis`,
+`SpawnGenotypeCommand::apply`, `SpawnOffspringCommand::apply`, `spawn_serialized_agent`,
+`SpawnMigrationCommand::apply` and `RehydrateCommand::apply`. So a missing type does not mean a rule is obsolete, and it is not a
 licence to add the type ad hoc: introducing it is planned work in
 `docs/planning/CREATURE_MORPHOGENESIS_PLAN.md`. The contract's "Trạng thái triển khai" table says
 which names exist.

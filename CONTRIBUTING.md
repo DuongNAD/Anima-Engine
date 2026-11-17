@@ -43,10 +43,23 @@ produce code that runs, returns finite numbers and is silently wrong:
 |---|---|
 | Genotype, phenotype, genesis, birth, epoch replacement, agent brains, action gates | [`docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md`](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md), then [ADR-0001](docs/decisions/ADR-0001-creature-development-lifecycle.md) and [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
 | World laws, scenarios, exotic energy, energy pathways, lineage diagnostics, World Lab UI | [`docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md`](docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md), then [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) |
-| The Tauri IPC surface (commands and events) | [`PROJECT.md`](PROJECT.md), "Interface Contracts" |
+| The Tauri IPC surface (commands and events) | [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Add or remove a command and its row in the same commit; `npm run check:docs` fails when they disagree |
+| Reproduction, locomotion or ecology in the live world (the `live.*` manifest keys) | [ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md). Every key is opt-in: an absent key must leave the world exactly as it was |
+| Anything under `docs/` | [`docs/governance/DOCUMENTATION_POLICY.md`](docs/governance/DOCUMENTATION_POLICY.md). A new document needs front matter and a row in its directory's README index |
 
 Current code plus fresh tests win over prose. Files under `docs/archive/` are
 superseded and must not be used as implementation plans.
+
+## Where a change goes
+
+The trunk is **`feat/ecological-selection`**. Open pull requests against it, not against `main`;
+`main` is fast-forwarded onto the trunk at milestones. Both branches are protected: a direct push to
+the trunk is rejected, and a pull request merges only when the `Rust (src-tauri)` and `Frontend` CI
+jobs are both green. This holds for documentation-only changes too.
+
+If you are a coding agent, or are dispatching one, read
+[`docs/how-to/AGENT_WORKFLOW.md`](docs/how-to/AGENT_WORKFLOW.md) as well: it holds the card queue, the
+owner's recorded decisions and the per-card authorization lines.
 
 ## Gates
 
@@ -59,18 +72,35 @@ Frontend, from the repository root:
 npm run lint && npm run test && npm run test:frontend && npm run build
 ```
 
+```bash
+node scripts/eslint_ratchet.mjs
+```
+
+```bash
+npm run check:docs
+```
+
+The ESLint ratchet holds the warning baseline at 0, so a warning is a failure. `check:docs` checks
+links, document metadata and the IPC reference, and it reads untracked files, so a new document is
+checked before you stage it.
+
 Backend, from `src-tauri/`:
+
+```bash
+cargo fmt --check
+```
 
 ```bash
 cargo clippy --all-targets --features desktop -- -D warnings && cargo test --features desktop
 ```
 
-`--features desktop` is not optional. Seven test files carry a crate-level
-`#![cfg(feature = "networking")]` or `#![cfg(feature = "ml-wgpu")]`, so a bare
-`cargo test` compiles them to empty binaries that report `running 0 tests` and
-exit 0 — silently skipping the migration, cross-shard and GPU-fallback coverage.
-`node scripts/check_test_targets.mjs <captured-output>` fails when any target runs
-zero tests.
+`--features desktop` is not optional. Several test files are gated on the `networking` or `ml-wgpu`
+feature, both by a crate-level `#![cfg(feature = "…")]` and by a `[[test]] required-features` entry,
+so a bare `cargo test` does not schedule them at all. That silently skips the migration, cross-shard
+and GPU-fallback coverage. `node scripts/check_test_targets.mjs <captured-output> --profile desktop`
+is the policy gate: every zero-test target and every `#[ignore]`d test must be named with a reason in
+`scripts/test_target_policy.mjs`, and anything unlisted fails. Run one `cargo test` at a time; a full
+Rust build is heavy.
 
 Advisories are gated too: `cargo audit` in `src-tauri/` and
 `npm audit --audit-level=high` in both npm packages.
@@ -101,6 +131,15 @@ dependency stops the gate and gets the ADR the open-source policy asks for.
 
 No Prettier and no rustfmt argument: match the surrounding style. Rust files are
 formatted by rustfmt.
+
+Two rules about evidence, both learned the expensive way:
+
+- **A number has one home.** Measured results go in
+  [`STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md), with the command and the
+  date. Other documents point there instead of copying a figure that will go stale.
+- **Do not make a gate green by weakening it.** No loosened assertion, no new `#[ignore]`, no
+  narrowed test command, no invented seed, value or image used as evidence. If a gate is wrong, say
+  so in the pull request and fix the gate in the open.
 
 ## Reporting a security issue
 

@@ -15,6 +15,14 @@ review_cycle: weekly
 > Prompt viết bằng tiếng Anh, theo quy ước của brief 31/10 (brief đó từng ghi việc lẫn tiếng Việt vào
 > prompt tiếng Anh là một lỗi). Phần giải thích quanh prompt viết bằng tiếng Việt.
 
+> **Ghi chú 2026-11-17.** Thân các thẻ bên dưới không được sửa theo tiến độ. Trước khi dán một thẻ, xem
+> nó đã merge, đang làm hay bị chặn ở
+> [`AGENT_WORKFLOW.md` §3](../../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ), và lấy khối `DECISIONS` đã
+> điền ở §4 của trang đó. Ba điều đã đổi so với lúc viết: `main` và thân cây đã hợp nhất (2026-11-16) và
+> cả hai được bảo vệ, nên mọi thẻ kết thúc bằng một PR vào `feat/ecological-selection`; các thẻ D0, D1,
+> T1, T2, G1, G2, G7, S1 và S4 đã merge; và từ 2026-11-17 việc chạy trên hai máy (`agent-mac`,
+> `agent-win`) với nhánh `mac/…` và `win/…`, mô tả ở §1 của cùng trang.
+
 ## Cách dùng
 
 1. Dán **PROMPT 0** vào agent lead của teamwork. Điền khối `DECISIONS`; ô nào để trống thì thẻ phụ

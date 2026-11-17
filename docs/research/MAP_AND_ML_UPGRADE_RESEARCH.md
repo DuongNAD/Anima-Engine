@@ -28,6 +28,20 @@ Reject now**.
 | 4 | **Nợ phiên bản lớn**: `burn 0.13.2` (hiện tại 0.21.0), `bevy_ecs 0.13.0` (hiện tại 0.19.0). Bevy 0.19 biến `Resource` thành subtrait của `Component` → `impl Resource for BrainModel` thủ công + `unsafe impl Send/Sync` **sẽ vỡ**. | `Cargo.toml`, `ai/model.rs:67-70`, crates.io, migration guide Bevy 0.18→0.19 | Nâng cấp **theo bậc, mỗi bậc một ADR** (C1). Không gộp với thay đổi luật mô phỏng. |
 | 5 | **Determinism nứt ở tầng live.** 8 điểm gọi `thread_rng()` trong đường sim sống, trong khi `exotic_energy.rs` / `experiment_runner.rs` đã ghi rõ "never `thread_rng()`". | `agent_systems.rs:187`, `environmental_systems.rs:134`, `simulation_loop.rs:877`, `world_systems.rs:155,526`, `crossover.rs:45`, `mutation.rs:52`, `map_elites.rs:57` | Đưa RNG thành **resource có seed** (C2). Chặn đường replay và mọi thí nghiệm nghiêm túc nếu không sửa. |
 
+> **Rà lại 2026-11-17 — bảng trên là hiện trạng ngày 2026-07-25; ba trong năm phát hiện đã đổi.** Tài
+> liệu này vẫn là bằng chứng bên ngoài cộng đề xuất, và phần đề xuất không bị sửa. Đối chiếu bằng cách
+> đọc mã và ADR trên thân cây.
+>
+> | # | Hôm nay |
+> |---|---|
+> | 1, 2 | **Đã có đường thay thế, tắt mặc định.** Não di truyền theo từng cá thể (`BrainGenotype`) và học trong đời đã triển khai theo [ADR-0003](../decisions/ADR-0003-evolved-per-agent-brains.md). Thí nghiệm E2 so hai đường cho kết quả null vì hiệu ứng sàn, nên mặc định giữ là não dùng chung; xem `STATE_OF_THE_PROJECT.md` §3.1 |
+> | 3 | Không đổi. Chưa có tầng kiến tạo |
+> | 4 | Không đổi. `burn` vẫn 0.13.2 và `bevy_ecs` vẫn 0.13.0; lý do ghim `burn` ở `CLAUDE.md` |
+> | 5 | **Đã đóng.** Không còn lời gọi `thread_rng()` nào dưới `src-tauri/src`; đường sống dùng `SimRng` có seed, và một test quét mã nguồn chặn nó quay lại. Thứ tự lịch tick cũng đã thành một chuỗi khai báo (F-041) |
+>
+> Phần bản đồ: mười thẻ "thế giới đọc được" đã merge ngày 2026-11-16 (tầng chất lượng, LOD thực vật,
+> nội suy tư thế). Chúng là việc hiển thị và hiệu năng; chúng không thực hiện đề xuất kiến tạo ở #3.
+
 **Một kết quả khoa học đáng chú ý cho định hướng "triệu agent":** nghiên cứu 2025 trên
 môi trường sinh thái quy mô lớn (60.000+ agent, tiến hoá thuần, không reward) cho thấy một số
 hành vi phức tạp — kiếm ăn bằng thị giác, săn mồi, khai thác tài nguyên xa — **chỉ xuất hiện khi

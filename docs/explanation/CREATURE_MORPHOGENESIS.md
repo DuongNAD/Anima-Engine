@@ -43,6 +43,20 @@ flowchart LR
 
 ## Hiện trạng engine
 
+> **Rà lại 2026-11-17.** Hai danh sách dưới đây viết tháng 7. Đối chiếu mã trên thân cây cho thấy ba
+> điểm đã đổi, còn lại vẫn đúng:
+>
+> - Sổ cái closed-EU nay có **bốn** ngăn: thêm `dormant` cho agent ngủ đông
+>   ([hợp đồng sổ cái §1.1](../reference/ENERGY_LEDGER_CONTRACT.md)).
+> - Sinh sản không còn chỉ là epoch replacement: adapter thí nghiệm sống có **sinh sản liên tục theo
+>   ngưỡng năng lượng**, bật bằng khoá `live.reproduction`
+>   ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), và có **cái chết** bật bằng
+>   `live.mortality`. Cả hai tắt mặc định. Đây chưa phải vòng đời M5: con non vẫn được dựng bằng
+>   `decode_genotype`, không qua một bước development nào.
+> - Các kiểu của vòng đời đích (`DevelopedPhenotype`, `EnvSample`, `LocomotionMedium`,
+>   `develop_at_birth`) **vẫn chưa có trong mã**. Mục "Điểm nguy hiểm hiện tại" bên dưới vì thế vẫn
+>   nguyên hiệu lực, và nay áp cho thêm một call-site: con non của sinh sản liên tục.
+
 ### Đã có
 
 - `MorphologyGenotype`: graph node/edge với length, radius, mass, joint anchor/axis.

@@ -2,7 +2,7 @@
 title: Kế hoạch tổng cho swarm Antigravity — mọi việc, mọi phép đo, chia đợt song song
 status: proposed
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-05
 review_cycle: weekly
 ---
 

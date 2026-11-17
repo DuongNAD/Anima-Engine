@@ -2,7 +2,7 @@
 title: Hợp đồng tất định (deterministic mode)
 status: active
 owner: maintainers
-last_reviewed: 2026-07-25
+last_reviewed: 2026-11-17
 review_cycle: per-release
 ---
 
@@ -33,6 +33,12 @@ Nguồn thứ tư dễ bị bỏ sót nhất vì trông như chi tiết triển 
 bảo hai hệ thống tranh chấp không chạy cùng lúc, nhưng **không** đảm bảo cái nào chạy trước. Đây
 không phải lo lắng lý thuyết: G1.1 phát hiện một residual năng lượng **đổi dấu giữa các lần chạy** vì
 nó, và gate của G1.2 phải tự khai báo thứ tự mới có được checksum ổn định.
+
+*Cập nhật 2026-11-17:* nguồn thứ tư đã được đóng ở phía khai báo. Lịch tick nay là **một chuỗi duy
+nhất** dựng trong `core::simulation_schedule::build_tick_schedule` (F-041), nên không còn cặp hệ thống
+nào để executor tự chọn thứ tự. Trước đó, kể cả executor đơn luồng cũng chọn thứ tự cho các cặp không
+có cạnh bằng một hash gieo theo tiến trình, và cùng một seed cho các thế giới khác nhau ở các tiến trình
+khác nhau (F-029, F-041 trong [`FINDINGS.md`](../../FINDINGS.md)). Xem §5.
 
 ### 2.1 Nguồn thứ năm: camera (ADR-0004)
 
@@ -110,10 +116,40 @@ dựng world, chạy, và in ra một dòng checksum; tiến trình cha so sánh
 Kết quả: `process A = 0xe4c7f5e9`, `process B = 0xe4c7f5e9`, `checkpoint-resumed = 0xe4c7f5e9`,
 và control âm `half = 0xe66c09d2` ≠ `0xe4c7f5e9`.
 
+*Ghi chú 2026-11-17:* bốn giá trị trên là **đo lịch sử** của tháng 7. Gate khẳng định quan hệ giữa chúng
+(ba cái đầu bằng nhau, cái thứ tư khác), không khẳng định giá trị: theo §1, checksum không được hứa là
+giống nhau giữa các target hay các build. Đừng ghim một giá trị tuyệt đối vào test; so các lượt chạy với
+nhau.
+
+Từ 2026-11-16 có thêm hai gate trên **đúng lịch app chạy**, không phải trên một lịch do test tự khai:
+
+| Gate | Chứng minh |
+|---|---|
+| `tests/schedule_ambiguity_tests.rs`, gồm `the_tick_schedule_has_no_ambiguous_pair_at_all` | Lịch dựng bởi `build_tick_schedule` không còn cặp hệ thống nào thiếu thứ tự; các quan hệ nhân quả chính được khẳng định theo vị trí |
+| `tests/schedule_total_order_tests.rs` | Nhiều tiến trình con, cùng seed, ở cấu hình từng cho hai thế giới (tử vong cộng sinh sản liên tục), nay cho cùng một checksum |
+
 **Control âm là bắt buộc.** Không có nó, một checksum hằng số sẽ làm cả hai gate trên xanh vì lý do
 sai.
 
 ## 5. Chưa đóng
+
+> **Cập nhật 2026-11-17 — đọc trước các gạch đầu dòng bên dưới, vốn viết tháng 7.** Đối chiếu mã trên
+> thân cây; không test nào được chạy lại cho ghi chú này.
+>
+> - **Gạch 1 đã đóng.** Thứ tự hệ thống nay được viết ra: một chuỗi duy nhất trong
+>   `build_tick_schedule`, với `auto_insert_apply_deferred` tắt và năm điểm `apply_deferred` khai trong
+>   chuỗi (F-041, #65). Thêm một hệ thống mà không đặt nó vào chuỗi thì gate ambiguity đỏ.
+> - **Gạch 2 đóng một nửa.** `SimulationEngine::start` gọi chính `build_tick_schedule`, và adapter thí
+>   nghiệm sống cùng hai gate ở §4 chạy lịch đó. Cái vẫn chưa có là một lần chạy **app desktop** đầy đủ.
+> - **Gạch 3, đã đối chứng.** `add_chronicle_event` không còn. Cùng mẫu `Uuid::new_v4()` +
+>   `SystemTime::now()` nay nằm trong `GeminiWebSessionClient::log_event_to_timeline`
+>   (`evolution/meta_ai.rs`), và không dòng nào dưới `src-tauri/src` gọi hàm đó; chỉ
+>   `tests/phase5_gemini_websession.rs` gọi. Khoảng hở vì thế đang ngủ chứ chưa được gỡ: ai nối hàm đó vào
+>   đường sống thì phải đưa `DeterministicMode` và tick vào nó trước.
+> - **Gạch 4 vẫn đúng.** `core/networking_systems.rs` còn ba chỗ `SystemTime::now()`.
+> - **Gạch 5 cần đọc lại, và chưa ai đo.** Sau F-041, executor đa luồng không còn tự do chọn thứ tự giữa
+>   các hệ thống của chuỗi. Điều đó **không** đủ để nói đường mặc định tái lập được: đường đó còn uuid
+>   thật, timestamp thật và AI ngoài. Hợp đồng vẫn chỉ hứa tái lập khi `DeterministicMode` bật.
 
 - **Thứ tự hệ thống là tất định, nhưng chưa được *viết ra*.** Executor đơn luồng cho một thứ tự tổng
   ổn định, nhưng nó vẫn được suy ra từ thứ tự chèn + các ràng buộc `.after(...)` rời rạc, chứ không
