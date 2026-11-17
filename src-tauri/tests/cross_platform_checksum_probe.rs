@@ -15,6 +15,10 @@
 //!   reproduction), or `reference` (`ReferenceEvolutionWorld` on the baseline manifest);
 //! - `seed` and `tick`;
 //! - `checksum`, the model's own `ExperimentModel::checksum`;
+//! - for the live models, two extra entries among the observables: `world.terrain_checksum` and
+//!   `world.generator_version`, the `WorldIdentity` of the terrain the world was built on. The live
+//!   world takes its terrain from `ANIMA_WORLD_ARTIFACT` or `$TMPDIR/anima_world_artifact.anmw` when
+//!   one exists, and otherwise generates it, so these say which world a row is about;
 //! - `observables`, every observable except the withheld ones as `[name, value]`, the value
 //!   formatted with `{:?}`. That is the shortest string that round-trips the `f64`, so two lines that
 //!   agree as text agree bit for bit.
@@ -170,7 +174,7 @@ fn live_rows(model: &str, world: &InitialConditionSet, seed: u64, ticks: &[u64])
             adapter.run_schedule_once();
             now += 1;
         }
-        let observables = {
+        let mut observables = {
             let mut w = adapter.world();
             live_observables(&mut w)
         };
@@ -179,6 +183,21 @@ fn live_rows(model: &str, world: &InitialConditionSet, seed: u64, ticks: &[u64])
             all_live_observable_ids().len(),
             "a row must cover every observable the live adapter emits"
         );
+        // Which terrain the world was built on. `init_world` takes it from a shared artifact when
+        // one is on disk, and otherwise generates it, so two rows can differ here before anything
+        // has run.
+        let identity = *adapter
+            .world()
+            .get_resource::<WorldIdentity>()
+            .expect("init_world inserts the world identity");
+        observables.push((
+            "world.terrain_checksum".into(),
+            f64::from(identity.checksum),
+        ));
+        observables.push((
+            "world.generator_version".into(),
+            f64::from(identity.generator_version),
+        ));
         emit(model, seed, tick, adapter.checksum(), &observables);
         rows += 1;
     }
@@ -227,6 +246,8 @@ fn m1_print_world_checksums_for_cross_platform_comparison() {
         "mode": if full { "full" } else { "quick" },
         "seeds": seeds,
         "ticks": ticks,
+        // Set when the run was pointed at a world artifact instead of generating its terrain.
+        "world_artifact": std::env::var_os("ANIMA_WORLD_ARTIFACT").is_some(),
         "withheld": all_live_observable_ids()
             .into_iter()
             .filter(|n| withheld(n))

@@ -13,6 +13,7 @@ on:
       - .github/workflows/determinism-matrix.yml
       - src-tauri/tests/cross_platform_checksum_probe.rs
       - scripts/paper/compare_checksums.mjs
+      - artifacts/world_256.anmw
 
 permissions:
   contents: read
@@ -62,19 +63,33 @@ jobs:
           restore-keys: m1-${{ runner.os }}-
 
       # Release, default features: the probe needs nothing from `desktop`, and release is the
-      # profile the simulation ships in.
-      - name: Run the probe (full matrix)
+      # profile the simulation ships in. A fresh runner has no world artifact in its temp
+      # directory, so this run generates its terrain on the runner.
+      - name: Run the probe (terrain generated on the runner)
         env:
           ANIMA_M1_FULL: "1"
         run: |
           set -o pipefail
           cargo test --release --test cross_platform_checksum_probe -- --nocapture 2>&1 \
-            | tee ../m1-probe-${{ runner.os }}.txt
+            | tee ../m1-generated-${{ runner.os }}.txt
+
+      # The same probe on the committed world artifact, so terrain generation is taken out of the
+      # comparison and what remains is the tick dynamics.
+      - name: Run the probe (committed world artifact)
+        env:
+          ANIMA_M1_FULL: "1"
+          ANIMA_WORLD_ARTIFACT: ${{ github.workspace }}/artifacts/world_256.anmw
+        run: |
+          set -o pipefail
+          cargo test --release --test cross_platform_checksum_probe -- --nocapture 2>&1 \
+            | tee ../m1-pinned-${{ runner.os }}.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: m1-probe-${{ runner.os }}
-          path: m1-probe-${{ runner.os }}.txt
+          path: |
+            m1-generated-${{ runner.os }}.txt
+            m1-pinned-${{ runner.os }}.txt
           if-no-files-found: error
 
   compare:
@@ -97,10 +112,18 @@ jobs:
       - name: The compare script's negative controls
         run: node scripts/paper/compare_checksums.mjs --self-test
 
-      - name: Build the matrix
+      - name: Build the two matrices
         run: |
           ls -l probes
-          node scripts/paper/compare_checksums.mjs probes/m1-probe-*.txt --markdown determinism_matrix.md
+          {
+            echo "## Terrain generated on each runner"
+            echo
+            node scripts/paper/compare_checksums.mjs probes/m1-generated-*.txt
+            echo
+            echo "## Committed world artifact (artifacts/world_256.anmw)"
+            echo
+            node scripts/paper/compare_checksums.mjs probes/m1-pinned-*.txt
+          } > determinism_matrix.md
           cat determinism_matrix.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
