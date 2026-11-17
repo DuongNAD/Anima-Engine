@@ -35,6 +35,10 @@ các hàng OSS-003/OSS-004 của kế hoạch áp dụng nguồn mở. `CONTRIBU
 nhánh nào, PR đi đâu và hợp đồng IPC nằm ở đâu. Tài liệu nào chỉ được rà một phần thì nhận một ghi chú có
 ngày nói rõ đã đối chiếu gì, và **giữ nguyên `last_reviewed` cũ** để vẫn hiện trong báo cáo quá hạn.
 
+Cùng ngày, sổ quyết định (roadmap 31/10) có thêm §4.2: nguyên tắc **quá khứ của một thế giới đã chạy là bất
+biến** do chủ dự án nêu (QĐ-PAST), và hai đề xuất còn trống là QĐ-TIME (tách lịch khỏi tốc độ xem) và
+QĐ-LAW1 (thí nghiệm rẽ luật đầu tiên).
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

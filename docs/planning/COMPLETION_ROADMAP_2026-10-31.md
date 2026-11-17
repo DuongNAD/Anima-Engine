@@ -323,6 +323,95 @@ ba dòng cuối):
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
 | Không gắn chặng | #56 và #68 đang nhắm `main`: đổi nhánh đích rồi merge, hay đóng | Luật L1; STATE §3.00 |
+| Trước AE4 | QĐ-PAST (ngoại lệ và thiết kế lưu trữ), QĐ-TIME, QĐ-LAW1 | §4.2 ngay dưới |
+
+### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
+
+Mục này ghi một nguyên tắc chủ dự án nêu trực tiếp và hai đề xuất chủ dự án đồng ý đưa vào sổ. Phần "đọc
+mã" được đối chiếu trên thân cây ngày 2026-11-17; không lệnh build hay test nào được chạy, và mục này không
+mang số đo. Cả ba cần một ADR trước khi có dòng mã nào.
+
+| # | Nội dung | Trạng thái |
+|---|---|---|
+| **QĐ-PAST** | **Quá khứ của một thế giới đã chạy là bất biến.** Không sửa trạng thái ở một tick đã qua; chỉ một số trường hợp đặc biệt được phép. Lưu trữ phải đủ để dựng lại quá khứ và nhẹ nhất có thể | **Nguyên tắc: chủ dự án quyết 2026-11-17.** Danh sách ngoại lệ và thiết kế lưu trữ **còn trống** |
+| **QĐ-TIME** | Tách ba thứ: tick và vòng đời sinh vật; lịch của thế giới (bao nhiêu tick là một ngày, một năm); tốc độ xem. "Một ngày bằng 2 giờ thực" là **tốc độ xem**, không phải luật mô phỏng | Đề xuất; **còn trống** |
+| **QĐ-LAW1** | Thí nghiệm "rẽ luật" đầu tiên trên thế giới sống: cùng bản đồ và seed, một nhánh đối chứng và một nhánh thêm một nguồn năng lượng lạ, tiền đăng ký, nhiều seed. Chạy **sau** khi chọn lọc trên thế giới sống đo được | Đề xuất; **còn trống**. Phụ thuộc QĐ-SEL1b và AE4 |
+
+#### QĐ-PAST — cái đã khớp, cái chưa, và hai đề xuất
+
+**Đã khớp với nguyên tắc** (hợp đồng và mã hiện có):
+
+- Luật thế giới bất biến trong một run; muốn đổi luật thì phải tạo một fork mới
+  ([`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md) ER01).
+- Mỗi run mang `run_id`, `parent_run_id` và `fork_tick` (ER08). Fork từ một checkpoint tạo một run **mới**;
+  run gốc không bị chạm.
+- Sổ nhân quả là chỉ-ghi-thêm (`anima-domain/src/causal.rs`), và một can thiệp chỉ có hiệu lực từ tick nó
+  khai trở đi.
+
+**Chưa khớp hôm nay** (đọc mã):
+
+- App desktop giữ đúng một `autosave.json`, ghi khi thoát và nạp lại khi mở. `save_simulation_state` ghi đè
+  một save cùng tên. Một thế giới chạy trong app vì thế **không có lịch sử**: chỉ có trạng thái mới nhất.
+- `LineageTracker::compact` bỏ các nhánh tuyệt chủng và genotype của node bị cắt. Đó là quên chi tiết, không
+  phải sửa quá khứ, nhưng quyết định cần nói rõ có chấp nhận hay không.
+
+**Đề xuất 1 — "quay lại quá khứ" chỉ có một nghĩa: fork.** Tạo một thế giới mới từ một checkpoint cũ, với id
+riêng và `parent_run_id` trỏ về thế giới gốc. Thế giới gốc giữ nguyên. Hai dòng thời gian cùng tồn tại nên
+không có nghịch lý. Các trường hợp đặc biệt để chủ dự án chọn:
+
+| Trường hợp | Đề xuất |
+|---|---|
+| Đổi định dạng save khi nâng phiên bản (migrate) | Cho phép: đổi cách ghi, không đổi nội dung. Đã là hành vi hiện có ([`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md) §5) |
+| Xoá hẳn một thế giới | Cho phép, cả thế giới, không xoá từng đoạn |
+| Nén lưu trữ làm mất chi tiết (ví dụ nén phả hệ) | Cho phép nếu sự kiện đã ghi không đổi và điều bị mất được khai trước |
+| Một save hỏng | Không sửa tại chỗ. Fork từ checkpoint lành gần nhất |
+| Sửa trạng thái ở một tick đã qua rồi chạy tiếp như cùng một thế giới | **Không bao giờ** |
+
+**Đề xuất 2 — lưu trữ đủ mà nhẹ: lưu nguyên nhân, không lưu mọi trạng thái.** Vì thế giới tất định, quá khứ
+dựng lại được từ ít dữ liệu hơn nhiều so với lưu từng tick:
+
+1. Manifest, seed và fingerprint của luật: ghi một lần.
+2. Một nhật ký sự kiện chỉ-ghi-thêm: can thiệp và hành động của người quan sát, mỗi mục có tick và `CauseId`.
+3. Checkpoint thưa làm mốc, để không phải phát lại từ khởi nguyên.
+4. Checksum của thế giới ở các mốc định kỳ, để kiểm một lần phát lại có đúng không.
+5. Mỗi bản ghi mang checksum của bản trước nó, nên sửa một mục trong quá khứ sẽ làm gãy chuỗi và lộ ra.
+
+Hai giới hạn phải ghi cùng đề xuất. Phát lại chỉ đúng trên **cùng bản build và cùng lớp nền tảng**
+([`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md) §1), nên checkpoint thưa vẫn cần để một
+bản build mới đọc được thế giới cũ. Và đường app mặc định **chưa** tất định (uuid thật, đồng hồ thật, AI
+ngoài), nên một thế giới muốn có quá khứ dựng lại được phải chạy ở `DeterministicMode`. Dung lượng của cách
+lưu này chưa ai đo.
+
+**Nhiều thế giới không cần phần cứng khác.** Mỗi thế giới là một run với manifest và seed riêng. `anima-lab`
+chạy nhiều thế giới trên một máy (ensemble nhiều seed, `sweep` có `--threads`, `branch`). App desktop hiện
+giữ một engine, tức một thế giới tại một thời điểm. Máy thứ hai chỉ cần khi muốn chạy song song nhiều hơn
+một máy kham được. Khi đó cùng một seed trên hai nền tảng khác nhau **không** hứa cho cùng một thế giới, nên
+các thế giới đem so với nhau phải chạy trên cùng lớp nền tảng cho tới khi có QĐ-M6.
+
+#### QĐ-TIME — vì sao 2 giờ một ngày không nên là luật
+
+Hợp đồng thời gian hiện tại ([`SIMULATION_RULES.md`](../../SIMULATION_RULES.md) §4) là 60 tick mỗi giây, một
+epoch 1.000 tick và một năm mô phỏng 6.000 tick. Mô phỏng chưa có đơn vị "ngày"; chu kỳ ngày–đêm của cảnh 3D
+là đồng hồ hiển thị (`sceneClock.ts`). Ở 60 tick mỗi giây, 2 giờ thực là 432.000 tick, tức 72 năm mô phỏng
+theo hằng số hôm nay, và chứa hàng trăm epoch. Nếu kéo vòng đời sinh vật dài ra cho hợp với một ngày như
+vậy, một thế hệ sẽ mất nhiều ngày thực và tiến hoá không còn xem được.
+
+Đề xuất: giữ tick và vòng đời ngắn; đưa lịch thành tham số khai báo của thế giới (vắng thì như cũ); để người
+xem chọn tốc độ, kể cả 2 giờ một ngày; thí nghiệm chạy không cửa sổ, nhanh hết mức. Đưa chu kỳ ngày–đêm vào
+luật (ánh sáng, nhiệt) là đổi luật mô phỏng: cần sửa `SIMULATION_RULES.md` kèm test trong cùng thay đổi.
+
+#### QĐ-LAW1 — vì sao phải sau chọn lọc
+
+Khung cho việc đổi một yếu tố của thế giới đã có: ADR-0002 và
+[`ALTERNATE_EVOLUTIONARY_REGIMES.md`](../explanation/ALTERNATE_EVOLUTIONARY_REGIMES.md). "Linh khí", "mana"
+hay một loại khí mới đều là tên hiển thị của cùng một thứ trong mã: một trường năng lượng ngoại lai có ngân
+sách riêng, tác động qua hấp thụ có chi phí, không sửa thẳng gen hay fitness (ER03). Hai chỗ còn thiếu:
+
+- Thế giới sống chưa có trường đó; adapter của nó từ chối `laws.exotic_energy`. Nối sang là AE4, kế hoạch
+  swarm xếp là X9, sau `v1.0.0`. Chạy QĐ-LAW1 sớm hơn là đổi thứ tự đó, và là việc chủ dự án quyết.
+- Đổi luật chỉ tạo ra hướng tiến hoá khác khi chọn lọc hoạt động. Hôm nay tử vong, fitness sinh thái và sinh
+  sản liên tục tắt mặc định; E2 null; E-SEL1 đóng mà không có thí nghiệm (STATE §3.00, §3.1). Thêm một nguồn
+  năng lượng lúc này nhiều khả năng cho thêm quỹ đạo, chưa chắc cho thêm kiểu kết cục.
 
 Hai việc **cần tay người** (không phải quyết định): chạy app desktop bản **release** với
 `ANIMA_TICK_CAPTURE` ở 1.000 agent (HT4.1), và xác minh app khởi động dưới CSP. Cả hai vẫn mở.
