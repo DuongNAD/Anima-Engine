@@ -1209,6 +1209,12 @@ DONE WHEN
 
 ### CARD R1
 
+> **Đã bị thay ngày 2026-11-17.** Thẻ này giả định QĐ-C = A. Chủ dự án chọn **QĐ-C = C** (nâng `burn`,
+> giữ learner GPU), nên thẻ được dùng là **R1c**: định nghĩa ở
+> [kế hoạch swarm](2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án),
+> prompt ở [bản giao việc cho `agent-win`](2026-11-17-agent-win-handoff-r1c.md). Prompt dưới đây được giữ
+> làm lối lùi nếu việc nâng `burn` không gỡ được `hexf-parse`; không dán nó khi chưa có quyết định mới.
+
 ```text
 CARD R1 — Licence path (A): ship desktop without ml-wgpu
 WAVE 5 · [RUST] · MAX FILES 8

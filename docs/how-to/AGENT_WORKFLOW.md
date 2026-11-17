@@ -56,7 +56,8 @@ tài liệu ở bảng thắng; sửa trang này.
   [roadmap 31/10 §4.1–§4.3](../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
   Thẻ sinh ra từ đó: [kế hoạch swarm, "Thẻ thêm ngày 2026-11-17"](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 - **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
-  còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi R0
+  còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi **R1c** (giao
+  ngày 2026-11-17, [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md)), rồi R0
   khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
   `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
   trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
@@ -98,14 +99,14 @@ tài liệu ở bảng thắng; sửa trang này.
 |---|---|---|---|---|
 | **G1** `[RUST]` | **B2** — zero-alloc ở đường sinh/tử | ✅ #48 | — | |
 | **G2** | **B5** — `test:e2e` đủ bộ, gate danh sách spec | ✅ #47 | — | |
-| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ⬜ chưa có PR | `agent-win` | Thẻ kế tiếp của `agent-win` |
+| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | 🔄 #107, đã qua verifier, bốn check của CI xanh; chờ chủ dự án merge | `agent-win` | |
 | **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | ✅ #98 (2026-11-17) | — | QĐ-2/QĐ-H quyết 2026-11-17 |
 | **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | ✅ #95 (2026-11-17) | — | |
 | **G6** | Gỡ bằng chứng giả của Map 2 | ✅ #94 (2026-11-17) | — | |
 | **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
 | **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
-| **G9** | Gate vệ sinh thư mục gốc | 🔄 nhánh `mac/g9-root-hygiene`, chưa có PR | `agent-mac` | |
-| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⛔ chờ cả Đợt 2 merge | `agent-win` | Cổng ra của chặng 3 |
+| **G9** | Gate vệ sinh thư mục gốc | 🔄 nhánh `mac/g9-root-hygiene` (`1116760`), đã qua verifier, chưa có PR | `agent-mac` | Allow-list của nhánh viết trước #56 và #97: nó còn liệt kê `TASK.md` (đã xoá) và `AUDIT_REPORT.md` (đã chuyển vào `docs/archive/`), và chưa có `CITATION.cff`. Phải rebase lên thân cây và sửa `scripts/root_allowlist.json` trước khi mở PR |
+| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⛔ chờ cả Đợt 2 merge (còn G3 và G9) | `agent-win` | Cổng ra của chặng 3. `agent-win` không tự bắt đầu; chủ dự án nói khi Đợt 2 đã xong |
 
 ### Đợt 3 trở đi
 
@@ -120,7 +121,9 @@ Chín thẻ được thêm ngày 2026-11-17 từ quyết định của chủ d�
 L2). Ba thẻ đã chạy ngay trong ngày: **S8** ✅ #106 (F-044), **S6** ✅ #110 (khoá `live.prey_cap` và
 `live.resource_capacity_scale`, kèm [lượt đo thăm dò](../ai/planning/2026-11-17-s6-sel2-exploration.md)),
 và **L0** 🔄 [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) đã soạn ở trạng thái `proposed` (#109),
-chờ chủ dự án duyệt. Sáu thẻ còn lại chưa bắt đầu. Lượt đo của S6 **không** tìm ra cấu hình khan hiếm thức
+chờ chủ dự án duyệt. **R1c** (nâng `burn`) được giao cho `agent-win` cùng ngày:
+[bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md) giữ prompt để dán và dòng uỷ quyền đã
+soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đo của S6 **không** tìm ra cấu hình khan hiếm thức
 ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
@@ -197,6 +200,11 @@ R5-AUTH   =
   docs/governance/DOCUMENTATION_POLICY.md; npm run check:docs must exit 0.
 CURRENT WAVE = 2
 ```
+
+Dòng uỷ quyền của **R1c** đã được soạn ngày 2026-11-17 và nằm trong prompt của
+[bản giao việc cho `agent-win`](../ai/planning/2026-11-17-agent-win-handoff-r1c.md). Nó **chưa** nằm trong
+`R5-AUTH` ở trên: chủ dự án cấp nó bằng việc dán prompt đó vào phiên `agent-win`. Sau khi đã dán, chép nguyên
+văn dòng đó vào `R5-AUTH` để một phiên lead đọc khối này cũng thấy.
 
 Dòng uỷ quyền của T2 dưới đây **đã dùng xong** (T2 merge ngày 2026-11-15) và được giữ làm mẫu cho
 dòng uỷ quyền của thẻ sau:
