@@ -26,25 +26,36 @@ nghiệm tương ứng nằm ở
 
 ## Bằng chứng từ code hiện tại
 
-> **Rà lại 2026-11-17 — mục này mô tả mã ngày 2026-08-07.** Hai điểm được đối chiếu lại bằng cách đọc mã:
+> **Rà toàn mục 2026-11-17.** Mọi khẳng định về mã trong mục này đã được đối chiếu lại bằng cách đọc
+> mã; không chạy test hay benchmark nào.
 >
-> - **Còn đúng:** `worldCache.ts` vẫn gọi `save_world_artifact` với `Array.from(new Uint8Array(buf))`.
-> - **Đã đổi:** phản hồi Gemini không còn được phân loại bằng chuỗi con như `contains("drought")`.
->   `parse_environmental_event` trong `evolution/meta_ai.rs` nay so khớp nguyên tên biến thể, không phân
->   biệt hoa thường, và từ chối mọi thứ khác; thân phản hồi bị chặn kích thước. Phần "pattern nên nhận"
->   bên dưới vì thế đã được đáp ứng ở điểm 3 và 5 theo một cách hẹp hơn; điểm 1, 2 và 4 thì chưa.
+> - **Còn đúng:** worker vẫn transfer buffer; IndexedDB giữ typed array; `worldCache.ts` vẫn gọi
+>   `save_world_artifact` với `Array.from(new Uint8Array(buf))`; cả bảy event vẫn đi qua
+>   `tauri::Emitter` dưới dạng JSON; benchmark vẫn chưa đo bridge serialization, JS parse hay dropped
+>   frames.
+> - **Đính chính:** câu về phân loại phản hồi Gemini bằng chuỗi con ở mục "Meta-AI" **đã sai ngay khi
+>   tài liệu này được viết**. Commit `ef1c28e` (2026-07-30) đã thay cách đó bằng
+>   `parse_environmental_event`, và `a0a551c` (cùng ngày) đã chặn kích thước thân phản hồi; cả hai có
+>   trước ngày 2026-08-07. Hàm đó so khớp nguyên tên biến thể, không phân biệt hoa thường, và từ chối
+>   mọi thứ khác. Phần "pattern nên nhận" vì thế đã được đáp ứng ở điểm 3 và 5 theo một cách hẹp hơn;
+>   điểm 1, 2 và 4 thì chưa: mã không yêu cầu schema từ provider, không deserialize bằng serde vào enum
+>   và không có repair retry.
+> - **Chưa bắt đầu:** không ứng viên nào trong bảng kết luận có mã, dependency, ADR hay thẻ đang chạy.
+>   Kế hoạch tương ứng được xếp là thẻ X10, sau `v1.0.0`.
 >
-> Các điểm khác của mục này chưa được đối chiếu lại. Bảng kết luận ở trên không đổi.
+> Bảng kết luận ở trên không đổi. Các con số của upstream (VRAM, độ trễ) và năm link ở cuối trang là
+> của ngày 2026-08-07 và **chưa** được kiểm lại; vì thế `last_reviewed` của trang chưa đổi.
 
 ### Đường dữ liệu
 
 - World generation đã chạy trong Web Worker và transfer các `ArrayBuffer` về UI theo zero-copy:
   [`worldGen.worker.ts`](../../src/components/Landscape/utils/worldGen.worker.ts).
-- IndexedDB giữ typed arrays dạng binary, nhưng lệnh `save_world_artifact` vẫn đổi khoảng 1,05 MiB
-  artifact thành `Array.from(Uint8Array)` trước khi qua Tauri:
+- IndexedDB giữ typed arrays dạng binary, nhưng lệnh `save_world_artifact` vẫn đổi khoảng 1,06 MiB
+  artifact (1.114.148 byte) thành `Array.from(Uint8Array)` trước khi qua Tauri:
   [`worldCache.ts`](../../src/components/Landscape/utils/worldCache.ts).
 - Emit thread tái sử dụng buffer Rust, nhưng `simulation-tick`, `pheromone-update` và các event khác
-  vẫn đi qua `tauri::Emitter`; ghi chú hiện tại ước lượng pheromone JSON khoảng 150–200 KiB mỗi lần:
+  vẫn đi qua `tauri::Emitter`; ghi chú hiện tại ước lượng pheromone JSON khoảng 150–200 KB mỗi lần, và
+  `pheromone-update` có giới hạn tần suất riêng (`PheromoneEmitGate`):
   [`emit.rs`](../../src-tauri/src/core/emit.rs).
 - Benchmark hiện có đo encode/decode/checksum artifact, nhưng chưa đo bridge serialization, JS parse,
   main-thread cost hoặc dropped frames:
@@ -57,7 +68,8 @@ payload lớn. Control command nhỏ tiếp tục dùng typed JSON vì dễ audi
 
 `MetaAiClient` đã có `EnvironmentalEvent` dạng enum và deterministic fallback, nhưng response Gemini
 được phân loại bằng substring như `contains("drought")` hoặc `contains("temperature")`:
-[`meta_ai.rs`](../../src-tauri/src/evolution/meta_ai.rs).
+[`meta_ai.rs`](../../src-tauri/src/evolution/meta_ai.rs). *(Câu này đã sai khi viết; xem đính chính ở đầu
+mục.)*
 
 Pattern nên nhận:
 

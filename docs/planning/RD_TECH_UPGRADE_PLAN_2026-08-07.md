@@ -12,10 +12,11 @@ Nguồn bằng chứng: [`RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md`](../research
 Mọi mục bắt đầu ở trạng thái **not started** và cần quyết định/ADR trước khi thêm runtime dependency.
 
 > **Rà lại 2026-11-17: vẫn chưa mục nào bắt đầu, và chưa có ADR nào được mở cho kế hoạch này.** Kế
-> hoạch swarm xếp nó là thẻ X10, sau `v1.0.0`. Một điểm của Milestone C đã đổi trong mã mà không qua
-> kế hoạch này: `evolution/meta_ai.rs` không còn phân loại phản hồi bằng chuỗi con; hàm
-> `parse_environmental_event` nay so khớp **nguyên** tên biến thể và trả `None` cho mọi thứ khác, và
-> phản hồi bị chặn kích thước trước khi đọc. RD-C1 vì thế hẹp lại: còn thiếu là hợp đồng serde/schema
+> hoạch swarm xếp nó là thẻ X10, sau `v1.0.0`. Một tiền đề của Milestone C đã sai ngay
+> khi kế hoạch được viết: `evolution/meta_ai.rs` đã thôi phân loại phản hồi bằng chuỗi con từ
+> `ef1c28e` (2026-07-30), trước ngày của kế hoạch. Hàm `parse_environmental_event` so khớp **nguyên** tên
+> biến thể và trả `None` cho mọi thứ khác, và phản hồi bị chặn kích thước trước khi đọc (`a0a551c`,
+> cùng ngày). RD-C1 vì thế hẹp hơn kế hoạch nghĩ: còn thiếu là hợp đồng serde/schema
 > và các fixture, không còn là việc gỡ phân loại bằng chuỗi con. Đối chiếu bằng cách đọc mã, không
 > chạy test nào.
 

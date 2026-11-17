@@ -2,7 +2,7 @@
 title: Khảo sát dự án nguồn mở cho Anima Engine
 status: accepted
 owner: architecture
-last_reviewed: 2026-07-26
+last_reviewed: 2026-11-17
 review_cycle: quarterly
 ---
 
@@ -57,7 +57,7 @@ expression. Không mục nào trong đợt review này được xác minh licens
 | [Bevy](https://github.com/bevyengine/bevy) | ECS/scheduling Rust | MIT OR Apache-2.0 | Adopt, đang dùng | Giữ `bevy_ecs` 0.13 trong M1–M2; nâng cấp bằng ADR riêng |
 | [tracing](https://github.com/tokio-rs/tracing) | Telemetry có cấu trúc | MIT | Adopt — **chưa thực thi** ⚠️ | Span/event, correlation ID; không thay causal ledger |
 | [Criterion.rs](https://bheisler.github.io/criterion.rs/book/) | Benchmark Rust | MIT OR Apache-2.0 | ✅ **Adopted 2026-07-26** | `dev-dependency` (`default-features = false`), `src-tauri/benches/tick_systems.rs`; vô hình với `cargo tree -e normal` |
-| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) | Audit license/advisory/source | Apache-2.0 OR MIT | Adopt — blocker license đã gỡ; **một phần đã được phủ** | Kiểm tra CI, không vào binary |
+| [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) | Audit license/advisory/source | Apache-2.0 OR MIT | ✅ **Adopted 2026-08-08** (OSS-012) | `src-tauri/deny.toml` và một bước CI; không vào binary |
 | [lychee](https://github.com/lycheeverse/lychee) | Kiểm tra link tài liệu | MIT OR Apache-2.0 | **Superseded** bởi script nội bộ (đổi 2026-07-26) | Không còn cần; `scripts/check_docs_links.mjs` đã là gate |
 | [three-mesh-bvh](https://github.com/gkjohnson/three-mesh-bvh) | Raycast/truy vấn mesh Three.js | MIT | **Defer** — tiền đề bị bác bỏ (đổi 2026-07-26) | Frontend; xét lại khi thật sự có `THREE.Raycaster` trên đường nóng |
 | [Rapier](https://github.com/dimforge/rapier) | Collision/joint 2D–3D | Apache-2.0 | **Pilot, có tiền điều kiện cứng** (đổi 2026-07-26) | Rust core; **không mở pilot trước khi physics/CPG hết chạy song song** |
@@ -86,12 +86,12 @@ phải SPDX đã kiểm — xem [§ Việc còn nợ](#việc-còn-nợ-của-đ
 
 | Dự án | Vai trò phù hợp | Hạng rủi ro license | Quyết định | Biên tích hợp |
 |---|---|---|---|---|
-| [burn](https://github.com/tracel-ai/burn) + `burn-wgpu` | Learner tensor/autodiff, backend GPU | Permissive (cần xác minh) | **Adopt, đang dùng** | Đã là runtime dep, ghim `0.13.2`. Bảng gốc **bỏ sót** — xem [§ Điều đã thay đổi](#điều-đã-thay-đổi-kể-từ-2026-07-24) |
-| [tskit](https://github.com/tskit-dev/tskit) | Nén phả hệ, MRCA, `simplify()` | Permissive (cần xác minh) | **Adopt thuật toán, Reject crate** | Tự viết `simplify` + MRCA trên `LineageRelation`; **không** lấy binding C |
-| Newick / [ape](https://github.com/emmanuelparadis/ape) / [ggtree](https://github.com/YuLab-SMU/ggtree) | Định dạng trao đổi cây phả hệ | **Định dạng — không phải code** | **Adopt định dạng** | Serializer thuần Rust ~40 dòng; 0 dependency. Không nhập code R |
+| [burn](https://github.com/tracel-ai/burn) + `burn-wgpu` | Learner tensor/autodiff, backend GPU | `MIT OR Apache-2.0` (theo `sbom.cdx.json`, gate `cargo deny`) | **Adopt, đang dùng** | Đã là runtime dep, ghim `0.13.2`; `burn-wgpu` là tuỳ chọn sau feature `ml-wgpu`. Đã quyết nâng lên dòng 0.22 (QĐ-C = C, thẻ R1c, chưa làm). Bảng gốc **bỏ sót** — xem [§ Điều đã thay đổi](#điều-đã-thay-đổi-kể-từ-2026-07-24) |
+| [tskit](https://github.com/tskit-dev/tskit) | Nén phả hệ, MRCA, `simplify()` | Permissive: MIT (GitHub, 2026-11-17) | **Adopt thuật toán, Reject crate** — đã thực thi (OSS-071, OSS-072) | `simplify` và MRCA tự viết trên `LineageRelation`; **không** lấy binding C |
+| Newick / [ape](https://github.com/emmanuelparadis/ape) / [ggtree](https://github.com/YuLab-SMU/ggtree) | Định dạng trao đổi cây phả hệ | **Định dạng — không phải code** | **Adopt định dạng** — đã ship (OSS-070) | Serializer thuần Rust, 0 dependency (`evolution/newick.rs`; lớn hơn ước lượng 40 dòng vì nó từ chối chu trình, node mồ côi và nhiều gốc). Không nhập code R |
 | [SLiM](https://github.com/MesserLab/SLiM) | Selection phụ thuộc mật độ, đột biến đa vị trí | **Copyleft (rủi ro cao)** | Reference — **chỉ qua bài báo/tài liệu** | Học mô hình soft/hard selection; có thể dùng làm oracle nếu chạy tách biệt |
-| [Avida](https://github.com/devosoft/avida) | Giao thức **đo** sự kiện tiến hoá | **Copyleft (rủi ro cao)** | Reference — chỉ qua bài báo | Học cách bám "line of descent"; **cần MRCA trước**, nên phụ thuộc mục tskit |
-| [ALIEN](https://github.com/chrxh/alien) | Mẫu GPU compute cho particle/genome | **Copyleft (rủi ro cao)** | Reference — chỉ qua bài báo | Không nhập code; không thêm engine GPU thứ hai |
+| [Avida](https://github.com/devosoft/avida) | Giao thức **đo** sự kiện tiến hoá | **Copyleft (rủi ro cao)** | Reference — chỉ qua bài báo | Học cách bám "line of descent"; MRCA đã có (#75), nên OSS-073 không còn bị chặn |
+| [ALIEN](https://github.com/chrxh/alien) | Mẫu GPU compute cho particle/genome | **BSD-3-Clause** (file `LICENSE` của repo, 2026-11-17; bảng tháng 7 xếp nhầm là copyleft) | Reference — chỉ qua bài báo (quyết định chưa được xét lại sau khi sửa hạng license) | Không nhập code; không thêm engine GPU thứ hai |
 | [Thrive](https://github.com/Revolutionary-Games/Thrive) | Áp lực thích nghi, cân bằng gameplay tiến hoá | **Copyleft (rủi ro cao)**; asset tách riêng | Reference — chỉ qua bài báo | Học thiết kế áp lực chọn lọc, không lấy code/asset |
 | Ribossome | Map genotype→phenotype trên wgpu | **Chưa xác minh được upstream** | Reject now | Không định vị được repo chính thức; không đủ hồ sơ để phân hạng |
 | [hecs](https://github.com/Ralith/hecs) | ECS thay thế | Permissive (cần xác minh) | **Reject now** | `bevy_ecs` đã là ECS có thẩm quyền; đổi ECS là churn thuần, không giải bài toán nào đang mở |
@@ -117,11 +117,15 @@ Bảng gốc xếp đây là ứng viên frontend có tỷ lệ lợi ích/rủi
 BVH có lãi khi raycast nhiều lần mỗi frame vào một mesh tĩnh lớn. Điều kiện đó chưa tồn tại. Xét lại
 khi có một `THREE.Raycaster` thật trên đường nóng — đó là trigger, không phải lịch.
 
+*Rà 2026-11-17:* vẫn không có `THREE.Raycaster` nào trong `src/`. Từ thẻ RW-A2, `LiveAgents.tsx` chọn sinh vật
+khi click qua sự kiện của R3F; việc đó chạy theo cú click, không nằm trên đường nóng, nên trigger chưa
+kích hoạt.
+
 ### F2 — Rapier: giữ Pilot nhưng thêm tiền điều kiện cứng
 
 Solver hiện tại không phải rigid-body tổng quát: `resolve_joints_system`
 ([`physics/dynamics.rs`](../../src-tauri/src/physics/dynamics.rs)) là điều khiển khớp lái bởi
-`CpgOscillator` qua slerp tới góc mục tiêu, cộng spring-damper — 159 dòng, gắn chặt với tầng vận
+`CpgOscillator` qua slerp tới góc mục tiêu, cộng spring-damper, gắn chặt với tầng vận
 động. Ba ràng buộc của repo đều chống lại việc thay:
 
 1. Contract tất định (G1.3, [`DETERMINISM_CONTRACT.md`](../reference/DETERMINISM_CONTRACT.md)).
@@ -135,6 +139,11 @@ Rapier không sửa cái đó; nó chèn thêm một tầng vào giữa và làm
 
 **Tiền điều kiện mới cho OSS-040:** không mở pilot Rapier trước khi đường physics/CPG sống đã tất
 định. Trước mốc đó, benchmark side-by-side không có nghĩa vì đường cơ sở chưa lặp lại được.
+
+*Rà 2026-11-17:* lý do đã đổi một phần. Từ F-041 (#65) thứ tự hệ thống là một chuỗi khai báo, và adapter
+thí nghiệm headless cho checksum trùng nhau với cùng seed. Gate `an_inhabited_run_replays_from_its_trace_without_a_human`
+vẫn chưa có dưới dạng test, và chưa có lượt chạy app đầy đủ nào được kiểm, nên tiền điều kiện của OSS-040
+**chưa** được tuyên bố là đạt.
 
 ### F3 — `meshoptimizer`: sai công cụ cho dữ liệu hiện có
 
@@ -166,6 +175,10 @@ dòng nào trong ma trận gốc — trong khi ma trận có cả những thứ 
 chặn. Đã thêm dòng. Ghi chú vận hành ở [`CLAUDE.md`](../../CLAUDE.md): bản ghim 0.13.2 **không phải**
 vấn đề bảo mật, và nâng cấp làm vỡ `ai/model.rs` + `core/training.rs`.
 
+*Rà 2026-11-17:* `burn-wgpu` nay là dependency tuỳ chọn sau feature `ml-wgpu` (nằm trong `desktop`), và
+GPU tắt mặc định. Chủ dự án đã quyết nâng `burn` lên dòng 0.22 (QĐ-C = C, thẻ R1c, chưa làm); lý do là
+văn bản giấy phép còn thiếu của `hexf-parse` và chỗ rò bộ nhớ của đường GPU, không phải bảo mật.
+
 ### F7 — Criterion và tracing: quyết định "Adopt" chưa từng được thực thi
 
 Cả hai được chốt Adopt ngày 2026-07-24 (OSS-010, OSS-011). Không cái nào có trong
@@ -189,34 +202,67 @@ headless chứ không boot Tauri.
 > (khai báo *Dell Vostro 3530* cũ vô hiệu), và con số ~4,2 ms trong doc comment của
 > `ResourceField::REGROWTH_STRIDE` **không tái lập được** — release build cho ~0,36 ms. Cái sau là
 > finding cần đối chứng, không phải lỗi đã xác định; việc stride vẫn đúng (đo được 3,97×).
+>
+> *Rà 2026-11-17, cả hai điều trên đã có kết luận:* i5-14600KF là **máy đo** và Dell Vostro 3530 là **máy
+> tối thiểu** (quyết định của chủ dự án, `BENCHMARK_BASELINE.md`); và 4,2 ms đã được đối chứng là số của
+> một bản debug, doc comment đã sửa (#101).
 
-### Rà lại 2026-11-17 — bốn điều đã đổi sau các mục F1–F7
+### Review định kỳ 2026-11-17
 
-Đối chiếu `src-tauri/Cargo.toml`, `src-tauri/deny.toml` và danh sách PR; không ứng viên nào được đánh
-giá lại, và không license nào được xác minh thêm.
+Đợt review quý thứ hai. Nó làm hai việc: đối chiếu mọi khẳng định về repo trong trang với mã trên thân
+cây, và kiểm lại upstream của các ứng viên theo [tiêu chí hàng quý](#tiêu-chí-tái-đánh-giá-hàng-quý).
+Không ứng viên nào được đánh giá lại về kỹ thuật, và không quyết định nào trong hai ma trận bị đổi.
+
+**Phía repo.** Các ghi chú *Rà 2026-11-17* nằm ngay tại chỗ chúng sửa. Tóm tắt:
 
 - **F5:** `cargo-deny` đã được nhận (OSS-012, 2026-08-08): `src-tauri/deny.toml` và một bước CI. Câu
   "với một sản phẩm proprietary" trong F5 viết trước relicense; lý do kiểm license của cây phụ thuộc vẫn
   đứng với một dự án `MIT OR Apache-2.0`.
-- **F6:** `burn` vẫn ghim ở 0.13.2 và `bevy_ecs` ở 0.13.0.
-- **F7:** `tracing` (OSS-011) vẫn chưa có trong `Cargo.toml`.
-- **Miền 5, phả hệ:** OSS-070, OSS-071 và OSS-072 (MRCA, #75) đã có trên thân cây. OSS-073 chưa làm.
+- **F6:** `burn` vẫn ghim ở 0.13.2, nhưng đã có quyết định nâng (QĐ-C = C). `bevy_ecs` khai `0.13.0`
+  trong `Cargo.toml` và lockfile giải ra 0.13.2; việc nâng nó hoãn tới sau 1.0, chưa có ADR.
+- **F7:** `tracing` (OSS-011) vẫn chưa là dependency trực tiếp.
+- **Miền 3, thuỷ văn:** `step_water` và `step_erosion` chưa nằm trong lịch tick sống.
+- **Miền 5, phả hệ:** OSS-070, OSS-071, OSS-071b và OSS-072 (MRCA, #75) đã có trên thân cây. OSS-073 chưa
+  làm.
+- **Chưa bắt đầu:** các oracle (OSS-020…025), Rapier (OSS-040…043), FlatBuffers và Arrow.
+  `three-mesh-bvh` và `meshoptimizer` vẫn không có trong `package.json`.
+
+**Phía upstream.** Kiểm ngày 2026-11-17 bằng GitHub API (`license.spdx_id`, `pushed_at`, `archived`) cho
+mọi mục có repo trên GitHub, và đọc file license của bốn repo mà API không phân loại được. API chỉ báo
+**một** SPDX cho mỗi repo, nên một dự án hai giấy phép hiện ra như một; đó không phải thay đổi license.
+Đây vẫn chưa phải khoá license theo tag/commit mà chính sách đòi trước khi tiếp xúc với code.
+
+| Kết quả | Mục |
+|---|---|
+| License khớp cột của bảng, repo có commit trong năm 2026, không archive | Bevy, tracing, Criterion.rs, cargo-deny, lychee, three-mesh-bvh, Rapier, meshoptimizer, FlatBuffers, Arrow Rust, Virtual Ecosystem, pyrealm, Landlab, SALib, BioDynaMo, MABE2, burn, tskit |
+| License khớp, nhưng repo không có commit nào từ 2024-08-30 | Neural MMO (`NeuralMMO/environment`). Vẫn là Reference; đừng coi nó là upstream còn sống |
+| **Bảng sai, đã sửa** | ALIEN là BSD-3-Clause, không phải copyleft |
+| Xác nhận copyleft | SLiM (GPL-3.0), Thrive (GPL-3.0 theo `LICENSE.txt`), FLAME GPU 2 (AGPL-3.0), `ape` (GPL-2.0) |
+| Không copyleft nhưng không liên quan vì chỉ lấy định dạng | `ggtree` (Artistic-2.0 theo `DESCRIPTION`) |
+| **Không tìm thấy file license ở gốc repo** | Avida (`devosoft/avida`). Giữ hạng rủi ro cao và "chỉ qua bài báo": repo không có license thì không được coi là nguồn mở |
+| Không kiểm được bằng cách này | Madingley (trang dự án, không phải một repo có license rõ), The Bibites (không phải nguồn mở), Ribossome (chưa định vị được upstream) |
+
+Chưa kiểm trong đợt này: release gần nhất và cảnh báo bảo mật của từng upstream. Với các dependency đang
+dùng, hai việc đó do `cargo audit`, `cargo deny` và `npm audit` gánh ở mỗi lượt CI.
 
 ## Việc còn nợ của đợt review này
 
 Ghi ra để không ai nhầm bảng này là đã kiểm license:
 
-- **Chưa mục nào trong bảng bổ sung được xác minh license theo tag/commit.** Cột "hạng rủi ro" là
+- **Chưa mục nào trong bảng bổ sung được xác minh license theo tag/commit** (đợt 2026-11-17 chỉ đọc
+  license ở nhánh mặc định của từng repo, và `burn` là ngoại lệ vì nó nằm trong cây phụ thuộc có gate). Cột "hạng rủi ro" là
   phân loại để xếp thứ tự xử lý, **không phải** kết quả đọc file `LICENSE` của upstream. Bắt buộc
   xác minh trước mọi tiếp xúc với code, theo quy trình 9 bước ở
   [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md).
 - Ribossome chưa định vị được upstream chính thức. Nếu người yêu cầu có link, mở lại hồ sơ; nếu
   không, giữ Reject vì thiếu hồ sơ chứ không vì đánh giá kỹ thuật.
 - SALib giữ hạng "Adopt trong research harness" nhưng **hook point nay đã tồn tại thật**:
-  `run_ensemble` / `run_paired_ensemble` (AE-108/AE-S14) trong
-  [`core/experiment_runner.rs`](../../src-tauri/src/core/experiment_runner.rs). Điều chưa có là thiết
+  `run_ensemble` / `run_paired_ensemble` (AE-108/AE-S14), từ #99 nằm ở
+  `core/experiment_runner/ensemble.rs`. Điều chưa có là thiết
   kế mẫu Saltelli. Đó là ~100 dòng Rust thuần, không cần dependency Python trong runtime — cần một
   quyết định rõ ràng là viết trong Rust hay chạy SALib ngoại tuyến trên output đã export.
+  *Rà 2026-11-17:* phần lấy mẫu đã được viết trong Rust (`core/sweeps.rs`: lưới, dãy Sobol, Latin
+  hypercube, chạy trên `run_ensemble`). Còn thiếu thiết kế Saltelli và ước lượng chỉ số Sobol.
 
 ## Phân tích theo miền
 
@@ -289,6 +335,11 @@ nước bằng Landlab sẽ phá đúng cái invariant mà dự án đang gate.
 nghìn tới hàng triệu năm mỗi run. `step_water`/`step_erosion` chạy trên trường 128×128 **mỗi tick**,
 cùng nhịp với agent. Hai thang này không gặp nhau.
 
+*Rà 2026-11-17:* câu trên mô tả thiết kế, không phải thứ đang chạy. `step_water` và `step_erosion` có mã
+và có test, nhưng **chưa nằm trong lịch tick sống**: không system nào chèn hay bước `DynamicFields`, chỉ
+bench và test gọi chúng. Lưới mô phỏng mặc định nay là 256². Lý do 2 và 3 ở trên vì thế nói về mã đã
+kiểm thử nhưng chưa sống.
+
 **Nhưng khoảng trống mà Landlab chỉ ra là có thật**, và đó chính là giá trị của nó với tư cách
 oracle. Hai chỗ cụ thể:
 
@@ -320,6 +371,10 @@ lớn; JSON/CSV dễ debug vẫn là mặc định cho dữ liệu nhỏ.
 
 Đây là miền mà bảng gốc không phủ, và là chỗ có khoảng cách đo được lớn nhất giữa "dự án nói mình
 mô phỏng tiến hoá" và "dự án chứng minh được điều đó".
+
+*Rà 2026-11-17:* đoạn "Hiện trạng" dưới đây là của sáng 2026-07-26 và cả hai hệ quả của nó đã được xử
+lý. `LineageNode.genotype` nay là `Option`, tracker được `compact` định kỳ (cắt nhánh chết và nén đường
+đơn), và MRCA có cả hàm lẫn lệnh IPC `get_lineage_mrca`. Còn thiếu là *line of descent* (OSS-073).
 
 **Hiện trạng.** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi lần sinh
 sản thành một `LineageNode` kèm **bản sao đầy đủ** `MorphologyGenotype`, cộng một `LineageRelation`
