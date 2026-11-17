@@ -2,7 +2,7 @@
 title: Kế hoạch tổng cho swarm Antigravity — mọi việc, mọi phép đo, chia đợt song song
 status: active
 owner: maintainers
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-18
 review_cycle: weekly
 ---
 
@@ -76,15 +76,15 @@ Mỗi quyết định chặn các thẻ ghi ở cột cuối. Lead **không** ch
 |---|---|---|---|
 | **QĐ-A′** | Hai hệ mortality sau HT-C (`core/mortality.rs::mortality_system` của thân cây và `agent_systems.rs::agent_mortality_system` của `main`): giữ một cái nào, hay để cả hai? | Giữ `mortality_system` của thân cây (tất định, không cấp phát, đi qua `ReclaimAndDespawnAgentCommand`), gỡ cái kia **sau khi** T2 đo xong | G1, G5, S1 |
 | **QĐ-B** | `AGENTS.md` khai `src-tauri/src` là chỉ đọc | Prompt HT-C của brief 31/10 ghi chủ dự án **đã** cho phép. Viết một dòng uỷ quyền chuẩn để dán vào thẻ (§5 file prompt) | mọi thẻ Rust |
-| **QĐ-C** | Licence `hexf-parse` | **(A)** bỏ `ml-wgpu` khỏi feature `desktop` (learner GPU đã tắt mặc định và đang rò bộ nhớ) | R1 |
+| **QĐ-C** | Licence `hexf-parse` | **(A)** bỏ `ml-wgpu` khỏi feature `desktop` (learner GPU đã tắt mặc định và đang rò bộ nhớ). **Đã quyết khác đề xuất (2026-11-17): C, nâng `burn`** | R1, nay là R1c |
 | **QĐ-2/QĐ-H** | Số phận Map 2 và Research Dashboard | Gỡ mọi bằng chứng/dữ liệu giả ngay (G4, G6); việc ship hay không thì quyết sau | G4, G6 |
 | **QĐ-4** | Quần thể luân chuyển trong adapter: thay thế tiến hoá trong tick, hay chết + sinh sản | Dùng mortality của thân cây kèm sinh sản có chi phí (`autonomous_reproduction_system` của `main` hoặc spawn của thân cây, theo QĐ-A′); thay thế tiến hoá chỉ là phương án dự phòng | S1, E2R |
 | **QĐ-5** | Sinh sản sinh học cạnh `EvolutionaryReplacement` | Cần một ADR mới (ADR là file R5: agent soạn nháp, bạn duyệt) | S1 |
 | **QĐ-6** | Hợp đồng IPC đặt ở đâu | `docs/reference/IPC_CONTRACT.md`, `PROJECT.md` chỉ trỏ tới | G8 |
 | **QĐ-F028** | Commit icon thật vào repo? | Có, vì thiếu chúng thì không job CI nào trên Linux/macOS biên dịch được, nên M1 (ma trận đa nền tảng) không chạy được. Lưu ý: thân cây đã mang icon PNG thật, còn `main` mang file `placeholder`, nên sau T2 thân cây nhiều khả năng giữ icon thật — T2 phải xác nhận điều này | M1, T3 |
 | **QĐ-EN** | Tên thí nghiệm | E2R = câu hỏi não làm lại; E3 = gradient năng suất (giữ tên của dự thảo đã có seed) | E2R-*, E3-* |
-| **QĐ-P1** | Loại bài báo đầu tiên | Bài phương pháp: "kỷ luật bằng chứng cho mô phỏng ALife", E2 rồi E2R làm case study | P4–P9 |
-| **QĐ-P2** | Bản nháp bài đặt ở đâu | `docs/paper/` trên nhánh `paper/methods-draft`. Repo đang public; nếu muốn giữ kín thì dùng repo private riêng | P1–P9 |
+| **QĐ-P1** | Loại bài báo đầu tiên | Bài phương pháp: "kỷ luật bằng chứng cho mô phỏng ALife", E2 rồi E2R làm case study | P4–P8 |
+| **QĐ-P2** | Bản nháp bài đặt ở đâu | `docs/paper/` trên nhánh `paper/methods-draft`. Repo đang public; nếu muốn giữ kín thì dùng repo private riêng. **Đã quyết khác đề xuất (2026-11-17): repo riêng tư**; repo này chỉ giữ dữ liệu và nhật ký dùng AI | P1–P8 |
 | **QĐ-P3** | Khai báo dùng AI khi nộp bài | Bắt buộc với hầu hết nơi nhận bài; tự kiểm chính sách của nơi định nộp | P7 |
 | **QĐ-1** | Dừng ở mức hoàn thiện nào (roadmap 16/10 §2) | Mức 2 (bản 0.9) trước | R2 |
 
@@ -97,6 +97,12 @@ Mỗi quyết định chặn các thẻ ghi ở cột cuối. Lead **không** ch
 > [`AGENT_WORKFLOW.md` §3](../../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ). §1 ở trên là quan sát ngày
 > 2026-11-05 và nay là lịch sử: hai cây đã hợp nhất ngày 2026-11-16. Quyết định ở §2 đã ra tới đâu thì xem
 > [roadmap 31/10 §4](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+>
+> **Rà toàn văn 2026-11-18.** Mọi hàng đã được đối chiếu với danh sách PR, sổ quyết định và thân cây.
+> Chỗ nào một hàng nói ngược với điều đã quyết hoặc đã xảy ra thì hàng đó được sửa ngay tại chỗ; các ghi
+> chú chi tiết cho từng thẻ nằm trên thẻ tương ứng trong
+> [file prompt](2026-11-05-swarm-prompts.md). H1 và H2 đã xong: #38 đã merge, các PR #30, #31, #34–#37 và
+> #39–#41 đã đóng.
 
 **Ký hiệu.** Loại: 🤖 agent · 🧑 chỉ con người · ⚖️ quyết định. `[RUST]` là thẻ chạy `cargo`
 build/test nặng; lead chạy tối đa **hai** thẻ `[RUST]` cùng lúc. "Prompt" chỉ chỗ lấy nội dung task:
@@ -141,10 +147,10 @@ build/test nặng; lead chạy tối đa **hai** thẻ `[RUST]` cùng lúc. "Pro
 
 | ID | Việc | Loại | Phụ thuộc | Prompt |
 |---|---|---|---|---|
-| R0 `[RUST]` | Đo lại **toàn bộ** gate của STATE §5 tại một commit của thân cây; soạn bản vá §1.g để bạn áp | 🤖 | Đợt 2 | `card:R0` |
-| T3 | Mở PR thân cây → `main` (không merge) | 🤖 | R0 xanh, QĐ-F028 | `card:T3` |
+| R0 `[RUST]` | Đo lại **toàn bộ** gate của STATE §5 tại một commit của thân cây; soạn bản vá cho tiểu mục §1 kế tiếp (sau §1.h) để bạn áp | 🤖 | Đợt 2 | `card:R0` |
+| T3 | Mở PR thân cây → `main` (không merge). *Từ 2026-11-16 được thay bằng việc fast-forward `main`; từ khi `main` được bảo vệ (2026-11-17) cần hỏi lại chủ dự án xem lần kế tiếp có phải đi qua PR không — xem ghi chú trên thẻ* | 🤖 | R0 xanh, QĐ-F028 | `card:T3` |
 | S1 `[RUST]` | **HT2.1** — quần thể luân chuyển trong adapter sống, tất định, fork và save/load vẫn bit-exact | 🤖 | R0, QĐ-4, QĐ-5 | `card:S1` |
-| S2 `[RUST]` | Observable còn thiếu: *time-to-floor* (cho E2R) và khối lượng theo vùng (cho E3); chứng minh việc đọc không đổi quỹ đạo | 🤖 | **S1** (cùng sửa `live_experiment.rs`) | `card:S2` |
+| S2 `[RUST]` | Observable còn thiếu: metric năng lượng tích luỹ (cho E2R; *time-to-floor* là đại lượng dẫn xuất) và khối lượng theo vùng (cho E3); chứng minh việc đọc không đổi quỹ đạo | 🤖 | **S1** (cùng sửa `live_experiment.rs`) | `card:S2` |
 | S3 `[RUST]` | **HT2.3 / G2 gate #1** — hằng số sinh thái có một nguồn duy nhất ở `anima-domain`, cả hai engine đọc | 🤖 | R0 | `card:S3` |
 | S4 `[RUST]` | **OSS-072 MRCA** — rebase [#31](https://github.com/DuongNAD/Anima-Engine/pull/31) lên thân cây | 🤖 | R0 | `card:S4` |
 | M1 `[RUST]` | Ma trận tái lập đa nền tảng: cùng seed thì cùng checksum trên Windows/Linux/macOS? | 🤖 | R0, QĐ-F028 | `card:M1` |
@@ -168,12 +174,12 @@ build/test nặng; lead chạy tối đa **hai** thẻ `[RUST]` cùng lúc. "Pro
 
 | ID | Việc | Loại | Phụ thuộc | Prompt |
 |---|---|---|---|---|
-| R1 `[RUST]` | Licence đường (A): bỏ `ml-wgpu` khỏi `desktop`, soạn nháp ADR | 🤖 | QĐ-C = A | `card:R1` |
-| H5 | Sinh lại `NOTICE`, `licensing/third-party-index.json`, `sbom.cdx.json` **trên Windows** (brief: A7), trừ khi A7′ đã làm chúng tái lập được trên mọi host | 🧑 | R1 | brief:`A7` |
+| R1 `[RUST]` | Licence đường (A): bỏ `ml-wgpu` khỏi `desktop`, soạn nháp ADR. **Bị thay bởi R1c** (QĐ-C = C, 2026-11-17); giữ làm lối lùi | 🤖 | QĐ-C = A | `card:R1` |
+| H5 | Sinh lại `NOTICE`, `licensing/third-party-index.json`, `sbom.cdx.json` **trên Windows** (brief: A7), trừ khi A7′ đã làm chúng tái lập được trên mọi host. Nếu R1c chạy trên Windows thì điều kiện 6 của nó đã làm việc này | 🧑 | R1c | brief:`A7` |
 | H6 | Chạy app **bản release** với `ANIMA_TICK_CAPTURE` ở 1.000 agent; điền ba hàng còn mở của `BENCHMARK_BASELINE.md` | 🧑 | Đợt 3 | [BENCHMARKING.md](../../how-to/BENCHMARKING.md) |
 | H7 | Mở app, reload, xác nhận 0 vi phạm CSP | 🧑 | Đợt 3 | — |
-| R2 | CHANGELOG (mỗi dòng có commit), hướng dẫn cài, ghi chú phát hành | 🤖 | QĐ-1 | `card:R2` |
-| H8 | `npm run tauri:build`, cài thử trên một máy sạch, gắn tag, tạo GitHub release, lấy DOI Zenodo | 🧑 | R1, R2, H5 | — |
+| R2 | CHANGELOG (mỗi dòng có commit), hướng dẫn cài, ghi chú phát hành | 🤖 | QĐ-1 (đã quyết: mức 2); G9 đã merge | `card:R2` |
+| H8 | `npm run tauri:build`, cài thử trên một máy sạch, gắn tag, tạo GitHub release, lấy DOI Zenodo | 🧑 | R1c, R2, H5 | — |
 | P4 | Sổ khẳng định (claims ledger): mỗi câu có số liệu của bài trỏ tới đúng một hàng bằng chứng | 🤖 | P1, M1–M4, E2R-X | `card:P4` |
 | P5 | Hình cho E2R/E3, bảng gate, dòng thời gian sự cố — tất cả sinh từ dữ liệu | 🤖 | P4 | `card:P5` |
 | P6 | Gói tái lập: `REPRODUCE.md` + một lệnh cho mỗi kết quả | 🤖 | E2R-X | `card:P6` |
@@ -189,10 +195,10 @@ khác của đợt.
 
 | ID | Việc | Milestone | Loại | Phụ thuộc | Prompt |
 |---|---|---|---|---|---|
-| V0 `[RUST]` | Creature Morphogenesis **P1–P2**: `develop_at_birth`, phenotype mang trong save. Bắt buộc **trước** sinh sản sinh học | CM P1–P2 | 🤖 | R0, QĐ-5 | `card:V0` |
+| V0 `[RUST]` | Creature Morphogenesis **P1–P2**: `develop_at_birth`, phenotype mang trong save. Bắt buộc **trước** vòng đời đầy đủ của V3; sinh sản liên tục opt-in của ADR-0005 đã có từ #66 và vẫn đi qua `decode_genotype` | CM P1–P2 | 🤖 | R0, QĐ-5 | `card:V0` |
 | V1 `[RUST]` | Đưa `DynamicFields` (khí hậu/nước/đất, S15–S20) vào `build_tick_schedule`, kèm save/load và zero-alloc | M3 | 🤖 | R0 | `card:V1` |
 | V2 `[RUST]` | `SpeciesProfile` dữ liệu cho thỏ và sói | M5.1, M6.1 | 🤖 | V0 | `card:V2` |
-| V3 `[RUST]` | Tuổi, giai đoạn sống, tử vong (gồm chết đói), sinh sản có chi phí, trưởng thành — theo ADR của QĐ-5 | M5.2–M5.3 | 🤖 | V0, V2, ADR đã duyệt | `card:V3` |
+| V3 `[RUST]` | Tuổi, giai đoạn sống, tử vong (gồm chết đói), sinh sản có chi phí, trưởng thành — theo một ADR đặc tả vòng đời (ADR-0005 **không** phủ: phạm vi của nó chỉ là sinh sản liên tục trong thí nghiệm sống) | M5.2–M5.3 | 🤖 | V0, V2, ADR vòng đời đã duyệt (chưa có) | `card:V3` |
 | V4 `[RUST]` | Xác chết và phân huỷ trả sinh khối về đúng pool; sổ EU vẫn bit-exact | M5.6, M6.3 | 🤖 | V3 | `card:V4` |
 | V5 `[RUST]` | Nước đất, dinh dưỡng, sinh khối cỏ theo trường; cây lớn tác động ngược | M3.2–M3.3, M4.2, M4.4 | 🤖 | V1 | `card:V5` |
 | V6 `[RUST]` | Bốn can thiệp có `CauseId`: hạn hán 30 ngày, bỏ 80% sói, chặt 40% rừng đầu nguồn, bón dinh dưỡng quanh hồ | M8.1, M8.5 | 🤖 | V4, V5 | `card:V6` |
@@ -233,9 +239,9 @@ Không chặn v1.0. Mỗi hàng là **một feature**: trước khi giao cho swa
 | X1 | Tách backend thành crate con kiểm chứng độc lập | `docs/planning/CRATE_SPLIT_PLAN_2026-10-31.md` và `docs/ai/planning/2026-10-31-antigravity-brief-crate-split.md` (nhánh thân cây) | Đã có prompt; chạy qua PROMPT 0 như một đợt riêng |
 | X2 | Tất định trên đường app (lịch sống có thứ tự tường minh, `Uuid::new_v4` và `SystemTime` trong chronicle/networking) | roadmap 16/10 HT2.7, [`DETERMINISM_CONTRACT`](../../reference/DETERMINISM_CONTRACT.md) §5 | Cần nếu "replay" phải đúng cả trong app |
 | X3 | Cưỡng chế `ObserverAction` qua ledger; hoà giải ADR-0002 | roadmap 16/10 HT2.5–HT2.6 | ADR là file R5 |
-| X4 | Nợ nền tảng: thu hẹp `tokio` `full`; cancellation token thống nhất; tách closure sim-thread; tách file lớn | STATE §3.5, §3.7, §3.12 | Mỗi việc một PR |
-| X5 | Nâng phụ thuộc: React 19 + `@react-three/fiber` 9 trước; `bevy_ecs` và `burn` sau 1.0, giữ gate parity EB-S02 | STATE §3.13 | `burn` chạm learner nhạy số |
-| X6 | Learner GPU: sửa rò registry wgpu rồi mới cân nhắc bật lại | PR [#30](https://github.com/DuongNAD/Anima-Engine/pull/30) | Liên quan licence (QĐ-C) |
+| X4 | Nợ nền tảng: ~~thu hẹp `tokio` `full`~~ (xong, #91); cancellation token thống nhất; tách closure sim-thread; ~~tách file lớn~~ (xong, #99) | STATE §3.5, §3.7, §3.12 | Mỗi việc một PR |
+| X5 | Nâng phụ thuộc: React 19 + `@react-three/fiber` 9 trước; `bevy_ecs` sau 1.0. `burn` đã chuyển sang thẻ R1c (QĐ-C = C) | STATE §3.13 | Gate parity EB-S02 thuộc R1c |
+| X6 | Learner GPU: sửa rò registry wgpu rồi mới cân nhắc bật lại | PR [#30](https://github.com/DuongNAD/Anima-Engine/pull/30) (đã đóng) | Điều kiện 5 của R1c đo lại chỗ rò trên `wgpu` mới; X6 chỉ còn nếu phép đo đó không phẳng |
 | X7 | M4 đầy đủ (năm chiến lược cây, seed bank), cháy rừng (M8.2) | [WORLD_SIMULATION_PLAN](../../../WORLD_SIMULATION_PLAN.md) | Ngoài phạm vi 1.0 |
 | X8 | Quy mô cohort-triệu (M10.6), LOD | WORLD_SIMULATION_PLAN M10 | Cần M3 (đường cong quy mô) làm nền |
 | X9 | AE4 hội tụ đầy đủ, AE5 bằng chứng loài, năng lượng ngoại lai trên thế giới sống | [EVOLUTION_EXPERIMENT_CONTRACT](../../reference/EVOLUTION_EXPERIMENT_CONTRACT.md), ADR-0002 | Theo AE-S11/AE-S14 |
@@ -247,8 +253,11 @@ Không chặn v1.0. Mỗi hàng là **một feature**: trước khi giao cho swa
 
 Chủ dự án ra các quyết định này trong chat ngày 2026-11-17; bản ghi ở
 [roadmap 31/10 §4.1–§4.3](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
-Bảng dưới là **định nghĩa ở mức thẻ**. Chưa thẻ nào có prompt trong file prompt, và chưa thẻ nào có dòng
-`AUTHORIZATION`: lead soạn prompt theo mẫu thẻ, chủ dự án ghi dòng uỷ quyền, rồi mới giao. Mọi khoá mới đều
+Bảng dưới là **định nghĩa ở mức thẻ**. Trong file prompt chưa có thẻ nào của bảng này. Tình trạng ngày
+2026-11-18: S8 (#106) và S6 (#110) đã merge; L0 đã có nháp ADR-0008 (#109, còn `proposed`); prompt và dòng
+uỷ quyền đã soạn của R1c nằm ở [bản giao việc cho `agent-win`](2026-11-17-agent-win-handoff-r1c.md). Các
+thẻ còn lại (S7, SEL2-P/X, L1, L2-P/X) chưa có prompt và chưa có dòng `AUTHORIZATION`: lead soạn prompt
+theo mẫu thẻ, chủ dự án ghi dòng uỷ quyền, rồi mới giao. Mọi khoá mới đều
 opt-in: khoá vắng thì thế giới phải chạy đúng như trước, và thẻ phải chứng minh điều đó bằng so sánh các
 lượt chạy với nhau, không ghim checksum tuyệt đối.
 
@@ -256,7 +265,7 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 |---|---|---|---|---|
 | S8 `[RUST]` | **F-044** — tách bộ đếm ân hạn đói và ân hạn khát thành hai | 🤖 | Làm **trước** mọi bản đăng ký thí nghiệm mới | Test đặc tả `f044_shared_bottom_counter_tests` được đảo thành test của hành vi đúng; trường mới có `#[serde(default)]` và save cũ nạp được; thay đổi quỹ đạo của cấu hình có hai mức ân hạn khác nhau được khai trong PR |
 | S6 `[RUST]` | **QĐ-SEL1b = A** — khoá trần sinh sản của con mồi (STATE §3.00 P2 đề xuất tên `live.prey_cap`), rồi một lượt đo thăm dò mù với khối lượng cơ thể | 🤖 | S8 | Khoá vắng thì bit-identical với hôm nay; báo cáo thăm dò cho biết khan hiếm đồng cỏ có đưa standing crop vào dải mà bản đăng ký cần hay không. **Không** chạy seed thí nghiệm nào |
-| SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | S6 | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
+| SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | S6 (đã merge, #110) **và** một quyết định của chủ dự án về bước kế tiếp của QĐ-SEL1b: lượt đo của S6 không tìm ra cấu hình khan hiếm nào khả thi | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
 | S7 `[RUST]` | **QĐ-ECO-C1** — khoá `live.predator_cost_mult`, `live.strike_radius` và một khoá nguồn nước | 🤖 | ADR-0007 được cập nhật (file R5: agent soạn, chủ dự án duyệt) | Mỗi khoá vắng thì bit-identical; EU kín; tất định nhiều tiến trình; một phép đo **tiền đăng ký** trên ít nhất 20 seed |
 | R1c `[RUST]` | **QĐ-C = C** — nâng `burn` từ 0.13.2 lên dòng 0.22. **Thay thẻ R1**, vốn giả định QĐ-C = A | 🤖 + 🧑 | Uỷ quyền R5 cho `src-tauri/Cargo.toml`, `Cargo.lock` và các file dùng `burn` | Xem danh sách ngay dưới bảng |
 | L0 | ADR cho QĐ-PAST (kể cả thiết kế lưu trữ) và QĐ-TIME | 🤖 soạn, 🧑 duyệt | — | ADR ở trạng thái `accepted` |
@@ -281,7 +290,7 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 6. Hồ sơ giấy phép được sinh lại **trên Windows** (thẻ H5) và `npm run check:licenses-complete` exit 0.
 7. Một nháp ADR cho việc nâng, và một bản vá cho đoạn "burn is pinned at 0.13.2" của `CLAUDE.md` (file R5).
 
-Thứ tự đề xuất: S8, rồi S6 và S7 song song, rồi SEL2. R1c không phụ thuộc các thẻ đó và phải xong trước chặng
+Thứ tự đề xuất lúc viết: S8, rồi S6 và S7 song song, rồi SEL2 (S8 và S6 đã xong). R1c không phụ thuộc các thẻ đó và phải xong trước chặng
 5. L0 làm được ngay vì không chạm mã; L1 và L2 đi sau SEL2-X.
 
 ---
@@ -302,8 +311,8 @@ Mỗi hàng là một phép đo **chưa có** hoặc **phải đo lại**. Khi �
 | 0 cặp system bất định thứ tự (SimRng và năng lượng) | `tests/schedule_ambiguity_tests.rs` | 🤖 | T2, R0 |
 | Zero-alloc ở đường sinh/tử | gate alloc mở rộng | 🤖 | G1 |
 | Residual EU ở mọi tổ hợp cờ × can thiệp (mục tiêu: bit-exact; ngưỡng tối thiểu ≤ 1e-3) | test mới | 🤖 | G5, M4 |
-| E2E: 18 spec của CI cộng `e2e/tiers`, 0 `console.error`/`pageerror`/`TypeError` | `npm run test:e2e --prefix tests` | 🤖 | G2 |
-| `check:licenses-complete` exit 0 | `npm run check:licenses-complete` | 🤖 + 🧑 | R1, H5 |
+| E2E: mọi spec mà `scripts/e2e_spec_policy.mjs` xếp lịch (con số "18 spec" từng ghi ở đây không còn khớp chính sách hiện hành), 0 `console.error`/`pageerror`/`TypeError` | `npm run test:e2e --prefix tests` | 🤖 | G2 |
+| `check:licenses-complete` exit 0 | `npm run check:licenses-complete` | 🤖 + 🧑 | R1c, H5 |
 | Tick trong app bản release, 1.000 agent, p50/p95 | `ANIMA_TICK_CAPTURE` | 🧑 | H6 |
 | App khởi động dưới CSP | mở app, xem Console | 🧑 | H7 |
 

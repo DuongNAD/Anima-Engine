@@ -23,8 +23,8 @@ review_cycle: weekly
 >   nhánh (`bef7768`, `3c06491`), nên không có PR nào mang tên chúng. `dataflow.json` khai 16 cạnh, và CI
 >   so nó với đầu ra của `cargo-modules` ở mỗi lượt (bước "Module dependency graph matches dataflow.json";
 >   kết quả lượt đo mới nhất ở STATE §1). Gate V1 vì thế **đã bật**.
-> - **S0.3 và S0.4 còn mở.** `core/engine.rs` vẫn còn, và mục F-005 trong `FINDINGS.md` vẫn ghi ba cặp,
->   "Test khoá lại: chưa có" và `OPEN`, dù gate đã có.
+> - **S0.3 còn mở:** `core/engine.rs` vẫn còn. **S0.4 xong ngày 2026-11-18:** mục F-005 trong
+>   `FINDINGS.md` nay ghi sáu cặp và trỏ vào gate; nó vẫn `OPEN` vì sáu vòng chưa được gỡ.
 > - **S1 đến S5 chưa bắt đầu**; `src-tauri/crates/` vẫn chỉ có `anima-domain`. Chúng chờ **QĐ-M2** (tách
 >   crate trước hay sau `v1.0.0`) trong
 >   [hàng đợi quyết định](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được); đề
@@ -143,9 +143,8 @@ thiếu**.
 | `dataflow` trong `.github/workflows/ci.yml` | ✅ job Rust, bước "Module dependency graph matches dataflow.json" (lúc viết: 0 lần xuất hiện) |
 
 Lúc viết, toàn bộ máy móc để biến "không có vòng" thành một **gate** đã nằm trong repo và chỉ thiếu
-đúng file khai báo cùng một bước CI. Cả hai nay đã có (S0.2), nên việc còn lại của S0 là S0.3 và S0.4.
-F-005 vẫn ghi *"Test khoá lại: chưa có — cần khai contract phụ thuộc rồi cho CI chặn"*; đó là câu S0.4
-phải sửa.
+đúng file khai báo cùng một bước CI. Cả hai nay đã có (S0.2), và F-005 đã trỏ vào gate (S0.4), nên việc
+còn lại của S0 là S0.3.
 
 Đồ thị thô lọc "owns" rồi gộp về mức module còn **16** cạnh `uses` (số của `dataflow.json`; con số 11
 từng ghi ở đây lấy từ một chú thích cũ trong `justfile`) — đủ nhỏ để khai bằng tay và đọc được trong một
@@ -224,7 +223,7 @@ Mỗi bước: **một PR**, bộ ba V1/V2/V3, và không kèm thay đổi hành
 | **S0.1** ✅ `bef7768`, 2026-10-31 | **A1 trước** — hồi sinh `scripts/check_test_targets.mjs` (port từ `origin/main` `286e45a`). Không có nó, V2 không đo được | `node scripts/check_test_targets.mjs <capture> --profile desktop` exit 0 |
 | **S0.2** ✅ `3c06491`, 2026-10-31 (phép đối chứng đỏ/xanh ghi trong thông điệp commit) | **Khai `dataflow.json`** — hợp đồng phụ thuộc *hiện tại* (gồm cả sáu vòng, đúng như thực tế), rồi `just dataflow-verify 1` xanh. Khai **hiện trạng** trước, đừng khai mong muốn: một gate xanh ngay là gate đo được, một gate đỏ sẵn thì vô dụng | `just dataflow-truth && just dataflow-verify 1` exit 0; thêm bước này vào `ci.yml`; sửa một `use` để tạo cạnh lạ ⇒ gate **đỏ** và nêu tên cạnh |
 | **S0.3** | Xoá `core/engine.rs` (4 dòng shim), chuyển các call-site sang module thật | Tổng `passed` của `cargo test --features desktop` không đổi so với lượt đo ngay trước đó ở STATE §1; V1 cho thấy **mất** cạnh qua `engine`. Lưu ý: `core/components.rs` cũng dùng `crate::core::engine::AgentEvaluation` |
-| **S0.4** (còn mở) | Đóng **F-005**: cập nhật finding với số đo 6 cặp, trỏ vào gate mới. Gate đã có từ `3c06491`, nhưng mục F-005 chưa được cập nhật | F-005 có "Test khoá lại" thật |
+| **S0.4** ✅ 2026-11-18 | Đóng **F-005**: cập nhật finding với số đo 6 cặp, trỏ vào gate mới. Finding đã được cập nhật; nó vẫn `OPEN` cho tới khi các vòng được gỡ | F-005 có "Test khoá lại" thật |
 
 ### S1 — `anima-ecs-types` (bước quan trọng nhất)
 

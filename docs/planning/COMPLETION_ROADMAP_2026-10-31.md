@@ -320,7 +320,7 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-C | **C**: nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc và giữ được GPU. Không chọn A, không chọn B | Thẻ R1 của kế hoạch swarm không chạy; thay bằng thẻ nâng `burn`. Chi tiết ở §4.3 |
 | QĐ-1 | **Mức 2**: bản 0.9 chạy một máy trước, rồi mới tới 1.0 | Thẻ R2; chặng 5 của kế hoạch 13/11 |
 | #56, #68 | Đổi nhánh đích sang thân cây rồi merge | Luật L1. Cùng ngày: cả hai đã đổi nhánh đích và merge vào thân cây; #68 được merge sau khi CI của nó chạy lại xanh trên nền mới |
-| QĐ-P1 | **Có viết** bài báo phương pháp (chủ dự án trả lời "có viết" ngày 2026-11-17). Chủ đề theo đề xuất của kế hoạch swarm: kỷ luật bằng chứng cho mô phỏng ALife, E2 rồi E2R làm case study | Mở luồng thẻ P. QĐ-P2 (chỗ để bản nháp) và QĐ-P3 (khai báo dùng AI) **còn trống** |
+| QĐ-P1 | **Có viết** bài báo phương pháp (chủ dự án trả lời "có viết" ngày 2026-11-17). Chủ đề theo đề xuất của kế hoạch swarm: kỷ luật bằng chứng cho mô phỏng ALife, E2 rồi E2R làm case study | Mở luồng thẻ P. QĐ-P2 (chỗ để bản nháp) và QĐ-P3 (khai báo dùng AI) đã quyết cùng ngày: xem hai hàng QĐ-P2 và QĐ-P3 bên dưới |
 | Người ghi tài liệu | Phiên rà soát tài liệu được giao rà và sửa **toàn bộ** tài liệu trong đợt 2026-11-17, kể cả `STATE`, `TODO.md`, `FINDINGS.md` và trang hàng đợi thẻ. Ngoài đợt đó, bốn file này vẫn thuộc `agent-mac` | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
 
 **Lượt hai cùng ngày** ("theo đề xuất hết", trả lời mười bốn câu hỏi sau đợt rà toàn bộ tài liệu):

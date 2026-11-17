@@ -14,6 +14,35 @@
 
 ---
 
+# ⏪ Rà mười tài liệu quá hạn review, giao R1c cho agent-win (2026-11-17 → 2026-11-18)
+
+Chỉ tài liệu; không build, không chạy test nào. Hai PR vào thân cây.
+
+- **Giao việc (#111, đã merge):** thẻ R1c (nâng `burn`, QĐ-C = C) giao cho `agent-win`; prompt để dán và
+  dòng uỷ quyền đã soạn ở `docs/ai/planning/2026-11-17-agent-win-handoff-r1c.md`. Dòng uỷ quyền chỉ có hiệu
+  lực khi chủ dự án dán prompt.
+- **Rà mười tài liệu `check:docs --report` báo quá hạn.** Bốn agent chỉ-đọc đối chiếu từng khẳng định với
+  mã, lịch sử git và danh sách PR; phiên chính kiểm lại từng phát hiện trước khi sửa. Tám tài liệu được
+  đổi `last_reviewed`. Hai tài liệu nghiên cứu (`MAP_AND_ML_UPGRADE_RESEARCH.md`,
+  `RD_TECH_UPGRADE_ASSESSMENT_2026-08-07.md`) được sửa phần nói về repo nhưng **giữ** ngày cũ, vì số liệu
+  bài báo và link ngoài chưa được kiểm lại.
+- **Điều tài liệu từng nói sai mà đáng nhớ:**
+  - Sinh sản liên tục **chạy mặc định trong app desktop**; nó chỉ tắt trong adapter thí nghiệm sống.
+  - Kế hoạch tách crate ghi "chưa bắt đầu" trong khi S0.1 và S0.2 đã ở trên thân cây từ 2026-10-31 và
+    gate `dataflow.json` đã chạy trong CI. F-005 được cập nhật (sáu vòng, có gate), vẫn `OPEN`.
+  - ALIEN là BSD-3-Clause, không phải copyleft; Avida không có file license ở gốc repo (kiểm upstream qua
+    GitHub API cho mọi ứng viên của `OPEN_SOURCE_LANDSCAPE.md`).
+  - Câu "phản hồi Gemini được phân loại bằng chuỗi con" của bản đánh giá R&D đã sai ngay khi viết.
+  - `step_water` và `step_erosion` chưa nằm trong lịch tick sống.
+- **File prompt swarm:** lỗi cơ học được sửa trong thẻ (đường dẫn observable của S2, R0 soạn §1 kế tiếp
+  thay vì §1.g đã tồn tại, `npm run check:docs` thay cho riêng bước link, seed của E-SEL1 trong danh sách
+  loại trừ của E2R-P, trạng thái `frozen` không hợp lệ ở E3-P). Chỗ nào sửa sẽ nới phạm vi thẻ thì chỉ có
+  ghi chú *Rà 2026-11-18* trên thẻ: S3, V0, V1, V3, T3, G8, DOC5, DOC6 và các thẻ bài báo.
+- **Chờ chủ dự án:** các thẻ P2, P7, P8 và `outline.md` của P4 ghi bản nháp bài báo vào repo này, trái
+  QĐ-P2; T3 có cần sống lại khi `main` đã được bảo vệ; ADR vòng đời mà thẻ V3 cần; `review_cycle: weekly`
+  của kế hoạch tách crate trong khi nó hoãn tới sau 1.0; dòng trạng thái đầu ADR-0005 còn ghi "đề xuất";
+  `CLAUDE.md` còn ghi "Two Rust advisories are ignored" trong khi `audit.toml` nay có nhiều hơn.
+
 # ⏪ Rà soát tiến độ, lộ trình và tài liệu (2026-11-17)
 
 Một lượt đối chiếu tài liệu kế hoạch với `gh pr list`, `git branch -r` và mã trên thân cây tại `6f14124`;
