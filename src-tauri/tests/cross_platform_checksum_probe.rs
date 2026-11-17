@@ -268,3 +268,84 @@ fn m1_print_world_checksums_for_cross_platform_comparison() {
         "the probe must print one row per model, seed and checkpoint"
     );
 }
+
+// ---- The math functions themselves -------------------------------------------------------------
+//
+// The matrix above shows *that* the live world differs between operating systems. This test asks the
+// narrower question underneath: do the floating-point functions the simulation calls return the same
+// bits on each platform? Rust's `f32::sin`, `exp`, `powf`… call the platform's libm (glibc, the MSVC
+// CRT, Apple's libm), and IEEE 754 requires correct rounding only for the basic operations and
+// `sqrt`, which is why `sqrt` is here as the control: it must agree everywhere.
+//
+// Each line is `M1_LIBM {"fn": name, "bits": [hex, …]}`: the result bits for a fixed, deterministic
+// list of inputs. `compare_checksums.mjs` counts, per function, the inputs whose result differs
+// between platforms and the largest distance in units in the last place.
+
+/// Inputs per function: 2048 in the full run, 64 in the quick one.
+const LIBM_FULL_INPUTS: usize = 2048;
+const LIBM_QUICK_INPUTS: usize = 64;
+
+/// A fixed sequence in `[0, 1)`: an LCG, so it is identical on every platform by construction (only
+/// integer arithmetic and one exact conversion).
+fn unit_inputs(n: usize, salt: u64) -> Vec<f64> {
+    let mut state = 0x9E37_79B9_7F4A_7C15u64 ^ salt;
+    (0..n)
+        .map(|_| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 11) as f64 / (1u64 << 53) as f64
+        })
+        .collect()
+}
+
+fn emit_libm(name: &str, bits: Vec<String>) {
+    println!("M1_LIBM {}", json!({ "fn": name, "bits": bits }));
+}
+
+fn f32_fn(name: &str, n: usize, salt: u64, lo: f64, hi: f64, f: impl Fn(f32) -> f32) {
+    let bits = unit_inputs(n, salt)
+        .into_iter()
+        .map(|u| f((lo + u * (hi - lo)) as f32).to_bits())
+        .map(|b| format!("{b:08x}"))
+        .collect();
+    emit_libm(name, bits);
+}
+
+fn f64_fn(name: &str, n: usize, salt: u64, lo: f64, hi: f64, f: impl Fn(f64) -> f64) {
+    let bits = unit_inputs(n, salt)
+        .into_iter()
+        .map(|u| f(lo + u * (hi - lo)).to_bits())
+        .map(|b| format!("{b:016x}"))
+        .collect();
+    emit_libm(name, bits);
+}
+
+#[test]
+fn m1_print_libm_result_bits_for_cross_platform_comparison() {
+    let full = std::env::var(FULL_ENV).is_ok_and(|v| v == "1");
+    let n = if full {
+        LIBM_FULL_INPUTS
+    } else {
+        LIBM_QUICK_INPUTS
+    };
+    // Ranges cover what the simulation passes: phases for the CPG and seasons, the Boltzmann
+    // exponent of the metabolic rate, Shannon's `p.ln()`, Kleiber's `m.powf(0.75)` and the terrain's
+    // `elevation.powf(1.15)` on [0, 1].
+    let tau = std::f64::consts::TAU;
+    f32_fn("f32::sqrt (control)", n, 1, 0.0, 1.0e4, f32::sqrt);
+    f32_fn("f32::sin", n, 2, -100.0 * tau, 100.0 * tau, f32::sin);
+    f32_fn("f32::cos", n, 3, -100.0 * tau, 100.0 * tau, f32::cos);
+    f32_fn("f32::exp", n, 4, -20.0, 20.0, f32::exp);
+    f32_fn("f32::ln", n, 5, 1.0e-6, 1.0e3, f32::ln);
+    f32_fn("f32::powf(x, 0.75)", n, 6, 0.0, 1.0e3, |x| x.powf(0.75));
+    f32_fn("f32::powf(x, 1.15)", n, 7, 0.0, 1.0, |x| x.powf(1.15));
+    f32_fn("f32::atan2(x, 1.5)", n, 8, -1.0e3, 1.0e3, |x| x.atan2(1.5));
+    f32_fn("f32::tanh", n, 9, -10.0, 10.0, f32::tanh);
+    f64_fn("f64::sqrt (control)", n, 11, 0.0, 1.0e4, f64::sqrt);
+    f64_fn("f64::sin", n, 12, -100.0 * tau, 100.0 * tau, f64::sin);
+    f64_fn("f64::cos", n, 13, -100.0 * tau, 100.0 * tau, f64::cos);
+    f64_fn("f64::exp", n, 14, -20.0, 20.0, f64::exp);
+    f64_fn("f64::ln", n, 15, 1.0e-6, 1.0e3, f64::ln);
+    f64_fn("f64::powf(x, 0.75)", n, 16, 0.0, 1.0e3, |x| x.powf(0.75));
+}
