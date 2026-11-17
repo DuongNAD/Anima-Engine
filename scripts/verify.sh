@@ -38,7 +38,9 @@ $NONKIT"
 
 # --- Diff PHẢI gồm cả file untracked. Không có dòng này thì agent chỉ cần tạo
 #     file MỚI là lách sạch luật 2..6. Đây là lỗ thủng lớn nhất của cổng. ---
-GUARD_DIRS=$(echo "$CHANGED" | grep -E "$GUARD_RE" | sed -E "s|($HD_CRATE/([^/]+/)?$HD_TEST)/.*|\\1|" | sort -u)
+# `|| true`: with `set -e` and `pipefail`, a diff that touches no test directory makes `grep` exit 1
+# and the assignment would end the script here, silently, with exit 1 (F-024).
+GUARD_DIRS=$(echo "$CHANGED" | grep -E "$GUARD_RE" | sed -E "s|($HD_CRATE/([^/]+/)?$HD_TEST)/.*|\\1|" | sort -u || true)
 for d in $GUARD_DIRS; do git add --intent-to-add -- "$d" >/dev/null 2>&1 || true; done
 DIFF=$(git diff HEAD -- $GUARD_DIRS 2>/dev/null || true)
 ADDED=$(echo "$DIFF"   | grep '^+' | grep -v '^+++' || true)
