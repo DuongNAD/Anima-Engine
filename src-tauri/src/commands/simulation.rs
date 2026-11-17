@@ -665,53 +665,83 @@ pub use crate::core::telemetry_export::{
     TimeSeriesSample,
 };
 
-#[tauri::command]
-pub fn export_scientific_dataset(
-    state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
-    req: ScientificExportRequest,
-) -> Result<ScientificExportResponse, String> {
-    let status = state.engine.get_status();
-    let provenance = RunProvenance::new(42, status.tick_count);
+/// Everything a scientific export is made of, assembled from the engine but not yet serialized or
+/// written anywhere.
+///
+/// Split out of [`export_scientific_dataset`] so the assembly can be exercised against a real
+/// [`SimulationEngine`](crate::core::engine::SimulationEngine) without a Tauri `AppHandle`, which only
+/// the file write needs.
+pub struct ScientificExportParts {
+    pub package: ScientificDatasetPackage,
+    pub csv_content: String,
+    pub newick_tree: Option<String>,
+}
 
-    let eco = state
-        .engine
+/// Read what the simulation thread has published and assemble the export package from it.
+///
+/// The seed is read first, and the segments, ecosystem, census, flux and status read after it belong
+/// to the same run (see [`SimulationEngine::run_seed`](crate::core::engine::SimulationEngine)).
+/// **Not everything here is per-run.** The lineage tree (`newick_tree`) and the MAP-Elites archive
+/// (`map_elites`, which the caller computes from the shared grid before calling this; it only holds
+/// cells while evolution is switched on) belong to the process and `start` does not reset them, so
+/// after a restart they still hold the previous run's branches and cells beside the new seed. The values are also read through separate locks, so the
+/// package is not an atomic snapshot: a run that starts while it is being assembled can still be
+/// mixed in.
+pub fn build_scientific_export(
+    engine: &crate::core::engine::SimulationEngine,
+    map_elites: crate::core::telemetry_export::MapElitesSummary,
+    req: &ScientificExportRequest,
+) -> Result<ScientificExportParts, String> {
+    // The run's seed as the simulation thread published it, read FIRST. The thread publishes a run's
+    // first tick (segments, ecosystem, census, flux, status) and then the seed, so everything read
+    // after the seed is at least as new as the seed and belongs to the same run. Read the other way
+    // round, an export preempted between the two reads pairs the new run's seed with the previous
+    // run's status.
+    //
+    // An engine with no published seed has no run to export (it was never started, it is still
+    // starting, or its run stopped before its first tick), and an export of no run must say so: this
+    // used to write 42 for every run, which made a dataset claim a trajectory it did not come from.
+    let seed = (*engine.run_seed.read().unwrap_or_else(|e| e.into_inner())).ok_or_else(|| {
+        "no simulation run to export: no run has published its first tick yet (the simulation was \
+         never started, is still starting, or stopped before its first tick), so the run's \
+         provenance cannot be stated. Start the simulation and wait for its first tick."
+            .to_string()
+    })?;
+    let status = engine.get_status();
+    let provenance = RunProvenance::new(seed, status.tick_count);
+
+    let eco = engine
         .ecosystem_state
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let demo = state
-        .engine
+    let demo = engine
         .demographic_census
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let flux = state
-        .engine
+    let flux = engine
         .energy_flux_report
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let segments = state
-        .engine
+    let segments = engine
         .agent_states
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .clone();
 
-    let bounds = state
-        .engine
+    let bounds = engine
         .terrain_map
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .as_ref()
         .map(|t| t.bounds);
 
-    let combat_events = state
-        .engine
+    let combat_events = engine
         .combat_events
         .read()
         .unwrap_or_else(|e| e.into_inner())
@@ -727,38 +757,32 @@ pub fn export_scientific_dataset(
         &combat_events,
     );
 
-    let map_elites = state
-        .map_elites_grid
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .compute_summary();
-
     let newick_tree =
-        crate::core::telemetry_export::export_lineage_newick(&state.engine.lineage_tracker, None)
-            .ok();
+        crate::core::telemetry_export::export_lineage_newick(&engine.lineage_tracker, None).ok();
 
+    // Biomass by trophic role comes from the agents themselves (each live agent's reserve, once). It
+    // used to be 70% and 30% of the animals pool, a split nothing measures, and the sample also
+    // carried a residual of 0, two metabolic rates and an ambient temperature that were constants.
+    let (prey_biomass, predator_biomass) =
+        crate::core::telemetry_export::trophic_biomass_from_segments(&segments);
     let time_series = vec![TimeSeriesSample {
         tick: status.tick_count,
         plants_biomass: eco.plants,
-        prey_biomass: eco.animals * 0.7,
-        predator_biomass: eco.animals * 0.3,
+        prey_biomass,
+        predator_biomass,
         detritus_biomass: eco.detritus,
         total_energy: eco.total,
-        energy_residual: 0.0,
         prey_count: eco.prey_count as usize,
         predator_count: eco.predator_count as usize,
         shannon_diversity: eco.shannon as f64,
         simpson_diversity: eco.simpson as f64,
-        avg_prey_metabolic_rate: 0.045,
-        avg_predator_metabolic_rate: 0.089,
-        ambient_temperature_c: 20.0,
     }];
 
     let csv_content = crate::core::telemetry_export::render_csv_time_series(&time_series);
 
     let package = ScientificDatasetPackage {
-        schema_version: 1,
-        provenance: provenance.clone(),
+        schema_version: crate::core::telemetry_export::SCIENTIFIC_EXPORT_SCHEMA_VERSION,
+        provenance,
         time_series: if req.include_time_series {
             time_series
         } else {
@@ -769,7 +793,8 @@ pub fn export_scientific_dataset(
         } else {
             None
         },
-        energy_flux: if req.include_energy_flux {
+        // Null when no flux was measured, rather than a diagram of invented numbers.
+        energy_flux: if req.include_energy_flux && flux.is_measured() {
             Some(flux)
         } else {
             None
@@ -786,6 +811,32 @@ pub fn export_scientific_dataset(
             None
         },
     };
+
+    Ok(ScientificExportParts {
+        package,
+        csv_content,
+        newick_tree,
+    })
+}
+
+#[tauri::command]
+pub fn export_scientific_dataset(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    req: ScientificExportRequest,
+) -> Result<ScientificExportResponse, String> {
+    let map_elites = state
+        .map_elites_grid
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .compute_summary();
+
+    let ScientificExportParts {
+        package,
+        csv_content,
+        newick_tree,
+    } = build_scientific_export(&state.engine, map_elites, &req)?;
+    let provenance = package.provenance.clone();
 
     let json_content = serde_json::to_string_pretty(&package)
         .map_err(|e| format!("JSON serialization error: {e}"))?;

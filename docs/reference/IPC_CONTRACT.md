@@ -2,7 +2,7 @@
 title: Hợp đồng IPC Tauri (lệnh và event)
 status: active
 owner: architecture
-last_reviewed: 2026-11-14
+last_reviewed: 2026-11-17
 review_cycle: per-release
 ---
 
@@ -48,7 +48,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `set_lod_focus` | `focus: LodFocus` | — | `enabled: false` trả engine về độ chi tiết đồng đều (mặc định) |
 | `get_lod_focus` | — | `LodFocus` | |
 | `get_lod_bands` | — | `LodBands` | Ranh giới tầng LOD của bản build |
-| `export_scientific_dataset` | `req: ScientificExportRequest` | `ScientificExportResponse` | |
+| `export_scientific_dataset` | `req: ScientificExportRequest` | `ScientificExportResponse` | Gói `schemaVersion` 2. `provenance.seed` là seed thật mà luồng mô phỏng công bố (`SimulationEngine::run_seed`); **lỗi** khi chưa có lượt chạy nào công bố tick đầu tiên (chưa khởi động, đang khởi động, hoặc dừng trước tick đầu), thay cho seed 42 cũ; seed chỉ hiện sau tick đầu nên đi cùng trạng thái của chính lượt chạy đó (segments, hệ sinh thái, census, flux, status); bốn thứ **không** phải số đo theo lượt chạy được nêu ở câu "Chưa sạch" bên dưới. `preyBiomass` / `predatorBiomass` là reserve của các agent sống theo vai trò. Bốn trường hằng số (`energyResidual`, hai tốc độ trao đổi chất, `ambientTemperatureC`) đã bỏ. `energyFlux` là `null` khi chưa đo được flux. **Chưa sạch:** `spatialDensity.vegetationDensity` luôn 0.5 mỗi ô và số đực/cái của `demographics` được chia theo chẵn lẻ (chưa đo); `newickTree` (phả hệ) và `mapElitesSummary` (kho MAP-Elites dùng chung, chỉ có ô khi tiến hóa đang bật) là của cả tiến trình, `start` không reset, nên sau một lần khởi động lại chúng còn nhánh và ô của lượt chạy trước. Gói không phải một ảnh chụp nguyên tử: các giá trị được đọc qua nhiều khóa riêng |
 
 ### Môi trường — `commands/environment.rs`
 
@@ -62,7 +62,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `get_chronicle_history` | — | `ChronicleEvent[]` | |
 | `save_world_artifact` | `bytes: number[]` | `string` | Ghi World Artifact do frontend sinh ra vào đường dẫn chuẩn, để `init_world` khởi động trên **đúng** thế giới đang render. Định dạng: [`PROJECT.md` §Interface Contracts 1](../../PROJECT.md) |
 | `get_demographic_census` | — | `DemographicCensusState` | |
-| `get_energy_flux_matrix` | — | `EnergyFluxReport` | |
+| `get_energy_flux_matrix` | — | `EnergyFluxReport` | **Lỗi** `energy flux is not measured…` khi chưa có `EnergyFluxMatrix`. Hiện luôn như vậy vì chưa có gì ghi nó; trước đây lệnh trả chín dòng chảy cố định (350, 120, 25, …) trông như số đo. Frontend coi lỗi này là "chưa có dữ liệu" |
 | `get_spatial_density_matrix` | `width?: number`, `height?: number` | `SpatialDensityReport` | |
 
 ### Tiến hoá — `commands/evolution.rs`

@@ -297,127 +297,42 @@ pub struct EnergyFluxReport {
     pub energy_drift_percent: f64,
 }
 
-/// Construct directed energy flux report matching closed ledger conservation laws.
+impl EnergyFluxReport {
+    /// Whether this report describes flows that were measured.
+    ///
+    /// A report with no nodes is the answer "nothing was measured": it is what
+    /// [`generate_energy_flux_report`] returns when there is no [`EnergyFluxMatrix`], and its
+    /// `respiration_loss` of zero then means "unknown", not "none". Callers that show or export a
+    /// report check this first, so a missing measurement is never rendered as a quiet world.
+    pub fn is_measured(&self) -> bool {
+        !self.nodes.is_empty()
+    }
+}
+
+/// Build the energy-flux report from the closed ledger and, if there is one, the flux matrix.
+///
+/// What the report holds is what was measured and nothing else:
+///
+/// - `total_system_energy` and `energy_drift_percent` come from the ledger's compartments and its
+///   locked baseline. They are filled in whether or not a matrix exists, but they live in the report
+///   object only: `get_energy_flux_matrix` and the export withhold an unmeasured report as a whole,
+///   so while no matrix exists no consumer receives them.
+/// - With **no matrix** the report has no nodes and no links (see
+///   [`EnergyFluxReport::is_measured`]). Nothing in the running app writes an `EnergyFluxMatrix`, so
+///   this is the case the app is in. It used to return nine fixed flows (350, 120, 25, ...) that read
+///   as measurements.
+/// - With a matrix, the nodes are the three stocks the closed ledger holds (plants, one animal pool,
+///   detritus) and each link is a field of the matrix, summed where several fields run between the
+///   same two compartments. Predation (`herbivores_to_predators`) stays inside the animal pool and is
+///   not a compartment flow. There is no solar node (the ledger is closed, so nothing enters), no
+///   split of the animals into herbivores and carnivores (one pool is held), and no floor under any
+///   flow: a flow measured as zero is zero. Hibernating EU is part of `total_system_energy` but is
+///   not a node.
 pub fn generate_energy_flux_report(
     biomass: &EcosystemBiomass,
     ledger: Option<&EnergyLedger>,
     flux: Option<&EnergyFluxMatrix>,
 ) -> EnergyFluxReport {
-    let total_animals = biomass.animals.max(0.0);
-    let herbivore_biomass = total_animals * 0.70;
-    let carnivore_biomass = total_animals * 0.30;
-
-    let nodes = vec![
-        EnergyFluxNode {
-            id: "sun".to_string(),
-            label: "Solar Input".to_string(),
-            biomass: 10000.0,
-        },
-        EnergyFluxNode {
-            id: "plants".to_string(),
-            label: "Primary Producers".to_string(),
-            biomass: biomass.plants.max(0.0),
-        },
-        EnergyFluxNode {
-            id: "herbivores".to_string(),
-            label: "Primary Consumers".to_string(),
-            biomass: herbivore_biomass,
-        },
-        EnergyFluxNode {
-            id: "carnivores".to_string(),
-            label: "Secondary Consumers".to_string(),
-            biomass: carnivore_biomass,
-        },
-        EnergyFluxNode {
-            id: "detritus".to_string(),
-            label: "Detritus & Recycled".to_string(),
-            biomass: biomass.detritus.max(0.0),
-        },
-        EnergyFluxNode {
-            id: "metabolic_sink".to_string(),
-            label: "Dissipated Heat".to_string(),
-            biomass: 0.0,
-        },
-    ];
-
-    let (
-        sun_to_plants,
-        plants_to_herb,
-        herb_to_carn,
-        plants_to_detr,
-        herb_to_detr,
-        carn_to_detr,
-        detr_to_plants,
-        herb_to_sink,
-        carn_to_sink,
-    ) = if let Some(f) = flux {
-        let s_to_p = (f.detritus_to_plants * 0.35).max(1.0);
-        let p_to_h = f.plants_to_herbivores.max(0.1);
-        let h_to_c = f.herbivores_to_predators.max(0.05);
-        let p_to_d = (f.detritus_to_plants * 0.1).max(0.1);
-        let h_to_d =
-            (f.mortality_to_detritus * 0.7 + f.reproduction_waste_to_detritus * 0.7).max(0.1);
-        let c_to_d =
-            (f.mortality_to_detritus * 0.3 + f.reproduction_waste_to_detritus * 0.3).max(0.05);
-        let d_to_p = f.detritus_to_plants.max(0.1);
-        let h_to_s = (f.animals_to_detritus * 0.75).max(0.1);
-        let c_to_s = (f.animals_to_detritus * 0.25).max(0.05);
-        (
-            s_to_p, p_to_h, h_to_c, p_to_d, h_to_d, c_to_d, d_to_p, h_to_s, c_to_s,
-        )
-    } else {
-        (350.0, 120.0, 25.0, 80.0, 40.0, 15.0, 100.0, 30.0, 10.0)
-    };
-
-    let links = vec![
-        EnergyFluxLink {
-            source: "sun".to_string(),
-            target: "plants".to_string(),
-            value: sun_to_plants,
-        },
-        EnergyFluxLink {
-            source: "plants".to_string(),
-            target: "herbivores".to_string(),
-            value: plants_to_herb,
-        },
-        EnergyFluxLink {
-            source: "herbivores".to_string(),
-            target: "carnivores".to_string(),
-            value: herb_to_carn,
-        },
-        EnergyFluxLink {
-            source: "plants".to_string(),
-            target: "detritus".to_string(),
-            value: plants_to_detr,
-        },
-        EnergyFluxLink {
-            source: "herbivores".to_string(),
-            target: "detritus".to_string(),
-            value: herb_to_detr,
-        },
-        EnergyFluxLink {
-            source: "carnivores".to_string(),
-            target: "detritus".to_string(),
-            value: carn_to_detr,
-        },
-        EnergyFluxLink {
-            source: "detritus".to_string(),
-            target: "plants".to_string(),
-            value: detr_to_plants,
-        },
-        EnergyFluxLink {
-            source: "herbivores".to_string(),
-            target: "metabolic_sink".to_string(),
-            value: herb_to_sink,
-        },
-        EnergyFluxLink {
-            source: "carnivores".to_string(),
-            target: "metabolic_sink".to_string(),
-            value: carn_to_sink,
-        },
-    ];
-
-    let respiration_loss = herb_to_sink + carn_to_sink;
     let total_system_energy = biomass.total();
     let energy_drift_percent = if let Some(l) = ledger {
         if let Some(b) = l.baseline() {
@@ -433,10 +348,56 @@ pub fn generate_energy_flux_report(
         0.0
     };
 
+    let Some(f) = flux else {
+        return EnergyFluxReport {
+            nodes: Vec::new(),
+            links: Vec::new(),
+            respiration_loss: 0.0,
+            total_system_energy,
+            energy_drift_percent,
+        };
+    };
+
+    let nodes = vec![
+        EnergyFluxNode {
+            id: "plants".to_string(),
+            label: "Plants".to_string(),
+            biomass: biomass.plants.max(0.0),
+        },
+        EnergyFluxNode {
+            id: "animals".to_string(),
+            label: "Animals".to_string(),
+            biomass: biomass.animals.max(0.0),
+        },
+        EnergyFluxNode {
+            id: "detritus".to_string(),
+            label: "Detritus".to_string(),
+            biomass: biomass.detritus.max(0.0),
+        },
+    ];
+
+    let link = |source: &str, target: &str, value: f64| EnergyFluxLink {
+        source: source.to_string(),
+        target: target.to_string(),
+        value,
+    };
+    let links = vec![
+        link("detritus", "plants", f.detritus_to_plants),
+        link("plants", "animals", f.plants_to_herbivores),
+        link(
+            "animals",
+            "detritus",
+            f.animals_to_detritus + f.mortality_to_detritus + f.reproduction_waste_to_detritus,
+        ),
+        link("detritus", "animals", f.detritus_to_animals),
+    ];
+
     EnergyFluxReport {
         nodes,
         links,
-        respiration_loss,
+        // Respiration is the matrix's own animals-to-detritus flow, not the sum of the three that
+        // end in detritus.
+        respiration_loss: f.animals_to_detritus,
         total_system_energy,
         energy_drift_percent,
     }
@@ -744,18 +705,53 @@ fn is_leap_year(year: u64) -> bool {
 pub struct TimeSeriesSample {
     pub tick: u64,
     pub plants_biomass: f64,
+    /// EU held by the live prey agents' reserves, each agent counted once. Dormant agents hold no
+    /// body and are not in it.
     pub prey_biomass: f64,
+    /// EU held by the live predator agents' reserves, each agent counted once.
     pub predator_biomass: f64,
     pub detritus_biomass: f64,
     pub total_energy: f64,
-    pub energy_residual: f64,
     pub prey_count: usize,
     pub predator_count: usize,
     pub shannon_diversity: f64,
     pub simpson_diversity: f64,
-    pub avg_prey_metabolic_rate: f64,
-    pub avg_predator_metabolic_rate: f64,
-    pub ambient_temperature_c: f64,
+}
+
+/// The `schemaVersion` of a [`ScientificDatasetPackage`] this build writes.
+///
+/// Version 2 removed `energyResidual`, `avgPreyMetabolicRate`, `avgPredatorMetabolicRate` and
+/// `ambientTemperatureC` from every time-series sample: version 1 wrote a constant for each, and
+/// nothing in the simulation measured any of them. It also made `provenance.seed` the run's real seed
+/// (version 1 wrote 42), made `preyBiomass` / `predatorBiomass` the agents' real reserves by role
+/// (version 1 wrote 70% and 30% of the animals), and made `energyFlux` null when no flux was measured.
+pub const SCIENTIFIC_EXPORT_SCHEMA_VERSION: u16 = 2;
+
+/// EU held by the live prey and predator agents, `(prey, predator)`, from the published segments.
+///
+/// A segment carries its agent's whole reserve (every segment of a body repeats it), so each agent
+/// is counted once, by `agent_id`; summing segments would count a three-segment body three times. An
+/// agent that is neither prey nor predator is in neither total. A non-finite or negative reserve
+/// counts as nothing rather than poisoning the sum.
+pub fn trophic_biomass_from_segments(segments: &[SegmentState]) -> (f64, f64) {
+    let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let (mut prey, mut predator) = (0.0f64, 0.0f64);
+    for s in segments {
+        if !seen.insert(s.agent_id) {
+            continue;
+        }
+        let reserve = if s.energy.is_finite() {
+            s.energy.max(0.0) as f64
+        } else {
+            0.0
+        };
+        match s.agent_type {
+            Some(crate::core::ecs::AgentType::Prey) => prey += reserve,
+            Some(crate::core::ecs::AgentType::Predator) => predator += reserve,
+            None => {}
+        }
+    }
+    (prey, predator)
 }
 
 #[derive(ts_rs::TS)]
