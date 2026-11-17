@@ -310,22 +310,32 @@ fn the_stock_moving_forcings_conserve_closed_eu() {
 
 // ---- 2. Reproduction overhead --------------------------------------------------------------------
 
-/// What one reproduction event did, measured around a schedule that contains **only**
+/// What one reproduction tick did, measured around a schedule that contains **only**
 /// `autonomous_reproduction_system`, so nothing else in the tick can move the ledger's counters.
 struct Birth {
+    /// How many parents were above the reproduction threshold, hence how many births to expect.
+    births: usize,
     closed_before: f64,
     closed_after: f64,
-    /// EU the parent's reserve actually lost (measured, not computed from the formula).
+    /// The `pool.animals` mirror as the system found it.
+    mirror_before: f64,
+    /// EU the parents' reserves actually lost (measured, not computed from the formula).
     invested: f64,
-    /// EU the newborn was endowed with (measured off the child's reserve).
+    /// EU the newborns were endowed with (measured off the children's reserves).
     endowment: f64,
     granted_delta: f64,
     settled_delta: u64,
     refused_delta: f64,
 }
 
-fn one_birth() -> Birth {
-    // All prey, so no predator-gating and exactly one parent above threshold.
+/// `parents` full prey reproduce in one tick of `autonomous_reproduction_system`.
+///
+/// `refresh_mirror = true` runs the census first, so `pool.animals` is a fresh snapshot of the
+/// reserves, which is the state of every tick after the first. `false` leaves the mirror as genesis
+/// built it, which is the state of the **first** tick: the census has not run, `pool.animals` is
+/// still zero, and every founder above the threshold reproduces in that tick.
+fn births(parents: usize, refresh_mirror: bool) -> Birth {
+    // All prey, so no predator-gating; only the first `parents` agents are above the threshold.
     let adapter = build(&[("live.reproduction", 1.0), ("live.predator_fraction", 0.0)]);
     let mut world = adapter.world();
 
@@ -334,55 +344,69 @@ fn one_birth() -> Birth {
         q.iter(&world).collect()
     };
     agents.sort_unstable();
-    assert!(agents.len() >= 2, "the world needs a parent and bystanders");
+    assert!(
+        agents.len() > parents,
+        "the world needs {parents} parents and at least one bystander"
+    );
     for (i, e) in agents.iter().enumerate() {
         let mut homeo = world
             .get_mut::<HomeostaticState>(*e)
             .expect("agent reserve");
         let target = homeo.energy_target;
-        // The first agent is full (above the 0.65 prey threshold and the 0.30 safe reserve); the
-        // rest are far below it, so they cannot reproduce this tick.
-        homeo.energy = if i == 0 { target } else { 0.1 * target };
+        // A parent is full (above the 0.65 prey threshold and the 0.30 safe reserve); the rest are
+        // far below it, so they cannot reproduce this tick.
+        homeo.energy = if i < parents { target } else { 0.1 * target };
     }
-    let parent = agents[0];
-    let parent_before = world.get::<HomeostaticState>(parent).unwrap().energy as f64;
+    let parent_ids = &agents[..parents];
+    let reserve =
+        |world: &World, e: Entity| world.get::<HomeostaticState>(e).unwrap().energy as f64;
+    let parents_before: f64 = parent_ids.iter().map(|e| reserve(&world, *e)).sum();
 
-    // Refresh the `animals` mirror so it matches the reserves just set, exactly as the end of a
-    // normal tick would. After this the world is as a real tick would leave it.
-    let mut census = Schedule::default();
-    census.add_systems(ecosystem_census_system);
-    census.run(&mut world);
+    if refresh_mirror {
+        // Refresh the `animals` mirror so it matches the reserves just set, exactly as the end of a
+        // normal tick would.
+        let mut census = Schedule::default();
+        census.add_systems(ecosystem_census_system);
+        census.run(&mut world);
+    }
 
+    let mirror_before = world.resource::<EcosystemBiomass>().animals;
     let closed_before = closed_total(&mut world);
     let ledger_before = *world.resource::<EnergyLedger>();
 
-    let mut births = Schedule::default();
-    births.add_systems(autonomous_reproduction_system);
-    births.run(&mut world);
+    let mut schedule = Schedule::default();
+    schedule.add_systems(autonomous_reproduction_system);
+    schedule.run(&mut world);
 
-    let parent_after = world.get::<HomeostaticState>(parent).unwrap().energy as f64;
+    let parents_after: f64 = parent_ids.iter().map(|e| reserve(&world, *e)).sum();
     let newborns: Vec<Entity> = {
         let mut q = world.query_filtered::<Entity, With<Agent>>();
         q.iter(&world).filter(|e| !agents.contains(e)).collect()
     };
     assert_eq!(
         newborns.len(),
-        1,
-        "exactly one parent was above the reproduction threshold"
+        parents,
+        "exactly {parents} parents were above the reproduction threshold"
     );
-    let endowment = world.get::<HomeostaticState>(newborns[0]).unwrap().energy as f64;
+    let endowment: f64 = newborns.iter().map(|e| reserve(&world, *e)).sum();
 
     let closed_after = closed_total(&mut world);
     let ledger_after = *world.resource::<EnergyLedger>();
     Birth {
+        births: parents,
         closed_before,
         closed_after,
-        invested: parent_before - parent_after,
+        mirror_before,
+        invested: parents_before - parents_after,
         endowment,
         granted_delta: ledger_after.granted() - ledger_before.granted(),
         settled_delta: ledger_after.settled_count() - ledger_before.settled_count(),
         refused_delta: ledger_after.refused() - ledger_before.refused(),
     }
+}
+
+fn one_birth() -> Birth {
+    births(1, true)
 }
 
 #[test]
@@ -433,5 +457,48 @@ fn the_reproduction_overhead_is_visible_to_the_energy_ledger() {
     assert_eq!(
         b.refused_delta, 0.0,
         "the overhead must be fully funded, not partly refused"
+    );
+}
+
+#[test]
+fn every_birth_of_the_first_tick_is_visible_to_the_ledger_although_the_mirror_is_still_zero() {
+    let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // The first tick is where most births of a short run happen: genesis fills every founder's
+    // reserve, the census that snapshots `pool.animals` has not run yet, and the mirror is zero. A
+    // ledger transfer clamps to the mirror, so a routing that only works when the mirror is fresh
+    // hands every one of those births to the raw detritus write, and the ledger never sees them
+    // (measured on a 20-founder run: 14 of the first 19 births, 280 EU, at a5b89f3). The previous
+    // tests run the census first and could not see that.
+    let b = births(3, false);
+    let overhead = b.invested - b.endowment;
+    assert!(
+        overhead > 0.0,
+        "births must have a Lindeman overhead, got {overhead}"
+    );
+    assert!(
+        b.mirror_before < overhead / b.births as f64,
+        "the premise of this test is a stale mirror, but pool.animals was {} EU",
+        b.mirror_before
+    );
+    assert!(
+        (b.closed_after - b.closed_before).abs() <= RESIDUAL_ABS_TOLERANCE_EU,
+        "{} births with a stale mirror moved the closed total by {:.9} EU",
+        b.births,
+        b.closed_after - b.closed_before
+    );
+    assert_eq!(
+        b.settled_delta, b.births as u64,
+        "{} births produced {overhead:.6} EU of overhead but only {} settled ledger transactions \
+         (granted moved by {:.6}, refused by {:.6}): the rest was written straight into detritus",
+        b.births, b.settled_delta, b.granted_delta, b.refused_delta
+    );
+    assert!(
+        (b.granted_delta - overhead).abs() <= 1e-9,
+        "the ledger granted {:.9} EU for births whose overhead was {overhead:.9} EU",
+        b.granted_delta
+    );
+    assert_eq!(
+        b.refused_delta, 0.0,
+        "a stale mirror is not a shortage: the reserves held the EU, so nothing may be refused"
     );
 }
