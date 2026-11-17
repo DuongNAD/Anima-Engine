@@ -94,10 +94,22 @@ fn test_adversarial_empty_world_boundary_conditions() {
     let mut ledger = EnergyLedger::default();
     ledger.lock_baseline(0.0);
 
-    let flux_report = generate_energy_flux_report(&zero_biomass, Some(&ledger), None);
+    // With no flux matrix nothing was measured, so the report has no diagram (it used to return a
+    // fixed six nodes and nine links of invented numbers). The sweeps below run on a *measured* report
+    // of an all-zero matrix, which has the three stocks and the four compartment flows.
+    let unmeasured = generate_energy_flux_report(&zero_biomass, Some(&ledger), None);
+    assert!(unmeasured.nodes.is_empty() && unmeasured.links.is_empty());
+    assert_eq!(unmeasured.total_system_energy, 0.0);
+    assert_eq!(unmeasured.energy_drift_percent, 0.0);
 
-    assert_eq!(flux_report.nodes.len(), 6);
-    assert_eq!(flux_report.links.len(), 9);
+    let flux_report = generate_energy_flux_report(
+        &zero_biomass,
+        Some(&ledger),
+        Some(&EnergyFluxMatrix::default()),
+    );
+
+    assert_eq!(flux_report.nodes.len(), 3);
+    assert_eq!(flux_report.links.len(), 4);
     assert_eq!(flux_report.total_system_energy, 0.0);
     assert!(!flux_report.energy_drift_percent.is_nan());
     assert_eq!(flux_report.energy_drift_percent, 0.0);
@@ -482,8 +494,10 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
 
     // Verify energy flux report
     let flux_report = world.resource::<EnergyFluxReport>();
-    assert_eq!(flux_report.nodes.len(), 6);
-    assert_eq!(flux_report.links.len(), 9);
+    // The `EnergyFluxMatrix` inserted above is all zeros, so this is a measured report of a quiet
+    // matrix: the three stocks and the four compartment flows.
+    assert_eq!(flux_report.nodes.len(), 3);
+    assert_eq!(flux_report.links.len(), 4);
     assert_eq!(flux_report.total_system_energy, initial_total_energy);
     assert!(
         flux_report.energy_drift_percent < 0.01,
@@ -491,7 +505,9 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
         flux_report.energy_drift_percent
     );
 
-    // Check node biomass sum conservation (plants + detritus + herbivores + carnivores = total_energy)
+    // Check node biomass sum conservation (plants + detritus + animals = total_energy). The animals
+    // are one measured pool: this used to add a 70/30 herbivore/carnivore split of it, which made the
+    // sum balance by construction and said nothing about either guild.
     let plant_biomass = flux_report
         .nodes
         .iter()
@@ -504,21 +520,19 @@ fn test_adversarial_closed_loop_energy_conservation_parity() {
         .find(|n| n.id == "detritus")
         .unwrap()
         .biomass;
-    let herbivore_biomass = flux_report
+    let animal_biomass = flux_report
         .nodes
         .iter()
-        .find(|n| n.id == "herbivores")
-        .unwrap()
-        .biomass;
-    let carnivore_biomass = flux_report
-        .nodes
-        .iter()
-        .find(|n| n.id == "carnivores")
+        .find(|n| n.id == "animals")
         .unwrap()
         .biomass;
 
-    let summed_flux_nodes =
-        plant_biomass + detritus_biomass + herbivore_biomass + carnivore_biomass;
+    // The animals node is the whole pool the agents hold: 20 prey at 50 EU and 5 predators at
+    // 100 EU, 1500 EU, not a share of it.
+    assert_eq!(animal_biomass, total_animal_energy);
+    assert_eq!(animal_biomass, 1500.0);
+
+    let summed_flux_nodes = plant_biomass + detritus_biomass + animal_biomass;
     let delta = (summed_flux_nodes - initial_total_energy).abs();
     assert!(
         delta < RESIDUAL_ABS_TOLERANCE_EU,

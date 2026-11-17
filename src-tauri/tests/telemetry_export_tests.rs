@@ -161,18 +161,99 @@ fn test_energy_flux_report_generation() {
 
     let report = generate_energy_flux_report(&biomass, Some(&ledger), Some(&flux));
 
-    assert_eq!(report.nodes.len(), 6);
-    assert_eq!(report.links.len(), 9);
+    // The nodes are the three stocks the closed ledger holds. A "sun" node of 10000 EU and a
+    // 70/30 split of the animals into herbivores and carnivores used to be added here, and nothing
+    // in the simulation measures either: the ledger is closed, so there is no solar input, and it
+    // holds one animal pool.
+    let ids: Vec<&str> = report.nodes.iter().map(|n| n.id.as_str()).collect();
+    assert_eq!(ids, vec!["plants", "animals", "detritus"]);
     assert_eq!(report.total_system_energy, 5700.0);
     assert!(report.energy_drift_percent < 0.01);
-    assert!(report.respiration_loss > 0.0);
 
-    let sun_node = report.nodes.iter().find(|n| n.id == "sun").unwrap();
-    assert_eq!(sun_node.biomass, 10000.0);
-    let plant_node = report.nodes.iter().find(|n| n.id == "plants").unwrap();
-    assert_eq!(plant_node.biomass, 3000.0);
-    let detritus_node = report.nodes.iter().find(|n| n.id == "detritus").unwrap();
-    assert_eq!(detritus_node.biomass, 1500.0);
+    let node = |id: &str| report.nodes.iter().find(|n| n.id == id).unwrap().biomass;
+    assert_eq!(node("plants"), 3000.0);
+    assert_eq!(node("animals"), 1200.0);
+    assert_eq!(node("detritus"), 1500.0);
+    assert_eq!(
+        node("plants") + node("animals") + node("detritus"),
+        report.total_system_energy
+    );
+
+    // Every link is a field of the matrix, summed where several fields share a source and a target,
+    // and nothing else: no floor, no share of one field attributed to another.
+    let link = |source: &str, target: &str| -> f64 {
+        report
+            .links
+            .iter()
+            .find(|l| l.source == source && l.target == target)
+            .unwrap_or_else(|| panic!("no {source} -> {target} link"))
+            .value
+    };
+    assert_eq!(report.links.len(), 4);
+    assert_eq!(link("detritus", "plants"), 350.0);
+    assert_eq!(link("plants", "animals"), 120.0);
+    assert_eq!(link("animals", "detritus"), 50.0 + 40.0 + 10.0);
+    assert_eq!(link("detritus", "animals"), 0.0);
+    assert_eq!(report.respiration_loss, 50.0);
+}
+
+#[test]
+fn test_energy_flux_without_a_matrix_is_reported_as_unmeasured() {
+    let biomass = EcosystemBiomass {
+        detritus: 1500.0,
+        plants: 3000.0,
+        animals: 1200.0,
+        dormant: 0.0,
+    };
+    let mut ledger = EnergyLedger::default();
+    ledger.lock_baseline(biomass.total());
+
+    // Nothing writes the flux matrix, so in the running app this is the only case there is. It used to
+    // return nine hard-coded flows (350, 120, 25, 80, 40, 15, 100, 30, 10) that looked like a
+    // measurement. With no matrix there is no diagram, and the two numbers that are measured (the
+    // closed total and its drift from the locked baseline) are still reported.
+    let report = generate_energy_flux_report(&biomass, Some(&ledger), None);
+
+    assert!(
+        report.nodes.is_empty() && report.links.is_empty(),
+        "an unmeasured flux reported {} nodes and {} links",
+        report.nodes.len(),
+        report.links.len()
+    );
+    assert_eq!(report.total_system_energy, 5700.0);
+    assert_eq!(report.energy_drift_percent, 0.0);
+}
+
+#[test]
+fn test_energy_flux_links_have_no_floors_and_no_invented_shares() {
+    let biomass = EcosystemBiomass {
+        detritus: 10.0,
+        plants: 20.0,
+        animals: 1000.0,
+        dormant: 0.0,
+    };
+    let ledger = EnergyLedger::default();
+
+    // A quiet world: the matrix is all zeros. A flow that measured zero is zero. The old code raised
+    // each link to an invented minimum (1.0, 0.1, 0.05) and carved shares (0.35, 0.1, 0.7, 0.3, 0.75,
+    // 0.25) out of one field to feed another.
+    let report =
+        generate_energy_flux_report(&biomass, Some(&ledger), Some(&EnergyFluxMatrix::default()));
+
+    assert!(!report.links.is_empty());
+    for l in &report.links {
+        assert_eq!(
+            l.value, 0.0,
+            "{} -> {} reports {} for a flow the matrix recorded as zero",
+            l.source, l.target, l.value
+        );
+    }
+    assert!(report.nodes.iter().all(|n| n.id != "sun"));
+    assert_eq!(report.respiration_loss, 0.0);
+
+    // The animals are one pool, exactly as the ledger holds it: no 70/30 split.
+    let animals = report.nodes.iter().find(|n| n.id == "animals").unwrap();
+    assert_eq!(animals.biomass, 1000.0);
 }
 
 // ===============================================================================================
