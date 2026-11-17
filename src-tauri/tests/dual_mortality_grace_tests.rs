@@ -187,6 +187,7 @@ fn mortality_system_alone_honours_the_grace_and_records_the_death() {
             temp_target: 37.0,
             previous_deviation: 0.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         },
     ));
     let mut schedule = Schedule::default();

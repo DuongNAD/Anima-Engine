@@ -67,6 +67,12 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 | M-5 | ✅ | Khai lịch trình: sau `metabolic_decay`, trước `ecosystem_census` | `src-tauri/src/core/simulation_schedule.rs` | M-4 | test thứ tự; census đếm thế giới sau khi xác thành detritus | ⚠️ khai ở **một** chỗ duy nhất — `build_tick_schedule` |
 | M-6 | ✅ | Cập nhật `ENERGY_LEDGER_CONTRACT` nếu đường EU mới xuất hiện | `docs/reference/ENERGY_LEDGER_CONTRACT.md` | M-4 | — | nếu làm đúng thì **không** có đường mới, và đó là câu trả lời |
 
+> *Ghi chú 2026-11-17 (F-044, thẻ S8):* bộ đếm của M-1/M-2 từng đếm tick ở đáy của **cả** năng lượng lẫn
+> nước, và `mortality_system` so nó với cả hai ngưỡng, nên ân hạn khát không độc lập với ân hạn đói. Nay
+> có hai bộ đếm: `starving_ticks` chỉ đếm năng lượng cạn, và `dehydrating_ticks: Option<u32>` (có
+> `serde(default)`) đếm nước cạn. `None` là save cũ; tick trao đổi chất đầu tiên sau khi restore lấy bộ
+> đếm chung làm chuỗi khát nếu con vật đang cạn nước. Test: `tests/f044_shared_bottom_counter_tests.rs`.
+
 ---
 
 ## 2. F — Fitness sinh thái

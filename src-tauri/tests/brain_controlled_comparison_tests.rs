@@ -136,6 +136,7 @@ fn build(seed: u64, evolved: bool, install_gates: bool) -> Sim {
                     temp_target: 37.0,
                     previous_deviation: 0.0,
                     starving_ticks: 0,
+                    dehydrating_ticks: Some(0),
                 },
                 CognitiveState::Ready,
                 InertiaComponent::default(),

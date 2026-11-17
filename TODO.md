@@ -61,6 +61,10 @@ Bản đánh giá dự án theo mười hai tiêu chí được ghi ở
 `docs/ai/monitoring/2026-11-17-project-assessment.md`: nền kỹ thuật ở mức 8–9, kết quả khoa học và sẵn sàng
 phát hành ở mức 2. Điểm là nhận định của phiên rà soát, không phải phép đo.
 
+Cuối ngày, thân cây nhận ba thẻ sinh ra từ các quyết định trên: S8 (#106, F-044 đã sửa), S6 (#110, hai khoá
+mới và một lượt đo thăm dò không tìm ra chế độ khan hiếm thức ăn khả thi) và ADR-0008 ở trạng thái `proposed`
+(#109, thẻ L0). Hàng đợi thẻ, STATE và sổ quyết định được cập nhật theo.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

@@ -92,6 +92,7 @@ fn spawn_dying_two_segment_agent(
             temp_target: 37.0,
             previous_deviation: 0.0,
             starving_ticks: 0,
+            dehydrating_ticks: Some(0),
         },
         AgentGenotype(genotype.clone()),
         AgentEvaluation {

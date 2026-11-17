@@ -314,7 +314,7 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-SEL1b | **A**: thêm khoá trần sinh sản của con mồi, rồi tạo khan hiếm đồng cỏ; đo thăm dò trước khi đăng ký | Một bản đăng ký mới cho thí nghiệm chọn lọc theo khan hiếm. Chẩn đoán: [`2026-11-17-esel1-scarcity-diagnosis.md`](../ai/planning/2026-11-17-esel1-scarcity-diagnosis.md) |
 | QĐ-ECO-C1 | **Có**, cả hai: thẻ `live.predator_cost_mult` + `live.strike_radius`, và một khoá nguồn nước. Opt-in; đo tiền đăng ký trên ít nhất 20 seed | [ADR-0007](../decisions/ADR-0007-live-ecology-sustainability.md), phương án C |
 | QĐ-EN | **E2R** là lượt làm lại câu hỏi về não; **E3** là gradient năng suất | Hết nhập nhằng tên "E3" (kế hoạch 13/11 §12) |
-| F-044 | **Tách** bộ đếm ân hạn đói và khát thành hai, **trước** khi đăng ký thí nghiệm kế tiếp | Đổi định dạng lưu và quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau; phải khai, xem [`FINDINGS.md`](../../FINDINGS.md) F-044 |
+| F-044 | **Tách** bộ đếm ân hạn đói và khát thành hai, **trước** khi đăng ký thí nghiệm kế tiếp (đã làm cùng ngày: thẻ S8, #106) | Đổi định dạng lưu và quỹ đạo của mọi cấu hình có hai mức ân hạn khác nhau; phải khai, xem [`FINDINGS.md`](../../FINDINGS.md) F-044 |
 | QĐ-LAW1 | Thí nghiệm rẽ luật chạy **ngay sau thí nghiệm có sức mạnh đầu tiên, trước `v1.0.0`** | Phần AE4 mà thí nghiệm cần (trường năng lượng lạ trên thế giới sống) được kéo lên trước thẻ X9. Chi tiết ở §4.2 |
 | QĐ-TIME | "Một ngày bằng 2 giờ thực" là **tốc độ xem**; lịch của thế giới là tham số khai báo | Chi tiết ở §4.2. Cần ADR trước khi có mã |
 | QĐ-C | **C**: nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc và giữ được GPU. Không chọn A, không chọn B | Thẻ R1 của kế hoạch swarm không chạy; thay bằng thẻ nâng `burn`. Chi tiết ở §4.3 |
@@ -364,7 +364,8 @@ hai dòng cuối):
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
-| Trước AE4 | QĐ-PAST — chỉ còn thiết kế lưu trữ | §4.2 ngay dưới |
+| Trước AE4 | QĐ-PAST (thiết kế lưu trữ) và QĐ-TIME: duyệt [ADR-0008](../decisions/ADR-0008-world-past-and-time.md), đang `proposed` (thẻ L0, #109) | §4.2 ngay dưới |
+| Chặng 4 | Bước kế tiếp của QĐ-SEL1b: lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
 | Trước thẻ V0 (CM-102) | Kiểu lưu `EnvironmentSnapshot` có cùng các trường với `EnvSample` hay chỉ một tập con | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 

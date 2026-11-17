@@ -117,7 +117,11 @@ là cổng ra của chặng 3 và chạy sau khi Đợt 2 merge.
 của Đợt 3 (S2, S3, M2–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
 
 Chín thẻ được thêm ngày 2026-11-17 từ quyết định của chủ dự án (S6, S7, S8, SEL2-P, SEL2-X, R1c, L0, L1,
-L2) chưa có prompt và chưa có dòng uỷ quyền; định nghĩa của chúng ở
+L2). Ba thẻ đã chạy ngay trong ngày: **S8** ✅ #106 (F-044), **S6** ✅ #110 (khoá `live.prey_cap` và
+`live.resource_capacity_scale`, kèm [lượt đo thăm dò](../ai/planning/2026-11-17-s6-sel2-exploration.md)),
+và **L0** 🔄 [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) đã soạn ở trạng thái `proposed` (#109),
+chờ chủ dự án duyệt. Sáu thẻ còn lại chưa bắt đầu. Lượt đo của S6 **không** tìm ra cấu hình khan hiếm thức
+ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,

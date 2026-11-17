@@ -16,6 +16,7 @@ last_reviewed: 2026-11-17
 | [`ADR-0005`](ADR-0005-live-population-turnover.md) | accepted | Vòng đời quần thể (sinh sản/chết) trong adapter thí nghiệm live (QĐ-4, QĐ-5) |
 | [`ADR-0006`](ADR-0006-locomotion-actuation.md) | accepted | Vận động của sinh vật: lái ghi `target_velocity` hay ma sát dị hướng (F-042, QĐ-LOC) |
 | [`ADR-0007`](ADR-0007-live-ecology-sustainability.md) | accepted | Duy trì quần thể live: sàn lực lái, lái tới nước, thú săn (QĐ-ECO) |
+| [`ADR-0008`](ADR-0008-world-past-and-time.md) | proposed | Quá khứ bất biến và bản ghi thế giới (ký ức của thế giới); ba lớp thời gian (QĐ-PAST, QĐ-TIME) |
 
 **Front matter thắng banner trong thân.** ADR-0005, 0006 và 0007 mở đầu thân bằng dòng "Trạng thái: đề xuất,
 chờ chủ dự án", viết lúc soạn; mỗi ADR có một mục "Quyết định (2026-11-16)" ở cuối ghi việc chấp nhận, và

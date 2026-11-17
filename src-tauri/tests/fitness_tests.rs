@@ -65,6 +65,7 @@ fn score_locomotion(t: &FeatureTracker) -> f32 {
         temp_target: 37.0,
         previous_deviation: 0.0,
         starving_ticks: 0,
+        dehydrating_ticks: Some(0),
     };
     let g = MorphologyGenotype::new();
     let e = eval(5, 3.0, 2.0);
@@ -108,6 +109,7 @@ fn ecological_fitness_separates_equal_distance_different_living_time() {
         temp_target: 37.0,
         previous_deviation: 0.0,
         starving_ticks: 0,
+        dehydrating_ticks: Some(0),
     };
     let g = MorphologyGenotype::new();
     let short = eval(900, 30.0, 30.0);
@@ -139,6 +141,7 @@ fn ecological_fitness_has_no_distance_term() {
         temp_target: 37.0,
         previous_deviation: 0.0,
         starving_ticks: 0,
+        dehydrating_ticks: Some(0),
     };
     let g = MorphologyGenotype::new();
     let e = eval(1_000, 55.0, 40.0);

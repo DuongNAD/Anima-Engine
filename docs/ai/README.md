@@ -60,6 +60,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-14 | [Triage báo cáo AUDIT_REPORT.md trên thân cây ngày 2026-11-14](monitoring/audit-triage-2026-11-14.md) — đối chiếu 2 bản sao trên `main`, xác minh 27 mục và đề xuất 21 thẻ `§6` | monitoring | `completed` |
 | 2026-11-16 | [Thế giới nhìn rõ trên ba máy](planning/2026-11-16-readable-world-three-machines.md) — lane, file sở hữu, thẻ RW-A1 … RW-C5 cho `anima-mac`, `anima-case`, `anima-dell` | kế hoạch thẻ | `active` |
 | 2026-11-17 | [Chẩn đoán sau E-SEL1](planning/2026-11-17-esel1-scarcity-diagnosis.md) — cái gì giới hạn quần thể con mồi (đồng cỏ không cạn vì trần sinh sản 80, nước giới hạn), yếu tố khan hiếm nào dùng được, QĐ-SEL1b | đo | `completed` |
+| 2026-11-17 | [Thẻ S6 — đo thăm dò cho SEL2](planning/2026-11-17-s6-sel2-exploration.md) — nâng trần sinh sản (`live.prey_cap`) và hạ sức chứa (`live.resource_capacity_scale`): không cấu hình nào vừa đưa standing crop vào 0,4–0,6 vừa giữ quần thể ≥ 5 ở mọi seed | đo | `active` |
 | 2026-11-17 | [Đánh giá dự án theo mười hai tiêu chí](monitoring/2026-11-17-project-assessment.md) — bảng điểm sau lượt rà soát toàn bộ tài liệu; điểm là nhận định, không phải phép đo | đánh giá | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
