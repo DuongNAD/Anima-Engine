@@ -103,7 +103,7 @@ export interface Map2Manifest {
   _generated: {
     by: string;
     seed: string;
-    timestamp: string;
+    timestamp?: string;
     worldGenVersion: number;
     dimensions: [number, number, number];
     resolution: [number, number];
@@ -117,7 +117,11 @@ export interface Map2Manifest {
     minZ: number;
     maxZ: number;
   };
-  worldArtifact: {
+  /**
+   * A baked `.anmw` world for this map. Absent for Map 2: its terrain is computed by
+   * `map2TerrainGen.ts` at runtime, and no `.anmw` has ever been generated for it.
+   */
+  worldArtifact?: {
     path: string;
     magic: 'ANMW';
     version: number;
@@ -795,11 +799,14 @@ export interface Map2ManifestOptions {
   seed?: string;
   seaLevel?: number;
   elevationRange?: [number, number];
-  captured?: boolean;
 }
 
 /**
- * Builds the authoritative, mathematically verified Map 2 manifest.
+ * Builds the Map 2 manifest from the Map 2 terrain, flora and navigation code.
+ *
+ * Everything in it is computed. The eight canonical views are camera definitions only: none
+ * has been rendered, so every view is `captured: false` and carries no `bytes` or `checksum`.
+ * Only a tool that renders a view and hashes the file it wrote may set those three fields.
  */
 export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Manifest {
   const mapId = options.mapId ?? 'map2_open_world';
@@ -807,7 +814,6 @@ export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Man
   const seed = options.seed ?? 'anima_map2_photorealistic_v1';
   const seaLevel = options.seaLevel ?? 12.0;
   const elevRange: [number, number] = options.elevationRange ?? [0, 90];
-  const capturedFlag = options.captured ?? true;
 
   // 1. Terrain sample at spawn (0, 0)
   const spawnHeight = getMap2Height(0, 0);
@@ -840,13 +846,11 @@ export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Man
       description: def.description,
       imagePath: `artifacts/maps/map2/views/${viewId}.png`,
       camera: { ...def.camera },
-      captured: capturedFlag,
+      captured: false,
       bearing: telemetry.bearing,
       pitch: telemetry.pitch,
       distance: telemetry.distance,
       validationRules: [...def.validationRules],
-      bytes: 1048576,
-      checksum: `sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069`,
     };
 
     viewsArray.push(viewSpec);
@@ -862,13 +866,12 @@ export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Man
     version: '1.0.0',
     seed,
     _generated: {
-      by: 'scripts/verify_map2_evidence.ts',
+      by: 'scripts/gen_map2_manifest.ts',
       seed,
-      timestamp: '2026-08-16T00:00:00.000Z',
       worldGenVersion: 21,
       dimensions: [200, 90, 200],
       resolution: [256, 256],
-      note: 'Authoritative Map 2 procedural open world manifest with 8 canonical views, biomes taxonomy, and verified ecology & navigation.',
+      note: 'Computed from the Map 2 terrain, flora and navigation code. The 8 canonical views are camera definitions only: none has been captured. Map 2 has no .anmw world artifact.',
     },
     bounds: {
       minX: -100,
@@ -877,20 +880,6 @@ export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Man
       maxY: elevRange[1],
       minZ: -100,
       maxZ: 100,
-    },
-    worldArtifact: {
-      path: 'artifacts/maps/map2/world_256.anmw',
-      magic: 'ANMW',
-      version: 2,
-      width: 256,
-      height: 256,
-      seaLevel,
-      elevationRange: elevRange,
-      dimensions: [200, 90, 200],
-      resolution: [256, 256],
-      bounds: [-100, 100],
-      checksum: 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      bytes: 1114148,
     },
     coordinateSystem: {
       worldMinXZ: -100,
@@ -950,7 +939,6 @@ export function generateMap2Manifest(options: Map2ManifestOptions = {}): Map2Man
         drowningDepth: 4.5,
       },
     },
-    checksum: 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
   };
 
   return manifest;

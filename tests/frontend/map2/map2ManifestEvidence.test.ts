@@ -16,21 +16,22 @@ import { Map2FloraSpecies } from '@/components/Map2/utils/map2FloraGeometry';
 
 // -------------------------------------------------------------------------------------------------
 // Map 2 Manifest Evidence & Quality Gate Test Suite (Milestone 6)
-// Verifies committed manifest, 8 canonical camera views, spawn clearance, ecological rules,
-// BFS navigation reachability, and disk evidence hashes.
+// Verifies the committed manifest, the 8 canonical camera definitions, spawn clearance, ecological
+// rules and BFS navigation reachability, and that the manifest claims no evidence it does not have:
+// no view has been captured, and Map 2 has no world artifact of its own.
 // -------------------------------------------------------------------------------------------------
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../../..');
-const ROOT_MANIFEST_PATH = resolve(ROOT, 'map2_manifest.json');
-const ARTIFACT_MANIFEST_PATH = resolve(ROOT, 'artifacts/maps/map2/map2_manifest.json');
+const MANIFEST_PATH = resolve(ROOT, 'artifacts/maps/map2/map2_manifest.json');
+const MAP2_ARTIFACT_DIR = resolve(ROOT, 'artifacts/maps/map2');
 
 function loadCommittedManifest(): Map2Manifest {
   expect(
-    existsSync(ROOT_MANIFEST_PATH),
-    `map2_manifest.json must exist at ${ROOT_MANIFEST_PATH}. Run scripts/verify_map2_evidence.ts.`,
+    existsSync(MANIFEST_PATH),
+    `map2_manifest.json must exist at ${MANIFEST_PATH}. Run scripts/gen_map2_manifest.ts.`,
   ).toBe(true);
-  return JSON.parse(readFileSync(ROOT_MANIFEST_PATH, 'utf8')) as Map2Manifest;
+  return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as Map2Manifest;
 }
 
 describe('Map 2 Manifest — Tier 1: Schema Compliance & World Bounds', () => {
@@ -41,16 +42,24 @@ describe('Map 2 Manifest — Tier 1: Schema Compliance & World Bounds', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('matches exactly between root map2_manifest.json and artifacts mirror', () => {
-    expect(existsSync(ARTIFACT_MANIFEST_PATH), 'Artifact mirror must exist').toBe(true);
-    const rootBytes = readFileSync(ROOT_MANIFEST_PATH);
-    const artifactBytes = readFileSync(ARTIFACT_MANIFEST_PATH);
-    expect(rootBytes.equals(artifactBytes), 'Root manifest and artifact manifest must be byte-for-byte identical').toBe(true);
+  it('is exactly what the generator computes, so nothing in it was edited by hand', () => {
+    const expected = JSON.stringify(buildStandardMap2Manifest(), null, 2) + '\n';
+    expect(
+      readFileSync(MANIFEST_PATH, 'utf8') === expected,
+      'artifacts/maps/map2/map2_manifest.json is stale or hand-edited; run scripts/gen_map2_manifest.ts',
+    ).toBe(true);
+  });
+
+  it('declares no world artifact: Map 2 terrain is computed at runtime and has no .anmw', () => {
+    const manifest = loadCommittedManifest();
+    expect(manifest.worldArtifact).toBeUndefined();
+    // The file that used to sit here was a byte-identical copy of Map 1's artifacts/world_256.anmw.
+    expect(existsSync(resolve(MAP2_ARTIFACT_DIR, 'world_256.anmw'))).toBe(false);
   });
 
   it('declares correct coordinate system, sea level, and world bounds', () => {
     const manifest = loadCommittedManifest();
-    const { bounds, coordinateSystem, worldArtifact } = manifest;
+    const { bounds, coordinateSystem } = manifest;
 
     expect(bounds.minX).toBe(-100);
     expect(bounds.maxX).toBe(100);
@@ -64,12 +73,6 @@ describe('Map 2 Manifest — Tier 1: Schema Compliance & World Bounds', () => {
     expect(coordinateSystem.gridDim).toBe(256);
     expect(coordinateSystem.worldScale).toBe(200);
     expect(coordinateSystem.seaLevel).toBe(12.0);
-
-    expect(worldArtifact.width).toBe(256);
-    expect(worldArtifact.height).toBe(256);
-    expect(worldArtifact.magic).toBe('ANMW');
-    expect(worldArtifact.version).toBe(2);
-    expect(worldArtifact.seaLevel).toBe(12.0);
   });
 
   it('contains exactly 8 canonical biomes with valid coverage and temperature metadata', () => {
@@ -156,12 +159,24 @@ describe('Map 2 Manifest — Tier 2: 8 Canonical Camera Views Verification', () 
         expect(bytes.subarray(0, 8)).toEqual(
           Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
         );
+        // A rendered view is never a few bytes. The images this replaced were a 1x1 PNG plus an
+        // HTML comment, 114-125 bytes each, and they passed the header check above.
+        expect(bytes.length, `${view.imagePath} is too small to be a rendered view`).toBeGreaterThan(1024);
 
-        if (view.checksum) {
-          const hash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-          expect(hash).toBe(view.checksum);
-        }
+        expect(view.checksum, `captured view ${view.id} must carry the checksum of its image`).toBeDefined();
+        const hash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+        expect(hash).toBe(view.checksum);
       }
+    }
+  });
+
+  it('claims no capture it does not have: no view is captured and no image is committed', () => {
+    const manifest = loadCommittedManifest();
+    for (const view of manifest.views) {
+      expect(view.captured, `view ${view.id}`).toBe(false);
+      expect(view.bytes, `view ${view.id}`).toBeUndefined();
+      expect(view.checksum, `view ${view.id}`).toBeUndefined();
+      expect(existsSync(resolve(ROOT, view.imagePath)), `${view.imagePath} exists`).toBe(false);
     }
   });
 });
