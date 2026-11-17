@@ -1,4 +1,3 @@
-
 use super::*;
 use crate::core::experiment::{InitialConditionSet, WorldLawSet, MANIFEST_SCHEMA_VERSION};
 use crate::core::reference_world::ReferenceEvolutionWorld;
