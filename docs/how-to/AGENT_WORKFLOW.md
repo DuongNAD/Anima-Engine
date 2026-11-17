@@ -94,13 +94,13 @@ tài liệu ở bảng thắng; sửa trang này.
 |---|---|---|---|---|
 | **G1** `[RUST]` | **B2** — zero-alloc ở đường sinh/tử | ✅ #48 | — | |
 | **G2** | **B5** — `test:e2e` đủ bộ, gate danh sách spec | ✅ #47 | — | |
-| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ⬜ chưa có PR | `agent-win`, sau G5 | |
-| **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | 🔄 PR #98 | `agent-mac` | QĐ-2/QĐ-H quyết 2026-11-17 |
-| **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | 🔄 draft PR #95 | `agent-win` | G1 đã merge. Viết test đỏ trước |
+| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ⬜ chưa có PR | `agent-win` | Thẻ kế tiếp của `agent-win` |
+| **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | ✅ #98 (2026-11-17) | — | QĐ-2/QĐ-H quyết 2026-11-17 |
+| **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | ✅ #95 (2026-11-17) | — | |
 | **G6** | Gỡ bằng chứng giả của Map 2 | ✅ #94 (2026-11-17) | — | |
 | **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
 | **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
-| **G9** | Gate vệ sinh thư mục gốc | ⬜ chưa có PR | `agent-mac`, sau G4 | |
+| **G9** | Gate vệ sinh thư mục gốc | 🔄 nhánh `mac/g9-root-hygiene`, chưa có PR | `agent-mac` | |
 | **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⛔ chờ cả Đợt 2 merge | `agent-win` | Cổng ra của chặng 3 |
 
 ### Đợt 3 trở đi
@@ -109,7 +109,8 @@ Hai thẻ của Đợt 3 đã merge **trước** R0, theo quyết định của 
 (#66, `live.reproduction`) và **S4** (#75, OSS-072 MRCA). STATE §1.h đã đo một commit có cả hai; R0 vẫn
 là cổng ra của chặng 3 và chạy sau khi Đợt 2 merge.
 **T3** (mở PR thân cây → `main`) đã được thay bằng cách làm thực tế: `main` được fast-forward lên thân cây
-ở các mốc. Các thẻ còn lại của Đợt 3 (S2, S3, M1–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
+ở các mốc. **M1** (ma trận tái lập đa nền tảng) cũng đã merge trước R0, ở #100 và #102. Các thẻ còn lại
+của Đợt 3 (S2, S3, M2–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
 bản đăng ký E-SEL1, các thẻ "thế giới đọc được") được liệt kê ở

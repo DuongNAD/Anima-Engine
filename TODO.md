@@ -36,8 +36,8 @@ nhánh nào, PR đi đâu và hợp đồng IPC nằm ở đâu. Tài liệu nà
 ngày nói rõ đã đối chiếu gì, và **giữ nguyên `last_reviewed` cũ** để vẫn hiện trong báo cáo quá hạn.
 
 Cùng ngày, sổ quyết định (roadmap 31/10) có thêm §4.2: nguyên tắc **quá khứ của một thế giới đã chạy là bất
-biến** do chủ dự án nêu (QĐ-PAST), và hai đề xuất còn trống là QĐ-TIME (tách lịch khỏi tốc độ xem) và
-QĐ-LAW1 (thí nghiệm rẽ luật đầu tiên).
+biến** do chủ dự án nêu (QĐ-PAST; bảng ngoại lệ được chốt cùng ngày: "quay lại" chỉ có nghĩa là fork), và
+hai đề xuất còn trống là QĐ-TIME (tách lịch khỏi tốc độ xem) và QĐ-LAW1 (thí nghiệm rẽ luật đầu tiên).
 
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 

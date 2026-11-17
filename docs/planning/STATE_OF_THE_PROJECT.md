@@ -583,16 +583,17 @@ Thứ tự chặng và cổng ra là của
 [kế hoạch 13/11 §5](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md#5-lộ-trình-theo-chặng); bảng này chỉ ghi
 mỗi chặng đang ở đâu. Trạng thái từng thẻ nằm ở
 [hàng đợi thẻ](../how-to/AGENT_WORKFLOW.md#3-hàng-đợi-thẻ). Nguồn đối chiếu: `gh pr list --state all`,
-`git branch -r` và mã trên thân cây tại `6f14124`, ngày 2026-11-17. **Không lệnh build hay test nào được
-chạy cho bảng này**; nó không mang số đo.
+`git branch -r` và mã trên thân cây tại `6f14124`, ngày 2026-11-17; trạng thái thẻ ở hàng chặng 3 và 4
+được đối chiếu lại cùng ngày tại `28c45ef`. **Không lệnh build hay test nào được chạy cho bảng này**; nó
+không mang số đo.
 
 | Chặng | Cổng ra | Trạng thái | Còn lại |
 |---|---|---|---|
 | 0. Dọn bàn và quyết định | Không còn ô quyết định trống cho chặng 1 và 2; mọi PR mở có trạng thái | **Cổng đã qua.** Mười PR mở ngày 13/11 đã xử lý: #38 merge; #30, #31, #34–#37, #39–#41 đóng. Kiểm kê nhánh là thẻ D0 (#42). Cây làm việc đã dọn (MP-0.5) | MP-0.2: QĐ-C, QĐ-1, QĐ-EN còn trống. MP-0.6: QĐ-M1 chưa quyết, nên mọi tài liệu kế hoạch vẫn `proposed` |
 | 1. Một cây xanh | CI xanh hai job trên thân cây, rồi bảo vệ nhánh | **Đóng 2026-11-17** (mục ngay dưới) | — |
 | 2. Gộp hai thân | `C5`: đo lại toàn bộ vào §1.g | **Đóng 2026-11-16.** T2 là #45; `main` được fast-forward lên thân cây | §1.g đỏ đúng một bước (`check:e2`), #59 sửa sau đó. Lượt đo toàn bộ mới nhất là §1.h, tại `6f14124` |
-| 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm.** Xong: G1 (#48), G2 (#47), G6 (#94), G7 (#49), G8 phần lớn (2026-11-14) | G4 ở PR #98. G5 ở draft PR #95. G3, G9 chưa có PR. R0 chạy sau khi cả đợt merge |
-| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M1–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. Chờ QĐ-EN, QĐ-SEL1b, QĐ-ECO-C1 |
+| 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm.** Xong: G1 (#48), G2 (#47), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G8 phần lớn (2026-11-14) | G9 có nhánh `mac/g9-root-hygiene`, chưa có PR. G3 chưa có PR. R0 chạy sau khi cả đợt merge |
+| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. Chờ QĐ-EN, QĐ-SEL1b, QĐ-ECO-C1 |
 | 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | Cần trước chặng: QĐ-C, QĐ-1, QĐ-P1…P3, QĐ-M4, QĐ-M8 |
 | 6. Bản 1.0 | `H11`: tag `v1.0.0` | Chưa bắt đầu | Thẻ V0–V11, chạy sau R0 |
 | 7. Thế giới nhiều máy | `contribute_matches_solo` xanh với hai máy thật | Chưa bắt đầu | QĐ-M3, QĐ-M5, QĐ-M6, QĐ-M7 |

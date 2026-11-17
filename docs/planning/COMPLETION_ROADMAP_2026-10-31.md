@@ -323,7 +323,7 @@ ba dòng cuối):
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
 | Không gắn chặng | #56 và #68 đang nhắm `main`: đổi nhánh đích rồi merge, hay đóng | Luật L1; STATE §3.00 |
-| Trước AE4 | QĐ-PAST (ngoại lệ và thiết kế lưu trữ), QĐ-TIME, QĐ-LAW1 | §4.2 ngay dưới |
+| Trước AE4 | QĐ-PAST (chỉ còn thiết kế lưu trữ), QĐ-TIME, QĐ-LAW1 | §4.2 ngay dưới |
 
 ### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
 
@@ -333,11 +333,11 @@ mang số đo. Cả ba cần một ADR trước khi có dòng mã nào.
 
 | # | Nội dung | Trạng thái |
 |---|---|---|
-| **QĐ-PAST** | **Quá khứ của một thế giới đã chạy là bất biến.** Không sửa trạng thái ở một tick đã qua; chỉ một số trường hợp đặc biệt được phép. Lưu trữ phải đủ để dựng lại quá khứ và nhẹ nhất có thể | **Nguyên tắc: chủ dự án quyết 2026-11-17.** Danh sách ngoại lệ và thiết kế lưu trữ **còn trống** |
+| **QĐ-PAST** | **Quá khứ của một thế giới đã chạy là bất biến.** Không sửa trạng thái ở một tick đã qua; chỉ một số trường hợp đặc biệt được phép. Lưu trữ phải đủ để dựng lại quá khứ và nhẹ nhất có thể | **Nguyên tắc và bảng ngoại lệ: chủ dự án quyết 2026-11-17**, đúng như đề xuất. Thiết kế lưu trữ **còn trống** |
 | **QĐ-TIME** | Tách ba thứ: tick và vòng đời sinh vật; lịch của thế giới (bao nhiêu tick là một ngày, một năm); tốc độ xem. "Một ngày bằng 2 giờ thực" là **tốc độ xem**, không phải luật mô phỏng | Đề xuất; **còn trống** |
 | **QĐ-LAW1** | Thí nghiệm "rẽ luật" đầu tiên trên thế giới sống: cùng bản đồ và seed, một nhánh đối chứng và một nhánh thêm một nguồn năng lượng lạ, tiền đăng ký, nhiều seed. Chạy **sau** khi chọn lọc trên thế giới sống đo được | Đề xuất; **còn trống**. Phụ thuộc QĐ-SEL1b và AE4 |
 
-#### QĐ-PAST — cái đã khớp, cái chưa, và hai đề xuất
+#### QĐ-PAST — cái đã khớp, cái chưa, phần đã chốt và đề xuất lưu trữ
 
 **Đã khớp với nguyên tắc** (hợp đồng và mã hiện có):
 
@@ -353,13 +353,14 @@ mang số đo. Cả ba cần một ADR trước khi có dòng mã nào.
 - App desktop giữ đúng một `autosave.json`, ghi khi thoát và nạp lại khi mở. `save_simulation_state` ghi đè
   một save cùng tên. Một thế giới chạy trong app vì thế **không có lịch sử**: chỉ có trạng thái mới nhất.
 - `LineageTracker::compact` bỏ các nhánh tuyệt chủng và genotype của node bị cắt. Đó là quên chi tiết, không
-  phải sửa quá khứ, nhưng quyết định cần nói rõ có chấp nhận hay không.
+  phải sửa quá khứ. Theo bảng ngoại lệ đã chốt bên dưới, việc này được phép; điều bị mất đã được khai ở
+  STATE §3.15.1.
 
-**Đề xuất 1 — "quay lại quá khứ" chỉ có một nghĩa: fork.** Tạo một thế giới mới từ một checkpoint cũ, với id
-riêng và `parent_run_id` trỏ về thế giới gốc. Thế giới gốc giữ nguyên. Hai dòng thời gian cùng tồn tại nên
-không có nghịch lý. Các trường hợp đặc biệt để chủ dự án chọn:
+**Đã chốt (chủ dự án, 2026-11-17, trong chat: "như đề xuất") — "quay lại quá khứ" chỉ có một nghĩa: fork.**
+Tạo một thế giới mới từ một checkpoint cũ, với id riêng và `parent_run_id` trỏ về thế giới gốc. Thế giới gốc
+giữ nguyên. Hai dòng thời gian cùng tồn tại nên không có nghịch lý. Các trường hợp đặc biệt:
 
-| Trường hợp | Đề xuất |
+| Trường hợp | Quyết định |
 |---|---|
 | Đổi định dạng save khi nâng phiên bản (migrate) | Cho phép: đổi cách ghi, không đổi nội dung. Đã là hành vi hiện có ([`SNAPSHOT_CONTRACT.md`](../reference/SNAPSHOT_CONTRACT.md) §5) |
 | Xoá hẳn một thế giới | Cho phép, cả thế giới, không xoá từng đoạn |
@@ -367,7 +368,7 @@ không có nghịch lý. Các trường hợp đặc biệt để chủ dự án
 | Một save hỏng | Không sửa tại chỗ. Fork từ checkpoint lành gần nhất |
 | Sửa trạng thái ở một tick đã qua rồi chạy tiếp như cùng một thế giới | **Không bao giờ** |
 
-**Đề xuất 2 — lưu trữ đủ mà nhẹ: lưu nguyên nhân, không lưu mọi trạng thái.** Vì thế giới tất định, quá khứ
+**Đề xuất, chưa chốt — lưu trữ đủ mà nhẹ: lưu nguyên nhân, không lưu mọi trạng thái.** Vì thế giới tất định, quá khứ
 dựng lại được từ ít dữ liệu hơn nhiều so với lưu từng tick:
 
 1. Manifest, seed và fingerprint của luật: ghi một lần.
