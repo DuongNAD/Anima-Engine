@@ -111,6 +111,12 @@ QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_r
             npm run check:docs) exist on the trunk since 2026-11-14; card G8 only adds file:line
             per entry
 QD-F028   = yes: copy src-tauri/icons/ from origin/feat/ecological-selection (owner, 2026-11-14)
+QD-E2M    = B: amendment_1_live_dormant_eu in e2-preregistration.json plus a real re-run of the
+            whole E2 ensemble (PR #59). The four manifests in src-tauri/tests/fixtures/experiments_e2/
+            must stay byte-identical to the copies under artifacts/experiments/e2-evolved-brain-default/
+            (check:e2 and tests/e2_frozen_manifest_tests.rs); never edit either side. LIVE_OBSERVABLE_IDS
+            is frozen; a new live observable goes in LIVE_EXTENDED_OBSERVABLE_IDS (owner's delegate,
+            2026-11-16; confirmed by the owner the same day)
 QD-EN     =
 QD-P1     =
 QD-P2     =

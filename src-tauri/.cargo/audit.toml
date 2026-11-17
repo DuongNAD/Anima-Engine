@@ -99,6 +99,20 @@ ignore = [
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0429",
 
+    # zip 0.6.6 — RUSTSEC-2026-0545, AES entries returned without checking their authentication code
+    # when the data ends early or is empty (CVSS 6.5, fix >= 9.0.0), and RUSTSEC-2026-0548,
+    # `ZipStreamReader` extracts entries under local-header names that can differ from the central
+    # directory (fix >= 9.0.5). Both entered the advisory database on 2026-11-17 and turned every
+    # PR's `cargo audit` step red that afternoon. Same lockfile-only path via unenabled
+    # `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above, never compiled. Upgrading burn
+    # (QD-C = C, card R1c) is what removes `zip` 0.6.6 from the lockfile altogether.
+    #
+    # Verified 2026-11-17 on the trunk at b94eb47, advisory database of 1527 entries:
+    #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
+    #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
+    "RUSTSEC-2026-0545",
+    "RUSTSEC-2026-0548",
+
     # libsqlite3-sys 0.27.0 — RUSTSEC-2026-0459, `libsqlite3-sys` via C SQLite CVE-2026-119375
     # (CVSS 6.8, fix >= 0.39.0).
     #
