@@ -3,7 +3,7 @@ phase: requirements
 feature: experiment-e2-evolved-brain-default
 title: Requirements — E2, does a per-agent evolved brain change outcomes?
 description: The fixed question, the directional hypotheses, and the metrics chosen from what the live adapter already emits
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-07-27
 decision: ../../decisions/ADR-0003-evolved-per-agent-brains.md

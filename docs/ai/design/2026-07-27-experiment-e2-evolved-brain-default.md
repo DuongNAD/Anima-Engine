@@ -3,7 +3,7 @@ phase: design
 feature: experiment-e2-evolved-brain-default
 title: Design — E2 control/treatment, the seam it needs, and what a seed actually means
 description: The exact manifest pair, the two blocking preconditions in the live adapter, and the inference boundary of N seeds under one world
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-07-27
 requirements: ../requirements/2026-07-27-experiment-e2-evolved-brain-default.md

@@ -3,7 +3,7 @@ phase: implementation
 feature: experiment-e2-evolved-brain-default
 title: Implementation — the E2 seam and the headless runner
 description: What E2-B built to make the treatment arm exist, what it deliberately did not build, and the red/green evidence for each behaviour
-status: active
+status: completed
 owner: maintainers
 last_reviewed: 2026-07-27
 requirements: ../requirements/2026-07-27-experiment-e2-evolved-brain-default.md
