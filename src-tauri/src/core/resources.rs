@@ -594,7 +594,8 @@ pub const DEFAULT_PREY_CAP: usize = 80;
 /// Why it is declarable: with the ceiling at 80 the prey population never grows large enough to
 /// graze the pasture down, so food scarcity cannot limit it (the E-SEL1 diagnosis,
 /// `docs/ai/planning/2026-11-17-esel1-scarcity-diagnosis.md` §2). The predator rules (at most 8
-/// predators, and at least 5 prey per predator) are unchanged.
+/// predators, and at least 5 prey per predator) are unchanged. The ceiling is soft: prey are counted
+/// once per tick, so a tick in which many prey are eligible can overshoot it.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PreyCapPolicy {
     pub cap: usize,

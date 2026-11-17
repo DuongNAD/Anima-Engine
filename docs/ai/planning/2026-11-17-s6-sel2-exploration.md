@@ -85,6 +85,13 @@ Chi tiết từng seed ở hệ số 1,0 và 0,5:
 độ mà thức ăn giới hạn một quần thể sống được. Một bản đăng ký SEL2 dựng trên A với lưới này sẽ hỏng ở điều kiện
 "quần thể tối thiểu ≥ 5" trước khi chạy được seed nào.
 
+**Hai điều kiện đo cần biết, do người kiểm chứng độc lập của #110 tìm ra:**
+- **`live.resource_capacity_scale` không chỉ tác động lên đồng cỏ.** `fruit_growth_system` tính tốc độ ra quả
+  của cây từ `r_max` tại chỗ, nên hệ số 0,5 cũng làm quả mọc lại chậm hơn (đo được 0,854 lần). Lượt đo này vì
+  thế đã thay đổi cả hai nguồn thức ăn cùng lúc. Bản chẩn đoán đã đo quả chỉ chiếm 4,6–5,6 % thu nhập của con
+  mồi, nên kết luận không đổi. Nhưng một bản đăng ký dùng khoá này phải nói rõ điều đó, hoặc tách hai kênh ra.
+- **Trần là trần mềm.** Đã nói ở mục 4 phía trên. Nó giải thích các đỉnh vượt trần.
+
 ## Chưa đo
 
 - **Nguyên nhân chết** (đói hay khát) ở các cấu hình hạ sức chứa. Bản chẩn đoán đã thấy nước giới hạn quần thể

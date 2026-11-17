@@ -165,6 +165,8 @@ fn out_of_range_values_are_refused() {
         (LIVE_KEY_RESOURCE_CAPACITY_SCALE, 0.0),
         (LIVE_KEY_RESOURCE_CAPACITY_SCALE, -0.5),
         (LIVE_KEY_RESOURCE_CAPACITY_SCALE, 1.2),
+        (LIVE_KEY_RESOURCE_CAPACITY_SCALE, 1e-7),
+        (LIVE_KEY_RESOURCE_CAPACITY_SCALE, 1e-310),
     ] {
         let result = LiveExperimentAdapter::from_manifest(
             &WorldLawSet::baseline(),

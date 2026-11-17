@@ -172,9 +172,18 @@ pub const LIVE_KEY_DEHYDRATION_TICKS: &str = "live.dehydration_ticks";
 /// whole number in `[1, 65536]`. Absent keeps `DEFAULT_PREY_CAP` (80), the value
 /// `autonomous_reproduction_system` hard-coded, so every earlier manifest is bit-identical. The
 /// predator rules are unchanged. Consulted only when `live.reproduction` is on.
+///
+/// A soft ceiling, as the constant always was: prey are counted once at the start of the system,
+/// so every prey eligible in that tick can still reproduce, and one tick can overshoot (measured: a
+/// peak of 103 agents at a ceiling of 80, up to 30 births in one tick).
 pub const LIVE_KEY_PREY_CAP: &str = "live.prey_cap";
 /// QD-SEL1b = A (card S6): multiplies the pasture's carrying capacity (`ResourceField::r_max`) and
-/// its standing crop (`r`) once, at genesis, by a factor in `(0, 1]`. The EU taken out of the pasture
+/// its standing crop (`r`) once, at genesis, by a factor in `[1e-6, 1]`.
+///
+/// Not a pasture-only factor: `fruit_growth_system` scales tree fruiting by the local `r_max`
+/// (`npp_factor`), so the same factor also slows fruit regrowth (measured: 0.854x at 0.5). A
+/// preregistration that manipulates this key manipulates both food channels and must say so. The
+/// telemetry vegetation index reads `r / r_max`, so a scaled pasture still looks full there. The EU taken out of the pasture
 /// moves to detritus, so the closed-EU total is unchanged. Absent keeps `1.0`, bit-identical. A save
 /// carries the standing crop but not the capacity (`r_max` is derived from the biomes), so a restore
 /// re-applies the factor to `r_max` only and never to the crop or the detritus.
@@ -451,11 +460,13 @@ impl LiveWorldConfig {
                 },
                 LIVE_KEY_PREY_CAP => config.prey_cap = bounded_count(key, *value, 1.0, 65_536.0)?,
                 LIVE_KEY_RESOURCE_CAPACITY_SCALE => {
-                    if !(*value > 0.0 && *value <= 1.0) {
+                    // A floor of 1e-6, not "> 0": a subnormal factor passes `> 0` and then becomes 0
+                    // as an `f32`, which silently kills the pasture.
+                    if !(*value >= 1e-6 && *value <= 1.0) {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
                             value: *value,
-                            min: f64::MIN_POSITIVE,
+                            min: 1e-6,
                             max: 1.0,
                         });
                     }
