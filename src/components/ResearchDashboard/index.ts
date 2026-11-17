@@ -11,10 +11,8 @@ export { EvolutionLineagePanel } from './EvolutionLineagePanel';
 export type { EvolutionLineagePanelProps } from './EvolutionLineagePanel';
 
 export { CausalInterventionPanel } from './CausalInterventionPanel';
-export type { CausalInterventionPanelProps, ScheduledIntervention } from './CausalInterventionPanel';
 
 export { CheckpointStudioPanel } from './CheckpointStudioPanel';
-export type { CheckpointStudioPanelProps } from './CheckpointStudioPanel';
 export type { CheckpointBookmark, CausalBranchNode, CausalBranchTreeState } from './types';
 
 export { DataExportDialog } from './DataExportDialog';

@@ -23,7 +23,6 @@ interface Tier5MockOptions {
   mapElitesGrid?: Partial<MapElitesGridState> | null;
   lineageGraph?: Partial<LineageGraphPayload> | null;
   spatialDensity?: Partial<SpatialDensityReport> | null;
-  causalBranchTree?: unknown;
   exportResponse?: Partial<ScientificExportResponse> | null;
 }
 
@@ -145,43 +144,6 @@ async function setupTier5AdversarialHarness(page: Page, options: Tier5MockOption
     ...(options.spatialDensity || {}),
   };
 
-  const defaultCausalBranchTree = options.causalBranchTree ?? {
-    rootRunId: 1001,
-    nodes: [
-      {
-        id: 1001,
-        parentId: null,
-        forkTick: 0,
-        label: 'Genesis Baseline',
-        seedStrategy: 'DerivedStream (0)',
-        status: 'Completed',
-        children: [1002, 1003],
-      },
-      {
-        id: 1002,
-        parentId: 1001,
-        forkTick: 500,
-        label: 'Drought Intervention (-30%)',
-        seedStrategy: 'DerivedStream (1)',
-        status: 'Completed',
-        children: [],
-      },
-      {
-        id: 1003,
-        parentId: 1001,
-        forkTick: 1200,
-        label: 'Apex Predator Cull',
-        seedStrategy: 'DerivedStream (2)',
-        status: 'Completed',
-        children: [],
-      },
-    ],
-    edges: [
-      { source: 1001, target: 1002, forkTick: 500 },
-      { source: 1001, target: 1003, forkTick: 1200 },
-    ],
-  };
-
   const defaultExportResponse: ScientificExportResponse = {
     provenance: {
       commitHash: 'c320fc0',
@@ -211,10 +173,8 @@ async function setupTier5AdversarialHarness(page: Page, options: Tier5MockOption
     get_map_elites_grid: defaultMapElites,
     get_lineage_graph: defaultLineage,
     get_spatial_density_matrix: defaultSpatialDensity,
-    get_causal_branch_tree: defaultCausalBranchTree,
     export_scientific_dataset: defaultExportResponse,
     export_phylogenetic_tree: '((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);',
-    dispatch_causal_intervention: true,
     toggle_simulation: true,
     toggle_evolution: true,
     update_evolution_settings: true,
@@ -302,6 +262,9 @@ async function setupTier5AdversarialHarness(page: Page, options: Tier5MockOption
       },
       invocations: () => state.invocations,
       listenerCount: (name: string) => (state.listeners.get(name) ?? []).length,
+      setReply: (cmd: string, value: unknown) => {
+        table[cmd] = value;
+      },
     };
   }, replyTable);
 }
@@ -352,7 +315,7 @@ test.describe('Tier 5 Adversarial: Telemetry Stream Degeneracy & Phase Space', (
     await expect(phaseSpace).toBeVisible();
   });
 
-  test('T5.1.2: Empty & Degenerate Ecosystem Telemetry (0 biomass, negative values, high drift) handles gracefully', async ({ page }) => {
+  test('T5.1.2: Empty & Degenerate Ecosystem Telemetry (0 biomass, then a 50 EU jump) shows drift', async ({ page }) => {
     let unhandledError: Error | null = null;
     page.on('pageerror', (err) => { unhandledError = err; });
 
@@ -361,7 +324,7 @@ test.describe('Tier 5 Adversarial: Telemetry Stream Degeneracy & Phase Space', (
         detritus: 0.0,
         plants: 0.0,
         animals: 0.0,
-        total: 950.0, // 50 EU drift violation triggering warning
+        total: 950.0, // the first total seen becomes the baseline
         prey_count: 0,
         predator_count: 0,
         shannon: 0.0,
@@ -377,11 +340,20 @@ test.describe('Tier 5 Adversarial: Telemetry Stream Degeneracy & Phase Space', (
     const panel = page.locator('[data-testid="telemetry-overview-panel"]');
     await expect(panel).toBeVisible();
 
-    // Conservation status badge reflects warning/drift gracefully
+    // Drift is measured against the first total the backend reported. This test used to pass because
+    // 950 differed from a baseline hard-coded at 900; one constant total is not drift.
     const conservationBadge = page.locator('[data-testid="conservation-status-badge"]');
     await expect(conservationBadge).toBeVisible();
-    const badgeText = await conservationBadge.innerText();
-    expect(badgeText).toContain('DRIFT WARNING');
+    await expect(conservationBadge).toContainText('CONSERVED');
+
+    // The next poll reports 50 EU more: that is drift.
+    await page.evaluate(() => {
+      window.__animaTauriMock.setReply?.('get_ecosystem_state', {
+        detritus: 0, plants: 0, animals: 0, total: 1000.0, prey_count: 0, predator_count: 0,
+        shannon: 0, simpson: 0, prey_mass: 0, predator_mass: 0, niche_divergence: 0, archive_coverage: 0,
+      });
+    });
+    await expect(conservationBadge).toContainText('DRIFT WARNING');
 
     expect(unhandledError).toBeNull();
   });
@@ -483,16 +455,18 @@ test.describe('Tier 5 Adversarial: Trophic Dynamics & Energy Flux Sankey', () =>
     const pyramidSvg = page.locator('[data-testid="trophic-pyramid-container"]');
     await expect(pyramidSvg).toBeVisible();
 
-    // Verify all 4 tiers exist in SVG
+    // Verify all 4 tiers exist in SVG. The backend reports animals as one pool, so the two consumer
+    // tiers say "not reported" instead of showing an invented 75/25 split.
     await expect(page.locator('[data-testid="trophic-tier-carnivores"]')).toBeVisible();
     await expect(page.locator('[data-testid="trophic-tier-herbivores"]')).toBeVisible();
     await expect(page.locator('[data-testid="trophic-tier-plants"]')).toBeVisible();
     await expect(page.locator('[data-testid="trophic-tier-detritus"]')).toBeVisible();
+    await expect(page.locator('[data-testid="trophic-tier-carnivores"]')).toContainText('not reported');
 
     expect(unhandledError).toBeNull();
   });
 
-  test('T5.2.2: Inverted Top-Heavy Biomass Pyramid (Carnivores >> Plants) formats Lindeman efficiencies correctly', async ({ page }) => {
+  test('T5.2.2: Top-heavy ecosystem (animals >> plants) reports the consumer pool without inventing a split', async ({ page }) => {
     let unhandledError: Error | null = null;
     page.on('pageerror', (err) => { unhandledError = err; });
 
@@ -510,7 +484,9 @@ test.describe('Tier 5 Adversarial: Trophic Dynamics & Energy Flux Sankey', () =>
 
     const carnivoreTier = page.locator('[data-testid="trophic-tier-carnivores"]');
     await expect(carnivoreTier).toBeVisible();
-    await expect(carnivoreTier).toContainText('EU');
+    await expect(carnivoreTier).toContainText('not reported');
+    await expect(page.locator('[data-testid="trophic-split-unreported"]')).toContainText('10000.0 EU');
+    await expect(page.locator('[data-testid="efficiency-badge-l12"]')).toContainText('—');
 
     expect(unhandledError).toBeNull();
   });
@@ -758,7 +734,7 @@ test.describe('Tier 5 Adversarial: Causal Intervention Control Panel', () => {
     expect(unhandledError).toBeNull();
   });
 
-  test('T5.4.3: Dispatching Causal Interventions with extreme magnitudes updates ledger safely', async ({ page }) => {
+  test('T5.4.3: Dispatch is unavailable: the button is disabled and no dispatch command is sent', async ({ page }) => {
     let unhandledError: Error | null = null;
     page.on('pageerror', (err) => { unhandledError = err; });
 
@@ -771,29 +747,13 @@ test.describe('Tier 5 Adversarial: Causal Intervention Control Panel', () => {
     await kindSelect.selectOption('ToxicityPlume');
 
     const applyBtn = page.locator('[data-testid="apply-intervention-btn"]');
-    await expect(applyBtn).toBeVisible();
-    await applyBtn.click();
+    await expect(applyBtn).toBeDisabled();
+    await expect(page.locator('[data-testid="intervention-dispatch-unavailable"]')).toBeVisible();
+    await expect(page.locator('[data-testid="active-interventions-ledger"]')).toHaveCount(0);
 
-    // Verify item added to ledger table
-    const ledgerTable = page.locator('[data-testid="active-interventions-ledger"]');
-    await expect(ledgerTable).toBeVisible();
-    await expect(ledgerTable).toContainText('ToxicityPlume');
-
-    expect(unhandledError).toBeNull();
-  });
-
-  test('T5.4.4: Cancelling Active Interventions updates ledger state immediately', async ({ page }) => {
-    let unhandledError: Error | null = null;
-    page.on('pageerror', (err) => { unhandledError = err; });
-
-    await setupTier5AdversarialHarness(page);
-    await openResearchDashboard(page);
-    await page.locator('[data-testid="dashboard-tab-interventions"]').click();
-
-    const cancelBtn = page.locator('[data-testid^="cancel-intervention-"]').first();
-    if (await cancelBtn.isVisible()) {
-      await cancelBtn.click();
-    }
+    const sent = await page.evaluate(() => window.__animaTauriMock.invocations().map((i) => i.cmd));
+    expect(sent).toContain('get_spatial_density_matrix');
+    expect(sent).not.toContain('dispatch_causal_intervention');
 
     expect(unhandledError).toBeNull();
   });
@@ -804,39 +764,7 @@ test.describe('Tier 5 Adversarial: Causal Intervention Control Panel', () => {
 // ===============================================================================================
 test.describe('Tier 5 Adversarial: Checkpoint Studio & Counterfactuals', () => {
 
-  test('T5.5.1: Degenerate & Single-Node Causal Branch Tree renders root node cleanly', async ({ page }) => {
-    let unhandledError: Error | null = null;
-    page.on('pageerror', (err) => { unhandledError = err; });
-
-    await setupTier5AdversarialHarness(page, {
-      causalBranchTree: {
-        rootRunId: 4001,
-        nodes: [
-          {
-            id: 4001,
-            parentId: null,
-            forkTick: 0,
-            label: 'Solitary Genesis Root',
-            seedStrategy: 'Fixed',
-            status: 'Completed',
-            children: [],
-          },
-        ],
-        edges: [],
-      },
-    });
-
-    await openResearchDashboard(page);
-    await page.locator('[data-testid="dashboard-tab-checkpoints"]').click();
-
-    const rootNode = page.locator('[data-testid="branch-node-4001"]');
-    await expect(rootNode).toBeVisible();
-    await expect(rootNode).toContainText('#4001');
-
-    expect(unhandledError).toBeNull();
-  });
-
-  test('T5.5.2: Historical Timeline Scrubber steps cleanly across extreme boundaries (t=0 to t=10,000)', async ({ page }) => {
+  test('T5.5.1: Checkpoint Studio says it is unavailable and sends no branch-tree command', async ({ page }) => {
     let unhandledError: Error | null = null;
     page.on('pageerror', (err) => { unhandledError = err; });
 
@@ -844,62 +772,22 @@ test.describe('Tier 5 Adversarial: Checkpoint Studio & Counterfactuals', () => {
     await openResearchDashboard(page);
     await page.locator('[data-testid="dashboard-tab-checkpoints"]').click();
 
-    const slider = page.locator('[data-testid="timeline-scrubber-slider"]');
-    await expect(slider).toBeVisible();
+    await expect(page.locator('[data-testid="checkpoint-studio-unavailable"]')).toBeVisible();
+    // None of the old panel's invented controls or data remain.
+    for (const testid of [
+      'timeline-scrubber-slider',
+      'save-snapshot-bookmark-btn',
+      'fork-branch-open-modal-btn',
+      'counterfactual-delta-comparator',
+      'biomass-delta-sparkline',
+    ]) {
+      await expect(page.locator(`[data-testid="${testid}"]`)).toHaveCount(0);
+    }
 
-    // Step slider to extreme values
-    await slider.fill('0');
-    await slider.fill('2000');
-
-    // Create a new snapshot bookmark
-    const bookmarkBtn = page.locator('[data-testid="save-snapshot-bookmark-btn"]');
-    await bookmarkBtn.click();
-
-    const newBookmark = page.locator('[data-testid="checkpoint-bookmark-2000"]');
-    await expect(newBookmark).toBeVisible();
-
-    expect(unhandledError).toBeNull();
-  });
-
-  test('T5.5.3: Forking Counterfactual Branch modal opens, inputs values, and creates fork node', async ({ page }) => {
-    let unhandledError: Error | null = null;
-    page.on('pageerror', (err) => { unhandledError = err; });
-
-    await setupTier5AdversarialHarness(page);
-    await openResearchDashboard(page);
-    await page.locator('[data-testid="dashboard-tab-checkpoints"]').click();
-
-    const openForkModalBtn = page.locator('[data-testid="fork-branch-open-modal-btn"]');
-    await expect(openForkModalBtn).toBeVisible();
-    await openForkModalBtn.click();
-
-    const modal = page.locator('[data-testid="fork-branch-modal"]');
-    await expect(modal).toBeVisible();
-
-    const labelInput = page.locator('[data-testid="fork-label-input"]');
-    await labelInput.fill('Counterfactual Adversarial Run');
-
-    const submitBtn = page.locator('[data-testid="confirm-fork-branch-btn"]');
-    await submitBtn.click();
-
-    await expect(modal).not.toBeVisible();
-
-    expect(unhandledError).toBeNull();
-  });
-
-  test('T5.5.4: Counterfactual Delta SparkLines render trajectory divergence curves without throwing', async ({ page }) => {
-    let unhandledError: Error | null = null;
-    page.on('pageerror', (err) => { unhandledError = err; });
-
-    await setupTier5AdversarialHarness(page);
-    await openResearchDashboard(page);
-    await page.locator('[data-testid="dashboard-tab-checkpoints"]').click();
-
-    const deltaComparator = page.locator('[data-testid="counterfactual-delta-comparator"]');
-    await expect(deltaComparator).toBeVisible();
-
-    const biomassSparkline = page.locator('[data-testid="biomass-delta-sparkline"]');
-    await expect(biomassSparkline).toBeVisible();
+    const sent = await page.evaluate(() => window.__animaTauriMock.invocations().map((i) => i.cmd));
+    // Positive control: the recorder sees the dashboard's own polling.
+    expect(sent).toContain('get_simulation_status');
+    expect(sent).not.toContain('get_causal_branch_tree');
 
     expect(unhandledError).toBeNull();
   });
@@ -952,7 +840,7 @@ test.describe('Tier 5 Adversarial: Scientific DataExportDialog', () => {
     expect(unhandledError).toBeNull();
   });
 
-  test('T5.6.2: RunProvenance Preview displays verified commit, seed, and timestamps', async ({ page }) => {
+  test('T5.6.2: RunProvenance shows nothing before export and the values the backend returned after it', async ({ page }) => {
     let unhandledError: Error | null = null;
     page.on('pageerror', (err) => { unhandledError = err; });
 
@@ -962,8 +850,15 @@ test.describe('Tier 5 Adversarial: Scientific DataExportDialog', () => {
 
     const provenanceCard = page.locator('[data-testid="run-provenance-card"]');
     await expect(provenanceCard).toBeVisible();
+    // Before an export there is no provenance to show: the card used to print a fixed commit.
+    await expect(page.locator('[data-testid="run-provenance-pending"]')).toBeVisible();
+    await expect(provenanceCard).not.toContainText('c320fc0');
+
+    // After the export, every value is the one the (mocked) backend returned.
+    await page.locator('[data-testid="execute-export-dataset-btn"]').click();
     await expect(provenanceCard).toContainText('c320fc0');
     await expect(provenanceCard).toContainText('anima-build-2026');
+    await expect(provenanceCard).toContainText('2026-08-16T05:00:00Z');
 
     // Close modal
     await page.locator('[data-testid="export-dialog-close-btn"]').click();
@@ -1039,12 +934,16 @@ test.describe('Tier 5 Adversarial: Full Dashboard Integration & Hotkeys', () => 
     await expect(conservationBadge).toBeVisible();
     await expect(conservationBadge).toContainText('CONSERVED');
 
-    // Inject simulated energy violation
+    // A later poll reports 50 EU more than the first total: the badge must turn to drift. (The
+    // header polls get_ecosystem_state; it does not read simulation-tick, which this test used to
+    // emit without asserting anything afterwards.)
     await page.evaluate(() => {
-      window.__animaTauriMock.emit('simulation-tick', {
-        total: 950.0, // 50 EU drift violation
+      window.__animaTauriMock.setReply?.('get_ecosystem_state', {
+        detritus: 100, plants: 500, animals: 300, total: 950.0, prey_count: 45, predator_count: 15,
+        shannon: 0.95, simpson: 0.62, prey_mass: 6, predator_mass: 9, niche_divergence: 0.45, archive_coverage: 18.5,
       });
     });
+    await expect(conservationBadge).toContainText('DRIFT WARNING');
 
     expect(unhandledError).toBeNull();
   });

@@ -190,6 +190,26 @@ Hai điều cần tách bạch, vì trộn vào nhau sẽ dẫn tới kết lu�
   [chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md), mở finding chứ không tự coi bên nào
   đúng.
 
+**Đối chứng 2026-11-17: con số 4,2 ms là của build debug, không phải release.**
+- Bench `tick_systems` nay giữ đúng đường cũ: `pre_stride_gated_with_biomass_sandwich/256x256` gồm
+  bước gated và hai pass `total_biomass()`. Lệnh đo:
+  `cargo bench --bench tick_systems -- "tick/resource_field"`; trung vị đọc từ `estimates.json`.
+- Kết quả trên Apple M5 (10 nhân, macOS), rustc 1.98.1:
+
+  | Hàm | Trung vị |
+  |---|---:|
+  | `step_regrowth` | 60,6 µs |
+  | `step_regrowth_gated` | 154,5 µs |
+  | `pre_stride_gated_with_biomass_sandwich` (đường cũ) | **217,7 µs** |
+  | `step_regrowth_gated_strided` | **39,0 µs** |
+
+  Stride nhanh hơn đường cũ **5,6×**.
+- Cùng đường cũ ở **build debug** tốn **1,9 ms** (trung vị 300 lần, đo bằng `Instant` trong một test
+  tạm, không commit) trên cùng máy, chậm hơn release ~7×.
+- Con số 4,2 ms khớp với một phép đo debug trên máy chậm hơn, và không build release nào cho ra con số
+  đó. Doc comment của `REGROWTH_STRIDE` đã được sửa theo số này. Việc stride vẫn đúng và vẫn có lợi;
+  chỉ lý do bằng con số là được sửa.
+
 ## In-app tick capture (2026-07-27)
 
 Criterion đo **từng hàm**, trên fixture tự dựng, ngoài mọi engine đang chạy. Cái nó theo thiết kế

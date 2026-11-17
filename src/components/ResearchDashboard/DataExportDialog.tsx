@@ -5,14 +5,10 @@ import type { ScientificExportResponse } from '../../types/generated/ScientificE
 
 export interface DataExportDialogProps {
   onClose: () => void;
-  defaultSeed?: number;
 }
 
-export const DataExportDialog: React.FC<DataExportDialogProps> = ({
-  onClose,
-  defaultSeed = 42,
-}) => {
-  const [fileName, setFileName] = useState<string>('scientific_dataset_run_42');
+export const DataExportDialog: React.FC<DataExportDialogProps> = ({ onClose }) => {
+  const [fileName, setFileName] = useState<string>('scientific_dataset');
   const [format, setFormat] = useState<'JSON' | 'CSV' | 'Newick'>('JSON');
   const [includeTimeSeries, setIncludeTimeSeries] = useState<boolean>(true);
   const [includeDemographics, setIncludeDemographics] = useState<boolean>(true);
@@ -47,44 +43,10 @@ export const DataExportDialog: React.FC<DataExportDialogProps> = ({
       });
       setExportResponse(resp);
     } catch (e) {
+      // A failed export shows the failure. It used to install a mock response here, so a failed
+      // export looked exactly like one that worked.
       setErrorMsg(`Export failed: ${String(e)}`);
-      // Fallback mock response for standalone UI testing
-      setExportResponse({
-        provenance: {
-          commitHash: 'c320fc0',
-          buildId: 'anima-build-2026',
-          seed: BigInt(defaultSeed),
-          durationTicks: 5000n,
-          engineVersion: '0.1.0',
-          timestampUtc: new Date().toISOString(),
-          architecture: 'x86_64',
-          os: 'windows',
-          manifestFingerprint: 123456n,
-          lawFingerprint: 789012n,
-          registryFingerprint: 345678n,
-        },
-        csvContent: 'tick,plants_biomass,prey_biomass,predator_biomass,total_energy\n100,500.0,300.0,50.0,850.0\n200,510.0,295.0,52.0,857.0',
-        jsonContent: JSON.stringify(
-          {
-            schemaVersion: 1,
-            provenance: {
-              commitHash: 'c320fc0',
-              buildId: 'anima-build-2026',
-              seed: defaultSeed,
-              durationTicks: 5000,
-              engineVersion: '0.1.0',
-              timestampUtc: new Date().toISOString(),
-            },
-            timeSeries: [
-              { tick: 100, plantsBiomass: 500, preyBiomass: 300, predatorBiomass: 50, totalEnergy: 850 },
-            ],
-          },
-          null,
-          2
-        ),
-        newickTree: '((Prey_A:0.1,Prey_B:0.2)Prey_Ancestor:0.5,Predator_A:0.8);',
-        writtenPath: `exports/${fileName}.json`,
-      });
+      setExportResponse(null);
     } finally {
       setIsExporting(false);
     }
@@ -101,11 +63,16 @@ export const DataExportDialog: React.FC<DataExportDialogProps> = ({
   const handleCopyToClipboard = () => {
     const content = getContentToDisplay();
     if (content) {
+      // "Copied" is shown only once the clipboard write has actually succeeded.
       if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(content).catch(() => {});
+        navigator.clipboard
+          .writeText(content)
+          .then(() => {
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2000);
+          })
+          .catch(() => setCopySuccess(false));
       }
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
     }
   };
 
@@ -199,7 +166,7 @@ export const DataExportDialog: React.FC<DataExportDialogProps> = ({
                 value={fileName}
                 onChange={(e) => setFileName(e.target.value)}
                 data-testid="export-filename-input"
-                placeholder="scientific_dataset_run_42"
+                placeholder="scientific_dataset"
                 style={{
                   width: '100%',
                   backgroundColor: 'rgba(255, 255, 255, 0.05)',
@@ -337,13 +304,35 @@ export const DataExportDialog: React.FC<DataExportDialogProps> = ({
             <div style={{ fontWeight: 600, color: '#38bdf8', marginBottom: '2px' }}>
               RunProvenance Header
             </div>
-            <div>Commit: <code style={{ color: '#f1f5f9' }}>c320fc0</code></div>
-            <div>Build ID: <span style={{ color: '#f1f5f9' }}>anima-build-2026</span></div>
-            <div>RNG Seed: <span style={{ color: '#f1f5f9' }}>{defaultSeed}</span></div>
-            <div>Engine Version: <span style={{ color: '#f1f5f9' }}>0.1.0</span></div>
-            <div>Timestamp: <span style={{ color: '#f1f5f9' }}>{new Date().toUTCString()}</span></div>
-            <div>Architecture: <span style={{ color: '#f1f5f9' }}>x86_64 / Windows</span></div>
-            <div>Law Fingerprint: <code style={{ color: '#a7f3d0' }}>0x789012</code></div>
+            {/* Every value here comes from the backend's export response. Before an export there is
+                nothing to show: this card used to print a fixed commit, seed and fingerprint. */}
+            {exportResponse ? (
+              <>
+                <div>Commit: <code style={{ color: '#f1f5f9' }}>{exportResponse.provenance.commitHash}</code></div>
+                <div>Build ID: <span style={{ color: '#f1f5f9' }}>{exportResponse.provenance.buildId}</span></div>
+                <div>RNG Seed: <span style={{ color: '#f1f5f9' }}>{String(exportResponse.provenance.seed)}</span></div>
+                <div>Engine Version: <span style={{ color: '#f1f5f9' }}>{exportResponse.provenance.engineVersion}</span></div>
+                <div>Timestamp: <span style={{ color: '#f1f5f9' }}>{exportResponse.provenance.timestampUtc}</span></div>
+                <div>
+                  Architecture:{' '}
+                  <span style={{ color: '#f1f5f9' }}>
+                    {exportResponse.provenance.architecture} / {exportResponse.provenance.os}
+                  </span>
+                </div>
+                <div>
+                  Law Fingerprint:{' '}
+                  <code style={{ color: '#a7f3d0' }}>
+                    {exportResponse.provenance.lawFingerprint === null
+                      ? 'not reported'
+                      : `0x${BigInt(exportResponse.provenance.lawFingerprint).toString(16)}`}
+                  </code>
+                </div>
+              </>
+            ) : (
+              <div data-testid="run-provenance-pending" style={{ color: '#94a3b8' }}>
+                Reported by the backend with the export. Nothing is shown before then.
+              </div>
+            )}
           </div>
         </div>
 

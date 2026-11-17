@@ -1021,12 +1021,8 @@ export async function installTierHarness(
       links: [{ source: '1', target: '2' }],
       db_connected: true,
     },
-    get_causal_branch_tree: {
-      root_run_id: 'root',
-      nodes: {},
-      edges: [],
-    },
-    dispatch_causal_intervention: true,
+    // get_causal_branch_tree and dispatch_causal_intervention are deliberately absent: neither
+    // command exists in the backend (src-tauri/src/lib.rs).
     export_scientific_dataset: ScientificDatasetExporter.exportDataset(42, [
       { tick: 0, plants: 2000, prey: 40, predators: 15 },
       { tick: 10, plants: 1950, prey: 42, predators: 16 },

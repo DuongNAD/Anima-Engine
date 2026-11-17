@@ -1,0 +1,132 @@
+# Card M1: does the same seed and manifest give the same world on Windows, Linux and macOS?
+#
+# This is a measurement, not a gate: the probe test passes whatever the values are, and the
+# compare job writes the matrix to the run summary and uploads it. Nothing here is a required check.
+# It runs on demand, and on pull requests that change the probe, this workflow or the compare script.
+# Re-run it with workflow_dispatch after any change to the simulation's arithmetic.
+name: determinism-matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/determinism-matrix.yml
+      - src-tauri/tests/cross_platform_checksum_probe.rs
+      - scripts/paper/compare_checksums.mjs
+      - artifacts/world_256.anmw
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: probe (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same pinned toolchain as ci.yml: rust-toolchain.toml at the repo root. A different rustc
+      # on one runner would make a platform difference indistinguishable from a compiler difference.
+      - name: Install the pinned toolchain
+        run: rustup toolchain install
+
+      - name: Show toolchain
+        run: |
+          rustc --version --verbose
+          cargo --version
+
+      # Tauri needs these system libraries to build on Linux (same list as hardening.yml).
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: m1-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: m1-${{ runner.os }}-
+
+      # Release, default features: the probe needs nothing from `desktop`, and release is the
+      # profile the simulation ships in. A fresh runner has no world artifact in its temp
+      # directory, so this run generates its terrain on the runner.
+      - name: Run the probe (terrain generated on the runner)
+        env:
+          ANIMA_M1_FULL: "1"
+        run: |
+          set -o pipefail
+          cargo test --release --test cross_platform_checksum_probe -- --nocapture 2>&1 \
+            | tee ../m1-generated-${{ runner.os }}.txt
+
+      # The same probe on the committed world artifact, so terrain generation is taken out of the
+      # comparison and what remains is the tick dynamics.
+      - name: Run the probe (committed world artifact)
+        env:
+          ANIMA_M1_FULL: "1"
+          ANIMA_WORLD_ARTIFACT: ${{ github.workspace }}/artifacts/world_256.anmw
+        run: |
+          set -o pipefail
+          cargo test --release --test cross_platform_checksum_probe -- --nocapture 2>&1 \
+            | tee ../m1-pinned-${{ runner.os }}.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m1-probe-${{ runner.os }}
+          path: |
+            m1-generated-${{ runner.os }}.txt
+            m1-pinned-${{ runner.os }}.txt
+          if-no-files-found: error
+
+  compare:
+    needs: probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: m1-probe-*
+          merge-multiple: true
+          path: probes
+
+      - name: The compare script's negative controls
+        run: node scripts/paper/compare_checksums.mjs --self-test
+
+      - name: Build the two matrices
+        run: |
+          ls -l probes
+          {
+            echo "## Terrain generated on each runner"
+            echo
+            node scripts/paper/compare_checksums.mjs probes/m1-generated-*.txt
+            echo
+            echo "## Committed world artifact (artifacts/world_256.anmw)"
+            echo
+            node scripts/paper/compare_checksums.mjs probes/m1-pinned-*.txt
+          } > determinism_matrix.md
+          cat determinism_matrix.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: m1-determinism-matrix
+          path: determinism_matrix.md

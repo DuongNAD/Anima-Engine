@@ -24,6 +24,9 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
     fps: 0,
   });
   const [ecoState, setEcoState] = useState<EcosystemState | null>(null);
+  // The first total the backend reports while the dashboard is open. Drift is measured against it;
+  // until it arrives there is no baseline. (It used to be a hard-coded 900 EU.)
+  const [baselineEnergy, setBaselineEnergy] = useState<number | null>(null);
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +48,9 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
         const eco = await invoke<EcosystemState>('get_ecosystem_state');
         if (!isCancelled && eco) {
           setEcoState(eco);
+          if (typeof eco.total === 'number' && Number.isFinite(eco.total)) {
+            setBaselineEnergy((prev) => prev ?? eco.total);
+          }
         }
       } catch {
         // Fallback
@@ -101,11 +107,12 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const totalEnergy = ecoState?.total ?? 900;
-  const baselineEnergy = 900;
-  const energyResidual = Math.abs(totalEnergy - baselineEnergy);
-  const driftPercent = (energyResidual / baselineEnergy) * 100;
-  const isConserved = energyResidual <= 0.001 && driftPercent < 0.01;
+  const totalEnergy = ecoState?.total ?? null;
+  const energyResidual =
+    totalEnergy !== null && baselineEnergy !== null ? Math.abs(totalEnergy - baselineEnergy) : null;
+  const conservation: 'unknown' | 'conserved' | 'drift' =
+    energyResidual === null ? 'unknown' : energyResidual <= 0.001 ? 'conserved' : 'drift';
+  const isConserved = conservation === 'conserved';
 
   const tabs: Array<{ id: DashboardTab; label: string; icon: string }> = [
     { id: 'telemetry', label: 'Telemetry & Phase Space', icon: '📊' },
@@ -164,6 +171,8 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
           {/* Conservation Status Badge Pill */}
           <div
             data-testid="conservation-status-badge"
+            data-conservation={conservation}
+            title="Total energy compared with the first total reported while this dashboard has been open"
             style={{
               padding: '4px 10px',
               borderRadius: '9999px',
@@ -172,9 +181,10 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              backgroundColor: isConserved ? 'rgba(6, 78, 59, 0.5)' : 'rgba(127, 29, 29, 0.5)',
-              border: `1px solid ${isConserved ? '#10b981' : '#ef4444'}`,
-              color: isConserved ? '#a7f3d0' : '#fecaca',
+              backgroundColor:
+                conservation === 'unknown' ? 'rgba(255, 255, 255, 0.05)' : isConserved ? 'rgba(6, 78, 59, 0.5)' : 'rgba(127, 29, 29, 0.5)',
+              border: `1px solid ${conservation === 'unknown' ? 'rgba(255, 255, 255, 0.15)' : isConserved ? '#10b981' : '#ef4444'}`,
+              color: conservation === 'unknown' ? '#94a3b8' : isConserved ? '#a7f3d0' : '#fecaca',
             }}
           >
             <span
@@ -182,10 +192,14 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                backgroundColor: isConserved ? '#10b981' : '#ef4444',
+                backgroundColor: conservation === 'unknown' ? '#64748b' : isConserved ? '#10b981' : '#ef4444',
               }}
             />
-            {isConserved ? 'CONSERVED (ΔE ≤ 10⁻³ EU)' : 'DRIFT WARNING (ΔE > 10⁻³ EU)'}
+            {conservation === 'unknown'
+              ? 'ENERGY: NO TELEMETRY YET'
+              : isConserved
+                ? 'CONSERVED (ΔE ≤ 10⁻³ EU)'
+                : 'DRIFT WARNING (ΔE > 10⁻³ EU)'}
           </div>
         </div>
 
@@ -218,7 +232,7 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
               border: '1px solid rgba(255, 255, 255, 0.06)',
             }}
           >
-            commit: <code style={{ color: '#cbd5e1' }}>c320fc0</code> | seed: <code>42</code>
+            commit / seed: not reported by the backend
           </div>
 
           {/* Global Simulation Controls & Export Trigger */}
@@ -348,10 +362,10 @@ export const ResearchDashboard: React.FC<ResearchDashboardProps> = ({ onClose })
           <EvolutionLineagePanel isRunning={status.running} />
         )}
         {activeTab === 'interventions' && (
-          <CausalInterventionPanel currentTick={status.tick_count} isRunning={status.running} />
+          <CausalInterventionPanel />
         )}
         {activeTab === 'checkpoints' && (
-          <CheckpointStudioPanel currentTick={status.tick_count} />
+          <CheckpointStudioPanel />
         )}
       </main>
 

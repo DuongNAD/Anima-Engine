@@ -720,6 +720,12 @@ pub fn apply_live_interventions_system(
         ),
     >,
     mut cull_buf: Local<Vec<Entity>>,
+    // `PathogenTransmission` acts on the living agents' reserves, the store the census reads.
+    mut reserves: Query<
+        (Entity, &mut crate::ai::hrrl::HomeostaticState),
+        With<crate::core::components::Agent>,
+    >,
+    mut epidemic_buf: Local<Vec<Entity>>,
 ) {
     let (Some(active), Some(mut state)) = (active, state) else {
         return;
@@ -974,13 +980,38 @@ pub fn apply_live_interventions_system(
                 let fraction = (cmd.signed_intensity_at(tick).abs()
                     * (*transmission_rate * *mortality_multiplier * 0.01))
                     .clamp(0.0, 0.5) as f64;
-                let cull_amount = (pool.animals * fraction).min(pool.animals);
-                if cull_amount > 0.0 {
-                    let moved = energy.transfer(
+                if fraction <= 0.0 {
+                    continue;
+                }
+                // The epidemic has to take what it moves from the **reserves**. `pool.animals` is
+                // only a mirror: `ecosystem_census_system` re-snapshots it from the agents at the
+                // end of every tick, so debiting the mirror alone left every reserve untouched while
+                // detritus kept the credit, and closed EU grew by the "culled" amount each time the
+                // forcing fired (G5, `tests/ledger_bypass_tests.rs`: +148 EU in one firing).
+                //
+                // Every living agent loses the same share of its own reserve. They are visited in
+                // entity order, as the predator cull is, so the sum is the same in a replay.
+                epidemic_buf.clear();
+                epidemic_buf.extend(reserves.iter().map(|(entity, _)| entity));
+                epidemic_buf.sort_unstable_by_key(|e| (e.index(), e.generation()));
+                let share = fraction as f32;
+                let mut stripped = 0.0f64;
+                for entity in epidemic_buf.iter() {
+                    if let Ok((_, mut homeo)) = reserves.get_mut(*entity) {
+                        let amount = homeo.energy.max(0.0) * share;
+                        // The amount the `f32` reserve actually lost, not the amount asked for.
+                        stripped +=
+                            crate::core::energy_ledger::debit_reserve(&mut homeo.energy, amount);
+                    }
+                }
+                if stripped > 0.0 {
+                    // Same routing as the reproduction overhead: the reserves have already been
+                    // debited, so the amount is settled through the ledger whether or not the
+                    // `Animals` mirror is fresh.
+                    crate::core::energy_ledger::settle_reserve_outflow_to_detritus(
+                        energy,
                         pool,
-                        Compartment::Animals,
-                        Compartment::Detritus,
-                        cull_amount,
+                        stripped,
                         EnergyEvent::Intervention,
                     );
                     state.ledger.record(
@@ -989,8 +1020,8 @@ pub fn apply_live_interventions_system(
                         tick,
                         "live.animals_eu",
                         pool.animals,
-                        -moved,
-                        "pathogen transmission epidemic moves animal biomass into detritus",
+                        -stripped,
+                        "pathogen transmission epidemic strips a share of every living reserve into detritus",
                     );
                     state.applied_interventions += 1;
                 }
@@ -1240,8 +1271,23 @@ pub fn mass_statistics(masses: &[f32]) -> [f64; 4] {
 /// `live.births` / `live.deaths` count events since the previous sample, and
 /// `live.mean_lifespan` averages `survival_ticks` over window deaths (`0.0` when the window had
 /// none — with the structural O-5 guarantee that a run without a death rule can never be asked
-/// for it).
+/// for it). A read that is not a sample must use [`live_observables_peek`], or it steals the
+/// sample's events.
 pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
+    read_live_observables(world, true)
+}
+
+/// The same values as [`live_observables`] without closing the turnover window.
+///
+/// The shared runner reads a model's observables on every tick to check that they are finite and
+/// unique, and keeps only the reads on sample ticks. When every one of those reads drained the
+/// window, a sampled `live.births` counted the births of its own tick only: 0 against 20 true births
+/// over 3,000 ticks (`tests/live_windowed_observable_sampling_tests.rs`).
+pub fn live_observables_peek(world: &mut World) -> Vec<(String, f64)> {
+    read_live_observables(world, false)
+}
+
+fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
     let (plants, animals, detritus, dormant) = world
@@ -1294,9 +1340,14 @@ pub fn live_observables(world: &mut World) -> Vec<(String, f64)> {
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
-    let (births, deaths, mean_lifespan) = {
+    let (births, deaths, mean_lifespan) = if close_window {
         match world.get_resource_mut::<crate::core::resources::VitalStatistics>() {
             Some(mut v) => v.sample_window(),
+            None => (0, 0, None),
+        }
+    } else {
+        match world.get_resource::<crate::core::resources::VitalStatistics>() {
+            Some(v) => v.peek_window(),
             None => (0, 0, None),
         }
     };
@@ -1692,6 +1743,11 @@ impl ExperimentModel for LiveExperimentAdapter {
     fn observables(&self) -> Vec<(String, f64)> {
         let mut world = self.world.borrow_mut();
         live_observables(&mut world)
+    }
+
+    fn observables_unsampled(&self) -> Vec<(String, f64)> {
+        let mut world = self.world.borrow_mut();
+        live_observables_peek(&mut world)
     }
 }
 

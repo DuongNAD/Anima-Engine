@@ -79,6 +79,8 @@ export interface AnimaTauriMock {
   invocations(): RecordedInvocation[];
   /** How many listeners are registered for `name`. */
   listenerCount(name: string): number;
+  /** Replace the reply to `cmd` from now on. Only harnesses with a reply table implement it. */
+  setReply?(cmd: string, value: unknown): void;
 }
 
 declare global {

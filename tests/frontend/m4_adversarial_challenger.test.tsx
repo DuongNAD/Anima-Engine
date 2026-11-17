@@ -657,7 +657,7 @@ describe('Milestone 4: Adversarial Edge-Case & Boundary Stress Harness', () => {
   describe('Area 4: Data Export Serialization & File Name Boundary Safety', () => {
     it('sanitizes and tolerates malformed / hostile file names', async () => {
       const onClose = vi.fn();
-      render(<DataExportDialog onClose={onClose} defaultSeed={999} />);
+      render(<DataExportDialog onClose={onClose} />);
 
       const filenameInput = screen.getByTestId('export-filename-input');
       const executeBtn = screen.getByTestId('execute-export-dataset-btn');
@@ -702,7 +702,7 @@ describe('Milestone 4: Adversarial Edge-Case & Boundary Stress Harness', () => {
       global.URL.revokeObjectURL = revokeObjectURLMock;
 
       const onClose = vi.fn();
-      render(<DataExportDialog onClose={onClose} defaultSeed={12345} />);
+      render(<DataExportDialog onClose={onClose} />);
 
       // Export JSON
       fireEvent.click(screen.getByTestId('execute-export-dataset-btn'));
@@ -771,7 +771,7 @@ describe('Milestone 4: Adversarial Edge-Case & Boundary Stress Harness', () => {
       });
 
       const onClose = vi.fn();
-      render(<DataExportDialog onClose={onClose} defaultSeed={42} />);
+      render(<DataExportDialog onClose={onClose} />);
 
       fireEvent.click(screen.getByTestId('execute-export-dataset-btn'));
 
