@@ -1,16 +1,14 @@
-//! F-044 (SMELL, OPEN): the starvation and the thirst grace share one counter.
+//! F-044: the starvation and the thirst grace must be counted separately (card S8, QD-F044).
 //!
-//! `metabolic_decay_system` advances `HomeostaticState::starving_ticks` while energy **or** hydration
-//! is at the bottom, and `mortality_system` compares both `starve_ticks` and `dehydration_ticks` with
-//! that one counter. When the two graces differ they are not independent: an animal that has been
-//! hungry for a long time dies of thirst on the first tick its water runs out, without the thirst
-//! grace it was declared. With the defaults (120 / 120) the rule is "120 consecutive bottom ticks of
-//! either kind", so no run made so far is affected.
+//! `metabolic_decay_system` used to advance one counter, `HomeostaticState::starving_ticks`, while
+//! energy **or** hydration was at the bottom, and `mortality_system` compared both `starve_ticks`
+//! and `dehydration_ticks` with that one counter. The two graces were therefore not independent: an
+//! animal that had been hungry for a long time died of thirst on the first tick its water ran out,
+//! without the thirst grace it was declared.
 //!
-//! This is a CHARACTERIZATION test, like F-042's: it pins today's behaviour so the smell cannot
-//! change silently, and it must be INVERTED when the counters are split (an owner decision, because
-//! the fix adds a field to `HomeostaticState`, touches the save format and changes the trajectory
-//! of every configuration whose two graces differ). The control shows the thirst grace itself works.
+//! This file was a CHARACTERIZATION test of that smell (#90). The owner decided on 2026-11-17 to split
+//! the counters before any new preregistration, so the first test is inverted. A long-hungry animal
+//! now lives through its full thirst grace, exactly like the fed control.
 
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
@@ -119,21 +117,20 @@ fn ticks_survived_after_thirst(energy: f32) -> (u32, u32) {
 }
 
 #[test]
-fn f044_a_long_hungry_animal_gets_no_thirst_grace() {
-    // Energy 0 from the start: the shared counter climbs through the watered ticks.
+fn f044_a_long_hungry_animal_still_gets_its_full_thirst_grace() {
+    // Energy 0 from the start: the hunger counter climbs through the watered ticks, far past the
+    // thirst grace. That must not shorten the thirst grace.
     let (survived, counter) = ticks_survived_after_thirst(0.0);
     println!("F044 hungry: counter_at_thirst={counter} ticks_survived_after_thirst={survived}");
     assert!(
         counter >= DEHYDRATION_TICKS,
-        "the hunger ticks must have filled the shared counter ({counter})"
+        "the hunger counter must have passed the thirst grace before the water runs out ({counter}), \
+         or this test cannot tell a shared counter from two"
     );
-    // PINNED SMELL: with independent counters the founder would live ~DEHYDRATION_TICKS - 1 more
-    // ticks. Invert this when F-044 is fixed.
     assert!(
-        survived < 2,
-        "a long-hungry founder now lives {survived} ticks without water; if the counters were split \
-         (F-044 fixed), invert this assertion to expect about {} ticks",
-        DEHYDRATION_TICKS - 1
+        (DEHYDRATION_TICKS - 2..=DEHYDRATION_TICKS).contains(&survived),
+        "a long-hungry founder must live through its thirst grace of {DEHYDRATION_TICKS} ticks like \
+         the fed control, got {survived}: the hunger streak is still being charged to the thirst grace"
     );
 }
 
