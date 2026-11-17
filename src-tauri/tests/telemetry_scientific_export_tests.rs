@@ -143,6 +143,94 @@ fn an_engine_that_never_ran_has_no_seed_to_export() {
     );
 }
 
+/// Spin until the engine has published a seed, returning it. No sleep: the question these tests ask
+/// is what an export sees in the instant the seed first appears, and a sleep would let the first
+/// tick finish and hide the answer.
+fn spin_until_seed(engine: &SimulationEngine) -> u64 {
+    let started = Instant::now();
+    loop {
+        if let Some(seed) = *engine.run_seed.read().unwrap_or_else(|e| e.into_inner()) {
+            return seed;
+        }
+        assert!(
+            started.elapsed() < READY_DEADLINE,
+            "the simulation never published a seed within {READY_DEADLINE:?}"
+        );
+        std::hint::spin_loop();
+    }
+}
+
+#[test]
+fn a_seed_is_never_visible_before_the_first_tick_has_published_its_state() {
+    let _guard = ENGINE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let engine = SimulationEngine::new();
+    start(&engine);
+
+    // The seed is what lets an export proceed, so in the instant it appears the state beside it must
+    // already be this run's. If the seed is published first, that instant holds `Default` values:
+    // tick 0, no plants, no prey, which are not measurements of anything.
+    let seed = spin_until_seed(&engine);
+    let exported = build_scientific_export(&engine, empty_map_elites(), &everything());
+    engine.stop();
+
+    let parts = exported.expect("an engine that published a seed can be exported");
+    let sample = parts
+        .package
+        .time_series
+        .first()
+        .expect("one time-series sample");
+    assert!(
+        sample.tick > 0 && sample.prey_count > 0 && sample.plants_biomass > 0.0,
+        "seed {seed} was visible while the published state was still the empty default \
+         (tick {}, {} prey, {} plants)",
+        sample.tick,
+        sample.prey_count,
+        sample.plants_biomass
+    );
+}
+
+#[test]
+fn a_restarted_engine_never_pairs_its_new_seed_with_the_old_runs_data() {
+    let _guard = ENGINE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    // First run: long enough that its tick counter is far from anything the next run reaches within
+    // the instant after it publishes a seed.
+    std::env::set_var("ANIMA_SIM_SEED", "777");
+    let engine = SimulationEngine::new();
+    start(&engine);
+    await_tick(&engine, 60);
+    std::env::remove_var("ANIMA_SIM_SEED");
+    engine.stop();
+    let previous_ticks = engine.get_status().tick_count;
+    assert!(
+        previous_ticks >= 60,
+        "premise: the first run ticked ({previous_ticks})"
+    );
+
+    // Second run, a different seed. `start` empties the seed, so for a while there is none; the
+    // moment the new one appears, everything beside it must belong to the new run, not the old one.
+    std::env::set_var("ANIMA_SIM_SEED", "888");
+    start(&engine);
+    let seed = spin_until_seed(&engine);
+    std::env::remove_var("ANIMA_SIM_SEED");
+    let exported = build_scientific_export(&engine, empty_map_elites(), &everything());
+    engine.stop();
+
+    assert_eq!(seed, 888, "premise: the second run used its own seed");
+    let parts = exported.expect("an engine that published a seed can be exported");
+    let sample = parts
+        .package
+        .time_series
+        .first()
+        .expect("one time-series sample");
+    assert!(
+        sample.tick < previous_ticks / 2,
+        "the export pairs the new seed {seed} with tick {}, which is the first run's \
+         {previous_ticks} ticks of data, not the new run's",
+        sample.tick
+    );
+}
+
 // ---- Trophic biomass ------------------------------------------------------------------------------
 
 #[test]
