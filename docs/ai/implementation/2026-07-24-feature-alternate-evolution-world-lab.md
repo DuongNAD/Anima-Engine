@@ -81,6 +81,12 @@ pre-existing M0–M3 module list).
 | `src-tauri/src/core/reference_world.rs` | AE2 (AE-104/106/206/207/208) | `ReferenceEvolutionWorld` (impl `ExperimentModel`), `CAUSE_EXOTIC_WORLD_LAW` |
 | `src-tauri/tests/exotic_energy_zero_alloc_tests.rs` | AE-203 | zero-heap-alloc hot-loop test |
 
+> *Note 2026-11-17 (STATE §3.12):* `exotic_energy.rs`, `experiment.rs` and `experiment_runner.rs` are
+> now split into submodules under a directory of the same name (for example `core/experiment/manifest.rs`,
+> `core/experiment_runner/fork.rs`); each original file keeps its core. It is a pure move: every public
+> path is still `core::<module>::*` through re-exports, so the symbol anchors above still hold. Only the
+> "File" column now names the module, not necessarily the file that defines the symbol.
+
 ### Key implementation decisions
 
 - **Canonical identity, not serde/debug.** `Canon` builds a fixed-order, domain-separated byte
