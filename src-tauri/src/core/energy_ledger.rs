@@ -25,9 +25,11 @@ pub use anima_domain::energy::*;
 ///
 /// So when the mirror lags behind the amount it is lifted to cover it before the transfer. That is
 /// a correction of a derived view, not of any store: the census overwrites `animals` from the agents'
-/// reserves later in the same tick, and the closed total is read from the stores. When the mirror is
-/// already fresh nothing is lifted and the transfer debits it as it always would, so on every
-/// tick after the first this is exactly [`EnergyLedger::transfer`].
+/// reserves later in the same tick, and the closed total is read from the stores. When the mirror
+/// already holds `amount` nothing is lifted and the call is exactly [`EnergyLedger::transfer`]. The
+/// first tick is not the only time the mirror can hold less: grazing credits a reserve without
+/// crediting the mirror, so it can lag inside any tick, and a lift is possible then too. It is
+/// harmless for the same reason.
 ///
 /// Allocation-free.
 pub fn settle_reserve_outflow_to_detritus(
