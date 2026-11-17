@@ -30,7 +30,7 @@ bảng dưới đây và mã lệch nhau theo **cả hai chiều**: lệnh/event
 thành `None` và lệnh lặng lẽ đi đường mặc định. `npm run check:ipc` kiểm mọi `invoke(...)` của
 frontend theo quy tắc này. Cột "Tham số JS" dưới đây đã viết sẵn ở dạng camelCase.
 
-## Lệnh (34)
+## Lệnh
 
 Lệnh không có doc comment trong mã được mô tả bằng kiểu trả về, không đoán ngữ nghĩa.
 

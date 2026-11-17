@@ -3,7 +3,7 @@ phase: testing
 feature: readable-world
 title: Testing — RW-C3 cây cỏ theo khoảng cách và mật độ theo mức
 description: Số tam giác và lệnh vẽ trước/sau RW-C3 ở ba tư thế × ba mức, đo bằng bộ đếm RW0-4
-status: proposed
+status: completed
 owner: maintainers
 last_reviewed: 2026-11-16
 ---

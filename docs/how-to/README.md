@@ -28,16 +28,24 @@ npm run build
 Chạy ứng dụng Tauri:
 
 ```powershell
-npm run tauri dev
+npm run tauri:dev
 ```
+
+Dùng `tauri:dev` / `tauri:build`, không dùng `tauri dev` trần: `tauri.conf.json` không có trường cho
+Cargo feature, nên lệnh trần build `default = []` — không Neo4j, không migration giữa shard, learner
+CPU — và không báo lỗi gì. Chạy app đầy đủ rất nặng và từng làm treo máy phát triển; chỉ mở khi cần một
+con người nhìn.
 
 ## Chạy kiểm tra
 
 ```powershell
 npm run test:frontend
 npm run lint
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml --features desktop
 ```
+
+`--features desktop` là bắt buộc và là thứ CI chạy: các file test bị gate theo feature `networking` hoặc
+`ml-wgpu` không được lên lịch nếu thiếu nó.
 
 Chỉ thay đổi simulation core thì tối thiểu chạy Cargo test; thay codec/artifact/tọa
 độ phải chạy cả Rust và frontend để bắt sai khác đa ngôn ngữ.
@@ -56,15 +64,17 @@ Cách chạy, cách so mốc, cách gỡ và **bảng baseline đã cam kết** 
 [`BENCHMARKING.md`](BENCHMARKING.md). Đây là bộ trả lời câu "một tick tốn bao nhiêu", vì nó đo từng
 system headless — không Tauri, không GPU device.
 
-**Harness report proxy** (M0.4) — chạy từ repo root:
+**Harness report** (M0.4) — chạy từ repo root, **sau** `cargo bench --bench tick_systems`:
 
 ```powershell
 node scripts/bench_baseline.mjs
 ```
 
 Đọc cách diễn giải và metadata bắt buộc tại
-[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). `timings` của report này **là proxy theo
-thiết kế** — một vòng fBm, không phải engine. Không so hai report nếu khác
+[`BENCHMARK_BASELINE.md`](../../BENCHMARK_BASELINE.md). Report gồm hai nguồn: các mục `criterion/*` là số
+đo thật đọc từ `src-tauri/target/criterion`; phần còn lại là **proxy theo thiết kế** — một vòng fBm, không
+phải engine. Trên một clone mới chưa chạy bench, script **từ chối** ghi đè report đã commit (exit 1); đặt
+`ANIMA_BENCH_ALLOW_PROXY_ONLY=1` nếu thật sự muốn một report chỉ có proxy. Không so hai report nếu khác
 build mode, workload, seed hoặc cấu hình máy mà không ghi rõ.
 
 ## Kiểm tra phả hệ bằng một parser bên ngoài
@@ -94,7 +104,7 @@ Thiếu nó thì script thoát kèm hướng dẫn cài và nửa Rust vẫn ch�
 Xem script hiện có:
 
 ```powershell
-npx tsx scripts/gen_artifact_fixture.ts
+npm run gen:artifact-fixture
 ```
 
 Sau khi thay format, phải:
@@ -118,7 +128,7 @@ collision/water/lighting phải dùng Animal Map Vision theo thứ tự:
 Nếu MCP chưa xuất hiện, chạy từ repository của MCP:
 
 ```powershell
-npm run doctor -- --project E:\Project\Anima-Engine
+npm run doctor -- --project <đường-dẫn-tới-repo-Anima-Engine>
 ```
 
 Sau đó reload `/mcp`. Không tuyên bố map hoàn tất nếu thiếu manifest gate, ảnh

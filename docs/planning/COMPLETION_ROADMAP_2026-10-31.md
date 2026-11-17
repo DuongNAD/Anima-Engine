@@ -319,6 +319,7 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-C | **C**: nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc và giữ được GPU. Không chọn A, không chọn B | Thẻ R1 của kế hoạch swarm không chạy; thay bằng thẻ nâng `burn`. Chi tiết ở §4.3 |
 | QĐ-1 | **Mức 2**: bản 0.9 chạy một máy trước, rồi mới tới 1.0 | Thẻ R2; chặng 5 của kế hoạch 13/11 |
 | #56, #68 | Đổi nhánh đích sang thân cây rồi merge | Luật L1. Cùng ngày: #56 đã merge; #68 đã đổi nhánh đích và được cập nhật theo thân cây, chờ CI chạy lại |
+| QĐ-P1 | **Có viết** bài báo phương pháp (chủ dự án trả lời "có viết" ngày 2026-11-17). Chủ đề theo đề xuất của kế hoạch swarm: kỷ luật bằng chứng cho mô phỏng ALife, E2 rồi E2R làm case study | Mở luồng thẻ P. QĐ-P2 (chỗ để bản nháp) và QĐ-P3 (khai báo dùng AI) **còn trống** |
 | Người ghi tài liệu | Phiên rà soát tài liệu được giao rà và sửa **toàn bộ** tài liệu trong đợt 2026-11-17, kể cả `STATE`, `TODO.md`, `FINDINGS.md` và trang hàng đợi thẻ. Ngoài đợt đó, bốn file này vẫn thuộc `agent-mac` | [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §1 |
 
 Các thẻ mã sinh ra từ bảng này được định nghĩa ở
@@ -334,7 +335,7 @@ hai dòng cuối):
 | Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
 | Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
-| Chặng 5 | QĐ-P1, QĐ-P2, QĐ-P3 — có viết bài báo phương pháp không; nếu có thì loại bài, chỗ để bản nháp, khai báo dùng AI | Thẻ P1–P9 |
+| Chặng 5 | QĐ-P2, QĐ-P3 — chỗ để bản nháp bài báo (repo này đang public), và khai báo dùng AI | Thẻ P1–P9. QĐ-P1 đã quyết: có viết |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Trước AE4 | QĐ-PAST — chỉ còn thiết kế lưu trữ | §4.2 ngay dưới |

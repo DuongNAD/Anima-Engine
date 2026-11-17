@@ -133,6 +133,10 @@ kín.
 
 ## 8. Quyết định cho chủ dự án: QĐ-SEL1b
 
+> **Đã quyết 2026-11-17: phương án A.** Bản ghi ở
+> [roadmap 31/10 §4.1](../../planning/COMPLETION_ROADMAP_2026-10-31.md#41-quyết-định-sau-2026-11-14-ghi-thêm-2026-11-17);
+> thẻ S6 và SEL2 trong kế hoạch swarm. Phần dưới là câu hỏi như đã đặt ra.
+
 Câu hỏi: có làm lại thí nghiệm chọn lọc theo khan hiếm không, và nếu có thì với yếu tố nào? Mọi phương án đều
 cần khoá manifest mới (vắng khoá thì như cũ) và một bản đăng ký mới. Không phương án nào sửa bản E-SEL1 đã đóng.
 

@@ -45,7 +45,7 @@ Chỉ một nhóm:
 cargo bench --bench tick_systems -- tick/dynamic_fields
 ```
 
-Chạy từ `src-tauri/`, **bằng PowerShell chứ không phải Git Bash** — cùng lý do với `cargo test`
+Chạy từ `src-tauri/`; **trên Windows thì bằng PowerShell chứ không phải Git Bash** — cùng lý do với `cargo test`
 (xem `STATE_OF_THE_PROJECT.md` §4).
 
 ## So sánh với lần trước
@@ -219,7 +219,7 @@ publish telemetry. [`src-tauri/src/core/tick_capture.rs`](../../src-tauri/src/co
 
 Bật bằng biến môi trường khi khởi động engine, hoặc bằng bốn lệnh IPC
 (`start_tick_capture` / `get_tick_capture_status` / `stop_tick_capture` / `export_tick_capture` —
-xem [`PROJECT.md`](../../PROJECT.md) §Interface Contracts):
+xem [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md)):
 
 ```bash
 ANIMA_TICK_CAPTURE=warmup=300,capacity=1800,every=2
@@ -311,8 +311,8 @@ Cần thêm: cổng **5173** trống (`strictPort`), vì `beforeDevCommand` tự
 > ```
 >
 > Và ngay khi cửa sổ hiện, vẫn kiểm định danh trước khi tin bất cứ thứ gì nó vẽ ra:
-> `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và tiêu đề phải là "Anima-Engine Control
-> Center". Hai giây, và nó là thứ duy nhất phân biệt "app của bạn" với "một app nào đó ở đúng địa
+> `window.__TAURI_INTERNALS__ !== undefined` phải là `true`, và dòng đầu trang (h1) phải là "Anima-Engine
+> Control Center" (tiêu đề cửa sổ thì là "Anima Engine - Evolution Simulator"). Hai giây, và nó là thứ duy nhất phân biệt "app của bạn" với "một app nào đó ở đúng địa
 > chỉ đó". Xem [deployment §2.4](../ai/deployment/2026-07-27-feature-anima-completion.md).
 
 ### Bước 1 — Đặt biến môi trường, rồi mở app (PowerShell, cùng một cửa sổ)
@@ -527,8 +527,8 @@ trên phần cứng mục tiêu.
   `npm run check:csp` kiểm `app.security.csp`. Hai khối trong
   [`tauri.conf.json`](../../src-tauri/tauri.conf.json) khai cùng 13 directive, giống nhau ở **11**
   và khác đúng **hai**: `script-src` (dev cho phép thêm `'unsafe-inline'` và
-  `http://localhost:5173`) và `connect-src` (dev thêm `ws://localhost:5173` +
-  `http://localhost:5173`). Nên phiên này xác minh 11 directive **đúng như bản ship**, và để lại
+  `http://127.0.0.1:5173`) và `connect-src` (dev thêm `ws://127.0.0.1:5173` +
+  `http://127.0.0.1:5173`). Nên phiên này xác minh 11 directive **đúng như bản ship**, và để lại
   hai directive kia chỉ được xác minh ở dạng lỏng hơn.
   **Finding đang mở:** [deployment §2.1](../ai/deployment/2026-07-27-feature-anima-completion.md)
   mô tả "một `npm run tauri:dev` bởi con người" là đủ để đóng gate CSP. Theo đo đạc trên thì chưa
@@ -583,11 +583,12 @@ cross-shard migration, learner CPU — và bạn sẽ đo một sản phẩm kh�
 Lần biên dịch release đầu tiên lâu hơn debug đáng kể. Cần cổng **5173** trống nếu bạn định mở kèm
 dev server; bản release thì không cần, nó tự phục vụ frontend đã nhúng.
 
-### Bước 1 — Ba biến môi trường, rồi chạy binary
+### Bước 1 — Bốn biến môi trường, rồi chạy binary
 
-Cùng một cửa sổ PowerShell, đặt **trước** khi chạy — cả ba đều được đọc lúc engine khởi động:
+Cùng một cửa sổ PowerShell, đặt **trước** khi chạy — tất cả đều được đọc lúc engine khởi động:
 
 ```powershell
+$env:ANIMA_FRESH_START = "1"
 $env:ANIMA_FOUNDING_POPULATION = "1000"
 $env:ANIMA_TICK_CAPTURE = "warmup=300,capacity=1800,max_samples=1800"
 $env:ANIMA_TICK_CAPTURE_OUT = "tick-capture-release-1000"
@@ -596,6 +597,7 @@ $env:ANIMA_TICK_CAPTURE_OUT = "tick-capture-release-1000"
 
 | Biến | Việc nó làm | Bỏ trống thì sao |
 |---|---|---|
+| `ANIMA_FRESH_START` | Bỏ qua autosave lúc mở và không ghi đè nó lúc thoát | **Thêm 2026-11-17, đối chiếu `lib.rs`.** Nếu đã có autosave (checklist dev ở trên ghi một cái khi thoát) thì engine **nạp lại save đó**, không chạy genesis, và `ANIMA_FOUNDING_POPULATION` vô tác dụng: bạn sẽ đo quần thể cũ mà tưởng là 1.000 |
 | `ANIMA_FOUNDING_POPULATION` | 1000 founder, rải theo lưới trong `MapBounds` ±100, giữ tỷ lệ prey/predator 7/3 | 10 founder trên đường thẳng cũ — **giống hệt bit** với mọi lần chạy trước |
 | `ANIMA_TICK_CAPTURE` | Bật capture ngay lúc engine khởi động | Không capture; vẫn bật tay được qua IPC nếu có DevTools (bản release thì không) |
 | `ANIMA_TICK_CAPTURE_OUT` | **Tự ghi file khi capture xong.** Đường duy nhất lấy dữ liệu ra ở bản release | Không ghi gì; 1800 mẫu nằm trong RAM rồi chết theo tiến trình |
@@ -606,7 +608,8 @@ in ra stderr chứ không im lặng.
 
 ### Bước 2 — Bấm `Bắt đầu mô phỏng`, rồi đợi
 
-Không có autosave thì engine **không** tự chạy. Bấm nút xanh, rồi để yên.
+Với `ANIMA_FRESH_START=1` engine bỏ qua autosave và **không** tự chạy. Bấm nút xanh, rồi để yên. (Đặt thêm
+`ANIMA_AUTOSTART=1` nếu muốn nó tự chạy mà không cần bấm.)
 
 **Đừng canh 35 giây như checklist dev.** Ở 1000 agent mỗi tick đắt hơn nhiều lần, nên 2100 tick mất
 lâu hơn hẳn — và con số đó chính là thứ bạn đang đo, nên đoán trước nó là vô nghĩa. Tín hiệu dừng
@@ -700,6 +703,7 @@ tiếng ồn chứ không đo độ dốc.
 ```powershell
 # lặp lại khối này ba lần với N = 250, 500, 1000
 $N = 250
+$env:ANIMA_FRESH_START = "1"   # nếu không, autosave của lượt trước được nạp lại và N vô tác dụng
 $env:ANIMA_FOUNDING_POPULATION = "$N"
 $env:ANIMA_TICK_CAPTURE     = "warmup=300,capacity=1800,max_samples=1800"
 $env:ANIMA_TICK_CAPTURE_OUT = "h5-release-$N"
@@ -707,9 +711,10 @@ $env:ANIMA_TICK_CAPTURE_OUT = "h5-release-$N"
 ```
 
 ```bash
-# macOS/zsh — cùng ba biến, khác đường dẫn binary
+# macOS/zsh — cùng các biến, khác đường dẫn binary
 for N in 250 500 1000; do echo "chay N=$N roi bam nut, doi 'tick capture complete', dong app"; done
 N=250
+ANIMA_FRESH_START=1 \
 ANIMA_FOUNDING_POPULATION=$N \
 ANIMA_TICK_CAPTURE="warmup=300,capacity=1800,max_samples=1800" \
 ANIMA_TICK_CAPTURE_OUT="h5-release-$N" \
@@ -810,7 +815,8 @@ phải phần cứng:
   [§ Checklist một lần chạy](#checklist-một-lần-chạy-cho-chủ-dự-án-one-run-owner-checklist).
 - **Chưa có số cho phần đắt nhất còn lại:** suy luận não per-agent. Nó đang tắt mặc định (§3.1), nên
   chưa có gì để đo trên đường mặc định.
-- `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) vẫn ghi **128**,
+- *(Sửa 2026-11-17: `config.gridDim` trong report nay là **256**; đoạn dưới mô tả tình trạng trước đó.)*
+  `config.gridDim` trong [`benchmark_report.json`](../../benchmark_report.json) từng ghi **128**,
   trong khi thế giới thật chạy **256²** (`MapSettings::default()`) và `DEFAULT_GRID_DIM` trong
   `sim_rules.rs` **đã là 256** kể từ 2026-07-27 (test `s03_default_grid_dim_tracks_map_settings_default`
   ghim nó). Bộ bench này dùng 256², và tick capture đọc kích thước **từ `ResourceField` của thế giới

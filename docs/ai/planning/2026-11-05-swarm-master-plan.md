@@ -1,6 +1,6 @@
 ---
 title: Kế hoạch tổng cho swarm Antigravity — mọi việc, mọi phép đo, chia đợt song song
-status: proposed
+status: active
 owner: maintainers
 last_reviewed: 2026-11-05
 review_cycle: weekly
@@ -206,7 +206,8 @@ khác của đợt.
 
 ### Luồng tài liệu — hoàn thiện bộ docs (chạy xen từ Đợt 2)
 
-Hiện trạng: `docs/tutorials/` chỉ có README, `docs/how-to/` chỉ có `BENCHMARKING.md`, hợp đồng IPC đã
+Hiện trạng ngày 2026-11-05 (nay `docs/how-to/` có thêm `AGENT_WORKFLOW.md` và hợp đồng IPC đã có ở
+`docs/reference/IPC_CONTRACT.md`): `docs/tutorials/` chỉ có README, `docs/how-to/` chỉ có `BENCHMARKING.md`, hợp đồng IPC đã
 mất khỏi `PROJECT.md`, và roadmap 16/10 HT1.7 liệt kê hơn mười chỗ tài liệu mâu thuẫn nhau. Thẻ tài
 liệu phần lớn không chạm mã, nên chạy song song được với thẻ `[RUST]`; nhưng mọi lệnh viết trong tài
 liệu phải được **chạy thật** trước khi ghi vào.

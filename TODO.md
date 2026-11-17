@@ -39,6 +39,16 @@ Cùng ngày, sổ quyết định (roadmap 31/10) có thêm §4.2: nguyên tắc
 biến** do chủ dự án nêu (QĐ-PAST; bảng ngoại lệ được chốt cùng ngày: "quay lại" chỉ có nghĩa là fork), và
 hai đề xuất còn trống là QĐ-TIME (tách lịch khỏi tốc độ xem) và QĐ-LAW1 (thí nghiệm rẽ luật đầu tiên).
 
+Đợt ba cùng ngày: chủ dự án trả lời mười hai câu hỏi của phiên rà soát và các quyết định được ghi vào sổ
+(QĐ-SEL1b = A, QĐ-ECO-C1 = có, QĐ-EN, F-044 = tách bộ đếm, QĐ-LAW1, QĐ-TIME, **QĐ-C = C: nâng `burn`**, QĐ-1 =
+mức 2, QĐ-P1 = có viết bài báo); chín thẻ mới được định nghĩa trong kế hoạch swarm. Ba lượt rà chỉ-đọc so
+từng khẳng định của tài liệu với mã, và mỗi phát hiện được kiểm lại trước khi sửa. Chỗ nặng nhất:
+`PROJECT.md` ghi pipeline Meshy/`.glb`, bốn hệ thời tiết theo biome, caustics và CI đóng gói đa nền tảng là
+"DONE" trong khi không cái nào có trong mã; `AUDIT_REPORT.md` còn khuyên đúng bản sửa SIM-01 từng làm mọi
+agent mù; checklist đo bản release không đặt `ANIMA_FRESH_START`, nên sẽ nạp lại autosave và đo nhầm quần
+thể; `MAP_MANIFEST.md` nói cả 8 view chưa chụp trong khi cả 8 đã chụp. Mười bảy tài liệu `docs/ai` được đổi
+trạng thái cho khớp việc đã merge.
+
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 
 `feat/ecological-selection` và `main` được bảo vệ, với `Rust (src-tauri)` và `Frontend` là check bắt buộc. Trên

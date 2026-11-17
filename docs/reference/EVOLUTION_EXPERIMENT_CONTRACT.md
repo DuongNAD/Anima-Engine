@@ -10,7 +10,9 @@ feature_requirements: ../ai/requirements/2026-07-24-feature-alternate-evolution-
 
 # Hợp đồng chế độ tiến hóa và thí nghiệm thế giới
 
-Tài liệu này là **contract mục tiêu đang được đề xuất**, chưa mô tả tính năng đã có trong runtime.
+Tài liệu này là **contract mục tiêu đang được đề xuất**. *Sửa 2026-11-17:* câu cũ ở đây nói nó "chưa mô tả
+tính năng đã có trong runtime"; điều đó đã hết đúng. Lát headless AE1–AE3 đã có trong mã (bảng "Sự thật code
+hiện tại"); phần còn lại vẫn là mục tiêu.
 Nó quy định cách Anima Engine tạo các lịch sử tiến hóa khác nhau từ cùng một thế giới nền, ví dụ
 một nhánh không có nguồn năng lượng đặc biệt và một nhánh có nguồn năng lượng được hiển thị với tên
 “mana”.
@@ -50,17 +52,21 @@ sau khi ADR-0002 được accepted.
 
 ## Sự thật code hiện tại
 
+> **Đối chiếu 2026-11-17** bằng cách tìm symbol trên thân cây; không test nào được chạy. Năm hàng của bảng
+> gốc đã lỗi thời và được sửa tại chỗ, mỗi hàng ghi rõ. Mọi thứ thêm vào đều thuộc **lát headless tham
+> chiếu**, không phải thế giới Bevy sống, trừ hàng adapter.
+
 | Khả năng | Symbol hiện tại | Giới hạn hiện tại |
 |---|---|---|
 | Scenario deterministic | `core::scenario::Scenario`, `run_scenario` | Chỉ cấu hình seed/duration/intervention |
-| Control/treatment | `control_treatment` | Một seed, model mặc định, chưa có world-law fork |
+| Control/treatment | `control_treatment` (`core/scenario.rs`); `genesis_fork`, `checkpoint_fork` (`core/experiment_runner/fork.rs`); `run_ensemble` (`core/experiment_runner/ensemble.rs`) | *Sửa 2026-11-17:* đã có fork từ khởi nguyên, fork từ checkpoint và ensemble nhiều seed. Hàng cũ ghi "một seed, chưa có world-law fork" |
 | Mô hình thử | `ReferenceEcosystem` | Aggregate nhỏ; không phải live Bevy world |
 | Live Bevy world qua cùng contract | `core::live_experiment::LiveExperimentAdapter` (`ExperimentModel`) | **Đã có, verified headless** (2026-07-27): cùng manifest/clock/intervention/ledger/registry, trên đúng lịch trình `simulation_schedule::build_tick_schedule` mà app chạy. **Từ chối** `laws.exotic_energy` (không có trường MU) và không có quần thể AE3; chưa chạy app desktop; **không** tuyên bố trùng số với reference — chỉ trùng hướng của luật chung |
-| Can thiệp | `InterventionKind`, `InterventionCommand` | Năm kind cố định; chưa có parameter map/version |
+| Can thiệp | `InterventionKind`, `InterventionCommand` (`crates/anima-domain/src/intervention.rs`, re-export ở `core/intervention.rs`) | *Sửa 2026-11-17:* tám kind, không phải năm. Chưa có parameter map/version |
 | Giải thích nhân–quả | `CausalLedger`, `EffectRecord` | Một parent; multi-cause attribution còn thiếu |
-| Luật/đơn vị | `core::sim_rules::STATE_VARIABLES` | Closed EU; chưa có exotic-energy registry |
-| World identity | `WorldIdentity` | Seed/generator/checksum; chưa fingerprint `WorldLawSet` |
-| Tiến hóa | genotype, mutation/crossover, MAP-Elites | Chưa có energy pathway/species clustering |
+| Luật/đơn vị | `core::sim_rules::STATE_VARIABLES`; `WorldLawSet` (`core/experiment/laws.rs`); `ExoticEnergyLaw` (`core/exotic_energy.rs`), `ExoticEnergyField` (`core/exotic_energy/field.rs`); `ObservableRegistry` (`core/experiment/observables.rs`) | *Sửa 2026-11-17:* luật năng lượng ngoại lai và registry observable đã có ở lát headless. `STATE_VARIABLES` vẫn chỉ khai closed EU |
+| World identity | `WorldIdentity`; `WorldLawSet::fingerprint`, `ExperimentManifest::fingerprint` (`core/experiment/`) | *Sửa 2026-11-17:* luật và manifest đã có fingerprint |
+| Tiến hóa | genotype, mutation/crossover, MAP-Elites; `EnergyPathwayGenotype` (`core/evolution_pathway.rs`) | *Sửa 2026-11-17:* energy pathway đã có, chỉ ở quần thể tham chiếu AE3 (opt-in). Species clustering chưa có |
 | Dashboard | `EcosystemPanel` | Biomass/niche/archive; chưa có experiment comparison |
 
 ## Invariant bắt buộc
@@ -102,6 +108,9 @@ Mỗi `ExoticEnergyLaw` phải khai báo:
 
 - đơn vị riêng, mặc định `MU` (mana unit);
 - source model: `Finite`, `Renewable`, `Pulsed` hoặc `Disabled`;
+  *(Trạng thái 2026-11-17: `ExoticSourceModel` trong mã chỉ có `Renewable`. Tắt nguồn được biểu diễn bằng
+  `exotic_energy = None`, cố ý không có biến thể `Disabled`; `Finite` và `Pulsed` chưa hiện thực. Sửa dòng
+  luật này cho khớp mã hay giữ nó làm mục tiêu là việc của ADR-0002, vốn còn `proposed`.)*
 - spatial topology và initial amount/flux;
 - uptake, release, decay/dissipation;
 - conversion rule nếu có;
@@ -198,6 +207,12 @@ field, organism hoặc ecosystem phải qua `animal-map-vision` theo AGENTS.md. 
 phải là `blocked: map evidence unavailable`, không phải pass.
 
 ## Data model mục tiêu
+
+> *Ghi chú 2026-11-17:* khối dưới đây là **bản phác viết trước khi hiện thực** và không còn khớp từng trường
+> với mã. Ví dụ: `WorldLawSet` trong mã dùng `schema_version` và không có `evolution`/`speciation`;
+> `ExperimentManifest` dùng `world_identity`, `laws`, `sample_period` và `observable_ids`. Khi cần tên
+> trường thật, đọc `core/experiment/laws.rs`, `core/experiment/manifest.rs`, `core/exotic_energy.rs` và
+> `core/evolution_pathway.rs`.
 
 ```rust
 pub struct WorldLawSet {

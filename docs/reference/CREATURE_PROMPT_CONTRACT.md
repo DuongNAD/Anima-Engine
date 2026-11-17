@@ -15,7 +15,7 @@ Tài liệu này là nguồn chuẩn bắt buộc cho mọi thay đổi liên qu
 hay comment khác tài liệu này, sửa nguồn mâu thuẫn trước khi triển khai.
 
 Đọc kèm: [`CREATURE_DEVELOPMENT_CONTRACT.md`](./CREATURE_DEVELOPMENT_CONTRACT.md) (nguồn của
-`DevelopedPhenotype`) và [`DETERMINISM_CONTRACT.md`](./DETERMINISM_CONTRACT.md) (§5, cách một
+`DevelopedPhenotype`) và [`DETERMINISM_CONTRACT.md`](./DETERMINISM_CONTRACT.md) (§3 "Công tắc", gạch "AI ngoài": cách một
 model từ xa được phép tham gia một run tái lập được).
 
 ---
@@ -334,7 +334,7 @@ Quy tắc Allen, chỉ ở hai cực — vùng ôn hoà bỏ trống để tiế
 |---|---|
 | Armor trait cao | `bony dorsal plates` |
 | Spine trait cao | `a ridge of defensive spines` |
-| `ExoticEnergy` biểu hiện (ADR-0002) | `faint bioluminescent markings` |
+| Pathway năng lượng ngoại lai biểu hiện (`EnergyPathwayGenotype.expressed`, ADR-0002; hiện chỉ có ở quần thể tham chiếu AE3, thế giới sống chưa có trường MU) | `faint bioluminescent markings` |
 | Tốc độ cao | `deep chest and long hind limbs` |
 | Đào hang | `broad shovel-like forelimbs` |
 
@@ -515,7 +515,7 @@ a tiny slender serpentine creature, long tapering body, glossy moist skin, moss-
 
 **329 ký tự** — dư 671 dưới trần.
 
-### E · `Snow`, `Prey`, massive quadruped, thế giới có `ExoticEnergy`
+### E · `Snow`, `Prey`, massive quadruped, thế giới có năng lượng ngoại lai
 
 ```text
 a massive stocky four-legged creature, deep barrel torso, four stubby limbs ending in blunt hooved feet, thick shaggy fur, bone-white, pale mottled winter coat, narrow head with wide-set lateral eyes and a blunt grazing muzzle, small rounded ears and a short thick tail, faint bioluminescent markings, stylized realistic creature design, symmetrical anatomy, neutral A-pose, single full-body creature, plain empty background, even matte PBR texture
@@ -533,6 +533,7 @@ Ba điều đọc được từ bộ ví dụ:
   hai slot đó vắng mặt, không phải điền `no limbs` — một mệnh đề phủ định trong prompt thường
   bị model dịch thành sự hiện diện của chính thứ bị phủ định. Phủ định thuộc về negative prompt.
 - **Ví dụ E là con duy nhất có `faint bioluminescent markings`,** vì nó là con duy nhất biểu hiện
-  `ExoticEnergy`. Một luật thế giới khác ([ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md))
+  pathway năng lượng ngoại lai (không có kiểu nào tên `ExoticEnergy` trong mã; module là
+  `core::exotic_energy`). Một luật thế giới khác ([ADR-0002](../decisions/ADR-0002-world-laws-and-exotic-energy.md))
   đi thẳng ra ngoại hình mà không cần thêm slot nào.
 - **Mọi ví dụ kết thúc bằng đúng một chuỗi style lock.** Đó là P05 nhìn từ đầu ra.

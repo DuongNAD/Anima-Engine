@@ -59,7 +59,7 @@ last_reviewed: 2026-11-17
 >
 > Tên **E-SEL1**, không dùng "E3": tên E3 đang mơ hồ (E3 cũ là
 > [dự thảo gradient năng suất](2026-08-26-experiment-e3-productivity-gradient-body-mass.md), QĐ-EN
-> còn mở). Soạn trên nhánh `feat/ecological-selection`, theo đề xuất nghiên cứu 2026-11-16.
+> còn mở lúc viết; quyết ngày 2026-11-17: E2R và E3). Soạn trên nhánh `feat/ecological-selection`, theo đề xuất nghiên cứu 2026-11-16.
 
 ## 1. Câu hỏi
 

@@ -3,7 +3,7 @@ phase: implementation
 feature: ecological-selection
 title: Task Backlog — Đóng vòng sinh thái
 description: Danh sách đầy đủ việc cần làm, có neo file, phụ thuộc và định nghĩa hoàn thành cho từng mục
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-ecological-selection.md
@@ -100,6 +100,12 @@ Kiểm lại bảng này trước khi bắt đầu. Nếu một dòng đã lệc
 ---
 
 ## 4. R — Sinh sản theo ngưỡng
+
+> *Ghi chú 2026-11-17:* nhóm R vẫn 🔒 và các gate RE-S0x chưa có. Nhưng sinh sản liên tục **đã vào mã bằng
+> đường khác**: `ReproductionPolicy` và `SpawnOffspringCommand` tồn tại, bật bằng khoá `live.reproduction`
+> (thẻ S1, #66, [ADR-0005](../../decisions/ADR-0005-live-population-turnover.md)). `ANIMA_REPRODUCTION` và
+> `births_suppressed_by_cap` thì chưa có. Trần sinh sản của con mồi là việc của thẻ S6 (QĐ-SEL1b = A). Nhóm
+> R giữ nguyên, đóng lại hay thu hẹp về phần S1 chưa làm là việc chủ dự án quyết.
 
 | ID | Trạng thái | Việc | Neo | Phụ thuộc | Định nghĩa hoàn thành | Ghi chú |
 |---|---|---|---|---|---|---|

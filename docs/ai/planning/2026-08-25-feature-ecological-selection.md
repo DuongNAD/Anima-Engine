@@ -3,7 +3,7 @@ phase: planning
 feature: ecological-selection
 title: Plan — Đóng vòng sinh thái
 description: Thứ tự triển khai sáu nhánh, đồ thị phụ thuộc, điểm rollback và quy tắc dừng
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-ecological-selection.md

@@ -3,7 +3,7 @@ phase: planning
 feature: living-world
 title: Plan — Thế giới sống
 description: Thứ tự triển khai hình thái, animation và tính toán phân tán, kèm gate từng bước
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-living-world.md

@@ -52,6 +52,7 @@ Thiếu **bất kỳ** field bắt buộc nào ở dưới đây làm manifest *
 | `height` | integer ≥ 1 | bắt buộc. |
 | `seaLevel` | number | bắt buộc — sea level chuẩn hóa `[0,1]`. |
 | `checksum` | string | **tùy chọn** — ví dụ `sha256:...` của artifact bytes. |
+| `bytes` | integer | **tùy chọn**, do generator ghi — kích thước file artifact. |
 
 > **`map_manifest.json` là file SINH RA, đừng sửa tay.** Chạy `npm run gen:world-manifest`: nó chạy
 > `generateWorld` thật, mã hoá bằng `worldToArtifact` thật, ghi `artifacts/world_256.anmw`, rồi ghi
@@ -63,10 +64,14 @@ Thiếu **bất kỳ** field bắt buộc nào ở dưới đây làm manifest *
 > tuỳ ý mà không có gate nào đỏ. Nay `tests/frontend/mapManifestEvidence.test.ts` mở **chính file đã
 > commit**, băm **chính các byte** artifact trỏ tới, và đối chiếu header ANMW.
 >
-> **`captured`**: mỗi view mang cờ này. Repo **chưa có** pipeline chụp ảnh 3D, nên cả 8 view đều
-> `captured: false` và **không ảnh nào được tuyên bố**. Gate cưỡng chế mệnh đề đúng chiều — bất kỳ
-> view nào `captured: true` thì file phải có trên đĩa. Bịa 8 ảnh PNG để một dấu tick chuyển xanh
-> chính là kiểu sai mà toàn bộ đợt này tồn tại để loại bỏ.
+> **`captured`**: mỗi view mang cờ này. Đối chiếu 2026-11-17: cả 8 view trong `map_manifest.json` là
+> `captured: true`, chụp bằng `npm run capture:views` (Playwright); manifest ghi `bytes` và `checksum`
+> của từng ảnh trong `map-views/`. Gate vẫn cưỡng chế mệnh đề đúng chiều — bất kỳ view nào
+> `captured: true` thì file phải có trên đĩa và khớp checksum. Bịa 8 ảnh PNG để một dấu tick chuyển
+> xanh chính là kiểu sai mà toàn bộ đợt này tồn tại để loại bỏ.
+>
+> *Bản trước của ghi chú này viết repo chưa có pipeline chụp ảnh và cả 8 view là `captured: false`; điều
+> đó đúng lúc viết và đã hết đúng từ khi có `capture:views`.*
 
 ### 2.3. `coordinateSystem`
 
@@ -79,6 +84,7 @@ Các giá trị cố định theo [SIMULATION_RULES.md](SIMULATION_RULES.md) / `
 | `worldMinY` | `0` | `WORLD_MIN_Y`. |
 | `worldMaxY` | `10` | `WORLD_MAX_Y` (= `elevation * 10`). |
 | `gridDim` | integer ≥ 1 | grid backend (`DEFAULT_GRID_DIM = 256`, khớp `MapSettings::default()`). |
+| `unitsPerCell`, `worldScale` | number | **tùy chọn**, do generator ghi. |
 
 > Hai coordinate convention cùng tồn tại và **khác nhau** (xem `sim_rules.rs`):
 > - **cell-bucket** (`get_map_indices`): `u=(x-min.x)/(max.x-min.x)`, `ix=floor(u*W).min(W-1)`; ngoài `[0,1]` → không có cell. Round-trip: tâm cell luôn bucket về đúng cell đó (property S03).
@@ -103,6 +109,8 @@ Mỗi phần tử:
 | `id` | enum | một trong **8 canonical view id** (xem §3). |
 | `imagePath` | string | bắt buộc — ảnh đã render cho view. |
 | `camera` | object | bắt buộc: `position:[x,y,z]`, `target:[x,y,z]` (mỗi cái là triple số). |
+| `captured` | boolean | **tùy chọn**, mặc định `false` — ảnh của view đã được chụp thật hay chưa. |
+| `bytes`, `checksum` | integer, string | có khi `captured: true` — kích thước và băm của ảnh; gate đối chiếu với file trên đĩa. |
 
 ---
 
@@ -121,7 +129,7 @@ Các view cần kiểm tra **nếu tồn tại**, theo đúng danh sách trong [
 | `biome_transition` | Chuyển tiếp biome không gãy/không seam. |
 | `ecosystem` | Mật độ thực vật/wildlife phản ánh sinh khối thật. |
 
-Camera position trong manifest mẫu nằm trong world space `[-100,100]`, `target` hướng vào vùng quan tâm.
+Trong manifest mẫu, `target` của camera nằm trong world space `[-100,100]` và hướng vào vùng quan tâm; `position` có thể đứng ngoài biên (ví dụ view `overview` ở `[0, 112, 112]`).
 
 ---
 

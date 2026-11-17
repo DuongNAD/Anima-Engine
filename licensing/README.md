@@ -22,7 +22,7 @@ the same time.
 
 | Closure | Definition | Distributed? | Count |
 |---|---|---|---|
-| `cargo-desktop` | `cargo tree --features desktop -e normal` | yes — linked into the binary | 419 |
+| `cargo-desktop` | `cargo tree --features desktop -e normal` | yes — linked into the binary | 422 |
 | `npm-bundle` | packages with **rendered bytes in `dist/`** | yes — Tauri packages `dist/` | 21 |
 | `npm-install-only` | in the production install closure, no bytes in `dist/` | **no** — `node_modules` is not shipped | 18 |
 
@@ -102,7 +102,7 @@ test suite asserts this is still the only one.
 ## What is and is not established
 
 **Established.** Every distributed component is named with its exact locked version, its declared
-SPDX expression, and — for 439 of 440 — the verbatim text of its licence: 408 read out of the
+SPDX expression, and — for 442 of 443 — the verbatim text of its licence: 411 read out of the
 installed artifact, 31 vendored from a pinned upstream commit, each with a SHA-256 that can be
 re-checked against the package or re-fetched from its URL. The SBOM validates against the official
 CycloneDX 1.5 schema, vendored in [`../schemas/cyclonedx/`](../schemas/cyclonedx/) and pinned to a

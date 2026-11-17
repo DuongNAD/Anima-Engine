@@ -83,7 +83,7 @@ bảy đường (restore, migration, rehydrate, và `WakeAgentCommand`, vốn đ
 | `decode_genotype`, `SpawnGenotypeCommand`, `spawn_serialized_agent`, `SpawnMigrationCommand` | ✅ có | Bốn đường gọi ở bảng đầu |
 | `SpawnOffspringCommand`, `RehydrateCommand`, `live_experiment::genesis` | ✅ có | Ba đường gọi thêm, đối chiếu 2026-11-17 |
 | `DevelopedPhenotype` | ❌ chưa | Chỉ có trên nhánh chưa gộp `origin/fix/ht0-5c-sim-semantics` (`d396555`) |
-| `EnvSample`, `RuntimeState` | ❌ chưa | |
+| `EnvSample`, `RuntimeState` | ❌ chưa | Hợp đồng này và hợp đồng prompt dùng **hai tên** cho ảnh chụp môi trường: `EnvSample` (đầu vào của development) và `EnvironmentSnapshot` (trường `birth_environment` lưu trong phenotype). Chưa có quyết định chúng là một kiểu hay hai; chốt trước khi hiện thực |
 | `develop_at_birth` | ❌ chưa | D01 ràng buộc hàm này khi nó được tạo |
 | `LocomotionMedium`, `HabitatPreference`, `DynamicChromatophore` | ❌ chưa | |
 

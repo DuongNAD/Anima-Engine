@@ -39,7 +39,7 @@ tài liệu ở bảng thắng; sửa trang này.
   (a43872c → bb78e63; `main` là tổ tiên, 0 commit riêng). PR vẫn nhắm vào `feat/ecological-selection`
   trong đợt "readable world"; `main` được kéo lên thân cây ở các mốc.
 - **Đã quyết 2026-11-14:** QĐ-A′ (giữ mortality của thân cây), QĐ-B (uỷ quyền theo thẻ), QĐ-F028
-  (commit icon thật). **Còn trống:** QĐ-P1…P3, QĐ-M1…M8 (các ô khác quyết 2026-11-17, dưới).
+  (commit icon thật). **Còn trống:** QĐ-P2, QĐ-P3, QĐ-M1…M8 (các ô khác quyết 2026-11-17, dưới).
 - **Đã quyết 2026-11-16** (phiên lead theo uỷ quyền của chủ dự án trong chat): QĐ-E2M = B (#59),
   QĐ-4 = A và QĐ-5 = có ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), QĐ-LOC = A
   ([ADR-0006](../decisions/ADR-0006-locomotion-actuation.md)), QĐ-ECO = A
@@ -90,7 +90,7 @@ tài liệu ở bảng thắng; sửa trang này.
 | **D1** | Phân loại finding của `AUDIT_REPORT.md` | ✅ #43 |
 | **T1** `[RUST]` | **B3b** — năm gate mà PR #40 làm đỏ | ✅ #44 |
 | **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ #45 (2026-11-15) |
-| **P1–P3** | Bài báo | ⛔ QĐ-P1, QĐ-P2 trống. Luật L4: ô quyết định trống thì không chạy |
+| **P1–P3** | Bài báo | ⛔ QĐ-P1 = có viết (2026-11-17), nhưng QĐ-P2 còn trống. Luật L4: ô quyết định trống thì không chạy |
 
 ### Đợt 2 — đang chạy (chặng 3)
 
@@ -169,7 +169,8 @@ QD-6      = docs/reference/IPC_CONTRACT.md. It and its gate (scripts/check_ipc_r
 QD-F028   = yes: copy src-tauri/icons/ from origin/feat/ecological-selection (owner, 2026-11-14)
 QD-EN     = E2R is the rerun of the brain question; E3 is the productivity gradient (owner in
             chat, 2026-11-17)
-QD-P1     =
+QD-P1     = yes: write the methods paper (owner in chat, 2026-11-17); topic as proposed in the swarm
+            plan: evidence discipline for ALife simulation, E2 then E2R as the case study
 QD-P2     =
 QD-1      = level 2: a single-machine 0.9 first, then 1.0 (owner in chat, 2026-11-17)
 R5-AUTH   =

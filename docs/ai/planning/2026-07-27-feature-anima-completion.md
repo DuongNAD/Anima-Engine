@@ -176,7 +176,7 @@ step attached.
   code with the generated `ts-rs` types where they exist — that work overlaps with 9a, which is now
   done, so the types are in place — then the hook rules file by file. It is mechanical, it is large,
   and it is the one master-scope item this pass did not reach.
-- **CSP verified in the live webview.** **External gate.** `check:csp` validates shipped artifacts
+- **CSP verified in the live webview.** **Closed 2026-07-27 — see the deployment doc, §2.1** (note added 2026-11-17; the text that follows is the entry as written before a human ran the app). **External gate.** `check:csp` validates shipped artifacts
   against the declared policy and now runs in CI; it cannot prove the app boots under it, because
   that needs the Tauri webview and CLAUDE.md records that running the full backend here has crashed
   the machine. **To close:** one `npm run tauri:dev` by a human. Deployment doc §2.1.

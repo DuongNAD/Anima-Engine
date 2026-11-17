@@ -12,6 +12,12 @@
 
 ## 0. TL;DR — Kết luận cốt lõi
 
+> **§0 và §1 là ảnh chụp ngày 2026-07-24, không phải hiện trạng** *(ghi chú 2026-11-17, đối chiếu mã)*. Từ đó:
+> backend chạy lưới **256²** và đọc World Artifact do frontend sinh (cache đĩa qua
+> `TerrainMap::load_or_generate`); save mang `world_identity`; `WORLD_GEN_VERSION` là 21; và `WorldShowcase`
+> vẽ agent thật qua `LiveAgents`. "Vấn đề #1" bên dưới, map bị tách làm đôi, đã được giải quyết, như chính §5
+> của tài liệu này ghi. Hiện trạng: [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
+
 1. **Bạn KHÔNG cần xây map từ đầu.** Đã có một bộ sinh world rất chín (`worldGen.ts`, 2048², 22 biome,
    khí hậu rain-shadow, erosion, hồ priority-flood, sông D8, cache nhị phân IndexedDB, `WORLD_GEN_VERSION 18`).
    Về mặt **render + độ giàu môi trường**, nó đã ở đẳng cấp cao.
@@ -249,9 +255,12 @@ frontend đọc artifact đó để render (bỏ `worldGen.ts` khỏi đường 
   `vegetation`, `skyWeather`). `worldGen.ts` cũng **vẫn dùng `ImprovedNoise2D` từ `terrainGenerator`**. → **KHÔNG gỡ** (sẽ vỡ app +
   test). Nếu muốn thống nhất một stack landscape thì phải chuyển App.tsx sang WorldShowcase + viết lại test — một việc lớn, cần
   nhìn tận mắt, không phải "dọn dẹp".
-- Sửa số liệu cũ: `worldCache.ts:9` ("~17MB" → ~31MB @1024²); `TODO.md:381` ("~90MB" → ~126MB @2048²).
+  *Cập nhật 2026-11-17:* `src/App.tsx` **đã** chuyển sang `WorldShowcase` (biến vẫn tên `LandscapeShowcase`).
+  File `LandscapeShowcase.tsx` chỉ còn các test `landscape_showcase*` import, nên gỡ stack legacy nay là việc
+  xoá hoặc viết lại test, không còn là việc làm vỡ app.
+- Sửa số liệu cũ: chú thích "~17 MB" trong `worldCache.ts` (→ ~31MB @1024²); chuỗi "~90MB" trong `TODO.md` (→ ~126MB @2048²). *(Số dòng cũ đã lệch và được bỏ, 2026-11-17.)*
 - Xoá/đánh dấu dead code backend: `get_elevation_at_pos`, `get_map_indices` (0 caller) — sẽ dùng khi agent đọc biome trực tiếp.
-- Đồng bộ `PROJECT.md` Interface Contracts (thiếu `get_terrain_map`, `get_environmental_elements`).
+- ~~Đồng bộ `PROJECT.md` Interface Contracts (thiếu `get_terrain_map`, `get_environmental_elements`).~~ ✅ Hợp đồng IPC nay ở [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md) và có gate đối chiếu với mã (2026-11-14).
 
 ---
 
@@ -299,7 +308,7 @@ Agent ngủ bị **huỷ hẳn** (entity, component, não). Còn lại là mấy
 - **Bảo toàn năng lượng — một dòng, một chỗ.** Con vật ngủ **vẫn là con vật**: năng lượng của nó chưa bị ăn, chưa
   hô hấp, chưa về mùn — chỉ thôi được phân giải theo từng cá thể. Nên **không có compartment thứ tư** và **không có
   giao dịch ledger** nào: `ecosystem_census_system` cộng thêm `DormantCohorts::total_energy()` vào `pool.animals`,
-  hết. Phương án thay thế (dồn dự trữ vào mùn) cũng bảo toàn EU nhưng **sai sinh thái** — đi khỏi một bầy thú là
+  hết. *(Ghi chú 2026-11-17: sổ năng lượng nay có một ngăn `dormant`, thêm sau cho **ngủ đông** của từng cá thể; cohort LOD ở mục này không dùng ngăn đó.)* Phương án thay thế (dồn dự trữ vào mùn) cũng bảo toàn EU nhưng **sai sinh thái** — đi khỏi một bầy thú là
   bón phân cho cả vùng.
 - **Nhả năng lượng và huỷ body dùng chung một sync point.** `DehydrateAgentCommand` là `Command` đúng vì lý do
   `ReclaimAndDespawnAgentCommand` đã ghi: nếu ghi sổ trong system rồi despawn qua `Commands`, còn một khoảng trong
@@ -336,7 +345,7 @@ mọi chênh lệch giữa hai mô hình chính là sự chú ý của observer 
 - **Trao đổi chất là ĐO, không phải mô hình hoá.** Cohort đốt đúng tốc độ mà thành viên của nó *đã được đo* khi còn
   là body sống (`FeatureTracker`, trung bình mỗi tick của epoch hiện tại). Viết một công thức maintenance-only là
   cách tự nhiên nhất và sẽ làm **ngủ rẻ hơn bị nhìn**, khiến vùng không ai quan sát âm thầm nuôi được quần thể lớn hơn.
-- **Không có chết đói.** Agent sống ở 0 năng lượng không bị despawn (`update_agent_evaluation_system` chỉ ngừng đếm),
+- **Không có chết đói.** *(Ghi chú 2026-11-17: điều này chỉ đúng khi `MortalityPolicy` tắt, tức mặc định. Bật `ANIMA_MORTALITY` thì agent sống chết đói còn cohort ngủ thì không; bất đối xứng đó chưa được vá.)* Agent sống ở 0 năng lượng không bị despawn (`update_agent_evaluation_system` chỉ ngừng đếm),
   nên cohort đói chạm đáy 0 và **giữ nguyên số thành viên**. Thêm chết theo mật độ trông như sinh thái phong phú hơn,
   thực chất là observer chọn ai chết.
 
@@ -347,7 +356,7 @@ toàn đều qua. Nhưng Holling Type II bão hoà theo **mật độ**: tổng 
 nên phải áp *trên đầu cá thể*: mỗi cá thể ngủ gặm như đang đứng trên một ô **trung bình** của chunk, rồi mới nhân với
 số con ăn cỏ. Test `sleeping_is_not_cheaper_than_being_watched` là thứ đã bắt được nó, và là thứ giữ nó.
 
-**✅ ĐÃ persist (schema 4, mở rộng ở schema 5).** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo
+**✅ ĐÃ persist (schema 4, mở rộng ở schema 5; schema hiện hành là 7).** `SavedSimulationState` rất kỹ về năng lượng khép kín (mang theo
 detritus/plants/animals, từng ô `resource_field_r`, cả **vị trí rút** của RNG) đúng để ranh giới save/load không sinh
 hay huỷ EU. Giờ nó mang cả `DormantCohorts`: từng cohort, kho genome đã archive, bộ đếm `seen` của reservoir, và
 **vị trí rút** của luồng RNG dormancy — seed không đủ, vì tái tạo genome lúc thức dậy sẽ rút khác đi một run không bị

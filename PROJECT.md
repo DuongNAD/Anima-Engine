@@ -11,29 +11,37 @@ Anima-Engine is an autonomous natural world simulation and ecological AI platfor
 2. **Closed Ecology & Energy Ledger**:
    - `EcosystemBiomass` & `EnergyLedger` in `anima-domain` maintain strict conservation ($E_{detritus} + E_{plants} + E_{animals} + E_{dormant} = \text{const}$) within $\le 10^{-3}$ EU tolerance.
    - Net Primary Production (`ResourceField`) seeded from Whittaker biomes with strided logistic regrowth.
-   - Herbivore grazing (Holling Type II) and predator-prey combat (Holling Type III rarity refuge + 30% Lindeman trophic efficiency, 70% detritus return).
+   - Herbivore grazing (Holling Type II) and predator-prey combat (Holling Type III rarity refuge + 40% Lindeman trophic efficiency, `LINDEMAN_EFFICIENCY = 0.40`, the remaining 60% returned to detritus).
    - Metabolic Theory of Ecology (MTE): Kleiber's $M^{3/4}$ scaling $\times$ Arrhenius temperature factor.
    - Evolutionary niche space via MAP-Elites (`body-mass + trophic-ratio`).
-3. **Creature Morphogenesis & Meshy AI Pipeline**:
+3. **Creature Morphogenesis**:
    - `MorphologyGenotype` (acyclic tree of segment capsules & joint constraints).
-   - Hybrid Architecture: Procedural 3D mesh with CPG phase oscillators + joint spring-dampers (60 FPS baseline fallback).
-   - 9-slot deterministic prompt grammar (`CREATURE_PROMPT_CONTRACT.md`) generating concise prompts ($\le 500$ chars).
-   - Archetype BLAKE3 hashing, local `.glb` file caching (`app_data_dir/models/archetypes/<hash>.glb`), A1–A7 acceptance gates, and per-individual morphological fit (scale, axial stretch, tinting, bone binding).
+   - Procedural 3D mesh with CPG phase oscillators + joint spring-dampers.
+   - **Proposed, not in code:** the text-to-3D prompt and asset pipeline (9-slot prompt grammar, archetype hashing, a local `.glb` cache, acceptance gates A1–A7). It is a design in [`docs/reference/CREATURE_PROMPT_CONTRACT.md`](docs/reference/CREATURE_PROMPT_CONTRACT.md), status `proposed`. Checked 2026-11-17: no `meshy`, `blake3`, `GLTFLoader` or `MorphoSpec` under `src/` or `src-tauri/src/`.
    - Terrain-following locomotion via raycast ground alignment and surface normal pitch/roll.
 4. **Cinematic Atmosphere, Water Shaders & Chunking LOD**:
    - Celestial day/night cycle with dynamic sun/moon orbital trajectories and shadow frustum tracking.
-   - 4 signature biome weather particle systems: Desert sandstorm, Snowy frost/blizzard, Rainforest bioluminescent spores, Volcanic ash/embers.
-   - Water GLSL shader: Beer-Lambert depth absorption, dual-normal wave displacement, shoreline surf/foam, and underwater caustics.
-   - Chunking LOD: 6x6 chunk grid with distance-based mesh resolution scaling and frustum culling (>70% triangle/draw-call reduction at 60 FPS).
+   - Four global weathers, `clear`, `rain`, `snow` and `fog` (`utils/weatherKind.ts`), with precipitation particles and distance fog (`WorldWeather.tsx`). There are no per-biome sandstorm, spore or ash systems.
+   - Water shader (`WorldWater.tsx`): shallow-to-deep colour grading, wave detail and shoreline foam. The Map 2 scene (`src/components/Map2/`) has its own shader with Beer-Lambert extinction. No caustics are implemented.
+   - Chunked terrain LOD (`WorldTerrainLod.tsx`, default 6x6, frustum culling, skirts) exists behind `TERRAIN_CHUNKED`, which is `false`: the shipped scene uses the single-mesh terrain.
 5. **Desktop Packaging & Security**:
    - Tauri v2 configuration (`src-tauri/tauri.conf.json`, `capabilities/default.json`).
    - Strict Content Security Policy (CSP), verified by `scripts/check_csp_compat.mjs`.
-   - Native macOS `.app` / `.dmg` bundle output and GitHub Actions multi-platform CI/CD for Windows (`.msi`) and Linux (`.AppImage`/`.deb`).
+   - CI (`.github/workflows/ci.yml`) runs the Rust gates on `windows-latest` and the frontend gates on `ubuntu-latest`. No workflow builds or publishes an installer; bundles are produced locally with `npm run tauri:build`.
    - Repository hardening compliance verified by `just verify` ("QUA CONG").
 
 ---
 
 ## Feature Inventory
+
+> **Read this table and the Milestones table below as a claim list, not as measured status.** Both were
+> written by one agent pass. A check against the code on 2026-11-17 found these rows wrong: 9 (Lindeman
+> is 40%, not 30%), 12 and 13 (the prompt generator and the `.glb` archetype cache are a proposed design,
+> not code), 16 (the weathers are `clear`/`rain`/`snow`/`fog`), 17 (no caustics; Beer-Lambert only in
+> Map 2), 18 (chunk LOD is switched off), 20 (CI is Windows + Ubuntu and builds no installer). The
+> "Source: Survey" column points at no document in this repository, and the milestone numbers M1–M6 here
+> are not the M0–M11 of `WORLD_SIMULATION_PLAN.md`. Measured status lives in
+> [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
 | # | Feature | Description | Milestone | Source |
 |---|---|---|---|---|
 | 1 | 2048x2048 Procedural Terrain | 8-octave fBm, ridged multifractals, hydraulic erosion | M1 | Survey 1 |
@@ -140,34 +148,36 @@ Anima-Engine/
 │   ├── components/
 │   │   ├── Landscape/                    # 3D World Visualization
 │   │   │   ├── WorldShowcase.tsx         # Master 3D scene coordinator
-│   │   │   ├── WorldTerrainLod.tsx       # 6x6 Chunked terrain mesh with skirts
-│   │   │   ├── WorldWater.tsx            # Realistic water GLSL shader (absorption/caustics)
+│   │   │   ├── WorldTerrainLod.tsx       # Chunked terrain mesh with skirts (off: TERRAIN_CHUNKED = false)
+│   │   │   ├── WorldWater.tsx            # Water shader (depth colour grading, waves, foam)
 │   │   │   ├── WorldSky.tsx              # GLSL skydome & day/night celestial orbits
-│   │   │   ├── WorldWeather.tsx          # Biome particle systems (dust/snow/spores/ash)
+│   │   │   ├── WorldWeather.tsx          # Weather: clear / rain / snow / fog
 │   │   │   ├── WorldVegetation.tsx       # 14 instanced flora types
 │   │   │   ├── LiveAgents.tsx            # Hybrid creature rendering & terrain following
 │   │   │   └── utils/                    # World gen, artifact binary codec, chunk LOD
+│   │   ├── Map2/                         # Second map scene (entry: map2.html), own water shader
+│   │   ├── ResearchDashboard/            # Experiment dashboard tabs
 │   │   └── EcosystemPanel.tsx            # Telemetry & god-mode controls
 │   ├── PixiViewport.tsx                  # 2D God-eye canvas & organism morphology
 │   ├── App.tsx                           # Main HUD interface & tabbed navigation
 │   └── types/generated/                  # ts-rs generated Rust-to-TypeScript bindings
 ├── src-tauri/                            # Rust Backend
-│   ├── src/                              # READ-ONLY core simulation logic
-│   │   ├── core/                         # Bevy ECS systems, terrain, ecology, energy ledger
-│   │   ├── evolution/                    # MAP-Elites, genotype graph
-│   │   ├── physics/                      # Dynamics, joints, CPG oscillators
+│   ├── src/                              # Core simulation logic (read-only for hardening agents, see AGENTS.md)
+│   │   ├── core/                         # Bevy ECS systems, terrain, ecology, experiments, snapshots
+│   │   ├── ai/                           # CPG oscillators, HRRL, actor-critic model, pheromone
+│   │   ├── evolution/                    # MAP-Elites, genotype graph, fitness, lineage, MRCA
+│   │   ├── physics/                      # Dynamics, joints, spatial hash
 │   │   └── commands/                     # Tauri IPC command endpoints
-│   ├── tests/                            # READ-WRITE verification test suites
+│   ├── crates/anima-domain/              # World laws shared by both engines: energy ledger, causal ledger, clock
+│   ├── tests/                            # Verification test suites (the hardening agents' write area)
 │   ├── Cargo.toml                        # Rust dependencies & feature definitions
 │   └── tauri.conf.json                   # Tauri v2 desktop application manifest
-├── docs/reference/                       # Specifications & contracts
-│   ├── BIOME_TAXONOMY.md
-│   ├── COORDINATE_CONTRACT.md
-│   ├── CREATURE_PROMPT_CONTRACT.md
-│   └── MAP_MANIFEST.md
+├── BIOME_TAXONOMY.md, COORDINATE_CONTRACT.md, MAP_MANIFEST.md, SIMULATION_RULES.md   # Root-level contracts
+├── docs/reference/                       # Contracts: IPC, snapshot, determinism, energy ledger,
+│                                         # creature development, creature prompt, evolution experiment
 ├── scripts/                              # Verification & quality scripts
 │   ├── verify.sh                         # Hardening gate ('QUA CONG')
 │   ├── check_csp_compat.mjs
 │   └── check_bundle_budget.mjs
-└── .agents/                              # Teamwork agent metadata & workspace state
+└── .agents/skills/                       # Hardening skills used by AGENTS.md
 ```

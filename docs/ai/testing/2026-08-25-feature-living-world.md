@@ -3,7 +3,7 @@ phase: testing
 feature: living-world
 title: Testing — Thế giới sống
 description: Gate cho hình thái, prompt, animation và tính toán phân tán
-status: proposed
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-08-25
 requirements: ../requirements/2026-08-25-feature-living-world.md
