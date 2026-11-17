@@ -270,6 +270,12 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run check:text-hygiene
 
+      # Every entry at the repository root must be on a reviewed allow-list
+      # (scripts/root_allowlist.json), and every listed entry must still exist.
+      - name: Repository root holds only reviewed entries
+        if: ${{ !cancelled() }}
+        run: npm run check:root-hygiene
+
       - name: E2 artifacts match the committed preregistration
         if: ${{ !cancelled() }}
         run: npm run check:e2
