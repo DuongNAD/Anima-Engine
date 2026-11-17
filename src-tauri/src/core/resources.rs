@@ -584,6 +584,30 @@ impl ReproductionPolicy {
 /// The offspring body-mutation probability `autonomous_reproduction_system` historically hard-coded.
 pub const DEFAULT_MUTATION_RATE: f64 = 0.05;
 
+/// The prey population at which `autonomous_reproduction_system` stops prey reproducing, as it was
+/// hard-coded before `live.prey_cap` existed.
+pub const DEFAULT_PREY_CAP: usize = 80;
+
+/// Prey reproduction ceiling (QD-SEL1b = A, card S6, `live.prey_cap`). **Absent resource ==
+/// [`DEFAULT_PREY_CAP`]**, so the desktop app and every earlier manifest are bit-identical.
+///
+/// Why it is declarable: with the ceiling at 80 the prey population never grows large enough to
+/// graze the pasture down, so food scarcity cannot limit it (the E-SEL1 diagnosis,
+/// `docs/ai/planning/2026-11-17-esel1-scarcity-diagnosis.md` §2). The predator rules (at most 8
+/// predators, and at least 5 prey per predator) are unchanged.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreyCapPolicy {
+    pub cap: usize,
+}
+
+impl Default for PreyCapPolicy {
+    fn default() -> Self {
+        Self {
+            cap: DEFAULT_PREY_CAP,
+        }
+    }
+}
+
 /// Probability that a continuous-reproduction offspring's body genotype is mutated (E-SEL1 P4,
 /// `live.mutation_rate`). **Absent resource == [`DEFAULT_MUTATION_RATE`]**, so the desktop app and
 /// every earlier manifest are bit-identical. Exactly `0.0` means "offspring are exact copies":

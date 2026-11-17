@@ -662,10 +662,15 @@ pub fn autonomous_reproduction_system(
     mutation_policy: Option<Res<crate::core::resources::MutationPolicy>>,
     mut vital_stats: Option<ResMut<crate::core::resources::VitalStatistics>>,
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
+    prey_cap_policy: Option<Res<crate::core::resources::PreyCapPolicy>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
     }
+    // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6).
+    let prey_cap = prey_cap_policy
+        .as_deref()
+        .map_or(crate::core::resources::DEFAULT_PREY_CAP, |p| p.cap);
     use rand::Rng;
     // Absent policy == the historical 5%. Exactly 0.0 == offspring are exact copies (no body or
     // brain mutation); see `live.mutation_rate`.
@@ -714,7 +719,7 @@ pub fn autonomous_reproduction_system(
                 continue;
             }
         } else {
-            if prey_count >= 80 {
+            if prey_count >= prey_cap {
                 continue;
             }
         }
