@@ -28,7 +28,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROOT = process.cwd();
+// The repository root, wherever the script is run from inside the checkout.
+const ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 const ALLOWLIST_PATH = 'scripts/root_allowlist.json';
 
 /** The first path component of every path git has in its index. */
