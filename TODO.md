@@ -53,7 +53,9 @@ trạng thái cho khớp việc đã merge.
 `docs/archive/`; bỏ hai bảng tính năng và mốc của `PROJECT.md`; ghi Vostro 3530 là máy tối thiểu và i5-14600KF
 là máy đo; `AGENTS.md` nhận ngoại lệ thứ ba theo QĐ-B; **ADR-0002 được chấp nhận trong phạm vi lát headless**;
 năm bản ghi một lần chuyển `completed`; nhóm việc R đóng; bản nháp bài báo để ở repo riêng tư (QĐ-P2) và
-`docs/paper/AI_USE_LOG.md` được mở (QĐ-P3).
+`docs/paper/AI_USE_LOG.md` được mở (QĐ-P3). Ba câu không có đề xuất sẵn được xử lý ở mức tài liệu: tài liệu swarm qua
+Drive ghi là phương án dự phòng; `EnvSample` và `EnvironmentSnapshot` được định nghĩa là hai kiểu theo CM-102;
+how-to có bảng lệnh tương đương cho macOS, mỗi dòng ghi đã thử hay chưa.
 
 # ⏪ Chặng 1 đóng: bảo vệ nhánh (2026-11-17)
 

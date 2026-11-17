@@ -338,9 +338,15 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-P2 | Bản nháp bài báo để ở **một repo riêng tư**, vì repo này công khai | [`docs/paper/README.md`](../paper/README.md) |
 | QĐ-P3 | Mở nhật ký dùng AI ngay | [`docs/paper/AI_USE_LOG.md`](../paper/AI_USE_LOG.md) |
 
-Ba câu trong mười bốn không có đề xuất sẵn nên **vẫn còn trống**: tài liệu swarm ba máy qua Google Drive còn
-dùng hay đã bị thay; ảnh chụp môi trường là một kiểu hay hai (`EnvSample`, `EnvironmentSnapshot`); và có viết
-bản macOS cho các how-to không. Với công cụ `animal-map-vision`, `AGENTS.md` chỉ được thêm một ghi chú rằng
+Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
+lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:
+
+- **Tài liệu swarm ba máy qua Google Drive:** ghi là phương án dự phòng, không phải cách đang chạy. Không đổi
+  sang `superseded`, vì repo không ghi lại nó đã từng được dùng hay chưa.
+- **`EnvSample` và `EnvironmentSnapshot`:** là hai kiểu, đúng như task CM-102 của kế hoạch morphogenesis đã
+  liệt kê. Hợp đồng sinh vật nay định nghĩa cả hai. Quan hệ trường-với-trường giữa chúng vẫn để CM-102 chốt.
+- **Bản macOS cho how-to:** thêm một bảng lệnh tương đương, mỗi dòng ghi đã thử hay chưa. Chưa checklist đo
+  nào được chạy trên macOS. Với công cụ `animal-map-vision`, `AGENTS.md` chỉ được thêm một ghi chú rằng
 nó nằm ngoài repo; khối quy tắc giữ nguyên.
 
 Các thẻ mã sinh ra từ bảng này được định nghĩa ở
@@ -360,9 +366,7 @@ hai dòng cuối):
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Trước AE4 | QĐ-PAST — chỉ còn thiết kế lưu trữ | §4.2 ngay dưới |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
-| Không gắn chặng | Tài liệu swarm ba máy qua Drive: còn dùng hay `superseded` | [`docs/ai/README.md`](../ai/README.md) |
-| Trước thẻ V0 | `EnvSample` và `EnvironmentSnapshot`: một kiểu hay hai | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
-| Không gắn chặng | Có viết bản macOS cho các how-to không (cần chạy thử từng lệnh) | [`docs/how-to/`](../how-to/README.md) |
+| Trước thẻ V0 (CM-102) | Kiểu lưu `EnvironmentSnapshot` có cùng các trường với `EnvSample` hay chỉ một tập con | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 
 ### 4.2 Ba mục về quá khứ, thời gian và rẽ luật (ghi 2026-11-17, theo lời chủ dự án trong chat)
 

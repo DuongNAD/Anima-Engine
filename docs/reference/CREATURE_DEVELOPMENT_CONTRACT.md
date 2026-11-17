@@ -27,7 +27,8 @@ nguồn mâu thuẫn trước khi triển khai.
 | Thuật ngữ | Ý nghĩa |
 |---|---|
 | `MorphologyGenotype` | Dữ liệu di truyền: node/edge và các trait có thể di truyền |
-| `EnvSample` | Ảnh chụp môi trường tại vị trí/thời điểm phát triển |
+| `EnvSample` | Ảnh chụp môi trường tại vị trí/thời điểm phát triển: **đầu vào** của `develop_at_birth`, do `sample_environment` trả về |
+| `EnvironmentSnapshot` | Bản của `EnvSample` được **lưu trong phenotype** lúc sinh (trường `birth_environment`), để restore, migration và renderer đọc lại mà không lấy mẫu môi trường lần nữa |
 | `DevelopedPhenotype` | Hình học và trait đã phát triển từ genotype + môi trường sinh |
 | `RuntimeState` | Position, velocity, homeostasis, CPG và trạng thái thay đổi mỗi tick |
 | Genesis | Tạo quần thể ban đầu hoặc loài hoàn toàn mới |
@@ -83,7 +84,7 @@ bảy đường (restore, migration, rehydrate, và `WakeAgentCommand`, vốn đ
 | `decode_genotype`, `SpawnGenotypeCommand`, `spawn_serialized_agent`, `SpawnMigrationCommand` | ✅ có | Bốn đường gọi ở bảng đầu |
 | `SpawnOffspringCommand`, `RehydrateCommand`, `live_experiment::genesis` | ✅ có | Ba đường gọi thêm, đối chiếu 2026-11-17 |
 | `DevelopedPhenotype` | ❌ chưa | Chỉ có trên nhánh chưa gộp `origin/fix/ht0-5c-sim-semantics` (`d396555`) |
-| `EnvSample`, `RuntimeState` | ❌ chưa | Hợp đồng này và hợp đồng prompt dùng **hai tên** cho ảnh chụp môi trường: `EnvSample` (đầu vào của development) và `EnvironmentSnapshot` (trường `birth_environment` lưu trong phenotype). Chưa có quyết định chúng là một kiểu hay hai; chốt trước khi hiện thực |
+| `EnvSample`, `EnvironmentSnapshot`, `RuntimeState` | ❌ chưa | `EnvSample` và `EnvironmentSnapshot` là **hai kiểu**, đúng như task CM-102 của [kế hoạch morphogenesis](../planning/CREATURE_MORPHOGENESIS_PLAN.md) liệt kê; định nghĩa của từng kiểu ở bảng thuật ngữ đầu hợp đồng (làm rõ 2026-11-17). Kiểu lưu có cùng các trường với kiểu đầu vào hay chỉ một tập con thì **chưa định**; chốt khi làm CM-102 |
 | `develop_at_birth` | ❌ chưa | D01 ràng buộc hàm này khi nó được tạo |
 | `LocomotionMedium`, `HabitatPreference`, `DynamicChromatophore` | ❌ chưa | |
 

@@ -45,6 +45,9 @@ Chỉ một nhóm:
 cargo bench --bench tick_systems -- tick/dynamic_fields
 ```
 
+*(Các checklist trong trang này viết cho máy Windows; bảng lệnh tương đương cho macOS ở
+[How-to § Trên macOS và Linux](README.md#trên-macos-và-linux). Chưa checklist nào được chạy trên macOS.)*
+
 Chạy từ `src-tauri/`; **trên Windows thì bằng PowerShell chứ không phải Git Bash** — cùng lý do với `cargo test`
 (xem `STATE_OF_THE_PROJECT.md` §4).
 

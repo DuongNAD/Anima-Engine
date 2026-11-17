@@ -40,7 +40,7 @@ retry theo seed + kho asset đã duyệt** (§9), chứ không từ riêng câu 
 
 | Thuật ngữ | Ý nghĩa |
 |---|---|
-| `MorphoSpec` | IR số hoá, hàm thuần của `DevelopedPhenotype` + `EnvSample` đã lưu |
+| `MorphoSpec` | IR số hoá, hàm thuần của `DevelopedPhenotype` + `EnvironmentSnapshot` (bản `EnvSample` đã lưu trong phenotype; xem bảng thuật ngữ của [hợp đồng sinh vật](./CREATURE_DEVELOPMENT_CONTRACT.md)) |
 | Slot | Một mệnh đề trong prompt, có thứ tự cố định và mức ưu tiên |
 | Lexicon | Bảng ánh xạ band số → cụm từ tiếng Anh; là dữ liệu, versioned |
 | Style lock | Mệnh đề nghệ thuật **cố định**, giống hệt trong mọi prompt của một run |
