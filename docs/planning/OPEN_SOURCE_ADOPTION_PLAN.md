@@ -2,20 +2,26 @@
 title: Kế hoạch áp dụng nguồn mở
 status: active
 owner: architecture
-last_reviewed: 2026-07-26
+last_reviewed: 2026-11-18
 review_cycle: quarterly
 target: M0-M4
 ---
 
 # Kế hoạch áp dụng nguồn mở
 
-## Trạng thái thật (cập nhật 2026-07-26, sau khi OSS-010 ship)
+## Trạng thái thật (bảng đối chiếu; rà toàn văn 2026-11-18)
 
 > **Rà lại 2026-11-17.** Bảng dưới và bảng OS0 từng mang **hai hàng** cho OSS-003 và hai hàng cho
 > OSS-004, nói ngược nhau (một hàng viết trước relicense, một hàng sau), do một lần gộp nhánh. Mỗi cặp
 > đã được gộp thành một hàng theo trạng thái hiện tại. Hàng OS7 và hàng OSS-072 được cập nhật: MRCA đã
-> merge vào thân cây ở #75. Các mục có ngày bên dưới là bản ghi của ngày đó và không bị sửa. Số thành
-> phần của `NOTICE` và SBOM nằm ở STATE §1, không chép ở đây.
+> merge vào thân cây ở #75. Số thành phần của `NOTICE` và SBOM nằm ở STATE §1, không chép ở đây.
+>
+> **Rà toàn văn 2026-11-18.** Mọi trạng thái trong trang đã được đối chiếu với mã, CI và danh sách PR.
+> Các mục có ngày bên dưới vẫn là bản ghi của ngày đó; chỗ nào bản ghi ấy nay đã sai có một dòng *Rà
+> 2026-11-18* ngay tại chỗ. Bốn điều đổi cách đọc cả trang: **QĐ-C đã được quyết** (lối C, nâng `burn`,
+> thẻ R1c), nên `hexf-parse` không còn là quyết định pháp lý mà là việc kỹ thuật chưa làm; **nén đường
+> đơn trong tracker phả hệ đã bật** từ 2026-07-27; **xuất Newick đã có lệnh IPC**; và hợp đồng IPC nay
+> ở [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md), không còn ở `PROJECT.md`.
 
 Kế hoạch này được lập 2026-07-24. Bảng dưới là đối chiếu giữa kế hoạch và code, để phiên sau không
 đọc một `[x]` không tồn tại thành việc đã xong. Bằng chứng chi tiết nằm ở
@@ -29,7 +35,7 @@ trong khảo sát.
 
 | Mục | Kế hoạch nói | Thực tế | Xử lý |
 |---|---|---|---|
-| OSS-003 license | Blocker quản trị duy nhất | Relicense **`MIT OR Apache-2.0`** (2026-08-08), thay bản proprietary 2026-07-26; `NOTICE` + văn bản license bên thứ ba **sinh tự động**, có gate CI (2026-07-27) | **Đóng cho licence của dự án.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README. **Còn nợ, chặn phát hành:** 1 thành phần chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md), quyết định QĐ-C) |
+| OSS-003 license | Blocker quản trị duy nhất | Relicense **`MIT OR Apache-2.0`** (2026-08-08), thay bản proprietary 2026-07-26; `NOTICE` + văn bản license bên thứ ba **sinh tự động**, có gate CI (2026-07-27) | **Đóng cho licence của dự án.** `LICENSE-MIT` + `LICENSE-APACHE` + `NOTICE` + `CONTRIBUTING.md`; phạm vi code/asset/`.anmw` tách trong README. **Còn nợ, vẫn chặn phát hành:** 1 thành phần chưa có văn bản license ([`UNRESOLVED.md`](../../licensing/UNRESOLVED.md)). QĐ-C đã quyết ngày 2026-11-17: lối C, nâng `burn` lên dòng 0.22 để `hexf-parse` rời cây phụ thuộc ([roadmap 31/10 §4.3](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)). Việc còn lại là kỹ thuật: thẻ R1c, chưa có PR |
 | OSS-004 inventory | Tạo inventory ban đầu | ✅ **Đã có cho dependency code (2026-07-27):** [`sbom.cdx.json`](../../sbom.cdx.json), CycloneDX 1.5 đã validate schema, sinh từ lockfile | Inventory **dep code** tự động xong; inventory **model/dataset/asset** vẫn thủ công và vẫn nợ |
 | OSS-010 Criterion | Adopt | ✅ **XONG 2026-07-26** — `dev-dependency` + `src-tauri/benches/tick_systems.rs`, 16 số đo thật | Xem [§ OSS-010 đã ship](#oss-010-đã-ship-2026-07-26) |
 | OSS-011 tracing | Adopt | ⬜ Không có trong `Cargo.toml` | Giữ, nay là mục OS1 đáng làm tiếp |
@@ -37,7 +43,7 @@ trong khảo sát.
 | OSS-013 lychee | Adopt | ✅ `scripts/check_docs_links.mjs` **đã là gate CI** | **Đóng — superseded** |
 | OS2 oracle | 2–3 tuần | ⬜ Chưa bắt đầu; OSS-021 bị chặn bởi OSS-020 | Giữ thứ tự, ghi rõ blocker |
 | OS3 BVH/meshopt | Pilot | Tiền đề bị code bác bỏ | **Park** — xem OS3 |
-| OS4 Rapier | Pilot có feature flag | Đường physics/CPG sống chưa tất định | Thêm tiền điều kiện cứng |
+| OS4 Rapier | Pilot có feature flag | Lịch tick đã có một thứ tự tổng (F-041, #65) và adapter thí nghiệm tái lập được; một lượt chạy **app** tái lập được thì chưa có | Tiền điều kiện cứng vẫn giữ — xem OS4 |
 | OS5 Arrow | Khi ≥100 MB/run | Trigger **chưa đạt** | Giữ Defer |
 | OS7 phả hệ | *(mới)* | ✅ OSS-070 Newick, OSS-071 `simplify`, OSS-071b nén trong tracker sống (2026-07-26/27); ✅ OSS-072 MRCA trên thân cây (#75, 2026-11-16). ⬜ OSS-073 | Việc còn lại là OSS-073 (line of descent), nay không còn bị chặn |
 
@@ -51,15 +57,21 @@ Ba điều đáng ghi lại, vì chúng đổi cách đọc các mục khác tro
 
 1. **Phần cứng mục tiêu đã đổi.** Nay là Intel Core i5-14600KF; khai báo Dell Vostro 3530 cũ **không
    còn hiệu lực**. Máy capture và máy mục tiêu là một, nên số đo tính là đo-trên-máy-đích.
+   *Rà 2026-11-18:* chủ dự án quyết ngày 2026-11-17 rằng i5-14600KF là **máy đo** và Dell Vostro 3530 là
+   **máy tối thiểu** dự án nhắm chạy được. Câu "không còn hiệu lực" chỉ đúng cho vai máy đo; chưa có số
+   đo engine nào trên Vostro.
 2. **§3.2 vẫn chưa đóng, nhưng không còn vì phần cứng.** Cái đo được là **cận dưới của một tick**,
    không phải khung hình: chưa gồm suy luận não, lập lịch ECS, emit, va chạm, trao đổi chất. Ba hàng
    đắt nhất trong `BENCHMARK_BASELINE.md` vẫn đòi in-app tick capture.
 3. **Một finding mới, chưa giải quyết.** Con số ~4,2 ms trong doc comment của
    `ResourceField::REGROWTH_STRIDE` **không tái lập** — release build cho ~0,36 ms, thấp hơn ~12
    lần. Việc stride vẫn đúng (đo được 3,97×); chỉ con số biện minh cho nó là chưa đối chứng được.
+   *Rà 2026-11-18:* đã đóng ở #101. Con số ~4,2 ms là chi phí của một bản debug, chưa bao giờ là chi phí
+   release; doc comment đã sửa và bench giữ đường cũ để so.
 
 **Mục OS1 đáng làm tiếp là OSS-011 (`tracing`)**, nhưng nó **không** còn nằm trên đường tới hạn P0
-như OSS-010 từng nằm. Ưu tiên cao hơn hiện là OSS-070 (xuất Newick) — xem OS7.
+như OSS-010 từng nằm. Ưu tiên cao hơn lúc đó là OSS-070 (xuất Newick), nay đã xong; ưu tiên cao hơn
+hôm nay là OSS-073 — xem "Ba hành động tiếp theo".
 
 ## Mục tiêu
 
@@ -90,13 +102,13 @@ thiết, test, benchmark, migration/rollback và cập nhật tài liệu nguồ
 
 ### OS0 — Quản trị tài liệu và giấy phép
 
-**Thời lượng:** 1–2 ngày. **Phụ thuộc:** không. **Trạng thái:** đang khởi tạo.
+**Thời lượng:** 1–2 ngày. **Phụ thuộc:** không. **Trạng thái:** xong về cấu trúc (OSS-001 đến OSS-004). Còn nợ: `hexf-parse` (thẻ R1c) và inventory cho model, dataset, asset. Tiêu chí "≤ 2 lần nhấp" của OSS-001 chưa từng được đo.
 
 | ID | Công việc | Bằng chứng hoàn tất |
 |---|---|---|
 | OSS-001 | Dùng `README.md` và `docs/README.md` làm hai điểm vào duy nhất | Mọi tài liệu chuẩn có đường đi ≤ 2 lần nhấp |
 | OSS-002 | Ban hành quy tắc Diátaxis, metadata, ADR và deprecation | Link nội bộ hợp lệ; không có hai nguồn sự thật |
-| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế. `NOTICE` và `licensing/THIRD_PARTY_LICENSES.txt` sinh tự động và có gate CI từ 2026-07-27. **Còn nợ:** **1** thành phần (`hexf-parse` 0.2.1) mà upstream chưa từng publish văn bản license; đó là quyết định pháp lý QĐ-C, không phải việc kỹ thuật |
+| OSS-003 | Người duy trì chọn license cho chính Anima Engine | ✅ **Xong (2026-08-08).** Cấp phép kép `MIT OR Apache-2.0`: `LICENSE-MIT`, `LICENSE-APACHE`, `CONTRIBUTING.md` (inbound = outbound, không CLA), `license` trong `[workspace.package]` và cả hai `package.json`, phạm vi code/asset/`.anmw` tách trong `README.md`. Bản proprietary 2026-07-26 đã bị thay thế. `NOTICE` và `licensing/THIRD_PARTY_LICENSES.txt` sinh tự động và có gate CI từ 2026-07-27. **Còn nợ:** **1** thành phần (`hexf-parse` 0.2.1) mà upstream chưa từng publish văn bản license. QĐ-C đã quyết ngày 2026-11-17 (lối C, nâng `burn`); hàng trong `UNRESOLVED.md` chỉ đóng khi thẻ R1c merge và hồ sơ giấy phép được sinh lại |
 | OSS-004 | Tạo inventory dependency ban đầu | ✅ **Xong cho dependency code (2026-07-27).** `sbom.cdx.json` — CycloneDX 1.5, purl + SPDX + biểu đồ phụ thuộc, sinh từ lockfile đã ghim và validate với schema chính thức. Lỗ hổng cũ (`burn`/`burn-wgpu` vắng khỏi ma trận tới 2026-07-26) không tái diễn được cho dep runtime. ⬜ **Chưa:** inventory model / dataset / asset |
 
 **Gate:** license của mọi thành phần bên thứ ba phải được xác minh **theo đúng tag/commit** trước
@@ -113,7 +125,7 @@ LGPL nay là câu hỏi mở** thay vì mặc định "không" — xem
 |---|---|---|---|
 | OSS-010 | Thêm Criterion cho tick, spatial query và artifact encode/decode | Benchmark chạy headless, lưu machine metadata và baseline | ✅ **XONG 2026-07-26** |
 | OSS-011 | Khai báo trực tiếp `tracing` và quy ước correlation ID | Không log mỗi entity/tick mặc định; overhead tắt < 2% | ⬜ Mục OS1 còn lại đáng làm nhất |
-| OSS-012 | Thêm `cargo-deny` cho **licenses/bans/sources** | CI chặn license/source ngoài policy | ✅ **Xong 2026-08-08.** `src-tauri/deny.toml`: allow-list 13 license đọc từ graph thật (`all-features`, ba target desktop), 5 crate **MPL-2.0** liệt kê **từng cái** để một MPL mới làm đỏ gate thay vì lọt; `unknown-git`/`unknown-registry` = deny; wildcard = deny (trừ path dep nội bộ). Advisory vẫn do `cargo audit` sở hữu — `deny.toml` chỉ soi gương hai ignore của `.cargo/audit.toml` và tắt `unmaintained` để hai gate không mâu thuẫn |
+| OSS-012 | Thêm `cargo-deny` cho **licenses/bans/sources** | CI chặn license/source ngoài policy | ✅ **Xong 2026-08-08.** `src-tauri/deny.toml`: allow-list 13 license đọc từ graph thật (`all-features`, ba target desktop), 5 crate **MPL-2.0** liệt kê **từng cái** để một MPL mới làm đỏ gate thay vì lọt; `unknown-git`/`unknown-registry` = deny; wildcard = deny (trừ path dep nội bộ). Advisory vẫn do `cargo audit` sở hữu. `deny.toml` **không** soi gương danh sách ignore của `.cargo/audit.toml` (cargo-deny đi theo đồ thị đã phân giải và từ chối ignore cho crate vắng khỏi đồ thị, nên `ignore = []`), và tắt `unmaintained` để hai gate không mâu thuẫn. Danh sách ignore hiện hành nằm ở `src-tauri/.cargo/audit.toml` |
 | OSS-013 | ~~Thêm lychee cho Markdown~~ | — | ✅ **Superseded** bởi [`scripts/check_docs_links.mjs`](../../scripts/check_docs_links.mjs) |
 
 **OSS-010 — bằng chứng hoàn tất, đã kiểm.** Bench phủ `integrate_physics_system`,
@@ -197,6 +209,10 @@ kiện cứng dưới đây (thêm 2026-07-26)**.
 > `an_inhabited_run_replays_from_its_trace_without_a_human` của
 > [ADR-0004](../decisions/ADR-0004-observer-as-declared-intervention.md).
 >
+> *Rà 2026-11-18:* tiền điều kiện vẫn giữ, nhưng lý do đã đổi. Từ F-041 (#65) lịch tick có một thứ tự
+> tổng và adapter thí nghiệm headless tái lập được. Cái chưa có là một lượt chạy **app** tái lập được
+> (uuid, đồng hồ thật, AI ngoài) và gate O3 của ADR-0004, hiện chưa tồn tại dưới dạng test.
+>
 > Lý do là logic, không phải thận trọng: OSS-040 đòi "chốt fixture và kết quả solver hiện tại" làm
 > đường cơ sở. Một đường cơ sở không lặp lại được thì phép so sánh side-by-side ở OSS-042 không có
 > nghĩa — bất kỳ sai khác nào cũng quy được cho nhiễu.
@@ -249,22 +265,23 @@ viện. Lý do nằm ở [khảo sát §5](../research/OPEN_SOURCE_LANDSCAPE.md)
 
 | ID | Công việc | Phụ thuộc | Bằng chứng hoàn tất | Trạng thái |
 |---|---|---|---|---|
-| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; 15 + 8 test |
-| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | 🟡 **Thuật toán + đã nối vào tracker sống (2026-07-26)**; chạy **prune-only**, nên bộ nhớ chưa đạt cận O(alive) — xem OSS-071b |
+| OSS-070 | Xuất Newick từ đồ thị lineage sẵn có | không | Một parser bên thứ ba (`ape`/DendroPy) đọc được output; test từ chối cây có chu trình, node mồ côi hoặc nhiều gốc | ✅ **XONG 2026-07-26** — DendroPy 5.0.10 đọc được; đã nối IPC bằng lệnh `export_phylogenetic_tree` |
+| OSS-071 | `simplify()` kiểu tskit: prune nhánh không còn hậu duệ sống | OSS-070 | Bộ nhớ lineage trở thành O(cá thể sống), không phải O(tổng từng sống); quan hệ tổ tiên của phần giữ lại **không đổi** | ✅ **Xong 2026-07-27** (`57a8246`): thuật toán, nối vào tracker sống, và nén đường đơn **đã bật** sau khi `LineageNode.cumulative_mutations: Option<u32>` ship. Cận `2·samples` đã đo; xem STATE §3.15.1 |
 | OSS-072 | Truy vấn MRCA | OSS-071 | Test trên cây đã biết đáp án; tất định | ✅ 2026-11-16, #75: `evolution/mrca.rs`, lệnh `get_lineage_mrca`; đáp án là một **tập** |
 | OSS-073 | Giao thức đo "line of descent" kiểu Avida | OSS-072 | Bám được dòng dõi của genotype thống trị cuối run | ⬜ |
 
 **Vì sao đáng làm sớm:** [`evolution/lineage.rs`](../../src-tauri/src/evolution/lineage.rs) lưu mỗi
 lần sinh sản kèm **bản sao đầy đủ** `MorphologyGenotype` và **không bao giờ prune**. Đó là đường
-tăng bộ nhớ không có trần với một run dài. OSS-070 là món rẻ nhất trong toàn kế hoạch
+tăng bộ nhớ không có trần với một run dài. *(Đó là lý do lúc lập kế hoạch, 2026-07-26. Từ 2026-07-27
+tracker trong bộ nhớ được `compact` mỗi 50 epoch; Neo4j không bị đụng.)* OSS-070 là món rẻ nhất trong toàn kế hoạch
 (0 dependency) và lợi ích lớn nhất của nó không phải là interop mà là **kiểm tra độc lập tính đúng
 của phả hệ**.
 
 #### OSS-070 — đã ship phần serializer (2026-07-26)
 
 [`src-tauri/src/evolution/newick.rs`](../../src-tauri/src/evolution/newick.rs) +
-[`tests/newick_export_tests.rs`](../../src-tauri/tests/newick_export_tests.rs) (14 test) và 8 unit
-test. `to_newick` nhận đúng thứ `LineageTracker::get_lineage_graph` trả về, nên chạy được với cả
+[`tests/newick_export_tests.rs`](../../src-tauri/tests/newick_export_tests.rs) và các unit test trong
+`newick.rs`. `to_newick` nhận đúng thứ `LineageTracker::get_lineage_graph` trả về, nên chạy được với cả
 tracker in-memory lẫn bản restore từ Neo4j.
 
 **Quyết định thiết kế phải nói rõ, vì nó là một đánh đổi chứ không phải chi tiết:** `Crossover` cho
@@ -312,6 +329,10 @@ kèm hướng dẫn cài, và nửa Rust của gate vẫn chạy.
 **Chưa nối vào IPC.** `to_newick` hiện là hàm thư viện, chưa có lệnh Tauri nào gọi. Đó là việc riêng
 và cần cập nhật hợp đồng IPC ở `PROJECT.md`; không gộp vào đây.
 
+*Rà 2026-11-18:* đã nối. Lệnh `export_phylogenetic_tree` gọi `to_newick`, và hợp đồng IPC nay ở
+[`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md). `simplify` chưa có lệnh riêng: nó chạy bên trong
+`compact`.
+
 #### OSS-071 — đã ship phần thuật toán (2026-07-26)
 
 [`src-tauri/src/evolution/simplify.rs`](../../src-tauri/src/evolution/simplify.rs) +
@@ -326,6 +347,9 @@ tổ tiên của quần thể sống vẫn kéo về tận genesis, nên prune c
 mọi thân cây. Test `pruning_without_compression_would_not_have_been_enough` đo cả hai và đòi chênh
 > 3×. Trên cây nhị phân sâu 10 (2.047 node, 16 cá thể sống): còn **31 node** = 16 sample + 15 điểm
 rẽ nhánh, đúng cận `2·samples`.
+
+*Rà 2026-11-18:* hàm `get_mutations_count` nhắc trong đoạn dưới và ở mục OSS-071b đã bị gỡ ở `57a8246`.
+Số đếm nay lấy từ `LineageNode.cumulative_mutations` trong `get_lineage_graph`.
 
 **Chỗ suýt sai âm thầm, và là lý do `SimplifiedEdge` không có `relation_type`:**
 `get_mutations_count` trong `commands/evolution.rs` **đếm cạnh `Mutate` dọc đường tổ tiên** để ra con
@@ -348,6 +372,9 @@ không chu trình, không cạnh mồ côi, không đảo generation.
 
 `LineageTracker::compact(samples)` thay thế thật bộ nhớ của `InMemoryLineageTracker`, và được gọi ở
 thread tiến hoá mỗi `COMPACT_EVERY_EPOCHS` (50) epoch.
+
+*Rà 2026-11-18:* đoạn "nén TẮT" dưới đây là hiện trạng ngày 2026-07-26. Nén đã bật ngày 2026-07-27
+(`57a8246`), sau khi số đếm đột biến tích luỹ theo node ship.
 
 **Chạy với nén TẮT.** Đây là giới hạn có chủ ý, không phải làm dở. Nén là bước đạt cận O(alive),
 nhưng nó xoá những node mà consumer hiện tại **vẫn đang đọc**: đồ thị lineage UI vẽ lấy thẳng từ
@@ -409,18 +436,19 @@ chúng không liên quan. Avida là copyleft: chỉ tham khảo qua bài báo, k
 
 ## Ba hành động tiếp theo
 
-> **Cập nhật 2026-11-17.** Ba việc đánh số bên dưới viết ngày 2026-07-26 và **cả ba đã đổi trạng thái**:
+> **Cập nhật 2026-11-17, sửa 2026-11-18.** Ba việc đánh số bên dưới viết ngày 2026-07-26 và **cả ba đã đổi trạng thái**:
 > (1) số đếm đột biến theo node đã ship ngày 2026-07-27 và nén đã bật; (2) OSS-072 MRCA đã merge vào
 > thân cây ở #75; (3) licence của dự án đã đóng bằng relicense ngày 2026-08-08. Việc nối xuất Newick vào
 > IPC cũng đã có: lệnh `export_phylogenetic_tree`. Ba hành động tiếp theo của kế hoạch này hôm nay là:
 >
 > 1. **OSS-073** — giao thức đo "line of descent" kiểu Avida. MRCA không còn chặn nó. Kế hoạch swarm
 >    gọi là thẻ S5.
-> 2. **`hexf-parse`** — văn bản license cuối cùng còn thiếu. Đây là quyết định QĐ-C của chủ dự án, không
->    phải việc kỹ thuật, và nó chặn phát hành.
+> 2. **`hexf-parse`** — văn bản license cuối cùng còn thiếu, và nó chặn phát hành. QĐ-C đã quyết ngày
+>    2026-11-17 (lối C, nâng `burn`); việc còn lại là thẻ R1c, chưa có PR.
 > 3. **Inventory cho model / dataset / asset** — phần còn nợ của OSS-004.
 >
-> OSS-011 (`tracing`) vẫn mở và vẫn ở ưu tiên thấp.
+> OSS-011 (`tracing`) vẫn mở và vẫn ở ưu tiên thấp. Hai câu ở cuối danh sách đánh số bên dưới cũng đã
+> hết hiệu lực: nối xuất Newick vào IPC đã xong, và con số ~4,2 ms đã được đối chứng (#101).
 
 > **Cập nhật 2026-07-26 (lần 4).** ~~OSS-010 Criterion~~, ~~OSS-070 Newick~~ và ~~OSS-071 thuật toán
 > `simplify`~~ đều đã **xong** trong cùng ngày. Danh sách 2026-07-24 gốc giữ ở cuối làm bản ghi.
