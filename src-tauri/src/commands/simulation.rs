@@ -678,6 +678,15 @@ pub struct ScientificExportParts {
 }
 
 /// Read what the simulation thread has published and assemble the export package from it.
+///
+/// The seed is read first, and the segments, ecosystem, census, flux and status read after it belong
+/// to the same run (see [`SimulationEngine::run_seed`](crate::core::engine::SimulationEngine)).
+/// **Not everything here is per-run.** The lineage tree (`newick_tree`) and the MAP-Elites archive
+/// (`map_elites`, which the caller computes from the shared grid before calling this) belong to the
+/// process and `start` does not reset them, so after a restart they still hold the previous run's
+/// branches and cells beside the new seed. The values are also read through separate locks, so the
+/// package is not an atomic snapshot: a run that starts while it is being assembled can still be
+/// mixed in.
 pub fn build_scientific_export(
     engine: &crate::core::engine::SimulationEngine,
     map_elites: crate::core::telemetry_export::MapElitesSummary,
