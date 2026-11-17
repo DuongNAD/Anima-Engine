@@ -720,6 +720,12 @@ pub fn apply_live_interventions_system(
         ),
     >,
     mut cull_buf: Local<Vec<Entity>>,
+    // `PathogenTransmission` acts on the living agents' reserves, the store the census reads.
+    mut reserves: Query<
+        (Entity, &mut crate::ai::hrrl::HomeostaticState),
+        With<crate::core::components::Agent>,
+    >,
+    mut epidemic_buf: Local<Vec<Entity>>,
 ) {
     let (Some(active), Some(mut state)) = (active, state) else {
         return;
@@ -974,23 +980,54 @@ pub fn apply_live_interventions_system(
                 let fraction = (cmd.signed_intensity_at(tick).abs()
                     * (*transmission_rate * *mortality_multiplier * 0.01))
                     .clamp(0.0, 0.5) as f64;
-                let cull_amount = (pool.animals * fraction).min(pool.animals);
-                if cull_amount > 0.0 {
-                    let moved = energy.transfer(
-                        pool,
-                        Compartment::Animals,
-                        Compartment::Detritus,
-                        cull_amount,
-                        EnergyEvent::Intervention,
-                    );
+                if fraction <= 0.0 {
+                    continue;
+                }
+                // The epidemic has to take what it moves from the **reserves**. `pool.animals` is
+                // only a mirror: `ecosystem_census_system` re-snapshots it from the agents at the
+                // end of every tick, so debiting the mirror alone left every reserve untouched while
+                // detritus kept the credit, and closed EU grew by the "culled" amount each time the
+                // forcing fired (G5, `tests/ledger_bypass_tests.rs`: +148 EU in one firing).
+                //
+                // Every living agent loses the same share of its own reserve. They are visited in
+                // entity order, as the predator cull is, so the sum is the same in a replay.
+                epidemic_buf.clear();
+                epidemic_buf.extend(reserves.iter().map(|(entity, _)| entity));
+                epidemic_buf.sort_unstable_by_key(|e| (e.index(), e.generation()));
+                let share = fraction as f32;
+                let mut stripped = 0.0f64;
+                for entity in epidemic_buf.iter() {
+                    if let Ok((_, mut homeo)) = reserves.get_mut(*entity) {
+                        let amount = homeo.energy.max(0.0) * share;
+                        // The amount the `f32` reserve actually lost, not the amount asked for.
+                        stripped +=
+                            crate::core::energy_ledger::debit_reserve(&mut homeo.energy, amount);
+                    }
+                }
+                if stripped > 0.0 {
+                    // Same shape as the reproduction overhead: through the ledger, with any
+                    // shortfall against the `Animals` mirror still reaching detritus, because the
+                    // reserves have already been debited and dropping it would destroy EU.
+                    let routed = if pool.animals >= stripped {
+                        energy.transfer(
+                            pool,
+                            Compartment::Animals,
+                            Compartment::Detritus,
+                            stripped,
+                            EnergyEvent::Intervention,
+                        )
+                    } else {
+                        0.0
+                    };
+                    pool.detritus += stripped - routed;
                     state.ledger.record(
                         cmd.cause_id,
                         None,
                         tick,
                         "live.animals_eu",
                         pool.animals,
-                        -moved,
-                        "pathogen transmission epidemic moves animal biomass into detritus",
+                        -stripped,
+                        "pathogen transmission epidemic strips a share of every living reserve into detritus",
                     );
                     state.applied_interventions += 1;
                 }
