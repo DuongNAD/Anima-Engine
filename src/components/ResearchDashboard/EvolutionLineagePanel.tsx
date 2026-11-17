@@ -70,6 +70,7 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
   }, [isRunning]);
 
   const handleMutationRateChange = async (newRate: number) => {
+    const previous = mutationRate;
     setMutationRate(newRate);
     try {
       await invoke('update_evolution_settings', {
@@ -81,11 +82,14 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
       });
       setEvolutionError(null);
     } catch (e) {
+      // The slider goes back to the value the backend still has.
+      setMutationRate(previous);
       setEvolutionError(`Mutation rate not applied: ${String(e)}`);
     }
   };
 
   const handleSelectionBiasChange = async (newBias: number) => {
+    const previous = selectionBias;
     setSelectionBias(newBias);
     try {
       await invoke('update_evolution_settings', {
@@ -97,6 +101,7 @@ export const EvolutionLineagePanel: React.FC<EvolutionLineagePanelProps> = ({
       });
       setEvolutionError(null);
     } catch (e) {
+      setSelectionBias(previous);
       setEvolutionError(`Selection bias not applied: ${String(e)}`);
     }
   };

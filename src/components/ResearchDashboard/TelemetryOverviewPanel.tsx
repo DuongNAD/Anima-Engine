@@ -32,17 +32,13 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
   const [shannonHistory, setShannonHistory] = useState<number[]>([]);
   const [simpsonHistory, setSimpsonHistory] = useState<number[]>([]);
   const [residualHistory, setResidualHistory] = useState<number[]>([]);
-  const [baselineEnergyState, setBaselineEnergyState] = useState<number | null>(
-    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
+  // Baseline = the first finite total reported, the same rule as the dashboard header.
+  const initialBaseline =
+    initialEcosystemState && typeof initialEcosystemState.total === 'number' && Number.isFinite(initialEcosystemState.total)
       ? initialEcosystemState.total
-      : null,
-  );
-
-  const baselineEnergyRef = useRef<number | null>(
-    initialEcosystemState && typeof initialEcosystemState.total === 'number' && initialEcosystemState.total > 0
-      ? initialEcosystemState.total
-      : null,
-  );
+      : null;
+  const [baselineEnergyState, setBaselineEnergyState] = useState<number | null>(initialBaseline);
+  const baselineEnergyRef = useRef<number | null>(initialBaseline);
 
   // Polling loop
   useEffect(() => {
@@ -54,7 +50,7 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
         if (!alive || !eco) return;
         setEcoState(eco);
 
-        if (baselineEnergyRef.current === null && typeof eco.total === 'number' && eco.total > 0) {
+        if (baselineEnergyRef.current === null && typeof eco.total === 'number' && Number.isFinite(eco.total)) {
           baselineEnergyRef.current = eco.total;
           setBaselineEnergyState(eco.total);
         }
@@ -99,7 +95,7 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
   // Energy conservation metrics. With no telemetry yet there is no residual to show; this panel
   // used to fall back to 900 EU for both the total and the baseline.
   const currentTotalEnergy = ecoState?.total ?? null;
-  const baselineEnergy = baselineEnergyState ?? currentTotalEnergy;
+  const baselineEnergy = baselineEnergyState;
   const currentResidual =
     currentTotalEnergy !== null && baselineEnergy !== null ? Math.abs(currentTotalEnergy - baselineEnergy) : null;
   const driftPercent =
@@ -284,12 +280,12 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
             Demographic Age Cohorts Pyramid
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {(demographics?.ageCohorts || [
-              { minAge: 0, maxAge: 50, count: 12 },
-              { minAge: 51, maxAge: 150, count: 8 },
-              { minAge: 151, maxAge: 300, count: 3 },
-              { minAge: 301, maxAge: 1000, count: 1 },
-            ]).map((cohort, idx) => {
+            {!demographics && (
+              <div data-testid="age-cohorts-unreported" style={{ fontSize: '11px', color: '#94a3b8' }}>
+                No demographic census reported yet.
+              </div>
+            )}
+            {(demographics?.ageCohorts ?? []).map((cohort, idx) => {
               const maxCohort = 20;
               const widthPct = Math.min(100, (cohort.count / maxCohort) * 100);
               return (
@@ -329,13 +325,12 @@ export const TelemetryOverviewPanel: React.FC<TelemetryOverviewPanelProps> = ({
             Mortality Cause Distribution
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {(demographics?.mortalityCauses || [
-              { cause: 'Starvation', count: 4n },
-              { cause: 'Predation', count: 12n },
-              { cause: 'Senescence', count: 2n },
-              { cause: 'Toxicity', count: 0n },
-              { cause: 'Pathogen', count: 0n },
-            ]).map((m, idx) => {
+            {!demographics && (
+              <div data-testid="mortality-causes-unreported" style={{ fontSize: '11px', color: '#94a3b8' }}>
+                No mortality census reported yet.
+              </div>
+            )}
+            {(demographics?.mortalityCauses ?? []).map((m, idx) => {
               const countNum = Number(m.count);
               const maxMort = 25;
               const widthPct = Math.min(100, (countNum / maxMort) * 100);

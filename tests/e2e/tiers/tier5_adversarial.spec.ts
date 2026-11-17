@@ -785,6 +785,8 @@ test.describe('Tier 5 Adversarial: Checkpoint Studio & Counterfactuals', () => {
     }
 
     const sent = await page.evaluate(() => window.__animaTauriMock.invocations().map((i) => i.cmd));
+    // Positive control: the recorder sees the dashboard's own polling.
+    expect(sent).toContain('get_simulation_status');
     expect(sent).not.toContain('get_causal_branch_tree');
 
     expect(unhandledError).toBeNull();
@@ -932,12 +934,16 @@ test.describe('Tier 5 Adversarial: Full Dashboard Integration & Hotkeys', () => 
     await expect(conservationBadge).toBeVisible();
     await expect(conservationBadge).toContainText('CONSERVED');
 
-    // Inject simulated energy violation
+    // A later poll reports 50 EU more than the first total: the badge must turn to drift. (The
+    // header polls get_ecosystem_state; it does not read simulation-tick, which this test used to
+    // emit without asserting anything afterwards.)
     await page.evaluate(() => {
-      window.__animaTauriMock.emit('simulation-tick', {
-        total: 950.0, // 50 EU drift violation
+      window.__animaTauriMock.setReply?.('get_ecosystem_state', {
+        detritus: 100, plants: 500, animals: 300, total: 950.0, prey_count: 45, predator_count: 15,
+        shannon: 0.95, simpson: 0.62, prey_mass: 6, predator_mass: 9, niche_divergence: 0.45, archive_coverage: 18.5,
       });
     });
+    await expect(conservationBadge).toContainText('DRIFT WARNING');
 
     expect(unhandledError).toBeNull();
   });

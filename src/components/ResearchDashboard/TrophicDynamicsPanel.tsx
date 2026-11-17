@@ -101,7 +101,12 @@ export const TrophicDynamicsPanel: React.FC<TrophicDynamicsPanelProps> = ({
           <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', margin: '4px 0' }}>
             {fmt(totalEnergy, 1)} EU
           </div>
-          <div style={{ fontSize: '11px', color: '#10b981' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              color: driftPct === null ? '#94a3b8' : Math.abs(driftPct) < 0.01 ? '#10b981' : '#ef4444',
+            }}
+          >
             Conservation Drift: {fmt(driftPct, 4)}% (&lt; 0.01% law)
           </div>
         </div>

@@ -63,11 +63,16 @@ export const DataExportDialog: React.FC<DataExportDialogProps> = ({ onClose }) =
   const handleCopyToClipboard = () => {
     const content = getContentToDisplay();
     if (content) {
+      // "Copied" is shown only once the clipboard write has actually succeeded.
       if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(content).catch(() => {});
+        navigator.clipboard
+          .writeText(content)
+          .then(() => {
+            setCopySuccess(true);
+            setTimeout(() => setCopySuccess(false), 2000);
+          })
+          .catch(() => setCopySuccess(false));
       }
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
     }
   };
 

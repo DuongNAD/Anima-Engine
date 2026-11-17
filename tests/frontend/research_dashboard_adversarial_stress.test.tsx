@@ -531,7 +531,7 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
       expect(sent).not.toContain('dispatch_causal_intervention');
     });
 
-    it('T2.3: CheckpointStudioPanel says it is unavailable and calls no backend command', () => {
+    it('T2.3: CheckpointStudioPanel says it is unavailable and calls no backend command', async () => {
       // The backend has no get_causal_branch_tree command. The panel used to offer a scrubber,
       // bookmarks with invented checksums and a fork button that ran nothing.
       const ipc = spyOnIpc();
@@ -542,6 +542,11 @@ describe('Adversarial & Empirical Stress Suite: Research Dashboard (Milestone 4)
       expect(screen.queryByTestId('save-snapshot-bookmark-btn')).not.toBeInTheDocument();
       expect(screen.queryByTestId('fork-branch-open-modal-btn')).not.toBeInTheDocument();
       expect(ipc).not.toHaveBeenCalled();
+
+      // Positive control: the spy does record a command sent through the real invoke().
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('get_simulation_status');
+      expect(ipc.mock.calls.map((call) => call[0])).toContain('get_simulation_status');
     });
   });
 
