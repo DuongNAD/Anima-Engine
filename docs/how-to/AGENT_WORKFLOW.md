@@ -93,20 +93,20 @@ tài liệu ở bảng thắng; sửa trang này.
 | **T2** `[RUST]` | **HT-C** — gộp chồng PR vào thân cây | ✅ #45 (2026-11-15) |
 | **P1–P3** | Bài báo | ⬜ QĐ-P1, QĐ-P2 và QĐ-P3 đã quyết ngày 2026-11-17, nên không còn bị chặn. Bản nháp viết ở repo riêng tư; thẻ nào ghi vào repo này chỉ được ghi dữ liệu và nhật ký dùng AI |
 
-### Đợt 2 — đang chạy (chặng 3)
+### Đợt 2 — đã merge hết ngày 2026-11-18 (chặng 3 chỉ còn R0)
 
 | Thẻ | Việc | Trạng thái | Máy | Ghi chú |
 |---|---|---|---|---|
 | **G1** `[RUST]` | **B2** — zero-alloc ở đường sinh/tử | ✅ #48 | — | |
 | **G2** | **B5** — `test:e2e` đủ bộ, gate danh sách spec | ✅ #47 | — | |
-| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | 🔄 #107, đã qua verifier, bốn check của CI xanh; chờ chủ dự án merge | `agent-win` | |
+| **G3** `[RUST]` | **B6a** — giá trị bịa trong telemetry và provenance | ✅ #107 (2026-11-18), CI chạy lại xanh trên thân cây đã có S6 và S8 | — | |
 | **G4** | **B6b** — lệnh IPC không tồn tại, dữ liệu giả trên dashboard | ✅ #98 (2026-11-17) | — | QĐ-2/QĐ-H quyết 2026-11-17 |
 | **G5** `[RUST]` | **B6c** — bypass sổ cái, nghi rò EU của `PathogenTransmission` | ✅ #95 (2026-11-17) | — | |
 | **G6** | Gỡ bằng chứng giả của Map 2 | ✅ #94 (2026-11-17) | — | |
 | **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
 | **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
-| **G9** | Gate vệ sinh thư mục gốc | 🔄 nhánh `mac/g9-root-hygiene` (`1116760`), đã qua verifier, chưa có PR | `agent-mac` | Allow-list của nhánh viết trước #56 và #97: nó còn liệt kê `TASK.md` (đã xoá) và `AUDIT_REPORT.md` (đã chuyển vào `docs/archive/`), và chưa có `CITATION.cff`. Phải rebase lên thân cây và sửa `scripts/root_allowlist.json` trước khi mở PR |
-| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⛔ chờ cả Đợt 2 merge (còn G3 và G9) | `agent-win` | Cổng ra của chặng 3. `agent-win` không tự bắt đầu; chủ dự án nói khi Đợt 2 đã xong |
+| **G9** | Gate vệ sinh thư mục gốc | ✅ #114 (2026-11-18), dựng lại trên thân cây: allow-list bỏ `TASK.md` và `AUDIT_REPORT.md`, thêm `CITATION.cff` | — | Cổng mới: `npm run check:root-hygiene`. Sáu mục còn ghi `REVIEW:` chờ chủ dự án quyết giữ hay bỏ |
+| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⬜ **mở từ 2026-11-18**: mọi thẻ Đợt 2 đã merge | `agent-win` | Cổng ra của chặng 3. `agent-win` bắt đầu khi chủ dự án báo; nếu R1c đang làm dở thì xong R1c trước hoặc chủ dự án chọn thứ tự |
 
 ### Đợt 3 trở đi
 
