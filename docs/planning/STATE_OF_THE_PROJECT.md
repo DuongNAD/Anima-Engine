@@ -616,7 +616,7 @@ không mang số đo.
 | 0. Dọn bàn và quyết định | Không còn ô quyết định trống cho chặng 1 và 2; mọi PR mở có trạng thái | **Cổng đã qua.** Mười PR mở ngày 13/11 đã xử lý: #38 merge; #30, #31, #34–#37, #39–#41 đóng. Kiểm kê nhánh là thẻ D0 (#42). Cây làm việc đã dọn (MP-0.5) | MP-0.2 xong: QĐ-C, QĐ-1 và QĐ-EN được chủ dự án quyết ngày 2026-11-17. MP-0.6: QĐ-M1 chưa quyết, nên mọi tài liệu kế hoạch vẫn `proposed` |
 | 1. Một cây xanh | CI xanh hai job trên thân cây, rồi bảo vệ nhánh | **Đóng 2026-11-17** (mục ngay dưới) | — |
 | 2. Gộp hai thân | `C5`: đo lại toàn bộ vào §1.g | **Đóng 2026-11-16.** T2 là #45; `main` được fast-forward lên thân cây | §1.g đỏ đúng một bước (`check:e2`), #59 sửa sau đó. Lượt đo toàn bộ mới nhất là §1.h, tại `6f14124` |
-| 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm.** Xong: G1 (#48), G2 (#47), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G8 phần lớn (2026-11-14) | G9 có nhánh `mac/g9-root-hygiene`, chưa có PR (allow-list của nó phải sửa trước, xem `AGENT_WORKFLOW.md` §3). G3 là PR #107, đã qua verifier và CI xanh, chờ merge. R0 chạy sau khi cả đợt merge |
+| 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đang làm, chỉ còn R0.** Mọi thẻ Đợt 2 đã merge: G1 (#48), G2 (#47), G3 (#107), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G9 (#114), G8 phần lớn (2026-11-14). Cùng ngày 2026-11-18, cổng `npm audit` được thay bằng cổng có danh sách miễn trừ (#113) | R0, giao cho `agent-win` |
 | 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. QĐ-EN, QĐ-SEL1b và QĐ-ECO-C1 đã quyết ngày 2026-11-17; thẻ sinh ra là S6, S7, S8 và SEL2. Cùng ngày S8 (#106) và S6 (#110) đã merge; lượt đo của S6 không tìm ra chế độ khan hiếm thức ăn khả thi, nên SEL2 chờ một quyết định mới |
 | 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | QĐ-C = C và QĐ-1 = mức 2 đã quyết ngày 2026-11-17; thẻ R1c (nâng `burn`) phải xong trước chặng này. Còn trống: QĐ-M4, QĐ-M8 (QĐ-P1…P3 đã quyết ngày 2026-11-17) |
 | 6. Bản 1.0 | `H11`: tag `v1.0.0` | Chưa bắt đầu | Thẻ V0–V11, chạy sau R0 |
@@ -1560,6 +1560,13 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   2026-07-29): ba phần nay là một `#[test]` (`challenger_meta_ai_contracts`). Cổng zero-alloc ở đó **phải**
   giữ `start_tracking()` toàn tiến trình, vì `Schedule::default()` chạy hệ trên pool luồng. **Nửa sau
   chưa làm:** test thời gian vẫn cộng `sleep(16ms)` với trần 1.200 ms.
+- **`environmental_elements_stress_tests` cũng đo bằng đồng hồ thật, và đã đỏ trên CI** (2026-11-18,
+  PR #112, run `44195560520`): `environmental_elements_stress_contracts` khẳng định thời gian tick trung
+  bình dưới 50 ms và đo được 101,9 ms trên runner `windows-latest`. PR đó chỉ sửa tài liệu; chạy lại job
+  thì xanh, và cùng test xanh trên #107, #113 và #114 cùng ngày. Một khẳng định thời gian tuyệt đối trên
+  runner dùng chung là flake theo thiết kế, giống nửa sau của `challenger_meta_ai_tests`. Chưa sửa: cách
+  đúng là đo hiệu năng ở bench (Criterion) và để test chỉ khẳng định engine tick được, hoặc nới trần đủ xa
+  để chỉ bắt một hồi quy cấp bậc độ lớn.
 - **Hỏi máy đang chạy gì, bằng lệnh, trước khi gọi một lần đỏ là hồi quy.** Lúc hai test trên đỏ,
   máy có **2 `cargo` + 1 `rustc` + 6 `MSBuild` + 17 `node`** của phiên khác, và 3 worktree vừa được
   ghi trong 2 giờ. Suite `tests/` cùng lúc đó cho 6 lỗi — 3 lỗi là `Test timed out in 15000ms` thật,
