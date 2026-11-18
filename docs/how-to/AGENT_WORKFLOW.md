@@ -200,6 +200,15 @@ QD-P2     = paper drafts live in a private repository, not here: this repository
             data and the AI-use log stay under docs/paper/ (owner in chat, 2026-11-17)
 QD-P3     = keep an AI-use log from now on: docs/paper/AI_USE_LOG.md (owner in chat, 2026-11-17)
 QD-1      = level 2: a single-machine 0.9 first, then 1.0 (owner in chat, 2026-11-17)
+QD-AE-C   = law-fork experiments get four control arms besides exotic_energy=None: ghost field
+            (must equal the baseline checksum), unrewarded costly sham, iso-energetic, elevated
+            primary; contract ER06/ER07 amended by a card that tests the ghost field first, after the
+            SEL2 chain (owner in chat, 2026-11-18; docs/ai/planning/
+            2026-11-18-research-law-fork-and-multi-machine.md)
+QD-M7     = Contribute is a batch (fixed-seed epochs, compared exactly with the host); Inhabit is an
+            island (each device its own world, sparse migration through the host); T5 adds a
+            retroactive replay of a volunteer lineage that sweeps an island. The 25/08 design is
+            amended in card NM-4 (owner in chat, 2026-11-18)
 R5-AUTH   =
   AUTHORIZATION (owner, 2026-11-14): for card T1 only, you may write to the paths in its
   ALLOWED PATHS (src-tauri/Cargo.lock, src-tauri/deny.toml, scripts/check_bundle_budget.mjs,

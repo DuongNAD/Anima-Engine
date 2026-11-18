@@ -2,7 +2,7 @@
 phase: planning
 feature: alternate-evolution-world-lab
 title: Hai báo cáo nghiên cứu về thí nghiệm rẽ luật và thế giới nhiều máy, đối chiếu với mã
-description: Đọc và đối chiếu hai báo cáo Gemini Deep Research ngày 2026-11-18 (câu 6 thí nghiệm rẽ luật, câu 7 thế giới nhiều máy). Đề xuất bốn nhánh đối chứng cho luật năng lượng lạ (QĐ-AE-C, chưa quyết), ghi các khoảng trống giữa hợp đồng ER08/ER09 và mã, và một khuyến nghị cho QĐ-M7 (lô và đảo). Không quyết gì thay chủ dự án
+description: Đọc và đối chiếu hai báo cáo Gemini Deep Research ngày 2026-11-18 (câu 6 thí nghiệm rẽ luật, câu 7 thế giới nhiều máy). Ghi hai quyết định của chủ dự án ngày 2026-11-18: bốn nhánh đối chứng cho luật năng lượng lạ (QĐ-AE-C) và lô cho Contribute, đảo cho Inhabit (QĐ-M7); cùng các khoảng trống giữa hợp đồng ER08/ER09 và mã
 status: active
 owner: simulation-architecture
 last_reviewed: 2026-11-18
@@ -64,8 +64,9 @@ Một kết luận "luật lạ làm lịch sử khác" khi đó cần cả T1 k
 pathway. T2a là kiểm tra an toàn chạy trước mọi thứ. Nó cũng là một test rẻ có thể thêm ngay khi có thẻ: cùng
 manifest, `exotic_energy` có trường nhưng hấp thụ 0, so checksum với `None`.
 
-**Chưa quyết.** Câu hỏi cho chủ dự án: thêm bốn nhánh này vào ER06 và ER07 của hợp đồng thí nghiệm, kèm một thẻ
-cho T2a trước? Đề xuất: có, nhưng sau chuỗi SEL2. Track AE không nằm trên đường găng của chặng 4.
+**Đã quyết (QĐ-AE-C, chủ dự án "Duyệt theo đề xuất", 2026-11-18):** thêm bốn nhánh này vào ER06 và ER07 của hợp
+đồng thí nghiệm, kèm một thẻ cho T2a trước, **sau chuỗi SEL2**. Track AE không nằm trên đường găng của chặng 4.
+Hợp đồng được sửa trong thẻ đó, không phải trong PR này.
 
 ### 2.4 Cỡ mẫu: con số kiểm lại được, và nó nói gì cho SEL2-P
 
@@ -120,20 +121,22 @@ từ máy tình nguyện quét quá một ngưỡng của đảo.
 | WebAssembly tất định (Wasmtime, chuẩn hoá NaN, tắt relaxed SIMD) là một đường thứ hai để có kết quả giống từng bit giữa các nền tảng | QĐ-M6 có một phương án khác: `sim_math` trên `libm` cùng lệnh cấm hàm toán hệ điều hành trong `clippy.toml` ([đối chiếu Burn và tất định](2026-11-18-research-burn-and-determinism.md) §3.2) | Ghi làm phương án thứ hai cho QĐ-M6. Chưa ai kiểm được Bevy ECS cùng Burn có chạy trong Wasmtime với các cờ đó không |
 | Thí nghiệm nhỏ nhất: hai máy khác hệ điều hành, mỗi máy một đảo, di cư 4 con mỗi 200 tick, thêm trễ 250 ms, tắt một máy 30 giây | Hai máy đã có sẵn: Mac (`agent-mac`) và Windows (`agent-win`). Feature `networking` có lớp vận chuyển | Có thể thành một thẻ cho luồng NM, nhưng chỉ sau khi QĐ-M7 được quyết. Không mở thẻ lúc này |
 
-### 3.3 Khuyến nghị cho QĐ-M7
+### 3.3 QĐ-M7 (đã duyệt 2026-11-18)
 
-Chọn hình dạng **lô cho `Contribute` và đảo cho `Inhabit`** như kế hoạch 13/11 đề xuất, và thêm chạy lại có hồi
+Chủ dự án duyệt hình dạng **lô cho `Contribute` và đảo cho `Inhabit`** như kế hoạch 13/11 đề xuất, và thêm chạy lại có hồi
 tố vào lớp T5 khi tới phần người tình nguyện. Hai báo cáo độc lập (bản tổng hợp nghiên cứu mà kế hoạch 13/11 dựa
-vào, và báo cáo này) đã tới cùng kết luận. Không lý do nào trong cả hai buộc phải quyết bây giờ: chặng 7 đứng
-sau `v1.0.0`. Nếu quyết, chỉ cần một dòng trong sổ quyết định; thiết kế 25/08 được sửa trong thẻ NM-4.
+vào, và báo cáo này) đã tới cùng kết luận. Chặng 7 vẫn đứng sau `v1.0.0`; quyết định này chỉ chốt hình dạng, và
+thiết kế 25/08 được sửa trong thẻ NM-4. QĐ-M3 (lớp vận chuyển) và QĐ-M5 (`Inhabit` có là mục tiêu không) vẫn mở.
 
-## 4. Câu hỏi cho chủ dự án
+## 4. Quyết định của chủ dự án
 
-| ID | Câu hỏi | Đề xuất |
+Chủ dự án trả lời "Duyệt theo đề xuất" ngày 2026-11-18 cho cả ba dòng.
+
+| ID | Câu hỏi | Đề xuất và quyết định |
 |---|---|---|
-| QĐ-AE-C | Thêm bốn nhánh đối chứng (trường ma, giả dược tốn phí, đẳng năng lượng, thức ăn tăng) vào ER06/ER07 của hợp đồng thí nghiệm, kèm một thẻ test trường ma trước? | Có, sau chuỗi SEL2 |
-| QĐ-M7 | Lô cho `Contribute`, đảo cho `Inhabit`, cộng chạy lại có hồi tố ở T5? | Có. Quyết được bất cứ lúc nào trước NM-4 |
-| — | SEL2-E báo thêm tương quan cặp đo được, làm đầu vào cho QĐ-SEL2c | Thêm vào định nghĩa SEL2-E (sửa tài liệu, không cần quyết riêng) |
+| QĐ-AE-C | Thêm bốn nhánh đối chứng (trường ma, giả dược tốn phí, đẳng năng lượng, thức ăn tăng) vào ER06/ER07 của hợp đồng thí nghiệm, kèm một thẻ test trường ma trước? | Có, sau chuỗi SEL2. **Đã duyệt** |
+| QĐ-M7 | Lô cho `Contribute`, đảo cho `Inhabit`, cộng chạy lại có hồi tố ở T5? | Có. **Đã duyệt**; thiết kế 25/08 được sửa trong thẻ NM-4 |
+| — | SEL2-E báo thêm tương quan cặp đo được, làm đầu vào cho QĐ-SEL2c | **Đã thêm** vào định nghĩa SEL2-E trong đề xuất SEL2 |
 
 ## 5. Điều tài liệu này không khẳng định
 

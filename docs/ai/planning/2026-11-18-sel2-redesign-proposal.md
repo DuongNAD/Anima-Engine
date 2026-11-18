@@ -133,6 +133,9 @@ dò; bản đăng ký sau đó phải dùng seed riêng.
 4. phần lớn cái chết là do đói, không do khát (từ S9);
 5. trong suốt lượt chạy vẫn có sinh và chết, tức quần thể không đóng băng.
 
+Ngoài năm điều kiện, SEL2-E báo **tương quan cặp đo được** giữa các lượt cùng seed, làm đầu vào cho QĐ-SEL2c
+([đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md) §2.4).
+
 Điều kiện 3 đến từ báo cáo 1, vốn đề nghị đo theo thế hệ sinh học (30–90) thay vì số tick. Nếu không ô nào đạt,
 lượt đo trả kết quả âm như S6, và bước kế tiếp là các mục ở §5.5, không phải nới điều kiện.
 
