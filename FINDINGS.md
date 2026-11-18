@@ -30,6 +30,23 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-045 — Khôi phục checkpoint thế giới sống làm sai ranh giới lập chỉ mục `SpatialHashGrid`, gộp bảng ECS `AgentSex` và đặt lại `NextNodeId(3)`
+- **Ngày:** 2026-11-18
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/live_experiment.rs:2466` (`populate_spatial_grid` trước khi sửa chạy `rebuild_spatial_grid_system` trên toàn bộ thực thể thay vì lọc các thực thể sinh sau pha rebuild của tick `K`);
+  - `src-tauri/src/physics/spatial.rs:15,357-429` (thiếu dấu `IndexedInGrid` cập nhật tại chỗ trong `rebuild_spatial_grid_system`);
+  - `src-tauri/src/core/simulation_state.rs:134,954-956,1050-1118,1321-1381` (`SerializedAgent` bỏ qua `AgentSex`, gộp chung founder `None` và con non `Some` vào một bảng ECS);
+  - `src-tauri/src/core/live_experiment.rs:2764-2767` và `src-tauri/src/core/simulation_loop.rs:1389-1393` (`install_runtime_resources` luôn đặt `NextNodeId(3)` khi khôi phục, còn `simulation_loop` chỉ tính từ nút đang sống).
+- **Phát hiện bởi:** đo (kiểm chứng tương đương khôi phục S10 trên cấu hình nền S6, `seed = 3`)
+- **Triệu chứng:** Trước khi sửa (trên `38e8d1d`), khôi phục thế giới nền S6 (`seed = 3`) lệch ở hai mốc độc lập:
+  1. Khôi phục ở tick `1` -> chạy tới tick `2`: lưới khôi phục chứa `240` collider thay vì `100` (vì con non sinh sau `rebuild_spatial_grid_system` bị lập chỉ mục sớm), làm checksum tick `2` lệch ngay (`0x109047fe` so với `0xf5876d6e`);
+  2. Khôi phục ở tick `600` -> chạy tới `1.200`: `sex_res = 0` so với `sex_orig = 43` (mất tách bảng `AgentSex`), các ca chết `swap_remove` làm đảo thứ tự duyệt bảng từ sau tick `600` dẫn tới rẽ nhánh đầu ở tick `859` (`1332331413` so với `4057091745`) và kết thúc tại `0x1d0183a6` so với `0x21424343`;
+  3. Khôi phục sau đột biến cấu trúc `AddNode` (tick `394`, `NextNodeId = 6`) đặt lại `NextNodeId(3)`, và nạp save cũ không khôi phục bộ đếm an toàn từ cả `agents` lẫn `dormant_agents`.
+- **Tái hiện:** `cd src-tauri && CARGO_BUILD_JOBS=4 cargo test --features desktop --test f045_restore_equivalence_tests -- --nocapture --test-threads=1`
+- **Test khoá lại:** `src-tauri/tests/f045_restore_equivalence_tests.rs` — 5 test (`f045_probe1_tick1_to_tick2_restore_matches_uninterrupted`, `f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick`, `f045_structural_add_node_mutation_next_node_id_survives_restore`, `f045_old_save_without_new_fields_loads_and_falls_back_cleanly`, `f045_uninterrupted_s6_base_trajectory_fingerprint`). Trên base `38e8d1d` có 4 test đầu FAIL và test thứ 5 PASS; sau khi sửa cả 5 test PASS và quỹ đạo liền mạch giữ nguyên từng bit (`0x30ea8bbf`, `0xf5876d6e`, `0xbc114750`, `0x21424343`).
+- **Trạng thái:** FIXED ở thẻ F045, PR #140 (2026-11-19; lead kiểm lại trên macOS: base 1/5 → head 5/5, quỹ đạo liền mạch giữ nguyên, `verdicts/F045_a87f1a68.md` trên hub). Còn một khe ngoài phạm vi thẻ: đường genesis và khôi phục của app desktop (`core/simulation_loop.rs`) sinh cây, hồ, thức ăn chưa có `IndexedInGrid`, nên một lần khôi phục trong app có thể tách bảng ECS khác lượt chạy liền mạch, cùng cơ chế với `AgentSex`. Chưa đo; thẻ chẩn đoán F046 (`anima-mac`) đo trước khi sửa.
+
 ### F-044 — Ân hạn chết đói và ân hạn chết khát dùng chung một bộ đếm, nên chúng không độc lập khi khác nhau
 - **Ngày:** 2026-11-17
 - **Loại:** SMELL
