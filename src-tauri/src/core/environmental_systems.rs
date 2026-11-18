@@ -275,6 +275,7 @@ pub fn seed_dropping_system(
                     },
                     Position(glam::Vec3::new(spawn_x, 0.0, spawn_z)),
                     crate::physics::SpatialCollider { radius: 1.5 },
+                    crate::physics::spatial::IndexedInGrid(false),
                 ));
                 spawned_this_tick += 1;
             }

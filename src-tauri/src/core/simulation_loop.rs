@@ -1357,16 +1357,10 @@ impl SimulationEngine {
                 ),
             });
 
-            let mut next_node_id = 3;
-            if let Some(ref state) = state_to_load {
-                for agent in &state.agents {
-                    for node in &agent.genotype.nodes {
-                        if node.id >= next_node_id {
-                            next_node_id = node.id + 1;
-                        }
-                    }
-                }
-            }
+            let next_node_id = state_to_load
+                .as_ref()
+                .map(crate::core::simulation_state::restored_next_node_id)
+                .unwrap_or(3);
             world.insert_resource(NextNodeId(next_node_id));
 
             world.insert_resource(EvolutionSender(stats_tx));
@@ -1480,6 +1474,7 @@ impl SimulationEngine {
                         },
                     ));
                 }
+                crate::core::simulation_state::populate_restored_spatial_grid(&mut world, state);
             } else {
                 let mut genotype = MorphologyGenotype::new();
                 genotype.add_node(MorphologyNode {

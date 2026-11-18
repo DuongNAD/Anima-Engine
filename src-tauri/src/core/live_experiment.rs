@@ -1650,7 +1650,7 @@ impl LiveExperimentAdapter {
         let config = LiveWorldConfig::from_initial_conditions(initial)?;
 
         let mut world = build_live_world(seed, &config, restore)?;
-        let channels = install_runtime_resources(&mut world, seed, &config);
+        let channels = install_runtime_resources(&mut world, seed, &config, restore);
 
         let state = match restore.and_then(|s| s.experiment.clone()) {
             Some(saved) => {
@@ -2368,16 +2368,11 @@ fn build_live_world(
             }
             // `sensory_system` runs at the start of the tick, before `rebuild_spatial_grid_system`.
             // In an uninterrupted run that has already stepped at least one tick, `SpatialHashGrid`
-            // holds the end-of-tick-K collider positions when tick K+1 begins; rebuilding it here
-            // keeps a resumed or forked run from raycasting against an empty grid on tick K+1.
-            if state.tick_count > 0
-                || state
-                    .experiment
-                    .as_ref()
-                    .is_some_and(|exp| exp.clock_tick > 0)
-            {
-                populate_spatial_grid(&mut world);
-            }
+            // holds the end-of-tick-K collider positions when tick K+1 begins; restore the exact
+            // `IndexedInGrid` boundary and populate `SpatialHashGrid` only for already-indexed
+            // colliders (when `tick_count > 0 || clock_tick > 0`), leaving post-rebuild spawns
+            // unindexed until tick K+1's rebuild (F-045).
+            populate_spatial_grid(&mut world, state);
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
@@ -2443,14 +2438,11 @@ fn scale_pasture_capacity_only(world: &mut World, factor: f64) {
     }
 }
 
-fn populate_spatial_grid(world: &mut World) {
-    // Run the *same* system the tick schedule runs, rather than a second implementation of it.
-    // `rebuild_spatial_grid_system` resets the prepopulated per-cell counts and reserves capacity
-    // in a counting pass before inserting; a hand-rolled `clear()` + `insert()` loop here would be
-    // a second definition of one invariant, and the two would drift the first time the real one
-    // changed. `run_system_once` is the one-shot form of exactly that system.
-    use bevy_ecs::system::RunSystemOnce;
-    world.run_system_once(crate::physics::spatial::rebuild_spatial_grid_system);
+fn populate_spatial_grid(world: &mut World, state: &SavedSimulationState) {
+    // Sync every collider's `IndexedInGrid` flag and run `rebuild_spatial_grid_system` (filtering
+    // out post-rebuild spawns recorded in `state.unindexed_colliders`) when `tick > 0` so tick
+    // K+1 sees the exact same grid contents as an uninterrupted run (F-045).
+    crate::core::simulation_state::populate_restored_spatial_grid(world, state);
 }
 
 /// The founding population and environment a manifest declared.
@@ -2566,6 +2558,7 @@ fn genesis(
             },
             crate::core::ecs::Position(pos),
             crate::physics::SpatialCollider { radius: 2.0 },
+            crate::physics::spatial::IndexedInGrid(false),
         ));
     }
     for i in 0..config.lakes {
@@ -2578,6 +2571,7 @@ fn genesis(
             },
             crate::core::ecs::Position(pos),
             crate::physics::SpatialCollider { radius: 10.0 },
+            crate::physics::spatial::IndexedInGrid(false),
         ));
     }
 }
@@ -2605,6 +2599,7 @@ fn install_runtime_resources(
     world: &mut World,
     seed: u64,
     config: &LiveWorldConfig,
+    restore: Option<&SavedSimulationState>,
 ) -> LiveChannels {
     use crate::core::agent_systems::{
         ActiveEvolutionSettings, BevyEvolutionRunning, BevyEvolutionSettings, BevyMapElitesArchive,
@@ -2712,7 +2707,10 @@ fn install_runtime_resources(
     world.insert_resource(BevyMapElitesArchive {
         archive: crate::evolution::map_elites::MapElitesArchive::new(1.0 / 50.0),
     });
-    world.insert_resource(NextNodeId(3));
+    let next_node_id = restore
+        .map(crate::core::simulation_state::restored_next_node_id)
+        .unwrap_or(3);
+    world.insert_resource(NextNodeId(next_node_id));
     world.insert_resource(crate::core::ecs::EnvironmentalSpawnSettings::default());
 
     // A manifest is the complete declared input to a scientific run. The interactive app may opt
