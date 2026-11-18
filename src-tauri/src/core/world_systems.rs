@@ -246,6 +246,7 @@ pub fn spawn_food_system(
                 },
                 Position(glam::Vec3::new(x, 0.0, z)),
                 crate::physics::SpatialCollider { radius: 0.5 },
+                crate::physics::spatial::IndexedInGrid(false),
             ));
         }
     }
