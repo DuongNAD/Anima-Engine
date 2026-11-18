@@ -142,10 +142,11 @@ thẻ mới **S11** (lái tới cỏ, opt-in) và thẻ sửa **F045** (khôi ph
 tăng lượng ăn. Thứ giới hạn là khát (mọi hồ nằm trên một hàng), nên thẻ kế tiếp là **S12** (`live.lake_layout`, rải hồ
 trên lưới hai chiều), giao cho `anima-dell`. **R1c** ✅ #127 (2026-11-18, `burn` 0.22.1, schema 8,
 `LIVE_MODEL_VERSION` `/2`); điều kiện giấy phép còn lại của nó là QD-C2. Sau R1c, `anima-case` làm **M4** (ma trận
-dư EU) rồi **M3** (đường cong scaling): **M3** ✅ #138; **M4** #137, vòng đầu bị trả về vì ma trận không có lượt nào có chết hay săn mồi
+dư EU) rồi **M3** (đường cong scaling): **M3** ✅ #138; **M4** ✅ #137, vòng đầu bị trả về vì ma trận không có lượt nào có chết hay săn mồi
 (verdict M4_064bc43c trên hub), vòng hai đạt. **S12** ✅ #135. Hàng việc từ 2026-11-19: `anima-dell` S13 (đo 200.000 tick
 trên hồ đã rải) rồi M2; `anima-case` S2 (observable tích luỹ cho SEL2-P); `anima-mac` làm tiếp F045 sau khi dừng
-khoảng 7 giờ ngày 2026-11-18 (merge thân cây vào nhánh, không rebase). Định nghĩa các thẻ ở
+khoảng 7 giờ ngày 2026-11-18 (merge thân cây vào nhánh, không rebase): **F045** ✅ #140, rồi F046 (chẩn đoán, chỉ đọc).
+**S13** #139 cho kết quả âm (0/12 ô khả thi); `anima-dell` làm **S14** (đo hẹp quanh hệ số 0,65 với 16 hồ) trước M2. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
