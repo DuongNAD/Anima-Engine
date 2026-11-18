@@ -92,6 +92,9 @@ pub const LIVE_KEY_PREDATOR_FRACTION: &str = "live.predator_fraction";
 pub const LIVE_KEY_TREES: &str = "live.trees";
 /// Lakes placed at genesis.
 pub const LIVE_KEY_LAKES: &str = "live.lakes";
+/// Card S12: lake placement layout at genesis (`0.0`/absent = single row at `z_fraction = 0.8`;
+/// `1.0` = 2-D lattice spread over the map; requires `live.lakes >= 1`).
+pub const LIVE_KEY_LAKE_LAYOUT: &str = "live.lake_layout";
 /// Ceiling on spawned food items.
 pub const LIVE_KEY_FOOD_CAP: &str = "live.food_cap";
 /// Whether founders get their own heritable brain (ADR-0003), as a **declared** input.
@@ -212,11 +215,12 @@ pub const LIVE_KEY_DRIFT_CONTROL: &str = "live.drift_control";
 pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 24] = [
+pub const LIVE_KEYS: [&str; 25] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
     LIVE_KEY_LAKES,
+    LIVE_KEY_LAKE_LAYOUT,
     LIVE_KEY_FOOD_CAP,
     LIVE_KEY_EVOLVED_BRAINS,
     LIVE_KEY_MORTALITY,
@@ -311,6 +315,9 @@ pub struct LiveWorldConfig {
     /// founders).
     #[serde(default)]
     pub drift_reset_ticks: u64,
+    /// Card S12: genesis lake layout (`0` = row at `z_fraction = 0.8`, `1` = 2-D lattice).
+    #[serde(default)]
+    pub lake_layout: u8,
 }
 
 fn default_prey_cap() -> usize {
@@ -372,6 +379,7 @@ impl Default for LiveWorldConfig {
             plant_reserve: 0.0,
             drift_control: false,
             drift_reset_ticks: 0,
+            lake_layout: 0,
         }
     }
 }
@@ -607,8 +615,25 @@ impl LiveWorldConfig {
                 LIVE_KEY_DRIFT_RESET_TICKS => {
                     config.drift_reset_ticks = bounded_count(key, *value, 0.0, 1_000_000.0)? as u64;
                 }
+                LIVE_KEY_LAKE_LAYOUT => match *value {
+                    0.0 => config.lake_layout = 0,
+                    1.0 => config.lake_layout = 1,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
                 _ => unreachable!("key membership was checked above"),
             }
+        }
+        if config.lake_layout == 1 && config.lakes == 0 {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.lake_layout = 1.0 requires live.lakes >= 1".into(),
+            });
         }
         if config.drift_control && (!config.mortality || !config.reproduction) {
             return Err(ExperimentError::InvalidLaw {
@@ -2562,7 +2587,11 @@ fn genesis(
         ));
     }
     for i in 0..config.lakes {
-        let pos = lattice_point(i, config.lakes.max(1), bounds, 0.8);
+        let pos = if config.lake_layout == 1 {
+            lake_lattice_point(i, config.lakes, bounds)
+        } else {
+            lattice_point(i, config.lakes.max(1), bounds, 0.8)
+        };
         world.spawn((
             crate::core::ecs::Lake {
                 current_water: env.default_lake_water,
@@ -2590,6 +2619,31 @@ fn lattice_point(
         bounds.min.x + t * span_x,
         0.0,
         bounds.min.z + z_fraction * span_z,
+    )
+}
+
+/// Places lake `i` of `n` (`n >= 1`) on a 2-D lattice over `bounds` (`live.lake_layout = 1`):
+/// `k = ceil(sqrt(n))` columns, `m = ceil(n / k)` rows; lake `i` goes to column `c = i % k`,
+/// row `r = i / k`, at `x = min.x + (c + 1) / (k + 1) * span_x` and
+/// `z = min.z + (r + 1) / (m + 1) * span_z` (`y = 0`). If the last row (`r == m - 1`) is partial
+/// with `j = n - (m - 1) * k` lakes, it is centred using x fractions `(c + 1) / (j + 1)`.
+fn lake_lattice_point(i: usize, n: usize, bounds: crate::core::ecs::MapBounds) -> glam::Vec3 {
+    debug_assert!(n >= 1 && i < n);
+    let k = (1..=n)
+        .find(|&k| k.checked_mul(k).is_some_and(|sq| sq >= n))
+        .unwrap_or(1);
+    let m = n.div_ceil(k);
+    let c = i % k;
+    let r = i / k;
+    let cols_in_row = if r + 1 == m { n - (m - 1) * k } else { k };
+    let span_x = bounds.max.x - bounds.min.x;
+    let span_z = bounds.max.z - bounds.min.z;
+    let x_frac = (c as f32 + 1.0) / (cols_in_row as f32 + 1.0);
+    let z_frac = (r as f32 + 1.0) / (m as f32 + 1.0);
+    glam::Vec3::new(
+        bounds.min.x + x_frac * span_x,
+        0.0,
+        bounds.min.z + z_frac * span_z,
     )
 }
 

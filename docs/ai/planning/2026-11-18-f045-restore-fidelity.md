@@ -17,7 +17,7 @@ last_reviewed: 2026-11-19
 
 ## Nguyên nhân gốc và ba điểm sửa
 
-Phép đo nền hậu-R1c trên `origin/feat/ecological-selection` (`7905a23ee46000f93bf6dfe1a6fa47e0d63ccbed`,
+Phép đo nền hậu-R1c/S12 trên `origin/feat/ecological-selection` (`38e8d1dda1c4b809c99b62942eeca3240b178ac3`,
 thế giới nền S6, hạt giống `3`, chạy ngày `2026-11-19`) cho thấy sai khác khôi phục chia thành hai cơ
 chế độc lập cùng một lỗi tiềm ẩn thứ ba về bộ đếm nút hình thái:
 
@@ -58,10 +58,10 @@ chế độc lập cùng một lỗi tiềm ẩn thứ ba về bộ đếm nút 
 ## Số đo kiểm chứng (`f045_restore_equivalence_tests`)
 
 Chạy ngày `2026-11-19` trên `macOS arm64` (so sánh cùng file test giữa
-`origin/feat/ecological-selection` = `7905a23ee46000f93bf6dfe1a6fa47e0d63ccbed` và đầu nhánh
+`origin/feat/ecological-selection` = `38e8d1dda1c4b809c99b62942eeca3240b178ac3` và đầu nhánh
 `mac/f045-restore-fidelity`, cấu hình nền S6, `seed = 3`):
 
-| Điều kiện | Trước khi sửa (`7905a23`) | Sau khi sửa (`mac/f045-restore-fidelity`) |
+| Điều kiện | Trước khi sửa (`38e8d1d`) | Sau khi sửa (`mac/f045-restore-fidelity`) |
 |---|---|---|
 | Khôi phục `1 -> 2` (lưới + checksum) | `100` vs `240`; `0xf5876d6e` vs `0x109047fe` (**FAIL**) | `100 == 100`; `0xf5876d6e == 0xf5876d6e` (**PASS**) |
 | Khôi phục `600 -> 1.200` (từng tick) | `sex_orig=43 vs sex_res=0`; lệch đầu ở tick `859` (`1332331413` vs `4057091745`); cuối `0x21424343` vs `0x1d0183a6` (**FAIL**) | `sex_orig=43 == sex_res=43`; `first_divergence = None`; cuối `0x21424343 == 0x21424343` (**PASS**) |
