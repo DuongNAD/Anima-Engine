@@ -256,7 +256,7 @@ Chủ dự án ra các quyết định này trong chat ngày 2026-11-17; bản g
 Bảng dưới là **định nghĩa ở mức thẻ**. Trong file prompt chưa có thẻ nào của bảng này. Tình trạng ngày
 2026-11-18: S8 (#106) và S6 (#110) đã merge; L0 đã có nháp ADR-0008 (#109, còn `proposed`); prompt và dòng
 uỷ quyền đã soạn của R1c nằm ở [bản giao việc cho `agent-win`](2026-11-17-agent-win-handoff-r1c.md). Các
-thẻ còn lại (S7, SEL2-P/X, L1, L2-P/X) chưa có prompt và chưa có dòng `AUTHORIZATION`: lead soạn prompt
+thẻ còn lại (S7, SEL2-P/X, L1, L2-P/X, và S9, S10, SEL2-E, SEL2-D thêm ngày 2026-11-18) chưa có prompt; trong số đó chỉ S9 và S10 có dòng `AUTHORIZATION` (2026-11-18). Các thẻ khác chưa có: lead soạn prompt
 theo mẫu thẻ, chủ dự án ghi dòng uỷ quyền, rồi mới giao. Mọi khoá mới đều
 opt-in: khoá vắng thì thế giới phải chạy đúng như trước, và thẻ phải chứng minh điều đó bằng so sánh các
 lượt chạy với nhau, không ghim checksum tuyệt đối.
@@ -265,7 +265,11 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 |---|---|---|---|---|
 | S8 `[RUST]` | **F-044** — tách bộ đếm ân hạn đói và ân hạn khát thành hai | 🤖 | Làm **trước** mọi bản đăng ký thí nghiệm mới | Test đặc tả `f044_shared_bottom_counter_tests` được đảo thành test của hành vi đúng; trường mới có `#[serde(default)]` và save cũ nạp được; thay đổi quỹ đạo của cấu hình có hai mức ân hạn khác nhau được khai trong PR |
 | S6 `[RUST]` | **QĐ-SEL1b = A** — khoá trần sinh sản của con mồi (STATE §3.00 P2 đề xuất tên `live.prey_cap`), rồi một lượt đo thăm dò mù với khối lượng cơ thể | 🤖 | S8 | Khoá vắng thì bit-identical với hôm nay; báo cáo thăm dò cho biết khan hiếm đồng cỏ có đưa standing crop vào dải mà bản đăng ký cần hay không. **Không** chạy seed thí nghiệm nào |
-| SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | S6 (đã merge, #110) **và** một quyết định của chủ dự án về bước kế tiếp của QĐ-SEL1b: lượt đo của S6 không tìm ra cấu hình khan hiếm nào khả thi. Phương án đề xuất ngày 2026-11-18, chờ quyết: [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) (thẻ S9, S10, SEL2-E, SEL2-D) | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
+| S9 `[RUST]` | **QĐ-SEL2a** — đếm riêng chết vì đói và chết vì khát (`live.deaths_starvation`, `live.deaths_dehydration` trong danh sách observable mở rộng) | 🤖 | Uỷ quyền R5 có từ 2026-11-18 | Ở §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md): tổng hai observable bằng `live.deaths`; đọc chúng không đổi checksum; đo lại các ô hệ số 0,5 và 0,7 của lưới S6 |
+| S10 `[RUST]` | **QĐ-SEL2a** — khoá `live.plant_reserve`: phần `r_max` mỗi ô con vật không ăn được; cây vẫn mọc bằng detritus | 🤖 | S9; uỷ quyền R5 có từ 2026-11-18 | Ở §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md): khoá vắng thì quỹ đạo trùng lượt trước khi có khoá; không ô nào bị gặm dưới `ρ·r_max`; EU kín; tất định nhiều tiến trình |
+| SEL2-E | **QĐ-SEL2a, b** — đo thăm dò lần hai, mù với khối lượng: `live.founders` × `live.plant_reserve` × `live.lakes`, seed 1–6 | 🤖 | S9, S10 | Ở §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md): điều kiện khả thi gồm tối thiểu ≥ 5 ở mọi seed, tỉ số crop trong dải, **≥ 30 thế hệ**, **chết chủ yếu vì đói**, không đóng băng. Kết quả âm được ghi như S6 |
+| SEL2-D `[RUST]` | **QĐ-SEL2a** — nhóm đối chứng drift khoá bước: phát lại đúng số sinh và chết theo tick nhưng chọn ngẫu nhiên ai chết và ai làm cha mẹ | 🤖 | Cần dòng uỷ quyền R5 riêng; làm song song được với SEL2-E | Ở §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) |
+| SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | SEL2-E đã tìm ra ít nhất một ô khả thi (QĐ-SEL2a, 2026-11-18); SEL2-D cho nhóm đối chứng drift. Số seed quyết sau SEL2-E (QĐ-SEL2c). Thay đổi so với E-SEL1: §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
 | S7 `[RUST]` | **QĐ-ECO-C1** — khoá `live.predator_cost_mult`, `live.strike_radius` và một khoá nguồn nước | 🤖 | ADR-0007 được cập nhật (file R5: agent soạn, chủ dự án duyệt) | Mỗi khoá vắng thì bit-identical; EU kín; tất định nhiều tiến trình; một phép đo **tiền đăng ký** trên ít nhất 20 seed |
 | R1c `[RUST]` | **QĐ-C = C** — nâng `burn` từ 0.13.2 lên dòng 0.22. **Thay thẻ R1**, vốn giả định QĐ-C = A | 🤖 + 🧑 | Uỷ quyền R5 cho `src-tauri/Cargo.toml`, `Cargo.lock` và các file dùng `burn` | Xem danh sách ngay dưới bảng |
 | L0 | ADR cho QĐ-PAST (kể cả thiết kế lưu trữ) và QĐ-TIME | 🤖 soạn, 🧑 duyệt | — | ADR ở trạng thái `accepted` |
@@ -290,7 +294,7 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 6. Hồ sơ giấy phép được sinh lại **trên Windows** (thẻ H5) và `npm run check:licenses-complete` exit 0.
 7. Một nháp ADR cho việc nâng, và một bản vá cho đoạn "burn is pinned at 0.13.2" của `CLAUDE.md` (file R5).
 
-Thứ tự đề xuất lúc viết: S8, rồi S6 và S7 song song, rồi SEL2 (S8 và S6 đã xong). R1c không phụ thuộc các thẻ đó và phải xong trước chặng
+Thứ tự đề xuất lúc viết: S8, rồi S6 và S7 song song, rồi SEL2 (S8 và S6 đã xong). Từ QĐ-SEL2a (2026-11-18), SEL2 đi qua S9 → S10 → SEL2-E trước, với SEL2-D song song. R1c không phụ thuộc các thẻ đó và phải xong trước chặng
 5. L0 làm được ngay vì không chạm mã; L1 và L2 đi sau SEL2-X.
 
 ---

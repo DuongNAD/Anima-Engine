@@ -2,16 +2,21 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Đề xuất làm lại SEL2 từ hai báo cáo nghiên cứu ngày 2026-11-18
-description: Sau khi lượt đo S6 không tìm ra chế độ khan hiếm thức ăn khả thi, đề xuất một chuỗi thẻ mới (S9 tách nguyên nhân chết, S10 phần cây dự trữ, SEL2-E đo thăm dò thứ hai, SEL2-D đối chứng drift) và đổi cách đo của SEL2 sang endpoint không bị sàn che. Chờ chủ dự án quyết
-status: proposed
+description: Sau khi lượt đo S6 không tìm ra chế độ khan hiếm thức ăn khả thi, đề xuất một chuỗi thẻ mới (S9 tách nguyên nhân chết, S10 phần cây dự trữ, SEL2-E đo thăm dò thứ hai, SEL2-D đối chứng drift) và đổi cách đo của SEL2 sang endpoint không bị sàn che. Chủ dự án đã duyệt cả bốn mục ngày 2026-11-18
+status: active
 owner: simulation-architecture
 last_reviewed: 2026-11-18
 ---
 
 # Đề xuất làm lại SEL2
 
-> **Đề xuất, chờ chủ dự án quyết.** Không thẻ nào dưới đây được giao, và chưa có dòng `AUTHORIZATION` nào
-> có hiệu lực. Các mục cần quyết nằm ở [§7](#7-chủ-dự-án-cần-quyết).
+> **Đã duyệt ngày 2026-11-18.** Chủ dự án trả lời "Duyệt cả" cho bốn mục ở [§7](#7-chủ-dự-án-cần-quyết).
+> Quyết định được ghi là QĐ-SEL2a–d trong
+> [sổ quyết định](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được), hai
+> dòng uỷ quyền của S9 và S10 nằm trong `R5-AUTH` của
+> [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) §4, và năm thẻ nằm trong
+> [kế hoạch swarm](2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
+> Thân trang dưới đây giữ nguyên như lúc đề xuất.
 
 ## 1. Tóm tắt
 
@@ -187,14 +192,14 @@ Không thẻ nào ở đây; đây là ghi chú cho các thẻ đã có.
 
 ## 7. Chủ dự án cần quyết
 
-| ID | Câu hỏi | Đề xuất |
-|---|---|---|
-| QĐ-SEL2a | Đi theo chuỗi S9 → S10 → SEL2-E → SEL2-P (kèm SEL2-D), thay cho "đo dày quanh hệ số 0,6–0,7" hoặc "chuyển sang khan hiếm nước" mà lượt S6 nêu? | Có |
-| QĐ-SEL2b | Thêm "≥ 30 thế hệ" và "chết chủ yếu vì đói" vào điều kiện khả thi của SEL2-E? | Có |
-| QĐ-SEL2c | SEL2-P dùng 16 hay 24 seed? | Quyết sau SEL2-E, khi biết một lượt chạy tốn bao lâu |
-| QĐ-SEL2d | Uỷ quyền R5 cho S9 và S10 | Dòng nháp bên dưới |
+| ID | Câu hỏi | Đề xuất | Chủ dự án quyết (2026-11-18) |
+|---|---|---|---|
+| QĐ-SEL2a | Đi theo chuỗi S9 → S10 → SEL2-E → SEL2-P (kèm SEL2-D), thay cho "đo dày quanh hệ số 0,6–0,7" hoặc "chuyển sang khan hiếm nước" mà lượt S6 nêu? | Có | Có |
+| QĐ-SEL2b | Thêm "≥ 30 thế hệ" và "chết chủ yếu vì đói" vào điều kiện khả thi của SEL2-E? | Có | Có |
+| QĐ-SEL2c | SEL2-P dùng 16 hay 24 seed? | Quyết sau SEL2-E, khi biết một lượt chạy tốn bao lâu | Quyết sau SEL2-E |
+| QĐ-SEL2d | Uỷ quyền R5 cho S9 và S10 | Dòng nháp bên dưới | Có, đúng các path dưới đây |
 
-Dòng uỷ quyền nháp. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
+Dòng uỷ quyền, nay có hiệu lực với ngày 2026-11-18 trong `R5-AUTH`. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
 cần sửa file nào khác dưới `src-tauri/src`.
 
 ```text
