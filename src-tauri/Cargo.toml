@@ -48,11 +48,11 @@ ts-rs = "10"
 bevy_ecs = "0.13.0"
 glam = { version = "0.25", features = ["serde"] }
 rayon = "1.10.0"
-# Burn 0.22 (`flex` + `simd` + `rayon` on CPU, optional `wgpu` via `ml-wgpu`). Default features
-# enable `std` and `optim` (which implies `autodiff`) without `train`/`dataset`, keeping
-# `burn-dataset`/`gix-*` out of the build. `burn-flex` replaces deprecated `burn-ndarray`, and
-# `burn/wgpu` moves to `wgpu ^30` / `naga 30`, dropping `hexf-parse`.
-burn = { version = "0.22.1", features = ["flex", "simd", "rayon"] }
+# Burn 0.22 (`flex` + `simd` + `rayon` on CPU, optional `wgpu` via `ml-wgpu`). Setting
+# `default-features = false` with explicit `std` + `optim` omits `persistence` (which pulls
+# `cubecl-environment/persistence -> turso*`), `fusion`, and `autotune`, keeping `turso`, `pack1`,
+# `genawaiter`, `genawaiter-macro`, `cfg_block`, and `burn-dataset`/`gix-*` out of the build.
+burn = { version = "0.22.1", default-features = false, features = ["std", "optim", "flex", "simd", "rayon"] }
 socket2 = "0.5"
 bincode = { version = "=2.0.0-rc.3", features = ["serde"] }
 crossbeam-channel = "0.5"

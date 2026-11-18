@@ -192,7 +192,7 @@ export function cargoInventory(root) {
   const srcTauri = join(root, 'src-tauri');
   const treeOut = execFileSync(
     'cargo',
-    ['tree', ...CARGO_FEATURES, '-e', 'normal', '--prefix', 'none', '--no-dedupe'],
+    ['tree', ...CARGO_FEATURES, '-e', 'normal', '--prefix', 'none'],
     sh(srcTauri),
   );
 

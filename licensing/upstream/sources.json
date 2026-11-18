@@ -42,32 +42,6 @@
       "retrieved": "2026-07-27"
     },
     {
-      "id": "github.com/aretta-ai/aristo/b6f9585a26a5ff2064134143aa10c813d2795546/LICENSE",
-      "url": "https://raw.githubusercontent.com/aretta-ai/aristo/b6f9585a26a5ff2064134143aa10c813d2795546/LICENSE",
-      "repository": "https://github.com/aretta-ai/aristo",
-      "commit": "b6f9585a26a5ff2064134143aa10c813d2795546",
-      "pathInRepo": "LICENSE",
-      "filename": "LICENSE",
-      "materialType": "licence-text",
-      "spdx": "MIT",
-      "bytes": 1063,
-      "sha256": "e581d9bf9d912c35c1c4c975edd5bb696ef232e0e193fdcd518257b9dff41e55",
-      "retrieved": "2026-11-18"
-    },
-    {
-      "id": "github.com/ashvardanian/SimSIMD/fb7cbdda3d187e4875cef71f2d16c1b739bff38f/LICENSE",
-      "url": "https://raw.githubusercontent.com/ashvardanian/SimSIMD/fb7cbdda3d187e4875cef71f2d16c1b739bff38f/LICENSE",
-      "repository": "https://github.com/ashvardanian/SimSIMD",
-      "commit": "fb7cbdda3d187e4875cef71f2d16c1b739bff38f",
-      "pathInRepo": "LICENSE",
-      "filename": "LICENSE",
-      "materialType": "licence-text",
-      "spdx": "Apache-2.0",
-      "bytes": 11357,
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
-      "retrieved": "2026-11-18"
-    },
-    {
       "id": "github.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
       "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/ae42d22078b98549e987d2f03d12df7b984fde47/LICENSE",
       "repository": "https://github.com/dropbox/rust-alloc-no-stdlib",
@@ -445,19 +419,6 @@
       "retrieved": "2026-11-18"
     },
     {
-      "id": "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md",
-      "url": "https://raw.githubusercontent.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md",
-      "repository": "https://github.com/tursodatabase/turso",
-      "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-      "pathInRepo": "LICENSE.md",
-      "filename": "LICENSE.md",
-      "materialType": "licence-text",
-      "spdx": "MIT",
-      "bytes": 1070,
-      "sha256": "b646f9ee8bcaf87e8de75153b9df7a2861c7ac445c87e741768b3c2bccf47bc5",
-      "retrieved": "2026-11-18"
-    },
-    {
       "id": "github.com/wingertge/macerator/955fcd894c459ab754209e952d0cab2cdcbae1b7/LICENSE",
       "url": "https://raw.githubusercontent.com/wingertge/macerator/955fcd894c459ab754209e952d0cab2cdcbae1b7/LICENSE",
       "repository": "https://github.com/wingertge/macerator",
@@ -519,48 +480,6 @@
       ]
     },
     {
-      "purl": "pkg:cargo/aristo-macros@0.4.1",
-      "name": "aristo-macros",
-      "version": "0.4.1",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/aretta-ai/aristo",
-        "commit": "b6f9585a26a5ff2064134143aa10c813d2795546",
-        "tag": "v0.4.1",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.4.1 to b6f9585a26a5ff2064134143aa10c813d2795546.",
-          "crates/aristo-macros/Cargo.toml at this commit declares name = \"aristo-macros\", version = \"0.4.1\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/aretta-ai/aristo/b6f9585a26a5ff2064134143aa10c813d2795546/LICENSE"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/aristo@0.4.1",
-      "name": "aristo",
-      "version": "0.4.1",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/aretta-ai/aristo",
-        "commit": "b6f9585a26a5ff2064134143aa10c813d2795546",
-        "tag": "v0.4.1",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.4.1 to b6f9585a26a5ff2064134143aa10c813d2795546.",
-          "crates/aristo/Cargo.toml at this commit declares name = \"aristo\", version = \"0.4.1\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/aretta-ai/aristo/b6f9585a26a5ff2064134143aa10c813d2795546/LICENSE"
-      ]
-    },
-    {
       "purl": "pkg:cargo/buildid@1.1.0",
       "name": "buildid",
       "version": "1.1.0",
@@ -596,28 +515,6 @@
           "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
           "git ls-remote --tags resolves the upstream tag v0.22.1 to 907ab111a02c2dea47bc41633754f095c6b2220e.",
           "crates/burn-backend/Cargo.toml at this commit declares name = \"burn-backend\", version = \"0.22.1\", license = \"MIT OR Apache-2.0\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tracel-ai/burn/907ab111a02c2dea47bc41633754f095c6b2220e/LICENSE-APACHE",
-        "github.com/tracel-ai/burn/907ab111a02c2dea47bc41633754f095c6b2220e/LICENSE-MIT"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/burn-cubecl-fusion@0.22.1",
-      "name": "burn-cubecl-fusion",
-      "version": "0.22.1",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT OR Apache-2.0",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tracel-ai/burn",
-        "commit": "907ab111a02c2dea47bc41633754f095c6b2220e",
-        "tag": "v0.22.1",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.22.1 to 907ab111a02c2dea47bc41633754f095c6b2220e.",
-          "crates/burn-cubecl-fusion/Cargo.toml at this commit declares name = \"burn-cubecl-fusion\", version = \"0.22.1\", license = \"MIT OR Apache-2.0\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
         ]
       },
       "sources": [
@@ -1350,26 +1247,6 @@
       ]
     },
     {
-      "purl": "pkg:cargo/simsimd@6.5.16",
-      "name": "simsimd",
-      "version": "6.5.16",
-      "ecosystem": "cargo",
-      "declaredSpdx": "Apache-2.0",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/ashvardanian/SimSIMD",
-        "commit": "fb7cbdda3d187e4875cef71f2d16c1b739bff38f",
-        "tag": "v6.5.16",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v6.5.16 to fb7cbdda3d187e4875cef71f2d16c1b739bff38f."
-        ]
-      },
-      "sources": [
-        "github.com/ashvardanian/SimSIMD/fb7cbdda3d187e4875cef71f2d16c1b739bff38f/LICENSE"
-      ]
-    },
-    {
       "purl": "pkg:cargo/spirv@0.4.0+sdk-1.4.341.0",
       "name": "spirv",
       "version": "0.4.0+sdk-1.4.341.0",
@@ -1428,195 +1305,6 @@
       },
       "sources": [
         "github.com/Aleph-Alpha/ts-rs/0ba56be43af1e438053af2b422a82fcff252f7ef/LICENSE"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso@0.8.3",
-      "name": "turso",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "bindings/rust/Cargo.toml at this commit declares name = \"turso\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_core@0.8.3",
-      "name": "turso_core",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "core/Cargo.toml at this commit declares name = \"turso_core\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_ext@0.8.3",
-      "name": "turso_ext",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "extensions/core/Cargo.toml at this commit declares name = \"turso_ext\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_macros@0.8.3",
-      "name": "turso_macros",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "macros/Cargo.toml at this commit declares name = \"turso_macros\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_parser@0.8.3",
-      "name": "turso_parser",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "sqlite/parser/Cargo.toml at this commit declares name = \"turso_parser\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_sdk_kit@0.8.3",
-      "name": "turso_sdk_kit",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "sdk-kit/Cargo.toml at this commit declares name = \"turso_sdk_kit\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_sdk_kit_macros@0.8.3",
-      "name": "turso_sdk_kit_macros",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "sdk-kit-macros/Cargo.toml at this commit declares name = \"turso_sdk_kit_macros\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_sync_engine@0.8.3",
-      "name": "turso_sync_engine",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "sync/engine/Cargo.toml at this commit declares name = \"turso_sync_engine\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
-      ]
-    },
-    {
-      "purl": "pkg:cargo/turso_sync_sdk_kit@0.8.3",
-      "name": "turso_sync_sdk_kit",
-      "version": "0.8.3",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "provenance": {
-        "kind": "release-tree",
-        "repository": "https://github.com/tursodatabase/turso",
-        "commit": "607bff9fd0e547a25a97b3bf06e83bcc5d99d53c",
-        "tag": "v0.8.3",
-        "evidence": [
-          "The published .crate for this exact version carries .cargo_vcs_info.json, written by `cargo publish` from the working tree it packaged; it names this commit.",
-          "git ls-remote --tags resolves the upstream tag v0.8.3 to 607bff9fd0e547a25a97b3bf06e83bcc5d99d53c.",
-          "sync/sdk-kit/Cargo.toml at this commit declares name = \"turso_sync_sdk_kit\", version = \"0.8.3\", license = \"MIT\"; the workspace root carries the repository licence file(s) not packaged in the sub-crate tarball."
-        ]
-      },
-      "sources": [
-        "github.com/tursodatabase/turso/607bff9fd0e547a25a97b3bf06e83bcc5d99d53c/LICENSE.md"
       ]
     },
     {
@@ -1882,57 +1570,6 @@
     }
   ],
   "blocked": [
-    {
-      "purl": "pkg:cargo/genawaiter-macro@0.99.1",
-      "name": "genawaiter-macro",
-      "version": "0.99.1",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT/Apache-2.0",
-      "repository": "https://github.com/whatisaphone/genawaiter",
-      "commit": "f48046a9f66fbd2e535d5614fa7fe0d0b1a6a046",
-      "tag": null,
-      "investigated": "2026-11-18",
-      "evidence": [
-        "The published .crate for genawaiter-macro@0.99.1 carries .cargo_vcs_info.json naming commit f48046a9f66fbd2e535d5614fa7fe0d0b1a6a046; git ls-remote --tags returns no tags in whatisaphone/genawaiter.",
-        "genawaiter-macro/Cargo.toml at that commit declares name = \"genawaiter-macro\", version = \"0.99.1\", license = \"MIT/Apache-2.0\".",
-        "A recursive GitHub tree scan at commit f48046a9f66fbd2e535d5614fa7fe0d0b1a6a046 and at default-branch HEAD (45c10c223b92da215e182bc3eff0d5e09bf813f4) finds no LICENSE, LICENCE, COPYING, COPYRIGHT, NOTICE, or UNLICENSE file anywhere in the repository.",
-        "README.md and source files contain no licence grant text; no MIT or Apache-2.0 text is substituted from templates."
-      ]
-    },
-    {
-      "purl": "pkg:cargo/genawaiter@0.99.1",
-      "name": "genawaiter",
-      "version": "0.99.1",
-      "ecosystem": "cargo",
-      "declaredSpdx": "MIT",
-      "repository": "https://github.com/whatisaphone/genawaiter",
-      "commit": "b7e93c2d444a5c63e94e14f6809c8dc27785c1c7",
-      "tag": null,
-      "investigated": "2026-11-18",
-      "evidence": [
-        "The published .crate for genawaiter@0.99.1 carries .cargo_vcs_info.json naming commit b7e93c2d444a5c63e94e14f6809c8dc27785c1c7; git ls-remote --tags returns no tags in whatisaphone/genawaiter.",
-        "Cargo.toml at that commit declares name = \"genawaiter\", version = \"0.99.1\", license = \"MIT\".",
-        "A recursive GitHub tree scan at commit b7e93c2d444a5c63e94e14f6809c8dc27785c1c7 and at default-branch HEAD (45c10c223b92da215e182bc3eff0d5e09bf813f4) finds no LICENSE, LICENCE, COPYING, COPYRIGHT, NOTICE, or UNLICENSE file anywhere in the repository.",
-        "README.md, README-crates-io.md, and crate source files contain no licence grant or copyright notice; no MIT text is reconstructed with a guessed holder."
-      ]
-    },
-    {
-      "purl": "pkg:cargo/pack1@1.1.0",
-      "name": "pack1",
-      "version": "1.1.0",
-      "ecosystem": "cargo",
-      "declaredSpdx": "Zlib OR Apache-2.0 OR MIT",
-      "repository": "https://github.com/Lokathor/pack1",
-      "commit": "fb975e9d592d94fe4624908ebfae3a71c984d3ff",
-      "tag": "v1.1.0",
-      "investigated": "2026-11-18",
-      "evidence": [
-        "The published .crate for pack1@1.1.0 carries .cargo_vcs_info.json naming commit fb975e9d592d94fe4624908ebfae3a71c984d3ff, and git ls-remote --tags resolves v1.1.0 to that exact commit.",
-        "Cargo.toml at that commit declares name = \"pack1\", version = \"1.1.0\", license = \"Zlib OR Apache-2.0 OR MIT\".",
-        "A recursive GitHub tree scan at commit fb975e9d592d94fe4624908ebfae3a71c984d3ff (same tree as default-branch HEAD, 17 blobs total) finds no LICENSE, LICENCE, COPYING, COPYRIGHT, NOTICE, or UNLICENSE file.",
-        "README.md (96 bytes) and all Rust source files contain no copyright notice or licence statement across the entire 8-commit repository history; no external template is substituted."
-      ]
-    },
     {
       "purl": "pkg:cargo/utf8-chars@3.0.7",
       "name": "utf8-chars",
