@@ -127,7 +127,9 @@ soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đ
 ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Quyết định đó có ngày 2026-11-18 (QĐ-SEL2a–d,
 [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)): bốn thẻ mới **S9** (tách nguyên nhân
 chết), **S10** (khoá `live.plant_reserve`), **SEL2-E** (đo thăm dò lần hai) và **SEL2-D** (đối chứng drift).
-S9 và S10 đã có dòng uỷ quyền; chưa thẻ nào có PR. Định nghĩa các thẻ ở
+**S9** ✅ #117 ([kết quả](../ai/planning/2026-11-18-s9-death-causes.md)): khát gây 71–80 % số cái chết ở cả bốn ô
+đã đo, nên điều kiện 4 của SEL2-E (chết chủ yếu vì đói) chưa đạt ở ô nào; cách nới (thêm hồ hay nới ân hạn khát)
+là việc chủ dự án quyết trước SEL2-E. S10 đã có dòng uỷ quyền và chưa có PR. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
