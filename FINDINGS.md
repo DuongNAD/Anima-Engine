@@ -963,8 +963,14 @@ Quy tắc ghi:
   lập với hai module kia. Đây cũng là lý do F-002 khó sửa: muốn có `test_world()`
   dùng chung thì phải quyết định nó thuộc về đâu, mà cả ba đều phụ thuộc nhau.
 - **Tái hiện:** `just dataflow-truth && just dataflow-verify`
-- **Test khoá lại:** chưa có — cần khai contract phụ thuộc rồi cho CI chặn
-- **Trạng thái:** OPEN
+- **Đo lại 2026-10-31:** không phải ba mà **sáu** cặp vòng trên 16 cạnh mức module: thêm `ai ↔ evolution`,
+  `core ↔ evolution` và `commands ↔ core`
+  ([`CRATE_SPLIT_PLAN_2026-10-31.md`](docs/planning/CRATE_SPLIT_PLAN_2026-10-31.md) §1).
+- **Test khoá lại:** có từ `3c06491` (2026-10-31). `dataflow.json` khai đồ thị hiện tại, kể cả sáu vòng,
+  và job Rust của CI so nó với `cargo modules` ở bước "Module dependency graph matches dataflow.json".
+  Gate này chặn một cạnh **mới**; nó không gỡ sáu vòng đang có.
+- **Trạng thái:** OPEN — sáu vòng vẫn còn. Gỡ chúng là việc của kế hoạch tách crate (S1 trở đi), đang chờ
+  QĐ-M2. Cập nhật 2026-11-18 (bước S0.4 của kế hoạch đó).
 
 ### F-006 — get_bin_coords nuốt NaN và gán vào ô gốc, im lặng
 - **Ngày:** 2026-08-11

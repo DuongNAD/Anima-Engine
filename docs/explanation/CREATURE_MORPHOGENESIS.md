@@ -2,7 +2,7 @@
 title: Creature Morphogenesis — genotype, môi trường và chọn lọc
 status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-07-24
+last_reviewed: 2026-11-17
 review_cycle: quarterly
 contract: ../reference/CREATURE_DEVELOPMENT_CONTRACT.md
 plan: ../planning/CREATURE_MORPHOGENESIS_PLAN.md
@@ -43,19 +43,27 @@ flowchart LR
 
 ## Hiện trạng engine
 
-> **Rà lại 2026-11-17.** Hai danh sách dưới đây viết tháng 7. Đối chiếu mã trên thân cây cho thấy ba
-> điểm đã đổi, còn lại vẫn đúng:
+> **Rà toàn văn 2026-11-17.** Tài liệu viết tháng 7; cả trang đã được đối chiếu với mã trên thân cây.
+> Ba điểm của hiện trạng đã đổi:
 >
 > - Sổ cái closed-EU nay có **bốn** ngăn: thêm `dormant` cho agent ngủ đông
 >   ([hợp đồng sổ cái §1.1](../reference/ENERGY_LEDGER_CONTRACT.md)).
-> - Sinh sản không còn chỉ là epoch replacement: adapter thí nghiệm sống có **sinh sản liên tục theo
->   ngưỡng năng lượng**, bật bằng khoá `live.reproduction`
->   ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), và có **cái chết** bật bằng
->   `live.mortality`. Cả hai tắt mặc định. Đây chưa phải vòng đời M5: con non vẫn được dựng bằng
->   `decode_genotype`, không qua một bước development nào.
-> - Các kiểu của vòng đời đích (`DevelopedPhenotype`, `EnvSample`, `LocomotionMedium`,
->   `develop_at_birth`) **vẫn chưa có trong mã**. Mục "Điểm nguy hiểm hiện tại" bên dưới vì thế vẫn
->   nguyên hiệu lực, và nay áp cho thêm một call-site: con non của sinh sản liên tục.
+> - Sinh sản không còn chỉ là epoch replacement. `autonomous_reproduction_system` (sinh sản liên tục
+>   theo ngưỡng năng lượng, vốn của con non trừ từ reserve của cha/mẹ) nằm trong lịch tick chung.
+>   **Trong app desktop nó chạy mặc định**, vì `ReproductionPolicy` vắng mặt nghĩa là bật. **Trong
+>   adapter thí nghiệm sống nó tắt** cho tới khi manifest khai `live.reproduction`
+>   ([ADR-0005](../decisions/ADR-0005-live-population-turnover.md)). Cái chết vì đói và khát tắt mặc
+>   định ở cả hai nơi: app bật bằng `ANIMA_MORTALITY`, adapter bằng `live.mortality`. Đây chưa phải
+>   vòng đời M5: con non vẫn được dựng bằng `decode_genotype`, không qua một bước development nào.
+> - Các tên của vòng đời đích (`DevelopedPhenotype`, `EnvSample`, `EnvironmentSnapshot`, `RuntimeState`,
+>   `LocomotionMedium`, `develop_at_birth`, `spawn_developed`, `development_version`) **vẫn chưa có
+>   trong mã**. Mục "Điểm nguy hiểm hiện tại" bên dưới vì thế vẫn nguyên hiệu lực, và `decode_genotype`
+>   nay có **bảy** call-site thay vì bốn: thêm `SpawnOffspringCommand::apply`, `genesis` của
+>   `live_experiment` và `RehydrateCommand::apply`
+>   ([bảng trong hợp đồng](../reference/CREATURE_DEVELOPMENT_CONTRACT.md)).
+>
+> Cách đọc phần còn lại: từ "Bốn lớp dữ liệu" trở xuống là **thiết kế đích**. Chỗ nào mã hiện tại đã có
+> một phần, hoặc làm khác đi, có một dòng *Trạng thái mã*.
 
 ### Đã có
 
@@ -63,7 +71,7 @@ flowchart LR
 - `decode_genotype`: dựng root/child entities, rigid body, collider, CPG và homeostasis.
 - `TerrainMap`: elevation, moisture, temperature, biome và flow.
 - `ResourceField`: resource hiện tại `r` và carrying capacity `r_max`.
-- Closed-EU ledger: plants, animals, detritus.
+- Closed-EU ledger: plants, animals, detritus, và từ đó tới nay thêm ngăn `dormant`.
 - MAP-Elites, mutation/crossover, lineage và migration.
 - Pixi 2D simulation view và Three.js landscape view.
 
@@ -73,7 +81,8 @@ flowchart LR
 - Species/habitat profile độc lập với environment.
 - Development version và birth-environment snapshot.
 - Pigment/thermal strategy/plasticity strength có thể di truyền.
-- Reproduction M5 thật sự; cơ chế hiện tại là epoch replacement.
+- Reproduction M5 thật sự. Tháng 7 chỉ có epoch replacement; nay có thêm sinh sản liên tục theo ngưỡng
+  năng lượng (xem ghi chú đầu mục), vẫn chưa phải M5.
 - Sensor terrain/water/shade của M7.1.
 - Save/migration cho phenotype.
 
@@ -181,6 +190,9 @@ Aquatic | Terrestrial | Amphibious | Arboreal | Alpine | Aerial
 Environment được phân loại riêng thành water/land/elevation/slope class. S27 là phép
 so sánh hai phía, không phải suy medium từ ô rồi kiểm lại chính ô.
 
+*Trạng thái mã:* `LocomotionMedium` chưa tồn tại. Sáu giá trị trên mới chỉ được liệt kê ở trang này;
+hợp đồng phác `HabitatPreference { medium, elevation_range }` mà không liệt kê biến thể.
+
 ### Pigment
 
 Pigment gene tạo màu cơ sở. Developmental slope có thể tác động nhẹ theo cue. Màu
@@ -189,6 +201,8 @@ phenotype được lưu lúc sinh và không đổi khi cá thể bước qua bi
 
 Legacy genotype dùng `pigment: None`; renderer tiếp tục fallback theo predator/prey,
 tránh save cũ biến thành màu đen do `Default`.
+
+*Trạng thái mã:* chưa có trường pigment nào. Cả hai renderer hiện tô màu theo predator/prey.
 
 ### Nhiệt và nước
 
@@ -210,18 +224,30 @@ Genesis là điều kiện biên `t=0`:
 3. Lấy mẫu genotype từ prior yếu.
 4. Develop một lần.
 5. Spawn.
-6. Chốt baseline `plants + animals + detritus`.
+6. Chốt baseline `plants + animals + detritus + dormant`.
+
+*Trạng thái mã:* chỉ bước 6 đã có (`EnergyLedger::lock_baseline`, ở lần census đầu). Genesis hiện đặt
+founder trên một đường thẳng, hoặc trên một lưới khi đặt `ANIMA_FOUNDING_POPULATION`, với cùng một
+genotype; không chọn vùng theo habitat, không lấy mẫu môi trường, không có prior và không có bước
+development.
 
 ### Birth M5
 
 Birth cần parent entities, maturity và energy transaction. Con non không lấy 100 EU
 miễn phí. Đây là M5.3/S29 và không được “vá” vào epoch replacement.
 
+*Trạng thái mã:* một đường sinh có giao dịch năng lượng đã tồn tại: `autonomous_reproduction_system` →
+`SpawnOffspringCommand`, một cha/mẹ, vốn của con non trừ từ reserve của cha/mẹ. Nó không có điều kiện
+trưởng thành, không có bạn tình, và con non vẫn được dựng bằng `decode_genotype`, nên nó chưa phải M5.3.
+
 ### Evolutionary replacement legacy
 
-Cơ chế hiện tại thay cá thể cuối epoch bằng genotype từ archive. Nó được gọi đúng tên
-`EvolutionaryReplacement`, có causal event và chuyển reserve từ cá thể bị thay. Nó có
-thể tiếp tục phục vụ MAP-Elites trước khi reproduction M5 hoàn chỉnh.
+Cơ chế hiện tại thay cá thể cuối epoch bằng genotype từ archive
+(`apply_staggered_evolution_system` → `SpawnGenotypeCommand`). `EvolutionaryReplacement` là tên gọi của
+hợp đồng; trong mã không có kiểu nào mang tên đó. Reserve của cá thể bị thay trả về detritus, và cá thể
+mới rút vốn từ detritus qua sự kiện sổ cái `EnergyEvent::Replacement`; nếu detritus không đủ, phần thiếu
+được đếm là `refused` thay vì thế giới tự có thêm năng lượng. Việc thay thế chưa được ghi vào
+`CausalLedger`. Cơ chế này có thể tiếp tục phục vụ MAP-Elites trước khi reproduction M5 hoàn chỉnh.
 
 ## Save, load và migration
 
@@ -241,6 +267,9 @@ sequenceDiagram
     Note over R: Không gọi develop_at_birth
 ```
 
+*Trạng thái mã:* sơ đồ trên là đích. Hôm nay `SerializedAgent` lưu genotype, và restore lẫn migration
+gọi lại `decode_genotype`.
+
 Save cũ không có phenotype đi qua một migration versioned duy nhất. Migration này có
 thể phát triển từ genotype + saved position để tạo phenotype legacy, nhưng phải ghi
 `development_version` và không lặp ở lần load sau.
@@ -256,18 +285,26 @@ derive_seed(world_seed, event_kind, tick_or_epoch, lineage_key)
 Mutation/crossover/development nhận RNG từ caller. `thread_rng()` và UUID v4 không
 được dùng trong test path deterministic; lineage ID có thể sinh từ seed + counter/hash.
 
+*Trạng thái mã:* chưa có hàm `derive_seed` bốn thành phần. Mỗi stream hiện được tách bằng
+`derived_seed(run_seed, stream)` (`core/resources.rs`) với một hằng số cho từng stream. Mutation và
+crossover đã nhận RNG từ caller, và mã không gọi `thread_rng()`. UUID v4 vẫn còn ở đường chạy mặc định
+của app; chế độ tất định sinh id từ `RunIdentity`.
+
 ## Render và IPC
 
-Rust `SegmentState` cần `length`, `radius`, `color` và `phenotype_version`. Frontend
-phải đồng bộ:
+Rust `SegmentState` (`core/simulation_state.rs`) đã mang `length` và `radius`; còn thiếu `color` và
+`phenotype_version`. Kiểu TypeScript tương ứng được sinh bằng ts-rs
+(`src/types/generated/SegmentState.ts`) và không sửa tay: đổi struct Rust rồi sinh lại. Phía frontend phải
+đồng bộ:
 
-- `src/types/index.ts::SegmentState`;
+- `src/utils/agentHierarchy.ts` (`RenderSegment`, `buildAgentHierarchy`);
 - `src/types/index.ts::RenderSegment`;
-- `src/hooks/useSimulation.ts::buildAgentHierarchy`;
-- duplicate legacy types/build function trong `src/App.tsx`;
 - `src/PixiViewport.tsx`;
-- renderer 3D mới;
+- renderer 3D `src/components/Landscape/LiveAgents.tsx`;
 - `PROJECT.md` Interface Contracts và mocks/tests.
+
+Danh sách tháng 7 còn kể `src/hooks/useSimulation.ts` và bản sao kiểu trong `src/App.tsx`. File đầu đã bị
+xoá, và `App.tsx` nay nhập từ `utils/agentHierarchy`.
 
 Renderer không tự sample biome để đổi phenotype. Nó chỉ render dữ liệu Rust gửi.
 

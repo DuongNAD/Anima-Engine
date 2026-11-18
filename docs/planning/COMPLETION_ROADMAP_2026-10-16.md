@@ -2,7 +2,7 @@
 title: Lộ trình hoàn thiện Anima Engine (từ 2026-10-16)
 status: proposed
 owner: maintainers
-last_reviewed: 2026-10-16
+last_reviewed: 2026-11-18
 review_cycle: monthly
 ---
 
@@ -20,19 +20,32 @@ review_cycle: monthly
 > Tên giai đoạn dùng tiền tố **HT** (hoàn thiện) để không trùng với chương trình **G0–G4**, bậc ưu
 > tiên **P0–P2** của STATE, hay milestone **M0–M11** của WORLD_SIMULATION_PLAN.
 
-> **Trạng thái 2026-11-17 — đọc trước khi dùng một giai đoạn nào làm hàng đợi.** Đối chiếu danh sách PR
-> và mã trên thân cây; không lệnh nào được chạy lại. Thứ tự việc hiện hành do
-> [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ, và mỗi chặng đang ở đâu thì xem
-> [STATE §3.00](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+> **Trạng thái, rà toàn văn 2026-11-18 — đọc trước khi dùng một giai đoạn nào làm hàng đợi.** Đối chiếu
+> danh sách PR, sổ quyết định và mã trên thân cây; không lệnh build hay test nào được chạy lại. Thứ tự
+> việc hiện hành do [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ, và mỗi chặng
+> đang ở đâu thì xem [STATE §3.00](STATE_OF_THE_PROJECT.md#300-việc-kế-tiếp--cập-nhật-2026-11-17).
+>
+> **Ba điều đổi cách đọc cả trang:**
+>
+> - Mọi chỗ viết `main` làm nhánh đích nay đọc là thân cây `feat/ecological-selection`; `main` được
+>   fast-forward theo nó ở các mốc.
+> - **Bảng quyết định ở §7 đã được trả lời gần hết**, và hai câu được trả lời **khác đề xuất** của trang
+>   này (QĐ-3 và QĐ-4). Xem cột "Đã quyết" thêm vào bảng đó; bản ghi có thẩm quyền là
+>   [roadmap 31/10 §4](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được).
+> - Thí nghiệm mà trang này gọi là **"E3"** nay tên là **E2R** (QĐ-EN, 2026-11-17). "E3" nay là thí nghiệm
+>   gradient năng suất. Các số mục "RESULT.md §4" và "§11" trỏ vào bản gốc ngày 2026-07-27, nay nằm ở
+>   `artifacts/experiments/e2-evolved-brain-default/superseded/2026-07-27-original-run-windows-pre-dormant-eu/RESULT.md`;
+>   `RESULT.md` hiện hành là lượt chạy lại (#59) và chỉ có §1–§6.
 >
 > | Giai đoạn | Trạng thái | Ghi chú |
 > |---|---|---|
 > | §0, §1 (hiện trạng) | **Lịch sử** | Mô tả ngày 2026-10-16. Khối WIP mà §1 dặn không merge cả khối đã lên `main` ngày 2026-10-22; hai cây sau đó được hợp nhất ngày 2026-11-16 |
-> | HT0, HT1 | **Đã được thay** bởi HT0′–HT1′ của [roadmap 31/10](COMPLETION_ROADMAP_2026-10-31.md), và phần đó đã làm xong | #33, #38, #44, #45. HT1.1 (OSS-072 MRCA) vào thân cây ở #75, thay PR #31. HT1.7 (hoà giải tài liệu) làm được một phần: xem nhật ký 2026-11-17 trong `TODO.md` |
-> | HT2 | **Đang làm, vẫn là nguồn chuẩn** | HT2.1 (quần thể luân chuyển) đã có ở dạng opt-in: `live.reproduction`, #66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md). HT2.2 (thí nghiệm kế tiếp), HT2.3 (G2 gate #1) và HT2.4 (OSS-073) chưa làm |
+> | HT0, HT1 | **Đã được thay** bởi HT0′–HT1′ của [roadmap 31/10](COMPLETION_ROADMAP_2026-10-31.md); phần lớn đã xong | #33, #38, #43–#45, #47–#49, #94, #95, #98. HT1.1 (OSS-072 MRCA) vào thân cây ở #75, thay PR #31. HT1.4 xong ở thẻ D1 (#43); báo cáo audit nay ở `docs/archive/AUDIT_REPORT.md`. **Còn mở:** thẻ G3 (#107, giá trị bịa trong telemetry) và R0. HT1.2: PR #30 đã đóng ngày 2026-11-16 và phần (a), (b) chưa được dựng lại thành thẻ. HT1.7 (hoà giải tài liệu) làm được phần lớn: xem nhật ký trong `TODO.md`. Bốn việc lẻ không có thẻ nào nhận: gate quét conflict marker (HT0.4a), dọn nhánh remote (HT0.6), gate vệ sinh thư mục gốc (HT1.5, thẻ G9 có nhánh, chưa có PR) và nửa sau của HT1.6 (test `challenger_meta_ai_tests` còn đo bằng đồng hồ thật) |
+> | HT2 | **Đang làm, vẫn là nguồn chuẩn** | HT2.1 đã có ở dạng opt-in, bằng **cơ chế khác với mô tả ở đây**: QĐ-4 = A, sinh sản liên tục theo năng lượng sau khoá `live.reproduction` (#66, [ADR-0005](../decisions/ADR-0005-live-population-turnover.md)), không phải thay thế tiến hoá trong tick. HT2.5 xong ngày 2026-11-17: ADR-0002 `accepted` trong phạm vi lát headless. HT2.7 đóng một phần: lịch tick có thứ tự tổng từ F-041 (#65); còn lại là một lượt chạy app đầy đủ, đồng hồ thật trong `networking_systems.rs`, và gate O3 chưa có test. HT2.2 (E2R), HT2.3 (G2 gate #1), HT2.4 (OSS-073, thẻ S5) và HT2.6 chưa làm |
 > | HT3 | Chưa bắt đầu, vẫn là nguồn chuẩn | Lát cắt dọc; kế hoạch swarm gọi là Đợt 6, thẻ V0–V11 |
-> | HT4 | Chưa bắt đầu, vẫn là nguồn chuẩn | HT4.1 (lượt app release ở 1.000 agent) là việc của con người và còn mở |
-> | HT5 | Chưa bắt đầu, vẫn là nguồn chuẩn | Bị chặn bởi QĐ-C (`hexf-parse`) và QĐ-1 |
+> | HT4 | HT4.4 xong (#101); còn lại chưa bắt đầu | HT4.1 (lượt app release ở 1.000 agent) là việc của con người và còn mở. HT4.2 và HT4.3 chưa bắt đầu |
+> | HT5 | Chưa bắt đầu, vẫn là nguồn chuẩn | QĐ-C = C (nâng `burn`) và QĐ-1 = mức 2 đã quyết ngày 2026-11-17. HT5 nay chờ thẻ R1c (chưa có PR), việc của con người ở HT4.1, và QĐ-M4, QĐ-M8 |
+> | Luồng song song | Ba trong sáu hàng đã xong | Thu hẹp `tokio` (#91), tách ba file lớn (#99), chuyển `handoff.md` và `plan.md` vào `docs/archive/`. Còn mở: cancellation token, nâng phụ thuộc, và kết nối MCP `animal-map-vision` (không kiểm được từ repo) |
 
 ## 0. Tóm tắt
 
@@ -298,14 +311,14 @@ trước khi chạy thí nghiệm kế tiếp.
 |---|---|---|---|
 | HT4.1 | **(con người)** Chạy app bản release với `ANIMA_TICK_CAPTURE` ở 1.000 agent, điền các hàng còn mở (`Physics tick`, `Brain/sensor`, `Full-brain agents`, và thời gian sinh địa hình 256²) | STATE §3.2; [BENCHMARKING.md](../how-to/BENCHMARKING.md) | `BENCHMARK_BASELINE.md` có số release; khoá số theo WORLD_SIMULATION_PLAN §10.2 |
 | HT4.2 | Đối chiếu ngân sách EB-S12 (22,5 KiB/agent) với số thật; đo suy luận não per-agent khi E3 cần | ADR-0003 | Ngân sách dựa trên đo, không ngoại suy |
-| HT4.3 | Hiệu năng render: các finding REND của audit — đo frame time trước, sửa, đo sau | `AUDIT_REPORT.md` | Mỗi sửa có số trước/sau |
+| HT4.3 | Hiệu năng render: các finding REND của audit — đo frame time trước, sửa, đo sau | `docs/archive/AUDIT_REPORT.md` | Mỗi sửa có số trước/sau |
 | HT4.4 | Đối chứng con số ~4,2 ms trong doc comment của `ResourceField::REGROWTH_STRIDE` (đo lại cho ~0,36 ms) | STATE §3.2 | Doc comment mang số đo được |
 
 ### HT5 — Phát hành
 
 | ID | Việc | Neo | Định nghĩa xong |
 |---|---|---|---|
-| HT5.1 | **Licence** ([QĐ-3](#7-quyết-định-cần-chủ-dự-án)). `hexf-parse` 0.2.1 vào binary **chỉ** qua `naga` → `wgpu` → `burn-wgpu` → feature `ml-wgpu` → `desktop`. Đã kiểm 2026-10-16: `cargo tree -i hexf-parse --no-default-features --features "neo4j networking"` **không in gì**. Learner GPU đã tắt mặc định lúc chạy (`ANIMA_USE_GPU`) và có rò không giới hạn trong registry của wgpu. Hai đường: **(A)** bỏ `ml-wgpu` khỏi `desktop`, giữ nó như feature nghiên cứu không phân phối — đổi tập tính năng ship, nên cập nhật `CLAUDE.md`, README, chú thích `[features]` và ghi bằng một ADR ngắn; **(B)** ghi một quyết định pháp lý về tuyên bố CC0. Cùng lượt: `neo4rs` chỉ có licence trong README, `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn | `licensing/UNRESOLVED.md`, `src-tauri/Cargo.toml` `[features]` | `npm run check:licenses-complete` exit 0 |
+| HT5.1 | **Licence** ([QĐ-3](#7-quyết-định-cần-chủ-dự-án)). *Đường A/B dưới đây là phương án lúc viết; đường được chọn ngày 2026-11-17 là **C**, nâng `burn` (thẻ R1c). Định nghĩa xong không đổi.* `hexf-parse` 0.2.1 vào binary **chỉ** qua `naga` → `wgpu` → `burn-wgpu` → feature `ml-wgpu` → `desktop`. Đã kiểm 2026-10-16: `cargo tree -i hexf-parse --no-default-features --features "neo4j networking"` **không in gì**. Learner GPU đã tắt mặc định lúc chạy (`ANIMA_USE_GPU`) và có rò không giới hạn trong registry của wgpu. Hai đường: **(A)** bỏ `ml-wgpu` khỏi `desktop`, giữ nó như feature nghiên cứu không phân phối — đổi tập tính năng ship, nên cập nhật `CLAUDE.md`, README, chú thích `[features]` và ghi bằng một ADR ngắn; **(B)** ghi một quyết định pháp lý về tuyên bố CC0. Cùng lượt: `neo4rs` chỉ có licence trong README, `zune-inflate` chỉ publish văn bản Zlib trong ba lựa chọn | `licensing/UNRESOLVED.md`, `src-tauri/Cargo.toml` `[features]` | `npm run check:licenses-complete` exit 0 |
 | HT5.2 | Đóng gói: `npm run tauri:build`, đánh số phiên bản, CHANGELOG, ghi chú phát hành, README VI/EN, hướng dẫn cài | `tauri.conf.json` | Bộ cài chạy được trên máy sạch |
 | HT5.3 | Kiểm cuối: đo lại toàn bộ §1, con người chạy app (CSP + tick capture), map gate, E2E với backend thật (`ANIMA_E2E_REQUIRE_BACKEND=1`, cần bản release và `tauri-driver`), tag + GitHub release | STATE §5 | Đạt mức đã chọn ở §2 |
 
@@ -362,14 +375,14 @@ flowchart LR
 
 ## 7. Quyết định cần chủ dự án
 
-| ID | Câu hỏi | Đề xuất | Hệ quả nếu chưa quyết |
-|---|---|---|---|
-| QĐ-1 | Dừng ở mức nào của §2? | Nhắm **mức 2** trước (bản 0.9), rồi mức 3 | Không có điểm dừng, phạm vi trôi |
-| QĐ-2 | Khối WIP: giữ cụm nào, và có ship một thế giới thứ hai (Map 2) không? | Giữ **ý tưởng** của các cụm khoa học (B, C+D, E, F, A) vì HT2–HT3 cần chúng, nhưng chỉ hạ cánh theo [§4.1](#41-khối-wip-2026-08-16--cách-hạ-cánh), sau khi gỡ giá trị bịa; bỏ cụm L; Map 2 sang nhánh tính năng riêng và **không** vào 1.0 | Khối WIP tiếp tục mục, xung đột tăng dần |
-| QĐ-3 | Licence: bỏ `ml-wgpu` khỏi bản phân phối, hay quyết định pháp lý? | **(A)** — GPU learner đã tắt mặc định và đang rò bộ nhớ | Không phát hành được |
-| QĐ-4 | Luân chuyển quần thể trong thí nghiệm: thay thế tiến hoá trong tick, hay chết đói + sinh sản? | Thay thế tiến hoá trước (nằm trong hợp đồng hiện có); chết đói + sinh sản thuộc HT3.2 | E3 lặp lại đúng hiệu ứng sàn của E2 |
-| QĐ-5 | Thêm sinh sản sinh học bên cạnh `EvolutionaryReplacement`? | Có, qua ADR mới (chạm ADR-0001 và `CLAUDE.md`) | Lát cắt dọc không có quần thể tự duy trì (M5 gate) |
-| QĐ-6 | Hợp đồng IPC ở đâu? | `docs/reference/IPC_CONTRACT.md`, `PROJECT.md` chỉ trỏ tới | Bị ghi đè lần ba |
+| ID | Câu hỏi | Đề xuất | Hệ quả nếu chưa quyết | Đã quyết (rà 2026-11-18) |
+|---|---|---|---|---|
+| QĐ-1 | Dừng ở mức nào của §2? | Nhắm **mức 2** trước (bản 0.9), rồi mức 3 | Không có điểm dừng, phạm vi trôi | **Mức 2**, đúng đề xuất (2026-11-17) |
+| QĐ-2 | Khối WIP: giữ cụm nào, và có ship một thế giới thứ hai (Map 2) không? | Giữ **ý tưởng** của các cụm khoa học (B, C+D, E, F, A) vì HT2–HT3 cần chúng, nhưng chỉ hạ cánh theo [§4.1](#41-khối-wip-2026-08-16--cách-hạ-cánh), sau khi gỡ giá trị bịa; bỏ cụm L; Map 2 sang nhánh tính năng riêng và **không** vào 1.0 | Khối WIP tiếp tục mục, xung đột tăng dần | **Một phần** (2026-11-17, QĐ-2/QĐ-H): gỡ mọi bằng chứng và dữ liệu giả, giữ mã. Map 2 và Research Dashboard có ship hay không thì **còn mở** |
+| QĐ-3 | Licence: bỏ `ml-wgpu` khỏi bản phân phối, hay quyết định pháp lý? | **(A)** — GPU learner đã tắt mặc định và đang rò bộ nhớ | Không phát hành được | **Khác đề xuất** (2026-11-17). Sổ quyết định gọi câu này là **QĐ-C**; lựa chọn là **C**, nâng `burn` lên dòng 0.22, không A và không B |
+| QĐ-4 | Luân chuyển quần thể trong thí nghiệm: thay thế tiến hoá trong tick, hay chết đói + sinh sản? | Thay thế tiến hoá trước (nằm trong hợp đồng hiện có); chết đói + sinh sản thuộc HT3.2 | E3 lặp lại đúng hiệu ứng sàn của E2 | **Khác đề xuất** (2026-11-16): **A**, sinh sản liên tục có điều kiện năng lượng sau khoá `live.reproduction` (ADR-0005) |
+| QĐ-5 | Thêm sinh sản sinh học bên cạnh `EvolutionaryReplacement`? | Có, qua ADR mới (chạm ADR-0001 và `CLAUDE.md`) | Lát cắt dọc không có quần thể tự duy trì (M5 gate) | **Có** (2026-11-16), phạm vi chỉ là sinh sản liên tục trong thí nghiệm sống; `EvolutionaryReplacement` không đổi. ADR về vòng đời đầy đủ mà HT3.2 cần (tuổi, giai đoạn, trưởng thành) chưa có |
+| QĐ-6 | Hợp đồng IPC ở đâu? | `docs/reference/IPC_CONTRACT.md`, `PROJECT.md` chỉ trỏ tới | Bị ghi đè lần ba | Đúng đề xuất (2026-11-14) |
 
 ---
 

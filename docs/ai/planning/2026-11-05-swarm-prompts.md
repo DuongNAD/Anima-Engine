@@ -2,7 +2,7 @@
 title: Prompt cho swarm Antigravity — lead, verifier, luật swarm và thẻ task
 status: active
 owner: maintainers
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-18
 review_cycle: weekly
 ---
 
@@ -23,11 +23,20 @@ review_cycle: weekly
 > (danh sách sống ở trang hàng đợi, không chép ở đây); và từ 2026-11-17 việc chạy trên hai máy (`agent-mac`,
 > `agent-win`) với nhánh `mac/…` và `win/…`, mô tả ở §1 của cùng trang.
 >
-> **Một đường dẫn trong các thẻ đã đổi nghĩa.** Các thẻ P1, P3, S1, E2R-P nhắc
+> **Rà toàn văn 2026-11-18.** Mọi đường dẫn, lệnh và quyết định mà các thẻ **chưa chạy** nhắc tới đã được
+> đối chiếu với thân cây. Lỗi cơ học (đường dẫn đã đổi, lệnh kiểm thiếu, tên trạng thái không hợp lệ) được
+> sửa ngay trong thẻ. Chỗ nào việc sửa sẽ **nới phạm vi** của một thẻ hoặc cần chủ dự án quyết thì thẻ
+> không bị sửa: có một ghi chú *Rà 2026-11-18* ngay trên thẻ đó, và phải xử lý ghi chú ấy trước khi dán.
+> Thẻ đã merge không được sửa và **không dùng làm mẫu**: G1 và S4 còn lệnh cherry-pick đã xong, D1 còn
+> nhắc hai bản `AUDIT_REPORT.md` nay chỉ còn ở `docs/archive/`.
+>
+> **Một đường dẫn trong các thẻ đã đổi nghĩa.** Các thẻ P1, P3, P4, S1, S2, E2R-P và E2R-X nhắc
 > `artifacts/experiments/e2-evolved-brain-default/RESULT.md` kèm số mục §4, §6, §7, §10, §11. Từ 2026-11-16
 > file đó là báo cáo của lượt **chạy lại theo sửa đổi 1** và chỉ có sáu mục. Bản 2026-07-27 mà các số mục ấy
 > trỏ tới nằm ở
 > `artifacts/experiments/e2-evolved-brain-default/superseded/2026-07-27-original-run-windows-pre-dormant-eu/RESULT.md`.
+> Các file dữ liệu cùng thư mục (`paired-report.json`, `runs.csv`…) nay cũng là của lượt chạy lại tại
+> `900ba2d` trên macOS arm64, không phải của `9c57184`.
 
 ## Cách dùng
 
@@ -57,10 +66,12 @@ The owner merges. Your output is a status table the owner can trust.
 
 SOURCES (read with git, do not paraphrase from memory)
   git fetch origin
-  PLAN   = git show origin/claude/funny-thompson-jj42fe:docs/ai/planning/2026-11-05-swarm-master-plan.md
-  CARDS  = git show origin/claude/funny-thompson-jj42fe:docs/ai/planning/2026-11-05-swarm-prompts.md
+  PLAN   = git show origin/feat/ecological-selection:docs/ai/planning/2026-11-05-swarm-master-plan.md
+  CARDS  = git show origin/feat/ecological-selection:docs/ai/planning/2026-11-05-swarm-prompts.md
   BRIEF  = git show origin/feat/ecological-selection:docs/ai/planning/2026-10-31-antigravity-brief.md
-  (If the owner has merged these files into feat/ecological-selection, read them from there.)
+  STATUS and DECISIONS = docs/how-to/AGENT_WORKFLOW.md sections 3 and 4, on the same ref.
+  A card with no "### CARD <ID>" block in CARDS (S7, SEL2-P/X, R1c, L1, L2-P/X) is defined in PLAN
+  only and may be dispatched only from a prompt the owner supplies.
   BLOCK 0 = the fenced text under "## BLOCK 0" in BRIEF.
   BLOCK S = the fenced text under "## §2 BLOCK S" in CARDS.
   VERIFIER TEMPLATE = the fenced text under "## §3 VERIFIER" in CARDS.
@@ -68,6 +79,9 @@ SOURCES (read with git, do not paraphrase from memory)
   Cards marked (brief) also need the brief section they name, extracted verbatim from BRIEF.
 
 DECISIONS — filled by the owner. An empty value blocks every card that lists it.
+  The list below is the skeleton of 2026-11-05. Do not fill it by hand: paste the filled block
+  from docs/how-to/AGENT_WORKFLOW.md section 4, which carries more decisions than this list and
+  records QD-C = C (upgrade burn), a third option this skeleton does not offer.
   QD-A'     (which mortality system survives HT-C)          =
   QD-B      (src-tauri/src write authorization line)        =
   QD-C      (licence path: A = drop ml-wgpu from desktop | B = legal decision) =
@@ -144,6 +158,11 @@ S2  SCOPE. ALLOWED PATHS in your card is the complete list of paths you may crea
     every commit run `git diff --name-only <BASE-SHA>`; every path must match ALLOWED
     PATHS, and the count must be <= MAX FILES. If the task cannot be done inside them,
     stop and report which path you need and why.
+    One standing exception: a NEW file under docs/ needs the front matter required by
+    docs/governance/DOCUMENTATION_POLICY.md and one row in the index that covers its
+    directory (docs/ai/README.md for docs/ai/**, otherwise that directory's own README.md).
+    That index file is implicitly in ALLOWED PATHS and does not count toward MAX FILES.
+    Run `npm run check:docs` before you report; the Frontend CI job runs it and is required.
 
 S3  GIT. Push only your branch: `git push -u origin <BRANCH>`. Open a DRAFT pull
     request to PR TARGET. Never merge, close, approve or comment on any pull request.
@@ -354,6 +373,17 @@ DONE WHEN
   `node scripts/check_docs_links.mjs` exits 0.
 ```
 
+> **Rà 2026-11-18 — các thẻ bài báo và QĐ-P2.** QĐ-P2 (2026-11-17) nói bản nháp bài báo nằm ở một **repo
+> riêng tư**; repo này chỉ giữ dữ liệu và nhật ký dùng AI dưới `docs/paper/`. Quyết định đó không nêu
+> nhánh nào, nên dòng "PR TARGET the branch named in QD-P2" không còn giải được. Hệ quả cho từng thẻ:
+>
+> - **P1** chỉ ghi dữ liệu và script: PR vào `feat/ecological-selection` (đã sửa trong thẻ).
+> - **P3** ghi script và hình: hình có tính là "dữ liệu" hay không là việc chủ dự án quyết; chưa dán khi
+>   chưa có câu trả lời.
+> - **P2, P7, P8 và phần `outline.md` của P4** ghi văn xuôi của bài báo (`related_work.md`, `draft/`,
+>   `audit/`, `outline.md`) vào repo này, **trái với QĐ-P2**. Không chạy chúng ở đây khi chủ dự án chưa chỉ
+>   định repo và nhánh.
+
 ### CARD P1
 
 ```text
@@ -362,7 +392,7 @@ WAVE 1 · MAX FILES 3
 DEPENDS ON  none
 BASE        origin/feat/ecological-selection
 BRANCH      swarm/p1-incidents
-PR TARGET   the branch named in QD-P2
+PR TARGET   feat/ecological-selection
 DECISION    QD-P2
 ALLOWED PATHS  docs/paper/data/incidents.csv, docs/paper/data/incidents.md,
                scripts/paper/incident_dates.mjs
@@ -462,9 +492,12 @@ number in a figure was typed by hand.
 INPUTS
   artifacts/experiments/e2-evolved-brain-default/paired-report.json
     pairs[i].control.series and pairs[i].treatment.series (30 samples each; inspect the
-    item shape yourself before using it)
-  artifacts/experiments/e2-evolved-brain-default/RESULT.md §4 (first-zero ticks table,
-    and means control 5250 / treatment 8650)
+    item shape yourself before using it). Since 2026-11-16 this file is the amendment-1
+    re-run (build commit 900ba2d, macOS arm64), not the July run.
+  The per-seed first-zero table is §4 of the superseded original:
+    artifacts/experiments/e2-evolved-brain-default/superseded/2026-07-27-original-run-windows-pre-dormant-eu/RESULT.md
+    (means control 5250 / treatment 8650). The current RESULT.md §4 is "Old versus new" and
+    states the per-seed ticks are identical in both runs.
 
 STEPS
 1. Run `npm run check:e2` first and paste the output; if it fails, stop.
@@ -472,9 +505,10 @@ STEPS
 3. Figure A: live.mean_agent_energy over ticks, both arms, all 12 seeds.
    Figure B: first tick at which each arm reads 0, per seed (paired dots).
 4. The script recomputes the first-zero tick per seed per arm from the series and asserts
-   it equals the RESULT.md §4 table, and that the means are 5250 and 8650. If not, exit 1
+   it equals the §4 table of the superseded original, and that the means are 5250 and 8650. If not, exit 1
    and report the difference — do not adjust anything.
-5. Captions state: E2 at commit 9c57184, headless adapter, N = 12 seeds of ONE world
+5. Captions state the build commit recorded in provenance.json of the directory you read
+   (never a commit copied from this card), headless adapter, N = 12 seeds of ONE world
    design, sample period 600 ticks, and that first-zero tick was NOT a registered
    observable (RESULT.md §6).
 
@@ -681,6 +715,12 @@ VERIFY EXTRA  For each restored exact assertion, the verifier changes the expect
 
 ### CARD G8
 
+> **Rà 2026-11-18 — phần lớn đã xong ngày 2026-11-14, không dán nguyên thẻ.** Hợp đồng đã ở
+> `docs/reference/IPC_CONTRACT.md`, và gate là `scripts/check_ipc_reference.mjs` (nằm trong
+> `npm run check:docs`). `npm run check:ipc` là `scripts/check_ipc_arg_case.mjs`; file
+> `scripts/check_ipc_params.mjs` mà thẻ nhắc không tồn tại. Việc còn lại duy nhất là ghi `file:line` cho
+> từng mục. Không tạo script gate thứ hai.
+
 ```text
 CARD G8 — Move the IPC contract to docs/reference and rebuild it from the code
 WAVE 2 · MAX FILES 6
@@ -753,7 +793,7 @@ DECISION    none
 AUTHORIZATION  optional R5-AUTH for docs/planning/STATE_OF_THE_PROJECT.md; without it, write
                the proposed section to the second file below and the owner applies it
 ALLOWED PATHS  docs/ai/testing/remeasure-<YYYY-MM-DD>-<sha>.md,
-               docs/ai/testing/state-1g-proposed-<YYYY-MM-DD>.md
+               docs/ai/testing/state-1x-proposed-<YYYY-MM-DD>.md
 
 GOAL
 One table in which every gate CI runs, plus the reproducibility gates, was run at the same
@@ -768,7 +808,8 @@ STEPS
 3. Counts: tests passed/failed/ignored per profile; targets; test files by directory.
 4. Say which platform you ran on. Steps that only run on windows-latest are reported as
    "not run here — see CI run <id>" with the GitHub Actions conclusion.
-5. Write the proposed STATE §1.g in the style of the existing §1.f (type column, command,
+5. Write the proposed NEXT subsection of STATE §1 (the one after the newest; §1.g and §1.h
+   already exist, so on 2026-11-18 that is §1.i) in the style of §1.h (type column, command,
    result). Nothing in it may come from a run other than yours or the cited CI run.
 
 DONE WHEN
@@ -776,6 +817,12 @@ DONE WHEN
 ```
 
 ### CARD T3
+
+> **Rà 2026-11-18 — không dán khi chưa hỏi chủ dự án.** Từ 2026-11-16 thẻ này được thay bằng việc
+> fast-forward `main` lên thân cây ở các mốc. Nhưng từ 2026-11-17 cả hai nhánh được bảo vệ, và `main` đang
+> sau thân cây: nếu lần đưa `main` lên kế tiếp phải đi qua một PR thì thẻ này chính là việc đó và cần viết
+> lại, không phải bỏ. Câu "E2 is frozen at 9c57184" trong thẻ cũng đã cũ: artifact công bố nay là của
+> `900ba2d`.
 
 ```text
 CARD T3 — Open the trunk-to-main pull request (do not merge)
@@ -855,7 +902,7 @@ WAVE 3 · [RUST] · MAX FILES 8
 DEPENDS ON  S1 merged (both edit live_experiment.rs)
 BRANCH      swarm/s2-observables
 DECISION    QD-B, QD-EN
-ALLOWED PATHS  src-tauri/src/core/live_experiment.rs, src-tauri/src/core/observables*.rs,
+ALLOWED PATHS  src-tauri/src/core/live_experiment.rs, src-tauri/src/core/experiment/observables.rs,
                src-tauri/tests/observables_tests.rs, src-tauri/tests/live_experiment_tests.rs,
                src/types/generated/** (regenerated only)
 
@@ -864,7 +911,8 @@ Add the observables two preregistrations will need, without changing any traject
 
 NEEDED
 1. An energy metric that integrates over the run instead of sampling its end — e.g. the
-   cumulative sum of mean agent energy per tick (RESULT.md §11 item 1). Cumulative ⇒
+   cumulative sum of mean agent energy per tick (§11 item 1 of the superseded original
+   RESULT.md; see the note at the top of this file). Cumulative ⇒
    Aggregation::Instant (CLAUDE.md: evolution.births is Instant for the same reason).
 2. Region-split body-mass observables for E3 (west half / east half of the 256×256 grid,
    matching the E3 draft's Rect{0,0,127,255} and Rect{128,0,255,255}).
@@ -878,6 +926,9 @@ RULES
 - Reading must not perturb: a test runs the same seed with observables sampled every tick
   and never, and asserts identical world checksums.
 - The registry is append-only: existing ids keep their meaning and units.
+- LIVE_OBSERVABLE_IDS is frozen (QD-E2M). A new live observable goes in
+  LIVE_EXTENDED_OBSERVABLE_IDS only. Never edit src-tauri/tests/fixtures/experiments_e2/ or
+  the manifest copies under artifacts/experiments/e2-evolved-brain-default/.
 
 DONE WHEN
   the non-perturbation test and the registry tests pass; cargo test --features desktop -j 2
@@ -886,6 +937,13 @@ DONE WHEN
 ```
 
 ### CARD S3
+
+> **Rà 2026-11-18 — `ALLOWED PATHS` có lẽ thiếu hai file thẻ cần.** Sinh thái của engine tham chiếu là
+> `ReferenceEcosystem` trong `src-tauri/src/core/scenario.rs`, và `WorldLawSet` ở
+> `src-tauri/src/core/experiment/laws.rs`; thẻ dặn "prefer laws carried in the run's law set" nhưng không
+> liệt kê file nào trong hai file đó. Test `src-tauri/tests/shared_domain_law_tests.rs` đã gate các luật
+> thời gian và nên được mở rộng thay vì viết trùng. Nhận định này đến từ việc đọc mã, chưa lần theo từng
+> hằng số. Thêm path là nới phạm vi, nên chủ dự án hoặc phiên lead quyết trước khi dán.
 
 ```text
 CARD S3 — HT2.3 / G2 gate #1: one source for the ecological constants
@@ -988,9 +1046,13 @@ For each gate, show that injecting the fault it exists to catch turns it red AND
 message names the fault. A gate that stays green under its own fault is vacuous — this
 project has already had several.
 
+A gate named here that does not exist as an automated check is a finding to report, not
+something to build in this card. (A conflict-marker scan was planned and never built. Root
+hygiene exists only once card G9 has merged.)
+
 GATES (extend if you find more in ci.yml): check_test_targets (empty target; unlisted
 #[ignore]), feature separation via cargo tree, ts-rs binding parity, thread_rng source scan,
-ESLint ratchet, conflict-marker scan, schedule ambiguity (SimRng and energy pairs),
+ESLint ratchet, schedule ambiguity (SimRng and energy pairs),
 zero-alloc, closed-EU tests, live_experiment fork and save/load, check:csp, check:bundle,
 docs links, check:ipc, check:e2 digests, E2E spec list (G2), root hygiene (G9).
 
@@ -1052,7 +1114,9 @@ STEPS
    domain crate. Locate them; list them with file:line.
 2. For each combination (full factorial if under ~200 runs, otherwise a covering design you
    describe), run a fixed number of ticks and record the closed_eu_total residual.
-3. Tolerance: state it before running and justify it; E2 measured −2.6e-9 EU on 1.5e5 EU.
+3. Tolerance: state it before running and justify it; E2's paired closed_eu_total delta was
+   −2.56e-9 EU in the July run (9c57184) and −8.49e-11 EU in the re-run (900ba2d), on about
+   1.55e5 EU.
 4. If a combination leaks, STOP: commit the failing test, mark the PR "finding — not ready",
    and report. Do not widen the tolerance and do not fix it here.
 
@@ -1080,7 +1144,12 @@ MODEL ON E2 — read all of these first:
   src-tauri/tests/fixtures/experiments_e2/, src-tauri/tests/prereg_e2_manifest_tests.rs,
   src-tauri/examples/run_e2_brain_experiment.rs, scripts/verify_e2_artifacts.mjs,
   docs/ai/*/2026-07-27-experiment-e2-evolved-brain-default.md,
-  artifacts/experiments/e2-evolved-brain-default/RESULT.md (especially §4, §6, §10, §11).
+  artifacts/experiments/e2-evolved-brain-default/RESULT.md, and for §4, §6, §10 and §11 the
+  superseded original named in the note at the top of this file.
+  Also read what was learned after this card was written: ADR-0005, ADR-0006, ADR-0007,
+  FINDINGS.md F-037…F-044, and the E-SEL1 preregistration with its amendments under
+  src-tauri/tests/fixtures/experiments_esel1/. Declare every opt-in live.* key as a constant
+  of both arms and say why.
 
 WHAT CHANGES FROM E2 (from RESULT.md §11)
 1. A population that turns over (S1's mechanism, enabled in both arms).
@@ -1094,14 +1163,15 @@ positive effect).
 
 SEEDS
 A new arithmetic sequence that overlaps none of: E2 700001…711001, E3 draft 730001…741001,
-smoke seeds 999983 and 999979. Proposal: 750001 + 1000·k, k = 0..11; a new smoke seed. The
+E-SEL1 760001…771001, smoke seeds 999983, 999979 and 999971. Proposal: 750001 + 1000·k, k = 0..11; a new smoke seed. The
 smoke seed must be absent from both experimental manifests so the runner refuses it.
 
 RULES
 - Run ONLY the smoke seed. No experimental seed may run in this card. Mechanically enforce
   it as E2 did (execution lock / manifest seed lists).
 - The prereg test asserts that the docs, the JSON fixture and the manifests agree.
-- Status of the docs: "awaiting owner approval". Commit the preregistration BEFORE any
+- Front matter status of the docs: `proposed` ("awaiting owner approval" is not a status the
+  metadata gate accepts; say it in the body). Commit the preregistration BEFORE any
   experimental run exists.
 
 DONE WHEN
@@ -1157,7 +1227,8 @@ Follow §9 of docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-bo
 (on the trunk) in order: WP-1 fixture + matching test; WP-2 smoke at seed 999979 proving (a)
 ResourceField is present headless, (b) the two interventions really change
 live.standing_crop between arms, (c) detritus > 0 before tick 3000; WP-3 fix T and warm-up
-from WP-2 and record them; WP-4 freeze the doc (status: frozen, parent commit).
+from WP-2 and record them; WP-4 freeze the doc: keep a valid front-matter status (`frozen`
+is not one) and add a dated freeze line with the parent commit in the body.
 WP-2 HAS THE POWER TO KILL THE DESIGN: if (b) fails, stop and report — do not tune the
 interventions until it passes.
 If S2 added region-split observables, register them as secondary here, before any data.
@@ -1253,7 +1324,7 @@ DONE WHEN
 ```text
 CARD R2 — CHANGELOG, install guide, release notes (drafts)
 WAVE 5 · MAX FILES 4
-DEPENDS ON  QD-1
+DEPENDS ON  QD-1; G9 merged (scripts/root_allowlist.json exists only on G9's branch until then)
 BRANCH      swarm/r2-release-docs
 DECISION    QD-1
 ALLOWED PATHS  CHANGELOG.md (only with a root allow-list entry from G9 in the same PR),
@@ -1267,7 +1338,7 @@ RULES
   "not verified on <platform> — owner verifies in H8".
 DONE WHEN
   a script or command you include re-checks every sha in CHANGELOG.md (paste its output);
-  node scripts/check_docs_links.mjs exits 0.
+  npm run check:docs exits 0.
 ```
 
 ### CARD P4
@@ -1403,6 +1474,14 @@ BASE origin/feat/ecological-selection · PR TARGET feat/ecological-selection · 
 
 ### CARD V0
 
+> **Rà 2026-11-18 — hai việc phải xong trước khi dán.** (1) `ALLOWED PATHS` của thẻ chỉ phủ một trong
+> các file có call-site: `decode_genotype` được gọi ở bảy chỗ, trong `core/agent_systems.rs` (hai chỗ),
+> `aggregate_population.rs`, `live_experiment.rs`, `simulation_loop.rs`, `simulation_state.rs` và
+> `world_systems.rs`; kiểu của save nằm ở `core/simulation_state.rs` và `AgentMigrationData` ở
+> `core/components.rs`. Danh sách path cần được mở rộng, và nếu vượt `MAX FILES` thì tách P1 khỏi P2.
+> (2) Còn một quyết định mở mà thẻ không liệt kê: kiểu lưu `EnvironmentSnapshot` có cùng các trường với
+> `EnvSample` hay chỉ một tập con ([roadmap 31/10 §4.1](../../planning/COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được)).
+
 ```text
 CARD V0 — Creature Morphogenesis P1–P2: develop at birth, phenotype in the save
 WAVE 6 · [RUST] · MAX FILES 15 · DEPENDS ON R0, QD-5
@@ -1418,6 +1497,10 @@ DONE WHEN the plan's P1–P2 gates exist and pass; old saves load (migration tes
 ```
 
 ### CARD V1
+
+> **Rà 2026-11-18.** Khi thẻ này nối `DynamicFields` vào lịch tick, hàm `unavailable_phases()` trong
+> `src-tauri/src/core/tick_capture.rs` và một assertion trong test của file đó sẽ thành sai. File ấy không
+> nằm trong `ALLOWED PATHS`; thêm nó (chỉ phần `unavailable_phases`) trước khi dán.
 
 ```text
 CARD V1 — DynamicFields into the live schedule
@@ -1449,6 +1532,11 @@ DONE WHEN no diet branch keyed on a hard-coded guild remains (grep, pasted); def
 ```
 
 ### CARD V3
+
+> **Rà 2026-11-18 — phụ thuộc trông như đã thoả nhưng chưa.** Thẻ đòi "an ADR for QD-5 accepted by the
+> owner" đặc tả M5.2–M5.3. QĐ-5 = có đã dẫn tới ADR-0005, nhưng phạm vi của ADR-0005 chỉ là sinh sản
+> liên tục theo năng lượng trong thí nghiệm sống: nó **không** đặc tả tuổi, giai đoạn sống hay trưởng
+> thành. Thẻ này cần một ADR riêng cho vòng đời đó trước khi chạy.
 
 ```text
 CARD V3 — Age, life stages, death, costly reproduction, maturation
@@ -1591,7 +1679,8 @@ state, explanation explain. Never redefine a contract: link to docs/reference/ o
 Every command you write was run by you, in a fresh worktree, and its real output (trimmed,
 with "…" where trimmed) is shown. A command you could not run on this platform is labelled
 "not verified on <platform>". Mark headless, fast commands with <!-- doc-test --> for DOC8.
-DONE WHEN (all DOC cards): node scripts/check_docs_links.mjs exits 0, plus the card's own.
+DONE WHEN (all DOC cards): npm run check:docs exits 0 (links, metadata and the IPC reference;
+CI runs all three), plus the card's own.
 ```
 
 ### CARD DOC1
@@ -1655,6 +1744,11 @@ DONE WHEN --check exits 0; editing one generated line makes it exit 1 (paste, un
 
 ### CARD DOC5
 
+> **Rà 2026-11-18.** Nhiều mâu thuẫn thẻ này liệt kê đã được xử lý ở #97 (2026-11-17): hai hàng trùng của
+> STATE §3.16/§3.17, §3.9, §3.8, trạng thái của kế hoạch AE2.5 và câu về backlog trong
+> `docs/planning/README.md`. Với mỗi mục, kiểm xem nó còn đúng không trước khi sửa, và ghi "đã xử lý tại
+> `<file:line>`" nếu không còn.
+
 ```text
 CARD DOC5 — Reconcile contradictory docs (roadmap 2026-10-16 HT1.7)
 WAVE docs · MAX FILES 15 · DEPENDS ON R0
@@ -1674,6 +1768,10 @@ DONE WHEN every listed item has a resolution line in the report with file:line.
 ```
 
 ### CARD DOC6
+
+> **Rà 2026-11-18 — đừng tạo file mới thẻ này nêu.** `docs/how-to/CONTRIBUTE_WITH_AGENTS.md` sẽ trùng với
+> [`AGENT_WORKFLOW.md`](../../how-to/AGENT_WORKFLOW.md) (có từ 2026-11-14), và `CONTRIBUTING.md` đã tồn tại.
+> Việc còn lại là cập nhật `CONTRIBUTING.md`; `AGENT_WORKFLOW.md` chỉ `agent-mac` ghi.
 
 ```text
 CARD DOC6 — Contributor guide for people and agents

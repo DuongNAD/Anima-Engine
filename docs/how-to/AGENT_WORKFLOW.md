@@ -117,8 +117,8 @@ là cổng ra của chặng 3 và chạy sau khi Đợt 2 merge.
 ở các mốc. **M1** (ma trận tái lập đa nền tảng) cũng đã merge trước R0, ở #100 và #102. Các thẻ còn lại
 của Đợt 3 (S2, S3, M2–M4) và mọi thẻ từ Đợt 4 chưa bắt đầu.
 
-Chín thẻ được thêm ngày 2026-11-17 từ quyết định của chủ dự án (S6, S7, S8, SEL2-P, SEL2-X, R1c, L0, L1,
-L2). Ba thẻ đã chạy ngay trong ngày: **S8** ✅ #106 (F-044), **S6** ✅ #110 (khoá `live.prey_cap` và
+Mười thẻ được thêm ngày 2026-11-17 từ quyết định của chủ dự án (S6, S7, S8, SEL2-P, SEL2-X, R1c, L0, L1,
+L2-P, L2-X). Ba thẻ đã chạy ngay trong ngày: **S8** ✅ #106 (F-044), **S6** ✅ #110 (khoá `live.prey_cap` và
 `live.resource_capacity_scale`, kèm [lượt đo thăm dò](../ai/planning/2026-11-17-s6-sel2-exploration.md)),
 và **L0** 🔄 [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) đã soạn ở trạng thái `proposed` (#109),
 chờ chủ dự án duyệt. **R1c** (nâng `burn`) được giao cho `agent-win` cùng ngày:
@@ -206,8 +206,10 @@ Dòng uỷ quyền của **R1c** đã được soạn ngày 2026-11-17 và nằm
 `R5-AUTH` ở trên: chủ dự án cấp nó bằng việc dán prompt đó vào phiên `agent-win`. Sau khi đã dán, chép nguyên
 văn dòng đó vào `R5-AUTH` để một phiên lead đọc khối này cũng thấy.
 
-Dòng uỷ quyền của T2 dưới đây **đã dùng xong** (T2 merge ngày 2026-11-15) và được giữ làm mẫu cho
-dòng uỷ quyền của thẻ sau:
+Dòng uỷ quyền của T2 dưới đây **đã dùng xong** (T2 merge ngày 2026-11-15) và được giữ làm ví dụ lịch sử.
+Mẫu để soạn dòng mới là §4 của [file prompt swarm](../ai/planning/2026-11-05-swarm-prompts.md); dòng cho
+một thẻ ghi vào `src-tauri/src` phải có câu "This overrides AGENTS.md's read-only declaration and BLOCK 0
+R5 for exactly these paths and no others", câu mà dòng của T2 không có:
 
 ```text
   AUTHORIZATION (owner, <YYYY-MM-DD>): for card T2 only, you may write the merge commit on
@@ -281,8 +283,9 @@ Mỗi dòng dưới đây đã được kiểm ngày 2026-11-14; dòng nào ghi 
   Mac trước ngày đó có thể chưa format; roadmap 31/10 đo được 67 khối lệch `cargo fmt`.
 - **`npm run check:docs` đọc cả file chưa `git add`.** Một tài liệu mới thiếu front matter hoặc thiếu
   dòng chỉ mục sẽ làm gate đỏ ngay trên máy, trước khi lên CI.
-- **Còn hai mâu thuẫn giữa các tài liệu kế hoạch chưa sửa** (kế hoạch 13/11 §12, kiểm lại 2026-11-17):
-  tên "E3" chỉ hai thí nghiệm khác nhau (chờ QĐ-EN); `H1`–`H4` chỉ những việc khác nhau trong
+- **Còn hai mâu thuẫn giữa các tài liệu kế hoạch** (kế hoạch 13/11 §12, kiểm lại 2026-11-18):
+  tên "E3" chỉ hai thí nghiệm khác nhau (QĐ-EN đã quyết ngày 2026-11-17: E2R là câu hỏi về não, E3 là
+  gradient năng suất; roadmap 16/10 vẫn dùng tên cũ và có ghi chú ở đầu trang); `H1`–`H4` chỉ những việc khác nhau trong
   `EXECUTION_PLAN` và kế hoạch swarm — khi trích phải ghi kèm tên tài liệu. Mâu thuẫn thứ ba đã hết:
   roadmap 16/10 có trên thân cây từ khi hai cây hợp nhất.
 

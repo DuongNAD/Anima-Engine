@@ -2,7 +2,7 @@
 title: Kế hoạch tách Anima-Engine thành các crate con kiểm chứng độc lập
 status: proposed
 owner: maintainers
-last_reviewed: 2026-10-31
+last_reviewed: 2026-11-18
 review_cycle: weekly
 ---
 
@@ -17,16 +17,35 @@ review_cycle: weekly
 > Kế hoạch này **không remake**. Lý do ở [§0](#0-vì-sao-không-viết-lại).
 > Thứ tự việc chung của dự án: [`EXECUTION_PLAN_2026-10-31.md`](EXECUTION_PLAN_2026-10-31.md).
 
-> **Trạng thái 2026-11-17: chưa bắt đầu, và đang chờ một quyết định.** Không bước nào từ S0 đến S5 có
-> PR; `src-tauri/crates/` vẫn chỉ có `anima-domain`. Kế hoạch này chờ **QĐ-M2** (tách crate trước hay
-> sau `v1.0.0`) trong
-> [hàng đợi quyết định](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được); đề
-> xuất của kế hoạch 13/11 là **sau** `v1.0.0`, và kế hoạch swarm xếp nó là thẻ X1. Ba điều đã đổi từ
-> khi viết: thứ tự việc chung nay do
-> [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ; điều kiện tiên quyết S0.1 (hồi
-> sinh `check_test_targets.mjs`) đã xong; và bảng "đo được 2026-10-31" ở §0 là đo lịch sử, số hiện hành
-> ở STATE §1. Trước khi bắt đầu S0, đo lại số vòng phụ thuộc: sáu cặp mà kế hoạch này nhắm tới là số
-> của ngày viết.
+> **Trạng thái, rà toàn văn 2026-11-18: S0.1 và S0.2 đã xong; phần còn lại chờ một quyết định.**
+>
+> - **S0.1 và S0.2 đã nằm trên thân cây** từ ngày 2026-10-31, bằng hai commit thẳng trước khi có bảo vệ
+>   nhánh (`bef7768`, `3c06491`), nên không có PR nào mang tên chúng. `dataflow.json` khai 16 cạnh, và CI
+>   so nó với đầu ra của `cargo-modules` ở mỗi lượt (bước "Module dependency graph matches dataflow.json";
+>   kết quả lượt đo mới nhất ở STATE §1). Gate V1 vì thế **đã bật**.
+> - **S0.3 còn mở:** `core/engine.rs` vẫn còn. **S0.4 xong ngày 2026-11-18:** mục F-005 trong
+>   `FINDINGS.md` nay ghi sáu cặp và trỏ vào gate; nó vẫn `OPEN` vì sáu vòng chưa được gỡ.
+> - **S1 đến S5 chưa bắt đầu**; `src-tauri/crates/` vẫn chỉ có `anima-domain`. Chúng chờ **QĐ-M2** (tách
+>   crate trước hay sau `v1.0.0`) trong
+>   [hàng đợi quyết định](COMPLETION_ROADMAP_2026-10-31.md#4-quyết-định-chỉ-chủ-dự-án-đưa-ra-được); đề
+>   xuất của kế hoạch 13/11 là **sau** `v1.0.0`, và kế hoạch swarm xếp nó là thẻ X1.
+> - **Ràng buộc "không làm song song với HT-C" đã thoả:** HT-C merge ở #45 ngày 2026-11-15.
+> - Thứ tự việc chung nay do [kế hoạch 13/11](DIRECTION_AND_COORDINATION_PLAN_2026-11-13.md) giữ.
+>
+> **Phải đo lại trước S1, vì mã đã đổi từ ngày viết:**
+>
+> - Mọi số dòng trong trang là của ngày 2026-10-31. Từ #99, `experiment_runner`, `experiment` và
+>   `exotic_energy` là thư mục module. Các file `core/branch_tree.rs`, `core/sweeps.rs`,
+>   `core/telemetry_export.rs`, `core/locomotion.rs`, `evolution/mrca.rs` và `evolution/meta_ai.rs` chưa
+>   được xếp vào tầng nào ở §3.
+> - `core/components.rs` không có hàm tự do nào, nhưng có 13 method `pub fn`, và nó tham chiếu
+>   `evolution::brain_genotype`, `evolution::mutation`, `ai::hrrl` và shim `core::engine`. `core/ecs.rs`
+>   không phải file type: nó re-export bốn module và chứa `init_world()`, hàm dựng thế giới từ `terrain`
+>   và `world_artifact`. Vì thế S1.1 ("không phụ thuộc gì khác trong repo") và S1.2 ("chuyển
+>   `components.rs` và `ecs.rs`") không thể cùng đúng như đang viết: trước S1 phải quyết `BrainGenotype`
+>   và `AgentBrain` nằm ở tầng nào, và tách `init_world` khỏi phần re-export.
+> - Số test, số target feature-gated và phiên bản `cargo-modules` ghi trong trang là của ngày viết; số
+>   hiện hành ở STATE §1.
 
 ---
 
@@ -48,7 +67,9 @@ Và thứ *trông như* cần viết lại thì chỉ cần chuyển chỗ — x
 **Hai chỗ đáng làm lại thật**, và cả hai nhỏ, nằm ở tầng UI chứ không ở engine: Research Dashboard +
 `telemetry_export` trên `main` (giá trị bịa, hai lệnh IPC chết, fallback mock — dạng "trông như chạy"
 thì vá tệ hơn làm lại), và Map 2 (bằng chứng bịa, world artifact là bản sao của Map 1). Chúng là
-task **B6** và **QĐ-2**, không thuộc kế hoạch này.
+task **B6** và **QĐ-2**, không thuộc kế hoạch này. *(Rà 2026-11-18: phần lớn đã xử lý ở các thẻ G4, G5
+và G6, tức #98, #95 và #94; G3 còn là PR mở #107. QĐ-2/QĐ-H quyết ngày 2026-11-17: gỡ dữ liệu giả, giữ
+mã.)*
 
 ---
 
@@ -109,24 +130,25 @@ thiếu**.
 
 ---
 
-## 2. Cơ chế xác minh — đã có sẵn, chưa ai bật
+## 2. Cơ chế xác minh — đã bật từ `3c06491`
 
 Đây là lý do kế hoạch này kiểm chứng được chứ không phải tin nhau:
 
 | Có sẵn | Trạng thái |
 |---|---|
-| `cargo-modules` **0.27.0** | ✅ đã cài |
+| `cargo-modules` | ✅ CI tự cài; phiên bản của lượt đo mới nhất ở STATE §1 |
 | `just dataflow-truth` → `cargo modules dependencies --lib --no-externs` | ✅ có recipe |
 | `just dataflow-verify [depth]` → `scripts/verify_dataflow.py` | ✅ có recipe, so ở mức module (depth 1) hoặc submodule (depth 2) |
-| `dataflow.json` — **hợp đồng phụ thuộc đã khai** | ❌ **file không tồn tại** |
-| `dataflow` trong `.github/workflows/ci.yml` | ❌ **0 lần xuất hiện** |
+| `dataflow.json` — **hợp đồng phụ thuộc đã khai** | ✅ có từ `3c06491`: 7 node, 16 cạnh (lúc viết kế hoạch: chưa tồn tại) |
+| `dataflow` trong `.github/workflows/ci.yml` | ✅ job Rust, bước "Module dependency graph matches dataflow.json" (lúc viết: 0 lần xuất hiện) |
 
-Toàn bộ máy móc để biến "không có vòng" thành một **gate** đã nằm trong repo; chỉ thiếu đúng file
-khai báo và một bước CI. F-005 tự ghi điều này: *"Test khoá lại: chưa có — cần khai contract phụ
-thuộc rồi cho CI chặn."*
+Lúc viết, toàn bộ máy móc để biến "không có vòng" thành một **gate** đã nằm trong repo và chỉ thiếu
+đúng file khai báo cùng một bước CI. Cả hai nay đã có (S0.2), và F-005 đã trỏ vào gate (S0.4), nên việc
+còn lại của S0 là S0.3.
 
-Đồ thị thô 788 cạnh, lọc "owns" rồi gộp về mức module còn **11** cạnh `uses` — đủ nhỏ để khai bằng
-tay và đọc được trong một PR.
+Đồ thị thô lọc "owns" rồi gộp về mức module còn **16** cạnh `uses` (số của `dataflow.json`; con số 11
+từng ghi ở đây lấy từ một chú thích cũ trong `justfile`) — đủ nhỏ để khai bằng tay và đọc được trong một
+PR.
 
 ### 2.1 Bộ ba kiểm cho **mỗi** bước tách
 
@@ -138,6 +160,8 @@ Một bước chỉ được gọi là xong khi cả ba xanh. Mỗi cái chặn 
 | **V2** | Tổng số test **TĂNG** đúng bằng số test chuyển đi, và `node scripts/check_test_targets.mjs <capture> --profile desktop` exit 0 | Test rơi khỏi gate **im lặng**. `src-tauri/Cargo.toml` ghi lại vết thương này: lúc tạo `anima-domain`, **20 test của nó rơi khỏi mọi gate** cho tới khi thêm `default-members`, vì crate vẫn compile như dependency nên không gì trông sai. "Giữ nguyên số" là **đỏ**, không phải xanh |
 | **V3** | Checksum tất định **trùng bit** trước/sau | Chuyển mã làm đổi thứ tự draw RNG ⇒ đổi **mọi** quỹ đạo. Tách là refactor thuần: một bit lệch nghĩa là không thuần |
 
+> **Đã gỡ: F-017 đóng ở `bef7768` (S0.1).** Đoạn dưới được giữ làm lý do S0.1 phải đi trước.
+>
 > ⚠️ **V2 không kiểm được khi `scripts/check_test_targets.mjs` còn chết.** File đó đã commit kèm ba
 > khối conflict marker (F-017) nên nó chết ngay khi parse. Tách crate trong lúc gate đếm target đang
 > chết là **đúng tổ hợp** làm mất test mà không ai biết. Vì vậy **task A1 của
@@ -196,10 +220,10 @@ Mỗi bước: **một PR**, bộ ba V1/V2/V3, và không kèm thay đổi hành
 
 | ID | Việc | Xong khi |
 |---|---|---|
-| **S0.1** | **A1 trước** — hồi sinh `scripts/check_test_targets.mjs` (port từ `origin/main` `286e45a`). Không có nó, V2 không đo được | `node scripts/check_test_targets.mjs <capture> --profile desktop` exit 0 |
-| **S0.2** | **Khai `dataflow.json`** — hợp đồng phụ thuộc *hiện tại* (gồm cả sáu vòng, đúng như thực tế), rồi `just dataflow-verify 1` xanh. Khai **hiện trạng** trước, đừng khai mong muốn: một gate xanh ngay là gate đo được, một gate đỏ sẵn thì vô dụng | `just dataflow-truth && just dataflow-verify 1` exit 0; thêm bước này vào `ci.yml`; sửa một `use` để tạo cạnh lạ ⇒ gate **đỏ** và nêu tên cạnh |
-| **S0.3** | Xoá `core/engine.rs` (4 dòng shim), chuyển các call-site sang module thật | `cargo test --features desktop` 1153 passed; V1 cho thấy **mất** cạnh qua `engine` |
-| **S0.4** | Đóng **F-005**: cập nhật finding với số đo 6 cặp, trỏ vào gate mới | F-005 có "Test khoá lại" thật |
+| **S0.1** ✅ `bef7768`, 2026-10-31 | **A1 trước** — hồi sinh `scripts/check_test_targets.mjs` (port từ `origin/main` `286e45a`). Không có nó, V2 không đo được | `node scripts/check_test_targets.mjs <capture> --profile desktop` exit 0 |
+| **S0.2** ✅ `3c06491`, 2026-10-31 (phép đối chứng đỏ/xanh ghi trong thông điệp commit) | **Khai `dataflow.json`** — hợp đồng phụ thuộc *hiện tại* (gồm cả sáu vòng, đúng như thực tế), rồi `just dataflow-verify 1` xanh. Khai **hiện trạng** trước, đừng khai mong muốn: một gate xanh ngay là gate đo được, một gate đỏ sẵn thì vô dụng | `just dataflow-truth && just dataflow-verify 1` exit 0; thêm bước này vào `ci.yml`; sửa một `use` để tạo cạnh lạ ⇒ gate **đỏ** và nêu tên cạnh |
+| **S0.3** | Xoá `core/engine.rs` (4 dòng shim), chuyển các call-site sang module thật | Tổng `passed` của `cargo test --features desktop` không đổi so với lượt đo ngay trước đó ở STATE §1; V1 cho thấy **mất** cạnh qua `engine`. Lưu ý: `core/components.rs` cũng dùng `crate::core::engine::AgentEvaluation` |
+| **S0.4** ✅ 2026-11-18 | Đóng **F-005**: cập nhật finding với số đo 6 cặp, trỏ vào gate mới. Finding đã được cập nhật; nó vẫn `OPEN` cho tới khi các vòng được gỡ | F-005 có "Test khoá lại" thật |
 
 ### S1 — `anima-ecs-types` (bước quan trọng nhất)
 
@@ -229,7 +253,7 @@ Mỗi bước: **một PR**, bộ ba V1/V2/V3, và không kèm thay đổi hành
 | ID | Việc | Xong khi |
 |---|---|---|
 | **S3.1** | Chuyển `snapshot` 1687, `simulation_state` 1397, `world_artifact` 780, `sha256` 173 | V1/V2/V3 |
-| **S3.2** | Giữ gate schema/migration chạy trong crate mới (7 file test feature-gated có `required-features` — **đừng** để rơi) | `check_test_targets.mjs --profile desktop` báo **7/7** target feature-gated vẫn chạy |
+| **S3.2** | Giữ gate schema/migration chạy trong crate mới (các file test feature-gated có `required-features` — **đừng** để rơi; lúc viết là 7, số hiện hành ở STATE §1) | Mọi target feature-gated mà `check_test_targets.mjs --profile desktop` liệt kê vẫn chạy |
 
 ### S4 — `anima-lab` (cụm lớn nhất)
 
@@ -245,7 +269,7 @@ Mỗi bước: **một PR**, bộ ba V1/V2/V3, và không kèm thay đổi hành
 | ID | Việc | Xong khi |
 |---|---|---|
 | **S5.1** | Đưa `dataflow-verify`, và `cargo test -p <crate>` cho từng crate, thành bước CI riêng | CI báo crate nào đỏ, không chỉ "backend đỏ" |
-| **S5.2** | Đo lại và ghi vào `STATE_OF_THE_PROJECT.md` **§1.g**: số test **từng crate**, thời gian build tăng dần trước/sau | §1.g có bảng per-crate |
+| **S5.2** | Đo lại và ghi thành một tiểu mục mới ở `STATE_OF_THE_PROJECT.md` **§1** (§1.g nay đã là lượt đo 2026-11-16): số test **từng crate**, thời gian build tăng dần trước/sau | Tiểu mục đó có bảng per-crate |
 
 ---
 
@@ -257,12 +281,13 @@ Mỗi bước: **một PR**, bộ ba V1/V2/V3, và không kèm thay đổi hành
 | Thứ tự draw RNG đổi ⇒ mọi quỹ đạo đổi | **Cao**, nhất là S1.3 (`SimRng`) | V3 từng bước; một bước = một PR nên bisect được |
 | Vòng mới lọt vào sau khi phá xong | Trung bình | V1 trong CI (S0.2) — không có nó thì vòng quay lại trong một PR |
 | Mất invariant toàn cục | **Không** — cùng workspace, cùng binary, test vẫn chạy trên cả thế giới | — |
-| 7 target test feature-gated rơi khi chuyển crate | Trung bình | S3.2 kiểm đúng con số 7/7 |
+| Target test feature-gated rơi khi chuyển crate | Trung bình | S3.2 kiểm đủ danh sách của `check_test_targets.mjs` |
 | Bỏ dở giữa đường, cây mã nửa tách | Trung bình | Mỗi bước tự đứng được: `pub use` lại giữ call-site không đổi, nên dừng ở bất kỳ S nào vẫn là cây xanh |
 
 **Không làm song song với HT-C (hợp nhất).** Tách crate đổi chỗ của gần như mọi file; merge một nhánh
 68 commit vào giữa lúc đó là tự tạo xung đột trên toàn bộ cây. Thứ tự: **A1 → HT-C xong → kế hoạch
-này**, hoặc **A1 → kế hoạch này xong → HT-C**, chọn một, không trộn.
+này**, hoặc **A1 → kế hoạch này xong → HT-C**, chọn một, không trộn. *(Rà 2026-11-18: HT-C đã merge ở #45
+ngày 2026-11-15, nên thứ tự thực tế là nhánh thứ nhất và ràng buộc này đã thoả.)*
 
 ---
 
@@ -270,7 +295,7 @@ này**, hoặc **A1 → kế hoạch này xong → HT-C**, chọn một, không 
 
 Ba câu, mỗi câu là một con số đo được hôm nay chứ không phải một lời hứa:
 
-1. **Đồ thị phụ thuộc có gate**: 11 cạnh mức module, khai trong `dataflow.json`, CI chặn. Một vòng
+1. **Đồ thị phụ thuộc có gate**: 16 cạnh mức module, khai trong `dataflow.json`, CI chặn. Một vòng
    mới là CI đỏ kèm tên cạnh.
 2. **Số test có gate**: `check_test_targets.mjs` cưỡng chế allow-list hai chiều, nên một target rỗng
    hay một test bị ignore không lọt. V2 đòi số test **tăng**, không phải "không giảm".
