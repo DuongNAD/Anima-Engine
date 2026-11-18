@@ -2,13 +2,13 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ SEL2-E — đo thăm dò lần hai, kết quả âm
-description: SEL2-E (216 lượt, 18.000 tick) không có ô khả thi - chỉ 5–7 thế hệ, cỏ không giới hạn quần thể ở hệ số 1,0, khát vẫn gây phần lớn cái chết dù có 8 hồ. Ba phép đo tiếp theo cùng ngày - nới ân hạn khát chuyển cái chết sang đói; lượt 100.000 tick ở hệ số 0,7 và 0,5 cho tới 16–23 thế hệ nhưng phần lớn quần thể tuyệt chủng, kể cả nền không khan hiếm có ân hạn khát dài (3/12); chẩn đoán cho thấy chúng trượt dần trong đáy của chu kỳ bùng nổ và sụp đổ, nơi sinh sản dừng hẳn. Mù với khối lượng
+description: SEL2-E (216 lượt, 18.000 tick) không có ô khả thi - chỉ 5–7 thế hệ, cỏ không giới hạn quần thể ở hệ số 1,0, khát vẫn gây phần lớn cái chết dù có 8 hồ. Bốn phép đo tiếp theo cùng ngày - nới ân hạn khát chuyển cái chết sang đói; lượt 100.000 tick ở hệ số 0,7 và 0,5 cho tới 16–23 thế hệ nhưng phần lớn quần thể tuyệt chủng, kể cả nền không khan hiếm có ân hạn khát dài (3/12); chẩn đoán cho thấy chúng trượt dần trong đáy của chu kỳ bùng nổ và sụp đổ, nơi sinh sản dừng hẳn; phép cuối cho thấy cỏ đầy đồng (83–86 %) nhưng chỉ còn 6–7 % dưới chân con vật, vì lái không bao giờ nhắm tới đồng cỏ. Mù với khối lượng
 status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-18
 ---
 
-# Thẻ SEL2-E — đo thăm dò lần hai và hai phép đo tiếp theo: kết quả âm
+# Thẻ SEL2-E — đo thăm dò lần hai và các phép đo tiếp theo: kết quả âm
 
 > **Thăm dò, chưa đăng ký, mù với khối lượng cơ thể.** Driver (`src-tauri/examples/sel2e_exploration.rs`) đọc
 > observable qua một danh sách cho phép gồm `live.agent_count`, `live.standing_crop`, `live.births`,
@@ -85,7 +85,7 @@ Bảng đầy đủ theo ô (`SUMMARY`) và theo lượt nằm trong đầu ra c
    cùng founders, cùng số hồ dao động từ −0,84 đến 0,99 trên 6 seed. Sáu điểm là quá ít để dùng cho QĐ-SEL2c;
    tương quan thật cần đo trên endpoint khối lượng, mà driver này không được đọc.
 
-## Ba phép đo tiếp theo (cùng ngày, cùng mã, cùng seed 1–6, vẫn mù với khối lượng)
+## Bốn phép đo tiếp theo (cùng ngày, cùng mã, cùng seed 1–6, vẫn mù với khối lượng)
 
 ### Chẩn đoán khát (`src-tauri/examples/sel2e_thirst_probe.rs`)
 
@@ -147,6 +147,30 @@ thấp thì **sinh sản dừng hẳn**. Đó là dấu hiệu của hiệu ứn
 phải của một mùa đông tệ. Vì sao sinh sản dừng khi chỉ còn vài con (ngưỡng năng lượng 0,65 của
 `autonomous_reproduction_system`, cỏ quanh chỗ con vật đứng đã cạn, hay con vật không tìm được cỏ) thì chưa đo.
 
+### Chẩn đoán đáy chu kỳ (`src-tauri/examples/sel2e_trough_probe.rs`)
+
+Thế giới "tốt nhất" (100 founders, 8 hồ, trần 320, hệ số 0,7, ân hạn khát 960), seed 2, 5 và 6, tới 40.000 tick hoặc
+tới khi tuyệt chủng, 14 giây. Mỗi 500 tick, probe đọc của từng con: tỉ lệ năng lượng (`energy / energy_target`), tỉ
+lệ nước, và tỉ lệ cỏ `r / r_max` của ô dưới chân. Nó không đọc khối lượng, genotype hay observable tính trạng nào.
+Con mồi sinh sản khi năng lượng ≥ 0,65 mức mục tiêu (`autonomous_reproduction_system`).
+
+| Seed | Kết cục | Mẫu có con đủ ngưỡng sinh | Cỏ dưới chân (trung vị) | Cỏ cả đồng (trung vị) | Tỉ lệ năng lượng (trung vị, cao nhất) |
+|---|---|---|---|---|---|
+| 2 | Còn 114 con ở tick 40.000 | 0/80 | 0,070 | 0,857 | 0,307; 0,380 |
+| 5 | Tuyệt chủng ở tick 27.000 | 0/54 | 0,061 | 0,831 | 0,266; 0,385 |
+| 6 | Tuyệt chủng ở tick 28.000 | 0/56 | 0,062 | 0,827 | 0,255; 0,366 |
+
+**Đọc:** cỏ **không** khan hiếm. Đồng cỏ còn khoảng 83–86 % sức chứa, nhưng ô dưới chân con vật chỉ còn khoảng 6–7 %.
+Ở không một lần lấy mẫu nào có con đạt ngưỡng sinh sản. Các lần sinh vẫn xảy ra giữa hai lần lấy mẫu (618, 410 và 420
+lần), khi một con vượt ngưỡng trong chốc lát, chẳng hạn sau khi ăn một mẩu `Food` hay quả cây, rồi đầu tư một nửa năng
+lượng vào con.
+
+**Cơ chế, đọc từ mã:** `steering_drive_system` (`core/locomotion.rs`) lái con vật tới hồ khi khát, và tới con mồi hoặc
+mẩu `Food` khi đói. Nó **không bao giờ** nhìn đồng cỏ (`ResourceField`). Cỏ chỉ được ăn ở ô ngay dưới chân
+(`herbivore_grazing_system`). Vì vậy con vật gặm trụi ô của mình, nhất là quanh hồ nơi lái-tới-nước kéo chúng lại, và
+chết đói giữa một đồng cỏ gần như đầy. Đây là giải thích đơn giản nhất cho cả bốn phép đo trước: hệ số đồng cỏ tác
+động yếu và gián tiếp, vì con vật gần như không dùng tới đồng cỏ ngoài ô dưới chân.
+
 ## Không khẳng định
 
 - Không nói gì về khối lượng cơ thể hay chọn lọc. Driver mù với khối lượng.
@@ -155,13 +179,14 @@ phải của một mùa đông tệ. Vì sao sinh sản dừng khi chỉ còn v�
 
 ## Hệ quả cho bước kế tiếp (đề xuất, chủ dự án quyết)
 
-Theo đề xuất SEL2 §5, khi SEL2-E âm thì bước kế tiếp là các mục ở §5.5, **không phải nới điều kiện**. Ba phép đo
+Theo đề xuất SEL2 §5, khi SEL2-E âm thì bước kế tiếp là các mục ở §5.5, **không phải nới điều kiện**. Bốn phép đo
 cùng chỉ về một điều: trước khi hỏi khan hiếm thức ăn chọn lọc gì, thế giới sống phải **duy trì được** một quần
 thể qua vài chục thế hệ. Hiện nó không làm được. Đề xuất theo thứ tự:
 
-1. **Vì sao sinh sản dừng ở mật độ thấp** (chẩn đoán, có thể cần một observable mới): ở đáy chu kỳ, năng lượng
-   của những con còn lại so với ngưỡng sinh sản, cỏ quanh vị trí của chúng, và quãng đường chúng đi. Đây là thứ
-   giết quần thể trong thế giới tốt nhất đã thử. Liên quan [ADR-0007](../../decisions/ADR-0007-live-ecology-sustainability.md).
+1. **Cho con vật tìm cỏ** (sửa luật hành vi, mở kỷ engine mới theo ADR-0008, cần quyết định và có lẽ một cập nhật
+   ADR-0006/ADR-0007): `steering_drive_system` thêm một mục tiêu "ô cỏ còn nhiều gần đây" khi đói, hoặc đi theo
+   gradient của `r`. Phép chẩn đoán đáy chu kỳ cho thấy đây là thứ chặn: cỏ đầy đồng nhưng con vật không tới được.
+   Đặt sau một khoá opt-in như mọi thay đổi sinh thái trước, để đường mặc định giữ nguyên.
 2. **Khát:** một ân hạn dài hơn (`live.dehydration_ticks` 960) là cách rẻ nhất để đói thành nguyên nhân chính. Đổi nó
    là đổi một tham số thế giới, nên cần quyết định của chủ dự án và phải khai trong bản đăng ký.
 3. **Lão hoá** (§5.5, cần ADR): một tuổi thọ tối đa sẽ đặt thời gian thế hệ độc lập với khủng hoảng đói/khát.
