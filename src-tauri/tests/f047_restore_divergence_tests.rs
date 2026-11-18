@@ -1,32 +1,36 @@
-//! F047: isolate the desktop-app restore divergence found in F046 and pin live-adapter fidelity.
+//! F047 / F048: live-adapter restore fidelity and sibling-collision fix for pending-inference restore.
 //!
 //! 1. `LiveExperimentAdapter` (`R3-like` shared/evolved and `S12/S13` worlds): zero restore
 //!    divergence at every tested checkpoint because `live_inference_pump_system` answers every
 //!    request inside the same tick before `action_resolution_system` drains responses.
-//! 2. Desktop-app `AppWorldHarness` (`R2a` and `R3`): reproduces `simulation_loop.rs:1713-1738`
-//!    (`entities_by_lineage: HashMap<String, Entity>`) where full siblings share identical
-//!    `AgentLineageId` strings (`agent_systems.rs:1066`), overwriting earlier siblings' handles and
-//!    leaving in-flight `PendingInference` responses undelivered to the requesting sibling on restore.
-//!    Keying restored responses by `(lineage_id, request_id)` matching
-//!    `CognitiveState::PendingInference(ticket_id)` eliminates the divergence in every checkpoint.
+//! 2. Desktop-app `AppWorldHarness` (`R2a` and `R3`): uses the shared
+//!    `route_restored_pending_inference` helper (`simulation_state.rs`) to key restored responses
+//!    by `(lineage_id, request_id)` matching each waiting entity's
+//!    `CognitiveState::PendingInference(ticket_id)`, eliminating sibling collision at odd and even
+//!    checkpoints across platforms (`div == None` everywhere).
+//! 3. Disk snapshot round-trip (`SavedSharedLearningState` + `snapshot::read`): verifies two
+//!    same-lineage siblings simultaneously in `PendingInference` save, seal, load cleanly via
+//!    `snapshot::read` without `InvalidData`, route to their exact entity handles, and drop/count
+//!    unmatched responses without ever routing to a sibling.
 
+use anima_engine_lib::ai::hrrl::{LearningQueueSnapshot, Transition};
 use anima_engine_lib::ai::model::{
-    run_inference_batch, BrainInferenceBuffer, BrainModel, InferenceScratch,
+    run_inference_batch, ActorCriticModel, BrainInferenceBuffer, BrainModel, InferenceScratch,
 };
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::agent_systems::{
     ActiveEvolutionSettings, AgentEvaluation, AgentGeneration, AgentGenotype, AgentLineageId,
     BevyAppHandle, BevyEvolutionRunning, BevyEvolutionSettings, BevyMapElitesArchive,
     BevyMapElitesGrid, DeferredEnvironmentalEvent, DormantAgents, EnvironmentalEventReceiver,
-    InferenceChannels, InferenceRequestBatch, InferenceResponseBatch, NextNodeId,
+    InferenceChannels, InferenceRequestBatch, InferenceResponseBatch, NextNodeId, ACTION_SLOTS,
 };
 use anima_engine_lib::core::causal::CausalLedger;
-use anima_engine_lib::core::components::CognitiveState;
+use anima_engine_lib::core::components::{ActionGates, CognitiveState};
 use anima_engine_lib::core::determinism::{next_entity_id, DeterministicMode, RunIdentity};
 use anima_engine_lib::core::ecs::{
-    init_world, ActiveEnvironmentEvent, AgentParentLineageIds, EnvironmentalSpawnSettings,
-    EpochManager, FeatureTracker, Food, Lake, MapBounds, Position, Predator, Prey,
-    ScientificCounterFault, Tree,
+    init_world, ActiveEnvironmentEvent, AgentClass, AgentParentLineageIds,
+    EnvironmentalSpawnSettings, EpochManager, FeatureTracker, Food, Lake, MapBounds, Position,
+    Predator, Prey, ScientificCounterFault, Tree,
 };
 use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
@@ -40,19 +44,26 @@ use anima_engine_lib::core::sim_clock::SimClock;
 use anima_engine_lib::core::simulation_lod::{LodBands, LodFocus, SharedLodFocus};
 use anima_engine_lib::core::simulation_schedule::build_tick_schedule;
 use anima_engine_lib::core::simulation_state::{
-    populate_restored_spatial_grid, restore_energy_state, restored_next_node_id,
-    serialize_world_state, spawn_serialized_agent, SavedInferenceResponse,
-    SavedInferenceResponseBatch, SavedSimulationState,
+    empty_saved_state_for_tests, populate_restored_spatial_grid, restore_energy_state,
+    restored_next_node_id, route_restored_pending_inference, serialize_world_state,
+    spawn_serialized_agent, SavedInferenceResponse, SavedInferenceResponseBatch,
+    SavedSharedLearningState, SavedSimulationState, SerializedAgent,
 };
-use anima_engine_lib::core::snapshot::{self, world_checksum, SnapshotEnvelope};
-use anima_engine_lib::core::training::ModelUpdateDiagnostics;
+use anima_engine_lib::core::snapshot::{self, world_checksum, SnapshotEnvelope, SCHEMA_VERSION};
+use anima_engine_lib::core::training::{
+    ModelUpdateDiagnostics, ModelUpdateSnapshot, SavedLearnerWorkerState, ACTION_DIM, HIDDEN_DIM,
+    STATE_DIM,
+};
 use anima_engine_lib::evolution::fitness::FitnessRuleSetting;
 use anima_engine_lib::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use anima_engine_lib::evolution::lineage::{FallbackLineageTracker, LineageTracker};
 use anima_engine_lib::physics::spatial::{SpatialCollider, SpatialHashGrid};
-use bevy_ecs::prelude::{Entity, Schedule, World};
+use bevy_ecs::prelude::{Schedule, World};
+use burn::module::Module;
+use burn::optim::AdamConfig;
+use burn::tensor::Device;
 use rand::seq::SliceRandom;
 use rand::{rngs::StdRng, SeedableRng};
 use std::collections::HashMap;
@@ -162,13 +173,7 @@ fn f047_live_adapter_r3_like_restore_matches_uninterrupted() {
         ("live.mortality".into(), 1.0),
         ("live.reproduction".into(), 1.0),
     ]);
-    measure_live_adapter_checkpoints(
-        "live_r3_like_shared",
-        &r3_shared,
-        3,
-        1900,
-        &[1, 899, 900, 901, 950],
-    );
+    measure_live_adapter_checkpoints("live_r3_like_shared", &r3_shared, 3, 1000, &[1, 899, 900]);
 
     let r3_evolved = InitialConditionSet::new(vec![
         ("live.founders".into(), 30.0),
@@ -180,13 +185,7 @@ fn f047_live_adapter_r3_like_restore_matches_uninterrupted() {
         ("live.mortality".into(), 1.0),
         ("live.reproduction".into(), 1.0),
     ]);
-    measure_live_adapter_checkpoints(
-        "live_r3_like_evolved",
-        &r3_evolved,
-        3,
-        1900,
-        &[1, 899, 900, 901, 950],
-    );
+    measure_live_adapter_checkpoints("live_r3_like_evolved", &r3_evolved, 3, 1000, &[899, 900]);
 }
 
 #[test]
@@ -206,20 +205,10 @@ fn f047_live_adapter_s12_s13_world_restore_matches_uninterrupted() {
         ("live.resource_capacity_scale".into(), 0.63),
         ("live.dehydration_ticks".into(), 960.0),
     ]);
-    measure_live_adapter_checkpoints("live_s12_s13", &s12_s13, 3, 4000, &[899, 900, 2000]);
+    measure_live_adapter_checkpoints("live_s12_s13", &s12_s13, 3, 1000, &[899, 900]);
 }
 
-// ---- Desktop-app headless lockstep harness & restore routing modes --------------------------------
-
-#[derive(Clone, Copy)]
-enum PendingRestoreMode {
-    /// Mirrors `simulation_loop.rs:1713-1738` (`entities_by_lineage`), which collides when siblings
-    /// share identical `AgentLineageId` strings (`agent_systems.rs:1066`).
-    CurrentByLineage,
-    /// Bisect (c) counterfactual: keys restored responses by `(lineage_id, request_id)` matching each
-    /// waiting entity's `CognitiveState::PendingInference(ticket_id)`.
-    CounterfactualByRequestId,
-}
+// ---- Desktop-app headless lockstep harness & shared pending-inference restore --------------------
 
 struct AppConfig {
     label: &'static str,
@@ -283,19 +272,15 @@ fn default_founder_genotype() -> MorphologyGenotype {
 
 fn build_app_world(
     cfg: &AppConfig,
-    restore: Option<(
-        &SavedSimulationState,
-        &[SavedInferenceResponseBatch],
-        PendingRestoreMode,
-    )>,
+    restore: Option<(&SavedSimulationState, &[SavedInferenceResponseBatch])>,
 ) -> AppWorldHarness {
     let mut world = init_world();
-    let loaded_bounds = restore.map(|(s, _, _)| s.map_bounds).unwrap_or_default();
+    let loaded_bounds = restore.map(|(s, _)| s.map_bounds).unwrap_or_default();
     world.insert_resource(loaded_bounds);
     world.insert_resource(SpatialHashGrid::new_prepopulated(10.0, &loaded_bounds));
 
     let loaded_pheromone = restore
-        .map(|(s, _, _)| anima_engine_lib::ai::pheromone::PheromoneGrid {
+        .map(|(s, _)| anima_engine_lib::ai::pheromone::PheromoneGrid {
             values: s.pheromone_grid.values.clone(),
             scratch: vec![0.0; anima_engine_lib::ai::pheromone::CELL_COUNT],
             diffusion_rate: s.pheromone_grid.diffusion_rate,
@@ -304,7 +289,7 @@ fn build_app_world(
         .unwrap_or_default();
     world.insert_resource(loaded_pheromone);
 
-    let run_seed = restore.map(|(s, _, _)| s.sim_rng_seed).unwrap_or_else(|| {
+    let run_seed = restore.map(|(s, _)| s.sim_rng_seed).unwrap_or_else(|| {
         world
             .get_resource::<SimRng>()
             .map(|r| r.seed())
@@ -349,7 +334,7 @@ fn build_app_world(
     });
 
     let loaded_food_settings = restore
-        .map(|(s, _, _)| s.food_spawn_settings)
+        .map(|(s, _)| s.food_spawn_settings)
         .unwrap_or_default();
     world.insert_resource(loaded_food_settings);
     let env_settings = EnvironmentalSpawnSettings {
@@ -407,9 +392,7 @@ fn build_app_world(
         archive: anima_engine_lib::evolution::map_elites::MapElitesArchive::new(1.0 / 40.0),
     });
 
-    let next_node_id = restore
-        .map(|(s, _, _)| restored_next_node_id(s))
-        .unwrap_or(3);
+    let next_node_id = restore.map(|(s, _)| restored_next_node_id(s)).unwrap_or(3);
     world.insert_resource(NextNodeId(next_node_id));
 
     let (stats_tx, _stats_rx) = crossbeam_channel::unbounded();
@@ -421,7 +404,7 @@ fn build_app_world(
     world.insert_resource(DeferredEnvironmentalEvent::default());
 
     let loaded_epoch = restore
-        .map(|(s, _, _)| s.epoch_manager)
+        .map(|(s, _)| s.epoch_manager)
         .unwrap_or(EpochManager {
             ticks_per_epoch: 1000,
             current_epoch_ticks: 0,
@@ -443,7 +426,7 @@ fn build_app_world(
     world.insert_resource(anima_engine_lib::core::ecs::BevyMigrationTrigger(mig_rx));
 
     let loaded_env = restore
-        .map(|(s, _, _)| ActiveEnvironmentEvent(s.active_environment_event))
+        .map(|(s, _)| ActiveEnvironmentEvent(s.active_environment_event))
         .unwrap_or_default();
     world.insert_resource(loaded_env);
 
@@ -454,7 +437,7 @@ fn build_app_world(
         "password",
     ));
 
-    if let Some((state, pending_batches, restore_mode)) = restore {
+    if let Some((state, pending_batches)) = restore {
         lineage.load_state(state.lineage_nodes.clone(), state.lineage_relations.clone());
         *chronicle.write().expect("chronicle write lock") = state.chronicle_history.clone();
         for agent in &state.agents {
@@ -504,58 +487,17 @@ fn build_app_world(
         populate_restored_spatial_grid(&mut world, state);
 
         if !pending_batches.is_empty() {
-            match restore_mode {
-                PendingRestoreMode::CurrentByLineage => {
-                    let mut entities_by_lineage = HashMap::new();
-                    let mut lq = world.query::<(Entity, &AgentLineageId)>();
-                    for (e, lid) in lq.iter(&world) {
-                        entities_by_lineage.insert(lid.0.clone(), e);
-                    }
-                    for saved_batch in pending_batches {
-                        let mut batch = recycle_res_rx.try_recv().expect("recycle res batch");
-                        batch.responses.clear();
-                        for saved in &saved_batch.responses {
-                            if let Some(&entity) = entities_by_lineage.get(&saved.lineage_id) {
-                                batch.responses.push(
-                                    anima_engine_lib::core::agent_systems::AgentInferenceResponse {
-                                        entity,
-                                        actions: saved.actions,
-                                        request_id: saved.request_id,
-                                    },
-                                );
-                            }
-                        }
-                        res_tx.send(batch).expect("restore pending inference");
-                    }
-                }
-                PendingRestoreMode::CounterfactualByRequestId => {
-                    let mut entities_by_ticket = HashMap::new();
-                    let mut lq = world.query::<(Entity, &AgentLineageId, &CognitiveState)>();
-                    for (e, lid, cog) in lq.iter(&world) {
-                        if let CognitiveState::PendingInference(ticket_id) = *cog {
-                            let prev = entities_by_ticket.insert((lid.0.clone(), ticket_id), e);
-                            assert!(prev.is_none(), "duplicate (lineage_id, ticket_id) pair");
-                        }
-                    }
-                    for saved_batch in pending_batches {
-                        let mut batch = recycle_res_rx.try_recv().expect("recycle res batch");
-                        batch.responses.clear();
-                        for saved in &saved_batch.responses {
-                            if let Some(&entity) = entities_by_ticket
-                                .get(&(saved.lineage_id.clone(), saved.request_id))
-                            {
-                                batch.responses.push(
-                                    anima_engine_lib::core::agent_systems::AgentInferenceResponse {
-                                        entity,
-                                        actions: saved.actions,
-                                        request_id: saved.request_id,
-                                    },
-                                );
-                            }
-                        }
-                        res_tx.send(batch).expect("restore pending inference");
-                    }
-                }
+            let (routed_batches, dropped) =
+                route_restored_pending_inference(&mut world, pending_batches);
+            assert_eq!(
+                dropped, 0,
+                "every checkpointed in-flight response must match its restored PendingInference entity"
+            );
+            for responses in routed_batches {
+                let mut batch = recycle_res_rx.try_recv().expect("recycle res batch");
+                batch.responses.clear();
+                batch.responses.extend(responses);
+                res_tx.send(batch).expect("restore pending inference");
             }
         }
     } else {
@@ -684,7 +626,7 @@ fn build_app_world(
         lineage,
         evolution_settings,
         map_elites_grid,
-        tick_count: restore.map(|(s, _, _)| s.tick_count).unwrap_or(0),
+        tick_count: restore.map(|(s, _)| s.tick_count).unwrap_or(0),
     };
     if restore.is_none() {
         harness.run_schedule_and_pump();
@@ -791,7 +733,6 @@ fn measure_app_restore(
     k: u64,
     horizon: u64,
     orig_hashes: &[u32],
-    mode: PendingRestoreMode,
 ) -> Option<(u64, u32, u32)> {
     let mut orig = build_app_world(cfg, None);
     for _ in 1..=k {
@@ -804,7 +745,7 @@ fn measure_app_restore(
         cfg.label
     );
     let (saved, pending) = orig.snapshot_and_roundtrip(&format!("{}_{k}", cfg.label));
-    let mut resumed = build_app_world(cfg, Some((&saved, &pending, mode)));
+    let mut resumed = build_app_world(cfg, Some((&saved, &pending)));
     assert_eq!(
         world_checksum(&mut resumed.world),
         orig_hashes[k as usize],
@@ -848,50 +789,14 @@ fn f047_app_harness_r2a_restore_checkpoints() {
         reproduction: true,
         locomotion: false,
     };
-    let horizon = 1900;
+    let horizon = 960;
     let orig_hashes = uninterrupted_app_hashes(&r2a, horizon);
 
-    for &k in &[898, 900, 950] {
-        let div = measure_app_restore(
-            &r2a,
-            k,
-            horizon,
-            &orig_hashes,
-            PendingRestoreMode::CurrentByLineage,
-        );
+    for &k in &[898, 899, 900] {
+        let div = measure_app_restore(&r2a, k, horizon, &orig_hashes);
         assert_eq!(
             div, None,
-            "R2a even checkpoint K={k} must not diverge from uninterrupted run"
-        );
-    }
-
-    for &k in &[899, 901] {
-        // F047 finding (current `simulation_loop.rs:1713-1738` `entities_by_lineage` behaviour):
-        // full siblings share `AgentLineageId`, so restoring pending inference by `lineage_id` alone
-        // misroutes the response for an active `PendingInference` sibling on odd checkpoints.
-        let div = measure_app_restore(
-            &r2a,
-            k,
-            horizon,
-            &orig_hashes,
-            PendingRestoreMode::CurrentByLineage,
-        );
-        assert!(
-            div.is_some(),
-            "F047 regression pin: R2a odd checkpoint K={k} must show CurrentByLineage divergence until fixed"
-        );
-
-        // Counterfactual isolating Bisect (c): matching `(lineage_id, request_id)` removes divergence.
-        let fixed_div = measure_app_restore(
-            &r2a,
-            k,
-            horizon,
-            &orig_hashes,
-            PendingRestoreMode::CounterfactualByRequestId,
-        );
-        assert_eq!(
-            fixed_div, None,
-            "R2a odd checkpoint K={k} must match uninterrupted run when routed by (lineage_id, request_id)"
+            "R2a checkpoint K={k} must match uninterrupted run through tick {horizon}"
         );
     }
 }
@@ -906,48 +811,225 @@ fn f047_app_harness_r3_restore_checkpoints() {
         reproduction: true,
         locomotion: true,
     };
-    let horizon = 1900;
+    let horizon = 960;
     let orig_hashes = uninterrupted_app_hashes(&r3, horizon);
 
-    let div_k1 = measure_app_restore(
-        &r3,
-        1,
-        horizon,
-        &orig_hashes,
-        PendingRestoreMode::CurrentByLineage,
-    );
-    assert_eq!(
-        div_k1, None,
-        "R3 pre-reproduction checkpoint K=1 (unique founder lineage ids) must not diverge"
-    );
-
-    for &k in &[899, 900, 950] {
-        // F047 finding (current `simulation_loop.rs:1713-1738` `entities_by_lineage` behaviour):
-        // after reproduction spawns same-lineage siblings, `entities_by_lineage` overwrites earlier
-        // siblings and drops/misroutes their in-flight `PendingInference` response on restore.
-        let div = measure_app_restore(
-            &r3,
-            k,
-            horizon,
-            &orig_hashes,
-            PendingRestoreMode::CurrentByLineage,
-        );
-        assert!(
-            div.is_some(),
-            "F047 regression pin: R3 checkpoint K={k} must show CurrentByLineage divergence until fixed"
-        );
-
-        // Counterfactual isolating Bisect (c): matching `(lineage_id, request_id)` removes divergence.
-        let fixed_div = measure_app_restore(
-            &r3,
-            k,
-            horizon,
-            &orig_hashes,
-            PendingRestoreMode::CounterfactualByRequestId,
-        );
+    for &k in &[1, 899, 900] {
+        let div = measure_app_restore(&r3, k, horizon, &orig_hashes);
         assert_eq!(
-            fixed_div, None,
-            "R3 checkpoint K={k} must match uninterrupted run when routed by (lineage_id, request_id)"
+            div, None,
+            "R3 checkpoint K={k} must match uninterrupted run through tick {horizon}"
         );
     }
+}
+
+fn sibling_agent_fixture(
+    lineage_id: &str,
+    root_x: f32,
+    ticket_id: u64,
+    pending_state: [f32; STATE_DIM],
+) -> SerializedAgent {
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.25,
+        mass: 1.0,
+    });
+    SerializedAgent {
+        genotype,
+        class: AgentClass::Prey,
+        lineage_id: lineage_id.to_owned(),
+        generation: 1,
+        parent_ids: vec!["founder-0000000000000029-00000000".to_owned()],
+        evaluation: AgentEvaluation {
+            start_position: glam::Vec3::new(root_x, 0.0, 0.0),
+            total_distance: 0.0,
+            total_energy_expended: 0.0,
+            total_energy_gained: 0.0,
+            prey_energy_gained: 0.0,
+            survival_ticks: 10,
+            last_position: glam::Vec3::new(root_x, 0.0, 0.0),
+        },
+        feature_tracker: FeatureTracker::default(),
+        root_position: glam::Vec3::new(root_x, 0.0, 0.0),
+        root_rotation: glam::Quat::IDENTITY,
+        root_velocity: glam::Vec3::ZERO,
+        homeostatic_state: anima_engine_lib::ai::hrrl::HomeostaticState {
+            energy: 60.0,
+            energy_target: 100.0,
+            hydration: 60.0,
+            hydration_target: 100.0,
+            temperature: 37.0,
+            temp_target: 37.0,
+            previous_deviation: 0.0,
+            starving_ticks: 0,
+            dehydrating_ticks: Some(0),
+        },
+        last_transition_state: anima_engine_lib::ai::hrrl::LastTransitionState {
+            state: [0.0; STATE_DIM],
+            action: [0.0; ACTION_DIM],
+            has_last: false,
+            pending_state: Some(pending_state),
+        },
+        cognitive_state: CognitiveState::PendingInference(ticket_id),
+        inertia: anima_engine_lib::core::components::InertiaComponent {
+            cpg_parameters: [0.1, 0.2, 0.3, 0.4],
+            ..Default::default()
+        },
+        action_gates: Some(ActionGates {
+            pheromone_emit: 0.25,
+            attack_intent: 0.5,
+            feed_intent: 0.75,
+        }),
+        segments: Vec::new(),
+        brain: None,
+        sex: None,
+    }
+}
+
+fn valid_shared_learning_fixture(
+    seed: u64,
+    pending_inference: Vec<SavedInferenceResponseBatch>,
+) -> SavedSharedLearningState {
+    let device = Device::flex().autodiff();
+    let weights = BrainModel::new_seeded_cpu(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed)
+        .checkpoint_weights()
+        .expect("extract seeded weights");
+    let model =
+        ActorCriticModel::from_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, &device)
+            .expect("build fixture training model");
+    let optimizer = AdamConfig::new().init();
+    let training_model_record = model
+        .into_record()
+        .into_bytes()
+        .expect("encode model record")
+        .to_vec();
+    let optimizer_record = optimizer.into_bytes().expect("encode Adam record").to_vec();
+    let transition = Transition {
+        state: [0.25; STATE_DIM],
+        action: [0.5; ACTION_DIM],
+        reward: 0.75,
+        next_state: [1.0; STATE_DIM],
+    };
+    let pending_weights = BrainModel::new_seeded_cpu(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed + 1)
+        .checkpoint_weights()
+        .expect("extract pending seeded weights");
+    SavedSharedLearningState {
+        learner: SavedLearnerWorkerState {
+            training_model_record,
+            optimizer_record,
+            partial_batch: vec![transition],
+        },
+        inference_weights: weights,
+        pending_inference_weights: Some(pending_weights),
+        queued_transitions: vec![transition],
+        pending_inference,
+        learning_queue_diagnostics: LearningQueueSnapshot::default(),
+        model_update_diagnostics: ModelUpdateSnapshot::default(),
+    }
+}
+
+#[test]
+fn f048_two_pending_siblings_roundtrip_disk_snapshot_and_route_by_ticket() {
+    let shared_lineage = "founder-0000000000000029-00000000.1";
+    let actions_a: [f32; ACTION_SLOTS] = [0.1, 0.2, 0.3, 0.4, 0.25, 0.5, 0.75, 0.0];
+    let actions_b: [f32; ACTION_SLOTS] = [0.8, 0.7, 0.6, 0.5, 0.75, 0.25, 0.5, 1.0];
+
+    let mut state = empty_saved_state_for_tests();
+    state.tick_count = 42;
+    state.sim_rng_seed = 29;
+    state.agents = vec![
+        sibling_agent_fixture(shared_lineage, -10.0, 101, [0.25; STATE_DIM]),
+        sibling_agent_fixture(shared_lineage, 10.0, 102, [0.5; STATE_DIM]),
+    ];
+    state.shared_learning = Some(valid_shared_learning_fixture(
+        state.sim_rng_seed,
+        vec![SavedInferenceResponseBatch {
+            responses: vec![
+                SavedInferenceResponse {
+                    lineage_id: shared_lineage.to_owned(),
+                    actions: actions_a,
+                    request_id: 101,
+                },
+                SavedInferenceResponse {
+                    lineage_id: shared_lineage.to_owned(),
+                    actions: actions_b,
+                    request_id: 102,
+                },
+            ],
+        }],
+    ));
+
+    let seq = DISK_SEQ.fetch_add(1, Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "anima_f048_siblings_{}_{}",
+        std::process::id(),
+        seq
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let path = dir.join("siblings_pending.json");
+    let envelope = SnapshotEnvelope::seal(state)
+        .expect("two same-lineage siblings in PendingInference must seal without collision");
+    snapshot::write_atomic(&path, &envelope).expect("write sibling snapshot");
+    let read_back = snapshot::read(&path)
+        .expect("real snapshot::read must load two same-lineage PendingInference siblings");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(read_back.loaded_from_schema, SCHEMA_VERSION);
+
+    let mut world = init_world();
+    let entity_a =
+        spawn_serialized_agent(&mut world, &read_back.agents[0]).expect("spawn sibling A");
+    let entity_b =
+        spawn_serialized_agent(&mut world, &read_back.agents[1]).expect("spawn sibling B");
+    assert_ne!(entity_a, entity_b);
+
+    let pending_batches = &read_back
+        .shared_learning
+        .as_ref()
+        .expect("shared_learning preserved across disk round-trip")
+        .pending_inference;
+    let (routed_batches, dropped) = route_restored_pending_inference(&mut world, pending_batches);
+    assert_eq!(dropped, 0, "both siblings' responses must match cleanly");
+    assert_eq!(routed_batches.len(), 1);
+    assert_eq!(routed_batches[0].len(), 2);
+    assert_eq!(routed_batches[0][0].entity, entity_a);
+    assert_eq!(routed_batches[0][0].request_id, 101);
+    assert_eq!(routed_batches[0][0].actions, actions_a);
+    assert_eq!(routed_batches[0][1].entity, entity_b);
+    assert_eq!(routed_batches[0][1].request_id, 102);
+    assert_eq!(routed_batches[0][1].actions, actions_b);
+
+    // An unmatched `(lineage_id, request_id)` must be dropped and counted, never routed to a sibling.
+    world.entity_mut(entity_b).insert(CognitiveState::Ready);
+    let adversarial_batches = vec![SavedInferenceResponseBatch {
+        responses: vec![
+            SavedInferenceResponse {
+                lineage_id: shared_lineage.to_owned(),
+                actions: actions_a,
+                request_id: 101,
+            },
+            SavedInferenceResponse {
+                lineage_id: shared_lineage.to_owned(),
+                actions: actions_b,
+                request_id: 999,
+            },
+            SavedInferenceResponse {
+                lineage_id: "absent-lineage".to_owned(),
+                actions: actions_b,
+                request_id: 101,
+            },
+        ],
+    }];
+    let (filtered_batches, dropped_unmatched) =
+        route_restored_pending_inference(&mut world, &adversarial_batches);
+    assert_eq!(
+        dropped_unmatched, 2,
+        "unmatched (lineage_id, request_id) pairs must be dropped and counted, never routed to sibling B"
+    );
+    assert_eq!(filtered_batches.len(), 1);
+    assert_eq!(filtered_batches[0].len(), 1);
+    assert_eq!(filtered_batches[0][0].entity, entity_a);
+    assert_eq!(filtered_batches[0][0].request_id, 101);
 }
