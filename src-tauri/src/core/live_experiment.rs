@@ -203,9 +203,16 @@ pub const LIVE_KEY_PLANT_RESERVE: &str = "live.plant_reserve";
 pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 /// Weight of the net-surplus term of the ecological rule. Absent reads back as 1.0.
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
+/// Card SEL2-D: `1.0` enables lockstep neutral-drift replay (requires mortality, reproduction, and
+/// a recorded [`crate::core::drift_control::TurnoverSchedule`]); `0.0`/absent runs the normal live
+/// rules bit-identically.
+pub const LIVE_KEY_DRIFT_CONTROL: &str = "live.drift_control";
+/// Card SEL2-D: Channon periodic-reset window length `K` in ticks (`0` = unreset replay from
+/// founders; `K > 0` requires `live.drift_control = 1.0` and `duration_ticks % K == 0`).
+pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 22] = [
+pub const LIVE_KEYS: [&str; 24] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -228,6 +235,8 @@ pub const LIVE_KEYS: [&str; 22] = [
     LIVE_KEY_PREY_CAP,
     LIVE_KEY_RESOURCE_CAPACITY_SCALE,
     LIVE_KEY_PLANT_RESERVE,
+    LIVE_KEY_DRIFT_CONTROL,
+    LIVE_KEY_DRIFT_RESET_TICKS,
 ];
 
 /// The genesis the manifest asked for.
@@ -295,6 +304,13 @@ pub struct LiveWorldConfig {
     /// Card S10: ungrazeable fraction of each cell's capacity; absent reads back as `0.0` (off).
     #[serde(default)]
     pub plant_reserve: f64,
+    /// Card SEL2-D: lockstep neutral-drift replay mode (`1.0` on, `0.0`/absent off).
+    #[serde(default)]
+    pub drift_control: bool,
+    /// Card SEL2-D: Channon periodic-reset interval `K` in ticks (`0` = unreset replay from
+    /// founders).
+    #[serde(default)]
+    pub drift_reset_ticks: u64,
 }
 
 fn default_prey_cap() -> usize {
@@ -354,6 +370,8 @@ impl Default for LiveWorldConfig {
             prey_cap: default_prey_cap(),
             resource_capacity_scale: default_resource_capacity_scale(),
             plant_reserve: 0.0,
+            drift_control: false,
+            drift_reset_ticks: 0,
         }
     }
 }
@@ -574,8 +592,35 @@ impl LiveWorldConfig {
                     }
                     config.target_min_energy = *value as f32;
                 }
+                LIVE_KEY_DRIFT_CONTROL => match *value {
+                    0.0 => config.drift_control = false,
+                    1.0 => config.drift_control = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_DRIFT_RESET_TICKS => {
+                    config.drift_reset_ticks = bounded_count(key, *value, 0.0, 1_000_000.0)? as u64;
+                }
                 _ => unreachable!("key membership was checked above"),
             }
+        }
+        if config.drift_control && (!config.mortality || !config.reproduction) {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.drift_control = 1.0 requires both live.mortality = 1.0 and \
+                         live.reproduction = 1.0"
+                    .into(),
+            });
+        }
+        if config.drift_reset_ticks > 0 && !config.drift_control {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.drift_reset_ticks > 0 requires live.drift_control = 1.0".into(),
+            });
         }
         Ok(config)
     }
@@ -603,6 +648,19 @@ impl LiveWorldConfig {
                     id: id.clone(),
                     reason: "the run declares no death rule (live.mortality absent or 0.0); \
                              nobody can die, so a death count would be a fabricated zero"
+                        .to_owned(),
+                });
+            }
+            if matches!(
+                id.as_str(),
+                "live.deaths_starvation" | "live.deaths_dehydration"
+            ) && self.drift_control
+            {
+                return Err(ExperimentError::InvalidObservableRequest {
+                    id: id.clone(),
+                    reason: "live.drift_control = 1.0 replaces physiological deaths with uniform \
+                             random deaths that carry no starvation/dehydration cause; cause-split \
+                             counts would be fabricated zeros"
                         .to_owned(),
                 });
             }
@@ -1462,8 +1520,11 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         .get_resource::<crate::core::agent_systems::BevyMapElitesArchive>()
         .map(|a| a.archive.grid.len() as f64)
         .unwrap_or(0.0);
+    let is_drift_replay = world
+        .get_resource::<crate::core::drift_control::DriftControlState>()
+        .is_some_and(|d| d.is_replay());
 
-    vec![
+    let mut out = vec![
         ("plants".to_string(), plants),
         ("detritus".to_string(), detritus),
         ("live.animals_eu".to_string(), animals),
@@ -1499,15 +1560,18 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
             mean_lifespan.unwrap_or(0.0) as f64,
         ),
         ("live.archive_coverage".to_string(), archive_coverage),
-        (
+    ];
+    if !is_drift_replay {
+        out.push((
             "live.deaths_starvation".to_string(),
             deaths_starvation as f64,
-        ),
-        (
+        ));
+        out.push((
             "live.deaths_dehydration".to_string(),
             deaths_dehydration as f64,
-        ),
-    ]
+        ));
+    }
+    out
 }
 
 // ---- The adapter ----------------------------------------------------------------------------------
@@ -1660,8 +1724,247 @@ impl LiveExperimentAdapter {
     /// Run the schedule once without the experiment runner, for a harness that only wants ticks.
     pub fn run_schedule_once(&mut self) {
         self.clock.advance();
+        self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.record_drift_shortfalls_if_due(self.clock.tick, false);
+    }
+
+    /// Attach a read-only lockstep turnover recorder (`DriftMode::Record`) to a selected run.
+    pub fn install_turnover_recorder(&mut self, duration_ticks: u64) {
+        let seed = self.seed;
+        let world = self.world.get_mut();
+        world.insert_resource(crate::core::drift_control::DriftControlState::new_recorder(
+            seed,
+            duration_ticks,
+        ));
+    }
+
+    /// Export the recorded [`crate::core::drift_control::TurnoverSchedule`] from a selected run.
+    pub fn take_turnover_schedule(&self) -> Option<crate::core::drift_control::TurnoverSchedule> {
+        let world = self.world.borrow();
+        let drift = world.get_resource::<crate::core::drift_control::DriftControlState>()?;
+        let manifest_fp = world
+            .get_resource::<LiveExperimentState>()
+            .map(|s| s.manifest_fingerprint)
+            .unwrap_or(0);
+        Some(drift.export_schedule(self.seed, manifest_fp))
+    }
+
+    /// Read the accumulated [`crate::core::drift_control::DriftDiagnostics`] when drift control is active.
+    pub fn drift_diagnostics(&self) -> Option<crate::core::drift_control::DriftDiagnostics> {
+        let world = self.world.borrow();
+        world
+            .get_resource::<crate::core::drift_control::DriftControlState>()
+            .map(|d| d.diagnostics.clone())
+    }
+
+    /// Clone the carried `sim_stream::LIVE_DRIFT_SELECTION` RNG checkpoint for Channon windows.
+    pub fn drift_rng_clone(&self) -> Option<crate::core::resources::SimRng> {
+        let world = self.world.borrow();
+        world
+            .get_resource::<crate::core::drift_control::DriftControlState>()
+            .map(|d| d.rng_clone())
+    }
+
+    /// Construct a replay adapter from a manifest declaring `live.drift_control = 1.0` and a
+    /// previously recorded [`crate::core::drift_control::TurnoverSchedule`].
+    pub fn from_manifest_with_drift_schedule(
+        laws: &WorldLawSet,
+        initial: &InitialConditionSet,
+        forcings: &[ExoticIntervention],
+        seed: u64,
+        manifest_fingerprint: u64,
+        registry_fingerprint: u64,
+        schedule: &crate::core::drift_control::TurnoverSchedule,
+    ) -> Result<Self, ExperimentError> {
+        if let Some(first) = forcings.first() {
+            return Err(ExperimentError::InvalidExoticIntervention {
+                id: first.id,
+                reason: "the live Bevy world has no exotic-energy field to force".into(),
+            });
+        }
+        let config = LiveWorldConfig::from_initial_conditions(initial)?;
+        if !config.drift_control {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "from_manifest_with_drift_schedule requires live.drift_control = 1.0"
+                    .into(),
+            });
+        }
+        if schedule.seed != seed {
+            return Err(ExperimentError::InvalidLaw {
+                reason: format!(
+                    "turnover schedule seed ({}) does not match run seed ({seed})",
+                    schedule.seed
+                ),
+            });
+        }
+        if schedule.ticks.len() as u64 != schedule.duration_ticks {
+            return Err(ExperimentError::InvalidLaw {
+                reason: format!(
+                    "turnover schedule length ({}) does not match duration_ticks ({})",
+                    schedule.ticks.len(),
+                    schedule.duration_ticks
+                ),
+            });
+        }
+        let mut adapter = Self::build(
+            laws,
+            initial,
+            seed,
+            None,
+            manifest_fingerprint,
+            registry_fingerprint,
+        )?;
+        adapter.world.get_mut().insert_resource(
+            crate::core::drift_control::DriftControlState::new_replay(seed, schedule.ticks.clone()),
+        );
+        Ok(adapter)
+    }
+
+    /// Construct a Channon reset replay window from a `selected` [`LiveSnapshot`] while
+    /// preserving the carried `LIVE_DRIFT_SELECTION` RNG stream across windows.
+    pub fn from_snapshot_with_drift_schedule(
+        snapshot: &LiveSnapshot,
+        laws: &WorldLawSet,
+        drift_initial: &InitialConditionSet,
+        drift_manifest_fingerprint: u64,
+        drift_registry_fingerprint: u64,
+        schedule: &crate::core::drift_control::TurnoverSchedule,
+        drift_rng: crate::core::resources::SimRng,
+    ) -> Result<Self, ExperimentError> {
+        let Some(saved_state) = snapshot.saved.experiment.clone() else {
+            return Err(ExperimentError::InvalidLaw {
+                reason:
+                    "this snapshot carries no live experiment state and cannot start a Channon \
+                         drift reset window"
+                        .into(),
+            });
+        };
+        saved_state.check_resumable()?;
+        let config = LiveWorldConfig::from_initial_conditions(drift_initial)?;
+        if !config.drift_control {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "from_snapshot_with_drift_schedule requires live.drift_control = 1.0"
+                    .into(),
+            });
+        }
+        if schedule.seed != saved_state.seed {
+            return Err(ExperimentError::InvalidLaw {
+                reason: format!(
+                    "turnover window seed ({}) does not match snapshot seed ({})",
+                    schedule.seed, saved_state.seed
+                ),
+            });
+        }
+        if schedule.ticks.len() as u64 != schedule.duration_ticks {
+            return Err(ExperimentError::InvalidLaw {
+                reason: format!(
+                    "turnover window length ({}) does not match duration_ticks ({})",
+                    schedule.ticks.len(),
+                    schedule.duration_ticks
+                ),
+            });
+        }
+        let mut adapter = Self::build(
+            laws,
+            drift_initial,
+            saved_state.seed,
+            Some(&snapshot.saved),
+            drift_manifest_fingerprint,
+            drift_registry_fingerprint,
+        )?;
+        let tick_offset = saved_state.clock_tick;
+        {
+            let world = adapter.world.get_mut();
+            if let Some(mut exp_state) = world.get_resource_mut::<LiveExperimentState>() {
+                exp_state.manifest_fingerprint = drift_manifest_fingerprint;
+                exp_state.registry_fingerprint = drift_registry_fingerprint;
+                exp_state.initial_conditions = drift_initial.clone();
+            }
+            world.insert_resource(
+                crate::core::drift_control::DriftControlState::new_replay_with_rng(
+                    drift_rng,
+                    schedule.ticks.clone(),
+                    tick_offset,
+                ),
+            );
+        }
+        Ok(adapter)
+    }
+
+    fn sync_drift_tick(&mut self) {
+        let tick = self.clock.tick;
+        let world = self.world.get_mut();
+        if let Some(mut drift) =
+            world.get_resource_mut::<crate::core::drift_control::DriftControlState>()
+        {
+            drift.sync_tick(tick);
+        }
+    }
+
+    fn record_drift_shortfalls_if_due(&mut self, tick: u64, force_flush: bool) {
+        let world = self.world.get_mut();
+        let Some((first_div, missed_deaths, missed_births, prev_deaths, prev_births)) = world
+            .get_resource::<crate::core::drift_control::DriftControlState>()
+            .filter(|d| d.is_replay())
+            .map(|d| {
+                (
+                    d.diagnostics.first_divergence_tick,
+                    d.diagnostics.missed_deaths,
+                    d.diagnostics.missed_births(),
+                    d.reported_missed_deaths,
+                    d.reported_missed_births,
+                )
+            })
+        else {
+            return;
+        };
+        let due = force_flush || first_div == Some(tick) || tick.is_multiple_of(ECOLOGY_PERIOD);
+        if !due {
+            return;
+        }
+        let delta_deaths = missed_deaths.saturating_sub(prev_deaths);
+        let delta_births = missed_births.saturating_sub(prev_births);
+        if delta_deaths == 0 && delta_births == 0 {
+            return;
+        }
+        if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
+            if delta_deaths > 0 {
+                state.ledger.record(
+                    crate::core::causal::CAUSE_BACKGROUND,
+                    None,
+                    tick,
+                    "live.drift_shortfall_deaths",
+                    missed_deaths as f64,
+                    delta_deaths as f64,
+                    format!(
+                        "drift replay clamped {delta_deaths} scheduled death(s) because living \
+                         guild population fell short"
+                    ),
+                );
+            }
+            if delta_births > 0 {
+                state.ledger.record(
+                    crate::core::causal::CAUSE_BACKGROUND,
+                    None,
+                    tick,
+                    "live.drift_shortfall_births",
+                    missed_births as f64,
+                    delta_births as f64,
+                    format!(
+                        "drift replay skipped {delta_births} scheduled birth(s) due to guild \
+                         extinction or insufficient solvent payer reserves"
+                    ),
+                );
+            }
+        }
+        if let Some(mut drift) =
+            world.get_resource_mut::<crate::core::drift_control::DriftControlState>()
+        {
+            drift.reported_missed_deaths = missed_deaths;
+            drift.reported_missed_births = missed_births;
+        }
     }
 
     /// Attach a tick capture to this run.
@@ -1776,6 +2079,15 @@ impl ExperimentModel for LiveExperimentAdapter {
                 reason: "the live Bevy world has no exotic-energy field to force".into(),
             });
         }
+        let config = LiveWorldConfig::from_initial_conditions(initial)?;
+        if config.drift_control {
+            return Err(ExperimentError::InvalidLaw {
+                reason: "live.drift_control = 1.0 requires a recorded TurnoverSchedule from the \
+                         paired selected run; use LiveExperimentAdapter::from_manifest_with_drift_schedule \
+                         or run_live_drift_pair / run_live_drift_ensemble"
+                    .into(),
+            });
+        }
         // The grid is the reference world's demonstration substrate. The live world's field is the
         // terrain's own, at `MapSettings::default()` — 256×256 in this build — and is not resized
         // to match a manifest, because the resource field is the world's, not the experiment's.
@@ -1845,8 +2157,10 @@ impl ExperimentModel for LiveExperimentAdapter {
                 state.clock_tick = clock.tick;
             }
         }
+        self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.record_drift_shortfalls_if_due(clock.tick, false);
         self.mirror_ledger(ledger);
     }
 
@@ -2435,6 +2749,540 @@ fn install_runtime_resources(
 /// A cause id a live manifest may use for its own forcings without colliding with the engine's
 /// reserved ids.
 pub const CAUSE_LIVE_MANIFEST: CauseId = 1;
+
+// ---- Paired neutral-drift control runner (card SEL2-D) ------------------------------------------
+
+/// Outcome of one same-seed `selected` vs neutral-`drift` pair (card SEL2-D).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DriftPairReport {
+    pub seed: u64,
+    pub selected: crate::core::experiment_runner::RunResult,
+    pub drift: crate::core::experiment_runner::RunResult,
+    pub schedule: crate::core::drift_control::TurnoverSchedule,
+    pub diagnostics: crate::core::drift_control::DriftDiagnostics,
+    pub reset_period_ticks: u64,
+    pub window_count: usize,
+    /// Net selection delta summed over Channon windows:
+    /// `sum_w [(z_sel(wK) - z_sel((w-1)K)) - (z_drift_w(wK) - z_drift_w((w-1)K))]`.
+    /// When `reset_period_ticks == 0`, equals `z_sel(T) - z_drift(T)` across one window.
+    #[serde(default)]
+    pub window_net_selection_deltas: std::collections::BTreeMap<String, f64>,
+}
+
+/// Paired ensemble outcome across all seeds of a `selected` / neutral-`drift` experiment
+/// (`control` = neutral drift, `treatment` = selected so positive deltas measure selection excess).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DriftEnsembleReport {
+    pub ensemble: crate::core::experiment_runner::PairedEnsembleReport,
+    pub schedules: Vec<crate::core::drift_control::TurnoverSchedule>,
+    pub diagnostics: Vec<crate::core::drift_control::DriftDiagnostics>,
+    pub reset_period_ticks: u64,
+    pub window_net_selection_by_seed: Vec<(u64, std::collections::BTreeMap<String, f64>)>,
+}
+
+fn live_run_provenance(
+    manifest: &crate::core::experiment::ExperimentManifest,
+    registry: &crate::core::experiment::ObservableRegistry,
+    seed: u64,
+) -> crate::core::experiment_runner::RunProvenance {
+    use crate::core::experiment::fnv1a_64;
+    let manifest_fingerprint = manifest.fingerprint();
+    let registry_fingerprint = registry.fingerprint();
+    let model_version = LIVE_MODEL_VERSION.to_string();
+    let build_id = crate::core::experiment_runner::build_id();
+    let run_id = format!(
+        "{}#{manifest_fingerprint:016x}#r{registry_fingerprint:016x}#m{:016x}#b{:016x}#s{seed}",
+        manifest.experiment_id,
+        fnv1a_64(model_version.as_bytes()),
+        fnv1a_64(build_id.as_bytes())
+    );
+    crate::core::experiment_runner::RunProvenance {
+        experiment_id: manifest.experiment_id.clone(),
+        run_id,
+        parent_run_id: None,
+        fork_tick: None,
+        seed,
+        manifest_fingerprint,
+        law_fingerprint: manifest.laws.fingerprint(),
+        registry_fingerprint,
+        model_version,
+        build_id,
+        fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
+            &manifest.initial_conditions,
+        ),
+    }
+}
+
+fn specs_for_live_emitted(
+    registry: &crate::core::experiment::ObservableRegistry,
+    series: &[crate::core::scenario::StateSample],
+    final_observables: &[(String, f64)],
+) -> (Vec<crate::core::experiment::ObservableSpec>, Vec<String>) {
+    let mut specs = Vec::new();
+    let mut warnings = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let names = series
+        .iter()
+        .flat_map(|s| s.observables.iter().map(|(n, _)| n))
+        .chain(final_observables.iter().map(|(n, _)| n));
+    for name in names {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        match registry.get(name) {
+            Some(s) => specs.push(s.clone()),
+            None => warnings.push(format!("emitted observable '{name}' has no registry spec")),
+        }
+    }
+    (specs, warnings)
+}
+
+fn duplicate_live_observable(observables: &[(String, f64)]) -> Option<&str> {
+    observables
+        .iter()
+        .enumerate()
+        .find_map(|(index, (name, _))| {
+            observables[..index]
+                .iter()
+                .any(|(seen, _)| seen == name)
+                .then_some(name.as_str())
+        })
+}
+
+fn drive_live_window(
+    model: &mut LiveExperimentAdapter,
+    rng: &mut StdRng,
+    clock: &mut SimClock,
+    ledger: &mut CausalLedger,
+    queue: &crate::core::intervention::InterventionQueue,
+    window_ticks: u64,
+    sample_period: u64,
+    series: &mut Vec<crate::core::scenario::StateSample>,
+) -> Option<(u64, String)> {
+    for _ in 0..window_ticks {
+        let tick = clock.advance();
+        let active: Vec<&InterventionCommand> = queue.active_at(tick).collect();
+        model.step(clock, &active, ledger, rng);
+        let sampled = sample_period != 0 && tick.is_multiple_of(sample_period);
+        let observables = if sampled {
+            model.observables()
+        } else {
+            model.observables_unsampled()
+        };
+        if let Some((name, _)) = observables.iter().find(|(_, value)| !value.is_finite()) {
+            return Some((tick, format!("observable '{name}' became non-finite")));
+        }
+        if let Some(name) = duplicate_live_observable(&observables) {
+            return Some((
+                tick,
+                format!("observable '{name}' was emitted more than once"),
+            ));
+        }
+        if sampled {
+            series.push(crate::core::scenario::StateSample { tick, observables });
+        }
+    }
+    None
+}
+
+fn assemble_live_run_result(
+    provenance: crate::core::experiment_runner::RunProvenance,
+    model: &LiveExperimentAdapter,
+    registry: &crate::core::experiment::ObservableRegistry,
+    series: Vec<crate::core::scenario::StateSample>,
+    ledger: CausalLedger,
+    failure: Option<(u64, String)>,
+    extra_warnings: Vec<String>,
+) -> crate::core::experiment_runner::RunResult {
+    let final_observables = model.observables();
+    let final_checksum = model.checksum();
+    let (observable_specs, mut warnings) =
+        specs_for_live_emitted(registry, &series, &final_observables);
+    warnings.extend(extra_warnings);
+    let status = match failure {
+        Some((tick, reason)) => {
+            warnings.push(reason.clone());
+            crate::core::experiment_runner::RunStatus::Failed {
+                tick,
+                reason,
+                checksum: final_checksum,
+            }
+        }
+        None => crate::core::experiment_runner::RunStatus::Completed,
+    };
+    crate::core::experiment_runner::RunResult {
+        provenance,
+        status,
+        final_checksum,
+        final_observables,
+        series,
+        ledger,
+        exotic_budget: None,
+        observable_specs,
+        warnings,
+    }
+}
+
+fn validate_drift_pair_manifests(
+    selected_manifest: &crate::core::experiment::ExperimentManifest,
+    drift_manifest: &crate::core::experiment::ExperimentManifest,
+    registry: &crate::core::experiment::ObservableRegistry,
+) -> Result<(Vec<String>, LiveWorldConfig, LiveWorldConfig), ExperimentError> {
+    registry.validate()?;
+    selected_manifest.validate(registry)?;
+    drift_manifest.validate(registry)?;
+    let declared_factors = crate::core::experiment::FactorDiff {
+        allowed_paths: vec!["initial_conditions".into()],
+    }
+    .validate(selected_manifest, drift_manifest)?;
+
+    // Ensure initial_conditions differ ONLY on `{live.drift_control, live.drift_reset_ticks}`.
+    let is_drift_key = |k: &str| k == LIVE_KEY_DRIFT_CONTROL || k == LIVE_KEY_DRIFT_RESET_TICKS;
+    let collect_non_drift =
+        |init: &InitialConditionSet| -> std::collections::BTreeMap<String, u64> {
+            init.values
+                .iter()
+                .filter(|(k, _)| !is_drift_key(k))
+                .map(|(k, v)| (k.clone(), v.to_bits()))
+                .collect()
+        };
+    let sel_other = collect_non_drift(&selected_manifest.initial_conditions);
+    let drf_other = collect_non_drift(&drift_manifest.initial_conditions);
+    if sel_other != drf_other {
+        for k in sel_other.keys().chain(drf_other.keys()) {
+            if sel_other.get(k) != drf_other.get(k) {
+                return Err(ExperimentError::UndeclaredFactorDifference {
+                    path: format!("initial_conditions.{k}"),
+                });
+            }
+        }
+    }
+
+    let sel_cfg = LiveWorldConfig::from_initial_conditions(&selected_manifest.initial_conditions)?;
+    let drf_cfg = LiveWorldConfig::from_initial_conditions(&drift_manifest.initial_conditions)?;
+    if sel_cfg.drift_control {
+        return Err(ExperimentError::InvalidLaw {
+            reason: "selected_manifest must have live.drift_control absent or 0.0".into(),
+        });
+    }
+    if !drf_cfg.drift_control {
+        return Err(ExperimentError::InvalidLaw {
+            reason: "drift_manifest must declare live.drift_control = 1.0".into(),
+        });
+    }
+    sel_cfg.ensure_observables_supported(&selected_manifest.observable_ids)?;
+    drf_cfg.ensure_observables_supported(&drift_manifest.observable_ids)?;
+    if drf_cfg.drift_reset_ticks > 0
+        && !drift_manifest
+            .duration_ticks
+            .is_multiple_of(drf_cfg.drift_reset_ticks)
+    {
+        return Err(ExperimentError::InvalidLaw {
+            reason: format!(
+                "live.drift_reset_ticks ({}) must divide duration_ticks ({})",
+                drf_cfg.drift_reset_ticks, drift_manifest.duration_ticks
+            ),
+        });
+    }
+    Ok((declared_factors, sel_cfg, drf_cfg))
+}
+
+fn accumulate_window_deltas(
+    accum: &mut std::collections::BTreeMap<String, f64>,
+    sel_start: &[(String, f64)],
+    sel_end: &[(String, f64)],
+    drf_start: &[(String, f64)],
+    drf_end: &[(String, f64)],
+) {
+    let find = |slice: &[(String, f64)], key: &str| -> Option<f64> {
+        slice.iter().find(|(k, _)| k == key).map(|(_, v)| *v)
+    };
+    for (name, end_drf) in drf_end {
+        if let (Some(start_sel), Some(end_sel), Some(start_drf)) = (
+            find(sel_start, name),
+            find(sel_end, name),
+            find(drf_start, name),
+        ) {
+            let delta = (end_sel - start_sel) - (*end_drf - start_drf);
+            *accum.entry(name.clone()).or_insert(0.0) += delta;
+        }
+    }
+}
+
+fn shortfall_warning(diag: &crate::core::drift_control::DriftDiagnostics) -> Option<String> {
+    if !diag.has_shortfall() {
+        return None;
+    }
+    Some(format!(
+        "neutral-drift schedule shortfall: missed_deaths={} (ticks={}), missed_births={} \
+         (extinct={}, insolvent={}, ticks={}), first_divergence_tick={:?}",
+        diag.missed_deaths,
+        diag.ticks_with_missed_deaths,
+        diag.missed_births(),
+        diag.missed_births_extinct,
+        diag.missed_births_insolvent,
+        diag.ticks_with_missed_births,
+        diag.first_divergence_tick,
+    ))
+}
+
+/// Run a lockstep `selected` -> neutral-`drift` pair for one seed (supporting both `K = 0`
+/// unreset replay from founders and `K > 0` rolling Channon windows via snapshots).
+pub fn run_live_drift_pair(
+    selected_manifest: &crate::core::experiment::ExperimentManifest,
+    drift_manifest: &crate::core::experiment::ExperimentManifest,
+    registry: &crate::core::experiment::ObservableRegistry,
+    seed: u64,
+) -> Result<DriftPairReport, ExperimentError> {
+    use rand::SeedableRng;
+
+    let (_declared, _sel_cfg, drf_cfg) =
+        validate_drift_pair_manifests(selected_manifest, drift_manifest, registry)?;
+    if !selected_manifest.seeds.contains(&seed) || !drift_manifest.seeds.contains(&seed) {
+        return Err(ExperimentError::SeedNotInManifest { seed });
+    }
+
+    let total_ticks = selected_manifest.duration_ticks;
+    let reset_period_ticks = drf_cfg.drift_reset_ticks;
+    let window_ticks = if reset_period_ticks == 0 {
+        total_ticks
+    } else {
+        reset_period_ticks
+    };
+    let window_count = (total_ticks / window_ticks) as usize;
+
+    let mut selected_adapter = LiveExperimentAdapter::build(
+        &selected_manifest.laws,
+        &selected_manifest.initial_conditions,
+        seed,
+        None,
+        selected_manifest.fingerprint(),
+        registry.fingerprint(),
+    )?;
+    selected_adapter.install_turnover_recorder(total_ticks);
+
+    let sel_prov = live_run_provenance(selected_manifest, registry, seed);
+    let drf_prov = live_run_provenance(drift_manifest, registry, seed);
+    let sel_queue =
+        crate::core::intervention::InterventionQueue::new(selected_manifest.interventions.clone());
+    let drf_queue =
+        crate::core::intervention::InterventionQueue::new(drift_manifest.interventions.clone());
+    let mut sel_rng = StdRng::seed_from_u64(seed);
+    let mut sel_clock = SimClock::new();
+    let mut sel_ledger = CausalLedger::new();
+    let mut sel_series = Vec::new();
+    let mut sel_failure: Option<(u64, String)> = None;
+
+    let mut carried_drift_rng = crate::core::resources::derived_sim_rng(
+        seed,
+        crate::core::resources::sim_stream::LIVE_DRIFT_SELECTION,
+    );
+    let mut merged_diag = crate::core::drift_control::DriftDiagnostics::default();
+    let mut drf_series = Vec::new();
+    let mut drf_ledger = CausalLedger::new();
+    let mut drf_failure: Option<(u64, String)> = None;
+    let mut window_net_selection_deltas = std::collections::BTreeMap::new();
+    let mut last_drift_adapter: Option<LiveExperimentAdapter> = None;
+
+    for w in 0..window_count {
+        let w_start = (w as u64) * window_ticks;
+        let w_end = w_start + window_ticks;
+
+        let snap = if w > 0 && sel_failure.is_none() {
+            Some(selected_adapter.snapshot())
+        } else {
+            None
+        };
+        let z_sel_start = selected_adapter.observables_unsampled();
+
+        if sel_failure.is_none() {
+            sel_failure = drive_live_window(
+                &mut selected_adapter,
+                &mut sel_rng,
+                &mut sel_clock,
+                &mut sel_ledger,
+                &sel_queue,
+                window_ticks,
+                selected_manifest.sample_period,
+                &mut sel_series,
+            );
+        }
+        let z_sel_end = selected_adapter.observables_unsampled();
+
+        if sel_failure.is_some() {
+            break;
+        }
+
+        let full_schedule_so_far = selected_adapter
+            .take_turnover_schedule()
+            .expect("recorder is installed on selected_adapter");
+        let win_schedule = full_schedule_so_far.slice_window(w_start as usize, w_end as usize);
+
+        let mut drf_adapter = match snap {
+            None => LiveExperimentAdapter::from_manifest_with_drift_schedule(
+                &drift_manifest.laws,
+                &drift_manifest.initial_conditions,
+                &drift_manifest.exotic_interventions,
+                seed,
+                drift_manifest.fingerprint(),
+                registry.fingerprint(),
+                &win_schedule,
+            )?,
+            Some(ref s) => LiveExperimentAdapter::from_snapshot_with_drift_schedule(
+                s,
+                &drift_manifest.laws,
+                &drift_manifest.initial_conditions,
+                drift_manifest.fingerprint(),
+                registry.fingerprint(),
+                &win_schedule,
+                carried_drift_rng,
+            )?,
+        };
+
+        let z_drf_start = drf_adapter.observables_unsampled();
+        let mut drf_rng = StdRng::seed_from_u64(seed);
+        let mut drf_clock = SimClock { tick: w_start };
+        if drf_failure.is_none() {
+            drf_failure = drive_live_window(
+                &mut drf_adapter,
+                &mut drf_rng,
+                &mut drf_clock,
+                &mut drf_ledger,
+                &drf_queue,
+                window_ticks,
+                drift_manifest.sample_period,
+                &mut drf_series,
+            );
+        }
+        drf_adapter.record_drift_shortfalls_if_due(w_end, true);
+        drf_adapter.mirror_ledger(&mut drf_ledger);
+
+        let z_drf_end = drf_adapter.observables_unsampled();
+        accumulate_window_deltas(
+            &mut window_net_selection_deltas,
+            &z_sel_start,
+            &z_sel_end,
+            &z_drf_start,
+            &z_drf_end,
+        );
+
+        carried_drift_rng = drf_adapter
+            .drift_rng_clone()
+            .expect("drift RNG present on drift adapter");
+        if let Some(diag) = drf_adapter.drift_diagnostics() {
+            merged_diag.merge_window(&diag);
+        }
+        last_drift_adapter = Some(drf_adapter);
+        if drf_failure.is_some() {
+            break;
+        }
+    }
+
+    let schedule = selected_adapter
+        .take_turnover_schedule()
+        .expect("recorder is installed on selected_adapter");
+    let selected_result = assemble_live_run_result(
+        sel_prov,
+        &selected_adapter,
+        registry,
+        sel_series,
+        sel_ledger,
+        sel_failure,
+        Vec::new(),
+    );
+
+    let extra_warnings: Vec<String> = shortfall_warning(&merged_diag).into_iter().collect();
+    let drift_result = match last_drift_adapter {
+        Some(ref adapter) => assemble_live_run_result(
+            drf_prov,
+            adapter,
+            registry,
+            drf_series,
+            drf_ledger,
+            drf_failure,
+            extra_warnings,
+        ),
+        None => crate::core::experiment_runner::RunResult {
+            provenance: drf_prov,
+            status: crate::core::experiment_runner::RunStatus::Failed {
+                tick: 0,
+                reason: "selected run failed before completing its first window".into(),
+                checksum: 0,
+            },
+            final_checksum: 0,
+            final_observables: Vec::new(),
+            series: Vec::new(),
+            ledger: drf_ledger,
+            exotic_budget: None,
+            observable_specs: Vec::new(),
+            warnings: vec!["selected run aborted before drift window started".into()],
+        },
+    };
+
+    Ok(DriftPairReport {
+        seed,
+        selected: selected_result,
+        drift: drift_result,
+        schedule,
+        diagnostics: merged_diag,
+        reset_period_ticks,
+        window_count,
+        window_net_selection_deltas,
+    })
+}
+
+/// Run a multi-seed paired `selected` vs neutral-`drift` ensemble.
+///
+/// Paired effects follow the [`crate::core::experiment_runner::PairedEnsembleReport`] convention
+/// with `control = drift` and `treatment = selected`, so positive `paired_mean_delta` indicates
+/// selection excess over lockstep neutral drift.
+pub fn run_live_drift_ensemble(
+    selected_manifest: &crate::core::experiment::ExperimentManifest,
+    drift_manifest: &crate::core::experiment::ExperimentManifest,
+    registry: &crate::core::experiment::ObservableRegistry,
+) -> Result<DriftEnsembleReport, ExperimentError> {
+    let (declared_factors, _sel_cfg, drf_cfg) =
+        validate_drift_pair_manifests(selected_manifest, drift_manifest, registry)?;
+    if selected_manifest.seeds != drift_manifest.seeds {
+        return Err(ExperimentError::UndeclaredFactorDifference {
+            path: "seeds (paired runs require the same seeds in the same order)".into(),
+        });
+    }
+    let seed_order = selected_manifest.seeds.clone();
+    let mut pairs = Vec::with_capacity(seed_order.len());
+    let mut schedules = Vec::with_capacity(seed_order.len());
+    let mut diagnostics = Vec::with_capacity(seed_order.len());
+    let mut window_net_selection_by_seed = Vec::with_capacity(seed_order.len());
+
+    for &seed in &seed_order {
+        let pair = run_live_drift_pair(selected_manifest, drift_manifest, registry, seed)?;
+        pairs.push(crate::core::experiment_runner::SeedPair {
+            seed,
+            control: pair.drift,
+            treatment: pair.selected,
+        });
+        schedules.push(pair.schedule);
+        diagnostics.push(pair.diagnostics);
+        window_net_selection_by_seed.push((seed, pair.window_net_selection_deltas));
+    }
+
+    let ensemble = crate::core::experiment_runner::summarize_seed_pairs(
+        drift_manifest,
+        selected_manifest,
+        registry,
+        declared_factors,
+        seed_order,
+        pairs,
+    )?;
+
+    Ok(DriftEnsembleReport {
+        ensemble,
+        schedules,
+        diagnostics,
+        reset_period_ticks: drf_cfg.drift_reset_ticks,
+        window_net_selection_by_seed,
+    })
+}
 
 #[cfg(test)]
 mod inference_pump_tests {

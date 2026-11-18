@@ -36,12 +36,17 @@ pub fn mortality_system(
             Entity,
             &HomeostaticState,
             Option<&crate::core::agent_systems::AgentEvaluation>,
+            Option<&crate::core::components::Predator>,
+            Option<&crate::core::agent_systems::AgentLineageId>,
+            Option<&crate::core::agent_systems::AgentGeneration>,
+            Option<&crate::core::ecs::Position>,
         ),
         With<Agent>,
     >,
     policy: Option<Res<MortalityPolicy>>,
     mut vitals: Option<ResMut<crate::core::resources::VitalStatistics>>,
     mut tracker: Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+    mut drift: Option<ResMut<crate::core::drift_control::DriftControlState>>,
 ) {
     // Missing resource ≠ off by coincidence — both are handled explicitly, and both mean the
     // legacy behaviour: nobody dies of hunger (ADR-0004's reading of an undeclared policy).
@@ -51,12 +56,108 @@ pub fn mortality_system(
     if !policy.enabled {
         return;
     }
+
+    if let Some(drift_res) = drift.as_deref_mut().filter(|d| d.is_replay()) {
+        let scheduled = drift_res.current_turnover();
+        let req_prey = scheduled.prey_deaths as usize;
+        let req_pred = scheduled.pred_deaths as usize;
+        let req_total = req_prey + req_pred;
+        if req_total == 0 {
+            return;
+        }
+
+        let world_tick = drift_res.current_world_tick;
+        let mut actual_total = 0u64;
+        let mut missed_total = 0u64;
+        {
+            let (prey_buf, pred_buf, drift_rng) = drift_res.split_death_buffers_and_rng();
+            prey_buf.clear();
+            pred_buf.clear();
+            for (entity, _, _, opt_pred, ..) in agents.iter() {
+                if opt_pred.is_some() {
+                    pred_buf.push(entity);
+                } else {
+                    prey_buf.push(entity);
+                }
+            }
+
+            for (req, buf) in [(req_prey, prey_buf), (req_pred, pred_buf)] {
+                if req == 0 {
+                    continue;
+                }
+                if buf.len() > 1 {
+                    buf.sort_unstable_by(|&a, &b| match (agents.get(a), agents.get(b)) {
+                        (Ok((ea, ha, _, _, la, ga, pa)), Ok((eb, hb, _, _, lb, gb, pb))) => {
+                            crate::core::drift_control::candidate_cmp(
+                                (
+                                    la.map_or("", |l| l.0.as_str()),
+                                    ga.map_or(0, |g| g.0),
+                                    pa.map_or(0.0, |p| p.0.x),
+                                    pa.map_or(0.0, |p| p.0.z),
+                                    ha.energy,
+                                    ea.index(),
+                                ),
+                                (
+                                    lb.map_or("", |l| l.0.as_str()),
+                                    gb.map_or(0, |g| g.0),
+                                    pb.map_or(0.0, |p| p.0.x),
+                                    pb.map_or(0.0, |p| p.0.z),
+                                    hb.energy,
+                                    eb.index(),
+                                ),
+                            )
+                        }
+                        _ => std::cmp::Ordering::Equal,
+                    });
+                }
+                let victims = crate::core::drift_control::draw_victims_without_replacement(
+                    buf.as_mut_slice(),
+                    req,
+                    drift_rng,
+                );
+                let actual = victims.len();
+                actual_total += actual as u64;
+                missed_total += req.saturating_sub(actual) as u64;
+                for &victim in victims {
+                    let lifespan = agents
+                        .get(victim)
+                        .ok()
+                        .and_then(|(_, _, eval, ..)| eval.map(|e| e.survival_ticks))
+                        .unwrap_or(0);
+                    if let Some(vitals) = vitals.as_mut() {
+                        vitals.record_death(lifespan);
+                    }
+                    if let Some(trk) = tracker.as_mut() {
+                        let cause = if lifespan >= 300 {
+                            "Senescence"
+                        } else {
+                            "Starvation"
+                        };
+                        trk.record_death(cause);
+                    }
+                    commands.add(ReclaimAndDespawnAgentCommand { root: victim });
+                }
+            }
+        }
+        drift_res.diagnostics.scheduled_deaths += req_total as u64;
+        drift_res.diagnostics.actual_deaths += actual_total;
+        if missed_total > 0 {
+            drift_res.diagnostics.missed_deaths += missed_total;
+            drift_res.diagnostics.ticks_with_missed_deaths += 1;
+            drift_res.diagnostics.note_divergence(world_tick);
+        }
+        return;
+    }
+
     // No collection, no sort: this is a tick system and must not allocate (CLAUDE.md). Query
     // iteration order is deterministic for a given world history.
-    for (entity, homeo, opt_eval) in agents.iter() {
+    for (entity, homeo, opt_eval, opt_pred, ..) in agents.iter() {
         let Some(verdict) = lethal_cause(homeo, &policy) else {
             continue;
         };
+        if let Some(drift_res) = drift.as_deref_mut() {
+            drift_res.record_death(opt_pred.is_some());
+        }
         // Turnover bookkeeping for the branch-O observables. The animal's lifespan IS its
         // `survival_ticks` at death — the counter only ever advanced while it was alive, so
         // no separate birth-tick field is needed (design rule C).

@@ -156,10 +156,10 @@ fn the_live_world_honours_exactly_one_new_initial_condition_key() {
     );
     assert_eq!(
         LIVE_KEYS.len(),
-        22,
+        24,
         "every key must be a registered factor: 6 original + live.mortality / \
          live.starve_ticks / live.dehydration_ticks (ecological-selection M-7) + \
-         live.ecological_fitness / live.w_surplus (F-4) + live.reproduction (Card S1, ADR-0005) + live.locomotion (ADR-0006, F-042) + live.drive_floor / live.thirst_steering (ADR-0007) + live.mutation_rate (E-SEL1 P4) + live.kill_hydration / live.kill_efficiency / live.target_min_energy (ADR-0007 card B) + live.prey_cap / live.resource_capacity_scale (QD-SEL1b = A, card S6) + live.plant_reserve (QD-SEL2, card S10). Anything outside this list is a \
+         live.ecological_fitness / live.w_surplus (F-4) + live.reproduction (Card S1, ADR-0005) + live.locomotion (ADR-0006, F-042) + live.drive_floor / live.thirst_steering (ADR-0007) + live.mutation_rate (E-SEL1 P4) + live.kill_hydration / live.kill_efficiency / live.target_min_energy (ADR-0007 card B) + live.prey_cap / live.resource_capacity_scale (QD-SEL1b = A, card S6) + live.plant_reserve (QD-SEL2, card S10) + live.drift_control / live.drift_reset_ticks (QD-SEL2, card SEL2-D). Anything outside this list is a \
          factor nobody registered"
     );
 }

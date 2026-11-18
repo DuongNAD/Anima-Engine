@@ -897,6 +897,12 @@ pub mod sim_stream {
     /// founding population drawing ~5,769 f32 per agent out of `SimRng` would displace every later
     /// draw in the run. See `live_experiment::genesis`.
     pub const LIVE_GENESIS_BRAINS: u64 = 3;
+    /// Neutral-drift victim and parent sampling in a paired live experiment
+    /// ([`crate::core::drift_control`], card SEL2-D).
+    ///
+    /// Isolated from `SimRng` so choosing random victims or parents never shifts ecology or mutation
+    /// draws when `live.drift_control` is toggled on.
+    pub const LIVE_DRIFT_SELECTION: u64 = 4;
 }
 
 /// An independent, reproducible stream for code that is not a Bevy system (setup paths and worker

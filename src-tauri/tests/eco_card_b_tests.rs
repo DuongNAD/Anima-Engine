@@ -440,8 +440,9 @@ fn e_a_resumed_run_keeps_the_declared_policy_and_the_trajectory() {
 #[test]
 fn f_the_keys_are_registered_and_validated() {
     // 19 at card B; card S6 (QD-SEL1b = A) added live.prey_cap and live.resource_capacity_scale;
-    // card S10 (QD-SEL2) added live.plant_reserve.
-    assert_eq!(LIVE_KEYS.len(), 22);
+    // card S10 (QD-SEL2) added live.plant_reserve;
+    // card SEL2-D (QD-SEL2) added live.drift_control and live.drift_reset_ticks.
+    assert_eq!(LIVE_KEYS.len(), 24);
     for (c, name) in [
         (LIVE_KEY_KILL_HYDRATION, "live.kill_hydration"),
         (LIVE_KEY_KILL_EFFICIENCY, "live.kill_efficiency"),
