@@ -60,7 +60,7 @@ tài liệu ở bảng thắng; sửa trang này.
   ngày 2026-11-17, [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md)), rồi R0
   khi chủ dự án nói Đợt 2 đã xong. **Từ 2026-11-18 vai `agent-win` do Gemini chạy** (QD-WIN), làm R0 trước rồi R1c
   ([bản giao việc cho Gemini](../ai/planning/2026-11-18-gemini-worker-win-handoff.md)); Gemini không mở được verifier
-  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. Từ chiều 2026-11-18 thẻ được giao qua thư mục Drive `Anima_Agent_Hub` (QD-HUB, luật bản 4: agent không bao giờ merge). `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
   `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
   trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
@@ -108,7 +108,7 @@ tài liệu ở bảng thắng; sửa trang này.
 | **G7** `[RUST]` | Khôi phục assertion bị nới và test bị xoá | ✅ #49 | — | |
 | **G8** | Hợp đồng IPC | ✅ phần lớn, 2026-11-14 | `agent-mac` | Có [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) và gate `scripts/check_ipc_reference.mjs`. Còn thiếu so với thẻ: `file:line` cho từng mục |
 | **G9** | Gate vệ sinh thư mục gốc | ✅ #114 (2026-11-18), dựng lại trên thân cây: allow-list bỏ `TASK.md` và `AUDIT_REPORT.md`, thêm `CITATION.cff` | — | Cổng mới: `npm run check:root-hygiene`. Sáu mục còn ghi `REVIEW:` chờ chủ dự án quyết giữ hay bỏ |
-| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ⬜ **mở từ 2026-11-18**: mọi thẻ Đợt 2 đã merge | `agent-win` | Cổng ra của chặng 3. `agent-win` bắt đầu khi chủ dự án báo; nếu R1c đang làm dở thì xong R1c trước hoặc chủ dự án chọn thứ tự |
+| **R0** `[RUST]` | Đo lại toàn bộ gate của STATE §5, soạn bản vá §1 | ✅ #123 (2026-11-18): mọi cổng xanh tại `46e25d5` trừ một báo động giả CRLF trên Windows (sửa ở #125); số ở STATE §1.i | `agent-win` (Gemini, qua hub) | Cổng ra của chặng 3: **đã qua**. Phiên điều phối kiểm chéo số test với CI Windows của PR #122 |
 
 ### Đợt 3 trở đi
 
@@ -180,6 +180,10 @@ QD-SEL2e  = after S9 (#117: thirst caused 71-80% of deaths), SEL2-E relieves wat
             2026-11-18, "Thêm hồ")
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
+QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
+            the Drive folder Anima_Agent_Hub, rules version 4: agents never merge, the coordinating
+            session verifies, the owner merges (owner in chat, 2026-11-18: "Giữ không tự merge, sửa hub
+            đi")
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
@@ -246,6 +250,34 @@ R5-AUTH   =
   (only if the reserve must live in a resource), one new test file under src-tauri/tests/, and
   src/types/generated/** only if ts-rs regenerates it. This overrides AGENTS.md's read-only declaration
   and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, extending the S10 line above at a worker's request, "Duyệt"): for
+  card S10 only, you may also write to src-tauri/tests/e2_seam_tests.rs and
+  src-tauri/tests/eco_card_b_tests.rs (only the pinned LIVE_KEYS.len() count, 21 -> 22), and in
+  src-tauri/src/core/aggregate_population.rs thread the plant reserve from
+  dormant_cohort_ecology_system into DormantCohorts grazing.
+  AUTHORIZATION (owner, 2026-11-18, sent to anima-case through Anima_Agent_Hub on "Gửi R1c"): for card
+  R1c only, you may write to src-tauri/Cargo.toml, src-tauri/Cargo.lock, src-tauri/src/ai/model.rs,
+  src-tauri/src/core/training.rs, src-tauri/src/core/snapshot.rs, src-tauri/src/core/simulation_loop.rs,
+  src-tauri/benches/tick_systems.rs, the five test files named in condition 2 of R1c, one new test
+  file and its fixtures under src-tauri/tests/ for condition 3, src-tauri/.cargo/audit.toml and
+  src-tauri/deny.toml (only to remove ignores whose crate has left Cargo.lock), the generated licence
+  artefacts (NOTICE, sbom.cdx.json and the generated files under licensing/), and
+  docs/decisions/ADR-0009-*.md with its row in docs/decisions/README.md. This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, "Cấp uỷ quyền SEL2-D theo đề xuất"): for card SEL2-D only, you may
+  write to src-tauri/src/core/drift_control.rs (new module), src-tauri/src/core/mod.rs (only
+  `pub mod drift_control;`), src-tauri/src/core/resources.rs (only LIVE_DRIFT_SELECTION in sim_stream),
+  src-tauri/src/core/mortality.rs (mortality_system drift record/replay branch only),
+  src-tauri/src/core/agent_systems.rs (autonomous_reproduction_system drift record/replay branch and
+  its shared birth helper only), src-tauri/src/core/live_experiment.rs (live.drift_control and
+  live.drift_reset_ticks keys, DriftControlState wiring, ensure_observables_supported, and the paired
+  drift runner functions), src-tauri/src/core/experiment_runner/ensemble.rs (only extracting
+  summarize_seed_pairs from run_paired_ensemble_with_control), src-tauri/tests/e2_seam_tests.rs and
+  src-tauri/tests/eco_card_b_tests.rs (only the pinned LIVE_KEYS.len() count for the new keys),
+  dataflow.json at the repository root (only what scripts/verify_dataflow.py needs for the new module's
+  edges and shifted via line numbers), one new test file src-tauri/tests/sel2_drift_control_tests.rs,
+  and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides
+  AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
 CURRENT WAVE = 2
 ```
 
