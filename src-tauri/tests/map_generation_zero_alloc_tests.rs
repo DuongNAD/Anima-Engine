@@ -28,8 +28,13 @@ fn test_erosion_hotpath_zero_heap_allocations() {
         let _px: f32 = rng.gen_range(0.0..=(width - 2) as f32);
     }
 
-    // Start tracking allocations
-    ALLOCATOR.start_tracking();
+    // Count only this thread. The window below is an inline copy of the droplet loop from
+    // terrain.rs: it never calls `TerrainMap::generate` and hands no work to rayon or any other
+    // thread, so a process-wide count only adds what libtest's own threads allocate. That noise
+    // failed CI once on a docs-only commit ("4 heap allocations", determinism job of run
+    // 44245486140, stability loop pass 4). `terrain_challenger_tests` does call `generate` and keeps
+    // the process-wide count.
+    ALLOCATOR.start_tracking_this_thread();
 
     // Exact droplet erosion loop from terrain.rs
     for _ in 0..erosion_steps {

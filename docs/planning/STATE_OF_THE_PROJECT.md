@@ -1581,10 +1581,12 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   (#80, 2026-11-16) và cổng emit (#86, 2026-11-17, flake trên CI của một PR chỉ sửa tài liệu) đã đi
   cùng đường đó, vì mọi hàm chúng đo đều chạy trên thread gọi.
 
-  **Đừng chuyển bừa mọi suite sang nó.** `map_generation_zero_alloc_tests` và
-  `terrain_challenger_tests` **phải** giữ `start_tracking()` process-wide: `TerrainMap::generate`
-  chạy pass noise trên rayon worker, nên bộ đếm theo thread sẽ **thôi đếm đúng thứ hai gate đó tồn
-  tại để bắt** — và sẽ xanh trong lúc làm vậy. Một gate im đi tệ hơn một gate thỉnh thoảng ồn. Hai
+  **Đừng chuyển bừa mọi suite sang nó.** `terrain_challenger_tests` **phải** giữ `start_tracking()`
+  process-wide: `TerrainMap::generate` chạy pass noise trên rayon worker, nên bộ đếm theo thread sẽ
+  **thôi đếm đúng thứ gate đó tồn tại để bắt** — và sẽ xanh trong lúc làm vậy.
+  `map_generation_zero_alloc_tests` từng được kể ở đây, nhưng test duy nhất của nó đo một bản chép vòng
+  xói mòn chạy trên thread gọi và không gọi `generate`; nó flake trên CI của một commit chỉ sửa tài liệu
+  (2026-11-18, "4 heap allocations"), nên từ ngày đó nó chỉ đếm thread gọi. Một gate im đi tệ hơn một gate thỉnh thoảng ồn. Hai
   control âm trong file đó chốt cả hai chiều: bộ đếm vẫn thấy cấp phát thật, và nó **cố tình** mù
   với thread khác.
 
