@@ -11,11 +11,9 @@
 
 use anima_engine_lib::ai::model::ActorCriticModel;
 use anima_engine_lib::evolution::brain_genotype::{ArchSpec, BrainGenotype};
-use burn::tensor::{Data, Shape, Tensor};
+use burn::tensor::{Device, Tensor, TensorData};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-
-type Backend = burn_ndarray::NdArray<f32>;
 
 /// Both sides accumulate in `f32` but in different orders — Burn's matmul is blocked, the hand-written
 /// pass walks fan-in linearly — so bit-equality is not achievable and would be the wrong thing to
@@ -38,21 +36,23 @@ fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
 }
 
 /// Run one input row through Burn and return `(actions, value)`.
-fn burn_forward(model: &ActorCriticModel<Backend>, inputs: &[f32]) -> (Vec<f32>, f32) {
-    let device = burn_ndarray::NdArrayDevice::Cpu;
-    let data = Data::new(inputs.to_vec(), Shape::new([1, inputs.len()]));
-    let tensor = Tensor::<Backend, 2>::from_data(data, &device);
+fn burn_forward(model: &ActorCriticModel, inputs: &[f32]) -> (Vec<f32>, f32) {
+    let device = Device::flex();
+    let data = TensorData::new(inputs.to_vec(), [1, inputs.len()]);
+    let tensor = Tensor::<2>::from_data(data, &device);
     let (actor, critic) = model.forward(tensor);
-    (actor.into_data().value, critic.into_data().value[0])
+    let actions = actor.into_data().try_into_vec::<f32>().unwrap();
+    let value = critic.into_data().try_into_vec::<f32>().unwrap()[0];
+    (actions, value)
 }
 
-fn model_for(genotype: &BrainGenotype) -> ActorCriticModel<Backend> {
-    ActorCriticModel::<Backend>::from_flat_weights(
+fn model_for(genotype: &BrainGenotype) -> ActorCriticModel {
+    ActorCriticModel::from_flat_weights(
         genotype.arch.inputs,
         genotype.arch.hidden,
         genotype.arch.outputs,
         &genotype.weights,
-        &burn_ndarray::NdArrayDevice::Cpu,
+        &Device::flex(),
     )
     .expect("weights must load")
 }
@@ -214,10 +214,10 @@ fn rows_of_a_batch_are_independent() {
         .collect();
     let flat: Vec<f32> = rows.iter().flatten().copied().collect();
 
-    let device = burn_ndarray::NdArrayDevice::Cpu;
-    let data = Data::new(flat, Shape::new([rows.len(), arch.inputs]));
-    let (actor, _) = model.forward(Tensor::<Backend, 2>::from_data(data, &device));
-    let batched = actor.into_data().value;
+    let device = Device::flex();
+    let data = TensorData::new(flat, [rows.len(), arch.inputs]);
+    let (actor, _) = model.forward(Tensor::<2>::from_data(data, &device));
+    let batched = actor.into_data().try_into_vec::<f32>().unwrap();
 
     for (r, row) in rows.iter().enumerate() {
         let (mine, _) = genotype.forward(row).unwrap();

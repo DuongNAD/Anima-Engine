@@ -64,7 +64,7 @@ pub const LIVE_EXPERIMENT_SCHEMA_VERSION: u16 = 1;
 /// The model-version string a live run records in its provenance. Distinct from
 /// [`crate::core::experiment_runner::MODEL_VERSION`] on purpose: a checksum from the live world and
 /// one from the reference world are not comparable, and provenance is where that has to be visible.
-pub const LIVE_MODEL_VERSION: &str = "live-bevy-world/1";
+pub const LIVE_MODEL_VERSION: &str = "live-bevy-world/2";
 
 /// Intensity 1.0 of a [`InterventionKind::TemperatureDelta`], in degrees Celsius of homeostatic
 /// target shift.

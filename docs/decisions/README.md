@@ -2,7 +2,7 @@
 title: Chỉ mục quyết định kiến trúc
 status: active
 owner: architecture
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-18
 ---
 
 # Architecture Decision Records
@@ -17,6 +17,7 @@ last_reviewed: 2026-11-17
 | [`ADR-0006`](ADR-0006-locomotion-actuation.md) | accepted | Vận động của sinh vật: lái ghi `target_velocity` hay ma sát dị hướng (F-042, QĐ-LOC) |
 | [`ADR-0007`](ADR-0007-live-ecology-sustainability.md) | accepted | Duy trì quần thể live: sàn lực lái, lái tới nước, thú săn (QĐ-ECO) |
 | [`ADR-0008`](ADR-0008-world-past-and-time.md) | accepted | Quá khứ bất biến và bản ghi thế giới (ký ức của thế giới); ba lớp thời gian (QĐ-PAST, QĐ-TIME) |
+| [`ADR-0009`](ADR-0009-burn-022-flex-wgpu-upgrade.md) | proposed | Nâng Burn lên 0.22.1, dùng `burn-flex` và cô lập stream WGPU liên luồng (`QĐ-C`, `QĐ-R1c-a`, `QĐ-R1c-b`) |
 
 **Front matter thắng banner trong thân.** ADR-0005, 0006 và 0007 mở đầu thân bằng dòng "Trạng thái: đề xuất,
 chờ chủ dự án", viết lúc soạn; mỗi ADR có một mục "Quyết định (2026-11-16)" ở cuối ghi việc chấp nhận, và

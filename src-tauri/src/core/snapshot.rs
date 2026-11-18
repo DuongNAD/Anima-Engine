@@ -53,8 +53,9 @@ use std::path::Path;
 /// | 4 | Adds the aggregate LOD tier's dormant cohorts, which hold agents and their EU. |
 /// | 5 | Adds the live experiment state: manifest/law/registry fingerprints, the multi-rate clock's tick, and the causal ledger. |
 /// | 6 | Adds the exact evolution-worker RNG, MAP-Elites archive, identity cursors and Meta-AI state. |
-/// | 7 | Adds the shared learner model, Adam state, partial/queued transitions and inference policy. |
-pub const SCHEMA_VERSION: u32 = 7;
+/// | 7 | Adds the shared learner model, Adam state, partial/queued transitions and inference policy (Burn 0.13 `BinBytesRecorder`). |
+/// | 8 | Upgrades shared learner checkpoints to Burn 0.22 burnpack records (`ModuleRecord`, `OptimizerRecord`); schema-7 learner records are refused with a warning so the world restores and the shared learner starts fresh. |
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Oldest **enveloped** schema this build can still read. N−2 per the G1.2 requirement.
 ///
@@ -332,18 +333,42 @@ pub fn write_bytes_atomic(path: &Path, json: &[u8]) -> Result<(), SnapshotError>
     Ok(())
 }
 
+/// Non-fatal notices emitted while migrating a supported legacy snapshot schema forward.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SnapshotMigrationWarning {
+    Schema7LearnerReset(crate::core::training::LearnerRecordError),
+}
+
+impl std::fmt::Display for SnapshotMigrationWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Schema7LearnerReset(err) => err.fmt(f),
+        }
+    }
+}
+
 /// Read a snapshot, verifying its checksum and migrating it forward if it is an older schema.
 ///
 /// Accepts, in order:
-/// - a version-3 envelope (checksum verified);
+/// - a version-3+ envelope (checksum verified);
 /// - a bare `SavedSimulationState`, which is how versions 1 and 2 were written — no envelope
 ///   existed then, so there is nothing to verify and `#[serde(default)]` supplies the fields those
 ///   files predate.
 pub fn read(path: &Path) -> Result<SavedSimulationState, SnapshotError> {
+    read_with_warnings(path).map(|(state, _warnings)| state)
+}
+
+/// Read a snapshot and return any non-fatal migration warnings produced along the way.
+pub fn read_with_warnings(
+    path: &Path,
+) -> Result<(SavedSimulationState, Vec<SnapshotMigrationWarning>), SnapshotError> {
     read_with_limit(path, MAX_SNAPSHOT_BYTES)
 }
 
-fn read_with_limit(path: &Path, limit: usize) -> Result<SavedSimulationState, SnapshotError> {
+fn read_with_limit(
+    path: &Path,
+    limit: usize,
+) -> Result<(SavedSimulationState, Vec<SnapshotMigrationWarning>), SnapshotError> {
     let file = std::fs::File::open(path)
         .map_err(|e| SnapshotError::Io(format!("could not open {}: {e}", path.display())))?;
     let size = file
@@ -370,11 +395,18 @@ fn read_with_limit(path: &Path, limit: usize) -> Result<SavedSimulationState, Sn
             limit,
         });
     }
-    from_bytes(&bytes)
+    from_bytes_with_warnings(&bytes)
 }
 
 /// The parsing half of [`read`], separated so it can be tested without touching a filesystem.
 pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
+    from_bytes_with_warnings(bytes).map(|(state, _warnings)| state)
+}
+
+/// Parse a snapshot envelope or legacy payload and return any non-fatal migration warnings.
+pub fn from_bytes_with_warnings(
+    bytes: &[u8],
+) -> Result<(SavedSimulationState, Vec<SnapshotMigrationWarning>), SnapshotError> {
     if bytes.len() > MAX_SNAPSHOT_BYTES {
         return Err(SnapshotError::TooLarge {
             found: bytes.len() as u64,
@@ -404,9 +436,9 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
         let envelope: SnapshotEnvelope = serde_json::from_slice(bytes)
             .map_err(|e| SnapshotError::Malformed(format!("envelope did not parse: {e}")))?;
         envelope.verify()?;
-        let state = migrate(envelope.schema_version, envelope.parse_state()?);
+        let (state, warnings) = migrate(envelope.schema_version, envelope.parse_state()?);
         validate_state(&state)?;
-        return Ok(state);
+        return Ok((state, warnings));
     }
 
     // No `schema_version` key: a pre-envelope file, so schema 1 or 2. Schema 1 is now outside the
@@ -418,9 +450,9 @@ pub fn from_bytes(bytes: &[u8]) -> Result<SavedSimulationState, SnapshotError> {
             "not an envelope and not a bare saved state either: {e}"
         ))
     })?;
-    let state = migrate(legacy_schema_of(&state), state);
+    let (state, warnings) = migrate(legacy_schema_of(&state), state);
     validate_state(&state)?;
-    Ok(state)
+    Ok((state, warnings))
 }
 
 fn validate_state(state: &SavedSimulationState) -> Result<(), SnapshotError> {
@@ -721,15 +753,36 @@ fn legacy_schema_of(state: &SavedSimulationState) -> u32 {
 
 /// Bring a state forward to [`SCHEMA_VERSION`].
 ///
-/// There is deliberately no field-rewriting here yet: every field added since version 1 is
-/// `#[serde(default)]`, and each default is the documented "this save predates the feature"
-/// behaviour — zero energy state means "keep what `init_world` built", a zero RNG position means
-/// "restart the stream from the seed". The function exists as the single place a future schema
-/// bump puts real rewriting, and so the version a file came from is recorded rather than inferred
-/// twice.
-fn migrate(from: u32, mut state: SavedSimulationState) -> SavedSimulationState {
+/// Schema 7 saves carry Burn 0.13 `BinBytesRecorder` payloads in `shared_learning.learner`; Burn
+/// 0.22 cannot decode those bytes, so migrating from schema 7 drops `shared_learning` with a named
+/// [`LearnerRecordError::Schema7Burn013Unsupported`] warning (letting the world restore while the
+/// shared learner starts fresh) and clears any agent `PendingInference(_)` tickets that referenced
+/// the dropped mailbox.
+fn migrate(
+    from: u32,
+    mut state: SavedSimulationState,
+) -> (SavedSimulationState, Vec<SnapshotMigrationWarning>) {
     state.loaded_from_schema = from;
-    state
+    let mut warnings = Vec::new();
+    if from == 7 {
+        if let Some(shared) = state.shared_learning.take() {
+            let err = crate::core::training::LearnerRecordError::Schema7Burn013Unsupported {
+                model_record_bytes: shared.learner.training_model_record.len(),
+                optimizer_record_bytes: shared.learner.optimizer_record.len(),
+            };
+            eprintln!("WARNING: snapshot migration (schema 7 -> {SCHEMA_VERSION}): {err}");
+            warnings.push(SnapshotMigrationWarning::Schema7LearnerReset(err));
+        }
+        for agent in &mut state.agents {
+            if matches!(
+                agent.cognitive_state,
+                crate::core::components::CognitiveState::PendingInference(_)
+            ) {
+                agent.cognitive_state = crate::core::components::CognitiveState::default();
+            }
+        }
+    }
+    (state, warnings)
 }
 
 /// A fingerprint of everything about a live world that affects where it goes next.
@@ -854,22 +907,18 @@ mod tests {
     }
 
     fn shared_learning_fixture(seed: u64) -> SavedSharedLearningState {
-        use burn::backend::Autodiff;
         use burn::module::Module;
-        use burn::optim::{AdamConfig, Optimizer};
-        use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+        use burn::optim::AdamConfig;
+        use burn::tensor::Device;
 
-        type B = burn_ndarray::NdArray<f32>;
-        type AB = Autodiff<B>;
-
-        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let device = Device::flex().autodiff();
         let weights = BrainModel::seeded_weights(
             crate::core::training::STATE_DIM,
             crate::core::training::HIDDEN_DIM,
             crate::core::training::ACTION_DIM,
             seed,
         );
-        let model = crate::ai::model::ActorCriticModel::<AB>::from_flat_weights(
+        let model = crate::ai::model::ActorCriticModel::from_flat_weights(
             crate::core::training::STATE_DIM,
             crate::core::training::HIDDEN_DIM,
             crate::core::training::ACTION_DIM,
@@ -877,12 +926,13 @@ mod tests {
             &device,
         )
         .expect("fixture model");
-        let optimizer = AdamConfig::new().init::<AB, crate::ai::model::ActorCriticModel<AB>>();
-        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
-        let training_model_record =
-            Recorder::<AB>::record(&recorder, model.into_record(), ()).expect("record model");
-        let optimizer_record =
-            Recorder::<AB>::record(&recorder, optimizer.to_record(), ()).expect("record Adam");
+        let optimizer = AdamConfig::new().init();
+        let training_model_record = model
+            .into_record()
+            .into_bytes()
+            .expect("record model")
+            .to_vec();
+        let optimizer_record = optimizer.into_bytes().expect("record Adam").to_vec();
         let transition = crate::ai::hrrl::Transition {
             state: [0.25; 15],
             action: [0.5; 4],
@@ -1127,7 +1177,7 @@ mod tests {
         let back = from_bytes(&serde_json::to_vec(&envelope).unwrap()).expect("read back");
         let shared = back
             .shared_learning
-            .expect("schema 7 shared learning state");
+            .expect("schema 8 shared learning state");
 
         assert_eq!(shared.learner.partial_batch.len(), 1);
         assert_eq!(shared.queued_transitions.len(), 1);
