@@ -2,7 +2,7 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ S9 — tách nguyên nhân chết (đói và khát) và đo lại bốn ô của lưới S6
-description: Thế giới sống nay đếm riêng chết vì đói và chết vì khát (live.deaths_starvation, live.deaths_dehydration). Đo lại các ô hệ số 0,5 và 0,7 của lưới S6, mù với khối lượng cơ thể. Kết quả - khát giết 71–80 % số cá thể chết ở cả bốn ô; đói chỉ chiếm phần lớn ở 1 trên 24 lượt
+description: Thế giới sống nay đếm riêng chết vì đói và chết vì khát (live.deaths_starvation, live.deaths_dehydration). Đo lại các ô hệ số 0,5 và 0,7 của lưới S6, mù với khối lượng cơ thể. Kết quả - khát giết 71–80 % số cá thể chết ở cả bốn ô; đói chỉ chiếm phần lớn ở 1 trong 18 lượt khác nhau (seed 3, hệ số 0,5, giống hệt nhau ở hai trần)
 status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-18
@@ -104,8 +104,9 @@ Số chết bao gồm cả 30 founder, nên chết có thể lớn hơn sinh.
 ## Đọc kết quả
 
 1. **Khát là nguyên nhân chết chính ở cả bốn ô.** Khát chiếm 0,71–0,80 số cá thể chết khi gộp seed. Trong 24
-   lượt, chỉ một lượt có đói nhiều hơn khát: trần 80 và 160, hệ số 0,5, seed 3, với 36 so với 32, ở một lượt mà
-   quần thể tuyệt chủng sau 68 cái chết.
+   lượt (18 lượt khác nhau, vì ở hệ số 0,5 hai trần cho cùng một lượt), chỉ một lượt có đói nhiều hơn khát:
+   hệ số 0,5, seed 3 (cùng kết quả ở trần 80 và 160), với 36 so với 32, ở một lượt mà quần thể tuyệt chủng sau 68
+   cái chết.
 2. **Hạ sức chứa đồng cỏ làm tăng tỉ lệ đói, nhưng không đổi thứ tự.** Từ hệ số 0,7 xuống 0,5, tỉ lệ đói gộp
    tăng từ 0,20–0,22 lên 0,29. Cả hai mức đều xa ngưỡng "phần lớn".
 3. **Quy tắc hoà không quyết định cái chết nào.** `total_deaths_both_lethal` = 0 ở mọi lượt, nên các tỉ lệ trên

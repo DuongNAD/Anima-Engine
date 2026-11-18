@@ -159,10 +159,10 @@ fn vital_statistics_partition_deaths_by_cause_and_close_the_window_together() {
 // ---- A world where both causes occur ------------------------------------------------------------
 
 const GRACE: u32 = 30;
-const FOUNDERS: usize = 6;
+const FOUNDERS: usize = 7;
 const MAX_TICKS: u32 = 2_000;
 
-/// Six founders, no predators, food, trees or lakes, and an emptied resource field, so nobody can
+/// Seven founders, no predators, food, trees or lakes, and an emptied resource field, so nobody can
 /// eat or drink. Founders alternate between "out of water, fed" and "out of food, watered"; the
 /// first is out of both, so its death is decided by the tie-break.
 fn two_cause_world() -> LiveExperimentAdapter {
@@ -269,9 +269,12 @@ fn cause_counts_add_up_to_live_deaths_at_every_sample_when_both_causes_occur() {
         starvation >= 1.0 && dehydration >= 1.0,
         "both causes must occur (starvation {starvation}, dehydration {dehydration})"
     );
-    // Founders 2 and 4 are out of food only, 1, 3 and 5 out of water only, founder 0 out of both
-    // from the first tick, so its two streaks tie and the tie goes to starvation.
-    assert_eq!((starvation, dehydration), (3.0, 3.0));
+    // Founders 2, 4 and 6 are out of food only, 1, 3 and 5 out of water only, founder 0 out of both
+    // from the first tick, so its two streaks tie and the tie goes to starvation. The counts are
+    // deliberately unequal (4 against 3): an adapter that swapped the two ids would fail here, which
+    // the sum check alone cannot see.
+    assert_eq!(starvation, 4.0, "{STARVATION}");
+    assert_eq!(dehydration, 3.0, "{DEHYDRATION}");
     assert_eq!(both, 1, "exactly one death was decided by the tie-break");
 }
 
