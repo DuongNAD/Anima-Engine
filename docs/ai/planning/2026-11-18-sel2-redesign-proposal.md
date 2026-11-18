@@ -123,7 +123,9 @@ detritus như cũ, nên sổ EU vẫn khép kín: phần dự trữ chỉ là c�
 
 **Lưới đề xuất** (thế giới nền của S6, `live.prey_cap` 320, `live.resource_capacity_scale` 1,0):
 `live.founders` ∈ {30, 60, 100} × `live.plant_reserve` ∈ {0; 0,2; 0,3; 0,4} × `live.lakes` ∈ {2, 4} × seed 1–6,
-tức 144 lượt 18.000 tick. Nếu S9 cho thấy khát không giết đáng kể, bỏ chiều `live.lakes`. Seed 1–6 là seed thăm
+tức 144 lượt 18.000 tick. Nếu S9 cho thấy khát không giết đáng kể, bỏ chiều `live.lakes`. **Sau S9 (QĐ-SEL2e,
+2026-11-18):** khát giết phần lớn, nên chiều `live.lakes` được giữ và mở thành {2, 4, 8}, tức 216 lượt. Khoá
+`live.lakes` đã có trong adapter sống (giới hạn 0–1024), nên mức 8 không cần sửa mã. Ân hạn khát giữ mặc định. Seed 1–6 là seed thăm
 dò; bản đăng ký sau đó phải dùng seed riêng.
 
 **Điều kiện một ô lưới được coi là khả thi** (thêm vào hai điều kiện cũ của S6):
@@ -198,6 +200,7 @@ Không thẻ nào ở đây; đây là ghi chú cho các thẻ đã có.
 | QĐ-SEL2b | Thêm "≥ 30 thế hệ" và "chết chủ yếu vì đói" vào điều kiện khả thi của SEL2-E? | Có | Có |
 | QĐ-SEL2c | SEL2-P dùng 16 hay 24 seed? | Quyết sau SEL2-E, khi biết một lượt chạy tốn bao lâu | Quyết sau SEL2-E |
 | QĐ-SEL2d | Uỷ quyền R5 cho S9 và S10 | Dòng nháp bên dưới | Có, đúng các path dưới đây |
+| QĐ-SEL2e | S9 (#117) đo được khát gây 71–80 % số cái chết. Giảm áp lực khát cho SEL2-E bằng thêm hồ hay bằng nới ân hạn khát (`live.dehydration_ticks`)? | Thêm hồ: giữ chiều `live.lakes` và thêm mức 8 | Thêm hồ ("Thêm hồ", sau S9) |
 
 Dòng uỷ quyền, nay có hiệu lực với ngày 2026-11-18 trong `R5-AUTH`. Dòng của S9 đã được chủ dự án mở rộng cùng ngày thêm `core/experiment/observables.rs` (sổ đăng ký observable) và một test của `prereg_esel1_manifest_tests.rs`, vì danh sách dưới đây đã sót cả hai. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
 cần sửa file nào khác dưới `src-tauri/src`.

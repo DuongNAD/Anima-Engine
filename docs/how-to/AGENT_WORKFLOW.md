@@ -58,7 +58,9 @@ tài liệu ở bảng thắng; sửa trang này.
 - **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
   còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi **R1c** (giao
   ngày 2026-11-17, [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md)), rồi R0
-  khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  khi chủ dự án nói Đợt 2 đã xong. **Từ 2026-11-18 vai `agent-win` do Gemini chạy** (QD-WIN), làm R0 trước rồi R1c
+  ([bản giao việc cho Gemini](../ai/planning/2026-11-18-gemini-worker-win-handoff.md)); Gemini không mở được verifier
+  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
   `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
   trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
@@ -173,6 +175,11 @@ QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, pl
             viability conditions add ">= 30 generations" and "deaths mostly by starvation"; SEL2-P's
             seed count is decided after SEL2-E (owner in chat, 2026-11-18; docs/ai/planning/
             2026-11-18-sel2-redesign-proposal.md)
+QD-SEL2e  = after S9 (#117: thirst caused 71-80% of deaths), SEL2-E relieves water by adding lakes:
+            live.lakes in {2, 4, 8}; the dehydration grace stays at its default (owner in chat,
+            2026-11-18, "Thêm hồ")
+QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
+            first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
