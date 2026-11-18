@@ -1,22 +1,25 @@
 ---
 title: ADR-0008 — Quá khứ bất biến, ký ức của thế giới và ba lớp thời gian (QĐ-PAST, QĐ-TIME)
-status: proposed
+status: accepted
 owner: simulation-architecture
-last_reviewed: 2026-11-17
-decision_date: none
+last_reviewed: 2026-11-18
+decision_date: 2026-11-18
 supersedes: none
 superseded_by: none
 ---
 
 # ADR-0008 — Quá khứ bất biến, ký ức của thế giới và ba lớp thời gian (QĐ-PAST, QĐ-TIME)
 
-> **Trạng thái: đề xuất, chờ chủ dự án duyệt (thẻ L0).** Hai **nguyên tắc** đã được chủ dự án quyết
-> trong chat ngày 2026-11-17:
+> **Trạng thái: chấp nhận ngày 2026-11-18 (thẻ L0).** Hai **nguyên tắc** đã được chủ dự án quyết trong
+> chat ngày 2026-11-17:
 > - **QĐ-PAST:** quá khứ bất biến, muốn quay lại thì fork, kèm bảng ngoại lệ.
 > - **QĐ-TIME:** tách tick, lịch và tốc độ xem.
 >
-> ADR này ghi lại hai nguyên tắc đó và **đề xuất** phần còn mở: thiết kế lưu trữ quá khứ, tức ký ức
-> của thế giới. Chưa dòng mã nào được viết theo ADR này.
+> Ngày 2026-11-18 chủ dự án trả lời năm câu hỏi còn mở của thiết kế lưu trữ và thêm một quy tắc cho việc nâng
+> phiên bản engine ("Duyệt theo đề xuất"); các câu trả lời nằm ở [§4](#4-năm-câu-trả-lời-của-chủ-dự-án-2026-11-18)
+> và [§5](#5-nâng-phiên-bản-engine-làm-đổi-quỹ-đạo-mở-một-kỷ-engine-mới). Đầu vào cho các câu trả lời là một báo
+> cáo nghiên cứu về lưu lịch sử bất biến, đối chiếu với thiết kế dưới đây. **Chưa dòng mã nào được viết theo ADR
+> này**, và gate ngân sách (H3) vẫn chưa đo: chủ dự án chấp nhận thiết kế trước khi có số.
 >
 > Số đo trong mục "Ngân sách" là **một lần đo thăm dò** ngày 2026-11-17 bằng test scratch (không nằm
 > trong cây mã), trên thân cây `b94eb47`, macOS arm64, seed 1. Đó không phải phép đo ngân sách mà
@@ -108,7 +111,7 @@ nguồn sự thật.
 Một thế giới trong app vẫn không có quá khứ, quá khứ của thí nghiệm vẫn chỉ nằm trong các artifact rời, và
 QĐ-PAST chỉ là một câu viết.
 
-## Quyết định (đề xuất)
+## Quyết định
 
 ### 1. Nguyên tắc QĐ-PAST (đã quyết, ghi lại)
 
@@ -154,9 +157,9 @@ dùng đồng hồ thật làm khoá) và id thực thể. Loại v1:
 
 Sổ sự kiện là **đầu ra**: nó không bao giờ được đọc ngược vào mô phỏng, và nó kiểm chứng được bằng phát lại.
 
-**d. Keyframe và checksum.** Keyframe là một snapshot envelope hiện có, lấy thưa (đề xuất mỗi 6.000 tick,
-tức một năm mô phỏng; chủ dự án chốt). Thêm `world_checksum` ở các mốc dày hơn (đề xuất mỗi 600 tick) để
-một lần phát lại tự kiểm được.
+**d. Keyframe và checksum.** Keyframe là một snapshot envelope hiện có. Mật độ theo [§4](#4-năm-câu-trả-lời-của-chủ-dự-án-2026-11-18)
+câu 1: dày gần hiện tại, thưa dần theo tuổi, không thưa hơn **một keyframe mỗi năm mô phỏng** (6.000 tick).
+Thêm `world_checksum` ở các mốc dày hơn (đề xuất mỗi 600 tick) để một lần phát lại tự kiểm được.
 
 **Móc xích.** Sổ được ghi theo đoạn. Mỗi đoạn mang `tick_from`, `tick_to`, `prev_hash` và
 `hash = SHA-256(prev_hash ‖ bytes chuẩn của đoạn)` (dùng `core::sha256`). Đoạn đầu móc vào hash của
@@ -166,7 +169,7 @@ từ chỗ đó trở đi.
 **Đường ghi.** System tick đẩy sự kiện vào một **vòng đệm cấp phát sẵn**, kích thước cố định, nên không cấp
 phát. Một thread ghi riêng gom vòng đệm thành đoạn rồi ghi nguyên tử theo SNAPSHOT_CONTRACT §4.
 - **Tràn đệm** không bao giờ được lặng lẽ: số sự kiện bị bỏ được đếm và ghi vào đoạn kế tiếp, và một bản ghi
-  có tràn thì không được gọi là đầy đủ. Bỏ kèm đếm hay chặn sim: chủ dự án chọn.
+  có tràn thì không được gọi là đầy đủ. Đã quyết: **bỏ và đếm**, không chặn sim ([§4](#4-năm-câu-trả-lời-của-chủ-dự-án-2026-11-18) câu 2).
 
 **Phát lại tới tick t.** Nạp keyframe gần nhất ≤ t, chạy mô phỏng từ đó cùng sổ đầu vào, rồi so
 `world_checksum` ở các mốc. Chỉ có hiệu lực khi build và lớp nền tảng trùng với `header`, và
@@ -191,6 +194,34 @@ Hệ quả cho bản ghi: mọi khoá là `tick`. Lịch chỉ dùng để **hi�
 chu kỳ ngày–đêm vào luật (ánh sáng, nhiệt) là một thay đổi luật riêng: nó cần sửa `SIMULATION_RULES.md` và
 test trong cùng thay đổi, và không thuộc ADR này. Chu kỳ ngày–đêm của cảnh 3D (`sceneClock.ts`) vẫn là đồng
 hồ hiển thị.
+
+### 4. Năm câu trả lời của chủ dự án (2026-11-18)
+
+| # | Câu hỏi | Quyết định |
+|---|---|---|
+| 1 | Mật độ keyframe | **Dày gần hiện tại, thưa dần theo tuổi, có sàn.** Keyframe mới được ghi dày; khi chúng cũ đi, các keyframe không được ghim bị thưa dần (khoảng cách gấp đôi theo mỗi bậc tuổi) nhưng không bao giờ thưa hơn một keyframe mỗi năm mô phỏng (6.000 tick). Keyframe ở điểm rẽ của mọi fork và ở mốc người dùng đánh dấu được **ghim vĩnh viễn**. Bỏ một keyframe không ghim là ngoại lệ "thưa keyframe" ở mục 1 và được khai trong `header` |
+| 2 | Vòng đệm sự kiện tràn | **Bỏ và đếm.** Mô phỏng không bao giờ chậm vì ghi; số sự kiện bị bỏ được ghi vào đoạn kế tiếp, và một bản ghi có tràn bị đánh dấu "không đầy đủ" |
+| 3 | App tự bật `DeterministicMode` khi người dùng muốn "có quá khứ" | **Có.** Không tất định thì bản ghi chỉ nhớ được chứ không phát lại được |
+| 4 | Lưu đồng hồ thật | **Có, chỉ làm trường phụ** để hiển thị cho người xem; không bao giờ làm khoá, và không bao giờ đọc ngược vào mô phỏng |
+| 5 | Trần dung lượng | **Không chặn cứng.** Chính sách thưa ở câu 1 giữ dung lượng thấp. Khi một thế giới vượt ngưỡng cảnh báo (mặc định 5 GB, chỉnh được), app báo và đề nghị nén; nó không tự xoá và không dừng mô phỏng |
+
+Vì sao bỏ một keyframe cũ không phá QĐ-PAST: keyframe là bản đệm dựng lại được từ keyframe trước, sổ đầu vào và
+mô phỏng tất định. Sổ đầu vào, sổ sự kiện và chuỗi hash thì không bao giờ bị thưa.
+
+### 5. Nâng phiên bản engine làm đổi quỹ đạo: mở một kỷ engine mới
+
+Một bản ghi chỉ phát lại được bằng đúng engine đã ghi nó. Khi một thay đổi mã làm đổi quỹ đạo, ví dụ một lần
+tăng `LIVE_MODEL_VERSION` hay thẻ R1c (nâng `burn`, schema snapshot 8), sổ đầu vào cũ **không bao giờ** được
+phát lại bằng engine mới.
+
+- Một bản ghi là một chuỗi **kỷ engine** (engine era). Đây không phải "epoch" 1.000 tick của tiến hoá.
+- Mỗi kỷ mở bằng một keyframe đầy đủ và một `header` riêng ghi phiên bản engine (`LIVE_MODEL_VERSION`,
+  `BuildProvenance`, `SCHEMA_VERSION`). Header của kỷ móc vào hash của đoạn cuối kỷ trước.
+- Chuyển kỷ: lấy trạng thái cuối do engine cũ ghi (keyframe cuối kỷ trước), nạp bằng engine mới theo đường
+  chuyển đổi đã khai của SNAPSHOT_CONTRACT, rồi ghi keyframe đầu kỷ mới. Mọi mất mát của lần chuyển (ví dụ
+  learner dùng chung khởi tạo lại theo QĐ-R1c-a) được khai trong header của kỷ mới.
+- Kỷ cũ vẫn **đọc** được (sổ sự kiện và keyframe là dữ liệu), nhưng chỉ **phát lại** được bằng engine của kỷ
+  đó. Giữ lại bản build cũ để phát lại là tuỳ chọn, không bắt buộc.
 
 ## Ngân sách (thăm dò, một lần đo)
 
@@ -253,19 +284,15 @@ chạy như hôm nay.
    phần cứng đích.
 4. **H4 — App và đọc.** Thay `autosave.json`, thêm lệnh IPC để đọc sự kiện theo cá thể, dòng dõi và tick
    (vào [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md) cùng commit), UI dòng thời gian.
-5. **H5 — Chính sách giữ và nén.** Thưa keyframe và nén theo khai báo; phần bị bỏ được ghi trong `header`.
+5. **H5 — Chính sách giữ và nén.** Thưa keyframe theo §4 câu 1, ngưỡng cảnh báo theo §4 câu 5, và nén
+   keyframe (đổi từ JSON sang nhị phân có nén là bước rẻ nhất); phần bị bỏ được ghi trong `header`.
 
 Hoàn tác: bản ghi là thư mục riêng cạnh save. Gỡ tính năng thì không động tới snapshot hay trạng thái nào; các
 save cũ vẫn đọc được theo SNAPSHOT_CONTRACT.
 
 ## Câu hỏi cho chủ dự án trước khi `accepted`
 
-1. Mật độ keyframe mặc định: mỗi năm mô phỏng (6.000 tick) hay thưa hơn?
-2. Khi vòng đệm sự kiện tràn: **bỏ và đếm** (sim không bao giờ chậm) hay **chặn** (không mất sự kiện)?
-3. Thế giới trong app có tự bật `DeterministicMode` khi người dùng muốn "có quá khứ" không, chấp nhận mất
-   song song?
-4. Bản ghi có lưu thêm đồng hồ thật làm trường phụ, không phải khoá, cho người xem không?
-5. Trần dung lượng mặc định cho một thế giới, và hành vi khi chạm trần (nén hay báo)?
+Đã trả lời hết ngày 2026-11-18; xem [§4](#4-năm-câu-trả-lời-của-chủ-dự-án-2026-11-18).
 
 ## Bằng chứng xác minh
 
@@ -275,7 +302,7 @@ save cũ vẫn đọc được theo SNAPSHOT_CONTRACT.
 | Bất biến | Sửa một byte trong đoạn k | Chuỗi gãy đúng từ k | pending (H1) |
 | Zero-alloc | Bộ đếm cấp phát trên tick có sự kiện | 0 | pending (H2) |
 | Phát lại | Keyframe + sổ đầu vào → tick t | `world_checksum` trùng mốc, cùng nền tảng | pending (H3) |
-| Ngân sách | Đo trên phần cứng đích, quần thể lớn, có nén | Khai trong ADR trước `accepted` | pending (H3) |
+| Ngân sách | Đo trên phần cứng đích, quần thể lớn, có nén | Ghi vào ADR khi H3 xong (chủ dự án chấp nhận thiết kế trước khi có số, 2026-11-18) | pending (H3) |
 
 ## Tài liệu bị ảnh hưởng
 
@@ -285,5 +312,5 @@ save cũ vẫn đọc được theo SNAPSHOT_CONTRACT.
   - [`EVOLUTION_EXPERIMENT_CONTRACT.md`](../reference/EVOLUTION_EXPERIMENT_CONTRACT.md): ER08, ghim thế giới.
   - [`IPC_CONTRACT.md`](../reference/IPC_CONTRACT.md): lệnh đọc mới, ở H4.
   - [`SIMULATION_RULES.md`](../../SIMULATION_RULES.md) §4: lịch là tham số khai báo.
-- Planning: thẻ L0 (ADR này), H1–H5 (thẻ mới khi `accepted`), S5 (dùng sổ sự kiện).
+- Planning: thẻ L0 (ADR này, xong khi `accepted`), năm thẻ WR1–WR5 cho các bước H1–H5 (kế hoạch swarm), S5 (dùng sổ sự kiện), R1c (lần chuyển kỷ engine đầu tiên).
 - Nguồn của các nguyên tắc: bản ghi QĐ-PAST và QĐ-TIME của roadmap 31/10 §4.2 (PR #97).

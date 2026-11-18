@@ -120,8 +120,8 @@ của Đợt 3 (S2, S3, M2–M4) và mọi thẻ từ Đợt 4 chưa bắt đầ
 Mười thẻ được thêm ngày 2026-11-17 từ quyết định của chủ dự án (S6, S7, S8, SEL2-P, SEL2-X, R1c, L0, L1,
 L2-P, L2-X). Ba thẻ đã chạy ngay trong ngày: **S8** ✅ #106 (F-044), **S6** ✅ #110 (khoá `live.prey_cap` và
 `live.resource_capacity_scale`, kèm [lượt đo thăm dò](../ai/planning/2026-11-17-s6-sel2-exploration.md)),
-và **L0** 🔄 [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) đã soạn ở trạng thái `proposed` (#109),
-chờ chủ dự án duyệt. **R1c** (nâng `burn`) được giao cho `agent-win` cùng ngày:
+và **L0** ✅ [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) soạn ở #109 và được chủ dự án chấp nhận ngày 2026-11-18, kèm năm câu trả lời và
+quy tắc kỷ engine; các bước của nó là năm thẻ WR1–WR5 chưa bắt đầu. **R1c** (nâng `burn`) được giao cho `agent-win` cùng ngày:
 [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md) giữ prompt để dán và dòng uỷ quyền đã
 soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đo của S6 **không** tìm ra cấu hình khan hiếm thức
 ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Quyết định đó có ngày 2026-11-18 (QĐ-SEL2a–d,
@@ -176,7 +176,8 @@ QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-sourc
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
             Card S8 (owner in chat, 2026-11-17)
 QD-PAST   = the past of a world that has run is immutable; going back means a fork; the exception
-            table is in roadmap 31/10 section 4.2. Storage design still open (owner in chat, 2026-11-17)
+            table is in roadmap 31/10 section 4.2 (owner in chat, 2026-11-17). Storage design decided
+            2026-11-18: ADR-0008 accepted with its section 4 answers and the section 5 engine-era rule
 QD-TIME   = "one day is two real hours" is a viewing speed, not a simulation law; the calendar is a
             declared world parameter. Needs an ADR, card L0 (owner in chat, 2026-11-17)
 QD-LAW1   = the first law-fork experiment runs right after the first powered experiment, before
