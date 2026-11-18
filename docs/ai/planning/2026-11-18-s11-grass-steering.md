@@ -2,7 +2,7 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ S11 — khoá live.grass_steering (tìm cỏ cho thú ăn cỏ)
-description: Khoá live.grass_steering (LIVE_KEYS.len() = 25), giữ GRASS_STAY_FRACTION = 0.25 và GRASS_SCAN_RADIUS = 3; đạt #1, #3, #4, #5, kiểm thử đơn vị WHAT và fmt/clippy/dataflow nhưng BLOCKED tại DONE WHEN #2; đo thăm dò 100.000 tick cho VIABLE = no ở cả scale 1 / 0.7 / 0.5
+description: Khoá live.grass_steering (LIVE_KEYS.len() = 25), giữ GRASS_STAY_FRACTION = 0.25 và GRASS_SCAN_RADIUS = 3; finding — not ready: phép thử cơ chế đối chứng (#2 mới theo DECISION S11 226d4b29) tăng năng lượng ở tick 1000–1500 nhưng giảm dưới đối chứng từ tick 2000–3000; #7 cho VIABLE = no ở cả scale 1 / 0.7 / 0.5
 status: active
 owner: simulation-architecture
 last_reviewed: 2026-11-18
@@ -10,7 +10,7 @@ last_reviewed: 2026-11-18
 
 # Thẻ S11 — khoá `live.grass_steering` (tìm cỏ cho thú ăn cỏ)
 
-> Trạng thái hiện tại: **`BLOCKED` tại `DONE WHEN #2`** (giữ nguyên ngưỡng khoá theo Quy tắc R2; chờ quyết định của chủ dự án trước khi đánh dấu sẵn sàng hoặc chỉnh sửa ngoài phạm vi `AUTHORIZATION`).
+> Trạng thái hiện tại: **`finding — not ready`** theo `DECISION S11 226d4b29` (dừng theo đúng nhánh dừng của điều kiện `#2(a)` mà **không** tinh chỉnh `GRASS_STAY_FRACTION = 0.25` hay `GRASS_SCAN_RADIUS = 3`; giữ commit kèm test `#2` đỏ làm phát hiện khoa học).
 > Nhánh: `dell/s11-grass-steering` | Base commit (`origin/feat/ecological-selection`): `dea18583881a12ba54ea719f9b6d78dd6d18b05e`.
 
 ## 1. Phạm vi thay đổi (đúng theo `AUTHORIZATION`)
@@ -19,13 +19,12 @@ last_reviewed: 2026-11-18
 - `src-tauri/src/core/locomotion.rs`: thêm hai hằng `GRASS_STAY_FRACTION = 0.25` và `GRASS_SCAN_RADIUS = 3`, cập nhật `steering_drive_system` cho thú ăn cỏ (`Option<&Prey>`, `predator.is_none()`): giữ nguyên ưu tiên cao nhất cho tìm nước (`thirst_steering`, khi `hydration < 0.50 * hydration_target` và `lake_cache` khác rỗng). Khi không hướng tới nước: (1) nếu ô cỏ hiện tại có `cur_r_max > 0.0` và `cur_grazeable >= 0.25 * cur_r_max`, đặt ngay `target_velocity = Vec3::ZERO` (đứng gặm, không chạy theo `Food`); (2) ngược lại quét cửa sổ `(2 * GRASS_SCAN_RADIUS + 1)^2` (`7x7`) đã cắt biên lưới để tìm ô có `grazeable` lớn nhất vượt hẳn `cur_grazeable` (hoà lấy `(row, col)` nhỏ nhất): nếu thấy thì hướng tới tâm ô đó trừ khi có `Food` **gần hơn hẳn** (`min_food_dist_sq < grass_dist_sq`), còn nếu không có ô nào hơn ô hiện tại thì giữ fallback về `Food`. Kẻ săn mồi giữ nguyên hành vi cũ; không cấp phát heap trong vòng lặp ấm.
 - `src-tauri/src/core/live_experiment.rs`: khai báo `LIVE_KEY_GRASS_STEERING = "live.grass_steering"`, mở rộng `LIVE_KEYS` lên `25` khoá, thêm trường `grass_steering: bool` vào `LiveWorldConfig`, kiểm tra giá trị boolean chặt (`0.0`/`1.0`) và từ chối `live.grass_steering=1` khi `live.locomotion=0` ngay bước preflight (`InvalidLaw`), và truyền xuống `LocomotionPolicy` trong `build_live_world`.
 - `src-tauri/tests/e2_seam_tests.rs` & `src-tauri/tests/eco_card_b_tests.rs`: cập nhật kiểm tra `LIVE_KEYS.len() == 25` và trường `grass_steering: false` trong cấu trúc tường minh của `eco_card_b_tests`.
-- `src-tauri/tests/grass_steering_tests.rs`: 8 kiểm thử đơn vị/tích hợp (`0 #[ignore]`) bao phủ `DONE WHEN #1`–`#4` và các kiểm thử hợp đồng `WHAT`.
+- `src-tauri/tests/grass_steering_tests.rs`: 8 kiểm thử đơn vị/tích hợp (`0 #[ignore]`) bao phủ `DONE WHEN #1`, `DONE WHEN #2` mới (theo `DECISION S11 226d4b29`), `#3`, `#4`, và các kiểm thử hợp đồng `WHAT`.
 - `src-tauri/examples/sel2_grass_steering.rs`: driver đo thăm dò 100.000 tick (`DONE WHEN #7`) trên `scale in {1.0, 0.7, 0.5}` với `prey_cap = 320` (seeds `1..=6`) và đối chứng `prey_cap = 80` (`scale = 1.0`, seeds `1..=6`), chỉ đọc 7 biến quan sát được phép (mù khối lượng cơ thể).
 
-## 2. Kết quả kiểm tra trong đợt này
+## 2. Kết quả kiểm tra đạt trong đợt này (`#1`, `#3`, `#4`, `#5`, `WHAT`, `#6` tĩnh/`dataflow`)
 
 - **DONE WHEN #1** (`absent_and_zero_match_every_sampled_tick_with_locomotion_on`): khớp từng bit toàn bộ 16 mẫu `S11_TRAJ` ở thế giới A (`tick 100..=600`: `0xfc93dfcc`, `0x0ece3108`, `0x2b2d8654`, `0xb798318f`, `0x24683ee3`, `0x3b935a42`) và thế giới B (`tick 100..=1000`: `0xd1f70df2`, `0xdd224cdd`, `0x1b2ea787`, `0x73b828c6`, `0x8878f271`, `0x7cbd9f17`, `0x20b394a5`, `0xb2908b42`, `0x44534e87`, `0x1a062d2f`) so với commit nền `dea18583`.
-- **DONE WHEN #2** (`sel2e_best_world_behaviour_restores_under_prey_grass_and_breeding_energy`): **ĐỎ / `BLOCKED`** (xem chi tiết mục 3 bên dưới).
 - **DONE WHEN #3** (`steering_drive_system_allocates_nothing_once_warm_with_grass_steering_on`): `S11_ZERO_ALLOC allocations=0`.
 - **DONE WHEN #4** (`grass_steering_checksum_agrees_across_four_processes_and_keeps_closed_eu`): 4 tiến trình độc lập đều ra `0x27da543a`; EU kín `start=156587.24986362457`, `worst_relative_drift=0`.
 - **DONE WHEN #5** (7 suite hồi quy):
@@ -36,27 +35,60 @@ last_reviewed: 2026-11-18
   - `plant_reserve_tests`: `11 passed; 0 failed; 0 ignored`
   - `sel2_drift_control_tests`: `9 passed; 0 failed; 0 ignored`
   - `steering_zero_energy_tests`: `2 passed; 0 failed; 0 ignored`
-- **Kiểm thử đơn vị hợp đồng `WHAT`** (`prey_stays_above_threshold_and_respects_s10_plant_reserve`, `window_clipping_tie_breaking_food_strictly_closer_thirst_priority_and_predators_unchanged`, `key_is_registered_and_refused_at_preflight_without_locomotion`, và helper tiến trình con `s11_child_entry_point`): đều đạt (tổng 7/8 test trong `grass_steering_tests` đạt, 1 test `#2` đỏ).
+- **Kiểm thử đơn vị hợp đồng `WHAT`** (`prey_stays_above_threshold_and_respects_s10_plant_reserve`, `window_clipping_tie_breaking_food_strictly_closer_thirst_priority_and_predators_unchanged`, `key_is_registered_and_refused_at_preflight_without_locomotion`, và helper tiến trình con `s11_child_entry_point`): đều đạt (tổng 7/8 test trong `grass_steering_tests.rs` đạt, 1 test `#2` mới đỏ như phát hiện khoa học).
 - **DONE WHEN #6** (gate tĩnh và `dataflow`):
   - `cargo fmt --check`: đạt (0 diff).
   - `cargo clippy --all-targets --features desktop -- -D warnings`: đạt (0 cảnh báo).
   - `cargo clippy --all-targets --no-default-features -- -D warnings`: đạt (0 cảnh báo).
-  - `cargo modules dependencies --lib --no-externs --package anima-engine` + `scripts/verify_dataflow.py dataflow.json dataflow-truth.dot 1`: `QUA CONG — 16 edge khop hoan toan voi cargo-modules` (`dataflow.json` không cần sửa).
-  - Lưu ý: chưa chạy `cargo test --features desktop > out.txt 2>&1` toàn workspace + `node scripts/check_test_targets.mjs src-tauri/out.txt --profile desktop` vì `grass_steering_tests` đang đỏ `DONE WHEN #2` nên toàn suite chưa thể thoát 0 trong trạng thái `BLOCKED` (file `grass_steering_tests.rs` thêm 8 test, `0 #[ignore]`).
-- **DONE WHEN #7** (`src-tauri/examples/sel2_grass_steering.rs`): chạy xong toàn bộ `24/24` lượt đo 100.000 tick `--release` (xem mục 4).
+  - `cargo modules dependencies --lib --no-externs --package anima-engine` + `scripts/verify_dataflow.py dataflow.json dataflow-truth.dot 1`: `QUA CONG — 16 edge khop hoan toan voi cargo-modules` (`dataflow.json` không cần sửa; `src-tauri/src/**` giữ nguyên từ `226d4b29`).
+  - Lưu ý: chưa chạy `cargo test --features desktop > out.txt 2>&1` toàn workspace + `node scripts/check_test_targets.mjs` vì test `#2` mới được giữ ở trạng thái đỏ để ghi nhận kết quả âm của mệnh đề `(a)` theo `DECISION S11 226d4b29` (`src-tauri/tests/grass_steering_tests.rs` có 8 test, `0 #[ignore]`).
 
-## 3. Chẩn đoán thất bại ở `DONE WHEN #2` (`BLOCKED`)
+## 3. Kết quả `DONE WHEN #2` mới — Phép thử cơ chế có đối chứng (`DECISION S11 226d4b29`)
 
-Kiểm thử `sel2e_best_world_behaviour_restores_under_prey_grass_and_breeding_energy` (kịch bản tốt nhất từ SEL2-E: `scale=0.7`, `grace=960`, `founders=100`, `lakes=8`, `prey_cap=320`, mẫu mỗi 500 tick từ `2000..=6000`) đỏ theo đúng ngưỡng khoá ban đầu tại `src-tauri/tests/grass_steering_tests.rs:640`:
+Cấu hình: `live.founders=20`, `live.predator_fraction=0`, `live.locomotion=1`, `live.drive_floor=0.5`, `live.thirst_steering=0`, `live.mortality=0`, `live.reproduction=0`, `live.resource_capacity_scale=0.7`, `live.lakes=8`, `seed=2`, `3.000` tick, lấy mẫu mỗi `500` tick từ `1.000` đến `3.000` (5 mẫu). Tất cả 10 khoá đều được preflight chấp nhận nguyên trạng. Nhánh A dùng `live.grass_steering=0`, Nhánh B dùng `live.grass_steering=1`.
 
 ```text
-S11_BEHAVIOUR_SUMMARY grass=0 median_under_prey=0.0000 median_field=1.0000 total_breed_ready=0
-S11_BEHAVIOUR_SUMMARY grass=1 median_under_prey=0.0000 median_field=1.0000 total_breed_ready=0
-thread 'sel2e_best_world_behaviour_restores_under_prey_grass_and_breeding_energy' panicked at tests\grass_steering_tests.rs:640:5:
-treatment (grass_steering=1) under-prey median 0.0000 is less than half field median 1.0000
+S11_MECHANISM tick=1000 arm_a_energy=0.975841 arm_b_energy=0.984370 diff=+0.008529 arm_a_depleted_zero_vel=0.000000 arm_b_depleted_zero_vel=0.000000
+S11_MECHANISM tick=1500 arm_a_energy=0.956197 arm_b_energy=0.968910 diff=+0.012714 arm_a_depleted_zero_vel=0.000000 arm_b_depleted_zero_vel=0.000000
+S11_MECHANISM tick=2000 arm_a_energy=0.955593 arm_b_energy=0.943615 diff=-0.011979 arm_a_depleted_zero_vel=0.000000 arm_b_depleted_zero_vel=0.000000
+S11_MECHANISM tick=2500 arm_a_energy=0.941782 arm_b_energy=0.915397 diff=-0.026384 arm_a_depleted_zero_vel=0.000000 arm_b_depleted_zero_vel=0.000000
+S11_MECHANISM tick=3000 arm_a_energy=0.926789 arm_b_energy=0.885736 diff=-0.041053 arm_a_depleted_zero_vel=0.000000 arm_b_depleted_zero_vel=0.000000
+
+thread 'controlled_world_grass_steering_raises_intake_and_moves_off_depleted_cells' (21352) panicked at tests\grass_steering_tests.rs:623:9:
+tick 2000: intake arm B (0.943615) did not exceed arm A (0.955593)
 ```
 
-Phép đo phụ trợ trong khoảng `500..=6000` tick ở bản `--release` cho hai bán kính `rad=3` và `rad=16` (cùng giữ `stay=0.25`) cho kết quả gần như y hệt (`grass=0` và `grass=1` đều có `median_under_prey=0.0000`, `total_breed=0`):
+- Điều kiện **(b)** (tỉ lệ thú ăn cỏ đứng yên trên ô cỏ dưới ngưỡng `0.25 * r_max`) bằng `0.000000` ở cả hai nhánh tại cả 5 điểm mẫu (`b_dep <= a_dep` thoả ở 5/5 mẫu).
+- Điều kiện **(a)** (năng lượng trung bình `energy / energy_target`) dương ở hai mẫu đầu (`+0.008529` tại `tick=1000`, `+0.012714` tại `tick=1500`) nhưng đảo dấu âm ở `tick=2000` (`-0.011979`), `tick=2500` (`-0.026384`) và `tick=3000` (`-0.041053`). Ngay cả khi đã loại bỏ khát nước, tử vong và sinh sản, chiến lược tìm cỏ theo cửa sổ cục bộ `GRASS_SCAN_RADIUS = 3` và giữ vị trí trên `GRASS_STAY_FRACTION = 0.25` không duy trì được lượng thu nạp cao hơn đối chứng qua tick `2000`. Theo `DECISION S11 226d4b29`, dừng tại đây và không tinh chỉnh hằng số.
+
+## 4. Ba trở ngại đo được trong thế giới SEL2-E và số liệu `DONE WHEN #2` cũ (bằng chứng tham chiếu)
+
+Ở thiết kế `DONE WHEN #2` ban đầu trên kịch bản tốt nhất từ SEL2-E (`scale=0.7`, `grace=960`, `founders=100`, `lakes=8`, `prey_cap=320`, `seed=2`, mẫu mỗi 500 tick từ `2000..=6000`), kiểm thử đo được:
+
+```text
+S11_BEHAVIOUR grass=0 tick=2000 prey_n=198 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=2500 prey_n=200 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=3000 prey_n=175 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=3500 prey_n=126 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=4000 prey_n=109 under_prey_med=0.0010 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=4500 prey_n=79 under_prey_med=0.0010 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=5000 prey_n=79 under_prey_med=0.0010 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=5500 prey_n=87 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=0 tick=6000 prey_n=82 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR_SUMMARY grass=0 median_under_prey=0.0000 median_field=1.0000 total_breed_ready=0
+S11_BEHAVIOUR grass=1 tick=2000 prey_n=216 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=2500 prey_n=208 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=3000 prey_n=187 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=3500 prey_n=129 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=4000 prey_n=99 under_prey_med=0.0010 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=4500 prey_n=70 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=5000 prey_n=61 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=5500 prey_n=60 under_prey_med=0.0000 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR grass=1 tick=6000 prey_n=61 under_prey_med=0.0001 field_med=1.0000 breed_ready=0
+S11_BEHAVIOUR_SUMMARY grass=1 median_under_prey=0.0000 median_field=1.0000 total_breed_ready=0
+```
+
+Phép đo phụ trợ bản `--release` trong khoảng `500..=6000` tick cho `rad=3` và `rad=16` (`stay=0.25`):
 
 | Phép thử | `median_under_prey` | `median_field` | `hyd_med` (`t=2000..6000`) | `eng_max` (`t=500..6000`) | `total_breed` |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -64,13 +96,13 @@ Phép đo phụ trợ trong khoảng `500..=6000` tick ở bản `--release` cho
 | `rad=3, grass=1` | `0.0000` | `1.0000` | `0.000..0.390` | `0.595..0.649` | `0` |
 | `rad=16, grass=1` | `0.0000` | `1.0000` | `0.000..0.482` | `0.602..0.647` | `0` |
 
-Ba nguyên nhân vật lý và lịch hệ thống khiến điều kiện `#2` không thể đồng thời thoả dưới thiết kế hiện tại của thẻ S11:
+Ba nguyên nhân vật lý và lịch hệ thống khiến các chỉ tiêu cũ không quan sát được:
 
-1. **Ưu tiên khát nước (`THIRST_STEERING_FRACTION = 0.50`) lấn át tìm cỏ trong cửa sổ `2000..=6000` tick**: Thế hệ sáng lập xuất phát tại `z = -30`, cách 8 hồ nước tại `z = +60` tới 90 đơn vị. Từ tick `2000` đến `6000`, trung vị độ ẩm cơ thể `hyd_med` nằm trong `0.000..0.482 < 0.50` khi đàn kéo lên phía bắc (`med_z` từ `-35` lên `+17`), nên nhánh tìm nước vô hiệu hoá nhánh tìm cỏ cho phần lớn cá thể trong chính khoảng tick mà `#2` lấy mẫu.
-2. **Thời gian ăn cạn ô (`<= 37` tick, còn trên ngưỡng `0.25 * r_max` là `<= 9` tick) ngắn hơn thời gian rời ô (`~68` tick)**: Kể cả khi `grass_steering` hoạt động ở `tick 500..=1500` (`hyd_med = 0.567..0.740`), `under_med` vẫn là `0.0000`. Trên lưới `256 x 256` phủ miền `[-100, 100]`, mỗi ô rộng `0.78125` đơn vị; ở `drive_floor = 0.5`, tốc độ tối đa là `0.75` u/s (`0.0125` u/tick -> `62.5` tick để băng qua ô, cộng thêm `tau = 30` tick tăng tốc từ trạng thái đứng yên), trong khi `herbivore_grazing_system` hút `8.0 / 60 = 0.1333` EU/tick trên ô `Grassland` `scale = 0.7` (`r_max = 4.9` EU). Thú ăn sạch ô xuống `0.0000` trước khi đi ra khỏi ô đó.
-3. **Sinh sản ở cuối tick ghim chỉ số `energy / energy_target` sau tick luôn dưới `0.65`**: `autonomous_reproduction_system` chạy vào cuối mỗi tick và rút `50%` năng lượng để sinh sản ngay khi `prey_count < prey_cap` (`320`) và `energy >= 0.65 * energy_target`. Vì số thú ăn cỏ chỉ đạt `60..233 < 320`, không cá thể nào kết thúc tick với `energy >= 0.65 * energy_target` (`eng_max = 0.595..0.649 < 0.650`, `total_breed_ready = 0` ở cả control lẫn treatment).
+1. **Hành trình khát từ `z = -30` lên hàng hồ `z = +60`**: Thế hệ sáng lập cách hàng 8 hồ nước tới 90 đơn vị; từ tick `2000..=6000`, `hyd_med` nằm trong `0.000..0.482 < 0.50` (`THIRST_STEERING_FRACTION`), nên ưu tiên tìm nước đè hoàn toàn tìm cỏ cho đa số cá thể khi đàn tiến lên phía bắc (`med_z: -35 -> +17`).
+2. **Thời gian ăn cạn ô ngắn hơn thời gian rời ô**: Trên lưới `256 x 256` (`[-100, 100]`), mỗi ô rộng `0.78125` đơn vị; ở `drive_floor = 0.5`, tốc độ `0.75` u/s (`0.0125` u/tick) cần `62.5` tick để băng qua ô cộng thêm `tau = 30` tick tăng tốc từ nghỉ (~68 tick), trong khi `herbivore_grazing_system` hút `8.0 / 60 = 0.1333` EU/tick trên ô `Grassland` `scale = 0.7` (`r_max = 4.9` EU -> `<= 37` tick cạn sạch, `<= 9` tick dưới ngưỡng `0.25 * r_max`). Ngay cả ở `tick 500..=1500` khi `hyd_med = 0.567..0.740`, `under_med` đã là `0.0000`.
+3. **Sinh sản ở cuối tick che khuất ngưỡng `0.65`**: `autonomous_reproduction_system` chạy vào cuối mỗi tick và chi `50%` năng lượng cho mọi cá thể có `energy >= 0.65 * energy_target` khi `prey_count < prey_cap` (`320`). Vì `prey_n` chỉ đạt `60..233 < 320`, mẫu cuối tick luôn thấy `eng_max = 0.595..0.649 < 0.650` (`total_breed_ready = 0`).
 
-## 4. Số đo thăm dò 100.000 tick (`sel2_grass_steering`, `DONE WHEN #7`)
+## 5. Số đo thăm dò 100.000 tick (`sel2_grass_steering`, `DONE WHEN #7`)
 
 Cấu hình chung: `grace=960`, `founders=100`, `lakes=8`, `reserve=0`, `grass_steering=1`, `seeds 1..=6`, chế độ `--release` (24 lượt chạy hoàn tất toàn bộ).
 
@@ -112,10 +144,10 @@ scale	grace	founders	lakes	prey_cap	reserve	grass_steering	seed	sum_r_max	g	min_
 1	960	100	8	320	0	1	6	153587.2	0.914	4	94.6	194	2284	2190	847	1343	0.387	3324.6	30.1	24.2	24.2	589	428
 ```
 
-Ở đối chứng `prey_cap = 80` (`scale = 1`, `seeds 1..=6`), không có seed nào tuyệt chủng (`min_agents = 20..55`, `mean_agents = 78.0..90.1`), và chết đói chiếm `0.238..0.278` tổng số chết (còn lại chủ yếu là chết khát). Ở `prey_cap = 320`, cả ba mức `scale = 1 / 0.7 / 0.5` đều có tuyệt chủng (`1/6`, `1/6`, `4/6`) và cho `VIABLE = no`.
+Ở đối chứng `prey_cap = 80` (`scale = 1`, `seeds 1..=6`), không có seed nào tuyệt chủng (`min_agents = 20..55`, `mean_agents = 78.0..90.1`), chết đói chiếm `0.238..0.278` tổng số chết (chết khát vẫn chiếm ~72–76 %). Ở `prey_cap = 320`, cả ba mức `scale = 1 / 0.7 / 0.5` đều có tuyệt chủng (`1/6`, `1/6`, `4/6`) và cho `VIABLE = no`.
 
 ## Không khẳng định
 
-- Toàn bộ các lượt chạy 100.000 tick ở trên mang tính thăm dò (*exploratory*): tắt di truyền/đột biến theo ràng buộc mù khối lượng cơ thể của thẻ S11, chỉ chạy trên 6 seed cố định (`1..=6`), trên Windows 11 x64 (`rustc 1.98.1`, bản `--release`).
-- Không khẳng định `live.grass_steering` giúp lưới SEL2-E trở nên khả thi: cả ba mức `scale = 1`, `0.7`, `0.5` tại `prey_cap = 320` đều ghi nhận `VIABLE = no`.
-- Không nới lỏng khẳng định trong `DONE WHEN #2` và không thay đổi các thông số ngoài `AUTHORIZATION`; thẻ S11 hiện dừng ở trạng thái `BLOCKED` chờ hướng dẫn tiếp theo của chủ dự án/lead.
+- **S11 một mình không làm thế giới SEL2 trở nên khả thi:** cả ba mức `scale = 1`, `0.7`, `0.5` tại `prey_cap = 320` đều ghi nhận `VIABLE = no` trên 100.000 tick, và trong phép thử cơ chế đối chứng `#2(a)` (không khát, không chết, không sinh sản), tìm cỏ cục bộ theo thông số mặc định chỉ cao hơn đối chứng đến tick `1500` rồi tụt xuống dưới đối chứng từ tick `2000..=3000`.
+- Các lượt chạy 100.000 tick mang tính thăm dò (*exploratory*), mù khối lượng cơ thể (`body-mass blind`, tắt đột biến/di truyền), chỉ trên 6 seed cố định (`1..=6`), Windows 11 x64 (`rustc 1.98.1`, `--release`).
+- Không tinh chỉnh `GRASS_STAY_FRACTION` hay `GRASS_SCAN_RADIUS`, và không nới lỏng khẳng định `(a)` trong `DONE WHEN #2` (dừng theo `DECISION S11 226d4b29` để gửi kết quả về lead/chủ dự án).

@@ -7,11 +7,12 @@
 //! 3. Unit tests for `GRASS_STAY_FRACTION`, `GRASS_SCAN_RADIUS` (7x7 clipped window), S10
 //!    `PlantReservePolicy` floor, lowest `(row, col)` tie-breaking, strictly-closer `Food`
 //!    override + fallback, thirst-steering priority, and predators remaining unchanged.
-//! 4. Behaviour in the SEL2-E best world (100 founders, 8 lakes, prey_cap 320,
-//!    resource_capacity_scale 0.7, dehydration_ticks 960, seed 2, ticks 2,000-6,000 every 500):
-//!    with `live.grass_steering = 1.0` the median of per-sample median `r / r_max` under prey is
-//!    at least half the field median and at least one sampled prey reaches `energy >= 0.65 *
-//!    energy_target`; with it off the same ratio stays below 0.15.
+//! 4. Controlled mechanism test (`DECISION S11 226d4b29`): 20 founders, 0 predators, locomotion
+//!    on, drive_floor 0.5, thirst_steering 0, mortality 0, reproduction 0, resource_capacity_scale
+//!    0.7, 8 lakes, seed 2, 3,000 ticks, sampled every 500 ticks from 1,000 to 3,000: arm B
+//!    (`live.grass_steering = 1.0`) has strictly higher mean `energy / energy_target` than arm A
+//!    (`0.0`), and no higher fraction of prey stopped (`target_velocity == ZERO`) on cells with
+//!    grazeable grass below `GRASS_STAY_FRACTION * r_max`.
 //! 5. Zero heap allocations once warm in `steering_drive_system` with grass steering on
 //!    (`ThreadTrackingAllocator`, calling thread).
 //! 6. 4-process determinism with grass steering on, plus closed-EU conservation (`< 1e-6`).
@@ -84,17 +85,6 @@ fn run_steering_once(world: &mut World) {
     let mut schedule = Schedule::default();
     schedule.add_systems(steering_drive_system);
     schedule.run(world);
-}
-
-fn median(values: &mut [f64]) -> f64 {
-    assert!(!values.is_empty(), "median of empty slice");
-    values.sort_by(|a, b| a.total_cmp(b));
-    let mid = values.len() / 2;
-    if values.len() % 2 == 1 {
-        values[mid]
-    } else {
-        0.5 * (values[mid - 1] + values[mid])
-    }
 }
 
 // ---- 1. Key registration and preflight validation ----------------------------------------------
@@ -540,25 +530,22 @@ fn window_clipping_tie_breaking_food_strictly_closer_thirst_priority_and_predato
     );
 }
 
-// ---- 4. Behaviour in the SEL2-E best world -----------------------------------------------------
+// ---- 4. Controlled mechanism test (DECISION S11 226d4b29) --------------------------------------
 
-fn measure_sel2e_best_world(grass_steering: f64) -> (f64, f64, usize) {
-    const TICKS: u64 = 6_000;
-    const SAMPLE_START: u64 = 2_000;
+fn measure_controlled_mechanism_arm(grass_steering: f64) -> Vec<(u64, f64, f64)> {
+    const TICKS: u64 = 3_000;
+    const SAMPLE_START: u64 = 1_000;
     const SAMPLE_EVERY: u64 = 500;
     let init = initial(&[
-        ("live.founders", 100.0),
+        ("live.founders", 20.0),
         ("live.predator_fraction", 0.0),
-        ("live.trees", 8.0),
-        ("live.lakes", 8.0),
-        ("live.mortality", 1.0),
-        ("live.reproduction", 1.0),
         ("live.locomotion", 1.0),
         ("live.drive_floor", 0.5),
-        ("live.thirst_steering", 1.0),
-        ("live.prey_cap", 320.0),
+        ("live.thirst_steering", 0.0),
+        ("live.mortality", 0.0),
+        ("live.reproduction", 0.0),
         ("live.resource_capacity_scale", 0.7),
-        ("live.dehydration_ticks", 960.0),
+        ("live.lakes", 8.0),
         (LIVE_KEY_GRASS_STEERING, grass_steering),
     ]);
     let mut a = LiveExperimentAdapter::from_manifest(
@@ -569,12 +556,9 @@ fn measure_sel2e_best_world(grass_steering: f64) -> (f64, f64, usize) {
         (16, 16),
         TICKS,
     )
-    .expect("SEL2-E best world builds");
+    .expect("controlled S11 mechanism world builds");
 
-    let mut prey_sample_medians = Vec::new();
-    let mut field_sample_medians = Vec::new();
-    let mut total_breed_ready = 0usize;
-
+    let mut samples = Vec::new();
     for tick in 1..=TICKS {
         a.run_schedule_once();
         if tick < SAMPLE_START || tick % SAMPLE_EVERY != 0 {
@@ -582,69 +566,69 @@ fn measure_sel2e_best_world(grass_steering: f64) -> (f64, f64, usize) {
         }
         let mut w = a.world();
         let field = w.resource::<ResourceField>().clone();
-        let mut field_ratios: Vec<f64> = field
-            .r
-            .iter()
-            .zip(field.r_max.iter())
-            .filter_map(|(r, m)| {
-                if *m > 0.0 {
-                    Some((*r / *m) as f64)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let field_med = median(&mut field_ratios);
-
-        let mut q = w.query_filtered::<(&HomeostaticState, &Position), (With<Agent>, With<Prey>, Without<ParentLink>)>();
-        let mut under_prey_ratios = Vec::new();
-        let mut breed_ready_here = 0usize;
-        for (h, p) in q.iter(&w) {
-            if h.energy_target > 0.0 && h.energy >= 0.65 * h.energy_target {
-                breed_ready_here += 1;
-            }
-            if let Some(idx) = field.cell_index(p.0.x, p.0.z) {
-                if field.r_max[idx] > 0.0 {
-                    under_prey_ratios.push((field.r[idx] / field.r_max[idx]) as f64);
-                }
+        let reserve_policy = w
+            .get_resource::<PlantReservePolicy>()
+            .copied()
+            .unwrap_or_default();
+        let mut q = w.query_filtered::<
+            (&HomeostaticState, &Position, &InertiaComponent),
+            (With<Agent>, With<Prey>, Without<ParentLink>),
+        >();
+        let mut n_prey = 0usize;
+        let mut sum_energy_ratio = 0.0f64;
+        let mut depleted_zero_vel = 0usize;
+        for (h, p, inertia) in q.iter(&w) {
+            assert!(
+                h.energy_target > 0.0,
+                "tick {tick}: expected positive energy_target"
+            );
+            n_prey += 1;
+            sum_energy_ratio += (h.energy / h.energy_target) as f64;
+            let idx = field
+                .cell_index(p.0.x, p.0.z)
+                .expect("prey position inside resource field bounds");
+            let r_max = field.r_max[idx];
+            let floor = reserve_policy.floor(r_max);
+            let grazeable = (field.r[idx] - floor).max(0.0);
+            if grazeable < GRASS_STAY_FRACTION * r_max && inertia.target_velocity == Vec3::ZERO {
+                depleted_zero_vel += 1;
             }
         }
-        let prey_med = median(&mut under_prey_ratios);
-        println!(
-            "S11_BEHAVIOUR grass={grass_steering} tick={tick} prey_n={} under_prey_med={prey_med:.4} field_med={field_med:.4} breed_ready={breed_ready_here}",
-            under_prey_ratios.len()
-        );
-        prey_sample_medians.push(prey_med);
-        field_sample_medians.push(field_med);
-        total_breed_ready += breed_ready_here;
+        assert_eq!(n_prey, 20, "tick {tick}: expected 20 living prey");
+        samples.push((
+            tick,
+            sum_energy_ratio / n_prey as f64,
+            depleted_zero_vel as f64 / n_prey as f64,
+        ));
     }
-
-    let overall_prey_med = median(&mut prey_sample_medians);
-    let overall_field_med = median(&mut field_sample_medians);
-    println!(
-        "S11_BEHAVIOUR_SUMMARY grass={grass_steering} median_under_prey={overall_prey_med:.4} median_field={overall_field_med:.4} total_breed_ready={total_breed_ready}"
-    );
-    (overall_prey_med, overall_field_med, total_breed_ready)
+    samples
 }
 
 #[test]
-fn sel2e_best_world_behaviour_restores_under_prey_grass_and_breeding_energy() {
+fn controlled_world_grass_steering_raises_intake_and_moves_off_depleted_cells() {
     let _l = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let (off_prey, off_field, off_breed) = measure_sel2e_best_world(0.0);
-    let (on_prey, on_field, on_breed) = measure_sel2e_best_world(1.0);
+    let arm_a = measure_controlled_mechanism_arm(0.0);
+    let arm_b = measure_controlled_mechanism_arm(1.0);
+    assert_eq!(arm_a.len(), 5);
+    assert_eq!(arm_b.len(), 5);
 
-    assert!(
-        off_prey < 0.15,
-        "control (grass_steering=0) under-prey median {off_prey:.4} expected < 0.15 (field {off_field:.4}, breed {off_breed})"
-    );
-    assert!(
-        on_prey >= 0.5 * on_field,
-        "treatment (grass_steering=1) under-prey median {on_prey:.4} is less than half field median {on_field:.4}"
-    );
-    assert!(
-        on_breed >= 1,
-        "treatment (grass_steering=1) had no sampled prey reaching >= 0.65 * energy_target"
-    );
+    for ((t_a, a_eng, a_dep), (t_b, b_eng, b_dep)) in arm_a.iter().zip(arm_b.iter()) {
+        assert_eq!(t_a, t_b);
+        println!(
+            "S11_MECHANISM tick={t_a} arm_a_energy={a_eng:.6} arm_b_energy={b_eng:.6} diff={:+.6} arm_a_depleted_zero_vel={a_dep:.6} arm_b_depleted_zero_vel={b_dep:.6}",
+            b_eng - a_eng
+        );
+    }
+    for ((t, a_eng, a_dep), (_, b_eng, b_dep)) in arm_a.iter().zip(arm_b.iter()) {
+        assert!(
+            b_eng > a_eng,
+            "tick {t}: intake arm B ({b_eng:.6}) did not exceed arm A ({a_eng:.6})"
+        );
+        assert!(
+            b_dep <= a_dep,
+            "tick {t}: depleted zero-velocity fraction arm B ({b_dep:.6}) exceeded arm A ({a_dep:.6})"
+        );
+    }
 }
 
 // ---- 5. Zero heap allocation once warm ---------------------------------------------------------
