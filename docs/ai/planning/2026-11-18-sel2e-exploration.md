@@ -2,7 +2,7 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ SEL2-E — đo thăm dò lần hai, kết quả âm
-description: SEL2-E (216 lượt, 18.000 tick) không có ô khả thi - chỉ 5–7 thế hệ, cỏ không giới hạn quần thể ở hệ số 1,0, khát vẫn gây phần lớn cái chết dù có 8 hồ. Bốn phép đo tiếp theo cùng ngày - nới ân hạn khát chuyển cái chết sang đói; lượt 100.000 tick ở hệ số 0,7 và 0,5 cho tới 16–23 thế hệ nhưng phần lớn quần thể tuyệt chủng, kể cả nền không khan hiếm có ân hạn khát dài (3/12); chẩn đoán cho thấy chúng trượt dần trong đáy của chu kỳ bùng nổ và sụp đổ, nơi sinh sản dừng hẳn; phép cuối cho thấy cỏ đầy đồng (83–86 %) nhưng chỉ còn 6–7 % dưới chân con vật, vì lái không bao giờ nhắm tới đồng cỏ. Mù với khối lượng
+description: SEL2-E (216 lượt, 18.000 tick) không có ô khả thi - chỉ 5–7 thế hệ, cỏ không giới hạn quần thể ở hệ số 1,0, khát vẫn gây phần lớn cái chết dù có 8 hồ. Bốn phép đo tiếp theo cùng ngày - nới ân hạn khát chuyển cái chết sang đói; lượt 100.000 tick ở hệ số 0,7 và 0,5 cho tới 16–23 thế hệ nhưng phần lớn quần thể tuyệt chủng, kể cả nền không khan hiếm có ân hạn khát dài (3/12); chẩn đoán cho thấy chúng trượt dần trong đáy của chu kỳ bùng nổ và sụp đổ, nơi sinh sản dừng hẳn; phép cuối cho thấy cỏ đầy đồng (83–86 %) nhưng chỉ còn 6–7 % dưới chân con vật (đính chính sau S11: con số này phản ánh tốc độ gặm trụi ô, và giới hạn thật là khát). Mù với khối lượng
 status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-18
@@ -15,6 +15,22 @@ last_reviewed: 2026-11-18
 > `live.deaths`, `live.mean_lifespan`, `live.deaths_starvation` và `live.deaths_dehydration`. Mọi observable khác
 > bị bỏ mà không đọc; không giá trị `live.trait_mass_*`, genotype hay kích thước cơ thể nào được in, lưu hay
 > dùng. Seed 1–6 giống S6 và S9 và **không** phải seed xác nhận.
+
+> **Đính chính 2026-11-18, sau [thẻ S11](2026-11-18-s11-grass-steering.md).** Số liệu của mục "Chẩn đoán đáy
+> chu kỳ" giữ nguyên, nhưng hai cách đọc của nó sai:
+>
+> 1. Cột "Mẫu có con đủ ngưỡng sinh" (0/80, 0/54, 0/56) là hệ quả của cách lấy mẫu, không phải bằng chứng. Probe
+>    đọc sau `run_schedule_once`, tức ở cuối tick, mà `autonomous_reproduction_system` chi 50 % năng lượng ngay trong
+>    tick con vật chạm 0,65 mức mục tiêu (khi số con mồi còn dưới `prey_cap`). Mẫu cuối tick vì vậy gần như luôn đếm
+>    được 0 con đủ ngưỡng, ở mọi thế giới. Muốn biết sinh sản có dừng không thì đếm `live.births`.
+> 2. Cỏ dưới chân 6–7 % không chứng minh lái sai. Một con gặm ô `Grassland` ở hệ số 0,7 xuống dưới 25 % `r_max`
+>    trong ≤ 9 tick và trụi hẳn trong ≤ 37 tick, còn băng qua một ô ở `drive_floor` 0,5 mất khoảng 68 tick. Ô dưới
+>    chân một con đang ăn luôn gần cạn, dù nó lái thế nào (S11 §4, trở ngại 2).
+>
+> Đề xuất 1 ở cuối ghi chú (cho con vật tìm cỏ) đã được làm và đo ở S11, và kết quả âm. Ở phép thử cơ chế không
+> khát, năng lượng trung bình giữ 0,89–0,98 mức mục tiêu suốt 3.000 tick, còn nhánh lái tới cỏ tụt dưới đối chứng từ
+> tick 2.000. Thứ giới hạn là khát: mọi hồ nằm trên một hàng `z = +60`, đàn sáng lập ở `z = −30`. Thẻ kế tiếp là S12
+> (`live.lake_layout`, rải hồ trên lưới hai chiều).
 
 ## Câu hỏi
 
@@ -160,6 +176,9 @@ Con mồi sinh sản khi năng lượng ≥ 0,65 mức mục tiêu (`autonomous_
 | 5 | Tuyệt chủng ở tick 27.000 | 0/54 | 0,061 | 0,831 | 0,266; 0,385 |
 | 6 | Tuyệt chủng ở tick 28.000 | 0/56 | 0,062 | 0,827 | 0,255; 0,366 |
 
+> Đính chính 2026-11-18: cột thứ ba là hệ quả của việc lấy mẫu ở cuối tick, và đoạn "Cơ chế" dưới đây là giả thuyết
+> đã bị thẻ S11 bác. Xem khối đính chính ở đầu ghi chú.
+
 **Đọc:** cỏ **không** khan hiếm. Đồng cỏ còn khoảng 83–86 % sức chứa, nhưng ô dưới chân con vật chỉ còn khoảng 6–7 %.
 Ở không một lần lấy mẫu nào có con đạt ngưỡng sinh sản. Các lần sinh vẫn xảy ra giữa hai lần lấy mẫu (618, 410 và 420
 lần), khi một con vượt ngưỡng trong chốc lát, chẳng hạn sau khi ăn một mẩu `Food` hay quả cây, rồi đầu tư một nửa năng
@@ -186,6 +205,7 @@ thể qua vài chục thế hệ. Hiện nó không làm được. Đề xuất 
 1. **Cho con vật tìm cỏ** (sửa luật hành vi, mở kỷ engine mới theo ADR-0008, cần quyết định và có lẽ một cập nhật
    ADR-0006/ADR-0007): `steering_drive_system` thêm một mục tiêu "ô cỏ còn nhiều gần đây" khi đói, hoặc đi theo
    gradient của `r`. Phép chẩn đoán đáy chu kỳ cho thấy đây là thứ chặn: cỏ đầy đồng nhưng con vật không tới được.
+   *(Đính chính 2026-11-18: đã làm ở thẻ S11, kết quả âm; xem khối đính chính ở đầu ghi chú.)*
    Đặt sau một khoá opt-in như mọi thay đổi sinh thái trước, để đường mặc định giữ nguyên.
 2. **Khát:** một ân hạn dài hơn (`live.dehydration_ticks` 960) là cách rẻ nhất để đói thành nguyên nhân chính. Đổi nó
    là đổi một tham số thế giới, nên cần quyết định của chủ dự án và phải khai trong bản đăng ký.
