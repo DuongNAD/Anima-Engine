@@ -499,16 +499,31 @@ impl BrainModel {
         Some(old)
     }
 
-    /// Install a freshly trained GPU model, returning the old one for the caller to recycle.
+    /// Install a freshly trained GPU model onto this thread's WGPU device without sharing lazy
+    /// `FusionTensor` handles across worker streams.
     #[cfg(feature = "ml-wgpu")]
     pub fn replace_wgpu_model(&mut self, new: ActorCriticModel) -> Option<ActorCriticModel> {
         let valid = new.valid();
+        let weights = valid
+            .to_flat_weights(self.input_dim, self.hidden_dim, self.action_dim)
+            .ok()?;
         let old = match &mut self.backend {
-            BrainModelBackend::Wgpu(current, _) => std::mem::replace(current, valid),
+            BrainModelBackend::Wgpu(current, device) => {
+                let rebuilt = ActorCriticModel::from_flat_weights(
+                    self.input_dim,
+                    self.hidden_dim,
+                    self.action_dim,
+                    &weights,
+                    device,
+                )
+                .ok()?;
+                std::mem::replace(current, rebuilt)
+            }
             BrainModelBackend::NdArray(..) => return None,
         };
         self.materialize();
-        Some(old)
+        drop(old);
+        None
     }
 
     /// Build the shared model with **reproducible** weights.

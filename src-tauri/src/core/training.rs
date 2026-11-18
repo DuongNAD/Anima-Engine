@@ -253,7 +253,7 @@ pub fn spawn_ndarray_learner(
             seed,
             resume,
             checkpoint_rx,
-            ModelUpdate::NdArray,
+            |eval_model| Ok(ModelUpdate::NdArray(eval_model)),
         );
     })
 }
@@ -269,6 +269,7 @@ pub fn spawn_wgpu_learner(
     thread::spawn(move || {
         let _exit = exit;
         let device = Device::wgpu(DeviceKind::DefaultDevice);
+        let staging = Device::flex();
         run_training_loop(
             running,
             trans_rx,
@@ -279,7 +280,16 @@ pub fn spawn_wgpu_learner(
             seed,
             resume,
             checkpoint_rx,
-            ModelUpdate::Wgpu,
+            move |eval_model| {
+                // Stage WGPU parameters on the host (`Device::flex()`) on the learner stream so
+                // live `FusionTensor` handles never cross streams into inference (`MultiStream`
+                // cross-stream alias/drop panics in `burn-ir` under sustained swap rates).
+                let weights = eval_model.to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM)?;
+                let host_staged = ActorCriticModel::from_flat_weights(
+                    STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, &staging,
+                )?;
+                Ok(ModelUpdate::Wgpu(host_staged))
+            },
         );
     })
 }
@@ -401,7 +411,7 @@ fn run_training_loop(
     seed: u64,
     resume: Option<SavedLearnerWorkerState>,
     checkpoint_rx: crossbeam_channel::Receiver<LearnerCheckpointRequest>,
-    to_model_update: impl Fn(ActorCriticModel) -> ModelUpdate + Send + 'static,
+    to_model_update: impl Fn(ActorCriticModel) -> Result<ModelUpdate, String> + Send + 'static,
 ) {
     let ad_device = device.autodiff();
     let mut train_model = seeded_training_model(&ad_device, seed);
@@ -534,8 +544,15 @@ fn run_training_loop(
                     train_model = optim.step(LEARNING_RATE, train_model, grads_params);
 
                     let eval_model = train_model.valid();
-                    let delivery =
-                        try_send_without_blocking(&model_tx, to_model_update(eval_model));
+                    let update = match to_model_update(eval_model) {
+                        Ok(update) => update,
+                        Err(error) => {
+                            eprintln!("learner failed to stage published model: {error}");
+                            running.store(false, Ordering::SeqCst);
+                            break;
+                        }
+                    };
+                    let delivery = try_send_without_blocking(&model_tx, update);
                     model_diagnostics.record(delivery);
                     if delivery == ModelUpdateDelivery::Disconnected {
                         break;
@@ -708,7 +725,7 @@ mod tests {
                 0xC0FFEE,
                 None,
                 checkpoint_rx,
-                ModelUpdate::NdArray,
+                |eval_model| Ok(ModelUpdate::NdArray(eval_model)),
             );
         });
 
@@ -771,7 +788,7 @@ mod tests {
                 0xC0FFEE,
                 None,
                 checkpoint_rx,
-                ModelUpdate::NdArray,
+                |eval_model| Ok(ModelUpdate::NdArray(eval_model)),
             );
         });
 
