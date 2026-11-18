@@ -58,7 +58,9 @@ tài liệu ở bảng thắng; sửa trang này.
 - **Hai máy từ 2026-11-17, giống OxideSwarm:** `agent-mac` (Claude Code trên Mac) làm G6 → G4 → G9 và phần
   còn lại của G8; `agent-win` (Claude Code trên Windows, cùng nền với job Rust của CI) làm G5 → G3, rồi **R1c** (giao
   ngày 2026-11-17, [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md)), rồi R0
-  khi chủ dự án nói Đợt 2 đã xong. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
+  khi chủ dự án nói Đợt 2 đã xong. **Từ 2026-11-18 vai `agent-win` do Gemini chạy** (QD-WIN), làm R0 trước rồi R1c
+  ([bản giao việc cho Gemini](../ai/planning/2026-11-18-gemini-worker-win-handoff.md)); Gemini không mở được verifier
+  riêng, nên `agent-mac` kiểm lại PR của nó trước khi PR được đánh dấu sẵn sàng. `agent-mac` cùng ngày nhận S10. Nhánh `mac/…` và `win/…`; nhận thẻ bằng một draft PR; mỗi máy chỉ sửa
   `ALLOWED PATHS` của thẻ mình. `agent-mac` là người ghi duy nhất của `STATE`, `TODO.md`, `FINDINGS.md` và
   trang này; `agent-win` đề xuất dòng cho các file đó trong thân PR của nó.
 - **Cây làm việc đã dọn (MP-0.5):** 10 file test dở dang và phần thêm F-036 vào `FINDINGS.md` đã
@@ -127,7 +129,9 @@ soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đ
 ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Quyết định đó có ngày 2026-11-18 (QĐ-SEL2a–d,
 [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)): bốn thẻ mới **S9** (tách nguyên nhân
 chết), **S10** (khoá `live.plant_reserve`), **SEL2-E** (đo thăm dò lần hai) và **SEL2-D** (đối chứng drift).
-S9 và S10 đã có dòng uỷ quyền; chưa thẻ nào có PR. Định nghĩa các thẻ ở
+**S9** ✅ #117 ([kết quả](../ai/planning/2026-11-18-s9-death-causes.md)): khát gây 71–80 % số cái chết ở cả bốn ô
+đã đo, nên điều kiện 4 của SEL2-E (chết chủ yếu vì đói) chưa đạt ở ô nào; cách nới (thêm hồ hay nới ân hạn khát)
+là việc chủ dự án quyết trước SEL2-E. S10 đã có dòng uỷ quyền và chưa có PR. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
@@ -171,6 +175,11 @@ QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, pl
             viability conditions add ">= 30 generations" and "deaths mostly by starvation"; SEL2-P's
             seed count is decided after SEL2-E (owner in chat, 2026-11-18; docs/ai/planning/
             2026-11-18-sel2-redesign-proposal.md)
+QD-SEL2e  = after S9 (#117: thirst caused 71-80% of deaths), SEL2-E relieves water by adding lakes:
+            live.lakes in {2, 4, 8}; the dehydration grace stays at its default (owner in chat,
+            2026-11-18, "Thêm hồ")
+QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
+            first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
@@ -200,6 +209,15 @@ QD-P2     = paper drafts live in a private repository, not here: this repository
             data and the AI-use log stay under docs/paper/ (owner in chat, 2026-11-17)
 QD-P3     = keep an AI-use log from now on: docs/paper/AI_USE_LOG.md (owner in chat, 2026-11-17)
 QD-1      = level 2: a single-machine 0.9 first, then 1.0 (owner in chat, 2026-11-17)
+QD-AE-C   = law-fork experiments get four control arms besides exotic_energy=None: ghost field
+            (must equal the baseline checksum), unrewarded costly sham, iso-energetic, elevated
+            primary; contract ER06/ER07 amended by a card that tests the ghost field first, after the
+            SEL2 chain (owner in chat, 2026-11-18; docs/ai/planning/
+            2026-11-18-research-law-fork-and-multi-machine.md)
+QD-M7     = Contribute is a batch (fixed-seed epochs, compared exactly with the host); Inhabit is an
+            island (each device its own world, sparse migration through the host); T5 adds a
+            retroactive replay of a volunteer lineage that sweeps an island. The 25/08 design is
+            amended in card NM-4 (owner in chat, 2026-11-18)
 R5-AUTH   =
   AUTHORIZATION (owner, 2026-11-14): for card T1 only, you may write to the paths in its
   ALLOWED PATHS (src-tauri/Cargo.lock, src-tauri/deny.toml, scripts/check_bundle_budget.mjs,

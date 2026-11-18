@@ -123,7 +123,9 @@ detritus như cũ, nên sổ EU vẫn khép kín: phần dự trữ chỉ là c�
 
 **Lưới đề xuất** (thế giới nền của S6, `live.prey_cap` 320, `live.resource_capacity_scale` 1,0):
 `live.founders` ∈ {30, 60, 100} × `live.plant_reserve` ∈ {0; 0,2; 0,3; 0,4} × `live.lakes` ∈ {2, 4} × seed 1–6,
-tức 144 lượt 18.000 tick. Nếu S9 cho thấy khát không giết đáng kể, bỏ chiều `live.lakes`. Seed 1–6 là seed thăm
+tức 144 lượt 18.000 tick. Nếu S9 cho thấy khát không giết đáng kể, bỏ chiều `live.lakes`. **Sau S9 (QĐ-SEL2e,
+2026-11-18):** khát giết phần lớn, nên chiều `live.lakes` được giữ và mở thành {2, 4, 8}, tức 216 lượt. Khoá
+`live.lakes` đã có trong adapter sống (giới hạn 0–1024), nên mức 8 không cần sửa mã. Ân hạn khát giữ mặc định. Seed 1–6 là seed thăm
 dò; bản đăng ký sau đó phải dùng seed riêng.
 
 **Điều kiện một ô lưới được coi là khả thi** (thêm vào hai điều kiện cũ của S6):
@@ -132,6 +134,9 @@ dò; bản đăng ký sau đó phải dùng seed riêng.
 3. **ít nhất 30 thế hệ** trong lượt chạy, ước lượng từ số lần sinh và tuổi thọ trung bình (`live.mean_lifespan`);
 4. phần lớn cái chết là do đói, không do khát (từ S9);
 5. trong suốt lượt chạy vẫn có sinh và chết, tức quần thể không đóng băng.
+
+Ngoài năm điều kiện, SEL2-E báo **tương quan cặp đo được** giữa các lượt cùng seed, làm đầu vào cho QĐ-SEL2c
+([đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md) §2.4).
 
 Điều kiện 3 đến từ báo cáo 1, vốn đề nghị đo theo thế hệ sinh học (30–90) thay vì số tick. Nếu không ô nào đạt,
 lượt đo trả kết quả âm như S6, và bước kế tiếp là các mục ở §5.5, không phải nới điều kiện.
@@ -198,6 +203,7 @@ Không thẻ nào ở đây; đây là ghi chú cho các thẻ đã có.
 | QĐ-SEL2b | Thêm "≥ 30 thế hệ" và "chết chủ yếu vì đói" vào điều kiện khả thi của SEL2-E? | Có | Có |
 | QĐ-SEL2c | SEL2-P dùng 16 hay 24 seed? | Quyết sau SEL2-E, khi biết một lượt chạy tốn bao lâu | Quyết sau SEL2-E |
 | QĐ-SEL2d | Uỷ quyền R5 cho S9 và S10 | Dòng nháp bên dưới | Có, đúng các path dưới đây |
+| QĐ-SEL2e | S9 (#117) đo được khát gây 71–80 % số cái chết. Giảm áp lực khát cho SEL2-E bằng thêm hồ hay bằng nới ân hạn khát (`live.dehydration_ticks`)? | Thêm hồ: giữ chiều `live.lakes` và thêm mức 8 | Thêm hồ ("Thêm hồ", sau S9) |
 
 Dòng uỷ quyền, nay có hiệu lực với ngày 2026-11-18 trong `R5-AUTH`. Dòng của S9 đã được chủ dự án mở rộng cùng ngày thêm `core/experiment/observables.rs` (sổ đăng ký observable) và một test của `prereg_esel1_manifest_tests.rs`, vì danh sách dưới đây đã sót cả hai. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
 cần sửa file nào khác dưới `src-tauri/src`.
@@ -229,5 +235,7 @@ and BLOCK 0 R5 for exactly these paths and no others.
 ## Phụ lục: prompt đã dùng
 
 Hai báo cáo trả lời câu 1 và câu 3 trong bộ bảy câu hỏi nghiên cứu soạn ngày 2026-11-18 trong chat, dán sau một
-khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại (tái lập giữa các máy, nâng `burn`,
-lưu lịch sử bất biến, thí nghiệm rẽ luật, thế giới nhiều máy) chưa có báo cáo.
+khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại đã có báo cáo cùng ngày: tái lập giữa các máy và nâng `burn` ở
+[đối chiếu Burn và tất định](2026-11-18-research-burn-and-determinism.md); lưu lịch sử bất biến ở
+[ADR-0008](../../decisions/ADR-0008-world-past-and-time.md); thí nghiệm rẽ luật và thế giới nhiều máy ở
+[đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md).

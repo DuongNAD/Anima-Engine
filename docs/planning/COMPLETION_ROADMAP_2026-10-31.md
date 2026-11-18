@@ -346,10 +346,13 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-SEL2a | Bước kế tiếp của QĐ-SEL1b là chuỗi **S9 → S10 → SEL2-E → SEL2-P**, kèm **SEL2-D**; không đo dày quanh hệ số 0,6–0,7, không chuyển sang khan hiếm nước trước khi S9 cho số | Năm thẻ mới trong [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án) |
 | QĐ-SEL2b | Điều kiện khả thi của SEL2-E có thêm **ít nhất 30 thế hệ** và **chết chủ yếu vì đói** | Định nghĩa của SEL2-E |
 | QĐ-SEL2c | Số seed của SEL2-P (16 hay 24) **quyết sau SEL2-E**, khi biết một lượt chạy tốn bao lâu | Còn mở, có điều kiện |
+| QĐ-AE-C | Thí nghiệm rẽ luật có thêm bốn nhánh đối chứng ngoài `exotic_energy=None`: trường ma (phải trùng checksum baseline), giả dược tốn phí, đẳng năng lượng, thức ăn tăng. Làm sau chuỗi SEL2 (chủ dự án "Duyệt theo đề xuất", 2026-11-18) | Một thẻ sửa ER06/ER07 và test trường ma trước; [đối chiếu rẽ luật và nhiều máy](../ai/planning/2026-11-18-research-law-fork-and-multi-machine.md) §2.3 |
+| QĐ-M7 | `Contribute` là **lô**, `Inhabit` là **đảo**; T5 thêm chạy lại có hồi tố khi một dòng dõi từ máy tình nguyện quét một đảo (cùng ngày) | Thiết kế 25/08 được sửa trong thẻ NM-4; QĐ-M3, QĐ-M5 vẫn mở |
 | QĐ-PAST (lưu trữ) | Chấp nhận [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) với năm câu trả lời ở §4 và quy tắc "kỷ engine" ở §5 của ADR ("Duyệt theo đề xuất", 2026-11-18) | Thẻ L0 xong; năm thẻ WR1–WR5 cho các bước H1–H5 của ADR. Đầu vào là một báo cáo nghiên cứu về lưu lịch sử bất biến |
 | QĐ-R1c-a | Thẻ R1c tăng `SCHEMA_VERSION` lên 8. Snapshot schema 7 vẫn khôi phục được thế giới; hai bản ghi learner `BinBytesRecorder` của nó bị từ chối kèm lỗi có tên và cảnh báo, và learner dùng chung khởi tạo lại (chủ dự án "Theo đề xuất", 2026-11-18) | Không giữ `burn` 0.13 trong lockfile. Căn cứ: [đối chiếu hai báo cáo về Burn và tất định](../ai/planning/2026-11-18-research-burn-and-determinism.md) §2 |
 | QĐ-R1c-b | Thẻ R1c chuyển thẳng sang `burn-flex`, không qua `burn-ndarray` 0.22 (cùng ngày) | `burn-ndarray` đã bị xoá ở 0.23 |
 | QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất. Cùng ngày, theo yêu cầu của phiên làm S9, chủ dự án cho thêm hai path ("Cho phép cả hai"): sổ đăng ký observable `core/experiment/observables.rs` và một test của `prereg_esel1_manifest_tests.rs`; sáu manifest E-SEL1 đã đăng ký giữ nguyên | Các dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
+| QĐ-SEL2e | Sau S9 (#117: khát gây 71–80 % số cái chết), SEL2-E giảm áp lực khát bằng thêm hồ: `live.lakes` ∈ {2, 4, 8}; ân hạn khát giữ mặc định (chủ dự án "Thêm hồ", 2026-11-18) | §5 và §7 của [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md) |
 
 Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
 lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:
@@ -376,7 +379,7 @@ hai dòng cuối):
 | Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
 | Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng. Một phương án cụ thể (module `sim_math` trên crate `libm`, cấm gọi thẳng hàm toán của hệ điều hành bằng `clippy.toml`, đo bằng ma trận M1) ở [đối chiếu hai báo cáo về Burn và tất định](../ai/planning/2026-11-18-research-burn-and-determinism.md) §3.2 | NM-3 trên hai nền tảng, T5 |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
-| Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
+| Chặng 7 | QĐ-M3, QĐ-M5 — lớp vận chuyển, `Inhabit` có là mục tiêu không. ~~QĐ-M7~~ **đã quyết 2026-11-18** (lô và đảo, bảng ngày 2026-11-18 ở trên) | Nhánh F |
 | Trước AE4 | ~~QĐ-PAST (thiết kế lưu trữ) và QĐ-TIME: duyệt [ADR-0008](../decisions/ADR-0008-world-past-and-time.md)~~ **Đã quyết 2026-11-18**: ADR-0008 `accepted` (thẻ L0 xong) | §4.2 ngay dưới |
 | Chặng 4 | ~~Bước kế tiếp của QĐ-SEL1b~~ **Đã quyết 2026-11-18 (QĐ-SEL2a–d, bảng ngay trên).** Lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
