@@ -163,6 +163,10 @@ QD-ECO-B  = opt-in: live.kill_hydration, live.kill_efficiency, live.target_min_e
             #87); for S43 exploration only, never default (owner's delegate in chat, 2026-11-17)
 QD-SEL1b  = A: a prey reproduction cap key, then pasture scarcity; an exploratory measurement before
             any new preregistration. Cards S6, SEL2-P, SEL2-X (owner in chat, 2026-11-17)
+QD-R1c    = card R1c bumps SCHEMA_VERSION to 8: a schema-7 snapshot restores the world, its two learner
+            records are refused with a named error and a warning, and the shared learner starts fresh;
+            and R1c moves to burn-flex, not burn-ndarray 0.22 (owner in chat, 2026-11-18;
+            docs/ai/planning/2026-11-18-research-burn-and-determinism.md)
 QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, plus SEL2-D; SEL2-E's
             viability conditions add ">= 30 generations" and "deaths mostly by starvation"; SEL2-P's
             seed count is decided after SEL2-E (owner in chat, 2026-11-18; docs/ai/planning/
