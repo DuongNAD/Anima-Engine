@@ -261,6 +261,7 @@ fn steering_world(min_energy: f32) -> (World, Entity) {
         enabled: true,
         drive_floor: 1.0,
         thirst_steering: false,
+        grass_steering: false,
     });
     if min_energy >= 0.0 {
         world.insert_resource(PredatorIncomePolicy {
@@ -441,8 +442,9 @@ fn e_a_resumed_run_keeps_the_declared_policy_and_the_trajectory() {
 fn f_the_keys_are_registered_and_validated() {
     // 19 at card B; card S6 (QD-SEL1b = A) added live.prey_cap and live.resource_capacity_scale;
     // card S10 (QD-SEL2) added live.plant_reserve;
-    // card SEL2-D (QD-SEL2) added live.drift_control and live.drift_reset_ticks.
-    assert_eq!(LIVE_KEYS.len(), 24);
+    // card SEL2-D (QD-SEL2) added live.drift_control and live.drift_reset_ticks;
+    // card S11 added live.grass_steering.
+    assert_eq!(LIVE_KEYS.len(), 25);
     for (c, name) in [
         (LIVE_KEY_KILL_HYDRATION, "live.kill_hydration"),
         (LIVE_KEY_KILL_EFFICIENCY, "live.kill_efficiency"),

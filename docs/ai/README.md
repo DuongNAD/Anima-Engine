@@ -73,6 +73,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-18 | [Thẻ SEL2-D — đối chứng drift trung tính khoá bước](planning/2026-11-18-sel2-d-drift-control.md) — `live.drift_control` và `live.drift_reset_ticks` (`LIVE_KEYS.len() = 24`); ghi/phát lại sinh chết từng tick với tách `P_gen`/`P_pay`, luồng RNG riêng, cửa sổ Channon `K > 0`, báo hụt lịch không tự chế EU | thẻ | `completed` |
 | 2026-11-18 | [Thẻ R0 — đo lại toàn bộ gate tại `46e25d5` (Windows 11 x64)](testing/remeasure-2026-11-18-46e25d5.md) — lượt đo tuần tự toàn bộ gate frontend, backend, tái lập 6 tiến trình và đếm test trên Windows 11 x64 (`test:frontend` 1/700 đỏ do CRLF) | đo | `completed` |
 | 2026-11-18 | [Thẻ R0 — đề xuất mục §1.i cho `STATE_OF_THE_PROJECT.md`](testing/state-1x-proposed-2026-11-18.md) — bản thảo bảng số đo §1.i theo văn phong §1.h từ lượt đo R0 tại `46e25d5` | đề xuất | `proposed` |
+| 2026-11-18 | [Thẻ S11 — khoá `live.grass_steering` (tìm cỏ cho thú ăn cỏ)](planning/2026-11-18-s11-grass-steering.md) — thêm `live.grass_steering` (`LIVE_KEYS.len() = 25`), giữ `GRASS_STAY_FRACTION = 0.25` & `GRASS_SCAN_RADIUS = 3`; #1/#3/#4/#5, kiểm thử đơn vị WHAT và fmt/clippy/dataflow đạt, nhưng `DONE WHEN #2` `BLOCKED` (ưu tiên khát lấn át, cạn ô nhanh hơn rời ô, sinh sản cuối tick ghim năng lượng < 0,65) và đo 100k tick cho `VIABLE = no` ở `scale = 1 / 0,7 / 0,5` | thẻ | `active` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),

@@ -709,9 +709,9 @@ impl Default for MutationPolicy {
 /// (creatures that oscillate but never translate) is bit-identical to every run made before the
 /// drive existed. The desktop app inserts nothing; a live manifest opts in with `live.locomotion`.
 ///
-/// `drive_floor` and `thirst_steering` (ADR-0007 option A, QD-ECO) refine the drive and **only act
-/// while `enabled`**: with `enabled == false` they are never read. Both default to "off"
-/// (`0.0` / `false`), which is today's behaviour exactly.
+/// `drive_floor`, `thirst_steering` (ADR-0007 option A, QD-ECO), and `grass_steering` (card S11)
+/// refine the drive and **only act while `enabled`**: with `enabled == false` they are never read.
+/// All three default to "off" (`0.0` / `false`), which is today's behaviour exactly.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Default)]
 pub struct LocomotionPolicy {
     pub enabled: bool,
@@ -722,6 +722,11 @@ pub struct LocomotionPolicy {
     /// When set, an agent whose hydration is below `THIRST_STEERING_FRACTION` of its target steers
     /// to the nearest non-empty lake instead of its food/prey target.
     pub thirst_steering: bool,
+    /// When set (card S11), a prey agent not steering to water stays on its current cell if
+    /// grazeable grass is at least `GRASS_STAY_FRACTION * r_max`, or otherwise steers to the cell
+    /// with the most grazeable grass in a `(2 * GRASS_SCAN_RADIUS + 1)^2` window (unless a `Food`
+    /// item is strictly closer).
+    pub grass_steering: bool,
 }
 
 impl LocomotionPolicy {
@@ -730,6 +735,7 @@ impl LocomotionPolicy {
             enabled: false,
             drive_floor: 0.0,
             thirst_steering: false,
+            grass_steering: false,
         }
     }
 }

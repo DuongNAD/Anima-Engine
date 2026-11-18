@@ -51,6 +51,16 @@ pub const ARRIVAL_RADIUS: f32 = 0.3;
 /// (ADR-0007 option A). Above it the agent returns to its normal target.
 pub const THIRST_STEERING_FRACTION: f32 = 0.5;
 
+/// With `LocomotionPolicy::grass_steering` on (card S11), a prey agent whose current pasture cell
+/// holds at least this fraction of its carrying capacity `r_max` in grazeable grass (`max(r -
+/// floor, 0)`) sets `target_velocity` to zero so it stays and grazes instead of chasing elsewhere.
+pub const GRASS_STAY_FRACTION: f32 = 0.25;
+
+/// Half-width in pasture cells of the square window (`(2 * R + 1) x (2 * R + 1)`, so `3` scans
+/// a `7 x 7` window clipped to the field bounds) scanned for richer grass when a prey leaves a
+/// depleted cell (card S11).
+pub const GRASS_SCAN_RADIUS: usize = 3;
+
 /// Normalised drive in `[0, 1]` from the mean amplitude of the agent's direct body segments.
 fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOscillator>) -> f32 {
     let Some(children) = children else { return 0.0 };
@@ -69,16 +79,19 @@ fn drive_from_cpg(children: Option<&ChildrenLinks>, oscillators: &Query<&CpgOsci
 }
 
 /// Writes `InertiaComponent.target_velocity` toward each living agent's sensory target.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn steering_drive_system(
     policy: Option<Res<LocomotionPolicy>>,
     income: Option<Res<crate::core::resources::PredatorIncomePolicy>>,
+    field: Option<Res<crate::core::ecology::ResourceField>>,
+    reserve: Option<Res<crate::core::resources::PlantReservePolicy>>,
     lake_query: Query<(&Position, &Lake)>,
     mut agents: Query<
         (
             &Position,
             &HomeostaticState,
             Option<&Predator>,
+            Option<&Prey>,
             Option<&ChildrenLinks>,
             &mut InertiaComponent,
         ),
@@ -96,6 +109,7 @@ pub fn steering_drive_system(
     // ADR-0007 option B: predators only chase prey holding at least this much energy. `0.0` (or no
     // resource) admits every living prey, which is the historical rule.
     let target_min_energy = income.map(|p| p.target_min_energy).unwrap_or(0.0);
+    let reserve_policy = reserve.map(|r| *r).unwrap_or_default();
     let (prey_cache, food_cache, lake_cache) = &mut *caches;
     lake_cache.clear();
     if policy.thirst_steering {
@@ -116,7 +130,7 @@ pub fn steering_drive_system(
         food_cache.push(pos.0);
     }
 
-    for (pos, homeo, predator, children, mut inertia) in agents.iter_mut() {
+    for (pos, homeo, predator, prey, children, mut inertia) in agents.iter_mut() {
         if homeo.energy <= 0.0 {
             inertia.target_velocity = Vec3::ZERO;
             continue;
@@ -128,7 +142,82 @@ pub fn steering_drive_system(
         };
         let thirsty = policy.thirst_steering
             && homeo.hydration < homeo.hydration_target * THIRST_STEERING_FRACTION;
-        let candidates = if thirsty && !lake_cache.is_empty() {
+        let steering_to_water = thirsty && !lake_cache.is_empty();
+
+        // Card S11: grass-seeking steering applies only to prey that are not steering to water.
+        if policy.grass_steering && !steering_to_water && predator.is_none() && prey.is_some() {
+            if let Some(field) = field.as_deref() {
+                let n_cells = field.width.saturating_mul(field.height);
+                if n_cells > 0 && field.r.len() >= n_cells && field.r_max.len() >= n_cells {
+                    if let Some(cur_idx) = field.cell_index(pos.0.x, pos.0.z) {
+                        let cur_r_max = field.r_max[cur_idx];
+                        let cur_floor = reserve_policy.floor(cur_r_max);
+                        let cur_grazeable = (field.r[cur_idx] - cur_floor).max(0.0);
+                        if cur_r_max > 0.0 && cur_grazeable >= GRASS_STAY_FRACTION * cur_r_max {
+                            inertia.target_velocity = Vec3::ZERO;
+                            continue;
+                        }
+                        let cur_row = cur_idx / field.width;
+                        let cur_col = cur_idx % field.width;
+                        let r0 = cur_row.saturating_sub(GRASS_SCAN_RADIUS);
+                        let r1 = (cur_row + GRASS_SCAN_RADIUS).min(field.height - 1);
+                        let c0 = cur_col.saturating_sub(GRASS_SCAN_RADIUS);
+                        let c1 = (cur_col + GRASS_SCAN_RADIUS).min(field.width - 1);
+                        let mut best_grazeable = cur_grazeable;
+                        let mut best_cell: Option<(usize, usize)> = None;
+                        for row in r0..=r1 {
+                            for col in c0..=c1 {
+                                let j = row * field.width + col;
+                                let g =
+                                    (field.r[j] - reserve_policy.floor(field.r_max[j])).max(0.0);
+                                // Strictly greater breaks ties in favour of the lowest (row, col)
+                                // and requires beating the current cell before leaving Food fallback.
+                                if g > best_grazeable {
+                                    best_grazeable = g;
+                                    best_cell = Some((row, col));
+                                }
+                            }
+                        }
+                        if let Some((best_row, best_col)) = best_cell {
+                            let cell_w = (field.max_x - field.min_x) / field.width as f32;
+                            let cell_h = (field.max_z - field.min_z) / field.height as f32;
+                            let grass_target = Vec3::new(
+                                field.min_x + (best_col as f32 + 0.5) * cell_w,
+                                0.0,
+                                field.min_z + (best_row as f32 + 0.5) * cell_h,
+                            );
+                            let grass_dist_sq = pos.0.distance_squared(grass_target);
+                            let mut nearest_food: Option<Vec3> = None;
+                            let mut min_food_dist_sq = f32::MAX;
+                            for food_pos in food_cache.iter() {
+                                let d = pos.0.distance_squared(*food_pos);
+                                if d < min_food_dist_sq {
+                                    min_food_dist_sq = d;
+                                    nearest_food = Some(*food_pos);
+                                }
+                            }
+                            let (target, min_dist_sq) = match nearest_food {
+                                Some(food_pos) if min_food_dist_sq < grass_dist_sq => {
+                                    (food_pos, min_food_dist_sq)
+                                }
+                                _ => (grass_target, grass_dist_sq),
+                            };
+                            inertia.target_velocity =
+                                if min_dist_sq > ARRIVAL_RADIUS * ARRIVAL_RADIUS {
+                                    let speed = max_speed
+                                        * drive_from_cpg(children, &oscillators).max(drive_floor);
+                                    (target - pos.0).normalize_or_zero() * speed
+                                } else {
+                                    Vec3::ZERO
+                                };
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        let candidates = if steering_to_water {
             &*lake_cache
         } else if predator.is_some() {
             &*prey_cache
