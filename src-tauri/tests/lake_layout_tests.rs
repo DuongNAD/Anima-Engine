@@ -214,10 +214,14 @@ fn absent_and_zero_match_every_sampled_tick_with_lakes_and_locomotion_on() {
 
 // ---- 3. DONE WHEN #2: formula, bounds, pairwise distinction & founder distance -----------------
 
-fn spawn_positions_for(
-    lakes: usize,
-    layout: f64,
-) -> (MapBounds, Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 3]>) {
+struct SpawnedPositions {
+    bounds: MapBounds,
+    lakes: Vec<[f32; 3]>,
+    founders: Vec<[f32; 3]>,
+    trees: Vec<[f32; 3]>,
+}
+
+fn spawn_positions_for(lakes: usize, layout: f64) -> SpawnedPositions {
     let init = initial(&[
         ("live.founders", 100.0),
         ("live.predator_fraction", 0.0),
@@ -249,44 +253,44 @@ fn spawn_positions_for(
         .map(|p| [p.0.x, p.0.y, p.0.z])
         .collect::<Vec<_>>();
 
-    (
+    SpawnedPositions {
         bounds,
-        sorted_positions(lake_pos),
-        sorted_positions(founder_pos),
-        sorted_positions(tree_pos),
-    )
+        lakes: sorted_positions(lake_pos),
+        founders: sorted_positions(founder_pos),
+        trees: sorted_positions(tree_pos),
+    }
 }
 
 #[test]
 fn lake_positions_match_formula_lie_in_bounds_are_distinct_and_closer_to_founders() {
     for &n in &[1usize, 2, 3, 4, 8, 9] {
-        let (bounds_0, _, founders_0, trees_0) = spawn_positions_for(n, 0.0);
-        let (bounds_1, lakes_1, founders_1, trees_1) = spawn_positions_for(n, 1.0);
-        assert_eq!(bounds_0.min, bounds_1.min);
-        assert_eq!(bounds_0.max, bounds_1.max);
-        assert_eq!(lakes_1.len(), n, "n={n}: lake entity count mismatch");
-        assert_eq!(founders_0.len(), 100);
-        assert_eq!(trees_0.len(), 8);
+        let p0 = spawn_positions_for(n, 0.0);
+        let p1 = spawn_positions_for(n, 1.0);
+        assert_eq!(p0.bounds.min, p1.bounds.min);
+        assert_eq!(p0.bounds.max, p1.bounds.max);
+        assert_eq!(p1.lakes.len(), n, "n={n}: lake entity count mismatch");
+        assert_eq!(p0.founders.len(), 100);
+        assert_eq!(p0.trees.len(), 8);
 
-        for (p0, p1) in founders_0.iter().zip(founders_1.iter()) {
-            let d = ((p0[0] - p1[0]).powi(2) + (p0[2] - p1[2]).powi(2)).sqrt();
+        for (a0, a1) in p0.founders.iter().zip(p1.founders.iter()) {
+            let d = ((a0[0] - a1[0]).powi(2) + (a0[2] - a1[2]).powi(2)).sqrt();
             assert!(d < 1e-5, "n={n}: founder moved by {d}");
         }
-        for (t0, t1) in trees_0.iter().zip(trees_1.iter()) {
+        for (t0, t1) in p0.trees.iter().zip(p1.trees.iter()) {
             let d = ((t0[0] - t1[0]).powi(2) + (t0[2] - t1[2]).powi(2)).sqrt();
             assert!(d < 1e-5, "n={n}: tree moved by {d}");
         }
 
-        let mut expected = expected_lattice_positions(n, bounds_1);
+        let mut expected = expected_lattice_positions(n, p1.bounds);
         expected.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)));
-        for (actual, (ex, ez)) in lakes_1.iter().zip(expected.iter()) {
+        for (actual, (ex, ez)) in p1.lakes.iter().zip(expected.iter()) {
             assert!(
-                actual[0] > bounds_1.min.x && actual[0] < bounds_1.max.x,
+                actual[0] > p1.bounds.min.x && actual[0] < p1.bounds.max.x,
                 "n={n}: x={} out of bounds",
                 actual[0]
             );
             assert!(
-                actual[2] > bounds_1.min.z && actual[2] < bounds_1.max.z,
+                actual[2] > p1.bounds.min.z && actual[2] < p1.bounds.max.z,
                 "n={n}: z={} out of bounds",
                 actual[2]
             );
@@ -298,17 +302,17 @@ fn lake_positions_match_formula_lie_in_bounds_are_distinct_and_closer_to_founder
                 actual[2]
             );
         }
-        for i in 0..lakes_1.len() {
-            for j in (i + 1)..lakes_1.len() {
-                let d2 = (lakes_1[i][0] - lakes_1[j][0]).powi(2)
-                    + (lakes_1[i][2] - lakes_1[j][2]).powi(2);
+        for i in 0..p1.lakes.len() {
+            for j in (i + 1)..p1.lakes.len() {
+                let d2 = (p1.lakes[i][0] - p1.lakes[j][0]).powi(2)
+                    + (p1.lakes[i][2] - p1.lakes[j][2]).powi(2);
                 assert!(d2 > 1.0, "n={n}: lakes {i} and {j} overlap: d2={d2}");
             }
         }
     }
 
-    let (_, lakes_0, founders_0, _) = spawn_positions_for(8, 0.0);
-    let (_, lakes_1, founders_1, _) = spawn_positions_for(8, 1.0);
+    let p0_8 = spawn_positions_for(8, 0.0);
+    let p1_8 = spawn_positions_for(8, 1.0);
     let max_min_dist = |founders: &[[f32; 3]], lakes: &[[f32; 3]]| -> f32 {
         founders
             .iter()
@@ -320,8 +324,8 @@ fn lake_positions_match_formula_lie_in_bounds_are_distinct_and_closer_to_founder
             })
             .fold(0.0_f32, f32::max)
     };
-    let max_dist_0 = max_min_dist(&founders_0, &lakes_0);
-    let max_dist_1 = max_min_dist(&founders_1, &lakes_1);
+    let max_dist_0 = max_min_dist(&p0_8.founders, &p0_8.lakes);
+    let max_dist_1 = max_min_dist(&p1_8.founders, &p1_8.lakes);
     println!(
         "S12_FOUNDER_LAKE_DIST n=8 layout_0_max_min={max_dist_0:.4} layout_1_max_min={max_dist_1:.4}"
     );
