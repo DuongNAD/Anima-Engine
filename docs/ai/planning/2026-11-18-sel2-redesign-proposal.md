@@ -229,5 +229,7 @@ and BLOCK 0 R5 for exactly these paths and no others.
 ## Phụ lục: prompt đã dùng
 
 Hai báo cáo trả lời câu 1 và câu 3 trong bộ bảy câu hỏi nghiên cứu soạn ngày 2026-11-18 trong chat, dán sau một
-khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại (tái lập giữa các máy, nâng `burn`,
-lưu lịch sử bất biến, thí nghiệm rẽ luật, thế giới nhiều máy) chưa có báo cáo.
+khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại đã có báo cáo cùng ngày: tái lập giữa các máy và nâng `burn` ở
+[đối chiếu Burn và tất định](2026-11-18-research-burn-and-determinism.md); lưu lịch sử bất biến ở
+[ADR-0008](../../decisions/ADR-0008-world-past-and-time.md); thí nghiệm rẽ luật và thế giới nhiều máy ở
+[đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md).
