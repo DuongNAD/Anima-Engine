@@ -3,7 +3,7 @@ phase: testing
 feature: anima-completion
 title: Đề xuất mục §1.i cho STATE_OF_THE_PROJECT.md — đo ngày 2026-11-18 tại 46e25d5
 description: Bản thảo mục §1.i theo đúng văn phong §1.h, tổng hợp từ lượt đo cục bộ thẻ R0 trên Windows 11 x64 tại 46e25d5
-status: proposed
+status: completed
 owner: maintainers
 last_reviewed: 2026-11-18
 ---
