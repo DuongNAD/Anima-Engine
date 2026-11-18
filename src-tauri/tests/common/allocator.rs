@@ -37,11 +37,13 @@
 //
 // # Which of the two to call — the rule, and why it is not "always the new one"
 //
-// `start_tracking` (process-wide) is still the default, and two suites MUST keep it:
-// `map_generation_zero_alloc_tests` and `terrain_challenger_tests`. `TerrainMap::generate` runs its
-// noise pass on rayon workers (`core/terrain.rs`, `.into_par_iter()`), so a thread-scoped counter
-// would stop counting the very allocations those gates exist to catch — and would go green while
-// doing it. A gate that gets quieter is worse than a gate that is occasionally loud.
+// `start_tracking` (process-wide) is still the default, and `terrain_challenger_tests` MUST keep
+// it: `TerrainMap::generate` runs its noise pass on rayon workers (`core/terrain.rs`,
+// `.into_par_iter()`), so a thread-scoped counter would stop counting the very allocations that
+// gate exists to catch — and would go green while doing it. A gate that gets quieter is worse than a
+// gate that is occasionally loud. (`map_generation_zero_alloc_tests` was named here too until
+// 2026-11-18, but its only test measures an inline copy of the droplet loop and never calls
+// `generate`, so it now counts the calling thread only.)
 //
 // Use `start_tracking_this_thread` only after checking that the code inside the measurement window
 // does not hand work to another thread. Everything it would have counted from elsewhere is silently
