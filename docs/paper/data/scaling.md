@@ -22,7 +22,7 @@ review_cycle: per-release
 - **Commit gốc (`origin/feat/ecological-selection`):** `f4614665f7ccf527a6a93a5b0fcfd39aa4e3f948` (nhánh `win/m3-scaling`).
 - **Tập khoá `InitialConditionSet` dùng cho mọi mốc `N`:**
   - `live.founders`: `n.min(4096) as f64` (`LiveWorldConfig::from_initial_conditions` chặn trần `live.founders <= 4096.0` tại `src-tauri/src/core/live_experiment.rs:402`).
-  - **Xử lý mốc `N = 5.000` không sửa mã nguồn engine:** adapter khởi tạo chuẩn ở `live.founders = 4096.0` (gồm `1.229` thú săn mồi + `2.867` con mồi), sau đó **trước tick 1** (`adapter.tick() == 0`), harness mượn `adapter.world()` để spawn thêm `904` cá thể sáng lập (`4096..5000`, gồm `271` `Predator` và `633` `Prey`, giữ đúng tỷ lệ `30%` toàn quần thể `1.500 / 5.000`) với cùng `MorphologyGenotype` `3` node và đặt trên dải `z_fraction = 0.45` qua `decode_genotype`. Cách làm này giữ nguyên 100% lịch `build_tick_schedule` nhưng không làm thay đổi mã nguồn `src-tauri/src/`.
+  - **Xử lý mốc `N = 5.000` không sửa mã nguồn engine:** adapter khởi tạo chuẩn ở `live.founders = 4096.0` (gồm `1.229` thú săn mồi + `2.867` con mồi), sau đó **trước tick 1** (`adapter.tick() == 0`), harness mượn `adapter.world()` để spawn thêm `904` cá thể sáng lập (`4096..5000`, gồm `271` `Predator` và `633` `Prey`, giữ đúng tỷ lệ `30%` toàn quần thể `1.500 / 5.000`) với cùng `MorphologyGenotype` `3` node và đặt trên dải `z_fraction = 0.45` qua `decode_genotype`. Cách làm này giữ nguyên 100% lịch `build_tick_schedule` nhưng không làm thay đổi mã nguồn `src-tauri/src/`. Vì vậy mốc `N = 5.000` **không phải một thế giới genesis**: `904` cá thể thêm có cùng một genotype và đứng trên một hàng, nên bước `4.096 → 5.000` chỉ so được với chính harness này.
   - `live.mortality = 0.0`, `live.reproduction = 0.0`: khoá cố định số cá thể; harness khẳng định `live.agent_count == N` cả **trước** lẫn **sau** khi Criterion chạy từng mốc.
   - `live.locomotion = 1.0`, `live.drive_floor = 0.5`, `live.thirst_steering = 1.0`: kích hoạt thật `steering_drive_system` và va chạm ăn/uống mỗi tick thay vì đo nhánh thoát sớm.
   - `live.predator_fraction = 0.30`, `live.trees = 8.0`, `live.lakes = 2.0`, `live.food_cap = 50.0`; địa hình mặc định `256 × 256` từ `MapSettings::default()`; `WorldLawSet::baseline()`, `seed = 20261118`.
@@ -83,8 +83,33 @@ Biên độ cực trị `min / max` từng mẫu từ `sample.json`:
 ### Đọc đường cong mở rộng & lưu ý kỹ thuật
 
 1. **Chế độ chi phí nền (`N = 10 -> 100`):** Tăng `10×` cá thể nhưng `p50` chỉ tăng `3,11×` (`0,1062 -> 0,3307 ms`) và chi phí trên mỗi cá thể giảm từ `10,62` xuống `3,31 µs/agent`, vì ở sĩ số thấp chi phí cố định của `ResourceField` (`256 × 256` ô), clock và tổng hợp Bevy schedule chiếm đa số.
-2. **Đoạn siêu tuyến tính (`N = 1.000 -> 4.096 -> 5.000`):** Từ `1.000` (`5,6432 ms`) lên `4.096` (`77,9041 ms`), sĩ số tăng `4,096×` trong khi `p50` tăng **`13,80×`** (hệ số mũ hiệu dụng `~1,86` trên đoạn này) khi tương tác gần trong `SpatialHashGrid`, raycast cảm biến, và inference gộp lô chiếm ưu thế; từ `4.096` lên `5.000` (`1,221×` sĩ số), `p50` tăng `1,155×` (`77,9041 -> 89,9732 ms`).
+2. **Đoạn siêu tuyến tính (`N = 1.000 -> 4.096 -> 5.000`):** Từ `1.000` (`5,6432 ms`) lên `4.096` (`77,9041 ms`), sĩ số tăng `4,096×` trong khi `p50` tăng **`13,80×`** (hệ số mũ hiệu dụng `~1,86` trên đoạn này). **Nguyên nhân chưa được đo** (chưa chạy profiler): ứng viên là tương tác gần trong `SpatialHashGrid`, raycast cảm biến và inference gộp lô, nhưng đó là giả thuyết, không phải kết quả; từ `4.096` lên `5.000` (`1,221×` sĩ số), `p50` tăng `1,155×` (`77,9041 -> 89,9732 ms`).
 3. **Ngưỡng ngân sách `16,67 ms` (`60 Hz`):** Ngay cả ở **cận dưới headless** (chưa tính render, IPC hay Tauri), mốc `N = 4.096` đã vượt ngân sách tick `60 Hz` tới `4,67×` (`77,90 ms`), trong khi `N = 1.000` dùng `33,9%` (`5,64 ms`). Trần mô phỏng thời gian thực `60 Hz` trên CPU đơn luồng tất định của máy này nằm chặt trong khoảng `(1.000 ; 4.096)` agent.
+
+### Đo độc lập trên macOS (lead, 2026-11-18)
+
+Cùng bench, cùng commit đầu nhánh `ad62b6d1` gộp với thân cây `f4614665`, chạy bằng `cargo bench --bench live_schedule_scaling`
+(profile `bench`, kế thừa `release`). `p50` và `p95` được trích theo đúng quy tắc ở trên (`median.point_estimate`;
+nearest-rank trên `times[i] / iters[i]`).
+
+| Thành phần | Giá trị (`sysctl` / `sw_vers` / `rustc -V`) |
+|---|---|
+| CPU | `Apple M5`, `10` nhân |
+| Bộ nhớ RAM | `34.359.738.368` byte (`32 GiB`) |
+| Hệ điều hành | macOS `27.2.1` |
+| Chuỗi công cụ Rust | `rustc 1.98.1 (48a229cea 2026-09-01)` |
+
+| `N` | Mẫu `K` | `p50` (ms/tick) | `p95` nearest-rank (ms/tick) |
+|---:|---:|---:|---:|
+| `10` | `50` | `0,0660` | `0,0744` |
+| `100` | `50` | `0,1817` | `0,1887` |
+| `1.000` | `50` | `3,6068` | `3,7557` |
+| `4.096` | `20` | `50,4577` | `54,2198` |
+| `5.000` | `20` | `66,6339` | `68,9112` |
+
+Hình dạng đường cong giống trên Windows: từ `1.000` lên `4.096`, `p50` tăng `13,99×` (hệ số mũ hiệu dụng `~1,87`,
+Windows `~1,86`). Trên máy này, `N = 1.000` dùng `21,6 %` ngân sách `60 Hz` và `N = 4.096` vượt nó `3,03×`. Hai máy
+khác kiến trúc, nên chỉ so hình dạng đường cong, không so con số tuyệt đối.
 
 ### Đầu ra Criterion nguyên văn (`stderr` / `stdout` đã lưu)
 
