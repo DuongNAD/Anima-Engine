@@ -8,6 +8,12 @@ pub struct SpatialCollider {
     pub radius: f32,
 }
 
+/// Tracks whether a [`SpatialCollider`] entity has already been inserted into [`SpatialHashGrid`]
+/// by [`rebuild_spatial_grid_system`]. Mutated in place inside the tick system so ECS archetypes
+/// never move and zero heap allocations occur (F-045).
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct IndexedInGrid(pub bool);
+
 #[derive(Debug, Clone, Copy)]
 pub struct Ray3D {
     pub origin: Vec3,
@@ -351,7 +357,12 @@ fn intersect_sphere(
 pub fn rebuild_spatial_grid_system(
     mut grid: ResMut<SpatialHashGrid>,
     bounds: Res<MapBounds>,
-    query: Query<(Entity, &Position, &SpatialCollider)>,
+    mut query: Query<(
+        Entity,
+        &Position,
+        &SpatialCollider,
+        Option<&mut IndexedInGrid>,
+    )>,
 ) {
     let grid_ref = &mut *grid;
 
@@ -361,7 +372,7 @@ pub fn rebuild_spatial_grid_system(
     }
 
     // Pass 1: Count entities per cell to pre-allocate/reserve capacity
-    for (_entity, pos, _collider) in query.iter() {
+    for (_entity, pos, _collider, _indexed) in query.iter() {
         let x_min = bounds.min.x;
         let x_max = bounds.max.x;
         let x_range = x_max - x_min;
@@ -406,8 +417,11 @@ pub fn rebuild_spatial_grid_system(
     // Clear cells (preserving capacity)
     grid_ref.clear();
 
-    // Pass 2: Insert actual entities
-    for (entity, pos, _collider) in query.iter() {
+    // Pass 2: Insert actual entities and mark them indexed in place
+    for (entity, pos, _collider, opt_indexed) in query.iter_mut() {
         grid_ref.insert(pos.0, &bounds, entity);
+        if let Some(mut indexed) = opt_indexed {
+            indexed.0 = true;
+        }
     }
 }
