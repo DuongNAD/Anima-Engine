@@ -188,6 +188,15 @@ pub const LIVE_KEY_PREY_CAP: &str = "live.prey_cap";
 /// carries the standing crop but not the capacity (`r_max` is derived from the biomes), so a restore
 /// re-applies the factor to `r_max` only and never to the crop or the detritus.
 pub const LIVE_KEY_RESOURCE_CAPACITY_SCALE: &str = "live.resource_capacity_scale";
+/// QD-SEL2 (card S10): the fraction `ρ ∈ [0, 1)` of each pasture cell's capacity `r_max` that
+/// herbivores cannot eat (`resources::PlantReservePolicy`). Grazing, live and dormant, offers
+/// `max(r − ρ·r_max, 0)` instead of `r`, so no cell is grazed below `ρ·r_max`. Regrowth is still
+/// paid from detritus, so the closed-EU ledger is unchanged: the reserve is grass left standing,
+/// not new energy. Absent or `0` is bit-identical to every earlier manifest.
+///
+/// `live.standing_crop` keeps its meaning (the whole field, reserve included), so with a reserve
+/// it cannot fall below `ρ·Σr_max`; a scarcity ratio read from it has a floor of roughly `ρ`.
+pub const LIVE_KEY_PLANT_RESERVE: &str = "live.plant_reserve";
 /// Branch F: `1.0` ranks epoch replacement by [`crate::evolution::fitness::EcologicalFitness`];
 /// `0.0`/absent keeps the locomotion ranking every pre-F run used. Declared, not ambient —
 /// `build_live_world` never reads `ANIMA_FITNESS`.
@@ -196,7 +205,7 @@ pub const LIVE_KEY_ECOLOGICAL_FITNESS: &str = "live.ecological_fitness";
 pub const LIVE_KEY_W_SURPLUS: &str = "live.w_surplus";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 21] = [
+pub const LIVE_KEYS: [&str; 22] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -218,6 +227,7 @@ pub const LIVE_KEYS: [&str; 21] = [
     LIVE_KEY_TARGET_MIN_ENERGY,
     LIVE_KEY_PREY_CAP,
     LIVE_KEY_RESOURCE_CAPACITY_SCALE,
+    LIVE_KEY_PLANT_RESERVE,
 ];
 
 /// The genesis the manifest asked for.
@@ -282,6 +292,9 @@ pub struct LiveWorldConfig {
     /// Card S6: pasture capacity factor applied at genesis; absent reads back as `1.0`.
     #[serde(default = "default_resource_capacity_scale")]
     pub resource_capacity_scale: f64,
+    /// Card S10: ungrazeable fraction of each cell's capacity; absent reads back as `0.0` (off).
+    #[serde(default)]
+    pub plant_reserve: f64,
 }
 
 fn default_prey_cap() -> usize {
@@ -340,6 +353,7 @@ impl Default for LiveWorldConfig {
             target_min_energy: 0.0,
             prey_cap: default_prey_cap(),
             resource_capacity_scale: default_resource_capacity_scale(),
+            plant_reserve: 0.0,
         }
     }
 }
@@ -471,6 +485,19 @@ impl LiveWorldConfig {
                         });
                     }
                     config.resource_capacity_scale = *value;
+                }
+                LIVE_KEY_PLANT_RESERVE => {
+                    // Half-open: a reserve of 1 would leave nothing to eat anywhere, and the
+                    // `!(...)` form also refuses NaN.
+                    if !(*value >= 0.0 && *value < 1.0) {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: *value,
+                            min: 0.0,
+                            max: 1.0,
+                        });
+                    }
+                    config.plant_reserve = *value;
                 }
                 LIVE_KEY_MUTATION_RATE => {
                     if !(0.0..=1.0).contains(value) {
@@ -1926,6 +1953,11 @@ fn build_live_world(
     // Prey reproduction ceiling (`live.prey_cap`, card S6); absent == the historical 80.
     world.insert_resource(crate::core::resources::PreyCapPolicy {
         cap: config.prey_cap,
+    });
+    // Plant reserve (`live.plant_reserve`, card S10); absent == 0.0 == both grazing paths run the
+    // pre-S10 arithmetic. Inserted before the restore branch, so a resumed run keeps its reserve.
+    world.insert_resource(crate::core::resources::PlantReservePolicy {
+        fraction: config.plant_reserve as f32,
     });
     // The steering drive is a declared input (`live.locomotion`, ADR-0006 option A). Absent/0 is
     // the disabled policy: `steering_drive_system` returns at once and `target_velocity` stays 0.

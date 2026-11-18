@@ -66,6 +66,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-18 | [Đề xuất làm lại SEL2](planning/2026-11-18-sel2-redesign-proposal.md) — từ hai báo cáo nghiên cứu: tách nguyên nhân chết (S9), khoá phần cây dự trữ (S10), đo thăm dò lần hai (SEL2-E), đối chứng drift (SEL2-D), endpoint không bị sàn che; chủ dự án duyệt 2026-11-18 | đề xuất | `active` |
 | 2026-11-17 | [Đánh giá dự án theo mười hai tiêu chí](monitoring/2026-11-17-project-assessment.md) — bảng điểm sau lượt rà soát toàn bộ tài liệu; điểm là nhận định, không phải phép đo | đánh giá | `completed` |
 | 2026-11-18 | [Thẻ S9 — tách nguyên nhân chết](planning/2026-11-18-s9-death-causes.md) — `live.deaths_starvation` và `live.deaths_dehydration`; đo lại các ô hệ số 0,5 và 0,7 của lưới S6: khát giết 71–80 % số cá thể chết ở cả bốn ô | đo | `completed` |
+| 2026-11-18 | [Thẻ S10 — khoá `live.plant_reserve`](planning/2026-11-18-s10-plant-reserve.md) — phần cây con vật không ăn được (`ρ·r_max`), cho cả gặm cỏ sống lẫn quần thể gộp; khoá vắng trùng quỹ đạo commit trước; tỉ số crop của S6 có sàn ≈ ρ nên đề xuất đọc phần cỏ ăn được; khôi phục checkpoint ở thế giới nền S6 lệch từ trước S10 | thẻ | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),

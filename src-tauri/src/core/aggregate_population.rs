@@ -844,6 +844,23 @@ impl DormantCohorts {
     ///
     /// Allocation-free: it walks the cells of occupied chunks in place.
     pub fn graze_all(&mut self, field: &mut crate::core::ecology::ResourceField, dt: f32) -> f64 {
+        self.graze_all_with_reserve(
+            field,
+            dt,
+            crate::core::resources::PlantReservePolicy::default(),
+        )
+    }
+
+    /// [`Self::graze_all`] under a plant reserve (card S10, `live.plant_reserve`): each cell offers
+    /// only `max(r − ρ·r_max, 0)`, the same rule `herbivore_grazing_system` applies to one agent,
+    /// and no cell is taken below `ρ·r_max`. With `fraction == 0.0` every expression below reduces
+    /// to the pre-S10 one, operand for operand, so the default is bit-identical.
+    pub fn graze_all_with_reserve(
+        &mut self,
+        field: &mut crate::core::ecology::ResourceField,
+        dt: f32,
+        reserve: crate::core::resources::PlantReservePolicy,
+    ) -> f64 {
         if dt <= 0.0 || field.width == 0 || field.height == 0 {
             return 0.0;
         }
@@ -858,10 +875,18 @@ impl DormantCohorts {
                 continue;
             };
 
+            // `standing` is the grazeable part: everything above the reserve floor (the floor is
+            // `0.0` without a reserve, which is the pre-S10 sum).
             let mut standing = 0.0f64;
             for r in r0..=r1 {
                 for c in c0..=c1 {
-                    standing += field.r[r * field.width + c].max(0.0) as f64;
+                    let idx = r * field.width + c;
+                    let available = if reserve.fraction > 0.0 {
+                        field.r[idx] - reserve.floor(field.r_max[idx])
+                    } else {
+                        field.r[idx]
+                    };
+                    standing += available.max(0.0) as f64;
                 }
             }
             if standing <= 0.0 {
@@ -900,11 +925,26 @@ impl DormantCohorts {
                 for c in c0..=c1 {
                     let idx = r * field.width + c;
                     let before = field.r[idx];
-                    if before <= 0.0 {
-                        continue;
+                    if reserve.fraction > 0.0 {
+                        // Card S10: take the fraction of the grazeable part only, and never go
+                        // under the floor (an `f32` subtraction can land one ULP below it).
+                        let floor = reserve.floor(field.r_max[idx]);
+                        let available = before - floor;
+                        if available <= 0.0 {
+                            continue;
+                        }
+                        field.r[idx] = (before - available * fraction).max(floor);
+                        // Measured in `f64`: once a cell can lose more than half its value, the
+                        // `f32` difference `before − after` is no longer exact, and the field would
+                        // lose a different amount from what the cohort is credited.
+                        removed += before as f64 - field.r[idx] as f64;
+                    } else {
+                        if before <= 0.0 {
+                            continue;
+                        }
+                        field.r[idx] = (before - before * fraction).max(0.0);
+                        removed += (before - field.r[idx]) as f64;
                     }
-                    field.r[idx] = (before - before * fraction).max(0.0);
-                    removed += (before - field.r[idx]) as f64;
                 }
             }
             // Credit exactly what the field lost, and never past the cohort's satiation ceiling.
@@ -1296,6 +1336,7 @@ pub fn dormant_cohort_ecology_system(
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
+    reserve: Option<Res<crate::core::resources::PlantReservePolicy>>,
 ) {
     let Some(mut cohorts) = cohorts else {
         return;
@@ -1308,8 +1349,10 @@ pub fn dormant_cohort_ecology_system(
     // same order the live schedule runs metabolic decay and grazing in.
     let respired = cohorts.respire_all();
 
+    // Card S10: the same plant reserve the live grazers obey; absent == fraction 0 == pre-S10.
+    let reserve = reserve.map(|r| *r).unwrap_or_default();
     let grazed = match field {
-        Some(mut field) => cohorts.graze_all(&mut field, time_step.0),
+        Some(mut field) => cohorts.graze_all_with_reserve(&mut field, time_step.0, reserve),
         None => 0.0,
     };
     let spilled = cohorts.take_spilled();

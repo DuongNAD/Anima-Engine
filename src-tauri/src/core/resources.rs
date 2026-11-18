@@ -655,6 +655,35 @@ impl Default for PreyCapPolicy {
     }
 }
 
+/// Plant reserve (QD-SEL2, card S10, `live.plant_reserve`): the fraction `ρ ∈ [0, 1)` of each
+/// cell's carrying capacity `r_max` that herbivores cannot eat. Grazing offers an animal
+/// `max(r − ρ·r_max, 0)` instead of `r`, so no cell is grazed below `ρ·r_max`.
+///
+/// **Absent resource, or `fraction == 0.0`, is exactly the pre-S10 behaviour**: both grazing paths
+/// (`herbivore_grazing_system` and `DormantCohorts::graze_all`) branch on `fraction > 0.0` and run
+/// the original arithmetic otherwise, so the desktop app and every earlier manifest are
+/// bit-identical.
+///
+/// The reserve is grass left standing on the cell, not new energy: regrowth is still paid from
+/// detritus, so the closed-EU ledger is unchanged.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Default)]
+pub struct PlantReservePolicy {
+    pub fraction: f32,
+}
+
+impl PlantReservePolicy {
+    /// The grazing floor of a cell with capacity `r_max`: `ρ·r_max`, or `0.0` when the reserve is
+    /// off. Both grazing paths and the S10 tests compute the floor through this one function.
+    #[inline]
+    pub fn floor(&self, r_max: f32) -> f32 {
+        if self.fraction > 0.0 {
+            self.fraction * r_max
+        } else {
+            0.0
+        }
+    }
+}
+
 /// Probability that a continuous-reproduction offspring's body genotype is mutated (E-SEL1 P4,
 /// `live.mutation_rate`). **Absent resource == [`DEFAULT_MUTATION_RATE`]**, so the desktop app and
 /// every earlier manifest are bit-identical. Exactly `0.0` means "offspring are exact copies":

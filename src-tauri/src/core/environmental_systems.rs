@@ -106,10 +106,13 @@ pub fn herbivore_grazing_system(
     field: Option<ResMut<crate::core::ecology::ResourceField>>,
     time_step: Res<crate::ai::cpg::TimeStep>,
     mut biomass: Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    reserve: Option<Res<crate::core::resources::PlantReservePolicy>>,
 ) {
     let Some(mut field) = field else {
         return;
     };
+    // Card S10 (`live.plant_reserve`): absent resource == fraction 0 == the pre-S10 arithmetic.
+    let reserve = reserve.map(|r| *r).unwrap_or_default();
     let max_bite = 8.0 * time_step.0; // per-tick grazing ceiling
                                       // Rounding remainders across every grazing agent this tick, banked once at the end.
     let mut spill = 0.0f64;
@@ -121,7 +124,15 @@ pub fn herbivore_grazing_system(
             continue;
         }
         if let Some(i) = field.cell_index(pos.0.x, pos.0.z) {
-            let bite = crate::core::ecology::herbivore_intake(field.r[i], hunger, max_bite);
+            // With a plant reserve the animal is offered only the grass above `ρ·r_max`. Without
+            // one it is offered `r` itself, exactly as before S10.
+            let floor = reserve.floor(field.r_max[i]);
+            let available = if reserve.fraction > 0.0 {
+                (field.r[i] - floor).max(0.0)
+            } else {
+                field.r[i]
+            };
+            let bite = crate::core::ecology::herbivore_intake(available, hunger, max_bite);
             // Measure BOTH sides. Plants and animal reserves are both `f32`, so neither
             // `cell -= taken` nor `reserve += taken` is exact, and "the cell lost what the animal
             // gained" is false at ULP scale. Over a long run that difference is a trend, not
@@ -131,6 +142,13 @@ pub fn herbivore_grazing_system(
             // disappearing.
             let cell_before = field.r[i] as f64;
             let _ = field.graze(pos.0.x, pos.0.z, bite);
+            // `bite <= r − floor` holds in exact arithmetic, but `r − bite` is an `f32` subtraction
+            // and can land one ULP under the floor. Pin it there (never above what the cell held),
+            // so the reserve is a hard floor. `removed` is measured after this, so the ledger
+            // stays exact.
+            if reserve.fraction > 0.0 && field.r[i] < floor {
+                field.r[i] = floor.min(cell_before as f32);
+            }
             let removed = cell_before - field.r[i] as f64;
             let landed =
                 crate::core::energy_ledger::credit_reserve(&mut homeo.energy, removed as f32, cap);
