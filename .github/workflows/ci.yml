@@ -32,7 +32,10 @@ jobs:
     # Windows on purpose: this is the platform the project is developed and released on, and
     # src-tauri/.cargo/config.toml carries x86_64-pc-windows-msvc rustflags.
     runs-on: windows-latest
-    timeout-minutes: 90
+    # 120, not 90: the R1c dependency graph (burn 0.22, cubecl, wgpu 30) takes a cold Windows build
+    # of `cargo test` to ~53 minutes. At 90 the first run after the lockfile change spent its last
+    # 21 minutes saving a multi-gigabyte target directory and was cancelled with every gate green.
+    timeout-minutes: 120
     defaults:
       run:
         working-directory: src-tauri
@@ -51,21 +54,21 @@ jobs:
           cargo --version
           cargo clippy --version
 
-      - name: Cache cargo registry and target
-        uses: actions/cache@v4
+      # Swatinem/rust-cache, as in hardening.yml, instead of caching the whole target directory with
+      # actions/cache. It keeps the registry, ~/.cargo/bin (cargo-audit and cargo-deny are built from
+      # source below, several minutes each) and dependency artifacts, and drops workspace artifacts
+      # before saving. The key covers Cargo.lock and the rustc version.
+      #
+      # Saved only from `main`. A cache saved by a pull request is visible to that pull request alone,
+      # so saving there buys nothing for the next one and costs the upload: with a changed lockfile the
+      # old setup missed its key on every pull request and re-uploaded the target directory each time.
+      # Pull requests restore the newest cache `main` saved (prefix match), and `main` saves a fresh one
+      # whenever it is fast-forwarded to the trunk.
+      - name: Cache cargo registry, tools and dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            # cargo-audit and cargo-deny are `cargo install`ed below, which builds them from source —
-            # several minutes each on a Windows runner. Caching the bin directory makes that a
-            # first-run cost.
-            ~/.cargo/bin
-            src-tauri/target
-          # The toolchain is part of the key: a target directory built by another rustc is rebuilt
-          # from scratch anyway, so restoring it only costs the download.
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock', 'rust-toolchain.toml') }}
-          restore-keys: ${{ runner.os }}-cargo-
+          workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: cargo fmt --check
         if: ${{ !cancelled() }}

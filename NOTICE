@@ -22,8 +22,8 @@ require to accompany the distribution — are in
 installed versions with a SHA-256 per source file recorded in
 [`licensing/third-party-index.json`](licensing/third-party-index.json).
 
-Coverage: **442 of 443** distributed components
-have their licence text packaged. **31** of those publish no licence file in their artifact
+Coverage: **544 of 545** distributed components
+have their licence text packaged. **51** of those publish no licence file in their artifact
 at all; for them the text is taken from the upstream repository at the immutable commit the release
 was published from, vendored verbatim under [`licensing/upstream/`](licensing/upstream/) and hashed,
 with the evidence tying each commit to each released version in
@@ -38,7 +38,7 @@ The remaining **1** are enumerated with the reason, and with what was searched, 
 Three closures, which are genuinely different sets. Conflating them is the error this section exists
 to prevent — the earlier version of this file did, in both directions at once.
 
-- **Rust — 422 crates.** Everything reachable by
+- **Rust — 524 crates.** Everything reachable by
   `cargo tree --features desktop -e normal`. `desktop` is the feature set `npm run tauri:build`
   passes, so it is what ships. `-e normal` excludes dev-dependencies (test-only) and
   build-dependencies (run at build time, not linked). `cargo tree` resolves for the **host target**,
@@ -66,16 +66,23 @@ at the pinned release is packaged, not one option out of several.
 
 ## Rust components
 
-### Crates linked into the desktop binary — 422 component(s)
+### Crates linked into the desktop binary — 524 component(s)
 
-#### MIT OR Apache-2.0 (228)
+#### MIT OR Apache-2.0 (290)
 
 - ahash 0.8.12 — https://github.com/tkaitchuck/ahash
 - allocator-api2 0.2.21 — https://github.com/zakarumych/allocator-api2
 - anyhow 1.0.104 — https://github.com/dtolnay/anyhow
 - arrayvec 0.7.8 — https://github.com/bluss/arrayvec
-- ash 0.37.3+1.3.251 — https://github.com/MaikKlein/ash
+- ash 0.38.0+1.3.281 — https://github.com/ash-rs/ash
 - async-trait 0.1.91 — https://github.com/dtolnay/async-trait
+- awint 0.19.0 — https://github.com/AaronKutch/awint
+- awint_core 0.19.0 — https://github.com/AaronKutch/awint
+- awint_ext 0.19.0 — https://github.com/AaronKutch/awint
+- awint_internals 0.19.0 — https://github.com/AaronKutch/awint
+- awint_macro_internals 0.19.0 — https://github.com/AaronKutch/awint
+- awint_macros 0.19.0 — https://github.com/AaronKutch/awint
+- backtrace 0.3.77 — https://github.com/rust-lang/backtrace-rs
 - base64 0.22.1 — https://github.com/marshallpierce/rust-base64
 - bevy_ecs 0.13.2 — https://github.com/bevyengine/bevy
 - bevy_ecs_macros 0.13.2
@@ -88,44 +95,80 @@ at the pinned release is packaged, not one option out of several.
 - bevy_utils_proc_macros 0.13.2
 - bitflags 2.13.1 — https://github.com/bitflags/bitflags
 - block-buffer 0.10.4 — https://github.com/RustCrypto/utils
-- burn 0.13.2 — https://github.com/tracel-ai/burn
-- burn-autodiff 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-autodiff
-- burn-common 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-common
-- burn-compute 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-compute
-- burn-core 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-core
-- burn-derive 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-derive
-- burn-fusion 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-fusion
-- burn-jit 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-jit
-- burn-ndarray 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-ndarray
-- burn-tensor 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-tensor
-- burn-wgpu 0.13.2 — https://github.com/tracel-ai/burn/tree/main/burn-wgpu
+- bumpalo 3.20.3 — https://github.com/fitzgen/bumpalo
+- burn 0.22.1 — https://github.com/tracel-ai/burn
+- burn-autodiff 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-autodiff
+- burn-backend 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-backend
+- burn-backend-extension 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-backend-extension
+- burn-core 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-core
+- burn-cubecl 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-cubecl
+- burn-derive 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-derive
+- burn-dispatch 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-dispatch
+- burn-einsum 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-einsum
+- burn-flex 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-flex
+- burn-ir 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-ir
+- burn-linalg 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-linalg
+- burn-nn 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-nn
+- burn-optim 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-optim
+- burn-pack 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-pack
+- burn-std 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-std
+- burn-tensor 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-tensor
+- burn-wgpu 0.22.1 — https://github.com/tracel-ai/burn/tree/main/crates/burn-wgpu
 - camino 1.2.4 — https://github.com/camino-rs/camino
 - cargo-platform 0.1.9 — https://github.com/rust-lang/cargo
 - cfg-if 1.0.4 — https://github.com/rust-lang/cfg-if
+- chacha20 0.10.1 — https://github.com/RustCrypto/stream-ciphers
 - chrono 0.4.45 — https://github.com/chronotope/chrono
 - chrono-tz 0.8.6 — https://github.com/chronotope/chrono-tz
 - cookie 0.18.1 — https://github.com/SergioBenitez/cookie-rs
 - cpufeatures 0.2.17 — https://github.com/RustCrypto/utils
+- cpufeatures 0.3.0 — https://github.com/RustCrypto/utils
 - crc32fast 1.5.0 — https://github.com/srijs/rust-crc32fast
 - crossbeam-channel 0.5.16 — https://github.com/crossbeam-rs/crossbeam
 - crossbeam-deque 0.8.7 — https://github.com/crossbeam-rs/crossbeam
 - crossbeam-epoch 0.9.20 — https://github.com/crossbeam-rs/crossbeam
 - crossbeam-utils 0.8.22 — https://github.com/crossbeam-rs/crossbeam
 - crypto-common 0.1.7 — https://github.com/RustCrypto/traits
-- d3d12 0.19.0 — https://github.com/gfx-rs/wgpu/tree/trunk/d3d12
+- cubecl 0.11.4 — https://github.com/tracel-ai/cubecl
+- cubecl-common 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-common
+- cubecl-core 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-core
+- cubecl-environment 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-environment
+- cubecl-ir 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-ir
+- cubecl-macros 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-macros
+- cubecl-macros-internal 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-macros-internal
+- cubecl-monitoring 0.11.4
+- cubecl-opt 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-opt
+- cubecl-runtime 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-runtime
+- cubecl-server 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-server
+- cubecl-std 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-std
+- cubecl-wgpu 0.11.4 — https://github.com/tracel-ai/cubecl/tree/main/crates/cubecl-wgpu
+- cubecl-zspace 0.11.4
+- cubek 0.3.1 — https://github.com/tracel-ai/cubek
+- cubek-attention 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-attention
+- cubek-convolution 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-convolution
+- cubek-interpolate 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-interpolate
+- cubek-matmul 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-matmul
+- cubek-pool 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-pool
+- cubek-quant 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-quant
+- cubek-random 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-random
+- cubek-reduce 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-reduce
+- cubek-std 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-std
+- cubek-tile 0.3.1 — https://github.com/tracel-ai/cubek/tree/main/crates/cubek-tile
 - deadpool-runtime 0.1.4 — https://github.com/bikeshedder/deadpool
 - delegate 0.10.0 — https://github.com/kobzol/rust-delegate
 - deranged 0.5.8 — https://github.com/jhpratt/deranged
 - digest 0.10.7 — https://github.com/RustCrypto/traits
-- dirs 5.0.1 — https://github.com/soc/dirs-rs
 - dirs 6.0.0 — https://github.com/soc/dirs-rs
-- dirs-sys 0.4.1 — https://github.com/dirs-dev/dirs-sys-rs
 - dirs-sys 0.5.0 — https://github.com/dirs-dev/dirs-sys-rs
 - displaydoc 0.2.6 — https://github.com/yaahc/displaydoc
+- document-features 0.2.12 — https://github.com/slint-ui/document-features
+- downcast-rs 2.0.2 — https://github.com/marcianx/downcast-rs
 - dtoa 1.0.11 — https://github.com/dtolnay/dtoa
 - dyn-clone 1.0.20 — https://github.com/dtolnay/dyn-clone
 - either 1.17.0 — https://github.com/rayon-rs/either
+- embassy-futures 0.1.2 — https://github.com/embassy-rs/embassy
 - erased-serde 0.4.10 — https://github.com/dtolnay/erased-serde
+- etcetera 0.11.0 — https://github.com/lunacookies/etcetera
 - fdeflate 0.3.7 — https://github.com/image-rs/fdeflate
 - flate2 1.1.9 — https://github.com/rust-lang/flate2-rs
 - form_urlencoded 1.2.2 — https://github.com/servo/rust-url
@@ -133,7 +176,6 @@ at the pinned release is packaged, not one option out of several.
 - futures-channel 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-core 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-executor 0.3.33 — https://github.com/rust-lang/futures-rs
-- futures-intrusive 0.5.0 — https://github.com/Matthias247/futures-intrusive
 - futures-io 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-macro 0.3.33 — https://github.com/rust-lang/futures-rs
 - futures-sink 0.3.33 — https://github.com/rust-lang/futures-rs
@@ -146,34 +188,41 @@ at the pinned release is packaged, not one option out of several.
 - gif 0.13.3 — https://github.com/image-rs/image-gif
 - glam 0.25.0 — https://github.com/bitshifter/glam-rs
 - glob 0.3.4 — https://github.com/rust-lang/glob
-- gpu-alloc 0.6.2 — https://github.com/zakarumych/gpu-alloc
-- gpu-alloc-types 0.3.1 — https://github.com/zakarumych/gpu-alloc
-- gpu-allocator 0.25.0 — https://github.com/Traverse-Research/gpu-allocator
-- gpu-descriptor 0.2.4 — https://github.com/zakarumych/gpu-descriptor
-- gpu-descriptor-types 0.1.2 — https://github.com/zakarumych/gpu-descriptor
+- gpu-allocator 0.28.0 — https://github.com/Traverse-Research/gpu-allocator
 - half 2.7.1 — https://github.com/VoidStarKat/half-rs
 - hashbrown 0.12.3 — https://github.com/rust-lang/hashbrown
 - hashbrown 0.13.2 — https://github.com/rust-lang/hashbrown
 - hashbrown 0.14.5 — https://github.com/rust-lang/hashbrown
+- hashbrown 0.15.5 — https://github.com/rust-lang/hashbrown
+- hashbrown 0.16.1 — https://github.com/rust-lang/hashbrown
 - hashbrown 0.17.1 — https://github.com/rust-lang/hashbrown
 - heck 0.5.0 — https://github.com/withoutboats/heck
+- hi_sparse_bitset 0.10.0 — https://github.com/tower120/hi_sparse_bitset
+- hi_sparse_bitset 0.9.0 — https://github.com/tower120/hi_sparse_bitset
 - html5ever 0.38.0 — https://github.com/servo/html5ever
 - http 1.4.2 — https://github.com/hyperium/http
 - httparse 1.10.1 — https://github.com/seanmonstar/httparse
 - idna 1.1.0 — https://github.com/servo/rust-url/
 - image 0.24.9 — https://github.com/image-rs/image
+- internment 0.8.6 — https://github.com/droundy/internment
+- itertools 0.15.0 — https://github.com/rust-itertools/itertools
 - itoa 1.0.18 — https://github.com/dtolnay/itoa
 - jpeg-decoder 0.3.2 — https://github.com/image-rs/jpeg-decoder
 - jsonptr 0.6.3 — https://github.com/chanced/jsonptr
 - keyboard-types 0.7.0 — https://github.com/pyfisch/keyboard-types
 - lazy_static 1.5.0 — https://github.com/rust-lang-nursery/lazy-static.rs
 - libc 0.2.189 — https://github.com/rust-lang/libc
+- linkme 0.3.38 — https://github.com/dtolnay/linkme
+- linkme-impl 0.3.38 — https://github.com/dtolnay/linkme
+- litrs 1.0.1 — https://github.com/LukasKalbertodt/litrs
 - lock_api 0.4.14 — https://github.com/Amanieu/parking_lot
-- log 0.4.33 — https://github.com/rust-lang/log
+- log 0.4.35 — https://github.com/rust-lang/log
+- macerator 0.5.2 — https://github.com/wingertge/macerator
+- macerator-macros 0.3.2 — https://github.com/wingertge/macerator
 - markup5ever 0.38.0 — https://github.com/servo/html5ever
 - mime 0.3.17 — https://github.com/hyperium/mime
-- naga 0.19.2 — https://github.com/gfx-rs/wgpu/tree/trunk/naga
-- ndarray 0.15.6 — https://github.com/rust-ndarray/ndarray
+- naga 30.0.2 — https://github.com/gfx-rs/wgpu
+- naga-types 30.0.2 — https://github.com/gfx-rs/wgpu
 - nonmax 0.5.5 — https://github.com/LPGhatguy/nonmax
 - num-complex 0.4.6 — https://github.com/rust-num/num-complex
 - num-conv 0.2.2 — https://github.com/jhpratt/num-conv
@@ -181,6 +230,7 @@ at the pinned release is packaged, not one option out of several.
 - num-traits 0.2.19 — https://github.com/rust-num/num-traits
 - num_cpus 1.17.0 — https://github.com/seanmonstar/num_cpus
 - once_cell 1.21.4 — https://github.com/matklad/once_cell
+- oneshot 0.2.1 — https://github.com/faern/oneshot
 - parking_lot 0.12.5 — https://github.com/Amanieu/parking_lot
 - parking_lot_core 0.9.12 — https://github.com/Amanieu/parking_lot
 - paste 1.0.15 — https://github.com/dtolnay/paste
@@ -190,19 +240,23 @@ at the pinned release is packaged, not one option out of several.
 - powerfmt 0.2.0 — https://github.com/jhpratt/powerfmt
 - ppv-lite86 0.2.21 — https://github.com/cryptocorrosion/cryptocorrosion
 - presser 0.3.1 — https://github.com/EmbarkStudios/presser
+- prettyplease 0.3.0 — https://github.com/dtolnay/prettyplease
 - proc-macro2 1.0.107 — https://github.com/dtolnay/proc-macro2
 - profiling 1.0.18 — https://github.com/aclysma/profiling
 - quote 1.0.47 — https://github.com/dtolnay/quote
+- rand 0.10.4 — https://github.com/rust-random/rand
 - rand 0.7.3 — https://github.com/rust-random/rand
 - rand 0.8.7 — https://github.com/rust-random/rand
 - rand_chacha 0.2.2 — https://github.com/rust-random/rand
 - rand_chacha 0.3.1 — https://github.com/rust-random/rand
+- rand_core 0.10.1 — https://github.com/rust-random/rand_core
 - rand_core 0.5.1 — https://github.com/rust-random/rand
 - rand_core 0.6.4 — https://github.com/rust-random/rand
-- rand_distr 0.4.3 — https://github.com/rust-random/rand
+- rand_distr 0.6.0 — https://github.com/rust-random/rand_distr
 - range-alloc 0.1.5 — https://github.com/gfx-rs/range-alloc
 - rayon 1.12.0 — https://github.com/rayon-rs/rayon
 - rayon-core 1.13.0 — https://github.com/rayon-rs/rayon
+- recasting 0.2.3 — https://github.com/AaronKutch/recasting
 - regex 1.13.1 — https://github.com/rust-lang/regex
 - regex-automata 0.4.16 — https://github.com/rust-lang/regex
 - regex-syntax 0.8.11 — https://github.com/rust-lang/regex
@@ -210,8 +264,10 @@ at the pinned release is packaged, not one option out of several.
 - rustls-pki-types 1.15.1 — https://github.com/rustls/pki-types
 - scopeguard 1.2.0 — https://github.com/bluss/scopeguard
 - semver 1.0.28 — https://github.com/dtolnay/semver
+- seq-macro 0.3.6 — https://github.com/dtolnay/seq-macro
 - serde 1.0.229 — https://github.com/serde-rs/serde
 - serde-untagged 0.1.9 — https://github.com/dtolnay/serde-untagged
+- serde_bytes 0.11.19 — https://github.com/serde-rs/bytes
 - serde_core 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive 1.0.229 — https://github.com/serde-rs/serde
 - serde_derive_internals 0.29.1 — https://github.com/serde-rs/serde
@@ -234,13 +290,12 @@ at the pinned release is packaged, not one option out of several.
 - string_cache 0.9.0 — https://github.com/servo/string-cache
 - syn 1.0.109 — https://github.com/dtolnay/syn
 - syn 2.0.119 — https://github.com/dtolnay/syn
-- syn 3.0.3 — https://github.com/dtolnay/syn
+- syn 3.0.10 — https://github.com/dtolnay/syn
 - tendril 0.5.1 — https://github.com/servo/html5ever
 - thiserror 1.0.69 — https://github.com/dtolnay/thiserror
 - thiserror 2.0.19 — https://github.com/dtolnay/thiserror
 - thiserror-impl 1.0.69 — https://github.com/dtolnay/thiserror
 - thiserror-impl 2.0.19 — https://github.com/dtolnay/thiserror
-- thread-tree 0.3.3 — https://github.com/bluss/thread-tree
 - thread_local 1.1.10 — https://github.com/Amanieu/thread_local-rs
 - time 0.3.54 — https://github.com/time-rs/time
 - time-core 0.1.9 — https://github.com/time-rs/time
@@ -252,83 +307,114 @@ at the pinned release is packaged, not one option out of several.
 - toml_edit 0.21.1 — https://github.com/toml-rs/toml
 - toml_parser 1.1.2+spec-1.1.0 — https://github.com/toml-rs/toml
 - toml_writer 1.1.2+spec-1.1.0 — https://github.com/toml-rs/toml
+- triple_arena 0.15.1 — https://github.com/AaronKutch/triple_arena
 - tungstenite 0.21.0 — https://github.com/snapview/tungstenite-rs
+- tynm 0.2.0 — https://github.com/azriel91/tynm
 - typeid 1.0.3 — https://github.com/dtolnay/typeid
 - typenum 1.20.1 — https://github.com/paholg/typenum
 - unicode-segmentation 1.13.3 — https://github.com/unicode-rs/unicode-segmentation
 - unicode-width 0.1.14 — https://github.com/unicode-rs/unicode-width
 - unicode-xid 0.2.6 — https://github.com/unicode-rs/unicode-xid
+- unsynn 0.3.0 — https://seed.pipapo.org/nodes/seed.pipapo.org/rad:z39WbeupErKS8TwbDS5yU8eZSa3C
 - ureq 2.12.1 — https://github.com/algesten/ureq
 - url 2.5.8 — https://github.com/servo/rust-url
 - utf-8 0.7.6 — https://github.com/SimonSapin/rust-utf8
+- utf8-chars 3.0.7 — https://github.com/A1-Triard/utf8-chars
+- variadics_please 2.0.0 — https://github.com/bevyengine/variadics_please
 - web-time 0.2.4 — https://github.com/daxpedda/web-time
+- web-time 1.1.0 — https://github.com/daxpedda/web-time
 - web_atoms 0.2.5 — https://github.com/servo/html5ever
 - weezl 0.1.12 — https://github.com/image-rs/weezl
-- wgpu 0.19.4 — https://github.com/gfx-rs/wgpu
-- wgpu-core 0.19.4 — https://github.com/gfx-rs/wgpu
-- wgpu-hal 0.19.5 — https://github.com/gfx-rs/wgpu
-- wgpu-types 0.19.2 — https://github.com/gfx-rs/wgpu
-- widestring 1.2.1 — https://github.com/VoidStarKat/widestring-rs
-- windows 0.52.0 — https://github.com/microsoft/windows-rs
+- wgpu 30.0.2 — https://github.com/gfx-rs/wgpu
+- wgpu-core 30.0.2 — https://github.com/gfx-rs/wgpu
+- wgpu-core-deps-windows-linux-android 30.0.2 — https://github.com/gfx-rs/wgpu
+- wgpu-hal 30.0.2 — https://github.com/gfx-rs/wgpu
+- wgpu-naga-bridge 30.0.2 — https://github.com/gfx-rs/wgpu
+- wgpu-types 30.0.2 — https://github.com/gfx-rs/wgpu
 - windows 0.61.3 — https://github.com/microsoft/windows-rs
+- windows 0.62.2 — https://github.com/microsoft/windows-rs
 - windows-collections 0.2.0 — https://github.com/microsoft/windows-rs
-- windows-core 0.52.0 — https://github.com/microsoft/windows-rs
+- windows-collections 0.3.2 — https://github.com/microsoft/windows-rs
 - windows-core 0.61.2 — https://github.com/microsoft/windows-rs
+- windows-core 0.62.2 — https://github.com/microsoft/windows-rs
 - windows-future 0.2.1 — https://github.com/microsoft/windows-rs
+- windows-future 0.3.2 — https://github.com/microsoft/windows-rs
 - windows-implement 0.60.2 — https://github.com/microsoft/windows-rs
 - windows-interface 0.59.3 — https://github.com/microsoft/windows-rs
 - windows-link 0.1.3 — https://github.com/microsoft/windows-rs
 - windows-link 0.2.1 — https://github.com/microsoft/windows-rs
 - windows-numerics 0.2.0 — https://github.com/microsoft/windows-rs
+- windows-numerics 0.3.1 — https://github.com/microsoft/windows-rs
 - windows-result 0.3.4 — https://github.com/microsoft/windows-rs
+- windows-result 0.4.1 — https://github.com/microsoft/windows-rs
 - windows-strings 0.4.2 — https://github.com/microsoft/windows-rs
-- windows-sys 0.45.0 — https://github.com/microsoft/windows-rs
-- windows-sys 0.48.0 — https://github.com/microsoft/windows-rs
+- windows-strings 0.5.1 — https://github.com/microsoft/windows-rs
 - windows-sys 0.52.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.59.0 — https://github.com/microsoft/windows-rs
 - windows-sys 0.60.2 — https://github.com/microsoft/windows-rs
 - windows-sys 0.61.2 — https://github.com/microsoft/windows-rs
-- windows-targets 0.42.2 — https://github.com/microsoft/windows-rs
-- windows-targets 0.48.5 — https://github.com/microsoft/windows-rs
 - windows-targets 0.52.6 — https://github.com/microsoft/windows-rs
 - windows-targets 0.53.5 — https://github.com/microsoft/windows-rs
 - windows-threading 0.1.0 — https://github.com/microsoft/windows-rs
+- windows-threading 0.2.1 — https://github.com/microsoft/windows-rs
 - windows-version 0.1.7 — https://github.com/microsoft/windows-rs
-- windows_x86_64_msvc 0.42.2 — https://github.com/microsoft/windows-rs
-- windows_x86_64_msvc 0.48.5 — https://github.com/microsoft/windows-rs
 - windows_x86_64_msvc 0.52.6 — https://github.com/microsoft/windows-rs
 - windows_x86_64_msvc 0.53.1 — https://github.com/microsoft/windows-rs
 
-#### MIT (71)
+#### MIT (96)
 
+- aligned-vec 0.6.4 — https://github.com/sarah-ek/aligned-vec/
 - bincode 2.0.0-rc.3 — https://github.com/bincode-org/bincode
 - bincode_derive 2.0.1 — https://github.com/bincode-org/bincode
 - bytes 1.12.1 — https://github.com/tokio-rs/bytes
 - cargo_metadata 0.19.2 — https://github.com/oli-obk/cargo_metadata
 - cfb 0.7.3 — https://github.com/mdsteele/rust-cfb
 - color_quant 1.1.0 — https://github.com/image-rs/color_quant.git
-- com 0.6.0 — https://github.com/microsoft/com-rs
-- com_macros 0.6.0 — https://github.com/microsoft/com-rs
-- com_macros_support 0.6.0 — https://github.com/microsoft/com-rs
+- combine 4.6.9 — https://github.com/Marwes/combine
+- convert_case 0.10.0 — https://github.com/rutrum/convert-case
+- convert_case 0.11.0 — https://github.com/rutrum/convert-case
+- darling 0.21.3 — https://github.com/TedDriggs/darling
 - darling 0.23.0 — https://github.com/TedDriggs/darling
+- darling 0.24.1 — https://github.com/TedDriggs/darling
+- darling_core 0.21.3 — https://github.com/TedDriggs/darling
 - darling_core 0.23.0 — https://github.com/TedDriggs/darling
+- darling_core 0.24.1 — https://github.com/TedDriggs/darling
+- darling_macro 0.21.3 — https://github.com/TedDriggs/darling
 - darling_macro 0.23.0 — https://github.com/TedDriggs/darling
-- data-encoding 2.11.0 — https://github.com/ia0/data-encoding
-- derive-new 0.6.0 — https://github.com/nrc/derive-new
+- darling_macro 0.24.1 — https://github.com/TedDriggs/darling
+- data-encoding 2.11.1 — https://github.com/ia0/data-encoding
+- derive-new 0.7.0 — https://github.com/nrc/derive-new
 - derive_more 2.1.1 — https://github.com/JelteF/derive_more
 - derive_more-impl 2.1.1 — https://github.com/JelteF/derive_more
 - dom_query 0.27.0 — https://github.com/niklak/dom_query
 - dotenvy 0.15.7 — https://github.com/allan2/dotenvy
+- dyn-stack 0.13.2 — https://codeberg.org/sarah-quinones/dyn-stack
+- dyn-stack-macros 0.1.3 — https://github.com/kitegi/dynstack/
+- equator 0.4.2 — https://github.com/sarah-ek/equator/
+- equator-macro 0.4.2 — https://github.com/sarah-ek/equator/
+- float4 0.2.0 — https://github.com/EricLBuehler/float4
+- float8 0.7.0 — https://github.com/EricLBuehler/float8
+- gemm 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-c32 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-c64 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-common 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-f16 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-f32 0.19.0 — https://github.com/sarah-ek/gemm/
+- gemm-f64 0.19.0 — https://github.com/sarah-ek/gemm/
 - generic-array 0.14.7 — https://github.com/fizyk20/generic-array.git
-- hassle-rs 0.11.0 — https://github.com/Traverse-Research/hassle-rs
 - ico 0.5.0 — https://github.com/mdsteele/rust-ico
 - infer 0.19.0 — https://github.com/bojand/infer
+- inflections 1.1.1 — https://docs.rs/inflections
 - libm 0.2.16 — https://github.com/rust-lang/compiler-builtins
 - mio 1.2.2 — https://github.com/tokio-rs/mio
+- moddef 0.3.0 — https://github.com/sigurd4/moddef
+- mutants 0.0.3 — https://github.com/sourcefrog/cargo-mutants
 - neo4rs 0.7.3 — https://github.com/neo4j-labs/neo4rs
 - neo4rs-macros 0.3.0 — https://github.com/neo4j-labs/neo4rs
 - new_debug_unreachable 1.0.6 — https://github.com/mbrubeck/rust-debug-unreachable
+- nom 8.0.0 — https://github.com/rust-bakery/nom
 - open 5.4.0 — https://github.com/Byron/open-rs
+- ordered-float 5.5.1 — https://github.com/reem/rust-ordered-float
 - os_pipe 1.2.3 — https://github.com/oconnor663/os_pipe.rs
 - phf 0.11.3 — https://github.com/rust-phf/rust-phf
 - phf 0.13.1 — https://github.com/rust-phf/rust-phf
@@ -344,17 +430,18 @@ at the pinned release is packaged, not one option out of several.
 - raw-cpuid 11.6.0 — https://github.com/gz/rust-cpuid
 - reborrow 0.5.5 — https://github.com/sarah-ek/reborrow/
 - retain_mut 0.1.9 — https://github.com/upsuper/retain_mut
-- rmp 0.8.15 — https://github.com/3Hren/msgpack-rust
-- rmp-serde 1.3.1 — https://github.com/3Hren/msgpack-rust
+- sanitize-filename 0.6.0 — https://github.com/kardeiz/sanitize-filename
 - schannel 0.1.29 — https://github.com/steffengy/schannel-rs
 - schemars 0.8.22 — https://github.com/GREsau/schemars
 - schemars_derive 0.8.22 — https://github.com/GREsau/schemars
 - shared_child 1.1.1 — https://github.com/oconnor663/shared_child.rs
 - simd-adler32 0.3.10 — https://github.com/mcountryman/simd-adler32
 - slab 0.4.12 — https://github.com/tokio-rs/slab
+- spin 0.12.3 — https://codeberg.org/zesterer/spin
 - spin 0.9.9 — https://github.com/mvdnes/spin-rs.git
 - strsim 0.11.1 — https://github.com/rapidfuzz/strsim-rs
 - synstructure 0.13.2 — https://github.com/mystor/synstructure
+- synstructure 0.14.0 — https://github.com/mystor/synstructure
 - text_placeholder 0.5.1 — https://github.com/bernardoamc/text-placeholder
 - tiff 0.9.1 — https://github.com/image-rs/image-tiff
 - tokio 1.53.3 — https://github.com/tokio-rs/tokio
@@ -373,14 +460,17 @@ at the pinned release is packaged, not one option out of several.
 - winnow 1.0.4 — https://github.com/winnow-rs/winnow
 - zmij 1.0.23 — https://github.com/dtolnay/zmij
 
-#### Apache-2.0 OR MIT (32)
+#### Apache-2.0 OR MIT (36)
 
 - async-channel 2.5.0 — https://github.com/smol-rs/async-channel
 - async-executor 1.14.0 — https://github.com/smol-rs/async-executor
 - async-task 4.7.1 — https://github.com/smol-rs/async-task
+- bit-set 0.10.0 — https://github.com/contain-rs/bit-set
 - bit-set 0.8.0 — https://github.com/contain-rs/bit-set
 - bit-vec 0.8.0 — https://github.com/contain-rs/bit-vec
+- bit-vec 0.9.1 — https://github.com/contain-rs/bit-vec
 - concurrent-queue 2.5.0 — https://github.com/smol-rs/concurrent-queue
+- const_fn 0.4.12 — https://github.com/taiki-e/const_fn
 - ctor 0.8.0 — https://github.com/mmastrac/rust-ctor
 - ctor-proc-macro 0.0.7 — https://github.com/mmastrac/rust-ctor
 - equivalent 1.0.2 — https://github.com/indexmap-rs/equivalent
@@ -394,6 +484,7 @@ at the pinned release is packaged, not one option out of several.
 - muda 0.19.3 — https://github.com/tauri-apps/muda
 - parking 2.2.1 — https://github.com/smol-rs/parking
 - pin-project-lite 0.2.17 — https://github.com/taiki-e/pin-project-lite
+- portable-atomic 1.15.0 — https://github.com/taiki-e/portable-atomic
 - rustc-hash 2.1.3 — https://github.com/rust-lang/rustc-hash
 - tauri 2.11.5 — https://github.com/tauri-apps/tauri
 - tauri-codegen 2.6.3 — https://github.com/tauri-apps/tauri
@@ -403,26 +494,25 @@ at the pinned release is packaged, not one option out of several.
 - tauri-runtime-wry 2.11.4 — https://github.com/tauri-apps/tauri
 - tauri-utils 2.9.3 — https://github.com/tauri-apps/tauri
 - utf8_iter 1.0.4 — https://github.com/hsivonen/utf8_iter
-- uuid 1.24.0 — https://github.com/uuid-rs/uuid
+- uuid 1.29.3 — https://github.com/uuid-rs/uuid
 - window-vibrancy 0.6.0 — https://github.com/tauri-apps/tauri-plugin-vibrancy
 - wry 0.55.1 — https://github.com/tauri-apps/wry
 - zeroize 1.9.0 — https://github.com/RustCrypto/utils
 
-#### MIT/Apache-2.0 (20)
+#### MIT/Apache-2.0 (19)
 
-- bit-set 0.5.3 — https://github.com/contain-rs/bit-set
-- bit-vec 0.6.3 — https://github.com/contain-rs/bit-vec
 - bitflags 1.3.2 — https://github.com/bitflags/bitflags
 - deadpool 0.9.5 — https://github.com/bikeshedder/deadpool
 - downcast-rs 1.2.1 — https://github.com/marcianx/downcast-rs
+- enumset 1.1.15 — https://github.com/Lymia/enumset
+- enumset_derive 0.15.1 — https://github.com/Lymia/enumset
 - fixedbitset 0.4.2 — https://github.com/petgraph/fixedbitset
 - ident_case 1.0.1 — https://github.com/TedDriggs/ident_case
 - json-patch 3.0.1 — https://github.com/idubrov/json-patch
 - khronos-egl 6.0.0 — https://github.com/timothee-haudebourg/khronos-egl
-- matrixmultiply 0.3.11 — https://github.com/bluss/matrixmultiply/
 - qoi 0.4.1 — https://github.com/aldanor/qoi-rust
 - rand_xorshift 0.2.0 — https://github.com/rust-random/rand
-- rawpointer 0.2.1 — https://github.com/bluss/rawpointer/
+- rustc-demangle 0.1.28 — https://github.com/rust-lang/rustc-demangle
 - siphasher 1.0.3 — https://github.com/jedisct1/rust-siphash
 - unic-char-property 0.9.0 — https://github.com/open-i18n/rust-unic/
 - unic-char-range 0.9.0 — https://github.com/open-i18n/rust-unic/
@@ -433,32 +523,47 @@ at the pinned release is packaged, not one option out of several.
 
 #### Unicode-3.0 (18)
 
-- icu_collections 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_locale_core 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_normalizer 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_normalizer_data 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_properties 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_properties_data 2.2.0 — https://github.com/unicode-org/icu4x
-- icu_provider 2.2.0 — https://github.com/unicode-org/icu4x
+- icu_collections 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_locale_core 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_normalizer 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_normalizer_data 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_properties 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_properties_data 2.4.0 — https://github.com/unicode-org/icu4x
+- icu_provider 2.4.0 — https://github.com/unicode-org/icu4x
 - litemap 0.8.2 — https://github.com/unicode-org/icu4x
 - potential_utf 0.1.5 — https://github.com/unicode-org/icu4x
-- tinystr 0.8.3 — https://github.com/unicode-org/icu4x
-- writeable 0.6.3 — https://github.com/unicode-org/icu4x
-- yoke 0.8.3 — https://github.com/unicode-org/icu4x
-- yoke-derive 0.8.2 — https://github.com/unicode-org/icu4x
+- tinystr 0.8.5 — https://github.com/unicode-org/icu4x
+- writeable 0.6.4 — https://github.com/unicode-org/icu4x
+- yoke 0.8.4 — https://github.com/unicode-org/icu4x
+- yoke-derive 0.8.4 — https://github.com/unicode-org/icu4x
 - zerofrom 0.1.8 — https://github.com/unicode-org/icu4x
 - zerofrom-derive 0.1.7 — https://github.com/unicode-org/icu4x
-- zerotrie 0.2.4 — https://github.com/unicode-org/icu4x
-- zerovec 0.11.6 — https://github.com/unicode-org/icu4x
-- zerovec-derive 0.11.3 — https://github.com/unicode-org/icu4x
+- zerotrie 0.2.5 — https://github.com/unicode-org/icu4x
+- zerovec 0.11.9 — https://github.com/unicode-org/icu4x
+- zerovec-derive 0.11.7 — https://github.com/unicode-org/icu4x
 
-#### Apache-2.0/MIT (5)
+#### Apache-2.0 (10)
 
-- bit_field 0.10.3 — https://github.com/phil-opp/rust-bit-field
-- md5 0.7.0 — https://github.com/stainless-steel/md5
-- noise 0.8.2 — https://github.com/razaekel/noise-rs
-- pollster 0.3.0 — https://github.com/zesterer/pollster
-- rustc-hash 1.1.0 — https://github.com/rust-lang-nursery/rustc-hash
+- ciborium 0.2.2 — https://github.com/enarx/ciborium
+- ciborium-io 0.2.2 — https://github.com/enarx/ciborium
+- ciborium-ll 0.2.2 — https://github.com/enarx/ciborium
+- codespan-reporting 0.13.1 — https://github.com/brendanzab/codespan
+- glutin_wgl_sys 0.6.1 — https://github.com/rust-windowing/glutin
+- once_vec 0.4.0 — https://github.com/vaivaswatha/once_vec
+- pliron 0.19.0 — https://github.com/pliron-org/pliron
+- pliron-derive 0.19.0 — https://github.com/pliron-org/pliron
+- spirv 0.4.0+sdk-1.4.341.0 — https://github.com/gfx-rs/rspirv
+- tao 0.35.3 — https://github.com/tauri-apps/tao
+
+#### MPL-2.0 (7)
+
+- buildid 1.1.0 — https://github.com/jmesmon/buildid
+- colored 3.1.1 — https://github.com/mackwic/colored
+- cssparser 0.36.0 — https://github.com/servo/rust-cssparser
+- cssparser-macros 0.6.1 — https://github.com/servo/rust-cssparser
+- dtoa-short 0.3.5 — https://github.com/upsuper/dtoa-short
+- option-ext 0.2.0 — https://github.com/soc/option-ext.git
+- selectors 0.36.1 — https://github.com/servo/stylo
 
 #### BSD-3-Clause (5)
 
@@ -468,14 +573,6 @@ at the pinned release is packaged, not one option out of several.
 - lebe 0.5.3 — https://github.com/johannesvollmer/lebe
 - subtle 2.6.1 — https://github.com/dalek-cryptography/subtle
 
-#### MPL-2.0 (5)
-
-- cssparser 0.36.0 — https://github.com/servo/rust-cssparser
-- cssparser-macros 0.6.1 — https://github.com/servo/rust-cssparser
-- dtoa-short 0.3.5 — https://github.com/upsuper/dtoa-short
-- option-ext 0.2.0 — https://github.com/soc/option-ext.git
-- selectors 0.36.1 — https://github.com/servo/stylo
-
 #### Unlicense OR MIT (5)
 
 - aho-corasick 1.1.4 — https://github.com/BurntSushi/aho-corasick
@@ -484,19 +581,12 @@ at the pinned release is packaged, not one option out of several.
 - termcolor 1.4.1 — https://github.com/BurntSushi/termcolor
 - winapi-util 0.1.11 — https://github.com/BurntSushi/winapi-util
 
-#### Apache-2.0 (4)
+#### Zlib OR Apache-2.0 OR MIT (4)
 
-- codespan-reporting 0.11.1 — https://github.com/brendanzab/codespan
-- glutin_wgl_sys 0.5.0 — https://github.com/rust-windowing/glutin
-- spirv 0.3.0+sdk-1.3.268.0 — https://github.com/gfx-rs/rspirv
-- tao 0.35.3 — https://github.com/tauri-apps/tao
-
-#### ISC (4)
-
-- libloading 0.7.4 — https://github.com/nagisa/rust_libloading/
-- libloading 0.8.9 — https://github.com/nagisa/rust_libloading/
-- rustls-webpki 0.103.16 — https://github.com/rustls/webpki
-- untrusted 0.9.0 — https://github.com/briansmith/untrusted
+- bytemuck 1.25.2 — https://github.com/Lokathor/bytemuck
+- bytemuck_derive 1.11.0 — https://github.com/Lokathor/bytemuck
+- safe_arch 1.2.0 — https://github.com/Lokathor/safe_arch
+- wide 1.7.1 — https://github.com/Lokathor/wide
 
 #### Apache-2.0 OR ISC OR MIT (3)
 
@@ -504,11 +594,29 @@ at the pinned release is packaged, not one option out of several.
 - rustls-native-certs 0.7.3 — https://github.com/rustls/rustls-native-certs
 - rustls-pemfile 2.2.0 — https://github.com/rustls/pemfile
 
+#### Apache-2.0/MIT (3)
+
+- bit_field 0.10.3 — https://github.com/phil-opp/rust-bit-field
+- noise 0.8.2 — https://github.com/razaekel/noise-rs
+- rustc-hash 1.1.0 — https://github.com/rust-lang-nursery/rustc-hash
+
+#### ISC (3)
+
+- libloading 0.8.9 — https://github.com/nagisa/rust_libloading/
+- rustls-webpki 0.103.16 — https://github.com/rustls/webpki
+- untrusted 0.9.0 — https://github.com/briansmith/untrusted
+
 #### MIT OR Apache-2.0 OR Zlib (3)
 
-- glow 0.13.1 — https://github.com/grovesNL/glow
+- glow 0.17.0 — https://github.com/grovesNL/glow
 - raw-window-handle 0.6.2 — https://github.com/rust-windowing/raw-window-handle
 - zune-inflate 0.2.54
+
+#### Zlib (3)
+
+- foldhash 0.1.5 — https://github.com/orlp/foldhash
+- foldhash 0.2.0 — https://github.com/orlp/foldhash
+- slotmap 1.1.1 — https://github.com/orlp/slotmap
 
 #### BSD-2-Clause OR Apache-2.0 OR MIT (2)
 
@@ -549,6 +657,10 @@ at the pinned release is packaged, not one option out of several.
 
 - dpi 0.1.2 — https://github.com/rust-windowing/winit
 
+#### Apache-2.0 WITH LLVM-exception (1)
+
+- rustc_apfloat 0.2.3+llvm-462a31f5a5ab — https://github.com/rust-lang/rustc_apfloat
+
 #### BSD-3-Clause AND MIT (1)
 
 - brotli 8.0.4 — https://github.com/dropbox/rust-brotli
@@ -557,25 +669,21 @@ at the pinned release is packaged, not one option out of several.
 
 - brotli-decompressor 5.0.3 — https://github.com/dropbox/rust-brotli-decompressor
 
-#### CC0-1.0 (1)
+#### BSL-1.0 (1)
 
-- hexf-parse 0.2.1 — https://github.com/lifthrasiir/hexf
+- xxhash-rust 0.8.21 — https://github.com/DoumanAsh/xxhash-rust
 
 #### CC0-1.0 OR MIT-0 OR Apache-2.0 (1)
 
 - dunce 1.0.5 — https://gitlab.com/kornelski/dunce
 
+#### MIT / Apache-2.0 (1)
+
+- float-ord 0.3.2 — https://github.com/notriddle/rust-float-ord
+
 #### MIT OR Zlib OR Apache-2.0 (1)
 
 - miniz_oxide 0.8.9 — https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-
-#### Zlib (1)
-
-- foldhash 0.2.0 — https://github.com/orlp/foldhash
-
-#### Zlib OR Apache-2.0 OR MIT (1)
-
-- bytemuck 1.25.2 — https://github.com/Lokathor/bytemuck
 
 
 ## JavaScript components — distributed

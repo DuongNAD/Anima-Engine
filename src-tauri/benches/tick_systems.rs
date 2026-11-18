@@ -52,8 +52,7 @@ use anima_engine_lib::physics::{
 };
 
 use bevy_ecs::prelude::*;
-use burn::backend::Autodiff;
-use burn::tensor::{Data, Shape, Tensor};
+use burn::tensor::{Device, Tensor, TensorData};
 use glam::Vec3;
 
 /// The world size the engine actually runs at (`MapSettings::default()`), not a convenient one.
@@ -290,8 +289,6 @@ fn bench_spatial(c: &mut Criterion) {
 
 // ---- 5. Learner objective ---------------------------------------------------------------------
 
-type Ad = Autodiff<burn_ndarray::NdArray<f32>>;
-
 /// Flat weights for the real architecture, in the layout `from_flat_weights` reads.
 fn flat_weights() -> Vec<f32> {
     let len = (STATE_DIM * HIDDEN_DIM + HIDDEN_DIM)
@@ -303,23 +300,19 @@ fn flat_weights() -> Vec<f32> {
     (0..len).map(|k| 0.05 + 0.01 * ((k % 7) as f32)).collect()
 }
 
-fn tensor<const D: usize>(data: Vec<f32>, shape: [usize; D]) -> Tensor<Ad, D> {
-    Tensor::<Ad, D>::from_data(Data::new(data, Shape::new(shape)), &Default::default())
+fn tensor<const D: usize>(data: Vec<f32>, shape: [usize; D], device: &Device) -> Tensor<D> {
+    Tensor::<D>::from_data(TensorData::new(data, shape), device)
 }
 
 /// `a2c_loss` is the single A2C objective ADR-0003 requires both learners to share, so its cost is
 /// paid once per optimiser step on the learner thread — off the tick path, but on the same CPU.
 /// Benchmarked at the exact `BATCH_SIZE` the learner accumulates before stepping.
 fn bench_learner(c: &mut Criterion) {
+    let device = Device::flex().autodiff();
     let weights = flat_weights();
-    let model = ActorCriticModel::<Ad>::from_flat_weights(
-        STATE_DIM,
-        HIDDEN_DIM,
-        ACTION_DIM,
-        &weights,
-        &Default::default(),
-    )
-    .expect("flat weights match the declared architecture");
+    let model =
+        ActorCriticModel::from_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, &device)
+            .expect("flat weights match the declared architecture");
 
     let mut group = c.benchmark_group("learner");
     group.throughput(Throughput::Elements(BATCH_SIZE as u64));
@@ -329,10 +322,22 @@ fn bench_learner(c: &mut Criterion) {
             // The tensors are rebuilt each iteration on purpose: the learner builds them fresh from
             // the transition buffer every step, so hoisting them out would measure a call the engine
             // never makes.
-            let states = tensor(vec![0.1; BATCH_SIZE * STATE_DIM], [BATCH_SIZE, STATE_DIM]);
-            let next_states = tensor(vec![0.2; BATCH_SIZE * STATE_DIM], [BATCH_SIZE, STATE_DIM]);
-            let actions = tensor(vec![0.5; BATCH_SIZE * ACTION_DIM], [BATCH_SIZE, ACTION_DIM]);
-            let rewards = tensor(vec![1.0; BATCH_SIZE], [BATCH_SIZE, 1]);
+            let states = tensor(
+                vec![0.1; BATCH_SIZE * STATE_DIM],
+                [BATCH_SIZE, STATE_DIM],
+                &device,
+            );
+            let next_states = tensor(
+                vec![0.2; BATCH_SIZE * STATE_DIM],
+                [BATCH_SIZE, STATE_DIM],
+                &device,
+            );
+            let actions = tensor(
+                vec![0.5; BATCH_SIZE * ACTION_DIM],
+                [BATCH_SIZE, ACTION_DIM],
+                &device,
+            );
+            let rewards = tensor(vec![1.0; BATCH_SIZE], [BATCH_SIZE, 1], &device);
             a2c_loss(
                 black_box(&model),
                 states,
@@ -341,7 +346,7 @@ fn bench_learner(c: &mut Criterion) {
                 rewards,
                 DISCOUNT,
             )
-            .into_scalar()
+            .into_scalar::<f32>()
         });
     });
 

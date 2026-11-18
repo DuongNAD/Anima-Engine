@@ -19,13 +19,9 @@
 
 use anima_engine_lib::ai::model::ActorCriticModel;
 use anima_engine_lib::core::training::{a2c_loss, DISCOUNT};
-use burn::backend::Autodiff;
-use burn::module::AutodiffModule;
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
-use burn::tensor::{Data, Shape, Tensor};
-
-type Backend = burn_ndarray::NdArray<f32>;
-type Ad = Autodiff<Backend>;
+use burn::module::Module;
+use burn::optim::{AdamConfig, GradientsParams};
+use burn::tensor::{Device, Tensor, TensorData};
 
 const INPUTS: usize = 3;
 const HIDDEN: usize = 4;
@@ -53,30 +49,36 @@ fn base_weights() -> Vec<f32> {
         .collect()
 }
 
-fn tensor<const D: usize>(data: Vec<f32>, shape: [usize; D]) -> Tensor<Ad, D> {
-    Tensor::<Ad, D>::from_data(Data::new(data, Shape::new(shape)), &Default::default())
+fn tensor<const D: usize>(data: Vec<f32>, shape: [usize; D]) -> Tensor<D> {
+    Tensor::<D>::from_data(TensorData::new(data, shape), &Device::flex().autodiff())
 }
 
-fn states() -> Tensor<Ad, 2> {
+fn states() -> Tensor<2> {
     tensor(vec![0.5, 0.25, 0.75, 0.4, 0.6, 0.2], [BATCH, INPUTS])
 }
 
-fn next_states() -> Tensor<Ad, 2> {
+fn next_states() -> Tensor<2> {
     tensor(vec![0.5, 0.25, 0.75, 0.4, 0.6, 0.2], [BATCH, INPUTS])
 }
 
-fn actions() -> Tensor<Ad, 2> {
+fn actions() -> Tensor<2> {
     // Both well away from the sigmoid's 0.5 resting point, so "toward" and "away" are measurable.
     tensor(vec![1.0, 0.0, 1.0, 0.0], [BATCH, OUTPUTS])
 }
 
-fn rewards(value: f32) -> Tensor<Ad, 2> {
+fn rewards(value: f32) -> Tensor<2> {
     tensor(vec![value; BATCH], [BATCH, 1])
 }
 
-fn model_from(weights: &[f32]) -> ActorCriticModel<Ad> {
-    ActorCriticModel::<Ad>::from_flat_weights(INPUTS, HIDDEN, OUTPUTS, weights, &Default::default())
-        .expect("weights match the declared architecture")
+fn model_from(weights: &[f32]) -> ActorCriticModel {
+    ActorCriticModel::from_flat_weights(
+        INPUTS,
+        HIDDEN,
+        OUTPUTS,
+        weights,
+        &Device::flex().autodiff(),
+    )
+    .expect("weights match the declared architecture")
 }
 
 fn loss_of(weights: &[f32], reward: f32) -> f32 {
@@ -89,22 +91,19 @@ fn loss_of(weights: &[f32], reward: f32) -> f32 {
         rewards(reward),
         DISCOUNT,
     )
-    .into_scalar()
+    .into_scalar::<f32>()
 }
 
 /// Mean actor output for output 0 across the batch. The recorded action for that output is 1.0, so
 /// larger means closer to the action taken.
-fn actor_output_0(model: &ActorCriticModel<Backend>) -> f32 {
-    let device = Default::default();
-    let s = Tensor::<Backend, 2>::from_data(
-        Data::new(
-            vec![0.5, 0.25, 0.75, 0.4, 0.6, 0.2],
-            Shape::new([BATCH, INPUTS]),
-        ),
+fn actor_output_0(model: &ActorCriticModel) -> f32 {
+    let device = Device::flex();
+    let s = Tensor::<2>::from_data(
+        TensorData::new(vec![0.5, 0.25, 0.75, 0.4, 0.6, 0.2], [BATCH, INPUTS]),
         &device,
     );
     let (actor_out, _) = model.forward(s);
-    let values: Vec<f32> = actor_out.into_data().convert::<f32>().value;
+    let values: Vec<f32> = actor_out.into_data().try_into_vec::<f32>().unwrap();
     // Column 0 of each row.
     (values[0] + values[OUTPUTS]) / 2.0
 }
@@ -123,8 +122,8 @@ fn advantage_signs_are_what_the_tests_below_assume() {
     let model = model_from(&weights);
     let (_, critic) = model.forward(states());
     let (_, critic_next) = model.forward(next_states());
-    let v: Vec<f32> = critic.into_data().convert::<f32>().value;
-    let v_next: Vec<f32> = critic_next.into_data().convert::<f32>().value;
+    let v: Vec<f32> = critic.into_data().try_into_vec::<f32>().unwrap();
+    let v_next: Vec<f32> = critic_next.into_data().try_into_vec::<f32>().unwrap();
 
     let td_rewarding = REWARDING + DISCOUNT * v_next[0] - v[0];
     let td_punishing = PUNISHING + DISCOUNT * v_next[0] - v[0];

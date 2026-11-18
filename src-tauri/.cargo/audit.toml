@@ -12,46 +12,21 @@
 
 [advisories]
 ignore = [
-    # gix-fs 0.8.1 — RUSTSEC-2024-0350, traversal outside the working tree enabling arbitrary code
-    # execution (CVSS 8.8).
-    #
-    # Reached only as burn-core -> burn-dataset -> gix-tempfile -> gix-fs, and `burn-dataset` is an
-    # optional dependency this crate does not enable. Dropping burn's `train` feature (see the note
-    # in Cargo.toml) removed burn-train and burn-dataset from the compiled graph; what remains is a
-    # lockfile entry.
-    #
-    # Verified, and these are the commands to re-run if it is ever in doubt:
-    #   cargo tree -e normal --target all | grep -c gix   -> 0
-    #   cargo build --features desktop 2>&1 | grep -ci "compiling gix"  -> 0
-    #
-    # Upgrading burn does not currently help: 0.14 still resolves the same vulnerable gix-tempfile,
-    # and it breaks the API in `ai/model.rs` and `core/training.rs` (`Data` -> `TensorData`, and
-    # `Wgpu` lost its third generic parameter). That migration is worth doing for its own reasons —
-    # 0.13.2 is many releases behind — but it is not a fix for this, and it touches the numerically
-    # sensitive learner. Tracked separately.
-    "RUSTSEC-2024-0350",
-
-    # gix-features 0.36.1 — RUSTSEC-2025-0021, SHA-1 collision attacks are not detected (CVSS 6.8).
-    # Same dependency path, same reasoning: pulled in only by gix-fs above, never compiled.
-    "RUSTSEC-2025-0021",
-
     # zip 0.6.6 — RUSTSEC-2026-0367, Insecure Preservation of SUID/SGID Bits during ZIP Extraction
     # Leading to Potential Privilege Escalation (CVSS 7.3, fix >= 9.0.0).
     #
-    # Reached in Cargo.lock only as burn-core 0.13.2 -> (burn-candle 0.13.2 -> candle-core 0.4.1 |
-    # burn-tch 0.13.2 -> tch 0.15.0 -> torch-sys 0.15.0) -> zip 0.6.6. Neither `burn-candle` nor
-    # `burn-tch` is an enabled feature of `burn` (this crate enables only `std` and `autodiff`, plus
-    # `burn-ndarray` and optional `burn-wgpu`), so `zip` is not in any dependency tree — normal, dev,
-    # or build — across any target.
+    # Reached in Cargo.lock only via unenabled optional subtrees of Burn (`burn-candle` / `burn-tch`);
+    # neither feature is enabled in Cargo.toml, so `zip` is not in any dependency tree — normal,
+    # dev, or build — across any target.
     #
-    # Verified, and these are the commands to re-run if it is ever in doubt:
+    # Verified:
     #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0367",
 
     # zip 0.6.6 — RUSTSEC-2026-0368, `ZipArchive::extract` creates symbolic links whose
     # attacker-controlled targets are outside the destination directory (no CVSS scored, fix >= 9.0.0).
-    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # Same lockfile-only path via unenabled optional Burn subtrees as RUSTSEC-2026-0367 above,
     # never compiled.
     #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
@@ -59,7 +34,7 @@ ignore = [
 
     # zip 0.6.6 — RUSTSEC-2026-0369, `ZipStreamReader::extract()` and `ZipArchive::extract()` apply
     # Unix permissions through symlinks without confining the target (CVSS 9.1, fix >= 9.0.0).
-    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # Same lockfile-only path via unenabled optional Burn subtrees as RUSTSEC-2026-0367 above,
     # never compiled.
     #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
@@ -68,8 +43,8 @@ ignore = [
     # zstd-safe 5.0.2+zstd.1.5.2 — RUSTSEC-2026-0403, Uninitialized memory exposed when streaming
     # decompression of a legacy frame fails (no CVSS scored, fix >= 8.2.0).
     #
-    # Reached in Cargo.lock only as zip 0.6.6 -> zstd 0.11.2+zstd.1.5.2 -> zstd-safe 5.0.2+zstd.1.5.2,
-    # under the unenabled `burn-candle` / `burn-tch` optional dependencies of `burn-core` above.
+    # Reached in Cargo.lock only via zip 0.6.6 -> zstd -> zstd-safe under unenabled optional Burn
+    # subtrees above, never compiled.
     #
     # Verified:
     #   cargo tree -i zstd-safe --features desktop -e all --target all   -> exit 0, "nothing to print"
@@ -79,9 +54,8 @@ ignore = [
     # zstd-sys 2.0.16+zstd.1.5.7 — RUSTSEC-2026-0410, WebAssembly allocator shim corrupts memory on
     # allocation failure (no CVSS scored, fix >= 2.1.2).
     #
-    # Reached in Cargo.lock only as zip 0.6.6 -> zstd 0.11.2+zstd.1.5.2 -> zstd-safe 5.0.2+zstd.1.5.2
-    # -> zstd-sys 2.0.16+zstd.1.5.7, under the same unenabled `burn-candle` / `burn-tch` path above
-    # (and additionally affects only the wasm32 target shim).
+    # Reached in Cargo.lock only via zip 0.6.6 -> zstd -> zstd-safe -> zstd-sys under unenabled
+    # optional Burn subtrees above (and affects only the wasm32 target shim).
     #
     # Verified:
     #   cargo tree -i zstd-sys --features desktop -e all --target all   -> exit 0, "nothing to print"
@@ -91,7 +65,7 @@ ignore = [
     # zip 0.6.6 — RUSTSEC-2026-0429, `ZipArchive::extract` aborts the process on a symlink entry
     # with a large declared size (CVSS 7.5, fix >= 9.0.0).
     #
-    # Same lockfile-only path via unenabled `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above,
+    # Same lockfile-only path via unenabled optional Burn subtrees as RUSTSEC-2026-0367 above,
     # never compiled.
     #
     # Verified:
@@ -99,33 +73,14 @@ ignore = [
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0429",
 
-    # zip 0.6.6 — RUSTSEC-2026-0545, AES entries returned without checking their authentication code
-    # when the data ends early or is empty (CVSS 6.5, fix >= 9.0.0), and RUSTSEC-2026-0548,
-    # `ZipStreamReader` extracts entries under local-header names that can differ from the central
-    # directory (fix >= 9.0.5). Both entered the advisory database on 2026-11-17 and turned every
-    # PR's `cargo audit` step red that afternoon. Same lockfile-only path via unenabled
-    # `burn-candle` / `burn-tch` as RUSTSEC-2026-0367 above, never compiled. Upgrading burn
-    # (QD-C = C, card R1c) is what removes `zip` 0.6.6 from the lockfile altogether.
+    # zip 0.6.6 — RUSTSEC-2026-0545 & RUSTSEC-2026-0548, same lockfile-only path via unenabled
+    # optional Burn subtrees as RUSTSEC-2026-0367 above, never compiled.
     #
-    # Verified 2026-11-17 on the trunk at b94eb47, advisory database of 1527 entries:
+    # Verified:
     #   cargo tree -i zip --features desktop -e all --target all   -> exit 0, "nothing to print"
     #   cargo tree -e all --features desktop --target all | grep -c " zip v"   -> 0
     "RUSTSEC-2026-0545",
     "RUSTSEC-2026-0548",
-
-    # libsqlite3-sys 0.27.0 — RUSTSEC-2026-0459, `libsqlite3-sys` via C SQLite CVE-2026-119375
-    # (CVSS 6.8, fix >= 0.39.0).
-    #
-    # Reached in Cargo.lock only as burn 0.13.2 -> burn-core 0.13.2 -> burn-dataset 0.13.2 ->
-    # (rusqlite 0.30.0 | r2d2_sqlite 0.23.0 | serde_rusqlite 0.34.0) -> libsqlite3-sys 0.27.0.
-    # `burn` is pinned at 0.13.2 and `burn-dataset` is an optional dependency this crate does not
-    # enable, so `libsqlite3-sys` is not in any dependency tree — normal, dev, or build — across
-    # any target, and cannot be bumped across 0.27 -> 0.39 independently of burn 0.13.2.
-    #
-    # Verified:
-    #   cargo tree -i libsqlite3-sys --features desktop -e all --target all   -> exit 0, "nothing to print"
-    #   cargo tree -e all --features desktop --target all | grep -c " libsqlite3-sys v"   -> 0
-    "RUSTSEC-2026-0459",
 ]
 
 # Unmaintained/unsound/yanked findings are reported but do not fail the build. They are real signals

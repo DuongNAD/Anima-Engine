@@ -65,14 +65,20 @@ confidence-threshold = 0.8
 # `docs/governance/OPEN_SOURCE_POLICY.md` asks for -- not slip in behind a blanket `allow`.
 #
 # Paths, so the next person does not have to re-derive them:
+#   buildid (v1.1.0, MPL-2.0)                           <- burn v0.22.1 -> burn-core -> burn-dispatch -> burn-autodiff -> burn-backend -> cubecl v0.11.4 -> cubecl-runtime v0.11.4 (via ml-wgpu)
+#   colored (v3.1.1, MPL-2.0)                           <- burn v0.22.1 -> burn-core v0.22.1 -> burn-tensor v0.22.1
 #   cssparser, cssparser-macros, dtoa-short, selectors  <- tauri -> wry -> the WebView CSS stack
 #   option-ext                                          <- dirs -> dirs-sys
+#   xxhash-rust (v0.8.21, BSL-1.0)                      <- burn v0.22.1 -> burn-std v0.22.1 -> cubecl-common v0.11.4 (via ml-wgpu)
 exceptions = [
+    { allow = ["MPL-2.0"], crate = "buildid" },
+    { allow = ["MPL-2.0"], crate = "colored" },
     { allow = ["MPL-2.0"], crate = "cssparser" },
     { allow = ["MPL-2.0"], crate = "cssparser-macros" },
     { allow = ["MPL-2.0"], crate = "dtoa-short" },
     { allow = ["MPL-2.0"], crate = "option-ext" },
     { allow = ["MPL-2.0"], crate = "selectors" },
+    { allow = ["BSL-1.0"], crate = "xxhash-rust" },
 ]
 
 [licenses.private]
