@@ -155,6 +155,7 @@ pub fn decode_genotype(
             SpatialCollider {
                 radius: root_node.radius,
             },
+            crate::physics::spatial::IndexedInGrid(false),
             CognitiveState::default(),
             InertiaComponent::default(),
             SensoryBufferComponent::default(),
@@ -228,6 +229,7 @@ pub fn decode_genotype(
                         SpatialCollider {
                             radius: child_node.radius,
                         },
+                        crate::physics::spatial::IndexedInGrid(false),
                     ))
                     .id();
 

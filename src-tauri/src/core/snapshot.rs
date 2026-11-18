@@ -1025,6 +1025,7 @@ mod tests {
             action_gates: None,
             segments: Vec::new(),
             brain: None,
+            sex: None,
         }
     }
 
