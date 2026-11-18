@@ -1,17 +1,13 @@
 use bevy_ecs::prelude::*;
-use burn::module::Module;
+use burn::module::{Module, Param, ParamId};
 use burn::nn::{Linear, LinearConfig};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Data, Shape, Tensor};
+#[cfg(feature = "ml-wgpu")]
+use burn::tensor::DeviceKind;
+use burn::tensor::{Device, Shape, Tensor, TensorData};
 
 use crate::ai::cpg::CpgOscillator;
 use crate::ai::hrrl::HomeostaticState;
 use crate::core::ecs::{Food, ParentAgent, Position, Predator, Prey, Rotation, Segment};
-
-pub type DefaultBackend = burn_ndarray::NdArray<f32>;
-
-#[cfg(feature = "ml-wgpu")]
-type WgpuBackend = burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>;
 
 /// Run one forward pass and read it back, so the wgpu probe measures the thing it claims to.
 ///
@@ -20,64 +16,36 @@ type WgpuBackend = burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>;
 /// first tensor operation — outside the `catch_unwind` meant to catch it. The fallback was written,
 /// was correct, and never ran.
 ///
-/// Exactly *when* burn-wgpu demands an adapter is not something this comment should assert. An
-/// attempt to pin it down locally, by building a `Wgpu<Metal>` model on Windows, panicked at
-/// construction — the opposite of what the CI log shows for `AutoGraphicsApi`. So the honest
-/// statement is narrower: the moment varies, and the guard has to span all of it. That is what this
-/// does — construction and a real operation, both inside one `catch_unwind`.
-///
 /// `into_data` is the part that makes it an operation rather than a queue entry: it synchronises
 /// and copies back to the host, forcing the work to actually execute.
 #[cfg(feature = "ml-wgpu")]
-fn wgpu_survives_one_forward_pass(
-    model: &ActorCriticModel<WgpuBackend>,
-    device: &burn_wgpu::WgpuDevice,
-    input_dim: usize,
-) {
+fn wgpu_survives_one_forward_pass(model: &ActorCriticModel, device: &Device, input_dim: usize) {
     materialize_params(model, device, input_dim);
 }
 
 /// Run one forward pass so every [`burn::module::Param`] resolves its lazy initializer **here**,
 /// on the constructing thread, before the model can be shared.
 ///
-/// # Why this is a soundness requirement, not a warm-up
-///
-/// `linear_from_parts` builds parameters with `Param::uninitialized`, which stores a `OnceCell<T>`
-/// plus a closure and fills the cell on first `val()`. That is deliberate — eagerly uploading every
-/// layer at construction pushed `SimulationEngine::start` past the point the stress tests observe a
-/// first tick — but it means a freshly built model carries **unsynchronised interior mutability**.
-///
-/// `BrainModel` is then handed out as a Bevy resource, and Bevy runs `Res<T>` readers in parallel.
-/// Two systems first-touching the same parameter at the same time would race on that `OnceCell`,
-/// and `unsafe impl Sync` would let it compile. Draining the laziness before the value escapes the
-/// constructor is what makes the cell write-once-then-read-only, which is the invariant the
-/// `unsafe impl` at the bottom of this file actually depends on.
-///
 /// `into_data` is load-bearing: it synchronises and copies back to the host, so the work is really
 /// executed rather than merely queued.
-fn materialize_params<B: Backend>(
-    model: &ActorCriticModel<B>,
-    device: &B::Device,
-    input_dim: usize,
-) {
-    let data: Data<B::FloatElem, 2> =
-        Data::new(vec![0.0f32; input_dim], Shape::new([1, input_dim])).convert();
-    let input = Tensor::<B, 2>::from_data(data, device);
+fn materialize_params(model: &ActorCriticModel, device: &Device, input_dim: usize) {
+    let data = TensorData::new(vec![0.0f32; input_dim], [1, input_dim]);
+    let input = Tensor::<2>::from_data(data, device);
     let (actor, critic) = model.forward(input);
     let _ = actor.into_data();
     let _ = critic.into_data();
 }
 
 #[derive(Module, Debug)]
-pub struct ActorCriticModel<B: Backend> {
-    trunk1: Linear<B>,
-    trunk2: Linear<B>,
-    actor_head: Linear<B>,
-    critic_head: Linear<B>,
+pub struct ActorCriticModel {
+    trunk1: Linear,
+    trunk2: Linear,
+    actor_head: Linear,
+    critic_head: Linear,
 }
 
-impl<B: Backend> ActorCriticModel<B> {
-    pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize, device: &B::Device) -> Self {
+impl ActorCriticModel {
+    pub fn new(input_dim: usize, hidden_dim: usize, action_dim: usize, device: &Device) -> Self {
         let trunk1 = LinearConfig::new(input_dim, hidden_dim).init(device);
         let trunk2 = LinearConfig::new(hidden_dim, hidden_dim).init(device);
         let actor_head = LinearConfig::new(hidden_dim, action_dim).init(device);
@@ -113,7 +81,7 @@ impl<B: Backend> ActorCriticModel<B> {
         hidden: usize,
         outputs: usize,
         weights: &[f32],
-        device: &B::Device,
+        device: &Device,
     ) -> Result<Self, String> {
         if inputs == 0 || hidden == 0 || outputs == 0 {
             return Err(format!(
@@ -148,10 +116,10 @@ impl<B: Backend> ActorCriticModel<B> {
         let critic_b = take(1);
 
         Ok(Self {
-            trunk1: linear_from_parts::<B>(trunk1_w, trunk1_b, inputs, hidden, device),
-            trunk2: linear_from_parts::<B>(trunk2_w, trunk2_b, hidden, hidden, device),
-            actor_head: linear_from_parts::<B>(actor_w, actor_b, hidden, outputs, device),
-            critic_head: linear_from_parts::<B>(critic_w, critic_b, hidden, 1, device),
+            trunk1: linear_from_parts(trunk1_w, trunk1_b, inputs, hidden, device),
+            trunk2: linear_from_parts(trunk2_w, trunk2_b, hidden, hidden, device),
+            actor_head: linear_from_parts(actor_w, actor_b, hidden, outputs, device),
+            critic_head: linear_from_parts(critic_w, critic_b, hidden, 1, device),
         })
     }
 
@@ -165,12 +133,9 @@ impl<B: Backend> ActorCriticModel<B> {
         inputs: usize,
         hidden: usize,
         outputs: usize,
-    ) -> Result<Vec<f32>, String>
-    where
-        B: Backend<FloatElem = f32>,
-    {
-        fn append_linear<B: Backend<FloatElem = f32>>(
-            linear: &Linear<B>,
+    ) -> Result<Vec<f32>, String> {
+        fn append_linear(
+            linear: &Linear,
             d_in: usize,
             d_out: usize,
             out: &mut Vec<f32>,
@@ -182,7 +147,10 @@ impl<B: Backend> ActorCriticModel<B> {
                     weight.dims()
                 ));
             }
-            let burn_layout = weight.into_data().value;
+            let burn_layout = weight
+                .into_data()
+                .try_into_vec::<f32>()
+                .map_err(|error| format!("linear weight data conversion failed: {error:?}"))?;
             for output in 0..d_out {
                 for input in 0..d_in {
                     out.push(burn_layout[input * d_out + output]);
@@ -200,7 +168,11 @@ impl<B: Backend> ActorCriticModel<B> {
                     bias.dims()
                 ));
             }
-            out.extend(bias.into_data().value);
+            let bias_vec = bias
+                .into_data()
+                .try_into_vec::<f32>()
+                .map_err(|error| format!("linear bias data conversion failed: {error:?}"))?;
+            out.extend(bias_vec);
             Ok(())
         }
 
@@ -222,7 +194,7 @@ impl<B: Backend> ActorCriticModel<B> {
         Ok(weights)
     }
 
-    pub fn forward(&self, input: Tensor<B, 2>) -> (Tensor<B, 2>, Tensor<B, 2>) {
+    pub fn forward(&self, input: Tensor<2>) -> (Tensor<2>, Tensor<2>) {
         let x = self.trunk1.forward(input);
         let x = burn::tensor::activation::relu(x);
         let x = self.trunk2.forward(x);
@@ -258,23 +230,22 @@ fn transpose_to_burn(src: &[f32], d_in: usize, d_out: usize) -> Vec<f32> {
 /// construction pushed `SimulationEngine::start` past the point where the stress tests observe a
 /// first tick. Determinism is unaffected — the values are decided here; only the moment they reach
 /// the device is deferred.
-fn linear_from_parts<B: Backend>(
+fn linear_from_parts(
     weight: &[f32],
     bias: &[f32],
     d_in: usize,
     d_out: usize,
-    device: &B::Device,
-) -> Linear<B> {
+    device: &Device,
+) -> Linear {
     let w = transpose_to_burn(weight, d_in, d_out);
     let b = bias.to_vec();
 
-    let weight_param = burn::module::Param::uninitialized(
-        burn::module::ParamId::new(),
-        move |device: &B::Device, require_grad: bool| {
-            let data: Data<B::FloatElem, 2> =
-                Data::new(w.clone(), Shape::new([d_in, d_out])).convert();
-            let tensor = Tensor::<B, 2>::from_data(data, device);
-            if require_grad {
+    let weight_param = Param::uninitialized(
+        ParamId::new(),
+        move |device: &Device, is_require_grad: bool| {
+            let data = TensorData::new(w, [d_in, d_out]);
+            let tensor = Tensor::<2>::from_data(data, device);
+            if is_require_grad {
                 tensor.require_grad()
             } else {
                 tensor
@@ -282,14 +253,15 @@ fn linear_from_parts<B: Backend>(
         },
         device.clone(),
         true,
+        Shape::new([d_in, d_out]),
     );
 
-    let bias_param = burn::module::Param::uninitialized(
-        burn::module::ParamId::new(),
-        move |device: &B::Device, require_grad: bool| {
-            let data: Data<B::FloatElem, 1> = Data::new(b.clone(), Shape::new([d_out])).convert();
-            let tensor = Tensor::<B, 1>::from_data(data, device);
-            if require_grad {
+    let bias_param = Param::uninitialized(
+        ParamId::new(),
+        move |device: &Device, is_require_grad: bool| {
+            let data = TensorData::new(b, [d_out]);
+            let tensor = Tensor::<1>::from_data(data, device);
+            if is_require_grad {
                 tensor.require_grad()
             } else {
                 tensor
@@ -297,6 +269,7 @@ fn linear_from_parts<B: Backend>(
         },
         device.clone(),
         true,
+        Shape::new([d_out]),
     );
 
     Linear {
@@ -368,30 +341,18 @@ pub fn run_inference_batch(
     let outputs_vec = if batch_size == 0 {
         Vec::new()
     } else {
-        match brain_model.backend() {
-            BrainModelBackend::NdArray(model, device) => {
-                let data = Data::new(
-                    scratch.inputs.clone(),
-                    Shape::new([batch_size, SENSORY_SLOTS]),
-                );
-                let input_tensor = Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
-                let (actor_out, _) = model.forward(input_tensor);
-                actor_out.into_data().value
-            }
+        let (model, device) = match brain_model.backend() {
+            BrainModelBackend::NdArray(model, device) => (model, device),
             #[cfg(feature = "ml-wgpu")]
-            BrainModelBackend::Wgpu(model, device) => {
-                let data = Data::new(
-                    scratch.inputs.clone(),
-                    Shape::new([batch_size, SENSORY_SLOTS]),
-                );
-                let input_tensor =
-                    Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(
-                        data, device,
-                    );
-                let (actor_out, _) = model.forward(input_tensor);
-                actor_out.into_data().value
-            }
-        }
+            BrainModelBackend::Wgpu(model, device) => (model, device),
+        };
+        let data = TensorData::new(scratch.inputs.clone(), [batch_size, SENSORY_SLOTS]);
+        let input_tensor = Tensor::<2>::from_data(data, device);
+        let (actor_out, _) = model.forward(input_tensor);
+        actor_out
+            .into_data()
+            .try_into_vec::<f32>()
+            .unwrap_or_default()
     };
 
     scratch.shared_actions.clear();
@@ -455,98 +416,46 @@ pub fn run_inference_batch(
 }
 
 pub enum BrainModelBackend {
-    NdArray(
-        ActorCriticModel<burn_ndarray::NdArray<f32>>,
-        burn_ndarray::NdArrayDevice,
-    ),
+    NdArray(ActorCriticModel, Device),
     #[cfg(feature = "ml-wgpu")]
-    Wgpu(
-        ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>,
-        burn_wgpu::WgpuDevice,
-    ),
+    Wgpu(ActorCriticModel, Device),
 }
 
 pub struct BrainModel {
     /// Private, and that is the whole point.
     ///
-    /// The `unsafe impl Sync` below is sound only while every parameter's lazy `OnceCell` has
-    /// already been filled. While this field was `pub`, any code in the crate — or any test —
-    /// could assign a freshly built `BrainModelBackend` into it and hand the result to Bevy's
-    /// parallel `Res<T>` readers, and the safety argument would be false with nothing to say so.
-    ///
-    /// Everything now goes through [`BrainModel::from_backend`], which materialises before the
-    /// value exists, and through the `replace_*_model` methods, which re-materialise after a
-    /// swap. That turns a rule a future author has to remember into one they cannot break.
+    /// Everything goes through [`BrainModel::from_backend`], which strips autodiff and materialises
+    /// lazy parameters before the value exists, and through the `replace_*_model` methods, which
+    /// strip autodiff and re-materialise after a swap.
     backend: BrainModelBackend,
     pub input_dim: usize,
     pub hidden_dim: usize,
     pub action_dim: usize,
 }
 
-// SAFETY: this is the only `unsafe` block in the backend. It used to be two — a `Send` impl sat
-// beside this one and was carrying no weight: `assert_send::<BrainModel>()` compiles without it,
-// because every field is `Send` on its own. `brain_model_is_send_without_an_unsafe_impl` is that
-// assertion, kept so the day a burn upgrade loses the bound, the build fails rather than the
-// redundant `unsafe` quietly absorbing it.
-//
-// The argument below was checked against burn 0.13.2 on 2026-07-27 and it is **version-specific**
-// — re-derive it on any burn upgrade.
-//
-// ## Why the auto trait does not apply
-//
-// Not because of `WgpuDevice`, which is the obvious suspect and is innocent. Replacing the impls
-// with a `T: Send + Sync` static assertion produced the real reason, on **both** backends:
-//
-//     `std::cell::OnceCell<Tensor<NdArray, 2>>` cannot be shared between threads safely
-//     `dyn Fn(&WgpuDevice, bool) -> Tensor<..., 2> + Send` cannot be shared between threads safely
-//
-// burn's `Param<T>` is `{ state: OnceCell<T>, initialization: Option<RwLock<Option<Uninitialized<T>>>> }`.
-// It is `!Sync` because of the `OnceCell` and the `+ Send`-but-not-`+ Sync` initializer closure.
-// So it is `Sync`, not `Send`, that fails, and it fails on the CPU path too — this was never a
-// GPU-only concern.
-//
-// ## Why sharing is nonetheless sound here
-//
-// The hazard a `OnceCell` presents is *concurrent first write*. `BrainModel` is inserted as a Bevy
-// resource and Bevy runs `Res<T>` readers in parallel, so two systems first-touching a parameter
-// simultaneously would be a genuine data race.
-//
-// That cannot happen because every constructor of this type drains the laziness before the value
-// escapes: `new` and `new_seeded` both call `materialize_params` (GPU path via
-// `wgpu_survives_one_forward_pass`), which forces a full forward pass and `into_data` on the
-// constructing thread. After that every `OnceCell` is populated, and a populated `OnceCell` is only
-// ever read — `Param::val()` takes `&self` and cannot clear it. Read-only shared access to
-// immutable data is safe regardless of the `Sync` bound.
-//
-// This was not true before 2026-07-27: only the wgpu path forced a pass, so the CPU path handed out
-// a model with empty cells and the impls below were covering a real latent race.
-//
-// ## What must stay true
-//
-// 1. Every path that constructs a `BrainModel` calls `materialize_params` before returning it.
-//    `a_freshly_built_model_has_no_lazy_parameters_left` is the gate.
-// 2. Nothing mutates parameters through a shared `&BrainModel`. In-place learning goes through
-//    `&mut` (`hrrl_learning_system`), which excludes concurrent readers by borrow.
-// 3. On a burn upgrade, re-run the static assertion in that test: if `Param` becomes `Sync`, delete
-//    these impls rather than keeping them, because a redundant `unsafe impl` silences the compiler
-//    the day the bound is genuinely lost.
-unsafe impl Sync for BrainModel {}
+// `Send + Sync` are derived without any `unsafe impl`: in Burn 0.22 `Param<T>` and `Device` are
+// natively `Send + Sync`. `brain_model_is_send_without_an_unsafe_impl` checks both bounds at
+// compile time and rejects any re-introduction of `unsafe impl`.
 
 impl bevy_ecs::system::Resource for BrainModel {}
 
 impl BrainModel {
     /// The only way a `BrainModel` comes into existence, and the only way its backend changes.
-    ///
-    /// Materialising here rather than at each call site is what makes requirement 1 of the SAFETY
-    /// note above structural. It was previously a convention followed at four sites, and the CPU
-    /// pair did not follow it — which is how the latent race got in. A convention that has already
-    /// been broken once should not be re-established as a convention.
     fn from_backend(
         backend: BrainModelBackend,
         input_dim: usize,
         hidden_dim: usize,
         action_dim: usize,
     ) -> Self {
+        let backend = match backend {
+            BrainModelBackend::NdArray(model, device) => {
+                BrainModelBackend::NdArray(model.valid(), device.without_autodiff())
+            }
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(model, device) => {
+                BrainModelBackend::Wgpu(model.valid(), device.without_autodiff())
+            }
+        };
         let model = Self {
             backend,
             input_dim,
@@ -576,19 +485,13 @@ impl BrainModel {
     }
 
     /// Install a freshly trained CPU model, returning the old one for the caller to recycle.
-    ///
-    /// `None` when this `BrainModel` is not running the ndarray backend — the same no-op the
-    /// inference worker's mismatched-variant arm used to perform inline, but now with the
-    /// re-materialisation that a swapped-in model needs.
-    pub fn replace_ndarray_model(
-        &mut self,
-        new: ActorCriticModel<burn_ndarray::NdArray<f32>>,
-    ) -> Option<ActorCriticModel<burn_ndarray::NdArray<f32>>> {
+    pub fn replace_ndarray_model(&mut self, new: ActorCriticModel) -> Option<ActorCriticModel> {
         // `match`, not `let ... else`: without the `ml-wgpu` feature the enum has a single variant,
         // and an irrefutable `let ... else` is a clippy error there. The match is exhaustive in
         // both configurations.
+        let valid = new.valid();
         let old = match &mut self.backend {
-            BrainModelBackend::NdArray(current, _) => std::mem::replace(current, new),
+            BrainModelBackend::NdArray(current, _) => std::mem::replace(current, valid),
             #[cfg(feature = "ml-wgpu")]
             BrainModelBackend::Wgpu(..) => return None,
         };
@@ -598,12 +501,10 @@ impl BrainModel {
 
     /// Install a freshly trained GPU model, returning the old one for the caller to recycle.
     #[cfg(feature = "ml-wgpu")]
-    pub fn replace_wgpu_model(
-        &mut self,
-        new: ActorCriticModel<WgpuBackend>,
-    ) -> Option<ActorCriticModel<WgpuBackend>> {
+    pub fn replace_wgpu_model(&mut self, new: ActorCriticModel) -> Option<ActorCriticModel> {
+        let valid = new.valid();
         let old = match &mut self.backend {
-            BrainModelBackend::Wgpu(current, _) => std::mem::replace(current, new),
+            BrainModelBackend::Wgpu(current, _) => std::mem::replace(current, valid),
             BrainModelBackend::NdArray(..) => return None,
         };
         self.materialize();
@@ -663,8 +564,8 @@ impl BrainModel {
         action_dim: usize,
         weights: &[f32],
     ) -> Self {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+        let device = Device::flex();
+        let model = ActorCriticModel::from_flat_weights(
             input_dim, hidden_dim, action_dim, weights, &device,
         )
         .expect("weights were built for exactly this architecture");
@@ -698,7 +599,7 @@ impl BrainModel {
     }
 
     /// Restore a portable shared-policy checkpoint, preferring the configured backend and falling
-    /// back to ndarray under the same rules as [`Self::new_seeded`].
+    /// back to `burn-flex` CPU under the same rules as [`Self::new_seeded`].
     pub fn from_checkpoint_weights(
         input_dim: usize,
         hidden_dim: usize,
@@ -711,8 +612,8 @@ impl BrainModel {
         #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let built = std::panic::catch_unwind(|| {
-                let device = burn_wgpu::WgpuDevice::default();
-                let model = ActorCriticModel::<WgpuBackend>::from_flat_weights(
+                let device = Device::wgpu(DeviceKind::DefaultDevice);
+                let model = ActorCriticModel::from_flat_weights(
                     input_dim, hidden_dim, action_dim, weights, &device,
                 );
                 // Inside the guard, and after the model exists: construction is lazy, so this is
@@ -731,11 +632,11 @@ impl BrainModel {
                     action_dim,
                 ));
             }
-            eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
+            eprintln!("WGPU initialization failed, falling back to CPU flex.");
         }
 
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+        let device = Device::flex();
+        let model = ActorCriticModel::from_flat_weights(
             input_dim, hidden_dim, action_dim, weights, &device,
         )?;
         Ok(Self::from_backend(
@@ -763,7 +664,7 @@ impl BrainModel {
     pub fn apply_checkpoint_weights(&mut self, weights: &[f32]) -> Result<(), String> {
         match &mut self.backend {
             BrainModelBackend::NdArray(model, device) => {
-                *model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::from_flat_weights(
+                *model = ActorCriticModel::from_flat_weights(
                     self.input_dim,
                     self.hidden_dim,
                     self.action_dim,
@@ -773,7 +674,7 @@ impl BrainModel {
             }
             #[cfg(feature = "ml-wgpu")]
             BrainModelBackend::Wgpu(model, device) => {
-                *model = ActorCriticModel::<WgpuBackend>::from_flat_weights(
+                *model = ActorCriticModel::from_flat_weights(
                     self.input_dim,
                     self.hidden_dim,
                     self.action_dim,
@@ -793,10 +694,8 @@ impl BrainModel {
         #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let wgpu_res = std::panic::catch_unwind(|| {
-                let device = burn_wgpu::WgpuDevice::default();
-                let model = ActorCriticModel::<WgpuBackend>::new(
-                    input_dim, hidden_dim, action_dim, &device,
-                );
+                let device = Device::wgpu(DeviceKind::DefaultDevice);
+                let model = ActorCriticModel::new(input_dim, hidden_dim, action_dim, &device);
                 // Same reason as in `new_seeded`: without this the probe only proves that a struct
                 // can be allocated, and the machine is asked for a GPU much later.
                 wgpu_survives_one_forward_pass(&model, &device, input_dim);
@@ -813,16 +712,13 @@ impl BrainModel {
                     );
                 }
                 Err(_) => {
-                    eprintln!("WGPU initialization failed, falling back to CPU NdArray.");
+                    eprintln!("WGPU initialization failed, falling back to CPU flex.");
                 }
             }
         }
 
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<burn_ndarray::NdArray<f32>>::new(
-            input_dim, hidden_dim, action_dim, &device,
-        );
-        materialize_params(&model, &device, input_dim);
+        let device = Device::flex();
+        let model = ActorCriticModel::new(input_dim, hidden_dim, action_dim, &device);
         Self::from_backend(
             BrainModelBackend::NdArray(model, device),
             input_dim,
@@ -1028,23 +924,19 @@ pub fn brain_inference_system(
         return;
     }
 
-    let outputs_vec = match brain_model.backend() {
-        BrainModelBackend::NdArray(model, device) => {
-            let data = Data::new(inputs, Shape::new([batch_size, 15]));
-            let input_tensor = Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(data, device);
-            let (actor_out, _) = model.forward(input_tensor);
-            actor_out.into_data().value
-        }
-        #[cfg(feature = "ml-wgpu")]
-        BrainModelBackend::Wgpu(model, device) => {
-            let data = Data::new(inputs, Shape::new([batch_size, 15]));
-            let input_tensor =
-                Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(
-                    data, device,
-                );
-            let (actor_out, _) = model.forward(input_tensor);
-            actor_out.into_data().value
-        }
+    let outputs_vec = {
+        let (model, device) = match brain_model.backend() {
+            BrainModelBackend::NdArray(model, device) => (model, device),
+            #[cfg(feature = "ml-wgpu")]
+            BrainModelBackend::Wgpu(model, device) => (model, device),
+        };
+        let data = TensorData::new(inputs, [batch_size, 15]);
+        let input_tensor = Tensor::<2>::from_data(data, device);
+        let (actor_out, _) = model.forward(input_tensor);
+        actor_out
+            .into_data()
+            .try_into_vec::<f32>()
+            .unwrap_or_default()
     };
 
     let mut segment_list = std::mem::take(&mut brain_buf.segment_list);
@@ -1469,9 +1361,8 @@ mod tests {
         // `Param` cells are still lazy and hand the result to Bevy's parallel `Res<T>` readers.
         assert!(
             !src.contains("pub backend:"),
-            "`BrainModel::backend` is public again. The soundness of `unsafe impl Sync` depends on \
-             every parameter having been materialised before the value is shared, and a public \
-             field lets a caller install one that has not been. Route it through `from_backend`."
+            "`BrainModel::backend` is public again. The soundness of lazy-parameter initialisation \
+             depends on private construction through `from_backend`."
         );
 
         // Every struct literal must go through the constructor. A literal `Self { backend: ... }`
@@ -1490,29 +1381,23 @@ mod tests {
         );
     }
 
-    /// `Send` is derived, not asserted.
-    ///
-    /// There used to be an unsafe `Send` impl next to the `Sync` one. The
-    /// compiler experiment that produced the SAFETY argument above reported **only** `Sync`
-    /// failures — `OnceCell` and the `+ Send`-but-not-`+ Sync` initializer closure — so the `Send`
-    /// impl was carrying no weight. A redundant `unsafe impl` is worse than none: it silences the
-    /// compiler on the day the bound is genuinely lost.
-    ///
-    /// This compiles only while every field is `Send` on its own. If a burn upgrade breaks that,
-    /// this fails to build and the answer is a fresh derivation, not a new `unsafe impl`.
+    /// `Send` and `Sync` are both derived cleanly in Burn 0.22 without any `unsafe impl`.
     #[test]
     fn brain_model_is_send_without_an_unsafe_impl() {
-        fn assert_send<T: Send>() {}
-        assert_send::<BrainModel>();
-        assert_send::<BrainModelBackend>();
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<BrainModel>();
+        assert_send_sync::<BrainModelBackend>();
 
-        // And the file must not have grown one back.
+        // And the file must not have grown either `unsafe impl` back.
         let src = include_str!("model.rs");
         assert!(
-            // Assembled at compile time so this scan cannot match its own search string — the
-            // mistake the previous source-scan gate made on its first run.
+            // Assembled at compile time so this scan cannot match its own search string.
             !src.contains(concat!("unsafe impl ", "Send for BrainModel")),
             "`Send` is derived here. Re-adding `unsafe impl Send` hides a future regression."
+        );
+        assert!(
+            !src.contains(concat!("unsafe impl ", "Sync for BrainModel")),
+            "`Sync` is derived in Burn 0.22. Re-adding `unsafe impl Sync` hides a future regression."
         );
     }
 
@@ -1565,24 +1450,20 @@ mod tests {
 
     #[test]
     fn from_flat_weights_rejects_bad_shapes_and_lengths() {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        type B = burn_ndarray::NdArray<f32>;
+        let device = Device::flex();
 
-        assert!(ActorCriticModel::<B>::from_flat_weights(0, 4, 2, &[], &device).is_err());
-        assert!(ActorCriticModel::<B>::from_flat_weights(3, 4, 2, &[0.0; 7], &device).is_err());
+        assert!(ActorCriticModel::from_flat_weights(0, 4, 2, &[], &device).is_err());
+        assert!(ActorCriticModel::from_flat_weights(3, 4, 2, &[0.0; 7], &device).is_err());
 
         let ok_len = (3 * 4 + 4) + (4 * 4 + 4) + (4 * 2 + 2) + (4 + 1);
-        assert!(
-            ActorCriticModel::<B>::from_flat_weights(3, 4, 2, &vec![0.0; ok_len], &device).is_ok()
-        );
+        assert!(ActorCriticModel::from_flat_weights(3, 4, 2, &vec![0.0; ok_len], &device).is_ok());
     }
 
     #[test]
     fn flat_weights_round_trip_without_layout_or_bit_drift() {
-        type B = burn_ndarray::NdArray<f32>;
-        let device = burn_ndarray::NdArrayDevice::Cpu;
+        let device = Device::flex();
         let weights = BrainModel::seeded_weights(3, 5, 2, 0xA11CE);
-        let model = ActorCriticModel::<B>::from_flat_weights(3, 5, 2, &weights, &device).unwrap();
+        let model = ActorCriticModel::from_flat_weights(3, 5, 2, &weights, &device).unwrap();
 
         let restored = model
             .to_flat_weights(3, 5, 2)

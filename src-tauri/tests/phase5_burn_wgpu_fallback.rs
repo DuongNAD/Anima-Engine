@@ -3,7 +3,7 @@
 #![cfg(feature = "ml-wgpu")]
 
 use anima_engine_lib::ai::model::{BrainModel, BrainModelBackend};
-use burn::tensor::{Data, Shape, Tensor};
+use burn::tensor::{Tensor, TensorData};
 use std::sync::Mutex;
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -12,19 +12,18 @@ static TEST_LOCK: Mutex<()> = Mutex::new(());
 fn test_wgpu_fallback_to_ndarray_and_valid_actions() {
     let _lock = TEST_LOCK.lock().unwrap();
 
-    // 1. Test NdArray CPU Fallback (Forced via environment variable)
+    // 1. Test Flex CPU Fallback (Forced via environment variable)
     std::env::set_var("ANIMA_USE_GPU", "false");
     let brain_model_cpu = BrainModel::new(15, 64, 4);
 
-    // Assert that fallback chose NdArray CPU
+    // Assert that fallback chose NdArray (burn-flex CPU)
     match brain_model_cpu.backend() {
         BrainModelBackend::NdArray(model, device) => {
             // Run inference to verify valid actions in [0.0, 1.0]
-            let input_data = Data::new(vec![0.5; 15], Shape::new([1, 15]));
-            let input_tensor =
-                Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(input_data, device);
+            let input_data = TensorData::new(vec![0.5; 15], [1, 15]);
+            let input_tensor = Tensor::<2>::from_data(input_data, device);
             let (actor_out, _) = model.forward(input_tensor);
-            let actions = actor_out.into_data().value;
+            let actions = actor_out.into_data().try_into_vec::<f32>().unwrap();
             assert_eq!(actions.len(), 4);
             for action in actions {
                 assert!(
@@ -44,13 +43,10 @@ fn test_wgpu_fallback_to_ndarray_and_valid_actions() {
     match brain_model_gpu.backend() {
         BrainModelBackend::Wgpu(model, device) => {
             println!("Successfully initialized WGPU backend.");
-            let input_data = Data::new(vec![0.5; 15], Shape::new([1, 15]));
-            let input_tensor =
-                Tensor::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>, 2>::from_data(
-                    input_data, device,
-                );
+            let input_data = TensorData::new(vec![0.5; 15], [1, 15]);
+            let input_tensor = Tensor::<2>::from_data(input_data, device);
             let (actor_out, _) = model.forward(input_tensor);
-            let actions = actor_out.into_data().value;
+            let actions = actor_out.into_data().try_into_vec::<f32>().unwrap();
             assert_eq!(actions.len(), 4);
             for action in actions {
                 assert!(
@@ -61,14 +57,11 @@ fn test_wgpu_fallback_to_ndarray_and_valid_actions() {
             }
         }
         BrainModelBackend::NdArray(model, device) => {
-            println!(
-                "WGPU failed/unsupported on this machine, gracefully fell back to CPU NdArray."
-            );
-            let input_data = Data::new(vec![0.5; 15], Shape::new([1, 15]));
-            let input_tensor =
-                Tensor::<burn_ndarray::NdArray<f32>, 2>::from_data(input_data, device);
+            println!("WGPU failed/unsupported on this machine, gracefully fell back to CPU flex.");
+            let input_data = TensorData::new(vec![0.5; 15], [1, 15]);
+            let input_tensor = Tensor::<2>::from_data(input_data, device);
             let (actor_out, _) = model.forward(input_tensor);
-            let actions = actor_out.into_data().value;
+            let actions = actor_out.into_data().try_into_vec::<f32>().unwrap();
             assert_eq!(actions.len(), 4);
             for action in actions {
                 assert!(

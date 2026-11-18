@@ -7,17 +7,17 @@
 //! The part worth reading before changing anything is the sign discussion on [`a2c_loss`].
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 use std::thread;
 use std::time::Duration;
 
 use bevy_ecs::prelude::Resource;
-use burn::backend::Autodiff;
-use burn::module::{AutodiffModule, Module};
-use burn::optim::{AdamConfig, GradientsParams, Optimizer};
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
-use burn::tensor::backend::Backend;
-use burn::tensor::{Data, Shape, Tensor};
+use burn::module::Module;
+use burn::optim::{AdamConfig, GradientsParams, OptimizerRecord};
+use burn::store::{ModuleRecord, RecordError};
+#[cfg(feature = "ml-wgpu")]
+use burn::tensor::DeviceKind;
+use burn::tensor::{Bytes, Device, Tensor, TensorData};
 
 use crate::ai::hrrl::Transition;
 use crate::ai::model::ActorCriticModel;
@@ -54,9 +54,9 @@ const LEARNING_RATE: f64 = 1e-3;
 pub const DISCOUNT: f32 = 0.99;
 
 pub enum ModelUpdate {
-    NdArray(ActorCriticModel<burn_ndarray::NdArray<f32>>),
+    NdArray(ActorCriticModel),
     #[cfg(feature = "ml-wgpu")]
-    Wgpu(ActorCriticModel<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>),
+    Wgpu(ActorCriticModel),
 }
 
 impl ModelUpdate {
@@ -67,6 +67,64 @@ impl ModelUpdate {
             Self::Wgpu(model) => model.to_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM),
         }
     }
+}
+
+/// Named failures when validating or migrating persisted shared-learner records.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LearnerRecordError {
+    InvalidPartialBatch,
+    Schema7Burn013Unsupported {
+        model_record_bytes: usize,
+        optimizer_record_bytes: usize,
+    },
+    ModelRecordUnreadable(String),
+    ModelLoadFailed(String),
+    OptimizerRecordUnreadable(String),
+    DecoderPanicked,
+}
+
+impl std::fmt::Display for LearnerRecordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidPartialBatch => f.write_str("learner partial batch is invalid"),
+            Self::Schema7Burn013Unsupported {
+                model_record_bytes,
+                optimizer_record_bytes,
+            } => write!(
+                f,
+                "LearnerRecordError::Schema7Burn013Unsupported: schema-7 Burn 0.13 \
+                 BinBytesRecorder checkpoint (model={model_record_bytes} B, \
+                 optimizer={optimizer_record_bytes} B) cannot be decoded by Burn 0.22; \
+                 shared learner starts fresh"
+            ),
+            Self::ModelRecordUnreadable(reason) => {
+                write!(f, "learner model record is unreadable: {reason}")
+            }
+            Self::ModelLoadFailed(reason) => {
+                write!(f, "learner model record failed to load: {reason}")
+            }
+            Self::OptimizerRecordUnreadable(reason) => {
+                write!(f, "Adam record is unreadable: {reason}")
+            }
+            Self::DecoderPanicked => {
+                f.write_str("learner checkpoint decoder panicked on malformed bytes")
+            }
+        }
+    }
+}
+
+impl std::error::Error for LearnerRecordError {}
+
+/// Pin Burn's process default device to `flex` before [`burn::optim::ModuleOptimizer::load_record`]
+/// stages tensors onto `Device::default()`, keeping CPU validation and checkpoint recovery safe on
+/// GPU-less runners while explicit WGPU workers still target `Device::wgpu(...)`.
+pub(crate) fn ensure_burn_default_staging_device() {
+    static INIT: Once = Once::new();
+    INIT.call_once(|| {
+        if std::env::var_os("BURN_DEVICE").is_none() {
+            std::env::set_var("BURN_DEVICE", "flex");
+        }
+    });
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -184,8 +242,8 @@ pub fn spawn_ndarray_learner(
         // Moved in so it drops when this thread's stack unwinds — on a normal return and on a panic.
         // Holding it outside would make the thread look permanently alive to `stop` (§3.7).
         let _exit = exit;
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        run_training_loop::<burn_ndarray::NdArray<f32>>(
+        let device = Device::flex();
+        run_training_loop(
             running,
             trans_rx,
             model_tx,
@@ -210,8 +268,8 @@ pub fn spawn_wgpu_learner(
         args;
     thread::spawn(move || {
         let _exit = exit;
-        let device = burn_wgpu::WgpuDevice::default();
-        run_training_loop::<burn_wgpu::Wgpu<burn_wgpu::AutoGraphicsApi, f32, i32>>(
+        let device = Device::wgpu(DeviceKind::DefaultDevice);
+        run_training_loop(
             running,
             trans_rx,
             model_tx,
@@ -250,17 +308,14 @@ pub fn spawn_wgpu_learner(
 /// forever and owns its optimiser, so nothing about the objective was reachable from a test.
 /// `a2c_loss_direction_tests` pairs a finite-difference probe of the loss surface with a behavioural
 /// assertion, because a gradient check alone passes just as happily for an inverted objective.
-pub fn a2c_loss<B>(
-    model: &ActorCriticModel<B>,
-    states: Tensor<B, 2>,
-    next_states: Tensor<B, 2>,
-    actions: Tensor<B, 2>,
-    rewards: Tensor<B, 2>,
+pub fn a2c_loss(
+    model: &ActorCriticModel,
+    states: Tensor<2>,
+    next_states: Tensor<2>,
+    actions: Tensor<2>,
+    rewards: Tensor<2>,
     discount: f32,
-) -> Tensor<B, 1>
-where
-    B: Backend<FloatElem = f32>,
-{
+) -> Tensor<1> {
     let (actor_out, critic_out) = model.forward(states);
     let (_, critic_out_next) = model.forward(next_states);
 
@@ -277,88 +332,85 @@ where
     loss_actor + loss_critic * 0.5
 }
 
-fn seeded_training_model<B>(device: &B::Device, seed: u64) -> ActorCriticModel<Autodiff<B>>
-where
-    B: Backend<FloatElem = f32>,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>,
-{
+fn seeded_training_model(device: &Device, seed: u64) -> ActorCriticModel {
     let weights =
         crate::ai::model::BrainModel::seeded_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed);
-    ActorCriticModel::<Autodiff<B>>::from_flat_weights(
-        STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, device,
-    )
-    .expect("seeded weights were built for the learner architecture")
+    let ad_device = if device.is_autodiff() {
+        device.clone()
+    } else {
+        device.clone().autodiff()
+    };
+    ActorCriticModel::from_flat_weights(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &weights, &ad_device)
+        .expect("seeded weights were built for the learner architecture")
 }
 
-/// Decode opaque Burn records before any live worker starts.
-///
-/// Burn 0.13's in-memory recorder panics on malformed bincode in a few paths, so local snapshot
-/// bytes are still treated as untrusted and the decoder is contained behind `catch_unwind`.
-pub fn validate_saved_learner_worker(
+/// Decode Burn 0.22 burnpack records before any live worker starts, returning a typed error.
+pub fn check_saved_learner_worker(
     saved: &SavedLearnerWorkerState,
     seed: u64,
-) -> Result<(), String> {
+) -> Result<(), LearnerRecordError> {
     if saved.partial_batch.len() >= BATCH_SIZE
         || saved
             .partial_batch
             .iter()
             .any(|transition| !transition.is_finite())
     {
-        return Err("learner partial batch is invalid".into());
+        return Err(LearnerRecordError::InvalidPartialBatch);
     }
 
+    ensure_burn_default_staging_device();
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        type B = burn_ndarray::NdArray<f32>;
-        type AB = Autodiff<B>;
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
-
+        let device = Device::flex();
         let model_record =
-            Recorder::<AB>::load(&recorder, saved.training_model_record.clone(), &device)
-                .map_err(|error| format!("learner model record is unreadable: {error}"))?;
-        let _model = seeded_training_model::<B>(&device, seed).load_record(model_record);
+            ModuleRecord::from_bytes(Bytes::from_bytes_vec(saved.training_model_record.clone()))
+                .map_err(|error| LearnerRecordError::ModelRecordUnreadable(error.to_string()))?;
+        let _model = seeded_training_model(&device, seed)
+            .try_load_record(model_record)
+            .map_err(|error| LearnerRecordError::ModelLoadFailed(error.to_string()))?;
 
         let optimizer_record =
-            Recorder::<AB>::load(&recorder, saved.optimizer_record.clone(), &device)
-                .map_err(|error| format!("Adam record is unreadable: {error}"))?;
-        let _optimizer = AdamConfig::new()
-            .init::<AB, ActorCriticModel<AB>>()
-            .load_record(optimizer_record);
-        Ok::<(), String>(())
+            OptimizerRecord::from_bytes(Bytes::from_bytes_vec(saved.optimizer_record.clone()))
+                .map_err(|error| {
+                    LearnerRecordError::OptimizerRecordUnreadable(error.to_string())
+                })?;
+        let _optimizer = AdamConfig::new().init().load_record(optimizer_record);
+        Ok(())
     }))
-    .map_err(|_| "learner checkpoint decoder panicked on malformed bytes".to_owned())?
+    .map_err(|_| LearnerRecordError::DecoderPanicked)?
 }
 
-fn run_training_loop<B>(
+/// Decode opaque Burn records before any live worker starts.
+pub fn validate_saved_learner_worker(
+    saved: &SavedLearnerWorkerState,
+    seed: u64,
+) -> Result<(), String> {
+    check_saved_learner_worker(saved, seed).map_err(|error| error.to_string())
+}
+
+fn encode_model_record(model: ActorCriticModel) -> Result<Vec<u8>, RecordError> {
+    model.into_record().into_bytes().map(|bytes| bytes.to_vec())
+}
+
+fn run_training_loop(
     running: Arc<AtomicBool>,
     trans_rx: crossbeam_channel::Receiver<Transition>,
     model_tx: crossbeam_channel::Sender<ModelUpdate>,
     old_model_rx: crossbeam_channel::Receiver<ModelUpdate>,
     model_diagnostics: ModelUpdateDiagnostics,
-    device: B::Device,
+    device: Device,
     seed: u64,
     resume: Option<SavedLearnerWorkerState>,
     checkpoint_rx: crossbeam_channel::Receiver<LearnerCheckpointRequest>,
-    to_model_update: impl Fn(ActorCriticModel<B>) -> ModelUpdate + Send + 'static,
-) where
-    B: Backend<FloatElem = f32> + 'static,
-    B::Device: Clone + Send + Sync + 'static,
-    Autodiff<B>: Backend<FloatElem = f32, IntElem = B::IntElem, Device = B::Device>
-        + burn::tensor::backend::AutodiffBackend<
-            Device = B::Device,
-            FloatElem = f32,
-            IntElem = B::IntElem,
-        > + 'static,
-    ActorCriticModel<Autodiff<B>>:
-        AutodiffModule<Autodiff<B>, InnerModule = ActorCriticModel<B>> + Send + 'static,
-{
-    let mut train_model = seeded_training_model::<B>(&device, seed);
+    to_model_update: impl Fn(ActorCriticModel) -> ModelUpdate + Send + 'static,
+) {
+    let ad_device = device.autodiff();
+    let mut train_model = seeded_training_model(&ad_device, seed);
     let mut optim = AdamConfig::new().init();
     let mut batch = Vec::new();
     if let Some(saved) = resume {
-        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
+        ensure_burn_default_staging_device();
         let model_record =
-            match Recorder::<Autodiff<B>>::load(&recorder, saved.training_model_record, &device) {
+            match ModuleRecord::from_bytes(Bytes::from_bytes_vec(saved.training_model_record)) {
                 Ok(record) => record,
                 Err(error) => {
                     eprintln!("learner checkpoint model is unreadable: {error}");
@@ -366,9 +418,16 @@ fn run_training_loop<B>(
                     return;
                 }
             };
-        train_model = train_model.load_record(model_record);
+        train_model = match train_model.try_load_record(model_record) {
+            Ok(model) => model,
+            Err(error) => {
+                eprintln!("learner checkpoint model failed to load: {error}");
+                running.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
         let optimizer_record =
-            match Recorder::<Autodiff<B>>::load(&recorder, saved.optimizer_record, &device) {
+            match OptimizerRecord::from_bytes(Bytes::from_bytes_vec(saved.optimizer_record)) {
                 Ok(record) => record,
                 Err(error) => {
                     eprintln!("learner checkpoint optimizer is unreadable: {error}");
@@ -382,17 +441,13 @@ fn run_training_loop<B>(
 
     while running.load(Ordering::SeqCst) {
         if let Ok(request) = checkpoint_rx.try_recv() {
-            let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
             let checkpoint = (|| {
-                let training_model_record = Recorder::<Autodiff<B>>::record(
-                    &recorder,
-                    train_model.clone().into_record(),
-                    (),
-                )
-                .map_err(|error| format!("cannot record learner model: {error}"))?;
-                let optimizer_record =
-                    Recorder::<Autodiff<B>>::record(&recorder, optim.to_record(), ())
-                        .map_err(|error| format!("cannot record Adam state: {error}"))?;
+                let training_model_record = encode_model_record(train_model.clone())
+                    .map_err(|error| format!("cannot record learner model: {error}"))?;
+                let optimizer_record = optim
+                    .into_bytes()
+                    .map(|bytes| bytes.to_vec())
+                    .map_err(|error| format!("cannot record Adam state: {error}"))?;
                 Ok(SavedLearnerWorkerState {
                     training_model_record,
                     optimizer_record,
@@ -448,21 +503,21 @@ fn run_training_loop<B>(
                         rewards_vec.push(t.reward);
                     }
 
-                    let states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(states_vec, Shape::new([BATCH_SIZE, STATE_DIM])),
-                        &device,
+                    let states_tensor = Tensor::<2>::from_data(
+                        TensorData::new(states_vec, [BATCH_SIZE, STATE_DIM]),
+                        &ad_device,
                     );
-                    let next_states_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(next_states_vec, Shape::new([BATCH_SIZE, STATE_DIM])),
-                        &device,
+                    let next_states_tensor = Tensor::<2>::from_data(
+                        TensorData::new(next_states_vec, [BATCH_SIZE, STATE_DIM]),
+                        &ad_device,
                     );
-                    let actions_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(actions_vec, Shape::new([BATCH_SIZE, ACTION_DIM])),
-                        &device,
+                    let actions_tensor = Tensor::<2>::from_data(
+                        TensorData::new(actions_vec, [BATCH_SIZE, ACTION_DIM]),
+                        &ad_device,
                     );
-                    let rewards_tensor = Tensor::<Autodiff<B>, 2>::from_data(
-                        Data::new(rewards_vec, Shape::new([BATCH_SIZE, 1])),
-                        &device,
+                    let rewards_tensor = Tensor::<2>::from_data(
+                        TensorData::new(rewards_vec, [BATCH_SIZE, 1]),
+                        &ad_device,
                     );
 
                     let loss_total = a2c_loss(
@@ -499,23 +554,17 @@ fn run_training_loop<B>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use burn::module::Module;
-    use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
-
-    type B = burn_ndarray::NdArray<f32>;
+    use burn::optim::ModuleOptimizer;
 
     /// The batch shapes the loop builds must match what the model was constructed for. A mismatch is
     /// a panic deep inside Burn at the first full batch, minutes into a run.
     #[test]
     fn the_batch_dimensions_match_the_model_the_loop_builds() {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<B>::new(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &device);
+        let device = Device::flex();
+        let model = ActorCriticModel::new(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &device);
 
-        let states = Tensor::<B, 2>::from_data(
-            Data::new(
-                vec![0.1; BATCH_SIZE * STATE_DIM],
-                Shape::new([BATCH_SIZE, STATE_DIM]),
-            ),
+        let states = Tensor::<2>::from_data(
+            TensorData::new(vec![0.1; BATCH_SIZE * STATE_DIM], [BATCH_SIZE, STATE_DIM]),
             &device,
         );
         let (actor_out, critic_out) = model.forward(states);
@@ -526,64 +575,53 @@ mod tests {
 
     #[test]
     fn the_loss_is_a_finite_scalar() {
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = ActorCriticModel::<B>::new(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &device);
-        let states = Tensor::<B, 2>::from_data(
-            Data::new(
-                vec![0.1; BATCH_SIZE * STATE_DIM],
-                Shape::new([BATCH_SIZE, STATE_DIM]),
-            ),
+        let device = Device::flex();
+        let model = ActorCriticModel::new(STATE_DIM, HIDDEN_DIM, ACTION_DIM, &device);
+        let states = Tensor::<2>::from_data(
+            TensorData::new(vec![0.1; BATCH_SIZE * STATE_DIM], [BATCH_SIZE, STATE_DIM]),
             &device,
         );
-        let actions = Tensor::<B, 2>::from_data(
-            Data::new(
-                vec![0.5; BATCH_SIZE * ACTION_DIM],
-                Shape::new([BATCH_SIZE, ACTION_DIM]),
-            ),
+        let actions = Tensor::<2>::from_data(
+            TensorData::new(vec![0.5; BATCH_SIZE * ACTION_DIM], [BATCH_SIZE, ACTION_DIM]),
             &device,
         );
-        let rewards = Tensor::<B, 2>::from_data(
-            Data::new(vec![1.0; BATCH_SIZE], Shape::new([BATCH_SIZE, 1])),
+        let rewards = Tensor::<2>::from_data(
+            TensorData::new(vec![1.0; BATCH_SIZE], [BATCH_SIZE, 1]),
             &device,
         );
 
-        let loss =
-            a2c_loss(&model, states.clone(), states, actions, rewards, DISCOUNT).into_scalar();
+        let loss = a2c_loss(&model, states.clone(), states, actions, rewards, DISCOUNT)
+            .into_scalar::<f32>();
 
         assert!(loss.is_finite(), "loss must be finite, got {loss}");
     }
 
     #[test]
     fn learner_model_and_adam_resume_from_portable_records() {
-        type AB = Autodiff<B>;
-
         fn one_step(
-            mut model: ActorCriticModel<AB>,
-            mut optim: impl Optimizer<ActorCriticModel<AB>, AB>,
-            device: &burn_ndarray::NdArrayDevice,
-        ) -> (
-            ActorCriticModel<AB>,
-            impl Optimizer<ActorCriticModel<AB>, AB>,
-        ) {
-            let states = Tensor::<AB, 2>::from_data(
-                Data::new(
+            mut model: ActorCriticModel,
+            mut optim: ModuleOptimizer,
+            device: &Device,
+        ) -> (ActorCriticModel, ModuleOptimizer) {
+            let states = Tensor::<2>::from_data(
+                TensorData::new(
                     (0..BATCH_SIZE * STATE_DIM)
                         .map(|index| index as f32 * 0.001)
                         .collect(),
-                    Shape::new([BATCH_SIZE, STATE_DIM]),
+                    [BATCH_SIZE, STATE_DIM],
                 ),
                 device,
             );
             let next_states = states.clone() + 0.01;
-            let actions = Tensor::<AB, 2>::from_data(
-                Data::new(
+            let actions = Tensor::<2>::from_data(
+                TensorData::new(
                     vec![0.25; BATCH_SIZE * ACTION_DIM],
-                    Shape::new([BATCH_SIZE, ACTION_DIM]),
+                    [BATCH_SIZE, ACTION_DIM],
                 ),
                 device,
             );
-            let rewards = Tensor::<AB, 2>::from_data(
-                Data::new(vec![0.5; BATCH_SIZE], Shape::new([BATCH_SIZE, 1])),
+            let rewards = Tensor::<2>::from_data(
+                TensorData::new(vec![0.5; BATCH_SIZE], [BATCH_SIZE, 1]),
                 device,
             );
             let loss = a2c_loss(&model, states, next_states, actions, rewards, DISCOUNT);
@@ -593,22 +631,25 @@ mod tests {
             (model, optim)
         }
 
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let model = seeded_training_model::<B>(&device, 0x5EED);
+        ensure_burn_default_staging_device();
+        let device = Device::flex().autodiff();
+        let model = seeded_training_model(&device, 0x5EED);
         let optim = AdamConfig::new().init();
         let (model, optim) = one_step(model, optim, &device);
 
-        let recorder = BinBytesRecorder::<FullPrecisionSettings>::default();
-        let model_bytes = Recorder::<AB>::record(&recorder, model.clone().into_record(), ())
+        let model_bytes = model
+            .clone()
+            .into_record()
+            .into_bytes()
             .expect("training model must record");
-        let optimizer_bytes = Recorder::<AB>::record(&recorder, optim.to_record(), ())
-            .expect("Adam state must record");
+        let optimizer_bytes = optim.into_bytes().expect("Adam state must record");
 
-        let model_record = Recorder::<AB>::load(&recorder, model_bytes, &device)
-            .expect("training model must load");
-        let restored_model = seeded_training_model::<B>(&device, 0x5EED).load_record(model_record);
-        let optimizer_record = Recorder::<AB>::load(&recorder, optimizer_bytes, &device)
-            .expect("Adam state must load");
+        let model_record = ModuleRecord::from_bytes(model_bytes).expect("training model must load");
+        let restored_model = seeded_training_model(&device, 0x5EED)
+            .try_load_record(model_record)
+            .expect("training model record loads");
+        let optimizer_record =
+            OptimizerRecord::from_bytes(optimizer_bytes).expect("Adam state must load");
         let restored_optim = AdamConfig::new().init().load_record(optimizer_record);
 
         let (continued_model, _) = one_step(model, optim, &device);
@@ -657,13 +698,13 @@ mod tests {
             crossbeam_channel::bounded::<LearnerCheckpointRequest>(1);
         let running_worker = Arc::clone(&running);
         let worker = thread::spawn(move || {
-            run_training_loop::<B>(
+            run_training_loop(
                 running_worker,
                 trans_rx,
                 model_tx,
                 old_model_rx,
                 ModelUpdateDiagnostics::default(),
-                burn_ndarray::NdArrayDevice::Cpu,
+                Device::flex(),
                 0xC0FFEE,
                 None,
                 checkpoint_rx,
@@ -720,13 +761,13 @@ mod tests {
             crossbeam_channel::bounded::<LearnerCheckpointRequest>(1);
         let running_worker = Arc::clone(&running);
         let worker = thread::spawn(move || {
-            run_training_loop::<B>(
+            run_training_loop(
                 running_worker,
                 trans_rx,
                 model_tx,
                 old_model_rx,
                 ModelUpdateDiagnostics::default(),
-                burn_ndarray::NdArrayDevice::Cpu,
+                Device::flex(),
                 0xC0FFEE,
                 None,
                 checkpoint_rx,
@@ -796,19 +837,19 @@ mod tests {
     #[test]
     fn learner_and_inference_start_from_the_same_seeded_policy() {
         let seed = 0x5EED_CAFE;
-        let device = burn_ndarray::NdArrayDevice::Cpu;
-        let learner = seeded_training_model::<B>(&device, seed).valid();
+        let device = Device::flex();
+        let learner = seeded_training_model(&device, seed).valid();
         let inference =
             crate::ai::model::BrainModel::new_seeded_cpu(STATE_DIM, HIDDEN_DIM, ACTION_DIM, seed);
         let inference_model = match inference.backend() {
             crate::ai::model::BrainModelBackend::NdArray(model, _) => model,
             #[cfg(feature = "ml-wgpu")]
             crate::ai::model::BrainModelBackend::Wgpu(..) => {
-                panic!("the explicitly CPU-seeded inference model must use ndarray");
+                panic!("the explicitly CPU-seeded inference model must use flex CPU");
             }
         };
-        let input = Tensor::<B, 2>::from_data(
-            Data::new(vec![0.25; STATE_DIM], Shape::new([1, STATE_DIM])),
+        let input = Tensor::<2>::from_data(
+            TensorData::new(vec![0.25; STATE_DIM], [1, STATE_DIM]),
             &device,
         );
 
@@ -816,12 +857,12 @@ mod tests {
         let (inference_actor, inference_critic) = inference_model.forward(input);
 
         assert_eq!(
-            learner_actor.into_data().value,
-            inference_actor.into_data().value
+            learner_actor.into_data().try_into_vec::<f32>().unwrap(),
+            inference_actor.into_data().try_into_vec::<f32>().unwrap()
         );
         assert_eq!(
-            learner_critic.into_data().value,
-            inference_critic.into_data().value
+            learner_critic.into_data().try_into_vec::<f32>().unwrap(),
+            inference_critic.into_data().try_into_vec::<f32>().unwrap()
         );
     }
 
