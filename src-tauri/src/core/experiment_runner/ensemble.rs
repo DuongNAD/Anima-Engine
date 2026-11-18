@@ -245,6 +245,24 @@ pub fn run_paired_ensemble_with_control<M: ExperimentModel>(
         });
     }
 
+    summarize_seed_pairs(
+        control,
+        treatment,
+        registry,
+        declared_factors,
+        seed_order,
+        pairs,
+    )
+}
+
+pub(crate) fn summarize_seed_pairs(
+    control: &ExperimentManifest,
+    treatment: &ExperimentManifest,
+    registry: &ObservableRegistry,
+    declared_factors: Vec<String>,
+    seed_order: Vec<u64>,
+    pairs: Vec<SeedPair>,
+) -> Result<PairedEnsembleReport, ExperimentError> {
     // Deterministic union of final observables per side, over ALL runs (a failed run can still
     // report final observables). Using every run means an observable stays *listed* — with
     // `n_complete_pairs = 0` and all-`None` statistics — even when no pair completed, rather than

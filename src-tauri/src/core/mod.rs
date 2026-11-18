@@ -5,6 +5,7 @@ pub mod build_identity;
 pub mod causal;
 pub mod components;
 pub mod determinism;
+pub mod drift_control;
 pub mod dynamic_fields;
 pub mod ecology;
 pub mod ecs;

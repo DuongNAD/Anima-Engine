@@ -663,6 +663,7 @@ pub fn autonomous_reproduction_system(
     mut vital_stats: Option<ResMut<crate::core::resources::VitalStatistics>>,
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
     prey_cap_policy: Option<Res<crate::core::resources::PreyCapPolicy>>,
+    mut drift: Option<ResMut<crate::core::drift_control::DriftControlState>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
@@ -671,12 +672,189 @@ pub fn autonomous_reproduction_system(
     let prey_cap = prey_cap_policy
         .as_deref()
         .map_or(crate::core::resources::DEFAULT_PREY_CAP, |p| p.cap);
-    use rand::Rng;
     // Absent policy == the historical 5%. Exactly 0.0 == offspring are exact copies (no body or
     // brain mutation); see `live.mutation_rate`.
     let mutation_rate = mutation_policy
         .as_deref()
         .map_or(crate::core::resources::DEFAULT_MUTATION_RATE, |p| p.rate);
+
+    if let Some(drift_res) = drift.as_deref_mut().filter(|d| d.is_replay()) {
+        let scheduled = drift_res.current_turnover();
+        let req_prey = scheduled.prey_births as usize;
+        let req_pred = scheduled.pred_births as usize;
+        if req_prey == 0 && req_pred == 0 {
+            return;
+        }
+
+        let world_tick = drift_res.current_world_tick;
+        let mut scheduled_total = 0u64;
+        let mut actual_total = 0u64;
+        let mut missed_extinct = 0u64;
+        let mut missed_insolvent = 0u64;
+        let mut missed_any_this_tick = false;
+
+        {
+            let (prey_buf, pred_buf, solvent_buf, drift_rng) =
+                drift_res.split_birth_buffers_and_rng();
+            prey_buf.clear();
+            pred_buf.clear();
+            for (e, _, _, _, _, _, _, opt_pred, _, _) in agent_query.iter() {
+                if opt_pred.is_some() {
+                    pred_buf.push(e);
+                } else {
+                    prey_buf.push(e);
+                }
+            }
+
+            for (is_predator, req, guild_buf) in
+                [(false, req_prey, prey_buf), (true, req_pred, pred_buf)]
+            {
+                if req == 0 {
+                    continue;
+                }
+                scheduled_total += req as u64;
+                if guild_buf.is_empty() {
+                    missed_extinct += req as u64;
+                    missed_any_this_tick = true;
+                    continue;
+                }
+
+                if guild_buf.len() > 1 {
+                    guild_buf.sort_unstable_by(|&a, &b| {
+                        match (agent_query.get(a), agent_query.get(b)) {
+                            (
+                                Ok((ea, ha, _, _, pa, la, ga, _, _, _)),
+                                Ok((eb, hb, _, _, pb, lb, gb, _, _, _)),
+                            ) => crate::core::drift_control::candidate_cmp(
+                                (la.0.as_str(), ga.0, pa.0.x, pa.0.z, ha.energy, ea.index()),
+                                (lb.0.as_str(), gb.0, pb.0.x, pb.0.z, hb.energy, eb.index()),
+                            ),
+                            _ => std::cmp::Ordering::Equal,
+                        }
+                    });
+                }
+
+                solvent_buf.clear();
+                for &e in guild_buf.iter() {
+                    if let Ok((_, homeo, ..)) = agent_query.get(e) {
+                        if homeo.energy >= crate::core::drift_control::MIN_DRIFT_BIRTH_PAYMENT_EU {
+                            solvent_buf.push(e);
+                        }
+                    }
+                }
+
+                let invest_fraction = if is_predator { 0.65 } else { 0.50 };
+                for _ in 0..req {
+                    if solvent_buf.is_empty() {
+                        missed_insolvent += 1;
+                        missed_any_this_tick = true;
+                        continue;
+                    }
+                    let Some(p_gen) = crate::core::drift_control::draw_uniform_entity(
+                        guild_buf.as_slice(),
+                        drift_rng,
+                    ) else {
+                        missed_extinct += 1;
+                        missed_any_this_tick = true;
+                        continue;
+                    };
+
+                    let Ok((
+                        _,
+                        gen_homeo,
+                        genotype,
+                        opt_brain,
+                        pos,
+                        lineage_id,
+                        generation,
+                        _,
+                        _,
+                        opt_eval,
+                    )) = agent_query.get(p_gen)
+                    else {
+                        missed_extinct += 1;
+                        missed_any_this_tick = true;
+                        continue;
+                    };
+                    let p_gen_energy = gen_homeo.energy;
+                    let parent_energy_target = gen_homeo.energy_target;
+                    let parent_genotype = genotype.0.clone();
+                    let parent_brain_geno = opt_brain.map(|b| Arc::clone(&b.genotype));
+                    let parent_pos = pos.0;
+                    let parent_lineage = lineage_id.0.clone();
+                    let parent_generation = generation.0;
+                    let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
+
+                    let p_pay =
+                        if p_gen_energy >= crate::core::drift_control::MIN_DRIFT_BIRTH_PAYMENT_EU {
+                            p_gen
+                        } else {
+                            match crate::core::drift_control::draw_uniform_entity(
+                                solvent_buf.as_slice(),
+                                drift_rng,
+                            ) {
+                                Some(payer) => payer,
+                                None => {
+                                    missed_insolvent += 1;
+                                    missed_any_this_tick = true;
+                                    continue;
+                                }
+                            }
+                        };
+
+                    let Ok((_, mut payer_homeo, ..)) = agent_query.get_mut(p_pay) else {
+                        missed_insolvent += 1;
+                        missed_any_this_tick = true;
+                        continue;
+                    };
+                    let invest_nominal = invest_fraction * payer_homeo.energy;
+                    let spawned = execute_reproduction_birth(
+                        &mut commands,
+                        &mut payer_homeo.energy,
+                        invest_nominal,
+                        p_gen,
+                        &parent_genotype,
+                        parent_brain_geno.as_ref(),
+                        parent_pos,
+                        &parent_lineage,
+                        parent_generation,
+                        parent_age,
+                        parent_energy_target,
+                        is_predator,
+                        mutation_rate,
+                        &mut biomass,
+                        &mut ledger,
+                        &mut sim_rng,
+                        &bounds,
+                        &mut next_node_id,
+                        &mut demographic_tracker,
+                        &mut vital_stats,
+                    );
+                    if payer_homeo.energy < crate::core::drift_control::MIN_DRIFT_BIRTH_PAYMENT_EU {
+                        if let Some(pos_idx) = solvent_buf.iter().position(|&e| e == p_pay) {
+                            solvent_buf.remove(pos_idx);
+                        }
+                    }
+                    if spawned {
+                        actual_total += 1;
+                    } else {
+                        missed_insolvent += 1;
+                        missed_any_this_tick = true;
+                    }
+                }
+            }
+        }
+
+        drift_res.diagnostics.scheduled_births += scheduled_total;
+        drift_res.diagnostics.actual_births += actual_total;
+        drift_res.diagnostics.missed_births_extinct += missed_extinct;
+        drift_res.diagnostics.missed_births_insolvent += missed_insolvent;
+        if missed_any_this_tick {
+            drift_res.diagnostics.ticks_with_missed_births += 1;
+            drift_res.diagnostics.note_divergence(world_tick);
+        }
+        return;
+    }
 
     // Count living trophic populations for density-dependent fecundity regulation
     let mut prey_count = 0usize;
@@ -738,118 +916,178 @@ pub fn autonomous_reproduction_system(
                 continue;
             }
 
-            // Debit parent reserve exactly in f64
-            let debited =
-                crate::core::energy_ledger::debit_reserve(&mut homeo.energy, invest_nominal);
-            if debited <= 0.0 {
-                continue;
-            }
-
-            // Lindeman reproduction efficiency
-            let efficiency = crate::core::ecology::REPRODUCTION_EFFICIENCY as f64;
-            let child_endowment = (debited * efficiency) as f32;
-            let overhead_waste = debited - (child_endowment as f64);
-
-            // 0-leakage detritus routing for reproduction overhead. The parent's reserve was
-            // debited exactly above, so the overhead is a flow from the Animals compartment to
-            // detritus and goes through the ledger like every other such flow: written straight
-            // into `pool.detritus` it conserved EU but left `EnergyLedger` unable to see the
-            // transaction (G5, `tests/ledger_bypass_tests.rs`).
-            if overhead_waste > 0.0 {
-                if let Some(ref mut pool) = biomass {
-                    match ledger.as_mut() {
-                        // `settle_reserve_outflow_to_detritus` also covers the first tick, when the
-                        // `Animals` mirror is still zero and a plain `transfer` would be clamped to
-                        // nothing.
-                        Some(ledger) => {
-                            crate::core::energy_ledger::settle_reserve_outflow_to_detritus(
-                                ledger,
-                                pool,
-                                overhead_waste,
-                                crate::core::energy_ledger::EnergyEvent::BiologicalReproduction,
-                            );
-                        }
-                        // No ledger resource: the legacy write, unchanged.
-                        None => pool.detritus += overhead_waste,
-                    }
+            let energy_target = homeo.energy_target;
+            let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
+            let spawned = execute_reproduction_birth(
+                &mut commands,
+                &mut homeo.energy,
+                invest_nominal,
+                entity,
+                &genotype.0,
+                opt_brain.map(|b| &b.genotype),
+                pos.0,
+                &lineage_id.0,
+                generation.0,
+                parent_age,
+                energy_target,
+                is_predator,
+                mutation_rate,
+                &mut biomass,
+                &mut ledger,
+                &mut sim_rng,
+                &bounds,
+                &mut next_node_id,
+                &mut demographic_tracker,
+                &mut vital_stats,
+            );
+            if spawned {
+                if let Some(drift_res) = drift.as_deref_mut() {
+                    drift_res.record_birth(is_predator);
                 }
             }
-
-            let agent_class = if is_predator {
-                AgentClass::Predator
-            } else {
-                AgentClass::Prey
-            };
-
-            // Jitter offspring spawn position near parent
-            let (dx, dz) = match sim_rng.as_mut() {
-                Some(rng_res) => {
-                    let r = rng_res.rng();
-                    (r.gen_range(-1.5..1.5), r.gen_range(-1.5..1.5))
-                }
-                None => (0.5, 0.5),
-            };
-
-            let mut spawn_pos = glam::Vec3::new(pos.0.x + dx, pos.0.y, pos.0.z + dz);
-            if let Some(ref b) = bounds {
-                spawn_pos.x = spawn_pos.x.clamp(b.min.x + 1.0, b.max.x - 1.0);
-                spawn_pos.z = spawn_pos.z.clamp(b.min.z + 1.0, b.max.z - 1.0);
-            }
-
-            // Mutate child morphology with low probability (5%)
-            let mut child_genotype = genotype.0.clone();
-            if let (Some(ref mut rng_res), Some(ref mut node_id_res)) =
-                (sim_rng.as_mut(), next_node_id.as_mut())
-            {
-                let r = rng_res.rng();
-                let _ = crate::evolution::mutation::mutate_genotype(
-                    &mut child_genotype,
-                    &mut node_id_res.0,
-                    mutation_rate,
-                    r,
-                );
-            }
-
-            // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
-            let child_brain = if let (Some(brain), Some(ref mut rng_res), true) =
-                (opt_brain, sim_rng.as_mut(), mutation_rate > 0.0)
-            {
-                let mut brain_geno = (*brain.genotype).clone();
-                let r = rng_res.rng();
-                let _ =
-                    crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
-                Some(std::sync::Arc::new(brain_geno))
-            } else {
-                opt_brain.map(|b| b.genotype.clone())
-            };
-
-            let child_lineage = format!("{}.{}", lineage_id.0, generation.0 + 1);
-
-            if let Some(ref mut trk) = demographic_tracker {
-                let parent_age = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
-                trk.record_birth(parent_age);
-            }
-            // F-039: `live.births` drains `VitalStatistics`; record every continuous birth there
-            // too, beside the tracker's. Absent resource = no-op (legacy path).
-            if let Some(ref mut vitals) = vital_stats {
-                vitals.record_birth();
-            }
-
-            commands.add(SpawnOffspringCommand {
-                parent_entity: entity,
-                genotype: child_genotype,
-                initial_pos: spawn_pos,
-                initial_rot: glam::Quat::IDENTITY,
-                agent_class,
-                lineage_id: child_lineage,
-                generation: generation.0 + 1,
-                parent_ids: vec![lineage_id.0.clone()],
-                starting_energy: child_endowment,
-                energy_target: homeo.energy_target,
-                brain: child_brain,
-            });
         }
     }
+}
+
+/// Shared closed-EU birth settlement, mutation, and [`SpawnOffspringCommand`] queueing helper used
+/// by both [`autonomous_reproduction_system`] and SEL2-D neutral-drift replay.
+#[allow(clippy::too_many_arguments)]
+fn execute_reproduction_birth(
+    commands: &mut Commands,
+    payer_energy: &mut f32,
+    invest_nominal: f32,
+    parent_entity: Entity,
+    parent_genotype: &MorphologyGenotype,
+    parent_brain_genotype: Option<&Arc<crate::evolution::brain_genotype::BrainGenotype>>,
+    parent_pos: glam::Vec3,
+    parent_lineage_id: &str,
+    parent_generation: u32,
+    parent_age: u32,
+    parent_energy_target: f32,
+    is_predator: bool,
+    mutation_rate: f64,
+    biomass: &mut Option<ResMut<crate::core::ecology::EcosystemBiomass>>,
+    ledger: &mut Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
+    sim_rng: &mut Option<ResMut<crate::core::resources::SimRng>>,
+    bounds: &Option<Res<crate::core::ecs::MapBounds>>,
+    next_node_id: &mut Option<ResMut<NextNodeId>>,
+    demographic_tracker: &mut Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
+    vital_stats: &mut Option<ResMut<crate::core::resources::VitalStatistics>>,
+) -> bool {
+    use rand::Rng;
+
+    if invest_nominal <= 0.0 {
+        return false;
+    }
+
+    // Debit payer reserve exactly in f64
+    let debited = crate::core::energy_ledger::debit_reserve(payer_energy, invest_nominal);
+    if debited <= 0.0 {
+        return false;
+    }
+
+    // Lindeman reproduction efficiency
+    let efficiency = crate::core::ecology::REPRODUCTION_EFFICIENCY as f64;
+    let child_endowment = (debited * efficiency) as f32;
+    let overhead_waste = debited - (child_endowment as f64);
+
+    // 0-leakage detritus routing for reproduction overhead. The parent's reserve was
+    // debited exactly above, so the overhead is a flow from the Animals compartment to
+    // detritus and goes through the ledger like every other such flow: written straight
+    // into `pool.detritus` it conserved EU but left `EnergyLedger` unable to see the
+    // transaction (G5, `tests/ledger_bypass_tests.rs`).
+    if overhead_waste > 0.0 {
+        if let Some(ref mut pool) = biomass {
+            match ledger.as_mut() {
+                // `settle_reserve_outflow_to_detritus` also covers the first tick, when the
+                // `Animals` mirror is still zero and a plain `transfer` would be clamped to
+                // nothing.
+                Some(ledger) => {
+                    crate::core::energy_ledger::settle_reserve_outflow_to_detritus(
+                        ledger,
+                        pool,
+                        overhead_waste,
+                        crate::core::energy_ledger::EnergyEvent::BiologicalReproduction,
+                    );
+                }
+                // No ledger resource: the legacy write, unchanged.
+                None => pool.detritus += overhead_waste,
+            }
+        }
+    }
+
+    let agent_class = if is_predator {
+        AgentClass::Predator
+    } else {
+        AgentClass::Prey
+    };
+
+    // Jitter offspring spawn position near genetic parent
+    let (dx, dz) = match sim_rng.as_mut() {
+        Some(rng_res) => {
+            let r = rng_res.rng();
+            (r.gen_range(-1.5..1.5), r.gen_range(-1.5..1.5))
+        }
+        None => (0.5, 0.5),
+    };
+
+    let mut spawn_pos = glam::Vec3::new(parent_pos.x + dx, parent_pos.y, parent_pos.z + dz);
+    if let Some(ref b) = bounds {
+        spawn_pos.x = spawn_pos.x.clamp(b.min.x + 1.0, b.max.x - 1.0);
+        spawn_pos.z = spawn_pos.z.clamp(b.min.z + 1.0, b.max.z - 1.0);
+    }
+
+    // Mutate child morphology with declared mutation probability
+    let mut child_genotype = parent_genotype.clone();
+    if let (Some(ref mut rng_res), Some(ref mut node_id_res)) =
+        (sim_rng.as_mut(), next_node_id.as_mut())
+    {
+        let r = rng_res.rng();
+        let _ = crate::evolution::mutation::mutate_genotype(
+            &mut child_genotype,
+            &mut node_id_res.0,
+            mutation_rate,
+            r,
+        );
+    }
+
+    // Inherit brain (non-Lamarckian: inherits genome, not learned weights)
+    let child_brain = if let (Some(brain_geno_arc), Some(ref mut rng_res), true) =
+        (parent_brain_genotype, sim_rng.as_mut(), mutation_rate > 0.0)
+    {
+        let mut brain_geno = (**brain_geno_arc).clone();
+        let r = rng_res.rng();
+        let _ = crate::evolution::brain_genotype::mutate_brain(&mut brain_geno, 0.05, 0.02, r);
+        Some(Arc::new(brain_geno))
+    } else {
+        parent_brain_genotype.cloned()
+    };
+
+    let child_lineage = format!("{parent_lineage_id}.{}", parent_generation + 1);
+
+    if let Some(ref mut trk) = demographic_tracker {
+        trk.record_birth(parent_age);
+    }
+    // F-039: `live.births` drains `VitalStatistics`; record every continuous birth there
+    // too, beside the tracker's. Absent resource = no-op (legacy path).
+    if let Some(ref mut vitals) = vital_stats {
+        vitals.record_birth();
+    }
+
+    commands.add(SpawnOffspringCommand {
+        parent_entity,
+        genotype: child_genotype,
+        initial_pos: spawn_pos,
+        initial_rot: glam::Quat::IDENTITY,
+        agent_class,
+        lineage_id: child_lineage,
+        generation: parent_generation + 1,
+        parent_ids: vec![parent_lineage_id.to_owned()],
+        starting_energy: child_endowment,
+        energy_target: parent_energy_target,
+        brain: child_brain,
+    });
+    true
 }
 
 pub fn sync_evolution_settings_system(
