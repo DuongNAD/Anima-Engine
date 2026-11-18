@@ -271,7 +271,7 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 | SEL2-D `[RUST]` | **QĐ-SEL2a** — nhóm đối chứng drift khoá bước: phát lại đúng số sinh và chết theo tick nhưng chọn ngẫu nhiên ai chết và ai làm cha mẹ | 🤖 | Cần dòng uỷ quyền R5 riêng; làm song song được với SEL2-E | Ở §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) |
 | SEL2-P, SEL2-X `[RUST]` | Bản đăng ký mới cho chọn lọc theo khan hiếm, rồi chạy đúng một lần | 🤖, 🧑 duyệt bản đăng ký | SEL2-E đã tìm ra ít nhất một ô khả thi (QĐ-SEL2a, 2026-11-18); SEL2-D cho nhóm đối chứng drift. Số seed quyết sau SEL2-E (QĐ-SEL2c). Thay đổi so với E-SEL1: §5 của [đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) | Theo mẫu E2: fixture, smoke qua kiểm tra thao tác, `RESULT.md` kể cả khi null. Đây là ứng viên cho cổng ra của chặng 4 |
 | S7 `[RUST]` | **QĐ-ECO-C1** — khoá `live.predator_cost_mult`, `live.strike_radius` và một khoá nguồn nước | 🤖 | ADR-0007 được cập nhật (file R5: agent soạn, chủ dự án duyệt) | Mỗi khoá vắng thì bit-identical; EU kín; tất định nhiều tiến trình; một phép đo **tiền đăng ký** trên ít nhất 20 seed |
-| R1c `[RUST]` | **QĐ-C = C** — nâng `burn` từ 0.13.2 lên dòng 0.22. **Thay thẻ R1**, vốn giả định QĐ-C = A | 🤖 + 🧑 | Uỷ quyền R5 cho `src-tauri/Cargo.toml`, `Cargo.lock` và các file dùng `burn` | Xem danh sách ngay dưới bảng |
+| R1c `[RUST]` | **QĐ-C = C** — nâng `burn` từ 0.13.2 lên dòng 0.22, dùng `burn-flex` thay `burn-ndarray` (QĐ-R1c-b, 2026-11-18). **Thay thẻ R1**, vốn giả định QĐ-C = A | 🤖 + 🧑 | Uỷ quyền R5 cho `src-tauri/Cargo.toml`, `Cargo.lock` và các file dùng `burn` | Xem danh sách ngay dưới bảng |
 | L0 | ADR cho QĐ-PAST (kể cả thiết kế lưu trữ) và QĐ-TIME | 🤖 soạn, 🧑 duyệt | — | ADR ở trạng thái `accepted` |
 | L1 `[RUST]` | Phần AE4 mà thí nghiệm rẽ luật cần: trường năng lượng ngoại lai trên thế giới sống | 🤖 | L0; R0. ADR-0002 đã được chấp nhận ngày 2026-11-17 nhưng **chỉ cho lát headless**: nối thế giới sống cần bằng chứng riêng (AE-S15 và phần còn lại của AE-S12) | Adapter sống thôi từ chối `laws.exotic_energy`; `exotic_energy=None` bit-identical; MU kiểm toán tách khỏi EU; các luật ER02–ER05 có gate |
 | L2-P, L2-X `[RUST]` | **QĐ-LAW1** — bản đăng ký và lượt chạy thí nghiệm rẽ luật đầu tiên | 🤖, 🧑 duyệt bản đăng ký | L1; SEL2-X đã có kết quả | Cùng bản đồ và seed, một nhánh đối chứng và một nhánh có nguồn năng lượng lạ, nhiều seed, `RESULT.md` |
@@ -284,7 +284,7 @@ lượt chạy với nhau, không ghim checksum tuyệt đối.
 2. `brain_parity_tests`, `gpu_brain_batch_parity_tests`, `a2c_loss_direction_tests`, `burn_neural_net_tests` và
    `phase5_burn_wgpu_fallback` xanh, không assertion nào bị nới. Gate parity EB-S02 là thứ bảo vệ bố cục
    trọng số `w[out * fan_in + in]`.
-3. **Save cũ vẫn đọc được, hoặc có migration khai rõ.** Snapshot schema 7 lưu learner dùng chung thành hai
+3. **Save cũ:** đã quyết ngày 2026-11-18 (QĐ-R1c-a): tăng schema lên 8; snapshot schema 7 khôi phục được thế giới, bản ghi learner bị từ chối kèm lỗi có tên, learner dùng chung khởi tạo lại. Văn bản gốc của điều kiện: **Save cũ vẫn đọc được, hoặc có migration khai rõ.** Snapshot schema 7 lưu learner dùng chung thành hai
    bản ghi nhị phân của `burn` (`training_model_record`, `optimizer_record`, ghi bằng `BinBytesRecorder`).
    Định dạng đó thuộc về phiên bản `burn`, nên đây là chỗ dễ vỡ im lặng nhất của cả thẻ.
 4. So checksum trước và sau ở đường CPU, cho thế giới mặc định và cho một thế giới có học. Nếu khác thì

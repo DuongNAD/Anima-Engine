@@ -346,6 +346,8 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-SEL2a | Bước kế tiếp của QĐ-SEL1b là chuỗi **S9 → S10 → SEL2-E → SEL2-P**, kèm **SEL2-D**; không đo dày quanh hệ số 0,6–0,7, không chuyển sang khan hiếm nước trước khi S9 cho số | Năm thẻ mới trong [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án) |
 | QĐ-SEL2b | Điều kiện khả thi của SEL2-E có thêm **ít nhất 30 thế hệ** và **chết chủ yếu vì đói** | Định nghĩa của SEL2-E |
 | QĐ-SEL2c | Số seed của SEL2-P (16 hay 24) **quyết sau SEL2-E**, khi biết một lượt chạy tốn bao lâu | Còn mở, có điều kiện |
+| QĐ-R1c-a | Thẻ R1c tăng `SCHEMA_VERSION` lên 8. Snapshot schema 7 vẫn khôi phục được thế giới; hai bản ghi learner `BinBytesRecorder` của nó bị từ chối kèm lỗi có tên và cảnh báo, và learner dùng chung khởi tạo lại (chủ dự án "Theo đề xuất", 2026-11-18) | Không giữ `burn` 0.13 trong lockfile. Căn cứ: [đối chiếu hai báo cáo về Burn và tất định](../ai/planning/2026-11-18-research-burn-and-determinism.md) §2 |
+| QĐ-R1c-b | Thẻ R1c chuyển thẳng sang `burn-flex`, không qua `burn-ndarray` 0.22 (cùng ngày) | `burn-ndarray` đã bị xoá ở 0.23 |
 | QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất. Cùng ngày, theo yêu cầu của phiên làm S9, chủ dự án cho thêm hai path ("Cho phép cả hai"): sổ đăng ký observable `core/experiment/observables.rs` và một test của `prereg_esel1_manifest_tests.rs`; sáu manifest E-SEL1 đã đăng ký giữ nguyên | Các dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
 
 Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
@@ -371,7 +373,7 @@ hai dòng cuối):
 |---|---|---|
 | Chặng 0 (MP-0.6) | QĐ-M1 — tài liệu nào là `accepted` cho mỗi vai | Mọi tài liệu kế hoạch vẫn `proposed` |
 | Chặng 3 | QĐ-M2 — tách crate trước hay sau `v1.0.0` | `CRATE_SPLIT_PLAN` |
-| Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng | NM-3 trên hai nền tảng, T5 |
+| Chặng 4 hoặc 7 | QĐ-M6 — mức tất định giữa các nền tảng. Một phương án cụ thể (module `sim_math` trên crate `libm`, cấm gọi thẳng hàm toán của hệ điều hành bằng `clippy.toml`, đo bằng ma trận M1) ở [đối chiếu hai báo cáo về Burn và tất định](../ai/planning/2026-11-18-research-burn-and-determinism.md) §3.2 | NM-3 trên hai nền tảng, T5 |
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Trước AE4 | QĐ-PAST (thiết kế lưu trữ) và QĐ-TIME: duyệt [ADR-0008](../decisions/ADR-0008-world-past-and-time.md), đang `proposed` (thẻ L0, #109) | §4.2 ngay dưới |

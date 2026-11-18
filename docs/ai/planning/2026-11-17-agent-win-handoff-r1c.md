@@ -71,11 +71,30 @@ WHERE YOUR WORK STANDS
 
 YOUR NEXT CARD: R1c, upgrade burn
 Decision QD-C = C (owner, 2026-11-17): keep the GPU learner in the shipped build by upgrading
-`burn`, `burn-ndarray` and `burn-wgpu` from 0.13.2 to the 0.22 line. The reason: `hexf-parse` 0.2.1
+`burn` and `burn-wgpu` from 0.13.2 to the 0.22 line, and replacing `burn-ndarray` with `burn-flex`
+(decision QD-R1c-b, owner, 2026-11-18: burn-ndarray is deprecated since 0.21 and removed in 0.23). The
+reason: `hexf-parse` 0.2.1
 has no published licence text and blocks distribution. It reaches the build only through
 naga 0.19.2 <- wgpu 0.19.4 <- burn-wgpu 0.13.2 <- feature ml-wgpu. The dependency lists on crates.io
 say naga 22 to 29 still depend on hexf-parse, naga 30.0.2 does not, and burn-wgpu 0.22.1 goes through
 cubecl-wgpu 0.11.4, which requires wgpu ^30. That is a reading of declared dependencies, not a build.
+
+WHAT A RESEARCH REPORT SAID (2026-11-18; a second-hand summary, verify each point yourself)
+- Burn 0.22 needs Rust 1.95+ and edition 2024; the repo pins 1.98.1.
+- Backend type parameters are gone from user code; autodiff is a runtime device context
+  (`device.autodiff()`, `model.valid()`); `AdamConfig::init()` returns a `ModuleOptimizer`; the old
+  Recorder family, including `BinBytesRecorder`, is gone in favour of burnpack (`ModuleRecord`,
+  `OptimizerRecord`, `burn::store`).
+- `to_device` keeps autodiff tracking: an inference path must call `.valid()` or `.without_autodiff()`,
+  or a backward tape accumulates.
+- `burn-flex` defaults integer tensors to I32 (ndarray used I64). Do not use `Device::cpu()` (it fuses
+  and JIT-compiles per machine); do not rely on `Device::default()` (it prefers a GPU); enable no BLAS
+  feature.
+- Seeded weight initialisation changes (rand 0.10), so trajectories will change; that is expected and
+  is what condition 4 reports.
+- The 0.13 wgpu leak (burn#2042) is reported fixed upstream; burn#5891 (NVIDIA 615.71 Linux driver)
+  is open. Condition 5 still measures.
+Details and what was and was not verified: docs/ai/planning/2026-11-18-research-burn-and-determinism.md.
 
 STEP 0, BEFORE ANY CODE
 Confirm the premise with a real resolution: on a scratch copy of src-tauri/Cargo.toml, resolve the
@@ -104,13 +123,15 @@ DONE WHEN (each shown in the PR body with the raw command output)
    cmd /c "cargo test --features desktop -- --nocapture > ..\out.txt 2>&1"
    (not a PowerShell pipeline), then run
    node scripts/check_test_targets.mjs out.txt --profile desktop
-3. Old saves still load, or a migration is written and declared. Snapshot schema 7 stores the shared
-   learner as two burn binary records (`training_model_record` and `optimizer_record` in
-   `SavedLearnerWorkerState`, written with `BinBytesRecorder`). That format belongs to the burn
-   version, so this is the place most likely to break silently. Write a test that loads a schema-7
-   snapshot with a shared learner produced BEFORE the upgrade (generate the fixture from the
-   pre-upgrade commit) and either restores it or refuses it with a named error. If the format
-   changed, say so and propose the schema bump; do not decide SCHEMA_VERSION policy silently.
+3. Old saves, as decided (QD-R1c-a, owner, 2026-11-18). Snapshot schema 7 stores the shared learner as
+   two burn binary records (`training_model_record` and `optimizer_record` in `SavedLearnerWorkerState`,
+   written with `BinBytesRecorder`), which Burn 0.22 cannot read. Bump `SCHEMA_VERSION` to 8. A
+   schema-7 snapshot must still restore the world; its two learner records are refused with a named
+   error that is logged as a warning, and the shared learner starts from a fresh initialisation. Do
+   NOT keep burn 0.13 in Cargo.lock under another name to read them. Write a test that loads a
+   schema-7 snapshot with a shared learner produced BEFORE the upgrade (generate the fixture from the
+   pre-upgrade commit) and asserts: the world state matches, the learner is fresh, and the named
+   error is reported. A schema-8 snapshot must round-trip the learner exactly.
 4. On the CPU backend, compare the world checksum before and after the upgrade, for the default
    world and for one world with lifetime learning on, by running the same test at both commits.
    Never pin an absolute checksum; compare runs. If they differ, report it; whether
@@ -158,9 +179,9 @@ read-only declaration and BLOCK 0 R5 for exactly these paths and no others. If t
 change to any other file under src-tauri/src, stop and ask the owner, naming the file and the reason.
 
 AFTER R1c
-Your next card is R0 (re-measure every gate of STATE section 5 on one trunk commit and draft the
-section 1 patch). Start it only when the owner says Wave 2 is merged, which means G3 (#107) and G9.
-Do not start it on your own.
+Your other card is R0 (re-measure every gate of STATE section 5 on one trunk commit and draft the
+section 1 patch). Wave 2 merged on 2026-11-18 (G3 #107, G9 #114), so R0 is open; the owner's message
+says whether you do R0 before or after R1c.
 
 REPORT
 Card id, base and head commit, branch, PR number, then the seven conditions one by one with raw
