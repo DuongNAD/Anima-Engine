@@ -77,4 +77,140 @@ Commit gốc đo tại `f4614665f7ccf527a6a93a5b0fcfd39aa4e3f948` (`win/m4-eu-ma
 
 ## Trạng thái thực thi & bảng kết quả
 
-*(Phần bảng đo sẽ được điền nguyên văn từ `cargo test --features desktop --test eu_residual_matrix_tests` ở cấu hình phủ cặp debug `< 120 s` và `eu_residual_matrix.exe` ở cấu hình `--release` cho toàn ma trận đầy đủ sau khi chạy ở bước kế tiếp.)*
+**Kết luận tổng hợp (không phát hiện rò rỉ):** Mọi tổ hợp chính sách (`192/192` giai thừa đầy đủ + `8` hàng mảng phủ cặp), mọi cặp `drift_control` (`16/16` ở `K ∈ {0, 60}`), mọi biến thể `InterventionKind` (`27/27` mục gồm cả `GeneticInjection` với cả `5` `TraitMod` và tổ hợp đồng thời `All8Combined`), và tổ hợp khoá loại trừ (`mutation_rate`, `target_min_energy`, `ecological_fitness`, `w_surplus`) đều bảo toàn `live.closed_eu_total` tới nhiễu cộng dấu phẩy động (`<= 3.929e-10` EU trên tổng quỹ `155.187,250` EU), thấp hơn **`2,5 × 10^6` lần** so với ngưỡng `1.0e-3` EU (`violations = 0`).
+
+### Cấu hình máy & chuỗi công cụ đo thực tế
+
+| Thành phần | Giá trị đo từ lệnh (`Get-CimInstance` / `rustc -V` / `cargo -V`) |
+|---|---|
+| CPU | `Intel(R) Core(TM) i5-14600KF` (`14` nhân vật lý / `20` luồng logic, `MaxClockSpeed = 3500 MHz`) |
+| Bộ nhớ RAM | `51.318.800.384` byte (`47,8 GiB`) |
+| Hệ điều hành | `Microsoft Windows 11 Pro` (`Version: 10.0.26300`, `BuildNumber: 26300`) |
+| Chuỗi công cụ Rust | `rustc 1.98.1 (48a229cea 2026-09-01)`, `cargo 1.98.1 (797e8a9bc 2026-08-05)`, `CARGO_BUILD_JOBS=6` |
+| Commit gốc đo | `f4614665f7ccf527a6a93a5b0fcfd39aa4e3f948` (nhánh `win/m4-eu-matrix`, PR nháp `#137`) |
+
+### Lý do tách covering design (debug test) và full factorial (release example)
+
+- Bộ phủ cặp trong test debug (`45` mục kiểm = `58` lượt mô phỏng thế giới thật qua `LiveExperimentAdapter`) chạy mất **`31,62 s`** thực thi nhị phân ở cấu hình `--features desktop` (`57,36 s` tường gồm `24,90 s` kiểm tra/liên kết ấm; lần biên dịch lạnh đầu tiên mất `683,9 s` với test binary `29,06 s`), và **`25,67 s`** ở cấu hình `--no-default-features` (`46,27 s` tường). Trung bình mỗi lượt thế giới debug mất `~0,55 s` và mỗi cặp `drift_control` mất `~1,64 s`.
+- Ngoại suy cả `236` mục giai thừa đầy đủ (`192` tổ hợp chính sách + `16` cặp `drift_control` + `27` mục `InterventionKind` + `1` mục khoá loại trừ = `261` lượt mô phỏng, `2/3` mang não Burn từng cá thể) sang debug không tối ưu vượt **`~140–165 s > 120 s`**, vượt trần CI `120 s`. Do đó:
+  1. `src-tauri/tests/eu_residual_matrix_tests.rs` chạy mảng phủ cặp bậc 2 (`8` hàng phủ `96/96 = 100%` cặp giá trị giữa `7` yếu tố `[2, 2, 2, 2, 2, 3, 2]`), toàn bộ `8` biến thể `InterventionKind` + `All8Combined` trên `baseline`, `sel2_full` và `drift_k60`, `4` cặp góc `drift_control` (`K ∈ {0, 60}`), và mục khoá loại trừ (`< 32 s` ở debug).
+  2. `src-tauri/examples/eu_residual_matrix.rs` chạy toàn bộ ma trận giai thừa đầy đủ `192` tổ hợp chính sách × `16` cặp `drift_control` × `27` mục `InterventionKind` × mục khoá loại trừ ở cấu hình `--release` trong **`16,70 s`** tường (`total_s = 16.18` nội bộ).
+
+### Các lệnh thực thi & kiểm tra cổng
+
+| Cổng / Lần chạy | Lệnh thực thi nguyên văn | Kết quả | Thời gian |
+|---|---|---|---|
+| Format Rust | `cargo fmt --all -- --check` | `EXIT=0` (sạch) | `1,21 s` |
+| Clippy (desktop) | `cargo clippy --all-targets --features desktop -- -D warnings` | `EXIT=0` (0 warning) | `7,82 s` |
+| Clippy (default) | `cargo clippy --all-targets --no-default-features -- -D warnings` | `EXIT=0` (0 warning) | `27,32 s` |
+| Debug test (desktop) | `cargo test --features desktop --test eu_residual_matrix_tests -- --nocapture` | `4 passed; 0 failed` (`EXIT=0`) | `31,62 s` binary (`57,36 s` tường) |
+| Debug test (default) | `cargo test --no-default-features --test eu_residual_matrix_tests -- --nocapture` | `4 passed; 0 failed` (`EXIT=0`) | `25,67 s` binary (`46,27 s` tường) |
+| Build release example | `cargo build --release --features desktop --example eu_residual_matrix` | `EXIT=0` | `70,8 s` (lạnh `610,78 s`) |
+| Chạy release example | `.\target\release\examples\eu_residual_matrix.exe` (không dùng `cargo run`) | `EXIT=0`, `violations=0`, `overall_worst=3.929e-10` | `16,7 s` tường (`16,18 s` nội bộ) |
+
+---
+
+### Bảng 1 — Mảng phủ cặp bậc 2 trong debug test (`8` hàng, `96/96` cặp, `31,62 s`)
+
+Ký hiệu yếu tố: `m` = `mortality` (`0/1`), `r` = `reproduction` (`0/1`), `l` = `locomotion` (`0/1`), `p` = `plant_reserve` (`0` = `0.0`, `1` = `0.3`), `c` = `resource_capacity_scale` (`0` = `1.0`, `1` = `0.5`), `b` = `brain` (`sh` = shared, `ev` = evolved, `ev+ll+cost` = evolved + lifetime_learning + cost `0.5`), `k` = `predator_income` (`0` = baseline `0.40/0.0`, `1` = boosted `0.65/0.5`).
+
+```text
+M4_COVERING_DESIGN runs=8 pairwise_tuples=96
+M4_PAIR[00] m0_r0_l0_p0_c0_b(sh)_k0  eu_0=155187.250 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=8.731e-11
+M4_PAIR[01] m1_r1_l1_p1_c1_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+M4_PAIR[02] m1_r1_l1_p0_c0_b(ev)_k0  eu_0=155187.250 delta_t0=+8.731e-11 delta_t1=+8.731e-11 worst_t1=1.164e-10 gap=8.731e-11
+M4_PAIR[03] m0_r0_l0_p1_c1_b(ev)_k1  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+M4_PAIR[04] m1_r1_l0_p1_c1_b(sh)_k0  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+M4_PAIR[05] m0_r0_l1_p0_c0_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=5.821e-11 gap=1.164e-10
+M4_PAIR[06] m1_r0_l1_p1_c0_b(sh)_k1  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+M4_PAIR[07] m0_r1_l0_p0_c1_b(ev+ll+cost)_k0 eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=1.455e-11
+M4_POLICY_COVERING_SUMMARY runs=8 elapsed_s=2.89 max_abs_residual=1.164e-10
+```
+
+---
+
+### Bảng 2 — Ma trận giai thừa đầy đủ `192` tổ hợp chính sách (`--release`, `5,16 s`)
+
+Chạy đủ `2^5 × 3 × 2 = 192` tổ hợp (`T = 90` tick mỗi lượt). Tổng kết: **`runs = 192` · `violations = 0` · đỉnh toàn cục `worst = 3.929e-10` EU** (lệch gương thực vật `gap = 3.929e-10` EU tại `POLICY[054]` / `[055]` / `[150]` / `[151]`, còn `max |ΔEU(0->T)| = max |ΔEU(1->T)| = 2.037e-10` EU tại `POLICY[002..003]`). Dưới đây là các hàng góc và các hàng cực đại nguyên văn từ `eu_residual_matrix.exe`:
+
+```text
+POLICY[000] m0_r0_l0_p0_c0_b(sh)_k0  eu_0=155187.250 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=8.731e-11
+POLICY[001] m0_r0_l0_p0_c0_b(sh)_k1  eu_0=155187.250 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=8.731e-11
+POLICY[002] m0_r0_l0_p0_c0_b(ev)_k0  eu_0=155187.250 delta_t0=+2.037e-10 delta_t1=+2.037e-10 worst_t1=2.037e-10 gap=2.328e-10
+POLICY[003] m0_r0_l0_p0_c0_b(ev)_k1  eu_0=155187.250 delta_t0=+2.037e-10 delta_t1=+2.037e-10 worst_t1=2.037e-10 gap=2.328e-10
+POLICY[005] m0_r0_l0_p0_c0_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+1.164e-10 delta_t1=+1.164e-10 worst_t1=1.164e-10 gap=2.037e-10
+POLICY[041] m0_r0_l1_p1_c0_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+POLICY[050] m0_r1_l0_p0_c0_b(ev)_k0  eu_0=155187.250 delta_t0=+5.821e-11 delta_t1=+5.821e-11 worst_t1=8.731e-11 gap=2.328e-10
+POLICY[051] m0_r1_l0_p0_c0_b(ev)_k1  eu_0=155187.250 delta_t0=+5.821e-11 delta_t1=+5.821e-11 worst_t1=8.731e-11 gap=2.328e-10
+POLICY[054] m0_r1_l0_p0_c1_b(sh)_k0  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=3.929e-10
+POLICY[055] m0_r1_l0_p0_c1_b(sh)_k1  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=3.929e-10
+POLICY[149] m1_r1_l0_p0_c0_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=8.731e-11 gap=2.037e-10
+POLICY[150] m1_r1_l0_p0_c1_b(sh)_k0  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=3.929e-10
+POLICY[151] m1_r1_l0_p0_c1_b(sh)_k1  eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=3.929e-10
+POLICY[185] m1_r1_l1_p1_c0_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+POLICY[191] m1_r1_l1_p1_c1_b(ev+ll+cost)_k1 eu_0=155187.250 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+FULL_POLICY_SUMMARY runs=192 elapsed_s=5.16 worst=3.929e-10 worst_case=m0_r1_l0_p0_c1_b(sh)_k0
+```
+
+---
+
+### Bảng 3 — Ma trận `drift_control` đầy đủ `16` cặp (`K ∈ {0, 60}`, `--release`, `5,14 s`)
+
+Ký hiệu: `k0` / `k60` (`drift_reset_ticks = 0` / `60`), `p0` / `p1` (`plant_reserve = 0.0` / `0.3`), `l0` / `l1` (`locomotion = 0` / `1`), `b0` / `b1` (`shared` / `evolved + ll + cost`), đều với `mortality = 1`, `reproduction = 1`, `T = 120` tick.
+
+```text
+DRIFT_PAIR[00] k0_p0_l0_b0      eu_0=155187.250 sel_worst=1.455e-10 drf_worst=8.731e-11
+DRIFT_PAIR[01] k0_p0_l0_b1      eu_0=155187.250 sel_worst=8.731e-11 drf_worst=5.821e-11
+DRIFT_PAIR[02] k0_p0_l1_b0      eu_0=155187.250 sel_worst=1.164e-10 drf_worst=8.731e-11
+DRIFT_PAIR[03] k0_p0_l1_b1      eu_0=155187.250 sel_worst=1.164e-10 drf_worst=1.455e-10
+DRIFT_PAIR[04] k0_p1_l0_b0      eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[05] k0_p1_l0_b1      eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[06] k0_p1_l1_b0      eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[07] k0_p1_l1_b1      eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[08] k60_p0_l0_b0     eu_0=155187.250 sel_worst=1.455e-10 drf_worst=1.455e-10
+DRIFT_PAIR[09] k60_p0_l0_b1     eu_0=155187.250 sel_worst=8.731e-11 drf_worst=8.731e-11
+DRIFT_PAIR[10] k60_p0_l1_b0     eu_0=155187.250 sel_worst=1.164e-10 drf_worst=1.164e-10
+DRIFT_PAIR[11] k60_p0_l1_b1     eu_0=155187.250 sel_worst=1.164e-10 drf_worst=1.164e-10
+DRIFT_PAIR[12] k60_p1_l0_b0     eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[13] k60_p1_l0_b1     eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[14] k60_p1_l1_b0     eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+DRIFT_PAIR[15] k60_p1_l1_b1     eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+FULL_DRIFT_SUMMARY pairs=16 elapsed_s=5.14 worst=1.455e-10 worst_case=k0_p0_l0_b0
+```
+
+---
+
+### Bảng 4 — Toàn bộ `8` `InterventionKind` + `All8Combined` (`27` mục, `--release`, `5,84 s`) & kiểm tra khoá loại trừ
+
+```text
+INTERVENTION baseline/RainfallDelta             eff=1 delta_t0=+5.821e-11 delta_t1=+5.821e-11 worst_t1=5.821e-11 gap=1.455e-10
+INTERVENTION sel2_full/RainfallDelta            eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/RainfallDelta            eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/TemperatureDelta          eff=1 delta_t0=+8.731e-11 delta_t1=+8.731e-11 worst_t1=8.731e-11 gap=5.821e-11
+INTERVENTION sel2_full/TemperatureDelta         eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/TemperatureDelta         eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/Deforest                  eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=2.910e-11 gap=1.019e-10
+INTERVENTION sel2_full/Deforest                 eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/Deforest                 eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/AddNutrient               eff=1 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=0.000e0
+INTERVENTION sel2_full/AddNutrient              eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/AddNutrient              eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/RemovePredators           eff=1 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=8.731e-11
+INTERVENTION sel2_full/RemovePredators          eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/RemovePredators          eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/GeneticInjection(5Mods)   eff=1 delta_t0=+2.910e-11 delta_t1=+2.910e-11 worst_t1=2.910e-11 gap=8.731e-11
+INTERVENTION sel2_full/GeneticInjection(5Mods)  eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/GeneticInjection(5Mods)  eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/ToxicityPlume             eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=2.910e-11 gap=1.019e-10
+INTERVENTION sel2_full/ToxicityPlume            eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/ToxicityPlume            eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/PathogenTransmission      eff=1 delta_t0=+5.821e-11 delta_t1=+5.821e-11 worst_t1=5.821e-11 gap=2.910e-11
+INTERVENTION sel2_full/PathogenTransmission     eff=1 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/PathogenTransmission     eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+INTERVENTION baseline/All8Combined              eff=8 delta_t0=+5.821e-11 delta_t1=+5.821e-11 worst_t1=5.821e-11 gap=1.237e-10
+INTERVENTION sel2_full/All8Combined             eff=8 delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+INTERVENTION drift_k60/All8Combined             eu_0=155187.250 sel_worst=0.000e0 drf_worst=0.000e0
+FULL_INTERVENTIONS_SUMMARY entries=27 elapsed_s=5.84 worst=1.455e-10 worst_case=baseline/RainfallDelta
+EXCLUDED_GUARD delta_t0=+0.000e0 delta_t1=+0.000e0 worst_t1=0.000e0 gap=0.000e0
+M4_OVERALL_SUMMARY total_s=16.18 tolerance=1.0e-3 overall_worst=3.929e-10 violations=0
+```
