@@ -346,7 +346,7 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-SEL2a | Bước kế tiếp của QĐ-SEL1b là chuỗi **S9 → S10 → SEL2-E → SEL2-P**, kèm **SEL2-D**; không đo dày quanh hệ số 0,6–0,7, không chuyển sang khan hiếm nước trước khi S9 cho số | Năm thẻ mới trong [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án) |
 | QĐ-SEL2b | Điều kiện khả thi của SEL2-E có thêm **ít nhất 30 thế hệ** và **chết chủ yếu vì đói** | Định nghĩa của SEL2-E |
 | QĐ-SEL2c | Số seed của SEL2-P (16 hay 24) **quyết sau SEL2-E**, khi biết một lượt chạy tốn bao lâu | Còn mở, có điều kiện |
-| QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất | Hai dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
+| QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất. Cùng ngày, theo yêu cầu của phiên làm S9, chủ dự án cho thêm hai path ("Cho phép cả hai"): sổ đăng ký observable `core/experiment/observables.rs` và một test của `prereg_esel1_manifest_tests.rs`; sáu manifest E-SEL1 đã đăng ký giữ nguyên | Các dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
 
 Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
 lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:

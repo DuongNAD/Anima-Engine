@@ -210,6 +210,12 @@ R5-AUTH   =
   ids in LIVE_EXTENDED_OBSERVABLE_IDS and the code that reports them), one new test file under
   src-tauri/tests/, and src/types/generated/** only if ts-rs regenerates it. This overrides AGENTS.md's
   read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, extending the S9 line above at the S9 session's request): for card
+  S9 only, you may also write to src-tauri/src/core/experiment/observables.rs (only the two count(...)
+  entries for live.deaths_starvation and live.deaths_dehydration in ObservableRegistry::live_default())
+  and src-tauri/tests/prereg_esel1_manifest_tests.rs (only
+  the_requested_observables_are_exactly_what_the_live_adapter_emits, compared against the 22 ids frozen
+  when E-SEL1 registered). The six E-SEL1 fixture manifests stay untouched.
   AUTHORIZATION (owner, 2026-11-18): for card S10 only, you may write to
   src-tauri/src/core/environmental_systems.rs (herbivore_grazing_system only),
   src-tauri/src/core/aggregate_population.rs (the per-capita grazing call only),

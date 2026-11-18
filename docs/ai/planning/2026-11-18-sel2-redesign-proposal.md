@@ -199,7 +199,7 @@ Không thẻ nào ở đây; đây là ghi chú cho các thẻ đã có.
 | QĐ-SEL2c | SEL2-P dùng 16 hay 24 seed? | Quyết sau SEL2-E, khi biết một lượt chạy tốn bao lâu | Quyết sau SEL2-E |
 | QĐ-SEL2d | Uỷ quyền R5 cho S9 và S10 | Dòng nháp bên dưới | Có, đúng các path dưới đây |
 
-Dòng uỷ quyền, nay có hiệu lực với ngày 2026-11-18 trong `R5-AUTH`. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
+Dòng uỷ quyền, nay có hiệu lực với ngày 2026-11-18 trong `R5-AUTH`. Dòng của S9 đã được chủ dự án mở rộng cùng ngày thêm `core/experiment/observables.rs` (sổ đăng ký observable) và một test của `prereg_esel1_manifest_tests.rs`, vì danh sách dưới đây đã sót cả hai. Danh sách path được soạn từ việc đọc mã, chưa thử bằng một lần sửa thật; thẻ dừng và hỏi nếu
 cần sửa file nào khác dưới `src-tauri/src`.
 
 ```text
