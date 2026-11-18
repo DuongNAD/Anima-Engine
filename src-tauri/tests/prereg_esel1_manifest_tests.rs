@@ -487,7 +487,12 @@ fn twelve_seeds_follow_the_stated_rule_and_the_smoke_seed_is_excluded() {
 #[test]
 fn the_requested_observables_are_exactly_what_the_live_adapter_emits() {
     let reg = ObservableRegistry::live_default();
-    let expected = all_live_observable_ids();
+    // The manifests are frozen at the 22 ids the adapter emitted when E-SEL1 registered. Ids appended
+    // since (card S9's two death-cause counts, owner-approved 2026-11-18) go after them and are not
+    // requested here: the preregistered manifests are never edited to follow the adapter (QD-E2M).
+    const EMITTED_AT_REGISTRATION: usize = 22;
+    let emitted = all_live_observable_ids();
+    let expected = &emitted[..EMITTED_AT_REGISTRATION];
     for name in ALL {
         let m = load(name);
         let declared: Vec<&str> = m.observable_ids.iter().map(|s| s.as_str()).collect();

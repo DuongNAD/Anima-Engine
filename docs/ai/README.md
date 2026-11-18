@@ -65,6 +65,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-18 | [Nâng Burn 0.22 và tất định số học](planning/2026-11-18-research-burn-and-determinism.md) — đối chiếu hai báo cáo nghiên cứu với mã; quyết định QĐ-R1c-a (schema 8, learner khởi tạo lại) và QĐ-R1c-b (`burn-flex`); một phương án cho QĐ-M6 | đối chiếu | `active` |
 | 2026-11-18 | [Đề xuất làm lại SEL2](planning/2026-11-18-sel2-redesign-proposal.md) — từ hai báo cáo nghiên cứu: tách nguyên nhân chết (S9), khoá phần cây dự trữ (S10), đo thăm dò lần hai (SEL2-E), đối chứng drift (SEL2-D), endpoint không bị sàn che; chủ dự án duyệt 2026-11-18 | đề xuất | `active` |
 | 2026-11-17 | [Đánh giá dự án theo mười hai tiêu chí](monitoring/2026-11-17-project-assessment.md) — bảng điểm sau lượt rà soát toàn bộ tài liệu; điểm là nhận định, không phải phép đo | đánh giá | `completed` |
+| 2026-11-18 | [Thẻ S9 — tách nguyên nhân chết](planning/2026-11-18-s9-death-causes.md) — `live.deaths_starvation` và `live.deaths_dehydration`; đo lại các ô hệ số 0,5 và 0,7 của lưới S6: khát giết 71–80 % số cá thể chết ở cả bốn ô | đo | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),

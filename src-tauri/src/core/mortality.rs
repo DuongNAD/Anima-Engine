@@ -54,31 +54,88 @@ pub fn mortality_system(
     // No collection, no sort: this is a tick system and must not allocate (CLAUDE.md). Query
     // iteration order is deterministic for a given world history.
     for (entity, homeo, opt_eval) in agents.iter() {
-        let starved = homeo.energy <= 0.0 && homeo.starving_ticks >= policy.starve_ticks;
-        // `None` only before the first metabolic tick after restoring a save from the shared-counter
-        // era; that save's single counter is what the old rule compared here.
-        let thirst = homeo.dehydrating_ticks.unwrap_or(homeo.starving_ticks);
-        let dehydrated = homeo.hydration <= 0.0 && thirst >= policy.dehydration_ticks;
-        if starved || dehydrated {
-            // Turnover bookkeeping for the branch-O observables. The animal's lifespan IS its
-            // `survival_ticks` at death — the counter only ever advanced while it was alive, so
-            // no separate birth-tick field is needed (design rule C).
-            let lifespan = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
-            if let Some(vitals) = vitals.as_mut() {
-                vitals.record_death(lifespan);
-            }
-            // Cause rule carried over from `agent_mortality_system`. `DemographicTracker` has no
-            // dehydration cause, so a death by thirst is filed under "Starvation" (the tracker's
-            // own fallback for unknown causes) rather than inventing a new string.
-            if let Some(trk) = tracker.as_mut() {
-                let cause = if lifespan >= 300 {
-                    "Senescence"
-                } else {
-                    "Starvation"
-                };
-                trk.record_death(cause);
-            }
-            commands.add(ReclaimAndDespawnAgentCommand { root: entity });
+        let Some(verdict) = lethal_cause(homeo, &policy) else {
+            continue;
+        };
+        // Turnover bookkeeping for the branch-O observables. The animal's lifespan IS its
+        // `survival_ticks` at death — the counter only ever advanced while it was alive, so
+        // no separate birth-tick field is needed (design rule C).
+        let lifespan = opt_eval.map(|e| e.survival_ticks).unwrap_or(0);
+        if let Some(vitals) = vitals.as_mut() {
+            vitals.record_death_by(verdict.cause, lifespan, verdict.both_lethal);
         }
+        // Cause rule carried over from `agent_mortality_system`. `DemographicTracker` has no
+        // dehydration cause, so a death by thirst is filed under "Starvation" (the tracker's
+        // own fallback for unknown causes) rather than inventing a new string. These labels are
+        // known to be wrong (no ageing exists behind "Senescence"); the cause split that is
+        // right lives in `VitalStatistics` (card S9), and fixing the tracker is a separate card.
+        if let Some(trk) = tracker.as_mut() {
+            let cause = if lifespan >= 300 {
+                "Senescence"
+            } else {
+                "Starvation"
+            };
+            trk.record_death(cause);
+        }
+        commands.add(ReclaimAndDespawnAgentCommand { root: entity });
     }
+}
+
+/// What killed an agent, as `VitalStatistics` counts it (card S9). Exactly one cause per death.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeathCause {
+    /// Energy exhausted for at least `MortalityPolicy::starve_ticks` consecutive ticks.
+    Starvation,
+    /// Hydration exhausted for at least `MortalityPolicy::dehydration_ticks` consecutive ticks.
+    Dehydration,
+}
+
+/// The outcome of [`lethal_cause`]: the one cause a death is filed under, and whether the other
+/// condition was lethal on the same tick as well.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeathVerdict {
+    pub cause: DeathCause,
+    /// Both conditions were past their grace on the tick of death. The death still counts once,
+    /// under `cause`; this flag only lets a measurement say how many deaths the rule decided.
+    pub both_lethal: bool,
+}
+
+/// Whether `homeo` dies under `policy` this tick, and of what.
+///
+/// # Attribution rule (card S9)
+///
+/// A death has exactly one cause. When only one condition is lethal, that is the cause. When both
+/// are, the death goes to **the condition that became lethal first**: the one whose streak is
+/// further past its own grace (`streak − grace`). An exact tie goes to **starvation**.
+///
+/// In an uninterrupted run with mortality enabled from the start, an agent dies on the first tick
+/// any condition is lethal, so "both lethal" can only arise when both crossed on the same tick and
+/// the tie-break decides it. Unequal overshoots arise after a policy is enabled mid-run or a save
+/// is restored; the first-lethal rule then names the condition that would have killed it earlier.
+///
+/// The thirst streak is `dehydrating_ticks`, or the shared-era `starving_ticks` when the field is
+/// `None` (a save from before F-044, before its first metabolic tick) — the same reading the old
+/// rule used.
+pub fn lethal_cause(homeo: &HomeostaticState, policy: &MortalityPolicy) -> Option<DeathVerdict> {
+    let starved = homeo.energy <= 0.0 && homeo.starving_ticks >= policy.starve_ticks;
+    let thirst = homeo.dehydrating_ticks.unwrap_or(homeo.starving_ticks);
+    let dehydrated = homeo.hydration <= 0.0 && thirst >= policy.dehydration_ticks;
+    let cause = match (starved, dehydrated) {
+        (false, false) => return None,
+        (true, false) => DeathCause::Starvation,
+        (false, true) => DeathCause::Dehydration,
+        (true, true) => {
+            let starve_over = homeo.starving_ticks - policy.starve_ticks;
+            let thirst_over = thirst - policy.dehydration_ticks;
+            if thirst_over > starve_over {
+                DeathCause::Dehydration
+            } else {
+                DeathCause::Starvation
+            }
+        }
+    };
+    Some(DeathVerdict {
+        cause,
+        both_lethal: starved && dehydrated,
+    })
 }

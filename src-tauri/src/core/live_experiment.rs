@@ -564,7 +564,14 @@ impl LiveWorldConfig {
     /// Fail here, loudly, instead.
     pub fn ensure_observables_supported(&self, ids: &[String]) -> Result<(), ExperimentError> {
         for id in ids {
-            if matches!(id.as_str(), "live.deaths" | "live.mean_lifespan") && !self.mortality {
+            if matches!(
+                id.as_str(),
+                "live.deaths"
+                    | "live.mean_lifespan"
+                    | "live.deaths_starvation"
+                    | "live.deaths_dehydration"
+            ) && !self.mortality
+            {
                 return Err(ExperimentError::InvalidObservableRequest {
                     id: id.clone(),
                     reason: "the run declares no death rule (live.mortality absent or 0.0); \
@@ -1279,7 +1286,11 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
 /// Feature ecological-selection, branch O: the distributional and turnover observables, emitted
 /// **after** the legacy twelve in the same stable order. The frozen E2 preregistration pins the
 /// legacy list — these are additive extensions, not edits to a registered experiment's metrics.
-pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 10] = [
+///
+/// Card S9 appended `live.deaths_starvation` and `live.deaths_dehydration`: the window's deaths
+/// split by cause, one cause per death (rule in `core::mortality::lethal_cause`), so the two add up
+/// to `live.deaths` at every sample.
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 12] = [
     "live.trait_mass_mean",
     "live.trait_mass_var",
     "live.trait_mass_p10",
@@ -1290,6 +1301,8 @@ pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 10] = [
     "live.deaths",
     "live.mean_lifespan",
     "live.archive_coverage",
+    "live.deaths_starvation",
+    "live.deaths_dehydration",
 ];
 
 /// Every observable id the adapter emits (legacy + extended), in emission order.
@@ -1330,6 +1343,7 @@ pub fn mass_statistics(masses: &[f32]) -> [f64; 4] {
 ///
 /// Sampling drains the turnover window ([`crate::core::resources::VitalStatistics`]):
 /// `live.births` / `live.deaths` count events since the previous sample, and
+/// `live.deaths_starvation` / `live.deaths_dehydration` split that same window's deaths by cause, and
 /// `live.mean_lifespan` averages `survival_ticks` over window deaths (`0.0` when the window had
 /// none — with the structural O-5 guarantee that a run without a death rule can never be asked
 /// for it). A read that is not a sample must use [`live_observables_peek`], or it steals the
@@ -1401,6 +1415,11 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
+    // Read the cause split first: `sample_window` closes it together with the death count.
+    let (deaths_starvation, deaths_dehydration) = world
+        .get_resource::<crate::core::resources::VitalStatistics>()
+        .map(|v| v.peek_cause_window())
+        .unwrap_or((0, 0));
     let (births, deaths, mean_lifespan) = if close_window {
         match world.get_resource_mut::<crate::core::resources::VitalStatistics>() {
             Some(mut v) => v.sample_window(),
@@ -1453,6 +1472,14 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
             mean_lifespan.unwrap_or(0.0) as f64,
         ),
         ("live.archive_coverage".to_string(), archive_coverage),
+        (
+            "live.deaths_starvation".to_string(),
+            deaths_starvation as f64,
+        ),
+        (
+            "live.deaths_dehydration".to_string(),
+            deaths_dehydration as f64,
+        ),
     ]
 }
 
