@@ -135,7 +135,8 @@ là việc chủ dự án quyết trước SEL2-E; chủ dự án chọn thêm h
 ([ghi chú](../ai/planning/2026-11-18-s10-plant-reserve.md)). **SEL2-E** ✅ #128, **kết quả âm**
 ([kết quả](../ai/planning/2026-11-18-sel2e-exploration.md)): không ô nào khả thi; ba phép đo tiếp theo cho thấy khi
 khan hiếm, quần thể dao động bùng nổ và sụp đổ rồi tuyệt chủng vì sinh sản dừng ở mật độ thấp. SEL2-P chờ chủ dự án
-định hướng. **SEL2-D** đã có uỷ quyền và đang ở hàng đợi của `anima-mac` qua hub. Định nghĩa các thẻ ở
+định hướng. **SEL2-D** ✅ #130. Phép chẩn đoán đáy chu kỳ (#131) cho thấy con vật không bao giờ lái tới đồng cỏ, nên
+thẻ mới **S11** (lái tới cỏ, opt-in) và thẻ sửa **F045** (khôi phục checkpoint) được giao cho `anima-mac` qua hub. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
@@ -282,6 +283,54 @@ R5-AUTH   =
   edges and shifted via line numbers), one new test file src-tauri/tests/sel2_drift_control_tests.rs,
   and one result note under docs/ai/planning/ with its row in docs/ai/README.md. This overrides
   AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, extending the R1c line, given in chat: "Duyệt theo đề xuất"): for
+  card R1c only, you may also write to: - src-tauri/deny.toml: only per-crate licence exceptions,
+  MPL-2.0 for `buildid` and `colored`, BSL-1.0 for `xxhash-rust`, each with a comment naming the crate,
+  its version and the dependency path that brings it in. No change to the global allow list. -
+  scripts/lib/licensing.mjs: only the output limit of the `cargo tree` call in `cargoInventory` (raise
+  `maxBuffer`, or read the output as a stream), with no change to what is inventoried or how it is
+  parsed. - licensing/upstream/sources.json and licensing/upstream/**: remove the entries of crates that
+  left Cargo.lock; add the upstream licence texts of new crates whose .crate ships none, fetched from
+  the crate's declared repository at the published version's tag or commit, each pinned by SHA-256 in
+  sources.json with its source URL. - src-tauri/src/core/live_experiment.rs: only `LIVE_MODEL_VERSION`,
+  "live-bevy-world/1" -> "live-bevy-world/2". Condition 4 showed tick > 0 trajectories change in the
+  default world, which under ADR-0008 section 5 opens a new engine era. Say so in ADR-0009. This
+  overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these paths and no others. If
+  any test or script pins the old version string, or anything else outside these paths must change, stop
+  and send BLOCKED naming the file.
+  AUTHORIZATION (owner, 2026-11-18, given in chat: "Cả hai"): for card F045 only, you may write to src-
+  tauri/src/physics/spatial.rs (an indexed-in-grid marker and its in-place update in
+  rebuild_spatial_grid_system only), src-tauri/src/evolution/genotype.rs (decode_genotype's initial
+  grid-index marker only), src-tauri/src/core/world_systems.rs (spawn_food_system's initial grid-index
+  marker only), src-tauri/src/core/environmental_systems.rs (seed_dropping_system's initial grid-index
+  marker only), src-tauri/src/core/simulation_state.rs (SerializedAgent.sex,
+  SavedSimulationState.next_node_id, the saved unindexed-collider record, and their serialize/restore
+  helpers only), src-tauri/src/core/live_experiment.rs (build, install_runtime_resources' NextNodeId
+  restore, genesis' initial grid-index marker, and populate_spatial_grid filtering only), src-
+  tauri/src/core/simulation_loop.rs (the NextNodeId restore fallback and populate_spatial_grid on
+  restore only), src-tauri/src/core/snapshot.rs (only the agent_fixture and two_segment_agent_fixture
+  struct literals for the new defaulted fields), src-tauri/tests/living_world_dormancy_tests.rs, src-
+  tauri/tests/brain_persistence_tests.rs, src-tauri/tests/persistence_tests.rs, src-
+  tauri/tests/persistence_stress_tests.rs, src-tauri/tests/environmental_elements_tests.rs and src-
+  tauri/tests/environmental_elements_stress_tests.rs (only adding `None` for the new fields to existing
+  SerializedAgent/SavedSimulationState struct literals), one new test file src-
+  tauri/tests/f045_restore_equivalence_tests.rs, dataflow.json at the repository root (only what
+  scripts/verify_dataflow.py needs), and one result note under docs/ai/planning/ with its row in
+  docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these
+  paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, given in chat: "cứ tự làm theo ý bạn", delegating the card to the
+  lead): for card S11 only, you may write to src-tauri/src/core/locomotion.rs (steering_drive_system and
+  new grass-steering constants only), src-tauri/src/core/resources.rs (only a `grass_steering: bool`
+  field on LocomotionPolicy and its disabled()/default), src-tauri/src/core/live_experiment.rs (the
+  live.grass_steering key, its validation and its LocomotionPolicy wiring only), src-
+  tauri/tests/e2_seam_tests.rs and src-tauri/tests/eco_card_b_tests.rs (only the pinned LIVE_KEYS.len()
+  count and, in eco_card_b_tests.rs, `grass_steering: false` in existing LocomotionPolicy literals),
+  src-tauri/tests/steering_zero_energy_tests.rs (only `grass_steering: false` in existing
+  LocomotionPolicy literals), one new test file src-tauri/tests/grass_steering_tests.rs, one new example
+  src-tauri/examples/sel2_grass_steering.rs, dataflow.json at the repository root (only what
+  scripts/verify_dataflow.py needs), and one result note under docs/ai/planning/ with its row in
+  docs/ai/README.md. This overrides AGENTS.md's read-only declaration and BLOCK 0 R5 for exactly these
+  paths and no others.
 CURRENT WAVE = 2
 ```
 
