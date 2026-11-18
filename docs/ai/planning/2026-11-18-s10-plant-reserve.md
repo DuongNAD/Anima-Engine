@@ -98,6 +98,11 @@ vào mép dưới của dải 0,4–0,6. Dải đó không còn phân biệt "kh
 - `Σr_max` không cần observable mới. Mọi ô khởi đầu đầy (`ResourceField::from_biomes`), và `r_max` chỉ đổi ở
   genesis (`live.resource_capacity_scale` nhân cả `r` lẫn `r_max`). Vì vậy `Σr_max` bằng `live.standing_crop` đọc
   từ adapter vừa dựng, **trước tick 1**.
+- "Nền" trong `g` là nền của S6: lượt cùng seed với trần 80, hệ số 1,0 và **không** có dự trữ. `ρ` trong cả tử
+  lẫn mẫu là `ρ` của ô đang đọc. Nếu SEL2-E đổi nền (chẳng hạn nền có cùng `ρ`), bản khai phải nói rõ.
+- Sàn chỉ đúng khi không có can thiệp lấy cỏ đi. `Deforest` và luồng độc (`strip_region`, toxicity plume trong
+  `live_experiment.rs`) có thể đẩy ô xuống dưới `ρ·r_max`. Gặm cỏ khi đó để yên ô ấy, đúng như thiết kế, nhưng
+  `g` có thể âm trong một lượt có can thiệp như vậy.
 - Dải mục tiêu của SEL2-E phải khai trên `g`, hoặc trên tỉ số thô kèm `ρ` của từng ô, không dùng chung một dải
   thô cho mọi `ρ`.
 - Chỉ số thảm thực vật của telemetry (`r / r_max`) cũng có sàn `ρ` theo cùng cách. Nó không dùng cho SEL2, ghi lại
