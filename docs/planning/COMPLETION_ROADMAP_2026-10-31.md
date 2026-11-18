@@ -350,6 +350,7 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-R1c-a | Thẻ R1c tăng `SCHEMA_VERSION` lên 8. Snapshot schema 7 vẫn khôi phục được thế giới; hai bản ghi learner `BinBytesRecorder` của nó bị từ chối kèm lỗi có tên và cảnh báo, và learner dùng chung khởi tạo lại (chủ dự án "Theo đề xuất", 2026-11-18) | Không giữ `burn` 0.13 trong lockfile. Căn cứ: [đối chiếu hai báo cáo về Burn và tất định](../ai/planning/2026-11-18-research-burn-and-determinism.md) §2 |
 | QĐ-R1c-b | Thẻ R1c chuyển thẳng sang `burn-flex`, không qua `burn-ndarray` 0.22 (cùng ngày) | `burn-ndarray` đã bị xoá ở 0.23 |
 | QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất. Cùng ngày, theo yêu cầu của phiên làm S9, chủ dự án cho thêm hai path ("Cho phép cả hai"): sổ đăng ký observable `core/experiment/observables.rs` và một test của `prereg_esel1_manifest_tests.rs`; sáu manifest E-SEL1 đã đăng ký giữ nguyên | Các dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
+| QĐ-SEL2e | Sau S9 (#117: khát gây 71–80 % số cái chết), SEL2-E giảm áp lực khát bằng thêm hồ: `live.lakes` ∈ {2, 4, 8}; ân hạn khát giữ mặc định (chủ dự án "Thêm hồ", 2026-11-18) | §5 và §7 của [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md) |
 
 Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
 lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:
