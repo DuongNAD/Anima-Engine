@@ -2,7 +2,7 @@
 title: Trạng thái dự án và việc cần làm tiếp
 status: active
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-18
 review_cycle: per-release
 ---
 
@@ -676,8 +676,8 @@ không mang số đo.
 | 1. Một cây xanh | CI xanh hai job trên thân cây, rồi bảo vệ nhánh | **Đóng 2026-11-17** (mục ngay dưới) | — |
 | 2. Gộp hai thân | `C5`: đo lại toàn bộ vào §1.g | **Đóng 2026-11-16.** T2 là #45; `main` được fast-forward lên thân cây | §1.g đỏ đúng một bước (`check:e2`), #59 sửa sau đó. Lượt đo toàn bộ mới nhất là §1.h, tại `6f14124` |
 | 3. Trả nợ sau gộp | `R0`: đo lại; không còn giá trị bịa, không còn test bị nới, `test:e2e` chạy đủ | **Đóng 2026-11-18.** R0 ✅ #123 (Gemini trên Windows, kiểm bởi phiên điều phối): mọi cổng xanh tại `46e25d5` trừ một báo động giả CRLF trên Windows, sửa ở #125; số ở §1.i, `test:e2e` 288 đạt. Mọi thẻ Đợt 2 đã merge: G1 (#48), G2 (#47), G3 (#107), G4 (#98), G5 (#95), G6 (#94), G7 (#49), G9 (#114), G8 phần lớn (2026-11-14). Cùng ngày 2026-11-18, cổng `npm audit` được thay bằng cổng có danh sách miễn trừ (#113) | — |
-| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. QĐ-EN, QĐ-SEL1b và QĐ-ECO-C1 đã quyết ngày 2026-11-17; thẻ sinh ra là S6, S7, S8 và SEL2. Cùng ngày S8 (#106) và S6 (#110) đã merge; lượt đo của S6 không tìm ra chế độ khan hiếm thức ăn khả thi. Quyết định mới có ngày 2026-11-18 (QĐ-SEL2a–d, [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)): S9 (tách nguyên nhân chết, ✅ #117: khát gây 71–80 % số cái chết ở cả bốn ô hệ số 0,5 và 0,7, nên điều kiện "chết chủ yếu vì đói" của SEL2-E chưa đạt; [kết quả S9](../ai/planning/2026-11-18-s9-death-causes.md)) → S10 (phần cây dự trữ, ✅ #124) → SEL2-E (đo thăm dò lần hai, ✅ #128, **âm**: không ô nào khả thi; khi khan hiếm quần thể dao động bùng nổ và sụp đổ rồi tuyệt chủng vì sinh sản dừng ở mật độ thấp, [kết quả](../ai/planning/2026-11-18-sel2e-exploration.md)) → SEL2-P (chờ chủ dự án định hướng), kèm SEL2-D (đã uỷ quyền, `anima-mac` làm). Cùng ngày ADR-0008 được chấp nhận (thẻ L0 xong). Một lỗi khôi phục checkpoint mới (S10 phát hiện; snapshot không lưu `AgentSex`, xác nhận bằng probe) chờ thẻ sửa F045 |
-| 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | QĐ-C = C và QĐ-1 = mức 2 đã quyết ngày 2026-11-17; thẻ R1c (nâng `burn`) phải xong trước chặng này. Còn trống: QĐ-M4, QĐ-M8 (QĐ-P1…P3 đã quyết ngày 2026-11-17) |
+| 4. Vòng khoa học đầu tiên | Một thí nghiệm tiền đăng ký chạy đúng một lần, có `RESULT.md` và có sức mạnh thống kê đã khai trước | **Chưa qua cổng.** Một phần đã làm trước R0 (ghi chú dưới bảng): S1 (#66), S4 (#75), M1 (#100, #102), vận động và sinh thái opt-in (#76, #82, #87), khoá P1 (#89). E-SEL1 đóng tại smoke, không có thí nghiệm (#84) | S2, S3, M2–M4, lượt app release 1.000 agent (H6, H7), E2R, E3. QĐ-EN, QĐ-SEL1b và QĐ-ECO-C1 đã quyết ngày 2026-11-17; thẻ sinh ra là S6, S7, S8 và SEL2. Cùng ngày S8 (#106) và S6 (#110) đã merge; lượt đo của S6 không tìm ra chế độ khan hiếm thức ăn khả thi. Quyết định mới có ngày 2026-11-18 (QĐ-SEL2a–d, [đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)): S9 (tách nguyên nhân chết, ✅ #117: khát gây 71–80 % số cái chết ở cả bốn ô hệ số 0,5 và 0,7, nên điều kiện "chết chủ yếu vì đói" của SEL2-E chưa đạt; [kết quả S9](../ai/planning/2026-11-18-s9-death-causes.md)) → S10 (phần cây dự trữ, ✅ #124) → SEL2-E (đo thăm dò lần hai, ✅ #128, **âm**: không ô nào khả thi; khi khan hiếm quần thể dao động bùng nổ và sụp đổ rồi tuyệt chủng vì sinh sản dừng ở mật độ thấp, [kết quả](../ai/planning/2026-11-18-sel2e-exploration.md)) → SEL2-P (chờ chủ dự án định hướng), kèm SEL2-D (✅ #130). Phép chẩn đoán đáy chu kỳ (#131) dẫn tới S11 (lái tới cỏ, opt-in): **âm, mã không merge** (#134 đóng, nhánh `dell/s11-grass-steering` giữ ở `95044c4b`; [kết quả](../ai/planning/2026-11-18-s11-grass-steering.md)). Khi bỏ khát, con mồi giữ 0,89–0,98 năng lượng mục tiêu và lái tới cỏ không tăng lượng ăn; hai cách đọc của #131 được đính chính trong ghi chú SEL2-E. Thứ giới hạn là khát, vì mọi hồ nằm trên một hàng, nên thẻ kế tiếp là S12 (`live.lake_layout`, rải hồ trên lưới hai chiều, `anima-dell`). Cùng ngày ADR-0008 được chấp nhận (thẻ L0 xong). Một lỗi khôi phục checkpoint mới (S10 phát hiện; snapshot không lưu `AgentSex`, xác nhận bằng probe) đang được sửa ở thẻ F045 (đã uỷ quyền, `anima-mac`) |
+| 5. Bản 0.9 và bài phương pháp | Tag `v0.9.0`, bản cài tải được, ba buổi MP-5.1 | Chưa bắt đầu | QĐ-C = C và QĐ-1 = mức 2 đã quyết ngày 2026-11-17. R1c ✅ #127 (2026-11-18: `burn` 0.22.1 với `burn-flex`, schema 8, `LIVE_MODEL_VERSION` `"live-bevy-world/2"`, [ADR-0009](../decisions/ADR-0009-burn-022-flex-wgpu-upgrade.md) đề xuất). Còn một điều kiện giấy phép: `utf8-chars` 3.0.7 không có file giấy phép và là dòng duy nhất trong `licensing/UNRESOLVED.md`. QĐ-C2 (2026-11-18): hỏi upstream (A1-Triard/utf8-chars issue #4, PR #5); nếu tới lúc làm bản phát hành vẫn chưa có bản vá thì bản phát hành bỏ `ml-wgpu`, chỉ giữ learner CPU. Còn trống: QĐ-M4, QĐ-M8 (QĐ-P1…P3 đã quyết ngày 2026-11-17) |
 | 6. Bản 1.0 | `H11`: tag `v1.0.0` | Chưa bắt đầu | Thẻ V0–V11, chạy sau R0 |
 | 7. Thế giới nhiều máy | `contribute_matches_solo` xanh với hai máy thật | Chưa bắt đầu | QĐ-M3, QĐ-M5, QĐ-M6, QĐ-M7 |
 
@@ -717,7 +717,11 @@ Hệ quả cho người và agent:
 - Mọi thay đổi vào thân cây phải qua PR, kể cả tài liệu. Push thẳng bị từ chối, vì không CI nào chạy khi push
   vào thân cây. Kiểm cùng ngày: cả 47 commit first-parent của thân cây từ 2026-11-14 đều là merge PR, nên luật
   này không đổi cách làm hiện có.
-- PR chỉ merge được khi cả hai job xanh. Job Rust chạy khoảng 31 phút trên Windows (§1.g).
+- PR chỉ merge được khi cả hai job xanh. Job Rust chạy khoảng 31 phút trên Windows (§1.g). Sau R1c, cây phụ
+  thuộc lớn hơn nhiều: lượt chạy lạnh của #127 mất 1 giờ 31 phút (run `44319652578`), nên `timeout-minutes` là 120.
+  Từ #127, cache Rust dùng `Swatinem/rust-cache` và chỉ được **lưu** khi CI chạy trên `main`. PR chỉ khôi phục cache
+  đó, vì cache do một PR lưu thì chỉ chính PR ấy thấy. Hệ quả: fast-forward `main` sau mỗi lần đổi `Cargo.lock`,
+  nếu không mọi PR sau đó đều build lạnh.
 - Gỡ hoặc nới: GitHub → Settings → Branches, hoặc `gh api -X DELETE …/branches/<nhánh>/protection`.
 
 Chặng 2 đã đóng từ 2026-11-16 (C5 là §1.g). Theo thứ tự của kế hoạch 13/11, chặng kế là chặng 3: các thẻ G3,
@@ -1581,10 +1585,12 @@ Không lặp lại nội dung CLAUDE.md; đây là những cái tốn nhiều gi
   (#80, 2026-11-16) và cổng emit (#86, 2026-11-17, flake trên CI của một PR chỉ sửa tài liệu) đã đi
   cùng đường đó, vì mọi hàm chúng đo đều chạy trên thread gọi.
 
-  **Đừng chuyển bừa mọi suite sang nó.** `map_generation_zero_alloc_tests` và
-  `terrain_challenger_tests` **phải** giữ `start_tracking()` process-wide: `TerrainMap::generate`
-  chạy pass noise trên rayon worker, nên bộ đếm theo thread sẽ **thôi đếm đúng thứ hai gate đó tồn
-  tại để bắt** — và sẽ xanh trong lúc làm vậy. Một gate im đi tệ hơn một gate thỉnh thoảng ồn. Hai
+  **Đừng chuyển bừa mọi suite sang nó.** `terrain_challenger_tests` **phải** giữ `start_tracking()`
+  process-wide: `TerrainMap::generate` chạy pass noise trên rayon worker, nên bộ đếm theo thread sẽ
+  **thôi đếm đúng thứ gate đó tồn tại để bắt** — và sẽ xanh trong lúc làm vậy.
+  `map_generation_zero_alloc_tests` từng được kể ở đây, nhưng test duy nhất của nó đo một bản chép vòng
+  xói mòn chạy trên thread gọi và không gọi `generate`; nó flake trên CI của một commit chỉ sửa tài liệu
+  (2026-11-18, "4 heap allocations"), nên từ ngày đó nó chỉ đếm thread gọi. Một gate im đi tệ hơn một gate thỉnh thoảng ồn. Hai
   control âm trong file đó chốt cả hai chiều: bộ đếm vẫn thấy cấp phát thật, và nó **cố tình** mù
   với thread khác.
 

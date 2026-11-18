@@ -1,50 +1,49 @@
 use anima_engine_lib::ai::cpg::CpgOscillator;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::ai::model::{
-    brain_inference_system, ActorCriticModel, BrainInferenceBuffer, BrainModel, DefaultBackend,
+    brain_inference_system, ActorCriticModel, BrainInferenceBuffer, BrainModel,
 };
 use anima_engine_lib::core::ecs::{Agent, Food, ParentAgent, Position, Rotation, Segment};
 use bevy_ecs::prelude::*;
-use burn::tensor::{Data, Shape, Tensor};
-use burn_ndarray::NdArrayDevice;
+use burn::tensor::{Device, Tensor, TensorData};
 use glam::{Quat, Vec3};
 
 #[test]
 fn test_burn_inference_success() {
-    let device = NdArrayDevice::Cpu;
-    let model = ActorCriticModel::<DefaultBackend>::new(15, 64, 4, &device);
-    let data = Data::new(vec![0.5; 15], Shape::new([1, 15]));
-    let input = Tensor::<DefaultBackend, 2>::from_data(data, &device);
+    let device = Device::flex();
+    let model = ActorCriticModel::new(15, 64, 4, &device);
+    let data = TensorData::new(vec![0.5; 15], [1, 15]);
+    let input = Tensor::<2>::from_data(data, &device);
     let (actor_out, critic_out) = model.forward(input);
 
-    assert_eq!(actor_out.shape().dims, [1, 4]);
-    assert_eq!(critic_out.shape().dims, [1, 1]);
+    assert_eq!(actor_out.dims(), [1, 4]);
+    assert_eq!(critic_out.dims(), [1, 1]);
 }
 
 #[test]
 fn test_burn_inference_dimensions() {
-    let device = NdArrayDevice::Cpu;
-    let model = ActorCriticModel::<DefaultBackend>::new(15, 64, 4, &device);
+    let device = Device::flex();
+    let model = ActorCriticModel::new(15, 64, 4, &device);
 
-    let data = Data::new(vec![1.0; 15], Shape::new([1, 15]));
-    let input = Tensor::<DefaultBackend, 2>::from_data(data, &device);
+    let data = TensorData::new(vec![1.0; 15], [1, 15]);
+    let input = Tensor::<2>::from_data(data, &device);
     let (actor_out, _) = model.forward(input);
-    assert_eq!(actor_out.shape().dims[1], 4);
+    assert_eq!(actor_out.dims()[1], 4);
 }
 
 #[test]
 fn test_burn_inference_bound() {
-    let device = NdArrayDevice::Cpu;
-    let model = ActorCriticModel::<DefaultBackend>::new(15, 64, 4, &device);
+    let device = Device::flex();
+    let model = ActorCriticModel::new(15, 64, 4, &device);
 
     let inputs = vec![
         1000.0, -1000.0, 500.0, -500.0, 100.0, -100.0, 50.0, -50.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0,
     ];
-    let data = Data::new(inputs, Shape::new([1, 15]));
-    let input = Tensor::<DefaultBackend, 2>::from_data(data, &device);
+    let data = TensorData::new(inputs, [1, 15]);
+    let input = Tensor::<2>::from_data(data, &device);
     let (actor_out, _) = model.forward(input);
-    let values = actor_out.into_data().value;
+    let values = actor_out.into_data().try_into_vec::<f32>().unwrap();
 
     for val in values {
         assert!(
@@ -57,13 +56,13 @@ fn test_burn_inference_bound() {
 
 #[test]
 fn test_burn_inference_zero_input() {
-    let device = NdArrayDevice::Cpu;
-    let model = ActorCriticModel::<DefaultBackend>::new(15, 64, 4, &device);
+    let device = Device::flex();
+    let model = ActorCriticModel::new(15, 64, 4, &device);
 
-    let data = Data::new(vec![0.0; 15], Shape::new([1, 15]));
-    let input = Tensor::<DefaultBackend, 2>::from_data(data, &device);
+    let data = TensorData::new(vec![0.0; 15], [1, 15]);
+    let input = Tensor::<2>::from_data(data, &device);
     let (actor_out, _) = model.forward(input);
-    let values = actor_out.into_data().value;
+    let values = actor_out.into_data().try_into_vec::<f32>().unwrap();
 
     for val in values {
         assert!(val.is_finite());
@@ -150,8 +149,8 @@ fn test_brain_inference_system_execution() {
 
 #[test]
 fn test_burn_inference_nan_inf() {
-    let device = NdArrayDevice::Cpu;
-    let model = ActorCriticModel::<DefaultBackend>::new(15, 64, 4, &device);
+    let device = Device::flex();
+    let model = ActorCriticModel::new(15, 64, 4, &device);
 
     let inputs = vec![
         f32::NAN,
@@ -170,18 +169,18 @@ fn test_burn_inference_nan_inf() {
         0.0,
         0.0,
     ];
-    let data = Data::new(inputs, Shape::new([1, 15]));
-    let input = Tensor::<DefaultBackend, 2>::from_data(data, &device);
+    let data = TensorData::new(inputs, [1, 15]);
+    let input = Tensor::<2>::from_data(data, &device);
 
     let (actor_out, critic_out) = model.forward(input);
-    let values = actor_out.into_data().value;
+    let values = actor_out.into_data().try_into_vec::<f32>().unwrap();
 
     for val in values {
         // Output might be NaN or valid float, but verify no panic occurred
         assert!(!val.is_infinite());
     }
 
-    let critic_values = critic_out.into_data().value;
+    let critic_values = critic_out.into_data().try_into_vec::<f32>().unwrap();
     for val in critic_values {
         assert!(!val.is_infinite());
     }

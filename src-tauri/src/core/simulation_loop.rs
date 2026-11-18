@@ -396,7 +396,7 @@ impl SimulationEngine {
         // for the resumed run: resolving each pre-world worker from today's environment would let
         // learner, inference, and evolution belong to a different trajectory than the ECS state
         // restored below. Taking the state here also removes the peek/take race with the sim thread.
-        let state_to_load = self
+        let mut state_to_load = self
             .pending_load_state
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -427,9 +427,33 @@ impl SimulationEngine {
                     return;
                 }
             };
-        let shared_learning_resume = state_to_load
+        let mut shared_learning_resume = state_to_load
             .as_ref()
             .and_then(|state| state.shared_learning.clone());
+        if state_to_load
+            .as_ref()
+            .is_some_and(|state| state.loaded_from_schema == 7)
+        {
+            if let Some(shared) = shared_learning_resume.take() {
+                let err = crate::core::training::LearnerRecordError::Schema7Burn013Unsupported {
+                    model_record_bytes: shared.learner.training_model_record.len(),
+                    optimizer_record_bytes: shared.learner.optimizer_record.len(),
+                };
+                eprintln!(
+                    "WARNING: snapshot restore (schema 7): {err}; starting the shared learner fresh"
+                );
+            }
+            if let Some(state) = state_to_load.as_mut() {
+                for agent in &mut state.agents {
+                    if matches!(
+                        agent.cognitive_state,
+                        crate::core::components::CognitiveState::PendingInference(_)
+                    ) {
+                        agent.cognitive_state = crate::core::components::CognitiveState::default();
+                    }
+                }
+            }
+        }
         if let Some(shared) = shared_learning_resume.as_ref() {
             if let Err(error) = shared.validate(startup_run_seed) {
                 eprintln!(
@@ -493,7 +517,12 @@ impl SimulationEngine {
         #[cfg(feature = "ml-wgpu")]
         if use_gpu {
             let probe = std::panic::catch_unwind(|| {
-                let _ = burn_wgpu::WgpuDevice::default();
+                let device = burn::tensor::Device::wgpu(burn::tensor::DeviceKind::DefaultDevice);
+                let _ = burn::tensor::Tensor::<1>::from_data(
+                    burn::tensor::TensorData::new(vec![0.0f32], [1]),
+                    &device,
+                )
+                .into_data();
             });
             if probe.is_ok() {
                 has_wgpu = true;
