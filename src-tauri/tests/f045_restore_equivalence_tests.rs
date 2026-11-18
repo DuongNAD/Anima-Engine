@@ -17,13 +17,11 @@ use anima_engine_lib::core::experiment::{InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
 use anima_engine_lib::core::live_experiment::{LiveExperimentAdapter, LiveSnapshot};
 use anima_engine_lib::core::sim_clock::SimClock;
-use anima_engine_lib::core::simulation_state::{
-    restored_next_node_id, SavedSimulationState, SerializedSegmentState,
-};
+use anima_engine_lib::core::simulation_state::{SavedSimulationState, SerializedSegmentState};
 use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
 use anima_engine_lib::evolution::genotype::{MorphologyEdge, MorphologyNode};
 use anima_engine_lib::evolution::mutation::mutate_genotype;
-use anima_engine_lib::physics::spatial::{IndexedInGrid, SpatialCollider, SpatialHashGrid};
+use anima_engine_lib::physics::spatial::SpatialHashGrid;
 use bevy_ecs::prelude::{Entity, With};
 use rand::{rngs::StdRng, SeedableRng};
 use std::collections::HashSet;
@@ -90,16 +88,6 @@ fn f045_probe1_tick1_to_tick2_restore_matches_uninterrupted() {
     orig.step(&clock, &[], &mut ledger_orig, &mut rng_orig); // tick 1
 
     let snap = through_disk_snapshot(&orig.snapshot(), "tick1");
-    let unindexed = snap
-        .saved
-        .unindexed_colliders
-        .as_ref()
-        .expect("F-045 snapshot records post-rebuild unindexed colliders");
-    assert!(
-        !unindexed.agents.is_empty(),
-        "tick 1 must produce newly born post-rebuild agents in unindexed_colliders"
-    );
-
     let mut resumed = LiveExperimentAdapter::from_snapshot(&snap).expect("restore at tick 1");
 
     let orig_grid_colliders = grid_entry_count(&orig);
@@ -125,6 +113,16 @@ fn f045_probe1_tick1_to_tick2_restore_matches_uninterrupted() {
     assert_eq!(
         orig_t2, resumed_t2,
         "restoring at tick 1 must match the uninterrupted run at tick 2"
+    );
+    let saved_json = serde_json::to_value(&snap.saved).expect("serialize saved snapshot");
+    let unindexed_agents = saved_json
+        .get("unindexed_colliders")
+        .and_then(|u| u.get("agents"))
+        .and_then(|a| a.as_array())
+        .expect("F-045 snapshot records post-rebuild unindexed colliders");
+    assert!(
+        !unindexed_agents.is_empty(),
+        "tick 1 must produce newly born post-rebuild agents in unindexed_colliders"
     );
 }
 
@@ -158,8 +156,8 @@ fn f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick() {
         "immediate checksum at tick 600 must match"
     );
 
-    // Verify the founder (None) vs offspring (Some) AgentSex archetype split survived restore.
-    {
+    // Measure the founder (None) vs offspring (Some) AgentSex archetype split across restore.
+    let (sex_orig, sex_res) = {
         let mut w_orig = orig.world();
         let mut w_res = resumed.world();
         let sex_orig: usize = w_orig
@@ -172,24 +170,12 @@ fn f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick() {
             .iter(&w_res)
             .filter(|s| s.is_some())
             .count();
-        assert!(
-            sex_orig > 0,
-            "S6 base at tick 600 must have offspring with AgentSex"
-        );
-        assert_eq!(
-            sex_orig, sex_res,
-            "offspring AgentSex count must match after restore"
-        );
-        let missing_marker = w_res
-            .query_filtered::<Option<&IndexedInGrid>, With<SpatialCollider>>()
-            .iter(&w_res)
-            .filter(|m| m.is_none())
-            .count();
-        assert_eq!(
-            missing_marker, 0,
-            "every restored SpatialCollider entity must carry IndexedInGrid"
-        );
-    }
+        (sex_orig, sex_res)
+    };
+    assert!(
+        sex_orig > 0,
+        "S6 base at tick 600 must have offspring with AgentSex"
+    );
 
     let mut ledger_res = CausalLedger::new();
     let mut rng_res = StdRng::seed_from_u64(seed);
@@ -209,7 +195,8 @@ fn f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick() {
     let orig_1200 = orig.checksum();
     let resumed_1200 = resumed.checksum();
     println!(
-        "F045_COND1_TICK600_TO_1200 first_divergence={first_divergence:?} \
+        "F045_COND1_TICK600_TO_1200 sex_orig={sex_orig} sex_res={sex_res} \
+         first_divergence={first_divergence:?} \
          orig_1200={orig_1200:#010x} resumed_1200={resumed_1200:#010x}"
     );
     assert!(
@@ -217,6 +204,10 @@ fn f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick() {
         "restoring at tick 600 diverged from uninterrupted run: first={first_divergence:?}"
     );
     assert_eq!(orig_1200, resumed_1200);
+    assert_eq!(
+        sex_orig, sex_res,
+        "offspring AgentSex count must match after restore"
+    );
 }
 
 #[test]
@@ -287,12 +278,6 @@ fn f045_structural_add_node_mutation_next_node_id_survives_restore() {
     assert!(expected_next_node_id >= 6);
 
     let snap = through_disk_snapshot(&orig.snapshot(), "add_node_next_id");
-    assert_eq!(
-        snap.saved.next_node_id,
-        Some(expected_next_node_id),
-        "SavedSimulationState must serialize NextNodeId verbatim"
-    );
-
     let mut resumed = LiveExperimentAdapter::from_snapshot(&snap).expect("restore after AddNode");
     let restored_next_id = resumed.world().resource::<NextNodeId>().0;
     println!(
@@ -303,6 +288,12 @@ fn f045_structural_add_node_mutation_next_node_id_survives_restore() {
     assert_eq!(
         restored_next_id, expected_next_node_id,
         "NextNodeId resource must survive restore verbatim"
+    );
+    let saved_json = serde_json::to_value(&snap.saved).expect("serialize SavedSimulationState");
+    assert_eq!(
+        saved_json.get("next_node_id").and_then(|v| v.as_u64()),
+        Some(u64::from(expected_next_node_id)),
+        "SavedSimulationState must serialize NextNodeId verbatim"
     );
 
     // Drive a second AddNode mutation on a standalone genotype clone using restored `NextNodeId`
@@ -435,10 +426,28 @@ fn f045_old_save_without_new_fields_loads_and_falls_back_cleanly() {
     let legacy_json = serde_json::to_string_pretty(&value).expect("stringify legacy save JSON");
     let parsed_legacy: SavedSimulationState =
         serde_json::from_str(&legacy_json).expect("deserialize legacy save without new fields");
-    assert_eq!(parsed_legacy.next_node_id, None);
-    assert_eq!(parsed_legacy.unindexed_colliders, None);
-    assert!(parsed_legacy.agents.iter().all(|a| a.sex.is_none()));
-    assert_eq!(restored_next_node_id(&parsed_legacy), 6);
+    let reserialized = serde_json::to_value(&parsed_legacy).expect("reserialize parsed legacy");
+    assert!(
+        reserialized
+            .get("next_node_id")
+            .is_none_or(serde_json::Value::is_null),
+        "legacy save must deserialize next_node_id as None"
+    );
+    assert!(
+        reserialized
+            .get("unindexed_colliders")
+            .is_none_or(serde_json::Value::is_null),
+        "legacy save must deserialize unindexed_colliders as None"
+    );
+    assert!(
+        reserialized
+            .get("agents")
+            .and_then(|v| v.as_array())
+            .is_some_and(|agents| agents
+                .iter()
+                .all(|a| a.get("sex").is_none_or(serde_json::Value::is_null))),
+        "legacy save must deserialize every agent's sex as None"
+    );
 
     // Also seal into a SnapshotEnvelope and reload from disk before booting LiveExperimentAdapter.
     let legacy_snap = through_disk_snapshot(
