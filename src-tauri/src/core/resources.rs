@@ -477,18 +477,52 @@ pub struct VitalStatistics {
     /// Sum of `survival_ticks` over recorded deaths, for the window mean lifespan.
     pub lifespan_sum: u64,
     pub lifespan_count: u64,
+    /// Deaths filed under [`crate::core::mortality::DeathCause::Starvation`] (card S9). With
+    /// `total_deaths_dehydration` this partitions every death recorded through
+    /// [`Self::record_death_by`], which is how `mortality_system` records each one.
+    pub total_deaths_starvation: u64,
+    /// Deaths filed under [`crate::core::mortality::DeathCause::Dehydration`] (card S9).
+    pub total_deaths_dehydration: u64,
+    /// Of all deaths, those where hunger **and** thirst were both past their grace on the tick of
+    /// death, so the attribution rule in `mortality::lethal_cause` chose the cause. Cumulative
+    /// only, never windowed and not an observable: it lets a measurement state how many of its
+    /// cause counts the rule decided.
+    pub total_deaths_both_lethal: u64,
     // Cumulative values already handed to a sampler — the window's left edge.
     sampled_births: u64,
     sampled_deaths: u64,
     sampled_lifespan_sum: u64,
     sampled_lifespan_count: u64,
+    sampled_deaths_starvation: u64,
+    sampled_deaths_dehydration: u64,
 }
 
 impl VitalStatistics {
+    /// Record a death without a cause. Kept for callers that only need the turnover window;
+    /// a death recorded here is in `total_deaths` but in neither cause counter, so the live engine
+    /// records through [`Self::record_death_by`] instead.
     pub fn record_death(&mut self, survival_ticks: u32) {
         self.total_deaths += 1;
         self.lifespan_sum += survival_ticks as u64;
         self.lifespan_count += 1;
+    }
+
+    /// Record a death and its one cause (card S9). `both_lethal` says the other condition was
+    /// lethal on the same tick too; the death still counts once, under `cause`.
+    pub fn record_death_by(
+        &mut self,
+        cause: crate::core::mortality::DeathCause,
+        survival_ticks: u32,
+        both_lethal: bool,
+    ) {
+        self.record_death(survival_ticks);
+        match cause {
+            crate::core::mortality::DeathCause::Starvation => self.total_deaths_starvation += 1,
+            crate::core::mortality::DeathCause::Dehydration => self.total_deaths_dehydration += 1,
+        }
+        if both_lethal {
+            self.total_deaths_both_lethal += 1;
+        }
     }
 
     pub fn record_birth(&mut self) {
@@ -504,7 +538,19 @@ impl VitalStatistics {
         self.sampled_deaths = self.total_deaths;
         self.sampled_lifespan_sum = self.lifespan_sum;
         self.sampled_lifespan_count = self.lifespan_count;
+        self.sampled_deaths_starvation = self.total_deaths_starvation;
+        self.sampled_deaths_dehydration = self.total_deaths_dehydration;
         window
+    }
+
+    /// `(starvation_deaths, dehydration_deaths)` in the current window — the same window as
+    /// [`Self::peek_window`]'s death count, which [`Self::sample_window`] closes for both. Read it
+    /// **before** `sample_window` when sampling.
+    pub fn peek_cause_window(&self) -> (u64, u64) {
+        (
+            self.total_deaths_starvation - self.sampled_deaths_starvation,
+            self.total_deaths_dehydration - self.sampled_deaths_dehydration,
+        )
     }
 
     /// The same figures as [`Self::sample_window`] without closing the window, for a read that is

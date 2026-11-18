@@ -378,6 +378,9 @@ impl ObservableRegistry {
             count("live.deaths"),
             eu("live.mean_lifespan", ConservationRole::None),
             count("live.archive_coverage"),
+            // Card S9: `live.deaths` split by cause, one cause per death.
+            count("live.deaths_starvation"),
+            count("live.deaths_dehydration"),
         ];
         Self {
             version: OBSERVABLE_REGISTRY_VERSION,
