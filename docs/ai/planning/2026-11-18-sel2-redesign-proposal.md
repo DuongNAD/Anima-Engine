@@ -135,6 +135,9 @@ dò; bản đăng ký sau đó phải dùng seed riêng.
 4. phần lớn cái chết là do đói, không do khát (từ S9);
 5. trong suốt lượt chạy vẫn có sinh và chết, tức quần thể không đóng băng.
 
+Ngoài năm điều kiện, SEL2-E báo **tương quan cặp đo được** giữa các lượt cùng seed, làm đầu vào cho QĐ-SEL2c
+([đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md) §2.4).
+
 Điều kiện 3 đến từ báo cáo 1, vốn đề nghị đo theo thế hệ sinh học (30–90) thay vì số tick. Nếu không ô nào đạt,
 lượt đo trả kết quả âm như S6, và bước kế tiếp là các mục ở §5.5, không phải nới điều kiện.
 
@@ -232,5 +235,7 @@ and BLOCK 0 R5 for exactly these paths and no others.
 ## Phụ lục: prompt đã dùng
 
 Hai báo cáo trả lời câu 1 và câu 3 trong bộ bảy câu hỏi nghiên cứu soạn ngày 2026-11-18 trong chat, dán sau một
-khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại (tái lập giữa các máy, nâng `burn`,
-lưu lịch sử bất biến, thí nghiệm rẽ luật, thế giới nhiều máy) chưa có báo cáo.
+khối bối cảnh chung mô tả hệ thống mà không nêu tên dự án. Năm câu còn lại đã có báo cáo cùng ngày: tái lập giữa các máy và nâng `burn` ở
+[đối chiếu Burn và tất định](2026-11-18-research-burn-and-determinism.md); lưu lịch sử bất biến ở
+[ADR-0008](../../decisions/ADR-0008-world-past-and-time.md); thí nghiệm rẽ luật và thế giới nhiều máy ở
+[đối chiếu rẽ luật và nhiều máy](2026-11-18-research-law-fork-and-multi-machine.md).
