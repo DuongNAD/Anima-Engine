@@ -131,7 +131,11 @@ soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đ
 chết), **S10** (khoá `live.plant_reserve`), **SEL2-E** (đo thăm dò lần hai) và **SEL2-D** (đối chứng drift).
 **S9** ✅ #117 ([kết quả](../ai/planning/2026-11-18-s9-death-causes.md)): khát gây 71–80 % số cái chết ở cả bốn ô
 đã đo, nên điều kiện 4 của SEL2-E (chết chủ yếu vì đói) chưa đạt ở ô nào; cách nới (thêm hồ hay nới ân hạn khát)
-là việc chủ dự án quyết trước SEL2-E. S10 đã có dòng uỷ quyền và chưa có PR. Định nghĩa các thẻ ở
+là việc chủ dự án quyết trước SEL2-E; chủ dự án chọn thêm hồ (QĐ-SEL2e). **S10** ✅ #124
+([ghi chú](../ai/planning/2026-11-18-s10-plant-reserve.md)). **SEL2-E** ✅ #128, **kết quả âm**
+([kết quả](../ai/planning/2026-11-18-sel2e-exploration.md)): không ô nào khả thi; ba phép đo tiếp theo cho thấy khi
+khan hiếm, quần thể dao động bùng nổ và sụp đổ rồi tuyệt chủng vì sinh sản dừng ở mật độ thấp. SEL2-P chờ chủ dự án
+định hướng. **SEL2-D** đã có uỷ quyền và đang ở hàng đợi của `anima-mac` qua hub. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
