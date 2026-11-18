@@ -62,6 +62,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-17 | [Chẩn đoán sau E-SEL1](planning/2026-11-17-esel1-scarcity-diagnosis.md) — cái gì giới hạn quần thể con mồi (đồng cỏ không cạn vì trần sinh sản 80, nước giới hạn), yếu tố khan hiếm nào dùng được, QĐ-SEL1b | đo | `completed` |
 | 2026-11-17 | [Thẻ S6 — đo thăm dò cho SEL2](planning/2026-11-17-s6-sel2-exploration.md) — nâng trần sinh sản (`live.prey_cap`) và hạ sức chứa (`live.resource_capacity_scale`): không cấu hình nào vừa đưa standing crop vào 0,4–0,6 vừa giữ quần thể ≥ 5 ở mọi seed | đo | `active` |
 | 2026-11-17 | [Giao việc cho `agent-win` — thẻ R1c, rồi R0](planning/2026-11-17-agent-win-handoff-r1c.md) — prompt để dán vào phiên Windows, dòng uỷ quyền đã soạn cho R1c, lý do chọn thẻ | prompt | `active` |
+| 2026-11-18 | [Đề xuất làm lại SEL2](planning/2026-11-18-sel2-redesign-proposal.md) — từ hai báo cáo nghiên cứu: tách nguyên nhân chết (S9), khoá phần cây dự trữ (S10), đo thăm dò lần hai (SEL2-E), đối chứng drift (SEL2-D), endpoint không bị sàn che; chủ dự án duyệt 2026-11-18 | đề xuất | `active` |
 | 2026-11-17 | [Đánh giá dự án theo mười hai tiêu chí](monitoring/2026-11-17-project-assessment.md) — bảng điểm sau lượt rà soát toàn bộ tài liệu; điểm là nhận định, không phải phép đo | đánh giá | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:

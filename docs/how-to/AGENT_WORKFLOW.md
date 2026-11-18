@@ -124,7 +124,10 @@ và **L0** 🔄 [ADR-0008](../decisions/ADR-0008-world-past-and-time.md) đã so
 chờ chủ dự án duyệt. **R1c** (nâng `burn`) được giao cho `agent-win` cùng ngày:
 [bản giao việc](../ai/planning/2026-11-17-agent-win-handoff-r1c.md) giữ prompt để dán và dòng uỷ quyền đã
 soạn; thẻ chưa có PR. Năm thẻ còn lại chưa bắt đầu. Lượt đo của S6 **không** tìm ra cấu hình khan hiếm thức
-ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Định nghĩa các thẻ ở
+ăn nào khả thi, nên SEL2-P cần một quyết định của chủ dự án trước khi chạy. Quyết định đó có ngày 2026-11-18 (QĐ-SEL2a–d,
+[đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)): bốn thẻ mới **S9** (tách nguyên nhân
+chết), **S10** (khoá `live.plant_reserve`), **SEL2-E** (đo thăm dò lần hai) và **SEL2-D** (đối chứng drift).
+S9 và S10 đã có dòng uỷ quyền; chưa thẻ nào có PR. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
@@ -160,6 +163,10 @@ QD-ECO-B  = opt-in: live.kill_hydration, live.kill_efficiency, live.target_min_e
             #87); for S43 exploration only, never default (owner's delegate in chat, 2026-11-17)
 QD-SEL1b  = A: a prey reproduction cap key, then pasture scarcity; an exploratory measurement before
             any new preregistration. Cards S6, SEL2-P, SEL2-X (owner in chat, 2026-11-17)
+QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, plus SEL2-D; SEL2-E's
+            viability conditions add ">= 30 generations" and "deaths mostly by starvation"; SEL2-P's
+            seed count is decided after SEL2-E (owner in chat, 2026-11-18; docs/ai/planning/
+            2026-11-18-sel2-redesign-proposal.md)
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.
@@ -198,6 +205,24 @@ R5-AUTH   =
   AUTHORIZATION (owner, 2026-11-14): for card D0 only, you may also add one row for the report you
   write to docs/ai/README.md. The report needs the front matter of
   docs/governance/DOCUMENTATION_POLICY.md; npm run check:docs must exit 0.
+  AUTHORIZATION (owner, 2026-11-18): for card S9 only, you may write to src-tauri/src/core/mortality.rs,
+  src-tauri/src/core/resources.rs (VitalStatistics only), src-tauri/src/core/live_experiment.rs (two new
+  ids in LIVE_EXTENDED_OBSERVABLE_IDS and the code that reports them), one new test file under
+  src-tauri/tests/, and src/types/generated/** only if ts-rs regenerates it. This overrides AGENTS.md's
+  read-only declaration and BLOCK 0 R5 for exactly these paths and no others.
+  AUTHORIZATION (owner, 2026-11-18, extending the S9 line above at the S9 session's request): for card
+  S9 only, you may also write to src-tauri/src/core/experiment/observables.rs (only the two count(...)
+  entries for live.deaths_starvation and live.deaths_dehydration in ObservableRegistry::live_default())
+  and src-tauri/tests/prereg_esel1_manifest_tests.rs (only
+  the_requested_observables_are_exactly_what_the_live_adapter_emits, compared against the 22 ids frozen
+  when E-SEL1 registered). The six E-SEL1 fixture manifests stay untouched.
+  AUTHORIZATION (owner, 2026-11-18): for card S10 only, you may write to
+  src-tauri/src/core/environmental_systems.rs (herbivore_grazing_system only),
+  src-tauri/src/core/aggregate_population.rs (the per-capita grazing call only),
+  src-tauri/src/core/live_experiment.rs (the live.plant_reserve key), src-tauri/src/core/resources.rs
+  (only if the reserve must live in a resource), one new test file under src-tauri/tests/, and
+  src/types/generated/** only if ts-rs regenerates it. This overrides AGENTS.md's read-only declaration
+  and BLOCK 0 R5 for exactly these paths and no others.
 CURRENT WAVE = 2
 ```
 

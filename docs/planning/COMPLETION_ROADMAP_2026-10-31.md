@@ -338,6 +338,16 @@ câu hỏi của phiên rà soát tài liệu:
 | QĐ-P2 | Bản nháp bài báo để ở **một repo riêng tư**, vì repo này công khai | [`docs/paper/README.md`](../paper/README.md) |
 | QĐ-P3 | Mở nhật ký dùng AI ngay | [`docs/paper/AI_USE_LOG.md`](../paper/AI_USE_LOG.md) |
 
+**Ngày 2026-11-18** (chủ dự án trả lời "Duyệt cả" cho bốn câu ở §7 của
+[đề xuất làm lại SEL2](../ai/planning/2026-11-18-sel2-redesign-proposal.md)):
+
+| # | Quyết định | Hệ quả |
+|---|---|---|
+| QĐ-SEL2a | Bước kế tiếp của QĐ-SEL1b là chuỗi **S9 → S10 → SEL2-E → SEL2-P**, kèm **SEL2-D**; không đo dày quanh hệ số 0,6–0,7, không chuyển sang khan hiếm nước trước khi S9 cho số | Năm thẻ mới trong [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án) |
+| QĐ-SEL2b | Điều kiện khả thi của SEL2-E có thêm **ít nhất 30 thế hệ** và **chết chủ yếu vì đói** | Định nghĩa của SEL2-E |
+| QĐ-SEL2c | Số seed của SEL2-P (16 hay 24) **quyết sau SEL2-E**, khi biết một lượt chạy tốn bao lâu | Còn mở, có điều kiện |
+| QĐ-SEL2d | Uỷ quyền R5 cho thẻ S9 và S10, đúng các path của dòng nháp trong đề xuất. Cùng ngày, theo yêu cầu của phiên làm S9, chủ dự án cho thêm hai path ("Cho phép cả hai"): sổ đăng ký observable `core/experiment/observables.rs` và một test của `prereg_esel1_manifest_tests.rs`; sáu manifest E-SEL1 đã đăng ký giữ nguyên | Các dòng trong `R5-AUTH` của [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md) §4 |
+
 Ba câu trong mười bốn không có đề xuất sẵn. Chủ dự án giao phiên rà soát xử lý chúng ở mức tài liệu ("bạn xử
 lý các vấn đề còn lại", cùng ngày), và chúng được xử lý như sau, mỗi cái theo chứng cứ có trong repo:
 
@@ -365,7 +375,7 @@ hai dòng cuối):
 | Chặng 5 | QĐ-M4 — nền tảng phát hành thứ hai; QĐ-M8 — ký bản cài và tự cập nhật | MP-5.4, MP-5.5 |
 | Chặng 7 | QĐ-M3, QĐ-M5, QĐ-M7 — lớp vận chuyển, `Inhabit` có là mục tiêu không, sửa thiết kế 25/08 | Nhánh F |
 | Trước AE4 | QĐ-PAST (thiết kế lưu trữ) và QĐ-TIME: duyệt [ADR-0008](../decisions/ADR-0008-world-past-and-time.md), đang `proposed` (thẻ L0, #109) | §4.2 ngay dưới |
-| Chặng 4 | Bước kế tiếp của QĐ-SEL1b: lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
+| Chặng 4 | ~~Bước kế tiếp của QĐ-SEL1b~~ **Đã quyết 2026-11-18 (QĐ-SEL2a–d, bảng ngay trên).** Lượt đo của thẻ S6 (#110) không tìm ra cấu hình nào vừa đưa standing crop vào dải cần vừa giữ được quần thể. Giữ phương án A với thiết kế khác, hay chuyển sang khan hiếm nước | [Lượt đo thăm dò của S6](../ai/planning/2026-11-17-s6-sel2-exploration.md), mục "Gợi ý cho bước kế tiếp" |
 | Không gắn chặng | `LIVE_MODEL_VERSION` có tăng sau #76 không; có bật vận động mặc định trong app không | STATE §3.00 P3 |
 | Trước thẻ V0 (CM-102) | Kiểu lưu `EnvironmentSnapshot` có cùng các trường với `EnvSample` hay chỉ một tập con | [Hợp đồng sinh vật](../reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
 
