@@ -1,6 +1,6 @@
 //! Observable gates — feature `ecological-selection`, branch O.
 //!
-//! - **Wiring** — all ids (legacy 12 + extended 10) emit in stable order, all finite.
+//! - **Wiring** — all ids (legacy 12 + extended 15) emit in stable order, all finite.
 //! - **OB-S01** — `live.shannon` / `live.simpson` match the panel's own index math on the same
 //!   abundances.
 //! - **OB-S02** — variance separates populations an identical mean cannot.
@@ -66,6 +66,24 @@ fn every_registered_id_emits_exactly_once_in_stable_order() {
         let spec = reg.get(id).unwrap_or_else(|| panic!("{id} unregistered"));
         assert!(!spec.unit.is_empty());
         assert!(spec.cadence_period > 0);
+    }
+    let integral_spec = reg
+        .get("live.mean_energy_integral")
+        .expect("live.mean_energy_integral registered");
+    assert_eq!(integral_spec.unit, "EU·tick");
+    assert_eq!(
+        integral_spec.aggregation,
+        anima_engine_lib::core::experiment::Aggregation::Instant
+    );
+    for regional_id in ["live.trait_mass_mean_west", "live.trait_mass_mean_east"] {
+        let spec = reg
+            .get(regional_id)
+            .unwrap_or_else(|| panic!("{regional_id} registered"));
+        assert_eq!(spec.unit, "EU");
+        assert_eq!(
+            spec.aggregation,
+            anima_engine_lib::core::experiment::Aggregation::Instant
+        );
     }
 }
 

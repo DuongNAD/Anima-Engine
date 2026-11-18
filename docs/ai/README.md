@@ -74,6 +74,7 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-18 | [Thẻ R0 — đo lại toàn bộ gate tại `46e25d5` (Windows 11 x64)](testing/remeasure-2026-11-18-46e25d5.md) — lượt đo tuần tự toàn bộ gate frontend, backend, tái lập 6 tiến trình và đếm test trên Windows 11 x64 (`test:frontend` 1/700 đỏ do CRLF) | đo | `completed` |
 | 2026-11-18 | [Thẻ R0 — đề xuất mục §1.i cho `STATE_OF_THE_PROJECT.md`](testing/state-1x-proposed-2026-11-18.md) — bản thảo bảng số đo §1.i theo văn phong §1.h từ lượt đo R0 tại `46e25d5` | đề xuất | `proposed` |
 | 2026-11-18 | [Thẻ S11 — khoá `live.grass_steering` (tìm cỏ cho thú ăn cỏ)](planning/2026-11-18-s11-grass-steering.md) — kết quả âm, **mã không merge** (nhánh `dell/s11-grass-steering` tại `95044c4b`): phép thử cơ chế có đối chứng cho lái tới cỏ dương ở tick 1.000–1.500 rồi âm từ 2.000; 100.000 tick `VIABLE = no` ở hệ số 1 / 0,7 / 0,5. Bỏ khát thì con mồi không thiếu ăn (0,89–0,98 mức mục tiêu); khát mới là giới hạn | thẻ | `completed` |
+| 2026-11-19 | [Thẻ S2 — thêm `live.mean_energy_integral` và khối lượng cơ thể theo vùng Đông/Tây](planning/2026-11-19-s2-observables.md) — ba observable mới nối cuối `LIVE_EXTENDED_OBSERVABLE_IDS` (`Aggregation::Instant`, không nhiễu loạn nhịp lấy mẫu, sống qua ngã rẽ checkpoint qua đĩa, giá trị hữu hạn khi quần thể bằng 0) | thẻ | `completed` |
 
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),

@@ -720,6 +720,14 @@ pub struct LiveExperimentState {
     /// How many intervention applications have fired. Part of the resume fingerprint: two runs that
     /// applied a different number of forcings did not do the same thing.
     pub applied_interventions: u64,
+    /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
+    ///
+    /// Mirrored from [`LiveExperimentAdapter`] on each tick and before `snapshot`, and restored in
+    /// [`LiveExperimentAdapter::build`] on resume so save/load checkpoint forks preserve the exact
+    /// cumulative integral inside this module without modifying `SavedSimulationState`'s fields or
+    /// `world_checksum`. Pre-S2 schema-v1 saves default to `0.0`.
+    #[serde(default)]
+    pub mean_energy_integral: f64,
 }
 
 impl LiveExperimentState {
@@ -743,6 +751,7 @@ impl LiveExperimentState {
             initial_conditions,
             ledger: CausalLedger::new(),
             applied_interventions: 0,
+            mean_energy_integral: 0.0,
         }
     }
 
@@ -1375,7 +1384,23 @@ pub const LIVE_OBSERVABLE_IDS: [&str; 12] = [
 /// Card S9 appended `live.deaths_starvation` and `live.deaths_dehydration`: the window's deaths
 /// split by cause, one cause per death (rule in `core::mortality::lethal_cause`), so the two add up
 /// to `live.deaths` at every sample.
-pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 12] = [
+///
+/// Card S2 appended three observables at the end:
+/// - `live.mean_energy_integral` (`EU·tick`, `Aggregation::Instant`): running sum over every
+///   simulated tick of `live.mean_agent_energy`. Ticks with zero living agents contribute `0.0` so
+///   an extinct population retains its finite pre-extinction integral (no sentinel value).
+/// - `live.trait_mass_mean_west` / `live.trait_mass_mean_east` (`EU`, `Aggregation::Instant`): mean
+///   `AgentGenotype.0.total_mass()` over living agents whose world X coordinate maps into columns
+///   `0..=127` (`Region::Rect{0,0,127,255}`) vs `128..=255` (`Region::Rect{128,0,255,255}`) on the
+///   256×256 resource/terrain grid, using the same normalized column formula as
+///   [`ResourceField::cell_index`] and [`crate::core::terrain::TerrainMap::get_map_indices`]. An
+///   empty half emits `0.0` via [`mass_statistics`] (`&[]`), matching `live.trait_mass_mean`.
+///
+/// Time-to-floor remains a **derived** quantity computed post-hoc from time series by analysis
+/// scripts: floor thresholds are experiment-specific, and pre-floor / never-floor runs are
+/// right-censored so any per-tick number would either encode a sentinel (corrupting paired deltas)
+/// or conflate survival time with hitting the floor.
+pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 15] = [
     "live.trait_mass_mean",
     "live.trait_mass_var",
     "live.trait_mass_p10",
@@ -1388,6 +1413,9 @@ pub const LIVE_EXTENDED_OBSERVABLE_IDS: [&str; 12] = [
     "live.archive_coverage",
     "live.deaths_starvation",
     "live.deaths_dehydration",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east",
 ];
 
 /// Every observable id the adapter emits (legacy + extended), in emission order.
@@ -1447,6 +1475,48 @@ pub fn live_observables_peek(world: &mut World) -> Vec<(String, f64)> {
     read_live_observables(world, false)
 }
 
+/// Living agent count and per-tick mean reserve energy (`0.0` when zero agents are alive).
+///
+/// Shared by `read_live_observables` (`live.mean_agent_energy`) and
+/// `LiveExperimentAdapter::accumulate_mean_energy_integral` so both see the exact same `f64`
+/// average on every tick.
+fn current_mean_agent_energy(world: &mut World) -> (u64, f64) {
+    use crate::core::components::Agent;
+
+    let mut agents = 0u64;
+    let mut energy_sum = 0.0f64;
+    let mut q = world.query_filtered::<&crate::ai::hrrl::HomeostaticState, With<Agent>>();
+    for homeo in q.iter(world) {
+        agents += 1;
+        energy_sum += homeo.energy as f64;
+    }
+    let mean = if agents == 0 {
+        0.0
+    } else {
+        energy_sum / agents as f64
+    };
+    (agents, mean)
+}
+
+/// Map an entity's world X coordinate onto the resource/terrain grid column (`0..grid_width`) and
+/// return `true` iff it falls in the West half (`col < grid_width / 2`: columns `0..=127` on a
+/// 256×256 grid, matching E3's `Region::Rect { min_x: 0, min_y: 0, max_x: 127, max_y: 255 }`), with
+/// `false` indicating the East half (`128..=255`, `Region::Rect { 128, 0, 255, 255 }`).
+///
+/// Uses the identical normalized column formula as [`ResourceField::cell_index`] and
+/// [`crate::core::terrain::TerrainMap::get_map_indices`], with `u` clamped to `[0.0, 1.0]` so an
+/// agent near or past the map border stays cleanly partitioned between West and East.
+#[inline]
+fn world_x_is_west(x: f32, grid_width: usize, min_x: f32, max_x: f32) -> bool {
+    let span_x = max_x - min_x;
+    if grid_width == 0 || span_x <= 0.0 || !x.is_finite() {
+        return true;
+    }
+    let u = ((x - min_x) / span_x).clamp(0.0, 1.0);
+    let col = ((u * grid_width as f32) as usize).min(grid_width - 1);
+    col < grid_width / 2
+}
+
 fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, f64)> {
     use crate::core::components::{Agent, Food, Predator, Prey};
 
@@ -1454,24 +1524,22 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         .get_resource::<EcosystemBiomass>()
         .map(|p| (p.plants, p.animals, p.detritus, p.dormant))
         .unwrap_or((0.0, 0.0, 0.0, 0.0));
-    let standing_crop = world
+    let (standing_crop, grid_width, min_x, max_x) = world
         .get_resource::<ResourceField>()
-        .map(|f| f.total_biomass())
-        .unwrap_or(0.0);
+        .map(|f| (f.total_biomass(), f.width, f.min_x, f.max_x))
+        .unwrap_or_else(|| {
+            let (min_x, max_x) = world
+                .get_resource::<crate::core::ecs::MapBounds>()
+                .map(|b| (b.min.x, b.max.x))
+                .unwrap_or((-100.0, 100.0));
+            (0.0, 256, min_x, max_x)
+        });
     let season_phase = world
         .get_resource::<crate::core::ecology::SeasonClock>()
         .map(|c| c.phase as f64)
         .unwrap_or(0.0);
 
-    let mut agents = 0u64;
-    let mut energy_sum = 0.0f64;
-    {
-        let mut q = world.query_filtered::<&crate::ai::hrrl::HomeostaticState, With<Agent>>();
-        for homeo in q.iter(world) {
-            agents += 1;
-            energy_sum += homeo.energy as f64;
-        }
-    }
+    let (agents, mean_agent_energy) = current_mean_agent_energy(world);
     let herbivores = {
         let mut q = world.query_filtered::<(), (With<Agent>, With<Prey>)>();
         q.iter(world).count() as f64
@@ -1485,18 +1553,36 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         q.iter(world).count() as f64
     };
 
-    // Branch-O: trait distribution (body mass, the MTE master trait), diversity over the same
-    // prey/predator abundances the panel indices use, archive occupancy, and the drained
-    // turnover window.
+    // Branch-O + Card S2: trait distribution (body mass, the MTE master trait), global and
+    // west/east halves, diversity over the same prey/predator abundances the panel indices use,
+    // archive occupancy, the drained turnover window, and the cumulative mean-energy integral.
     let mut masses: Vec<f32> = Vec::new();
+    let mut west_masses: Vec<f32> = Vec::new();
+    let mut east_masses: Vec<f32> = Vec::new();
     {
-        let mut q =
-            world.query_filtered::<&crate::core::agent_systems::AgentGenotype, With<Agent>>();
-        for g in q.iter(world) {
-            masses.push(g.0.total_mass());
+        let mut q = world.query_filtered::<(
+            &crate::core::agent_systems::AgentGenotype,
+            Option<&crate::core::ecs::Position>,
+        ), With<Agent>>();
+        for (g, pos) in q.iter(world) {
+            let m = g.0.total_mass();
+            masses.push(m);
+            if let Some(p) = pos {
+                if world_x_is_west(p.0.x, grid_width, min_x, max_x) {
+                    west_masses.push(m);
+                } else {
+                    east_masses.push(m);
+                }
+            }
         }
     }
     let stats = mass_statistics(&masses);
+    let trait_mass_mean_west = mass_statistics(&west_masses)[0];
+    let trait_mass_mean_east = mass_statistics(&east_masses)[0];
+    let mean_energy_integral = world
+        .get_resource::<LiveExperimentState>()
+        .map(|s| s.mean_energy_integral)
+        .unwrap_or(0.0);
     let counts = [herbivores as u32, predators as u32];
     let shannon = crate::core::ecology::shannon_index(&counts);
     let simpson = crate::core::ecology::simpson_index(&counts);
@@ -1538,14 +1624,7 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
         ("live.predator_count".to_string(), predators),
         ("live.food_items".to_string(), food_items),
         ("live.standing_crop".to_string(), standing_crop),
-        (
-            "live.mean_agent_energy".to_string(),
-            if agents == 0 {
-                0.0
-            } else {
-                energy_sum / agents as f64
-            },
-        ),
+        ("live.mean_agent_energy".to_string(), mean_agent_energy),
         ("live.season_phase".to_string(), season_phase),
         ("live.trait_mass_mean".to_string(), stats[0]),
         ("live.trait_mass_var".to_string(), stats[1]),
@@ -1571,6 +1650,18 @@ fn read_live_observables(world: &mut World, close_window: bool) -> Vec<(String, 
             deaths_dehydration as f64,
         ));
     }
+    out.push((
+        "live.mean_energy_integral".to_string(),
+        mean_energy_integral,
+    ));
+    out.push((
+        "live.trait_mass_mean_west".to_string(),
+        trait_mass_mean_west,
+    ));
+    out.push((
+        "live.trait_mass_mean_east".to_string(),
+        trait_mass_mean_east,
+    ));
     out
 }
 
@@ -1602,6 +1693,8 @@ pub struct LiveExperimentAdapter {
     seed: u64,
     /// How many effects of the world's own ledger have already been mirrored into the runner's.
     mirrored_effects: usize,
+    /// Running sum of `live.mean_agent_energy` across every simulated tick (`EU·tick`).
+    mean_energy_integral: f64,
 }
 
 /// A `World` and a `Schedule` are not `Debug`, and the interesting part of an adapter is not their
@@ -1613,6 +1706,7 @@ impl std::fmt::Debug for LiveExperimentAdapter {
             .field("tick", &self.clock.tick)
             .field("config", &self.config)
             .field("mirrored_effects", &self.mirrored_effects)
+            .field("mean_energy_integral", &self.mean_energy_integral)
             .finish_non_exhaustive()
     }
 }
@@ -1679,6 +1773,7 @@ impl LiveExperimentAdapter {
             tick: state.clock_tick,
         };
         let mirrored_effects = state.ledger.len();
+        let mean_energy_integral = state.mean_energy_integral;
         world.insert_resource(state);
         world.insert_resource(LiveForcings::default());
         world.insert_resource(LiveInterventions::with_capacity(16));
@@ -1698,6 +1793,7 @@ impl LiveExperimentAdapter {
             config,
             seed,
             mirrored_effects,
+            mean_energy_integral,
         })
     }
 
@@ -1727,7 +1823,20 @@ impl LiveExperimentAdapter {
         self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.accumulate_mean_energy_integral();
         self.record_drift_shortfalls_if_due(self.clock.tick, false);
+    }
+
+    /// Update the cumulative `live.mean_energy_integral` accumulator once after a simulated tick
+    /// and mirror it onto [`LiveExperimentState`] so `live_observables(&mut World)` and snapshots see
+    /// the exact running integral whether or not observables are sampled on this tick.
+    fn accumulate_mean_energy_integral(&mut self) {
+        let world = self.world.get_mut();
+        let (_, mean_energy) = current_mean_agent_energy(world);
+        self.mean_energy_integral += mean_energy;
+        if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
+            state.mean_energy_integral = self.mean_energy_integral;
+        }
     }
 
     /// Attach a read-only lockstep turnover recorder (`DriftMode::Record`) to a selected run.
@@ -2096,10 +2205,11 @@ impl ExperimentModel for LiveExperimentAdapter {
 
     fn snapshot(&self) -> Self::Snapshot {
         let mut world = self.world.borrow_mut();
-        // The clock lives on the adapter and in the resource; the resource is what the serializer
-        // reads, so it is refreshed here rather than only at the end of `step`.
+        // The clock and accumulator live on the adapter and in the resource; the resource is what
+        // the serializer reads, so both are refreshed here rather than only at the end of `step`.
         if let Some(mut state) = world.get_resource_mut::<LiveExperimentState>() {
             state.clock_tick = self.clock.tick;
+            state.mean_energy_integral = self.mean_energy_integral;
         }
         let deps = SaveHandles::new();
         let saved = crate::core::simulation_state::serialize_world_state(
@@ -2160,6 +2270,7 @@ impl ExperimentModel for LiveExperimentAdapter {
         self.sync_drift_tick();
         self.run_tick();
         self.drain_absent_thread_queues();
+        self.accumulate_mean_energy_integral();
         self.record_drift_shortfalls_if_due(clock.tick, false);
         self.mirror_ledger(ledger);
     }
