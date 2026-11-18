@@ -41,10 +41,10 @@ superseded_by: none
 - **Giải pháp được chọn:** Trong `spawn_wgpu_learner` (`src-tauri/src/core/training.rs`), đọc trọng số phẳng (`to_flat_weights`) và đóng gói tạm trên `Device::flex()` ngay tại luồng learner; bên nhận `BrainModel::replace_wgpu_model` (`src-tauri/src/ai/model.rs`) dựng lại `ActorCriticModel::from_flat_weights` trên `device` của chính luồng inference, chạy `materialize()` rồi `drop(old)` ngay tại chỗ (`return None`). Không một `FusionTensor` WGPU nào vượt ranh giới luồng.
 - Bổ sung test hồi quy liên luồng `test_wgpu_learner_publishes_synced_models_across_threads` (≥ 32 lần cập nhật liên luồng) vào `src-tauri/tests/phase5_burn_wgpu_fallback.rs`.
 
-### 4. Giữ `gpu_backend_requested` tắt mặc định và hoãn quyết định `LIVE_MODEL_VERSION`
+### 4. Giữ `gpu_backend_requested` tắt mặc định và tăng `LIVE_MODEL_VERSION` lên `"live-bevy-world/2"`
 
 - Cờ `gpu_backend_requested` (`src-tauri/src/core/resources.rs`) **giữ nguyên mặc định `false` (`OFF`)**. Mặc dù phép đo RTX 5060 Ti cho thấy đường WGPU ổn định sau khi cô lập stream (0 panic trong 180s, đi ngang sau `t = 75s`), đường CPU `burn-flex` là đường tất định tham chiếu hiện hành; mọi thay đổi mặc định GPU thuộc quyết định riêng của chủ dự án.
-- Chuyển đổi từ `burn-ndarray 0.13.2` sang `burn-flex 0.22.1` giữ nguyên mọi checksum tại `tick = 0` và toàn bộ thế giới dùng não tiến hoá (`evolved = true`), nhưng **làm đổi quỹ đạo sau `tick > 0` của mọi thế giới dùng shared Burn `BrainModel`** (`evolved = false`). Theo [ADR-0008](ADR-0008-world-past-and-time.md), việc tăng hay giữ `LIVE_MODEL_VERSION` (`"live-bevy-world/1"` tại `src-tauri/src/core/live_experiment.rs:67`) được báo cáo để chủ dự án quyết định.
+- Chuyển đổi từ `burn-ndarray 0.13.2` sang `burn-flex 0.22.1` giữ nguyên mọi checksum tại `tick = 0` và toàn bộ thế giới dùng não tiến hoá (`evolved = true`), nhưng **làm đổi quỹ đạo sau `tick > 0` của mọi thế giới dùng shared Burn `BrainModel`** (`evolved = false`). Theo [ADR-0008](ADR-0008-world-past-and-time.md) mục 5, thay đổi quỹ đạo ở thế giới mặc định mở ra một kỷ nguyên engine mới, nên `LIVE_MODEL_VERSION` tại `src-tauri/src/core/live_experiment.rs` được tăng từ `"live-bevy-world/1"` lên `"live-bevy-world/2"`.
 
 ## Bằng chứng đo được (Windows 11 x64, RTX 5060 Ti)
 
@@ -76,20 +76,22 @@ Trong chặng ổn định `[75s..180s]` của phép chạy `GPU_WGPU` cuối, h
 
 ## Đánh giá giấy phép mới & các điểm chặn còn mở (`OPEN_SOURCE_POLICY.md`)
 
-1. **`cargo deny check` thất bại (mã thoát `4`, `licenses FAILED`):** Cây phụ thuộc vô điều kiện của Burn 0.22 / CubeCL kéo thêm ba crate mang giấy phép chưa có trong danh sách cho phép của `src-tauri/deny.toml`:
-   - `buildid v1.1.0` (`MPL-2.0`, qua `cubecl-runtime v0.11.4 -> cubecl v0.11.4`).
-   - `colored v3.1.1` (`MPL-2.0`, qua `burn-tensor v0.22.1 -> burn-core v0.22.1`).
-   - `xxhash-rust v0.8.21` (`BSL-1.0`, qua `cubecl-common v0.11.4 -> burn-std v0.22.1`).
-   - Lưu ý bổ sung: `naga 30.0.2` có một phần bộ đọc hex-float nội tuyến mang chú thích `0BSD` (dễ dãi, tương thích [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md)).
-   - Do uỷ quyền R1c chỉ cho phép **xoá** mục trong `src-tauri/deny.toml`, chưa có quyền thêm `MPL-2.0` (copyleft yếu cấp tập tin) và `BSL-1.0` hoặc xem xét ngoại lệ.
-2. **`npm run gen:compliance` & `npm run check:licenses-complete` thất bại (`ENOBUFS` + thiếu kho upstream):**
-   - `scripts/lib/licensing.mjs:193` chạy `cargo tree --features desktop -e normal --prefix none --no-dedupe` (không chống lặp) với `maxBuffer = 256 MiB`, tràn bộ đệm thành `ENOBUFS` vì DAG mới của `burn 0.22.1` + `cubecl 0.11.4` + `cubek 0.3.1` nở rộng hơn 256 MiB văn bản cây chưa khử trùng lặp.
-   - Đồng thời, trên cây `Cargo.lock` mới có 11 mục trong `licensing/upstream/sources.json` (gồm `pkg:cargo/hexf-parse@0.2.1` và 10 crate cũ của `wgpu 0.19` / `naga 0.19` / `d3d12`) đã rời cây phụ thuộc, và các crate mới thuộc họ `burn 0.22.1` / `cubecl 0.11.4` / `cubek 0.3.1` / `buildid 1.1.0` / `spirv 0.4.0+sdk-1.4.341.0` không đính sẵn file `LICENSE*` trong gói `.crate` (cần đồng bộ kho `licensing/upstream/`). Cả `scripts/lib/licensing.mjs` lẫn `licensing/upstream/` đều nằm ngoài phạm vi uỷ quyền thẻ R1c.
+1. **`src-tauri/deny.toml` (đã mở khoá theo uỷ quyền mở rộng R1c):** Cây phụ thuộc Burn 0.22 / CubeCL kéo thêm ba crate mang giấy phép ngoài danh sách `allow` mặc định:
+   - `buildid v1.1.0` (`MPL-2.0`, qua `ml-wgpu -> burn/wgpu -> cubecl 0.11.4 -> cubecl-runtime 0.11.4`, nguồn công khai tại `https://github.com/jmesmon/buildid`).
+   - `colored v3.1.1` (`MPL-2.0`, qua `burn v0.22.1 -> burn-core 0.22.1 -> burn-tensor 0.22.1`, nguồn công khai tại `https://github.com/mackwic/colored`).
+   - `xxhash-rust v0.8.21` (`BSL-1.0`, qua `ml-wgpu -> burn/wgpu -> burn-std 0.22.1 -> cubecl-common 0.11.4`).
+   - Cả ba được khai báo ngoại lệ từng crate trong `src-tauri/deny.toml` kèm đường phụ thuộc (không nới `allow` toàn cục); cả hai crate `MPL-2.0` đều được phân phối nguyên vẹn không sửa đổi và có mã nguồn công khai trên crates.io / repository gốc, đáp ứng nghĩa vụ copyleft cấp tập tin của `MPL-2.0`. `cargo deny check` thoát `0` (`advisories ok, bans ok, licenses ok, sources ok`).
+   - Lưu ý bổ sung: `naga 30.0.2` có phần bộ đọc hex-float nội tuyến mang chú thích `0BSD` (permissive, tương thích [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md)).
+2. **Kho `licensing/upstream/` (đã đồng bộ & xác minh byte):** Đã gỡ 10 crate cũ (`wgpu 0.19` / `naga 0.19` / `d3d12` / `spirv 0.3` / `codespan-reporting`) và mục chặn `hexf-parse@0.2.1` khỏi `licensing/upstream/sources.json`; bổ sung 15 file từ 11 commit bất biến cho 43 crate mới (42 crate có `LICENSE*`, `buildid@1.1.0` chỉ có mục `## License` trong `README.md` nên vendor dưới dạng `licence-statement`, `macerator-macros@0.3.2` chỉ có `LICENSE` MIT dù khai báo `MIT OR Apache-2.0`). `npm run verify:upstream-licenses` đạt **38/38 file trên 27 commit / 24 repo khớp từng byte** (`exit 0`).
+3. **Ba điểm chặn còn lại ở Điều kiện 6 (`gen:compliance` / `check:compliance` / `check:licenses-complete`):**
+   - **Điểm chặn 6a (`scripts/lib/licensing.mjs:195` `--no-dedupe`):** Đếm đường đi trên DAG `--features desktop -e normal` chứng minh `cargo tree --no-dedupe` sinh `3.768.384.156` dòng (`~82,90 GB` stdout), vượt mọi giới hạn `maxBuffer` lẫn thời lượng thực tế ngay cả khi stream (~2h40 mỗi lần gọi × 7 lần ≈ 18,6h). Uỷ quyền hiện hành chỉ cho phép tăng `maxBuffer` hoặc stream chứ chưa cho phép bỏ cờ `--no-dedupe` (bỏ `--no-dedupe` chỉ xuất `1.902` dòng / `42 KB` trong `0,2s` với tập `shipped` `Set` giống hệt nhau).
+   - **Điểm chặn 6b (4 crate không có văn bản giấy phép upstream + `buildid` chỉ có statement, đều chỉ đi vào qua `ml-wgpu`):** `utf8-chars@3.0.7` (qua `pliron`), `pack1@1.1.0` (qua `turso_core`), `genawaiter@0.99.1` và `genawaiter-macro@0.99.1` (qua `turso_sync_engine`) không có bất kỳ file `LICENSE*`/`COPYING*`/`NOTICE*` hay tuyên bố giấy phép trong `README`/source ở commit phát hành lẫn `HEAD`; cả 4 được ghi vào mục `blocked` của `licensing/upstream/sources.json`, làm `check:licenses-complete` và yêu cầu `UNRESOLVED.md` trống chưa thể đạt nếu không có quyết định pháp lý hoặc tắt `cubecl-environment/persistence` / xem xét lại `ml-wgpu` trong feature `desktop` (cả 5 crate kể cả `buildid@1.1.0` đều vắng mặt khi không bật `ml-wgpu`). Ngoài ra, `buildid@1.1.0` (`MPL-2.0`) chưa từng publish file toàn văn `MPL-2.0` trong repo gốc nên bản vendor chỉ chứa `README.md` (`licence-statement`), trừ khi áp dụng ngoại lệ `project-repository` (hiện bị `tests/frontend/upstreamLicenses.test.ts` khoá chỉ cho `selectors@0.36.1`).
+   - **Điểm chặn 6c (`cfg_block@0.1.1` trong `scripts/check_sbom_schema.mjs:165`):** `turso_core` kéo `cfg_block@0.1.1` khai báo `license-file = "LICENSE"` thay vì `license = "..."` trong `Cargo.toml`. Do `declaredLicense = null`, `gen_third_party_licenses.mjs` xuất `spdx: null` và `gen_sbom.mjs` bỏ trống mảng `licenses`, khiến `check:sbom-schema` sẽ từ chối thành phần này dù gói `.crate` có đính kèm đầy đủ `LICENSE` (Apache-2.0).
 
 ## Hệ quả & bước tiếp theo
 
-- **Tích cực:** Thoát hoàn toàn khỏi `hexf-parse` và `burn-ndarray`; mọi test Parity, A2C, WGPU fallback, di trú Schema 7→8, và 180s WGPU heap probe đều xanh sau cô lập stream.
-- **Chặn cần chủ dự án phê duyệt R5:**
-  1. Phê duyệt bổ sung `MPL-2.0` (`buildid`, `colored`) và `BSL-1.0` (`xxhash-rust`) vào `src-tauri/deny.toml` theo [chính sách nguồn mở](../governance/OPEN_SOURCE_POLICY.md).
-  2. Cấp uỷ quyền cho thẻ nối tiếp (hoặc mở rộng R1c) để sửa lỗi `ENOBUFS` trong `scripts/lib/licensing.mjs`, cập nhật `licensing/upstream/sources.json` + kho giấy phép `licensing/upstream/github.com/**` cho các crate Burn 0.22 / CubeCL 0.11.4 / Cubek 0.3.1, và chạy lại `gen:compliance` + `check:licenses-complete` trên Windows.
-  3. Sau khi hoàn tất bước (1) và (2), quyết định có tăng `LIVE_MODEL_VERSION` hay không, cập nhật `CLAUDE.md` và `STATE_OF_THE_PROJECT.md`, và chuyển ADR này sang `accepted`.
+- **Đã hoàn thành trên nhánh `win/r1c-burn-upgrade`:** Thoát khỏi `hexf-parse` và `burn-ndarray`; toàn bộ kiểm tra Parity, A2C, WGPU fallback, di trú Schema 7→8, 180s WGPU heap probe, `LIVE_MODEL_VERSION = "live-bevy-world/2"`, `cargo deny check` (`exit 0`) và `npm run verify:upstream-licenses` (38/38 khớp byte) đều đạt.
+- **Cần chủ dự án phê duyệt tiếp để đóng Điều kiện 6:**
+  1. Cho phép bỏ `--no-dedupe` ở `scripts/lib/licensing.mjs:195`.
+  2. Quyết định cách xử lý `cfg_block@0.1.1` (`license-file = "LICENSE"` trong `gen_third_party_licenses.mjs`/`gen_sbom.mjs`/`check_sbom_schema.mjs`), tuyên bố văn bản `buildid@1.1.0` (`MPL-2.0`), và 4 crate `blocked` chỉ đi vào qua `ml-wgpu -> cubecl` (`utf8-chars`, `pack1`, `genawaiter`, `genawaiter-macro`).
+  3. Sau khi Điều kiện 6 hoàn tất trên Windows, cập nhật `CLAUDE.md`, `STATE_OF_THE_PROJECT.md` ở thẻ sau và chuyển ADR này sang `accepted`.
