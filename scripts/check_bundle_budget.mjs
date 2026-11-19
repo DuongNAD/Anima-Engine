@@ -69,7 +69,11 @@ const CHUNK_BUDGET_KIB = {
   // Measured at 106.2 KiB when that landed; 130 gives the same kind of headroom the entries above
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
-  WorldShowcase: 130,
+  //
+  // Raised 130 -> 145 KiB (2026-11-19, reason: 'prototype' — V1 real-world simulation entities
+  // `LiveEnvironment` + `simEnvironment` + decoration legend/toggle grew WorldShowcase from
+  // ~127.5 KiB to ~132.8 KiB; authorized under PROTOTYPE-FIRST MSG_20261119_040227).
+  WorldShowcase: 145,
   Map2Showcase: 130,
   map2: 120,
   // The interactive research dashboard suite (Features 14-19 & DataExportDialog).
