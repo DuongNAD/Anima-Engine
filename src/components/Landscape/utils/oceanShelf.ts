@@ -43,7 +43,9 @@
  * render units on the shipped 1200-unit world, against a fog that starts at 960 — so the transition
  * finishes on its own terms and is not being hidden by haze.
  */
-export const OCEAN_SHELF_BAND_FRACTION = 0.25;
+// prototype: tightened from 0.25 -> 0.10 (120u on 1200u world) so outer shelf falls rapidly to deep
+// ocean without creating a wide pale-cyan halo around the square terrain footprint.
+export const OCEAN_SHELF_BAND_FRACTION = 0.1;
 
 /** Hermite smoothstep, matching GLSL's. */
 function smoothstep(edge0: number, edge1: number, x: number): number {

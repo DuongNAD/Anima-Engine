@@ -27,7 +27,10 @@ const SKY_FRAGMENT = /* glsl */ `
   void main() {
     vec3 d = normalize(vDir);
     float h = clamp(d.y, 0.0, 1.0);
-    vec3 col = mix(uHorizon, uZenith, pow(h, 0.62));
+    vec3 col = mix(uHorizon, uZenith, pow(h, 0.58));
+    float dayMix = smoothstep(0.18, 0.72, max(uHorizon.r, max(uHorizon.g, uHorizon.b)));
+    vec3 hazeBelt = mix(uHorizon, vec3(0.77, 0.87, 0.94), dayMix * 0.72);
+    col = mix(hazeBelt, col, smoothstep(0.0, 0.16, abs(d.y)));
     float s = max(dot(d, normalize(uSunDir)), 0.0);
     col += uSunColor * (pow(s, 300.0) * 0.9 + pow(s, 10.0) * 0.16 * uGlow);
     // Cold, tighter halo around the moon at night.
