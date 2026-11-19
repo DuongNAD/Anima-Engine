@@ -49,8 +49,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1529003,
-      "checksum": "sha256:01bd9a28c54cc5f8056c2ba6d4fce2e2eda27d57d50d7df350880d3969c2804f"
+      "bytes": 1044938,
+      "checksum": "sha256:b5435e785af6d555d785f5056eaa872bcec2275e3457f1f43d2841af3c55a8ea"
     },
     {
       "id": "navigation",
@@ -68,8 +68,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1709251,
-      "checksum": "sha256:6d6d6fe8a3569fff047728cfc00c8c712b84586e989d7b67b4003fb3ad2a9930"
+      "bytes": 1513294,
+      "checksum": "sha256:397768338bd822c48d257efe9ecabb879bd0e8d21557b82697eeb67354396aae"
     },
     {
       "id": "collision",
@@ -87,8 +87,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1054859,
-      "checksum": "sha256:dea0375f319919b73b066593078c38f40663ea578512000953160ec5ec675e24"
+      "bytes": 1045940,
+      "checksum": "sha256:d4d7b4399373664b5c74fb832866060d76245e950e65f7b1f05e4da5b2c2718f"
     },
     {
       "id": "lighting",
@@ -106,8 +106,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1803271,
-      "checksum": "sha256:db2fb950f477cbd9842ee01a337c7823a8aa8633baade96b2e55fcfac5ecd621"
+      "bytes": 1436683,
+      "checksum": "sha256:e361bfae8cb601e7f19523e065ea935b6789da2d0180926385c4127f37ecac0e"
     },
     {
       "id": "spawn",
@@ -125,8 +125,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1052416,
-      "checksum": "sha256:e77545b7214565231662f2ad210cddb6bcc4fe4e78fe26f8e0d23faff877cb99"
+      "bytes": 1095831,
+      "checksum": "sha256:d08789c600f2f1ba32b392ea19e89a4dacff8d91fa4286e635bf985e0b15ee9e"
     },
     {
       "id": "water",
@@ -144,8 +144,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1387610,
-      "checksum": "sha256:4524d5e997dd5c5b26893a937e39fe51d131118a3a73866d78c4e3309b2cb423"
+      "bytes": 1375773,
+      "checksum": "sha256:07d3bf185bae6df4341779a6891397269fefdea2785a8346f66de3162de182d5"
     },
     {
       "id": "biome_transition",
@@ -163,8 +163,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1529845,
-      "checksum": "sha256:abb95ec8538944a8c9498e317f0befbaaa7d95c005e2debf2dadd56237a7ddb5"
+      "bytes": 1458462,
+      "checksum": "sha256:419afaed98af2b82c7069d26501f8b333cd745c0f62f18bb8701dca37fe6b83c"
     },
     {
       "id": "ecosystem",
@@ -182,8 +182,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1274921,
-      "checksum": "sha256:8d374718240558f616aff7bc12c418bc672f9db0e3d38fae8e99433ff99fa012"
+      "bytes": 1187503,
+      "checksum": "sha256:bd79124029d728ccbb4c8bcbe5d4c96c5e7e26fa185aea6c2402fa092c0b673e"
     }
   ]
 }
