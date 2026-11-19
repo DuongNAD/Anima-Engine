@@ -99,13 +99,18 @@ function isValid(w: World | undefined, size: number): w is World {
   );
 }
 
-/** Synchronous: memoized generate (for environments without IndexedDB, e.g. tests). */
+const IS_TEST_BUILD = (import.meta as { env?: { MODE?: string } }).env?.MODE === 'test';
+
+/** Synchronous: memoized generate (for test environments without IndexedDB/Workers). */
 export function getMemoizedWorld(seed: string | number, opts: WorldGenOptions = {}): World {
   const size = opts.size ?? 1024;
   const shape = opts.shape ?? 'continent';
   const key = keyFor(seed, size, shape);
   let w = memo.get(key);
   if (!w) {
+    if (!IS_TEST_BUILD) {
+      throw new Error('Synchronous world generation is disabled outside test builds; use loadOrGenerateWorld.');
+    }
     w = generateWorld(seed, opts);
     memo.set(key, w);
   }
@@ -114,25 +119,37 @@ export function getMemoizedWorld(seed: string | number, opts: WorldGenOptions = 
 
 /**
  * Generate the world OFF the main thread in a Web Worker (so the UI stays responsive during
- * a fresh ~1s build), transferring the TypedArray buffers back zero-copy. Falls back to a
- * synchronous generation if Workers are unavailable or the worker errors.
+ * a fresh ~1s build and the main bundle ships generateWorld only inside the worker chunk),
+ * transferring the TypedArray buffers back zero-copy. Test builds without Workers fall back
+ * to synchronous generation.
  */
 function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promise<World> {
   const size = opts.size ?? 1024;
-  return new Promise((resolve) => {
-    if (typeof Worker === 'undefined') {
+  const fallbackOrReject = (
+    resolve: (w: World) => void,
+    reject: (reason?: unknown) => void,
+    reason: string,
+  ) => {
+    if (IS_TEST_BUILD) {
       resolve(generateWorld(seed, opts));
+    } else {
+      reject(new Error(reason));
+    }
+  };
+  return new Promise((resolve, reject) => {
+    if (typeof Worker === 'undefined') {
+      fallbackOrReject(resolve, reject, 'Web Workers unavailable for world generation');
       return;
     }
     let worker: Worker;
     try {
       worker = new Worker(new URL('./worldGen.worker.ts', import.meta.url), { type: 'module' });
     } catch {
-      resolve(generateWorld(seed, opts));
+      fallbackOrReject(resolve, reject, 'Failed to construct world generation worker');
       return;
     }
     let settled = false;
-    const finishSync = () => {
+    const finishFallback = (reason: string) => {
       if (settled) return;
       settled = true;
       try {
@@ -140,21 +157,25 @@ function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promi
       } catch {
         /* ignore */
       }
-      resolve(generateWorld(seed, opts));
+      fallbackOrReject(resolve, reject, reason);
     };
     worker.onmessage = (e: MessageEvent<World>) => {
       if (settled) return;
       settled = true;
       worker.terminate();
-      // Guard against a worker built from stale/partial code: regenerate synchronously if the
-      // payload is missing any field the renderer needs.
-      resolve(isValid(e.data, size) ? e.data : generateWorld(seed, opts));
+      // Guard against a worker built from stale/partial code: reject (or regenerate in test mode)
+      // if the payload is missing any field the renderer needs.
+      if (isValid(e.data, size)) {
+        resolve(e.data);
+      } else {
+        fallbackOrReject(resolve, reject, 'World generation worker returned invalid payload');
+      }
     };
-    worker.onerror = finishSync;
+    worker.onerror = () => finishFallback('World generation worker error');
     try {
       worker.postMessage({ seed, opts });
     } catch {
-      finishSync();
+      finishFallback('Failed to post world generation request to worker');
     }
   });
 }
