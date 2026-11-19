@@ -234,6 +234,15 @@ pub fn compute_loop_fps(compute_elapsed: Duration, target_duration: Duration) ->
     }
 }
 
+/// Validated experiment manifest queued for the next [`SimulationEngine::start`] viewer run
+/// (card W2-lite; prototype, to be replaced).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingManifest {
+    pub name: String,
+    pub seed: u64,
+    pub config: crate::core::live_experiment::LiveWorldConfig,
+}
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -283,6 +292,8 @@ pub struct SimulationEngine {
     pub save_request_tx: crossbeam_channel::Sender<SaveReplySender>,
     pub save_request_rx: crossbeam_channel::Receiver<SaveReplySender>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
+    /// Manifest queued by `start_from_manifest` (card W2-lite; prototype, to be replaced).
+    pub pending_manifest: Arc<Mutex<Option<PendingManifest>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
     pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
@@ -325,6 +336,7 @@ impl SimulationEngine {
             crate::core::resources::manual_migration_channel();
         let (save_request_tx, save_request_rx) = save_request_channel();
         let pending_load_state = Arc::new(Mutex::new(None));
+        let pending_manifest = Arc::new(Mutex::new(None));
 
         Self {
             supervisor: crate::core::thread_supervisor::ThreadSupervisor::new(),
@@ -357,6 +369,7 @@ impl SimulationEngine {
             save_request_tx,
             save_request_rx,
             pending_load_state,
+            pending_manifest,
             environmental_state: Arc::new(RwLock::new(
                 crate::core::ecs::EnvironmentalState::default(),
             )),
@@ -401,12 +414,24 @@ impl SimulationEngine {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
-        let startup_run_seed = crate::core::simulation_state::startup_run_seed(
-            state_to_load.as_ref(),
-            crate::core::resources::resolve_run_seed(
-                crate::core::world_artifact::world_seed_from_disk(),
-            ),
-        );
+        let manifest_to_load = if state_to_load.is_none() {
+            self.pending_manifest
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take()
+        } else {
+            None
+        };
+        let startup_run_seed = if let Some(ref manifest) = manifest_to_load {
+            manifest.seed
+        } else {
+            crate::core::simulation_state::startup_run_seed(
+                state_to_load.as_ref(),
+                crate::core::resources::resolve_run_seed(
+                    crate::core::world_artifact::world_seed_from_disk(),
+                ),
+            )
+        };
         let deterministic_mode = crate::core::determinism::DeterministicMode::from_env();
         let evolution_worker_resume =
             match crate::core::simulation_state::evolution_worker_resume_state(
@@ -1507,6 +1532,20 @@ impl SimulationEngine {
                     ));
                 }
                 crate::core::simulation_state::populate_restored_spatial_grid(&mut world, state);
+            } else if let Some(ref manifest) = manifest_to_load {
+                // W2-lite viewer mode (prototype, to be replaced): shares genesis and world-law
+                // policy setup with LiveExperimentAdapter, while keeping the app's background
+                // threads so trajectory equality with headless runs is not claimed.
+                crate::core::live_experiment::apply_live_genesis_and_policies(
+                    &mut world,
+                    manifest.seed,
+                    &manifest.config,
+                    loaded_bounds,
+                );
+                let mut founder_q = world.query::<(&AgentLineageId, &AgentGenotype)>();
+                for (lineage_id, genotype) in founder_q.iter(&world) {
+                    let _ = lineage_tracker_sim.add_root(lineage_id.0.clone(), genotype.0.clone());
+                }
             } else {
                 let mut genotype = MorphologyGenotype::new();
                 genotype.add_node(MorphologyNode {

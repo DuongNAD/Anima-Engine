@@ -2376,30 +2376,9 @@ impl SaveHandles {
     }
 }
 
-/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
-/// process environment replaced by what the manifest declared.
-fn build_live_world(
-    seed: u64,
-    config: &LiveWorldConfig,
-    restore: Option<&SavedSimulationState>,
-) -> Result<World, ExperimentError> {
-    let mut world = crate::core::ecs::init_world();
-
-    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
-    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
-    // silently change the trajectory of a run whose whole point is that its inputs are declared.
-    //
-    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
-    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
-    // flags answering separate questions, and folding them in here would turn one declared factor
-    // into a bundle no result could attribute.
-    let sim_rng = match restore {
-        Some(state) if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 => {
-            crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
-        }
-        _ => crate::core::resources::SimRng::from_seed(seed),
-    };
-    world.insert_resource(sim_rng);
+/// Insert all manifest-declared world-law policy resources onto `world`, replacing any
+/// environment-resolved defaults installed by `init_world` or `SimulationEngine::start`.
+fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     world.insert_resource(crate::core::resources::BrainPolicy {
         evolved: config.evolved_brains,
         ..Default::default()
@@ -2454,7 +2433,57 @@ fn build_live_world(
         },
         w_surplus: config.w_surplus,
     });
+    // Declared food cap and predator-income knobs belong to the manifest, not the save or
+    // environment, so both genesis and restore declare them (F-043).
+    world.insert_resource(LiveFoodCap(config.food_cap));
+    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
+        kill_hydration: config.kill_hydration,
+        kill_efficiency: config.kill_efficiency,
+        target_min_energy: config.target_min_energy,
+    });
+}
 
+/// Apply a manifest's declared world-law policy resources, `SimRng`, food cap, pasture capacity
+/// scale, and deterministic lattice genesis (founders, trees, lakes) to an initialized `World`.
+///
+/// Shared by [`build_live_world`] (the headless [`LiveExperimentAdapter`]) and
+/// [`crate::core::simulation_loop::SimulationEngine::start`] (desktop-app viewer mode, card
+/// W2-lite; prototype, to be replaced when ADR-0010 W1 lands) so both start from identical tick-0
+/// entities and world-law policies. A desktop viewer run still keeps the app's background threads
+/// and therefore does not claim to reproduce a headless experiment's trajectory.
+pub fn apply_live_genesis_and_policies(
+    world: &mut World,
+    seed: u64,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+) {
+    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    insert_policy_resources(world, config);
+    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
+        max_food_count: config.food_cap,
+        ..Default::default()
+    });
+    scale_pasture_capacity(world, config.resource_capacity_scale);
+    genesis(world, config, bounds, seed);
+}
+
+/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
+/// process environment replaced by what the manifest declared.
+fn build_live_world(
+    seed: u64,
+    config: &LiveWorldConfig,
+    restore: Option<&SavedSimulationState>,
+) -> Result<World, ExperimentError> {
+    let mut world = crate::core::ecs::init_world();
+
+    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
+    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
+    // silently change the trajectory of a run whose whole point is that its inputs are declared.
+    //
+    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
+    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
+    // flags answering separate questions, and folding them in here would turn one declared factor
+    // into a bundle no result could attribute.
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();
     world.insert_resource(bounds);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
@@ -2463,6 +2492,14 @@ fn build_live_world(
 
     match restore {
         Some(state) => {
+            let sim_rng = if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+                crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
+            } else {
+                crate::core::resources::SimRng::from_seed(seed)
+            };
+            world.insert_resource(sim_rng);
+            insert_policy_resources(&mut world, config);
+
             let pheromone = crate::ai::pheromone::PheromoneGrid {
                 values: state.pheromone_grid.values.clone(),
                 scratch: vec![0.0; crate::ai::pheromone::CELL_COUNT],
@@ -2539,18 +2576,13 @@ fn build_live_world(
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
-            world.insert_resource(crate::core::ecs::FoodSpawnSettings {
-                max_food_count: config.food_cap,
-                ..Default::default()
-            });
             world.insert_resource(crate::core::ecs::EpochManager {
                 ticks_per_epoch: 1000,
                 current_epoch_ticks: 0,
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            scale_pasture_capacity(&mut world, config.resource_capacity_scale);
-            genesis(&mut world, config, bounds, seed);
+            apply_live_genesis_and_policies(&mut world, seed, config, bounds);
         }
     }
 
@@ -2815,17 +2847,6 @@ fn install_runtime_resources(
         InferenceResponseBatch, NextNodeId,
     };
     use crate::core::resources::{EvolutionQueue, EvolutionReceiver, EvolutionSender};
-
-    // On genesis and on restore alike: the declared cap is part of the manifest, not of the saved
-    // state, and `apply_environmental_effects_system` would otherwise reset it to 50 (F-043).
-    world.insert_resource(LiveFoodCap(config.food_cap));
-    // Same reasoning (F-043): the predator-income knobs are part of the manifest, not of the saved
-    // state, so genesis and restore must both declare them. Defaults equal the legacy behaviour.
-    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
-        kill_hydration: config.kill_hydration,
-        kill_efficiency: config.kill_efficiency,
-        target_min_energy: config.target_min_energy,
-    });
 
     let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
     let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
