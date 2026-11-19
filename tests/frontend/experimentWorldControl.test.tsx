@@ -307,9 +307,8 @@ describe('ExperimentWorldControl (W2-lite)', () => {
       process.cwd(),
       'src-tauri/tests/fixtures/experiments_sel2p/sel2p-selected.json',
     );
-    if (fs.existsSync(fixturePath)) {
-      expect(SEL2P_SELECTED_MANIFEST_JSON).toBe(fs.readFileSync(fixturePath, 'utf8'));
-    }
+    expect(fs.existsSync(fixturePath)).toBe(true);
+    expect(SEL2P_SELECTED_MANIFEST_JSON).toBe(fs.readFileSync(fixturePath, 'utf8'));
   });
 
   it('surfaces backend preflight refusals verbatim and re-enables the button', async () => {
