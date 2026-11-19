@@ -214,11 +214,20 @@ QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~1
             lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
             preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
             (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
-QD-ASSETS = CC0 art for the map: ambientCG, Poly Haven and Quaternius only, licence CC0-1.0, at most
-            60 MB downloaded and 20 MB committed under public/assets/world/ with SOURCES.json and a NOTICE
-            section generated from it; KTX-Software (toktx) and gltf-transform allowed as local tools,
-            never committed (owner in chat, 2026-11-19: "Cho tải CC0", "Đồng ý cả hai"). The graphics
-            pass W3-lite runs on Windows 1 after B1 ("Win 1 sau B1")
+QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
+            downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
+            per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
+            allowed as local tools, never committed (owner in chat, 2026-11-19: "Cho tải CC0", "Đồng ý cả
+            hai"). The graphics pass W3-lite runs on Windows 1 after B1 ("Win 1 sau B1"). CORRECTED the
+            same day: Quaternius was first listed here as CC0, but its licence page now says Quaternius
+            Asset License v1.0 (updated 2026-08-28; no redistribution as standalone assets or packs, which
+            a public repository would risk), so it is not covered by the owner's CC0-only grant
+QD-OXS    = Anima work may run on the OxideSwarm grid (owner in chat, 2026-11-19: "Cho phép dùng
+            OxideSwarm chạy việc của Anima"), through the existing grid procedure (only anima-mac submits,
+            only to GRID WORKER, never to friends' machines): Rust builds and tests, a registered
+            experiment's preregistered runs (all confirmation seeds of one experiment on one OS family),
+            and offline map jobs whose output is a pinned, hashed artifact. Runtime rendering stays on the
+            viewer's own machine. Anima agents still never open, build or edit the OxideSwarm checkout
 QD-TRIAL  = the owner's hands-on trial of map + bodies + experiment worlds runs on Windows 1; the lead
             pauses anima-case for it (owner in chat, 2026-11-19)
 QD-DOCIDX = build a generated docs index so pull requests stop conflicting on docs/ai/README.md (owner in
