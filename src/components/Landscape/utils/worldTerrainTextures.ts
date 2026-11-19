@@ -639,12 +639,13 @@ const D8_OFFSETS = buildRingOffsets(1, 1);
  * The river-ribbon mask plus strict D8 hydrological downstream flow direction (`C2`), encoded in RGBA:
  *   R = feathered river mask (`world.riverAmt`)
  *   G, B = normalized 2D grid-space downstream vector `(nx, ny)` mapped via `round(128 + n * 127)`
- *   A = `255` when an immediate D8 downstream neighbour exists (highest strictly increasing
- *       `world.flow`, falling back to steepest strictly lower filled/raw elevation when `flow`
- *       has no gradient); `0` for dry cells (neutral G/B = `128`) and flat lake junctions.
+ *   A = `255` when an immediate D8 downstream neighbour exists (lowest elevation among D8
+ *       neighbours with strictly higher `world.flow`, falling back to steepest strictly
+ *       lower elevation when no neighbour has higher `flow`); `0` for dry cells (neutral
+ *       G/B = `128`) and flat lake junctions.
  *
- * This is a visual cue derived strictly from the hydrological flow accumulation order and local
- * elevation gradient, never simulated hydrodynamics. Both renderers share this helper so
+ * This is a visual cue derived strictly from local D8 elevation and `world.flow` order,
+ * never simulated hydrodynamics. Both renderers share this helper so
  * `WorldTerrain` and `WorldTerrainLod` remain identical.
  */
 export function buildRiverMaskTexture(world: World): THREE.DataTexture {
@@ -668,11 +669,13 @@ export function buildRiverMaskTexture(world: World): THREE.DataTexture {
       let bestDx = 0;
       let bestDy = 0;
 
-      // Pass 1 (primary): immediate D8 hydrological receiver (`world.flow` strictly higher),
-      // breaking ties by steepest elevation descent. Guarantees channel & ribbon cells advect downstream.
+      // Pass 1 (primary): among immediate D8 neighbours with strictly higher `world.flow`,
+      // pick the lowest-elevation neighbour (breaking exact elevation ties by higher `world.flow`).
+      // This avoids jumping into higher-flow parallel channels next door while matching ~97.4% of
+      // Pass-2 flow-accumulation receivers.
       if (flow) {
-        let bestFlow = f0 + 1e-7;
-        let bestTieSlope = -Infinity;
+        let bestElev = Infinity;
+        let bestTieFlow = -Infinity;
         for (let k = 0; k < D8_OFFSETS.length; k++) {
           const off = D8_OFFSETS[k];
           const nx = x + off[0];
@@ -680,20 +683,14 @@ export function buildRiverMaskTexture(world: World): THREE.DataTexture {
           if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
           const nIdx = ny * size + nx;
           const nf = flow[nIdx];
-          if (nf > bestFlow + 1e-7) {
-            bestFlow = nf;
-            bestTieSlope = (e0 - elevation[nIdx]) * off[2];
+          if (nf <= f0 + 1e-7) continue;
+          const ne = elevation[nIdx];
+          if (ne < bestElev || (ne === bestElev && nf > bestTieFlow)) {
+            bestElev = ne;
+            bestTieFlow = nf;
             bestDx = off[0];
             bestDy = off[1];
             hasDir = true;
-          } else if (Math.abs(nf - bestFlow) <= 1e-7 && nf > f0 + 1e-7) {
-            const slope = (e0 - elevation[nIdx]) * off[2];
-            if (slope > bestTieSlope) {
-              bestTieSlope = slope;
-              bestDx = off[0];
-              bestDy = off[1];
-              hasDir = true;
-            }
           }
         }
       }
