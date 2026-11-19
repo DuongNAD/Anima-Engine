@@ -25,7 +25,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const WORLD_ASSETS_DIR = resolve(ROOT, 'public/assets/world');
 
-const ALLOWED_SITES = new Set(['polyhaven.com', 'ambientcg.com', 'quaternius.com']);
+const ALLOWED_SITES = new Set(['polyhaven.com', 'ambientcg.com']);
 const MAX_COMMITTED_BYTES = 20 * 1024 * 1024;
 
 interface SourceEntry {
@@ -35,6 +35,7 @@ interface SourceEntry {
   assetName: string;
   sourceUrl: string;
   license: string;
+  licence_url: string;
   downloadDate: string;
   originalResolution: string;
   bytes: number;
@@ -90,6 +91,8 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
       totalBytes += actualSize;
 
       expect(entry.license).toBe('CC0-1.0');
+      expect(typeof entry.licence_url).toBe('string');
+      expect(entry.licence_url).toMatch(/^https:\/\//);
       expect(ALLOWED_SITES.has(entry.sourceSite)).toBe(true);
       expect(entry.sourceUrl).toMatch(/^https:\/\//);
       expect(entry.assetName.trim().length).toBeGreaterThan(0);

@@ -107,7 +107,7 @@ const artAssetsSection =
     : artAssetsSorted
         .map(
           (a) =>
-            `- \`public/assets/world/${a.file}\` — ${a.assetName} (\`${a.assetId}\`), ${a.sourceSite} (${a.sourceUrl}), licence \`${a.license}\` (${a.bytes} B)`,
+            `- \`public/assets/world/${a.file}\` — ${a.assetName} (\`${a.assetId}\`), ${a.sourceSite} (${a.sourceUrl}), licence \`${a.license}\`${a.licence_url ? ` (${a.licence_url})` : ''} (${a.bytes} B)`,
         )
         .join('\n');
 
