@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import * as THREE from 'three';
 import { render, act, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { App } from '../../src/App';
@@ -134,6 +135,7 @@ vi.stubGlobal('AudioContext', MockAudioContext);
 vi.stubGlobal('webkitAudioContext', MockAudioContext);
 
 describe('Landscape Showcase Test Suite (93 Tests)', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   beforeEach(() => {
     frameCallbacks = [];
     vi.clearAllMocks();

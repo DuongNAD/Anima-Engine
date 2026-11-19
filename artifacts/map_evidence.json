@@ -3872,5 +3872,59 @@
         "resolvedDistance": 0
       }
     ]
+  },
+  "composition": {
+    "cells": 4194304,
+    "biomeCells": {
+      "Ocean": 1887708,
+      "Beach": 21371,
+      "Desert": 177284,
+      "Savanna": 70057,
+      "Grassland": 173486,
+      "Shrubland": 231427,
+      "Forest": 209874,
+      "Jungle": 112166,
+      "Taiga": 344119,
+      "Tundra": 34801,
+      "Swamp": 38832,
+      "Rock": 105753,
+      "Snow": 58028,
+      "River": 42516,
+      "Lake": 62575,
+      "Mangrove": 14458,
+      "Chaparral": 88502,
+      "Steppe": 271461,
+      "Alpine": 27091,
+      "Badlands": 36966,
+      "Glacier": 166757,
+      "Bog": 19072
+    },
+    "largestRegionCells": {
+      "Ocean": 1887477,
+      "Beach": 6490,
+      "Desert": 137430,
+      "Savanna": 30548,
+      "Grassland": 41788,
+      "Shrubland": 87955,
+      "Forest": 52965,
+      "Jungle": 78768,
+      "Taiga": 100830,
+      "Tundra": 10809,
+      "Swamp": 5783,
+      "Rock": 55058,
+      "Snow": 35391,
+      "River": 2603,
+      "Lake": 37885,
+      "Mangrove": 8603,
+      "Chaparral": 25419,
+      "Steppe": 148700,
+      "Alpine": 7610,
+      "Badlands": 9594,
+      "Glacier": 103446,
+      "Bog": 6346
+    },
+    "waterfallCount": 52,
+    "caveCount": 45,
+    "caveMinSpacingCells": 40
   }
 }
