@@ -56,6 +56,22 @@ Chủ dự án muốn bản đồ *là* thế giới mô phỏng, có núi, hang
 - `CREATURE_MORPHOGENESIS_PLAN.md:36` được bỏ qua cho renderer thân liền (B1). Khi `DevelopedPhenotype` có
   thật, bộ dựng mesh phải đọc phenotype thay vì genotype; đây là rủi ro sửa lại đã biết.
 
+## Liên hệ với nhiều máy (QĐ-M7)
+
+Chủ dự án nhắc lại ngày 2026-11-19: máy chủ không gánh nhiều model; tính toán của model chạy trên máy người dùng;
+máy chủ chỉ làm một phần nhỏ. Điều này khớp với hình dạng đã duyệt ở QĐ-M7 (2026-11-18) và với vai trò Host/Contributor
+của [thiết kế 25/08](../ai/design/2026-08-25-feature-federated-compute.md) §3.1:
+
+- `Inhabit` là **đảo**. Mỗi máy người dùng chạy mô phỏng, suy luận não và vẽ (tải theo vùng) cho thế giới của riêng
+  nó. Host giữ artifact, sổ năng lượng, dòng dõi và di cư thưa giữa các đảo.
+- `Contribute` là **lô**: người tình nguyện chạy một epoch seed cố định, rồi host so khớp chính xác.
+- Việc vẽ luôn diễn ra trên máy người xem; host không vẽ cho ai.
+
+ADR này là điều kiện cần cho hình dạng đó. Mọi máy chỉ có **cùng một thế giới** khi đọc cùng một artifact có hash,
+không phải khi mỗi máy tự sinh lại. Một giới hạn đã đo phải tính tới: quỹ đạo thế giới sống lệch giữa các hệ điều
+hành từ khoảng tick 180 (`determinism_matrix.md`). Vì vậy so khớp chính xác một lô `Contribute` chỉ làm được giữa các
+máy cùng họ hệ điều hành, hoặc trên `ReferenceEvolutionWorld`, vốn đã giống nhau từng bit trên mọi hệ điều hành.
+
 ## Không quyết ở đây
 
 - Kích thước thế giới mô phỏng (diện tích, độ phân giải lưới sinh thái). Đổi nó là đổi luật, cần quyết định riêng.
