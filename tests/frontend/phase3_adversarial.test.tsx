@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import type { Mock } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { App } from '../../src/App';
@@ -34,6 +35,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 3 Front-end UI - Adversarial Stress Tests', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   let mockCtx: Canvas2DStub;
 
   beforeEach(() => {

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 // No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
 // this file names `React` itself.
@@ -96,6 +97,7 @@ import { App } from '../../src/App';
 vi.setConfig({ testTimeout: 30_000 });
 
 describe('Phase 6 UI, Persistence, Viewport, and Telemetry Tests', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(performance, 'now').mockReturnValue(0);
