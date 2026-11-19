@@ -10,7 +10,8 @@ review_cycle: per-release
 
 > **Giao việc cho coding agent:** [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md) — hàng đợi thẻ, quyết định
 > của chủ dự án đã điền sẵn, luật cho agent và lệnh xác minh trên macOS. Đo hiệu năng trong app:
-> [BENCHMARKING.md](BENCHMARKING.md).
+> [BENCHMARKING.md](BENCHMARKING.md). Chụp và so sánh bản đồ 3D trước/sau một thay đổi hình ảnh
+> (`npm run capture:map`, prototype): [MAP_VISUAL_CHECK.md](MAP_VISUAL_CHECK.md).
 
 ## Trên macOS và Linux
 

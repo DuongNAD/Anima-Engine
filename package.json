@@ -33,6 +33,7 @@
     "check:ipc": "node scripts/check_ipc_arg_case.mjs",
     "check:docs": "node scripts/check_docs_links.mjs && node scripts/check_docs_metadata.mjs && node scripts/check_ipc_reference.mjs",
     "capture:views": "npm run capture:views --prefix tests",
+    "capture:map": "node scripts/capture_map.mjs",
     "gen:sbom": "node scripts/gen_sbom.mjs",
     "check:sbom": "node scripts/gen_sbom.mjs --check",
     "check:sbom-schema": "node scripts/check_sbom_schema.mjs",
