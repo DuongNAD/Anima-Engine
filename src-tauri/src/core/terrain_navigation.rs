@@ -60,8 +60,7 @@ pub fn wrap_pos(mut pos: Vec3, bounds: &MapBounds) -> Vec3 {
 #[inline]
 pub fn cell_center(tm: &TerrainMap, bounds: &MapBounds, col: usize, row: usize) -> Vec3 {
     let px = bounds.min.x + ((col as f32 + 0.5) / tm.width as f32) * (bounds.max.x - bounds.min.x);
-    let pz =
-        bounds.min.z + ((row as f32 + 0.5) / tm.height as f32) * (bounds.max.z - bounds.min.z);
+    let pz = bounds.min.z + ((row as f32 + 0.5) / tm.height as f32) * (bounds.max.z - bounds.min.z);
     Vec3::new(px, 0.0, pz)
 }
 
@@ -117,24 +116,6 @@ pub fn snap_to_nearest_walkable(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) 
     let max_radius = r0.max(tm.height - 1 - r0).max(c0.max(tm.width - 1 - c0));
     let mut best: Option<(usize, usize, usize)> = None;
 
-    let mut consider = |c: isize, r: isize| {
-        if c < 0 || r < 0 || c >= tm.width as isize || r >= tm.height as isize {
-            return;
-        }
-        let col = c as usize;
-        let row = r as usize;
-        if !is_biome_walkable(tm.biomes[row * tm.width + col]) {
-            return;
-        }
-        let dc = col.abs_diff(c0);
-        let dr = row.abs_diff(r0);
-        let d2 = dc * dc + dr * dr;
-        let cand = (d2, row, col);
-        if best.is_none_or(|b| cand < b) {
-            best = Some(cand);
-        }
-    };
-
     for radius in 1..=max_radius {
         if let Some((best_d2, _, _)) = best {
             if radius * radius > best_d2 {
@@ -145,12 +126,12 @@ pub fn snap_to_nearest_walkable(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) 
         let c0_i = c0 as isize;
         let r0_i = r0 as isize;
         for dc in -r_i..=r_i {
-            consider(c0_i + dc, r0_i - r_i);
-            consider(c0_i + dc, r0_i + r_i);
+            consider_walkable_cell(tm, c0, r0, c0_i + dc, r0_i - r_i, &mut best);
+            consider_walkable_cell(tm, c0, r0, c0_i + dc, r0_i + r_i, &mut best);
         }
         for dr in (-r_i + 1)..=(r_i - 1) {
-            consider(c0_i - r_i, r0_i + dr);
-            consider(c0_i + r_i, r0_i + dr);
+            consider_walkable_cell(tm, c0, r0, c0_i - r_i, r0_i + dr, &mut best);
+            consider_walkable_cell(tm, c0, r0, c0_i + r_i, r0_i + dr, &mut best);
         }
     }
 
@@ -158,6 +139,31 @@ pub fn snap_to_nearest_walkable(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) 
         let center = cell_center(tm, bounds, col, row);
         Vec3::new(center.x, pos.y, center.z)
     })
+}
+
+fn consider_walkable_cell(
+    tm: &TerrainMap,
+    c0: usize,
+    r0: usize,
+    c: isize,
+    r: isize,
+    best: &mut Option<(usize, usize, usize)>,
+) {
+    if c < 0 || r < 0 || c >= tm.width as isize || r >= tm.height as isize {
+        return;
+    }
+    let col = c as usize;
+    let row = r as usize;
+    if !is_biome_walkable(tm.biomes[row * tm.width + col]) {
+        return;
+    }
+    let dc = col.abs_diff(c0);
+    let dr = row.abs_diff(r0);
+    let d2 = dc * dc + dr * dr;
+    let cand = (d2, row, col);
+    if best.is_none_or(|b| cand < b) {
+        *best = Some(cand);
+    }
 }
 
 /// Draws up to `max_tries` candidate `(x, 0.0, z)` points inside `bounds` from `rng`, returning
@@ -335,7 +341,12 @@ mod tests {
         world.insert_resource(TerrainNavigation { enabled: true });
 
         let start = Vec3::new(98.0, 0.0, 0.0);
-        let root = decode_genotype(&mut world, &two_segment_genotype(), start, glam::Quat::IDENTITY);
+        let root = decode_genotype(
+            &mut world,
+            &two_segment_genotype(),
+            start,
+            glam::Quat::IDENTITY,
+        );
 
         let mut sched = Schedule::default();
         sched.add_systems(terrain_navigation_system);
@@ -401,7 +412,10 @@ mod tests {
 
         // All-ocean returns None cleanly for both snap and sample
         let all_ocean = grid_terrain(4, 4, BiomeType::Ocean);
-        assert_eq!(snap_to_nearest_walkable(&all_ocean, &bounds, Vec3::ZERO), None);
+        assert_eq!(
+            snap_to_nearest_walkable(&all_ocean, &bounds, Vec3::ZERO),
+            None
+        );
         use rand::SeedableRng;
         let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         assert_eq!(sample_walkable_pos(&mut rng, &all_ocean, &bounds, 16), None);
