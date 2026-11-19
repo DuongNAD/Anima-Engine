@@ -4,7 +4,7 @@ feature: real-world-and-bodies
 kind: thẻ
 title: Thẻ F050 — đưa bước khởi tạo thế giới dùng chung vào beforeAll của Vitest
 description: Chuyển chi phí khởi tạo thế giới 2048x2048 lần đầu trong 17 file test frontend sang hook beforeAll có ngân sách 60s để mọi test đầu tiên trên CI dưới 5s mà không nới testTimeout.
-status: active
+status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-19
 review_cycle: weekly
@@ -26,27 +26,29 @@ review_cycle: weekly
 
 ## 3. Bảng thời gian từng file (`17` file đã thêm hook)
 
-> **Ghi chú đo CI:** Cột **Trước (CI trunk `44507087207`)** ghi nhận thời lượng test chậm đầu tiên chứa chi phí khởi tạo thế giới (và tổng thời lượng file). Cột **Sau** và **`beforeAll`** đang chờ lượt chạy CI của Draft PR.
+> **Ghi chú đo CI:**
+> - **Trước (CI trunk `44507087207`, job `135501389851`):** thời lượng test chậm đầu tiên chứa chi phí khởi tạo thế giới (và tổng thời lượng file).
+> - **Sau (CI PR `#169` commit `33c6d223`, run [`44523362754`](https://github.com/DuongNAD/Anima-Engine/actions/runs/44523362754), job `135557441154`):** `npm run test:frontend` đạt `73 passed (73)` / `732 passed (732)` trong `110.37s`. Ở chế độ reporter mặc định trên CI, Vitest chỉ in chi tiết từng test `> 300 ms`; các test không có dòng riêng đạt `<= 300 ms`. Toàn bộ `17/17` file có test đầu tiên (và test render đầu tiên) **dưới `5.000 ms`** (cao nhất là `v1RealWorldEntities.test.tsx` ở `3.443 ms`, so với `10.002 ms` trên trunk và timeout `15.048 ms` ở PR `#161`).
 
-| File (`tests/frontend/...`) | Trước — CI trunk `44507087207` (test / file) | Sau — CI PR (test đầu tiên / test render đầu tiên) | `beforeAll` (`warmSharedWorld`) |
+| File (`tests/frontend/...`) | Trước — CI trunk `44507087207` (test / file) | Sau — CI PR `#169` `44523362754` (test đầu tiên / file) | `beforeAll` (`warmSharedWorld`) |
 |---|---|---|---|
-| `b1HudSyntheticLabel.test.tsx` | `9787 ms` / `9789 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `dashboard_grid.test.tsx` | `6694 ms` / `7173 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `leak_proof.test.tsx` | `6643 ms` / `6827 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase3_ui.test.tsx` | `6683 ms` / `7111 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase3_adversarial.test.tsx` | `6988 ms` / `7372 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `landscape_showcase.test.tsx` | `8559 ms` (`F8.2`) / `19704 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase5_gemini_timeline.test.tsx` | `6466 ms` / `6668 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase4_ui.test.tsx` | `6807 ms` / `7746 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase4_adversarial_crashes.test.tsx` | `6770 ms` / `7612 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase6_challenger_stress.test.tsx` | `6434 ms` / `10601 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase4_adversarial.test.tsx` | `6759 ms` / `8363 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase6_adversarial.test.tsx` | `6759 ms` / `8291 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `phase6_ui.test.tsx` | `6255 ms` / `6724 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `rwMapQualityTiers.test.tsx` | `8649 ms` / `10299 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `rwMapQuickWins.test.tsx` | `8632 ms` / `10477 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `rwMapAutoTier.test.tsx` | `6517 ms` / `6550 ms` | _chờ CI PR_ | _chờ CI PR_ |
-| `v1RealWorldEntities.test.tsx` | `10002 ms` / `10096 ms` | _chờ CI PR_ | _chờ CI PR_ |
+| `b1HudSyntheticLabel.test.tsx` | `9787 ms` / `9789 ms` | `3428 ms` / `8400 ms` | `4916 ms` |
+| `dashboard_grid.test.tsx` | `6694 ms` / `7173 ms` | `<= 300 ms` / `5867 ms` | `5176 ms` |
+| `leak_proof.test.tsx` | `6643 ms` / `6827 ms` | `<= 300 ms` / `5438 ms` | `5015 ms` |
+| `phase3_ui.test.tsx` | `6683 ms` / `7111 ms` | `<= 300 ms` / `5937 ms` | `5229 ms` |
+| `phase3_adversarial.test.tsx` | `6988 ms` / `7372 ms` | `457 ms` / `5819 ms` | `4955 ms` |
+| `landscape_showcase.test.tsx` | `8559 ms` (`F8.2`) / `19704 ms` | `544 ms` (`F8.2`: `2643 ms`) / `17114 ms` | `5319 ms` |
+| `phase5_gemini_timeline.test.tsx` | `6466 ms` / `6668 ms` | `<= 300 ms` / `5541 ms` | `5089 ms` |
+| `phase4_ui.test.tsx` | `6807 ms` / `7746 ms` | `<= 300 ms` / `6424 ms` | `5244 ms` |
+| `phase4_adversarial_crashes.test.tsx` | `6770 ms` / `7612 ms` | `<= 300 ms` / `6275 ms` | `5299 ms` |
+| `phase6_challenger_stress.test.tsx` | `6434 ms` / `10601 ms` | `421 ms` (max `2848 ms`) / `8663 ms` | `4884 ms` |
+| `phase4_adversarial.test.tsx` | `6759 ms` / `8363 ms` | `351 ms` (max `1219 ms`) / `7500 ms` | `5493 ms` |
+| `phase6_adversarial.test.tsx` | `6759 ms` / `8291 ms` | `<= 300 ms` / `6832 ms` | `5183 ms` |
+| `phase6_ui.test.tsx` | `6255 ms` / `6724 ms` | `<= 300 ms` / `5625 ms` | `4895 ms` |
+| `rwMapQualityTiers.test.tsx` | `8649 ms` / `10299 ms` | `<= 300 ms` (render đầu: `2342 ms`) / `8828 ms` | `4931 ms` |
+| `rwMapQuickWins.test.tsx` | `8632 ms` / `10477 ms` | `2440 ms` / `9239 ms` | `4952 ms` |
+| `rwMapAutoTier.test.tsx` | `6517 ms` / `6550 ms` | `<= 300 ms` / `5458 ms` | `5157 ms` |
+| `v1RealWorldEntities.test.tsx` | `10002 ms` / `10096 ms` | `3443 ms` / `8569 ms` | `4976 ms` |
 
 ## 4. Danh sách file được bỏ qua (`2 / 19`) và lý do
 
