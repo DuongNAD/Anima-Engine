@@ -42,6 +42,15 @@ phải tài liệu dự án.
 Bản ghi phiên (`kind: agent-goal`, `kind: review-findings`) là kế hoạch **tại thời điểm đó**; thân
 của chúng không được sửa cho khớp hiện tại.
 
+Bảng dưới là **chỉ mục sinh**: `npm run gen:docs-index` giữ nguyên chữ và thứ tự của mọi hàng đã có,
+cập nhật ô trạng thái theo front matter, rồi thêm một hàng cho mỗi tài liệu chưa có hàng (cách làm ở
+[Thêm tài liệu mới](#thêm-tài-liệu-mới)). Một tài liệu chưa có hàng vẫn thấy được trong danh sách thư
+mục của nó: [requirements/](requirements/) · [design/](design/) · [planning/](planning/) ·
+[implementation/](implementation/) · [testing/](testing/) · [deployment/](deployment/) ·
+[monitoring/](monitoring/).
+
+<!-- docs-index:begin: rows are kept and appended by `npm run gen:docs-index`; reword a row freely, keep its shape -->
+
 | Ngày | Tài liệu | Loại | Trạng thái |
 |---|---|---|---|
 | 2026-07-24 | [Overnight goal — AE1–AE2](planning/2026-07-24-claude-overnight-goal-ae1-ae2.md) | agent-goal | `completed` |
@@ -85,8 +94,11 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-19 | [Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2](planning/2026-11-19-sel2-p-preregistration-draft.md) — bản thảo chưa đóng băng (`status: proposed`, mù khối lượng, chưa chạy seed xác nhận): giả thuyết `H1` hai phía trên tích phân thời gian hậu-warmup của `live.trait_mass_mean`, `3` nhánh (`selected` / `scarce_mut0` / `scarce_drift` `SEL2-D`), `N = 20` cặp `200.000` tick (`780001 + 1000*k`), cổng smoke `C1..C5` (`999961`) với ô tham chiếu `g` để trống chờ chủ dự án quyết định | kế hoạch | `proposed` |
 | 2026-11-19 | [Thẻ S2 — thêm `live.mean_energy_integral` và khối lượng cơ thể theo vùng Đông/Tây](planning/2026-11-19-s2-observables.md) — ba observable mới nối cuối `LIVE_EXTENDED_OBSERVABLE_IDS` (`Aggregation::Instant`, không nhiễu loạn nhịp lấy mẫu, sống qua ngã rẽ checkpoint qua đĩa, giá trị hữu hạn khi quần thể bằng 0) | thẻ | `completed` |
 | 2026-11-19 | [Thẻ V1 — Bản đồ 3D vẽ thực thể mô phỏng và gắn nhãn trang trí (`prototype, to be replaced`)](planning/2026-11-19-v1-real-world-entities.md) — vẽ `lake`/`tree`/`food` từ `environmental_state` và `get_environmental_elements` qua `liveAgentTransform`/`coordinate` và `surfaceHeight`; bỏ qua lớp phủ cỏ vì chưa có IPC `ResourceField`; gắn nhãn + nút ẩn/hiện `WorldFish`/`WorldBirds`/`WorldWildlife`/`WorldCaves`; nâng `WorldShowcase` `130 -> 145 KiB` (`132,9 KiB`) theo `PROTOTYPE-FIRST` | thẻ | `completed` |
-| 2026-11-19 | [Thẻ B1 — Thân sinh vật liên tục & LOD 3 tầng (`prototype, to be replaced`)](planning/2026-11-19-b1-continuous-bodies.md) — `SkinnedMesh` từ chuỗi đốt morphology (`ArchetypeMeshCache`, giải phóng slot ẩn `N3'`), thống nhất mắt/mõm `near`/`mid` (`D1`), nhãn HUD synthetic trung thực (`F1`), `CREATURE_BODY_SCALE = 0.32` (lựa chọn hiển thị, không cùng tỷ lệ vị trí), LOD 3 mức (`K = 8/12/16`, `NEAR_SHADOW_CASTER_CAP = 4` sau gộp V1 để giữ `69 <= 70` draw calls, `60.1 FPS` trên RTX), `718/718` frontend | thẻ | `completed` |
+| 2026-11-19 | [Thẻ SEL2-P-impl — bộ máy thực nghiệm SEL2-P](planning/2026-11-19-sel2-p-impl.md) — fixtures (`experiments_sel2p`), runner `run_sel2p_experiment.rs`, `sel2p_smoke_driver.mjs`, `verify_sel2p_artifacts.mjs`, `prereg_sel2p_manifest_tests.rs`, cập nhật đường dẫn & seed nền `799501..=799506` trong bản thảo (`status: proposed`); chỉ chạy kiểm tra đường ống `2.000` tick (không chạy smoke thật hay seed xác nhận) | thẻ | `completed` |
+| 2026-11-19 | [Chỉ mục sinh cho docs/ai — thêm ghi chú mà không sửa file chỉ mục chung](design/2026-11-19-feature-generated-docs-index.md) — So sánh năm cách bỏ xung đột lặp lại trên docs/ai/README.md và chọn chỉ mục sinh từ front matter giữ nguyên hàng cũ; checker chấp nhận ghi chú chờ khi front matter đủ để sinh hàng và thư mục của nó được link, rồi tự chạy generator trong bộ nhớ để chứng minh không còn gì chờ | design | `active` |
+| 2026-11-19 | [Thẻ B1 — Thân liên tục từ hình thái học, 3 mức LOD và frustum culling (prototype)](planning/2026-11-19-b1-continuous-bodies.md) — Thân SkinnedMesh nối khớp mượt từ chuỗi đốt morphology, tỷ lệ hiển thị CREATURE_BODY_SCALE = 0.32 (lựa chọn hiển thị, không cùng tỷ lệ vị trí), LOD 3 mức K = 8/12/16 kèm per-creature frustum culling, và dữ liệu synthetic environmental_state | planning | `completed` |
 
+<!-- docs-index:end -->
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),
 [`2026-08-25-handoff-prompt-ecological-selection.txt`](planning/2026-08-25-handoff-prompt-ecological-selection.txt),
@@ -113,7 +125,21 @@ công cụ agent đọc hoặc đồng bộ chúng. Lý do từng file nằm tro
 
 ## Thêm tài liệu mới
 
-Đặt tên `YYYY-MM-DD-feature-<slug>.md` trong đúng thư mục pha, dùng front matter của
-[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md#metadata-tối-thiểu), rồi thêm một ô
-vào bảng trên. `npm run check:docs` đỏ nếu thiếu front matter hoặc nếu tài liệu không có trong chỉ
-mục nào.
+Đặt tên `YYYY-MM-DD-<slug>.md` (tài liệu vòng đời feature: `YYYY-MM-DD-feature-<slug>.md`) trong
+đúng thư mục pha và dùng front matter của
+[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md#metadata-tối-thiểu), có thêm
+`description:` một dòng. **Không sửa file này**: hàng của tài liệu được sinh từ front matter — ngày
+trong tên file là cột Ngày, `title` và `description` là cột Tài liệu, `kind` (tuỳ chọn, ví dụ
+`kind: thẻ` hay `kind: đo`; không có thì là tên thư mục pha) là cột Loại, `status` là cột Trạng thái.
+`kind: agent-goal` và `kind: review-findings` vẫn đổi bộ trường bắt buộc như chính sách nói.
+
+`npm run check:docs` chấp nhận một tài liệu chưa có hàng khi front matter có `title`, `status` và
+`description` (không chứa link markdown, vì link đó sẽ không còn đúng khi chép vào đây) và thư mục của
+nó được link ở trên; thiếu một điều kiện thì đỏ như trước. Mỗi lần chạy nó in số hàng đang chờ.
+
+Lead gộp các hàng chờ bằng `npm run gen:docs-index` trong một PR tài liệu của lead (thường là PR cập
+nhật trạng thái sau một đợt merge); `node scripts/gen_docs_index.mjs --check` liệt kê những gì lệnh đó
+sẽ đổi mà không ghi. Sửa chữ một hàng đã sinh thì được — generator giữ nguyên chữ và thứ tự, chỉ cập
+nhật ô trạng thái — miễn hàng giữ dạng
+``| YYYY-MM-DD | [tiêu đề](đường dẫn) — tóm tắt | loại | `trạng thái` |``; hàng sai dạng làm
+`check:docs` đỏ. Bảng Feature ở trên vẫn sửa tay.
