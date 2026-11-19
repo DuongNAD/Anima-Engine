@@ -611,7 +611,7 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
 | Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `068a750` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
-| Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
+| Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world`. Từ worldgen 22 (2026-11-19) shape là `supercontinent` (`SUPERCONTINENT` trong `worldGen.ts`): ocean 45%, mọi biome đất có vùng liền nhìn thấy được từ overview; `island`/`continent` sinh y hệt v21. Số đo và cách đo ở PR "world: retune the shared world so every environment is visible" |
 
 Các hàng dưới đây được thêm ngày **2026-11-17**, cho những vùng đạt bậc sau tháng 7. Chúng trỏ tới PR, ADR
 và file test có trên thân cây tại `6f14124`; **không test nào được chạy lại để viết chúng**, và chúng không
