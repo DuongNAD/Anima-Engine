@@ -214,6 +214,15 @@ QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~1
             lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
             preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
             (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
+QD-SEL2P2 = the SEL2-P smoke failed its preregistered gate (founder boom and crash at prey_cap 320, confirmed
+            independently; verdict SEL2-P-smoke_296475cc), so SEL2-P stops at the smoke as registered. M0 continues
+            as: a read-only diagnosis (card DIAG-SEL2), a measurement-only exploration, then a new preregistration
+            SEL2-P2 with a new smoke seed that discloses this history (owner in chat, 2026-11-19: "Chẩn đoán rồi
+            đăng ký lại")
+QD-MACSHARE = the Mac is shared with OxideSwarm: each project may run one cargo process at the same time; an
+            Anima cargo there runs as CARGO_BUILD_JOBS=4 nice -n 10, only with at least 30% memory and 20 GB
+            disk free, and never touches an OxideSwarm process (owner in chat, 2026-11-19: "Xếp lịch xen kẽ
+            song song đi"; hub AGENT_RULES §5)
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
             per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
