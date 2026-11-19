@@ -55,7 +55,9 @@ export const CANONICAL_MAX_Y = 10;
  * time would move whenever the world moved, and two images that frame different places cannot be
  * compared.
  */
-// Derived by `scripts/derive_view_cameras.ts` against the shipped world identity at worldgen v21.
+// Derived by `scripts/derive_view_cameras.ts` against the shipped world identity at worldgen v22
+// (seed "seed", 2048², `supercontinent`). Re-derived when the shared world moved from `continent`
+// to `supercontinent`: every subject below moved with it.
 //
 // # Two things went wrong the first time, and both are structural
 //
@@ -77,38 +79,33 @@ export const CANONICAL_VIEW_CAMERAS: Record<CanonicalViewId, CanonicalPoint> = {
   // the scene's 55° vertical FOV and 16:9, and the previous pose sat at 806 and clipped two edges.
   // Exempt from inward framing: the subject IS the whole bounded world.
   overview: { position: [0, 112, 112], target: [0, 0, 0] },
-  // Open grassland inside the largest connected walkable component, 9/16 open samples. The route
+  // Open taiga inside the largest connected walkable component, 9/16 open samples. The route
   // overlay starts at this target — see `utils/mapEvidence.ts`. Two filters had to be added to get
   // here: the openness score counts open cells *around* a centre and never asks whether the centre is
-  // inside a trunk (the first pick was), and being walkable does not mean being connected (the second
-  // pick was a swamp clearing with seven reachable nodes out of fifty thousand).
+  // inside a trunk, and being walkable does not mean being connected (an earlier pick was a swamp
+  // clearing with seven reachable nodes out of fifty thousand).
   //
-  // Further out and much steeper than every other view (68 units at 64° against the usual 26 at 42°),
-  // because its subject is a *route* and the frame has to hold the whole of one. At the standard pose
-  // the farthest goal whose path stayed in shot was a 60-unit stub along a shoreline, half of it
-  // occluded by the ridge it crossed and its goal pillar out of frame. See `derive_view_cameras.ts`.
-  navigation: { position: [7.9, 72.9, -38.1], target: [2.1, 11.8, -8.8] },
-  // 302 solid trunks in one 24-unit bucket, jungle. The third-densest bucket, and that substitution
-  // is the point: the densest two sit within six canonical units of the terrain edge, where no camera
-  // frames them without the cut plane in shot. Framed inward (inwardness 1.00, azimuth 174°).
-  collision: { position: [-62.1, 16.9, 6.8], target: [-54, 11.1, 6] },
-  // Highest relief in the world (elevation 0.88, slope 1.00 — glacier), lit from the side so the
-  // shadow pass has something to cast against. Horizon in frame by design: a lighting view has to
-  // reach far enough for the sun's direction to read, and at 55° FOV a frame that reaches that far
-  // spreads wider than this world. What it shows past the terrain is a mountain against sky.
-  lighting: { position: [-95.6, 59.5, -32.2], target: [-59.9, 30.7, -17.4] },
-  // The position `findSpawn` actually returns at the shipped identity: render (-128.7, -93.5),
-  // grassland. The pose it replaced targeted canonical (10, 1, 10) — the middle of the map, which
-  // on this world is open ocean, so the "spawn" view was a photograph of the sea.
-  spawn: { position: [-29.5, 23.1, -21], target: [-21.4, 15.4, -15.6] },
-  // Largest lake basin, 344 cells across. Shot from its shore at 34 canonical units rather than
-  // framed whole: a distance that fits a 34-unit basin in frame spreads wider than the world.
-  water: { position: [-85.2, 34.9, 81.9], target: [-67.3, 13.1, 64] },
-  // Five distinct land biomes within ten cells, centred on alpine. The sharpest boundary in the world
-  // has six, and the five sharpest are all too close to the edge to photograph.
-  biome_transition: { position: [-64.8, 38.2, -34.5], target: [-45.1, 18.1, -24] },
-  // Densest flora of any kind: 251 instances in one 20-unit bucket, swamp.
-  ecosystem: { position: [-52.5, 22.6, -1.7], target: [-38.3, 10.9, -1.7] },
+  // Further out and much steeper than every other view, because its subject is a *route* and the
+  // frame has to hold the whole of one. See `derive_view_cameras.ts`. Framed inward (azimuth 101°).
+  navigation: { position: [-7.6, 73.7, 39.9], target: [-1.8, 12.6, 10.7] },
+  // 311 solid trunks in one 24-unit bucket, jungle. Framed inward (inwardness 1.00, azimuth 6°).
+  collision: { position: [54.1, 11.1, 6.8], target: [46, 5.2, 6] },
+  // Highest relief in the world (elevation 0.87, slope 1.00 — glacier, on the spine range), lit from
+  // the side so the shadow pass has something to cast against. Horizon in frame by design: a lighting
+  // view has to reach far enough for the sun's direction to read, and at 55° FOV a frame that reaches
+  // that far spreads wider than this world. What it shows past the terrain is a mountain against sky.
+  lighting: { position: [-40.5, 59.2, -32.7], target: [-10.6, 30.4, -8.2] },
+  // The position `findSpawn` actually returns at the shipped identity: render (-37.2, 33.1), taiga
+  // on the spine's equatorial flank. (An older pose targeted canonical (10, 1, 10), the middle of the
+  // map, which on the `continent` world was open ocean.)
+  spawn: { position: [-13.7, 23.6, 11.6], target: [-6.2, 15.9, 5.5] },
+  // Largest lake basin, 316 cells across. Shot from its shore rather than framed whole: a distance
+  // that fits the basin in frame spreads wider than the world.
+  water: { position: [-67.4, 26.8, 22.4], target: [-43.2, 5, 15.1] },
+  // Six distinct land biomes within ten cells, centred on shrubland.
+  biome_transition: { position: [82.4, 23.4, -40.9], target: [62.8, 3.4, -30.4] },
+  // Densest flora of any kind: 232 instances in one 20-unit bucket, jungle.
+  ecosystem: { position: [65.5, 16.4, -11.1], target: [51.7, 4.7, -8.3] },
 };
 
 /**

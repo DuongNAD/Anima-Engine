@@ -50,10 +50,13 @@ export default defineConfig({
     headless: true,
     baseURL: BASE_URL,
     launchOptions: {
-      // Real GPU, not SwiftShader. See the note above for the measurement.
+      // Real GPU, not SwiftShader. See the note above for the measurement. ANGLE's backend is per
+      // platform: Direct3D 11 exists only on Windows, and on macOS asking for it falls through to
+      // SwiftShader, which the spec then (rightly) refuses — measured 2026-11-19 on an Apple M5,
+      // where `metal` gives the real GPU.
       args: [
         '--use-gl=angle',
-        '--use-angle=d3d11',
+        process.platform === 'darwin' ? '--use-angle=metal' : '--use-angle=d3d11',
         '--enable-gpu',
         '--ignore-gpu-blocklist',
       ],
