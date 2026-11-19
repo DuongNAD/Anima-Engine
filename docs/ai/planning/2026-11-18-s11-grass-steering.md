@@ -13,7 +13,7 @@ last_reviewed: 2026-11-18
 > **Kết luận của lead (2026-11-18, `verdicts/S11_95044c4b.md` trên hub): phát hiện được chấp nhận, mã không merge.**
 > PR #134 đã đóng; nhánh `dell/s11-grass-steering` giữ nguyên ở `95044c4b` làm bằng chứng. Mọi file mã ghi chú này
 > nhắc tới (`grass_steering_tests.rs`, `sel2_grass_steering.rs`, khoá `live.grass_steering`, `GRASS_STAY_FRACTION`,
-> `GRASS_SCAN_RADIUS`) **chỉ có trên nhánh đó**. Trên thân cây, `LIVE_KEYS.len()` vẫn là 24.
+> `GRASS_SCAN_RADIUS`) **chỉ có trên nhánh đó**. Thân cây không có khoá `live.grass_steering`; từ S12 (#135) `LIVE_KEYS.len()` là 25, và khoá thứ 25 là `live.lake_layout`.
 >
 > Đọc kết quả: ở phép thử cơ chế (bỏ khát, bỏ chết, bỏ sinh), năng lượng trung bình của cả hai nhánh nằm trong
 > 0,89–0,98 mức mục tiêu suốt 3.000 tick. Khi không phải đi tìm nước, con mồi **không** thiếu ăn, và lái tới cỏ chỉ
