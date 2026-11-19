@@ -531,10 +531,34 @@ const GATES = [
         { ...process.env, CI: 'true' },
       );
     },
-    matchers: [/ipc reference check:/, /eslint: 0 errors, 0 warnings/],
+    matchers: [
+      /FAIL\s+|error TS|eslint: [1-9]|AssertionError|timed out/i,
+      /ipc reference check:/,
+    ],
+  },
+  {
+    id: 'ci_licenses_complete',
+    source: 'ci.yml:208-211',
+    ciCommand: 'npm run check:licenses',
+    faultSummary:
+      'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/` (`ci.yml` step "current and complete" omits `--require-complete`)',
+    patch: 'check_licenses_complete.patch',
+    needsCargo: true,
+    needsNodeModules: true,
+    run(wt) {
+      const env = cargoEnv();
+      const genRes = runShell('node scripts/gen_third_party_licenses.mjs', wt, env);
+      if (genRes.status !== 0) {
+        throw new Error(
+          `Prerequisite gen_third_party_licenses failed (exit ${genRes.status}):\n${genRes.output.slice(-2000)}`,
+        );
+      }
+      return runShell('npm run check:licenses', wt, env);
+    },
+    matchers: [/third-party licences check: up to date.*1 unresolved/i, /third-party licences check:/i],
   },
 
-  // ---- Missing / baseline-red / >30 min gates ----------------------------------------------
+  // ---- Missing / >30 min gates -------------------------------------------------------------
   {
     id: 'conflict_marker_scan',
     source: 'CARD M2 (planned, unbuilt)',
@@ -551,14 +575,22 @@ const GATES = [
     id: 'check_licenses_complete',
     source: 'package.json:42',
     ciCommand: 'npm run check:licenses-complete',
-    faultSummary: 'Release completeness check requires 0 unresolved licence texts (`utf8-chars@3.0.7` unresolved on trunk)',
-    patch: null,
-    staticResult: {
-      exitCode: '—',
-      namingLine:
-        'NOT RUN (baseline red: 1 distributed component(s) have no obtainable licence text. See licensing/UNRESOLVED.md.)',
-      verdict: 'NOT RUN (baseline red: 1 unresolved crate)',
+    faultSummary:
+      'Remove `utf8-chars@3.0.7` election from `licensing/upstream/sources.json` and regenerate `licensing/`',
+    patch: 'check_licenses_complete.patch',
+    needsCargo: true,
+    needsNodeModules: true,
+    run(wt) {
+      const env = cargoEnv();
+      const genRes = runShell('node scripts/gen_third_party_licenses.mjs', wt, env);
+      if (genRes.status !== 0) {
+        throw new Error(
+          `Prerequisite gen_third_party_licenses failed (exit ${genRes.status}):\n${genRes.output.slice(-2000)}`,
+        );
+      }
+      return runShell('npm run check:licenses-complete', wt, env);
     },
+    matchers: [/distributed component\(s\) have no obtainable licence text/i, /UNRESOLVED\.md/],
   },
 
   // ---- Gates > 30 min per fault (runtime measured once on clean tree) -----------------------
