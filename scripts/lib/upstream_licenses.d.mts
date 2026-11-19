@@ -128,6 +128,8 @@ export interface ElectionComponent {
   repository: string | null;
   authors?: string[];
   distributed: boolean;
+  /** The installed crate directory, which `resolveElections` scans itself. */
+  sourceDir?: string | null;
 }
 
 /** One distinct text read out of an installed artifact, and the components that carry it. */
@@ -137,22 +139,40 @@ export interface PooledText {
   purls: Set<string>;
 }
 
+export interface ElectedArtifactScan {
+  /** False when the directory is missing: "looked nowhere" never reads as "found nothing". */
+  exists: boolean;
+  /** Licence-like files or directories (directories end in `/`) at any depth, relative, sorted. */
+  licenceFiles: string[];
+  /** `path:line` of every line carrying a copyright notice, in any file. */
+  notices: string[];
+  /** Symlinks and other entries the scan did not follow. */
+  unscanned: string[];
+}
+
+export declare function isLicenceLikeName(name: string): boolean;
+export declare function copyrightNoticeLines(text: string): number[];
+export declare function scanElectedArtifact(dir: string | null | undefined): ElectedArtifactScan;
 export declare function disjunctionOperands(expr: string): string[] | null;
 export declare function isApache2Text(text: string): boolean;
 export declare function electionProblems(
   election: Election,
   component: ElectionComponent,
-  licenceFiles: { filename: string }[],
+  scan: ElectedArtifactScan,
 ): string[];
 export declare function electedText(
   election: Election,
   pool: PooledText[],
 ): { problems: string[]; text?: string };
-export declare function electionSelfTest(): { failures: string[]; controls: number };
+export declare function electionSelfTest(): {
+  failures: string[];
+  controls: number;
+  rejects: number;
+  accepts: number;
+};
 export declare function resolveElections(
   electionsByPurl: Map<string, Election>,
   components: ElectionComponent[],
-  filesByPurl: Map<string, { filename: string }[]>,
   pool: PooledText[],
 ): Map<string, { election: Election; text: string; textSha256: string }>;
 

@@ -106,15 +106,21 @@ and no copyright line, in the published crate or at the commit it was published 
 recorded in [`upstream/sources.json`](upstream/sources.json)). It declares `MIT OR Apache-2.0`, and
 that `OR` leaves the choice to whoever distributes it.
 
-The two choices are not equal here. MIT's condition is that "the above copyright notice" be
-reproduced; there is no notice, so honouring MIT would mean writing one, with a holder this
-repository would be inventing. Apache-2.0's conditions (section 4) are a copy of the License — the
-canonical text, the same for every licensee — plus the copyright, patent, trademark and attribution
-notices present in the work and its NOTICE file if it has one; the work has neither. Electing
-Apache-2.0 therefore meets every condition with nothing synthesised. The bundle says so in the
-component's own block (`licence: Apache-2.0, elected from MIT OR Apache-2.0; the published crate
-ships no licence file`), with an attribution line naming the crate, its version, the author string
-from its `Cargo.toml` and its repository.
+The two choices are not equal here. MIT's text is a template whose notice condition points at "the
+above copyright notice", and this crate has no holder's notice to reproduce: an MIT text could only
+ship with no holder line or with one this repository invented. Apache-2.0's text is complete as
+published, and its conditions (section 4) are (a) a copy of the License; (b) prominent notices on
+modified files, which do not apply because the crate is compiled unmodified; (c) the copyright,
+patent, trademark and attribution notices present in the work, of which there are none; and (d) its
+NOTICE file if it has one, which it does not. Electing Apache-2.0 therefore meets every condition
+with nothing synthesised. The bundle says so in the component's own block (`licence: Apache-2.0,
+elected from MIT OR Apache-2.0; the published crate ships no licence file`), with an attribution
+line naming the crate, its version, the author string from its `Cargo.toml` and its repository.
+
+**The question the election does not answer.** Electing a licence presupposes that the crate's bare
+Cargo `license = "MIT OR Apache-2.0"` field is the author's grant; whether it is, with no licence
+text or notice anywhere in the crate, is a legal question — the project treats the published crate's
+declared licence as the grant, as the Rust ecosystem does, and this is not legal advice.
 
 The election is recorded under `elections` in [`upstream/sources.json`](upstream/sources.json) and
 enforced by `scripts/lib/upstream_licenses.mjs`, fail-closed, under narrow conditions:
@@ -123,23 +129,30 @@ enforced by `scripts/lib/upstream_licenses.mjs`, fail-closed, under narrow condi
   `Apache-2.0` as an operand. `AND`, `WITH`, a `+` suffix and any parenthesis are refused.
 - **Only Apache-2.0** may be chosen, and it must be one of the operands. MIT is never elected.
 - **One resolution per component:** an elected component may not also be mapped or blocked.
-- **The installed crate is the evidence.** Its declared expression, `authors` and repository must
-  match the election, and its artifact must still contain **no licence file of any kind**. Installed
-  text wins here exactly as it does for a mapping. A published crate never changes, so in practice
-  this fires when the lockfile moves to a release that ships its texts: the old election is then
-  unused, one moved to the new version is refused, and either way the run fails until it is deleted.
+- **The installed crate is the evidence, and it is read to the bottom.** Its declared expression,
+  `authors` and repository must match the election. The election check walks the crate's own
+  directory recursively and refuses the election on any file or directory whose name starts with
+  `LICENSE`, `LICENCE`, `COPYING`, `NOTICE`, `COPYRIGHT` or `UNLICENSE` (any case, any depth), on
+  any line in any file matching `copyright`, `(c) <year>` or the copyright sign, on a symlink it does
+  not follow, and on a directory that is not there. Installed text wins here exactly as it does for
+  a mapping. A published crate never changes, so in practice this fires when the lockfile moves to a
+  release that ships its texts: the old election is then unused, one moved to the new version is
+  refused, and either way the run fails until it is deleted.
 - **No downloaded or private text.** The elected bytes are the Apache-2.0 text the inventory already
-  ships most widely from other crates' own artifacts, with the appendix placeholder
-  `Copyright [yyyy] [name of copyright owner]` unfilled so it names no holder. Its SHA-256 is pinned
-  in the entry; a dependency update that changes which copy is most common fails the run.
+  ships most widely from other crates' own artifacts (101 installed copies today; 5 vendored copies
+  of the same bytes for the `unic-*` crates are not counted). What is checked about it: the appendix
+  placeholder line `Copyright [yyyy] [name of copyright owner]` is present and unfilled, and no line
+  mentioning copyright, `(c)` or the copyright sign carries a year. Its SHA-256 is pinned in the
+  entry; a dependency update that changes which copy is most common fails the run.
 - **Every election is used.** One naming a component that is not in the graph, or does not ship,
   stops the run.
 
 The generator runs negative controls for these rules before it trusts any election and exits 2 if
 one is accepted; [`../tests/frontend/upstreamLicenses.test.ts`](../tests/frontend/upstreamLicenses.test.ts)
-breaks each rule on purpose as well. The owner delegated clearing this row on 2026-11-19 (QD-C2 in
-[`../docs/how-to/AGENT_WORKFLOW.md`](../docs/how-to/AGENT_WORKFLOW.md)). This is an engineering
-record of a choice the declared licence permits. **It is not legal advice.**
+breaks each rule on purpose as well, including against real crate directories built on disk. The
+owner authorised this choice in chat on 2026-11-19 ("giấy phép có cách nào k, bạn có thể tự nhắn hỏi
+hoặc làm j tuỳ"; QD-C2 in [`../docs/how-to/AGENT_WORKFLOW.md`](../docs/how-to/AGENT_WORKFLOW.md)).
+This is an engineering record of a choice the declared licence permits. **It is not legal advice.**
 
 ## What is and is not established
 

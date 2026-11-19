@@ -151,13 +151,17 @@ artifact is always preferred to a vendored copy.${
 
 **${elected}** of those publish no licence file and no notice anywhere, in their artifact or
 upstream, but offer a choice of licences (an SPDX \`OR\` that includes Apache-2.0). For those the
-distribution **elects Apache-2.0**: its canonical text is the same for every licensee and the work
-has no notices for Apache-2.0 section 4 to retain, whereas MIT would require a holder's notice that
-does not exist.
-The text published is the Apache-2.0 copy other distributed components already ship, byte for byte,
-and each election is recorded with its evidence under \`elections\` in
-[\`licensing/upstream/sources.json\`](licensing/upstream/sources.json). This is a record of the
-distribution's choice, not legal advice.`
+distribution **elects Apache-2.0**: its text is complete as published and the same for every
+licensee, and the work has no notices for Apache-2.0 section 4 to retain, whereas MIT's notice
+condition points at a holder's notice that does not exist. The owner authorised this choice in chat
+on 2026-11-19 ("giấy phép có cách nào k, bạn có thể tự nhắn hỏi hoặc làm j tuỳ"; QD-C2 in
+[\`docs/how-to/AGENT_WORKFLOW.md\`](docs/how-to/AGENT_WORKFLOW.md)). The text published is the
+Apache-2.0 copy other distributed components already ship, byte for byte, and each election is
+recorded with its evidence under \`elections\` in
+[\`licensing/upstream/sources.json\`](licensing/upstream/sources.json). An election presupposes that
+the component's declared Cargo \`license\` field is the author's grant; whether a bare field is one
+is a legal question, and the project treats it as the grant, as the Rust ecosystem does. This is a
+record of the distribution's choice, not legal advice.`
 }
 
 The remaining **${unresolved.length}** are enumerated with the reason, and with what was searched, in
@@ -193,8 +197,8 @@ from [\`licensing/upstream/sources.json\`](licensing/upstream/sources.json) with
 component declares a dual licence (commonly \`MIT OR Apache-2.0\` in the Rust ecosystem) the choice is
 the distributor's, and this repository makes none where a text exists: every licence file present at
 the pinned release is packaged, not one option out of several. The one exception is a component that
-publishes no licence file at all, where Apache-2.0 is elected as described above; the expression
-listed below is still the one the component declares.
+publishes no licence file at all, where Apache-2.0 is elected as described above, a choice the owner
+authorised on 2026-11-19; the expression listed below is still the one the component declares.
 
 ## Rust components
 
@@ -226,7 +230,7 @@ ${
   unresolved.length === 0
     ? elected === 0
       ? 'Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision.'
-      : `Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision, except ${elected} that publish none, for which Apache-2.0 is elected from the\nchoice they offer.`
+      : `Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision, except ${elected} that publish none, for which Apache-2.0 is elected from the\nchoice they offer, with the owner's authorisation of 2026-11-19.`
     : `${unresolved.length} distributed component(s) declare a licence whose text neither their\npublished artifact nor their upstream repository contains at the released revision. They are listed\nwith the exact blocker, and with the search that failed, in\n[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md) and remain open.`
 }
 

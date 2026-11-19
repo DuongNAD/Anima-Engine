@@ -116,20 +116,27 @@ Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. 
   *Cập nhật 2026-11-19:* dòng còn nợ cuối cùng — lúc này là `utf8-chars` 3.0.7, vì `hexf-parse` đã
   rời đồ thị phụ thuộc ở R1c — được đóng bằng cách **chọn Apache-2.0** trong biểu thức
   `MIT OR Apache-2.0` mà chính crate khai. Crate không có file license, NOTICE hay dòng copyright
-  nào, ở bản đã publish lẫn ở commit phát hành, nên không có gì để vendor. MIT đòi tái hiện thông báo
-  copyright của chủ sở hữu, mà thông báo đó không tồn tại; Apache-2.0 (§4) chỉ đòi kèm văn bản chuẩn
-  của License cùng các thông báo và file NOTICE mà tác phẩm có, ở đây không có gì, nên chọn
+  nào, ở bản đã publish lẫn ở commit phát hành, nên không có gì để vendor. Điều kiện thông báo của
+  MIT trỏ tới thông báo copyright của chủ sở hữu, mà crate không có; văn bản Apache-2.0 đầy đủ như khi
+  công bố, và §4 chỉ đòi kèm văn bản License, đánh dấu file đã sửa (không áp dụng vì crate được biên
+  dịch nguyên vẹn), cùng các thông báo và file NOTICE mà tác phẩm có, ở đây không có gì, nên chọn
   Apache-2.0 thoả mọi điều kiện mà không bịa ra chữ nào. Văn bản đóng gói là bản Apache-2.0 mà các
-  crate khác trong inventory đã ship nhiều nhất, trùng từng byte, phần phụ lục để trống nên không ghi
-  tên chủ sở hữu nào. Cơ chế hẹp và fail-closed (mục `elections` trong
+  crate khác trong inventory đã ship nhiều nhất, trùng từng byte; điều được kiểm là dòng giữ chỗ
+  `Copyright [yyyy] [name of copyright owner]` ở phụ lục còn nguyên, và không dòng copyright nào có
+  năm. Cơ chế hẹp và fail-closed (mục `elections` trong
   [`upstream/sources.json`](../../licensing/upstream/sources.json), kiểm tra ở
   `scripts/lib/upstream_licenses.mjs`, chi tiết ở [`licensing/README.md`](../../licensing/README.md)):
   biểu thức phải là phép `OR` thuần; chỉ được chọn Apache-2.0; không trùng với mapping hay bản ghi
-  `blocked`; artifact đã cài không được có file license nào, vì văn bản đã cài luôn thắng; hash văn
-  bản được ghim. [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) còn **0** dòng. Chủ dự án
-  giao việc này ngày 2026-11-19 (QD-C2 trong
-  [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). Đây là bản ghi một lựa chọn kỹ thuật mà
-  license đã khai cho phép, **không phải tư vấn pháp lý**.
+  `blocked`; thư mục crate đã cài được quét đệ quy và không được có file hay thư mục mang tên kiểu
+  license ở bất kỳ độ sâu nào, cũng không được có thông báo copyright trong bất kỳ file nào, vì văn
+  bản đã cài luôn thắng; hash văn bản được ghim.
+  [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) còn **0** dòng. Chủ dự án cho phép lựa
+  chọn này ngày 2026-11-19 (QD-C2 trong [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). Câu
+  hỏi còn mở: việc chọn đáp ứng các điều
+  kiện của Apache-2.0, nhưng một trường `license` trơn của Cargo có phải là lời cấp phép của tác giả
+  hay không là câu hỏi pháp lý; dự án coi license đã khai của crate đã publish là lời cấp phép, như hệ
+  sinh thái Rust vẫn làm. Đây là bản ghi một lựa chọn kỹ thuật mà license đã khai cho phép, **không
+  phải tư vấn pháp lý**.
 
 - Apache-2.0 chỉ tương thích **một chiều** với GPLv3: hạ nguồn GPLv3 dùng được code Apache-2.0, chiều
   ngược lại thì không. Nhánh MIT là thứ giữ cho hạ nguồn **GPLv2** cũng dùng được.

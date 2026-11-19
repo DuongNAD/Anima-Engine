@@ -11,14 +11,19 @@ import {
   MUTABLE_REFS,
   PROVENANCE_KINDS,
   disjunctionOperands,
+  copyrightNoticeLines,
   electedText,
   electionProblems,
+  electionSelfTest,
   isApache2Text,
+  isLicenceLikeName,
   isSafeStorePath,
   loadUpstreamStore,
   parseRawUrl,
   resolveElections,
+  scanElectedArtifact,
   storeProvenancePath,
+  type ElectedArtifactScan,
   type Election,
   type ElectionComponent,
   type PooledText,
@@ -858,44 +863,179 @@ describe('an election loads only when its manifest entry is narrow', () => {
 
 describe('an election applies only to the component as it is actually installed', () => {
   const election = asElection(electionEntry());
+  const clean: ElectedArtifactScan = { exists: true, licenceFiles: [], notices: [], unscanned: [] };
 
-  it('applies to a distributed component that declares the expression and ships no licence file', () => {
-    expect(electionProblems(election, electedComponent(), [])).toEqual([]);
+  it('applies to a distributed component that declares the expression and ships nothing about its licence', () => {
+    expect(electionProblems(election, electedComponent(), clean)).toEqual([]);
   });
 
-  it('refuses the moment the installed artifact carries a licence file: installed text wins', () => {
-    for (const filename of ['LICENSE-MIT', 'COPYRIGHT', 'NOTICE']) {
-      expect(electionProblems(election, electedComponent(), [{ filename }]).join('\n'), filename).toContain(
-        'Installed text wins',
-      );
+  it('refuses the moment the installed artifact carries a licence-like file, at any depth: installed text wins', () => {
+    for (const path of ['LICENSE-MIT', 'COPYRIGHT', 'NOTICE', 'licenses/LICENSE-MIT', 'LICENSES/']) {
+      expect(
+        electionProblems(election, electedComponent(), { ...clean, licenceFiles: [path] }).join('\n'),
+        path,
+      ).toContain('Installed text wins');
     }
   });
 
+  it('refuses a crate that carries a copyright notice anywhere, which Apache-2.0 would require be kept', () => {
+    expect(
+      electionProblems(election, electedComponent(), { ...clean, notices: ['src/lib.rs:1'] }).join('\n'),
+    ).toContain('carries a copyright notice (src/lib.rs:1)');
+  });
+
+  it('refuses when the crate directory is missing, so "looked nowhere" never passes as "found nothing"', () => {
+    expect(electionProblems(election, electedComponent(), { ...clean, exists: false }).join('\n')).toContain(
+      'installed crate directory is missing',
+    );
+  });
+
+  it('refuses a crate holding a link the scan did not follow', () => {
+    expect(
+      electionProblems(election, electedComponent(), { ...clean, unscanned: ['src/elsewhere'] }).join('\n'),
+    ).toContain('does not follow');
+  });
+
   it('refuses a component that does not ship', () => {
-    expect(electionProblems(election, electedComponent({ distributed: false }), []).join('\n')).toContain(
+    expect(electionProblems(election, electedComponent({ distributed: false }), clean).join('\n')).toContain(
       'installed but not distributed',
     );
   });
 
   it('refuses when the component declares a different expression than the election recorded', () => {
     expect(
-      electionProblems(election, electedComponent({ declaredLicense: 'MIT OR Apache-2.0 OR Zlib' }), []).join('\n'),
+      electionProblems(election, electedComponent({ declaredLicense: 'MIT OR Apache-2.0 OR Zlib' }), clean).join('\n'),
     ).toContain('the component declares');
   });
 
   it('refuses a component that points at a licence file of its own', () => {
     expect(
-      electionProblems(election, electedComponent({ declaredLicenseFile: 'TERMS.txt' }), []).join('\n'),
+      electionProblems(election, electedComponent({ declaredLicenseFile: 'TERMS.txt' }), clean).join('\n'),
     ).toContain('declares a licence file');
   });
 
   it('refuses an attribution that is not what the manifest declares', () => {
     expect(
-      electionProblems(election, electedComponent({ authors: ['Someone Else'] }), []).join('\n'),
+      electionProblems(election, electedComponent({ authors: ['Someone Else'] }), clean).join('\n'),
     ).toContain('is not what the manifest declares');
     expect(
-      electionProblems(election, electedComponent({ repository: 'https://github.com/other/fork' }), []).join('\n'),
+      electionProblems(election, electedComponent({ repository: 'https://github.com/other/fork' }), clean).join('\n'),
     ).toContain("is not the manifest's");
+  });
+});
+
+/** Build a crate directory on disk, run `body` against it, and remove it. */
+function withCrate<T>(files: Record<string, string | Buffer>, body: (dir: string) => T, link?: string): T {
+  const root = mkdtempSync(join(tmpdir(), 'anima-elected-'));
+  const dir = join(root, 'nolicence-0.1.0');
+  try {
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, ...rel.split('/'));
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, content);
+    }
+    mkdirSync(dir, { recursive: true });
+    if (link) {
+      const outside = join(root, 'outside');
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(join(outside, 'LICENSE'), LICENCE_BYTES);
+      symlinkSync(outside, join(dir, ...link.split('/')), 'junction');
+    }
+    return body(dir);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const CLEAN_CRATE = {
+  'Cargo.toml': '[package]\nname = "nolicence"\nlicense = "MIT OR Apache-2.0"\n',
+  'README.md': 'Reads characters.\n',
+  'src/lib.rs': 'pub fn read_char() {}\n',
+  '.github/workflows/ci.yml': 'on: push\n',
+};
+
+describe('the installed crate is walked to the bottom, by the election check itself', () => {
+  it('finds nothing in a crate that says nothing about its licence', () => {
+    withCrate(CLEAN_CRATE, (dir) => {
+      expect(scanElectedArtifact(dir)).toEqual({ exists: true, licenceFiles: [], notices: [], unscanned: [] });
+    });
+  });
+
+  it('finds licence-like files and directories at any depth, in any case', () => {
+    withCrate(
+      {
+        ...CLEAN_CRATE,
+        'licenses/LICENSE-MIT': LICENCE_BYTES,
+        'docs/Notice.md': 'see the authors\n',
+        'src/copying.rs': '\n',
+        'third_party/UNLICENSE': '\n',
+      },
+      (dir) => {
+        expect(scanElectedArtifact(dir).licenceFiles).toEqual([
+          'docs/Notice.md',
+          'licenses/',
+          'licenses/LICENSE-MIT',
+          'src/copying.rs',
+          'third_party/UNLICENSE',
+        ]);
+      },
+    );
+  });
+
+  it('finds a copyright notice in any file, as the word, as (c) and a year, or as the sign', () => {
+    withCrate(
+      {
+        ...CLEAN_CRATE,
+        'src/lib.rs': '// Copyright 2020 Someone\npub fn read_char() {}\n',
+        'README.md': 'Reads characters.\n(c) 2019 Someone Else\n',
+        'src/sign.rs': '// © A Third Person\n',
+        'src/latin1.rs': Buffer.from([0x2f, 0x2f, 0x20, 0x43, 0x4f, 0x50, 0x59, 0x52, 0x49, 0x47, 0x48, 0x54, 0x20, 0xe9, 0x0a]),
+      },
+      (dir) => {
+        expect(scanElectedArtifact(dir).notices).toEqual(['README.md:2', 'src/latin1.rs:1', 'src/lib.rs:1', 'src/sign.rs:1']);
+      },
+    );
+  });
+
+  it('does not mistake licence wording for a notice', () => {
+    expect(copyrightNoticeLines('(c) You must retain\nfn main() {}\n')).toEqual([]);
+    expect(isLicenceLikeName('lib.rs')).toBe(false);
+    expect(isLicenceLikeName('LICENSE-APACHE.md')).toBe(true);
+  });
+
+  it('reports a missing directory as such, and a link as unscanned rather than following it', () => {
+    expect(scanElectedArtifact(join(tmpdir(), 'anima-no-such-crate-directory')).exists).toBe(false);
+    expect(scanElectedArtifact(null).exists).toBe(false);
+    withCrate(CLEAN_CRATE, (dir) => expect(scanElectedArtifact(dir).unscanned).toEqual(['vendor']), 'vendor');
+  });
+
+  // The wiring test. `resolveElections` reads each elected component's own `sourceDir`; nothing about
+  // the artifact is handed in by the generator. If that scan were dropped or blanked, a crate holding
+  // a nested licence file or a copyright header would be accepted, and these go red.
+  it('refuses, through resolveElections alone, a crate whose nested licence file or header the caller never mentioned', () => {
+    const elections = new Map([[ELECTED_PURL, asElection(electionEntry())]]);
+    const pool = [pooled(APACHE_TEXT, 3)];
+    withCrate(CLEAN_CRATE, (dir) => {
+      expect(resolveElections(elections, [electedComponent({ sourceDir: dir })], pool).get(ELECTED_PURL)?.text).toBe(
+        APACHE_TEXT,
+      );
+    });
+    withCrate({ ...CLEAN_CRATE, 'licenses/LICENSE-MIT': LICENCE_BYTES }, (dir) => {
+      expect(() => resolveElections(elections, [electedComponent({ sourceDir: dir })], pool)).toThrow(
+        'Installed text wins',
+      );
+    });
+    withCrate({ ...CLEAN_CRATE, 'src/lib.rs': '// Copyright 2020 Someone\n' }, (dir) => {
+      expect(() => resolveElections(elections, [electedComponent({ sourceDir: dir })], pool)).toThrow(
+        'carries a copyright notice',
+      );
+    });
+    expect(() =>
+      resolveElections(elections, [electedComponent({ sourceDir: join(tmpdir(), 'anima-no-such-crate') })], pool),
+    ).toThrow('installed crate directory is missing');
+    expect(() => resolveElections(elections, [electedComponent({ sourceDir: null })], pool)).toThrow(
+      'installed crate directory is missing',
+    );
   });
 });
 
@@ -925,7 +1065,21 @@ describe('the elected bytes are the Apache-2.0 text the inventory already ships 
     const picked = electedText(asElection(electionEntry({ textSha256: sha256(APACHE_FILLED) })), [
       pooled(APACHE_FILLED, 20, 'filled'),
     ]);
-    expect(picked.problems.join('\n')).toContain('appendix filled in');
+    expect(picked.problems.join('\n')).toContain('appendix filled in or altered');
+  });
+
+  it('says the appendix is absent, not filled, when the most common copy has none', () => {
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(APACHE_NO_APPENDIX) })), [
+      pooled(APACHE_NO_APPENDIX, 20, 'bare'),
+    ]);
+    expect(picked.problems.join('\n')).toContain('has no appendix');
+    expect(picked.problems.join('\n')).not.toContain('filled in');
+  });
+
+  it('refuses a copy that keeps the placeholder but adds a dated copyright line', () => {
+    const hidden = `${APACHE_TEXT}Copyright 2021 Hidden Holder\n`;
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(hidden) })), [pooled(hidden, 20, 'hidden')]);
+    expect(picked.problems.join('\n')).toContain('carries a dated copyright line');
   });
 
   it('refuses when two Apache-2.0 texts are equally common, because "the" text is then ambiguous', () => {
@@ -939,16 +1093,16 @@ describe('the elected bytes are the Apache-2.0 text the inventory already ships 
     );
   });
 
-  it('applies a whole set of elections, and refuses one the graph does not use', () => {
+  it('refuses an election the graph does not use', () => {
     const elections = new Map([[ELECTED_PURL, election]]);
-    const pool = [pooled(APACHE_TEXT, 3)];
-    const applied = resolveElections(elections, [electedComponent()], new Map(), pool);
-    expect(applied.get(ELECTED_PURL)?.text).toBe(APACHE_TEXT);
+    expect(() => resolveElections(elections, [], [pooled(APACHE_TEXT, 3)])).toThrow('the election is unused');
+  });
 
-    expect(() => resolveElections(elections, [], new Map(), pool)).toThrow('the election is unused');
-    expect(() =>
-      resolveElections(elections, [electedComponent()], new Map([[ELECTED_PURL, [{ filename: 'LICENSE' }]]]), pool),
-    ).toThrow('Installed text wins');
+  it('runs its own negative controls, and every one of them fires', () => {
+    const result = electionSelfTest();
+    expect(result.failures).toEqual([]);
+    expect(result.rejects).toBeGreaterThan(30);
+    expect(result.controls).toBe(result.rejects + result.accepts);
   });
 });
 

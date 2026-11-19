@@ -33,9 +33,10 @@ licence text read out of the installed artifact is always preferred to a vendore
 
 Where a component offers a choice (an SPDX `OR` that includes Apache-2.0) and neither its
 artifact nor its upstream carries any licence file or notice, the distribution elects
-Apache-2.0: its canonical text is the same for every licensee, and the work has no notices
-for Apache-2.0 section 4 to retain. MIT is not used there, because MIT requires the
-holder's notice and none exists to reproduce. Those are enumerated under ELECTED LICENCES.
+Apache-2.0: its text is complete as published and the same for every licensee, and the work
+has no notices for Apache-2.0 section 4 to retain. MIT is not used there, because its notice
+condition points at a holder's notice and none exists to reproduce. Those are enumerated
+under ELECTED LICENCES.
 
 ================================================================================================
 VENDORED UPSTREAM SOURCES
@@ -538,11 +539,16 @@ ELECTED LICENCES
 ================================================================================================
 
 1 component(s) offer a choice of licences and publish no licence file and no
-notice at all. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0
-text that the other distributed components already ship most widely, byte for byte, with
-its appendix placeholder unfilled. Nothing is attributed that the component did not
-declare. The evidence for each is in licensing/upstream/sources.json under `elections`.
-This is a record of what the distribution chose, not legal advice.
+notice at all: the installed crate holds no licence-like file at any depth and no copyright
+notice in any file. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0
+text that the other distributed components already ship most widely, byte for byte. Its
+appendix placeholder line is present and unfilled, and no copyright line in it carries a
+year. Nothing is attributed that the component did not declare. The evidence for each is in
+licensing/upstream/sources.json under `elections`. The owner authorised the choice on
+2026-11-19. An election presupposes that the crate's declared Cargo `license` field is the
+author's grant; whether a bare field is one is a legal question, and the project treats it
+as the grant, as the Rust ecosystem does. This is a record of what the distribution chose,
+not legal advice.
 
 pkg:cargo/utf8-chars@3.0.7
     declared   : MIT OR Apache-2.0

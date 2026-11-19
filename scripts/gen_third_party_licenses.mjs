@@ -35,24 +35,33 @@
 //
 // One component (`utf8-chars` 3.0.7) ships no licence file, no NOTICE and no copyright line, in its
 // artifact or at the commit it was published from — so there is nothing to vendor. It declares
-// `MIT OR Apache-2.0`, which leaves the choice to the distributor, and the two options are not
-// equally honourable here. MIT's condition is that "the above copyright notice" be reproduced; there
-// is none, and writing one would mean inventing a holder, which this generator refuses to do. Apache-
-// 2.0's conditions (§4) are: give recipients a copy of the License — the canonical text, the same for
-// every licensee; retain the notices present in the Source form — there are none; and carry the
-// work's NOTICE file if it has one — it has none. So electing Apache-2.0 discharges the obligation
-// with nothing synthesised: the text published is the Apache-2.0 text the inventory already ships
-// most widely, byte for byte, with its appendix placeholder unfilled so it names no holder.
+// `MIT OR Apache-2.0`, which leaves the choice to the distributor. MIT's text is a template whose
+// notice condition points at "the above copyright notice", and this crate has no holder's notice to
+// reproduce: an MIT text could only ship with no holder line or an invented one, and this generator
+// never writes one. Apache-2.0's text is complete as published, and its conditions (§4) are (a) give
+// recipients a copy of the License; (b) mark modified files, which does not apply to a crate compiled
+// unmodified; (c) retain the notices in the Source form, of which there are none; (d) carry the work's
+// NOTICE file, which it does not have. So electing Apache-2.0 meets those conditions with nothing
+// synthesised. The text published is the Apache-2.0 text the inventory already ships most widely,
+// byte for byte; what is checked about it is that its appendix placeholder line is present and
+// unfilled and that no copyright line in it carries a year.
 //
 // The conditions are narrow and each is enforced fail-closed in `scripts/lib/upstream_licenses.mjs`
 // (`elections` in `licensing/upstream/sources.json`): a pure `A OR B` disjunction offering
 // Apache-2.0 as a whole operand; Apache-2.0 as the only electable licence; one resolution per
 // component; the declared expression and the manifest's authors and repository matching the
-// installed crate; the pinned text hash being that most widely shipped Apache-2.0 text; every
-// election used. **Installed text wins** here too: the day the graph moves to a release that ships a
-// licence file of any kind, the election fails the run (unused for the old version, refused for the
-// new one) and is deleted. The bundle says plainly which licence was elected, from what, and why.
-// None of this is legal advice.
+// installed crate; the installed crate directory, walked to the bottom, holding no licence-like file
+// or directory and no copyright notice in any file; the pinned text hash being that most widely
+// shipped Apache-2.0 text; every election used. **Installed text wins** here too: the day the graph
+// moves to a release that ships a licence file of any kind, the election fails the run (unused for
+// the old version, refused for the new one) and is deleted. The bundle says plainly which licence was
+// elected, from what, and why.
+//
+// One question no check can settle: an election presupposes that the crate's bare Cargo `license`
+// field is the author's grant. Whether it is, with no licence text or notice anywhere, is a legal
+// question; the project treats the published crate's declared licence as the grant, as the Rust
+// ecosystem does. The owner authorised this choice on 2026-11-19 (QD-C2 in
+// `docs/how-to/AGENT_WORKFLOW.md`). None of this is legal advice.
 //
 // # Outputs
 //
@@ -177,7 +186,6 @@ const usedMappings = new Set();
  * before one can be picked. Each entry is already in `entries`, and its `texts` are filled in below.
  */
 const electedEntries = new Map();
-const electedFiles = new Map();
 
 for (const component of components) {
   // Only what ships carries an obligation. `node_modules/` is not distributed, so an install-only
@@ -204,18 +212,19 @@ for (const component of components) {
   // `@oxc-project/runtime` is the case: rolldown compiles its helpers into the output and it is
   // never installed, so there is no manifest here to read a licence from — the registry publishes
   // one for that exact version, and the mapping records it with the evidence.
-  const declared = component.declaredLicense ?? mapping?.declaredSpdx ?? null;
-  const files = component.sourceDir ? collectLicenseTexts(component.sourceDir) : [];
-
-  // An elected component is set aside with every licence file its artifact holds — corrupt ones
-  // included — and `resolveElections` refuses the election if there is even one. Installed text wins.
+  // An elected component is set aside here and nothing about its artifact is passed along:
+  // `resolveElections` walks the component's own `sourceDir` to the bottom and refuses the election
+  // on any licence-like file, any copyright notice, or a directory that is not there. With no
+  // hand-off to drop, the generator cannot blind that check by forgetting to pass something.
   if (upstream.electionsByPurl.has(component.purl)) {
     const entry = { component, texts: [] };
     entries.push(entry);
     electedEntries.set(component.purl, entry);
-    electedFiles.set(component.purl, files);
     continue;
   }
+
+  const declared = component.declaredLicense ?? mapping?.declaredSpdx ?? null;
+  const files = component.sourceDir ? collectLicenseTexts(component.sourceDir) : [];
 
   if (!declared && !component.declaredLicenseFile) {
     blocked(component, 'declares no licence in its own manifest');
@@ -330,7 +339,7 @@ const electionPool = [...textsBySha.entries()]
     purls: new Set(users.filter((u) => u.origin === 'installed').map((u) => u.component.purl)),
   }))
   .filter((t) => t.purls.size > 0);
-const elections = resolveElections(upstream.electionsByPurl, components, electedFiles, electionPool);
+const elections = resolveElections(upstream.electionsByPurl, components, electionPool);
 for (const [purl, { election, text, textSha256 }] of elections) {
   const entry = electedEntries.get(purl);
   addText(textSha256, text, entry.component, election.chosen, 'elected');
@@ -464,9 +473,10 @@ function renderBundle() {
   out.push('');
   out.push('Where a component offers a choice (an SPDX `OR` that includes Apache-2.0) and neither its');
   out.push('artifact nor its upstream carries any licence file or notice, the distribution elects');
-  out.push('Apache-2.0: its canonical text is the same for every licensee, and the work has no notices');
-  out.push('for Apache-2.0 section 4 to retain. MIT is not used there, because MIT requires the');
-  out.push("holder's notice and none exists to reproduce. Those are enumerated under ELECTED LICENCES.");
+  out.push('Apache-2.0: its text is complete as published and the same for every licensee, and the work');
+  out.push('has no notices for Apache-2.0 section 4 to retain. MIT is not used there, because its notice');
+  out.push("condition points at a holder's notice and none exists to reproduce. Those are enumerated");
+  out.push('under ELECTED LICENCES.');
   out.push('');
   out.push(rule);
   out.push('VENDORED UPSTREAM SOURCES');
@@ -505,11 +515,16 @@ function renderBundle() {
     out.push('');
   } else {
     out.push(`${counts.fromElection} component(s) offer a choice of licences and publish no licence file and no`);
-    out.push('notice at all. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0');
-    out.push('text that the other distributed components already ship most widely, byte for byte, with');
-    out.push('its appendix placeholder unfilled. Nothing is attributed that the component did not');
-    out.push('declare. The evidence for each is in licensing/upstream/sources.json under `elections`.');
-    out.push('This is a record of what the distribution chose, not legal advice.');
+    out.push('notice at all: the installed crate holds no licence-like file at any depth and no copyright');
+    out.push('notice in any file. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0');
+    out.push('text that the other distributed components already ship most widely, byte for byte. Its');
+    out.push('appendix placeholder line is present and unfilled, and no copyright line in it carries a');
+    out.push('year. Nothing is attributed that the component did not declare. The evidence for each is in');
+    out.push('licensing/upstream/sources.json under `elections`. The owner authorised the choice on');
+    out.push('2026-11-19. An election presupposes that the crate\'s declared Cargo `license` field is the');
+    out.push("author's grant; whether a bare field is one is a legal question, and the project treats it");
+    out.push('as the grant, as the Rust ecosystem does. This is a record of what the distribution chose,');
+    out.push('not legal advice.');
     out.push('');
   }
   for (const { component, texts } of electedList) {
@@ -735,10 +750,12 @@ function renderUnresolved() {
   out.push('One narrower route exists for exactly that case. A component that offers Apache-2.0 as a');
   out.push('whole operand of an SPDX `OR`, and whose artifact and upstream carry no licence file and no');
   out.push('notice at all, can be closed by **electing Apache-2.0** under `elections` in');
-  out.push('[`upstream/sources.json`](upstream/sources.json): Apache-2.0 asks for its own canonical text');
-  out.push('plus the notices the work carries, and there are none, so nothing is invented. MIT is never');
-  out.push('elected, because MIT needs the holder’s notice. Elections are listed at the end of this file.');
-  out.push('This is a record of an engineering decision, not legal advice.');
+  out.push('[`upstream/sources.json`](upstream/sources.json): Apache-2.0 asks for its own text, which is');
+  out.push('complete as published, plus the notices the work carries, and there are none, so nothing is');
+  out.push('invented. MIT is never elected, because its notice condition points at a holder’s notice that');
+  out.push('does not exist. Elections are listed at the end of this file. Whether a bare Cargo `license`');
+  out.push('field is the author’s grant is a legal question this does not answer. This is a record of an');
+  out.push('engineering decision, not legal advice.');
   out.push('');
   out.push(
     `**${counts.fromVendoredUpstream} of the original 32 have been closed that way**, from ` +
@@ -801,9 +818,10 @@ function renderElections(out) {
   out.push('## Closed by electing Apache-2.0');
   out.push('');
   out.push('Recorded in [`upstream/sources.json`](upstream/sources.json) under `elections`, and');
-  out.push('re-checked on every run: the election fails the run the day the installed artifact carries a');
-  out.push('licence file of its own, or the pinned text stops being the Apache-2.0 copy the inventory');
-  out.push('ships most widely.');
+  out.push('re-checked on every run: the election fails the run if the installed crate holds a');
+  out.push('licence-like file or directory at any depth or a copyright notice in any file, or if the');
+  out.push('pinned text stops being the Apache-2.0 copy the inventory ships most widely. The owner');
+  out.push('authorised the choice on 2026-11-19 (QD-C2 in `docs/how-to/AGENT_WORKFLOW.md`).');
   for (const { component, texts } of electedList) {
     const { election } = texts[0];
     out.push('');

@@ -29,19 +29,26 @@
 //
 // `elections` records a component offered under an SPDX disjunction (`MIT OR Apache-2.0`) whose
 // published artifact *and* upstream carry no licence file and no notice at all, for which the
-// distribution elects Apache-2.0. It exists because MIT cannot be honoured for such a component —
-// MIT's condition is reproducing the holder's notice, and there is none to reproduce — while
-// Apache-2.0's conditions (§4) are a copy of the License, which is the same canonical text for every
-// licensee, plus whatever notices and NOTICE file the work itself carries, which here are none. So
-// electing Apache-2.0 discharges the obligation without inventing a word, where packaging an MIT
-// text would invent a copyright holder.
+// distribution elects Apache-2.0. The reason is narrow: MIT's text is a template whose notice
+// condition points at "the above copyright notice", and such a component has no holder's notice to
+// reproduce, so an MIT text could only ship with no holder line or an invented one. Apache-2.0's text
+// is complete as published, and its conditions (§4) are (a) a copy of the License, (b) change notices
+// on modified files, which do not apply to a crate compiled unmodified, and (c)/(d) the notices and
+// NOTICE file the work itself carries, of which there are none. So electing Apache-2.0 meets those
+// conditions without writing a word.
 //
 // That argument holds only under narrow conditions, and each one is checked here or in
 // `resolveElections`, fail-closed: a pure disjunction with Apache-2.0 as a whole operand; Apache-2.0
-// as the only electable licence; one resolution per component; the artifact as installed still
-// carrying no licence file (installed text wins, exactly as for a vendored mapping); the elected
-// bytes being the Apache-2.0 text the inventory already ships most widely, with the appendix
-// placeholder unfilled, pinned by hash; and every election used. None of this is legal advice.
+// as the only electable licence; one resolution per component; the installed crate directory,
+// scanned recursively, holding no licence-like file or directory at any depth and no copyright notice
+// in any file (installed text wins, exactly as for a vendored mapping); the elected bytes being the
+// Apache-2.0 text the inventory already ships most widely, with the appendix placeholder line present
+// and unfilled and no copyright line carrying a year, pinned by hash; and every election used.
+//
+// What no check can settle: an election presupposes that the crate's bare Cargo `license` field is
+// the author's grant. Whether it is, with no licence text or notice anywhere, is a legal question.
+// The project treats the published crate's declared licence as the grant, as the Rust ecosystem
+// does. None of this is legal advice.
 //
 // # What is deliberately *not* here
 //
@@ -51,7 +58,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { SPDX_IDS } from './licensing.mjs';
 
@@ -79,6 +86,74 @@ export const ELECTABLE_LICENCES = new Set(['Apache-2.0']);
  * somebody's copyright to a different work.
  */
 export const APACHE_UNFILLED_COPYRIGHT = 'Copyright [yyyy] [name of copyright owner]';
+
+/**
+ * A file or directory name that carries licence or attribution material, matched as a prefix and
+ * case-insensitively, at any depth of an elected crate. Deliberately wider than the bundle's
+ * `isLicenseFileName`: `licenses/`, `LICENSE.rs` and `NOTICE-third-party.md` all stop an election,
+ * because an election is only sound for a crate that speaks about its licence nowhere.
+ */
+const LICENCE_LIKE_NAME_RE = /^(licen[cs]e|copying|notice|copyright|unlicense)/i;
+
+/** A copyright notice in any file: the word, `(c) <year>`, or the © sign. Case-insensitive. */
+const COPYRIGHT_NOTICE_RE = /copyright|\(c\)\s*\d{4}|\u00a9/i;
+
+/** A line in a licence text that applies a notice: it mentions copyright, (c) or © and a year. */
+const DATED_NOTICE_RE = /(copyright|\(c\)|\u00a9).*\b(1[89]|20)\d{2}\b/i;
+
+export function isLicenceLikeName(name) {
+  return typeof name === 'string' && LICENCE_LIKE_NAME_RE.test(name);
+}
+
+/** 1-based line numbers of every line in `text` that carries a copyright notice. */
+export function copyrightNoticeLines(text) {
+  return String(text)
+    .split('\n')
+    .flatMap((line, i) => (COPYRIGHT_NOTICE_RE.test(line) ? [i + 1] : []));
+}
+
+/**
+ * Everything in an installed crate directory that would make an election unsound, found by walking
+ * it to the bottom. Returns `{ exists, licenceFiles, notices, unscanned }`, every path relative to
+ * `dir` with `/` separators, sorted.
+ *
+ * A directory that is not there reports `exists: false` rather than an empty scan: "found nothing"
+ * and "looked nowhere" must not read the same. Entries are `lstat`ed and links are not followed, so a
+ * symlink is reported under `unscanned` instead of being taken on trust. Files are read as Latin-1,
+ * which never fails to decode, so a non-UTF-8 file is still searched.
+ */
+export function scanElectedArtifact(dir) {
+  const result = { exists: false, licenceFiles: [], notices: [], unscanned: [] };
+  if (typeof dir !== 'string' || dir === '') return result;
+  try {
+    if (!statSync(dir).isDirectory()) return result;
+  } catch {
+    return result;
+  }
+  result.exists = true;
+  const walk = (abs, rel) => {
+    for (const entry of readdirSync(abs).sort(byteCompare)) {
+      const childAbs = join(abs, entry);
+      const childRel = rel === '' ? entry : `${rel}/${entry}`;
+      const st = lstatSync(childAbs);
+      if (isLicenceLikeName(entry)) result.licenceFiles.push(st.isDirectory() ? `${childRel}/` : childRel);
+      if (st.isSymbolicLink()) {
+        result.unscanned.push(childRel);
+      } else if (st.isDirectory()) {
+        walk(childAbs, childRel);
+      } else if (st.isFile()) {
+        for (const line of copyrightNoticeLines(readFileSync(childAbs).toString('latin1'))) {
+          result.notices.push(`${childRel}:${line}`);
+        }
+      } else {
+        result.unscanned.push(childRel);
+      }
+    }
+  };
+  walk(dir, '');
+  for (const list of [result.licenceFiles, result.notices, result.unscanned]) list.sort(byteCompare);
+  return result;
+}
 
 const ELECTION_KEYS = new Set([
   'purl',
@@ -590,14 +665,15 @@ function checkElection(entry, index, problems, seenPurls) {
  * The inventory-dependent rules for one election against the component as installed. Returns the
  * problems found, empty when the election applies.
  *
- * `licenceFiles` is everything `collectLicenseTexts` found in the installed artifact, including
- * files that failed to decode: a licence file of any kind means the component speaks for itself,
- * and "installed text wins" applies to an election exactly as it does to a vendored mapping. A
- * published version never changes, so in practice this fires when an election is carried over to a
- * newer release that ships its texts (the old one is then unused, which `resolveElections` refuses
- * too), and the election is deleted rather than left to shadow them.
+ * `scan` is what `scanElectedArtifact` found in the installed crate directory. A licence-like file
+ * or directory at any depth means the component speaks for itself, and "installed text wins"
+ * applies to an election exactly as it does to a vendored mapping; a copyright notice anywhere is a
+ * notice Apache-2.0 §4(c) would require be retained, which an election does not carry; a missing
+ * directory, or a link the scan did not follow, means the absence was never shown. A published
+ * version never changes, so in practice this fires when an election is carried over to a newer
+ * release that ships its texts (the old one is then unused, which `resolveElections` refuses too).
  */
-export function electionProblems(election, component, licenceFiles) {
+export function electionProblems(election, component, scan) {
   const problems = [];
   const at = `election for ${election.purl}`;
   if (!component.distributed) {
@@ -612,11 +688,27 @@ export function electionProblems(election, component, licenceFiles) {
   if (component.declaredLicenseFile) {
     problems.push(`${at}: the component declares a licence file (${component.declaredLicenseFile}); its terms are not a plain SPDX choice`);
   }
-  if (licenceFiles.length > 0) {
+  if (!scan?.exists) {
     problems.push(
-      `${at}: the installed artifact now contains ${licenceFiles.map((f) => f.filename).join(', ')}. ` +
-        'Installed text wins; delete the election.',
+      `${at}: the installed crate directory is missing, so nothing shows it carries no licence file; ` +
+        'an election is never granted on an empty look',
     );
+  } else {
+    if (scan.licenceFiles.length > 0) {
+      problems.push(
+        `${at}: the installed artifact contains ${scan.licenceFiles.join(', ')}. Installed text wins; ` +
+          'delete the election.',
+      );
+    }
+    if (scan.notices.length > 0) {
+      problems.push(
+        `${at}: the installed artifact carries a copyright notice (${scan.notices.join(', ')}), which ` +
+          'Apache-2.0 §4(c) would require be retained. An election is only for a crate with none.',
+      );
+    }
+    if (scan.unscanned.length > 0) {
+      problems.push(`${at}: the installed artifact holds entries the scan does not follow (${scan.unscanned.join(', ')})`);
+    }
   }
   const authors = Array.isArray(component.authors) ? component.authors : [];
   const attributed = election.attribution?.authors ?? [];
@@ -673,10 +765,22 @@ export function electedText(election, pool) {
   if (sha256hex(Buffer.from(top.text, 'utf8')) !== top.textSha256) {
     problems.push(`${at}: the pooled text does not hash to ${top.textSha256}`);
   }
-  if (!top.text.split('\n').some((l) => l.trim() === APACHE_UNFILLED_COPYRIGHT)) {
+  const lines = top.text.split('\n');
+  if (!lines.some((l) => l.trim() === APACHE_UNFILLED_COPYRIGHT)) {
     problems.push(
-      `${at}: the most widely shipped Apache-2.0 text has its appendix filled in; electing it would ` +
-        "attribute another project's copyright notice to this component",
+      lines.some((l) => l.trim().startsWith('APPENDIX'))
+        ? `${at}: the most widely shipped Apache-2.0 text has its appendix filled in or altered (the ` +
+            `unfilled line "${APACHE_UNFILLED_COPYRIGHT}" is missing); electing it could attribute ` +
+            "another project's copyright notice to this component"
+        : `${at}: the most widely shipped Apache-2.0 text has no appendix, so the unfilled ` +
+            `"${APACHE_UNFILLED_COPYRIGHT}" line this rule requires is absent; review and re-pin`,
+    );
+  }
+  const dated = lines.flatMap((l, i) => (DATED_NOTICE_RE.test(l) ? [i + 1] : []));
+  if (dated.length > 0) {
+    problems.push(
+      `${at}: the most widely shipped Apache-2.0 text carries a dated copyright line (line ` +
+        `${dated.join(', ')}); electing it would attribute that notice to this component`,
     );
   }
   return problems.length > 0 ? { problems } : { problems, text: top.text };
@@ -686,12 +790,14 @@ export function electedText(election, pool) {
  * Apply every election to the inventory. Returns a Map from purl to `{ election, text, textSha256 }`
  * and throws with every problem listed when any election does not hold.
  *
- * `components` is the whole inventory, distributed or not; `filesByPurl` holds what
- * `collectLicenseTexts` returned for each component that has an election; `pool` is described at
- * `electedText`. An election that names a component the graph does not have is an error, for the
- * same reason an unused mapping is: it is a claim of coverage for something that is not here.
+ * `components` is the whole inventory, distributed or not; `pool` is described at `electedText`.
+ * Each elected component's installed directory is scanned **here**, from its own `sourceDir`, rather
+ * than handed in by the caller: there is then no hand-off a caller could drop or blank, and a
+ * component whose directory is missing fails instead of passing on an empty list. An election that
+ * names a component the graph does not have is an error, for the same reason an unused mapping is:
+ * it is a claim of coverage for something that is not here.
  */
-export function resolveElections(electionsByPurl, components, filesByPurl, pool) {
+export function resolveElections(electionsByPurl, components, pool) {
   const problems = [];
   const resolved = new Map();
   const byPurl = new Map(components.map((c) => [c.purl, c]));
@@ -701,7 +807,7 @@ export function resolveElections(electionsByPurl, components, filesByPurl, pool)
       problems.push(`election for ${purl}: no such component in the dependency graph; the election is unused`);
       continue;
     }
-    const local = electionProblems(election, component, filesByPurl.get(purl) ?? []);
+    const local = electionProblems(election, component, scanElectedArtifact(component.sourceDir));
     if (local.length > 0) {
       problems.push(...local);
       continue;
@@ -777,8 +883,29 @@ export function electionSelfTest() {
     checkElection(entry, 0, problems, new Set(seen));
     return problems;
   };
+  let rejects = 0;
+  let accepts = 0;
+  /** A must-reject control: `refused()` returns true when the rule fired. */
+  const mustReject = (label, refused) => {
+    rejects += 1;
+    if (!refused()) failures.push(`negative control "${label}" was accepted`);
+  };
+  /** A must-accept control: `accepted()` returns true when the good input passed. */
+  const mustAccept = (label, accepted) => {
+    accepts += 1;
+    if (!accepted()) failures.push(`positive control "${label}" was rejected`);
+  };
+  const throws = (fn) => {
+    try {
+      fn();
+      return false;
+    } catch {
+      return true;
+    }
+  };
 
-  const mustRejectEntry = [
+  // The manifest entry.
+  for (const [label, entry] of [
     ['AND', { ...good, declaredSpdx: 'MIT AND Apache-2.0' }],
     ['WITH', { ...good, declaredSpdx: 'Apache-2.0 WITH LLVM-exception OR MIT' }],
     ['parentheses', { ...good, declaredSpdx: '(MIT OR Apache-2.0)' }],
@@ -788,45 +915,64 @@ export function electionSelfTest() {
     ['npm', { ...good, ecosystem: 'npm', purl: 'pkg:npm/control@0.1.0' }],
     ['bad hash', { ...good, textSha256: 'apache' }],
     ['no authors', { ...good, attribution: { ...good.attribution, authors: [] } }],
-  ];
-  for (const [label, entry] of mustRejectEntry) {
-    if (entryProblems(entry).length === 0) failures.push(`negative control "${label}" was accepted`);
+  ]) {
+    mustReject(label, () => entryProblems(entry).length > 0);
   }
-  if (entryProblems(good, [purl]).length === 0) failures.push('negative control "already mapped or blocked" was accepted');
-  if (entryProblems(good).length > 0) failures.push(`positive control was rejected: ${entryProblems(good).join('; ')}`);
+  mustReject('already mapped or blocked', () => entryProblems(good, [purl]).length > 0);
+  mustAccept('well-formed entry', () => entryProblems(good).length === 0);
 
-  if (electionProblems(good, component, [{ filename: 'LICENSE' }]).length === 0) {
-    failures.push('negative control "installed licence file" was accepted');
+  // The names and notices the artifact scan looks for.
+  for (const name of ['LICENSE-MIT', 'licence.txt', 'COPYING', 'NOTICE.md', 'COPYRIGHT', 'UNLICENSE', 'licenses']) {
+    mustReject(`licence-like name ${name}`, () => isLicenceLikeName(name));
   }
-  if (electionProblems(good, { ...component, distributed: false }, []).length === 0) {
-    failures.push('negative control "not distributed" was accepted');
+  mustAccept('ordinary names', () => !['lib.rs', 'README.md', 'Cargo.toml', '.cargo_vcs_info.json'].some(isLicenceLikeName));
+  for (const line of ['// Copyright 2020 Someone', '(c) 2019 Someone', '\u00a9 Someone', 'THE COPYRIGHT HOLDERS']) {
+    mustReject(`notice ${JSON.stringify(line)}`, () => copyrightNoticeLines(line).length === 1);
   }
-  if (electionProblems(good, { ...component, declaredLicense: 'MIT' }, []).length === 0) {
-    failures.push('negative control "declared expression differs" was accepted');
-  }
-  if (electionProblems(good, component, []).length > 0) failures.push('positive control (inventory) was rejected');
+  mustAccept('lines without a notice', () => copyrightNoticeLines('fn main() {}\n(c) You must retain\n').length === 0);
 
-  const mustRejectText = [
+  // The installed component, as scanned.
+  const clean = { exists: true, licenceFiles: [], notices: [], unscanned: [] };
+  for (const [label, comp, scan] of [
+    ['top-level licence file', component, { ...clean, licenceFiles: ['LICENSE'] }],
+    ['nested licence file', component, { ...clean, licenceFiles: ['licenses/LICENSE-MIT'] }],
+    ['copyright notice in a source file', component, { ...clean, notices: ['src/lib.rs:1'] }],
+    ['missing crate directory', component, { ...clean, exists: false }],
+    ['link the scan did not follow', component, { ...clean, unscanned: ['src/link'] }],
+    ['not distributed', { ...component, distributed: false }, clean],
+    ['declared expression differs', { ...component, declaredLicense: 'MIT' }, clean],
+  ]) {
+    mustReject(label, () => electionProblems(good, comp, scan).length > 0);
+  }
+  mustAccept('clean installed component', () => electionProblems(good, component, clean).length === 0);
+
+  // The elected text.
+  const dated = `${apache}Copyright 2021 Hidden Holder\n`;
+  for (const [label, election, texts] of [
     ['pin is not the most common copy', { ...good, textSha256: sha256hex(Buffer.from(bare, 'utf8')) }, pool([apache, 5], [bare, 2])],
     ['appendix filled in', { ...good, textSha256: sha256hex(Buffer.from(filled, 'utf8')) }, pool([filled, 5])],
+    ['no appendix', { ...good, textSha256: sha256hex(Buffer.from(bare, 'utf8')) }, pool([bare, 5])],
+    ['placeholder kept, dated holder line added', { ...good, textSha256: sha256hex(Buffer.from(dated, 'utf8')) }, pool([dated, 5])],
     ['two copies equally common', good, pool([apache, 3], [bare, 3])],
     ['no Apache-2.0 text', good, pool(['MIT License\n', 9])],
-  ];
-  for (const [label, election, texts] of mustRejectText) {
-    if (electedText(election, texts).problems.length === 0) failures.push(`negative control "${label}" was accepted`);
+  ]) {
+    mustReject(label, () => electedText(election, texts).problems.length > 0);
   }
-  if (electedText(good, pool(['MIT License\n', 50], [apache, 5])).text !== apache) {
-    failures.push('positive control (elected text) did not pick the Apache-2.0 copy');
-  }
-  let unusedRejected = false;
-  try {
-    resolveElections(new Map([[purl, good]]), [], new Map(), pool([apache, 5]));
-  } catch {
-    unusedRejected = true;
-  }
-  if (!unusedRejected) failures.push('negative control "unused election" was accepted');
+  mustAccept('most common Apache-2.0 copy', () => electedText(good, pool(['MIT License\n', 50], [apache, 5])).text === apache);
 
-  return { failures, controls: mustRejectEntry.length + 2 + 4 + mustRejectText.length + 2 };
+  // The whole set, including the scan `resolveElections` performs itself.
+  mustReject('unused election', () => throws(() => resolveElections(new Map([[purl, good]]), [], pool([apache, 5]))));
+  mustReject('elected crate directory not on disk', () =>
+    throws(() =>
+      resolveElections(
+        new Map([[purl, good]]),
+        [{ ...component, sourceDir: join(STORE_REL, 'no-such-crate-directory-for-a-control') }],
+        pool([apache, 5]),
+      ),
+    ),
+  );
+
+  return { failures, controls: rejects + accepts, rejects, accepts };
 }
 
 /**
