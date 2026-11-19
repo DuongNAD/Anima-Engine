@@ -595,6 +595,7 @@ export const WorldShowcase: React.FC = () => {
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
+          qualityTier={effectiveQuality}
           onEnvironmentalState={simEnvChannel.publish}
         />
         {capture ? null : (
@@ -734,6 +735,7 @@ export const WorldShowcase: React.FC = () => {
         muted={muted}
         showDecoration={showDecoration}
         simEnvCounts={simEnvCounts}
+        simEnvIsSynthetic={simEnvChannel.isSynthetic()}
         onSpeed={setSpeed}
         onToggleAlwaysDay={() => {
           const next = !alwaysDay;
@@ -800,6 +802,7 @@ const WorldHud: React.FC<{
   muted: boolean;
   showDecoration: boolean;
   simEnvCounts: SimEnvironmentCounts;
+  simEnvIsSynthetic: boolean;
   onSpeed: (s: number) => void;
   onToggleAlwaysDay: () => void;
   onWeather: (w: WeatherKind) => void;
@@ -809,7 +812,7 @@ const WorldHud: React.FC<{
   onToggleDecoration: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, simEnvCounts, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, simEnvCounts, simEnvIsSynthetic, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -924,12 +927,18 @@ const WorldHud: React.FC<{
       >
         <div
           data-testid="sim-env-legend"
-          title="Lakes, trees, and food from the Rust simulation (environmental_state). Grass-density overlay skipped: no existing IPC exposes ResourceField."
+          title={
+            simEnvIsSynthetic
+              ? 'Synthetic environmental fixture — not simulation output.'
+              : 'Lakes, trees, and food from the Rust simulation (environmental_state). Grass-density overlay skipped: no existing IPC exposes ResourceField.'
+          }
           style={{ opacity: 0.9 }}
         >
           {simEnvCounts.total > 0
-            ? `Simulated: ${simEnvCounts.lakes} lakes · ${simEnvCounts.trees} trees · ${simEnvCounts.food} food`
-            : 'Simulated: awaiting simulation tick'}
+            ? `${simEnvIsSynthetic ? 'Synthetic fixture (not simulation output)' : 'Simulated'}: ${simEnvCounts.lakes} lakes · ${simEnvCounts.trees} trees · ${simEnvCounts.food} food`
+            : simEnvIsSynthetic
+              ? 'Synthetic fixture (not simulation output): awaiting tick'
+              : 'Simulated: awaiting simulation tick'}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span
