@@ -357,48 +357,109 @@ function runCheckTestTargetsScript(wt, capturePath, profileArg) {
   };
 }
 
-function runCheckTestTargetsPolicySubset(wt, tmpBase, profileArg) {
-  const capturePath = join(tmpBase, 'cargo-test-output.txt');
-  const docCapturePath = join(tmpBase, 'cargo-doc-output.txt');
-  const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
+const POLICY_TEST_TARGETS = [
+  'shared_domain_law_tests',
+  'determinism_gate_tests',
+  'energy_conservation_tests',
+  'feature_gated_targets_tests',
+  'adversarial_challenger_tests',
+  'migration_tests',
+  'migration_high_throughput_tests',
+  'migration_narrow_bounds_loop_tests',
+  'migration_panic_tests',
+  'migration_stress_tests',
+  'phase5_websocket_reuse',
+  'phase5_burn_wgpu_fallback',
+];
+
+function extractCiCargoTestFeatures(wt) {
+  const ciText = readFileSync(join(wt, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const match = ciText.match(/^\s*(cargo test\b[^\r\n]*\|\s*tee\s+\.\.\/cargo-test-output\.txt)\s*$/m);
+  if (!match) {
+    throw new Error('Could not locate `cargo test ... | tee ../cargo-test-output.txt` in .github/workflows/ci.yml');
+  }
+  const cargoSide = match[1].split('|')[0].split(/\s+--\s+/)[0];
+  const featMatch = cargoSide.match(/--features(?:=|\s+)([^\s]+)/);
+  if (!featMatch) return [];
+  return featMatch[1]
+    .split(',')
+    .map((f) => f.trim())
+    .filter(Boolean);
+}
+
+function runCheckTestTargetsFromCi(wt, tmpBase, ctx, profileArg, cacheKey = null) {
+  if (cacheKey && ctx.captures[cacheKey] && existsSync(ctx.captures[cacheKey])) {
+    return runCheckTestTargetsScript(wt, ctx.captures[cacheKey], profileArg);
+  }
+
+  const rawFeatures = extractCiCargoTestFeatures(wt);
   const tauriDir = join(wt, 'src-tauri');
-  const subsetArgs = [
-    'test',
-    '--features',
-    'desktop',
-    '--bin',
-    'anima-engine',
-    '--test',
-    'shared_domain_law_tests',
-    '--test',
-    'determinism_gate_tests',
-    '--test',
-    'energy_conservation_tests',
-    '--test',
-    'adversarial_challenger_tests',
-    '--test',
-    'migration_tests',
-    '--test',
-    'migration_high_throughput_tests',
-    '--test',
-    'migration_narrow_bounds_loop_tests',
-    '--test',
-    'migration_panic_tests',
-    '--test',
-    'migration_stress_tests',
-    '--test',
-    'phase5_websocket_reuse',
-    '--test',
-    'phase5_burn_wgpu_fallback',
-    '--',
-    '--nocapture',
-  ];
-  const testRes = runCommandToFile('cargo', subsetArgs, tauriDir, env, capturePath);
+  const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
+
+  const metaRes = spawnSync('cargo', ['metadata', '--no-deps', '--format-version', '1'], {
+    cwd: tauriDir,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (metaRes.status !== 0) {
+    throw new Error(
+      `Prerequisite cargo metadata failed (exit ${metaRes.status ?? 1}):\n${metaRes.stderr || ''}`,
+    );
+  }
+
+  const meta = JSON.parse(metaRes.stdout);
+  const pkg = meta.packages.find((p) => p.name === 'anima-engine');
+  if (!pkg) {
+    throw new Error('Could not find package `anima-engine` in cargo metadata output');
+  }
+
+  const activeFeatures = new Set();
+  const queue = [...rawFeatures];
+  while (queue.length > 0) {
+    const feat = queue.pop();
+    if (!feat || activeFeatures.has(feat)) continue;
+    activeFeatures.add(feat);
+    for (const dep of pkg.features?.[feat] || []) {
+      if (!dep.startsWith('dep:') && !dep.includes('/')) {
+        queue.push(dep);
+      }
+    }
+  }
+
+  const featureArgs =
+    rawFeatures.length > 0 ? ['--features', rawFeatures.join(',')] : ['--no-default-features'];
+
+  const scheduledTargets = POLICY_TEST_TARGETS.filter((name) => {
+    const target = pkg.targets.find(
+      (t) => Array.isArray(t.kind) && t.kind.includes('test') && t.name === name,
+    );
+    if (!target) {
+      throw new Error(`Expected policy test target \`${name}\` missing from cargo metadata`);
+    }
+    const req = target.required_features || [];
+    return req.every((f) => activeFeatures.has(f));
+  });
+
+  const testArgs = ['test', ...featureArgs, '--bin', 'anima-engine'];
+  for (const targetName of scheduledTargets) {
+    testArgs.push('--test', targetName);
+  }
+  testArgs.push('--', '--nocapture');
+
+  const capturePath = cacheKey
+    ? join(os.tmpdir(), `anima-m2-${cacheKey}-capture-${process.pid}.txt`)
+    : join(tmpBase, 'cargo-test-output.txt');
+  const docCapturePath = join(tmpBase, 'cargo-doc-output.txt');
+
+  const testRes = runCommandToFile('cargo', testArgs, tauriDir, env, capturePath);
   if (testRes.status !== 0) {
+    rmSync(capturePath, { force: true });
     throw new Error(
       `Prerequisite cargo test policy subset failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
     );
   }
+
   const docRes = runCommandToFile(
     'cargo',
     ['test', '--workspace', '--doc', '--', '--nocapture'],
@@ -407,69 +468,21 @@ function runCheckTestTargetsPolicySubset(wt, tmpBase, profileArg) {
     docCapturePath,
   );
   if (docRes.status !== 0) {
+    rmSync(capturePath, { force: true });
+    rmSync(docCapturePath, { force: true });
     throw new Error(
       `Prerequisite cargo test --workspace --doc failed (exit ${docRes.status}):\n${docRes.output.slice(-2000)}`,
     );
   }
-  writeFileSync(capturePath, `${testRes.stdout}\n${docRes.stdout}\n`, 'utf8');
-  return runCheckTestTargetsScript(wt, capturePath, profileArg);
-}
 
-function runCheckTestTargetsFullUnscheduled(wt, ctx, profileArg) {
-  if (!ctx.unscheduledCapturePath || !existsSync(ctx.unscheduledCapturePath)) {
-    const capturePath = join(os.tmpdir(), `anima-m2-unscheduled-capture-${process.pid}.txt`);
-    const docCapturePath = join(os.tmpdir(), `anima-m2-unscheduled-doc-capture-${process.pid}.txt`);
-    const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
-    const tauriDir = join(wt, 'src-tauri');
-    // Use Cargo's real `--test` glob over the migration/phase5 policy targets so Cargo evaluates
-    // `required-features` on `migration_tests` (dropping it when mistyped) without compiling all
-    // 161 targets (>30 min / MSVC link.exe OOM on 16 GB RAM).
-    const unscheduledArgs = [
-      'test',
-      '--features',
-      'desktop',
-      '--bin',
-      'anima-engine',
-      '--test',
-      'shared_domain_law_tests',
-      '--test',
-      'determinism_gate_tests',
-      '--test',
-      'energy_conservation_tests',
-      '--test',
-      'adversarial_challenger_tests',
-      '--test',
-      'migration*',
-      '--test',
-      'phase5_*',
-      '--',
-      '--nocapture',
-    ];
-    const testRes = runCommandToFile('cargo', unscheduledArgs, tauriDir, env, capturePath);
-    if (testRes.status !== 0) {
-      throw new Error(
-        `Prerequisite cargo test --features desktop (policy globs) failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
-      );
-    }
-    const docRes = runCommandToFile(
-      'cargo',
-      ['test', '--workspace', '--doc', '--', '--nocapture'],
-      tauriDir,
-      env,
-      docCapturePath,
-    );
-    if (docRes.status !== 0) {
-      rmSync(docCapturePath, { force: true });
-      throw new Error(
-        `Prerequisite cargo test --workspace --doc failed (exit ${docRes.status}):\n${docRes.output.slice(-2000)}`,
-      );
-    }
-    writeFileSync(capturePath, `${testRes.stdout}\n${docRes.stdout}\n`, 'utf8');
-    rmSync(docCapturePath, { force: true });
-    ctx.unscheduledCapturePath = capturePath;
+  writeFileSync(capturePath, `${testRes.stdout}\n${docRes.stdout}\n`, 'utf8');
+  rmSync(docCapturePath, { force: true });
+
+  if (cacheKey) {
+    ctx.captures[cacheKey] = capturePath;
     ctx.tempFilesToClean.push(capturePath);
   }
-  return runCheckTestTargetsScript(wt, ctx.unscheduledCapturePath, profileArg);
+  return runCheckTestTargetsScript(wt, capturePath, profileArg);
 }
 
 const GATES = [
@@ -494,12 +507,11 @@ const GATES = [
     id: 'check_test_targets_unscheduled',
     source: 'ci.yml:182',
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
-    faultSummary:
-      'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
+    faultSummary: 'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:174`',
     patch: 'check_test_targets_unscheduled.patch',
     needsCargo: true,
-    run(wt, _tmpBase, ctx) {
-      return runCheckTestTargetsFullUnscheduled(wt, ctx, null);
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, 'unscheduled');
     },
     matchers: [/no --profile given/, /test targets:/],
   },
@@ -680,24 +692,24 @@ const GATES = [
   {
     id: 'check_test_targets_empty',
     source: 'ci.yml:182 (policy)',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
     faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/tests/shared_domain_law_tests.rs`',
     patch: 'check_test_targets_empty.patch',
     needsCargo: true,
-    run(wt, tmpBase) {
-      return runCheckTestTargetsPolicySubset(wt, tmpBase, 'desktop');
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
     },
     matchers: [/compiled but ran zero tests/, /shared_domain_law_tests\.rs/],
   },
   {
     id: 'check_test_targets_ignored',
     source: 'ci.yml:182 (policy)',
-    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
+    ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
     faultSummary: 'Add `#[ignore]` to `the_engine_reads_the_domain_crates_values_for_the_time_laws`',
     patch: 'check_test_targets_ignored.patch',
     needsCargo: true,
-    run(wt, tmpBase) {
-      return runCheckTestTargetsPolicySubset(wt, tmpBase, 'desktop');
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, null, null);
     },
     matchers: [/is #\[ignore\]d and is not in IGNORED_TESTS/, /the_engine_reads_the_domain_crates_values_for_the_time_laws/],
   },
@@ -706,13 +718,30 @@ const GATES = [
     source: 'scripts/check_test_targets.mjs:29',
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
     faultSummary:
-      'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` (checked with `--profile desktop`)',
+      'Drop `--features desktop` from `cargo test` in `.github/workflows/ci.yml:174` (checked with `--profile desktop`)',
     patch: 'check_test_targets_unscheduled.patch',
     needsCargo: true,
-    run(wt, _tmpBase, ctx) {
-      return runCheckTestTargetsFullUnscheduled(wt, ctx, 'desktop');
+    run(wt, tmpBase, ctx) {
+      return runCheckTestTargetsFromCi(wt, tmpBase, ctx, 'desktop', 'unscheduled');
     },
-    matchers: [/profile "desktop" enables "networking", so tests\/migration_tests\.rs must run/, /migration_tests\.rs/],
+    matchers: [/profile "desktop" enables "networking", so tests\/.* must run/, /must run — but it is absent/],
+  },
+  {
+    id: 'feature_gated_targets',
+    source: 'ci.yml:174 (feature_gated_targets_tests)',
+    ciCommand: 'cargo test --test feature_gated_targets_tests',
+    faultSummary:
+      'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
+    patch: 'feature_gated_targets.patch',
+    needsCargo: true,
+    run(wt) {
+      return runShell(
+        'cargo test --test feature_gated_targets_tests -- --nocapture',
+        join(wt, 'src-tauri'),
+        cargoEnv(),
+      );
+    },
+    matchers: [/networking_m2_typo/, /migration_tests/, /test .* FAILED/],
   },
   {
     id: 'schedule_ambiguity_simrng',
@@ -782,7 +811,8 @@ const GATES = [
     id: 'live_experiment_fork',
     source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test live_experiment_tests',
-    faultSummary: 'Ignore branch `forcings` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
+    faultSummary:
+      'Pass control `manifest.interventions` instead of `effective_treatment.interventions` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
     patch: 'live_experiment_fork.patch',
     needsCargo: true,
     run(wt) {
@@ -792,7 +822,7 @@ const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/exotic|branch|divergence|fork/i, /test .* FAILED/],
+    matchers: [/the treatment factor must change the branch/, /fork|branch|treatment/i, /test .* FAILED/],
   },
   {
     id: 'live_experiment_saveload',
@@ -900,16 +930,17 @@ const GATES = [
     run(wt, tmpBase) {
       const dotPath = join(tmpBase, 'dataflow-truth.dot');
       const tauriDir = join(wt, 'src-tauri');
-      const modRes = runShell(
-        `cargo modules dependencies --lib --no-externs --package anima-engine > "${dotPath}"`,
-        tauriDir,
-        cargoEnv(),
+      const modRes = spawnSync(
+        'cargo',
+        ['modules', 'dependencies', '--lib', '--no-externs', '--package', 'anima-engine'],
+        { cwd: tauriDir, env: cargoEnv(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
       );
       if (modRes.status !== 0) {
         throw new Error(
-          `Prerequisite cargo modules failed (exit ${modRes.status}):\n${modRes.output.slice(-2000)}`,
+          `Prerequisite cargo modules failed (exit ${modRes.status ?? 1}):\n${(modRes.stderr || modRes.stdout || '').slice(-2000)}`,
         );
       }
+      writeFileSync(dotPath, modRes.stdout || '', 'utf8');
       const pyExe = process.platform === 'win32' ? 'python' : 'python3';
       const pyRes = spawnSync(
         pyExe,
@@ -1277,7 +1308,7 @@ function main() {
   });
 
   const ctx = {
-    unscheduledCapturePath: null,
+    captures: {},
     tempFilesToClean: [],
   };
   const results = [];

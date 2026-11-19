@@ -8,7 +8,7 @@ index 4b37cfb..5bd7ad1 100644
      pub radius: f32,
 -    pub x: f32,
 +    #[ts(rename = "x_m2_fault")]
-+    pub x: f32;
++    pub x: f32,
      pub y: f32,
      pub z: f32,
      pub yaw: f32,
