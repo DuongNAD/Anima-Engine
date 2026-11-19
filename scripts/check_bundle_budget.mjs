@@ -69,8 +69,10 @@ const CHUNK_BUDGET_KIB = {
   // Measured at 106.2 KiB when that landed; 130 gives the same kind of headroom the entries above
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
-  // prototype: raised from 130 KiB to 155 KiB for B1 continuous SkinnedMesh bodies + 3-tier LOD
-  // (`creatureSkinMesh.ts`, `creatureLod.ts` measured 145.8 KiB after Fix Round 1, leaving headroom for V1).
+  // Raised 130 -> 145 KiB (2026-11-19, reason: 'prototype' — V1 real-world simulation entities
+  // `LiveEnvironment` + `simEnvironment` + decoration legend/toggle grew WorldShowcase to ~132.8 KiB)
+  // and 145 -> 155 KiB (2026-11-19, reason: 'prototype' — B1 continuous SkinnedMesh bodies +
+  // 3-tier LOD `creatureSkinMesh.ts` + `creatureLod.ts`; authorized under PROTOTYPE-FIRST).
   WorldShowcase: 155,
   Map2Showcase: 130,
   map2: 120,

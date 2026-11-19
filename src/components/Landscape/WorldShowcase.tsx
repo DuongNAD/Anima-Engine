@@ -11,6 +11,7 @@ import WorldBirds from './WorldBirds';
 import WorldFish from './WorldFish';
 import WorldWildlife from './WorldWildlife';
 import LiveAgents from './LiveAgents';
+import LiveEnvironment from './LiveEnvironment';
 import WorldSky from './WorldSky';
 import WorldWeather, { type WeatherKind } from './WorldWeather';
 import WorldMinimap, { type CameraView } from './WorldMinimap';
@@ -62,6 +63,12 @@ import {
 } from './utils/captureMode';
 import type { CaptureRequest } from './utils/captureMode';
 import { audioManager } from './utils/audioManager';
+import {
+  DECORATION_LEGEND_TEXT,
+  DECORATION_LEGEND_TOOLTIP,
+  createSimEnvironmentChannel,
+  type SimEnvironmentCounts,
+} from './utils/simEnvironment';
 
 // The world's identity (seed/size/shape) now lives in `utils/sharedWorld`, imported above and
 // aliased to the names this file already used. It moved because the main app pushes the *same*
@@ -270,6 +277,14 @@ export const WorldShowcase: React.FC = () => {
     capture?.quality,
   );
   const qualityConfig = getQualityTierConfig(effectiveQuality);
+  const simEnvChannel = useMemo(() => createSimEnvironmentChannel(), []);
+  const [showDecoration, setShowDecoration] = useState(true);
+  const [simEnvCounts, setSimEnvCounts] = useState<SimEnvironmentCounts>({
+    lakes: 0,
+    trees: 0,
+    food: 0,
+    total: 0,
+  });
   const [muted, setMuted] = useState(false);
   const [camReadout, setCamReadout] = useState({ x: 0, z: 0, biome: 0, fps: 0, locked: false });
 
@@ -558,26 +573,41 @@ export const WorldShowcase: React.FC = () => {
           sunDir={sunDir}
         />
         <WorldWaterfalls world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
-        <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} meshResolution={MESH_RES} />
-        <WorldBirds renderSize={RENDER_SIZE} />
-        <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
-        <WorldWildlife
-          world={world}
-          renderSize={RENDER_SIZE}
-          heightRatio={HEIGHT_RATIO}
-          meshResolution={MESH_RES}
-        />
+        {capture !== null || showDecoration ? (
+          <>
+            <WorldCaves world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} meshResolution={MESH_RES} />
+            <WorldBirds renderSize={RENDER_SIZE} />
+            <WorldFish world={world} renderSize={RENDER_SIZE} heightRatio={HEIGHT_RATIO} />
+            <WorldWildlife
+              world={world}
+              renderSize={RENDER_SIZE}
+              heightRatio={HEIGHT_RATIO}
+              meshResolution={MESH_RES}
+            />
+          </>
+        ) : null}
 
-        {/* The running simulation's population, on the world it is actually simulating in. Draws
-            nothing without a Tauri transport, which is what keeps the canonical capture — driven by
-            an ordinary Chromium — byte-identical. */}
+        {/* The running simulation's population and environmental entities, on the world it is
+            actually simulating in. Draws nothing without a Tauri transport, which keeps the
+            canonical capture — driven by an ordinary Chromium — byte-identical. */}
         <LiveAgents
           world={world}
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
           qualityTier={effectiveQuality}
+          onEnvironmentalState={simEnvChannel.publish}
         />
+        {capture ? null : (
+          <LiveEnvironment
+            world={world}
+            renderSize={RENDER_SIZE}
+            heightRatio={HEIGHT_RATIO}
+            meshResolution={MESH_RES}
+            channel={simEnvChannel}
+            onCountsChange={setSimEnvCounts}
+          />
+        )}
 
         <WorldCameraRig
           mode={camMode}
@@ -703,6 +733,8 @@ export const WorldShowcase: React.FC = () => {
         coords={camReadout}
         fps={camReadout.fps}
         muted={muted}
+        showDecoration={showDecoration}
+        simEnvCounts={simEnvCounts}
         onSpeed={setSpeed}
         onToggleAlwaysDay={() => {
           const next = !alwaysDay;
@@ -718,6 +750,7 @@ export const WorldShowcase: React.FC = () => {
           }
         }}
         onMute={() => setMuted((m) => !m)}
+        onToggleDecoration={() => setShowDecoration((d) => !d)}
         // Reset returns to the validated spawn, or does not exist. There is no third option and
         // specifically no origin fallback: `{ x: 0, z: 0 }` is the middle of the map, the middle of
         // this map is open ocean, and a browser reproduction of the old code put the readout biome
@@ -766,15 +799,18 @@ const WorldHud: React.FC<{
   coords: { x: number; z: number };
   fps: number;
   muted: boolean;
+  showDecoration: boolean;
+  simEnvCounts: SimEnvironmentCounts;
   onSpeed: (s: number) => void;
   onToggleAlwaysDay: () => void;
   onWeather: (w: WeatherKind) => void;
   onCamMode: (m: CameraMode) => void;
   onQualitySelection: (q: QualitySelection) => void;
   onMute: () => void;
+  onToggleDecoration: () => void;
   /** `null` when no validated home position exists yet — Reset is then disabled, never guessed. */
   onReset: (() => void) | null;
-}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onReset }) => {
+}> = ({ timeOfDay, speed, alwaysDay, weather, camMode, qualitySelection, coords, fps, muted, showDecoration, simEnvCounts, onSpeed, onToggleAlwaysDay, onWeather, onCamMode, onQualitySelection, onMute, onToggleDecoration, onReset }) => {
   const hh = Math.floor(timeOfDay);
   const mm = Math.floor((timeOfDay - hh) * 60);
   const clock = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
@@ -874,6 +910,47 @@ const WorldHud: React.FC<{
             {QUALITY_SELECTION_LABELS[sel]}
           </button>
         ))}
+      </div>
+      {/* prototype, to be replaced — V1 simulated-entity counts & decoration legend */}
+      <div
+        data-testid="world-layers-legend"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          paddingTop: 6,
+          borderTop: '1px solid rgba(148,163,184,0.25)',
+          fontSize: 11,
+        }}
+      >
+        <div
+          data-testid="sim-env-legend"
+          title="Lakes, trees, and food from the Rust simulation (environmental_state). Grass-density overlay skipped: no existing IPC exposes ResourceField."
+          style={{ opacity: 0.9 }}
+        >
+          {simEnvCounts.total > 0
+            ? `Simulated: ${simEnvCounts.lakes} lakes · ${simEnvCounts.trees} trees · ${simEnvCounts.food} food`
+            : 'Simulated: awaiting simulation tick'}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span
+            data-testid="decoration-legend"
+            title={DECORATION_LEGEND_TOOLTIP}
+            style={{ opacity: 0.85, color: '#cbd5e1' }}
+          >
+            {DECORATION_LEGEND_TEXT}
+          </span>
+          <button
+            type="button"
+            data-testid="toggle-decoration-btn"
+            aria-pressed={showDecoration}
+            title={DECORATION_LEGEND_TOOLTIP}
+            style={HUD_BTN(showDecoration)}
+            onClick={onToggleDecoration}
+          >
+            {showDecoration ? 'Hide decoration' : 'Show decoration'}
+          </button>
+        </div>
       </div>
     </div>
   );

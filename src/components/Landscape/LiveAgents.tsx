@@ -30,6 +30,7 @@ import {
 } from './utils/creatureLod';
 import { SkinnedCreaturePool, type SkinnedHeadPose } from './utils/creatureSkinMesh';
 import type { AgentType } from '../../types/generated/AgentType';
+import type { EnvironmentalState } from '../../types/generated/EnvironmentalState';
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 
 // ---------------------------------------------------------------------------------------
@@ -55,6 +56,7 @@ export interface LiveAgentsProps {
   tickSource?: TickSource | null;
   nowMs?: () => number;
   qualityTier?: QualityTier;
+  onEnvironmentalState?: (env: EnvironmentalState) => void;
 }
 
 interface SelectedAgentSummary {
@@ -504,6 +506,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   tickSource,
   nowMs = defaultNowMs,
   qualityTier,
+  onEnvironmentalState,
 }) => {
   const segmentsMeshRef = useRef<THREE.InstancedMesh>(null);
   const spheresMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -735,6 +738,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   const nowMsRef = useRef(nowMs);
   const qualityTierRef = useRef(qualityTier);
   const urlQualitySelectionRef = useRef<QualitySelection>(readInitialQualitySelection(search));
+  const onEnvironmentalStateRef = useRef(onEnvironmentalState);
 
   // Sync world/clock/quality refs once outside `useFrame` (`N2`) and rebuild cached snapshots.
   useEffect(() => {
@@ -743,8 +747,9 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     nowMsRef.current = nowMs;
     qualityTierRef.current = qualityTier;
     urlQualitySelectionRef.current = readInitialQualitySelection(search);
+    onEnvironmentalStateRef.current = onEnvironmentalState;
     ensureBuffer().rebuildForWorld(renderSize, sampleGroundY, CREATURE_BODY_SCALE);
-  }, [renderSize, sampleGroundY, nowMs, qualityTier, search, ensureBuffer]);
+  }, [renderSize, sampleGroundY, nowMs, qualityTier, search, onEnvironmentalState, ensureBuffer]);
 
   useEffect(() => {
     selectedAgentIdRef.current = selectedAgentId;
@@ -789,6 +794,9 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         sampleGroundYRef.current,
         CREATURE_BODY_SCALE,
       );
+      if (payload.environmental_state) {
+        onEnvironmentalStateRef.current?.(payload.environmental_state);
+      }
       if (payload.segments.length > 0 || buffer.hasActiveAgents()) {
         setConnected(true);
       }
