@@ -30,6 +30,21 @@ Quy tắc ghi:
 
 <!-- ghi mục mới ngay dưới đây -->
 
+### F-047 — Khôi phục `pending_inference` của desktop app khoá theo `AgentLineageId` đơn lẻ làm rẽ nhánh quỹ đạo khi các con cùng bố mẹ trùng định danh
+- **Ngày:** 2026-11-19
+- **Loại:** BUG
+- **Vị trí:**
+  - `src-tauri/src/core/simulation_loop.rs:1713-1738` (trước khi sửa: `entities_by_lineage: HashMap<String, Entity>` ghi đè thực thể anh/chị trước bằng anh/chị sau cùng `lineage_id`, làm gán sai thực thể hoặc không giao phản hồi `PendingInference`);
+  - `src-tauri/src/core/snapshot.rs:678-715` (trước khi sửa: `pending_by_lineage` lấy khoá `response.lineage_id` đơn lẻ nên đếm thiếu và trả `InvalidData` khi hai anh/chị cùng `PendingInference`);
+  - `src-tauri/src/core/simulation_state.rs:414-428` (trước khi sửa: `SavedSharedLearningState::validate` từ chối `lineage_id` lặp lại trong `pending_inference`);
+  - `src-tauri/src/core/agent_systems.rs:1066` (`execute_reproduction_birth` gán mọi con của cùng một cha một chuỗi `AgentLineageId` giống nhau `{parent_lineage_id}.{parent_generation + 1}`).
+- **Phát hiện bởi:** tay (cô lập F047 sau chẩn đoán F046)
+- **Triệu chứng:** Khi desktop app save/restore tại tick có nhiều anh/chị cùng `AgentLineageId` và ít nhất một cá thể đang chờ `PendingInference(ticket_id)`, bản đồ `entities_by_lineage` ghi đè handle thực thể trước bằng thực thể sau; phản hồi mang `request_id` của cá thể trước bị gửi nhầm sang cá thể sau (không khớp `ticket_id` trong `action_resolution_system`), khiến cá thể thật giữ `PendingInference` sang tick sau hoặc tới timeout, làm lệch `action_gates` / `cpg_parameters` rồi rẽ nhánh `world_checksum` (hoặc khiến `snapshot::read` từ chối save hợp lệ bằng `InvalidData` nếu cả hai sibling đang chờ suy luận).
+- **SMELL liên quan:** siblings share `AgentLineageId` — `execute_reproduction_birth` (`src-tauri/src/core/agent_systems.rs:1066`) đặt `child_lineage = format!("{parent_lineage_id}.{}", parent_generation + 1)` khiến mọi anh/chị em cùng bố mẹ không thể phân biệt chỉ bằng `AgentLineageId` ở bất kỳ bảng ánh xạ nào chỉ khoá theo `lineage_id` (lựa chọn F048: sửa bộ ghép khôi phục theo `(lineage_id, request_id)` thay vì đổi chuỗi sinh).
+- **Tái hiện:** `cd src-tauri && cargo test --features desktop --test f047_restore_divergence_tests -- --nocapture` (và bài test đĩa hai sibling `f048_two_pending_siblings_roundtrip_disk_snapshot_and_route_by_ticket`, chạy hoàn chỉnh trong `30.82s` / tổng `42.71s` ở debug trên macOS).
+- **Test khoá lại:** `f047_restore_divergence_tests::{f047_app_harness_r2a_restore_checkpoints, f047_app_harness_r3_restore_checkpoints, f048_two_pending_siblings_roundtrip_disk_snapshot_and_route_by_ticket, f047_live_adapter_r3_like_restore_matches_uninterrupted, f047_live_adapter_s12_s13_world_restore_matches_uninterrupted}`
+- **Trạng thái:** FIXED ở thẻ F048, PR #146 (merge 2026-11-19, kèm F047 và S15). Đường thí nghiệm `LiveExperimentAdapter` không bị ảnh hưởng: F047 đo 13 điểm khôi phục, gồm R3 có kẻ săn mồi và thế giới S12/S13, đều khớp. Bài học về test: bản F047 đầu tiên khẳng định "khôi phục R2a ở K=899 phải lệch", đúng trên macOS arm64 nhưng sai trên Ubuntu x86_64 (job `determinism` đỏ); sau F048 mọi test chỉ khẳng định khớp. SMELL ở trên (anh em ruột chung `AgentLineageId`) vẫn mở; chỉ phần ghép khôi phục được sửa.
+
 ### F-045 — Khôi phục checkpoint thế giới sống làm sai ranh giới lập chỉ mục `SpatialHashGrid`, gộp bảng ECS `AgentSex` và đặt lại `NextNodeId(3)`
 - **Ngày:** 2026-11-18
 - **Loại:** BUG
@@ -45,7 +60,7 @@ Quy tắc ghi:
   3. Khôi phục sau đột biến cấu trúc `AddNode` (tick `394`, `NextNodeId = 6`) đặt lại `NextNodeId(3)`, và nạp save cũ không khôi phục bộ đếm an toàn từ cả `agents` lẫn `dormant_agents`.
 - **Tái hiện:** `cd src-tauri && CARGO_BUILD_JOBS=4 cargo test --features desktop --test f045_restore_equivalence_tests -- --nocapture --test-threads=1`
 - **Test khoá lại:** `src-tauri/tests/f045_restore_equivalence_tests.rs` — 5 test (`f045_probe1_tick1_to_tick2_restore_matches_uninterrupted`, `f045_tick600_to_tick1200_restore_matches_uninterrupted_every_tick`, `f045_structural_add_node_mutation_next_node_id_survives_restore`, `f045_old_save_without_new_fields_loads_and_falls_back_cleanly`, `f045_uninterrupted_s6_base_trajectory_fingerprint`). Trên base `38e8d1d` có 4 test đầu FAIL và test thứ 5 PASS; sau khi sửa cả 5 test PASS và quỹ đạo liền mạch giữ nguyên từng bit (`0x30ea8bbf`, `0xf5876d6e`, `0xbc114750`, `0x21424343`).
-- **Trạng thái:** FIXED ở thẻ F045, PR #140 (2026-11-19; lead kiểm lại trên macOS: base 1/5 → head 5/5, quỹ đạo liền mạch giữ nguyên, `verdicts/F045_a87f1a68.md` trên hub). Còn một khe ngoài phạm vi thẻ: đường genesis và khôi phục của app desktop (`core/simulation_loop.rs`) sinh cây, hồ, thức ăn chưa có `IndexedInGrid`, nên một lần khôi phục trong app có thể tách bảng ECS khác lượt chạy liền mạch, cùng cơ chế với `AgentSex`. Chưa đo; thẻ chẩn đoán F046 (`anima-mac`) đo trước khi sửa.
+- **Trạng thái:** FIXED ở thẻ F045, PR #140 (2026-11-19; lead kiểm lại trên macOS: base 1/5 → head 5/5, quỹ đạo liền mạch giữ nguyên, `verdicts/F045_a87f1a68.md` trên hub). Còn một khe ngoài phạm vi thẻ: đường genesis và khôi phục của app desktop (`core/simulation_loop.rs`) sinh cây, hồ, thức ăn chưa có `IndexedInGrid`, nên một lần khôi phục trong app có thể tách bảng ECS khác lượt chạy liền mạch, cùng cơ chế với `AgentSex`. F046 đã đo (2026-11-19): marker không đổi checksum ở 8 chế độ của app, vì mã thật không bao giờ xoá `Tree`/`Lake`; không cần sửa. F046 tìm ra một lệch khác ở app, là F-047.
 
 ### F-044 — Ân hạn chết đói và ân hạn chết khát dùng chung một bộ đếm, nên chúng không độc lập khi khác nhau
 - **Ngày:** 2026-11-17

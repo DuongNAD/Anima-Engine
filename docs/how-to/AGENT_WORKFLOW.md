@@ -146,7 +146,7 @@ dư EU) rồi **M3** (đường cong scaling): **M3** ✅ #138; **M4** ✅ #137,
 (verdict M4_064bc43c trên hub), vòng hai đạt. **S12** ✅ #135. Hàng việc từ 2026-11-19: `anima-dell` S13 (đo 200.000 tick
 trên hồ đã rải) rồi M2; `anima-case` S2 (observable tích luỹ cho SEL2-P); `anima-mac` làm tiếp F045 sau khi dừng
 khoảng 7 giờ ngày 2026-11-18 (merge thân cây vào nhánh, không rebase): **F045** ✅ #140, rồi F046 (chẩn đoán, chỉ đọc).
-**S13** #139 cho kết quả âm (0/12 ô khả thi); `anima-dell` làm **S14** (đo hẹp quanh hệ số 0,65 với 16 hồ) trước M2. Định nghĩa các thẻ ở
+**S13** ✅ #139 cho kết quả âm (0/12 ô khả thi); **S14** ✅ #142 và **S15** ✅ #146 dẫn tới QD-SEL2g (chuẩn gộp). **F046** (chẩn đoán), **F047** và **F048** ✅ #146 (khôi phục suy luận đang chờ ở app desktop). **S2** ✅ #148. Bản nháp **SEL2-P** ✅ #147. Hàng việc sáng 2026-11-19: `anima-mac` SEL2-P-impl, `anima-case` E3-P, `anima-dell` M2. Định nghĩa các thẻ ở
 [kế hoạch swarm](../ai/planning/2026-11-05-swarm-master-plan.md#thẻ-thêm-ngày-2026-11-17-từ-quyết-định-của-chủ-dự-án).
 
 Những việc đã merge mà **không** có thẻ trong kế hoạch swarm (ADR-0005…0007, vận động, sinh thái opt-in,
