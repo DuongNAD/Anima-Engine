@@ -36,3 +36,24 @@ last_reviewed: 2026-11-19
 - Chứng minh với `live.strict_prey_cap = 1.0` (`60` khởi sinh / `cap = 80` qua `3.000` tick, và `100` khởi sinh / `cap = 80` sau chết qua `3.000` tick): `prey_count <= 80` tại mọi tick đã lấy mẫu, `total_births > 0`, trong khi nhánh legacy (vắng khoá) vượt trần ngay trên cùng cấu hình.
 - Chứng minh vắng khoá và `0.0` cho checksum trùng khớp từng bit ở cùng tiến trình qua `1.000` tick.
 - Chứng minh ở thú săn mồi: cả trần `pred_count <= 8` lẫn quy tắc tỷ lệ `5:1` (`pred_count = 3, prey_count = 17, prey_cap = 17 -> strict dừng ở 4 trong khi legacy vọt lên 6`).
+
+## Follow-up FIX-CAP2
+
+Thẻ công việc **FIX-CAP2** thực hiện **Phương án B** (theo uỷ quyền của chủ dự án ngày 2026-11-19) để xử lý N1–N5 trong biên bản nghiệm thu `FIX-CAP`:
+
+### 1. Giới hạn nghiêm ngặt trong neutral-drift `Replay` (`Option B`)
+
+- Trong `autonomous_reproduction_system` (`src-tauri/src/core/agent_systems.rs`), nhánh `drift.is_replay()` khi `strict_cap == true` (`live.strict_prey_cap = 1.0`) khởi tạo `prey_count = prey_buf.len()`, `pred_count = pred_buf.len()` sau khi đếm sinh linh, kiểm tra trần (`prey_count >= prey_cap`; `pred_count >= 8 || prey_count < pred_count * 5`) ngay trước mỗi lần sinh dự kiến — **trước** kiểm tra `solvent_buf.is_empty()` và **trước** khi rút `drift_rng`.
+- Các lần sinh bị chặn tăng `missed_capped`, đánh dấu `missed_any_this_tick = true` (gọi `note_divergence(world_tick)` và ghi `CausalLedger`), không bị tính nhầm sang `missed_births_insolvent` hay `missed_births_extinct`. Khi `spawned == true`, bộ đếm chạy `prey_count` hoặc `pred_count` tăng ngay lập tức để con mồi sinh sớm trong cùng tick được tính cho luồng thú săn mồi sau đó.
+- `DriftDiagnostics` (`src-tauri/src/core/drift_control.rs`) bổ sung `#[serde(default, skip_serializing_if = "is_zero")] pub missed_births_capped: u64`, cộng vào `missed_births()` và `merge_window()`. `shortfall_warning` (`src-tauri/src/core/live_experiment.rs`) nối `, capped={}` chỉ khi `missed_births_capped > 0`. Với `strict = false`, nhánh replay giữ nguyên hoàn toàn luồng cũ và bỏ qua trường JSON bằng `skip_serializing_if`.
+
+### 2. Hiệu đính tài liệu và docstring
+
+- Cập nhật docstring của `autonomous_reproduction_system` (`src-tauri/src/core/agent_systems.rs`), `PreyCapPolicy` (`src-tauri/src/core/resources.rs`), `LIVE_KEY_STRICT_PREY_CAP` (`src-tauri/src/core/live_experiment.rs`), và `DriftMode::Replay` (`src-tauri/src/core/drift_control.rs`): loại bỏ câu khẳng định sai như `"5:1 always holds"` hoặc `"never overshoots"`; nêu rõ kiểm tra tỷ lệ `5:1` diễn ra **trước mỗi lần sinh** trên bộ đếm chạy (nên con mồi vừa xếp lịch ở cùng tick được tính, và ngay sau lần sinh thú săn mồi hợp lệ cuối cùng thì `prey_count / pred_count` có thể dưới `5:1`).
+
+### 3. Gia cố kiểm thử (`src-tauri/tests/strict_prey_cap_tests.rs`) & bằng chứng tương đương
+
+- Thay các assertion chốt cứng số lượng tick 1 trong `strict_cap_holds_for_predators_ceiling_and_ratio` bằng kiểm tra bất biến mỗi tick (`prey <= 17`, `pred <= ((prey / 5) + 1).min(8)`, kiểm tra điều kiện tỷ lệ trước sinh khi `pred` tăng) và non-vacuity (`peak_strict_pred > 6 && <= 8`, `peak_strict_pred > 3`, `peak_legacy_pred > 4`).
+- Bổ sung `drift_control_replay_respects_strict_cap_while_legacy_bypasses_it`: chứng minh replay nghiêm ngặt chặn đúng trần con mồi/trần 8/tỷ lệ `5:1`, con mồi cùng tick mở cổng tỷ lệ, `CausalLedger` ghi `live.drift_shortfall_births`, `serde` bỏ qua `missed_births_capped == 0` và đọc được JSON cũ, `merge_window`, legacy (`absent` == `0.0`) vượt trần kể cả khi bắt đầu đúng trần (`20/20` và `17/3`), và chạy `run_live_drift_pair` end-to-end.
+- **Đối chiếu nhị phân release E-SEL1 `--smoke` (trunk `6a9b9a2` vs PR):** `smoke-series.csv` trùng từng byte (`5998 B`, SHA-256 `a137ffe52211eee304972c3f76a2c069ac5d4d2b8f8372ad645e34c91a8fe515`), toàn bộ chỉ số mô phỏng & `final_checksum` (`4182711911`, `331712764`, `2153699540`) trùng khớp hoàn toàn; `verify_sel2p_artifacts.mjs` và `--self-test` đều đạt.
+- **5 đột biến cục bộ (`MF1`–`MF5`) trên `agent_systems.rs` (`strict_prey_cap_tests`):** đều bị bắt (`exit = 101`, `4 passed; 1 failed` ở `drift_control_replay_respects_strict_cap_while_legacy_bypasses_it`: `MF1` bỏ `strict_cap`, `MF2` bỏ tăng bộ đếm, `MF3` đổ sang `missed_insolvent`, `MF4` bỏ `missed_any_this_tick`, `MF5` ép chặt cả khi `strict_cap == false`).
