@@ -15,6 +15,12 @@ import {
   loadFloraAssetGeometries,
 } from '../../src/components/Landscape/assets/worldAssets';
 import { makeFloraGeometry } from '../../src/components/Landscape/utils/floraGeometry';
+import { CANONICAL_XZ_EXTENT } from '../../src/components/Landscape/utils/mapManifest';
+import {
+  LAND_ANCHORS,
+  createSyntheticTickGenerator,
+} from '../../src/components/Landscape/utils/syntheticTicks';
+import { biomeAt, sampleElevation } from '../../src/components/Landscape/utils/worldSample';
 import { SHARED_WORLD_OPTS, SHARED_WORLD_SEED } from '../../src/utils/sharedWorld';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -312,5 +318,42 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
       }
     }
     expect(treesOnSnowOrRock).toBe(0);
+  });
+
+  it('Synthetic anchors: every LAND_ANCHORS point sits on lowland land of the 2048^2 shared world (never water/beach/snow/alpine)', () => {
+    const disallowed = new Set<Biome>([
+      Biome.Ocean,
+      Biome.Lake,
+      Biome.River,
+      Biome.Beach,
+      Biome.Snow,
+      Biome.Glacier,
+      Biome.Rock,
+      Biome.Alpine,
+    ]);
+    expect(LAND_ANCHORS.length).toBeGreaterThan(0);
+
+    for (const [x, z] of LAND_ANCHORS) {
+      const b = biomeAt(sharedWorld, x, z, CANONICAL_XZ_EXTENT) as Biome;
+      const u = (x + CANONICAL_XZ_EXTENT * 0.5) / CANONICAL_XZ_EXTENT;
+      const v = (z + CANONICAL_XZ_EXTENT * 0.5) / CANONICAL_XZ_EXTENT;
+      const elev = sampleElevation(sharedWorld, u, v);
+      expect(disallowed.has(b), `LAND_ANCHORS [${x}, ${z}] landed on disallowed ${Biome[b]}`).toBe(false);
+      expect(elev, `LAND_ANCHORS [${x}, ${z}] (${Biome[b]}) too high/submerged: ${elev}`).toBeGreaterThan(
+        sharedWorld.seaLevel,
+      );
+    }
+
+    // Also verify default synthetic fixture trees/lakes/food stay completely clear of Ocean/Snow/Glacier/Rock/Alpine.
+    const highOrSea = new Set<Biome>([Biome.Ocean, Biome.Snow, Biome.Glacier, Biome.Rock, Biome.Alpine]);
+    const elements = createSyntheticTickGenerator({ agents: 200 }).tickAt(0).environmental_state.elements;
+    expect(elements.length).toBeGreaterThan(0);
+    for (const el of elements) {
+      const b = biomeAt(sharedWorld, el.x, el.y, CANONICAL_XZ_EXTENT) as Biome;
+      expect(
+        highOrSea.has(b),
+        `synthetic ${el.type} (${el.x.toFixed(1)}, ${el.y.toFixed(1)}) landed on ${Biome[b]}`,
+      ).toBe(false);
+    }
   });
 });

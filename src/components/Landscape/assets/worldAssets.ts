@@ -202,6 +202,8 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
         pbrPromises.delete(tileSize);
         return null;
       }
+      // Dispose any superseded resolved entry before overwriting (rapid High -> Low -> High race, NR3).
+      pbrResolved.get(tileSize)?.dispose();
       pbrResolved.set(tileSize, arrays);
       return arrays;
     } catch {

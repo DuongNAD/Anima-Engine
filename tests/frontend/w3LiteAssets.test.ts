@@ -253,6 +253,42 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
       const finishedHigh = await pendingHigh;
       expect(raceLow?.tileSize).toBe(512);
       expect(finishedHigh).toBeNull();
+
+      // Rapid High -> Low -> High oscillation while the first High wave is in flight must
+      // dispose the first resolved High arrays before overwriting `pbrResolved(1024)` (NR3).
+      clearAssetCachesForTest();
+      let releaseWave1!: () => void;
+      const wave1Gate = new Promise<void>((resolve) => {
+        releaseWave1 = resolve;
+      });
+      let wave = 0;
+      fetchSpy.mockImplementation(async () => {
+        const myWave = wave++;
+        if (myWave === 0) {
+          await wave1Gate;
+        }
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      });
+
+      const highWave1Promise = loadTerrainPbrArrays('high');
+      disposeOtherTerrainPbrTiers('low');
+      disposeOtherTerrainPbrTiers('high');
+      const highWave2 = await loadTerrainPbrArrays('high');
+      expect(highWave2).not.toBeNull();
+      const w2AlbedoDispose = vi.spyOn(highWave2!.albedoArray, 'dispose');
+      const w2NormalDispose = vi.spyOn(highWave2!.normalArray, 'dispose');
+
+      releaseWave1();
+      const highWave1 = await highWave1Promise;
+      expect(highWave1).not.toBeNull();
+      expect(highWave1).not.toBe(highWave2);
+      // Wait for wave 2's dispose on overwrite OR vice versa: whichever resolved second disposes the first!
+      expect(w2AlbedoDispose).toHaveBeenCalledTimes(1);
+      expect(w2NormalDispose).toHaveBeenCalledTimes(1);
+      // Confirm the surviving cached `1024` entry (`highWave1`) itself is NOT yet disposed until eviction/clear.
+      const w1AlbedoDispose = vi.spyOn(highWave1!.albedoArray, 'dispose');
+      clearAssetCachesForTest();
+      expect(w1AlbedoDispose).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }
