@@ -38,6 +38,7 @@ pub mod snapshot;
 pub mod sweeps;
 pub mod telemetry_export;
 pub mod terrain;
+pub mod terrain_navigation;
 pub mod thread_supervisor;
 pub mod tick_capture;
 pub mod training;

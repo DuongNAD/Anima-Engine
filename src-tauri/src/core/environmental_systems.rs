@@ -246,10 +246,13 @@ pub fn seed_dropping_system(
     time_step: Res<crate::ai::cpg::TimeStep>,
     settings: Res<EnvironmentalSpawnSettings>,
     mut sim_rng: ResMut<crate::core::resources::SimRng>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
 ) {
     let dt = time_step.0;
     let tree_count = tree_query.iter().count();
     let mut spawned_this_tick = 0;
+    let nav_enabled = terrain_nav.as_deref().is_some_and(|p| p.enabled);
 
     for (pos, mut tree) in tree_query.iter_mut() {
         tree.time_since_last_drop += dt;
@@ -263,6 +266,15 @@ pub fn seed_dropping_system(
                 let dist = rng.gen_range(2.0..tree.seed_spread_radius);
                 let spawn_x = (pos.0.x + angle.cos() * dist).clamp(bounds.min.x, bounds.max.x);
                 let spawn_z = (pos.0.z + angle.sin() * dist).clamp(bounds.min.z, bounds.max.z);
+                let drop_pos = glam::Vec3::new(spawn_x, 0.0, spawn_z);
+
+                if nav_enabled
+                    && !terrain_map.as_deref().is_some_and(|tm| {
+                        crate::core::terrain_navigation::is_pos_walkable(tm, &bounds, drop_pos)
+                    })
+                {
+                    continue;
+                }
 
                 commands.spawn((
                     Tree {
@@ -273,7 +285,7 @@ pub fn seed_dropping_system(
                         seed_drop_cooldown: tree.seed_drop_cooldown,
                         seed_spread_radius: tree.seed_spread_radius,
                     },
-                    Position(glam::Vec3::new(spawn_x, 0.0, spawn_z)),
+                    Position(drop_pos),
                     crate::physics::SpatialCollider { radius: 1.5 },
                     crate::physics::spatial::IndexedInGrid(false),
                 ));

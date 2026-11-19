@@ -213,9 +213,13 @@ pub const LIVE_KEY_DRIFT_CONTROL: &str = "live.drift_control";
 /// Card SEL2-D: Channon periodic-reset window length `K` in ticks (`0` = unreset replay from
 /// founders; `K > 0` requires `live.drift_control = 1.0` and `duration_ticks % K == 0`).
 pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
+/// Card LAND1: `1.0` enables [`crate::core::resources::TerrainNavigation`] (constrains agent
+/// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
+/// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
+pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 25] = [
+pub const LIVE_KEYS: [&str; 26] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -241,6 +245,7 @@ pub const LIVE_KEYS: [&str; 25] = [
     LIVE_KEY_PLANT_RESERVE,
     LIVE_KEY_DRIFT_CONTROL,
     LIVE_KEY_DRIFT_RESET_TICKS,
+    LIVE_KEY_LAND_MASK,
 ];
 
 /// The genesis the manifest asked for.
@@ -318,6 +323,10 @@ pub struct LiveWorldConfig {
     /// Card S12: genesis lake layout (`0` = row at `z_fraction = 0.8`, `1` = 2-D lattice).
     #[serde(default)]
     pub lake_layout: u8,
+    /// Card LAND1: `1.0` enables `TerrainNavigation` and snaps lattice spawns to walkable cells;
+    /// `0.0`/absent keeps terrain navigation disabled (bit-identical to trunk).
+    #[serde(default)]
+    pub land_mask: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -380,6 +389,7 @@ impl Default for LiveWorldConfig {
             drift_control: false,
             drift_reset_ticks: 0,
             lake_layout: 0,
+            land_mask: false,
         }
     }
 }
@@ -618,6 +628,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_LAKE_LAYOUT => match *value {
                     0.0 => config.lake_layout = 0,
                     1.0 => config.lake_layout = 1,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_LAND_MASK => match *value {
+                    0.0 => config.land_mask = false,
+                    1.0 => config.land_mask = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -2395,6 +2417,11 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
         drive_floor: config.drive_floor,
         thirst_steering: config.thirst_steering,
     });
+    // Card LAND1 (`live.land_mask`): absent/0 keeps land navigation disabled so pre-LAND1
+    // manifests stay bit-identical.
+    world.insert_resource(crate::core::resources::TerrainNavigation {
+        enabled: config.land_mask,
+    });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
     // locomotion ranking — bit-identical to every run made before branch F existed.
@@ -2679,9 +2706,25 @@ fn genesis(
         crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
     );
 
+    let terrain_map = if config.land_mask {
+        world
+            .get_resource::<crate::core::terrain::TerrainMap>()
+            .cloned()
+    } else {
+        None
+    };
+    let snap_if_masked = |pos: glam::Vec3| -> glam::Vec3 {
+        if let Some(ref tm) = terrain_map {
+            crate::core::terrain_navigation::snap_to_nearest_walkable(tm, &bounds, pos)
+                .unwrap_or(pos)
+        } else {
+            pos
+        }
+    };
+
     let predators = config.predators();
     for i in 0..config.founders {
-        let pos = lattice_point(i, config.founders.max(1), bounds, 0.35);
+        let pos = snap_if_masked(lattice_point(i, config.founders.max(1), bounds, 0.35));
         let entity = decode_genotype(world, &genotype, pos, glam::Quat::IDENTITY);
         if let Some(brain) = policy.new_brain(&mut brain_rng) {
             world.entity_mut(entity).insert(brain);
@@ -2711,7 +2754,7 @@ fn genesis(
 
     let env = crate::core::ecs::EnvironmentalSpawnSettings::default();
     for i in 0..config.trees {
-        let pos = lattice_point(i, config.trees.max(1), bounds, 0.6);
+        let pos = snap_if_masked(lattice_point(i, config.trees.max(1), bounds, 0.6));
         world.spawn((
             crate::core::ecs::Tree {
                 current_fruit: env.default_tree_fruit,
@@ -2730,11 +2773,11 @@ fn genesis(
         ));
     }
     for i in 0..config.lakes {
-        let pos = if config.lake_layout == 1 {
+        let pos = snap_if_masked(if config.lake_layout == 1 {
             lake_lattice_point(i, config.lakes, bounds)
         } else {
             lattice_point(i, config.lakes.max(1), bounds, 0.8)
-        };
+        });
         world.spawn((
             crate::core::ecs::Lake {
                 current_water: env.default_lake_water,
