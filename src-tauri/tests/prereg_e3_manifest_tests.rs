@@ -773,11 +773,21 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         serde_json::json!(true)
     );
     assert_eq!(
+        p["execution_host_rule"]["world_artifact_isolation_required"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
         p["execution_host_rule"]["smoke_host_observed"].as_str(),
         Some("windows/x86_64")
     );
     let host_rule = p["execution_host_rule"]["rule"].as_str().unwrap();
-    assert!(host_rule.contains("36 E3-X runs") && host_rule.contains("re-run e3_smoke"));
+    assert!(
+        host_rule.contains("36 E3-X runs")
+            && host_rule.contains("re-run e3_smoke")
+            && host_rule.contains("ANIMA_WORLD_ARTIFACT")
+            && host_rule.contains("anima_world_artifact.anmw")
+            && host_rule.contains("must not start")
+    );
 
     // Machine-readable materiality thresholds, decision_definitions, and secondary_endpoints_rule (N5).
     let dz_min = p["thresholds"]["dz_min"].as_f64().unwrap();
@@ -1071,6 +1081,8 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         "−1,86 %",
         "−1,68 %",
         "var · n/(n − 1)",
+        "ANIMA_WORLD_ARTIFACT",
+        "anima_world_artifact.anmw",
     ] {
         assert!(
             doc.contains(needle),

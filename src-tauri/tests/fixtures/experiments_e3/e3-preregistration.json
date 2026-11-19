@@ -411,8 +411,9 @@
   },
   "execution_host_rule": {
     "single_host_required": true,
+    "world_artifact_isolation_required": true,
     "smoke_host_observed": "windows/x86_64",
-    "rule": "All 36 E3-X runs (3 arms x 12 seeds) must execute on a single host (identical OS, CPU architecture, and release binary) recorded in E3-X provenance.json, because headless terrain generation is platform-dependent (Windows x86_64 terrain checksum 3152323152 vs macOS arm64 1212187560). If the E3-X execution host OS/arch differs from the smoke host (windows/x86_64), E3-X must re-run e3_smoke once in --release on that execution host first to re-verify WP-2 gates and timing; if any WP-2 gate fails, stop and report; never tune."
+    "rule": "All 36 E3-X runs (3 arms x 12 seeds) must execute on a single host (identical OS, CPU architecture, and release binary) recorded in E3-X provenance.json, because headless terrain generation is platform-dependent (Windows x86_64 terrain checksum 3152323152 vs macOS arm64 1212187560). If the E3-X execution host OS/arch differs from the smoke host (windows/x86_64), E3-X must re-run e3_smoke once in --release on that execution host first to re-verify WP-2 gates and timing; if any WP-2 gate fails, stop and report; never tune. Before starting every E3-X run and any e3_smoke re-run, the runner must verify and record in provenance that ANIMA_WORLD_ARTIFACT is unset and <temp_dir>/anima_world_artifact.anmw is absent; if either is present, the run must not start (prevents build_live_world -> init_world from silently loading a desktop-app world artifact instead of generated terrain)."
   },
   "wp2_smoke_calibration": {
     "smoke_seed": 999979,
