@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "experiment_id": "e3-productivity-gradient-body-mass::smoke-control-uniform-scarcity",
+  "name": "E3 smoke uniform-scarcity control - scale 0.42 + whole-map AddNutrient 1.00 - seed 999979",
+  "world_identity": {
+    "seed": 0,
+    "generator_version": 0,
+    "width": 0,
+    "height": 0,
+    "checksum": 0
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": null
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "live.ecological_fitness",
+        1.0
+      ],
+      [
+        "live.mortality",
+        1.0
+      ],
+      [
+        "live.reproduction",
+        1.0
+      ],
+      [
+        "live.locomotion",
+        1.0
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1.0
+      ],
+      [
+        "live.evolved_brains",
+        0.0
+      ],
+      [
+        "live.founders",
+        120.0
+      ],
+      [
+        "live.predator_fraction",
+        0.3
+      ],
+      [
+        "live.trees",
+        8.0
+      ],
+      [
+        "live.lakes",
+        2.0
+      ],
+      [
+        "live.food_cap",
+        50.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        0.42
+      ]
+    ]
+  },
+  "interventions": [
+    {
+      "id": 1,
+      "cause_id": 1,
+      "kind": "Deforest",
+      "region": {
+        "Rect": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 127,
+          "max_y": 255
+        }
+      },
+      "start_tick": 1,
+      "duration_ticks": 18000,
+      "intensity": 0.0,
+      "signed_negative": false,
+      "curve": "Step",
+      "reversible": false
+    },
+    {
+      "id": 2,
+      "cause_id": 2,
+      "kind": "AddNutrient",
+      "region": {
+        "Rect": {
+          "min_x": 0,
+          "min_y": 0,
+          "max_x": 255,
+          "max_y": 255
+        }
+      },
+      "start_tick": 1,
+      "duration_ticks": 18000,
+      "intensity": 1.0,
+      "signed_negative": false,
+      "curve": "Step",
+      "reversible": false
+    }
+  ],
+  "seeds": [
+    999979
+  ],
+  "duration_ticks": 18000,
+  "sample_period": 600,
+  "observable_ids": [
+    "plants",
+    "detritus",
+    "live.animals_eu",
+    "live.dormant_eu",
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.herbivore_count",
+    "live.predator_count",
+    "live.food_items",
+    "live.standing_crop",
+    "live.mean_agent_energy",
+    "live.season_phase",
+    "live.trait_mass_mean",
+    "live.trait_mass_var",
+    "live.trait_mass_p10",
+    "live.trait_mass_p90",
+    "live.shannon",
+    "live.simpson",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.archive_coverage",
+    "live.deaths_starvation",
+    "live.deaths_dehydration",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east"
+  ],
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
+}
