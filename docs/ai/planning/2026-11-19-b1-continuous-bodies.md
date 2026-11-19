@@ -24,7 +24,7 @@ last_reviewed: 2026-11-19
 
 - **LOD 3 tầng (`CreatureLodSelector`) & Cheap Win #1 (frustum culling):**
   - `WorldShowcase.tsx` truyền trực tiếp `qualityTier={effectiveQuality}` xuống `<LiveAgents>` (`N1`), và `resolveCreatureQualityTier` nhận `QualitySelection` đã phân tích sẵn ngoài `useFrame` (`N2`, 0 lần gọi `new URLSearchParams` mỗi khung).
-  - Mức `near` (`<= creatureFullDetailRadius`): tối đa `K` sinh vật gần nhất mỗi khung sắp xếp gần-trước (`CREATURE_NEAR_SKINNED_CAP = { low: 8, medium: 12, high: 16 }`) dựng bằng `SkinnedMesh` liên tục; đúng `4` sinh vật gần nhất (rank `0..3`) bật `castShadow = true` để tổng số lệnh vẽ toàn cảnh trên `high` sau khi gộp V1 (`LiveEnvironment` thêm 5 draw calls cho hồ/cây/mồi + bóng) giữ `<= 70` (`69`). (Hysteresis ranh giới để ở bước thay thế sau prototype.)
+  - Mức `near` (`<= creatureFullDetailRadius`): tối đa `K` sinh vật gần nhất mỗi khung sắp xếp gần-trước (`CREATURE_NEAR_SKINNED_CAP = { low: 8, medium: 12, high: 16 }`) dựng bằng `SkinnedMesh` liên tục; đúng `4` sinh vật gần nhất (`NEAR_SHADOW_CASTER_CAP = 4`, `rank 0..3`, kiểm tra bằng test tích hợp `F2` trên `LiveAgents` kèm kiểm thử đột biến `r < 16`) bật `castShadow = true` để tổng số lệnh vẽ toàn cảnh trên `high` sau khi gộp V1 (`LiveEnvironment` thêm 5 draw calls cho hồ/cây/mồi + bóng) giữ `<= 70` (`69`). (Hysteresis ranh giới để ở bước thay thế sau prototype.)
   - Mức `mid` (`<= creatureSimplifiedRadius` hoặc vượt trần `K`): sinh vật dùng pipeline instanced cũ (`live-agents-segments` + `live-agents-spheres`).
   - Mức `far` (`> creatureSimplifiedRadius`): chỉ vẽ billboard theo loài (`live-agents-markers`).
   - **Cheap Win #1 đã làm:** culling từng sinh vật ngoài frustum camera (`THREE.Frustum.intersectsSphere` với camera đã định vị, tránh loại nhầm mock camera mặc định tại gốc trong unit test). **Cheap Win #2** (texture pose GPU cho instanced skinning) giữ lại ở bước thay thế sau prototype.
@@ -32,13 +32,13 @@ last_reviewed: 2026-11-19
   - Đây là **lựa chọn hiển thị, không cùng tỷ lệ với khoảng cách vị trí (`rendering choice — not to scale with positions`)**: toạ độ vị trí gốc giữ nguyên ở `simScale(1200) = 6` đơn vị vẽ / đơn vị mô phỏng trong khi kích thước thân chỉ vẽ ở `1,92` (`0,32×`) để không lấn át cây trang trí `WorldVegetation` và hồ nước. Do đó, hai sinh vật đang chạm nhau trong mô phỏng (`r = 0,2`) sẽ vẽ cách nhau khoảng `4` bán kính thân, và thân vẽ nhỏ bằng `0,32×` kích thước mô phỏng so với hồ nước mô phỏng. Sàn bán kính mắt cũng được nhân tương ứng với `CREATURE_BODY_SCALE` (`N5`).
 - **Cột sống `syntheticTicks.ts` trong giới hạn Rust (R1, R2):**
   - Khôi phục đúng phân bố bán kính và số lần rút `rand()` như thân cây `86e4736` (quỹ đạo gốc và chuỗi PRNG trùng khớp với thân cây), đồng thời đặt `jointAnchor.z = +parent.length * 0.48` trên cột sống và giữ chi bên `[±0.9r, -0.35r, 0]` để mọi khớp đều nằm chặt trong giới hạn `mutation.rs` (`|x|,|y| <= r`, `|z| <= parent.length / 2`) mà vẫn nối dài mượt dọc `+Z` (thay đổi offset đốt con so với thân cây cũ, không tuyên bố giữ nguyên toàn bộ vị trí đốt).
-- **Bổ sung `environmental_state` synthetic (`syntheticTicks.ts`):** thêm 3 hồ (`lake`), 8 cây (`tree`) và 10 mồi (`food`) từ luồng RNG độc lập `(seed ^ 0x517e0e1e) >>> 0` quanh `LAND_ANCHORS` không ảnh hưởng quỹ đạo gốc, giữ rõ nhãn `"SYNTHETIC FIXTURE (synthetic) — not simulation output"`. Khi V1 (`LiveEnvironment`) gộp vào thân cây, các thực thể này sẽ hiển thị cùng sinh vật trong trình duyệt.
+- **Bổ sung `environmental_state` synthetic & nhãn HUD trung thực (`syntheticTicks.ts`, `simEnvironment.ts`, `WorldShowcase.tsx` `F1`):** thêm 3 hồ (`lake`), 8 cây (`tree`) và 10 mồi (`food`) từ luồng RNG độc lập `(seed ^ 0x517e0e1e) >>> 0` quanh `LAND_ANCHORS` không ảnh hưởng quỹ đạo gốc, giữ rõ nhãn `"SYNTHETIC FIXTURE (synthetic) — not simulation output"`. Sau khi gộp V1 (`LiveEnvironment`), `LiveAgents` truyền `activeSource.kind === 'synthetic'` qua `SimEnvironmentChannel.isSynthetic()` để HUD trong `WorldShowcase.tsx` hiển thị `"Synthetic fixture (not simulation output): 3 lakes · 8 trees · 10 food"` với dữ liệu synthetic và giữ nguyên `"Simulated: ..."` với tick mô phỏng Tauri thật (`b1HudSyntheticLabel.test.tsx`).
 
 ## 3. Lý do cập nhật test `rwCreatures*` & Ngân sách bundle
 
 - `tests/frontend/rwCreaturesSegmentPose.test.tsx`: thêm camera mid-LOD `(0, 120, 240)` nhìn `(0, 60, 0)` cho `RW2-2`, `RW2-3`, `RW2-7` vì tầng `near` của B1 đưa sinh vật trong bán kính `160` về `SkinnedMesh` thay vì `live-agents-segments`; cập nhật hệ số kỳ vọng `CREATURE_BODY_SCALE` ở `RW2-2` (`0.2/0.45 * 6 * CREATURE_BODY_SCALE`) và `RW2-3` (`> 2 * CREATURE_BODY_SCALE`, `> 0.5 * CREATURE_BODY_SCALE`). Toàn bộ `RW2-1`, `RW2-4`, `RW2-5`, `RW2-6`, `RW2-8` giữ nguyên không đổi.
 - `tests/frontend/rwCreaturesTickSources.test.tsx`: đặt camera mid-LOD `(-140, 250, -40)` nhìn `(-140, 0, -40)` (`fov=120`) trong `advanceFrames()` để `RW0-1`/`RW0-2`/`RW0-3` kiểm tra đúng tầng `mid` (`live-agents-segments`). `RW3-3` (cấm cấp phát trong `useFrame`) giữ nguyên 100%.
-- `scripts/check_bundle_budget.mjs`: nâng trần `WorldShowcase` từ `130 -> 155 KiB` (gồm V1 + B1; đo thực tế sau gộp V1 là `154.5 KiB`) với lý do `'prototype'`.
+- `scripts/check_bundle_budget.mjs`: nâng trần `WorldShowcase` từ `130 -> 155 KiB` (gồm V1 + B1; đo thực tế là `154.8 KiB`) với lý do `'prototype'`.
 
 ## 4. Đo WebGL & Các cổng đã kiểm tra (`RTX 5060 Ti`, Chromium ANGLE D3D11 — sau D1/N3' & gộp V1)
 
@@ -52,8 +52,8 @@ last_reviewed: 2026-11-19
 | `npm run typecheck:tests` | Đạt (`0`) | 0 lỗi TypeScript trên `src` và `tests` |
 | `npm run lint` & `node scripts/eslint_ratchet.mjs` | Đạt (`0`) | 0 error, 0 warning (baseline `0`) |
 | `npm run test` | Đạt (`0`) | 14/14 file, 109/109 test (chạy đầy đủ sau gộp V1 + `r < 4`) |
-| `npm run test:frontend` | Đạt (`0`) | 70/70 file, 716/716 test (gồm V1 + 12 test B1 D1/N3'/R1–R4/N1–N6/M4/raycast) |
-| `npm run build` & `npm run check:bundle` | Đạt (`0`) | `WorldShowcase 154.5 / 155 KiB`, tổng `1919.8 / 2000 KiB` |
+| `npm run test:frontend` | Đạt (`0`) | 71/71 file, 718/718 test (gồm V1, `b1HudSyntheticLabel.test.tsx` `F1`, và 13 test B1 `D1`/`N3'`/`F2`/R1–R4/N1–N6/M4/raycast) |
+| `npm run build` & `npm run check:bundle` | Đạt (`0`) | `WorldShowcase 154.8 / 155 KiB`, tổng `1920.1 / 2000 KiB` |
 | `npm run check:ipc`, `check:csp`, `check:docs` | Đạt (`0`) | Kiểm tra sau khi ghi tài liệu này |
 
 ## 5. Không khẳng định

@@ -26,6 +26,7 @@ import {
   LOD_CULLED,
   LOD_FAR_MARKER,
   LOD_NEAR_SKINNED,
+  NEAR_SHADOW_CASTER_CAP,
   resolveCreatureQualityTier,
 } from './utils/creatureLod';
 import { SkinnedCreaturePool, type SkinnedHeadPose } from './utils/creatureSkinMesh';
@@ -56,7 +57,7 @@ export interface LiveAgentsProps {
   tickSource?: TickSource | null;
   nowMs?: () => number;
   qualityTier?: QualityTier;
-  onEnvironmentalState?: (env: EnvironmentalState) => void;
+  onEnvironmentalState?: (env: EnvironmentalState, isSynthetic?: boolean) => void;
 }
 
 interface SelectedAgentSummary {
@@ -795,7 +796,10 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         CREATURE_BODY_SCALE,
       );
       if (payload.environmental_state) {
-        onEnvironmentalStateRef.current?.(payload.environmental_state);
+        onEnvironmentalStateRef.current?.(
+          payload.environmental_state,
+          activeSource.kind === 'synthetic',
+        );
       }
       if (payload.segments.length > 0 || buffer.hasActiveAgents()) {
         setConnected(true);
@@ -918,7 +922,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
       const pIdx = lod.nearIndices[r];
       const pose = agents[pIdx];
       const slotIdx = nearSlots[r];
-      if (slotIdx < 0 || !skinPool.updateSlot(slotIdx, pose, timeSec, scratch, r < 4)) {
+      if (slotIdx < 0 || !skinPool.updateSlot(slotIdx, pose, timeSec, scratch, r < NEAR_SHADOW_CASTER_CAP)) {
         continue;
       }
 

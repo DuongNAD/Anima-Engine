@@ -21,14 +21,18 @@ export type CreatureLodTier =
 
 /**
  * Maximum number of near-tier `SkinnedMesh` creatures per quality tier (`K`).
- * Bounded together with 5 instanced layers and an 8-slot shadow cap so total scene draw calls
- * stay within `QUALITY_TIER_CONFIGS[tier].maxDrawCalls` (`60 / 60 / 70`) including shadow pass.
+ * Bounded together with 5 instanced layers and a 4-slot shadow cap (`NEAR_SHADOW_CASTER_CAP`) so
+ * total scene draw calls stay within `QUALITY_TIER_CONFIGS[tier].maxDrawCalls` (`60 / 60 / 70`)
+ * including shadow pass and V1 `LiveEnvironment`.
  */
 export const CREATURE_NEAR_SKINNED_CAP: Readonly<Record<QualityTier, number>> = {
   low: 8,
   medium: 12,
   high: 16,
 };
+
+/** Maximum number of closest near-tier `SkinnedMesh` creatures permitted to cast dynamic shadows. */
+export const NEAR_SHADOW_CASTER_CAP = 4;
 
 export interface CreatureLodSelectionResult {
   readonly tiers: Uint8Array;

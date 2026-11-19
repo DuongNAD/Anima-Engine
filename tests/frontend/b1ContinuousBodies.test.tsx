@@ -31,6 +31,7 @@ import {
   LOD_FAR_MARKER,
   LOD_MID_INSTANCED,
   LOD_NEAR_SKINNED,
+  NEAR_SHADOW_CASTER_CAP,
 } from '../../src/components/Landscape/utils/creatureLod';
 import { createSyntheticTickGenerator } from '../../src/components/Landscape/utils/syntheticTicks';
 import type { TickSource } from '../../src/components/Landscape/utils/tickRecording';
@@ -1056,10 +1057,10 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     for (let r = 0; r < lod1.nearCount; r++) {
       const p = frame1.agents[lod1.nearIndices[r]];
       const s = slots1[r];
-      pool.updateSlot(s, p, 0, scratch, r < 4);
+      pool.updateSlot(s, p, 0, scratch, r < NEAR_SHADOW_CASTER_CAP);
       const m = group.children[s] as THREE.SkinnedMesh;
       meshById.set(p.agentId, m);
-      expect(m.castShadow).toBe(r < 4);
+      expect(m.castShadow).toBe(r < NEAR_SHADOW_CASTER_CAP);
       if (p.agentId === 5) {
         slotForAgent5Frame1 = s;
         skeletonAgent5Frame1 = m.skeleton;
@@ -1110,7 +1111,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     for (let r = 0; r < lod2.nearCount; r++) {
       const p = frame2.agents[lod2.nearIndices[r]];
       const s = slots2[r];
-      pool.updateSlot(s, p, 0.03, scratch, r < 4);
+      pool.updateSlot(s, p, 0.03, scratch, r < NEAR_SHADOW_CASTER_CAP);
       const m = group.children[s] as THREE.SkinnedMesh;
       if (p.agentId === 5) {
         expect(s).toBe(slotForAgent5Frame1);
@@ -1365,5 +1366,76 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     expect(cache.has(keyA)).toBe(true);
 
     pool.dispose();
+  });
+
+  it('F2: limits real shadow casting in LiveAgents to the NEAR_SHADOW_CASTER_CAP closest visible skinned meshes and enforces pool defaults', () => {
+    expect(NEAR_SHADOW_CASTER_CAP).toBe(4);
+
+    // 1. Pool constructor default: strictly slots 0..3 castShadow before any explicit rank override (MS2).
+    const defaultPool = new SkinnedCreaturePool(12);
+    const defaultGroup = new THREE.Group();
+    defaultPool.bindGroup(defaultGroup);
+    expect(defaultGroup.children).toHaveLength(12);
+    for (let i = 0; i < 12; i++) {
+      expect((defaultGroup.children[i] as THREE.SkinnedMesh).castShadow).toBe(
+        i < NEAR_SHADOW_CASTER_CAP,
+      );
+    }
+    defaultPool.dispose();
+
+    // 2. LiveAgents integration: 8 near creatures in shuffled payload order on high tier (K = 16)
+    //    with gl.shadowMap.enabled = true -> only the 4 closest creatures cast shadows (MS1).
+    const manual = makeManualSource();
+    const { container, unmount } = render(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="high"
+      />,
+    );
+
+    const shuffledOrder = [8, 3, 6, 1, 7, 2, 5, 4];
+    const segments: SegmentState[] = [];
+    for (const id of shuffledOrder) {
+      // Render Z spans -12 (id=1) down to -96 (id=8), all strictly ordered and inside nearRadius = 160.
+      segments.push(...makeSyntheticPayloadSegments(id, 'prey', 0, -id * 2, 2));
+    }
+
+    act(() => {
+      manual.emit({
+        segments,
+        environmental_state: { elements: [] },
+        head_directions: {},
+      });
+    });
+
+    const gY = surfaceHeight(world, 0, -12, 1200, 0.14, 64);
+    const cam = makeCameraAt([0, gY + 25, 45], [0, gY, -120]);
+    const frameBase = makeFrameState();
+    frameBase.gl.shadowMap.enabled = true;
+    act(() => {
+      advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 }, gl: frameBase.gl });
+    });
+
+    const skinnedGroup = container.querySelector('group[name="live-agents-skinned"]') as MockSkinnedGroupEl;
+    const visibleSkinned = (skinnedGroup._b1Children3D ?? []).filter(
+      (obj): obj is THREE.SkinnedMesh => obj instanceof THREE.SkinnedMesh && obj.visible,
+    );
+    expect(visibleSkinned).toHaveLength(8);
+
+    const casters = visibleSkinned.filter((m) => m.castShadow);
+    const nonCasters = visibleSkinned.filter((m) => !m.castShadow);
+    expect(casters).toHaveLength(NEAR_SHADOW_CASTER_CAP);
+    expect(casters.map((m) => m.userData.agentId as number).sort((a, b) => a - b)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(nonCasters.map((m) => m.userData.agentId as number).sort((a, b) => a - b)).toEqual([
+      5, 6, 7, 8,
+    ]);
+
+    unmount();
   });
 });

@@ -7,6 +7,7 @@ import {
   type MorphologyRestNode,
   type MorphologySegmentLike,
 } from './agentPose';
+import { NEAR_SHADOW_CASTER_CAP } from './creatureLod';
 import type { InterpolatedAgentView, InterpolatedSegmentView } from '../agentInterpolation';
 
 // prototype, to be replaced — B1 continuous skinned creature bodies built from segment morphology.
@@ -720,7 +721,7 @@ export class SkinnedCreaturePool {
       mesh.frustumCulled = false;
       mesh.boundingSphere = raycastSphere;
       mesh.raycast = raycastVisibleSkinnedMesh;
-      mesh.castShadow = i < 4;
+      mesh.castShadow = i < NEAR_SHADOW_CASTER_CAP;
       mesh.receiveShadow = true;
       mesh.visible = false;
       this.slots.push({
