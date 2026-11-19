@@ -223,6 +223,19 @@ QD-TRIAL  = the owner's hands-on trial of map + bodies + experiment worlds runs 
             pauses anima-case for it (owner in chat, 2026-11-19)
 QD-DOCIDX = build a generated docs index so pull requests stop conflicting on docs/ai/README.md (owner in
             chat, 2026-11-19: "Làm"); until it merges, the lead keeps resolving those rows by hand
+QD-ISLAND = the project's flagship scientific question is the island rule's mechanism (resource
+            limitation vs predation release), tested with preregistered multi-world archipelagos; SEL2-P
+            is its first brick; island size = carrying capacity, not area (owner in chat, 2026-11-19:
+            "Nhận", "Sức chứa"; docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md)
+QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3-P, M2, LAND1 and the
+            trial cards; paused: native renderer, exotic-energy extensions, W4 streaming, the full tiled
+            artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
+            docs and papers in English; an external reviewer before the island preregistration (owner in
+            chat, 2026-11-19: "Đồng ý", "Cả hai")
+QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
+            result, each with its own ADR: water first, then sky, then underground (walk-in caves);
+            until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
+            2026-11-19: "Theo từng bậc")
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
