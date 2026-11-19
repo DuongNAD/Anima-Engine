@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "sel2-p-food-scarcity-body-mass::smoke-scarce-mut0",
-  "name": "SEL2-P smoke scarce_mut0 - blind to trait_mass, EXCLUDED from confirmation",
+  "name": "SEL2-P smoke scarce_mut0 - blind to body mass, EXCLUDED from confirmation",
   "world_identity": {
     "seed": 0,
     "generator_version": 0,

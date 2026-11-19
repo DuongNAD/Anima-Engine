@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "sel2-p-food-scarcity-body-mass::smoke-scarce-drift",
-  "name": "SEL2-P smoke scarce_drift (SEL2-D) - blind to trait_mass, no death-cause split",
+  "name": "SEL2-P smoke scarce_drift (SEL2-D) - blind to body mass, no death-cause split",
   "world_identity": {
     "seed": 0,
     "generator_version": 0,

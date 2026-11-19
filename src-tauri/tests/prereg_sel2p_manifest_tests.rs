@@ -259,6 +259,11 @@ fn drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body
 
     // Smoke non-drift arms carry cause-split observables for C4; smoke drift omits them; NONE carry trait_mass_*.
     for name in [BASELINE_REF, SMOKE_SELECTED, SMOKE_MUT0] {
+        let raw = std::fs::read_to_string(dir_path().join(name)).expect("read smoke manifest");
+        assert!(
+            !raw.contains("trait_mass"),
+            "{name} raw JSON must not contain 'trait_mass'"
+        );
         let m = load_manifest(name);
         assert!(
             m.observable_ids
@@ -277,6 +282,12 @@ fn drift_arm_omits_cause_split_observables_and_smoke_manifests_are_blind_to_body
             "{name} must remain blind to body mass"
         );
     }
+    let smoke_drift_raw =
+        std::fs::read_to_string(dir_path().join(SMOKE_DRIFT)).expect("read smoke drift manifest");
+    assert!(
+        !smoke_drift_raw.contains("trait_mass"),
+        "{SMOKE_DRIFT} raw JSON must not contain 'trait_mass'"
+    );
     let smoke_drift = load_manifest(SMOKE_DRIFT);
     assert!(
         !smoke_drift

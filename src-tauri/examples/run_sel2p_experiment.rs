@@ -1062,7 +1062,7 @@ fn run_smoke_stage(
 
     let summary_md = format!(
         "# SEL2-P smoke ({})\n\n\
-         > Blind to body mass: zero `trait_mass_*` observables were read or written.\n\n\
+         > Blind to body mass: zero body-mass observables were read or written.\n\n\
          - duration: **{duration_ticks} ticks**, sample period `{}`\n\
          - baseline (`prey_cap = 80, scale = 1.0`): surviving **{}/{}** (min `{}`), pooled crop `{:?}`\n\
          - gates: `C1={}`, `C2={}`, `C3={}`, `C4={}`, `C5={}`, `drift_valid={}` -> **`gate_pass={}`**\n\

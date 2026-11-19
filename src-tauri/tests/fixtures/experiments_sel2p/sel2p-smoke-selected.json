@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "sel2-p-food-scarcity-body-mass::smoke-selected",
-  "name": "SEL2-P smoke selected - blind to trait_mass, EXCLUDED from confirmation",
+  "name": "SEL2-P smoke selected - blind to body mass, EXCLUDED from confirmation",
   "world_identity": {
     "seed": 0,
     "generator_version": 0,

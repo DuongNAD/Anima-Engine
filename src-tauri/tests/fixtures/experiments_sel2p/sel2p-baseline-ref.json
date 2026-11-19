@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "experiment_id": "sel2-p-food-scarcity-body-mass::baseline-ref-pooled80",
-  "name": "SEL2-P pooled reference baseline (QD-SEL2g) - prey_cap 80, scale 1.0, blind to trait_mass",
+  "name": "SEL2-P pooled reference baseline (QD-SEL2g) - prey_cap 80, scale 1.0, blind to body mass",
   "world_identity": {
     "seed": 0,
     "generator_version": 0,
