@@ -86,8 +86,15 @@ const CHUNK_BUDGET_KIB = {
   default: 80,
 };
 
-/** Total shipped JS, all chunks. Guards against death by a thousand small chunks. */
-const TOTAL_BUDGET_KIB = 2000;
+/**
+ * Total shipped JS, all chunks. Guards against death by a thousand small chunks.
+ * Raised 2000 -> 2006 KiB (W11 Fix Round 1, R1, measured 2004.2 KiB): restores main-thread
+ * fallback generation when the world worker fails in production (`worldCache.ts`), plus `.catch`
+ * error UI in `WorldShowcase.tsx` and `App.tsx`. Note: `generateWorld` remains in `sharedWorld`
+ * (`28.8 KiB`, vs trunk `28.93 kB`) rather than a separate lazy chunk because `WorldMinimap` and
+ * sibling components statically import `Biome`/`FloraType`/`WORLD_GEN_VERSION` from `worldGen.ts`.
+ */
+const TOTAL_BUDGET_KIB = 2006;
 
 if (!existsSync(DIST)) {
   console.error(`missing ${relative(ROOT, DIST)} — run \`npm run build\` first.`);

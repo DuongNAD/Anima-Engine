@@ -43,6 +43,7 @@ const FLORA_STYLE_MAP: Partial<
 };
 
 let activePbrTileSize: number | null = null;
+let pbrLoadGeneration = 0;
 let activeFloraTier: QualityTier | null = null;
 const pbrPromises = new Map<number, Promise<TerrainPbrArrays | null>>();
 const pbrResolved = new Map<number, TerrainPbrArrays>();
@@ -61,6 +62,9 @@ function disposeTerrainPbrTileSize(tileSize: number): void {
 /** Dispose cached terrain PBR array textures for tiers other than `activeTier` (N5). */
 export function disposeOtherTerrainPbrTiers(activeTier: QualityTier): void {
   const keepSize = activeTier === 'low' ? 512 : 1024;
+  if (activePbrTileSize !== keepSize) {
+    pbrLoadGeneration++;
+  }
   activePbrTileSize = keepSize;
   for (const size of new Set([...pbrPromises.keys(), ...pbrResolved.keys()])) {
     if (size !== keepSize) disposeTerrainPbrTileSize(size);
@@ -82,6 +86,7 @@ function isFloraTierLow(): boolean {
 }
 
 export function clearAssetCachesForTest(): void {
+  pbrLoadGeneration++;
   activePbrTileSize = null;
   activeFloraTier = null;
   for (const resolved of pbrResolved.values()) resolved.dispose();
@@ -142,6 +147,7 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
   const existing = pbrPromises.get(tileSize);
   if (existing) return existing;
 
+  const myGeneration = ++pbrLoadGeneration;
   const task = (async (): Promise<TerrainPbrArrays | null> => {
     try {
       const layerCount = TERRAIN_LAYERS.length;
@@ -196,18 +202,25 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
         },
       };
 
-      // If quality changed while WebP decodes were in flight, free immediately instead of leaking.
-      if (activePbrTileSize !== tileSize) {
+      // If quality changed or a newer load wave superseded this request while WebP decodes were in flight,
+      // dispose only this request's own arrays and leave the newer cached entry untouched (NR3).
+      if (myGeneration !== pbrLoadGeneration || activePbrTileSize !== tileSize) {
         arrays.dispose();
-        pbrPromises.delete(tileSize);
+        if (myGeneration === pbrLoadGeneration) {
+          pbrPromises.delete(tileSize);
+        }
         return null;
       }
-      // Dispose any superseded resolved entry before overwriting (rapid High -> Low -> High race, NR3).
-      pbrResolved.get(tileSize)?.dispose();
+      const prev = pbrResolved.get(tileSize);
+      if (prev && prev !== arrays) {
+        prev.dispose();
+      }
       pbrResolved.set(tileSize, arrays);
       return arrays;
     } catch {
-      pbrPromises.delete(tileSize);
+      if (myGeneration === pbrLoadGeneration) {
+        pbrPromises.delete(tileSize);
+      }
       return null;
     }
   })();

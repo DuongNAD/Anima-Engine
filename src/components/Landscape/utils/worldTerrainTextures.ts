@@ -23,23 +23,23 @@ export const BIOME_DISPLAY_RGB: ReadonlyArray<readonly [number, number, number]>
   [242, 228, 184], // 1 Beach — warm bright sand
   [248, 208, 114], // 2 Desert — sun-bleached golden dune sand
   [188, 174, 58], // 3 Savanna — warm dry olive-ochre grass
-  [128, 200, 78], // 4 Grassland — fresh lime-meadow green
+  [116, 192, 68], // 4 Grassland — vivid meadow green (separates L* from Steppe)
   [152, 162, 82], // 5 Shrubland — sage olive scrub
   [56, 138, 56], // 6 Forest — vibrant mid-forest green
   [10, 72, 32], // 7 Jungle — deep dark saturated rainforest emerald
   [30, 88, 82], // 8 Taiga — cool dark blue-spruce teal-green
-  [160, 166, 146], // 9 Tundra — pale frost-lichen grey-green
+  [174, 180, 158], // 9 Tundra — pale frost-lichen grey-green
   [74, 110, 66], // 10 Swamp — mid-dark mossy wetland olive
   [122, 118, 114], // 11 Rock — slate highland grey
   [246, 250, 255], // 12 Snow — crisp alpine snow white
   [48, 132, 192], // 13 River — river cobalt blue
   [36, 116, 178], // 14 Lake — deep lake azure
-  [44, 132, 108], // 15 Mangrove — coastal teal-olive
+  [26, 98, 82], // 15 Mangrove — deep coastal tidal teal (Forest-Mangrove dL*=14.0 >= trunk 6.4, Swamp-Mangrove dL*=5.7)
   [146, 136, 88], // 16 Chaparral — dry Mediterranean olive-khaki scrub
-  [188, 194, 134], // 17 Steppe — pale straw-sage steppe
-  [90, 158, 126], // 18 Alpine — cool high-altitude emerald-sage
+  [192, 198, 136], // 17 Steppe — pale straw-sage steppe
+  [82, 150, 118], // 18 Alpine — cool high-altitude emerald-sage
   [156, 104, 70], // 19 Badlands — deep earthy sandstone ochre
-  [176, 212, 236], // 20 Glacier — cool crystalline glacial ice-blue
+  [186, 222, 244], // 20 Glacier — crisp light glacial ice-blue (dE76=17.7 vs Snow)
   [136, 94, 62], // 21 Bog — warm rusty peat-brown
 ];
 
@@ -95,7 +95,7 @@ function smoothNoise2D(fx: number, fy: number): number {
 }
 
 /** Height-to-world-width aspect ratio used by large-scale horizon ambient occlusion (`C1`). */
-const HORIZON_HEIGHT_SCALE = 0.14;
+const HORIZON_HEIGHT_SCALE = 0.095;
 const HORIZON_AZIMUTHS: ReadonlyArray<readonly [number, number, number]> = [
   [1, 0, 1],
   [-1, 0, 1],
@@ -200,7 +200,7 @@ export function computeHorizonAoMap(world: World): HorizonAoMap {
         }
       }
       const meanOcc = occSum * 0.125;
-      let occ = Math.min(0.36, Math.max(0, meanOcc - 0.03) * 0.85);
+      let occ = Math.min(0.20, Math.max(0, meanOcc - 0.04) * 0.68);
       if (h0 < seaLevel) occ *= 0.5;
       data[rowOff + x] = 1 - occ;
     }
@@ -217,12 +217,13 @@ export function computeHorizonAoMap(world: World): HorizonAoMap {
  * up the dead-flat look of wide single-biome fields. Palette = `BIOME_DISPLAY_RGB` (derived from
  * `BIOME_RGB`), shared with the minimap so 3D terrain and minimap colours match.
  */
-export function buildColorTexture(world: World): THREE.DataTexture {
+export function buildColorTexture(world: World, opts?: { disableAo?: boolean }): THREE.DataTexture {
   const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
   const data = new Uint8Array(size * size * 4);
-  const horizonAo = computeHorizonAoMap(world);
-  const aoRes = horizonAo.size;
-  const aoData = horizonAo.data;
+  const disableAo = opts?.disableAo ?? false;
+  const horizonAo = disableAo ? null : computeHorizonAoMap(world);
+  const aoRes = horizonAo?.size ?? 1;
+  const aoData = horizonAo?.data ?? null;
   const aoMax = aoRes - 1;
   const aoScale = aoRes / size;
   const RIVER_RGB = biomeDisplayColor(Biome.River);
@@ -411,21 +412,19 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         b *= 1 + grain * 0.85;
       }
 
-      // Curvature ambient occlusion, baked: ravines/gorges/basins shade, crests lift a touch.
-      // Sun-independent (like real sky occlusion), so it layers cleanly under the dynamic
-      // lighting and gives the relief its depth even at noon.
-      {
+      // Curvature + capped horizon ambient occlusion, baked: ravines/gorges/basins shade gently,
+      // crests lift a touch, while Snow and Glacier remain white (<= 6% darkening) and overall land
+      // averages <= 5% darkening so streams/caves retain crisp contrast.
+      if (!disableAo && aoData) {
         const xa1 = Math.max(0, x - R1);
         const xb1 = Math.min(size - 1, x + R1);
         const xa2 = Math.max(0, x - R2);
         const xb2 = Math.min(size - 1, x + R2);
         const ring1 = (elevation[y * size + xa1] + elevation[y * size + xb1] + elevation[y1a + x] + elevation[y1b + x]) * 0.25;
         const ring2 = (elevation[y * size + xa2] + elevation[y * size + xb2] + elevation[y2a + x] + elevation[y2b + x]) * 0.25;
-        // Gentle: strong enough to seat ravines and river beds, not enough to dim whole
-        // lowland basins (a broad valley is open to the sky, not occluded).
-        let occ = Math.min(0.22, Math.max(0, ring1 - e) * 22 + Math.max(0, ring2 - e) * 10);
+        let occ = Math.min(0.14, Math.max(0, ring1 - e) * 16 + Math.max(0, ring2 - e) * 7);
         if (e < (world.seaLevel ?? 0.38)) occ *= 0.5; // keep the sunny turquoise shallows
-        const lift = Math.min(0.08, Math.max(0, e - ring2) * 8);
+        const lift = Math.min(0.06, Math.max(0, e - ring2) * 7);
         const gx = Math.max(0, Math.min(aoMax, (x + 0.5) * aoScale - 0.5));
         const gx0 = Math.floor(gx);
         const gx1 = gx0 < aoMax ? gx0 + 1 : aoMax;
@@ -435,8 +434,11 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         const h01 = aoData[aoRow1 + gx0];
         const h11 = aoData[aoRow1 + gx1];
         const hAo = (h00 + (h10 - h00) * gtx) * (1 - gty) + (h01 + (h11 - h01) * gtx) * gty;
-        const hOcc = Math.max(0, 1 - hAo);
-        const combinedOcc = Math.min(0.42, occ + hOcc * (1 - occ * 0.5));
+        const hOcc = Math.max(0, 1 - hAo) * 0.6;
+        let combinedOcc = Math.min(0.22, occ + hOcc * (1 - occ * 0.5));
+        if (bio === Biome.Snow || bio === Biome.Glacier) {
+          combinedOcc = Math.min(0.06, combinedOcc * 0.28);
+        }
         const shade = 1 - combinedOcc + lift;
         r *= shade;
         g *= shade;
@@ -632,72 +634,22 @@ function buildRingOffsets(minRadius: number, maxRadius: number): ReadonlyArray<r
 }
 
 const D8_OFFSETS = buildRingOffsets(1, 1);
-const RING2_OFFSETS = buildRingOffsets(2, 2);
-const RING34_OFFSETS = buildRingOffsets(3, 4);
-
-function findSteepestRingDescent(
-  offsets: ReadonlyArray<readonly [number, number, number]>,
-  x: number,
-  y: number,
-  e0: number,
-  size: number,
-  sLevel: number,
-  elevation: Float32Array,
-  riverAmt: Uint8Array | undefined,
-  water: Float32Array | undefined,
-): readonly [number, number] | null {
-  let bestLandSlope = 0;
-  let bestLandDx = 0;
-  let bestLandDy = 0;
-  let bestWaterSlope = 0;
-  let bestWaterDx = 0;
-  let bestWaterDy = 0;
-
-  for (let k = 0; k < offsets.length; k++) {
-    const off = offsets[k];
-    const nx = x + off[0];
-    const ny = y + off[1];
-    if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
-    const nIdx = ny * size + nx;
-    const nElev = elevation[nIdx];
-    const dh = e0 - nElev;
-    if (dh <= 1e-7) continue;
-    const slope = dh * off[2];
-    const isWaterNb = (riverAmt?.[nIdx] ?? 0) > 0 || (water?.[nIdx] ?? 0) > 0 || nElev < sLevel;
-    if (isWaterNb) {
-      if (slope > bestWaterSlope) {
-        bestWaterSlope = slope;
-        bestWaterDx = off[0];
-        bestWaterDy = off[1];
-      }
-    } else if (slope > bestLandSlope) {
-      bestLandSlope = slope;
-      bestLandDx = off[0];
-      bestLandDy = off[1];
-    }
-  }
-
-  if (bestWaterSlope > 0) return [bestWaterDx, bestWaterDy];
-  if (bestLandSlope > 0) return [bestLandDx, bestLandDy];
-  return null;
-}
 
 /**
- * The river-ribbon mask plus D8 steepest-descent flow direction (`C2`), encoded in RGBA:
+ * The river-ribbon mask plus strict D8 hydrological downstream flow direction (`C2`), encoded in RGBA:
  *   R = feathered river mask (`world.riverAmt`)
  *   G, B = normalized 2D grid-space downstream vector `(nx, ny)` mapped via `round(128 + n * 127)`
- *   A = `255` when a downstream target exists via D8 elevation, ring 2–4 elevation fallback, or
- *       higher downstream D8 `world.flow` tie-breaker; `0` for dry cells (neutral G/B = `128` to
- *       prevent bilinear edge bleed) and flat lake junctions.
+ *   A = `255` when an immediate D8 downstream neighbour exists (highest strictly increasing
+ *       `world.flow`, falling back to steepest strictly lower filled/raw elevation when `flow`
+ *       has no gradient); `0` for dry cells (neutral G/B = `128`) and flat lake junctions.
  *
- * This is a visual cue derived strictly from the elevation gradient and hydrological flow order,
- * never simulated hydrodynamics. Both renderers share this helper so `WorldTerrain` and
- * `WorldTerrainLod` remain identical.
+ * This is a visual cue derived strictly from the hydrological flow accumulation order and local
+ * elevation gradient, never simulated hydrodynamics. Both renderers share this helper so
+ * `WorldTerrain` and `WorldTerrainLod` remain identical.
  */
 export function buildRiverMaskTexture(world: World): THREE.DataTexture {
-  const { size, riverAmt, elevation, water, flow, seaLevel } = world;
+  const { size, riverAmt, elevation, flow } = world;
   const data = new Uint8Array(size * size * 4);
-  const sLevel = seaLevel ?? 0.38;
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -711,61 +663,64 @@ export function buildRiverMaskTexture(world: World): THREE.DataTexture {
       if (amt === 0) continue;
 
       const e0 = elevation[i];
-      let bestSlope = 0;
+      const f0 = flow ? flow[i] : 0;
+      let hasDir = false;
       let bestDx = 0;
       let bestDy = 0;
 
-      // Pass 1: D8 immediate neighbours (strictly lower elevation).
-      for (let k = 0; k < D8_OFFSETS.length; k++) {
-        const off = D8_OFFSETS[k];
-        const nx = x + off[0];
-        const ny = y + off[1];
-        if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
-        const dh = e0 - elevation[ny * size + nx];
-        if (dh > 1e-7) {
-          const slope = dh * off[2];
-          if (slope > bestSlope) {
-            bestSlope = slope;
-            bestDx = off[0];
-            bestDy = off[1];
-          }
-        }
-      }
-
-      // Pass 2 & Pass 3: ring 2 then rings 3-4 strictly lower elevation fallback for terraced reaches.
-      if (bestSlope <= 0) {
-        const r2 = findSteepestRingDescent(RING2_OFFSETS, x, y, e0, size, sLevel, elevation, riverAmt, water);
-        const dir =
-          r2 ?? findSteepestRingDescent(RING34_OFFSETS, x, y, e0, size, sLevel, elevation, riverAmt, water);
-        if (dir) {
-          bestDx = dir[0];
-          bestDy = dir[1];
-          bestSlope = 1;
-        }
-      }
-
-      // Pass 4: downstream `world.flow` tie-breaker on completely flat mid-channel terraces.
-      if (bestSlope <= 0 && flow) {
-        const f0 = flow[i];
+      // Pass 1 (primary): immediate D8 hydrological receiver (`world.flow` strictly higher),
+      // breaking ties by steepest elevation descent. Guarantees channel & ribbon cells advect downstream.
+      if (flow) {
         let bestFlow = f0 + 1e-7;
+        let bestTieSlope = -Infinity;
         for (let k = 0; k < D8_OFFSETS.length; k++) {
           const off = D8_OFFSETS[k];
           const nx = x + off[0];
           const ny = y + off[1];
           if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
           const nIdx = ny * size + nx;
-          if ((riverAmt?.[nIdx] ?? 0) === 0) continue;
           const nf = flow[nIdx];
-          if (nf > bestFlow) {
+          if (nf > bestFlow + 1e-7) {
             bestFlow = nf;
+            bestTieSlope = (e0 - elevation[nIdx]) * off[2];
             bestDx = off[0];
             bestDy = off[1];
-            bestSlope = 1;
+            hasDir = true;
+          } else if (Math.abs(nf - bestFlow) <= 1e-7 && nf > f0 + 1e-7) {
+            const slope = (e0 - elevation[nIdx]) * off[2];
+            if (slope > bestTieSlope) {
+              bestTieSlope = slope;
+              bestDx = off[0];
+              bestDy = off[1];
+              hasDir = true;
+            }
           }
         }
       }
 
-      if (bestSlope > 0) {
+      // Pass 2 (fallback for synthetic uniform-flow worlds or local flow plateaus): steepest
+      // strictly lower immediate D8 neighbour.
+      if (!hasDir) {
+        let bestSlope = 0;
+        for (let k = 0; k < D8_OFFSETS.length; k++) {
+          const off = D8_OFFSETS[k];
+          const nx = x + off[0];
+          const ny = y + off[1];
+          if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+          const dh = e0 - elevation[ny * size + nx];
+          if (dh > 1e-7) {
+            const slope = dh * off[2];
+            if (slope > bestSlope) {
+              bestSlope = slope;
+              bestDx = off[0];
+              bestDy = off[1];
+              hasDir = true;
+            }
+          }
+        }
+      }
+
+      if (hasDir) {
         const invLen = 1 / Math.hypot(bestDx, bestDy);
         const fx = bestDx * invLen;
         const fy = bestDy * invLen;

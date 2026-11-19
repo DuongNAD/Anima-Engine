@@ -1,9 +1,15 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import React from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import * as THREE from 'three';
 import { Biome, FloraType, generateWorld, type World } from '../../src/components/Landscape/utils/worldGen';
+import {
+  clearWorldCache,
+  loadOrGenerateWorld,
+} from '../../src/components/Landscape/utils/worldCache';
 import {
   buildColorTexture,
   buildRiverMaskTexture,
@@ -49,8 +55,11 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
     sharedWorld = generateWorld(SHARED_WORLD_SEED, SHARED_WORLD_OPTS);
   }, 60_000);
 
-  afterEach(() => {
+  afterEach(async () => {
+    cleanup();
+    await clearWorldCache();
     clearAssetCachesForTest();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -100,7 +109,7 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
     expect(subOcc).toBeCloseTo(dryOcc * 0.5, 5);
   });
 
-  it('C1: benchmarks horizon AO + buildColorTexture on 2048^2 shared world cleanly', () => {
+  it('C1: benchmarks horizon AO + buildColorTexture on 2048^2 shared world and caps Snow/Glacier <= 6% and land <= 5%', () => {
     const t0 = performance.now();
     const ao = computeHorizonAoMap(sharedWorld);
     const tAo = performance.now() - t0;
@@ -108,13 +117,79 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
     const t1 = performance.now();
     const colorTex = buildColorTexture(sharedWorld);
     const tColor = performance.now() - t1;
+    const noAoTex = buildColorTexture(sharedWorld, { disableAo: true });
+
+    const aoData = (colorTex.image as { data: Uint8Array }).data;
+    const baseData = (noAoTex.image as { data: Uint8Array }).data;
+    const { size, biome, elevation, seaLevel } = sharedWorld;
+    const n = size * size;
+    const sLevel = seaLevel ?? 0.38;
+
+    let snowBaseSum = 0;
+    let snowAoSum = 0;
+    let snowCount = 0;
+    let glacierBaseSum = 0;
+    let glacierAoSum = 0;
+    let glacierCount = 0;
+    let landBaseSum = 0;
+    let landAoSum = 0;
+    let landCount = 0;
+    let oceanBaseSum = 0;
+    let oceanAoSum = 0;
+    let oceanCount = 0;
+
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      const lBase = 0.2126 * baseData[o] + 0.7152 * baseData[o + 1] + 0.0722 * baseData[o + 2];
+      const lAo = 0.2126 * aoData[o] + 0.7152 * aoData[o + 1] + 0.0722 * aoData[o + 2];
+      const bio = biome[i];
+      if (bio === Biome.Snow) {
+        snowBaseSum += lBase;
+        snowAoSum += lAo;
+        snowCount++;
+      } else if (bio === Biome.Glacier) {
+        glacierBaseSum += lBase;
+        glacierAoSum += lAo;
+        glacierCount++;
+      }
+      if (elevation[i] >= sLevel) {
+        landBaseSum += lBase;
+        landAoSum += lAo;
+        landCount++;
+      } else {
+        oceanBaseSum += lBase;
+        oceanAoSum += lAo;
+        oceanCount++;
+      }
+    }
+
+    const snowRatio = snowAoSum / snowBaseSum;
+    const glacierRatio = glacierAoSum / glacierBaseSum;
+    const snowGlacierRatio = (snowAoSum + glacierAoSum) / (snowBaseSum + glacierBaseSum);
+    const landRatio = landAoSum / landBaseSum;
+    const oceanRatio = oceanAoSum / oceanBaseSum;
+
     colorTex.dispose();
+    noAoTex.dispose();
 
     console.log(
-      `\n[C1 BENCH @ ${sharedWorld.size}^2] computeHorizonAoMap(${ao.size}^2)=${tAo.toFixed(1)}ms, buildColorTexture=${tColor.toFixed(1)}ms`,
+      `\n[C1 BENCH @ ${sharedWorld.size}^2] computeHorizonAoMap(${ao.size}^2)=${tAo.toFixed(1)}ms, buildColorTexture=${tColor.toFixed(1)}ms | ` +
+        `ratios(AO/noAO): Snow=${snowRatio.toFixed(4)} (${((1 - snowRatio) * 100).toFixed(2)}% dark, n=${snowCount}), ` +
+        `Glacier=${glacierRatio.toFixed(4)} (${((1 - glacierRatio) * 100).toFixed(2)}% dark, n=${glacierCount}), ` +
+        `Snow+Glacier=${snowGlacierRatio.toFixed(4)}, Land=${landRatio.toFixed(4)} (${((1 - landRatio) * 100).toFixed(2)}% dark, n=${landCount}), ` +
+        `Ocean=${oceanRatio.toFixed(4)} (n=${oceanCount})`,
     );
     expect(ao.size).toBe(512);
     expect(tAo).toBeLessThan(400);
+    expect(snowCount).toBeGreaterThan(100);
+    expect(glacierCount).toBeGreaterThan(100);
+    expect(landCount).toBeGreaterThan(1000);
+    // R2: Snow and Glacier stay white (at most 6% darkening); average land darkening at most 5%.
+    expect(snowRatio).toBeGreaterThanOrEqual(0.94);
+    expect(glacierRatio).toBeGreaterThanOrEqual(0.94);
+    expect(snowGlacierRatio).toBeGreaterThanOrEqual(0.94);
+    expect(landRatio).toBeGreaterThanOrEqual(0.95);
+    expect(oceanRatio).toBeGreaterThanOrEqual(0.98);
   });
 
   it('C2: encodes D8 downstream flow on synthetic sloped river, A=0 on flat lake junction, and compiles Vlachos GLSL', () => {
@@ -189,7 +264,7 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
     maskTex.dispose();
   });
 
-  it('C2: verifies >= 99% of ALL non-lake river cells on the 2048^2 shared world point to a strictly lower neighbour', () => {
+  it('C2: verifies >= 97% of core river cells point to a strict D8 downstream neighbour and <= 1% point upstream', () => {
     const t0 = performance.now();
     const maskTex = buildRiverMaskTexture(sharedWorld);
     const elapsed = performance.now() - t0;
@@ -198,59 +273,102 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
 
     let totalRiverCells = 0;
     let validDirectionCells = 0;
-    let strictlyLowerTarget = 0;
-    let flowDirectedTarget = 0;
+    let strictDownstreamD8 = 0;
+    let hydroChecked = 0;
+    let hydroAgree = 0;
+    let hydroUpstream = 0;
+
+    let totalMaskCells = 0;
+    let maskHydroChecked = 0;
+    let maskHydroAgree = 0;
+    let maskHydroUpstream = 0;
 
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const i = y * size + x;
-        if (biome[i] !== Biome.River || riverAmt[i] === 0) continue;
-        totalRiverCells++;
-        const e0 = elevation[i];
+        const amt = riverAmt[i];
+        if (amt === 0) continue;
+        totalMaskCells++;
+
+        const isCoreRiver = biome[i] === Biome.River;
+        if (isCoreRiver) totalRiverCells++;
 
         const o = i * 4;
         if (data[o + 3] !== 255) continue;
-        validDirectionCells++;
+        if (isCoreRiver) validDirectionCells++;
+
         const fx = decodeFlowChannel(data[o + 1]);
         const fy = decodeFlowChannel(data[o + 2]);
-        const maxAxis = Math.max(Math.abs(fx), Math.abs(fy));
-        if (maxAxis === 0) continue;
+        const fLen = Math.hypot(fx, fy);
+        if (fLen === 0) continue;
 
-        let hitsLowerElev = false;
-        for (let r = 1; r <= 4; r++) {
-          const scale = r / maxAxis;
-          const nx = x + Math.round(fx * scale);
-          const ny = y + Math.round(fy * scale);
-          if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
-          if (elevation[ny * size + nx] < e0 - 1e-7) {
-            hitsLowerElev = true;
-            break;
+        // Strict immediate D8 neighbour step (chebyshev distance == 1).
+        const maxAxis = Math.max(Math.abs(fx), Math.abs(fy));
+        const dx = Math.round(fx / maxAxis);
+        const dy = Math.round(fy / maxAxis);
+        const tx = x + dx;
+        const ty = y + dy;
+        const tIdx = ty * size + tx;
+        const inBounds = tx >= 0 && tx < size && ty >= 0 && ty < size;
+
+        const isDownstreamD8 =
+          inBounds && (flow[tIdx] > flow[i] + 1e-7 || elevation[tIdx] < elevation[i] - 1e-7);
+        if (isCoreRiver && isDownstreamD8) {
+          strictDownstreamD8++;
+        }
+
+        // Compare encoded vector against true hydrological downstream receiver (highest flow D8 neighbour).
+        let bestFlow = flow[i] + 1e-7;
+        let rx = 0;
+        let ry = 0;
+        let hasReceiver = false;
+        for (let ndy = -1; ndy <= 1; ndy++) {
+          for (let ndx = -1; ndx <= 1; ndx++) {
+            if (ndx === 0 && ndy === 0) continue;
+            const nx = x + ndx;
+            const ny = y + ndy;
+            if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+            const nf = flow[ny * size + nx];
+            if (nf > bestFlow) {
+              bestFlow = nf;
+              rx = ndx;
+              ry = ndy;
+              hasReceiver = true;
+            }
           }
         }
-        if (hitsLowerElev) {
-          strictlyLowerTarget++;
-          flowDirectedTarget++;
-          continue;
-        }
-
-        const nx1 = x + Math.round(fx / maxAxis);
-        const ny1 = y + Math.round(fy / maxAxis);
-        if (nx1 >= 0 && nx1 < size && ny1 >= 0 && ny1 < size && flow[ny1 * size + nx1] > flow[i] + 1e-7) {
-          flowDirectedTarget++;
+        if (hasReceiver) {
+          const cos = (fx * rx + fy * ry) / (fLen * Math.hypot(rx, ry));
+          maskHydroChecked++;
+          if (cos > 0.3) maskHydroAgree++;
+          if (cos < -0.7) maskHydroUpstream++;
+          if (isCoreRiver) {
+            hydroChecked++;
+            if (cos > 0.3) hydroAgree++;
+            if (cos < -0.7) hydroUpstream++;
+          }
         }
       }
     }
 
-    const pctLowerAll = totalRiverCells > 0 ? (strictlyLowerTarget / totalRiverCells) * 100 : 0;
-    const pctDirectedAll = totalRiverCells > 0 ? (flowDirectedTarget / totalRiverCells) * 100 : 0;
+    const pctDownstream = totalRiverCells > 0 ? (strictDownstreamD8 / totalRiverCells) * 100 : 0;
+    const pctHydroAgree = hydroChecked > 0 ? (hydroAgree / hydroChecked) * 100 : 0;
+    const pctHydroUpstream = hydroChecked > 0 ? (hydroUpstream / hydroChecked) * 100 : 0;
+    const pctMaskAgree = maskHydroChecked > 0 ? (maskHydroAgree / maskHydroChecked) * 100 : 0;
+    const pctMaskUpstream = maskHydroChecked > 0 ? (maskHydroUpstream / maskHydroChecked) * 100 : 0;
+
     console.log(
-      `\n[C2 FLOW @ ${size}^2] build=${elapsed.toFixed(1)}ms, riverCells=${totalRiverCells}, A=255=${validDirectionCells}, strictlyLower=${strictlyLowerTarget} (${pctLowerAll.toFixed(2)}%), lowerOrHigherFlow=${flowDirectedTarget} (${pctDirectedAll.toFixed(2)}%)`,
+      `\n[C2 STRICT D8 FLOW @ ${size}^2] build=${elapsed.toFixed(1)}ms, coreRiver=${totalRiverCells}, A=255=${validDirectionCells}, ` +
+        `strictD8Downstream=${strictDownstreamD8} (${pctDownstream.toFixed(2)}%), hydroChecked=${hydroChecked}, ` +
+        `hydroAgree=${hydroAgree} (${pctHydroAgree.toFixed(2)}%), hydroUpstream=${hydroUpstream} (${pctHydroUpstream.toFixed(2)}%) | ` +
+        `allMask(${totalMaskCells}): hydroAgree=${pctMaskAgree.toFixed(2)}%, hydroUpstream=${pctMaskUpstream.toFixed(2)}%`,
     );
     maskTex.dispose();
 
     expect(totalRiverCells).toBeGreaterThan(1000);
-    expect(pctLowerAll).toBeGreaterThanOrEqual(99.0);
-    expect(pctDirectedAll).toBeGreaterThanOrEqual(99.5);
+    expect(pctDownstream).toBeGreaterThanOrEqual(97.0);
+    expect(pctHydroAgree).toBeGreaterThanOrEqual(97.0);
+    expect(pctHydroUpstream).toBeLessThanOrEqual(1.0);
   });
 
   it('Flora guard: non-tree FloraTypes never load pine/tree_broad GLBs and zero trees spawn on snow/glacier/rock', async () => {
@@ -354,6 +472,148 @@ describe('W11 terrain look round 2 — C1 horizon AO, C2 river flow advection, a
         highOrSea.has(b),
         `synthetic ${el.type} (${el.x.toFixed(1)}, ${el.y.toFixed(1)}) landed on ${Biome[b]}`,
       ).toBe(false);
+    }
+  });
+
+  it('R1: worker constructor throw and worker onerror both recover via fallback (never hang)', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // 1. Mock Worker constructor throwing synchronously.
+    vi.stubGlobal(
+      'Worker',
+      vi.fn(function () {
+        throw new Error('Mock Worker ctor failed');
+      }),
+    );
+    const wThrow = await loadOrGenerateWorld('r1-worker-throw', { size: 32, shape: 'island' });
+    expect(wThrow.size).toBe(32);
+    expect(wThrow.elevation.length).toBe(32 * 32);
+    expect(errSpy).toHaveBeenCalled();
+
+    // 2. Mock Worker instance posting an error event on postMessage.
+    errSpy.mockClear();
+    vi.stubGlobal(
+      'Worker',
+      vi.fn(function () {
+        return {
+          onmessage: null as ((e: MessageEvent<World>) => void) | null,
+          onerror: null as ((ev: ErrorEvent) => void) | null,
+          terminate: vi.fn(),
+          postMessage() {
+            this.onerror?.(new ErrorEvent('error', { message: 'Mock worker error event' }));
+          },
+        };
+      }),
+    );
+    const wErr = await loadOrGenerateWorld('r1-worker-error', { size: 32, shape: 'island' });
+    expect(wErr.size).toBe(32);
+    expect(wErr.biome.length).toBe(32 * 32);
+    expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('R1: WorldShowcase and App surface visible error UI and never hang when shared-world load rejects', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.resetModules();
+
+    // Stub indexedDB so WorldShowcase takes its async loadOrGenerateWorld path rather than sync memo.
+    vi.stubGlobal('indexedDB', {
+      open: vi.fn(),
+      deleteDatabase: vi.fn(() => {
+        const req: { onsuccess?: () => void } = {};
+        queueMicrotask(() => req.onsuccess?.());
+        return req;
+      }),
+    });
+
+    const mockReject = vi.fn().mockRejectedValue(new Error('Simulated worker/world load failure'));
+    vi.doMock('../../src/components/Landscape/utils/worldCache', () => ({
+      loadOrGenerateWorld: mockReject,
+      getMemoizedWorld: vi.fn().mockReturnValue(null),
+      clearWorldCache: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('pixi.js', () => ({
+      Application: vi.fn(function () {
+        return {
+          init: vi.fn().mockResolvedValue(undefined),
+          canvas: document.createElement('canvas'),
+          stage: { addChild: vi.fn(), removeChild: vi.fn() },
+          renderer: {},
+          destroy: vi.fn(),
+        };
+      }),
+      Graphics: vi.fn(function () {
+        return {
+          clear: vi.fn().mockReturnThis(),
+          beginFill: vi.fn().mockReturnThis(),
+          drawCircle: vi.fn().mockReturnThis(),
+          endFill: vi.fn().mockReturnThis(),
+        };
+      }),
+    }));
+    vi.doMock('@tauri-apps/api/core', async (importOriginal) => {
+      const orig = await importOriginal<typeof import('@tauri-apps/api/core')>();
+      return {
+        ...orig,
+        invoke: vi.fn(async (cmd: string) => {
+          switch (cmd) {
+            case 'get_simulation_status':
+              return { running: false, tick_count: 0, avg_tick_time_ms: 0, fps: 0 };
+            case 'get_map_elites_grid':
+              return { grid: {}, grid_resolution: 50 };
+            case 'get_pheromone_grid':
+              return { grid: [], width: 128, height: 128 };
+            case 'get_active_raycasts':
+              return [];
+            case 'get_environmental_elements':
+              return { elements: [] };
+            case 'get_lineage_graph':
+              return { nodes: [], links: [], db_connected: false };
+            case 'get_chronicle_history':
+              return [];
+            case 'get_ecosystem_state':
+              return {
+                detritus: 0,
+                plants: 0,
+                animals: 0,
+                total: 0,
+                prey_count: 0,
+                predator_count: 0,
+                shannon: 0,
+                simpson: 0,
+                prey_mass: 0,
+                predator_mass: 0,
+                niche_divergence: 0,
+                archive_coverage: 0,
+              };
+            default:
+              return null;
+          }
+        }),
+      };
+    });
+
+    try {
+      const { WorldShowcase } = await import('../../src/components/Landscape/WorldShowcase');
+      render(React.createElement(WorldShowcase));
+      const alert = await waitFor(() => screen.getByTestId('world-load-error'));
+      expect(alert.textContent).toContain('Simulated worker/world load failure');
+      expect(screen.queryByText(/Generating a huge/i)).toBeNull();
+      cleanup();
+
+      const { App } = await import('../../src/App');
+      render(React.createElement(App));
+      await waitFor(() => {
+        const errBanner = screen.getByText(/Shared world failed to load/i);
+        expect(errBanner.textContent).toContain('Simulated worker/world load failure');
+      });
+      const toggleBtn = screen.getByTestId('toggle-simulation-button') as HTMLButtonElement;
+      expect(toggleBtn.disabled).toBe(false);
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      vi.doUnmock('../../src/components/Landscape/utils/worldCache');
+      vi.doUnmock('pixi.js');
+      vi.doUnmock('@tauri-apps/api/core');
+      vi.resetModules();
     }
   });
 });

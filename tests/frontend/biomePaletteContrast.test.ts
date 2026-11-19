@@ -15,16 +15,20 @@ import { SHARED_WORLD_OPTS, SHARED_WORLD_SEED } from '../../src/utils/sharedWorl
 const MIN_BORDER_EDGES = 100;
 
 /**
- * Calibrated from well-separated adjacent pairs on the 2048^2 shared world
- * (e.g. Shrubland <-> Steppe dE76 = 16.7, Savanna <-> Shrubland dE76 = 20.0 / dL* = 7.1,
- * Shrubland <-> Chaparral dE76 = 19.3 / dL* = 7.8):
- * - Every qualifying non-(River<->Lake) pair must maintain at least MIN_DELTA_E76 = 16.0.
- * - Any pair without strong chroma separation (dC_ab < CHROMA_OVERRIDE_THRESHOLD) must also maintain
- *   at least MIN_VALUE_DELTA_L = 4.5 so adjacent biomes never merge in luminance / grayscale.
+ * Calibrated from adjacent pairs on the 2048^2 shared world:
+ * - Every qualifying non-(River<->Lake) pair must maintain at least MIN_DELTA_E76 = 16.0
+ *   (calibrated just under Shrubland <-> Steppe at 17.3 / Glacier <-> Snow at 17.7).
+ * - ALL terrestrial-to-terrestrial (and Ocean) pairs must unconditionally maintain
+ *   MIN_VALUE_DELTA_L = 4.5 with ZERO chroma exemption, so no two land biomes merge in grayscale.
+ * - Freshwater borders (River / Lake <-> land, where water shaders & low roughness = 84 also
+ *   separate channels from terrain) require either ΔL* >= 4.5 OR calibrated strong hue/chroma
+ *   separation ΔC_ab >= MIN_WATER_LAND_CHROMA = 40.0 (calibrated from Rock <-> River at ΔC = 41.6).
+ * - Forest <-> Mangrove must maintain at least trunk separation (ΔL* >= 6.4).
  */
 const MIN_DELTA_E76 = 16.0;
-const CHROMA_OVERRIDE_THRESHOLD = 25.0;
 const MIN_VALUE_DELTA_L = 4.5;
+const MIN_WATER_LAND_CHROMA = 40.0;
+const TRUNK_FOREST_MANGROVE_DELTA_L = 6.4;
 
 type RgbTuple = readonly [number, number, number];
 type LabTuple = readonly [number, number, number];
@@ -160,22 +164,32 @@ describe('C3 — Biome display palette CIELAB contrast & minimap legend gate', (
           `${m.nameA} <-> ${m.nameB} (edges=${m.edges}): dE76=${m.deltaE76.toFixed(2)} < ${MIN_DELTA_E76}`,
         );
       }
-      if (m.deltaChroma < CHROMA_OVERRIDE_THRESHOLD && m.deltaL < MIN_VALUE_DELTA_L) {
+
+      const isFreshwaterBorder =
+        m.a === Biome.River || m.b === Biome.River || m.a === Biome.Lake || m.b === Biome.Lake;
+      if (!isFreshwaterBorder) {
+        if (m.deltaL < MIN_VALUE_DELTA_L) {
+          failures.push(
+            `${m.nameA} <-> ${m.nameB} (edges=${m.edges}): dL*=${m.deltaL.toFixed(2)} < ${MIN_VALUE_DELTA_L} (dC=${m.deltaChroma.toFixed(1)})`,
+          );
+        }
+      } else if (m.deltaL < MIN_VALUE_DELTA_L && m.deltaChroma < MIN_WATER_LAND_CHROMA) {
         failures.push(
-          `${m.nameA} <-> ${m.nameB} (edges=${m.edges}): dL*=${m.deltaL.toFixed(2)} < ${MIN_VALUE_DELTA_L} (dC=${m.deltaChroma.toFixed(1)})`,
+          `${m.nameA} <-> ${m.nameB} (edges=${m.edges}): freshwater border dL*=${m.deltaL.toFixed(2)} < ${MIN_VALUE_DELTA_L} and dC=${m.deltaChroma.toFixed(1)} < ${MIN_WATER_LAND_CHROMA}`,
         );
       }
     }
 
-    // Explicit wetland/dark-green grayscale check (Taiga <-> Bog also separates in L* value).
-    const taigaBog = metrics.find(
+    // Regression guard (R4): Forest <-> Mangrove separation must stay at or above trunk value (6.4).
+    const forestMangrove = metrics.find(
       (m) =>
-        (m.a === Biome.Taiga && m.b === Biome.Bog) ||
-        (m.a === Biome.Bog && m.b === Biome.Taiga),
+        (m.a === Biome.Forest && m.b === Biome.Mangrove) ||
+        (m.a === Biome.Mangrove && m.b === Biome.Forest),
     );
-    if (taigaBog && taigaBog.deltaL < MIN_VALUE_DELTA_L) {
+    expect(forestMangrove, 'Forest <-> Mangrove pair must exist on shared world').toBeDefined();
+    if (forestMangrove && forestMangrove.deltaL < TRUNK_FOREST_MANGROVE_DELTA_L) {
       failures.push(
-        `Taiga <-> Bog (edges=${taigaBog.edges}): dL*=${taigaBog.deltaL.toFixed(2)} < ${MIN_VALUE_DELTA_L}`,
+        `Forest <-> Mangrove (edges=${forestMangrove.edges}): dL*=${forestMangrove.deltaL.toFixed(2)} < trunk ${TRUNK_FOREST_MANGROVE_DELTA_L}`,
       );
     }
 

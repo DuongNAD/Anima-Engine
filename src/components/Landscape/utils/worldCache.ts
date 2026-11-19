@@ -108,9 +108,6 @@ export function getMemoizedWorld(seed: string | number, opts: WorldGenOptions = 
   const key = keyFor(seed, size, shape);
   let w = memo.get(key);
   if (!w) {
-    if (!IS_TEST_BUILD) {
-      throw new Error('Synchronous world generation is disabled outside test builds; use loadOrGenerateWorld.');
-    }
     w = generateWorld(seed, opts);
     memo.set(key, w);
   }
@@ -120,36 +117,45 @@ export function getMemoizedWorld(seed: string | number, opts: WorldGenOptions = 
 /**
  * Generate the world OFF the main thread in a Web Worker (so the UI stays responsive during
  * a fresh ~1s build and the main bundle ships generateWorld only inside the worker chunk),
- * transferring the TypedArray buffers back zero-copy. Test builds without Workers fall back
- * to synchronous generation.
+ * transferring the TypedArray buffers back zero-copy. If the worker is unavailable or fails,
+ * fall back synchronously to main-thread generation instead of hanging.
  */
 function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promise<World> {
   const size = opts.size ?? 1024;
-  const fallbackOrReject = (
+  const runFallback = (
     resolve: (w: World) => void,
     reject: (reason?: unknown) => void,
     reason: string,
+    errDetail?: unknown,
   ) => {
-    if (IS_TEST_BUILD) {
+    if (!IS_TEST_BUILD || errDetail !== undefined) {
+      console.error(`[worldCache] ${reason}; falling back to main-thread world generation.`, errDetail);
+    }
+    try {
       resolve(generateWorld(seed, opts));
-    } else {
-      reject(new Error(reason));
+    } catch (fallbackErr: unknown) {
+      console.error('[worldCache] Main-thread world generation fallback failed:', fallbackErr);
+      reject(
+        fallbackErr instanceof Error
+          ? fallbackErr
+          : new Error(`${reason}: ${String(fallbackErr)}`),
+      );
     }
   };
   return new Promise((resolve, reject) => {
     if (typeof Worker === 'undefined') {
-      fallbackOrReject(resolve, reject, 'Web Workers unavailable for world generation');
+      runFallback(resolve, reject, 'Web Workers unavailable for world generation');
       return;
     }
     let worker: Worker;
     try {
       worker = new Worker(new URL('./worldGen.worker.ts', import.meta.url), { type: 'module' });
-    } catch {
-      fallbackOrReject(resolve, reject, 'Failed to construct world generation worker');
+    } catch (err: unknown) {
+      runFallback(resolve, reject, 'Failed to construct world generation worker', err);
       return;
     }
     let settled = false;
-    const finishFallback = (reason: string) => {
+    const finishFallback = (reason: string, errDetail?: unknown) => {
       if (settled) return;
       settled = true;
       try {
@@ -157,25 +163,26 @@ function generateWorldAsync(seed: string | number, opts: WorldGenOptions): Promi
       } catch {
         /* ignore */
       }
-      fallbackOrReject(resolve, reject, reason);
+      runFallback(resolve, reject, reason, errDetail);
     };
     worker.onmessage = (e: MessageEvent<World>) => {
       if (settled) return;
       settled = true;
       worker.terminate();
-      // Guard against a worker built from stale/partial code: reject (or regenerate in test mode)
+      // Guard against a worker built from stale/partial code: fall back to main-thread generation
       // if the payload is missing any field the renderer needs.
       if (isValid(e.data, size)) {
         resolve(e.data);
       } else {
-        fallbackOrReject(resolve, reject, 'World generation worker returned invalid payload');
+        runFallback(resolve, reject, 'World generation worker returned invalid payload');
       }
     };
-    worker.onerror = () => finishFallback('World generation worker error');
+    worker.onerror = (ev: ErrorEvent) =>
+      finishFallback('World generation worker error', ev?.error ?? ev?.message ?? ev);
     try {
       worker.postMessage({ seed, opts });
-    } catch {
-      finishFallback('Failed to post world generation request to worker');
+    } catch (err: unknown) {
+      finishFallback('Failed to post world generation request to worker', err);
     }
   });
 }
