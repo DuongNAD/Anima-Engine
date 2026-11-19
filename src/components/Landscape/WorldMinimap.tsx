@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { World } from './utils/worldGen';
 import { Biome, BIOME_RGB } from './utils/worldGen';
+import { BIOME_DISPLAY_RGB } from './utils/worldTerrainTextures';
 
 // ---------------------------------------------------------------------------------------
 // WorldMinimap — top-down biome map of the SoA world with a live camera marker.
@@ -49,8 +50,8 @@ const LEGEND: Array<{ label: string; biome: Biome }> = [
   { label: 'Savanna', biome: Biome.Savanna },
   { label: 'Chaparral', biome: Biome.Chaparral },
   { label: 'Steppe', biome: Biome.Steppe },
-  { label: 'Grass', biome: Biome.Grassland },
-  { label: 'Shrub', biome: Biome.Shrubland },
+  { label: 'Grassland', biome: Biome.Grassland },
+  { label: 'Shrubland', biome: Biome.Shrubland },
   { label: 'Forest', biome: Biome.Forest },
   { label: 'Jungle', biome: Biome.Jungle },
   { label: 'Swamp', biome: Biome.Swamp },
@@ -71,7 +72,18 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
   size = MAP_SIZE,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [showLegend, setShowLegend] = useState(false);
+  const [showLegend, setShowLegend] = useState(true);
+
+  const presentLegend = useMemo(() => {
+    const present = new Set<Biome>();
+    const { biome, riverAmt, water } = world;
+    for (let i = 0; i < biome.length; i++) {
+      present.add(biome[i] as Biome);
+      if (riverAmt && riverAmt[i] > 128) present.add(Biome.River);
+      if (water && water[i] > 0) present.add(Biome.Lake);
+    }
+    return LEGEND.filter((entry) => present.has(entry.biome));
+  }, [world]);
 
   // Pre-render the biome map (with a light elevation hillshade for relief) once per world.
   const biomeImage = useMemo(() => {
@@ -82,7 +94,7 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
         const gx = Math.min(n - 1, Math.floor((mx / size) * n));
         const gy = Math.min(n - 1, Math.floor((my / size) * n));
         const idx = gy * n + gx;
-        let [r, g, b] = BIOME_RGB[biome[idx]] ?? [0, 0, 0];
+        let [r, g, b] = BIOME_DISPLAY_RGB[biome[idx]] ?? BIOME_RGB[biome[idx]] ?? [0, 0, 0];
 
         // Cheap hillshade: brighten with elevation on land, flat under the sea.
         const e = elevation[idx];
@@ -216,14 +228,55 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
         <span>🗺 World Map</span>
         <span
           onClick={() => setShowLegend((v) => !v)}
-          style={{ cursor: 'pointer', opacity: 0.8 }}
+          data-testid="minimap-legend-toggle"
+          style={{ cursor: 'pointer', opacity: 0.85 }}
           title="Toggle legend"
         >
-          {showLegend ? '▾' : 'legend ▸'}
+          {showLegend ? 'legend ▾' : 'legend ▸'}
         </span>
       </div>
 
-      <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'stretch' }}>
+        {showLegend && presentLegend.length > 0 && (
+          <div
+            data-testid="minimap-biome-legend"
+            style={{
+              padding: '6px 8px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(76px, auto))',
+              gap: '2px 8px',
+              alignContent: 'start',
+              background: 'rgba(2,6,23,0.88)',
+              borderRight: '1px solid rgba(125,211,252,0.22)',
+              fontSize: 10,
+              lineHeight: 1.3,
+              color: '#e2e8f0',
+            }}
+          >
+            {presentLegend.map(({ label, biome }) => {
+              const [r, g, b] = BIOME_DISPLAY_RGB[biome] ?? BIOME_RGB[biome] ?? [255, 0, 255];
+              return (
+                <div
+                  key={label}
+                  data-biome={biome}
+                  style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}
+                >
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: 2,
+                      background: `rgb(${r},${g},${b})`,
+                      border: '1px solid rgba(255,255,255,0.28)',
+                      flex: '0 0 auto',
+                    }}
+                  />
+                  <span>{label}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <canvas
           ref={canvasRef}
           width={size}
@@ -231,40 +284,6 @@ export const WorldMinimap: React.FC<WorldMinimapProps> = ({
           onClick={handleClick}
           style={{ display: 'block', cursor: 'crosshair' }}
         />
-        {showLegend && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              padding: 8,
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '2px 8px',
-              alignContent: 'start',
-              background: 'rgba(2,6,23,0.72)',
-              fontSize: 10,
-              color: '#e2e8f0',
-            }}
-          >
-            {LEGEND.map(({ label, biome }) => {
-              const [r, g, b] = BIOME_RGB[biome];
-              return (
-                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 2,
-                      background: `rgb(${r},${g},${b})`,
-                      flex: '0 0 auto',
-                    }}
-                  />
-                  {label}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );

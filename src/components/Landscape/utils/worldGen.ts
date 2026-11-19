@@ -1019,12 +1019,22 @@ interface ReliefFields {
   step: number;
   /** Lattice points per row. */
   w: number;
-  belt: Float64Array;
-  /** Mid-frequency coast detail (bays, capes, offshore islands). */
-  coast: Float64Array;
-  uplift: Float64Array;
-  crest: Float64Array;
-  rugged: Float64Array;
+  /**
+   * The five fields interleaved per lattice point: land belt, coast detail (bays, capes, offshore
+   * islands), range uplift, crest weight, badlands weight.
+   */
+  v: Float64Array;
+}
+
+/** Fields per lattice point in `ReliefFields.v`. */
+const RELIEF_FIELDS = 5;
+
+/** Bilinear interpolation in `v` at offset `o` (lattice row stride `s`), cell fractions `tx`, `ty`. */
+function bilerp(v: Float64Array, o: number, s: number, tx: number, ty: number): number {
+  const r = RELIEF_FIELDS;
+  return (
+    v[o] * ((1 - tx) * (1 - ty)) + v[o + r] * (tx * (1 - ty)) + v[o + s] * ((1 - tx) * ty) + v[o + s + r] * (tx * ty)
+  );
 }
 
 function supercontinentFields(
@@ -1037,27 +1047,22 @@ function supercontinentFields(
   const P = SUPERCONTINENT;
   const step = Math.max(1, Math.round(size / 512));
   const w = Math.ceil((size - 1) / step) + 2;
-  const n = w * w;
-  const belt = new Float64Array(n);
-  const coast = new Float64Array(n);
-  const uplift = new Float64Array(n);
-  const crest = new Float64Array(n);
-  const rugged = new Float64Array(n);
+  const v = new Float64Array(w * w * RELIEF_FIELDS);
   for (let gy = 0; gy < w; gy++) {
     const ny = ((gy * step) / (size - 1)) * 2 - 1;
     // Continentalness: a broad meridional belt whose axis meanders east-west.
     const spineX = P.spineAmp * Math.sin(ny * 2.2 + 0.7) + 0.1 * warpNoise.noise(ny * 1.1 + 21.7, 5.3);
     for (let gx = 0; gx < w; gx++) {
-      const g = gy * w + gx;
+      const g = (gy * w + gx) * RELIEF_FIELDS;
       const nx = ((gx * step) / (size - 1)) * 2 - 1;
       const ax = nx - spineX;
-      belt[g] = P.beltLift * Math.exp(-(ax * ax) / (P.beltWidth * P.beltWidth));
+      v[g] = P.beltLift * Math.exp(-(ax * ax) / (P.beltWidth * P.beltWidth));
       // The same domain warp Pass 1 applies to the base, so the coast detail moves with it.
       const wx = warpNoise.noise(nx * freq * 0.5 + 4.7, ny * freq * 0.5 + 1.3);
       const wy = warpNoise.noise(nx * freq * 0.5 + 8.9, ny * freq * 0.5 + 6.1);
       const sx = nx * freq + wx * 0.35;
       const sy = ny * freq + wy * 0.35;
-      coast[g] = P.coastDetail * fbm(elevNoise, sx * 3.1 + 17.3, sy * 3.1 + 5.9, 4, 2.0, 0.5);
+      v[g + 1] = P.coastDetail * fbm(elevNoise, sx * 3.1 + 17.3, sy * 3.1 + 5.9, 4, 2.0, 0.5);
       let up = 0;
       let cr = 0;
       let ru = 0;
@@ -1084,12 +1089,12 @@ function supercontinentFields(
           ru = Math.max(ru, Math.exp(-d2 / (r.width * r.width * 1.6)) * tail * r.rugged);
         }
       }
-      uplift[g] = up;
-      crest[g] = cr;
-      rugged[g] = ru;
+      v[g + 2] = up;
+      v[g + 3] = cr;
+      v[g + 4] = ru;
     }
   }
-  return { step, w, belt, coast, uplift, crest, rugged };
+  return { step, w, v };
 }
 
 /**
@@ -1113,33 +1118,24 @@ function supercontinentRelief(
   ridgeNoise: ImprovedNoise2D,
 ): number {
   const P = SUPERCONTINENT;
-  // Bilinear weights of the four lattice points around the cell, shared by every field.
+  // The lattice cell around (x, y), and where in it the cell sits.
   const fx = x / f.step;
   const fy = y / f.step;
   const gx = Math.floor(fx);
   const gy = Math.floor(fy);
   const tx = fx - gx;
   const ty = fy - gy;
-  const g00 = gy * f.w + gx;
-  const g10 = g00 + 1;
-  const g01 = g00 + f.w;
-  const g11 = g01 + 1;
-  const w00 = (1 - tx) * (1 - ty);
-  const w10 = tx * (1 - ty);
-  const w01 = (1 - tx) * ty;
-  const w11 = tx * ty;
-  const { belt, coast, uplift } = f;
-  let e =
-    belt[g00] * w00 + belt[g10] * w10 + belt[g01] * w01 + belt[g11] * w11 +
-    (coast[g00] * w00 + coast[g10] * w10 + coast[g01] * w01 + coast[g11] * w11) +
-    (uplift[g00] * w00 + uplift[g10] * w10 + uplift[g01] * w01 + uplift[g11] * w11);
-  const crest = f.crest[g00] * w00 + f.crest[g10] * w10 + f.crest[g01] * w01 + f.crest[g11] * w11;
+  const o = (gy * f.w + gx) * RELIEF_FIELDS;
+  const s = f.w * RELIEF_FIELDS;
+  const v = f.v;
+  let e = bilerp(v, o, s, tx, ty) + bilerp(v, o + 1, s, tx, ty) + bilerp(v, o + 2, s, tx, ty);
+  const crest = bilerp(v, o + 3, s, tx, ty);
   if (crest > RELIEF_WEIGHT_EPS) {
     // Ridged arêtes, squared so the crests are sharp and the cols between them deep.
     const peaks = ridged(ridgeNoise, sx * P.peakFreq + 7.1, sy * P.peakFreq + 3.3, 5, 2.0, 0.5);
     e += crest * peaks * peaks;
   }
-  const rugged = f.rugged[g00] * w00 + f.rugged[g10] * w10 + f.rugged[g01] * w01 + f.rugged[g11] * w11;
+  const rugged = bilerp(v, o + 4, s, tx, ty);
   if (rugged > RELIEF_WEIGHT_EPS) {
     // Badlands: a dense net of gullies (the ridged lines) between flat-topped mesas, lifted rather
     // than carved, so the gullies drain instead of leaving a closed pit (a lake) in every one.
@@ -1764,25 +1760,25 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
 
   // ---- Pass 4e: waterfalls — steep drops along river channels ----
-  // A river cell whose steepest descent exceeds MIN_DROP reads as a waterfall: keep the lip
-  // position, drop height and downhill bearing so the renderer can hang a foam curtain on the
-  // face. Falls are kept biggest-first with a spacing filter so one long cascade doesn't
-  // spawn a ladder of overlapping curtains.
+  // A river cell whose path downstream drops at least `minDrop` within `run` steps of steepest
+  // descent reads as a waterfall: keep the lip position, drop height and downhill bearing so the
+  // renderer can hang a foam curtain on the face. Falls are kept biggest-first with a spacing filter
+  // so one long cascade doesn't spawn a ladder of overlapping curtains.
+  //
+  // `island` / `continent` use one step (the cell's own steepest drop) at 0.009 per 1024th of the
+  // map, 3 cells apart, up to 450. At 2048² that fires on any river crossing a steep hillside — all
+  // of them 1-2 render units tall, curtains on every slope — so the supercontinent asks for
+  // knickpoints instead (`SUPERCONTINENT.waterfalls`): a real step in the river's long profile,
+  // every qualifying fall kept, so the count follows from the threshold and `max` is a backstop.
   const wfX: number[] = [];
   const wfZ: number[] = [];
   const wfTopE: number[] = [];
   const wfDrop: number[] = [];
   const wfYaw: number[] = [];
-  if (superC) {
-    // Knickpoints only. The per-cell rule below fires on any river crossing a steep hillside, so at
-    // 2048² it found far more than its 450 cap, all of them 1-2 render units tall, and their curtains
-    // cluttered every slope. Here a fall is where the river loses `minDrop` of height within a short
-    // downstream `run` — a step in its long profile — measured along the path the water actually
-    // takes (steepest descent). Every qualifying fall is kept, tallest first, `spacing` apart, so the
-    // count follows from the threshold; `max` is only a backstop for a pathological world.
-    const W = SUPERCONTINENT.waterfalls;
-    const run = Math.max(2, Math.round((W.run * size) / 2048));
-    const spacing2 = ((W.spacing * size) / 2048) ** 2;
+  {
+    const W = superC ? SUPERCONTINENT.waterfalls : { run: 1, minDrop: 0.009 * (1024 / size), spacing: 3, max: 450 };
+    const run = superC ? Math.max(2, Math.round((W.run * size) / 2048)) : 1;
+    const spacing2 = superC ? ((W.spacing * size) / 2048) ** 2 : W.spacing * W.spacing;
     const cand: Array<{ x: number; z: number; e: number; d: number; yaw: number }> = [];
     for (let y = 1; y < size - 1; y++) {
       for (let x = 1; x < size - 1; x++) {
@@ -1844,77 +1840,21 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       wfDrop.push(c.d);
       wfYaw.push(c.yaw);
     }
-  } else {
-    // Per-CELL drop threshold: halving the cell size halves each step's drop, so scale by
-    // resolution to keep the same physical cliff height qualifying at any WORLD_SIZE.
-    const MIN_DROP = 0.009 * (1024 / size);
-    const MAX_FALLS = 450;
-    const cand: Array<{ x: number; z: number; e: number; d: number; yaw: number }> = [];
-    for (let y = 1; y < size - 1; y++) {
-      for (let x = 1; x < size - 1; x++) {
-        const i = y * size + x;
-        if (biome[i] !== Biome.River || water[i] > 0) continue;
-        let drop = 0;
-        let dirX = 0;
-        let dirY = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const d = elevation[i] - elevation[(y + dy) * size + (x + dx)];
-            if (d > drop) {
-              drop = d;
-              dirX = dx;
-              dirY = dy;
-            }
-          }
-        }
-        if (drop < MIN_DROP) continue;
-        cand.push({
-          x: x - size / 2 + dirX * 0.5,
-          z: y - size / 2 + dirY * 0.5,
-          e: elevation[i],
-          d: drop,
-          yaw: Math.atan2(dirY, dirX),
-        });
-      }
-    }
-    cand.sort((a, b) => b.d - a.d);
-    const takenX: number[] = [];
-    const takenZ: number[] = [];
-    for (const c of cand) {
-      if (wfX.length >= MAX_FALLS) break;
-      let crowded = false;
-      for (let k = 0; k < takenX.length; k++) {
-        const ddx = takenX[k] - c.x;
-        const ddz = takenZ[k] - c.z;
-        if (ddx * ddx + ddz * ddz < 9) {
-          crowded = true;
-          break;
-        }
-      }
-      if (crowded) continue;
-      takenX.push(c.x);
-      takenZ.push(c.z);
-      wfX.push(c.x);
-      wfZ.push(c.z);
-      wfTopE.push(c.e);
-      wfDrop.push(c.d);
-      wfYaw.push(c.yaw);
-    }
   }
 
   // ---- Pass 4f: cave mouths — dark openings set into steep bare-rock faces ----
+  // Bare rock and eroded badlands host openings; they need a proper face to sink into, and never
+  // sit up in the frozen band — dark mouths against snow-bright rock read as floating black-dot
+  // glitches from any distance. `island` / `continent` take the first 80 lucky cells (1.8% each)
+  // in row order. On a world with as much rock as the supercontinent that put every mouth in the
+  // north, so it keeps the steepest faces instead, `spacing` cells apart (`SUPERCONTINENT.caves`).
   const cvX: number[] = [];
   const cvZ: number[] = [];
   const cvE: number[] = [];
   const cvYaw: number[] = [];
-  if (superC) {
-    // Steepest faces first, spread out. The scan below takes the first 80 lucky cells in row
-    // order, so on a world with this much rock every mouth landed in the north and none in the
-    // badlands. Here every bare-rock or badlands face at least `minSlope` steep (a cliff the
-    // camera can see as a wall) and below the snow is a candidate; the steepest are kept,
-    // `spacing` cells apart, up to `max`.
-    const C = SUPERCONTINENT.caves;
+  {
+    const C = superC ? SUPERCONTINENT.caves : { minSlope: 0.45, spacing: 0, max: 80 };
+    const caveRng = mulberry32((baseSeed ^ 0x7ac0beef) >>> 0);
     const spacing2 = ((C.spacing * size) / 2048) ** 2;
     const cand: number[] = [];
     for (let y = 2; y < size - 2; y += 2) {
@@ -1925,10 +1865,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
         if (slope[i] < C.minSlope) continue;
         if (elevation[i] < seaLevel + 0.02) continue;
         if (lat * 0.82 + 0.09 - Math.max(0, elevation[i] - seaLevel) * 1.35 < 0.135) continue; // not on snow
+        if (!superC && caveRng() > 0.018) continue;
         cand.push(i);
       }
     }
-    cand.sort((a, b) => slope[b] - slope[a] || a - b);
+    if (superC) cand.sort((a, b) => slope[b] - slope[a] || a - b);
     for (const i of cand) {
       if (cvX.length >= C.max) break;
       const x = i % size;
@@ -1943,37 +1884,13 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
         }
       }
       if (crowded) continue;
+      // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
       const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
       const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
       cvX.push(x - size / 2);
       cvZ.push(y - size / 2);
       cvE.push(elevation[i]);
       cvYaw.push(Math.atan2(-dEdz, -dEdx));
-    }
-  } else {
-    const caveRng = mulberry32((baseSeed ^ 0x7ac0beef) >>> 0);
-    const MAX_CAVES = 80;
-    outer: for (let y = 2; y < size - 2; y += 2) {
-      const lat = thermalLat(1 - Math.abs((y / (size - 1)) * 2 - 1));
-      for (let x = 2; x < size - 2; x += 2) {
-        const i = y * size + x;
-        // Bare rock and eroded badlands host openings; needs a proper face to sink into.
-        // Sparse and NEVER up in the frozen band — dark mouths against snow-bright rock
-        // read as floating black-dot glitches from any distance.
-        if (biome[i] !== Biome.Rock && biome[i] !== Biome.Badlands) continue;
-        if (slope[i] < 0.45) continue;
-        if (elevation[i] < seaLevel + 0.02) continue;
-        if (lat * 0.82 + 0.09 - Math.max(0, elevation[i] - seaLevel) * 1.35 < 0.135) continue; // not on snow
-        if (caveRng() > 0.018) continue;
-        // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
-        const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
-        const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
-        cvX.push(x - size / 2);
-        cvZ.push(y - size / 2);
-        cvE.push(elevation[i]);
-        cvYaw.push(Math.atan2(-dEdz, -dEdx));
-        if (cvX.length >= MAX_CAVES) break outer;
-      }
     }
   }
 

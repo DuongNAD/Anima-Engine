@@ -45,9 +45,10 @@ export interface SimEnvironmentCounts {
 }
 
 export interface SimEnvironmentChannel {
-  publish: (env: EnvironmentalState | null) => void;
+  publish: (env: EnvironmentalState | null, isSynthetic?: boolean) => void;
   subscribe: (listener: (env: EnvironmentalState | null) => void) => () => void;
   latest: () => EnvironmentalState | null;
+  isSynthetic: () => boolean;
 }
 
 const clamp01 = (v: number): number => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
@@ -165,10 +166,12 @@ export function computeEntityColor(
 
 export function createSimEnvironmentChannel(): SimEnvironmentChannel {
   let latestEnv: EnvironmentalState | null = null;
+  let latestSynthetic = false;
   const listeners = new Set<(env: EnvironmentalState | null) => void>();
   return {
-    publish(env) {
+    publish(env, isSynthetic = false) {
       latestEnv = env;
+      latestSynthetic = Boolean(isSynthetic);
       listeners.forEach((fn) => fn(env));
     },
     subscribe(fn) {
@@ -179,6 +182,9 @@ export function createSimEnvironmentChannel(): SimEnvironmentChannel {
     },
     latest() {
       return latestEnv;
+    },
+    isSynthetic() {
+      return latestSynthetic;
     },
   };
 }
