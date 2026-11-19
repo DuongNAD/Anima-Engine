@@ -124,16 +124,23 @@ const fragmentShader = /* glsl */ `
     // water, which is also what the world is. Land at the border keeps its height for a few units
     // and then drops off, so the hole the clamp used to open never forms either.
     vec2 uv = (vWorldPos.xz + uTerrainSize * 0.5) / uTerrainSize;
-    float outside = max(max(abs(vWorldPos.x), abs(vWorldPos.z)) - uTerrainSize * 0.5, 0.0);
+    float borderDist = max(abs(vWorldPos.x), abs(vWorldPos.z)) - uTerrainSize * 0.5;
+    float outside = max(borderDist, 0.0);
     float shelf = 1.0 - smoothstep(0.0, uShelfBand, outside);
     float floorY = texture2D(uHeightMap, clamp(uv, 0.0, 1.0)).r * shelf;
     float depth = max(vWorldPos.y - floorY, 0.0);
 
-    // Fade any residual shallow-shelf tint or foam immediately past the terrain border so the
-    // map footprint never renders a square cyan rim in overview.
-    float borderOut = smoothstep(0.0, max(uShelfBand * 0.45, 8.0), outside);
+    // Smoothly drive the outer ocean into opaque deep water with a gently wavy outer margin
+    // (boxN + nEdge from 0.84..0.98) plus a guaranteed hard floor inside -4%..-1% so coastal
+    // shoals dissolve organically instead of forming a straight square perimeter or glacier sky cutout.
+    float isOcean = 1.0 - step(0.5, uMaskOn);
+    float boxN = max(abs(vWorldPos.x), abs(vWorldPos.z)) / (uTerrainSize * 0.5);
+    float nEdge = (noise(vWorldPos.xz * 0.009) - 0.5) * 0.06;
+    float edgeSoft = smoothstep(0.84, 0.98, boxN + nEdge) * isOcean;
+    float edgeHard = smoothstep(-uTerrainSize * 0.04, -uTerrainSize * 0.01, borderDist) * isOcean;
+    float edgeFade = max(edgeSoft, edgeHard);
     float depthN = clamp(depth / (uSeaY * 0.7 + 0.001), 0.0, 1.0);
-    depthN = mix(depthN, 1.0, borderOut);
+    depthN = mix(depthN, 1.0, edgeFade);
     vec3 color = mix(uShallow, uDeep, depthN);
 
     // Micro-detail dies completely before overview distance (~0.48 * terrainSize) so open ocean
@@ -159,14 +166,16 @@ const fragmentShader = /* glsl */ `
     float fres = pow(1.0 - max(dot(normal, viewDir), 0.0), 4.0);
     color = mix(color, uFogColor, clamp(fres * 0.85, 0.0, 0.62));
 
-    // More transparent in coastal shallows, fuller opacity across open sea.
-    float alpha = mix(0.36, 0.94, depthN) * uOpacity;
+    // Transparent in coastal shallows (showing sandy/coral floor), seamlessly opaque in deep ocean
+    // so the end of the terrain mesh at ±renderSize/2 never shows through the water.
+    float oceanDeepOpaque = mix(uOpacity, 1.0, smoothstep(0.45, 0.92, depthN) * isOcean);
+    float alpha = mix(0.36, 1.0, pow(depthN, 0.78)) * oceanDeepOpaque;
 
     // Shoreline foam strictly inside terrain boundaries & close camera range.
     float surf = sin(uTime * 0.9 + (vWorldPos.x + vWorldPos.z) * 0.045)
                + 0.5 * sin(uTime * 1.7 - (vWorldPos.x - vWorldPos.z) * 0.06);
     float foamReach = 0.95 + surf * 0.35;
-    float foamBand = (1.0 - smoothstep(0.0, max(0.35, foamReach), depth)) * detail * detail * (1.0 - borderOut);
+    float foamBand = (1.0 - smoothstep(0.0, max(0.35, foamReach), depth)) * detail * detail * (1.0 - edgeFade);
     if (foamBand > 0.001) {
       float f = fbm(vWorldPos.xz * 0.55 + vec2(0.0, uTime * 0.55));
       float foam = smoothstep(0.5, 0.92, f) * foamBand * 0.72;
@@ -174,9 +183,10 @@ const fragmentShader = /* glsl */ `
       alpha = mix(alpha, 0.92, foam);
     }
 
-    // Fade to 0 right at submerged shoreline, while outer open ocean stays continuous past cliffs.
+    // Fade to 0 right at inland/coastal shoreline, then lock to opaque deep water past the border.
     float shoreWater = smoothstep(0.0, uSeaY * 0.03 + 0.001, depth);
-    alpha *= mix(shoreWater, 1.0, smoothstep(0.0, max(uShelfBand * 0.2, 6.0), outside));
+    alpha *= shoreWater;
+    alpha = mix(alpha, 1.0, edgeFade);
 
     // Lakes only: clip to flooded basin cells.
     if (uMaskOn > 0.5) {

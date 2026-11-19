@@ -19,36 +19,78 @@ export interface FloraGeomEntry {
 
 const TERRAIN_LAYERS = ['grass', 'forest', 'rock', 'sand', 'snow', 'mud'] as const;
 
-const FLORA_STYLE_MAP: Record<
-  FloraType,
-  {
-    model: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern';
-    tint: string;
-    keepNaturalColor: boolean;
-    hasWoodyTrunk?: boolean;
-  }
+// Only map species whose silhouette truly matches our 5 Poly Haven CC0 low-poly models.
+// Unmapped species (Cactus, Acacia, Palm, DeadTree, Tuft, Coral, Kelp, Seagrass) stay on
+// their silhouette-faithful procedural geometry so palm fronds, cacti, grass tufts, and reefs
+// keep accurate shapes and high-tier triangle counts stay comfortably inside §4a budgets.
+const FLORA_STYLE_MAP: Partial<
+  Record<
+    FloraType,
+    {
+      model: 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern';
+      tint: string;
+      keepNaturalColor: boolean;
+      hasWoodyTrunk?: boolean;
+    }
+  >
 > = {
   [FloraType.Pine]: { model: 'pine', tint: '#f3faef', keepNaturalColor: true },
   [FloraType.Round]: { model: 'tree_broad', tint: '#57a846', keepNaturalColor: false, hasWoodyTrunk: true },
   [FloraType.Jungle]: { model: 'tree_broad', tint: '#2d8c3c', keepNaturalColor: false, hasWoodyTrunk: true },
-  [FloraType.Cactus]: { model: 'tree_broad', tint: '#63994d', keepNaturalColor: false },
-  [FloraType.Acacia]: { model: 'tree_broad', tint: '#8fb048', keepNaturalColor: false, hasWoodyTrunk: true },
-  [FloraType.Palm]: { model: 'tree_broad', tint: '#4da34e', keepNaturalColor: false, hasWoodyTrunk: true },
-  [FloraType.DeadTree]: { model: 'tree_broad', tint: '#87725d', keepNaturalColor: false },
   [FloraType.Bush]: { model: 'shrub', tint: '#f2f7ec', keepNaturalColor: true },
   [FloraType.Rock]: { model: 'rock', tint: '#f2f0ec', keepNaturalColor: true },
   [FloraType.Reed]: { model: 'fern', tint: '#e4edd0', keepNaturalColor: true },
-  [FloraType.Tuft]: { model: 'fern', tint: '#cde09b', keepNaturalColor: false },
-  [FloraType.Coral]: { model: 'rock', tint: '#f2e8e2', keepNaturalColor: false },
-  [FloraType.Kelp]: { model: 'fern', tint: '#638c46', keepNaturalColor: false },
-  [FloraType.Seagrass]: { model: 'fern', tint: '#64a87c', keepNaturalColor: false },
 };
 
-const pbrPromises = new Map<string, Promise<TerrainPbrArrays | null>>();
+let activePbrTileSize: number | null = null;
+let activeFloraTier: QualityTier | null = null;
+const pbrPromises = new Map<number, Promise<TerrainPbrArrays | null>>();
+const pbrResolved = new Map<number, TerrainPbrArrays>();
 const floraPromises = new Map<string, Promise<FloraGeomEntry[] | null>>();
+const floraResolved = new Map<string, FloraGeomEntry[]>();
+
+function disposeTerrainPbrTileSize(tileSize: number): void {
+  pbrPromises.delete(tileSize);
+  const resolved = pbrResolved.get(tileSize);
+  if (resolved) {
+    pbrResolved.delete(tileSize);
+    resolved.dispose();
+  }
+}
+
+/** Dispose cached terrain PBR array textures for tiers other than `activeTier` (N5). */
+export function disposeOtherTerrainPbrTiers(activeTier: QualityTier): void {
+  const keepSize = activeTier === 'low' ? 512 : 1024;
+  activePbrTileSize = keepSize;
+  for (const size of new Set([...pbrPromises.keys(), ...pbrResolved.keys()])) {
+    if (size !== keepSize) disposeTerrainPbrTileSize(size);
+  }
+}
+
+/** Dispose cached CC0 flora geometries (for example when Auto drops to `low`). */
+export function disposeFloraAssetGeometries(): void {
+  activeFloraTier = 'low';
+  floraPromises.clear();
+  for (const entries of floraResolved.values()) {
+    for (const entry of entries) entry.geometry.dispose();
+  }
+  floraResolved.clear();
+}
+
+function isFloraTierLow(): boolean {
+  return activeFloraTier === 'low';
+}
 
 export function clearAssetCachesForTest(): void {
+  activePbrTileSize = null;
+  activeFloraTier = null;
+  for (const resolved of pbrResolved.values()) resolved.dispose();
+  pbrResolved.clear();
   pbrPromises.clear();
+  for (const entries of floraResolved.values()) {
+    for (const entry of entries) entry.geometry.dispose();
+  }
+  floraResolved.clear();
   floraPromises.clear();
 }
 
@@ -94,8 +136,10 @@ async function decodeImageToRgba(url: string, targetSize: number): Promise<Uint8
  */
 export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArrays | null> {
   const tileSize = tier === 'low' ? 512 : 1024;
-  const cacheKey = `${tileSize}:${tier}`;
-  const existing = pbrPromises.get(cacheKey);
+  // Dispose any other tier's resident/in-flight array set before loading this tier (N5).
+  disposeOtherTerrainPbrTiers(tier);
+
+  const existing = pbrPromises.get(tileSize);
   if (existing) return existing;
 
   const task = (async (): Promise<TerrainPbrArrays | null> => {
@@ -142,7 +186,7 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
       normalArray.anisotropy = tier === 'low' ? 1 : 4;
       normalArray.needsUpdate = true;
 
-      return {
+      const arrays: TerrainPbrArrays = {
         tileSize,
         albedoArray,
         normalArray,
@@ -151,12 +195,22 @@ export function loadTerrainPbrArrays(tier: QualityTier): Promise<TerrainPbrArray
           normalArray.dispose();
         },
       };
+
+      // If quality changed while WebP decodes were in flight, free immediately instead of leaking.
+      if (activePbrTileSize !== tileSize) {
+        arrays.dispose();
+        pbrPromises.delete(tileSize);
+        return null;
+      }
+      pbrResolved.set(tileSize, arrays);
+      return arrays;
     } catch {
+      pbrPromises.delete(tileSize);
       return null;
     }
   })();
 
-  pbrPromises.set(cacheKey, task);
+  pbrPromises.set(tileSize, task);
   return task;
 }
 
@@ -252,8 +306,9 @@ function extractGlbBaseGeometry(
   const parts: THREE.BufferGeometry[] = [];
   const allMeshes: THREE.Mesh[] = [];
   scene.traverse((obj) => {
-    if (obj instanceof THREE.Mesh && obj.geometry) {
-      allMeshes.push(obj);
+    const maybeMesh = obj as THREE.Mesh;
+    if (maybeMesh.isMesh && maybeMesh.geometry) {
+      allMeshes.push(maybeMesh);
     }
   });
   if (allMeshes.length === 0) return null;
@@ -365,9 +420,10 @@ export function loadFloraAssetGeometries(
   types: readonly FloraType[],
   tier: QualityTier,
 ): Promise<FloraGeomEntry[] | null> {
-  if (tier === 'low' || typeof fetch !== 'function' || typeof document === 'undefined') {
+  if (tier === 'low' || typeof fetch !== 'function') {
     return Promise.resolve(null);
   }
+  activeFloraTier = tier;
   const cacheKey = `${tier}:${types.join(',')}`;
   const existing = floraPromises.get(cacheKey);
   if (existing) return existing;
@@ -376,17 +432,24 @@ export function loadFloraAssetGeometries(
     try {
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const loader = new GLTFLoader();
-      const slugs: Array<'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern'> = [
-        'pine',
-        'tree_broad',
-        'shrub',
-        'rock',
-        'fern',
-      ];
+      const neededSlugs = Array.from(
+        new Set(
+          types
+            .map((t) => FLORA_STYLE_MAP[t]?.model)
+            .filter((m): m is 'pine' | 'tree_broad' | 'shrub' | 'rock' | 'fern' => m !== undefined),
+        ),
+      );
+      if (neededSlugs.length === 0) return null;
+
       const baseBySlug = new Map<string, THREE.BufferGeometry>();
       await Promise.all(
-        slugs.map(async (slug) => {
-          const gltf = await loader.loadAsync(`/assets/world/models/${slug}.glb`);
+        neededSlugs.map(async (slug) => {
+          // Route through global `fetch` + `GLTFLoader.parseAsync` so missing/404 GLBs use the
+          // same HTTP path in both browsers and unit tests without DOM dependencies.
+          const resp = await fetch(`/assets/world/models/${slug}.glb`);
+          if (!resp.ok) throw new Error(`Flora GLB missing: ${slug} (${resp.status})`);
+          const buf = await resp.arrayBuffer();
+          const gltf = await loader.parseAsync(buf, '');
           const extracted = extractGlbBaseGeometry(gltf.scene, slug);
           if (extracted) baseBySlug.set(slug, extracted);
         }),
@@ -396,6 +459,9 @@ export function loadFloraAssetGeometries(
 
       const out: FloraGeomEntry[] = types.map((type) => {
         const spec = FLORA_STYLE_MAP[type];
+        if (!spec) {
+          return { type, geometry: makeFloraGeometry(type) };
+        }
         const base = baseBySlug.get(spec.model);
         if (!base) {
           return { type, geometry: makeFloraGeometry(type) };
@@ -413,8 +479,15 @@ export function loadFloraAssetGeometries(
       });
 
       baseBySlug.forEach((g) => g.dispose());
+      if (isFloraTierLow()) {
+        out.forEach((entry) => entry.geometry.dispose());
+        floraPromises.delete(cacheKey);
+        return null;
+      }
+      floraResolved.set(cacheKey, out);
       return out;
     } catch {
+      floraPromises.delete(cacheKey);
       return null;
     }
   })();

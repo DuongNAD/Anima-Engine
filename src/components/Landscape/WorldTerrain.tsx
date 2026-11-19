@@ -14,7 +14,6 @@ import {
 import { sceneElapsed } from './utils/sceneClock';
 import { isCaptureRequested } from './utils/captureMode';
 import type { QualityTier } from './utils/qualityTiers';
-import { loadTerrainPbrArrays } from './assets/worldAssets';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 
 export interface WorldTerrainProps {
@@ -33,8 +32,8 @@ export interface WorldTerrainProps {
  * Renders the huge SoA world as a single height-displaced mesh. The mesh is built at
  * `meshResolution` (e.g. 384) while COLOUR comes from a full data-resolution texture and the
  * fine relief from a residual normal map — so a 2048^2 world reads at full detail without a
- * 4M-vertex mesh. The texture palette is BIOME_RGB, the exact colours the minimap paints, so
- * the 3D world and the minimap always match. The bakes themselves live in
+ * 4M-vertex mesh. The texture palette is `BIOME_DISPLAY_RGB` (derived from `BIOME_RGB`), shared
+ * with the minimap so the 3D world and minimap always match. The bakes themselves live in
  * `utils/worldTerrainTextures`, shared with `WorldTerrainLod`.
  */
 export const WorldTerrain: React.FC<WorldTerrainProps> = ({
@@ -124,10 +123,13 @@ export const WorldTerrain: React.FC<WorldTerrainProps> = ({
       return;
     }
     let cancelled = false;
-    void loadTerrainPbrArrays(tier).then((arrays) => {
-      if (!cancelled && arrays) {
-        terrainMat.handle.applyPbrArrays(arrays);
-      }
+    void import('./assets/worldAssets').then(({ loadTerrainPbrArrays }) => {
+      if (cancelled) return;
+      return loadTerrainPbrArrays(tier).then((arrays) => {
+        if (!cancelled && arrays) {
+          terrainMat.handle.applyPbrArrays(arrays);
+        }
+      });
     });
     return () => {
       cancelled = true;

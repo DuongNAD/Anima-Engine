@@ -35,10 +35,10 @@ export const BIOME_DISPLAY_RGB: ReadonlyArray<readonly [number, number, number]>
   [48, 132, 192], // 13 River — river cobalt blue
   [36, 116, 178], // 14 Lake — deep lake azure
   [38, 118, 98], // 15 Mangrove — coastal teal-olive
-  [166, 126, 74], // 16 Chaparral — warm tawny-bronze scrub
+  [146, 136, 88], // 16 Chaparral — dry Mediterranean olive-khaki scrub
   [188, 194, 134], // 17 Steppe — pale straw-sage steppe
   [90, 158, 126], // 18 Alpine — cool high-altitude emerald-sage
-  [186, 86, 52], // 19 Badlands — iron-rich terracotta red-ochre
+  [168, 116, 82], // 19 Badlands — muted earthy sandstone ochre
   [204, 228, 244], // 20 Glacier — cool pale ice-blue-white
   [112, 76, 50], // 21 Bog — rich rusty peat-brown
 ];
@@ -79,12 +79,28 @@ function hash01(x: number, y: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/** Smooth 2D value noise in [0, 1) for organic ecotone domain warping and geological mottling. */
+function smoothNoise2D(fx: number, fy: number): number {
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = fx - x0;
+  const ty = fy - y0;
+  const ux = tx * tx * (3 - 2 * tx);
+  const uy = ty * ty * (3 - 2 * ty);
+  const a = hash01(x0, y0);
+  const b = hash01(x0 + 1, y0);
+  const c = hash01(x0, y0 + 1);
+  const d = hash01(x0 + 1, y0 + 1);
+  return (a * (1 - ux) + b * ux) * (1 - uy) + (c * (1 - ux) + d * ux) * uy;
+}
+
 /**
  * Bakes the world's biome colours into a FULL data-resolution sRGB texture. The mesh only has
  * ~384^2 vertices, but the texture keeps all 2048^2 cells, so biome borders, rivers and beaches
  * stay crisp no matter how close the camera gets — and the GPU's bilinear filter blends the
  * border texels into organic transitions for free. A subtle per-cell brightness jitter breaks
- * up the dead-flat look of wide single-biome fields. Palette = BIOME_RGB, same as the minimap.
+ * up the dead-flat look of wide single-biome fields. Palette = `BIOME_DISPLAY_RGB` (derived from
+ * `BIOME_RGB`), shared with the minimap so 3D terrain and minimap colours match.
  */
 export function buildColorTexture(world: World): THREE.DataTexture {
   const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
@@ -93,6 +109,10 @@ export function buildColorTexture(world: World): THREE.DataTexture {
   // Curvature AO ring radii (world-space constant regardless of data resolution).
   const R1 = Math.max(2, Math.round(size / 680));
   const R2 = Math.max(6, Math.round(size / 228));
+  const warpAmp = Math.max(3, Math.round(size / 96));
+  const warpScale = 1 / Math.max(12, size / 48);
+  const ecoStep = Math.max(4, Math.round(size / 160));
+  const mottleScale = 1 / Math.max(10, size / 85);
   for (let y = 0; y < size; y++) {
     const y1a = Math.max(0, y - R1) * size;
     const y1b = Math.min(size - 1, y + R1) * size;
@@ -104,7 +124,9 @@ export function buildColorTexture(world: World): THREE.DataTexture {
       let [r, g, b] = biomeDisplayColor(bio);
 
       // Ecotone blending: gently feather borders between terrestrial biomes while preserving
-      // distinct water/ice edges so all 22 biomes stay crisp and readable.
+      // distinct water/ice edges; apply multi-scale domain-warped transitions on mountain
+      // foothold/cap zones (Badlands/Chaparral/Snow/Rock/Alpine) so elevation contours never
+      // read as hard painted stripes.
       if (
         x >= 2 &&
         y >= 2 &&
@@ -113,26 +135,62 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         bio !== Biome.Ocean &&
         bio !== Biome.River &&
         bio !== Biome.Lake &&
-        bio !== Biome.Glacier
+        bio !== Biome.Glacier &&
+        bio !== Biome.Beach
       ) {
-        const nIdx = [i - 2, i + 2, i - 2 * size, i + 2 * size];
+        const isSoftBand =
+          bio === Biome.Badlands ||
+          bio === Biome.Chaparral ||
+          bio === Biome.Snow ||
+          bio === Biome.Rock ||
+          bio === Biome.Alpine;
+        let sx = x;
+        let sy = y;
+        let step = 2;
+        if (isSoftBand) {
+          sx = Math.min(
+            size - 3,
+            Math.max(2, Math.round(x + (smoothNoise2D(x * warpScale, y * warpScale) - 0.5) * 2 * warpAmp)),
+          );
+          sy = Math.min(
+            size - 3,
+            Math.max(2, Math.round(y + (smoothNoise2D(x * warpScale + 19.3, y * warpScale + 7.1) - 0.5) * 2 * warpAmp)),
+          );
+          step = ecoStep;
+        }
+        const sx0 = Math.max(0, sx - step);
+        const sx1 = Math.min(size - 1, sx + step);
+        const sy0 = Math.max(0, sy - step);
+        const sy1 = Math.min(size - 1, sy + step);
+        const nIdx = [sy * size + sx0, sy * size + sx1, sy0 * size + sx, sy1 * size + sx];
         let ar = 0;
         let ag = 0;
         let ab = 0;
         let differs = false;
         for (let k = 0; k < 4; k++) {
           let nb = biome[nIdx[k]];
-          if (nb === Biome.Ocean || nb === Biome.River || nb === Biome.Lake || nb === Biome.Glacier) nb = bio;
+          if (
+            nb === Biome.Ocean ||
+            nb === Biome.River ||
+            nb === Biome.Lake ||
+            nb === Biome.Glacier ||
+            nb === Biome.Beach
+          ) {
+            nb = bio;
+          }
           if (nb !== bio) differs = true;
           const c = biomeDisplayColor(nb);
           ar += c[0];
           ag += c[1];
           ab += c[2];
         }
-        if (differs) {
-          r = r * 0.72 + ar * 0.07;
-          g = g * 0.72 + ag * 0.07;
-          b = b * 0.72 + ab * 0.07;
+        if (differs || sx !== x || sy !== y) {
+          const selfW =
+            bio === Biome.Badlands || bio === Biome.Chaparral ? 0.42 : isSoftBand ? 0.55 : 0.72;
+          const nWeight = (1 - selfW) * 0.25;
+          r = r * selfW + ar * nWeight;
+          g = g * selfW + ag * nWeight;
+          b = b * selfW + ab * nWeight;
         }
       }
 
@@ -213,8 +271,14 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         }
       }
 
-      // Rock / Badlands mineral tone variation without synthetic `sin(e * 320.0)` contour stripes.
-      if ((bio === Biome.Rock || bio === Biome.Badlands) && sVal > 0.25) {
+      // Badlands geological mottling & subtle slope grain without contour stripes.
+      if (bio === Biome.Badlands) {
+        const macroMottle = (smoothNoise2D(x * mottleScale + 3.1, y * mottleScale + 9.7) - 0.5) * 0.16;
+        const fineGrain = sVal > 0.25 ? (hash01(x >> 1, y >> 1) - 0.5) * 0.06 : 0;
+        r *= 1 + macroMottle * 0.75 + fineGrain;
+        g *= 1 + macroMottle * 0.95 + fineGrain * 0.95;
+        b *= 1 + macroMottle * 1.1 + fineGrain * 0.85;
+      } else if (bio === Biome.Rock && sVal > 0.25) {
         const grain = (hash01(x >> 1, y >> 1) - 0.5) * 0.07;
         r *= 1 + grain;
         g *= 1 + grain * 0.95;

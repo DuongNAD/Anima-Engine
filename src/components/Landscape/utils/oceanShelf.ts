@@ -37,14 +37,11 @@
 /**
  * Width of the shelf band, as a fraction of `renderSize`.
  *
- * A quarter of the world. Two constraints fix it from opposite sides: too short and the ramp is still
- * a visible line, just a softer one; too long and the water stays shallow-coloured far past any land,
- * which reads as a flooded plain rather than an ocean. A quarter puts the far end of the ramp at 300
- * render units on the shipped 1200-unit world, against a fog that starts at 960 — so the transition
- * finishes on its own terms and is not being hidden by haze.
+ * Set to `0.1` (120 render units on the shipped 1200-unit world) so the submerged continental
+ * shelf descends continuously past the terrain border and reaches abyssal well before fog (`0.8 *
+ * renderSize = 960`), while `WorldWater`'s outer ocean transitions to opaque deep colour right up
+ * to the border so no cyan rim or sky-cutout ever forms around the square map footprint.
  */
-// prototype: tightened from 0.25 -> 0.10 (120u on 1200u world) so outer shelf falls rapidly to deep
-// ocean without creating a wide pale-cyan halo around the square terrain footprint.
 export const OCEAN_SHELF_BAND_FRACTION = 0.1;
 
 /** Hermite smoothstep, matching GLSL's. */

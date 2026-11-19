@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import * as THREE from 'three';
-import { BIOME_COUNT, Biome, generateWorld } from '../../src/components/Landscape/utils/worldGen';
+import { BIOME_COUNT, Biome, FloraType, generateWorld } from '../../src/components/Landscape/utils/worldGen';
 import {
   BIOME_DISPLAY_RGB,
   buildRoughnessTexture,
@@ -15,6 +15,7 @@ import { buildCavesGeometry } from '../../src/components/Landscape/utils/caveGeo
 import WorldMinimap, { type CameraView } from '../../src/components/Landscape/WorldMinimap';
 import {
   clearAssetCachesForTest,
+  disposeOtherTerrainPbrTiers,
   loadFloraAssetGeometries,
   loadTerrainPbrArrays,
 } from '../../src/components/Landscape/assets/worldAssets';
@@ -27,6 +28,11 @@ const WORLD_ASSETS_DIR = resolve(ROOT, 'public/assets/world');
 
 const ALLOWED_SITES = new Set(['polyhaven.com', 'ambientcg.com']);
 const MAX_COMMITTED_BYTES = 20 * 1024 * 1024;
+
+function hostnameMatchesSite(rawUrl: string, site: string): boolean {
+  const host = new URL(rawUrl).hostname.toLowerCase();
+  return host === site || host.endsWith(`.${site}`);
+}
 
 interface SourceEntry {
   file: string;
@@ -95,6 +101,8 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
       expect(entry.licence_url).toMatch(/^https:\/\//);
       expect(ALLOWED_SITES.has(entry.sourceSite)).toBe(true);
       expect(entry.sourceUrl).toMatch(/^https:\/\//);
+      expect(hostnameMatchesSite(entry.sourceUrl, entry.sourceSite)).toBe(true);
+      expect(hostnameMatchesSite(entry.licence_url, entry.sourceSite)).toBe(true);
       expect(entry.assetName.trim().length).toBeGreaterThan(0);
       expect(entry.assetId.trim().length).toBeGreaterThan(0);
       expect(entry.downloadDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -137,20 +145,120 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
     splat.dispose();
   });
 
-  it('falls back cleanly to null when CC0 textures or models fail to load', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }));
+  it('loads real CC0 GLBs via the fetch seam and falls back cleanly to null on 404 (N2)', async () => {
+    const requestedUrls: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      requestedUrls.push(url);
+      const match = /^\/assets\/world\/models\/([a-z0-9_]+\.glb)$/.exec(url);
+      if (!match) return new Response(null, { status: 404 });
+      const bytes = readFileSync(resolve(WORLD_ASSETS_DIR, 'models', match[1]));
+      return new Response(new Uint8Array(bytes), {
+        status: 200,
+        headers: { 'Content-Type': 'model/gltf-binary' },
+      });
+    });
+
+    const sampleTypes = [
+      FloraType.Pine,
+      FloraType.Round,
+      FloraType.Bush,
+      FloraType.Rock,
+      FloraType.Reed,
+      FloraType.Tuft,
+    ];
+    const positive = await loadFloraAssetGeometries(sampleTypes, 'high');
+    expect(positive).not.toBeNull();
+    expect(positive).toHaveLength(sampleTypes.length);
+    for (const slug of ['pine', 'tree_broad', 'shrub', 'rock', 'fern']) {
+      expect(requestedUrls).toContain(`/assets/world/models/${slug}.glb`);
+    }
+    for (const entry of positive!) {
+      expect(entry.geometry.getAttribute('position').count).toBeGreaterThan(0);
+    }
+
+    // 404 fallback must actually hit `fetch` through the same seam rather than failing pre-fetch.
+    clearAssetCachesForTest();
+    requestedUrls.length = 0;
+    fetchSpy.mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      requestedUrls.push(url);
+      return new Response(null, { status: 404 });
+    });
 
     const pbr = await loadTerrainPbrArrays('high');
     expect(pbr).toBeNull();
 
-    const floraLow = await loadFloraAssetGeometries([0], 'low');
+    requestedUrls.length = 0;
+    const floraLow = await loadFloraAssetGeometries([FloraType.Pine], 'low');
     expect(floraLow).toBeNull();
+    expect(requestedUrls).toHaveLength(0);
 
-    const floraHigh = await loadFloraAssetGeometries([0], 'high');
+    const floraHigh = await loadFloraAssetGeometries([FloraType.Pine], 'high');
     expect(floraHigh).toBeNull();
+    expect(requestedUrls).toContain('/assets/world/models/pine.glb');
   });
 
-  it('compiles terrain PBR and flora wind onBeforeCompile hooks cleanly', () => {
+  it('disposes High 1024^2 terrain PBR textures when dropping to Low (N5)', async () => {
+    const stubCanvas = () =>
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+        drawImage: vi.fn(),
+        getImageData: (_x: number, _y: number, w: number, h: number) => ({
+          data: new Uint8ClampedArray(w * h * 4),
+        }),
+      } as never);
+
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(async () => ({ close: vi.fn() })),
+    );
+    stubCanvas();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
+
+    try {
+      const high = await loadTerrainPbrArrays('high');
+      expect(high).not.toBeNull();
+      expect(high!.tileSize).toBe(1024);
+
+      const albedoDispose = vi.spyOn(high!.albedoArray, 'dispose');
+      const normalDispose = vi.spyOn(high!.normalArray, 'dispose');
+
+      const low = await loadTerrainPbrArrays('low');
+      expect(low).not.toBeNull();
+      expect(low!.tileSize).toBe(512);
+      expect(albedoDispose).toHaveBeenCalledTimes(1);
+      expect(normalDispose).toHaveBeenCalledTimes(1);
+
+      // In-flight High load must dispose itself and return null if Auto drops to Low mid-load.
+      clearAssetCachesForTest();
+      let releaseHigh!: () => void;
+      const highGate = new Promise<void>((resolve) => {
+        releaseHigh = resolve;
+      });
+      let firstWave = true;
+      fetchSpy.mockImplementation(async () => {
+        if (firstWave) {
+          await highGate;
+        }
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      });
+
+      const pendingHigh = loadTerrainPbrArrays('high');
+      firstWave = false;
+      disposeOtherTerrainPbrTiers('low');
+      const raceLow = await loadTerrainPbrArrays('low');
+      releaseHigh();
+      const finishedHigh = await pendingHigh;
+      expect(raceLow?.tileSize).toBe(512);
+      expect(finishedHigh).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('compiles terrain PBR and flora wind onBeforeCompile hooks cleanly against ShaderLib.standard', () => {
     const tex = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1, THREE.RGBAFormat);
     tex.needsUpdate = true;
     const { material: terrainMat, handle } = createTerrainPbrMaterial({
@@ -164,9 +272,12 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
     });
 
     const shader = {
-      uniforms: {} as Record<string, { value: unknown }>,
-      vertexShader: 'void main() {\n#include <worldpos_vertex>\n}',
-      fragmentShader: 'void main() {\n#include <map_fragment>\n#include <normal_fragment_maps>\n}',
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms) as Record<
+        string,
+        { value: unknown }
+      >,
+      vertexShader: THREE.ShaderLib.standard.vertexShader,
+      fragmentShader: THREE.ShaderLib.standard.fragmentShader,
     };
     terrainMat.onBeforeCompile(shader as unknown as THREE.WebGLProgramParametersWithUniforms, {} as THREE.WebGLRenderer);
     expect(shader.uniforms.uPbrEnabled.value).toBe(0);
@@ -185,9 +296,12 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
     });
     floraBundle.updateTime(2.5);
     const fShader = {
-      uniforms: {} as Record<string, { value: unknown }>,
-      vertexShader: 'void main() {\n#include <begin_vertex>\n}',
-      fragmentShader: 'void main() {}',
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.standard.uniforms) as Record<
+        string,
+        { value: unknown }
+      >,
+      vertexShader: THREE.ShaderLib.standard.vertexShader,
+      fragmentShader: THREE.ShaderLib.standard.fragmentShader,
     };
     floraBundle.material.onBeforeCompile(
       fShader as unknown as THREE.WebGLProgramParametersWithUniforms,

@@ -177,7 +177,11 @@ void w3ComputeLayerWeights(
               vec3 pbrSrgb = vec3(0.0);
               if (wG > 0.01) pbrSrgb += w3SampleAntiTile(uPbrAlbedo, vW3WorldPos.xz, 0.0).rgb * wG;
               if (wF > 0.01) pbrSrgb += w3SampleAntiTile(uPbrAlbedo, vW3WorldPos.xz, 1.0).rgb * wF;
-              if (wR > 0.01) pbrSrgb += w3SampleTriplanarRock(uPbrAlbedo, vW3WorldPos, wn).rgb * wR;
+              if (wR > 0.01) {
+                vec3 rockRgb = w3SampleTriplanarRock(uPbrAlbedo, vW3WorldPos, wn).rgb;
+                float rockLum = dot(rockRgb, vec3(0.299, 0.587, 0.114));
+                pbrSrgb += mix(rockRgb, vec3(rockLum), 0.72) * wR;
+              }
               if (wSa > 0.01) pbrSrgb += w3SampleAntiTile(uPbrAlbedo, vW3WorldPos.xz, 3.0).rgb * wSa;
               if (wSn > 0.01) pbrSrgb += w3SampleAntiTile(uPbrAlbedo, vW3WorldPos.xz, 4.0).rgb * wSn;
               if (wM > 0.01) pbrSrgb += w3SampleAntiTile(uPbrAlbedo, vW3WorldPos.xz, 5.0).rgb * wM;

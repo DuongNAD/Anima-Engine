@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import type { World } from './utils/worldGen';
 import { FloraType } from './utils/worldGen';
 import { makeFloraGeometry } from './utils/floraGeometry';
-import { loadFloraAssetGeometries, type FloraGeomEntry } from './assets/worldAssets';
+import type { FloraGeomEntry } from './assets/worldAssets';
 import { createFloraWindMaterial } from './materials/floraWindMaterial';
 import { VEGETATION_BASE_SIZE } from './utils/floraClearance';
 import { sampleMeshHeight } from './utils/worldSample';
@@ -449,14 +449,28 @@ export const WorldVegetation: React.FC<WorldVegetationProps> = ({
   const [cc0State, setCc0State] = useState<{ tier: QualityTier; geoms: FloraGeomEntry[] } | null>(
     null,
   );
+  const loadedCc0Ref = useRef(false);
 
   useEffect(() => {
-    if (!chunked || tier === undefined || tier === 'low') return;
-    let cancelled = false;
-    void loadFloraAssetGeometries(TYPES, tier).then((loaded) => {
-      if (!cancelled && loaded && loaded.length === TYPES.length) {
-        setCc0State({ tier, geoms: loaded });
+    if (!chunked || tier === undefined) return;
+    if (tier === 'low') {
+      if (loadedCc0Ref.current) {
+        loadedCc0Ref.current = false;
+        void import('./assets/worldAssets').then(({ disposeFloraAssetGeometries }) => {
+          disposeFloraAssetGeometries();
+        });
       }
+      return;
+    }
+    let cancelled = false;
+    void import('./assets/worldAssets').then(({ loadFloraAssetGeometries }) => {
+      if (cancelled) return;
+      return loadFloraAssetGeometries(TYPES, tier).then((loaded) => {
+        if (!cancelled && loaded && loaded.length === TYPES.length) {
+          loadedCc0Ref.current = true;
+          setCc0State({ tier, geoms: loaded });
+        }
+      });
     });
     return () => {
       cancelled = true;

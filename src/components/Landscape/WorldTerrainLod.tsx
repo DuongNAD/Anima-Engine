@@ -20,7 +20,6 @@ import {
 import { sceneElapsed } from './utils/sceneClock';
 import { isCaptureRequested } from './utils/captureMode';
 import type { QualityTier } from './utils/qualityTiers';
-import { loadTerrainPbrArrays } from './assets/worldAssets';
 import { createTerrainPbrMaterial } from './materials/terrainPbrMaterial';
 
 // ---------------------------------------------------------------------------------------
@@ -180,10 +179,13 @@ export const WorldTerrainLod: React.FC<WorldTerrainLodProps> = ({
       return;
     }
     let cancelled = false;
-    void loadTerrainPbrArrays(tier).then((arrays) => {
-      if (!cancelled && arrays) {
-        terrainMat.handle.applyPbrArrays(arrays);
-      }
+    void import('./assets/worldAssets').then(({ loadTerrainPbrArrays }) => {
+      if (cancelled) return;
+      return loadTerrainPbrArrays(tier).then((arrays) => {
+        if (!cancelled && arrays) {
+          terrainMat.handle.applyPbrArrays(arrays);
+        }
+      });
     });
     return () => {
       cancelled = true;

@@ -767,11 +767,11 @@ with the exact blocker, and with the search that failed, in
 
 Self-hosted CC0-1.0 environment textures and low-poly flora models shipped under [`public/assets/world/`](public/assets/world/SOURCES.json) (17 files, zero attribution obligation required under CC0-1.0, recorded here for complete distribution provenance):
 
-- `public/assets/world/models/fern.glb` — Fern 02 (`fern_02`), polyhaven.com (https://polyhaven.com/a/fern_02), licence `CC0-1.0` (https://polyhaven.com/license) (3208 B)
-- `public/assets/world/models/pine.glb` — Pine Sapling Small (`pine_sapling_small`), polyhaven.com (https://polyhaven.com/a/pine_sapling_small), licence `CC0-1.0` (https://polyhaven.com/license) (5160 B)
-- `public/assets/world/models/rock.glb` — Boulder 01 (`boulder_01`), polyhaven.com (https://polyhaven.com/a/boulder_01), licence `CC0-1.0` (https://polyhaven.com/license) (4728 B)
-- `public/assets/world/models/shrub.glb` — Shrub 01 (`shrub_01`), polyhaven.com (https://polyhaven.com/a/shrub_01), licence `CC0-1.0` (https://polyhaven.com/license) (3588 B)
-- `public/assets/world/models/tree_broad.glb` — Quiver Tree 01 (`quiver_tree_01`), polyhaven.com (https://polyhaven.com/a/quiver_tree_01), licence `CC0-1.0` (https://polyhaven.com/license) (7316 B)
+- `public/assets/world/models/fern.glb` — Fern 02 (`fern_02`), polyhaven.com (https://polyhaven.com/a/fern_02), licence `CC0-1.0` (https://polyhaven.com/license) (2304 B)
+- `public/assets/world/models/pine.glb` — Pine Sapling Small (`pine_sapling_small`), polyhaven.com (https://polyhaven.com/a/pine_sapling_small), licence `CC0-1.0` (https://polyhaven.com/license) (3248 B)
+- `public/assets/world/models/rock.glb` — Boulder 01 (`boulder_01`), polyhaven.com (https://polyhaven.com/a/boulder_01), licence `CC0-1.0` (https://polyhaven.com/license) (3656 B)
+- `public/assets/world/models/shrub.glb` — Shrub 01 (`shrub_01`), polyhaven.com (https://polyhaven.com/a/shrub_01), licence `CC0-1.0` (https://polyhaven.com/license) (2508 B)
+- `public/assets/world/models/tree_broad.glb` — Quiver Tree 01 (`quiver_tree_01`), polyhaven.com (https://polyhaven.com/a/quiver_tree_01), licence `CC0-1.0` (https://polyhaven.com/license) (4196 B)
 - `public/assets/world/textures/forest_diff.webp` — Forest Floor (`forest_floor`), polyhaven.com (https://polyhaven.com/a/forest_floor), licence `CC0-1.0` (https://polyhaven.com/license) (434242 B)
 - `public/assets/world/textures/forest_nor.webp` — Forest Floor (`forest_floor`), polyhaven.com (https://polyhaven.com/a/forest_floor), licence `CC0-1.0` (https://polyhaven.com/license) (481434 B)
 - `public/assets/world/textures/grass_diff.webp` — Leafy Grass (`leafy_grass`), polyhaven.com (https://polyhaven.com/a/leafy_grass), licence `CC0-1.0` (https://polyhaven.com/license) (354036 B)
