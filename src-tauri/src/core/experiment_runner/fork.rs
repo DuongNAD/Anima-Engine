@@ -361,6 +361,8 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             model_version: model_version.clone(),
             build_id: build_id.clone(),
             fitness_rule: declared_fitness_rule(&manifest.initial_conditions),
+            terrain_source: None,
+            world_identity: None,
         }
     };
 
@@ -376,6 +378,13 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
         grid,
         manifest.duration_ticks,
     )?;
+    let parent_terrain_source = model.terrain_source().map(str::to_owned);
+    let parent_world_identity = model.world_identity();
+    let stamp_parent_terrain = |mut p: RunProvenance| -> RunProvenance {
+        p.terrain_source = parent_terrain_source.clone();
+        p.world_identity = parent_world_identity;
+        p
+    };
     let mut rng = StdRng::seed_from_u64(seed);
     let mut clock = SimClock::new();
     let mut prefix_ledger = CausalLedger::new();
@@ -408,7 +417,7 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
 
     // The prefix reached the checkpoint successfully (any failure returned above).
     let prefix = assemble_result(
-        make_prov(prefix_id.clone(), None, None, mfp),
+        stamp_parent_terrain(make_prov(prefix_id.clone(), None, None, mfp)),
         &model,
         registry,
         manifest.laws.exotic_energy.as_ref().map(|law| &law.unit),
@@ -442,12 +451,12 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
             manifest.sample_period,
         );
         Ok::<RunResult, ExperimentError>(finish_drive(
-            make_prov(
+            stamp_parent_terrain(make_prov(
                 run_id,
                 Some(prefix_id.clone()),
                 Some(fork_tick),
                 fingerprint,
-            ),
+            )),
             &branch_model,
             registry,
             manifest.laws.exotic_energy.as_ref().map(|law| &law.unit),

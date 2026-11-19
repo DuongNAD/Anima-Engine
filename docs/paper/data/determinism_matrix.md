@@ -2,7 +2,7 @@
 title: Ma trận tái lập đa nền tảng (M1)
 status: active
 owner: maintainers
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-19
 review_cycle: per-release
 ---
 
@@ -82,14 +82,23 @@ khác ở `powf` lúc sinh địa hình đủ đổi biome của vài ô, và v�
 - **Checksum chỉ so được trong cùng một hệ điều hành.** Quy tắc "không ghim checksum tuyệt đối trong
   test, so hai lượt chạy với nhau" giờ có số đo đỡ. Một kết quả thí nghiệm trên thế giới live chỉ tái
   lập được bit-for-bit trên cùng hệ điều hành; giữa các hệ điều hành chỉ so được ở mức thống kê.
-- **Thế giới live lấy địa hình từ môi trường của máy.** `core::ecs::init_world` nạp
-  `ANIMA_WORLD_ARTIFACT`, hoặc `$TMPDIR/anima_world_artifact.anmw` (file app desktop ghi khi frontend
-  sinh thế giới). Nếu không có, nó sinh địa hình và cache vào `$TMPDIR/anima_world_cache`. Lúc genesis
-  (`live.probe`, seed 1), artifact đã commit cho 258.450 EU thực vật trên cả ba runner; địa hình sinh
-  tại chỗ cho 153.688 (Linux), 153.587 (Windows) và 154.972 (macOS). Một máy từng chạy app vì vậy chạy
-  thí nghiệm headless trên một thế giới khác hẳn máy chưa chạy. Điều này
-  làm rõ hệ quả của **E2-F2** (manifest không ghim được thế giới); E2 đã giảm nhẹ bằng cách ghi
-  `WorldIdentity` quan sát được vào `provenance.json` (gate E2-G6).
+- **Thế giới live lấy địa hình từ môi trường của máy — ĐÃ SỬA CHO ĐƯỜNG CHẠY HEADLESS (thẻ F051, PR PENDING).**
+  Trước thẻ F051, `core::ecs::init_world` nạp `ANIMA_WORLD_ARTIFACT`, hoặc `$TMPDIR/anima_world_artifact.anmw`
+  (file app desktop ghi khi frontend sinh thế giới), rồi mới rơi về sinh tại chỗ và cache vào
+  `$TMPDIR/anima_world_cache`. Lúc genesis (`live.probe`, seed 1), artifact đã commit cho 258.450 EU
+  thực vật trên cả ba runner; địa hình sinh tại chỗ cho 153.688 (Linux), 153.587 (Windows) và 154.972
+  (macOS), nên một máy từng mở app chạy thí nghiệm headless trên thế giới khác hẳn máy sạch (còn
+  `artifacts/experiments/e2-evolved-brain-default` và các bản chạy cũ trước F051 vẫn giữ nguyên).
+  Từ thẻ F051:
+  - Mọi runner/adapter headless (`build_live_world` → `core::ecs::init_world_with(TerrainSource::Generated)`)
+    luôn sinh địa hình trực tiếp từ `MapSettings::default()`, bỏ qua hoàn toàn `ANIMA_WORLD_ARTIFACT`,
+    `<temp_dir>/anima_world_artifact.anmw` và `ANIMA_CACHE_DIR`, đồng thời ghi `terrain_source: "generated"`
+    và `world_identity` quan sát được vào `RunProvenance` cũng như `provenance.json` của các runner
+    (`run_esel1_experiment`, `run_sel2p_experiment`).
+  - Đường chạy app desktop (`core::ecs::init_world` → `TerrainSource::AppArtifactOrGenerated`) **giữ
+    nguyên** hành vi đọc shared world artifact để không phá đồng bộ với renderer.
+  - Xem thêm bài học **E2-F2** (manifest không ghim được thế giới); E2 đã giảm nhẹ bằng cách ghi
+    `WorldIdentity` quan sát được vào `provenance.json` (gate E2-G6).
 - **Kết quả trên `ReferenceEvolutionWorld` (AE1–AE3) mang được sang nền tảng khác** ở mức bit, trong
   phạm vi lượt đo này.
 

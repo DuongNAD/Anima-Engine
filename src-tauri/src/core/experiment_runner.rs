@@ -29,6 +29,7 @@ use crate::core::experiment::{
 use crate::core::intervention::{InterventionCommand, InterventionQueue};
 use crate::core::scenario::{StateSample, TargetDelta};
 use crate::core::sim_clock::{SimClock, ECOLOGY_PERIOD};
+use crate::core::world_artifact::WorldIdentity;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::{Deserialize, Serialize};
 
@@ -165,6 +166,18 @@ pub trait ExperimentModel: Sized {
     fn exotic_budget(&self) -> Option<ExoticEnergyBudget> {
         None
     }
+
+    /// Declared source of the simulation's terrain when the model runs on a `TerrainMap` (e.g.
+    /// `Some("generated")` for [`crate::core::live_experiment::LiveExperimentAdapter`]).
+    fn terrain_source(&self) -> Option<&'static str> {
+        None
+    }
+
+    /// Observed [`WorldIdentity`] (seed, generator version, dims, FNV-1a checksum) of the
+    /// `TerrainMap` the model actually ran on.
+    fn world_identity(&self) -> Option<WorldIdentity> {
+        None
+    }
 }
 
 // ---- Provenance & result (AE-105 / AE-110) ---------------------------------------------------
@@ -188,9 +201,21 @@ pub struct RunProvenance {
     /// records written before branch F existed — `serde(default)` keeps them loadable.
     #[serde(default)]
     pub fitness_rule: String,
+    /// Declared terrain source (`Some("generated")` for live headless runs); `None` when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terrain_source: Option<String>,
+    /// Observed [`WorldIdentity`] of the terrain the simulation actually ran on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub world_identity: Option<WorldIdentity>,
 }
 
 impl RunProvenance {
+    pub(crate) fn with_model_terrain<M: ExperimentModel>(mut self, model: &M) -> Self {
+        self.terrain_source = model.terrain_source().map(str::to_owned);
+        self.world_identity = model.world_identity();
+        self
+    }
+
     fn derive<M: ExperimentModel>(
         manifest: &ExperimentManifest,
         registry: &ObservableRegistry,
@@ -221,6 +246,8 @@ impl RunProvenance {
             model_version,
             build_id,
             fitness_rule: declared_fitness_rule(&manifest.initial_conditions),
+            terrain_source: None,
+            world_identity: None,
         }
     }
 }
@@ -663,6 +690,7 @@ fn run_manifest_seed_inner<M: ExperimentModel>(
         Ok(m) => m,
         Err(e) => return failed_run(provenance, format!("model construction failed: {e}")),
     };
+    let provenance = provenance.with_model_terrain(&model);
 
     let mut rng = StdRng::seed_from_u64(seed);
     let mut clock = SimClock::new();
