@@ -243,6 +243,7 @@ export const WorldShowcase: React.FC = () => {
       ? getMemoizedWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
       : null,
   );
+  const [worldError, setWorldError] = useState<string | null>(null);
   // Deterministic capture of the canonical map views. `null` on every ordinary visit — see
   // `captureMode.ts` for why this is a query parameter and nothing else.
   //
@@ -327,9 +328,19 @@ export const WorldShowcase: React.FC = () => {
   useEffect(() => {
     if (world) return;
     let alive = true;
-    loadOrGenerateWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE }).then((w) => {
-      if (alive) setWorld(w);
-    });
+    loadOrGenerateWorld(WORLD_SEED, { size: WORLD_SIZE, shape: WORLD_SHAPE })
+      .then((w) => {
+        if (alive) {
+          setWorldError(null);
+          setWorld(w);
+        }
+      })
+      .catch((err: unknown) => {
+        console.error('[WorldShowcase] Failed to load shared world:', err);
+        if (alive) {
+          setWorldError(err instanceof Error ? err.message : String(err));
+        }
+      });
     return () => {
       alive = false;
     };
@@ -444,11 +455,19 @@ export const WorldShowcase: React.FC = () => {
           alignItems: 'center',
           justifyContent: 'center',
           background: '#0a0a0a',
-          color: '#9aa',
+          color: worldError ? '#feb2b2' : '#9aa',
           fontFamily: 'sans-serif',
+          padding: 24,
+          textAlign: 'center',
         }}
       >
-        Generating a huge 2048² world… (first run only — cached afterwards)
+        {worldError ? (
+          <div role="alert" data-testid="world-load-error">
+            Failed to load shared world: {worldError}
+          </div>
+        ) : (
+          'Generating a huge 2048² world… (first run only — cached afterwards)'
+        )}
       </div>
     );
   }

@@ -214,6 +214,15 @@ QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~1
             lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
             preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
             (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
+QD-SEL2P2 = the SEL2-P smoke failed its preregistered gate (founder boom and crash at prey_cap 320, confirmed
+            independently; verdict SEL2-P-smoke_296475cc), so SEL2-P stops at the smoke as registered. M0 continues
+            as: a read-only diagnosis (card DIAG-SEL2), a measurement-only exploration, then a new preregistration
+            SEL2-P2 with a new smoke seed that discloses this history (owner in chat, 2026-11-19: "Chẩn đoán rồi
+            đăng ký lại")
+QD-MACSHARE = the Mac is shared with OxideSwarm: each project may run one cargo process at the same time; an
+            Anima cargo there runs as CARGO_BUILD_JOBS=4 nice -n 10, only with at least 30% memory and 20 GB
+            disk free, and never touches an OxideSwarm process (owner in chat, 2026-11-19: "Xếp lịch xen kẽ
+            song song đi"; hub AGENT_RULES §5)
 QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
             downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
             per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
@@ -258,7 +267,22 @@ QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLV
             and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
             (licence files). Fallback: if no utf8-chars release with licence texts exists when release
             work starts, the release build drops ml-wgpu (CPU burn-flex learner only) through a separate
-            card; the desktop feature set CI tests keeps it (owner in chat, 2026-11-18: "Bạn đề xuất")
+            card; the desktop feature set CI tests keeps it (owner in chat, 2026-11-18: "Bạn đề xuất").
+            Amended 2026-11-19: resolved by electing Apache-2.0 under the crate's declared
+            MIT OR Apache-2.0 (PR #175); the owner asked for the licence row to be cleared and authorised
+            the means (owner in chat, 2026-11-19: "giấy phép có cách nào k, bạn có thể tự nhắn hỏi hoặc
+            làm j tuỳ"). MIT's notice condition points at a holder's notice the crate does not have;
+            Apache-2.0's text is complete as published and its section 4 conditions have nothing to
+            retain here, so nothing is synthesised. Recorded under `elections` in
+            licensing/upstream/sources.json and enforced fail-closed by scripts/lib/upstream_licenses.mjs,
+            which scans the installed crate to the bottom; licensing/UNRESOLVED.md reports 0 and the
+            ml-wgpu fallback is no longer needed. Open legal question: the election meets Apache-2.0's
+            conditions, but whether a bare Cargo `license` field is the author's grant is a legal
+            question; the project treats the published crate's declared licence as the grant, as the
+            Rust ecosystem does, and this is not legal advice. The upstream issue and pull request stay
+            open; the day the graph moves to a utf8-chars release that ships licence files, the run
+            fails loudly (the 3.0.7 election goes unused, and "installed text wins" refuses one moved
+            to the new version) and the election is removed
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.

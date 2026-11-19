@@ -671,10 +671,12 @@ pub fn autonomous_reproduction_system(
         return;
     }
     let land_nav = terrain_nav.as_deref().is_some_and(|p| p.enabled);
-    // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6).
+    // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6) and soft
+    // per-tick counting (`strict = false`, card FIX-CAP / F-052).
     let prey_cap = prey_cap_policy
         .as_deref()
         .map_or(crate::core::resources::DEFAULT_PREY_CAP, |p| p.cap);
+    let strict_cap = prey_cap_policy.as_deref().is_some_and(|p| p.strict);
     // Absent policy == the historical 5%. Exactly 0.0 == offspring are exact copies (no body or
     // brain mutation); see `live.mutation_rate`.
     let mutation_rate = mutation_policy
@@ -948,6 +950,13 @@ pub fn autonomous_reproduction_system(
                 terrain_map.as_deref(),
             );
             if spawned {
+                if strict_cap {
+                    if is_predator {
+                        pred_count += 1;
+                    } else {
+                        prey_count += 1;
+                    }
+                }
                 if let Some(drift_res) = drift.as_deref_mut() {
                     drift_res.record_birth(is_predator);
                 }

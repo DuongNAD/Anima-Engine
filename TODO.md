@@ -14,6 +14,16 @@
 
 ---
 
+# 🧪 Smoke SEL2-P trượt cổng, M0 đi tiếp bằng SEL2-P2 (2026-11-19)
+
+- **Kết quả:** smoke đăng ký trước (seed 999961, 200.000 tick, mù) cho `gate_pass = false` (C1, C2, C5, `drift_valid`).
+  Artifact merge ở #170, người thẩm định độc lập tính lại và xác nhận. Nguyên nhân là bùng nổ rồi sụp đổ của quần thể sáng lập
+  ở `prey_cap = 320`: 216/218 cái chết là chết đói trong khi đồng cỏ còn đầy 92–98 %.
+- **Hệ quả:** SEL2-P dừng ở smoke đúng như đã đăng ký. Chủ dự án chọn QĐ-SEL2P2: chẩn đoán (DIAG-SEL2), khảo sát chỉ đo,
+  rồi một bản đăng ký mới. Xem banner ở [bản đăng ký SEL2-P](docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md).
+
+---
+
 # 🌍 Thế giới chung đủ mọi môi trường — worldgen 22, shape `supercontinent` (2026-11-19)
 
 Chỉ dữ liệu thế giới (frontend generator); không đụng `src-tauri/` và không đụng file render. PR

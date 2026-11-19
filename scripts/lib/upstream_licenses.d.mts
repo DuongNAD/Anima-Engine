@@ -13,6 +13,8 @@ export declare const SUPPORTED_SCHEMA_VERSION: number;
 export declare const MATERIAL_TYPES: ReadonlySet<string>;
 export declare const PROVENANCE_KINDS: ReadonlySet<string>;
 export declare const MUTABLE_REFS: ReadonlySet<string>;
+export declare const ELECTABLE_LICENCES: ReadonlySet<string>;
+export declare const APACHE_UNFILLED_COPYRIGHT: string;
 
 export declare function sha256hex(buf: Buffer | string): string;
 
@@ -85,11 +87,94 @@ export interface BlockedComponent {
   evidence: string[];
 }
 
+export interface ElectionAttribution {
+  name: string;
+  version: string;
+  /** The manifest's `authors`, verbatim; checked against `cargo metadata` on every run. */
+  authors: string[];
+  repository: string;
+}
+
+export interface Election {
+  purl: string;
+  name: string;
+  version: string;
+  ecosystem: 'cargo';
+  /** Must equal the component's declared expression, and be a pure `A OR B [OR C]` disjunction. */
+  declaredSpdx: string;
+  chosen: 'Apache-2.0';
+  /** The SHA-256 of the decoded Apache-2.0 text the inventory ships most widely. */
+  textSha256: string;
+  attribution: ElectionAttribution;
+  /** The revision that was searched for a licence file and found to have none. */
+  commit: string;
+  tag: string | null;
+  investigated: string;
+  evidence: string[];
+}
+
 export interface UpstreamStore {
   sources: Map<string, UpstreamSource>;
   byPurl: Map<string, UpstreamComponent>;
   blockedByPurl: Map<string, BlockedComponent>;
+  electionsByPurl: Map<string, Election>;
 }
+
+/** The fields of an inventory component an election is checked against. */
+export interface ElectionComponent {
+  purl: string;
+  declaredLicense: string | null;
+  declaredLicenseFile: string | null;
+  repository: string | null;
+  authors?: string[];
+  distributed: boolean;
+  /** The installed crate directory, which `resolveElections` scans itself. */
+  sourceDir?: string | null;
+}
+
+/** One distinct text read out of an installed artifact, and the components that carry it. */
+export interface PooledText {
+  textSha256: string;
+  text: string;
+  purls: Set<string>;
+}
+
+export interface ElectedArtifactScan {
+  /** False when the directory is missing: "looked nowhere" never reads as "found nothing". */
+  exists: boolean;
+  /** Licence-like files or directories (directories end in `/`) at any depth, relative, sorted. */
+  licenceFiles: string[];
+  /** `path:line` of every line carrying a copyright notice, in any file. */
+  notices: string[];
+  /** Symlinks and other entries the scan did not follow. */
+  unscanned: string[];
+}
+
+export declare function isLicenceLikeName(name: string): boolean;
+export declare function copyrightNoticeLines(text: string): number[];
+export declare function scanElectedArtifact(dir: string | null | undefined): ElectedArtifactScan;
+export declare function disjunctionOperands(expr: string): string[] | null;
+export declare function isApache2Text(text: string): boolean;
+export declare function electionProblems(
+  election: Election,
+  component: ElectionComponent,
+  scan: ElectedArtifactScan,
+): string[];
+export declare function electedText(
+  election: Election,
+  pool: PooledText[],
+): { problems: string[]; text?: string };
+export declare function electionSelfTest(): {
+  failures: string[];
+  controls: number;
+  rejects: number;
+  accepts: number;
+};
+export declare function resolveElections(
+  electionsByPurl: Map<string, Election>,
+  components: ElectionComponent[],
+  pool: PooledText[],
+): Map<string, { election: Election; text: string; textSha256: string }>;
 
 export declare function loadUpstreamStore(
   root: string,

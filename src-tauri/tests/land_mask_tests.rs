@@ -2,7 +2,7 @@
 //! desktop app shoreline lake placement.
 //!
 //! Covers every acceptance check:
-//! - Key registration (`LIVE_KEY_LAND_MASK = "live.land_mask"`, `LIVE_KEYS.len() = 26`), exact
+//! - Key registration (`LIVE_KEY_LAND_MASK = "live.land_mask"`, `LIVE_KEYS.len() = 27`), exact
 //!   boolean validation, and serde backward compatibility.
 //! - (a) `absent` and `0.0` produce bit-identical sampled trajectories at every sampled tick.
 //! - (b) With `live.land_mask = 1.0`, over 2,000 ticks no agent root is ever in `DeepOcean` or
@@ -17,6 +17,7 @@
 
 mod common;
 
+use anima_engine_lib::ai::cpg::TimeStep;
 use anima_engine_lib::ai::hrrl::HomeostaticState;
 use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::components::{
@@ -34,11 +35,15 @@ use anima_engine_lib::core::simulation_lifecycle::SimulationEngine;
 use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
 use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
 use anima_engine_lib::core::terrain_navigation::{
-    is_biome_walkable, is_pos_walkable, is_walkable_cell_next_to_water, terrain_navigation_system,
-    wrap_pos,
+    cell_center, is_walkable_cell_next_to_water, terrain_navigation_system, wrap_pos,
 };
 use anima_engine_lib::core::world_artifact::WorldIdentity;
+use anima_engine_lib::core::world_systems::wrap_coordinates_system;
+use anima_engine_lib::evolution::genotype::{
+    decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
+};
 use anima_engine_lib::physics::dynamics::RigidBody;
+use anima_engine_lib::physics::integrate_physics_system;
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::process::Command;
@@ -58,12 +63,8 @@ fn initial(pairs: &[(&str, f64)]) -> InitialConditionSet {
     InitialConditionSet::new(pairs.iter().map(|(k, v)| (k.to_string(), *v)).collect())
 }
 
-fn cell_biome(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) -> BiomeType {
-    let wrapped = wrap_pos(pos, bounds);
-    let (col, row) = tm
-        .get_map_indices(wrapped, bounds)
-        .expect("position must lie within MapBounds");
-    match tm.biomes[row * tm.width + col] {
+fn biome_from_id(id: u8) -> BiomeType {
+    match id {
         0 => BiomeType::DeepOcean,
         1 => BiomeType::Ocean,
         2 => BiomeType::Beach,
@@ -79,6 +80,24 @@ fn cell_biome(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) -> BiomeType {
     }
 }
 
+/// Independent test-side walkability oracle (N2): `DeepOcean` and `Ocean` are not land; all
+/// other biomes (`River`, `Beach`, and inland biomes) are walkable land.
+fn is_land_biome(biome: BiomeType) -> bool {
+    !matches!(biome, BiomeType::DeepOcean | BiomeType::Ocean)
+}
+
+fn cell_biome(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) -> BiomeType {
+    let wrapped = wrap_pos(pos, bounds);
+    let (col, row) = tm
+        .get_map_indices(wrapped, bounds)
+        .expect("position must lie within MapBounds");
+    biome_from_id(tm.biomes[row * tm.width + col])
+}
+
+fn is_land_pos(tm: &TerrainMap, bounds: &MapBounds, pos: Vec3) -> bool {
+    is_land_biome(cell_biome(tm, bounds, pos))
+}
+
 fn assert_all_roots_walkable(world: &mut World, context: &str) {
     let bounds = *world.resource::<MapBounds>();
     let tm = world.resource::<TerrainMap>().clone();
@@ -86,7 +105,7 @@ fn assert_all_roots_walkable(world: &mut World, context: &str) {
     for (entity, pos) in q.iter(world) {
         let biome = cell_biome(&tm, &bounds, pos.0);
         assert!(
-            is_biome_walkable(biome as u8),
+            is_land_biome(biome),
             "{context}: agent root {entity:?} at {:?} landed on non-walkable {biome:?}",
             pos.0
         );
@@ -100,7 +119,7 @@ fn assert_all_trees_and_food_walkable(world: &mut World, check_trees: bool, cont
     for pos in food_q.iter(world) {
         let biome = cell_biome(&tm, &bounds, pos.0);
         assert!(
-            is_biome_walkable(biome as u8),
+            is_land_biome(biome),
             "{context}: food at {:?} spawned on non-walkable {biome:?}",
             pos.0
         );
@@ -110,7 +129,7 @@ fn assert_all_trees_and_food_walkable(world: &mut World, check_trees: bool, cont
         for pos in tree_q.iter(world) {
             let biome = cell_biome(&tm, &bounds, pos.0);
             assert!(
-                is_biome_walkable(biome as u8),
+                is_land_biome(biome),
                 "{context}: tree at {:?} is on non-walkable {biome:?}",
                 pos.0
             );
@@ -123,7 +142,7 @@ fn assert_all_trees_and_food_walkable(world: &mut World, check_trees: bool, cont
 #[test]
 fn key_is_registered_validated_and_serde_backward_compatible() {
     assert_eq!(LIVE_KEY_LAND_MASK, "live.land_mask");
-    assert_eq!(LIVE_KEYS.len(), 26);
+    assert_eq!(LIVE_KEYS.len(), 27);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_LAND_MASK));
     assert!(!LiveWorldConfig::default().land_mask);
 
@@ -284,7 +303,7 @@ fn land_mask_keeps_agents_founders_trees_lakes_and_food_on_land_over_2000_ticks(
         assert_eq!(lakes.len(), 8);
         for pos in lakes {
             assert!(
-                is_pos_walkable(&tm, &bounds, pos),
+                is_land_pos(&tm, &bounds, pos),
                 "genesis lake at {pos:?} must be snapped onto walkable cell"
             );
         }
@@ -297,7 +316,7 @@ fn land_mask_keeps_agents_founders_trees_lakes_and_food_on_land_over_2000_ticks(
         assert_eq!(trees.len(), 8);
         for pos in trees {
             assert!(
-                is_pos_walkable(&tm, &bounds, pos),
+                is_land_pos(&tm, &bounds, pos),
                 "genesis tree at {pos:?} must be snapped onto walkable cell"
             );
         }
@@ -489,10 +508,8 @@ fn terrain_navigation_system_allocates_nothing_once_warm() {
         let mut found = None;
         for row in 0..tm.height {
             for col in 0..tm.width {
-                if !is_biome_walkable(tm.biomes[row * tm.width + col]) {
-                    found = Some(anima_engine_lib::core::terrain_navigation::cell_center(
-                        tm, &bounds, col, row,
-                    ));
+                if !is_land_biome(biome_from_id(tm.biomes[row * tm.width + col])) {
+                    found = Some(cell_center(tm, &bounds, col, row));
                     break;
                 }
             }
@@ -696,15 +713,15 @@ fn desktop_app_genesis_places_lakes_on_land_next_to_water() {
         let (col, row) = tm
             .get_map_indices(lake.position, &saved.map_bounds)
             .expect("lake inside MapBounds");
-        let biome = tm.biomes[row * tm.width + col];
+        let biome = biome_from_id(tm.biomes[row * tm.width + col]);
         assert!(
-            is_biome_walkable(biome),
-            "app lake at {:?} placed on non-walkable biome {biome}",
+            is_land_biome(biome),
+            "app lake at {:?} placed on non-walkable biome {biome:?}",
             lake.position
         );
         assert!(
             is_walkable_cell_next_to_water(tm, col, row),
-            "app lake at {:?} (cell ({col}, {row}), biome {biome}) is not adjacent to water",
+            "app lake at {:?} (cell ({col}, {row}), biome {biome:?}) is not adjacent to water",
             lake.position
         );
     }
@@ -712,7 +729,7 @@ fn desktop_app_genesis_places_lakes_on_land_next_to_water() {
     assert!(!saved.agents.is_empty(), "founders must be present");
     for agent in &saved.agents {
         assert!(
-            is_pos_walkable(tm, &saved.map_bounds, agent.root_position),
+            is_land_pos(tm, &saved.map_bounds, agent.root_position),
             "app agent root at {:?} is not on walkable land",
             agent.root_position
         );
@@ -721,7 +738,7 @@ fn desktop_app_genesis_places_lakes_on_land_next_to_water() {
     assert!(!saved.trees.is_empty(), "trees must be present");
     for tree in &saved.trees {
         assert!(
-            is_pos_walkable(tm, &saved.map_bounds, tree.position),
+            is_land_pos(tm, &saved.map_bounds, tree.position),
             "app tree at {:?} is not on walkable land",
             tree.position
         );
@@ -729,7 +746,7 @@ fn desktop_app_genesis_places_lakes_on_land_next_to_water() {
 
     for food in &saved.foods {
         assert!(
-            is_pos_walkable(tm, &saved.map_bounds, food.position),
+            is_land_pos(tm, &saved.map_bounds, food.position),
             "app food at {:?} is not on walkable land",
             food.position
         );
@@ -821,7 +838,7 @@ fn coastal_birth_and_staggered_evolution_use_walkable_positions_without_extra_rn
         let (mut w_off, parent_off) = build_repro_world(false, candidate_seed);
         let mut q = w_off.query_filtered::<(Entity, &Position), With<Agent>>();
         if let Some((_, child_pos)) = q.iter(&w_off).find(|(e, _)| *e != parent_off) {
-            if !is_pos_walkable(&tm, &bounds, child_pos.0) {
+            if !is_land_pos(&tm, &bounds, child_pos.0) {
                 active_seed = Some(candidate_seed);
                 break;
             }
@@ -846,7 +863,7 @@ fn coastal_birth_and_staggered_evolution_use_walkable_positions_without_extra_rn
         .collect();
     assert_eq!(children.len(), 1);
     assert!(
-        is_pos_walkable(&tm, &bounds, children[0].0),
+        is_land_pos(&tm, &bounds, children[0].0),
         "newborn spawned at non-walkable position {:?}",
         children[0].0
     );
@@ -909,12 +926,279 @@ fn coastal_birth_and_staggered_evolution_use_walkable_positions_without_extra_rn
         let rep_bounds = evo_world.resource::<MapBounds>();
         let rep_tm = evo_world.resource::<TerrainMap>();
         assert!(
-            is_pos_walkable(rep_tm, rep_bounds, p),
+            is_land_pos(rep_tm, rep_bounds, p),
             "replacement spawned at non-walkable {p:?}"
         );
         assert_eq!(
             last, p,
             "replacement LastWalkablePosition must match walkable spawn"
         );
+    }
+}
+
+// ---- N1: Policy-off (absent / enabled: false) follows pure physics and never snaps sea roots ----
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct BodyBitSnapshot {
+    root_pos: [u32; 3],
+    root_vel: [u32; 3],
+    root_body_vel: [u32; 3],
+    last_walkable_pos: [u32; 3],
+    child_pos: [u32; 3],
+    child_vel: [u32; 3],
+    child_body_vel: [u32; 3],
+}
+
+fn vec3_bits(v: Vec3) -> [u32; 3] {
+    [v.x.to_bits(), v.y.to_bits(), v.z.to_bits()]
+}
+
+fn snapshot_body(world: &World, root: Entity, child: Entity) -> BodyBitSnapshot {
+    BodyBitSnapshot {
+        root_pos: vec3_bits(world.get::<Position>(root).expect("root pos").0),
+        root_vel: vec3_bits(world.get::<Velocity>(root).expect("root vel").0),
+        root_body_vel: vec3_bits(world.get::<RigidBody>(root).expect("root body").velocity),
+        last_walkable_pos: vec3_bits(
+            world
+                .get::<LastWalkablePosition>(root)
+                .expect("last pos")
+                .pos,
+        ),
+        child_pos: vec3_bits(world.get::<Position>(child).expect("child pos").0),
+        child_vel: vec3_bits(world.get::<Velocity>(child).expect("child vel").0),
+        child_body_vel: vec3_bits(world.get::<RigidBody>(child).expect("child body").velocity),
+    }
+}
+
+fn build_small_sea_world(
+    tm: &TerrainMap,
+    bounds: MapBounds,
+    genotype: &MorphologyGenotype,
+    start_pos: Vec3,
+    initial_vel: Vec3,
+    policy: Option<bool>,
+) -> (World, Entity, Entity) {
+    let mut world = World::new();
+    world.insert_resource(TimeStep(1.0 / 60.0));
+    world.insert_resource(bounds);
+    world.insert_resource(tm.clone());
+    if let Some(enabled) = policy {
+        world.insert_resource(TerrainNavigation { enabled });
+    }
+
+    let root = decode_genotype(&mut world, genotype, start_pos, glam::Quat::IDENTITY);
+    let child = {
+        let mut q = world.query_filtered::<(Entity, &ParentAgent), Without<Agent>>();
+        q.iter(&world)
+            .find(|(_, p)| p.0 == root)
+            .map(|(e, _)| e)
+            .expect("child segment exists")
+    };
+
+    for entity in [root, child] {
+        world.get_mut::<Velocity>(entity).expect("vel").0 = initial_vel;
+        world.get_mut::<RigidBody>(entity).expect("body").velocity = initial_vel;
+    }
+    (world, root, child)
+}
+
+#[test]
+fn terrain_navigation_absent_and_disabled_leave_sea_agent_on_pure_physics() {
+    let bounds = MapBounds {
+        min: Vec3::new(-40.0, 0.0, -40.0),
+        max: Vec3::new(40.0, 10.0, 40.0),
+    };
+    // 4x4 grid over [-40, 40]^2 (20x20 world units per cell):
+    // col 0 = DeepOcean, col 1 = Ocean, cols 2..4 = Grassland.
+    let mut tm = TerrainMap {
+        width: 4,
+        height: 4,
+        elevations: vec![0.5; 16],
+        moistures: vec![0.5; 16],
+        temperatures: vec![0.5; 16],
+        biomes: vec![BiomeType::Grassland as u8; 16],
+        flows: vec![0.0; 16],
+        pois: Vec::new(),
+    };
+    for row in 0..4 {
+        tm.biomes[row * 4] = BiomeType::DeepOcean as u8;
+        tm.biomes[row * 4 + 1] = BiomeType::Ocean as u8;
+    }
+
+    let mut genotype = MorphologyGenotype::new();
+    genotype.add_node(MorphologyNode {
+        id: 0,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.5,
+    });
+    genotype.add_node(MorphologyNode {
+        id: 1,
+        length: 1.0,
+        radius: 0.2,
+        mass: 1.0,
+    });
+    genotype.add_edge(MorphologyEdge {
+        source_node: 0,
+        target_node: 1,
+        joint_anchor: Vec3::new(1.0, 0.0, 0.0),
+        joint_axis: Vec3::new(0.0, 0.0, 1.0),
+    });
+
+    let initial_vel = Vec3::new(1.5, 0.0, 0.5);
+
+    for (sea_biome, col, row) in [(BiomeType::Ocean, 1, 1), (BiomeType::DeepOcean, 0, 2)] {
+        let start_pos = cell_center(&tm, &bounds, col, row);
+        assert_eq!(cell_biome(&tm, &bounds, start_pos), sea_biome);
+        assert!(!is_land_biome(sea_biome));
+
+        // 1. Direct terrain_navigation_system: absent / enabled=false leave sea agent bit-unchanged,
+        // while positive control (enabled=true) snaps both root and child to land and zeroes vel.
+        let (mut w_abs, r_abs, c_abs) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, None);
+        assert!(w_abs.get_resource::<TerrainNavigation>().is_none());
+        let (mut w_dis, r_dis, c_dis) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, Some(false));
+        let (mut w_on, r_on, c_on) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, Some(true));
+
+        let initial_snap = snapshot_body(&w_abs, r_abs, c_abs);
+        let initial_offset =
+            w_abs.get::<Position>(c_abs).unwrap().0 - w_abs.get::<Position>(r_abs).unwrap().0;
+
+        let nav_only = || {
+            let mut s = Schedule::default();
+            s.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+            s.add_systems(terrain_navigation_system);
+            s
+        };
+        let mut s_abs = nav_only();
+        let mut s_dis = nav_only();
+        let mut s_on = nav_only();
+
+        for tick in 1..=3 {
+            s_abs.run(&mut w_abs);
+            s_dis.run(&mut w_dis);
+            s_on.run(&mut w_on);
+
+            assert_eq!(
+                snapshot_body(&w_abs, r_abs, c_abs),
+                initial_snap,
+                "{sea_biome:?} direct tick {tick}: absent TerrainNavigation mutated sea body"
+            );
+            assert_eq!(
+                cell_biome(&tm, &bounds, w_abs.get::<Position>(r_abs).unwrap().0),
+                sea_biome
+            );
+
+            assert_eq!(
+                snapshot_body(&w_dis, r_dis, c_dis),
+                initial_snap,
+                "{sea_biome:?} direct tick {tick}: disabled TerrainNavigation mutated sea body"
+            );
+            assert_eq!(
+                cell_biome(&tm, &bounds, w_dis.get::<Position>(r_dis).unwrap().0),
+                sea_biome
+            );
+
+            let on_root_pos = w_on.get::<Position>(r_on).unwrap().0;
+            let on_child_pos = w_on.get::<Position>(c_on).unwrap().0;
+            assert!(
+                is_land_biome(cell_biome(&tm, &bounds, on_root_pos)),
+                "{sea_biome:?} positive control direct tick {tick} must snap root onto land"
+            );
+            assert_ne!(on_root_pos, start_pos);
+            assert_eq!(
+                w_on.get::<LastWalkablePosition>(r_on).unwrap().pos,
+                on_root_pos
+            );
+            assert_eq!(w_on.get::<Velocity>(r_on).unwrap().0, Vec3::ZERO);
+            assert_eq!(w_on.get::<RigidBody>(r_on).unwrap().velocity, Vec3::ZERO);
+            assert_eq!(w_on.get::<Velocity>(c_on).unwrap().0, Vec3::ZERO);
+            assert_eq!(w_on.get::<RigidBody>(c_on).unwrap().velocity, Vec3::ZERO);
+            assert!(
+                (on_child_pos - on_root_pos).distance(initial_offset) < 1e-5,
+                "{sea_biome:?} positive control must preserve root-child offset"
+            );
+        }
+
+        // 2. Multi-tick physics schedule: absent and disabled match pure physics bit-for-bit across
+        // 5 ticks on the sea cell, while positive control (enabled=true) reverts onto walkable land.
+        let (mut w_phys, r_phys, c_phys) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, None);
+        let (mut w_abs, r_abs, c_abs) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, None);
+        assert!(w_abs.get_resource::<TerrainNavigation>().is_none());
+        let (mut w_dis, r_dis, c_dis) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, Some(false));
+        let (mut w_on, r_on, c_on) =
+            build_small_sea_world(&tm, bounds, &genotype, start_pos, initial_vel, Some(true));
+
+        let mut phys_sched = Schedule::default();
+        phys_sched.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+        phys_sched.add_systems((integrate_physics_system, wrap_coordinates_system).chain());
+
+        let phys_nav_sched = || {
+            let mut s = Schedule::default();
+            s.set_executor_kind(bevy_ecs::schedule::ExecutorKind::SingleThreaded);
+            s.add_systems(
+                (
+                    integrate_physics_system,
+                    terrain_navigation_system,
+                    wrap_coordinates_system,
+                )
+                    .chain(),
+            );
+            s
+        };
+        let mut s_abs = phys_nav_sched();
+        let mut s_dis = phys_nav_sched();
+        let mut s_on = phys_nav_sched();
+
+        let mut prev_phys_pos = start_pos;
+        for tick in 1..=5 {
+            phys_sched.run(&mut w_phys);
+            s_abs.run(&mut w_abs);
+            s_dis.run(&mut w_dis);
+            s_on.run(&mut w_on);
+
+            let phys_pos = w_phys.get::<Position>(r_phys).unwrap().0;
+            assert_ne!(
+                phys_pos, prev_phys_pos,
+                "{sea_biome:?} tick {tick}: pure physics must advance agent position"
+            );
+            assert_eq!(cell_biome(&tm, &bounds, phys_pos), sea_biome);
+            prev_phys_pos = phys_pos;
+
+            let expected = snapshot_body(&w_phys, r_phys, c_phys);
+            assert_eq!(
+                snapshot_body(&w_abs, r_abs, c_abs),
+                expected,
+                "{sea_biome:?} schedule tick {tick}: absent policy diverged from pure physics"
+            );
+            assert_eq!(
+                snapshot_body(&w_dis, r_dis, c_dis),
+                expected,
+                "{sea_biome:?} schedule tick {tick}: disabled policy diverged from pure physics"
+            );
+
+            let on_root_pos = w_on.get::<Position>(r_on).unwrap().0;
+            let on_child_pos = w_on.get::<Position>(c_on).unwrap().0;
+            assert!(
+                is_land_biome(cell_biome(&tm, &bounds, on_root_pos)),
+                "{sea_biome:?} positive control schedule tick {tick} must keep root on land"
+            );
+            assert_ne!(on_root_pos, phys_pos);
+            assert!(
+                (on_child_pos - on_root_pos).distance(initial_offset) < 1e-4,
+                "{sea_biome:?} positive control schedule tick {tick} must preserve root-child offset"
+            );
+            if tick == 1 {
+                assert_eq!(w_on.get::<Velocity>(r_on).unwrap().0, Vec3::ZERO);
+                assert_eq!(w_on.get::<RigidBody>(r_on).unwrap().velocity, Vec3::ZERO);
+                assert_eq!(w_on.get::<Velocity>(c_on).unwrap().0, Vec3::ZERO);
+                assert_eq!(w_on.get::<RigidBody>(c_on).unwrap().velocity, Vec3::ZERO);
+            }
+        }
     }
 }

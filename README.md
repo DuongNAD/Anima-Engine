@@ -83,8 +83,10 @@ README này không mang số đo.
 - **Tử vong, fitness sinh thái, sinh sản liên tục và bộ lái vận động có trong mã nhưng tắt theo mặc định.** Một
   thế giới mặc định vẫn không có cái chết, và fitness được chấm bằng quãng đường. Luật "chỉ đi trên đất" thì bật
   sẵn trong app, còn trong thí nghiệm thì phải bật bằng khoá `live.land_mask`.
-- **Phát hành vẫn bị chặn** vì còn một văn bản giấy phép bên thứ ba chưa giải quyết:
-  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
+- **Không còn văn bản giấy phép bên thứ ba nào chưa giải quyết, nhưng có một dòng được đóng bằng lựa chọn.**
+  `utf8-chars` 3.0.7 không có file giấy phép nào, nên dự án chọn Apache-2.0 trong `MIT OR Apache-2.0` mà crate
+  khai; [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) trống. Một trường `license` trơn của Cargo có phải là
+  lời cấp phép của tác giả hay không vẫn là câu hỏi pháp lý; đây không phải tư vấn pháp lý.
 
 ## Đang có gì trong mã
 

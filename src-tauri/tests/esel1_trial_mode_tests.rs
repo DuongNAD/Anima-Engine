@@ -491,12 +491,59 @@ fn a_trial_writes_exactly_its_files_and_no_body_mass() {
 #[test]
 fn a_trial_refuses_a_preregistered_confirmation_seed() {
     let dir = fixture("reserved");
-    let err = trial(&params_with("--seed", "11"), Some(&dir), &dir.join("out"))
-        .expect_err("seed 11 is in the execution order");
-    assert!(err.contains("execution order"), "{err}");
-    assert!(
-        !dir.join("out").exists(),
-        "nothing is written before a refusal"
+    for seed in EXP_SEEDS {
+        let seed_s = seed.to_string();
+        let mut p = PARAMS.to_vec();
+        p[1] = &seed_s;
+        let err = trial(&p, Some(&dir), &dir.join("out"))
+            .expect_err(&format!("seed {seed} is in the execution order"));
+        assert!(err.contains("execution order"), "{seed}: {err}");
+        assert!(
+            !dir.join("out").exists(),
+            "nothing is written before a refusal (seed {seed})"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_trial_output_files_contain_no_trait_mass_substring() {
+    let dir = fixture("blinding_substring");
+    let out = dir.join("out");
+    trial(
+        &["--seed", SEED, "--duration-ticks", "20"],
+        Some(&dir),
+        &out,
+    )
+    .expect("trial runs");
+    let trial_dir = out.join("trial");
+    let expected = [
+        "checksums.sha256",
+        "provenance.json",
+        "runs.csv",
+        "timing.json",
+        "trial-series.csv",
+        "verify_checksums.txt",
+    ];
+    for name in expected {
+        let path = trial_dir.join(name);
+        assert!(
+            path.is_file(),
+            "missing trial output file {}",
+            path.display()
+        );
+        let text = read(&path);
+        assert!(
+            !text.contains("trait_mass") && !text.to_ascii_lowercase().contains("trait_mass"),
+            "{name} leaked a trait_mass substring"
+        );
+    }
+    let prov = provenance(&out);
+    assert_eq!(prov["terrain_source"], "generated");
+    assert_ne!(
+        prov["world_identity"]["checksum"].as_u64().unwrap_or(0),
+        0,
+        "provenance.json must record observed non-zero world_identity"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -599,9 +646,31 @@ fn the_built_in_manifests_are_the_committed_fixtures() {
     assert_eq!(ic(&prov, "control", "live.founders"), 30.0);
     assert_eq!(ic(&prov, "control", "live.food_cap"), 50.0);
     assert_eq!(ic(&prov, "treatment", "live.food_cap"), 25.0);
-    // The committed preregistration's confirmation seeds are refused.
-    let err = trial(&["--seed", "760001"], None, &scratch.join("out-reserved"))
-        .expect_err("760001 is E-SEL1's first confirmation seed");
-    assert!(err.contains("execution order"), "{err}");
+    // Every committed preregistration confirmation seed is refused before any output is written.
+    let prereg: serde_json::Value =
+        serde_json::from_str(&read(&fixtures.join("esel1-preregistration.json"))).unwrap();
+    let execution_order: Vec<u64> = prereg["seeds"]["execution_order"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        execution_order.len(),
+        12,
+        "committed E-SEL1 execution order must list all 12 seeds"
+    );
+    for seed in execution_order {
+        let seed_s = seed.to_string();
+        let reserved_out = scratch.join(format!("out-reserved-{seed}"));
+        let err = trial(&["--seed", &seed_s], None, &reserved_out).expect_err(&format!(
+            "{seed} is in E-SEL1's confirmation execution_order"
+        ));
+        assert!(err.contains("execution order"), "{seed}: {err}");
+        assert!(
+            !reserved_out.exists(),
+            "nothing may be written when seed {seed} is refused"
+        );
+    }
     let _ = std::fs::remove_dir_all(&scratch);
 }

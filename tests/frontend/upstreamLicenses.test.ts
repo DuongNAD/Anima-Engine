@@ -5,13 +5,28 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  APACHE_UNFILLED_COPYRIGHT,
+  ELECTABLE_LICENCES,
   MATERIAL_TYPES,
   MUTABLE_REFS,
   PROVENANCE_KINDS,
+  disjunctionOperands,
+  copyrightNoticeLines,
+  electedText,
+  electionProblems,
+  electionSelfTest,
+  isApache2Text,
+  isLicenceLikeName,
   isSafeStorePath,
   loadUpstreamStore,
   parseRawUrl,
+  resolveElections,
+  scanElectedArtifact,
   storeProvenancePath,
+  type ElectedArtifactScan,
+  type Election,
+  type ElectionComponent,
+  type PooledText,
 } from '../../scripts/lib/upstream_licenses.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -67,12 +82,28 @@ interface BlockedEntry {
   investigated: string;
   evidence: string[];
 }
+interface ElectionEntry {
+  purl: string;
+  name: string;
+  version: string;
+  ecosystem: string;
+  declaredSpdx: string;
+  chosen: string;
+  textSha256: string;
+  attribution: { name: string; version: string; authors: string[]; repository: string };
+  commit: string;
+  tag: string | null;
+  investigated: string;
+  evidence: string[];
+  [extra: string]: unknown;
+}
 interface Manifest {
   $comment: string;
   schemaVersion: number;
   sources: SourceEntry[];
   components: ComponentEntry[];
   blocked: BlockedEntry[];
+  elections: ElectionEntry[];
 }
 
 const COMMIT_A = '1111111111111111111111111111111111111111';
@@ -89,7 +120,7 @@ function baseManifest(): Manifest {
   const id = `github.com/acme/widget/${COMMIT_A}/LICENSE`;
   return {
     $comment: 'test fixture',
-    schemaVersion: 1,
+    schemaVersion: 2,
     sources: [
       {
         id,
@@ -123,6 +154,7 @@ function baseManifest(): Manifest {
       },
     ],
     blocked: [],
+    elections: [],
   };
 }
 
@@ -572,8 +604,20 @@ describe('the store loads only when every claim about it holds', () => {
   });
 
   it('refuses a manifest whose schema version it does not understand', () => {
-    const message = rejection((manifest) => ({ manifest: { ...manifest, schemaVersion: 2 } }));
-    expect(message).toContain('this reader understands 1');
+    // 1 is the store before elections existed; 3 is one this reader has never seen. Both refused.
+    for (const schemaVersion of [1, 3]) {
+      const message = rejection((manifest) => ({ manifest: { ...manifest, schemaVersion } }));
+      expect(message, String(schemaVersion)).toContain('this reader understands 2');
+    }
+  });
+
+  it('refuses a manifest that has no elections array, rather than reading it as empty', () => {
+    const message = rejection((manifest) => {
+      const withoutElections: Partial<Manifest> = { ...manifest };
+      delete withoutElections.elections;
+      return { manifest: withoutElections as Manifest };
+    });
+    expect(message).toContain('sources, components, blocked and elections arrays');
   });
 
   it('reports every problem at once rather than the first', () => {
@@ -589,12 +633,485 @@ describe('the store loads only when every claim about it holds', () => {
   });
 });
 
+// ---- elections: the one place a licence is chosen on a component's behalf ------------------------
+
+/**
+ * A stand-in for the canonical Apache-2.0 text: the title lines, the end of the terms, and the
+ * appendix with its placeholder unfilled — the three things `isApache2Text` and `electedText` read.
+ */
+const APACHE_TEXT = [
+  '                              Apache License',
+  '                        Version 2.0, January 2004',
+  '                     http://www.apache.org/licenses/',
+  '',
+  'TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION',
+  '',
+  '   (the terms, elided in this fixture)',
+  '',
+  'END OF TERMS AND CONDITIONS',
+  '',
+  'APPENDIX: How to apply the Apache License to your work.',
+  '',
+  `   ${APACHE_UNFILLED_COPYRIGHT}`,
+  '',
+].join('\n');
+/** The same licence, applied by someone: the appendix names a holder. */
+const APACHE_FILLED = APACHE_TEXT.replace(APACHE_UNFILLED_COPYRIGHT, 'Copyright 2020 Acme Corp');
+/** The same licence without its appendix, as several crates ship it. */
+const APACHE_NO_APPENDIX = APACHE_TEXT.slice(0, APACHE_TEXT.indexOf('APPENDIX'));
+
+const ELECTED_PURL = 'pkg:cargo/nolicence@0.1.0';
+
+function electionEntry(overrides: Partial<ElectionEntry> = {}): ElectionEntry {
+  return {
+    purl: ELECTED_PURL,
+    name: 'nolicence',
+    version: '0.1.0',
+    ecosystem: 'cargo',
+    declaredSpdx: 'MIT OR Apache-2.0',
+    chosen: 'Apache-2.0',
+    textSha256: sha256(APACHE_TEXT),
+    attribution: {
+      name: 'nolicence',
+      version: '0.1.0',
+      authors: ['Someone <someone@example.com>'],
+      repository: 'https://github.com/acme/nolicence',
+    },
+    commit: COMMIT_A,
+    tag: null,
+    investigated: '2026-11-19',
+    evidence: ['the published crate and its release commit carry no licence file and no notice'],
+    ...overrides,
+  };
+}
+
+/** The validated form, for the inventory-side functions that take what the loader returns. */
+const asElection = (e: ElectionEntry): Election => e as unknown as Election;
+
+function electedComponent(overrides: Partial<ElectionComponent> = {}): ElectionComponent {
+  return {
+    purl: ELECTED_PURL,
+    declaredLicense: 'MIT OR Apache-2.0',
+    declaredLicenseFile: null,
+    repository: 'https://github.com/acme/nolicence',
+    authors: ['Someone <someone@example.com>'],
+    distributed: true,
+    ...overrides,
+  };
+}
+
+function pooled(text: string, carriers: number, prefix = 'c'): PooledText {
+  return {
+    textSha256: sha256(text),
+    text,
+    purls: new Set(Array.from({ length: carriers }, (_, i) => `pkg:cargo/${prefix}${i}@1.0.0`)),
+  };
+}
+
+/** Load a store carrying the given elections and return the rejection, or `null` if it loaded. */
+function electionRejection(elections: ElectionEntry[], extra: Partial<Manifest> = {}): string | null {
+  return rejection((manifest) => ({ manifest: { ...manifest, ...extra, elections } }));
+}
+
+describe('a declared expression is a pure disjunction or it is nothing', () => {
+  it('reads the operands of `A OR B [OR C]` made of whole SPDX identifiers', () => {
+    expect(disjunctionOperands('MIT OR Apache-2.0')).toEqual(['MIT', 'Apache-2.0']);
+    expect(disjunctionOperands('Apache-2.0 OR MIT')).toEqual(['Apache-2.0', 'MIT']);
+    expect(disjunctionOperands('MIT OR Apache-2.0 OR Zlib')).toEqual(['MIT', 'Apache-2.0', 'Zlib']);
+  });
+
+  it('refuses AND, WITH, parentheses, an or-later suffix and every malformed spelling', () => {
+    for (const expr of [
+      'MIT AND Apache-2.0',
+      'Apache-2.0 WITH LLVM-exception OR MIT',
+      'MIT OR Apache-2.0 WITH LLVM-exception',
+      '(MIT OR Apache-2.0)',
+      'MIT OR (Apache-2.0 AND Zlib)',
+      '(MIT AND Zlib) OR Apache-2.0',
+      'MIT OR Apache-2.0+',
+      'MIT or Apache-2.0',
+      'MIT/Apache-2.0',
+      'MIT  OR Apache-2.0',
+      ' MIT OR Apache-2.0',
+      'MIT OR MIT',
+      'MIT OR NotARealLicence',
+      'Apache-2.0',
+      'MIT OR',
+      '',
+    ]) {
+      expect(disjunctionOperands(expr), JSON.stringify(expr)).toBeNull();
+    }
+  });
+
+  it('recognises the Apache-2.0 text by content, not by filename', () => {
+    expect(isApache2Text(APACHE_TEXT)).toBe(true);
+    expect(isApache2Text(APACHE_NO_APPENDIX)).toBe(true);
+    expect(isApache2Text(LICENCE_BYTES)).toBe(false);
+    expect(isApache2Text('Apache License\nVersion 2.0, January 2004\n(truncated)\n')).toBe(false);
+    expect([...ELECTABLE_LICENCES]).toEqual(['Apache-2.0']);
+  });
+});
+
+describe('an election loads only when its manifest entry is narrow', () => {
+  it('accepts a well-formed election', () => {
+    withStore(
+      (manifest) => ({ manifest: { ...manifest, elections: [electionEntry()] } }),
+      (fixture) => {
+        const store = loadUpstreamStore(fixture.root, { tracked: fixture.tracked });
+        expect(store.electionsByPurl.get(ELECTED_PURL)?.chosen).toBe('Apache-2.0');
+      },
+    );
+  });
+
+  it('rejects a conjunction, because AND means both licences apply and neither can be chosen', () => {
+    expect(electionRejection([electionEntry({ declaredSpdx: 'MIT AND Apache-2.0' })])).toContain(
+      'is not a pure disjunction',
+    );
+  });
+
+  it('rejects a WITH exception, which changes the terms of the operand it attaches to', () => {
+    expect(
+      electionRejection([electionEntry({ declaredSpdx: 'Apache-2.0 WITH LLVM-exception OR MIT' })]),
+    ).toContain('is not a pure disjunction');
+  });
+
+  it('rejects parentheses, even ones that change nothing', () => {
+    for (const declaredSpdx of ['(MIT OR Apache-2.0)', 'MIT OR (Apache-2.0 AND Zlib)']) {
+      expect(electionRejection([electionEntry({ declaredSpdx })]), declaredSpdx).toContain(
+        'is not a pure disjunction',
+      );
+    }
+  });
+
+  it('rejects a disjunction that does not offer Apache-2.0 as a whole operand', () => {
+    const message = electionRejection([electionEntry({ declaredSpdx: 'MIT OR Zlib' })]);
+    expect(message).toContain('does not offer Apache-2.0 as a whole operand');
+    expect(message).toContain('is not one of the operands');
+  });
+
+  it('rejects electing anything but Apache-2.0, even an operand that is on offer', () => {
+    expect(electionRejection([electionEntry({ chosen: 'MIT' })])).toContain(
+      'only Apache-2.0 is supported',
+    );
+  });
+
+  it('rejects an election for a component that is already mapped to vendored text', () => {
+    const message = electionRejection([
+      electionEntry({
+        purl: 'pkg:cargo/widget@1.2.3',
+        name: 'widget',
+        version: '1.2.3',
+        attribution: { ...electionEntry().attribution, name: 'widget', version: '1.2.3' },
+      }),
+    ]);
+    expect(message).toContain('is already mapped or recorded as blocked');
+  });
+
+  it('rejects an election for a component also recorded as blocked', () => {
+    const blocked: BlockedEntry = {
+      purl: ELECTED_PURL,
+      name: 'nolicence',
+      version: '0.1.0',
+      ecosystem: 'cargo',
+      declaredSpdx: 'MIT OR Apache-2.0',
+      repository: 'https://github.com/acme/nolicence',
+      commit: COMMIT_A,
+      tag: null,
+      investigated: '2026-11-18',
+      evidence: ['searched'],
+    };
+    expect(electionRejection([electionEntry()], { blocked: [blocked] })).toContain(
+      'is already mapped or recorded as blocked',
+    );
+  });
+
+  it('rejects an unknown key instead of ignoring it', () => {
+    expect(electionRejection([electionEntry({ choosen: 'Apache-2.0' })])).toContain('unknown key "choosen"');
+  });
+
+  it('rejects an npm election, whose attribution nothing yet checks', () => {
+    expect(
+      electionRejection([electionEntry({ purl: 'pkg:npm/nolicence@0.1.0', ecosystem: 'npm' })]),
+    ).toContain('only cargo components can be elected');
+  });
+
+  it('rejects an attribution that names another component, or no author', () => {
+    const base = electionEntry();
+    expect(
+      electionRejection([electionEntry({ attribution: { ...base.attribution, version: '9.9.9' } })]),
+    ).toContain('attribution must name the component it attributes');
+    expect(
+      electionRejection([electionEntry({ attribution: { ...base.attribution, authors: [] } })]),
+    ).toContain('attribution.authors must be');
+  });
+
+  it('rejects a text hash that is not a SHA-256, and an election with no evidence', () => {
+    const message = electionRejection([electionEntry({ textSha256: 'apache', evidence: [] })]);
+    expect(message).toContain('textSha256 must be 64 lowercase hex characters');
+    expect(message).toContain('evidence must be a non-empty list');
+  });
+
+  it('rejects elections out of byte order', () => {
+    const later = electionEntry({
+      purl: 'pkg:cargo/zz@0.1.0',
+      name: 'zz',
+      attribution: { ...electionEntry().attribution, name: 'zz' },
+    });
+    expect(electionRejection([later, electionEntry()])).toContain('elections: not in byte order');
+  });
+});
+
+describe('an election applies only to the component as it is actually installed', () => {
+  const election = asElection(electionEntry());
+  const clean: ElectedArtifactScan = { exists: true, licenceFiles: [], notices: [], unscanned: [] };
+
+  it('applies to a distributed component that declares the expression and ships nothing about its licence', () => {
+    expect(electionProblems(election, electedComponent(), clean)).toEqual([]);
+  });
+
+  it('refuses the moment the installed artifact carries a licence-like file, at any depth: installed text wins', () => {
+    for (const path of ['LICENSE-MIT', 'COPYRIGHT', 'NOTICE', 'licenses/LICENSE-MIT', 'LICENSES/']) {
+      expect(
+        electionProblems(election, electedComponent(), { ...clean, licenceFiles: [path] }).join('\n'),
+        path,
+      ).toContain('Installed text wins');
+    }
+  });
+
+  it('refuses a crate that carries a copyright notice anywhere, which Apache-2.0 would require be kept', () => {
+    expect(
+      electionProblems(election, electedComponent(), { ...clean, notices: ['src/lib.rs:1'] }).join('\n'),
+    ).toContain('carries a copyright notice (src/lib.rs:1)');
+  });
+
+  it('refuses when the crate directory is missing, so "looked nowhere" never passes as "found nothing"', () => {
+    expect(electionProblems(election, electedComponent(), { ...clean, exists: false }).join('\n')).toContain(
+      'installed crate directory is missing',
+    );
+  });
+
+  it('refuses a crate holding a link the scan did not follow', () => {
+    expect(
+      electionProblems(election, electedComponent(), { ...clean, unscanned: ['src/elsewhere'] }).join('\n'),
+    ).toContain('does not follow');
+  });
+
+  it('refuses a component that does not ship', () => {
+    expect(electionProblems(election, electedComponent({ distributed: false }), clean).join('\n')).toContain(
+      'installed but not distributed',
+    );
+  });
+
+  it('refuses when the component declares a different expression than the election recorded', () => {
+    expect(
+      electionProblems(election, electedComponent({ declaredLicense: 'MIT OR Apache-2.0 OR Zlib' }), clean).join('\n'),
+    ).toContain('the component declares');
+  });
+
+  it('refuses a component that points at a licence file of its own', () => {
+    expect(
+      electionProblems(election, electedComponent({ declaredLicenseFile: 'TERMS.txt' }), clean).join('\n'),
+    ).toContain('declares a licence file');
+  });
+
+  it('refuses an attribution that is not what the manifest declares', () => {
+    expect(
+      electionProblems(election, electedComponent({ authors: ['Someone Else'] }), clean).join('\n'),
+    ).toContain('is not what the manifest declares');
+    expect(
+      electionProblems(election, electedComponent({ repository: 'https://github.com/other/fork' }), clean).join('\n'),
+    ).toContain("is not the manifest's");
+  });
+});
+
+/** Build a crate directory on disk, run `body` against it, and remove it. */
+function withCrate<T>(files: Record<string, string | Buffer>, body: (dir: string) => T, link?: string): T {
+  const root = mkdtempSync(join(tmpdir(), 'anima-elected-'));
+  const dir = join(root, 'nolicence-0.1.0');
+  try {
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, ...rel.split('/'));
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, content);
+    }
+    mkdirSync(dir, { recursive: true });
+    if (link) {
+      const outside = join(root, 'outside');
+      mkdirSync(outside, { recursive: true });
+      writeFileSync(join(outside, 'LICENSE'), LICENCE_BYTES);
+      symlinkSync(outside, join(dir, ...link.split('/')), 'junction');
+    }
+    return body(dir);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const CLEAN_CRATE = {
+  'Cargo.toml': '[package]\nname = "nolicence"\nlicense = "MIT OR Apache-2.0"\n',
+  'README.md': 'Reads characters.\n',
+  'src/lib.rs': 'pub fn read_char() {}\n',
+  '.github/workflows/ci.yml': 'on: push\n',
+};
+
+describe('the installed crate is walked to the bottom, by the election check itself', () => {
+  it('finds nothing in a crate that says nothing about its licence', () => {
+    withCrate(CLEAN_CRATE, (dir) => {
+      expect(scanElectedArtifact(dir)).toEqual({ exists: true, licenceFiles: [], notices: [], unscanned: [] });
+    });
+  });
+
+  it('finds licence-like files and directories at any depth, in any case', () => {
+    withCrate(
+      {
+        ...CLEAN_CRATE,
+        'licenses/LICENSE-MIT': LICENCE_BYTES,
+        'docs/Notice.md': 'see the authors\n',
+        'src/copying.rs': '\n',
+        'third_party/UNLICENSE': '\n',
+      },
+      (dir) => {
+        expect(scanElectedArtifact(dir).licenceFiles).toEqual([
+          'docs/Notice.md',
+          'licenses/',
+          'licenses/LICENSE-MIT',
+          'src/copying.rs',
+          'third_party/UNLICENSE',
+        ]);
+      },
+    );
+  });
+
+  it('finds a copyright notice in any file, as the word, as (c) and a year, or as the sign', () => {
+    withCrate(
+      {
+        ...CLEAN_CRATE,
+        'src/lib.rs': '// Copyright 2020 Someone\npub fn read_char() {}\n',
+        'README.md': 'Reads characters.\n(c) 2019 Someone Else\n',
+        'src/sign.rs': '// © A Third Person\n',
+        'src/latin1.rs': Buffer.from([0x2f, 0x2f, 0x20, 0x43, 0x4f, 0x50, 0x59, 0x52, 0x49, 0x47, 0x48, 0x54, 0x20, 0xe9, 0x0a]),
+      },
+      (dir) => {
+        expect(scanElectedArtifact(dir).notices).toEqual(['README.md:2', 'src/latin1.rs:1', 'src/lib.rs:1', 'src/sign.rs:1']);
+      },
+    );
+  });
+
+  it('does not mistake licence wording for a notice', () => {
+    expect(copyrightNoticeLines('(c) You must retain\nfn main() {}\n')).toEqual([]);
+    expect(isLicenceLikeName('lib.rs')).toBe(false);
+    expect(isLicenceLikeName('LICENSE-APACHE.md')).toBe(true);
+  });
+
+  it('reports a missing directory as such, and a link as unscanned rather than following it', () => {
+    expect(scanElectedArtifact(join(tmpdir(), 'anima-no-such-crate-directory')).exists).toBe(false);
+    expect(scanElectedArtifact(null).exists).toBe(false);
+    withCrate(CLEAN_CRATE, (dir) => expect(scanElectedArtifact(dir).unscanned).toEqual(['vendor']), 'vendor');
+  });
+
+  // The wiring test. `resolveElections` reads each elected component's own `sourceDir`; nothing about
+  // the artifact is handed in by the generator. If that scan were dropped or blanked, a crate holding
+  // a nested licence file or a copyright header would be accepted, and these go red.
+  it('refuses, through resolveElections alone, a crate whose nested licence file or header the caller never mentioned', () => {
+    const elections = new Map([[ELECTED_PURL, asElection(electionEntry())]]);
+    const pool = [pooled(APACHE_TEXT, 3)];
+    withCrate(CLEAN_CRATE, (dir) => {
+      expect(resolveElections(elections, [electedComponent({ sourceDir: dir })], pool).get(ELECTED_PURL)?.text).toBe(
+        APACHE_TEXT,
+      );
+    });
+    withCrate({ ...CLEAN_CRATE, 'licenses/LICENSE-MIT': LICENCE_BYTES }, (dir) => {
+      expect(() => resolveElections(elections, [electedComponent({ sourceDir: dir })], pool)).toThrow(
+        'Installed text wins',
+      );
+    });
+    withCrate({ ...CLEAN_CRATE, 'src/lib.rs': '// Copyright 2020 Someone\n' }, (dir) => {
+      expect(() => resolveElections(elections, [electedComponent({ sourceDir: dir })], pool)).toThrow(
+        'carries a copyright notice',
+      );
+    });
+    expect(() =>
+      resolveElections(elections, [electedComponent({ sourceDir: join(tmpdir(), 'anima-no-such-crate') })], pool),
+    ).toThrow('installed crate directory is missing');
+    expect(() => resolveElections(elections, [electedComponent({ sourceDir: null })], pool)).toThrow(
+      'installed crate directory is missing',
+    );
+  });
+});
+
+describe('the elected bytes are the Apache-2.0 text the inventory already ships most widely', () => {
+  const election = asElection(electionEntry());
+
+  it('picks the most widely shipped Apache-2.0 text, ignoring a more common text that is not Apache', () => {
+    const picked = electedText(election, [
+      pooled(LICENCE_BYTES, 50, 'mit'),
+      pooled(APACHE_TEXT, 20, 'apache'),
+      pooled(APACHE_NO_APPENDIX, 5, 'bare'),
+    ]);
+    expect(picked.problems).toEqual([]);
+    expect(picked.text).toBe(APACHE_TEXT);
+  });
+
+  it('refuses a pin that is not the most widely shipped copy, so a less common variant cannot be cherry-picked', () => {
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(APACHE_NO_APPENDIX) })), [
+      pooled(APACHE_TEXT, 20, 'apache'),
+      pooled(APACHE_NO_APPENDIX, 5, 'bare'),
+    ]);
+    expect(picked.text).toBeUndefined();
+    expect(picked.problems.join('\n')).toContain('re-pin');
+  });
+
+  it('refuses a copy whose appendix names a holder, which would attribute that holder to this component', () => {
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(APACHE_FILLED) })), [
+      pooled(APACHE_FILLED, 20, 'filled'),
+    ]);
+    expect(picked.problems.join('\n')).toContain('appendix filled in or altered');
+  });
+
+  it('says the appendix is absent, not filled, when the most common copy has none', () => {
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(APACHE_NO_APPENDIX) })), [
+      pooled(APACHE_NO_APPENDIX, 20, 'bare'),
+    ]);
+    expect(picked.problems.join('\n')).toContain('has no appendix');
+    expect(picked.problems.join('\n')).not.toContain('filled in');
+  });
+
+  it('refuses a copy that keeps the placeholder but adds a dated copyright line', () => {
+    const hidden = `${APACHE_TEXT}Copyright 2021 Hidden Holder\n`;
+    const picked = electedText(asElection(electionEntry({ textSha256: sha256(hidden) })), [pooled(hidden, 20, 'hidden')]);
+    expect(picked.problems.join('\n')).toContain('carries a dated copyright line');
+  });
+
+  it('refuses when two Apache-2.0 texts are equally common, because "the" text is then ambiguous', () => {
+    const picked = electedText(election, [pooled(APACHE_TEXT, 7, 'a'), pooled(APACHE_NO_APPENDIX, 7, 'b')]);
+    expect(picked.problems.join('\n')).toContain('equally common');
+  });
+
+  it('refuses when nothing in the inventory ships an Apache-2.0 text to elect', () => {
+    expect(electedText(election, [pooled(LICENCE_BYTES, 9)]).problems.join('\n')).toContain(
+      'ships an Apache-2.0 text',
+    );
+  });
+
+  it('refuses an election the graph does not use', () => {
+    const elections = new Map([[ELECTED_PURL, election]]);
+    expect(() => resolveElections(elections, [], [pooled(APACHE_TEXT, 3)])).toThrow('the election is unused');
+  });
+
+  it('runs its own negative controls, and every one of them fires', () => {
+    const result = electionSelfTest();
+    expect(result.failures).toEqual([]);
+    expect(result.rejects).toBeGreaterThan(30);
+    expect(result.controls).toBe(result.rejects + result.accepts);
+  });
+});
+
 // ---- the committed store ------------------------------------------------------------------------
 
 interface IndexTextEntry {
   id: string;
   filename: string;
-  origin: 'installed' | 'upstream';
+  origin: 'installed' | 'upstream' | 'elected';
   provenance: string;
   sourceSha256: string;
   sourceBytes: number;
@@ -605,6 +1122,7 @@ interface IndexTextEntry {
   provenanceKind?: string;
   materialType?: string;
   retrieved?: string;
+  electedFrom?: string;
 }
 interface IndexComponentEntry {
   purl: string;
@@ -634,10 +1152,21 @@ interface LicenceIndex {
     vendoredSources: number;
     vendoredRepositories: number;
     vendoredCommits: number;
+    fromElection: number;
     unresolved: number;
   };
   components: IndexComponentEntry[];
   vendored: VendoredEntry[];
+  elected: {
+    purl: string;
+    declaredSpdx: string;
+    chosen: string;
+    textId: string;
+    textSha256: string;
+    sameTextCarriers: number;
+    attribution: { name: string; version: string; authors: string[]; repository: string };
+    evidence: string[];
+  }[];
   unresolved: { purl: string; name: string; investigated?: { evidence: string[] } }[];
 }
 
@@ -782,13 +1311,42 @@ describe('the committed store is what the committed artifacts describe', () => {
     const idx = index();
     const installed = idx.components.filter((c) => c.texts.some((t) => t.origin === 'installed')).length;
     const vendored = idx.components.filter((c) => c.texts.some((t) => t.origin === 'upstream')).length;
+    const elected = idx.components.filter((c) => c.texts.some((t) => t.origin === 'elected')).length;
     expect(idx.counts.fromInstalledArtifact).toBe(installed);
     expect(idx.counts.fromVendoredUpstream).toBe(vendored);
-    expect(installed + vendored + idx.counts.unresolved).toBe(idx.counts.distributed);
+    expect(idx.counts.fromElection).toBe(elected);
+    expect(installed + vendored + elected + idx.counts.unresolved).toBe(idx.counts.distributed);
 
     const files = new Set(idx.vendored.flatMap((v) => v.files.map((f) => f.path)));
     expect(idx.counts.vendoredSources).toBe(files.size);
     expect(idx.counts.vendoredCommits).toBe(new Set(idx.vendored.map((v) => v.commit)).size);
+  });
+
+  it('applies every committed election, and says plainly in the bundle what was chosen from what', () => {
+    const store = loadUpstreamStore(ROOT);
+    const idx = index();
+    const bundle = readFileSync(resolve(ROOT, 'licensing', 'THIRD_PARTY_LICENSES.txt'), 'utf8');
+    expect(idx.elected.map((e) => e.purl)).toEqual([...store.electionsByPurl.keys()]);
+    const unresolved = new Set(idx.unresolved.map((u) => u.purl));
+    for (const e of idx.elected) {
+      const c = idx.components.find((x) => x.purl === e.purl);
+      expect(c?.distributed, e.purl).toBe(true);
+      // The declared expression is still what is published as SPDX; the election sits beside it.
+      expect(c?.spdx, e.purl).toBe(e.declaredSpdx);
+      expect(c?.texts.map((t) => t.origin), e.purl).toEqual(['elected']);
+      expect(unresolved.has(e.purl), `${e.purl} is both elected and unresolved`).toBe(false);
+      // Byte-identical to a copy other components ship from their own installed artifacts.
+      const carriers = idx.components.filter((x) =>
+        x.texts.some((t) => t.origin === 'installed' && t.textSha256 === e.textSha256),
+      );
+      expect(carriers.length, e.purl).toBe(e.sameTextCarriers);
+      expect(carriers.length, e.purl).toBeGreaterThan(10);
+      expect(bundle).toContain(
+        `licence    : ${e.chosen}, elected from ${e.declaredSpdx}; the published crate ships no licence file`,
+      );
+      expect(bundle).toContain(`attribution: ${e.attribution.name} ${e.attribution.version}, by ${e.attribution.authors.join(', ')}`);
+      expect(e.evidence.join(' ')).toContain('not legal advice');
+    }
   });
 
   it('names the store in the paths the bundle publishes', () => {

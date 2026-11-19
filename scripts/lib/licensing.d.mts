@@ -46,6 +46,8 @@ export interface InventoryComponent {
   declaredLicenseFile: string | null;
   description: string | null;
   repository: string | null;
+  /** cargo only: the manifest's `authors`, verbatim. Checked against an election's attribution. */
+  authors?: string[];
   distributed: boolean;
   origin: ComponentOrigin;
   sourceDir: string | null;

@@ -2,13 +2,26 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2
-description: Bản thảo đăng ký trước SEL2-P (chưa đóng băng, chưa chạy smoke thật hay seed xác nhận): giả thuyết H1 hai phía trên khối lượng cơ thể kiểu gen tích phân thời gian (live.trait_mass_mean), thiết kế 3 nhánh (selected, scarce_mut0, scarce_drift SEL2-D) trên cấu hình 16 hồ rải lưới scale 0.63 trong 200.000 tick, N = 20 cặp (780001 + 1000*k), cổng smoke C1..C5 dùng nền gộp QĐ-SEL2g (799501..=799506).
-status: proposed
+description: Bản đăng ký trước SEL2-P (16 hồ, hệ số 0,63, ba nhánh, 20 seed xác nhận 780001+1000k, cổng smoke C1..C5 trên nền gộp QĐ-SEL2g) — DỪNG Ở SMOKE ngày 2026-11-19: cổng trượt (bùng nổ rồi sụp của quần thể sáng lập), kết quả được xác nhận độc lập; không đóng băng, không chạy seed xác nhận; M0 đi tiếp bằng SEL2-P2 (QĐ-SEL2P2).
+status: completed
 owner: simulation-architecture
 last_reviewed: 2026-11-19
 ---
 
 # Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2
+
+> **Dừng ở smoke, 2026-11-19 (kết quả, không phải lỗi thủ tục).** Smoke đăng ký trước (seed 999961, 200.000 tick, mù)
+> trượt cổng: C1, C2, C5 và `drift_valid` sai, nên `gate_pass = false`.
+> - **Xác nhận độc lập.** Một người thẩm định tính lại mọi giá trị cổng từ `smoke-series.csv`, với ngưỡng đọc từ JSON đăng ký, và khớp
+>   từng con số. Thủ tục sạch, tính mù được giữ.
+> - **Nguyên nhân là bùng nổ rồi sụp đổ của quần thể sáng lập, không phải đồng cỏ cạn.** Với `prey_cap = 320`, cả 100 con sáng lập sinh sản
+>   trong 250 tick đầu, rồi 216/218 cái chết là chết đói trong khi đồng cỏ vẫn đầy 92–98 % sức chứa. Nền đối chứng có
+>   `prey_cap = 80`, thấp hơn số sáng lập, nên không bùng nổ, và 5/6 seed sống. Chạy lại các nhánh khan hiếm trên macOS cũng trượt cổng.
+> - **Hệ quả theo chính bản đăng ký này:** dừng cứng. Không đóng băng, không chạy seed xác nhận nào, và seed 999961 đã dùng.
+> - **Hồ sơ.** Artifact nằm ở [`artifacts/experiments/sel2-p-food-scarcity/smoke/`](../../../artifacts/experiments/sel2-p-food-scarcity/smoke/summary.md),
+>   ghi chú ở [smoke SEL2-P](2026-11-19-sel2-p-smoke.md).
+> - **Bước tiếp (QĐ-SEL2P2, chủ dự án quyết 2026-11-19):** chẩn đoán vì sao chết đói khi cỏ còn đầy (thẻ DIAG-SEL2, chỉ đo, mù khối
+>   lượng), khảo sát chỉ đo, rồi một bản đăng ký mới SEL2-P2 với seed smoke mới. Bản đăng ký mới phải công khai toàn bộ lịch sử này.
 
 > **Bản thảo chưa đóng băng (`status: proposed`).** Tài liệu này **không** chạy bất kỳ mã mô phỏng nào và **chưa** ấn định bản đăng ký cuối cùng (`SEL2-P-freeze`). Toàn bộ chuỗi thăm dò `S6..S15` (`seed 1..=6`) và bước `--smoke` tương lai đều **mù tuyệt đối với `live.trait_mass_mean`, `live.trait_mass_var` và mọi thông số khối lượng cơ thể**. Không một hạt giống xác nhận nào được chạy hay đọc dữ liệu trước khi các phụ thuộc mở ở Mục 8 được giải quyết và bản đăng ký được đóng băng.
 

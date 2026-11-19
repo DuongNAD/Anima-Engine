@@ -217,9 +217,15 @@ pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
 /// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
 /// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
 pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
+/// Card FIX-CAP (F-052): `1.0` enables [`crate::core::resources::PreyCapPolicy::strict`] in
+/// `autonomous_reproduction_system`, incrementing `prey_count` and `pred_count` each time a birth
+/// is queued so one tick never overshoots `prey_cap`, the 8-predator ceiling, or the 5:1
+/// prey-to-predator ratio gate; `0.0`/absent keeps the legacy soft gate bit-identical so frozen E3
+/// and historical manifests stay reproducible.
+pub const LIVE_KEY_STRICT_PREY_CAP: &str = "live.strict_prey_cap";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 26] = [
+pub const LIVE_KEYS: [&str; 27] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -246,6 +252,7 @@ pub const LIVE_KEYS: [&str; 26] = [
     LIVE_KEY_DRIFT_CONTROL,
     LIVE_KEY_DRIFT_RESET_TICKS,
     LIVE_KEY_LAND_MASK,
+    LIVE_KEY_STRICT_PREY_CAP,
 ];
 
 /// The genesis the manifest asked for.
@@ -327,6 +334,10 @@ pub struct LiveWorldConfig {
     /// `0.0`/absent keeps terrain navigation disabled (bit-identical to trunk).
     #[serde(default)]
     pub land_mask: bool,
+    /// Card FIX-CAP (F-052): `1.0` enforces strict per-birth cap counting in
+    /// `autonomous_reproduction_system`; `0.0`/absent keeps the legacy soft gate bit-identical.
+    #[serde(default)]
+    pub strict_prey_cap: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -390,6 +401,7 @@ impl Default for LiveWorldConfig {
             drift_reset_ticks: 0,
             lake_layout: 0,
             land_mask: false,
+            strict_prey_cap: false,
         }
     }
 }
@@ -640,6 +652,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_LAND_MASK => match *value {
                     0.0 => config.land_mask = false,
                     1.0 => config.land_mask = true,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_STRICT_PREY_CAP => match *value {
+                    0.0 => config.strict_prey_cap = false,
+                    1.0 => config.strict_prey_cap = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -2212,6 +2236,15 @@ impl LiveExperimentAdapter {
         }
         self.mirrored_effects = effects.len();
     }
+
+    /// Observed identity (`seed`, `generator_version`, `width x height`, FNV-1a checksum) of the
+    /// `TerrainMap` inside this adapter's ECS `World`.
+    pub fn world_identity(&self) -> crate::core::world_artifact::WorldIdentity {
+        *self
+            .world
+            .borrow()
+            .resource::<crate::core::world_artifact::WorldIdentity>()
+    }
 }
 
 impl ExperimentModel for LiveExperimentAdapter {
@@ -2336,6 +2369,14 @@ impl ExperimentModel for LiveExperimentAdapter {
         let mut world = self.world.borrow_mut();
         live_observables_peek(&mut world)
     }
+
+    fn terrain_source(&self) -> Option<&'static str> {
+        Some("generated")
+    }
+
+    fn world_identity(&self) -> Option<crate::core::world_artifact::WorldIdentity> {
+        Some(LiveExperimentAdapter::world_identity(self))
+    }
 }
 
 /// The four shared handles `serialize_world_state` takes.
@@ -2401,9 +2442,11 @@ fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     world.insert_resource(crate::core::resources::MutationPolicy {
         rate: config.mutation_rate,
     });
-    // Prey reproduction ceiling (`live.prey_cap`, card S6); absent == the historical 80.
+    // Prey reproduction ceiling (`live.prey_cap`, card S6) and optional strict per-birth
+    // counting (`live.strict_prey_cap`, card FIX-CAP / F-052); absent == 80, soft gate.
     world.insert_resource(crate::core::resources::PreyCapPolicy {
         cap: config.prey_cap,
+        strict: config.strict_prey_cap,
     });
     // Plant reserve (`live.plant_reserve`, card S10); absent == 0.0 == both grazing paths run the
     // pre-S10 arithmetic. Inserted before the restore branch, so a resumed run keeps its reserve.
@@ -2467,18 +2510,20 @@ pub fn apply_live_genesis_and_policies(
     genesis(world, config, bounds, seed);
 }
 
-/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
-/// process environment replaced by what the manifest declared.
+/// Build the world the schedule runs on with `TerrainSource::Generated`, and replace every other
+/// process-environment default with what the manifest declared.
 fn build_live_world(
     seed: u64,
     config: &LiveWorldConfig,
     restore: Option<&SavedSimulationState>,
 ) -> Result<World, ExperimentError> {
-    let mut world = crate::core::ecs::init_world();
+    let mut world = crate::core::ecs::init_world_with(crate::core::ecs::TerrainSource::Generated);
 
     // `init_world` resolves these from the environment, which is exactly what a manifest cannot
-    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
-    // silently change the trajectory of a run whose whole point is that its inputs are declared.
+    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS`, `ANIMA_LIFETIME_LEARNING`,
+    // `ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR` and `<temp_dir>/anima_world_artifact.anmw` would
+    // each silently change the trajectory of a run whose whole point is that its inputs are
+    // declared. Terrain is built via `TerrainSource::Generated` (`MapSettings::default()`) above.
     //
     // `evolved` comes from the manifest rather than the environment, and the other two fields stay
     // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
@@ -3011,6 +3056,7 @@ fn live_run_provenance(
     manifest: &crate::core::experiment::ExperimentManifest,
     registry: &crate::core::experiment::ObservableRegistry,
     seed: u64,
+    world_identity: crate::core::world_artifact::WorldIdentity,
 ) -> crate::core::experiment_runner::RunProvenance {
     use crate::core::experiment::fnv1a_64;
     let manifest_fingerprint = manifest.fingerprint();
@@ -3037,6 +3083,8 @@ fn live_run_provenance(
         fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
             &manifest.initial_conditions,
         ),
+        terrain_source: Some("generated".to_owned()),
+        world_identity: Some(world_identity),
     }
 }
 
@@ -3288,8 +3336,9 @@ pub fn run_live_drift_pair(
     )?;
     selected_adapter.install_turnover_recorder(total_ticks);
 
-    let sel_prov = live_run_provenance(selected_manifest, registry, seed);
-    let drf_prov = live_run_provenance(drift_manifest, registry, seed);
+    let world_identity = selected_adapter.world_identity();
+    let sel_prov = live_run_provenance(selected_manifest, registry, seed, world_identity);
+    let drf_prov = live_run_provenance(drift_manifest, registry, seed, world_identity);
     let sel_queue =
         crate::core::intervention::InterventionQueue::new(selected_manifest.interventions.clone());
     let drf_queue =
