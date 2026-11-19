@@ -1,13 +1,12 @@
 diff --git a/src-tauri/src/core/live_experiment.rs b/src-tauri/src/core/live_experiment.rs
-index 900b717..c6ab9fb 100644
 --- a/src-tauri/src/core/live_experiment.rs
 +++ b/src-tauri/src/core/live_experiment.rs
-@@ -2373,7 +2373,7 @@ fn build_live_world(
-     // into a bundle no result could attribute.
-     let sim_rng = match restore {
-         Some(state) if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 => {
--            crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
-+            crate::core::resources::SimRng::restore(state.sim_rng_seed, 0)
-         }
-         _ => crate::core::resources::SimRng::from_seed(seed),
-     };
+@@ -2493,7 +2493,7 @@
+     match restore {
+         Some(state) => {
+             let sim_rng = if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+-                crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
++                crate::core::resources::SimRng::restore(state.sim_rng_seed, 0)
+             } else {
+                 crate::core::resources::SimRng::from_seed(seed)
+             };

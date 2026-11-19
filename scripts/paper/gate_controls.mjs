@@ -362,18 +362,37 @@ function runCheckTestTargetsPolicySubset(wt, tmpBase, profileArg) {
 function runCheckTestTargetsFullUnscheduled(wt, ctx, profileArg) {
   if (!ctx.unscheduledCapturePath || !existsSync(ctx.unscheduledCapturePath)) {
     const capturePath = join(os.tmpdir(), `anima-m2-unscheduled-capture-${process.pid}.txt`);
+    const docCapturePath = join(os.tmpdir(), `anima-m2-unscheduled-doc-capture-${process.pid}.txt`);
+    const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
     const tauriDir = join(wt, 'src-tauri');
-    const testRes = runShellToFile(
-      'cargo test --features desktop -- --nocapture',
-      tauriDir,
-      cargoEnv(),
-      capturePath,
-    );
+    // Use Cargo's real `--test` glob over the migration/phase5 policy targets so Cargo evaluates
+    // `required-features` on `migration_tests` (dropping it when mistyped) without compiling all
+    // 161 targets (>30 min / MSVC link.exe OOM on 16 GB RAM).
+    const unscheduledCmd = [
+      'cargo test --features desktop --bin anima-engine',
+      '--test shared_domain_law_tests',
+      '--test determinism_gate_tests',
+      '--test energy_conservation_tests',
+      '--test adversarial_challenger_tests',
+      '--test "migration*"',
+      '--test "phase5_*"',
+      '-- --nocapture',
+    ].join(' ');
+    const testRes = runShellToFile(unscheduledCmd, tauriDir, env, capturePath);
     if (testRes.status !== 0) {
       throw new Error(
-        `Prerequisite full cargo test --features desktop failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
+        `Prerequisite cargo test --features desktop (policy globs) failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
       );
     }
+    const docRes = runShellToFile('cargo test --workspace --doc -- --nocapture', tauriDir, env, docCapturePath);
+    if (docRes.status !== 0) {
+      rmSync(docCapturePath, { force: true });
+      throw new Error(
+        `Prerequisite cargo test --workspace --doc failed (exit ${docRes.status}):\n${docRes.output.slice(-2000)}`,
+      );
+    }
+    writeFileSync(capturePath, `${testRes.stdout}\n${docRes.stdout}\n`, 'utf8');
+    rmSync(docCapturePath, { force: true });
     ctx.unscheduledCapturePath = capturePath;
     ctx.tempFilesToClean.push(capturePath);
   }
@@ -384,7 +403,7 @@ const GATES = [
   // ---- Expected VACUOUS / CI-omission controls (listed first) -------------------------------
   {
     id: 'thread_rng_scan',
-    source: 'hardening.yml:68-69',
+    source: 'hardening.yml:75-76',
     ciCommand:
       "n=$(grep -rn 'rand::thread_rng()' src-tauri/src --include='*.rs' | grep -vc ':[[:space:]]*//' || true); [ \"$n\" -eq 0 ]",
     faultSummary: 'Add `use rand::thread_rng; let _ = thread_rng();` to `src-tauri/src/main.rs`',
@@ -400,7 +419,7 @@ const GATES = [
   },
   {
     id: 'check_test_targets_unscheduled',
-    source: 'ci.yml:165',
+    source: 'ci.yml:182',
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt',
     faultSummary:
       'Mistype `required-features = ["networking_m2_typo"]` on `migration_tests` in `src-tauri/Cargo.toml`',
@@ -445,7 +464,7 @@ const GATES = [
   },
   {
     id: 'check_licenses_complete',
-    source: 'package.json:41',
+    source: 'package.json:42',
     ciCommand: 'npm run check:licenses-complete',
     faultSummary: 'Release completeness check requires 0 unresolved licence texts (`utf8-chars@3.0.7` unresolved on trunk)',
     patch: null,
@@ -460,7 +479,7 @@ const GATES = [
   // ---- Gates > 30 min per fault (runtime measured once on clean tree) -----------------------
   {
     id: 'cargo_test_desktop_full',
-    source: 'ci.yml:157',
+    source: 'ci.yml:174',
     ciCommand: 'cargo test --features desktop -- --nocapture 2>&1 | tee ../cargo-test-output.txt',
     faultSummary: 'Full all-target desktop test run per fault exceeds 30 min budget (targeted suites below cover faults)',
     patch: null,
@@ -472,7 +491,7 @@ const GATES = [
   },
   {
     id: 'hardening_stability_5x',
-    source: 'hardening.yml:45,53',
+    source: 'hardening.yml:52,59-62',
     ciCommand: 'for i in 1 2 3 4 5; do RAYON_NUM_THREADS=1 cargo test --release --quiet; done',
     faultSummary: '5x sequential full release test runs per fault exceed 30 min budget',
     patch: null,
@@ -486,7 +505,7 @@ const GATES = [
   // ---- Rust CI & hardening gates ------------------------------------------------------------
   {
     id: 'cargo_fmt',
-    source: 'ci.yml:75',
+    source: 'ci.yml:92',
     ciCommand: 'cargo fmt --check',
     faultSummary: 'Misformat `anima_engine_lib::run( );` in `src-tauri/src/main.rs`',
     patch: 'cargo_fmt.patch',
@@ -498,7 +517,7 @@ const GATES = [
   },
   {
     id: 'cargo_audit',
-    source: 'ci.yml:90',
+    source: 'ci.yml:107',
     ciCommand: 'cargo audit',
     faultSummary: 'Remove `RUSTSEC-2026-0367` exemption from `src-tauri/.cargo/audit.toml`',
     patch: 'cargo_audit.patch',
@@ -510,7 +529,7 @@ const GATES = [
   },
   {
     id: 'cargo_deny',
-    source: 'ci.yml:105',
+    source: 'ci.yml:122',
     ciCommand: 'cargo deny check',
     faultSummary: 'Drop `"MIT"` from `licenses.allow` in `src-tauri/deny.toml`',
     patch: 'cargo_deny.patch',
@@ -522,7 +541,7 @@ const GATES = [
   },
   {
     id: 'cargo_clippy_desktop',
-    source: 'ci.yml:109',
+    source: 'ci.yml:126',
     ciCommand: 'cargo clippy --all-targets --features desktop -- -D warnings',
     faultSummary: 'Add `let unused_m2_fault = 1usize;` in `src-tauri/src/main.rs`',
     patch: 'cargo_clippy_desktop.patch',
@@ -538,7 +557,7 @@ const GATES = [
   },
   {
     id: 'feature_separation',
-    source: 'ci.yml:118-121',
+    source: 'ci.yml:135-138',
     ciCommand:
       "cargo clippy --all-targets --no-default-features -- -D warnings && leaked=$(cargo tree --no-default-features -e normal | grep -cE 'neo4rs|tokio-tungstenite|burn-wgpu|naga' || true); test \"$leaked\" -eq 0",
     faultSummary: 'Make `tokio-tungstenite` non-optional in `src-tauri/Cargo.toml`',
@@ -567,7 +586,7 @@ const GATES = [
   },
   {
     id: 'ts_rs_parity',
-    source: 'ci.yml:130-131',
+    source: 'ci.yml:147-148',
     ciCommand: 'cargo test --lib export_bindings && git diff --exit-code -- ../src/types/generated',
     faultSummary: 'Add `#[ts(rename = "x_m2_fault")]` to `SegmentState::x` in `simulation_state.rs`',
     patch: 'ts_rs_parity.patch',
@@ -587,7 +606,7 @@ const GATES = [
   },
   {
     id: 'check_test_targets_empty',
-    source: 'ci.yml:165 (policy)',
+    source: 'ci.yml:182 (policy)',
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
     faultSummary: 'Add `#![cfg(any())]` at top of `src-tauri/tests/shared_domain_law_tests.rs`',
     patch: 'check_test_targets_empty.patch',
@@ -599,7 +618,7 @@ const GATES = [
   },
   {
     id: 'check_test_targets_ignored',
-    source: 'ci.yml:165 (policy)',
+    source: 'ci.yml:182 (policy)',
     ciCommand: 'node ../scripts/check_test_targets.mjs ../cargo-test-output.txt --profile desktop',
     faultSummary: 'Add `#[ignore]` to `the_engine_reads_the_domain_crates_values_for_the_time_laws`',
     patch: 'check_test_targets_ignored.patch',
@@ -624,7 +643,7 @@ const GATES = [
   },
   {
     id: 'schedule_ambiguity_simrng',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test schedule_ambiguity_tests',
     faultSummary: 'Put `(spawn_food_system, seed_dropping_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_simrng.patch',
@@ -640,7 +659,7 @@ const GATES = [
   },
   {
     id: 'schedule_ambiguity_energy',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test schedule_ambiguity_tests',
     faultSummary: 'Put `(combat_system, metabolic_decay_system)` in parallel in `simulation_schedule.rs`',
     patch: 'schedule_ambiguity_energy.patch',
@@ -656,7 +675,7 @@ const GATES = [
   },
   {
     id: 'zero_alloc',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test emit_zero_alloc_tests',
     faultSummary: 'Allocate `Vec::<u8>::with_capacity(64)` in `refresh_tick_payload` (`emit.rs`)',
     patch: 'zero_alloc.patch',
@@ -672,7 +691,7 @@ const GATES = [
   },
   {
     id: 'closed_eu',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test energy_conservation_tests',
     faultSummary: 'Inject `+ 1.0` EU per entity in `metabolic_decay_system` (`world_systems.rs`)',
     patch: 'closed_eu.patch',
@@ -688,7 +707,7 @@ const GATES = [
   },
   {
     id: 'live_experiment_fork',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test live_experiment_tests',
     faultSummary: 'Ignore branch `forcings` in `checkpoint_fork_with_exotic` (`experiment_runner/fork.rs`)',
     patch: 'live_experiment_fork.patch',
@@ -704,7 +723,7 @@ const GATES = [
   },
   {
     id: 'live_experiment_saveload',
-    source: 'CARD M2 (ci.yml:157)',
+    source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test live_experiment_tests',
     faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `build_live_world` (`live_experiment.rs`)',
     patch: 'live_experiment_saveload.patch',
@@ -720,7 +739,7 @@ const GATES = [
   },
   {
     id: 'determinism_golden_hash',
-    source: 'hardening.yml:61',
+    source: 'hardening.yml:68',
     ciCommand: 'cargo test --release --test determinism_tests',
     faultSummary: 'Perturb `SimRng::for_world(world_identity.seed.wrapping_add(1))` in `core/ecs.rs`',
     patch: 'determinism_golden_hash.patch',
@@ -736,7 +755,7 @@ const GATES = [
   },
   {
     id: 'check_licenses',
-    source: 'ci.yml:194',
+    source: 'ci.yml:211',
     ciCommand: 'npm run check:licenses',
     faultSummary: 'Flip 1 hex char in `sourceSha256` inside `licensing/third-party-index.json`',
     patch: 'check_licenses.patch',
@@ -749,7 +768,7 @@ const GATES = [
   },
   {
     id: 'check_sbom',
-    source: 'ci.yml:199',
+    source: 'ci.yml:216',
     ciCommand: 'npm run check:sbom',
     faultSummary: 'Change `metadata.component.name` to `anima-engine-m2-fault` in `sbom.cdx.json`',
     patch: 'check_sbom.patch',
@@ -762,7 +781,7 @@ const GATES = [
   },
   {
     id: 'check_sbom_schema',
-    source: 'ci.yml:208',
+    source: 'ci.yml:225',
     ciCommand: 'npm run check:sbom-schema',
     faultSummary: 'Add `metadata.timestamp` disallowed by CycloneDX 1.5 strict check in `sbom.cdx.json`',
     patch: 'check_sbom_schema.patch',
@@ -774,7 +793,7 @@ const GATES = [
   },
   {
     id: 'check_notice',
-    source: 'ci.yml:213',
+    source: 'ci.yml:230',
     ciCommand: 'npm run check:notice',
     faultSummary: 'Delete `- **Rust — ... crates.**` bullet from `NOTICE`',
     patch: 'check_notice.patch',
@@ -787,7 +806,7 @@ const GATES = [
   },
   {
     id: 'check_flora_footprint',
-    source: 'ci.yml:218',
+    source: 'ci.yml:235',
     ciCommand: 'npm run check:flora-footprint',
     faultSummary: 'Change `FLORA_FOOTPRINT_UNIT_RADIUS[FloraType.Pine]` to `0.99` in `floraClearance.ts`',
     patch: 'check_flora_footprint.patch',
@@ -799,7 +818,7 @@ const GATES = [
   },
   {
     id: 'verify_dataflow',
-    source: 'ci.yml:225-226',
+    source: 'ci.yml:242-243',
     ciCommand:
       'cargo modules dependencies --lib --no-externs --package anima-engine > ../dataflow-truth.dot && python3 ../scripts/verify_dataflow.py ../dataflow.json ../dataflow-truth.dot 1',
     faultSummary: 'Insert invented `physics -> commands` edge into `dataflow.json`',
@@ -837,7 +856,7 @@ const GATES = [
   // ---- Frontend, Hygiene, Docs & Policy Gates ----------------------------------------------
   {
     id: 'check_npm_audit',
-    source: 'ci.yml:263',
+    source: 'ci.yml:280',
     ciCommand: 'node scripts/check_npm_audit.mjs',
     faultSummary: 'Add stale withdrawn exemption `GHSA-fc5q-39xc-vjpf` to `scripts/npm_audit_policy.mjs`',
     patch: 'check_npm_audit.patch',
@@ -849,7 +868,7 @@ const GATES = [
   },
   {
     id: 'check_text_hygiene',
-    source: 'ci.yml:274',
+    source: 'ci.yml:291',
     ciCommand: 'npm run check:text-hygiene',
     faultSummary: 'Embed NUL byte `\\x00` inside `scripts/npm_audit_policy.mjs` via binary patch',
     patch: 'check_text_hygiene.patch',
@@ -861,7 +880,7 @@ const GATES = [
   },
   {
     id: 'check_root_hygiene',
-    source: 'ci.yml:280',
+    source: 'ci.yml:297',
     ciCommand: 'npm run check:root-hygiene',
     faultSummary: 'Add unreviewed `unreviewed_m2_fault.txt` at repository root',
     patch: 'check_root_hygiene.patch',
@@ -873,7 +892,7 @@ const GATES = [
   },
   {
     id: 'check_e2',
-    source: 'ci.yml:284',
+    source: 'ci.yml:301',
     ciCommand: 'npm run check:e2',
     faultSummary: 'Alter `control_mean` in `artifacts/experiments/e2-evolved-brain-default/effects.json`',
     patch: 'check_e2.patch',
@@ -885,7 +904,7 @@ const GATES = [
   },
   {
     id: 'npm_lint',
-    source: 'ci.yml:288',
+    source: 'ci.yml:305',
     ciCommand: 'npm run lint',
     faultSummary: 'Add empty statement `if (Boolean(1)) {}` to `src/main.tsx`',
     patch: 'npm_lint.patch',
@@ -897,7 +916,7 @@ const GATES = [
   },
   {
     id: 'eslint_ratchet',
-    source: 'ci.yml:292',
+    source: 'ci.yml:309',
     ciCommand: 'node scripts/eslint_ratchet.mjs',
     faultSummary: 'Add `export const _m2AnyFault: any = 1;` to `src/main.tsx`',
     patch: 'eslint_ratchet.patch',
@@ -909,7 +928,7 @@ const GATES = [
   },
   {
     id: 'typecheck_tests',
-    source: 'ci.yml:305',
+    source: 'ci.yml:322',
     ciCommand: 'npm run typecheck:tests',
     faultSummary: "Add `export const _m2TypeFault: number = 'bad';` to `tests/frontend/mapManifestEvidence.test.ts`",
     patch: 'typecheck_tests.patch',
@@ -921,7 +940,7 @@ const GATES = [
   },
   {
     id: 'vitest_src',
-    source: 'ci.yml:309',
+    source: 'ci.yml:326',
     ciCommand: 'npm run test',
     faultSummary: 'Break `FLORA_COLLIDER_BASE_RADIUS` assertion in `src/__tests__/floraClearance.test.ts`',
     patch: 'vitest_src.patch',
@@ -933,7 +952,7 @@ const GATES = [
   },
   {
     id: 'vitest_tests',
-    source: 'ci.yml:313',
+    source: 'ci.yml:330',
     ciCommand: 'npm run test:frontend',
     faultSummary: 'Invert `expect(res.ok).toBe(false)` in `tests/frontend/mapManifestEvidence.test.ts`',
     patch: 'vitest_tests.patch',
@@ -945,7 +964,7 @@ const GATES = [
   },
   {
     id: 'npm_build',
-    source: 'ci.yml:317',
+    source: 'ci.yml:334',
     ciCommand: 'npm run build',
     faultSummary: "Add `export const _m2BuildFault: number = 'bad';` to `src/main.tsx`",
     patch: 'npm_build.patch',
@@ -957,7 +976,7 @@ const GATES = [
   },
   {
     id: 'check_bundle_closure',
-    source: 'ci.yml:335',
+    source: 'ci.yml:352',
     ciCommand: 'npm run build && npm run check:bundle-closure',
     faultSummary: 'Import dev-only `ajv` into `src/main.tsx` so bundle closure shifts',
     patch: 'check_bundle_closure.patch',
@@ -975,7 +994,7 @@ const GATES = [
   },
   {
     id: 'check_csp',
-    source: 'ci.yml:339',
+    source: 'ci.yml:356',
     ciCommand: 'npm run build && npm run check:csp',
     faultSummary: 'Add external `<script src="https://example.com/m2-fault.js"></script>` to `index.html`',
     patch: 'check_csp.patch',
@@ -993,7 +1012,7 @@ const GATES = [
   },
   {
     id: 'check_bundle',
-    source: 'ci.yml:347',
+    source: 'ci.yml:364',
     ciCommand: 'npm run build && npm run check:bundle',
     faultSummary: 'Eagerly import `three` into dashboard root `src/App.tsx`',
     patch: 'check_bundle.patch',
@@ -1011,7 +1030,7 @@ const GATES = [
   },
   {
     id: 'check_e2e_specs',
-    source: 'ci.yml:388',
+    source: 'ci.yml:405',
     ciCommand: 'node scripts/check_e2e_specs.mjs',
     faultSummary: 'Narrow `tests/package.json` `test:e2e` script to `e2e/console_hygiene.spec.ts`',
     patch: 'check_e2e_specs.patch',
@@ -1023,7 +1042,7 @@ const GATES = [
   },
   {
     id: 'playwright_e2e',
-    source: 'ci.yml:392',
+    source: 'ci.yml:409',
     ciCommand: 'npm run test:e2e',
     faultSummary: 'Change `expect(owned.length).toBe(0)` to `.toBe(999)` in `tests/e2e/console_hygiene.spec.ts`',
     patch: 'playwright_e2e.patch',
@@ -1035,7 +1054,7 @@ const GATES = [
   },
   {
     id: 'check_docs_links',
-    source: 'ci.yml:404',
+    source: 'ci.yml:421',
     ciCommand: 'node scripts/check_docs_links.mjs',
     faultSummary: 'Append broken link `[m2-broken](./m2-missing-target.md)` to `docs/README.md`',
     patch: 'check_docs_links.patch',
@@ -1047,7 +1066,7 @@ const GATES = [
   },
   {
     id: 'check_docs_metadata',
-    source: 'ci.yml:410',
+    source: 'ci.yml:427',
     ciCommand: 'node scripts/check_docs_metadata.mjs',
     faultSummary: 'Set `status: invalid-m2` in `docs/README.md` front matter',
     patch: 'check_docs_metadata.patch',
@@ -1059,7 +1078,7 @@ const GATES = [
   },
   {
     id: 'check_ipc_reference',
-    source: 'ci.yml:415',
+    source: 'ci.yml:432',
     ciCommand: 'node scripts/check_ipc_reference.mjs',
     faultSummary: 'Insert nonexistent `m2_ghost_cmd` row in `docs/reference/IPC_CONTRACT.md`',
     patch: 'check_ipc_reference.patch',
@@ -1084,7 +1103,7 @@ const GATES = [
   },
   {
     id: 'check_map_vision_manifest',
-    source: 'package.json:23 (ci.yml:313)',
+    source: 'package.json:23 (ci.yml:330)',
     ciCommand: 'npm run check:map-vision-manifest',
     faultSummary: 'Set `seaLevel: 0.99` in `animal-map.manifest.json`',
     patch: 'check_map_vision_manifest.patch',
@@ -1096,7 +1115,7 @@ const GATES = [
   },
   {
     id: 'verify_upstream_licenses',
-    source: 'package.json:46',
+    source: 'package.json:47',
     ciCommand: 'npm run verify:upstream-licenses',
     faultSummary: 'Flip 1 hex char in `ts-rs` `sha256` inside `licensing/upstream/sources.json`',
     patch: 'verify_upstream_licenses.patch',
