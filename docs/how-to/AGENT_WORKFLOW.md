@@ -204,6 +204,12 @@ QD-VIS    = the 3D map must BE the simulated world, semi-realistic, with mountai
             as: accept ADR-0010 (pinned, tiled world artifact), skip CREATURE_MORPHOGENESIS_PLAN.md:36
             for the body renderer, keep 30 FPS at Low on Iris Xe with 1,000 creatures (cap near-tier
             bodies). docs/ai/design/2026-11-19-feature-real-world-and-bodies.md
+QD-NATIVE = a native renderer (wgpu / Bevy, in the same process as the simulation, native surface in the
+            Tauri window, HTML UI kept) is the long-term direction because it removes per-tick IPC and
+            gives the full GPU; it is done later, not now. Near-term work stays on Three.js/WebGL2 and
+            prefers renderer-agnostic pieces (world artifact, payload, body-mesh algorithm). The
+            measuring spike and ADR-0011 come when that work starts (owner in chat, 2026-11-19: "Làm
+            spike", then "tôi nghĩ vẫn sẽ làm vẽ native vì sẽ tối ưu hơn oke nhưng sẽ làm ở tương lai")
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
