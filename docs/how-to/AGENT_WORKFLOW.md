@@ -198,6 +198,31 @@ QD-SEL2g  = SEL2's standing-crop ratio g uses a POOLED reference: the mean secon
             before the run (at least 3 survivors, else C2 fails); every scarce seed uses that one value
             (owner in chat, 2026-11-19: "chọn chuẩn gộp (b)"; verdicts S14_4e6d312f, S15_4342b895;
             docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md section 6)
+QD-VIS    = the 3D map must BE the simulated world, semi-realistic, with mountains, caves, forests and
+            rivers, streamed by camera; creatures are continuous bodies grown from their morphology;
+            done in parallel on Windows 1 (owner in chat, 2026-11-19). Follow-up "oke theo ý bạn" taken
+            as: accept ADR-0010 (pinned, tiled world artifact), skip CREATURE_MORPHOGENESIS_PLAN.md:36
+            for the body renderer, keep 30 FPS at Low on Iris Xe with 1,000 creatures (cap near-tier
+            bodies). docs/ai/design/2026-11-19-feature-real-world-and-bodies.md
+QD-NATIVE = a native renderer (wgpu / Bevy, in the same process as the simulation, native surface in the
+            Tauri window, HTML UI kept) is the long-term direction because it removes per-tick IPC and
+            gives the full GPU; it is done later, not now. Near-term work stays on Three.js/WebGL2 and
+            prefers renderer-agnostic pieces (world artifact, payload, body-mesh algorithm). The
+            measuring spike and ADR-0011 come when that work starts (owner in chat, 2026-11-19: "Làm
+            spike", then "tôi nghĩ vẫn sẽ làm vẽ native vì sẽ tối ưu hơn oke nhưng sẽ làm ở tương lai")
+QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~12:05 +07: "Duyệt"), on the
+            lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
+            preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
+            (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
+QD-ASSETS = CC0 art for the map: ambientCG, Poly Haven and Quaternius only, licence CC0-1.0, at most
+            60 MB downloaded and 20 MB committed under public/assets/world/ with SOURCES.json and a NOTICE
+            section generated from it; KTX-Software (toktx) and gltf-transform allowed as local tools,
+            never committed (owner in chat, 2026-11-19: "Cho tải CC0", "Đồng ý cả hai"). The graphics
+            pass W3-lite runs on Windows 1 after B1 ("Win 1 sau B1")
+QD-TRIAL  = the owner's hands-on trial of map + bodies + experiment worlds runs on Windows 1; the lead
+            pauses anima-case for it (owner in chat, 2026-11-19)
+QD-DOCIDX = build a generated docs index so pull requests stop conflicting on docs/ai/README.md (owner in
+            chat, 2026-11-19: "Làm"); until it merges, the lead keeps resolving those rows by hand
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
