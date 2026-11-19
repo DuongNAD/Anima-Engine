@@ -680,13 +680,13 @@ fn preflight_refusals_are_propagated_verbatim_without_disturbing_engine() {
     let mut scheduled = base.clone();
     scheduled.interventions = vec![InterventionCommand {
         id: 1,
-        cause_id: 7,
-        kind: InterventionKind::Deforestation,
+        cause_id: 9,
+        kind: InterventionKind::RemovePredators,
         region: Region::Global,
         start_tick: 1,
         duration_ticks: 100,
-        intensity: 0.5,
-        signed_negative: true,
+        intensity: 1.0,
+        signed_negative: false,
         curve: Curve::Step,
         reversible: false,
     }];
@@ -773,7 +773,7 @@ fn bundled_frontend_sel2p_manifest_passes_viewer_preflight_and_matches_fixture()
     assert_eq!(pending.config.lakes, 16);
     assert_eq!(pending.config.lake_layout, 1);
     assert!((pending.config.resource_capacity_scale - 0.63).abs() < 1e-12);
-    assert_eq!(pending.config.prey_cap, Some(320));
+    assert_eq!(pending.config.prey_cap, 320);
     assert_eq!(pending.config.dehydration_ticks, 960);
 
     let parsed: ExperimentManifest =
