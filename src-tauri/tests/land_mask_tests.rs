@@ -23,6 +23,7 @@ use anima_engine_lib::commands::{EvolutionSettings, MapElitesGridState};
 use anima_engine_lib::core::components::{
     Agent, Food, Lake, LastWalkablePosition, ParentAgent, Position, Tree, Velocity,
 };
+use anima_engine_lib::core::determinism::DeterministicMode;
 use anima_engine_lib::core::ecs::init_world;
 use anima_engine_lib::core::experiment::{ExperimentError, InitialConditionSet, WorldLawSet};
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
@@ -30,8 +31,11 @@ use anima_engine_lib::core::live_experiment::{
     live_observables, LiveExperimentAdapter, LiveSnapshot, LiveWorldConfig, LIVE_KEYS,
     LIVE_KEY_LAND_MASK,
 };
-use anima_engine_lib::core::resources::{MapBounds, TerrainNavigation, VitalStatistics};
+use anima_engine_lib::core::resources::{
+    EnvironmentalSpawnSettings, MapBounds, TerrainNavigation, VitalStatistics,
+};
 use anima_engine_lib::core::simulation_lifecycle::SimulationEngine;
+use anima_engine_lib::core::simulation_schedule::build_tick_schedule;
 use anima_engine_lib::core::snapshot::{self, SnapshotEnvelope};
 use anima_engine_lib::core::terrain::{BiomeType, TerrainMap};
 use anima_engine_lib::core::terrain_navigation::{
@@ -43,7 +47,8 @@ use anima_engine_lib::evolution::genotype::{
     decode_genotype, MorphologyEdge, MorphologyGenotype, MorphologyNode,
 };
 use anima_engine_lib::physics::dynamics::RigidBody;
-use anima_engine_lib::physics::integrate_physics_system;
+use anima_engine_lib::physics::spatial::IndexedInGrid;
+use anima_engine_lib::physics::{integrate_physics_system, SpatialCollider};
 use bevy_ecs::prelude::*;
 use glam::Vec3;
 use std::process::Command;
@@ -1201,4 +1206,261 @@ fn terrain_navigation_absent_and_disabled_leave_sea_agent_on_pure_physics() {
             }
         }
     }
+}
+
+// ---- F051b: LAND1 food and seed-drop gates via build_tick_schedule -----------------------------
+
+fn set_terrain_nav_policy(world: &mut World, policy: Option<bool>) {
+    match policy {
+        None => {
+            world.remove_resource::<TerrainNavigation>();
+            assert!(world.get_resource::<TerrainNavigation>().is_none());
+        }
+        Some(enabled) => {
+            world.insert_resource(TerrainNavigation { enabled });
+        }
+    }
+}
+
+fn collect_positions_and_water_hits<C: Component>(
+    world: &mut World,
+    tm: &TerrainMap,
+    bounds: &MapBounds,
+) -> (Vec<(u32, u32, u32)>, usize) {
+    let mut positions = Vec::new();
+    let mut water_hits = 0usize;
+    let mut q = world.query_filtered::<&Position, With<C>>();
+    for pos in q.iter(world) {
+        if !is_land_biome(cell_biome(tm, bounds, pos.0)) {
+            water_hits += 1;
+        }
+        positions.push((pos.0.x.to_bits(), pos.0.y.to_bits(), pos.0.z.to_bits()));
+    }
+    positions.sort_unstable();
+    (positions, water_hits)
+}
+
+#[test]
+fn spawn_food_through_tick_schedule_respects_land_mask_policy() {
+    let base_init = initial(&[
+        ("live.founders", 0.0),
+        ("live.trees", 0.0),
+        ("live.lakes", 0.0),
+        ("live.food_cap", 80.0),
+        ("live.mortality", 0.0),
+        ("live.reproduction", 0.0),
+        ("live.land_mask", 0.0),
+    ]);
+
+    let build_world = |policy: Option<bool>| {
+        let adapter = LiveExperimentAdapter::from_manifest(
+            &WorldLawSet::baseline(),
+            &base_init,
+            &[],
+            42,
+            (1, 1),
+            60,
+        )
+        .expect("food gate world builds");
+        set_terrain_nav_policy(&mut adapter.world(), policy);
+        adapter
+    };
+
+    let a_abs = build_world(None);
+    let a_dis = build_world(Some(false));
+    let a_on = build_world(Some(true));
+
+    let mut s_abs = build_tick_schedule(DeterministicMode::on());
+    let mut s_dis = build_tick_schedule(DeterministicMode::on());
+    let mut s_on = build_tick_schedule(DeterministicMode::on());
+
+    s_abs.run(&mut a_abs.world());
+    s_dis.run(&mut a_dis.world());
+    s_on.run(&mut a_on.world());
+
+    let (tm, bounds) = {
+        let w = a_abs.world();
+        (
+            w.resource::<TerrainMap>().clone(),
+            *w.resource::<MapBounds>(),
+        )
+    };
+
+    let (foods_abs, water_abs) =
+        collect_positions_and_water_hits::<Food>(&mut a_abs.world(), &tm, &bounds);
+    let (foods_dis, water_dis) =
+        collect_positions_and_water_hits::<Food>(&mut a_dis.world(), &tm, &bounds);
+    let (foods_on, water_on) =
+        collect_positions_and_water_hits::<Food>(&mut a_on.world(), &tm, &bounds);
+
+    assert_eq!(foods_abs.len(), 80);
+    assert_eq!(foods_dis.len(), 80);
+    assert_eq!(foods_on.len(), 80);
+    assert_eq!(
+        foods_abs, foods_dis,
+        "absent and disabled TerrainNavigation must spawn identical food"
+    );
+    assert!(
+        water_abs > 0,
+        "positive control: absent policy must place some food on DeepOcean/Ocean"
+    );
+    assert!(
+        water_dis > 0,
+        "positive control: disabled policy must place some food on DeepOcean/Ocean"
+    );
+    assert_eq!(
+        water_on, 0,
+        "enabled policy must never spawn food on DeepOcean/Ocean"
+    );
+    assert_ne!(
+        foods_on, foods_abs,
+        "enabled policy must divert water-bound spawns onto land"
+    );
+}
+
+#[test]
+fn seed_dropping_through_tick_schedule_respects_land_mask_policy() {
+    let base_init = initial(&[
+        ("live.founders", 0.0),
+        ("live.trees", 0.0),
+        ("live.lakes", 0.0),
+        ("live.food_cap", 0.0),
+        ("live.mortality", 0.0),
+        ("live.reproduction", 0.0),
+        ("live.land_mask", 0.0),
+    ]);
+
+    let probe = LiveExperimentAdapter::from_manifest(
+        &WorldLawSet::baseline(),
+        &base_init,
+        &[],
+        77,
+        (1, 1),
+        60,
+    )
+    .expect("probe world builds");
+    let (tm, bounds) = {
+        let w = probe.world();
+        (
+            w.resource::<TerrainMap>().clone(),
+            *w.resource::<MapBounds>(),
+        )
+    };
+    drop(probe);
+
+    // Deterministically pick a walkable coastal cell whose [2, 20]-unit seed-spread annulus covers
+    // both DeepOcean/Ocean cells and walkable land cells.
+    let coastal_pos = (0..tm.height)
+        .flat_map(|row| (0..tm.width).map(move |col| (col, row)))
+        .find_map(|(col, row)| {
+            if !is_land_biome(biome_from_id(tm.biomes[row * tm.width + col])) {
+                return None;
+            }
+            let center = cell_center(&tm, &bounds, col, row);
+            let mut water_samples = 0usize;
+            let mut land_samples = 0usize;
+            for step in 0..16usize {
+                let angle = (step as f32) * std::f32::consts::TAU / 16.0;
+                for &dist in &[6.0f32, 12.0, 18.0] {
+                    let candidate = Vec3::new(
+                        (center.x + angle.cos() * dist).clamp(bounds.min.x, bounds.max.x),
+                        0.0,
+                        (center.z + angle.sin() * dist).clamp(bounds.min.z, bounds.max.z),
+                    );
+                    if is_land_biome(cell_biome(&tm, &bounds, candidate)) {
+                        land_samples += 1;
+                    } else {
+                        water_samples += 1;
+                    }
+                }
+            }
+            (water_samples >= 8 && land_samples >= 8).then_some(center)
+        })
+        .expect("real map must contain a coastal cell adjacent to both water and land");
+
+    let build_world = |policy: Option<bool>| {
+        let adapter = LiveExperimentAdapter::from_manifest(
+            &WorldLawSet::baseline(),
+            &base_init,
+            &[],
+            77,
+            (1, 1),
+            60,
+        )
+        .expect("seed gate world builds");
+        {
+            let mut w = adapter.world();
+            w.insert_resource(EnvironmentalSpawnSettings {
+                max_tree_count: 100,
+                default_seed_cooldown: 0.01,
+                default_seed_spread: 20.0,
+                ..Default::default()
+            });
+            w.spawn((
+                Tree {
+                    current_fruit: 0.0,
+                    max_fruit: 100.0,
+                    fruit_growth_rate: 2.0,
+                    time_since_last_drop: 0.0,
+                    seed_drop_cooldown: 0.01,
+                    seed_spread_radius: 20.0,
+                },
+                Position(coastal_pos),
+                SpatialCollider { radius: 1.5 },
+                IndexedInGrid(false),
+            ));
+            set_terrain_nav_policy(&mut w, policy);
+        }
+        adapter
+    };
+
+    let a_abs = build_world(None);
+    let a_dis = build_world(Some(false));
+    let a_on = build_world(Some(true));
+
+    let mut s_abs = build_tick_schedule(DeterministicMode::on());
+    let mut s_dis = build_tick_schedule(DeterministicMode::on());
+    let mut s_on = build_tick_schedule(DeterministicMode::on());
+
+    for _ in 0..25 {
+        s_abs.run(&mut a_abs.world());
+        s_dis.run(&mut a_dis.world());
+        s_on.run(&mut a_on.world());
+    }
+
+    let (trees_abs, water_abs) =
+        collect_positions_and_water_hits::<Tree>(&mut a_abs.world(), &tm, &bounds);
+    let (trees_dis, water_dis) =
+        collect_positions_and_water_hits::<Tree>(&mut a_dis.world(), &tm, &bounds);
+    let (trees_on, water_on) =
+        collect_positions_and_water_hits::<Tree>(&mut a_on.world(), &tm, &bounds);
+
+    assert!(
+        trees_abs.len() > 1,
+        "positive control: absent policy must drop new trees"
+    );
+    assert!(
+        trees_on.len() > 1,
+        "enabled policy must still allow inland seed drops near the coast"
+    );
+    assert_eq!(
+        trees_abs, trees_dis,
+        "absent and disabled TerrainNavigation must drop identical trees"
+    );
+    assert!(
+        water_abs > 0,
+        "positive control: absent policy must drop some seeds onto DeepOcean/Ocean"
+    );
+    assert!(
+        water_dis > 0,
+        "positive control: disabled policy must drop some seeds onto DeepOcean/Ocean"
+    );
+    assert_eq!(
+        water_on, 0,
+        "enabled policy must never place dropped trees on DeepOcean/Ocean"
+    );
+    assert_ne!(
+        trees_on, trees_abs,
+        "enabled policy must differ from unmasked seed dropping"
+    );
 }

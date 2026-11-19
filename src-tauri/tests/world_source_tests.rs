@@ -1,14 +1,13 @@
-//! Regression tests for F051 (`WORLD-SRC`):
+//! Regression tests for F051 (`WORLD-SRC`) & F051b:
 //! - Headless live experiments (`LiveExperimentAdapter` / `build_live_world`) always generate their
-//!   own terrain via `TerrainSource::Generated` (`MapSettings::default()`) and record both
-//!   `terrain_source = "generated"` and the observed `WorldIdentity` in provenance.
-//! - Machine environment variables (`ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR`) and desktop-app
-//!   temp artifacts (`<temp_dir>/anima_world_artifact.anmw`) never alter a headless run.
+//!   own terrain via `TerrainSource::Generated` (`MapSettings::default()`, `MapConfig::default()`)
+//!   and record both `terrain_source = "generated"` and the observed `WorldIdentity` in provenance.
+//! - Machine environment variables (`ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR`), desktop-app temp
+//!   artifacts (`<temp_dir>/anima_world_artifact.anmw`), cached terrain files (`world_*.bin`), and
+//!   working-directory `map_config.json` never alter a headless run and `Generated` never writes to
+//!   the terrain cache.
 //! - The desktop app's `ecs::init_world()` (`TerrainSource::AppArtifactOrGenerated`) retains its
-//!   existing artifact-loading behaviour (positive control).
-//!
-//! All environment-variable mutations live inside ONE `#[test]` function so parallel test threads
-//! cannot race on process-global environment variables.
+//!   existing artifact, cache, and `map_config.json` loading behaviour (positive controls).
 
 use anima_engine_lib::core::branch_tree::{
     run_branch_tree, BranchNodeSpecification, BranchSeedStrategy, BranchTreeManifest,
@@ -21,10 +20,21 @@ use anima_engine_lib::core::experiment::{
 };
 use anima_engine_lib::core::experiment_runner::{checkpoint_fork, run_manifest_seed};
 use anima_engine_lib::core::live_experiment::{LiveExperimentAdapter, LIVE_OBSERVABLE_IDS};
-use anima_engine_lib::core::terrain::TerrainMap;
+use anima_engine_lib::core::terrain::{
+    BiomeType, MapConfig, MapSettings, TerrainMap, WORLD_CACHE_VERSION,
+};
 use anima_engine_lib::core::world_artifact::{default_artifact_path, WorldIdentity};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Mutex;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+const CHILD_MODE_ENV: &str = "ANIMA_WORLD_SRC_CHILD_MODE";
+const CHILD_SCRATCH_CWD_ENV: &str = "ANIMA_WORLD_SRC_SCRATCH_CWD";
+const CHILD_HEADLESS_MARKER: &str = "WORLD_SRC_CHILD_HEADLESS";
+const CHILD_APP_MARKER: &str = "WORLD_SRC_CHILD_APP";
 
 const ENV_VARS: [&str; 5] = [
     "ANIMA_WORLD_ARTIFACT",
@@ -102,6 +112,7 @@ fn app_world_fingerprint() -> (WorldIdentity, TerrainMap) {
 
 #[test]
 fn headless_live_world_ignores_env_and_temp_artifacts_while_app_init_world_reads_them() {
+    let _env_lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let _env_guard = EnvGuard::capture();
 
     let repo_artifact = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -238,6 +249,383 @@ fn headless_live_world_ignores_env_and_temp_artifacts_while_app_init_world_reads
         run_clean.provenance.world_identity,
         Some(app_clean_id),
         "clean headless run must match MapSettings::default() clean init_world()"
+    );
+    let default_settings = MapSettings::default();
+    let default_generated =
+        TerrainMap::generate_with_config(&default_settings, &MapConfig::default());
+    let default_expected_id = WorldIdentity::from_terrain(
+        &default_generated,
+        default_settings.seed,
+        WORLD_CACHE_VERSION,
+    );
+    assert_eq!(
+        run_clean.provenance.world_identity,
+        Some(default_expected_id),
+        "Generated world_identity must match TerrainMap::generate_with_config(default, default)"
+    );
+
+    let _ = std::fs::remove_dir_all(&scratch_root);
+}
+
+struct CwdGuard {
+    original: PathBuf,
+}
+
+impl CwdGuard {
+    fn enter(target: &Path) -> Self {
+        let original = std::env::current_dir().expect("capture current_dir");
+        std::env::set_current_dir(target).expect("set_current_dir to scratch dir");
+        Self { original }
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
+
+struct ChildProbeOutcome {
+    headless_final_checksum: Option<u32>,
+    headless_world_id_checksum: Option<u32>,
+    app_world_id_checksum: Option<u32>,
+}
+
+fn run_child_probe(
+    mode: &str,
+    cwd: &Path,
+    cache_dir: Option<&Path>,
+    temp_root: &Path,
+    scratch_cwd: Option<&Path>,
+) -> ChildProbeOutcome {
+    let mut cmd = Command::new(std::env::current_exe().expect("current_exe"));
+    cmd.args(["--exact", "world_source_child_entry_point", "--nocapture"])
+        .current_dir(cwd)
+        .env(CHILD_MODE_ENV, mode)
+        .env("ANIMA_USE_GPU", "0")
+        .env("TMPDIR", temp_root)
+        .env("TEMP", temp_root)
+        .env("TMP", temp_root)
+        .env_remove("ANIMA_WORLD_ARTIFACT");
+    match cache_dir {
+        Some(dir) => {
+            cmd.env("ANIMA_CACHE_DIR", dir);
+        }
+        None => {
+            cmd.env_remove("ANIMA_CACHE_DIR");
+        }
+    }
+    match scratch_cwd {
+        Some(dir) => {
+            cmd.env(CHILD_SCRATCH_CWD_ENV, dir);
+        }
+        None => {
+            cmd.env_remove(CHILD_SCRATCH_CWD_ENV);
+        }
+    }
+
+    let output = cmd.output().expect("spawn world_source child");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "world_source child ({mode}) failed with {:?}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        output.status.code()
+    );
+
+    let mut headless_final_checksum = None;
+    let mut headless_world_id_checksum = None;
+    let mut app_world_id_checksum = None;
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix(CHILD_HEADLESS_MARKER) {
+            let mut parts = rest.split_whitespace();
+            headless_final_checksum = parts.next().and_then(|s| s.parse::<u32>().ok());
+            headless_world_id_checksum = parts.next().and_then(|s| s.parse::<u32>().ok());
+        } else if let Some(rest) = trimmed.strip_prefix(CHILD_APP_MARKER) {
+            app_world_id_checksum = rest.trim().parse::<u32>().ok();
+        }
+    }
+    ChildProbeOutcome {
+        headless_final_checksum,
+        headless_world_id_checksum,
+        app_world_id_checksum,
+    }
+}
+
+#[test]
+fn world_source_child_entry_point() {
+    let Ok(mode) = std::env::var(CHILD_MODE_ENV) else {
+        return;
+    };
+    let _cwd_guard = std::env::var_os(CHILD_SCRATCH_CWD_ENV).map(|dir| {
+        let guard = CwdGuard::enter(Path::new(&dir));
+        assert!(
+            Path::new("map_config.json").is_file(),
+            "scratch CWD must hold map_config.json"
+        );
+        guard
+    });
+
+    match mode.as_str() {
+        "seed_app_cache" => {
+            let _ = init_world();
+        }
+        "headless_only" => {
+            let registry = ObservableRegistry::live_default();
+            let manifest = live_manifest(180);
+            let res = run_manifest_seed::<LiveExperimentAdapter>(
+                &manifest,
+                &registry,
+                manifest.seeds[0],
+                None,
+                None,
+            );
+            assert!(res.status.is_completed(), "{:?}", res.status);
+            assert_eq!(res.provenance.terrain_source.as_deref(), Some("generated"));
+            let id = res
+                .provenance
+                .world_identity
+                .expect("headless run must record world_identity");
+            println!(
+                "{CHILD_HEADLESS_MARKER} {} {}",
+                res.final_checksum, id.checksum
+            );
+        }
+        "headless_then_app" => {
+            // Headless MUST execute BEFORE init_world() while both GENERATED_DEFAULT_TERRAIN and
+            // MAP_CONFIG OnceLocks are cold in this child process.
+            let registry = ObservableRegistry::live_default();
+            let manifest = live_manifest(180);
+            let res = run_manifest_seed::<LiveExperimentAdapter>(
+                &manifest,
+                &registry,
+                manifest.seeds[0],
+                None,
+                None,
+            );
+            assert!(res.status.is_completed(), "{:?}", res.status);
+            assert_eq!(res.provenance.terrain_source.as_deref(), Some("generated"));
+            let id = res
+                .provenance
+                .world_identity
+                .expect("headless run must record world_identity");
+            println!(
+                "{CHILD_HEADLESS_MARKER} {} {}",
+                res.final_checksum, id.checksum
+            );
+
+            let (app_id, _) = app_world_fingerprint();
+            println!("{CHILD_APP_MARKER} {}", app_id.checksum);
+        }
+        other => panic!("unexpected {CHILD_MODE_ENV}={other}"),
+    }
+}
+
+#[test]
+fn generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes() {
+    let _env_lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let settings = MapSettings::default();
+    let expected_terrain = TerrainMap::generate_with_config(&settings, &MapConfig::default());
+    let expected_id =
+        WorldIdentity::from_terrain(&expected_terrain, settings.seed, WORLD_CACHE_VERSION);
+
+    let modified_config = MapConfig {
+        sea_ratio: 0.65,
+        sand_ratio: 0.72,
+        snow_ratio: 0.92,
+        noise_scale: 5.5,
+    };
+    let modified_terrain = TerrainMap::generate_with_config(&settings, &modified_config);
+    let modified_id =
+        WorldIdentity::from_terrain(&modified_terrain, settings.seed, WORLD_CACHE_VERSION);
+    assert_ne!(
+        modified_id, expected_id,
+        "modified MapConfig must change WorldIdentity"
+    );
+    assert_ne!(
+        modified_terrain.biomes, expected_terrain.biomes,
+        "modified MapConfig must change biomes"
+    );
+
+    let scratch_root =
+        std::env::temp_dir().join(format!("anima_f051b_subproc_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch_root);
+    let empty_cwd = scratch_root.join("empty_cwd");
+    let scratch_cwd = scratch_root.join("scratch_cwd");
+    let seed_cache = scratch_root.join("seed_cache");
+    let empty_tmp = scratch_root.join("empty_tmp");
+    let clean_cache = scratch_root.join("clean_cache");
+    let clean_tmp = scratch_root.join("clean_tmp");
+    let poison_env_cache = scratch_root.join("poison_env_cache");
+    let poison_tmp_root = scratch_root.join("poison_tmp_root");
+    let poison_tmp_cache = poison_tmp_root.join("anima_world_cache");
+    let map_cfg_cache = scratch_root.join("map_cfg_cache");
+    let map_cfg_tmp = scratch_root.join("map_cfg_tmp");
+
+    for dir in [
+        &empty_cwd,
+        &scratch_cwd,
+        &seed_cache,
+        &empty_tmp,
+        &clean_cache,
+        &clean_tmp,
+        &poison_env_cache,
+        &poison_tmp_cache,
+        &map_cfg_cache,
+        &map_cfg_tmp,
+    ] {
+        std::fs::create_dir_all(dir).expect("create scratch dir");
+    }
+    std::fs::write(
+        scratch_cwd.join("map_config.json"),
+        serde_json::to_string_pretty(&modified_config).expect("serialize MapConfig"),
+    )
+    .expect("write modified map_config.json");
+
+    // 1. Let a clean app init_world() child write the real cache filename for MapConfig::default(),
+    //    then build a valid decoded TerrainMap payload with poisoned biomes/elevations.
+    run_child_probe(
+        "seed_app_cache",
+        &empty_cwd,
+        Some(&seed_cache),
+        &empty_tmp,
+        None,
+    );
+    let cache_entries: Vec<_> = std::fs::read_dir(&seed_cache)
+        .expect("read seed_cache")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            let name = e.file_name();
+            let s = name.to_string_lossy();
+            s.starts_with("world_") && s.ends_with(".bin")
+        })
+        .collect();
+    assert_eq!(
+        cache_entries.len(),
+        1,
+        "seed_app_cache should produce exactly one world_*.bin cache file"
+    );
+    let cache_filename = cache_entries[0].file_name();
+    let raw_cache = std::fs::read(cache_entries[0].path()).expect("read seeded cache");
+    let (mut poisoned_map, _): (TerrainMap, usize) =
+        bincode::serde::decode_from_slice(&raw_cache, bincode::config::standard())
+            .expect("decode seeded cache");
+    poisoned_map.elevations.fill(0.5);
+    poisoned_map.biomes.fill(BiomeType::Desert as u8);
+    let poisoned_id =
+        WorldIdentity::from_terrain(&poisoned_map, settings.seed, WORLD_CACHE_VERSION);
+    assert_ne!(poisoned_id, expected_id);
+    assert_ne!(poisoned_id, modified_id);
+    let poisoned_bytes = bincode::serde::encode_to_vec(&poisoned_map, bincode::config::standard())
+        .expect("encode poisoned cache");
+    std::fs::write(poison_env_cache.join(&cache_filename), &poisoned_bytes)
+        .expect("write ANIMA_CACHE_DIR poison");
+    std::fs::write(poison_tmp_cache.join(&cache_filename), &poisoned_bytes)
+        .expect("write <temp_dir>/anima_world_cache poison");
+
+    // 2. Clean headless-only child: must match expected_id and never write to ANIMA_CACHE_DIR or
+    //    <temp_dir>/anima_world_cache.
+    let clean = run_child_probe(
+        "headless_only",
+        &empty_cwd,
+        Some(&clean_cache),
+        &clean_tmp,
+        None,
+    );
+    let clean_final = clean
+        .headless_final_checksum
+        .expect("clean child headless checksum");
+    assert_eq!(
+        clean.headless_world_id_checksum,
+        Some(expected_id.checksum),
+        "clean headless run must report default WorldIdentity"
+    );
+    assert!(
+        std::fs::read_dir(&clean_cache)
+            .expect("read clean_cache")
+            .next()
+            .is_none(),
+        "Generated must never write into ANIMA_CACHE_DIR"
+    );
+    assert!(
+        !clean_tmp.join("anima_world_cache").exists(),
+        "Generated must never create <temp_dir>/anima_world_cache"
+    );
+
+    // 3. Poisoned ANIMA_CACHE_DIR: headless ignores it; positive control init_world() loads poison.
+    let env_poison_res = run_child_probe(
+        "headless_then_app",
+        &empty_cwd,
+        Some(&poison_env_cache),
+        &empty_tmp,
+        None,
+    );
+    assert_eq!(
+        env_poison_res.headless_final_checksum,
+        Some(clean_final),
+        "headless run must ignore poisoned ANIMA_CACHE_DIR"
+    );
+    assert_eq!(
+        env_poison_res.headless_world_id_checksum,
+        Some(expected_id.checksum),
+        "headless world_identity must ignore poisoned ANIMA_CACHE_DIR"
+    );
+    assert_eq!(
+        env_poison_res.app_world_id_checksum,
+        Some(poisoned_id.checksum),
+        "positive control: init_world() must read poisoned ANIMA_CACHE_DIR"
+    );
+
+    // 4. Poisoned <temp_dir>/anima_world_cache (with ANIMA_CACHE_DIR unset): headless ignores it;
+    //    positive control init_world() loads poison.
+    let temp_poison_res = run_child_probe(
+        "headless_then_app",
+        &empty_cwd,
+        None,
+        &poison_tmp_root,
+        None,
+    );
+    assert_eq!(
+        temp_poison_res.headless_final_checksum,
+        Some(clean_final),
+        "headless run must ignore poisoned <temp_dir>/anima_world_cache"
+    );
+    assert_eq!(
+        temp_poison_res.headless_world_id_checksum,
+        Some(expected_id.checksum),
+        "headless world_identity must ignore poisoned <temp_dir>/anima_world_cache"
+    );
+    assert_eq!(
+        temp_poison_res.app_world_id_checksum,
+        Some(poisoned_id.checksum),
+        "positive control: init_world() must read poisoned <temp_dir>/anima_world_cache"
+    );
+
+    // 5. Modified map_config.json in scratch working directory: headless ignores it; positive
+    //    control init_world() reads it and produces modified_id.
+    let map_cfg_res = run_child_probe(
+        "headless_then_app",
+        &empty_cwd,
+        Some(&map_cfg_cache),
+        &map_cfg_tmp,
+        Some(&scratch_cwd),
+    );
+    assert_eq!(
+        map_cfg_res.headless_final_checksum,
+        Some(clean_final),
+        "headless run must ignore CWD map_config.json"
+    );
+    assert_eq!(
+        map_cfg_res.headless_world_id_checksum,
+        Some(expected_id.checksum),
+        "headless world_identity must ignore CWD map_config.json"
+    );
+    assert_eq!(
+        map_cfg_res.app_world_id_checksum,
+        Some(modified_id.checksum),
+        "positive control: init_world() must read modified CWD map_config.json"
     );
 
     let _ = std::fs::remove_dir_all(&scratch_root);
