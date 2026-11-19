@@ -14,9 +14,11 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  closeSync,
   existsSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -196,23 +198,25 @@ function runBash(script, cwd, env = process.env) {
   };
 }
 
-function runShellToFile(cmd, cwd, env, outFile) {
-  const shellCmd =
-    process.platform === 'win32'
-      ? ['cmd.exe', ['/d', '/c', `(${cmd}) > "${outFile}" 2>&1`]]
-      : ['sh', ['-c', `(${cmd}) > '${outFile}' 2>&1`]];
-  const res = spawnSync(shellCmd[0], shellCmd[1], {
-    cwd,
-    env,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
+function runCommandToFile(exe, args, cwd, env, outFile) {
+  const fd = openSync(outFile, 'w');
+  let res;
+  try {
+    res = spawnSync(exe, args, {
+      cwd,
+      env,
+      stdio: ['ignore', fd, fd],
+    });
+  } finally {
+    closeSync(fd);
+  }
+  if (res.error) throw res.error;
   const captured = existsSync(outFile) ? readFileSync(outFile, 'utf8') : '';
   return {
     status: res.status ?? 1,
     stdout: captured,
-    stderr: res.stderr || '',
-    output: `${captured}${res.stderr ? `\n${res.stderr}` : ''}`,
+    stderr: '',
+    output: captured,
   };
 }
 
@@ -358,28 +362,50 @@ function runCheckTestTargetsPolicySubset(wt, tmpBase, profileArg) {
   const docCapturePath = join(tmpBase, 'cargo-doc-output.txt');
   const env = { ...cargoEnv(), ANIMA_ENERGY_GATE_TICKS: '10' };
   const tauriDir = join(wt, 'src-tauri');
-  const subsetCmd = [
-    'cargo test --features desktop --bin anima-engine',
-    '--test shared_domain_law_tests',
-    '--test determinism_gate_tests',
-    '--test energy_conservation_tests',
-    '--test adversarial_challenger_tests',
-    '--test migration_tests',
-    '--test migration_high_throughput_tests',
-    '--test migration_narrow_bounds_loop_tests',
-    '--test migration_panic_tests',
-    '--test migration_stress_tests',
-    '--test phase5_websocket_reuse',
-    '--test phase5_burn_wgpu_fallback',
-    '-- --nocapture',
-  ].join(' ');
-  const testRes = runShellToFile(subsetCmd, tauriDir, env, capturePath);
+  const subsetArgs = [
+    'test',
+    '--features',
+    'desktop',
+    '--bin',
+    'anima-engine',
+    '--test',
+    'shared_domain_law_tests',
+    '--test',
+    'determinism_gate_tests',
+    '--test',
+    'energy_conservation_tests',
+    '--test',
+    'adversarial_challenger_tests',
+    '--test',
+    'migration_tests',
+    '--test',
+    'migration_high_throughput_tests',
+    '--test',
+    'migration_narrow_bounds_loop_tests',
+    '--test',
+    'migration_panic_tests',
+    '--test',
+    'migration_stress_tests',
+    '--test',
+    'phase5_websocket_reuse',
+    '--test',
+    'phase5_burn_wgpu_fallback',
+    '--',
+    '--nocapture',
+  ];
+  const testRes = runCommandToFile('cargo', subsetArgs, tauriDir, env, capturePath);
   if (testRes.status !== 0) {
     throw new Error(
       `Prerequisite cargo test policy subset failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
     );
   }
-  const docRes = runShellToFile('cargo test --workspace --doc -- --nocapture', tauriDir, env, docCapturePath);
+  const docRes = runCommandToFile(
+    'cargo',
+    ['test', '--workspace', '--doc', '--', '--nocapture'],
+    tauriDir,
+    env,
+    docCapturePath,
+  );
   if (docRes.status !== 0) {
     throw new Error(
       `Prerequisite cargo test --workspace --doc failed (exit ${docRes.status}):\n${docRes.output.slice(-2000)}`,
@@ -398,23 +424,40 @@ function runCheckTestTargetsFullUnscheduled(wt, ctx, profileArg) {
     // Use Cargo's real `--test` glob over the migration/phase5 policy targets so Cargo evaluates
     // `required-features` on `migration_tests` (dropping it when mistyped) without compiling all
     // 161 targets (>30 min / MSVC link.exe OOM on 16 GB RAM).
-    const unscheduledCmd = [
-      'cargo test --features desktop --bin anima-engine',
-      '--test shared_domain_law_tests',
-      '--test determinism_gate_tests',
-      '--test energy_conservation_tests',
-      '--test adversarial_challenger_tests',
-      '--test "migration*"',
-      '--test "phase5_*"',
-      '-- --nocapture',
-    ].join(' ');
-    const testRes = runShellToFile(unscheduledCmd, tauriDir, env, capturePath);
+    const unscheduledArgs = [
+      'test',
+      '--features',
+      'desktop',
+      '--bin',
+      'anima-engine',
+      '--test',
+      'shared_domain_law_tests',
+      '--test',
+      'determinism_gate_tests',
+      '--test',
+      'energy_conservation_tests',
+      '--test',
+      'adversarial_challenger_tests',
+      '--test',
+      'migration*',
+      '--test',
+      'phase5_*',
+      '--',
+      '--nocapture',
+    ];
+    const testRes = runCommandToFile('cargo', unscheduledArgs, tauriDir, env, capturePath);
     if (testRes.status !== 0) {
       throw new Error(
         `Prerequisite cargo test --features desktop (policy globs) failed (exit ${testRes.status}):\n${testRes.output.slice(-2000)}`,
       );
     }
-    const docRes = runShellToFile('cargo test --workspace --doc -- --nocapture', tauriDir, env, docCapturePath);
+    const docRes = runCommandToFile(
+      'cargo',
+      ['test', '--workspace', '--doc', '--', '--nocapture'],
+      tauriDir,
+      env,
+      docCapturePath,
+    );
     if (docRes.status !== 0) {
       rmSync(docCapturePath, { force: true });
       throw new Error(
