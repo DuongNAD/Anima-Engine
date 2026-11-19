@@ -904,6 +904,9 @@ pub fn parse_and_validate_manifest_for_viewer(
             .to_string(),
         );
     }
+    if !manifest.interventions.is_empty() {
+        return Err("this manifest schedules interventions; the viewer cannot run them".into());
+    }
     let config = crate::core::live_experiment::LiveWorldConfig::from_initial_conditions(
         &manifest.initial_conditions,
     )

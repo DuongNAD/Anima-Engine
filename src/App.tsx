@@ -668,6 +668,7 @@ export function App() {
 
         <ExperimentWorldControl
           running={status.running}
+          disabled={!worldReady && !status.running}
           onStarted={() => setStatus((prev) => ({ ...prev, running: true }))}
         />
       </div>

@@ -25,11 +25,11 @@ use anima_engine_lib::core::exotic_energy::{
     ExoticEnergyLaw, ExoticIntervention, ExoticInterventionKind,
 };
 use anima_engine_lib::core::experiment::{
-    ExperimentError, ExperimentManifest, InitialConditionSet, ObserverPolicy, WorldLawSet,
-    MANIFEST_SCHEMA_VERSION,
+    ExperimentError, ExperimentManifest, InitialConditionSet, ObservableRegistry, ObserverPolicy,
+    WorldLawSet, MANIFEST_SCHEMA_VERSION,
 };
 use anima_engine_lib::core::experiment_runner::ExperimentModel;
-use anima_engine_lib::core::intervention::{Curve, Region};
+use anima_engine_lib::core::intervention::{Curve, InterventionCommand, InterventionKind, Region};
 use anima_engine_lib::core::live_experiment::{
     apply_live_genesis_and_policies, LiveExperimentAdapter, LiveFoodCap, LiveWorldConfig,
     LIVE_OBSERVABLE_IDS,
@@ -676,7 +676,40 @@ fn preflight_refusals_are_propagated_verbatim_without_disturbing_engine() {
     assert!(err_json.contains("invalid experiment manifest JSON"));
     assert!(!engine.running.load(std::sync::atomic::Ordering::SeqCst));
 
-    // A rejected start_from_manifest must NOT stop an already-running simulation.
+    // 7. Scheduled interventions are applied by LiveExperimentAdapter but not by the viewer.
+    let mut scheduled = base.clone();
+    scheduled.interventions = vec![InterventionCommand {
+        id: 1,
+        cause_id: 7,
+        kind: InterventionKind::Deforestation,
+        region: Region::Global,
+        start_tick: 1,
+        duration_ticks: 100,
+        intensity: 0.5,
+        signed_negative: true,
+        curve: Curve::Step,
+        reversible: false,
+    }];
+    scheduled
+        .validate(&ObservableRegistry::live_default())
+        .expect("scheduled intervention manifest is valid for headless runs");
+    let scheduled_json = serde_json::to_string(&scheduled).unwrap();
+    let err_scheduled = start_from_manifest_with_engine::<tauri::test::MockRuntime>(
+        &engine,
+        None,
+        Arc::clone(&evo_settings),
+        Arc::clone(&evo_running),
+        Arc::clone(&map_grid),
+        &scheduled_json,
+    )
+    .expect_err("viewer must refuse manifests that schedule interventions");
+    assert_eq!(
+        err_scheduled,
+        "this manifest schedules interventions; the viewer cannot run them"
+    );
+    assert!(!engine.running.load(std::sync::atomic::Ordering::SeqCst));
+
+    // A rejected start_from_manifest (including scheduled interventions) must NOT stop an already-running simulation.
     start_from_manifest_with_engine::<tauri::test::MockRuntime>(
         &engine,
         None,
@@ -690,17 +723,77 @@ fn preflight_refusals_are_propagated_verbatim_without_disturbing_engine() {
     let refused_while_running = start_from_manifest_with_engine::<tauri::test::MockRuntime>(
         &engine,
         None,
+        Arc::clone(&evo_settings),
+        Arc::clone(&evo_running),
+        Arc::clone(&map_grid),
+        &scheduled_json,
+    );
+    assert_eq!(
+        refused_while_running.expect_err("refuse while running"),
+        "this manifest schedules interventions; the viewer cannot run them"
+    );
+    assert!(
+        engine.running.load(std::sync::atomic::Ordering::SeqCst),
+        "invalid manifest refusal must not stop a running simulation"
+    );
+    let refused_bad_json = start_from_manifest_with_engine::<tauri::test::MockRuntime>(
+        &engine,
+        None,
         evo_settings,
         evo_running,
         map_grid,
         "{bad}",
     );
-    assert!(refused_while_running.is_err());
+    assert!(refused_bad_json.is_err());
     assert!(
         engine.running.load(std::sync::atomic::Ordering::SeqCst),
-        "invalid manifest refusal must not stop a running simulation"
+        "malformed manifest refusal must not stop a running simulation"
     );
     engine.stop();
+}
+
+#[test]
+fn bundled_frontend_sel2p_manifest_passes_viewer_preflight_and_matches_fixture() {
+    let tsx = include_str!("../../src/components/ExperimentWorldControl.tsx");
+    let start_marker = "/* BEGIN_SEL2P_SELECTED_JSON */ `";
+    let end_marker = "` /* END_SEL2P_SELECTED_JSON */";
+    let after_start = tsx
+        .split_once(start_marker)
+        .expect("BEGIN_SEL2P_SELECTED_JSON marker")
+        .1;
+    let extracted_json = after_start
+        .split_once(end_marker)
+        .expect("END_SEL2P_SELECTED_JSON marker")
+        .0;
+
+    let pending = parse_and_validate_manifest_for_viewer(extracted_json)
+        .expect("bundled frontend SEL2-P JSON must pass viewer preflight");
+    assert_eq!(pending.seed, 780001);
+    assert_eq!(pending.config.founders, 100);
+    assert_eq!(pending.config.lakes, 16);
+    assert_eq!(pending.config.lake_layout, 1);
+    assert!((pending.config.resource_capacity_scale - 0.63).abs() < 1e-12);
+    assert_eq!(pending.config.prey_cap, Some(320));
+    assert_eq!(pending.config.dehydration_ticks, 960);
+
+    let parsed: ExperimentManifest =
+        serde_json::from_str(extracted_json).expect("deserialize ExperimentManifest");
+    assert_eq!(parsed.seeds.len(), 20);
+    assert_eq!(parsed.seeds[0], 780001);
+    assert_eq!(parsed.seeds[19], 799001);
+    assert!(parsed.interventions.is_empty());
+    assert!(parsed.exotic_interventions.is_empty());
+
+    let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/experiments_sel2p/sel2p-selected.json");
+    if fixture_path.exists() {
+        let fixture_json =
+            std::fs::read_to_string(&fixture_path).expect("read committed sel2p-selected.json");
+        assert_eq!(
+            extracted_json, fixture_json,
+            "bundled frontend manifest drifted from committed fixture"
+        );
+    }
 }
 
 #[test]
