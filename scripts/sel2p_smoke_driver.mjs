@@ -88,7 +88,15 @@ if (report.baseline_computed_before_scarce !== true) {
 // Recompute pooled baseline and C1..C5 independently from smoke-series.csv.
 const seriesRows = parseCsv(readFileSync(seriesPath, 'utf8'));
 const durationTicks = report.duration_ticks;
-const summarized = summarizeSmokeSeries(seriesRows, durationTicks, report.runs);
+const summarized = summarizeSmokeSeries(
+  seriesRows,
+  durationTicks,
+  report.runs,
+  (msg) => {
+    throw new Error(msg);
+  },
+  report.sample_period,
+);
 const baseline = evaluatePooledBaseline(
   summarized.baseline,
   prereg.seeds.min_surviving_baseline_seeds,
@@ -99,6 +107,7 @@ const gate = evaluateSmokeGate(
   summarized.scarce.selected,
   summarized.scarce.scarce_mut0,
   summarized.scarce.scarce_drift,
+  prereg.smoke_gate,
 );
 
 const gitCommit = (() => {

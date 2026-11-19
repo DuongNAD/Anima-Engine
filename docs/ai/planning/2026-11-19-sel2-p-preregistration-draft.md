@@ -2,7 +2,7 @@
 phase: planning
 feature: experiment-sel2-food-scarcity
 title: Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2
-description: Bản thảo đăng ký trước SEL2-P (chưa đóng băng, chưa chạy seed xác nhận): giả thuyết H1 hai phía trên khối lượng cơ thể kiểu gen tích phân thời gian (live.trait_mass_mean), thiết kế 3 nhánh (selected, scarce_mut0, scarce_drift SEL2-D) trên cấu hình 16 hồ rải lưới scale 0.63 trong 200.000 tick, N = 20 cặp (780001 + 1000*k), cổng smoke C1..C5 với ô tham chiếu g để trống chờ chủ dự án quyết định.
+description: Bản thảo đăng ký trước SEL2-P (chưa đóng băng, chưa chạy smoke thật hay seed xác nhận): giả thuyết H1 hai phía trên khối lượng cơ thể kiểu gen tích phân thời gian (live.trait_mass_mean), thiết kế 3 nhánh (selected, scarce_mut0, scarce_drift SEL2-D) trên cấu hình 16 hồ rải lưới scale 0.63 trong 200.000 tick, N = 20 cặp (780001 + 1000*k), cổng smoke C1..C5 dùng nền gộp QĐ-SEL2g (799501..=799506).
 status: proposed
 owner: simulation-architecture
 last_reviewed: 2026-11-19
@@ -12,7 +12,7 @@ last_reviewed: 2026-11-19
 
 > **Bản thảo chưa đóng băng (`status: proposed`).** Tài liệu này **không** chạy bất kỳ mã mô phỏng nào và **chưa** ấn định bản đăng ký cuối cùng (`SEL2-P-freeze`). Toàn bộ chuỗi thăm dò `S6..S15` (`seed 1..=6`) và bước `--smoke` tương lai đều **mù tuyệt đối với `live.trait_mass_mean`, `live.trait_mass_var` và mọi thông số khối lượng cơ thể**. Không một hạt giống xác nhận nào được chạy hay đọc dữ liệu trước khi các phụ thuộc mở ở Mục 8 được giải quyết và bản đăng ký được đóng băng.
 
-Tài liệu này cụ thể hoá [Đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) §5 trên nền kết quả thăm dò của [Thẻ S13](2026-11-18-s13-spread-lakes.md), [Thẻ S14](2026-11-19-s14-lakes16-scale.md) và phép kiểm tra tham chiếu `S15` (`2026-11-19-s15-reference-check.md`, đang chờ hợp nhất qua `PR #146`), đồng thời kế thừa kỷ luật thực nghiệm từ [Bản đăng ký E-SEL1](2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md) và [Bản đăng ký E2](2026-07-27-experiment-e2-evolved-brain-default.md).
+Tài liệu này cụ thể hoá [Đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) §5 trên nền kết quả thăm dò của [Thẻ S13](2026-11-18-s13-spread-lakes.md), [Thẻ S14](2026-11-19-s14-lakes16-scale.md) và phép kiểm tra tham chiếu [Thẻ S15](2026-11-19-s15-reference-check.md) (`PR #146` đã hợp nhất), đồng thời kế thừa kỷ luật thực nghiệm từ [Bản đăng ký E-SEL1](2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md) và [Bản đăng ký E2](2026-07-27-experiment-e2-evolved-brain-default.md).
 
 ---
 
@@ -67,7 +67,7 @@ Tài liệu này cụ thể hoá [Đề xuất làm lại SEL2](2026-11-18-sel2-
 
 ### Kỷ luật mù & tập biến quan sát (`Observables`)
 
-- **Pha `--smoke` (mù khối lượng, giống `S14`):** Chỉ được phép đọc tập biến nhân khẩu–tài nguyên không lộ hình thái: `live.agent_count`, `live.standing_crop`, `live.births`, `live.deaths`, `live.mean_lifespan`, `live.deaths_starvation`, `live.deaths_dehydration` (kèm các biến tích luỹ đối chứng tương ứng để kiểm `C2` ở cấu hình không bật `drift_control`). Cấm đọc `live.trait_mass_mean`, `live.trait_mass_var` hoặc bất kỳ chỉ số khối lượng/kiểu gen nào ở lượt `--smoke` hay các seed thăm dò `1..=6`.
+- **Pha `--smoke` (mù khối lượng, giống `S14`):** Chỉ được phép đọc tập biến nhân khẩu–tài nguyên không lộ hình thái: `live.agent_count`, `live.standing_crop`, `live.births`, `live.deaths`, `live.mean_lifespan`, `live.closed_eu_total`, `live.deaths_starvation`, `live.deaths_dehydration` (kèm các biến tích luỹ đối chứng tương ứng để kiểm `C2` ở cấu hình không bật `drift_control`). Cấm đọc `live.trait_mass_mean`, `live.trait_mass_var` hoặc bất kỳ chỉ số khối lượng/kiểu gen nào ở lượt `--smoke` hay các seed thăm dò `1..=6`.
 - **Pha xác nhận (`confirmation`, chỉ mở đọc sau khi `SEL2-P-freeze` khoá manifest và qua smoke):** Đọc đầy đủ `live.trait_mass_mean`, `live.trait_mass_var`, `live.mean_energy_integral` (từ thẻ `S2`), `live.agent_count`, `live.standing_crop`, `live.births`, `live.deaths`, `live.mean_lifespan` (chú ý `evolution.births` mang `Aggregation::Instant`).
 - **Ràng buộc kỹ thuật với `SEL2-D`:** Như ghi nhận ở [Thẻ SEL2-D](2026-11-18-sel2-d-drift-control.md) và `live_experiment.rs`, `ensure_observables_supported` từ chối `live.deaths_starvation` và `live.deaths_dehydration` khi `live.drift_control = 1.0`. Do đó manifest 3 nhánh cho ensemble xác nhận không đưa hai biến nguyên nhân tử vong này vào bộ observable bắt buộc của nhánh `scarce_drift` (xem Mục 8).
 
@@ -77,7 +77,7 @@ Tài liệu này cụ thể hoá [Đề xuất làm lại SEL2](2026-11-18-sel2-
 
 ### Chỉ tiêu đầu ra tích phân thời gian (`Time-integrated endpoint`)
 
-Theo [Đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) §5 và thiết kế biến tích phân từ thẻ `S2` (**đang phát triển trên nhánh `win/s2-observables`, chưa merge vào `feat/ecological-selection`**), quần thể ở cấu hình `16` hồ khan hiếm (`0.63`) trải qua các dao động mật độ; lấy tích phân thời gian trên toàn bộ hậu-warmup $t \in (T_{\text{warm}}, T] = (20\,000, 200\,000]$ giảm phụ thuộc vào pha dao động cuối lượt so với lấy trung bình 20% cuối thuần tuý.
+Theo [Đề xuất làm lại SEL2](2026-11-18-sel2-redesign-proposal.md) §5 và thiết kế biến tích phân từ thẻ `S2` (`PR #148` đã hợp nhất vào `feat/ecological-selection`), quần thể ở cấu hình `16` hồ khan hiếm (`0.63`) trải qua các dao động mật độ; lấy tích phân thời gian trên toàn bộ hậu-warmup $t \in (T_{\text{warm}}, T] = (20\,000, 200\,000]$ giảm phụ thuộc vào pha dao động cuối lượt so với lấy trung bình 20% cuối thuần tuý.
 
 - **Chỉ tiêu chính cho `H1`:** Giá trị trung bình tích phân thời gian hậu-warmup của khối lượng cơ thể kiểu gen (`live.trait_mass_mean`, ký hiệu $\overline{z}_g^{\text{int}}$) trên khoảng $(20\,000, 200\,000]$.
 - **Chỉ tiêu năng lượng tích phân (`S2`):** Với biến tích luỹ `live.mean_energy_integral` ($I(t)$), trung bình hậu-warmup được tính đúng theo công thức hiệu tích phân:
@@ -157,17 +157,17 @@ Với kiểm định hai phía $\alpha = 0.05$, lực thống kê $1 - \beta = 0
 
 ---
 
-## 6. Cổng khả thi Smoke (`C1..C5`) & Ô tham chiếu `g` đang để trống
+## 6. Cổng khả thi Smoke (`C1..C5`) & Tham chiếu `g` (`QĐ-SEL2g`)
 
 Mọi cấu hình chính thức phải vượt qua **cả 5 điều kiện `C1..C5`** trên lượt `--smoke` (`seed = 999961`, lấy mẫu mỗi `50` tick, **mù với `trait_mass_*`**) trước khi được phép chạy bất kỳ hạt giống xác nhận nào:
 
 | Điều kiện | Định nghĩa gating trên `--smoke` (`seed = 999961`, `200.000` tick) |
 |---|---|
 | **`C1`** | `min(live.agent_count) >= 5` trên toàn bộ lượt `selected` và `scarce_mut0` (không nhánh nào tuyệt chủng). |
-| **`C2`** | Hệ số gặm đồng cỏ nửa sau (`100.001..200.000` tick) $g = (\overline{C} - \rho \cdot \Sigma r_{\max}) / (\overline{C}_{\text{nền}} - \rho \cdot \Sigma r_{\max}) \in [0.4, 0.6]$ (với $\rho = 0.0$ khi `plant_reserve = 0.0`); **cách xác định $\overline{C}_{\text{nền}}$ xem ô quyết định bên dưới**. |
+| **`C2`** | Hệ số gặm đồng cỏ nửa sau (`100.001..200.000` tick) $g = (\overline{C} - \rho \cdot \Sigma r_{\max}) / (\overline{C}_{\text{nền}} - \rho \cdot \Sigma r_{\max}) \in [0.4, 0.6]$ (với $\rho = 0.0$ khi `plant_reserve = 0.0`, $\overline{C}_{\text{nền}}$ theo `QĐ-SEL2g`); **cổng bắt buộc áp cho `selected` và `scarce_mut0` (`c2_applies_to_arms`), còn `scarce_drift` chỉ ghi nhận chẩn đoán (`c2_diagnostic_only_arms: ["scarce_drift"]`)**. |
 | **`C3`** | $\min(200\,000 / \overline{L},\; \text{births} / \overline{N}) \ge 30$ thế hệ trên `selected` và `scarce_mut0`. |
 | **`C4`** | Ở nhánh `selected` và `scarce_mut0`, tỉ lệ chết vì đói `deaths_starvation / deaths > 0.50` cùng bất biến `deaths_starvation + deaths_dehydration == deaths` (không áp cho `scarce_drift` vì `SEL2-D` không đọc 2 observable nguyên nhân chết). |
-| **`C5`** | Trong một phần tư cuối lượt (`150.001..200.000` tick), cả `births_last_q > 0` lẫn `deaths_last_q > 0` đều khác `0`. |
+| **`C5`** | Trong một phần tư cuối lượt (`150.001..200.000` tick), cả `births_last_q > 0` lẫn `deaths_last_q > 0` đều khác `0` trên `selected` và `scarce_mut0` (`c5_applies_to_arms`, `scarce_drift` chỉ kiểm sống sót qua `drift_valid`). |
 
 ### Chỗ quyết định của chủ dự án — định nghĩa tham chiếu cho `g` (`C2`)
 
@@ -183,7 +183,7 @@ ràng buộc, để thẻ `SEL2-P-freeze` khai cụ thể trước khi chạy b�
 
 Số liệu dẫn tới quyết định (giữ nguyên để kiểm lại):
 
-Phần này từng để trống để chủ dự án quyết định phương án định nghĩa $\overline{C}_{\text{nền}}$ trong công thức `C2`. Dưới đây là toàn bộ số liệu đối chiếu từ `S14` (`2026-11-19-s14-lakes16-scale.md`) và `S15` (`2026-11-19-s15-reference-check.md`, đang chờ `PR #146`) cho cấu hình ứng viên (`16` hồ, `lake_layout = 1`, `reserve = 0`, `scale = 0.63`, `200.000` tick, `seeds 1..=6`), trình bày trung lập cả ba phương án không lựa chọn thay:
+Phần này từng để trống để chủ dự án quyết định phương án định nghĩa $\overline{C}_{\text{nền}}$ trong công thức `C2`. Dưới đây là toàn bộ số liệu đối chiếu từ [Thẻ S14](2026-11-19-s14-lakes16-scale.md) và [Thẻ S15](2026-11-19-s15-reference-check.md) (`PR #146` đã hợp nhất) cho cấu hình ứng viên (`16` hồ, `lake_layout = 1`, `reserve = 0`, `scale = 0.63`, `200.000` tick, `seeds 1..=6`), trình bày trung lập cả ba phương án trước khi `QĐ-SEL2g` chọn phương án (b):
 
 1. **Phương án (a) — Đối chứng cùng seed với `prey_cap = 80, scale = 1.0`:**
    - **Tình trạng đối chứng:** Chỉ `4/6` seed đối chứng sống tới `200.000` tick; `seed 1` tuyệt chủng tại tick `8.545` và `seed 3` tuyệt chủng tại tick `20.787`.
@@ -206,7 +206,7 @@ Phần này từng để trống để chủ dự án quyết định phương �
 ### Thống kê bắt cặp & quy tắc loại cặp không toàn vẹn
 
 - **Thống kê bắt cặp (`PairedEffect`):** Tính hiệu theo từng hạt giống hoàn chỉnh (`selected - scarce_drift` cho `H1`, cùng `selected - scarce_mut0` và `scarce_drift - scarce_mut0` cho phân tích bổ trợ) trên chỉ tiêu tích phân thời gian hậu-warmup của `live.trait_mass_mean`.
-- **Tuyệt chủng & lỗi kỹ thuật:** Bất kỳ lượt nào có `live.agent_count == 0` ở bất kỳ mẫu nào hoặc ở cuối lượt đều bị coi là **tuyệt chủng**, và bất kỳ lỗi runner nào đều **loại toàn bộ cặp chứa seed đó khỏi thống kê bắt cặp** nhưng phải **ghi nhận đầy đủ (`seed`, `arm`, `tick`)** trong bảng chạy (`runs.csv`) và báo cáo tổng hợp (`effects.json` / `paired-report.json`); tuyệt đối không bỏ qua âm thầm.
+- **Tuyệt chủng & lỗi kỹ thuật:** Bất kỳ lượt nào có `live.agent_count == 0` ở bất kỳ mẫu nào hoặc ở cuối lượt đều bị coi là **tuyệt chủng**, và bất kỳ lỗi runner nào đều **loại seed đó khỏi thống kê bắt cặp theo từng đối chiếu (per-contrast exclusion: mỗi đối chiếu chỉ loại những seed mà một trong hai nhánh của riêng đối chiếu đó tuyệt chủng hoặc lỗi — ví dụ nếu chỉ `scarce_mut0` tắt ở seed $k$, `H1`/`R1`/`R2`/`S2` giữa `selected` và `scarce_drift` vẫn giữ seed $k$ trong khi `H2a`/`H2b` loại seed $k$)**, đồng thời **ghi nhận đầy đủ (`seed`, `arm`, `tick`)** trong bảng chạy (`runs.csv`) và báo cáo tổng hợp (`effects.json` / `paired-report.json`); tuyệt đối không bỏ qua âm thầm.
 
 ### Tiêu chí bác bỏ `H0` (`Materiality`)
 
@@ -264,3 +264,10 @@ Không lượt chạy `--smoke` (`999961`) hay hạt giống xác nhận (`78000
 4. ~~Tương thích danh sách observable giữa `validate_drift_pair_manifests` và `SEL2-D`~~ **Đã triển khai & kiểm chứng (`SEL2-P-impl`):** 3 manifest xác nhận dùng chung danh sách `25` observable (loại `live.deaths_starvation` và `live.deaths_dehydration`), manifest smoke tách riêng 8 observable (`selected`/`scarce_mut0`) và 6 observable (`scarce_drift`), cổng `C4` chỉ áp cho `selected` và `scarce_mut0`; [`prereg_sel2p_manifest_tests.rs`](../../../src-tauri/tests/prereg_sel2p_manifest_tests.rs) chứng minh cả 7 manifest đều vượt `ensure_observables_supported`.
 5. **Chốt có hay không bổ sung observable hiệp phương sai Robertson–Price trực tiếp:** Quyết định xem `SEL2-P-freeze` chỉ dùng ước lượng qua cặp đối chứng `selected - scarce_drift` + `live.trait_mass_var`, hay bổ sung thêm observable ghi trực tiếp hiệp phương sai $\operatorname{Cov}(w, z_g)$ trên từng sự kiện sinh/tử.
 6. **Chủ dự án chấp thuận bản đăng ký & mở thẻ đóng băng (`SEL2-P-freeze`):** Nâng `status` trong tài liệu này và `sel2p-preregistration.json` từ `proposed`/`PROPOSED` lên `accepted`/`FROZEN`, rồi chạy lượt `--smoke` thật (`999961`, `200.000` tick) để ghi `execution-lock.json` trước khi chạy `20` cặp xác nhận.
+
+### Công bố lượt chạy kiểm tra đường ống tiền-đóng-băng (2.000 tick, `status: proposed`)
+
+Trước khi đóng băng bản thảo này, trong quá trình nghiệm thu bộ công cụ `SEL2-P-impl` / `SEL2-P-fix` (khi tài liệu vẫn giữ `status: proposed`), hệ thống đã chạy một lượt **`--pipeline-check` ngắn `2.000` tick** trên các hạt giống tách biệt hoàn toàn (`999801..=999806` cho nền tham chiếu giả lập, `999811` cho pha smoke giả lập, và `999821..=999822` cho pha ghép cặp giả lập):
+- **Mục đích & kết quả cổng:** chỉ kiểm thông mạch đọc/ghi CSV, JSON và mã kiểm chứng (`C3 = false`, không thể vượt ngưỡng `>= 30` thế hệ ở `2.000` tick; driver dừng cứng `exit 3`).
+- **Công bố minh bạch chỉ số trung gian:** các giá trị chênh lệch kỹ thuật `H1` (`live.trait_mass_mean@post_warmup_int`) và `S2` (`live.mean_energy_integral@post_warmup_mean`) từ lượt chạy kiểm tra đường ống `2.000` tick được ghi nhận đầy đủ trong [Thẻ SEL2-P-impl](2026-11-19-sel2-p-impl.md) (§2) để tránh bất kỳ sự nhìn trộm ngầm nào trước khi đóng băng (không mang giá trị suy luận khoa học).
+- **Xác nhận không rò rỉ pha chính thức:** **`0` lượt `--smoke` thật (`seed = 999961`, `200.000` tick)** và **`0` hạt giống xác nhận (`780001..799001`)** đã được chạy; mọi quyết định đóng băng vẫn chờ chủ dự án phê duyệt ở thẻ `SEL2-P-freeze`.
