@@ -42,6 +42,7 @@ Lệnh không có doc comment trong mã được mô tả bằng kiểu trả v�
 | `toggle_simulation` | — | `bool` | Bật/tắt vòng mô phỏng |
 | `save_simulation_state` | `filePath: string` | `bool` | Một **tên** save, không phải đường dẫn — xem `commands/save_paths.rs` |
 | `load_simulation_state` | `filePath: string` | `bool` | Như trên |
+| `start_from_manifest` | `manifestJson: string` | `string` | (W2-lite, prototype, to be replaced) Khởi động mô phỏng ở chế độ **viewer** từ nội dung JSON của manifest thí nghiệm (kiểm preflight giống `LiveExperimentAdapter`, từ chối năng lượng ngoại lai và mọi cấu hình adapter từ chối; luồng nền của app vẫn chạy nên quỹ đạo có thể khác lượt headless, không tuyên bố tái lập thí nghiệm). Trả tên manifest |
 | `list_legacy_saves` | — | `LegacyImportListing` | Chỉ đọc thư mục app sở hữu, trả tên |
 | `import_legacy_save` | `legacyName: string`, `saveAs: string` | `string` | Nhập save có từ trước khi giới hạn đường dẫn, **chỉ đọc**, vào thư mục save của app |
 | `get_test_rabbit_state` | — | `tauri::ipc::Response` | Phản hồi thô, không qua JSON |

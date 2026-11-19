@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import PixiViewport from "./PixiViewport";
 import { EcosystemPanel } from "./components/EcosystemPanel";
+import { ExperimentWorldControl } from "./components/ExperimentWorldControl";
 import { LegacyImportPanel } from "./components/LegacyImportPanel";
 import { loadOrGenerateWorld } from "./components/Landscape/utils/worldCache";
 import { SHARED_WORLD_SEED, SHARED_WORLD_OPTS } from "./utils/sharedWorld";
@@ -664,6 +665,11 @@ export function App() {
             X-Z (Mặt trên)
           </button>
         </div>
+
+        <ExperimentWorldControl
+          running={status.running}
+          onStarted={() => setStatus((prev) => ({ ...prev, running: true }))}
+        />
       </div>
 
       {showRabbitTest ? (
