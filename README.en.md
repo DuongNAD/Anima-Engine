@@ -1,251 +1,276 @@
-*English · [Tiếng Việt](README.md)*
+<p align="center">
+  <img src=".github/assets/anima-logo.svg" width="168" alt="Anima Engine logo: a segmented creature with one eye curls around a small archipelago in a dark sea">
+</p>
 
-# Anima Engine
+<h1 align="center">Anima Engine</h1>
 
-A living world simulated in real time — terrain, water, climate, soil, plants, animals, and the
-knock-on effects between those systems — inside a **Tauri v2** desktop app. The simulation core is
-**Rust (Bevy ECS + Burn)**; the presentation layer is **React + TypeScript**.
+<p align="center">
+  <b>An artificial evolution laboratory.</b><br>
+  Creatures whose bodies and brains come from their genes live on a world with terrain, climate and a closed energy
+  ledger, and every experiment is registered in advance and replays to the same result from the same seed.
+</p>
 
-The current focus is one verifiable vertical slice: **watershed → grassland → rabbit → wolf**, with
-versioned world state, reproducible results, and evidence attached to each change.
+<p align="center"><i><a href="README.md">Tiếng Việt</a> · English</i></p>
 
-## Where to start
+---
 
-| If you want to | Read |
-|---|---|
-| Know where the project stands and what comes next | [Project state](docs/planning/STATE_OF_THE_PROJECT.md): measurements in §1, the stage progress board in §3.00 (Vietnamese) |
-| Understand the product and current architecture | [PROJECT.md](PROJECT.md) |
-| Understand the world vision | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
-| See the long-range simulation roadmap | [WORLD_SIMULATION_PLAN.md](WORLD_SIMULATION_PLAN.md) |
-| See the rules that must not be broken | [SIMULATION_RULES.md](SIMULATION_RULES.md) |
-| Implement environment-adapted creatures | [Creature Development Contract](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
-| Touch agent brains, brain genomes, or the action space | [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
-| Run an evolution experiment under different world laws | [Evolution Experiment Contract](docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
-| Contribute code | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Browse all documentation | [Documentation hub](docs/README.md) |
+## What this is
 
-Most documentation is written in Vietnamese. This file is the English entry point; the tables below
-name the code symbols and file paths, which are the parts that matter for reading the source.
+Anima Engine is a **Tauri v2** desktop app:
+- **Simulation core:** **Rust**, built on **Bevy ECS** and **Burn**, running in the background at 60 ticks per second.
+- **Interface:** **React + TypeScript**, with a 3D map built on three.js / React Three Fiber.
+
+It does two things, and the second matters more than the first:
+
+1. **It simulates a living world.**
+   - Terrain, rivers, lakes, climate and plants make up the environment.
+   - The creatures in it have multi-segment bodies grown from their genome and walk with gaits driven by a central
+     pattern generator (CPG). They eat, drink, hunt and breed.
+   - Energy moves in a closed loop: plants → herbivores → detritus → plants.
+2. **It asks evolutionary questions of that world and answers them with evidence.**
+   - Each experiment is a versioned manifest that runs headless.
+   - Experiments are registered before any data exists and have negative controls. Negative results are published
+     too.
+
+**The flagship question is the island rule:** when a population is isolated on an island, how does body size change,
+and does food or predation drive the change? The design is in the
+[island evolution observatory proposal](docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md).
+Later, one realm at a time, real ecosystems in water, in the sky and underground will be added.
+
+## What you see when you open the app
+
+- **One shared world.** The map is a supercontinent generated from a seed at 2048². It has sea, coasts, rivers,
+  lakes, waterfalls, desert, savanna, rainforest, temperate forest, taiga, swamp, snowy mountains and glaciers. The
+  simulation runs on a 256² downsample of the same world. A test stops the world from silently losing an
+  environment.
+- **Creatures with continuous bodies and eyes at the front.** Each one is shaped by the segments, joints and sizes in
+  its own genome, so no two look alike. They walk on land, never on the sea.
+- **The map shows the world being simulated.** The lakes, trees and food on the map come from the simulation. Fish,
+  birds, background animals and caves are decoration. The app labels them as decoration and has a button to hide
+  them.
+- **A registered experiment's world opens from its manifest.** This is a viewer prototype for now.
+
+## What makes it different
+
+- **No painting.** Anything that is not simulated is labelled as decoration. The documentation keeps *what is in the
+  code* apart from *what has been measured*, and every authoritative number lives in one place.
+- **A closed energy budget.** Energy (EU) is never created or lost. Every cost goes through a single place, and tests
+  check that the total does not drift.
+- **Preregistered experiments.** Decision thresholds, seed counts, the rules for excluding broken runs, and the
+  controls are all locked before the run. Smoke runs are blind: they never read the outcome measures. A failed gate
+  is a result. It is never re-run and its parameters are never tuned.
+- **Reproducible.** The same seed, commit and operating system give the same checksum. Trajectories differ across
+  operating systems, so tests compare two runs instead of pinning an absolute number. One exception is being fixed
+  (card F051): a headless run still takes its terrain from the app's world file if the machine has one.
+- **No Lamarck.** What an individual learns in its lifetime is never written back into its genome.
+
+## Current boundaries (2026-11-19)
+
+The table in the next section lists *what is in the code*. It does not say *what has been measured or proven*.
+Measured status, with commands, dates and configuration, lives in one place only:
+[`docs/planning/STATE_OF_THE_PROJECT.md` §1](docs/planning/STATE_OF_THE_PROJECT.md#1-bảng-bằng-chứng-có-thẩm-quyền).
+This README carries no measurements.
+
+- **There is no strong scientific result yet.**
+  - The experiment infrastructure exists.
+  - Experiment E2 gave a null result because of a floor effect.
+  - The E-SEL1 preregistration was closed before it ran.
+  - The status of SEL2-P (the first preregistered experiment on the live world) and of E3 is in
+    [STATE §3](docs/planning/STATE_OF_THE_PROJECT.md).
+- **The live-world experiment adapter is verified on the headless path only.** The app's "open an experiment world"
+  button is a viewer prototype.
+- **Every map FPS figure so far was measured in a browser** (the renderer under Vite, with no simulation load), not
+  in the desktop app. The desktop app has been run and its tick rate measured once, on 2026-07-27, as a debug build
+  with 10 agents. Nobody has run a release build of the app with the current map yet.
+- **Mortality, ecological fitness, continuous reproduction and locomotion steering are in the code but off by
+  default.** A default world still has no death, and fitness is scored by distance. The land-only walking rule is on
+  in the app; in experiments the manifest key `live.land_mask` turns it on.
+- **Distribution is still blocked** by one unresolved third-party licence text:
+  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
 
 ## What is in the code
 
-The table below lists **what exists in the code**, not what has been measured or proven. Measured
-status lives in [`docs/planning/STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
-
-Five boundaries worth keeping in mind, as of **2026-11-17** (each comes from that document, §1.d, §2
-and §3.00; this README carries no measurements):
-
-- The experiment adapter for the live world is **headless adapter verified**, not
-  "experiment-ready". No experiment has been run inside the desktop app.
-- The app has been run and its tick measured once, on 2026-07-27: a **debug** build with 10 agents.
-  There is no **release** run and no measurement at 1,000 agents.
-- The experiment infrastructure exists; the project **does not yet have a powered scientific
-  result**. Experiment E2 was null because of a floor effect, and the E-SEL1 preregistration was
-  closed before any experiment ran.
-- Mortality, ecological fitness, continuous reproduction and locomotion **are in the code but off
-  by default**, and are verified on the headless path only. A default world still has no death and
-  scores fitness by distance.
-- One license text (`hexf-parse` 0.2.1) is **unresolved** and blocks a release; see
-  [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md).
-
 | Layer | Contents |
 |---|---|
-| **World** | Multi-octave noise terrain + hydrology (rivers, spillways, delta, endorheic lakes); biome classification; dynamic climate/water/soil fields with conserved water and nutrient budgets |
-| **Exchange boundary** | `WorldArtifact`: versioned container with an FNV-1a checksum, generated **byte-identical** by Rust and TypeScript; 256² simulated world |
-| **Creatures** | `MorphologyGenotype` → multi-segment phenotype, joint constraints, CPG oscillators driving gait; metabolism follows MTE (Kleiber + Arrhenius) instead of a linear mass term |
-| **Brains** | A shared actor-critic (Burn — `burn-wgpu` on GPU or `burn-ndarray` on CPU) is the default; **per-agent evolved brains** (`BrainGenotype`) and lifetime learning are opt-in behind flags ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
-| **Social behaviour** | Raycasting through a spatial hash, a 1D pheromone grid with diffusion/decay, predator–prey dynamics, combat |
-| **Ecology** | A **closed** energy ledger (EU): plants → herbivory → detritus → plants; Holling II/III functional responses; ~30% Lindeman transfer; logistic NPP regrowth per biome; seasonal cycle. **Opt-in, off by default:** death by starvation and thirst (`ANIMA_MORTALITY`, manifest key `live.mortality`), continuous reproduction, a steering drive for locomotion, and the predator–prey ecology keys ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
-| **Evolution** | MAP-Elites over an **ecological niche** grid (body mass × the share of energy that came from predation, `trophic_ratio`); generational replacement; the default fitness is distance travelled, and an **ecological fitness** rule is opt-in (`ANIMA_FITNESS`, key `live.ecological_fitness`); lineage persisted to Neo4j with an in-memory fallback, with Newick export and a most-recent-common-ancestor (MRCA) query |
-| **Experiments** | Experiment manifest + headless runner, checkpoint forking, intervention queue + causal ledger, generic exotic energy ("mana") **off by default** |
-| **Interface** | 2D PixiJS 8 viewport; 3D landscape on three + R3F (`landscape.html`) with a day–night cycle, weather, instanced vegetation, first-person explore mode; ecosystem / evolution / lineage / chronicle panels |
-| **Infrastructure** | A 60 FPS background tick loop, **zero heap allocation on the hot path**, seeded RNG split per stream, versioned snapshots usable as checkpoints (draw position restored), deterministic mode for replay |
+| **World** | A TypeScript world generator driven by one seed: layered noise, erosion, lakes by priority flood, rivers, waterfalls at knickpoints, cave mouths, climate from latitude and altitude, 22 biomes. The world reaches the simulation as a versioned, checksummed `WorldArtifact`. Climate, water and soil fields change over time under conserved water and nutrient budgets |
+| **Creatures** | `MorphologyGenotype` → a multi-segment phenotype with joint constraints and a CPG-driven gait. Metabolism follows MTE (Kleiber + Arrhenius). The 3D map draws continuous bodies with eyes and distance-based level of detail. Walking on land is checked against the biome |
+| **Brains** | By default, one shared actor-critic (Burn). The CPU path, `burn-flex`, is the deterministic reference; the GPU path, `burn-wgpu`, runs only on request. Optional: an **evolved brain per individual** and lifetime learning ([ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md)) |
+| **Behaviour** | Raycasts through a spatial hash, a pheromone grid with diffusion and decay, predator–prey dynamics, combat |
+| **Ecology** | A **closed** energy ledger (EU): plants → herbivores → detritus → plants. Holling type II/III functional responses. Lindeman transfer of about 30%. Logistic primary-production regrowth per biome. Seasons. Mortality, continuous reproduction, locomotion and the ecology keys are optional and off by default ([ADR-0005](docs/decisions/ADR-0005-live-population-turnover.md), [ADR-0006](docs/decisions/ADR-0006-locomotion-actuation.md), [ADR-0007](docs/decisions/ADR-0007-live-ecology-sustainability.md)) |
+| **Evolution** | MAP-Elites on **ecological niche** axes (body mass × share of energy from predation). Generational replacement. Lineage stored in Neo4j, or in memory without it. Newick export and most-recent-common-ancestor queries |
+| **Experiments** | Versioned manifests and a headless runner. Forks from checkpoints. An intervention queue with a causal ledger. Exotic energy ("mana", off by default). An adapter for the live Bevy world. Runners for the preregistered experiments (E-SEL1, SEL2-P, E3) |
+| **Interface** | 3D map (`landscape.html`): day and night, weather, PBR terrain materials (CC0), instanced vegetation, several camera modes, four graphics tiers. A PixiJS 8 2D viewport. Ecosystem, evolution, lineage and chronicle panels |
+| **Infrastructure** | A 60-ticks-per-second background loop with **no heap allocation on the tick path**. Seeded RNG split into separate streams. Versioned snapshots used as checkpoints. A deterministic mode for replay |
 
-## Architecture
+## Where to start
+
+| Need | Document |
+|---|---|
+| Where the project is and what comes next | [Project state](docs/planning/STATE_OF_THE_PROJECT.md): measurements in §1, progress board in §3.00 |
+| The flagship question and its roadmap | [Island evolution observatory](docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md) |
+| Product and architecture | [PROJECT.md](PROJECT.md) |
+| The world vision | [WORLD_DESIGN.md](WORLD_DESIGN.md) |
+| Simulation rules that must not break | [SIMULATION_RULES.md](SIMULATION_RULES.md) |
+| Proven bugs | [FINDINGS.md](FINDINGS.md) |
+| Changing genes, bodies or creatures | [Creature Development Contract](docs/reference/CREATURE_DEVELOPMENT_CONTRACT.md) |
+| Changing brains or the action space | [ADR-0003](docs/decisions/ADR-0003-evolved-per-agent-brains.md) |
+| Running experiments under different world laws | [Evolution Experiment Contract](docs/reference/EVOLUTION_EXPERIMENT_CONTRACT.md) |
+| A first trial run with outside users | [First trial run](docs/how-to/OWNER_TRIAL_RUN.md) |
+| Working as one of the team's agents | [AGENT_WORKFLOW.md](docs/how-to/AGENT_WORKFLOW.md) |
+| All documentation | [Documentation hub](docs/README.md) |
+
+## Architecture at a glance
 
 ```mermaid
 flowchart LR
-    I["Scenario / user intervention"] --> R["Rust simulation core"]
-    R --> A["Versioned WorldArtifact"]
-    A --> U["React + PixiJS + Three.js"]
-    R --> E["Causal events and telemetry"]
-    E --> U
-    A --> O["Offline scientific validation"]
-    O --> G["Golden fixtures / error thresholds"]
-    G --> R
+    S["World seed"] --> W["World generator (TypeScript)"]
+    W --> A["Versioned, checksummed WorldArtifact"]
+    A --> R["Rust simulation core (Bevy ECS + Burn)"]
+    M["Experiment manifest"] --> R
+    R --> T["Ticks, causal events, telemetry"]
+    T --> U["React + three.js + PixiJS"]
+    R --> X["Headless runner → artifacts + checksums"]
+    X --> V["Verifiers and preregistration"]
 ```
 
-- Rust is the source of truth for simulation state.
-- TypeScript/Three.js renders and interacts; it does not invent ecological state.
-- `WorldArtifact` is the versioned exchange boundary between the layers.
-- Open-source Python models are used offline for calibration and validation only; they never become
-  runtime dependencies of the desktop app.
+- Rust is the source of truth for simulation state. The interface only displays it and never invents ecological
+  state.
+- `WorldArtifact` is the versioned boundary between the two.
+- Open-source Python tools are used offline only, for calibration and validation. The desktop app does not depend on
+  them at run time.
 
 ## Repository layout
 
 ```
-src/                      React + TypeScript (Vite, 2 entries: index.html, landscape.html)
-  components/             control panels, lineage graph, ecosystem panels
-  components/Landscape/   3D landscape, frontend worldgen, world cache, explore mode
-  PixiViewport.tsx        2D WebGL/WebGPU viewport (falls back to Canvas 2D under Vitest)
+src/                      React + TypeScript (Vite, two entries: index.html, landscape.html)
+  components/Landscape/   3D map, world generator, world cache, materials, creatures
+  utils/sharedWorld.ts    the one identity of the shared world
 src-tauri/                Rust crate `anima-engine` (lib `anima_engine_lib`)
-  src/core/               ECS + tick loop, terrain, ecology, energy ledger, dynamic fields,
-                          world artifact, snapshots, multi-rate clock, interventions, causality,
-                          experiments, exotic energy, networking systems
-  src/ai/                 Burn model, CPG, HRRL, pheromones
-  src/evolution/          MAP-Elites, genotype/mutation/crossover, brain genome, lineage, meta-AI
-  src/physics/            dynamics, spatial hash
-  src/commands/           Tauri IPC command surface
-  crates/anima-domain/    world laws, independent of any engine adapter
-tests/                    separate npm package: Vitest (frontend/) + Playwright (e2e/)
+  src/core/               ECS, tick loop, terrain, ecology, energy ledger, snapshots, experiments
+  src/ai/                 Burn models, CPG, pheromones
+  src/evolution/          MAP-Elites, genotype, mutation, crossover, brain genes, lineage
+  src/commands/           the Tauri IPC command surface
+  examples/               runners for the preregistered experiments
+  crates/anima-domain/    the world laws
+tests/                    separate npm package: Vitest (frontend/) and Playwright (e2e/)
 docs/                     Diátaxis documentation (tutorial / how-to / reference / explanation)
-scripts/                  benchmarks, docs link check, manifest and fixture generation
+scripts/                  gates, manifest and map-evidence generators, benchmarks
+artifacts/                pinned, hashed artifacts: the 256² world, map evidence, experiments
 ```
 
 ## Running it
 
-Requirements: Node.js + npm, a Rust toolchain (edition 2021), and the Tauri v2 build prerequisites
-for Windows (WebView2, MSVC build tools).
+You need Node.js and npm, the Rust toolchain (the version pinned in `rust-toolchain.toml`), and your operating
+system's Tauri v2 build prerequisites (on Windows: WebView2 and the MSVC build tools).
+
+For the interface, the 3D map and the world generator only, which is light and enough for most work:
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-`npm run dev` starts Vite on fixed port **5173** — enough to work on the UI, the 3D landscape and
-frontend worldgen.
+`npm run dev` serves Vite on the fixed port **5173**.
 
-To run the full desktop app with the backend:
+For the full desktop app with its backend:
 
 ```bash
 npm run tauri:dev
 ```
 
-Use `npm run tauri:dev` / `npm run tauri:build`, **not** bare `tauri dev` / `tauri build`. The npm
-scripts pass `--features desktop`, and `tauri.conf.json` has no field for Cargo features, so the
-bare commands ship a `default = []` binary: no Neo4j lineage, no cross-shard migration, and the CPU
-learner. All three have working fallbacks, so nothing fails loudly.
+Use `npm run tauri:dev` and `npm run tauri:build`, **not** bare `tauri dev` or `tauri build`. The npm scripts pass
+`--features desktop`, and `tauri.conf.json` has no field for Cargo features. A bare command therefore builds a binary
+with no Neo4j lineage, no cross-shard migration and a CPU learner. All three have fallbacks, so nothing reports an
+error.
 
-> ⚠️ Building and running the full Bevy/Tauri backend is heavy and **has crashed the current
-> development machine**. To look at 3D models or the landscape only, use `npm run dev`. (The
-> `rabbit-standalone/` page an older version of this note suggested was deleted at `fddbdee`.)
+> ⚠️ Building and running the full Bevy/Tauri backend is heavy and has frozen the development machine before. When you
+> only need to look at the map or the creatures, use `npm run dev`.
+
+The default founding population is 10. Set `ANIMA_FOUNDING_POPULATION` (at most 10,000) for a fuller world.
 
 ## Verification
 
 Frontend:
 
 ```bash
+npm run lint
 npm run test
 npm run test:frontend
 npm run test:e2e
-npm run lint
 npm run build
+npm run check:docs
 ```
 
-Backend:
+Backend (run in `src-tauri/`):
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml --features desktop -j 2
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features desktop
-cargo deny --manifest-path src-tauri/Cargo.toml check
+cargo test --features desktop
+cargo clippy --all-targets --features desktop -- -D warnings
+cargo audit
 ```
 
-`cargo audit` (advisories) must be run **from inside `src-tauri/`**, not from the root: it looks for
-`.cargo/audit.toml` relative to the current directory, so running it from the root skips the two
-verified ignores recorded there and reports a false failure. `cargo deny` finds `deny.toml` next to
-the manifest, so it works from anywhere.
+Three constraints that are not optional:
 
-Playwright E2E starts the Vite dev server itself (`webServer` in
-`tests/e2e/playwright.config.ts`); no release binary is required.
+- **`--features desktop` is required.** Without it Cargo does not schedule the test files that need the
+  `networking` or `ml-wgpu` features, and the migration, cross-shard and GPU-fallback tests silently do not run.
+  `node scripts/check_test_targets.mjs <output> --profile desktop` checks this. Capture the output into one file,
+  with both streams in write order.
+- **Run one `cargo test` process per machine at a time.** Some suites replace the global allocator to count
+  allocations, or read and write environment variables.
+- **Run `cargo audit` from inside `src-tauri/`**, because it looks for `.cargo/audit.toml` in the current directory.
 
-Three constraints below are not stylistic preferences:
-
-- `--features desktop`: seven test files carry a crate-level `#![cfg(feature = "networking")]` or
-  `"ml-wgpu"` **and** a matching `[[test]] required-features` entry in `Cargo.toml`, so without the
-  flag Cargo does **not schedule** them — 1,877 lines of migration / cross-shard / GPU-fallback
-  coverage do not run and nothing says so. (They used to compile to empty binaries that reported
-  `running 0 tests` and exited 0.) `tests/feature_gated_targets_tests.rs` keeps the two halves in
-  sync. To check: capture the output and run
-  `node scripts/check_test_targets.mjs <file> --profile desktop`.
-- `-j 2` (on Windows): a fully parallel build exhausts the paging file and cargo fails mid-way with
-  `LNK1104` / `os error 1455`. This was measured on the earlier Windows development machine; nobody
-  has measured macOS, so keep `-j 2` until someone does.
-- Run **one `cargo test` process at a time**: several suites swap the global allocator to count
-  allocations, or read and write environment variables. They lock themselves per file with a mutex,
-  but two concurrent processes still contend over the `.exe` (`os error 32`).
-
-Performance baseline:
-
-```bash
-node scripts/bench_baseline.mjs
-```
+Playwright E2E starts Vite itself and needs no release binary. CI (`.github/workflows/ci.yml`) runs the gates above.
+Both `main` and `feat/ecological-selection` are protected, so every change lands through a pull request with two
+green CI jobs.
 
 ## Runtime flags
 
-The backend loads environment variables through `dotenvy` from `.env` (gitignored). The default is
-the legacy path: with no flag set, the simulation behaves exactly as it did before the features
-below existed.
+The backend loads environment variables from `.env` (gitignored) through `dotenvy`. With no flag set, the simulation
+takes its original default path.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `ANIMA_SIM_SEED` | world seed | Overrides the run's random seed (for headless sweeps) |
-| `ANIMA_EVOLVED_BRAINS` | off | Each agent gets its own evolved brain instead of one shared network |
-| `ANIMA_LIFETIME_LEARNING` | off | Within-lifetime learning; only effective when the flag above is on |
-| `ANIMA_DETERMINISTIC` | off | Deterministic mode for replay/checkpoints |
-| `ANIMA_USE_GPU` | on | `burn-wgpu`; set `0` to fall back to the `ndarray` CPU backend |
-| `ANIMA_WORLD_ARTIFACT` | temp dir | Path to the shared World Artifact |
+| `ANIMA_FOUNDING_POPULATION` | 10 | Number of founders, at most 10,000 |
+| `ANIMA_SIM_SEED` | the world's seed | Overrides the run's seed |
+| `ANIMA_EVOLVED_BRAINS` | off | Each individual gets its own evolved brain instead of one shared network |
+| `ANIMA_LIFETIME_LEARNING` | off | Lifetime learning. Takes effect only with the flag above |
+| `ANIMA_MORTALITY` | off | Death from starvation and thirst |
+| `ANIMA_FITNESS` | distance | Selects ecological fitness instead of distance |
+| `ANIMA_DETERMINISTIC` | off | Deterministic mode for replay and checkpoints |
+| `ANIMA_USE_GPU` | off | Turns on the `burn-wgpu` GPU learner. The default is CPU `burn-flex`, the deterministic reference |
+| `ANIMA_WORLD_ARTIFACT` | temp dir | Path of the World Artifact the app shares between interface and backend |
 | `ANIMA_CACHE_DIR` | temp dir | Where the backend caches generated worlds |
-| `GEMINI_API_KEY` | empty | Gemini REST for the meta-AI; absent → mock |
-| `GEMINI_WEBSESSION_ENDPOINT` | empty | Web-session endpoint for `GeminiWebSessionClient` |
-| Neo4j credentials | empty | Lineage; absent → in-memory offline mode |
+| `GEMINI_API_KEY` | empty | Gemini REST for the meta-AI. Empty means a mock |
+| Neo4j credentials | empty | Lineage. Empty means in memory |
+
+In experiments the manifest declares the matching values, such as `live.mortality` or `live.land_mask`. A manifest
+never reads environment variables.
 
 ## IPC contract
 
-The frontend talks to the Rust core with Tauri commands and events — for example
-`get_simulation_status`, `toggle_simulation`, `get_map_elites_grid`, `get_pheromone_grid`,
-`get_lineage_graph`, `get_ecosystem_state`, `save_simulation_state` / `load_simulation_state`; and
-the events `simulation-tick`, `map-elites-update`, `pheromone-update`, `chronicle-event`,
-`migration-event`.
+The interface talks to the Rust core through Tauri commands and events, for example `get_simulation_status`,
+`toggle_simulation`, `start_from_manifest`, `get_environmental_elements`, `save_simulation_state` /
+`load_simulation_state`, and the `simulation-tick` event. The full list with payloads is in
+[`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md). Update it in the same change whenever you change
+the IPC surface: `npm run check:docs` fails when the list and the code disagree.
 
-The full list with payloads is in [`docs/reference/IPC_CONTRACT.md`](docs/reference/IPC_CONTRACT.md).
-Read it before changing the IPC surface, and update it in the same change: `npm run check:docs` fails
-when that list and the code disagree.
+Save and load take a **save name**, not a path. The name resolves inside the app's data directory
+(`<app_data_dir>/saves/<name>.json`) and may contain only `[A-Za-z0-9._-]`. To use an old save from outside that
+directory, copy it in and load it by name ([`commands/save_paths.rs`](src-tauri/src/commands/save_paths.rs) explains
+why).
 
 ## Rules for changes
 
-1. A change to simulation law updates `SIMULATION_RULES.md` and its tests.
-2. A change to an exchange format is versioned, with a migration and a Rust/TypeScript fixture.
-3. The tick hot path (physics, CPG, collision) **allocates nothing on the heap** — tests assert
-   `allocs == 0`.
-4. EU is a closed system; a new energy charge goes through `total_cost`, never a separate deduction.
-5. An architectural or large dependency decision gets an ADR.
-6. A new open-source dependency passes the license check, a benchmark and a documented rollback path.
-7. Do not claim map quality without passing the mandatory validation gates in `AGENTS.md`.
+1. A change to a simulation law updates `SIMULATION_RULES.md` and the matching tests.
+2. A change to an exchange format comes with a version, a migration, and fixtures for both Rust and TypeScript.
+3. The tick path (physics, CPG, collision) **must not allocate on the heap**. Tests assert `allocs == 0`.
+4. EU energy is a closed system: every new cost goes through `total_cost`, never a separate deduction.
+5. An architectural decision or a major dependency needs an ADR.
+6. Open-source dependencies and assets pass a licence check. Assets come only from ambientCG and Poly Haven (CC0).
+7. Never pin an absolute world checksum in a test, because it differs across operating systems. Compare runs instead.
 
-Full text in the [documentation policy](docs/governance/DOCUMENTATION_POLICY.md) and the
+The full rules are in the [documentation policy](docs/governance/DOCUMENTATION_POLICY.md) and the
 [open-source policy](docs/governance/OPEN_SOURCE_POLICY.md).
-
-## Status
-
-- **Phases 0–7** (foundation → morphology → neural control + MAP-Elites → social → distribution and
-  meta-AI → GPU + PixiJS → landscape → ecosystem dynamics): done. Architecture is in [PROJECT.md](PROJECT.md); measured status is in
-  [`STATE_OF_THE_PROJECT.md`](docs/planning/STATE_OF_THE_PROJECT.md).
-- **Simulation foundation M0–M3** (unit/conservation contracts, checksummed World Artifact,
-  multi-rate clock + interventions + causal ledger, dynamic climate/water/soil fields): done in the
-  headless core.
-- **Evolution lab AE1–AE3** (manifest/runner, exotic energy, energy pathway + selection): done and
-  **off by default**; [ADR-0002](docs/decisions/ADR-0002-world-laws-and-exotic-energy.md) was
-  accepted on 2026-11-17 for the headless slice only; the live world, persistence and the UI remain targets.
-- **ADR-0003** (per-agent brains + action space): accepted and implemented behind flags.
-- **Ecology wired into selection** (mortality, ecological fitness, a niche axis independent of
-  fitness), **population turnover**, **locomotion** and **predator–prey ecology**: in the code, off by
-  default, verified on the headless path. ADR-0005, 0006 and 0007 are `accepted`.
-- **Branches:** the trunk is `feat/ecological-selection`; `main` is fast-forwarded onto it at
-  milestones. Both are protected, so every change lands through a pull request with both CI jobs green.
-- Open work and its priority order:
-  [`STATE_OF_THE_PROJECT.md` §3](docs/planning/STATE_OF_THE_PROJECT.md) and the
-  [planning index](docs/planning/README.md). [TODO.md](TODO.md) is a journal of work done, not a
-  backlog.
 
 ## Contributing
 
@@ -262,7 +287,8 @@ Anima Engine is **open source, dual licensed** — take whichever you prefer.
 | Scope | License |
 |---|---|
 | **Source code** (`src/`, `src-tauri/`, `scripts/`, `tests/`) | [MIT](LICENSE-MIT) **OR** [Apache-2.0](LICENSE-APACHE) — `MIT OR Apache-2.0` |
-| **Documentation and assets** (`docs/`, `public/`, `src-tauri/icons/`, preview images at the root) | same dual license |
+| **Documentation and assets** (`docs/`, `public/`, `src-tauri/icons/`, `.github/assets/` including the logo, preview images at the root) | same dual license |
+| **Third-party assets** (textures and models in `public/assets/world/`) | keep their original licence (CC0), sources recorded in [`SOURCES.json`](public/assets/world/SOURCES.json) |
 | **The `.anmw` format** (World Artifact) | **open format** — see below |
 
 This is the Rust ecosystem's de-facto default. Why dual rather than Apache-2.0 alone: Apache-2.0 is
