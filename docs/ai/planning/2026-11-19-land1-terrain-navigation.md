@@ -53,3 +53,10 @@ last_reviewed: 2026-11-19
     - `schedule_ambiguity_tests`: `6 passed; 0 failed` (`0.15s`), `schedule_total_order_tests`: `4 passed; 0 failed` (`128.31s`).
     - `emit_zero_alloc_tests`: `1/1` (`0.03s`), `locomotion_steering_zero_alloc_tests`: `2/2` (`0.23s`).
     - `e2_seam_tests`: `9/9` (`0.22s`), `eco_card_b_tests`: `12/12` (`68.31s`), `lake_layout_tests`: `6/6` (`472.84s`), `persistence_tests`: `2/2` (`1.11s`), `f047_restore_divergence_tests`: `5/5` (`114.69s`).
+
+## Follow-up (LAND1-T)
+
+- **N4:** In the desktop app (`SimulationEngine::start`), founders are drawn over walkable cells when `TerrainNavigation` is enabled (`64` tries with `>= 4.0` spacing), so the declared `Line`/`Grid` layout (`ANIMA_FOUNDING_POPULATION`) is not used when the policy is on (founder count is still honoured).
+- **N6:** `SpawnGenotypeCommand`, `RehydrateCommand`, and `SpawnMigrationCommand` are not gated on walkability; a root they place at sea is snapped onto walkable land on the next tick by `terrain_navigation_system`.
+- **N7:** With `TerrainNavigation { enabled: true }` and no `TerrainMap` resource, `spawn_food_system` and `seed_dropping_system` skip spawns while `terrain_navigation_system` leaves agents free, which is unreachable today because `init_world` always inserts a `TerrainMap`.
+- **N1 & M4 mutation result:** Locally re-applying the M4 mutation (bypassing the `TerrainNavigation` gate at `src-tauri/src/core/terrain_navigation.rs:212-214`, then cleanly restored) leaves all 11 prior `land_mask_tests` green while `terrain_navigation_absent_and_disabled_leave_sea_agent_on_pure_physics` fails immediately (`Ocean direct tick 1: absent TerrainNavigation mutated sea body`); inside the repo, test `(a)` (`absent_and_zero_match_at_every_sampled_tick`) proves `absent == 0`, while `absent == trunk` rests on the recorded cross-build parity run in `verdicts/LAND1_968f4fc9.md` (`63/63` sampled ticks identical across three key-absent worlds).
