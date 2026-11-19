@@ -100,14 +100,20 @@ const SMOKE_ALLOWED_DRIFT: [&str; 6] = [
     LIFESPAN_OBSERVABLE,
 ];
 
-const C1_MIN_AGENTS: f64 = 5.0;
-const C2_G_LOW: f64 = 0.4;
-const C2_G_HIGH: f64 = 0.6;
-const C3_MIN_GENERATIONS: f64 = 30.0;
-const C4_MIN_STARVATION_SHARE: f64 = 0.50;
+pub const C1_MIN_AGENTS: f64 = 5.0;
+pub const C2_G_LOW: f64 = 0.4;
+pub const C2_G_HIGH: f64 = 0.6;
+pub const C3_MIN_GENERATIONS: f64 = 30.0;
+pub const C4_MIN_STARVATION_SHARE: f64 = 0.50;
 
-const MATERIALITY_DZ: f64 = 0.66;
-const MATERIALITY_RELATIVE_SHIFT: f64 = 0.05;
+pub const C1_APPLIES_TO_ARMS: [&str; 2] = ["selected", "scarce_mut0"];
+pub const C2_APPLIES_TO_ARMS: [&str; 2] = ["selected", "scarce_mut0"];
+pub const C3_APPLIES_TO_ARMS: [&str; 2] = ["selected", "scarce_mut0"];
+pub const C4_APPLIES_TO_ARMS: [&str; 2] = ["selected", "scarce_mut0"];
+pub const C5_APPLIES_TO_ARMS: [&str; 2] = ["selected", "scarce_mut0"];
+
+pub const MATERIALITY_DZ: f64 = 0.66;
+pub const MATERIALITY_RELATIVE_SHIFT: f64 = 0.05;
 const CLOSED_EU_TOLERANCE: f64 = 1e-6;
 const CAUSE_PARTITION_TOLERANCE: f64 = 1e-6;
 
@@ -448,7 +454,7 @@ pub fn run_with_args(argv: Vec<String>) -> Result<(), String> {
             ));
         }
         let lock = read_json(&lock_path)?;
-        validate_confirm_lock(&lock, &plan, &manifest_hashes)?;
+        validate_confirm_lock_and_smoke(&args.out, &lock, &plan, &manifest_hashes)?;
     }
 
     std::fs::create_dir_all(&args.out)
@@ -1585,6 +1591,18 @@ fn run_analysis_stage(input: AnalysisInput<'_>) -> Result<(), String> {
         &(pretty(&serde_json::to_value(report).map_err(|e| e.to_string())?)? + "\n"),
     )?;
 
+    let mut0_doc = serde_json::json!({
+        "kind": "sel2p-scarce-mut0-runs",
+        "mode": input.mode.as_str(),
+        "seed_order": input.scarce_mut0.seeds,
+        "manifest_fingerprint": input.scarce_mut0.fingerprint(),
+        "runs": mut0_runs,
+    });
+    write_text(
+        &input.out_dir.join("mut0-runs.json"),
+        &(pretty(&mut0_doc)? + "\n"),
+    )?;
+
     let mut per_seed_csv =
         String::from("seed,contrast,statistic,control_value,treatment_value,delta\n");
     for c in [&h1, &h2a, &h2b, &r1_tail20, &r2_window_net, &s2_energy] {
@@ -1697,7 +1715,7 @@ fn run_analysis_stage(input: AnalysisInput<'_>) -> Result<(), String> {
         "n_complete_pairs_used_by_h1": h1_pairs,
         "sufficient_pairs": sufficient_pairs,
         "extinction": {
-            "rule": "live.agent_count == 0 at any sample (or finally) drops the pair and records it here",
+            "rule": "live.agent_count == 0 at any sample (or finally) excludes that seed from every contrast involving that arm (per-contrast exclusion; an extinct scarce_mut0 does not remove a surviving selected/scarce_drift pair from H1)",
             "n_extinct_runs_by_arm": extinct_by_arm,
             "n_extinct_runs_total": dropped_extinct.len(),
             "extinct_runs": dropped_json(&dropped_extinct),
@@ -1816,6 +1834,7 @@ fn run_analysis_stage(input: AnalysisInput<'_>) -> Result<(), String> {
 
     let mut hashed_names: Vec<String> = vec![
         "effects.json".into(),
+        "mut0-runs.json".into(),
         "paired-report.json".into(),
         "per-seed-deltas.csv".into(),
         "provenance.json".into(),
@@ -1895,6 +1914,93 @@ impl Plan {
                 .map(str::to_string)
                 .ok_or_else(|| format!("{what} must be a string"))
         };
+        let need_f64 = |v: &serde_json::Value, what: &str| -> Result<f64, String> {
+            v.as_f64()
+                .filter(|x| x.is_finite())
+                .ok_or_else(|| format!("{what} must be a finite number"))
+        };
+        let str_list = |v: &serde_json::Value, what: &str| -> Result<Vec<String>, String> {
+            v.as_array()
+                .ok_or_else(|| format!("{what} must be a list"))?
+                .iter()
+                .map(|x| {
+                    x.as_str()
+                        .map(str::to_string)
+                        .ok_or_else(|| format!("{what} holds non-string"))
+                })
+                .collect()
+        };
+        // D5: verify compiled runner thresholds & arm lists agree with sel2p-preregistration.json.
+        let c1_min = need_f64(
+            &p["smoke_gate"]["c1_min_agents"],
+            "smoke_gate.c1_min_agents",
+        )?;
+        if (c1_min - C1_MIN_AGENTS).abs() > 1e-12 {
+            return Err(format!(
+                "smoke_gate.c1_min_agents ({c1_min}) != runner constant ({C1_MIN_AGENTS})"
+            ));
+        }
+        let c2_band = p["smoke_gate"]["c2_g_band"]
+            .as_array()
+            .filter(|a| a.len() == 2)
+            .ok_or_else(|| "smoke_gate.c2_g_band must be a 2-element array".to_string())?;
+        let c2_lo = need_f64(&c2_band[0], "smoke_gate.c2_g_band[0]")?;
+        let c2_hi = need_f64(&c2_band[1], "smoke_gate.c2_g_band[1]")?;
+        if (c2_lo - C2_G_LOW).abs() > 1e-12 || (c2_hi - C2_G_HIGH).abs() > 1e-12 {
+            return Err(format!(
+                "smoke_gate.c2_g_band ([{c2_lo}, {c2_hi}]) != runner constants ([{C2_G_LOW}, {C2_G_HIGH}])"
+            ));
+        }
+        let c3_min = need_f64(
+            &p["smoke_gate"]["c3_min_generations"],
+            "smoke_gate.c3_min_generations",
+        )?;
+        if (c3_min - C3_MIN_GENERATIONS).abs() > 1e-12 {
+            return Err(format!(
+                "smoke_gate.c3_min_generations ({c3_min}) != runner constant ({C3_MIN_GENERATIONS})"
+            ));
+        }
+        let c4_min = need_f64(
+            &p["smoke_gate"]["c4_min_starvation_share"],
+            "smoke_gate.c4_min_starvation_share",
+        )?;
+        if (c4_min - C4_MIN_STARVATION_SHARE).abs() > 1e-12 {
+            return Err(format!(
+                "smoke_gate.c4_min_starvation_share ({c4_min}) != runner constant ({C4_MIN_STARVATION_SHARE})"
+            ));
+        }
+        for (field, expected) in [
+            ("c1_applies_to_arms", &C1_APPLIES_TO_ARMS[..]),
+            ("c2_applies_to_arms", &C2_APPLIES_TO_ARMS[..]),
+            ("c3_applies_to_arms", &C3_APPLIES_TO_ARMS[..]),
+            ("c4_applies_to_arms", &C4_APPLIES_TO_ARMS[..]),
+            ("c5_applies_to_arms", &C5_APPLIES_TO_ARMS[..]),
+        ] {
+            let got = str_list(&p["smoke_gate"][field], &format!("smoke_gate.{field}"))?;
+            if got != expected {
+                return Err(format!(
+                    "smoke_gate.{field} ({got:?}) != runner constant ({expected:?})"
+                ));
+            }
+        }
+        let dz = need_f64(
+            &p["thresholds"]["min_abs_paired_dz"],
+            "thresholds.min_abs_paired_dz",
+        )?;
+        if (dz - MATERIALITY_DZ).abs() > 1e-12 {
+            return Err(format!(
+                "thresholds.min_abs_paired_dz ({dz}) != runner constant ({MATERIALITY_DZ})"
+            ));
+        }
+        let rel = need_f64(
+            &p["thresholds"]["min_relative_shift_vs_control_mean"],
+            "thresholds.min_relative_shift_vs_control_mean",
+        )?;
+        if (rel - MATERIALITY_RELATIVE_SHIFT).abs() > 1e-12 {
+            return Err(format!(
+                "thresholds.min_relative_shift_vs_control_mean ({rel}) != runner constant ({MATERIALITY_RELATIVE_SHIFT})"
+            ));
+        }
         Ok(Plan {
             status: need_str(&p["status"], "status")?,
             seeds: u64_list(&p["seeds"]["execution_order"], "seeds.execution_order")?,
@@ -2100,6 +2206,37 @@ fn validate_all_manifests(
         }
     }
 
+    // D6: smoke world must equal confirmation world for every arm pair, and every
+    // manifest's duration and sample_period must match the preregistration.
+    for (label, smoke_m, confirm_m) in [
+        ("selected", smoke_selected, selected),
+        ("scarce_mut0", smoke_mut0, scarce_mut0),
+        ("scarce_drift", smoke_drift, scarce_drift),
+    ] {
+        if smoke_m.initial_conditions != confirm_m.initial_conditions {
+            return Err(format!(
+                "D6: smoke_{label} initial_conditions disagree with confirmation {label}"
+            ));
+        }
+        if smoke_m.laws != confirm_m.laws {
+            return Err(format!(
+                "D6: smoke_{label} laws disagree with confirmation {label}"
+            ));
+        }
+        if smoke_m.world_identity != confirm_m.world_identity {
+            return Err(format!(
+                "D6: smoke_{label} world_identity disagrees with confirmation {label}"
+            ));
+        }
+        if smoke_m.interventions != confirm_m.interventions
+            || smoke_m.exotic_interventions != confirm_m.exotic_interventions
+        {
+            return Err(format!(
+                "D6: smoke_{label} interventions disagree with confirmation {label}"
+            ));
+        }
+    }
+
     if selected.seeds != plan.seeds
         || scarce_mut0.seeds != plan.seeds
         || scarce_drift.seeds != plan.seeds
@@ -2115,23 +2252,50 @@ fn validate_all_manifests(
     {
         return Err("smoke manifests do not match preregistered smoke_seed".into());
     }
-    if selected.sample_period != plan.confirm_sample_period
-        || selected.duration_ticks != plan.duration_ticks
-    {
-        return Err(
-            "confirmation manifest duration or sample_period disagrees with preregistration".into(),
-        );
+    for (label, m) in [
+        ("selected", selected),
+        ("scarce_mut0", scarce_mut0),
+        ("scarce_drift", scarce_drift),
+    ] {
+        if m.duration_ticks != plan.duration_ticks || m.sample_period != plan.confirm_sample_period
+        {
+            return Err(format!(
+                "confirmation manifest '{label}' duration ({}) or sample_period ({}) disagrees with preregistration ({}, {})",
+                m.duration_ticks, m.sample_period, plan.duration_ticks, plan.confirm_sample_period
+            ));
+        }
     }
-    if smoke_selected.sample_period != plan.smoke_sample_period
-        || baseline_ref.sample_period != plan.smoke_sample_period
-    {
-        return Err("smoke/baseline sample_period disagrees with preregistration".into());
+    for (label, m) in [
+        ("baseline_ref", baseline_ref),
+        ("smoke_selected", smoke_selected),
+        ("smoke_scarce_mut0", smoke_mut0),
+        ("smoke_scarce_drift", smoke_drift),
+    ] {
+        if m.duration_ticks != plan.smoke_duration_ticks
+            || m.sample_period != plan.smoke_sample_period
+        {
+            return Err(format!(
+                "smoke-stage manifest '{label}' duration ({}) or sample_period ({}) disagrees with preregistration ({}, {})",
+                m.duration_ticks, m.sample_period, plan.smoke_duration_ticks, plan.smoke_sample_period
+            ));
+        }
     }
 
     Ok(())
 }
 
-fn validate_confirm_lock(
+pub fn validate_confirm_prerequisites_json(
+    out_dir: &Path,
+    lock: &serde_json::Value,
+    prereg: &serde_json::Value,
+    manifest_hashes: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let plan = Plan::from_prereg(prereg)?;
+    validate_confirm_lock_and_smoke(out_dir, lock, &plan, manifest_hashes)
+}
+
+fn validate_confirm_lock_and_smoke(
+    out_dir: &Path,
     lock: &serde_json::Value,
     plan: &Plan,
     manifest_hashes: &BTreeMap<String, String>,
@@ -2148,40 +2312,118 @@ fn validate_confirm_lock(
     if lock.get("sample_period").and_then(|v| v.as_u64()) != Some(plan.confirm_sample_period) {
         return Err(format!("{LOCK_FILE}: sample_period mismatch"));
     }
-    if lock
+    let lock_surviving = lock
         .get("baseline_surviving_count")
         .and_then(|v| v.as_u64())
-        .is_none_or(|n| (n as usize) < plan.min_surviving_baseline_seeds)
-    {
+        .ok_or_else(|| format!("{LOCK_FILE}: missing baseline_surviving_count"))?;
+    if (lock_surviving as usize) < plan.min_surviving_baseline_seeds {
         return Err(format!(
             "{LOCK_FILE}: baseline_surviving_count must be >= {}",
             plan.min_surviving_baseline_seeds
         ));
     }
-    if !lock
+    let lock_crop = lock
         .get("pooled_baseline_crop")
         .and_then(|v| v.as_f64())
-        .is_some_and(|c| c.is_finite() && c > 0.0)
-    {
+        .filter(|c| c.is_finite() && *c > 0.0)
+        .ok_or_else(|| format!("{LOCK_FILE}: pooled_baseline_crop must be positive"))?;
+
+    let obj = lock
+        .get("manifest_sha256")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| {
+            format!(
+                "{LOCK_FILE}: manifest_sha256 is mandatory and must cover all {} committed files",
+                manifest_hashes.len()
+            )
+        })?;
+    if obj.len() != manifest_hashes.len() {
         return Err(format!(
-            "{LOCK_FILE}: pooled_baseline_crop must be positive"
+            "{LOCK_FILE}: manifest_sha256 must list all {} files, got {}",
+            manifest_hashes.len(),
+            obj.len()
         ));
     }
-    if let Some(obj) = lock.get("manifest_sha256").and_then(|v| v.as_object()) {
-        for (name, val) in obj {
-            let locked = val
-                .as_str()
-                .ok_or_else(|| format!("{LOCK_FILE}: bad hash for {name}"))?;
-            let actual = manifest_hashes
-                .get(name)
-                .ok_or_else(|| format!("{LOCK_FILE}: unknown manifest {name}"))?;
-            if locked != actual {
-                return Err(format!(
-                    "{LOCK_FILE}: manifest {name} sha256 {locked} != committed {actual}"
-                ));
-            }
+    for (name, actual) in manifest_hashes {
+        let locked = obj
+            .get(name)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| format!("{LOCK_FILE}: missing manifest_sha256 entry for {name}"))?;
+        if locked != actual {
+            return Err(format!(
+                "{LOCK_FILE}: manifest {name} sha256 {locked} != committed {actual}"
+            ));
         }
     }
+
+    let smoke_report_path = out_dir.join("smoke").join("smoke-report.json");
+    if !smoke_report_path.is_file() {
+        return Err(format!(
+            "--confirm refused: missing {}; run --smoke before confirmation",
+            smoke_report_path.display()
+        ));
+    }
+    let smoke_report = read_json(&smoke_report_path)?;
+    if smoke_report.get("mode").and_then(|v| v.as_str()) != Some("smoke") {
+        return Err(format!(
+            "--confirm refused: {} mode is {:?}, expected \"smoke\"",
+            smoke_report_path.display(),
+            smoke_report.get("mode")
+        ));
+    }
+    if smoke_report.get("duration_ticks").and_then(|v| v.as_u64())
+        != Some(plan.smoke_duration_ticks)
+        || smoke_report.get("sample_period").and_then(|v| v.as_u64())
+            != Some(plan.smoke_sample_period)
+    {
+        return Err(
+            "--confirm refused: smoke-report.json duration/sample_period disagrees with preregistration".into(),
+        );
+    }
+    if smoke_report["gate"]
+        .get("gate_pass")
+        .and_then(|v| v.as_bool())
+        != Some(true)
+    {
+        return Err(
+            "--confirm refused: smoke-report.json gate.gate_pass is not true (smoke hard stop)"
+                .into(),
+        );
+    }
+    if smoke_report["pooled_baseline"]
+        .get("sufficient")
+        .and_then(|v| v.as_bool())
+        != Some(true)
+    {
+        return Err(
+            "--confirm refused: smoke-report.json pooled_baseline.sufficient is not true".into(),
+        );
+    }
+    let smoke_surviving = smoke_report["pooled_baseline"]
+        .get("n_surviving")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| {
+            "--confirm refused: smoke-report.json missing pooled_baseline.n_surviving".to_string()
+        })?;
+    if lock_surviving != smoke_surviving {
+        return Err(format!(
+            "{LOCK_FILE}: baseline_surviving_count ({lock_surviving}) != smoke-report pooled_baseline.n_surviving ({smoke_surviving})"
+        ));
+    }
+    let smoke_crop = smoke_report["pooled_baseline"]
+        .get("pooled_crop_second_half")
+        .and_then(|v| v.as_f64())
+        .filter(|c| c.is_finite() && *c > 0.0)
+        .ok_or_else(|| {
+            "--confirm refused: smoke-report.json missing positive pooled_crop_second_half"
+                .to_string()
+        })?;
+    if (lock_crop - smoke_crop).abs() > 1e-9 * smoke_crop.abs().max(1.0) {
+        return Err(format!(
+            "{LOCK_FILE}: pooled_baseline_crop ({lock_crop}) != smoke-report pooled_crop_second_half ({smoke_crop})"
+        ));
+    }
+
     Ok(())
 }
 
