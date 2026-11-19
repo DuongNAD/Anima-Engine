@@ -16,6 +16,7 @@ import {
   isBeyondFarMarkerDistance,
 } from './utils/agentPose';
 import type { AgentType } from '../../types/generated/AgentType';
+import type { EnvironmentalState } from '../../types/generated/EnvironmentalState';
 import type { SimulationTickPayload } from '../../types/generated/SimulationTickPayload';
 
 // ---------------------------------------------------------------------------------------
@@ -38,6 +39,7 @@ export interface LiveAgentsProps {
   meshResolution: number;
   tickSource?: TickSource | null;
   nowMs?: () => number;
+  onEnvironmentalState?: (env: EnvironmentalState) => void;
 }
 
 interface SelectedAgentSummary {
@@ -273,6 +275,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   meshResolution,
   tickSource,
   nowMs = defaultNowMs,
+  onEnvironmentalState,
 }) => {
   const segmentsMeshRef = useRef<THREE.InstancedMesh>(null);
   const spheresMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -478,14 +481,16 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
   const renderSizeRef = useRef(renderSize);
   const sampleGroundYRef = useRef(sampleGroundY);
   const nowMsRef = useRef(nowMs);
+  const onEnvironmentalStateRef = useRef(onEnvironmentalState);
 
   // Sync world/clock refs and rebuild cached buffered snapshots whenever terrain parameters change.
   useEffect(() => {
     renderSizeRef.current = renderSize;
     sampleGroundYRef.current = sampleGroundY;
     nowMsRef.current = nowMs;
+    onEnvironmentalStateRef.current = onEnvironmentalState;
     ensureBuffer().rebuildForWorld(renderSize, sampleGroundY);
-  }, [renderSize, sampleGroundY, nowMs, ensureBuffer]);
+  }, [renderSize, sampleGroundY, nowMs, onEnvironmentalState, ensureBuffer]);
 
   useEffect(() => {
     selectedAgentIdRef.current = selectedAgentId;
@@ -529,6 +534,9 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         renderSizeRef.current,
         sampleGroundYRef.current,
       );
+      if (payload.environmental_state) {
+        onEnvironmentalStateRef.current?.(payload.environmental_state);
+      }
       if (payload.segments.length > 0 || buffer.hasActiveAgents()) {
         setConnected(true);
       }
