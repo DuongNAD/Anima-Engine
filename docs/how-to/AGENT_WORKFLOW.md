@@ -193,6 +193,11 @@ QD-SEL2   = the next step of QD-SEL1b is cards S9 -> S10 -> SEL2-E -> SEL2-P, pl
 QD-SEL2e  = after S9 (#117: thirst caused 71-80% of deaths), SEL2-E relieves water by adding lakes:
             live.lakes in {2, 4, 8}; the dehydration grace stays at its default (owner in chat,
             2026-11-18, "Thêm hồ")
+QD-SEL2g  = SEL2's standing-crop ratio g uses a POOLED reference: the mean second-half crop of the
+            prey_cap-80 / scale-1.0 baseline runs that survive, over a baseline seed set declared
+            before the run (at least 3 survivors, else C2 fails); every scarce seed uses that one value
+            (owner in chat, 2026-11-19: "chọn chuẩn gộp (b)"; verdicts S14_4e6d312f, S15_4342b895;
+            docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md section 6)
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
