@@ -10,8 +10,8 @@
 //! seeds.
 
 use anima_engine_lib::core::experiment::{
-    ExperimentManifest, FactorDiff, ObservableRegistry, MANIFEST_SCHEMA_VERSION,
-    MAX_ENSEMBLE_RESULT_BYTES,
+    ExperimentManifest, FactorDiff, InitialConditionSet, ObservableRegistry,
+    MANIFEST_SCHEMA_VERSION, MAX_ENSEMBLE_RESULT_BYTES,
 };
 use anima_engine_lib::core::experiment_runner::{paired_effect, PairedEffect};
 use anima_engine_lib::core::intervention::{Curve, InterventionKind, Region};
@@ -103,6 +103,79 @@ fn every_preregistered_manifest_parses_validates_and_supports_all_observables() 
         cfg.ensure_observables_supported(&m.observable_ids)
             .unwrap_or_else(|e| panic!("{name} must support requested observables: {e}"));
     }
+}
+
+#[test]
+fn explicit_and_registered_default_keys_partition_live_keys_and_match_engine_defaults() {
+    let p = prereg();
+    let defaults_obj = p["default_keys_left_absent"]
+        .as_object()
+        .expect("default_keys_left_absent must be an object");
+    let mut defaults: BTreeMap<String, f64> = BTreeMap::new();
+    for (k, v) in defaults_obj {
+        let num = v
+            .as_f64()
+            .unwrap_or_else(|| panic!("default_keys_left_absent['{k}'] must be numeric"));
+        defaults.insert(k.clone(), num);
+    }
+    assert_eq!(
+        defaults.get("live.land_mask"),
+        Some(&0.0),
+        "C: live.land_mask must be registered in default_keys_left_absent as 0 (off)"
+    );
+
+    let live_keys: BTreeSet<String> = LIVE_KEYS.iter().map(|k| (*k).to_string()).collect();
+    let default_keys: BTreeSet<String> = defaults.keys().cloned().collect();
+
+    for name in ALL_MANIFESTS {
+        let m = load_manifest(name);
+        let explicit: BTreeSet<String> = m
+            .initial_conditions
+            .values
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect();
+        assert!(
+            explicit.is_disjoint(&default_keys),
+            "{name} explicit keys must not overlap default_keys_left_absent"
+        );
+        let combined: BTreeSet<String> = explicit.union(&default_keys).cloned().collect();
+        assert_eq!(
+            combined, live_keys,
+            "{name} explicit keys plus default_keys_left_absent must equal LIVE_KEYS exactly"
+        );
+        assert_eq!(
+            explicit.len() + defaults.len(),
+            LIVE_KEYS.len(),
+            "{name} key partition count mismatch"
+        );
+    }
+
+    let engine_default = LiveWorldConfig::default();
+    for (k, v) in &defaults {
+        let parsed = LiveWorldConfig::from_initial_conditions(&InitialConditionSet::new(vec![(
+            k.clone(),
+            *v,
+        )]))
+        .unwrap_or_else(|e| panic!("default key '{k}' = {v} must parse cleanly: {e}"));
+        assert_eq!(
+            parsed, engine_default,
+            "registered default '{k}' = {v} disagrees with LiveWorldConfig::default()"
+        );
+    }
+
+    let all_defaults_set = InitialConditionSet::new(
+        defaults
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect::<Vec<_>>(),
+    );
+    let parsed_all = LiveWorldConfig::from_initial_conditions(&all_defaults_set)
+        .expect("combined default_keys_left_absent must parse");
+    assert_eq!(
+        parsed_all, engine_default,
+        "combined default_keys_left_absent disagrees with LiveWorldConfig::default()"
+    );
 }
 
 #[test]
@@ -604,9 +677,11 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         .expect("why_uniform_whole_map_add_nutrient");
     assert!(
         nutrient_note.contains("-0.44%")
+            && nutrient_note.contains("(T - S)/T")
+            && nutrient_note.contains("-0.4376%")
             && nutrient_note.contains("-1.86%")
             && nutrient_note.contains("-1.68%"),
-        "N3 requires post-warmup (-0.44%), final (-1.86%), and tail (-1.68%) mismatches"
+        "N3/E requires post-warmup (-0.44% as (T - S)/T = -0.4376%), final (-1.86%), and tail (-1.68%) mismatches"
     );
 
     let planned: Vec<u64> = p["seeds"]["execution_order"]
@@ -777,6 +852,10 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         serde_json::json!(true)
     );
     assert_eq!(
+        p["execution_host_rule"]["world_identity_consistency_required"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
         p["execution_host_rule"]["smoke_host_observed"].as_str(),
         Some("windows/x86_64")
     );
@@ -787,6 +866,14 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
             && host_rule.contains("ANIMA_WORLD_ARTIFACT")
             && host_rule.contains("anima_world_artifact.anmw")
             && host_rule.contains("must not start")
+            && host_rule.contains("ANIMA_CACHE_DIR")
+            && host_rule.contains("anima_world_cache")
+            && host_rule.contains("world_identity")
+            && host_rule.contains("all 36 E3-X runs plus the host e3_smoke")
+            && host_rule.contains("same observed world_identity")
+            && host_rule.contains("stops the campaign")
+            && host_rule.contains("stop and report")
+            && host_rule.contains("never tune")
     );
 
     // Machine-readable materiality thresholds, decision_definitions, and secondary_endpoints_rule (N5).
@@ -1083,6 +1170,12 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         "var · n/(n − 1)",
         "ANIMA_WORLD_ARTIFACT",
         "anima_world_artifact.anmw",
+        "live.land_mask",
+        "26 khoá",
+        "ANIMA_CACHE_DIR",
+        "anima_world_cache",
+        "world_identity",
+        "(T − S)/T",
     ] {
         assert!(
             doc.contains(needle),
