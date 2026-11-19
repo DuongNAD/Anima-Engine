@@ -215,7 +215,10 @@ fn whittaker_biome(temperature: f32, moisture: f32) -> BiomeType {
 
 impl TerrainMap {
     pub fn generate(settings: &MapSettings) -> Self {
-        let config = get_map_config();
+        Self::generate_with_config(settings, get_map_config())
+    }
+
+    pub fn generate_with_config(settings: &MapSettings, config: &MapConfig) -> Self {
         let sea_val = config.sea_ratio.clamp(0.0, 1.0) as f32;
         let sand_val = config.sand_ratio.clamp(sea_val as f64, 1.0) as f32;
         let snow_val = config.snow_ratio.clamp(sand_val as f64, 1.0) as f32;

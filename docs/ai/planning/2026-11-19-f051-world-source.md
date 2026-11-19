@@ -65,3 +65,25 @@ review_cycle: weekly
 
 - Cập nhật [`docs/ai/planning/2026-11-19-esel1-runner-trial-mode.md`](2026-11-19-esel1-runner-trial-mode.md) và [`docs/paper/data/determinism_matrix.md`](../../paper/data/determinism_matrix.md) (PR #174, Draft).
 - Không sửa `docs/ai/README.md` (chủ/lead cập nhật mục lục qua `npm run gen:docs-index` khi hợp nhất).
+
+## Follow-up F051b
+
+1. **Loại bỏ phụ thuộc `map_config.json` khỏi `TerrainSource::Generated`:**
+   - Kiểm tra trước khi sửa cho thấy [`map_config.json`](../../../map_config.json) đang commit trên trunk (`{"sea_ratio": 0.3, "sand_ratio": 0.35, "snow_ratio": 0.85, "noise_scale": 2.0}`) trùng khớp hoàn toàn `MapConfig::default()` (`src-tauri/src/core/terrain.rs`). Vì vậy mọi run headless trước đây xuất phát từ trong checkout đều chạy đúng cùng thông số mặc định.
+   - Bổ sung `TerrainMap::generate_with_config(settings: &MapSettings, config: &MapConfig)` trong [`terrain.rs`](../../../src-tauri/src/core/terrain.rs); giữ `TerrainMap::generate(settings)` ủy quyền nguyên vẹn cho `generate_with_config(settings, get_map_config())` để đường dẫn app desktop (`init_world` / `AppArtifactOrGenerated`) tiếp tục đọc `map_config.json` và cache như cũ.
+   - Sửa `TerrainSource::Generated` trong [`ecs.rs`](../../../src-tauri/src/core/ecs.rs) để gọi `TerrainMap::generate_with_config(&map_settings, &MapConfig::default())` — bổ sung cho mục 2 ở trên: hiện `Generated` không còn đọc `map_config.json` từ thư mục làm việc hay thư mục cha.
+2. **Đóng khoảng trống kiểm thử F051 & LAND1-T:**
+   - [`src-tauri/tests/world_source_tests.rs`](../../../src-tauri/tests/world_source_tests.rs): bổ sung `generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes` cùng điểm vào tiến trình con `world_source_child_entry_point` (khởi tạo mới tiến trình để `OnceLock` `GENERATED_DEFAULT_TERRAIN` và `MAP_CONFIG` đều chưa nạp):
+     - Chứng minh `Generated` không bao giờ ghi file `world_*.bin` vào `ANIMA_CACHE_DIR` hay `<temp_dir>/anima_world_cache`;
+     - Đầu độc file cache giải mã được ở cả `ANIMA_CACHE_DIR` lẫn `<temp_dir>/anima_world_cache`, và đặt `map_config.json` khác mặc định ở thư mục làm việc tạm: mọi run headless giữ nguyên `final_checksum` và `WorldIdentity` mặc định, trong khi đối chứng dương `ecs::init_world()` nạp cả cache nhiễm độc lẫn `map_config.json` sửa đổi.
+   - [`src-tauri/tests/prereg_sel2p_manifest_tests.rs`](../../../src-tauri/tests/prereg_sel2p_manifest_tests.rs): bổ sung `sel2p_runner_records_terrain_source_and_world_identity_in_provenance` chạy `run_sel2p_experiment` ở chế độ `--pipeline-check` ngắn với bộ seed pipeline-check tách biệt hoàn toàn (không chạy smoke/confirm thật), xác nhận `smoke/provenance.json`, `provenance.json`, `paired-report.json` (cả hai nhánh `control` và `treatment` từ `live_run_provenance`), và `mut0-runs.json` đều ghi `"terrain_source": "generated"` cùng `world_identity` khớp mặc định.
+   - [`src-tauri/tests/land_mask_tests.rs`](../../../src-tauri/tests/land_mask_tests.rs): bổ sung `spawn_food_through_tick_schedule_respects_land_mask_policy` và `seed_dropping_through_tick_schedule_respects_land_mask_policy` chạy trực tiếp qua `core::simulation_schedule::build_tick_schedule(DeterministicMode::on())` với oracle độc lập `is_land_biome`: khi policy tắt hoặc vắng mặt hai nhánh khớp từng bit và có thức ăn/hạt giống rơi xuống `DeepOcean`/`Ocean` (đối chứng dương); khi bật `TerrainNavigation { enabled: true }`, 0 thực thể rơi xuống biển.
+3. **So sánh từng byte `run_esel1_experiment --smoke` (release `--features desktop`, biến môi trường sạch) — trunk (`f2887f1b`, sha256 `579a6267...`) vs F051b (`c1c3798d`, sha256 `18492763...`):**
+   - Checksum đồng nhất ở cả 3 nhánh: `control=4182711911`, `treatment=331712764`, `drift=2153699540` (`max 207.1 us/tick` vs `206.9 us/tick`).
+   - `smoke-series.csv` khớp từng byte (`5.998` bytes); `runs.csv`, `smoke-report.json`, `summary.md` khớp hoàn toàn sau khi loại bỏ các trường tốc độ `us_per_tick`; `provenance.json` khớp ngoại trừ `timing`/`build`, giữ nguyên `"terrain_source": "generated"` và `world_identity` (`seed=1337, generator_version=1, 256x256, checksum=1212187560`).
+4. **Kiểm tra đột biến cục bộ (tất cả bị bắt, khôi phục sạch sau từng lượt):**
+   - `M4` (`Generated` gọi `load_or_generate`): exit `101`, `generated_ignores_poisoned_cache_and_modified_map_config_in_fresh_processes` fail tại `world_source_tests.rs:545`.
+   - `map_config` (`Generated` gọi `TerrainMap::generate`): exit `101`, fail tại `world_source_tests.rs:615`.
+   - `M5` (`live_run_provenance` đặt `world_identity: None`): exit `101`, `sel2p_runner_records_terrain_source_and_world_identity_in_provenance` fail tại `prereg_sel2p_manifest_tests.rs:964`.
+   - `M7` (`spawn_food_system` bỏ qua policy): exit `101`, `spawn_food_through_tick_schedule_respects_land_mask_policy` fail tại `land_mask_tests.rs:1303`.
+   - `seed_dropping` (`seed_dropping_system` bỏ qua policy): exit `101`, `seed_dropping_through_tick_schedule_respects_land_mask_policy` fail tại `land_mask_tests.rs:1450`.

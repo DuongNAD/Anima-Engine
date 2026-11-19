@@ -1,8 +1,9 @@
 //! Machine-checked validation of the SEL2-P preregistration, manifests, seed disjointness,
 //! drift-observable compatibility (draft dependency #4), and QD-SEL2g pooled-reference gate math.
 //!
-//! Mirrors `prereg_esel1_manifest_tests.rs`. Never constructs a `LiveExperimentAdapter` or steps
-//! simulation ticks.
+//! Mirrors `prereg_esel1_manifest_tests.rs` for static validation, plus a short
+//! `--pipeline-check` provenance integration test using exclusively disjoint pipeline-check seeds
+//! (never running real smoke `999961` or confirmation seeds `780001..799001`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -901,6 +902,126 @@ fn sel2p_confirm_prerequisite_gate_rejects_missing_or_mismatched_smoke_and_hashe
     let err = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
         .expect_err("mismatched n_surviving must fail");
     assert!(err.contains("n_surviving"), "{err}");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn sel2p_runner_records_terrain_source_and_world_identity_in_provenance() {
+    use anima_engine_lib::core::terrain::{
+        MapConfig, MapSettings, TerrainMap, WORLD_CACHE_VERSION,
+    };
+    use anima_engine_lib::core::world_artifact::WorldIdentity;
+
+    let tmp = std::env::temp_dir().join(format!(
+        "sel2p_world_prov_{}_{}",
+        std::process::id(),
+        line!()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let mdir = tmp.join("manifests");
+    let odir = tmp.join("out");
+    std::fs::create_dir_all(&mdir).expect("create temp manifest dir");
+
+    for name in [
+        "sel2p-preregistration.json",
+        "sel2p-selected.json",
+        "sel2p-scarce-mut0.json",
+        "sel2p-scarce-drift.json",
+        "sel2p-baseline-ref.json",
+        "sel2p-smoke-selected.json",
+        "sel2p-smoke-scarce-mut0.json",
+        "sel2p-smoke-scarce-drift.json",
+    ] {
+        std::fs::copy(dir_path().join(name), mdir.join(name)).expect("copy SEL2-P fixture");
+    }
+
+    // Keep the test fast by shortening ONLY the temp prereg's pipeline_check duration while
+    // retaining exclusively disjoint pipeline-check seeds (never real smoke/confirmation seeds).
+    let mut plan_doc: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(mdir.join("sel2p-preregistration.json"))
+            .expect("read temp prereg"),
+    )
+    .expect("parse temp prereg");
+    plan_doc["seeds"]["pipeline_check"]["baseline_seeds"] = serde_json::json!([999_801]);
+    plan_doc["duration"]["pipeline_check_duration_ticks"] = serde_json::json!(60);
+    plan_doc["duration"]["pipeline_check_warmup_ticks"] = serde_json::json!(20);
+    plan_doc["duration"]["pipeline_check_smoke_sample_period"] = serde_json::json!(20);
+    plan_doc["duration"]["pipeline_check_pair_sample_period"] = serde_json::json!(20);
+    std::fs::write(
+        mdir.join("sel2p-preregistration.json"),
+        serde_json::to_string_pretty(&plan_doc).expect("serialize temp prereg"),
+    )
+    .expect("write temp prereg");
+
+    runner::run_with_args(vec![
+        "--pipeline-check".to_string(),
+        "--manifest-dir".to_string(),
+        mdir.to_string_lossy().into_owned(),
+        "--out".to_string(),
+        odir.to_string_lossy().into_owned(),
+    ])
+    .expect("SEL2-P --pipeline-check must succeed with full provenance");
+
+    let settings = MapSettings::default();
+    let expected_terrain = TerrainMap::generate_with_config(&settings, &MapConfig::default());
+    let expected_id =
+        WorldIdentity::from_terrain(&expected_terrain, settings.seed, WORLD_CACHE_VERSION);
+    assert_ne!(expected_id.checksum, 0);
+    assert_eq!(expected_id.width, 256);
+    assert_eq!(expected_id.height, 256);
+    let expected_id_json = serde_json::to_value(expected_id).expect("serialize WorldIdentity");
+
+    let parse_json = |path: PathBuf| -> serde_json::Value {
+        let raw = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        serde_json::from_str(&raw).unwrap_or_else(|e| panic!("parse {}: {e}", path.display()))
+    };
+    let assert_prov = |prov: &serde_json::Value, label: &str| {
+        assert_eq!(
+            prov["terrain_source"].as_str(),
+            Some("generated"),
+            "{label}: expected terrain_source = generated"
+        );
+        assert_eq!(
+            prov["world_identity"], expected_id_json,
+            "{label}: mismatched world_identity"
+        );
+    };
+
+    let smoke_prov = parse_json(odir.join("smoke/provenance.json"));
+    assert_prov(&smoke_prov, "smoke/provenance.json");
+
+    let confirm_prov = parse_json(odir.join("provenance.json"));
+    assert_prov(&confirm_prov, "provenance.json");
+
+    let paired_report = parse_json(odir.join("paired-report.json"));
+    let pairs = paired_report["pairs"]
+        .as_array()
+        .expect("paired-report.json pairs array");
+    assert_eq!(pairs.len(), 2, "expected 2 pipeline_check pairs");
+    for (idx, pair) in pairs.iter().enumerate() {
+        assert_prov(
+            &pair["control"]["provenance"],
+            &format!("paired-report.json pairs[{idx}].control.provenance"),
+        );
+        assert_prov(
+            &pair["treatment"]["provenance"],
+            &format!("paired-report.json pairs[{idx}].treatment.provenance"),
+        );
+    }
+
+    let mut0_doc = parse_json(odir.join("mut0-runs.json"));
+    let mut0_runs = mut0_doc["runs"]
+        .as_array()
+        .expect("mut0-runs.json runs array");
+    assert_eq!(mut0_runs.len(), 2, "expected 2 pipeline_check mut0 runs");
+    for (idx, run) in mut0_runs.iter().enumerate() {
+        assert_prov(
+            &run["provenance"],
+            &format!("mut0-runs.json runs[{idx}].provenance"),
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
