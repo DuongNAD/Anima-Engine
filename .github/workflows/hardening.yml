@@ -6,7 +6,7 @@ name: hardening
 
 on:
   push:
-    branches: [main, "hardening/**"]
+    branches: [main, feat/ecological-selection, "hardening/**"]
   pull_request:
 
 jobs:
@@ -29,9 +29,16 @@ jobs:
           rustc --version --verbose
           cargo --version
 
+      # Saved only from `main` and the trunk (2026-11-19). Saving from every pull request filled the
+      # repository's 10 GB cache quota with one 667 MB copy per pull request (12 of 15 caches on
+      # 2026-11-19), which pushes out the 1.6 GB Windows cache the Rust job needs. Same key rule as
+      # ci.yml: toolchain file instead of the rust-environment hash.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          add-rust-environment-hash-key: false
+          key: toolchain-${{ hashFiles('rust-toolchain.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ecological-selection' }}
 
       # Tauri cần các thư viện hệ thống này trên Linux.
       - name: cài phụ thuộc hệ thống
