@@ -1,0 +1,282 @@
+{
+  "all_observables_emitted_and_finite": true,
+  "arms": [
+    "control_uniform",
+    "control_uniform_scarcity",
+    "treatment_gradient"
+  ],
+  "body_mass_consulted": false,
+  "demographics_and_conservation": {
+    "control_uniform": {
+      "agent_count_final": 13.0,
+      "agent_count_max": 193.0,
+      "agent_count_min": 13.0,
+      "births_sum": 375.0,
+      "closed_eu_first": 165587.24986362425,
+      "closed_eu_max": 165587.24986362454,
+      "closed_eu_max_abs_drift": 1.076841726899147e-9,
+      "closed_eu_min": 165587.24986362318,
+      "deaths_dehydration_sum": 382.0,
+      "deaths_starvation_sum": 100.0,
+      "deaths_sum": 482.0,
+      "emitted_observable_count": 27,
+      "final_checksum": 1266395716,
+      "herbivore_count_final": 13.0,
+      "predator_count_final": 0.0,
+      "status": "completed"
+    },
+    "control_uniform_scarcity": {
+      "agent_count_final": 12.0,
+      "agent_count_max": 120.0,
+      "agent_count_min": 11.0,
+      "births_sum": 76.0,
+      "closed_eu_first": 165587.24986362428,
+      "closed_eu_max": 165587.24986362428,
+      "closed_eu_max_abs_drift": 1.0506482794880867e-8,
+      "closed_eu_min": 165587.24986361378,
+      "deaths_dehydration_sum": 184.0,
+      "deaths_starvation_sum": 0.0,
+      "deaths_sum": 184.0,
+      "emitted_observable_count": 27,
+      "final_checksum": 2359367161,
+      "herbivore_count_final": 12.0,
+      "predator_count_final": 0.0,
+      "status": "completed"
+    },
+    "treatment_gradient": {
+      "agent_count_final": 99.0,
+      "agent_count_max": 192.0,
+      "agent_count_min": 9.0,
+      "births_sum": 370.0,
+      "closed_eu_first": 165587.24986362457,
+      "closed_eu_max": 165587.249863625,
+      "closed_eu_max_abs_drift": 4.656612873077393e-10,
+      "closed_eu_min": 165587.2498636241,
+      "deaths_dehydration_sum": 333.0,
+      "deaths_starvation_sum": 58.0,
+      "deaths_sum": 391.0,
+      "emitted_observable_count": 27,
+      "final_checksum": 2891653359,
+      "herbivore_count_final": 99.0,
+      "predator_count_final": 0.0,
+      "status": "completed"
+    }
+  },
+  "duration_ticks": 18000,
+  "integrity": {
+    "all_three_checksums_distinct": true,
+    "control_uniform_final_checksum": 1266395716,
+    "control_uniform_scarcity_final_checksum": 2359367161,
+    "ecology_stream_identical": true,
+    "genesis_closed_eu_identical": true,
+    "treatment_gradient_final_checksum": 2891653359,
+    "world_identity_identical": true
+  },
+  "kind": "e3-smoke-report-EXCLUDED-FROM-ANALYSIS",
+  "sample_period": 600,
+  "smoke_seed": 999979,
+  "tail_window_ticks": [
+    14400,
+    18000
+  ],
+  "warmup_ticks": 3000,
+  "wp2_a_resource_field": {
+    "abundant_initial_east_biomass_eu": 64829.499945282936,
+    "abundant_initial_east_capacity_eu": 64829.499945282936,
+    "abundant_initial_ecosystem_biomass": {
+      "animals": 0.0,
+      "detritus": 0.0,
+      "dormant": 0.0,
+      "plants": 153587.24986362457
+    },
+    "abundant_initial_total_biomass_eu": 153587.24986362457,
+    "abundant_initial_total_capacity_eu": 153587.24986362457,
+    "abundant_initial_west_biomass_eu": 88757.74991834164,
+    "abundant_initial_west_capacity_eu": 88757.74991834164,
+    "bounds_x": [
+      -100.0,
+      100.0
+    ],
+    "bounds_z": [
+      -100.0,
+      100.0
+    ],
+    "height": 256,
+    "passed": true,
+    "scarcity_initial_detritus_eu": 89080.6076528281,
+    "scarcity_initial_east_biomass_eu": 27228.388780772686,
+    "scarcity_initial_east_capacity_eu": 27228.388780772686,
+    "scarcity_initial_ecosystem_biomass": {
+      "animals": 0.0,
+      "detritus": 89080.6076528281,
+      "dormant": 0.0,
+      "plants": 64506.642210796475
+    },
+    "scarcity_initial_total_biomass_eu": 64506.642210796475,
+    "scarcity_initial_total_capacity_eu": 64506.642210796475,
+    "scarcity_initial_west_biomass_eu": 37278.25343002379,
+    "scarcity_initial_west_capacity_eu": 37278.25343002379,
+    "treatment_initial_total_biomass_eu": 153587.24986362457,
+    "width": 256
+  },
+  "wp2_b_standing_crop_intervention": {
+    "b1_gradient_shifts_vs_abundant_passed": true,
+    "b1_min_rel_shift_threshold": 0.1,
+    "b2_max_rel_mismatch_threshold": 0.1,
+    "b2_scarcity_matches_treatment_total_passed": true,
+    "control_uniform_scarcity_standing_crop_final": 64483.464424684644,
+    "control_uniform_scarcity_standing_crop_post_warmup_mean": 64379.01477560505,
+    "control_uniform_scarcity_standing_crop_tail_mean": 64467.84506374704,
+    "control_uniform_standing_crop_final": 123300.83728024106,
+    "control_uniform_standing_crop_post_warmup_mean": 134866.6595674591,
+    "control_uniform_standing_crop_tail_mean": 124085.04243589146,
+    "ledger_by_arm": {
+      "control_uniform": {
+        "add_nutrient_count": 0,
+        "add_nutrient_eu_added": 0.0,
+        "deforest_count": 0,
+        "deforest_eu_moved": 0.0
+      },
+      "control_uniform_scarcity": {
+        "add_nutrient_count": 300,
+        "add_nutrient_eu_added": 8521.110357275924,
+        "deforest_count": 0,
+        "deforest_eu_moved": 0.0
+      },
+      "treatment_gradient": {
+        "add_nutrient_count": 300,
+        "add_nutrient_eu_added": 33642.28750495448,
+        "deforest_count": 300,
+        "deforest_eu_moved": 93891.59735265336
+      }
+    },
+    "passed": true,
+    "scarcity_vs_treat_post_warmup_relative_mismatch": -0.004375981051686321,
+    "treat_vs_ctrl_final_delta": -60018.78389082563,
+    "treat_vs_ctrl_max_abs_sample_diff": 86992.33749733593,
+    "treat_vs_ctrl_post_warmup_mean_delta": -70768.13870459108,
+    "treat_vs_ctrl_post_warmup_relative_shift": -0.524726711045983,
+    "treat_vs_ctrl_tail_mean_delta": -60703.12552163473,
+    "treat_vs_scarcity_final_delta": -1201.411035269215,
+    "treat_vs_scarcity_max_abs_sample_diff": 3402.587712429726,
+    "treat_vs_scarcity_post_warmup_mean_delta": -280.49391273703077,
+    "treat_vs_scarcity_tail_mean_delta": -1085.9281494903043,
+    "treatment_gradient_standing_crop_final": 63282.05338941543,
+    "treatment_gradient_standing_crop_post_warmup_mean": 64098.52086286802,
+    "treatment_gradient_standing_crop_tail_mean": 63381.91691425673
+  },
+  "wp2_c_detritus_before_3000": {
+    "control_uniform_detritus_at_3000": 12530.86161665315,
+    "control_uniform_detritus_final": 41904.14130572277,
+    "control_uniform_early_samples": [
+      [
+        600,
+        1647.807546613461
+      ],
+      [
+        1200,
+        3365.437489939844
+      ],
+      [
+        1800,
+        6624.690355587068
+      ],
+      [
+        2400,
+        9182.101459711657
+      ],
+      [
+        3000,
+        12530.86161665315
+      ]
+    ],
+    "control_uniform_first_positive_before_3000": [
+      600,
+      1647.807546613461
+    ],
+    "control_uniform_scarcity_detritus_at_3000": 95907.22490714605,
+    "control_uniform_scarcity_detritus_final": 100754.04297292867,
+    "control_uniform_scarcity_early_samples": [
+      [
+        600,
+        90188.81396238769
+      ],
+      [
+        1200,
+        91266.91762945932
+      ],
+      [
+        1800,
+        92755.8814249737
+      ],
+      [
+        2400,
+        93978.30223454816
+      ],
+      [
+        3000,
+        95907.22490714605
+      ]
+    ],
+    "control_uniform_scarcity_first_positive_before_3000": [
+      600,
+      90188.81396238769
+    ],
+    "passed": true,
+    "treatment_gradient_detritus_at_3000": 97795.36642170392,
+    "treatment_gradient_detritus_final": 97200.53448166176,
+    "treatment_gradient_early_samples": [
+      [
+        600,
+        86709.16853561654
+      ],
+      [
+        1200,
+        90785.14526585277
+      ],
+      [
+        1800,
+        94169.75165717684
+      ],
+      [
+        2400,
+        95790.68691375655
+      ],
+      [
+        3000,
+        97795.36642170392
+      ]
+    ],
+    "treatment_gradient_first_positive_before_3000": [
+      600,
+      86709.16853561654
+    ]
+  },
+  "wp3_schedule_lock": {
+    "planned_ensemble_runs": 36,
+    "projected_ensemble_minutes_by_rung": [
+      {
+        "duration_ticks": 18000,
+        "projected_minutes": 3.54547542
+      },
+      {
+        "duration_ticks": 12000,
+        "projected_minutes": 2.36365028
+      },
+      {
+        "duration_ticks": 6000,
+        "projected_minutes": 1.18182514
+      }
+    ],
+    "recommended_duration_ticks": 18000,
+    "sample_period": 600,
+    "tail_window_ticks": [
+      14400,
+      18000
+    ],
+    "us_per_tick": 328.2847611111111,
+    "wall_clock_seconds": 17.727377099999998,
+    "warmup_ticks": 3000,
+    "within_budget": true
+  }
+}
