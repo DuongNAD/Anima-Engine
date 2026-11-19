@@ -290,6 +290,14 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     const rec = loadRecord();
     const { flora } = scene();
     const byLabel = new Map(rec.collision.pushOutCases.map((c) => [c.label, c]));
+    // The resolver pushes a walker to *exactly* a collider's radius, so a resolved position sits on a
+    // trunk's boundary, and rounding it to the record's 3 decimals (up to half a unit in the last place
+    // on each axis) can put it a fraction of a millimetre inside. Whether it is clear is therefore
+    // asked with the collider shrunk by that rounding — a real failure to resolve is a whole radius,
+    // not 7e-4. The supercontinent's jungle is the first evidence world where the resolved point of
+    // one trunk landed on its neighbour's boundary; `reproduces every push-out case exactly` above
+    // still ties every recorded position to the resolver's output.
+    const roundingSlack = -Math.SQRT2 * (10 ** -RECORD_PRECISION / 2);
 
     // The degenerate case: exactly on a trunk centre. The rig's old inline push-out guarded on
     // `d2 > 1e-6`, so the one position that most needed resolving was the only one never resolved.
@@ -298,12 +306,12 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     expect(centre!.from.x).toBeCloseTo(centre!.trunk.x, 3);
     expect(centre!.from.z).toBeCloseTo(centre!.trunk.z, 3);
     expect(centre!.resolvedDistance).toBeGreaterThanOrEqual(centre!.trunk.radius - 1e-6);
-    expect(floraOverlapAt(flora, centre!.to.x, centre!.to.z, 0, 'collider')).toBeNull();
+    expect(floraOverlapAt(flora, centre!.to.x, centre!.to.z, roundingSlack, 'collider')).toBeNull();
 
     const inside = byLabel.get('inside a trunk, off centre');
     expect(inside).toBeDefined();
     expect(floraOverlapAt(flora, inside!.from.x, inside!.from.z, 0, 'collider')).not.toBeNull();
-    expect(floraOverlapAt(flora, inside!.to.x, inside!.to.z, 0, 'collider')).toBeNull();
+    expect(floraOverlapAt(flora, inside!.to.x, inside!.to.z, roundingSlack, 'collider')).toBeNull();
 
     // And the control: a clear position must not move. A resolver that always nudged would satisfy
     // both cases above and be wrong.
