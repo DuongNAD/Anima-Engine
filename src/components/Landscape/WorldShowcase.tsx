@@ -472,6 +472,8 @@ export const WorldShowcase: React.FC = () => {
         dpr={getCanvasDprProp(effectiveQuality, activeDprOverride)}
         gl={{
           powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.04,
           // ---- three capture-only context flags, each closing one source of frame variance -----
           //
           // All three are `capture !== null` / `capture === null`, so an ordinary visit gets exactly
@@ -545,6 +547,7 @@ export const WorldShowcase: React.FC = () => {
             skirtDepth={TERRAIN_SKIRT}
             dynamicLod={TERRAIN_DYNAMIC_LOD}
             loadRadius={TERRAIN_LOAD_RADIUS}
+            tier={effectiveQuality}
           />
         ) : (
           <WorldTerrain
@@ -552,6 +555,7 @@ export const WorldShowcase: React.FC = () => {
             renderSize={RENDER_SIZE}
             heightRatio={HEIGHT_RATIO}
             meshResolution={MESH_RES}
+            tier={effectiveQuality}
           />
         )}
 
