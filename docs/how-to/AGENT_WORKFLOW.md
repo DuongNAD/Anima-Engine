@@ -198,6 +198,12 @@ QD-SEL2g  = SEL2's standing-crop ratio g uses a POOLED reference: the mean secon
             before the run (at least 3 survivors, else C2 fails); every scarce seed uses that one value
             (owner in chat, 2026-11-19: "chọn chuẩn gộp (b)"; verdicts S14_4e6d312f, S15_4342b895;
             docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md section 6)
+QD-VIS    = the 3D map must BE the simulated world, semi-realistic, with mountains, caves, forests and
+            rivers, streamed by camera; creatures are continuous bodies grown from their morphology;
+            done in parallel on Windows 1 (owner in chat, 2026-11-19). Follow-up "oke theo ý bạn" taken
+            as: accept ADR-0010 (pinned, tiled world artifact), skip CREATURE_MORPHOGENESIS_PLAN.md:36
+            for the body renderer, keep 30 FPS at Low on Iris Xe with 1,000 creatures (cap near-tier
+            bodies). docs/ai/design/2026-11-19-feature-real-world-and-bodies.md
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through
