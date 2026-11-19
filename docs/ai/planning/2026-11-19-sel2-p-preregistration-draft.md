@@ -169,9 +169,19 @@ Mọi cấu hình chính thức phải vượt qua **cả 5 điều kiện `C1..
 
 ### Chỗ quyết định của chủ dự án — định nghĩa tham chiếu cho `g` (`C2`)
 
-[OWNER DECISION 2026-11-19 12:00: reference for g]
+**Quyết định của chủ dự án (QĐ-SEL2g, 2026-11-19, trong chat: "chọn chuẩn gộp (b)"): phương án (b).**
+$\overline{C}_{\text{nền}}$ là **trung bình standing crop nửa sau của các lượt nền `prey_cap = 80`, `scale = 1.0` còn sống
+tới cuối lượt**, gộp qua một bộ seed nền khai trước; mọi seed của thế giới khan hiếm dùng chung một giá trị đó. Bốn
+ràng buộc, để thẻ `SEL2-P-freeze` khai cụ thể trước khi chạy bất kỳ seed nào:
+1. Bộ seed nền cố định, khai trong manifest, rời khỏi seed thăm dò `1..=6` và khỏi mọi seed xác nhận.
+2. Nền chạy cùng bản dựng, cùng máy và cùng khoá thế giới (16 hồ, `lake_layout = 1`, `plant_reserve = 0`,
+   `dehydration_ticks = 960`, 100 founders, 200.000 tick) với lượt khan hiếm mà nó làm chuẩn.
+3. Cần ít nhất 3 lượt nền còn sống; ít hơn thì `C2` không đánh giá được và cổng smoke **trượt**.
+4. Chuẩn được tính trước khi đọc bất kỳ observable nào của lượt khan hiếm; không thêm hay bớt seed nền sau đó.
 
-Phần này cố ý **để trống** để chủ dự án quyết định phương án định nghĩa $\overline{C}_{\text{nền}}$ trong công thức `C2`. Dưới đây là toàn bộ số liệu đối chiếu từ `S14` (`2026-11-19-s14-lakes16-scale.md`) và `S15` (`2026-11-19-s15-reference-check.md`, đang chờ `PR #146`) cho cấu hình ứng viên (`16` hồ, `lake_layout = 1`, `reserve = 0`, `scale = 0.63`, `200.000` tick, `seeds 1..=6`), trình bày trung lập cả ba phương án không lựa chọn thay:
+Số liệu dẫn tới quyết định (giữ nguyên để kiểm lại):
+
+Phần này từng để trống để chủ dự án quyết định phương án định nghĩa $\overline{C}_{\text{nền}}$ trong công thức `C2`. Dưới đây là toàn bộ số liệu đối chiếu từ `S14` (`2026-11-19-s14-lakes16-scale.md`) và `S15` (`2026-11-19-s15-reference-check.md`, đang chờ `PR #146`) cho cấu hình ứng viên (`16` hồ, `lake_layout = 1`, `reserve = 0`, `scale = 0.63`, `200.000` tick, `seeds 1..=6`), trình bày trung lập cả ba phương án không lựa chọn thay:
 
 1. **Phương án (a) — Đối chứng cùng seed với `prey_cap = 80, scale = 1.0`:**
    - **Tình trạng đối chứng:** Chỉ `4/6` seed đối chứng sống tới `200.000` tick; `seed 1` tuyệt chủng tại tick `8.545` và `seed 3` tuyệt chủng tại tick `20.787`.
@@ -231,7 +241,7 @@ Thống nhất với [CLAUDE.md](../../../CLAUDE.md), [Bản đăng ký E-SEL1](
 
 Không thẻ `SEL2-P-freeze` hoặc lượt chạy xác nhận nào được mở trước khi giải quyết xong sáu điểm sau:
 
-1. **Quyết định của chủ dự án về tham chiếu `g`:** Điền lựa chọn chính thức vào `[OWNER DECISION 2026-11-19 12:00: reference for g]` tại Mục 6 (`(a)`, `(b)`, `(c)` hoặc quy tắc mới) để khoá định nghĩa `C2`.
+1. ~~Quyết định của chủ dự án về tham chiếu `g`~~ **Đã quyết (QĐ-SEL2g, 2026-11-19): phương án (b), chuẩn gộp.** Thẻ freeze khai bộ seed nền theo bốn ràng buộc ở Mục 6.
 2. **Hợp nhất thẻ `S2` (`win/s2-observables`) vào `feat/ecological-selection`:** Cần chốt tên/ngữ nghĩa observable `live.mean_energy_integral`, chứng minh bộ tích luỹ năng lượng được giữ toàn vẹn khi dùng `from_snapshot_with_drift_schedule` ở nhánh `SEL2-D` (`scarce_drift`), và xác nhận phép tích phân hậu-warmup tương tự cho `live.trait_mass_mean`.
 3. **Hợp nhất `PR #146` (`F048` + `S15`) vào `feat/ecological-selection`:** Khoá ổn định bản ghi đối chứng `2026-11-19-s15-reference-check.md` và các bản vá trung thực khôi phục (`F047`/`F048` nối tiếp [Thẻ F045](2026-11-18-f045-restore-fidelity.md)) trước khi chạy phân tán.
 4. **Tương thích danh sách observable giữa `validate_drift_pair_manifests` và `SEL2-D`:** Hiện `validate_drift_pair_manifests` kiểm tra `FactorDiff` rồi gọi `ensure_observables_supported`, vốn từ chối `live.deaths_starvation` và `live.deaths_dehydration` khi `live.drift_control = 1.0`. Ở bước `SEL2-P-freeze`, cần xác nhận việc lọc hai ID này khỏi manifest xác nhận 3 nhánh (trong khi lượt kiểm `--smoke` cho `C4` đọc trên nhánh không drift `selected`/`scarce_mut0`).
