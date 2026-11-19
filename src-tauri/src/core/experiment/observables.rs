@@ -381,6 +381,18 @@ impl ObservableRegistry {
             // Card S9: `live.deaths` split by cause, one cause per death.
             count("live.deaths_starvation"),
             count("live.deaths_dehydration"),
+            // Card S2: cumulative time-integral of `live.mean_agent_energy` (`EU·tick`) and
+            // E3 region-split mean body mass (`EU`) over West (cols 0..=127) and East (128..=255).
+            spec(
+                "live.mean_energy_integral",
+                "EU·tick",
+                ConservationRole::None,
+                Self::OPEN_UPPER_BOUND,
+                PHYSICS_PERIOD,
+                "physics",
+            ),
+            eu("live.trait_mass_mean_west", ConservationRole::None),
+            eu("live.trait_mass_mean_east", ConservationRole::None),
         ];
         Self {
             version: OBSERVABLE_REGISTRY_VERSION,
