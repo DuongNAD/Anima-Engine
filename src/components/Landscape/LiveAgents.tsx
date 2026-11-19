@@ -89,6 +89,53 @@ const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
 const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const FALLBACK_CAM_POS = { x: 0, y: 0, z: 0 } as const;
 
+// Decorative head attachment shared by near (SkinnedMesh) and mid (instanced) tiers (D1):
+// eyes and snout are decorative and mark the front of the body along head_direction;
+// the simulation has no head organ and senses at the root position.
+function resolveCreatureHeadPose(
+  pose: InterpolatedAgentView,
+  out: SkinnedHeadPose,
+  tmpQuat: THREE.Quaternion,
+): void {
+  const segCount = pose.segmentCount;
+  let headSeg = pose.segments[0];
+  for (let i = 0; i < segCount; i++) {
+    if (pose.segments[i].segmentId === pose.headSegmentId) {
+      headSeg = pose.segments[i];
+      break;
+    }
+  }
+  if (!headSeg) {
+    out.center.set(pose.rootPosition[0], pose.rootPosition[1], pose.rootPosition[2]);
+    out.frontShoulderDist = Math.max(0.1, pose.rootRenderLength) * 0.5;
+    out.headRadius = Math.max(0.05, pose.rootRenderRadius);
+    out.forward.set(pose.headDirection[0], pose.headDirection[1], pose.headDirection[2]);
+  } else {
+    out.center.set(headSeg.renderPosition[0], headSeg.renderPosition[1], headSeg.renderPosition[2]);
+    out.frontShoulderDist = Math.max(0.1, headSeg.renderLength) * 0.5;
+    out.headRadius = Math.max(0.05, headSeg.renderRadius);
+    const lf = pose.headLocalForward;
+    if (
+      headSeg.isRoot &&
+      Math.abs(lf[0]) <= 1e-5 &&
+      Math.abs(lf[1]) <= 1e-5 &&
+      lf[2] > 0.999
+    ) {
+      out.forward.set(pose.headDirection[0], pose.headDirection[1], pose.headDirection[2]);
+    } else {
+      tmpQuat.set(
+        headSeg.quaternion[0],
+        headSeg.quaternion[1],
+        headSeg.quaternion[2],
+        headSeg.quaternion[3],
+      );
+      out.forward.set(lf[0], lf[1], lf[2]).applyQuaternion(tmpQuat);
+    }
+  }
+  if (out.forward.lengthSq() <= 1e-8) out.forward.set(0, 0, 1);
+  else out.forward.normalize();
+}
+
 interface FeatureScratch {
   matrix: THREE.Matrix4;
   color: THREE.Color;
@@ -101,6 +148,11 @@ interface FeatureScratch {
   right: THREE.Vector3;
   up: THREE.Vector3;
   headPose: SkinnedHeadPose;
+}
+
+interface HeadDrawCounts {
+  spheres: number;
+  snouts: number;
 }
 
 function emitEyePair(
@@ -138,21 +190,99 @@ function emitEyePair(
   return written;
 }
 
+function emitHeadFeatures(
+  pose: InterpolatedAgentView,
+  includePreyHeadDome: boolean,
+  color: THREE.Color,
+  sphereMesh: THREE.InstancedMesh,
+  sphereCapacity: number,
+  sphereAgentIds: Int32Array,
+  snoutMesh: THREE.InstancedMesh,
+  snoutCapacity: number,
+  snoutAgentIds: Int32Array,
+  scratch: FeatureScratch,
+  counts: HeadDrawCounts,
+): void {
+  const { pos, quat, scale, matrix, partColor, forward, right, up, headPose } = scratch;
+  resolveCreatureHeadPose(pose, headPose, quat);
+  const hx = headPose.center.x;
+  const hy = headPose.center.y;
+  const hz = headPose.center.z;
+  const frontShoulderDist = headPose.frontShoulderDist;
+  const hRad = headPose.headRadius;
+
+  forward.copy(headPose.forward);
+  computeHeadBasis(forward, right, up);
+  quat.setFromUnitVectors(LOCAL_FORWARD, forward);
+
+  if (pose.agentType === 'predator') {
+    if (counts.snouts < snoutCapacity) {
+      const snoutLen = Math.max(frontShoulderDist * 1.3, hRad * 2.1);
+      const snoutRad = hRad * 0.78;
+      const snoutDist = frontShoulderDist + snoutLen * 0.42;
+      pos.set(hx + forward.x * snoutDist, hy + forward.y * snoutDist, hz + forward.z * snoutDist);
+      scale.set(snoutRad, snoutRad * 0.85, snoutLen);
+      matrix.compose(pos, quat, scale);
+      snoutMesh.setMatrixAt(counts.snouts, matrix);
+      partColor.copy(color).multiplyScalar(1.08);
+      snoutMesh.setColorAt(counts.snouts, partColor);
+      snoutAgentIds[counts.snouts] = pose.agentId;
+      counts.snouts++;
+    }
+  } else if (includePreyHeadDome && counts.spheres < sphereCapacity) {
+    pos.set(
+      hx + forward.x * frontShoulderDist,
+      hy + forward.y * frontShoulderDist,
+      hz + forward.z * frontShoulderDist,
+    );
+    scale.set(hRad * 0.94, hRad * 0.92, hRad * 0.94);
+    matrix.compose(pos, quat, scale);
+    sphereMesh.setMatrixAt(counts.spheres, matrix);
+    partColor.copy(color).multiplyScalar(1.06);
+    sphereMesh.setColorAt(counts.spheres, partColor);
+    sphereAgentIds[counts.spheres] = pose.agentId;
+    counts.spheres++;
+  }
+
+  const eyeRadius =
+    pose.agentType === 'predator'
+      ? Math.max(hRad * 0.28, 0.22 * CREATURE_BODY_SCALE)
+      : Math.max(hRad * 0.24, 0.2 * CREATURE_BODY_SCALE);
+  counts.spheres = emitEyePair(
+    sphereMesh,
+    counts.spheres,
+    sphereCapacity,
+    sphereAgentIds,
+    pose.agentId,
+    hx,
+    hy,
+    hz,
+    frontShoulderDist + hRad * 0.18,
+    hRad * 0.52,
+    hRad * 0.62,
+    eyeRadius,
+    quat,
+    scratch,
+  );
+}
+
 function emitContactShadow(
   shadowMesh: THREE.InstancedMesh,
   shadowDrawn: number,
-  rx: number,
-  groundY: number,
-  rz: number,
-  rRad: number,
-  rLen: number,
+  pose: InterpolatedAgentView,
   scratch: FeatureScratch,
 ): number {
-  const { pos, quat, scale, matrix, forward } = scratch;
-  pos.set(rx, groundY + 0.08, rz);
-  const yawAngle = Math.atan2(forward.x, forward.z);
+  const { pos, quat, scale, matrix } = scratch;
+  pos.set(pose.rootPosition[0], pose.groundY + 0.08, pose.rootPosition[2]);
+  const hx = pose.headDirection[0];
+  const hz = pose.headDirection[2];
+  const yawAngle = hx * hx + hz * hz > 1e-8 ? Math.atan2(hx, hz) : 0;
   quat.setFromAxisAngle(WORLD_UP, yawAngle);
-  scale.set(rRad * 1.65, 1, Math.max(rLen * 0.85, rRad * 1.85));
+  scale.set(
+    pose.rootRenderRadius * 1.65,
+    1,
+    Math.max(pose.rootRenderLength * 0.85, pose.rootRenderRadius * 1.85),
+  );
   matrix.compose(pos, quat, scale);
   shadowMesh.setMatrixAt(shadowDrawn, matrix);
   return shadowDrawn + 1;
@@ -479,6 +609,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     }),
     [],
   );
+  const headDrawCountsRef = useRef<HeadDrawCounts>({ spheres: 0, snouts: 0 });
 
   const geometries = useMemo(() => {
     const segment = new THREE.CylinderGeometry(0.92, 1.0, 1, 6, 1);
@@ -765,10 +896,11 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     skinPool.bindGroup(skinnedGroupRef.current);
     const nearSlots = skinPool.prepareNearFrame(agents, lod.nearIndices, lod.nearCount);
 
-    const { matrix, color, partColor, pos, quat, rotZ45, scale, forward, right, up, headPose } = scratch;
+    const { matrix, color, partColor, pos, quat, rotZ45, scale } = scratch;
+    const headCounts = headDrawCountsRef.current;
+    headCounts.spheres = 0;
+    headCounts.snouts = 0;
     let segDrawn = 0;
-    let sphereDrawn = 0;
-    let snoutDrawn = 0;
     let shadowDrawn = 0;
     let markerDrawn = 0;
 
@@ -783,71 +915,22 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
       }
 
       computeCreatureColor(pose.agentType, pose.agentId, pose.energy, color);
-      const hasHead = skinPool.readSlotHeadPose(slotIdx, headPose);
-      const hx = hasHead ? headPose.center.x : pose.rootPosition[0];
-      const hy = hasHead ? headPose.center.y : pose.rootPosition[1];
-      const hz = hasHead ? headPose.center.z : pose.rootPosition[2];
-      const frontShoulderDist = hasHead ? headPose.frontShoulderDist : pose.rootRenderLength * 0.5;
-      const hRad = hasHead ? headPose.headRadius : pose.rootRenderRadius;
-
-      if (hasHead) {
-        forward.copy(headPose.forward);
-      } else {
-        forward.set(pose.headDirection[0], pose.headDirection[1], pose.headDirection[2]);
-        if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
-        else forward.normalize();
-      }
-      computeHeadBasis(forward, right, up);
-      quat.setFromUnitVectors(LOCAL_FORWARD, forward);
-
-      if (pose.agentType === 'predator') {
-        const snoutLen = Math.max(frontShoulderDist * 1.3, hRad * 2.1);
-        const snoutRad = hRad * 0.78;
-        const snoutDist = frontShoulderDist + snoutLen * 0.42;
-        pos.set(hx + forward.x * snoutDist, hy + forward.y * snoutDist, hz + forward.z * snoutDist);
-        scale.set(snoutRad, snoutRad * 0.85, snoutLen);
-        matrix.compose(pos, quat, scale);
-        snoutMesh.setMatrixAt(snoutDrawn, matrix);
-        partColor.copy(color).multiplyScalar(1.08);
-        snoutMesh.setColorAt(snoutDrawn, partColor);
-        lookups.snoutAgentIds[snoutDrawn] = pose.agentId;
-        snoutDrawn++;
-      }
-
-      const eyeRadius =
-        pose.agentType === 'predator'
-          ? Math.max(hRad * 0.28, 0.22 * CREATURE_BODY_SCALE)
-          : Math.max(hRad * 0.24, 0.2 * CREATURE_BODY_SCALE);
-      sphereDrawn = emitEyePair(
+      emitHeadFeatures(
+        pose,
+        false,
+        color,
         sphereMesh,
-        sphereDrawn,
         sphereCapacity,
         lookups.sphereAgentIds,
-        pose.agentId,
-        hx,
-        hy,
-        hz,
-        frontShoulderDist + hRad * 0.18,
-        hRad * 0.52,
-        hRad * 0.62,
-        eyeRadius,
-        quat,
+        snoutMesh,
+        capacity,
+        lookups.snoutAgentIds,
         scratch,
+        headCounts,
       );
 
       if (!realShadowsEnabled) {
-        forward.set(pose.headDirection[0], pose.headDirection[1], pose.headDirection[2]);
-        if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
-        shadowDrawn = emitContactShadow(
-          shadowMesh,
-          shadowDrawn,
-          pose.rootPosition[0],
-          pose.groundY,
-          pose.rootPosition[2],
-          pose.rootRenderRadius,
-          pose.rootRenderLength,
-          scratch,
-        );
+        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch);
       }
     }
 
@@ -918,7 +1001,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
         lookups.segmentAgentIds[segDrawn] = pose.agentId;
         segDrawn++;
 
-        if (segPose.hasJoint && sphereDrawn < sphereCapacity) {
+        if (segPose.hasJoint && headCounts.spheres < sphereCapacity) {
           pos.set(
             segPose.jointRenderPosition[0],
             segPose.jointRenderPosition[1],
@@ -928,106 +1011,30 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
           const jr = segPose.jointRenderRadius;
           scale.set(jr, jr, jr);
           matrix.compose(pos, quat, scale);
-          sphereMesh.setMatrixAt(sphereDrawn, matrix);
+          sphereMesh.setMatrixAt(headCounts.spheres, matrix);
           partColor.copy(color).multiplyScalar(0.88);
-          sphereMesh.setColorAt(sphereDrawn, partColor);
-          lookups.sphereAgentIds[sphereDrawn] = pose.agentId;
-          sphereDrawn++;
+          sphereMesh.setColorAt(headCounts.spheres, partColor);
+          lookups.sphereAgentIds[headCounts.spheres] = pose.agentId;
+          headCounts.spheres++;
         }
       }
 
-      forward.set(pose.headDirection[0], pose.headDirection[1], pose.headDirection[2]);
-      if (forward.lengthSq() <= 1e-8) forward.set(0, 0, 1);
-      else forward.normalize();
-      computeHeadBasis(forward, right, up);
-      quat.setFromUnitVectors(LOCAL_FORWARD, forward);
-
-      const rRx = pose.rootPosition[0];
-      const rRy = pose.rootPosition[1];
-      const rRz = pose.rootPosition[2];
-      const rLen = pose.rootRenderLength;
-      const rRad = pose.rootRenderRadius;
-      const eyeRadius = Math.max(rRad * 0.28, 0.22 * CREATURE_BODY_SCALE);
-
-      if (pose.agentType === 'predator') {
-        const snoutLen = Math.max(rLen * 0.92, rRad * 2.9);
-        const snoutRad = rRad * 1.06;
-        pos.set(
-          rRx + forward.x * (rLen * 0.44 + snoutLen * 0.42),
-          rRy + forward.y * (rLen * 0.44 + snoutLen * 0.42),
-          rRz + forward.z * (rLen * 0.44 + snoutLen * 0.42),
-        );
-        scale.set(snoutRad, snoutRad * 0.85, snoutLen);
-        matrix.compose(pos, quat, scale);
-        snoutMesh.setMatrixAt(snoutDrawn, matrix);
-        partColor.copy(color).multiplyScalar(1.08);
-        snoutMesh.setColorAt(snoutDrawn, partColor);
-        lookups.snoutAgentIds[snoutDrawn] = pose.agentId;
-        snoutDrawn++;
-
-        sphereDrawn = emitEyePair(
-          sphereMesh,
-          sphereDrawn,
-          sphereCapacity,
-          lookups.sphereAgentIds,
-          pose.agentId,
-          rRx,
-          rRy,
-          rRz,
-          rLen * 0.48 + snoutLen * 0.14,
-          rRad * 0.56,
-          rRad * 0.64,
-          eyeRadius,
-          quat,
-          scratch,
-        );
-      } else {
-        const headFwd = rLen * 0.48;
-        const headUp = rRad * 0.12;
-        if (sphereDrawn < sphereCapacity) {
-          pos.set(
-            rRx + forward.x * headFwd + up.x * headUp,
-            rRy + forward.y * headFwd + up.y * headUp,
-            rRz + forward.z * headFwd + up.z * headUp,
-          );
-          scale.set(rRad * 1.18, rRad * 1.1, rRad * 1.24);
-          matrix.compose(pos, quat, scale);
-          sphereMesh.setMatrixAt(sphereDrawn, matrix);
-          partColor.copy(color).multiplyScalar(1.06);
-          sphereMesh.setColorAt(sphereDrawn, partColor);
-          lookups.sphereAgentIds[sphereDrawn] = pose.agentId;
-          sphereDrawn++;
-        }
-
-        sphereDrawn = emitEyePair(
-          sphereMesh,
-          sphereDrawn,
-          sphereCapacity,
-          lookups.sphereAgentIds,
-          pose.agentId,
-          rRx,
-          rRy,
-          rRz,
-          headFwd + rRad * 0.72,
-          headUp + rRad * 0.45,
-          rRad * 0.62,
-          eyeRadius,
-          quat,
-          scratch,
-        );
-      }
+      emitHeadFeatures(
+        pose,
+        true,
+        color,
+        sphereMesh,
+        sphereCapacity,
+        lookups.sphereAgentIds,
+        snoutMesh,
+        capacity,
+        lookups.snoutAgentIds,
+        scratch,
+        headCounts,
+      );
 
       if (!realShadowsEnabled) {
-        shadowDrawn = emitContactShadow(
-          shadowMesh,
-          shadowDrawn,
-          rRx,
-          pose.groundY,
-          rRz,
-          rRad,
-          rLen,
-          scratch,
-        );
+        shadowDrawn = emitContactShadow(shadowMesh, shadowDrawn, pose, scratch);
       }
     }
 
@@ -1036,13 +1043,13 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
     if (segMesh.instanceMatrix) segMesh.instanceMatrix.needsUpdate = true;
     if (segMesh.instanceColor) segMesh.instanceColor.needsUpdate = true;
 
-    sphereMesh.count = sphereDrawn;
-    sphereMesh.visible = sphereDrawn > 0;
+    sphereMesh.count = headCounts.spheres;
+    sphereMesh.visible = headCounts.spheres > 0;
     if (sphereMesh.instanceMatrix) sphereMesh.instanceMatrix.needsUpdate = true;
     if (sphereMesh.instanceColor) sphereMesh.instanceColor.needsUpdate = true;
 
-    snoutMesh.count = snoutDrawn;
-    snoutMesh.visible = snoutDrawn > 0;
+    snoutMesh.count = headCounts.snouts;
+    snoutMesh.visible = headCounts.snouts > 0;
     if (snoutMesh.instanceMatrix) snoutMesh.instanceMatrix.needsUpdate = true;
     if (snoutMesh.instanceColor) snoutMesh.instanceColor.needsUpdate = true;
 

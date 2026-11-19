@@ -1149,4 +1149,221 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
       4,
     );
   });
+
+  it('D1: places decorative forward-chain eyes and snout at the identical world point in near and mid tiers', () => {
+    const buildForwardChain = (
+      agentId: number,
+      agentType: 'prey' | 'predator',
+      simX: number,
+      simZ: number,
+      yaw: number,
+    ): SegmentState[] => {
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
+      const step = new THREE.Vector3(0, 0, 1.0).applyQuaternion(q);
+      const segs: SegmentState[] = [];
+      for (let s = 0; s < 3; s++) {
+        segs.push({
+          agent_id: agentId,
+          segment_id: s,
+          parent_segment_id: s === 0 ? null : s - 1,
+          length: 1.0,
+          radius: 0.25,
+          x: simX + step.x * s,
+          y: 1.0,
+          z: simZ + step.z * s,
+          yaw,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: s === 0 ? 0 : 0.5,
+          joint_axis_x: 0,
+          joint_axis_y: 1,
+          joint_axis_z: 0,
+          energy: 90,
+          hydration: 80,
+          head_direction: [step.x, step.y, step.z],
+          agent_type: agentType,
+        });
+      }
+      return segs;
+    };
+
+    const manual = makeManualSource();
+    const { container, unmount } = render(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="high"
+      />,
+    );
+
+    const preySegs = buildForwardChain(1, 'prey', -2, 0, 0.45);
+    const predSegs = buildForwardChain(2, 'predator', 2, 0, -0.35);
+    act(() => {
+      manual.emit({
+        segments: [...preySegs, ...predSegs],
+        environmental_state: { elements: [] },
+        head_directions: {},
+      });
+    });
+
+    const gY = surfaceHeight(world, 0, 0, 1200, 0.14, 64);
+    const sphereMesh = container.querySelector('instancedmesh[name="live-agents-spheres"]') as MockInstancedEl;
+    const snoutMesh = container.querySelector('instancedmesh[name="live-agents-snouts"]') as MockInstancedEl;
+    const segMesh = container.querySelector('instancedmesh[name="live-agents-segments"]') as MockInstancedEl;
+    const skinnedGroup = container.querySelector('group[name="live-agents-skinned"]') as MockSkinnedGroupEl;
+
+    // 1. Frame 1: Near tier (dist ~ 45 <= 160).
+    const nearCam = makeCameraAt([0, gY + 25, 40], [0, gY, 0]);
+    act(() => {
+      advanceThreeFrame({ camera: nearCam, size: { width: 1280, height: 720 } });
+    });
+    const visibleNear = (skinnedGroup._b1Children3D ?? []).filter(
+      (obj): obj is THREE.SkinnedMesh => obj instanceof THREE.SkinnedMesh && obj.visible,
+    );
+    expect(visibleNear).toHaveLength(2);
+    expect(segMesh.count).toBe(0);
+    expect(snoutMesh.count).toBe(1);
+    expect(sphereMesh.count).toBe(4); // 2 eyes * 2 agents
+
+    const readPos = (draws: number[][], idx: number) =>
+      new THREE.Vector3(draws[idx][12], draws[idx][13], draws[idx][14]);
+
+    // Near draw order depends on closest-first sort, so match by agentId encoded on sphereAgentIds/X-side or test deterministic agent positions.
+    // Agent 1 is at simX = -2 (renderX = -12) and Agent 2 is at simX = +2 (renderX = +12).
+    const nearEyesAll = [0, 1, 2, 3].map((idx) => readPos(sphereMesh._b1Draws!, idx));
+    const nearPreyEyes = nearEyesAll.filter((p) => p.x < 0);
+    const nearPredEyes = nearEyesAll.filter((p) => p.x > 0);
+    expect(nearPreyEyes).toHaveLength(2);
+    expect(nearPredEyes).toHaveLength(2);
+    const nearSnout = readPos(snoutMesh._b1Draws!, 0);
+
+    // Eyes are genuinely anchored at the leading +L/2 nose segment, well ahead of root (0).
+    const root1 = new THREE.Vector3(-12, nearPreyEyes[0].y, 0);
+    expect(nearPreyEyes[0].distanceTo(root1)).toBeGreaterThan(2.5);
+
+    // 2. Frame 2: Mid tier on the exact same pose (dist = hypot(140, 220) ~= 260.8 in (160, 460]).
+    const midCam = makeCameraAt([0, gY + 140, 220], [0, gY, 0]);
+    act(() => {
+      advanceThreeFrame({ camera: midCam, size: { width: 1280, height: 720 } });
+    });
+    const visibleAfterMid = (skinnedGroup._b1Children3D ?? []).filter(
+      (obj): obj is THREE.SkinnedMesh => obj instanceof THREE.SkinnedMesh && obj.visible,
+    );
+    expect(visibleAfterMid).toHaveLength(0);
+    expect(segMesh.count).toBe(6);
+    expect(snoutMesh.count).toBe(1);
+    // Mid draws per prey (2 joints + 1 head dome + 2 eyes = 5) and per predator (2 joints + 2 eyes = 4) => 9 spheres.
+    expect(sphereMesh.count).toBe(9);
+
+    const midPreyEye0 = readPos(sphereMesh._b1Draws!, 3);
+    const midPreyEye1 = readPos(sphereMesh._b1Draws!, 4);
+    const midPredEye0 = readPos(sphereMesh._b1Draws!, 7);
+    const midPredEye1 = readPos(sphereMesh._b1Draws!, 8);
+    const midSnout = readPos(snoutMesh._b1Draws!, 0);
+
+    const matchClosest = (target: THREE.Vector3, pair: THREE.Vector3[]) =>
+      Math.min(target.distanceTo(pair[0]), target.distanceTo(pair[1]));
+    expect(matchClosest(midPreyEye0, nearPreyEyes)).toBeLessThan(1e-4);
+    expect(matchClosest(midPreyEye1, nearPreyEyes)).toBeLessThan(1e-4);
+    expect(matchClosest(midPredEye0, nearPredEyes)).toBeLessThan(1e-4);
+    expect(matchClosest(midPredEye1, nearPredEyes)).toBeLessThan(1e-4);
+    expect(midSnout.distanceTo(nearSnout)).toBeLessThan(1e-4);
+
+    unmount();
+  });
+
+  it("N3': releases hidden slot geometry and rebuilds cleanly after LRU cache eviction", () => {
+    const cache = new ArchetypeMeshCache(8);
+    const pool = new SkinnedCreaturePool(3, cache);
+    const group = new THREE.Group();
+    pool.bindGroup(group);
+
+    const buf = new TickInterpolationBuffer();
+    const pushAgents = (
+      items: Array<{ id: number; length: number; radius: number }>,
+      timeMs: number,
+    ) => {
+      const segs: SegmentState[] = [];
+      for (const item of items) {
+        segs.push(
+          ...makeSyntheticPayloadSegments(item.id, 'prey', 0, 0, 2).map((s) => ({
+            ...s,
+            length: item.length,
+            radius: item.radius,
+          })),
+        );
+      }
+      buf.push(
+        { segments: segs, environmental_state: { elements: [] }, head_directions: {} },
+        timeMs,
+        1200,
+        () => 0,
+        CREATURE_BODY_SCALE,
+      );
+      return buf.sampleLatest();
+    };
+
+    const scratch = {
+      pos: new THREE.Vector3(),
+      quat: new THREE.Quaternion(),
+      scale: new THREE.Vector3(),
+      color: new THREE.Color(),
+    };
+
+    // Frame 1: Bind Agent 1 (morph A) in slot 0 and Agent 2 (morph B) in slot 1.
+    const f1 = pushAgents(
+      [
+        { id: 1, length: 1.0, radius: 0.2 },
+        { id: 2, length: 1.4, radius: 0.24 },
+      ],
+      0,
+    );
+    const keyA = f1.agents[0].morphologyKey;
+    const slots1 = pool.prepareNearFrame(f1.agents, new Int32Array([0, 1]), 2);
+    expect(pool.updateSlot(slots1[0], f1.agents[0], 0, scratch, false)).toBe(true);
+    expect(pool.updateSlot(slots1[1], f1.agents[1], 0, scratch, false)).toBe(true);
+    const slot0Mesh = group.children[slots1[0]] as THREE.SkinnedMesh;
+    const geomA = slot0Mesh.geometry;
+    const disposeSpyA = vi.spyOn(geomA, 'dispose');
+    expect(cache.has(keyA)).toBe(true);
+
+    // Frame 2: Agent 1 leaves near tier -> slot 0 hides and releases geomA/skeleton/key.
+    const f2 = pushAgents([{ id: 2, length: 1.4, radius: 0.24 }], 33);
+    const slots2 = pool.prepareNearFrame(f2.agents, new Int32Array([0]), 1);
+    expect(pool.updateSlot(slots2[0], f2.agents[0], 0.033, scratch, false)).toBe(true);
+    expect(slot0Mesh.visible).toBe(false);
+    expect(slot0Mesh.userData.agentId).toBe(0);
+    expect(slot0Mesh.geometry).not.toBe(geomA);
+
+    // Frames 3..14: Overflow LRU cache (maxEntries = 8) on active slot 1 while slot 0 stays hidden.
+    for (let k = 1; k <= 12; k++) {
+      const fk = pushAgents([{ id: 2, length: 1.5 + k * 0.25, radius: 0.16 + k * 0.02 }], 33 + k * 33);
+      const slk = pool.prepareNearFrame(fk.agents, new Int32Array([0]), 1);
+      expect(pool.updateSlot(slk[0], fk.agents[0], 0.1 + k * 0.03, scratch, false)).toBe(true);
+    }
+    expect(disposeSpyA).toHaveBeenCalledTimes(1);
+    expect(cache.has(keyA)).toBe(false);
+
+    // Frame 15: Agent 1 (morph A) re-enters -> binds fresh non-disposed geometry and re-caches keyA.
+    const fReturn = pushAgents(
+      [
+        { id: 1, length: 1.0, radius: 0.2 },
+        { id: 2, length: 4.5, radius: 0.4 },
+      ],
+      600,
+    );
+    const slReturn = pool.prepareNearFrame(fReturn.agents, new Int32Array([0, 1]), 2);
+    expect(pool.updateSlot(slReturn[0], fReturn.agents[0], 0.6, scratch, false)).toBe(true);
+    const meshReturn = group.children[slReturn[0]] as THREE.SkinnedMesh;
+    expect(meshReturn.visible).toBe(true);
+    expect(meshReturn.geometry).not.toBe(geomA);
+    expect(cache.has(keyA)).toBe(true);
+
+    pool.dispose();
+  });
 });

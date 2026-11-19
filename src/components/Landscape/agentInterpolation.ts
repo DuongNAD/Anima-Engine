@@ -308,6 +308,8 @@ export interface InterpolatedAgentView {
   morphologyKey: string;
   /** Snapshot segment dimensions paired with `morphologyKey` so archetype builds match the key. */
   morphologySegments: readonly SegmentRenderPose[];
+  headSegmentId: number;
+  headLocalForward: [number, number, number];
   headDirection: [number, number, number];
   segments: InterpolatedSegmentView[];
 }
@@ -349,6 +351,8 @@ function createEmptyAgentView(): InterpolatedAgentView {
     boundingRadius: 0,
     morphologyKey: '',
     morphologySegments: [],
+    headSegmentId: 0,
+    headLocalForward: [0, 0, 1],
     headDirection: [0, 0, 1],
     segments: [],
   };
@@ -397,6 +401,10 @@ function copyAgentInto(src: AgentRenderPose, dst: InterpolatedAgentView): number
   dst.boundingRadius = src.boundingRadius;
   dst.morphologyKey = src.morphologyKey;
   dst.morphologySegments = src.segments;
+  dst.headSegmentId = src.headSegmentId;
+  dst.headLocalForward[0] = src.headLocalForward[0];
+  dst.headLocalForward[1] = src.headLocalForward[1];
+  dst.headLocalForward[2] = src.headLocalForward[2];
   dst.headDirection[0] = src.headDirection[0];
   dst.headDirection[1] = src.headDirection[1];
   dst.headDirection[2] = src.headDirection[2];
@@ -710,6 +718,10 @@ export class TickInterpolationBuffer {
       dst.boundingRadius = Math.max(prevAgent.boundingRadius, currAgent.boundingRadius);
       dst.morphologyKey = currAgent.morphologyKey;
       dst.morphologySegments = currAgent.segments;
+      dst.headSegmentId = currAgent.headSegmentId;
+      dst.headLocalForward[0] = currAgent.headLocalForward[0];
+      dst.headLocalForward[1] = currAgent.headLocalForward[1];
+      dst.headLocalForward[2] = currAgent.headLocalForward[2];
       slerpDirection3Into(prevAgent.headDirection, currAgent.headDirection, alpha, dst.headDirection);
 
       const currSegs = currAgent.segments;
