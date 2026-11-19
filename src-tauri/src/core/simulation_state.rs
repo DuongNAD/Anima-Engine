@@ -411,7 +411,7 @@ impl SavedSharedLearningState {
         if self.pending_inference.len() > crate::core::agent_systems::INFERENCE_POOL_BATCHES {
             return Err("pending inference batches exceed the bounded response pool".into());
         }
-        let mut lineages = std::collections::HashSet::new();
+        let mut pending_keys = std::collections::HashSet::new();
         for response in self
             .pending_inference
             .iter()
@@ -421,7 +421,7 @@ impl SavedSharedLearningState {
                 || !crate::core::agent_systems::AgentInferenceResponse::actions_are_valid(
                     &response.actions,
                 )
-                || !lineages.insert(response.lineage_id.as_str())
+                || !pending_keys.insert((response.lineage_id.as_str(), response.request_id))
             {
                 return Err("pending inference responses are invalid or duplicated".into());
             }
@@ -1604,4 +1604,60 @@ pub fn populate_restored_spatial_grid(world: &mut World, state: &SavedSimulation
             }
         }
     }
+}
+
+/// Route saved pending-inference responses back to restored agent entities by matching
+/// `(lineage_id, request_id)` against each entity's
+/// [`crate::core::components::CognitiveState::PendingInference`] ticket (F-047 / F-048).
+///
+/// Full siblings share one [`AgentLineageId`], so matching by `lineage_id` alone collides when
+/// siblings coexist. Any saved response whose `(lineage_id, request_id)` pair matches no waiting
+/// entity is dropped and counted rather than routed to a sibling. Returns `(routed_batches,
+/// dropped_count)`, preserving batch grouping for non-empty routed batches.
+pub fn route_restored_pending_inference(
+    world: &mut World,
+    saved_batches: &[SavedInferenceResponseBatch],
+) -> (
+    Vec<Vec<crate::core::agent_systems::AgentInferenceResponse>>,
+    usize,
+) {
+    let mut waiting_by_ticket: std::collections::HashMap<(String, u64), Entity> =
+        std::collections::HashMap::new();
+    {
+        let mut query = world.query::<(
+            Entity,
+            &AgentLineageId,
+            &crate::core::components::CognitiveState,
+        )>();
+        for (entity, lineage, cognitive_state) in query.iter(world) {
+            if let crate::core::components::CognitiveState::PendingInference(ticket_id) =
+                *cognitive_state
+            {
+                waiting_by_ticket.insert((lineage.0.clone(), ticket_id), entity);
+            }
+        }
+    }
+
+    let mut routed_batches = Vec::with_capacity(saved_batches.len());
+    let mut dropped = 0usize;
+    for saved_batch in saved_batches {
+        let mut responses = Vec::with_capacity(saved_batch.responses.len());
+        for saved in &saved_batch.responses {
+            if let Some(entity) =
+                waiting_by_ticket.remove(&(saved.lineage_id.clone(), saved.request_id))
+            {
+                responses.push(crate::core::agent_systems::AgentInferenceResponse {
+                    entity,
+                    actions: saved.actions,
+                    request_id: saved.request_id,
+                });
+            } else {
+                dropped += 1;
+            }
+        }
+        if !responses.is_empty() {
+            routed_batches.push(responses);
+        }
+    }
+    (routed_batches, dropped)
 }

@@ -1710,12 +1710,15 @@ impl SimulationEngine {
             }
 
             if let Some(shared) = shared_learning_resume.as_ref() {
-                let mut entities_by_lineage = std::collections::HashMap::new();
-                let mut lineage_query = world.query::<(Entity, &AgentLineageId)>();
-                for (entity, lineage) in lineage_query.iter(&world) {
-                    entities_by_lineage.insert(lineage.0.clone(), entity);
+                let (routed_batches, dropped_responses) =
+                    route_restored_pending_inference(&mut world, &shared.pending_inference);
+                if dropped_responses > 0 {
+                    eprintln!(
+                        "WARNING: snapshot restore dropped {dropped_responses} unmatched pending \
+                         inference response(s)"
+                    );
                 }
-                for saved_batch in &shared.pending_inference {
+                for responses in routed_batches {
                     let Ok(mut batch) = recycle_res_rx_restore.try_recv() else {
                         eprintln!(
                             "ERROR: snapshot restore aborted: pending inference responses exceed \
@@ -1725,22 +1728,7 @@ impl SimulationEngine {
                         return;
                     };
                     batch.responses.clear();
-                    for saved in &saved_batch.responses {
-                        let Some(&entity) = entities_by_lineage.get(&saved.lineage_id) else {
-                            eprintln!(
-                                "ERROR: snapshot restore aborted: pending inference target '{}' \
-                                 is absent from the restored population",
-                                saved.lineage_id
-                            );
-                            running_clone.store(false, Ordering::SeqCst);
-                            return;
-                        };
-                        batch.responses.push(AgentInferenceResponse {
-                            entity,
-                            actions: saved.actions,
-                            request_id: saved.request_id,
-                        });
-                    }
+                    batch.responses.extend(responses);
                     if res_tx_checkpoint.send(batch).is_err() {
                         eprintln!(
                             "ERROR: snapshot restore aborted: inference response worker channel \
