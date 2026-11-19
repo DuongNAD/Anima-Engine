@@ -674,3 +674,30 @@ impl Default for SensoryBufferComponent {
         }
     }
 }
+
+/// Tracks an agent root's last known walkable world position in place (Card LAND1).
+///
+/// Updated in place by [`crate::core::terrain_navigation::terrain_navigation_system`] so no
+/// components are inserted or removed inside the tick and no scratch heap collection is needed
+/// to move child segments back on shoreline reversion.
+///
+/// `revert_delta` and `reverted_this_tick` are intra-system scratch fields overwritten on every
+/// pass of `terrain_navigation_system`. At every tick boundary after `wrap_coordinates_system`,
+/// `pos` matches the root's wrapped walkable `Position.0`, so snapshot restore reconstructs this
+/// component via `decode_genotype` without snapshot schema changes.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct LastWalkablePosition {
+    pub pos: Vec3,
+    pub revert_delta: Vec3,
+    pub reverted_this_tick: bool,
+}
+
+impl LastWalkablePosition {
+    pub const fn new(pos: Vec3) -> Self {
+        Self {
+            pos,
+            revert_delta: Vec3::ZERO,
+            reverted_this_tick: false,
+        }
+    }
+}

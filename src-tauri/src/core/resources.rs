@@ -734,6 +734,16 @@ impl LocomotionPolicy {
     }
 }
 
+/// Whether agents and newly spawned world entities are constrained to walkable `TerrainMap` cells
+/// (Card LAND1; `live.land_mask` in headless experiments, enabled by default in the desktop app).
+///
+/// **Absent resource == disabled (`enabled: false`)**, keeping pre-LAND1 headless schedules and
+/// manifests bit-identical.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TerrainNavigation {
+    pub enabled: bool,
+}
+
 /// Predator income knobs (ADR-0007 option B, "thẻ B"). **Every field defaults to today's behaviour
 /// and a world without the resource behaves exactly as before** (the app inserts nothing; a live
 /// manifest opts in with `live.kill_hydration`, `live.kill_efficiency`, `live.target_min_energy`).

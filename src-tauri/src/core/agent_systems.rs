@@ -664,10 +664,13 @@ pub fn autonomous_reproduction_system(
     mut ledger: Option<ResMut<crate::core::energy_ledger::EnergyLedger>>,
     prey_cap_policy: Option<Res<crate::core::resources::PreyCapPolicy>>,
     mut drift: Option<ResMut<crate::core::drift_control::DriftControlState>>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
 ) {
     if reproduction_policy.as_deref().is_some_and(|p| !p.enabled) {
         return;
     }
+    let land_nav = terrain_nav.as_deref().is_some_and(|p| p.enabled);
     // Absent policy == the historical ceiling of 80 prey (`live.prey_cap`, card S6).
     let prey_cap = prey_cap_policy
         .as_deref()
@@ -829,6 +832,8 @@ pub fn autonomous_reproduction_system(
                         &mut next_node_id,
                         &mut demographic_tracker,
                         &mut vital_stats,
+                        land_nav,
+                        terrain_map.as_deref(),
                     );
                     if payer_homeo.energy < crate::core::drift_control::MIN_DRIFT_BIRTH_PAYMENT_EU {
                         if let Some(pos_idx) = solvent_buf.iter().position(|&e| e == p_pay) {
@@ -939,6 +944,8 @@ pub fn autonomous_reproduction_system(
                 &mut next_node_id,
                 &mut demographic_tracker,
                 &mut vital_stats,
+                land_nav,
+                terrain_map.as_deref(),
             );
             if spawned {
                 if let Some(drift_res) = drift.as_deref_mut() {
@@ -973,6 +980,8 @@ fn execute_reproduction_birth(
     next_node_id: &mut Option<ResMut<NextNodeId>>,
     demographic_tracker: &mut Option<ResMut<crate::core::telemetry_export::DemographicTracker>>,
     vital_stats: &mut Option<ResMut<crate::core::resources::VitalStatistics>>,
+    land_nav: bool,
+    terrain_map: Option<&crate::core::terrain::TerrainMap>,
 ) -> bool {
     use rand::Rng;
 
@@ -1035,6 +1044,18 @@ fn execute_reproduction_birth(
     if let Some(ref b) = bounds {
         spawn_pos.x = spawn_pos.x.clamp(b.min.x + 1.0, b.max.x - 1.0);
         spawn_pos.z = spawn_pos.z.clamp(b.min.z + 1.0, b.max.z - 1.0);
+    }
+    if land_nav {
+        if let (Some(tm), Some(ref b)) = (terrain_map, bounds) {
+            if !crate::core::terrain_navigation::is_pos_walkable(tm, b, spawn_pos) {
+                spawn_pos = if crate::core::terrain_navigation::is_pos_walkable(tm, b, parent_pos) {
+                    parent_pos
+                } else {
+                    crate::core::terrain_navigation::snap_to_nearest_walkable(tm, b, parent_pos)
+                        .unwrap_or(parent_pos)
+                };
+            }
+        }
     }
 
     // Mutate child morphology with declared mutation probability
@@ -1250,8 +1271,12 @@ pub fn apply_staggered_evolution_system(
     evolution_receiver: Res<EvolutionReceiver>,
     mut queue: ResMut<EvolutionQueue>,
     position_query: Query<&Position>,
+    last_walkable_query: Query<&crate::core::components::LastWalkablePosition>,
     predator_query: Query<&Predator>,
     mut vitals: Option<ResMut<crate::core::resources::VitalStatistics>>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
+    bounds: Option<Res<crate::core::ecs::MapBounds>>,
     // The corpse's reserve and its segments are both handled by
     // `ReclaimAndDespawnAgentCommand` at the sync point, so this system no longer needs the
     // segment query or direct access to the biomass pool.
@@ -1274,10 +1299,27 @@ pub fn apply_staggered_evolution_system(
     if let Some((old_entity, next_genotype, default_pos, lineage_id, generation, parent_ids)) =
         queue.pending_replacements.pop()
     {
-        let spawn_pos = position_query
+        let mut spawn_pos = position_query
             .get(old_entity)
             .map(|p| p.0)
             .unwrap_or(default_pos);
+        if terrain_nav.as_deref().is_some_and(|p| p.enabled) {
+            if let (Some(tm), Some(ref b)) = (terrain_map.as_deref(), bounds.as_deref()) {
+                if !crate::core::terrain_navigation::is_pos_walkable(tm, b, spawn_pos) {
+                    spawn_pos = last_walkable_query
+                        .get(old_entity)
+                        .ok()
+                        .map(|l| l.pos)
+                        .filter(|&p| crate::core::terrain_navigation::is_pos_walkable(tm, b, p))
+                        .or_else(|| {
+                            crate::core::terrain_navigation::snap_to_nearest_walkable(
+                                tm, b, spawn_pos,
+                            )
+                        })
+                        .unwrap_or(spawn_pos);
+                }
+            }
+        }
 
         let agent_class = if predator_query.get(old_entity).is_ok() {
             AgentClass::Predator
