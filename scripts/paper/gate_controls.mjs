@@ -120,10 +120,11 @@ function ensureSafeAnimaCargo() {
   const psScript = [
     '$os = Get-CimInstance Win32_OperatingSystem;',
     '$freeKb = [int64]$os.FreePhysicalMemory;',
+    '$virtKb = [int64]$os.FreeVirtualMemory;',
     '$procs = @(Get-CimInstance Win32_Process | Where-Object { $_.Name -match "^(cargo|rustc)\\.exe$" });',
     '$anima = @($procs | Where-Object { $_.CommandLine -match "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
     '$other = @($procs | Where-Object { $_.CommandLine -notmatch "Anima-Engine|anima-wt|anima-m2-wt|anima_engine" });',
-    'Write-Output ("FREE_KB=" + $freeKb + ";ANIMA=" + $anima.Count + ";OTHER=" + $other.Count);',
+    'Write-Output ("FREE_KB=" + $freeKb + ";VIRT_KB=" + $virtKb + ";ANIMA=" + $anima.Count + ";OTHER=" + $other.Count);',
     'foreach ($p in $anima) { Write-Output ("ANIMA_PROC=" + $p.ProcessId + " " + $p.Name + " " + $p.CommandLine) }',
   ].join(' ');
   for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -131,7 +132,7 @@ function ensureSafeAnimaCargo() {
       encoding: 'utf8',
     });
     const out = res.stdout || '';
-    const m = /FREE_KB=(\d+);ANIMA=(\d+);OTHER=(\d+)/.exec(out);
+    const m = /FREE_KB=(\d+);VIRT_KB=(\d+);ANIMA=(\d+);OTHER=(\d+)/.exec(out);
     if (!m) {
       if (attempt === 59) {
         throw new Error(`Could not inspect Windows cargo/RAM state:\n${out}\n${res.stderr || ''}`);
@@ -140,13 +141,14 @@ function ensureSafeAnimaCargo() {
       continue;
     }
     const freeKb = Number(m[1]);
-    const animaCount = Number(m[2]);
-    const otherCount = Number(m[3]);
-    const ramReady = otherCount === 0 || freeKb >= 5_000_000;
+    const virtKb = Number(m[2]);
+    const animaCount = Number(m[3]);
+    const otherCount = Number(m[4]);
+    const ramReady = otherCount === 0 || (freeKb >= 3_000_000 && virtKb >= 8_000_000);
     if (animaCount === 0 && ramReady) return;
     if (attempt === 59) {
       throw new Error(
-        `Shared Dell cargo guard timed out (FREE_KB=${freeKb}, ANIMA=${animaCount}, OTHER=${otherCount}):\n${out}`,
+        `Shared Dell cargo guard timed out (FREE_KB=${freeKb}, VIRT_KB=${virtKb}, ANIMA=${animaCount}, OTHER=${otherCount}):\n${out}`,
       );
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 15_000);
@@ -860,7 +862,7 @@ const GATES = [
     id: 'live_experiment_saveload',
     source: 'CARD M2 (ci.yml:174)',
     ciCommand: 'cargo test --test live_experiment_tests',
-    faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `build_live_world` (`live_experiment.rs`)',
+    faultSummary: 'Reset `sim_rng_pos` to `0` on restore in `restore_energy_state` (`simulation_state.rs`)',
     patch: 'live_experiment_saveload.patch',
     needsCargo: true,
     run(wt) {
@@ -870,7 +872,12 @@ const GATES = [
         cargoEnv(),
       );
     },
-    matchers: [/save|restore|checksum|diverge|rng/i, /test .* FAILED/],
+    matchers: [
+      /a live run resumed from a checkpoint diverged/,
+      /a control branch forked at tick 60 diverged/,
+      /assertion .*failed/i,
+      /test .* FAILED/,
+    ],
   },
   {
     id: 'determinism_golden_hash',

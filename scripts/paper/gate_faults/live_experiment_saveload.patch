@@ -1,12 +1,11 @@
-diff --git a/src-tauri/src/core/live_experiment.rs b/src-tauri/src/core/live_experiment.rs
---- a/src-tauri/src/core/live_experiment.rs
-+++ b/src-tauri/src/core/live_experiment.rs
-@@ -2493,7 +2493,7 @@
-     match restore {
-         Some(state) => {
-             let sim_rng = if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
--                crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
-+                crate::core::resources::SimRng::restore(state.sim_rng_seed, 0)
-             } else {
-                 crate::core::resources::SimRng::from_seed(seed)
-             };
+diff --git a/src-tauri/src/core/simulation_state.rs b/src-tauri/src/core/simulation_state.rs
+--- a/src-tauri/src/core/simulation_state.rs
++++ b/src-tauri/src/core/simulation_state.rs
+@@ -879,6 +879,6 @@
+     if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+         world.insert_resource(crate::core::resources::SimRng::restore(
+             state.sim_rng_seed,
+-            state.sim_rng_pos,
++            0,
+         ));
+     }
