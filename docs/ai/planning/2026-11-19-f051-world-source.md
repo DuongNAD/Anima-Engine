@@ -63,5 +63,5 @@ review_cycle: weekly
 
 ## 5. Tài liệu & trạng thái tích hợp
 
-- Cập nhật [`docs/ai/planning/2026-11-19-esel1-runner-trial-mode.md`](2026-11-19-esel1-runner-trial-mode.md) và [`docs/paper/data/determinism_matrix.md`](../../paper/data/determinism_matrix.md) (PR Draft PENDING).
+- Cập nhật [`docs/ai/planning/2026-11-19-esel1-runner-trial-mode.md`](2026-11-19-esel1-runner-trial-mode.md) và [`docs/paper/data/determinism_matrix.md`](../../paper/data/determinism_matrix.md) (PR #174, Draft).
 - Không sửa `docs/ai/README.md` (chủ/lead cập nhật mục lục qua `npm run gen:docs-index` khi hợp nhất).

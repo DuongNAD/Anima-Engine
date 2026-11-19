@@ -82,7 +82,7 @@ khác ở `powf` lúc sinh địa hình đủ đổi biome của vài ô, và v�
 - **Checksum chỉ so được trong cùng một hệ điều hành.** Quy tắc "không ghim checksum tuyệt đối trong
   test, so hai lượt chạy với nhau" giờ có số đo đỡ. Một kết quả thí nghiệm trên thế giới live chỉ tái
   lập được bit-for-bit trên cùng hệ điều hành; giữa các hệ điều hành chỉ so được ở mức thống kê.
-- **Thế giới live lấy địa hình từ môi trường của máy — ĐÃ SỬA CHO ĐƯỜNG CHẠY HEADLESS (thẻ F051, PR PENDING).**
+- **Thế giới live lấy địa hình từ môi trường của máy — ĐÃ SỬA CHO ĐƯỜNG CHẠY HEADLESS (thẻ F051, PR #174).**
   Trước thẻ F051, `core::ecs::init_world` nạp `ANIMA_WORLD_ARTIFACT`, hoặc `$TMPDIR/anima_world_artifact.anmw`
   (file app desktop ghi khi frontend sinh thế giới), rồi mới rơi về sinh tại chỗ và cache vào
   `$TMPDIR/anima_world_cache`. Lúc genesis (`live.probe`, seed 1), artifact đã commit cho 258.450 EU
