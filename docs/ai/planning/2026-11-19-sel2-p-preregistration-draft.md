@@ -129,8 +129,10 @@ Cả ba nhánh dùng cùng một thế giới cơ sở ở Mục 2 và cùng t�
   - `E3`: `730001..`
   - `E2R`: `750001..`
   - `E-SEL1`: `760001..`
-- **Hạt giống `--smoke`:** **`999961`** (`SeedNotInManifest` — không thuộc tập seed xác nhận, không thuộc `1..=6`, chỉ chạy ở chế độ mù khối lượng để kiểm `C1..C5`).
+- **Hạt giống `--smoke`:** **`999961`** (`SeedNotInManifest` — không thuộc tập seed xác nhận, không thuộc tập nền, không thuộc `1..=6`, chỉ chạy ở chế độ mù khối lượng để kiểm `C1..C5`).
+- **Bộ hạt giống nền gộp (`QD-SEL2g`, `prey_cap = 80, scale = 1.0`, `N_ref = 6`):** **`799501, 799502, 799503, 799504, 799505, 799506`** (`799501..=799506`), rời hoàn toàn khỏi `1..=6`, `780001 + 1000*k`, `999961`, và các thí nghiệm trước; yêu cầu tối thiểu **`3`** lượt nền sống tới cuối lượt để đánh giá `C2`.
 - **Bộ hạt giống xác nhận đề xuất (`N = 20` cặp):** Dãy `780001 + 1000 * k` với `k = 0..19` (tức `780001, 781001, ..., 799001`), cách đều `1.000` giữa các seed `ChaCha12Rng` và hoàn toàn rời khỏi các thí nghiệm trước.
+- **Bộ hạt giống kiểm tra đường ống 2.000 tick (`--pipeline-check`, chỉ kiểm tra kỹ thuật):** `999801..=999806` (nền), `999811` (smoke), `999821..=999822` (cặp 3 nhánh) — tách biệt hoàn toàn với mọi bộ seed trên.
 - **Số cặp hoàn chỉnh tối thiểu:** `min_complete_pairs = 16` (Mục 7).
 
 ### Bảng lực thống kê (`Statistical Power`)
@@ -173,11 +175,11 @@ Mọi cấu hình chính thức phải vượt qua **cả 5 điều kiện `C1..
 $\overline{C}_{\text{nền}}$ là **trung bình standing crop nửa sau của các lượt nền `prey_cap = 80`, `scale = 1.0` còn sống
 tới cuối lượt**, gộp qua một bộ seed nền khai trước; mọi seed của thế giới khan hiếm dùng chung một giá trị đó. Bốn
 ràng buộc, để thẻ `SEL2-P-freeze` khai cụ thể trước khi chạy bất kỳ seed nào:
-1. Bộ seed nền cố định, khai trong manifest, rời khỏi seed thăm dò `1..=6` và khỏi mọi seed xác nhận.
+1. Bộ seed nền cố định khai trong [`sel2p-preregistration.json`](../../../src-tauri/tests/fixtures/experiments_sel2p/sel2p-preregistration.json) và [`sel2p-baseline-ref.json`](../../../src-tauri/tests/fixtures/experiments_sel2p/sel2p-baseline-ref.json): **`799501, 799502, 799503, 799504, 799505, 799506`**, rời khỏi seed thăm dò `1..=6`, rời khỏi seed smoke `999961`, và rời khỏi mọi seed xác nhận `780001 + 1000*k`.
 2. Nền chạy cùng bản dựng, cùng máy và cùng khoá thế giới (16 hồ, `lake_layout = 1`, `plant_reserve = 0`,
    `dehydration_ticks = 960`, 100 founders, 200.000 tick) với lượt khan hiếm mà nó làm chuẩn.
 3. Cần ít nhất 3 lượt nền còn sống; ít hơn thì `C2` không đánh giá được và cổng smoke **trượt**.
-4. Chuẩn được tính trước khi đọc bất kỳ observable nào của lượt khan hiếm; không thêm hay bớt seed nền sau đó.
+4. Chuẩn được tính và khoá trong [`run_sel2p_experiment.rs`](../../../src-tauri/examples/run_sel2p_experiment.rs) trước khi khởi chạy hay đọc bất kỳ observable nào của lượt khan hiếm; không thêm hay bớt seed nền sau đó.
 
 Số liệu dẫn tới quyết định (giữ nguyên để kiểm lại):
 
@@ -237,13 +239,28 @@ Thống nhất với [CLAUDE.md](../../../CLAUDE.md), [Bản đăng ký E-SEL1](
 
 ---
 
-## 8. Các phụ thuộc mở trước khi đóng băng (`SEL2-P-freeze`)
+## 8. Các phụ thuộc mở & Đường dẫn bộ công cụ (`SEL2-P-impl` -> `SEL2-P-freeze`)
 
-Không thẻ `SEL2-P-freeze` hoặc lượt chạy xác nhận nào được mở trước khi giải quyết xong sáu điểm sau:
+### Đường dẫn tạo tác đã triển khai trong thẻ `SEL2-P-impl` (chưa đóng băng, `status: proposed`)
 
-1. ~~Quyết định của chủ dự án về tham chiếu `g`~~ **Đã quyết (QĐ-SEL2g, 2026-11-19): phương án (b), chuẩn gộp.** Thẻ freeze khai bộ seed nền theo bốn ràng buộc ở Mục 6.
-2. **Hợp nhất thẻ `S2` (`win/s2-observables`) vào `feat/ecological-selection`:** Cần chốt tên/ngữ nghĩa observable `live.mean_energy_integral`, chứng minh bộ tích luỹ năng lượng được giữ toàn vẹn khi dùng `from_snapshot_with_drift_schedule` ở nhánh `SEL2-D` (`scarce_drift`), và xác nhận phép tích phân hậu-warmup tương tự cho `live.trait_mass_mean`.
-3. **Hợp nhất `PR #146` (`F048` + `S15`) vào `feat/ecological-selection`:** Khoá ổn định bản ghi đối chứng `2026-11-19-s15-reference-check.md` và các bản vá trung thực khôi phục (`F047`/`F048` nối tiếp [Thẻ F045](2026-11-18-f045-restore-fidelity.md)) trước khi chạy phân tán.
-4. **Tương thích danh sách observable giữa `validate_drift_pair_manifests` và `SEL2-D`:** Hiện `validate_drift_pair_manifests` kiểm tra `FactorDiff` rồi gọi `ensure_observables_supported`, vốn từ chối `live.deaths_starvation` và `live.deaths_dehydration` khi `live.drift_control = 1.0`. Ở bước `SEL2-P-freeze`, cần xác nhận việc lọc hai ID này khỏi manifest xác nhận 3 nhánh (trong khi lượt kiểm `--smoke` cho `C4` đọc trên nhánh không drift `selected`/`scarce_mut0`).
+- **Thư mục fixture & bản đăng ký JSON:** [`src-tauri/tests/fixtures/experiments_sel2p/`](../../../src-tauri/tests/fixtures/experiments_sel2p/sel2p-preregistration.json)
+  - `sel2p-preregistration.json` (`status: "PROPOSED"`, không chứa kết quả)
+  - `sel2p-selected.json`, `sel2p-scarce-mut0.json`, `sel2p-scarce-drift.json` (`20` seed `780001 + 1000*k`, `200.000` tick, chu kỳ `500`, `25` observable tương thích `SEL2-D`)
+  - `sel2p-baseline-ref.json` (`6` seed nền `799501..=799506`, `prey_cap = 80`, `scale = 1.0`, mù khối lượng)
+  - `sel2p-smoke-selected.json`, `sel2p-smoke-scarce-mut0.json`, `sel2p-smoke-scarce-drift.json` (`seed = 999961`, `200.000` tick, chu kỳ `50`, mù khối lượng; `smoke-scarce-drift` bỏ 2 observable nguyên nhân chết)
+- **Runner thí nghiệm:** [`src-tauri/examples/run_sel2p_experiment.rs`](../../../src-tauri/examples/run_sel2p_experiment.rs) (`--pipeline-check`, `--smoke`, `--confirm`)
+- **Smoke driver mù khối lượng:** [`scripts/sel2p_smoke_driver.mjs`](../../../scripts/sel2p_smoke_driver.mjs)
+- **Script kiểm chứng tạo tác độc lập:** [`scripts/verify_sel2p_artifacts.mjs`](../../../scripts/verify_sel2p_artifacts.mjs)
+- **Suite kiểm định manifest, tách seed & toán học cổng:** [`src-tauri/tests/prereg_sel2p_manifest_tests.rs`](../../../src-tauri/tests/prereg_sel2p_manifest_tests.rs)
+- **Ghi chú triển khai:** [Thẻ SEL2-P-impl](2026-11-19-sel2-p-impl.md)
+
+### Trạng thái sáu phụ thuộc trước khi đóng băng (`SEL2-P-freeze`)
+
+Không lượt chạy `--smoke` (`999961`) hay hạt giống xác nhận (`780001..799001`) nào được phép chạy trước khi hoàn tất đủ sáu điểm sau:
+
+1. ~~Quyết định của chủ dự án về tham chiếu `g`~~ **Đã quyết (QĐ-SEL2g, 2026-11-19): phương án (b), chuẩn gộp.** Đã khoá bộ `6` seed nền `799501..=799506` và bốn ràng buộc trong `sel2p-preregistration.json` & `run_sel2p_experiment.rs`.
+2. ~~Hợp nhất thẻ `S2` (`win/s2-observables`) vào `feat/ecological-selection`~~ **Đã hợp nhất qua `PR #148` (`91def40d`, 2026-11-19):** cung cấp `live.mean_energy_integral` bảo toàn qua `from_snapshot_with_drift_schedule` (`s2_observables_tests.rs`), được runner tích hợp qua $(I(T) - I(T_{\text{warm}})) / (T - T_{\text{warm}})$.
+3. ~~Hợp nhất `PR #146` (`F048` + `S15`) vào `feat/ecological-selection`~~ **Đã hợp nhất:** `F047`/`F048` ổn định khôi phục checkpoint và `2026-11-19-s15-reference-check.md` đã khoá.
+4. ~~Tương thích danh sách observable giữa `validate_drift_pair_manifests` và `SEL2-D`~~ **Đã triển khai & kiểm chứng (`SEL2-P-impl`):** 3 manifest xác nhận dùng chung danh sách `25` observable (loại `live.deaths_starvation` và `live.deaths_dehydration`), manifest smoke tách riêng 8 observable (`selected`/`scarce_mut0`) và 6 observable (`scarce_drift`), cổng `C4` chỉ áp cho `selected` và `scarce_mut0`; [`prereg_sel2p_manifest_tests.rs`](../../../src-tauri/tests/prereg_sel2p_manifest_tests.rs) chứng minh cả 7 manifest đều vượt `ensure_observables_supported`.
 5. **Chốt có hay không bổ sung observable hiệp phương sai Robertson–Price trực tiếp:** Quyết định xem `SEL2-P-freeze` chỉ dùng ước lượng qua cặp đối chứng `selected - scarce_drift` + `live.trait_mass_var`, hay bổ sung thêm observable ghi trực tiếp hiệp phương sai $\operatorname{Cov}(w, z_g)$ trên từng sự kiện sinh/tử.
-6. **Mở thẻ thực thi `SEL2-P-freeze` sau khi mục 1–5 hoàn tất:** Nâng `status` bản đăng ký chính thức (`accepted` / `active`), commit bộ fixture manifest JSON cho `selected` / `scarce_mut0` / `scarce_drift`, bổ sung test kiểm định cấu trúc manifest & quy tắc mù smoke, và triển khai runner `run_sel2_experiment` + script kiểm chứng `verify_sel2_artifacts.mjs`.
+6. **Chủ dự án chấp thuận bản đăng ký & mở thẻ đóng băng (`SEL2-P-freeze`):** Nâng `status` trong tài liệu này và `sel2p-preregistration.json` từ `proposed`/`PROPOSED` lên `accepted`/`FROZEN`, rồi chạy lượt `--smoke` thật (`999961`, `200.000` tick) để ghi `execution-lock.json` trước khi chạy `20` cặp xác nhận.
