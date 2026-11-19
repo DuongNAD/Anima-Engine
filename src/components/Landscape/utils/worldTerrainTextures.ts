@@ -368,3 +368,75 @@ export function buildRiverMaskTexture(world: World): THREE.DataTexture {
   tex.needsUpdate = true;
   return tex;
 }
+
+/**
+ * Splat weights matching the 6 CC0 terrain PBR layers (`grass`, `forest`, `rock`, `sand`, `snow`, `mud`):
+ *   R = forest-floor density (0 = open meadow grass, 255 = deep forest floor / leaf litter)
+ *   G = sand weight (Beach + coastal strip + desert/savanna arid soil)
+ *   B = mud / swamp / riverbank weight
+ *   A = snow / glacier weight (feathered organically in height/slope in the shader too)
+ */
+export function buildSplatTexture(world: World): THREE.DataTexture {
+  const { size, biome, riverAmt, shore, elevation, moisture, water } = world;
+  const res = Math.max(256, Math.min(512, size));
+  const scale = size / res;
+  const data = new Uint8Array(res * res * 4);
+
+  for (let y = 0; y < res; y++) {
+    const sy = Math.min(size - 1, Math.round(y * scale));
+    for (let x = 0; x < res; x++) {
+      const sx = Math.min(size - 1, Math.round(x * scale));
+      const i = sy * size + sx;
+      const bio = biome[i];
+      const moist = moisture?.[i] ?? 0.5;
+      const riv = (riverAmt?.[i] ?? 0) / 255;
+      const sh = shore?.[i] ?? 0;
+
+      let forest = 0;
+      let sand = 0;
+      let mud = 0;
+      let snow = 0;
+
+      if (bio === Biome.Forest || bio === Biome.Taiga || bio === Biome.Jungle) {
+        forest = bio === Biome.Jungle ? 0.92 : bio === Biome.Taiga ? 0.72 : 0.85;
+      } else if (bio === Biome.Shrubland || bio === Biome.Savanna) {
+        forest = 0.28 + moist * 0.22;
+      }
+
+      if (bio === Biome.Beach || bio === Biome.Desert || bio === Biome.Ocean) {
+        sand = bio === Biome.Desert ? 0.92 : bio === Biome.Beach ? 0.95 : 0.72;
+      } else if (sh > 0.35 && bio !== Biome.Rock && bio !== Biome.Badlands) {
+        sand = Math.max(sand, (sh - 0.35) * 1.1);
+      }
+      if (bio === Biome.Savanna) {
+        sand = Math.max(sand, 0.35);
+      }
+
+      if (bio === Biome.Swamp || bio === Biome.Lake || bio === Biome.River || (water?.[i] ?? 0) > 0) {
+        mud = 0.9;
+      } else if (riv > 0.08 && bio !== Biome.Snow && bio !== Biome.Glacier) {
+        mud = Math.min(0.85, riv * 0.95);
+      }
+
+      if (bio === Biome.Snow || bio === Biome.Glacier) {
+        snow = 1.0;
+      } else if (bio === Biome.Alpine && elevation[i] > 0.7) {
+        snow = Math.min(0.85, (elevation[i] - 0.7) * 4.5);
+      }
+
+      const o = (y * res + x) * 4;
+      data[o] = Math.min(255, Math.max(0, Math.round(forest * 255)));
+      data[o + 1] = Math.min(255, Math.max(0, Math.round(sand * 255)));
+      data[o + 2] = Math.min(255, Math.max(0, Math.round(mud * 255)));
+      data[o + 3] = Math.min(255, Math.max(0, Math.round(snow * 255)));
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, res, res, THREE.RGBAFormat, THREE.UnsignedByteType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
