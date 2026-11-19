@@ -1304,7 +1304,7 @@ pub fn apply_staggered_evolution_system(
             .map(|p| p.0)
             .unwrap_or(default_pos);
         if terrain_nav.as_deref().is_some_and(|p| p.enabled) {
-            if let (Some(tm), Some(ref b)) = (terrain_map.as_deref(), bounds.as_deref()) {
+            if let (Some(tm), Some(b)) = (terrain_map.as_deref(), bounds.as_deref()) {
                 if !crate::core::terrain_navigation::is_pos_walkable(tm, b, spawn_pos) {
                     spawn_pos = last_walkable_query
                         .get(old_entity)
