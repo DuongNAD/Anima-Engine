@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, screen, act } from '@testing-library/react';
 // No `React` import: `jsx: react-jsx` compiles JSX through the automatic runtime, and nothing in
 // this file names `React` itself.
@@ -52,6 +53,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Phase 5 Gemini Chronicle Timeline Logs UI', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   let mockCtx: Canvas2DStub;
 
   beforeEach(() => {
