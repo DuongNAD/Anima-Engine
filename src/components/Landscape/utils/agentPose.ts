@@ -19,7 +19,10 @@ import { SIM_BOUNDS_HALF, isInsideSimBounds, simScale, simToRender } from './liv
 export const MIN_SIM_SEGMENT_LENGTH = 0.08;
 export const MIN_SIM_SEGMENT_RADIUS = 0.04;
 export const FAR_MARKER_DISTANCE_FACTOR = 0.45;
-// prototype: visual body scale factor (0.32x) so rendered creatures fit WorldVegetation trees and lakes instead of towering at raw simScale(1200)=6 (MSG_20261119_042316).
+// prototype rendering choice — NOT to scale with positions: root positions stay at 6 render
+// units per sim unit while bodies draw at 1.92 (0.32x) so bodies fit decorative `WorldVegetation`
+// trees and lakes. Touching sim creatures (r = 0.2) draw ~4 body radii apart, and bodies draw at
+// 0.32x relative to simulated lakes (MSG_20261119_042316, B1 verdict R4).
 export const CREATURE_BODY_SCALE = 0.32;
 
 export interface EulerAnglesYXZ {

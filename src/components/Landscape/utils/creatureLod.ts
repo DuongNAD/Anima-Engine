@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import type { InterpolatedAgentView } from '../agentInterpolation';
-import { QUALITY_TIER_CONFIGS, readInitialQualitySelection, type QualityTier } from './qualityTiers';
+import {
+  QUALITY_TIER_CONFIGS,
+  type QualitySelection,
+  type QualityTier,
+} from './qualityTiers';
 
 // prototype, to be replaced — B1 three-tier creature LOD and per-creature frustum culling.
 
@@ -28,6 +32,8 @@ export const CREATURE_NEAR_SKINNED_CAP: Readonly<Record<QualityTier, number>> = 
 
 export interface CreatureLodSelectionResult {
   readonly tiers: Uint8Array;
+  /** Closest-first agent indices (first `nearCount` entries) for near-tier slot/shadow ordering. */
+  readonly nearIndices: Int32Array;
   readonly nearCount: number;
   readonly midCount: number;
   readonly farCount: number;
@@ -36,6 +42,7 @@ export interface CreatureLodSelectionResult {
 
 interface MutableLodResult {
   tiers: Uint8Array;
+  nearIndices: Int32Array;
   nearCount: number;
   midCount: number;
   farCount: number;
@@ -44,13 +51,12 @@ interface MutableLodResult {
 
 export function resolveCreatureQualityTier(
   overrideTier: QualityTier | undefined,
-  search: string,
+  urlSelection: QualitySelection,
   shadowsEnabled: boolean,
   pixelRatio: number,
 ): QualityTier {
   if (overrideTier !== undefined) return overrideTier;
-  const sel = readInitialQualitySelection(search);
-  if (sel !== 'auto') return sel;
+  if (urlSelection !== 'auto') return urlSelection;
   if (shadowsEnabled) return 'high';
   return pixelRatio < 0.95 ? 'low' : 'medium';
 }
@@ -92,6 +98,7 @@ export class CreatureLodSelector {
   private readonly sphere = new THREE.Sphere();
   private readonly result: MutableLodResult = {
     tiers: this.tiers,
+    nearIndices: this.candIndices,
     nearCount: 0,
     midCount: 0,
     farCount: 0,
@@ -107,6 +114,7 @@ export class CreatureLodSelector {
     this.candDistSq = new Float64Array(cap);
     this.candAgentIds = new Int32Array(cap);
     this.result.tiers = this.tiers;
+    this.result.nearIndices = this.candIndices;
   }
 
   select(
@@ -178,41 +186,33 @@ export class CreatureLodSelector {
       }
     }
 
-    // Select closest K near candidates (`<= maxNear`), demoting overflow deterministically to mid.
-    let nearCount: number;
-    if (nearCandCount <= maxNear) {
-      for (let c = 0; c < nearCandCount; c++) {
-        this.tiers[this.candIndices[c]] = LOD_NEAR_SKINNED;
-      }
-      nearCount = nearCandCount;
-    } else {
-      // Partial insertion selection of K closest candidates with zero allocations.
-      for (let k = 0; k < maxNear; k++) {
-        let best = k;
-        for (let j = k + 1; j < nearCandCount; j++) {
-          const dDiff = this.candDistSq[j] - this.candDistSq[best];
-          if (dDiff < -1e-6 || (Math.abs(dDiff) <= 1e-6 && this.candAgentIds[j] < this.candAgentIds[best])) {
-            best = j;
-          }
+    // Rank closest `K` near candidates (`<= maxNear`) in ascending (distSq, agentId) order with
+    // zero heap allocations, demoting any overflow beyond `maxNear` back to mid tier.
+    const nearCount = Math.min(nearCandCount, maxNear);
+    for (let k = 0; k < nearCount; k++) {
+      let best = k;
+      for (let j = k + 1; j < nearCandCount; j++) {
+        const dDiff = this.candDistSq[j] - this.candDistSq[best];
+        if (dDiff < -1e-6 || (Math.abs(dDiff) <= 1e-6 && this.candAgentIds[j] < this.candAgentIds[best])) {
+          best = j;
         }
-        if (best !== k) {
-          const ti = this.candIndices[k];
-          this.candIndices[k] = this.candIndices[best];
-          this.candIndices[best] = ti;
-
-          const td = this.candDistSq[k];
-          this.candDistSq[k] = this.candDistSq[best];
-          this.candDistSq[best] = td;
-
-          const ta = this.candAgentIds[k];
-          this.candAgentIds[k] = this.candAgentIds[best];
-          this.candAgentIds[best] = ta;
-        }
-        this.tiers[this.candIndices[k]] = LOD_NEAR_SKINNED;
       }
-      nearCount = maxNear;
-      midCount += nearCandCount - maxNear;
+      if (best !== k) {
+        const ti = this.candIndices[k];
+        this.candIndices[k] = this.candIndices[best];
+        this.candIndices[best] = ti;
+
+        const td = this.candDistSq[k];
+        this.candDistSq[k] = this.candDistSq[best];
+        this.candDistSq[best] = td;
+
+        const ta = this.candAgentIds[k];
+        this.candAgentIds[k] = this.candAgentIds[best];
+        this.candAgentIds[best] = ta;
+      }
+      this.tiers[this.candIndices[k]] = LOD_NEAR_SKINNED;
     }
+    midCount += nearCandCount - nearCount;
 
     this.result.nearCount = nearCount;
     this.result.midCount = midCount;

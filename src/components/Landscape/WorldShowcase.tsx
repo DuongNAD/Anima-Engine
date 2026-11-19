@@ -576,6 +576,7 @@ export const WorldShowcase: React.FC = () => {
           renderSize={RENDER_SIZE}
           heightRatio={HEIGHT_RATIO}
           meshResolution={MESH_RES}
+          qualityTier={effectiveQuality}
         />
 
         <WorldCameraRig

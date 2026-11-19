@@ -70,7 +70,7 @@ const CHUNK_BUDGET_KIB = {
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
   // prototype: raised from 130 KiB to 155 KiB for B1 continuous SkinnedMesh bodies + 3-tier LOD
-  // (`creatureSkinMesh.ts`, `creatureLod.ts` measured 140.3 KiB, leaving headroom for V1).
+  // (`creatureSkinMesh.ts`, `creatureLod.ts` measured 145.8 KiB after Fix Round 1, leaving headroom for V1).
   WorldShowcase: 155,
   Map2Showcase: 130,
   map2: 120,

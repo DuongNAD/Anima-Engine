@@ -121,8 +121,9 @@ const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
 
 /**
  * Deterministically generate clearly-labelled synthetic `environmental_state` elements
- * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream so agent
- * kinematics stay bit-for-bit identical.
+ * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream (`(seed ^ 0x517e0e1e)
+ * >>> 0`), preserving trunk root trajectories and segment PRNG draws while chaining spine
+ * `jointAnchor.z` inside Rust's `mutation.rs` `|z| <= parent.length / 2` clamp.
  */
 function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement[] {
   const envRand = mulberry32((seed ^ 0x517e0e1e) >>> 0);
@@ -233,7 +234,7 @@ function buildAgentMorphology(
   const specs: SyntheticSegmentSpec[] = [];
   const scale = isPredator ? 1.15 : 0.95;
   const rootLength = (0.78 + rand() * 0.42) * scale;
-  const rootRadius = (0.20 + rand() * 0.09) * scale;
+  const rootRadius = (0.24 + rand() * 0.14) * scale;
 
   specs.push({
     segmentId: 0,
@@ -248,22 +249,22 @@ function buildAgentMorphology(
     jointCycles: 1,
   });
 
-  // Axial body spine (up to 6 segments) chained cleanly rearward behind parent (`jointAnchor` matches
-  // `dynamics.rs:148-150`: P_child = P_parent + anchor + R_child * (0, 0, +segLen / 2)).
+  // Axial body spine (up to 6 segments) chained cleanly forward inside Rust `mutation.rs`
+  // `|z| <= parent.length / 2` (`dynamics.rs`: P_child = P_parent + anchor + R_child * (0,0,+L/2)).
   const spineTarget = Math.min(segmentCount, 1 + Math.max(2, Math.ceil((segmentCount - 1) * 0.45)));
   for (let idx = 1; idx < spineTarget; idx++) {
     const parentIndex = idx - 1;
     const parent = specs[parentIndex];
     const taper = Math.max(0.42, 1 - idx * 0.12);
     const segLen = (0.58 + rand() * 0.34) * scale * (0.85 + 0.15 * taper);
-    const segRad = Math.max(0.08, parent.radius * (0.76 + rand() * 0.12));
+    const segRad = Math.max(0.11, parent.radius * (0.76 + rand() * 0.14));
     specs.push({
       segmentId: idx,
       parentIndex,
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [0, 0, -(parent.length * 0.48 + segLen * 0.96)],
+      jointAnchor: [0, 0, parent.length * 0.48],
       jointAxis: [0, 1, 0],
       swingAmplitude: 0.24 + rand() * 0.24,
       phaseOffset: agentIndex * 0.47 + idx * 0.75,
@@ -271,7 +272,7 @@ function buildAgentMorphology(
     });
   }
 
-  // Remaining segments attach as paired lateral limb chains beside/below torso.
+  // Remaining segments attach as paired lateral limb chains beside/below torso (`|x|,|y| <= r`).
   for (let idx = spineTarget; idx < segmentCount; idx++) {
     const limbSlot = idx - spineTarget;
     const side = limbSlot % 2 === 0 ? 1 : -1;
@@ -279,14 +280,14 @@ function buildAgentMorphology(
     const parentIndex = pairIndex % spineTarget;
     const parent = specs[parentIndex];
     const segLen = (0.45 + rand() * 0.32) * scale;
-    const segRad = Math.max(0.08, parent.radius * 0.42);
+    const segRad = Math.max(0.1, parent.radius * (0.52 + rand() * 0.12));
     specs.push({
       segmentId: idx,
       parentIndex,
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [side * parent.radius * 0.85, -parent.radius * 0.5, -segLen * 0.5],
+      jointAnchor: [side * parent.radius * 0.9, -parent.radius * 0.35, 0],
       jointAxis: [1, 0, 0],
       swingAmplitude: 0.35 + rand() * 0.25,
       phaseOffset: agentIndex * 0.37 + limbSlot * Math.PI * 0.5,

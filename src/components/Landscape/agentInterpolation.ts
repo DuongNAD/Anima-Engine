@@ -306,6 +306,8 @@ export interface InterpolatedAgentView {
   rootRenderRadius: number;
   boundingRadius: number;
   morphologyKey: string;
+  /** Snapshot segment dimensions paired with `morphologyKey` so archetype builds match the key. */
+  morphologySegments: readonly SegmentRenderPose[];
   headDirection: [number, number, number];
   segments: InterpolatedSegmentView[];
 }
@@ -346,6 +348,7 @@ function createEmptyAgentView(): InterpolatedAgentView {
     rootRenderRadius: 0,
     boundingRadius: 0,
     morphologyKey: '',
+    morphologySegments: [],
     headDirection: [0, 0, 1],
     segments: [],
   };
@@ -393,6 +396,7 @@ function copyAgentInto(src: AgentRenderPose, dst: InterpolatedAgentView): number
   dst.rootRenderRadius = src.rootRenderRadius;
   dst.boundingRadius = src.boundingRadius;
   dst.morphologyKey = src.morphologyKey;
+  dst.morphologySegments = src.segments;
   dst.headDirection[0] = src.headDirection[0];
   dst.headDirection[1] = src.headDirection[1];
   dst.headDirection[2] = src.headDirection[2];
@@ -664,8 +668,11 @@ export class TickInterpolationBuffer {
 
       const rdx = currAgent.rootPosition[0] - prevAgent.rootPosition[0];
       const rdz = currAgent.rootPosition[2] - prevAgent.rootPosition[2];
-      if (rdx * rdx + rdz * rdz > snapDistSq) {
-        // Teleport / large discontinuous jump (`RW3-2`): snap directly without sliding.
+      if (
+        rdx * rdx + rdz * rdz > snapDistSq ||
+        prevAgent.morphologyKey !== currAgent.morphologyKey
+      ) {
+        // Teleport, large jump, or morphology change (`RW3-2`, `N6`): snap directly without blending.
         totalSegments += copyAgentInto(currAgent, dst);
         outAgentCount++;
         continue;
@@ -702,6 +709,7 @@ export class TickInterpolationBuffer {
         prevAgent.rootRenderRadius + (currAgent.rootRenderRadius - prevAgent.rootRenderRadius) * alpha;
       dst.boundingRadius = Math.max(prevAgent.boundingRadius, currAgent.boundingRadius);
       dst.morphologyKey = currAgent.morphologyKey;
+      dst.morphologySegments = currAgent.segments;
       slerpDirection3Into(prevAgent.headDirection, currAgent.headDirection, alpha, dst.headDirection);
 
       const currSegs = currAgent.segments;

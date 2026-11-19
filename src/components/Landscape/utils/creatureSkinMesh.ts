@@ -18,6 +18,21 @@ export interface MorphologySegmentInput {
   jointAnchor: readonly [number, number, number];
 }
 
+export interface ArchetypeHeadAttachment {
+  readonly boneIdx: number;
+  readonly segmentId: number;
+  readonly frontShoulderDist: number;
+  readonly headRadius: number;
+  readonly localForward: readonly [number, number, number];
+}
+
+export interface SkinnedHeadPose {
+  readonly center: THREE.Vector3;
+  readonly forward: THREE.Vector3;
+  frontShoulderDist: number;
+  headRadius: number;
+}
+
 export interface BuiltArchetype {
   readonly key: string;
   readonly geometry: THREE.BufferGeometry;
@@ -26,6 +41,7 @@ export interface BuiltArchetype {
   readonly restPositions: ReadonlyArray<readonly [number, number, number]>;
   readonly boneInverses: readonly THREE.Matrix4[];
   readonly triangleCount: number;
+  readonly headAttachment: ArchetypeHeadAttachment;
 }
 
 interface SkinNode {
@@ -204,10 +220,52 @@ function appendClosedTube(
   }
 }
 
+function addAxialSegmentCapsule(
+  node: SkinNode,
+  positions: number[],
+  indices: number[],
+): void {
+  const halfLen = node.length * 0.5;
+  const capRadius = node.radius * 0.92;
+  const capExt = capRadius * 0.72;
+  const cx = node.restPos[0];
+  const cy = node.restPos[1];
+  const cz = node.restPos[2];
+  const tangent: [number, number, number] = [0, 0, 1];
+  const frontShoulder: [number, number, number] = [cx, cy, cz - halfLen];
+  const rearShoulder: [number, number, number] = [cx, cy, cz + halfLen];
+  const frontPole: [number, number, number] = [cx, cy, cz - halfLen - capExt];
+  const rearPole: [number, number, number] = [cx, cy, cz + halfLen + capExt];
+
+  const rings: LoftRing[] = [];
+  for (let k = SKIN_CAP_RINGS - 1; k >= 1; k--) {
+    const theta = (k / SKIN_CAP_RINGS) * Math.PI * 0.5;
+    rings.push({
+      center: [cx, cy, frontShoulder[2] - Math.sin(theta) * capExt],
+      radius: Math.max(node.radius * 0.25, Math.cos(theta) * capRadius),
+      tangent,
+    });
+  }
+  rings.push({ center: frontShoulder, radius: capRadius, tangent });
+  rings.push({ center: [cx, cy, cz], radius: node.radius, tangent });
+  rings.push({ center: rearShoulder, radius: capRadius, tangent });
+  for (let k = 1; k < SKIN_CAP_RINGS; k++) {
+    const theta = (k / SKIN_CAP_RINGS) * Math.PI * 0.5;
+    rings.push({
+      center: [cx, cy, rearShoulder[2] + Math.sin(theta) * capExt],
+      radius: Math.max(node.radius * 0.25, Math.cos(theta) * capRadius),
+      tangent,
+    });
+  }
+
+  appendClosedTube(rings, frontPole, rearPole, SKIN_RADIAL_SIDES, positions, indices);
+}
+
 function addChainLoft(
   chainNodes: readonly SkinNode[],
   positions: number[],
   indices: number[],
+  omitStartCap = false,
 ): void {
   const first = chainNodes[0];
   const last = chainNodes[chainNodes.length - 1];
@@ -236,47 +294,62 @@ function addChainLoft(
         )
       : [0, 0, 1];
 
-  const frontCapRadius = first.radius * 0.92;
-  const startHalf = first.length * 0.5;
-  const startShoulder: [number, number, number] = [
-    first.restPos[0] - startDir[0] * startHalf,
-    first.restPos[1] - startDir[1] * startHalf,
-    first.restPos[2] - startDir[2] * startHalf,
-  ];
-  const frontPole: [number, number, number] = [
-    startShoulder[0] - startDir[0] * frontCapRadius * 0.72,
-    startShoulder[1] - startDir[1] * frontCapRadius * 0.72,
-    startShoulder[2] - startDir[2] * frontCapRadius * 0.72,
-  ];
-
-  // Hemispherical start cap stepping from frontPole toward startShoulder along +startDir.
-  for (let k = SKIN_CAP_RINGS - 1; k >= 1; k--) {
-    const frac = k / SKIN_CAP_RINGS;
-    const theta = frac * Math.PI * 0.5;
-    const ext = Math.sin(theta) * frontCapRadius * 0.72;
+  let frontPole: [number, number, number];
+  if (omitStartCap) {
+    // Closed entry buried inside root's axial capsule when the spine child branches laterally.
+    frontPole = [
+      first.restPos[0] - startDir[0] * first.radius * 0.35,
+      first.restPos[1] - startDir[1] * first.radius * 0.35,
+      first.restPos[2] - startDir[2] * first.radius * 0.35,
+    ];
     rings.push({
-      center: [
-        startShoulder[0] - startDir[0] * ext,
-        startShoulder[1] - startDir[1] * ext,
-        startShoulder[2] - startDir[2] * ext,
-      ],
-      radius: Math.max(first.radius * 0.25, Math.cos(theta) * frontCapRadius),
+      center: [first.restPos[0], first.restPos[1], first.restPos[2]],
+      radius: first.radius * 0.85,
+      tangent: startDir,
+    });
+  } else {
+    const frontCapRadius = first.radius * 0.92;
+    const startHalf = first.length * 0.5;
+    const startShoulder: [number, number, number] = [
+      first.restPos[0] - startDir[0] * startHalf,
+      first.restPos[1] - startDir[1] * startHalf,
+      first.restPos[2] - startDir[2] * startHalf,
+    ];
+    frontPole = [
+      startShoulder[0] - startDir[0] * frontCapRadius * 0.72,
+      startShoulder[1] - startDir[1] * frontCapRadius * 0.72,
+      startShoulder[2] - startDir[2] * frontCapRadius * 0.72,
+    ];
+
+    // Hemispherical start cap stepping from frontPole toward startShoulder along +startDir.
+    for (let k = SKIN_CAP_RINGS - 1; k >= 1; k--) {
+      const frac = k / SKIN_CAP_RINGS;
+      const theta = frac * Math.PI * 0.5;
+      const ext = Math.sin(theta) * frontCapRadius * 0.72;
+      rings.push({
+        center: [
+          startShoulder[0] - startDir[0] * ext,
+          startShoulder[1] - startDir[1] * ext,
+          startShoulder[2] - startDir[2] * ext,
+        ],
+        radius: Math.max(first.radius * 0.25, Math.cos(theta) * frontCapRadius),
+        tangent: startDir,
+      });
+    }
+
+    // Start shoulder ring and root center ring.
+    rings.push({
+      center: startShoulder,
+      radius: frontCapRadius,
+      tangent: startDir,
+    });
+
+    rings.push({
+      center: [first.restPos[0], first.restPos[1], first.restPos[2]],
+      radius: first.radius,
       tangent: startDir,
     });
   }
-
-  // Start shoulder ring and root center ring.
-  rings.push({
-    center: startShoulder,
-    radius: frontCapRadius,
-    tangent: startDir,
-  });
-
-  rings.push({
-    center: [first.restPos[0], first.restPos[1], first.restPos[2]],
-    radius: first.radius,
-    tangent: startDir,
-  });
 
   // Walk each link: parent center -> joint bridge -> child center.
   for (let idx = 1; idx < chainNodes.length; idx++) {
@@ -509,7 +582,70 @@ export function buildMorphologySkinArchetype(
 
   const positions: number[] = [];
   const indices: number[] = [];
-  addChainLoft(spineChain, positions, indices);
+  const firstNode = spineChain[0];
+  const lastNode = spineChain[spineChain.length - 1];
+  let headAttachment: ArchetypeHeadAttachment;
+
+  if (spineChain.length === 1) {
+    addChainLoft(spineChain, positions, indices, false);
+    headAttachment = {
+      boneIdx: firstNode.boneIdx,
+      segmentId: firstNode.segmentId,
+      frontShoulderDist: firstNode.length * 0.5,
+      headRadius: firstNode.radius,
+      localForward: [0, 0, 1],
+    };
+  } else {
+    const startDir = normalizeOr(
+      spineChain[1].restPos[0] - firstNode.restPos[0],
+      spineChain[1].restPos[1] - firstNode.restPos[1],
+      spineChain[1].restPos[2] - firstNode.restPos[2],
+      0,
+      0,
+      1,
+    );
+    const endDir = normalizeOr(
+      lastNode.restPos[0] - spineChain[spineChain.length - 2].restPos[0],
+      lastNode.restPos[1] - spineChain[spineChain.length - 2].restPos[1],
+      lastNode.restPos[2] - spineChain[spineChain.length - 2].restPos[2],
+      0,
+      0,
+      1,
+    );
+
+    if (startDir[2] < -0.7) {
+      // Child chain extends rearward (-Z): root free front dome faces -startDir (~+Z).
+      addChainLoft(spineChain, positions, indices, false);
+      headAttachment = {
+        boneIdx: firstNode.boneIdx,
+        segmentId: firstNode.segmentId,
+        frontShoulderDist: firstNode.length * 0.5,
+        headRadius: firstNode.radius,
+        localForward: [-startDir[0], -startDir[1], -startDir[2]],
+      };
+    } else if (Math.abs(startDir[2]) <= 0.7) {
+      // Lateral root attachment (e.g. live founder `(1, 0, 0)`): keep root's own ±Z head capsule.
+      addAxialSegmentCapsule(firstNode, positions, indices);
+      addChainLoft(spineChain, positions, indices, true);
+      headAttachment = {
+        boneIdx: firstNode.boneIdx,
+        segmentId: firstNode.segmentId,
+        frontShoulderDist: firstNode.length * 0.5,
+        headRadius: firstNode.radius,
+        localForward: [0, 0, 1],
+      };
+    } else {
+      // Forward +Z chain (mutation `+L/2`, `genotype.rs`, synthetic `+0.48*Lp`): leading tip owns front cap.
+      addChainLoft(spineChain, positions, indices, false);
+      headAttachment = {
+        boneIdx: lastNode.boneIdx,
+        segmentId: lastNode.segmentId,
+        frontShoulderDist: lastNode.length * 0.5,
+        headRadius: lastNode.radius,
+        localForward: [endDir[0], endDir[1], endDir[2]],
+      };
+    }
+  }
 
   for (let i = 1; i < nodes.length; i++) {
     if (inSpine[i]) continue;
@@ -618,6 +754,7 @@ export function buildMorphologySkinArchetype(
     restPositions,
     boneInverses,
     triangleCount: Math.floor(indices.length / 3),
+    headAttachment,
   };
 }
 
@@ -661,7 +798,11 @@ export class ArchetypeMeshCache {
     return this.entries.size;
   }
 
-  getOrBuild(key: string, segments: readonly MorphologySegmentInput[]): BuiltArchetype {
+  getOrBuild(
+    key: string,
+    segments: readonly MorphologySegmentInput[],
+    protectedKeys?: ReadonlySet<string>,
+  ): BuiltArchetype {
     const existing = this.entries.get(key);
     if (existing) {
       this.entries.delete(key);
@@ -669,13 +810,18 @@ export class ArchetypeMeshCache {
       return existing;
     }
     const built = buildMorphologySkinArchetype(key, segments);
-    if (this.entries.size >= this.maxEntries) {
-      const oldestKey = this.entries.keys().next().value;
-      if (oldestKey !== undefined) {
-        const evicted = this.entries.get(oldestKey);
-        this.entries.delete(oldestKey);
-        evicted?.geometry.dispose();
+    while (this.entries.size >= this.maxEntries) {
+      let evictKey: string | undefined;
+      for (const candidate of this.entries.keys()) {
+        if (!protectedKeys || !protectedKeys.has(candidate)) {
+          evictKey = candidate;
+          break;
+        }
       }
+      if (evictKey === undefined) break;
+      const evicted = this.entries.get(evictKey);
+      this.entries.delete(evictKey);
+      evicted?.geometry.dispose();
     }
     this.entries.set(key, built);
     return built;
@@ -690,6 +836,9 @@ export class ArchetypeMeshCache {
 interface SkinnedSlot {
   readonly mesh: THREE.SkinnedMesh;
   readonly material: THREE.MeshStandardMaterial;
+  readonly raycastSphere: THREE.Sphere;
+  agentId: number;
+  usedThisFrame: boolean;
   archetypeKey: string | null;
   archetype: BuiltArchetype | null;
   bones: THREE.Bone[];
@@ -714,6 +863,15 @@ function findSegmentById(
   return null;
 }
 
+function raycastVisibleSkinnedMesh(
+  this: THREE.SkinnedMesh,
+  raycaster: THREE.Raycaster,
+  intersects: THREE.Intersection[],
+): void {
+  if (!this.visible || !this.skeleton) return;
+  THREE.SkinnedMesh.prototype.raycast.call(this, raycaster, intersects);
+}
+
 /**
  * Reusable pool of near-tier `THREE.SkinnedMesh` instances.
  * Allocates new geometries/skeletons only when an unseen morphology arrives; steady-state frame
@@ -722,28 +880,38 @@ function findSegmentById(
 export class SkinnedCreaturePool {
   readonly cache: ArchetypeMeshCache;
   private readonly slots: SkinnedSlot[] = [];
+  private readonly nearSlotForRank: Int32Array;
+  private readonly activeKeys = new Set<string>();
+  private readonly placeholderGeom: THREE.BufferGeometry;
   private attachedGroup: THREE.Group | null = null;
   private lastBoundMaxSlots = 0;
 
   constructor(maxSlots = 32, cache = new ArchetypeMeshCache()) {
     this.cache = cache;
     const count = Math.max(1, maxSlots);
-    const placeholderGeom = new THREE.BufferGeometry();
+    this.nearSlotForRank = new Int32Array(count);
+    this.placeholderGeom = new THREE.BufferGeometry();
     for (let i = 0; i < count; i++) {
       const material = new THREE.MeshStandardMaterial({
         roughness: 0.6,
         metalness: 0.05,
         flatShading: false,
       });
-      const mesh = new THREE.SkinnedMesh(placeholderGeom, material);
+      const raycastSphere = new THREE.Sphere(new THREE.Vector3(), 2.5);
+      const mesh = new THREE.SkinnedMesh(this.placeholderGeom, material);
       mesh.name = `live-agents-skinned-${i}`;
       mesh.frustumCulled = false;
+      mesh.boundingSphere = raycastSphere;
+      mesh.raycast = raycastVisibleSkinnedMesh;
       mesh.castShadow = i < 8;
       mesh.receiveShadow = true;
       mesh.visible = false;
       this.slots.push({
         mesh,
         material,
+        raycastSphere,
+        agentId: 0,
+        usedThisFrame: false,
         archetypeKey: null,
         archetype: null,
         bones: [],
@@ -774,20 +942,113 @@ export class SkinnedCreaturePool {
     return this.lastBoundMaxSlots;
   }
 
+  /**
+   * Assign near-tier creatures to sticky slots keyed by `agentId` (`N4`), hiding unused slots so
+   * hidden meshes never raycast (`R3`) and avoiding skeleton rebuilds when neighbors enter/leave.
+   */
+  prepareNearFrame(
+    agents: readonly InterpolatedAgentView[],
+    nearIndices: Int32Array,
+    nearCount: number,
+  ): Int32Array {
+    for (let s = 0; s < this.slots.length; s++) {
+      this.slots[s].usedThisFrame = false;
+    }
+
+    const count = Math.min(nearCount, this.slots.length);
+    for (let r = 0; r < count; r++) {
+      const targetId = agents[nearIndices[r]].agentId;
+      let matched = -1;
+      for (let s = 0; s < this.slots.length; s++) {
+        const slot = this.slots[s];
+        if (!slot.usedThisFrame && slot.agentId === targetId) {
+          slot.usedThisFrame = true;
+          matched = s;
+          break;
+        }
+      }
+      this.nearSlotForRank[r] = matched;
+    }
+
+    for (let r = 0; r < count; r++) {
+      if (this.nearSlotForRank[r] !== -1) continue;
+      const pose = agents[nearIndices[r]];
+      const key = pose.morphologyKey || `fallback-${pose.segmentCount}`;
+      let chosen = -1;
+      for (let s = 0; s < this.slots.length; s++) {
+        const slot = this.slots[s];
+        if (!slot.usedThisFrame && slot.archetypeKey === key) {
+          chosen = s;
+          break;
+        }
+      }
+      if (chosen === -1) {
+        for (let s = 0; s < this.slots.length; s++) {
+          if (!this.slots[s].usedThisFrame) {
+            chosen = s;
+            break;
+          }
+        }
+      }
+      if (chosen !== -1) {
+        this.slots[chosen].usedThisFrame = true;
+        this.slots[chosen].agentId = pose.agentId;
+      }
+      this.nearSlotForRank[r] = chosen;
+    }
+
+    for (let s = 0; s < this.slots.length; s++) {
+      const slot = this.slots[s];
+      if (!slot.usedThisFrame) {
+        slot.mesh.visible = false;
+        slot.mesh.userData.agentId = 0;
+        slot.agentId = 0;
+      }
+    }
+
+    return this.nearSlotForRank;
+  }
+
+  readSlotHeadPose(slotIdx: number, out: SkinnedHeadPose): boolean {
+    if (slotIdx < 0 || slotIdx >= this.slots.length) return false;
+    const slot = this.slots[slotIdx];
+    const archetype = slot.archetype;
+    if (!archetype) return false;
+    const ha = archetype.headAttachment;
+    const bone = slot.bones[ha.boneIdx] ?? slot.bones[0];
+    if (!bone) return false;
+    out.center.copy(bone.position);
+    out.forward
+      .set(ha.localForward[0], ha.localForward[1], ha.localForward[2])
+      .applyQuaternion(bone.quaternion);
+    if (out.forward.lengthSq() <= 1e-8) out.forward.set(0, 0, 1);
+    else out.forward.normalize();
+    out.frontShoulderDist = ha.frontShoulderDist;
+    out.headRadius = ha.headRadius;
+    return true;
+  }
+
   updateSlot(
     slotIdx: number,
     pose: InterpolatedAgentView,
     timeSec: number,
     scratch: SkinnedUpdateScratch,
+    castShadow?: boolean,
   ): boolean {
     if (slotIdx < 0 || slotIdx >= this.slots.length) return false;
     const slot = this.slots[slotIdx];
     const key = pose.morphologyKey || `fallback-${pose.segmentCount}`;
 
     if (slot.archetypeKey !== key || slot.archetype === null) {
-      const segInputs: MorphologySegmentInput[] = new Array(pose.segmentCount);
-      for (let s = 0; s < pose.segmentCount; s++) {
-        const seg = pose.segments[s];
+      // Build from the snapshot segments paired with `morphologyKey` (`N6`) so blended inter-tick
+      // dimensions never pollute a cached key.
+      const morphSegs =
+        pose.morphologySegments.length > 0 ? pose.morphologySegments : pose.segments;
+      const morphCount =
+        pose.morphologySegments.length > 0 ? pose.morphologySegments.length : pose.segmentCount;
+      const segInputs: MorphologySegmentInput[] = new Array(morphCount);
+      for (let s = 0; s < morphCount; s++) {
+        const seg = morphSegs[s];
         segInputs[s] = {
           segmentId: seg.segmentId,
           parentSegmentId: seg.parentSegmentId,
@@ -797,7 +1058,16 @@ export class SkinnedCreaturePool {
           jointAnchor: seg.jointAnchor,
         };
       }
-      const archetype = this.cache.getOrBuild(key, segInputs);
+
+      // Protect keys still rendered by other active/visible slots from LRU disposal (`N3`).
+      this.activeKeys.clear();
+      for (let i = 0; i < this.slots.length; i++) {
+        const other = this.slots[i];
+        if (i !== slotIdx && other.archetypeKey && (other.mesh.visible || other.usedThisFrame)) {
+          this.activeKeys.add(other.archetypeKey);
+        }
+      }
+      const archetype = this.cache.getOrBuild(key, segInputs, this.activeKeys);
       const bones: THREE.Bone[] = new Array(archetype.boneCount);
       const inverses: THREE.Matrix4[] = new Array(archetype.boneCount);
       for (let b = 0; b < archetype.boneCount; b++) {
@@ -820,6 +1090,7 @@ export class SkinnedCreaturePool {
     const archetype = slot.archetype;
     if (!archetype || !slot.skeleton) return false;
 
+    // Decorative breathing pulse — NOT simulated (simulation models respiration/metabolism independently).
     const breathPhase = hashAgentId01(pose.agentId, 3) * Math.PI * 2;
     const breath = 1 + 0.025 * Math.sin(timeSec * 2.4 + breathPhase);
 
@@ -842,7 +1113,15 @@ export class SkinnedCreaturePool {
     slot.skeleton.update();
     computeCreatureColor(pose.agentType, pose.agentId, pose.energy, color);
     slot.material.color.copy(color);
+    slot.agentId = pose.agentId;
     slot.mesh.userData.agentId = pose.agentId;
+    if (castShadow !== undefined) {
+      slot.mesh.castShadow = castShadow;
+    }
+    // Keep Three.js `SkinnedMesh.raycast` boundingSphere aligned with the live posed root (`R3`).
+    slot.raycastSphere.center.set(pose.rootPosition[0], pose.rootPosition[1], pose.rootPosition[2]);
+    slot.raycastSphere.radius = Math.max(pose.boundingRadius * 1.4, 2.5);
+    slot.mesh.boundingSphere = slot.raycastSphere;
     slot.mesh.visible = true;
     return true;
   }
@@ -850,7 +1129,10 @@ export class SkinnedCreaturePool {
   hideFrom(startSlot: number): void {
     const from = Math.max(0, startSlot);
     for (let i = from; i < this.slots.length; i++) {
-      this.slots[i].mesh.visible = false;
+      const slot = this.slots[i];
+      slot.mesh.visible = false;
+      slot.mesh.userData.agentId = 0;
+      slot.agentId = 0;
     }
   }
 
@@ -861,6 +1143,7 @@ export class SkinnedCreaturePool {
       this.slots[i].material.dispose();
     }
     this.slots.length = 0;
+    this.placeholderGeom.dispose();
     this.cache.disposeAll();
   }
 }

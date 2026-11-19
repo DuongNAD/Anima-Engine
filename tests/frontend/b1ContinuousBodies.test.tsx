@@ -1,4 +1,7 @@
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import * as THREE from 'three';
@@ -8,6 +11,7 @@ import type { FrameCallback } from '../mocks/r3f-frame-state';
 import { makeFrameState } from '../mocks/r3f-frame-state';
 import { installStubbedProperty, removeStubbedProperties } from '../mocks/r3f-dom-stubs';
 import { generateWorld, type World } from '../../src/components/Landscape/utils/worldGen';
+import { surfaceHeight } from '../../src/components/Landscape/utils/worldSample';
 import {
   CREATURE_BODY_SCALE,
   buildAgentPoses,
@@ -15,6 +19,7 @@ import {
 } from '../../src/components/Landscape/utils/agentPose';
 import {
   ArchetypeMeshCache,
+  SkinnedCreaturePool,
   buildMorphologySkinArchetype,
   countOpenBoundaryEdges,
   type MorphologySegmentInput,
@@ -66,11 +71,35 @@ interface MockInstancedEl extends HTMLElement {
   visible?: boolean;
   instanceMatrix?: { needsUpdate: boolean };
   instanceColor?: { needsUpdate: boolean };
+  _b1Draws?: number[][];
 }
 
 interface MockSkinnedGroupEl extends HTMLElement {
   isObject3D?: boolean;
   _b1Children3D?: THREE.Object3D[];
+}
+
+function minDistanceToPosedSkin(mesh: THREE.SkinnedMesh, target: THREE.Vector3): number {
+  const index = mesh.geometry.getIndex();
+  const pos = mesh.geometry.getAttribute('position');
+  if (!index || !pos) return Infinity;
+  const va = new THREE.Vector3();
+  const vb = new THREE.Vector3();
+  const vc = new THREE.Vector3();
+  const closest = new THREE.Vector3();
+  const tri = new THREE.Triangle();
+  let minSq = Infinity;
+  const arr = index.array;
+  for (let i = 0; i + 2 < arr.length; i += 3) {
+    mesh.getVertexPosition(arr[i], va);
+    mesh.getVertexPosition(arr[i + 1], vb);
+    mesh.getVertexPosition(arr[i + 2], vc);
+    tri.set(va, vb, vc);
+    tri.closestPointToPoint(target, closest);
+    const dSq = closest.distanceToSquared(target);
+    if (dSq < minSq) minSq = dSq;
+  }
+  return Math.sqrt(minSq);
 }
 
 function advanceThreeFrame(overrides: Parameters<typeof makeFrameState>[0] = {}): void {
@@ -196,7 +225,14 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
       }
       return this;
     });
-    installStubbedProperty(HTMLElement.prototype, 'setMatrixAt', vi.fn());
+    installStubbedProperty(
+      HTMLElement.prototype,
+      'setMatrixAt',
+      vi.fn(function (this: MockInstancedEl, index: number, matrix: THREE.Matrix4) {
+        if (!this._b1Draws) this._b1Draws = [];
+        this._b1Draws[index] = Array.from(matrix.elements);
+      }),
+    );
     installStubbedProperty(HTMLElement.prototype, 'setColorAt', vi.fn());
   });
 
@@ -210,6 +246,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
       'setMatrixAt',
       'setColorAt',
     );
+    document.querySelectorAll('[data-testid^="rw-"]').forEach((node) => node.remove());
   });
 
   it('builds watertight manifold continuous skin archetypes for 1, 3 (founder gap), 5 (branches), and 9 segments', () => {
@@ -275,14 +312,24 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     }
     expect(bridgeVertsInGap).toBeGreaterThan(0);
 
-    // Verify normalized skinWeights (`sum ~= 1.0`) and valid skinIndex bounds.
+    // Verify normalized skinWeights (`sum ~= 1.0`), valid skinIndex bounds, AND distance-dependent bone ownership (kills M4).
     const skinW = arch3a.geometry.getAttribute('skinWeight') as THREE.BufferAttribute;
     const skinI = arch3a.geometry.getAttribute('skinIndex') as THREE.BufferAttribute;
+    let dominantBone0 = 0;
+    let dominantBone1 = 0;
+    let dominantBone2 = 0;
     for (let i = 0; i < posAttr.count; i++) {
       const sum = skinW.getX(i) + skinW.getY(i) + skinW.getZ(i) + skinW.getW(i);
       expect(sum).toBeCloseTo(1.0, 4);
       expect(skinI.getX(i)).toBeLessThan(3);
+      const vz = posAttr.getZ(i);
+      if (vz < 0.2 && skinI.getX(i) === 0) dominantBone0++;
+      if (Math.abs(vz - 1.5) < 0.3 && skinI.getX(i) === 1) dominantBone1++;
+      if (vz > 2.7 && skinI.getX(i) === 2) dominantBone2++;
     }
+    expect(dominantBone0).toBeGreaterThan(0);
+    expect(dominantBone1).toBeGreaterThan(0);
+    expect(dominantBone2).toBeGreaterThan(0);
 
     // 5-segment creature with paired lateral appendages.
     const branch5: MorphologySegmentInput[] = [
@@ -358,7 +405,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     expect(cache.size()).toBe(0);
   });
 
-  it('enforces 3-tier LOD caps K=8/14/24 and frustum culls behind positioned cameras', () => {
+  it('enforces 3-tier LOD caps K=8/12/16 and frustum culls behind positioned cameras', () => {
     const selector = new CreatureLodSelector();
     const agents: InterpolatedAgentView[] = [];
     for (let i = 0; i < 40; i++) {
@@ -489,5 +536,617 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     expect(stopPropagation).toHaveBeenCalledTimes(1);
     const hudId = document.body.querySelector('[data-testid="rw-selected-agent-id"]');
     expect(hudId?.textContent).toBe(String(targetId));
+  });
+
+  it('R1/R2: keeps synthetic joint anchors inside Rust mutation.rs limits across 3..15 segments', () => {
+    for (const segCount of [3, 5, 9, 15]) {
+      const gen = createSyntheticTickGenerator({ agents: 12, segmentsPerAgent: segCount, seed: 1 });
+      const payload = gen.tickAt(0);
+      const segByKey = new Map(payload.segments.map((s) => [`${s.agent_id}:${s.segment_id}`, s]));
+      for (const s of payload.segments) {
+        if (s.parent_segment_id === null) continue;
+        const parent = segByKey.get(`${s.agent_id}:${s.parent_segment_id}`)!;
+        expect(Math.abs(s.joint_anchor_x)).toBeLessThanOrEqual(parent.radius + 1e-6);
+        expect(Math.abs(s.joint_anchor_y)).toBeLessThanOrEqual(parent.radius + 1e-6);
+        expect(Math.abs(s.joint_anchor_z)).toBeLessThanOrEqual(parent.length * 0.5 + 1e-6);
+      }
+    }
+  });
+
+  it('R2 & N5: aligns near-skinned eyes and predator snout flush with posed skin for live founder (1,0,0) and +L/2 chains', () => {
+    const buildRotatedFounderSegments = (
+      agentId: number,
+      agentType: 'prey' | 'predator',
+      simX: number,
+      simZ: number,
+      yaw: number,
+    ): SegmentState[] => {
+      const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const aVec = new THREE.Vector3();
+      const halfVec = new THREE.Vector3(0, 0, 0.5).applyQuaternion(q);
+      const segs: SegmentState[] = [
+        {
+          agent_id: agentId,
+          segment_id: 0,
+          parent_segment_id: null,
+          length: 1.0,
+          radius: 0.2,
+          x: simX,
+          y: 1.0,
+          z: simZ,
+          yaw,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0,
+          joint_axis_x: 0,
+          joint_axis_y: 0,
+          joint_axis_z: 0,
+          energy: 90,
+          hydration: 80,
+          head_direction: [fwd.x, fwd.y, fwd.z],
+          agent_type: agentType,
+        },
+      ];
+      for (let s = 1; s <= 2; s++) {
+        const p = segs[s - 1];
+        aVec.set(1.0, 0, 0).applyQuaternion(q);
+        segs.push({
+          agent_id: agentId,
+          segment_id: s,
+          parent_segment_id: s - 1,
+          length: 1.0,
+          radius: 0.2,
+          x: p.x + aVec.x + halfVec.x,
+          y: p.y + aVec.y + halfVec.y,
+          z: p.z + aVec.z + halfVec.z,
+          yaw,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 1.0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0,
+          joint_axis_x: 0,
+          joint_axis_y: 0,
+          joint_axis_z: 1,
+          energy: 90,
+          hydration: 80,
+          head_direction: [fwd.x, fwd.y, fwd.z],
+          agent_type: agentType,
+        });
+      }
+      return segs;
+    };
+
+    const manual = makeManualSource();
+    const { container, unmount } = render(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="high"
+      />,
+    );
+
+    const payload: SimulationTickPayload = {
+      segments: [
+        ...buildRotatedFounderSegments(1, 'prey', 0, 0, 0.7),
+        ...buildRotatedFounderSegments(2, 'predator', 4, 0, -0.5),
+        // Agent 3: mutation +L/2 forward chain (`joint_anchor = [0, 0, 0.5]`, `pos.z = 0, 1.0, 2.0`)
+        {
+          agent_id: 3,
+          segment_id: 0,
+          parent_segment_id: null,
+          length: 1.0,
+          radius: 0.2,
+          x: -4,
+          y: 1.0,
+          z: 0,
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0,
+          joint_axis_x: 0,
+          joint_axis_y: 0,
+          joint_axis_z: 0,
+          energy: 90,
+          hydration: 80,
+          head_direction: [0, 0, 1],
+          agent_type: 'prey',
+        },
+        {
+          agent_id: 3,
+          segment_id: 1,
+          parent_segment_id: 0,
+          length: 1.0,
+          radius: 0.2,
+          x: -4,
+          y: 1.0,
+          z: 1.0,
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0.5,
+          joint_axis_x: 0,
+          joint_axis_y: 1,
+          joint_axis_z: 0,
+          energy: 90,
+          hydration: 80,
+          head_direction: [0, 0, 1],
+          agent_type: 'prey',
+        },
+        {
+          agent_id: 3,
+          segment_id: 2,
+          parent_segment_id: 1,
+          length: 1.0,
+          radius: 0.2,
+          x: -4,
+          y: 1.0,
+          z: 2.0,
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0.5,
+          joint_axis_x: 0,
+          joint_axis_y: 1,
+          joint_axis_z: 0,
+          energy: 90,
+          hydration: 80,
+          head_direction: [0, 0, 1],
+          agent_type: 'prey',
+        },
+      ],
+      environmental_state: { elements: [] },
+      head_directions: {},
+    };
+
+    act(() => {
+      manual.emit(payload);
+    });
+    const gY0 = surfaceHeight(world, 0, 0, 1200, 0.14, 64);
+    const cam = makeCameraAt([0, gY0 + 35, 55], [0, gY0, 0]);
+    act(() => {
+      advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 } });
+    });
+
+    const skinnedGroup = container.querySelector('group[name="live-agents-skinned"]') as MockSkinnedGroupEl;
+    const sphereMesh = container.querySelector('instancedmesh[name="live-agents-spheres"]') as MockInstancedEl;
+    const snoutMesh = container.querySelector('instancedmesh[name="live-agents-snouts"]') as MockInstancedEl;
+    const visibleSkinned = (skinnedGroup._b1Children3D ?? []).filter(
+      (obj): obj is THREE.SkinnedMesh => obj instanceof THREE.SkinnedMesh && obj.visible,
+    );
+    expect(visibleSkinned.length).toBe(3);
+    expect(sphereMesh.count).toBe(6); // 2 eyes * 3 creatures
+    expect(snoutMesh.count).toBe(1); // agent 2 predator snout
+
+    const tmpMat = new THREE.Matrix4();
+    const eyePos = new THREE.Vector3();
+    const eyeQuat = new THREE.Quaternion();
+    const eyeScale = new THREE.Vector3();
+    const meshByAgent = new Map(visibleSkinned.map((m) => [m.userData.agentId as number, m]));
+    const rRadFounder = 0.2 * 6 * CREATURE_BODY_SCALE;
+
+    // All 6 eye centers sit flush within eyeRadius of their creature's posed SkinnedMesh, and eye radius scales down with CREATURE_BODY_SCALE (N5).
+    for (let i = 0; i < 6; i++) {
+      tmpMat.fromArray(sphereMesh._b1Draws![i]);
+      tmpMat.decompose(eyePos, eyeQuat, eyeScale);
+      const ownerId = i < 2 ? 1 : i < 4 ? 2 : 3;
+      const dist = minDistanceToPosedSkin(meshByAgent.get(ownerId)!, eyePos);
+      expect(dist).toBeLessThanOrEqual(eyeScale.x);
+      expect(eyeScale.x / rRadFounder).toBeLessThan(0.32);
+    }
+
+    // +L/2 forward chain places eyes near leading bone 2 nose, not buried behind child 1.
+    tmpMat.fromArray(sphereMesh._b1Draws![4]);
+    tmpMat.decompose(eyePos, eyeQuat, eyeScale);
+    const chainBone2Z = meshByAgent.get(3)!.skeleton.bones[2].position.z;
+    expect(eyePos.z).toBeGreaterThan(chainBone2Z);
+
+    // Predator snout anchors inside the front nose dome and extends forward past it (no floating gap).
+    const snoutMat = new THREE.Matrix4().fromArray(snoutMesh._b1Draws![0]);
+    const snoutPos = new THREE.Vector3();
+    const snoutQuat = new THREE.Quaternion();
+    const snoutScale = new THREE.Vector3();
+    snoutMat.decompose(snoutPos, snoutQuat, snoutScale);
+    const snoutFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(snoutQuat).normalize();
+    const snoutUp = new THREE.Vector3(0, 1, 0).applyQuaternion(snoutQuat).normalize();
+    const snoutBaseCollar = snoutPos
+      .clone()
+      .addScaledVector(snoutFwd, -snoutScale.z * 0.25)
+      .addScaledVector(snoutUp, snoutScale.y * 0.5);
+    expect(minDistanceToPosedSkin(meshByAgent.get(2)!, snoutBaseCollar)).toBeLessThanOrEqual(
+      snoutScale.x * 0.6,
+    );
+    expect(snoutPos.clone().addScaledVector(snoutFwd, snoutScale.z * 0.5).distanceTo(meshByAgent.get(2)!.skeleton.bones[0].position)).toBeGreaterThan(
+      0.96,
+    );
+
+    unmount();
+  });
+
+  it('R3: raycasts moved SkinnedMesh creatures and returns zero hits on hidden slots', () => {
+    vi.useFakeTimers();
+    let clockMs = 1000;
+    const manual = makeManualSource();
+    const { container, unmount } = render(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        nowMs={() => clockMs}
+        qualityTier="low"
+      />,
+    );
+
+    const gYA = surfaceHeight(world, 0, 0, 1200, 0.14, 64);
+    const cam = makeCameraAt([0, gYA + 35, 45], [0, gYA, 0]);
+    act(() => {
+      manual.emit({
+        segments: makeSyntheticPayloadSegments(1, 'prey', 0, 0, 3),
+        environmental_state: { elements: [] },
+        head_directions: {},
+      });
+    });
+    act(() => {
+      advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 } });
+    });
+
+    const skinnedGroup = container.querySelector('group[name="live-agents-skinned"]') as MockSkinnedGroupEl;
+    const mesh = (skinnedGroup._b1Children3D ?? []).find(
+      (obj): obj is THREE.SkinnedMesh => obj instanceof THREE.SkinnedMesh && obj.visible,
+    )!;
+    expect(mesh).toBeDefined();
+
+    const bone0 = mesh.skeleton.bones[0].position.clone();
+    const raycaster = new THREE.Raycaster();
+    raycaster.set(new THREE.Vector3(bone0.x, bone0.y + 50, bone0.z), new THREE.Vector3(0, -1, 0));
+    const hitsA = raycaster.intersectObject(mesh, false);
+    expect(hitsA.length).toBeGreaterThan(0);
+    expect(hitsA[0].object.userData.agentId).toBe(1);
+
+    // Move creature 120 render units (`simX = 20`) cleanly to position B and advance past delay.
+    act(() => {
+      clockMs = 1033;
+      manual.emit({
+        segments: makeSyntheticPayloadSegments(1, 'prey', 20, 0, 3),
+        environmental_state: { elements: [] },
+        head_directions: {},
+      });
+    });
+    clockMs = 1066;
+    const gYB = surfaceHeight(world, 120, 0, 1200, 0.14, 64);
+    const camB = makeCameraAt([120, gYB + 35, 45], [120, gYB, 0]);
+    act(() => {
+      advanceThreeFrame({ camera: camB, size: { width: 1280, height: 720 } });
+    });
+
+    // Old position A misses; new position B hits!
+    raycaster.set(new THREE.Vector3(bone0.x, bone0.y + 50, bone0.z), new THREE.Vector3(0, -1, 0));
+    expect(raycaster.intersectObject(mesh, false)).toHaveLength(0);
+
+    const movedPos = mesh.skeleton.bones[0].position.clone();
+    expect(movedPos.x).toBeCloseTo(120, 1);
+    raycaster.set(new THREE.Vector3(movedPos.x, movedPos.y + 50, movedPos.z), new THREE.Vector3(0, -1, 0));
+    const hitsB = raycaster.intersectObject(mesh, false);
+    expect(hitsB.length).toBeGreaterThan(0);
+    expect(hitsB[0].object.userData.agentId).toBe(1);
+
+    // Move camera so creature is behind frustum -> culled -> hidden slot never returns ghost hits.
+    const behindCam = makeCameraAt([120, gYB + 35, -120], [120, gYB, -240]);
+    act(() => {
+      advanceThreeFrame({ camera: behindCam, size: { width: 1280, height: 720 } });
+    });
+    expect(mesh.visible).toBe(false);
+    raycaster.set(new THREE.Vector3(movedPos.x, movedPos.y + 50, movedPos.z), new THREE.Vector3(0, -1, 0));
+    expect(raycaster.intersectObject(mesh, false)).toHaveLength(0);
+
+    vi.useRealTimers();
+    unmount();
+  });
+
+  it('N1 & N2: wires WorldShowcase qualityTier prop and runs zero URLSearchParams allocations inside useFrame', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const showcaseSrc = readFileSync(
+      resolve(here, '../../src/components/Landscape/WorldShowcase.tsx'),
+      'utf8',
+    );
+    expect(showcaseSrc).toMatch(/<LiveAgents[\s\S]*qualityTier=\{effectiveQuality\}/);
+
+    const manual = makeManualSource();
+    const { container, rerender, unmount } = render(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="low"
+      />,
+    );
+
+    const segs: SegmentState[] = [];
+    for (let i = 1; i <= 20; i++) {
+      segs.push(...makeSyntheticPayloadSegments(i, 'prey', (i - 10) * 0.4, 0, 3));
+    }
+    act(() => {
+      manual.emit({ segments: segs, environmental_state: { elements: [] }, head_directions: {} });
+    });
+
+    const gY = surfaceHeight(world, 0, 0, 1200, 0.14, 64);
+    const cam = makeCameraAt([0, gY + 30, 50], [0, gY, 0]);
+    const OrigURLSearchParams = globalThis.URLSearchParams;
+    let urlSearchConstructs = 0;
+    const urlSpy = vi
+      .spyOn(globalThis, 'URLSearchParams')
+      .mockImplementation(function (this: URLSearchParams, init?: ConstructorParameters<typeof URLSearchParams>[0]) {
+        urlSearchConstructs++;
+        return new OrigURLSearchParams(init);
+      } as unknown as typeof URLSearchParams);
+
+    for (let f = 0; f < 5; f++) {
+      act(() => {
+        advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 } });
+      });
+    }
+    expect(urlSearchConstructs).toBe(0);
+
+    const skinnedGroup = container.querySelector('group[name="live-agents-skinned"]') as MockSkinnedGroupEl;
+    const countVisible = () =>
+      (skinnedGroup._b1Children3D ?? []).filter(
+        (o): o is THREE.SkinnedMesh => o instanceof THREE.SkinnedMesh && o.visible,
+      ).length;
+
+    expect(countVisible()).toBe(CREATURE_NEAR_SKINNED_CAP.low);
+    rerender(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="medium"
+      />,
+    );
+    act(() => {
+      advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 } });
+    });
+    expect(countVisible()).toBe(CREATURE_NEAR_SKINNED_CAP.medium);
+
+    rerender(
+      <LiveAgents
+        world={world}
+        renderSize={1200}
+        heightRatio={0.14}
+        meshResolution={64}
+        tickSource={manual.source}
+        qualityTier="high"
+      />,
+    );
+    act(() => {
+      advanceThreeFrame({ camera: cam, size: { width: 1280, height: 720 } });
+    });
+    expect(countVisible()).toBe(CREATURE_NEAR_SKINNED_CAP.high);
+
+    urlSpy.mockRestore();
+    unmount();
+  });
+
+  it('N3, N4, N6 & radius-width: protects active LRU geometry, keeps sticky slots + top-8 shadows, snaps morphology change, and scales skin width by radius', () => {
+    // 1. N3: LRU cache never disposes a geometry in `protectedKeys` during eviction overflow.
+    const cache = new ArchetypeMeshCache(8);
+    const baseSegs: MorphologySegmentInput[] = [
+      {
+        segmentId: 0,
+        parentSegmentId: null,
+        isRoot: true,
+        renderLength: 2,
+        renderRadius: 0.6,
+        jointAnchor: [0, 0, 0],
+      },
+    ];
+    const m0 = cache.getOrBuild('m0', baseSegs);
+    const m1 = cache.getOrBuild('m1', baseSegs);
+    const dispose0 = vi.spyOn(m0.geometry, 'dispose');
+    const dispose1 = vi.spyOn(m1.geometry, 'dispose');
+    for (let i = 2; i < 8; i++) cache.getOrBuild(`m${i}`, baseSegs);
+
+    const protectedSet = new Set(['m0']);
+    cache.getOrBuild('m8', baseSegs, protectedSet);
+    expect(dispose0).not.toHaveBeenCalled();
+    expect(dispose1).toHaveBeenCalledTimes(1);
+
+    // Once unprotected, m0 becomes eligible for normal eviction.
+    cache.getOrBuild('m9', baseSegs, new Set());
+    expect(dispose0).toHaveBeenCalledTimes(1);
+    cache.disposeAll();
+
+    // 2. N4 & Radius-width: sticky slots by agentId, closest-8 shadow assignment, and posed width reflects radius.
+    const buf = new TickInterpolationBuffer();
+    const segs: SegmentState[] = [];
+    for (let id = 1; id <= 12; id++) {
+      const r = id === 1 ? 0.15 : id === 2 ? 0.45 : 0.25;
+      segs.push(
+        {
+          agent_id: id,
+          segment_id: 0,
+          parent_segment_id: null,
+          length: 1.0,
+          radius: r,
+          x: id * 0.5,
+          y: 1.0,
+          z: id * 2.0,
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0,
+          joint_axis_x: 0,
+          joint_axis_y: 0,
+          joint_axis_z: 0,
+          energy: 80,
+          hydration: 80,
+          head_direction: [0, 0, 1],
+          agent_type: 'prey',
+        },
+        {
+          agent_id: id,
+          segment_id: 1,
+          parent_segment_id: 0,
+          length: 1.0,
+          radius: r,
+          x: id * 0.5,
+          y: 1.0,
+          z: id * 2.0 + 1.0,
+          yaw: 0,
+          pitch: 0,
+          roll: 0,
+          joint_anchor_x: 0,
+          joint_anchor_y: 0,
+          joint_anchor_z: 0.5,
+          joint_axis_x: 0,
+          joint_axis_y: 1,
+          joint_axis_z: 0,
+          energy: 80,
+          hydration: 80,
+          head_direction: [0, 0, 1],
+          agent_type: 'prey',
+        },
+      );
+    }
+    buf.push(
+      { segments: segs, environmental_state: { elements: [] }, head_directions: {} },
+      0,
+      1200,
+      () => 0,
+      CREATURE_BODY_SCALE,
+    );
+    const frame1 = buf.sampleLatest();
+    const cam = makeCameraAt([0, 5, -20], [0, 5, 100]);
+    const selector = new CreatureLodSelector();
+    const pool = new SkinnedCreaturePool(16);
+    const scratch = {
+      pos: new THREE.Vector3(),
+      quat: new THREE.Quaternion(),
+      scale: new THREE.Vector3(),
+      color: new THREE.Color(),
+    };
+
+    const lod1 = selector.select(frame1.agents, frame1.agentCount, cam, 'high', 1200);
+    const slots1 = pool.prepareNearFrame(frame1.agents, lod1.nearIndices, lod1.nearCount);
+    let slotForAgent5Frame1 = -1;
+    let skeletonAgent5Frame1: THREE.Skeleton | null = null;
+    const meshById = new Map<number, THREE.SkinnedMesh>();
+    const group = new THREE.Group();
+    pool.bindGroup(group);
+
+    for (let r = 0; r < lod1.nearCount; r++) {
+      const p = frame1.agents[lod1.nearIndices[r]];
+      const s = slots1[r];
+      pool.updateSlot(s, p, 0, scratch, r < 8);
+      const m = group.children[s] as THREE.SkinnedMesh;
+      meshById.set(p.agentId, m);
+      expect(m.castShadow).toBe(r < 8);
+      if (p.agentId === 5) {
+        slotForAgent5Frame1 = s;
+        skeletonAgent5Frame1 = m.skeleton;
+      }
+    }
+
+    // Skinned-tier radius drives posed mesh X-width (`radius = 0.45` vs `0.15`).
+    const spanX = (m: THREE.SkinnedMesh): number => {
+      const attr = m.geometry.getAttribute('position');
+      const v = new THREE.Vector3();
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (let i = 0; i < attr.count; i++) {
+        m.getVertexPosition(i, v);
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+      }
+      return maxX - minX;
+    };
+    expect(spanX(meshById.get(2)!) / spanX(meshById.get(1)!)).toBeGreaterThan(2.2);
+
+    // Frame 2 inserts agent 99 right next to camera -> shifts everyone's rank, but agent 5 keeps its sticky slot & Skeleton!
+    const segs2 = [
+      ...segs,
+      {
+        ...segs[0],
+        agent_id: 99,
+        x: 0,
+        z: 0,
+      },
+      {
+        ...segs[1],
+        agent_id: 99,
+        x: 0,
+        z: 1.0,
+      },
+    ];
+    buf.push(
+      { segments: segs2, environmental_state: { elements: [] }, head_directions: {} },
+      33,
+      1200,
+      () => 0,
+      CREATURE_BODY_SCALE,
+    );
+    const frame2 = buf.sampleLatest();
+    const lod2 = selector.select(frame2.agents, frame2.agentCount, cam, 'high', 1200);
+    const slots2 = pool.prepareNearFrame(frame2.agents, lod2.nearIndices, lod2.nearCount);
+    for (let r = 0; r < lod2.nearCount; r++) {
+      const p = frame2.agents[lod2.nearIndices[r]];
+      const s = slots2[r];
+      pool.updateSlot(s, p, 0.03, scratch, r < 8);
+      const m = group.children[s] as THREE.SkinnedMesh;
+      if (p.agentId === 5) {
+        expect(s).toBe(slotForAgent5Frame1);
+        expect(m.skeleton).toBe(skeletonAgent5Frame1);
+      }
+    }
+    pool.dispose();
+
+    // 3. N6: changing morphologyKey on reused agent_id snaps immediately so morphologySegments matches morphologyKey.
+    const n6Buf = new TickInterpolationBuffer();
+    n6Buf.push(
+      {
+        segments: makeSyntheticPayloadSegments(1, 'prey', 0, 0, 3),
+        environmental_state: { elements: [] },
+        head_directions: {},
+      },
+      0,
+      1200,
+      () => 0,
+      CREATURE_BODY_SCALE,
+    );
+    const taller = makeSyntheticPayloadSegments(1, 'prey', 0.2, 0, 3).map((s) => ({
+      ...s,
+      length: 2.2,
+    }));
+    n6Buf.push(
+      { segments: taller, environmental_state: { elements: [] }, head_directions: {} },
+      33,
+      1200,
+      () => 0,
+      CREATURE_BODY_SCALE,
+    );
+    const midView = n6Buf.sample(49.5, 1200, () => 0);
+    expect(midView.agents[0].morphologySegments[0].renderLength).toBeCloseTo(
+      2.2 * 6 * CREATURE_BODY_SCALE,
+      4,
+    );
   });
 });
