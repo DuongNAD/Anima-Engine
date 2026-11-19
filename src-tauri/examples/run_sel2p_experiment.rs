@@ -43,6 +43,7 @@ use anima_engine_lib::core::live_experiment::{
 };
 use anima_engine_lib::core::scenario::StateSample;
 use anima_engine_lib::core::sha256::sha256_file;
+use anima_engine_lib::core::world_artifact::WorldIdentity;
 
 const PREREG_FILE: &str = "sel2p-preregistration.json";
 const LOCK_FILE: &str = "execution-lock.json";
@@ -599,8 +600,31 @@ struct BlindRun {
     cause_partition_ok: Option<bool>,
     births_last_quarter: f64,
     deaths_last_quarter: f64,
+    terrain_source: Option<String>,
+    world_identity: Option<WorldIdentity>,
     /// `(tick, [SMOKE_ALLOWED_NON_DRIFT values])` — columns 6..8 are `None` for `scarce_drift`.
     series: Vec<(u64, [Option<f64>; 8])>,
+}
+
+fn uniform_world_provenance<'a, I>(label: &str, items: I) -> Result<(String, WorldIdentity), String>
+where
+    I: IntoIterator<Item = (Option<&'a str>, Option<WorldIdentity>)>,
+{
+    let mut expected: Option<(String, WorldIdentity)> = None;
+    for (src, id) in items {
+        let src = src.ok_or_else(|| format!("{label}: missing provenance.terrain_source"))?;
+        let id = id.ok_or_else(|| format!("{label}: missing provenance.world_identity"))?;
+        match &expected {
+            None => expected = Some((src.to_string(), id)),
+            Some((es, ei)) if es == src && *ei == id => {}
+            Some((es, ei)) => {
+                return Err(format!(
+                    "{label}: mixed terrain across runs: ({es}, {ei:?}) vs ({src}, {id:?})"
+                ));
+            }
+        }
+    }
+    expected.ok_or_else(|| format!("{label}: no runs executed"))
 }
 
 fn guard_no_body_mass(what: &str, text: &str) -> Result<(), String> {
@@ -754,6 +778,8 @@ fn strip_to_blind_run(
         cause_partition_ok,
         births_last_quarter,
         deaths_last_quarter,
+        terrain_source: run.provenance.terrain_source,
+        world_identity: run.provenance.world_identity,
         series,
     }
 }
@@ -1020,6 +1046,12 @@ fn run_smoke_stage(
         "runs": all_runs.iter().map(|r| run_json(r)).collect::<Vec<_>>(),
     });
 
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "sel2p-smoke",
+        all_runs
+            .iter()
+            .map(|r| (r.terrain_source.as_deref(), r.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let prov_json = serde_json::json!({
         "kind": if mode == Mode::Smoke {
@@ -1033,6 +1065,8 @@ fn run_smoke_stage(
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_version": LIVE_MODEL_VERSION,
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "build": {
             "git_commit": git(&["rev-parse", "HEAD"]),
             "git_describe": git(&["describe", "--always", "--dirty"]),
@@ -1736,6 +1770,15 @@ fn run_analysis_stage(input: AnalysisInput<'_>) -> Result<(), String> {
         &(pretty(&effects_doc)? + "\n"),
     )?;
 
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "sel2p-confirm",
+        report
+            .pairs
+            .iter()
+            .flat_map(|p| [&p.control.provenance, &p.treatment.provenance])
+            .chain(mut0_runs.iter().map(|r| &r.provenance))
+            .map(|prov| (prov.terrain_source.as_deref(), prov.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let prov_doc = serde_json::json!({
         "kind": if input.mode == Mode::Confirm {
@@ -1748,6 +1791,8 @@ fn run_analysis_stage(input: AnalysisInput<'_>) -> Result<(), String> {
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_version": LIVE_MODEL_VERSION,
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "harness": "core::live_experiment::run_live_drift_ensemble + core::experiment_runner::{run_manifest_seed, paired_effect}",
         "registry": "core::experiment::ObservableRegistry::live_default",
         "build": {

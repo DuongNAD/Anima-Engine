@@ -89,6 +89,7 @@ use anima_engine_lib::core::live_experiment::{
     LIVE_OBSERVABLE_IDS,
 };
 use anima_engine_lib::core::sha256::{sha256_file, sha256_hex};
+use anima_engine_lib::core::world_artifact::WorldIdentity;
 
 /// Every observable id the live registry knows, legacy then extended.
 fn live_all_ids() -> impl Iterator<Item = &'static str> {
@@ -483,8 +484,31 @@ struct SmokeRun {
     status: RunStatus,
     checksum: u32,
     elapsed_secs: f64,
+    terrain_source: Option<String>,
+    world_identity: Option<WorldIdentity>,
     /// `(tick, [value of each SMOKE_ALLOWED_OBSERVABLES])`.
     series: Vec<(u64, [Option<f64>; 5])>,
+}
+
+fn uniform_world_provenance<'a, I>(label: &str, items: I) -> Result<(String, WorldIdentity), String>
+where
+    I: IntoIterator<Item = (Option<&'a str>, Option<WorldIdentity>)>,
+{
+    let mut expected: Option<(String, WorldIdentity)> = None;
+    for (src, id) in items {
+        let src = src.ok_or_else(|| format!("{label}: missing provenance.terrain_source"))?;
+        let id = id.ok_or_else(|| format!("{label}: missing provenance.world_identity"))?;
+        match &expected {
+            None => expected = Some((src.to_string(), id)),
+            Some((es, ei)) if es == src && *ei == id => {}
+            Some((es, ei)) => {
+                return Err(format!(
+                    "{label}: mixed terrain across runs: ({es}, {ei:?}) vs ({src}, {id:?})"
+                ));
+            }
+        }
+    }
+    expected.ok_or_else(|| format!("{label}: no runs executed"))
 }
 
 impl SmokeRun {
@@ -601,6 +625,8 @@ fn run_allow_listed(
                 status: run.status.clone(),
                 checksum: run.final_checksum,
                 elapsed_secs,
+                terrain_source: run.provenance.terrain_source.clone(),
+                world_identity: run.provenance.world_identity,
                 series,
             });
             if let Some((tick, reason)) = failure {
@@ -717,12 +743,19 @@ fn smoke_run(
         "runs": per_run,
         "max_us_per_tick": max_us,
     });
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "smoke",
+        runs.iter()
+            .map(|r| (r.terrain_source.as_deref(), r.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let prov = serde_json::json!({
         "kind": "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
         "mode": "smoke",
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "build": {
             "git_commit": git(&["rev-parse", "HEAD"]),
             "git_describe": git(&["describe", "--always", "--dirty"]),
@@ -1089,6 +1122,11 @@ fn trial_run(
 
     // provenance.json: everything that identifies the run, nothing that depends on the clock, the
     // checkout or a path. No git or rustc subprocess: a sandboxed task may have neither.
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "trial",
+        runs.iter()
+            .map(|r| (r.terrain_source.as_deref(), r.world_identity)),
+    )?;
     let env_value = |name: &str| std::env::var(name).ok();
     let prov = serde_json::json!({
         "kind": "e-sel1-trial-provenance",
@@ -1097,6 +1135,8 @@ fn trial_run(
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_version": LIVE_MODEL_VERSION,
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "parameters": {
             "seed": seed,
             "founders": founders,
@@ -1139,7 +1179,7 @@ fn trial_run(
             "ANIMA_SIM_SEED": sim_seed_env,
             "ANIMA_DETERMINISTIC": env_value("ANIMA_DETERMINISTIC"),
             "ANIMA_USE_GPU": env_value("ANIMA_USE_GPU"),
-            "note": "recorded, not consulted, except ANIMA_SIM_SEED as the seed when --seed is absent: the live adapter installs DeterministicMode::on() and a CPU brain whatever the environment says",
+            "note": "recorded, not consulted, except ANIMA_SIM_SEED as the seed when --seed is absent: the live adapter installs DeterministicMode::on(), a CPU brain and TerrainSource::Generated (ignoring ANIMA_WORLD_ARTIFACT and temp artifacts) whatever the environment says",
         },
         "verification": {
             "file": VERIFY_FILE,
@@ -2194,6 +2234,15 @@ fn runs_csv(w: &WriteInput<'_>) -> String {
 
 fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
     let (started, ended) = (unix_seconds(w.started), unix_seconds(w.ended));
+    let (terrain_source, world_identity) = uniform_world_provenance(
+        "ensemble",
+        w.report
+            .pairs
+            .iter()
+            .flat_map(|p| [&p.control.provenance, &p.treatment.provenance])
+            .chain(w.drift_runs.into_iter().flatten().map(|r| &r.provenance))
+            .map(|prov| (prov.terrain_source.as_deref(), prov.world_identity)),
+    )?;
     let exe = std::env::current_exe().ok();
     let doc = serde_json::json!({
         "kind": if w.mode == Mode::Smoke { "e-sel1-smoke-provenance-EXCLUDED-FROM-ANALYSIS" } else { "e-sel1-provenance" },
@@ -2201,6 +2250,8 @@ fn provenance_json(w: &WriteInput<'_>) -> Result<String, String> {
         "mode": format!("{:?}", w.mode).to_lowercase(),
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+        "terrain_source": terrain_source,
+        "world_identity": world_identity,
         "harness": "core::experiment_runner::run_paired_ensemble_with_control + paired_effect",
         "registry": "core::experiment::ObservableRegistry::live_default",
         "build": {
