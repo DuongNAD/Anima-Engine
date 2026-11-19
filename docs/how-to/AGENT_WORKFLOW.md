@@ -198,6 +198,53 @@ QD-SEL2g  = SEL2's standing-crop ratio g uses a POOLED reference: the mean secon
             before the run (at least 3 survivors, else C2 fails); every scarce seed uses that one value
             (owner in chat, 2026-11-19: "chọn chuẩn gộp (b)"; verdicts S14_4e6d312f, S15_4342b895;
             docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md section 6)
+QD-VIS    = the 3D map must BE the simulated world, semi-realistic, with mountains, caves, forests and
+            rivers, streamed by camera; creatures are continuous bodies grown from their morphology;
+            done in parallel on Windows 1 (owner in chat, 2026-11-19). Follow-up "oke theo ý bạn" taken
+            as: accept ADR-0010 (pinned, tiled world artifact), skip CREATURE_MORPHOGENESIS_PLAN.md:36
+            for the body renderer, keep 30 FPS at Low on Iris Xe with 1,000 creatures (cap near-tier
+            bodies). docs/ai/design/2026-11-19-feature-real-world-and-bodies.md
+QD-NATIVE = a native renderer (wgpu / Bevy, in the same process as the simulation, native surface in the
+            Tauri window, HTML UI kept) is the long-term direction because it removes per-tick IPC and
+            gives the full GPU; it is done later, not now. Near-term work stays on Three.js/WebGL2 and
+            prefers renderer-agnostic pieces (world artifact, payload, body-mesh algorithm). The
+            measuring spike and ADR-0011 come when that work starts (owner in chat, 2026-11-19: "Làm
+            spike", then "tôi nghĩ vẫn sẽ làm vẽ native vì sẽ tối ưu hơn oke nhưng sẽ làm ở tương lai")
+QD-SEL2P  = the SEL2-P preregistration is approved (owner in chat, 2026-11-19 ~12:05 +07: "Duyệt"), on the
+            lead's stated conditions: the smoke (seed 999961, 200,000 ticks, blind) runs now with the
+            preregistered commands; the freeze and the 20 confirmation seeds wait until card SEL2-P-fix
+            (verdict SEL2-P-impl_6456eb4a, defects D1-D3 at least) has merged and the smoke passes C1..C5
+QD-ASSETS = CC0 art for the map: ambientCG and Poly Haven only, licence CC0-1.0, at most 60 MB
+            downloaded and 20 MB committed under public/assets/world/ with SOURCES.json (one licence_url
+            per entry) and a NOTICE section generated from it; KTX-Software (toktx) and gltf-transform
+            allowed as local tools, never committed (owner in chat, 2026-11-19: "Cho tải CC0", "Đồng ý cả
+            hai"). The graphics pass W3-lite runs on Windows 1 after B1 ("Win 1 sau B1"). CORRECTED the
+            same day: Quaternius was first listed here as CC0, but its licence page now says Quaternius
+            Asset License v1.0 (updated 2026-08-28; no redistribution as standalone assets or packs, which
+            a public repository would risk), so it is not covered by the owner's CC0-only grant
+QD-OXS    = Anima work may run on the OxideSwarm grid (owner in chat, 2026-11-19: "Cho phép dùng
+            OxideSwarm chạy việc của Anima"), through the existing grid procedure (only anima-mac submits,
+            only to GRID WORKER, never to friends' machines): Rust builds and tests, a registered
+            experiment's preregistered runs (all confirmation seeds of one experiment on one OS family),
+            and offline map jobs whose output is a pinned, hashed artifact. Runtime rendering stays on the
+            viewer's own machine. Anima agents still never open, build or edit the OxideSwarm checkout
+QD-TRIAL  = the owner's hands-on trial of map + bodies + experiment worlds runs on Windows 1; the lead
+            pauses anima-case for it (owner in chat, 2026-11-19)
+QD-DOCIDX = build a generated docs index so pull requests stop conflicting on docs/ai/README.md (owner in
+            chat, 2026-11-19: "Làm"); until it merges, the lead keeps resolving those rows by hand
+QD-ISLAND = the project's flagship scientific question is the island rule's mechanism (resource
+            limitation vs predation release), tested with preregistered multi-world archipelagos; SEL2-P
+            is its first brick; island size = carrying capacity, not area (owner in chat, 2026-11-19:
+            "Nhận", "Sức chứa"; docs/ai/requirements/2026-11-19-feature-island-evolution-observatory.md)
+QD-SCOPE  = scope freeze for about 3 months from 2026-11-19: continue SEL2-P, E3-P, M2, LAND1 and the
+            trial cards; paused: native renderer, exotic-energy extensions, W4 streaming, the full tiled
+            artifact (W1-W3 full), Inhabit federation; after the trial, graphics = bug fixes only. Public
+            docs and papers in English; an external reviewer before the island preregistration (owner in
+            chat, 2026-11-19: "Đồng ý", "Cả hai")
+QD-REALMS = real ecosystems in water, sky and underground are added one at a time after the SEL2-P
+            result, each with its own ADR: water first, then sky, then underground (walk-in caves);
+            until then fish, birds, wildlife and caves stay labelled decoration (owner in chat,
+            2026-11-19: "Theo từng bậc")
 QD-WIN    = the agent-win role is run by Gemini on the owner's Windows machine from 2026-11-18; R0
             first, then R1c (owner in chat; docs/ai/planning/2026-11-18-gemini-worker-win-handoff.md)
 QD-HUB    = Gemini workers (anima-case = agent-win on Windows, anima-mac on the Mac) take cards through

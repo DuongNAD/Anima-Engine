@@ -3,7 +3,7 @@ phase: design
 feature: real-world-and-bodies
 title: Design — Thế giới thật trên bản đồ và thân sinh vật mọc từ hình thái
 description: Bản đồ 3D vẽ đúng thế giới đang mô phỏng (địa hình, nước, hang, rừng do một artifact ghim làm nguồn sự thật) theo phong cách bán hiện thực, và sinh vật là thân liền dựng từ các đốt của hình thái mô phỏng. Chia thành các thẻ nhỏ; thẻ chỉ sửa frontend đi trước, thẻ đổi định dạng thế giới hay payload chờ ADR-0010
-status: proposed
+status: accepted
 owner: simulation-architecture
 last_reviewed: 2026-11-19
 ---
@@ -123,11 +123,21 @@ graph TD
 
 Mốc nhìn thấy đầu tiên (V1 + B1) mất khoảng 3 ngày công của một agent. Toàn bộ, kể cả tải theo vùng (W4), mất khoảng 3 tuần, tuỳ cổng hiệu năng.
 
-## 6. Cần chủ dự án quyết
+## 6. Đã quyết (2026-11-19)
 
-1. **Chấp nhận ADR-0010** (artifact ghim là nguồn sự thật; manifest khai `world_identity`). Đây cũng là câu đang mở trong `determinism_matrix.md`.
-2. **Bỏ qua thứ tự trong `CREATURE_MORPHOGENESIS_PLAN.md:36`** ("không làm renderer 3D mới trước khi payload 2D và hợp đồng phenotype ổn định"). Lựa chọn "thân liền" ngày 2026-11-19 làm điều đó. Rủi ro: khi `DevelopedPhenotype` xuất hiện, phần dựng mesh phải đọc phenotype thay vì genotype và sẽ phải sửa.
-3. **Mục tiêu hiệu năng cho phong cách bán hiện thực.** Có giữ 30 FPS ở Low trên Iris Xe với 1.000 sinh vật không, hay chấp nhận giảm số sinh vật ở tầng gần?
+Chủ dự án trả lời "oke theo ý bạn" cho ba câu phiên lead nêu, và trả lời thêm ở các câu hỏi trưa cùng ngày:
+
+1. **ADR-0010 được chấp nhận**: một world artifact ghim, chia ô, là nguồn sự thật; manifest khai `world_identity`.
+   Xem [ADR-0010](../../decisions/ADR-0010-pinned-world-artifact.md).
+2. **Bỏ qua thứ tự ở `CREATURE_MORPHOGENESIS_PLAN.md:36`** cho renderer thân liền (B1). Rủi ro sửa lại khi
+   `DevelopedPhenotype` có thật vẫn còn: bộ dựng mesh khi đó phải đọc phenotype thay vì genotype.
+3. **Hiệu năng**: giữ 30 FPS ở Low trên Iris Xe với 1.000 sinh vật; giới hạn số thân liền ở tầng gần (K theo tier).
+4. **Thứ tự** (đổi lúc 11:30 +07, "Đổi thứ tự"): V1 rồi B1 trên Windows 1 trước E3-P; W2-lite (`start_from_manifest`)
+   trên Mac. **Đồ hoạ W3-lite** đi Windows 1 sau B1 ("Win 1 sau B1"), dùng tài nguyên CC0 từ ambientCG, Poly Haven
+   và Quaternius ("Cho tải CC0"; công cụ nén KTX-Software và gltf-transform: "Đồng ý cả hai").
+5. **Renderer native** (wgpu/Bevy) là hướng lâu dài, làm sau (QD-NATIVE). Việc gần hạn ở lại Three.js/WebGL2 và ưu tiên
+   phần không phụ thuộc renderer.
+6. **Bản dùng thử** chạy trên Windows 1 (RTX 5060 Ti).
 
 ## 7. Không khẳng định
 

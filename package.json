@@ -48,7 +48,8 @@
     "gen:compliance": "npm run gen:licenses && npm run gen:sbom && npm run gen:notice",
     "gen:notice": "node scripts/gen_notice.mjs",
     "check:compliance": "npm run check:licenses && npm run check:sbom && npm run check:sbom-schema && npm run check:notice && npm run check:text-hygiene",
-    "gen:map-evidence": "node scripts/run_ts.mjs scripts/gen_map_evidence.ts"
+    "gen:map-evidence": "node scripts/run_ts.mjs scripts/gen_map_evidence.ts",
+    "gen:docs-index": "node scripts/gen_docs_index.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^8.13.0",
