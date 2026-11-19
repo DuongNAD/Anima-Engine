@@ -106,17 +106,18 @@ interface SyntheticAgentSpec {
 }
 
 /**
- * Land anchors inside the shipped 2048x2048 world (`CANONICAL_VIEW_CAMERAS` targets in
- * `mapManifest.ts`), so synthetic herds remain visible from `spawn`, `ecosystem`, `navigation`,
- * and `overview` without drifting onto the map boundary.
+ * Lowland land anchors inside the shipped 2048x2048 `#161` `supercontinent` world (`[-100, 100]`
+ * canonical bounds), chosen strictly on lowland terrestrial biomes (`Grassland`, `Forest`,
+ * `Jungle`, `Savanna`, `Swamp`) well away from peaks, snow/glacier, rivers, lakes, beaches, and
+ * ocean so synthetic `tree`/`lake`/`food` fixtures and herds never strand on snow peaks or water.
  */
-const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
-  [-21.4, -15.6], // spawn grassland
-  [-38.3, -1.7], // ecosystem swamp clearing
-  [-45.1, -24.0], // alpine/biome transition
-  [2.1, -8.8], // navigation grassland
-  [-54.0, 6.0], // jungle edge
-  [-67.3, 64.0], // lake shore
+export const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
+  [-53.0, 8.0], // western lowland forest (elev 0.138)
+  [-29.0, 20.0], // western lowland savanna (elev 0.164)
+  [-53.0, 4.0], // western lowland jungle (elev 0.140)
+  [-25.0, 20.0], // western lowland chaparral (elev 0.194)
+  [-49.0, 16.0], // western lowland savanna (elev 0.143)
+  [-17.0, 28.0], // western lowland steppe (elev 0.150)
 ];
 
 /**

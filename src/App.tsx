@@ -247,12 +247,18 @@ export function App() {
       .then(() => {
         if (alive) setWorldReady(true);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         // Generation failed. The backend falls back to its own terrain, so the app still works —
-        // it is simply not the shared world any more. Unblocking is right: refusing to ever start
-        // would be a worse failure than running on the fallback, which is what happened before
-        // this effect existed anyway.
-        if (alive) setWorldReady(true);
+        // it is simply not the shared world any more. Unblocking is right, and surfacing a visible
+        // error banner warns the user that the showcase and simulation worlds diverged.
+        console.error('[App] Failed to load shared world; falling back to backend terrain:', err);
+        if (alive) {
+          const detail = err instanceof Error ? err.message : String(err);
+          setError(
+            `Shared world failed to load (${detail}); simulation is using backend fallback terrain.`,
+          );
+          setWorldReady(true);
+        }
       });
     return () => {
       alive = false;

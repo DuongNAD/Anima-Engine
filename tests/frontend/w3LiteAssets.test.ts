@@ -253,6 +253,49 @@ describe('W3-lite CC0 assets, provenance, terrain PBR splat, and flora fallback'
       const finishedHigh = await pendingHigh;
       expect(raceLow?.tileSize).toBe(512);
       expect(finishedHigh).toBeNull();
+
+      // Rapid High -> Low -> High oscillation while Wave 1 is in flight must discard Wave 1 on
+      // late completion (disposing ONLY Wave 1's newly created arrays, returning null) and keep
+      // the active Wave 2 textures alive in `pbrResolved(1024)` without disposing them (NR3).
+      clearAssetCachesForTest();
+      let releaseWave1!: () => void;
+      const wave1Gate = new Promise<void>((resolve) => {
+        releaseWave1 = resolve;
+      });
+      let wave = 0;
+      fetchSpy.mockImplementation(async () => {
+        const myWave = wave++;
+        if (myWave < 12) {
+          await wave1Gate;
+        }
+        return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+      });
+
+      const highWave1Promise = loadTerrainPbrArrays('high');
+      disposeOtherTerrainPbrTiers('low');
+      disposeOtherTerrainPbrTiers('high');
+      const highWave2 = await loadTerrainPbrArrays('high');
+      expect(highWave2).not.toBeNull();
+      const w2AlbedoDispose = vi.spyOn(highWave2!.albedoArray, 'dispose');
+      const w2NormalDispose = vi.spyOn(highWave2!.normalArray, 'dispose');
+      const protoDisposeSpy = vi.spyOn(THREE.DataArrayTexture.prototype, 'dispose');
+
+      releaseWave1();
+      const highWave1 = await highWave1Promise;
+      // Superseded Wave 1 must return null and dispose only its own 2 DataArrayTextures (albedo + normal).
+      expect(highWave1).toBeNull();
+      expect(protoDisposeSpy).toHaveBeenCalledTimes(2);
+      // The currently bound Wave 2 textures must remain alive (0 dispose calls) and still cached.
+      expect(w2AlbedoDispose).toHaveBeenCalledTimes(0);
+      expect(w2NormalDispose).toHaveBeenCalledTimes(0);
+      const cachedActive = await loadTerrainPbrArrays('high');
+      expect(cachedActive).toBe(highWave2);
+      expect(w2AlbedoDispose).toHaveBeenCalledTimes(0);
+      expect(w2NormalDispose).toHaveBeenCalledTimes(0);
+
+      clearAssetCachesForTest();
+      expect(w2AlbedoDispose).toHaveBeenCalledTimes(1);
+      expect(w2NormalDispose).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }
