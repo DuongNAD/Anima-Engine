@@ -14,8 +14,15 @@ on:
   #
   # The trade is real and worth stating: a branch with no PR open now gets no CI. Push it, open the
   # PR, and the same gates run — on the merge commit, which is the thing actually being merged.
+  #
+  # `feat/ecological-selection` is here too (2026-11-19) because it is the branch every pull request
+  # targets, so it is where the Rust cache has to be saved: a pull request can restore caches from its
+  # base branch and from the default branch, never from another pull request. With `main` alone the
+  # cache was saved only when `main` was fast-forwarded (last on 2026-11-18), and every pull request of
+  # 2026-11-19 logged "No cache found" and rebuilt the whole graph, tools included (~95 minutes). The
+  # trunk never has a pull request of its own, so this does not bring back the double runs above.
   push:
-    branches: [main]
+    branches: [main, feat/ecological-selection]
   pull_request:
   workflow_dispatch:
 
@@ -24,7 +31,10 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded pull-request runs, but let a trunk run finish: it is the one that saves the
+  # cache, and a merge burst would otherwise cancel every run before the save. A newer trunk push
+  # waits as the single pending run of the group instead.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rust:
@@ -59,16 +69,23 @@ jobs:
       # source below, several minutes each) and dependency artifacts, and drops workspace artifacts
       # before saving. The key covers Cargo.lock and the rustc version.
       #
-      # Saved only from `main`. A cache saved by a pull request is visible to that pull request alone,
-      # so saving there buys nothing for the next one and costs the upload: with a changed lockfile the
-      # old setup missed its key on every pull request and re-uploaded the target directory each time.
-      # Pull requests restore the newest cache `main` saved (prefix match), and `main` saves a fresh one
-      # whenever it is fast-forwarded to the trunk.
+      # Saved from `main` and from the trunk, never from a pull request. A cache saved by a pull request
+      # is visible to that pull request alone, so saving there buys nothing for the next one and costs
+      # the upload. Pull requests restore the newest cache their base branch (the trunk) or `main`
+      # saved, by prefix.
+      #
+      # The rust-environment hash is off, and the toolchain file is in the key instead. On 2026-11-19
+      # the hash computed on pull requests (e5832507) differed from the one `main` saved under
+      # (44e942f4) with the same rustc 1.98.1, so no prefix matched and every pull request rebuilt from
+      # nothing. The pinned toolchain is what must invalidate the cache; anything else that changes a
+      # compiler input is caught by Cargo's own fingerprints, which rebuild only what changed.
       - name: Cache cargo registry, tools and dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          add-rust-environment-hash-key: false
+          key: toolchain-${{ hashFiles('rust-toolchain.toml') }}
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ecological-selection' }}
 
       - name: cargo fmt --check
         if: ${{ !cancelled() }}
