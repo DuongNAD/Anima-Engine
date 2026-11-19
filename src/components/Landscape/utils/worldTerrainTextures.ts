@@ -126,14 +126,33 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         b *= t;
       }
 
-      // Sedimentary strata: faint horizontal banding across steep bare-rock faces, keyed to
-      // absolute elevation so the layers line up across a whole cliff wall.
+      // Organic alpine snow: steep crags (`slope > 0.34`) shed snow onto underlying slate/rock,
+      // and spatial noise feathers the snowline instead of leaving a razor-sharp white plateau edge.
+      const sVal = slope?.[i] ?? 0;
       const e = elevation[i];
-      if ((bio === Biome.Rock || bio === Biome.Badlands) && (slope?.[i] ?? 0) > 0.45) {
-        const band = Math.sin(e * 320.0) * (bio === Biome.Badlands ? 0.075 : 0.05);
-        r *= 1 + band;
-        g *= 1 + band;
-        b *= 1 + band;
+      if (bio === Biome.Snow || bio === Biome.Glacier) {
+        const macroN = hash01(x >> 2, y >> 2);
+        const microN = hash01(x, y);
+        const rockShed = Math.min(0.82, Math.max(0, (sVal - 0.32 + (macroN - 0.5) * 0.18) * 1.9));
+        if (rockShed > 0) {
+          const rockRgb = BIOME_RGB[Biome.Rock] ?? [110, 108, 104];
+          r = r * (1 - rockShed) + rockRgb[0] * rockShed;
+          g = g * (1 - rockShed) + rockRgb[1] * rockShed;
+          b = b * (1 - rockShed) + rockRgb[2] * rockShed;
+        }
+        // Subtle cool-sky tint & grain so snow plateaus read with soft relief instead of flat grey-white.
+        const snowLift = 0.94 + microN * 0.06;
+        r *= snowLift * 0.97;
+        g *= snowLift * 0.99;
+        b = Math.min(255, b * snowLift * 1.03 + 6);
+      }
+
+      // Rock / Badlands mineral tone variation without synthetic `sin(e * 320.0)` contour stripes.
+      if ((bio === Biome.Rock || bio === Biome.Badlands) && sVal > 0.25) {
+        const grain = (hash01(x >> 1, y >> 1) - 0.5) * 0.07;
+        r *= 1 + grain;
+        g *= 1 + grain * 0.95;
+        b *= 1 + grain * 0.85;
       }
 
       // Curvature ambient occlusion, baked: ravines/gorges/basins shade, crests lift a touch.

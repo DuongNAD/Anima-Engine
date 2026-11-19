@@ -21,29 +21,42 @@ export interface WorldWaterfallsProps {
 // instanceMatrix attribute for us — we only have to APPLY it in the vertex transform.
 const CURTAIN_VERTEX = /* glsl */ `
   varying vec2 vUv;
+  varying vec3 vWorldPos;
   void main() {
     vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
+    vWorldPos = world.xyz;
+    gl_Position = projectionMatrix * viewMatrix * world;
   }
 `;
 const CURTAIN_FRAGMENT = /* glsl */ `
   precision highp float;
   varying vec2 vUv;
+  varying vec3 vWorldPos;
   uniform float uTime;
+  uniform float uTerrainSize;
+  uniform vec3 uFogColor;
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+  }
   void main() {
-    // Streaks race down the curtain (two speeds for parallax), broken up per-column.
-    float col = floor(vUv.x * 7.0);
-    float s1 = fract(vUv.y * 3.0 + uTime * 1.5 + hash(vec2(col, 1.0)));
-    float s2 = fract(vUv.y * 6.0 + uTime * 2.6 + hash(vec2(col, 7.0)) * 3.0);
-    float streak = smoothstep(0.55, 1.0, s1) * 0.5 + smoothstep(0.65, 1.0, s2) * 0.5;
-    // Paler + more transparent at the lip, frothy at the base.
-    float body = mix(0.72, 1.0, streak);
-    vec3 color = mix(vec3(0.62, 0.78, 0.88), vec3(1.0), body * (0.55 + 0.45 * (1.0 - vUv.y)));
-    // Soft side edges so the rectangle reads as a spray curtain, not a billboard.
-    float side = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x);
-    float alpha = (0.5 + 0.42 * streak) * side;
-    gl_FragColor = vec4(color, alpha);
+    // Soft continuous spray sheet (no quantized column stripes) + smooth distance fade before overview.
+    float f1 = noise(vec2(vUv.x * 4.5, vUv.y * 2.5 + uTime * 1.4));
+    float f2 = noise(vec2(vUv.x * 9.0 + 3.1, vUv.y * 5.0 + uTime * 2.2));
+    float mist = smoothstep(0.28, 0.85, f1 * 0.62 + f2 * 0.38);
+    float side = smoothstep(0.0, 0.25, vUv.x) * smoothstep(1.0, 0.75, vUv.x);
+    float vert = smoothstep(0.0, 0.16, vUv.y) * smoothstep(1.0, 0.86, vUv.y);
+    float dist = distance(cameraPosition, vWorldPos);
+    float distFade = 1.0 - smoothstep(uTerrainSize * 0.14, uTerrainSize * 0.40, dist);
+    vec3 col = mix(vec3(0.68, 0.83, 0.91), vec3(0.95, 0.98, 1.0), mist * (0.4 + 0.6 * (1.0 - vUv.y)));
+    col = mix(col, uFogColor, smoothstep(uTerrainSize * 0.5, uTerrainSize * 2.2, dist));
+    float alpha = (0.18 + 0.30 * mist) * side * vert * distFade;
+    gl_FragColor = vec4(col, alpha);
   }
 `;
 
@@ -65,13 +78,17 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       new THREE.ShaderMaterial({
         vertexShader: CURTAIN_VERTEX,
         fragmentShader: CURTAIN_FRAGMENT,
-        uniforms: { uTime: { value: 0 } },
+        uniforms: {
+          uTime: { value: 0 },
+          uTerrainSize: { value: renderSize },
+          uFogColor: { value: new THREE.Color('#c4dfef') },
+        },
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
         fog: false,
       }),
-    [],
+    [renderSize],
   );
 
   const foamMat = useMemo(
@@ -79,7 +96,7 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
       new THREE.MeshBasicMaterial({
         color: '#ffffff',
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.24,
         depthWrite: false,
       }),
     [],
@@ -87,6 +104,10 @@ export const WorldWaterfalls: React.FC<WorldWaterfallsProps> = ({
 
   useFrame((state) => {
     driveTimeUniform(curtainMat, state.clock);
+    const fog = state.scene.fog as THREE.Fog | null;
+    if (fog && fog.color) {
+      (curtainMat.uniforms.uFogColor.value as THREE.Color).copy(fog.color);
+    }
   });
 
   useLayoutEffect(() => {

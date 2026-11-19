@@ -457,6 +457,8 @@ export const WorldShowcase: React.FC = () => {
         dpr={getCanvasDprProp(effectiveQuality, activeDprOverride)}
         gl={{
           powerPreference: 'high-performance',
+          toneMapping: THREE.ACESFilmicToneMapping,
+          toneMappingExposure: 1.04,
           // ---- three capture-only context flags, each closing one source of frame variance -----
           //
           // All three are `capture !== null` / `capture === null`, so an ordinary visit gets exactly
