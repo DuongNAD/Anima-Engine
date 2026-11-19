@@ -125,7 +125,8 @@
     "live.target_min_energy": 0.0,
     "live.drift_control": 0.0,
     "live.drift_reset_ticks": 0,
-    "live.land_mask": 0
+    "live.land_mask": 0,
+    "live.strict_prey_cap": 0
   },
   "hypotheses": [
     {

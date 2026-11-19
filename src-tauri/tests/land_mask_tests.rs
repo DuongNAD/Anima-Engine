@@ -2,7 +2,7 @@
 //! desktop app shoreline lake placement.
 //!
 //! Covers every acceptance check:
-//! - Key registration (`LIVE_KEY_LAND_MASK = "live.land_mask"`, `LIVE_KEYS.len() = 26`), exact
+//! - Key registration (`LIVE_KEY_LAND_MASK = "live.land_mask"`, `LIVE_KEYS.len() = 27`), exact
 //!   boolean validation, and serde backward compatibility.
 //! - (a) `absent` and `0.0` produce bit-identical sampled trajectories at every sampled tick.
 //! - (b) With `live.land_mask = 1.0`, over 2,000 ticks no agent root is ever in `DeepOcean` or
@@ -142,7 +142,7 @@ fn assert_all_trees_and_food_walkable(world: &mut World, check_trees: bool, cont
 #[test]
 fn key_is_registered_validated_and_serde_backward_compatible() {
     assert_eq!(LIVE_KEY_LAND_MASK, "live.land_mask");
-    assert_eq!(LIVE_KEYS.len(), 26);
+    assert_eq!(LIVE_KEYS.len(), 27);
     assert!(LIVE_KEYS.contains(&LIVE_KEY_LAND_MASK));
     assert!(!LiveWorldConfig::default().land_mask);
 
