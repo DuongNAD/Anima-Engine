@@ -17,6 +17,10 @@ target_*/
 # `artifacts/world_256.anmw`, and the whole finding this closed was a manifest pointing at a file
 # that did not exist. Ignoring the bytes would put the checksum gate back to unverifiable on a fresh
 # clone. Regenerate both together with `npm run gen:world-manifest`.
+#
+# `artifacts/map-captures/` is the exception: screenshot runs of `npm run capture:map`, local review
+# material that is regenerated on demand and never cited by a manifest.
+artifacts/map-captures/
 
 # Logs
 *.log

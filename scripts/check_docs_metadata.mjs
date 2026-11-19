@@ -14,7 +14,17 @@
 //   2. `status`, `review_cycle` and the dates use the values the policy defines.
 //   3. Archive files say `superseded`/`deprecated` and name a replacement that exists.
 //   4. Every directory under docs/ that holds a document has a README.md index.
-//   5. Every document is linked from at least one index (docs/README.md or a docs/**/README.md).
+//   5. Every document is linked from at least one index (docs/README.md or a docs/**/README.md),
+//      or is *pending* in a generated index (since 2026-11-19, see below).
+//   6. Every generated-index block parses, and regenerating it in memory leaves nothing pending --
+//      so "reachable from an index" holds for the index `npm run gen:docs-index` would commit.
+//
+// Generated index (scripts/lib/docs_index.mjs). An index README may hold one block that
+// `npm run gen:docs-index` maintains from front matter; docs/ai/README.md does. A document in that
+// README's scope with no row yet is accepted when its front matter can produce the row (`title`,
+// `status`, `description`) and its directory is linked from an index, so GitHub's directory
+// listing reaches it until the lead's next docs PR regenerates the table. This is what lets a pull
+// request add a note under docs/ai/ without editing the shared README every other open PR edits.
 //
 // Overdue reviews are reported, never failed: the policy says a stale document "is not wrong by
 // itself, but must show its owner and enter the review backlog". `--report` lists them.
@@ -26,12 +36,25 @@
 //
 // Run:  node scripts/check_docs_metadata.mjs [--report]
 
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import nodePath from 'node:path';
 // git prints forward slashes on every OS; posix keeps Map lookups and joins consistent on Windows.
 const path = nodePath.posix;
 import process from 'node:process';
+import {
+  indexedTargets,
+  isIndex,
+  isTemplate,
+  linkTargets,
+  parseBlock,
+  parseFrontMatter,
+  pendingFor,
+  readDocsTree,
+  regenerate,
+  scalar,
+} from './lib/docs_index.mjs';
+
+export { linkTargets, parseFrontMatter };
 
 // ---------------------------------------------------------------------------------------------
 // Policy, as data. Change DOCUMENTATION_POLICY.md "Metadata tối thiểu" in the same commit.
@@ -47,9 +70,8 @@ const REVIEW_CYCLE_DAYS = { weekly: 7, monthly: 31, quarterly: 92, 'per-release'
 // `created` instead of `last_reviewed`, and their body is never updated to match the present.
 const RECORD_KINDS = ['agent-goal', 'review-findings'];
 
-// Templates are skeletons of a process, not project documents (policy rule 3 for docs/ai).
-const isTemplate = (f) =>
-  /^docs\/ai\/[^/]+\/README\.md$/.test(f) || f === 'docs/decisions/ADR-0000-template.md';
+// Templates (`isTemplate`) are skeletons of a process, not project documents (policy rule 3 for
+// docs/ai); the predicate lives in scripts/lib/docs_index.mjs so the generator agrees with it.
 
 // Files that are deliberately without front matter. Each needs a reason, and an entry that no
 // longer applies (file gone, or it gained front matter) fails the run, so this list cannot rot.
@@ -70,24 +92,8 @@ const needsReviewCycle = (f) =>
   !f.startsWith('docs/ai/') && !f.startsWith('docs/decisions/') && !f.startsWith('docs/archive/');
 
 // ---------------------------------------------------------------------------------------------
-// Parsing
+// Parsing (front matter and links: scripts/lib/docs_index.mjs)
 // ---------------------------------------------------------------------------------------------
-
-/** Returns null when the file has no front matter block, else a flat key -> raw value map. */
-export function parseFrontMatter(text) {
-  const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/);
-  if (!m) return null;
-  const fm = {};
-  for (const line of m[1].split(/\r?\n/)) {
-    const kv = line.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/);
-    if (kv) fm[kv[1]] = kv[2].trim();
-  }
-  return fm;
-}
-
-/** An enum-like value: drop a trailing YAML comment and surrounding quotes. */
-const scalar = (v) =>
-  v === undefined ? undefined : v.replace(/\s+#.*$/, '').replace(/^(['"])(.*)\1$/, '$2').trim();
 
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 function dateError(field, raw, today) {
@@ -169,37 +175,11 @@ export function validateDoc(file, text, { today, exists }) {
 // Index coverage across the tree
 // ---------------------------------------------------------------------------------------------
 
-const LINK = /(^|[^!])\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
-const FENCE = /^\s*(```|~~~)/;
-
-/** Repo-relative targets of every relative markdown link in `text`, outside code fences. */
-export function linkTargets(file, text) {
-  const out = new Set();
-  let inFence = false;
-  for (const line of text.split(/\r?\n/)) {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    for (const m of line.matchAll(LINK)) {
-      const raw = m[2];
-      if (/^(https?:|mailto:|#)/.test(raw)) continue;
-      let target;
-      try {
-        target = decodeURIComponent(raw.split('#')[0]);
-      } catch {
-        continue;
-      }
-      if (target) out.add(path.normalize(path.join(path.dirname(file), target)));
-    }
-  }
-  return out;
-}
-
-const isIndex = (f) => path.basename(f) === 'README.md' && !isTemplate(f);
-
-/** `docs` is a Map(file -> text) of every docs/**.md file. Returns [file, message] pairs. */
+/**
+ * `docs` is a Map(file -> text) of every docs/**.md file. Returns `{ errors, pending }`: `errors`
+ * as [file, message] pairs, `pending` as the documents accepted without a row yet because a
+ * generated index will list them (see the header and scripts/lib/docs_index.mjs).
+ */
 export function checkIndexes(docs) {
   const errors = [];
 
@@ -210,16 +190,63 @@ export function checkIndexes(docs) {
     }
   }
 
-  const indexed = new Set();
+  const blocks = new Set();
   for (const [f, text] of docs) {
     if (!isIndex(f)) continue;
-    for (const t of linkTargets(f, text)) if (t !== f) indexed.add(t);
+    const b = parseBlock(text);
+    if (b?.error) errors.push([f, `docs-index block ${b.error}`]);
+    else if (b) blocks.add(f);
+  }
+
+  const indexed = indexedTargets(docs);
+  const pending = [];
+  const covered = new Set();
+  for (const r of blocks) {
+    for (const { file, problems } of pendingFor(r, docs, indexed)) {
+      covered.add(file);
+      if (problems.length === 0) pending.push(file);
+      else {
+        errors.push([
+          file,
+          `not linked from any index, and cannot wait for \`npm run gen:docs-index\` to add its row to ${r}: ` +
+            problems.join('; '),
+        ]);
+      }
+    }
   }
   for (const f of docs.keys()) {
-    if (f === 'docs/README.md' || isTemplate(f)) continue;
-    if (!indexed.has(f)) errors.push([f, 'not linked from docs/README.md or any docs/**/README.md']);
+    if (f === 'docs/README.md' || isTemplate(f) || indexed.has(f) || covered.has(f)) continue;
+    errors.push([f, 'not linked from docs/README.md or any docs/**/README.md']);
   }
-  return errors;
+  return { errors, pending: pending.sort() };
+}
+
+/**
+ * Regenerates every block in memory and re-checks the result: the generated index must leave
+ * nothing pending and add no error. This is the CI-enforced form of "every document is reachable
+ * from an index" once rows are generated rather than hand-written. Returns `{ errors, stale }`,
+ * `stale` being the status cells regeneration would refresh (reported, not failed).
+ */
+export function checkRegeneration(docs, exists) {
+  const errors = [];
+  const stale = [];
+  const after = new Map(docs);
+  for (const [f, text] of docs) {
+    const b = isIndex(f) ? parseBlock(text) : null;
+    if (!b || b.error) continue; // a malformed block is already an error of checkIndexes
+    // Lenient: a pending document that cannot produce a row is already an error of checkIndexes.
+    const r = regenerate(f, docs, exists, { lenient: true });
+    after.set(f, r.text);
+    stale.push(...r.refreshed.map((x) => `${x.file} (${x.from} -> ${x.to})`));
+  }
+  const { errors: before } = checkIndexes(docs);
+  const { errors: later, pending } = checkIndexes(after);
+  for (const f of pending) errors.push([f, 'still pending after regenerating the index: generator and checker disagree']);
+  const known = new Set(before.map(([f, m]) => `${f}\u0000${m}`));
+  for (const [f, m] of later) {
+    if (!known.has(`${f}\u0000${m}`)) errors.push([f, `regenerated index introduces: ${m}`]);
+  }
+  return { errors, stale };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -271,12 +298,67 @@ function selfTest() {
     ['docs/planning/B.md', ''], // only linked inside a code fence: must be reported
     ['docs/orphan/C.md', '[a](../planning/A.md)'], // directory without README, and unindexed
   ]);
-  const idx = checkIndexes(tree).map(([f]) => f).sort();
+  const idx = checkIndexes(tree).errors.map(([f]) => f).sort();
   const want = ['docs/orphan/', 'docs/orphan/C.md', 'docs/planning/B.md'];
   if (JSON.stringify(idx) !== JSON.stringify(want)) {
     failures.push(`index control: expected ${JSON.stringify(want)}, got ${JSON.stringify(idx)}`);
   }
-  return { failures, controls: mustFail.length + mustPass.length + 1 };
+
+  // Generated index. One acceptable pending note; three that must not be allowed to wait (no
+  // `description`, a link in it, a directory nothing links to); two malformed blocks.
+  const note = (extra) => fm(['title: N', 'status: active', 'owner: o', 'last_reviewed: 2026-11-01', ...extra]);
+  const block = (rows) =>
+    ['<!-- docs-index:begin -->', '', '| Ngày | Tài liệu | Loại | Trạng thái |', '|---|---|---|---|', ...rows, '', '<!-- docs-index:end -->'].join('\n');
+  const rowA = '| 2026-11-01 | [A, reworded](planning/A.md) — a | thẻ | `active` |';
+  const gen = new Map([
+    ['docs/README.md', '[ai](ai/README.md) [x](x/README.md) [y](y/README.md)'],
+    ['docs/ai/README.md', `[planning](planning/)\n\n${block([rowA])}\n`],
+    ['docs/ai/planning/README.md', 'template'],
+    ['docs/ai/planning/A.md', note(['description: a'])],
+    ['docs/ai/planning/2026-11-02-p.md', note(['description: p | q'])], // pending, acceptable
+    ['docs/ai/planning/Q.md', note([])], // no description
+    ['docs/ai/planning/L.md', note(['description: see [x](../x.md)'])], // link would break in the index
+    ['docs/ai/design/README.md', 'template'],
+    ['docs/ai/design/D.md', note(['description: d'])], // design/ is linked from nowhere
+    ['docs/x/README.md', '<!-- docs-index:begin -->\n| Ngày | Tài liệu | Loại | Trạng thái |\n|---|---|---|---|\n'], // no end marker
+    ['docs/y/README.md', block(['| 2026-11-01 | [A](../ai/planning/A.md) — a | thẻ | active |'])], // status not in backticks
+  ]);
+  const g = checkIndexes(gen);
+  const gotErr = g.errors.map(([f]) => f).sort();
+  const wantErr = ['docs/ai/design/D.md', 'docs/ai/planning/L.md', 'docs/ai/planning/Q.md', 'docs/x/README.md', 'docs/y/README.md'];
+  if (JSON.stringify(gotErr) !== JSON.stringify(wantErr) || JSON.stringify(g.pending) !== '["docs/ai/planning/2026-11-02-p.md"]') {
+    failures.push(
+      `generated-index control: expected errors ${JSON.stringify(wantErr)} and one pending note, ` +
+        `got ${JSON.stringify(gotErr)} and ${JSON.stringify(g.pending)}`,
+    );
+  }
+
+  // Regeneration keeps a reworded row, refreshes only its status, appends the pending row, leaves
+  // nothing pending, and is idempotent.
+  const clean = new Map(gen);
+  for (const f of ['docs/ai/planning/Q.md', 'docs/ai/planning/L.md', 'docs/ai/design/D.md', 'docs/x/README.md', 'docs/y/README.md']) {
+    clean.delete(f);
+  }
+  clean.set('docs/README.md', '[ai](ai/README.md)');
+  clean.set('docs/ai/planning/A.md', note(['description: a']).replace('status: active', 'status: completed'));
+  const r1 = regenerate('docs/ai/README.md', clean);
+  const wantRows = [
+    rowA.replace('`active`', '`completed`'),
+    '| 2026-11-02 | [N](planning/2026-11-02-p.md) — p \\| q | planning | `active` |',
+  ];
+  const after = new Map(clean).set('docs/ai/README.md', r1.text);
+  const r2 = regenerate('docs/ai/README.md', after);
+  const closed = checkIndexes(after);
+  if (
+    !wantRows.every((l) => r1.text.split('\n').includes(l)) ||
+    r1.refreshed.length !== 1 ||
+    r2.text !== r1.text ||
+    closed.errors.length ||
+    closed.pending.length
+  ) {
+    failures.push(`regeneration control: got\n${r1.text}\nthen ${JSON.stringify(closed)}`);
+  }
+  return { failures, controls: mustFail.length + mustPass.length + 3 };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -293,15 +375,7 @@ function main() {
     process.exit(2);
   }
 
-  const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', 'docs/*.md'], {
-    encoding: 'utf8',
-  })
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .filter((f) => fs.existsSync(f)); // a tracked file deleted in the working tree
-
-  const docs = new Map(files.map((f) => [f, fs.readFileSync(f, 'utf8')]));
+  const docs = readDocsTree();
   const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00Z');
   const exists = (p) => fs.existsSync(p);
 
@@ -312,7 +386,9 @@ function main() {
       console.error(`${f}: ${e}`);
     }
   }
-  for (const [f, e] of checkIndexes(docs)) {
+  const { errors: indexErrors, pending } = checkIndexes(docs);
+  const { errors: regenErrors, stale } = checkRegeneration(docs, exists);
+  for (const [f, e] of [...indexErrors, ...regenErrors]) {
     errors += 1;
     console.error(`${f}: ${e}`);
   }
@@ -341,9 +417,15 @@ function main() {
     }
   }
 
+  // Pending rows and stale status cells: printed on every run, never failed. They are the lead's
+  // `npm run gen:docs-index` backlog, and a green CI log should still show it.
+  for (const f of pending) console.log(`pending index row (npm run gen:docs-index adds it): ${f}`);
+  for (const s of stale) console.log(`stale status cell (npm run gen:docs-index refreshes it): ${s}`);
+
   console.log(
     `docs metadata check: ${docs.size} files, ${errors} errors, ${overdue.length} overdue reviews` +
       (report ? '' : ' (--report lists them)') +
+      `, ${pending.length} pending index rows, ${stale.length} stale status cells` +
       `; self-test ${st.controls} controls ok`,
   );
   process.exit(errors > 0 ? 1 : 0);
