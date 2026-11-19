@@ -38,7 +38,7 @@ run_esel1_experiment --trial --out out --seed <SEED> --founders <N0> \
 | Parameters | `--founders`, `--food-cap-abundant`, `--food-cap-scarce`, `--duration-ticks`; each one left out keeps the smoke manifest's value (30, 50, 25, 18000) |
 | Duration | any positive tick count (the sweep's 450,000 works); the preregistered ladder binds only `--smoke` and `--ensemble` |
 | Arms | `control` at FA, `treatment` at FS, `drift` at FS with `live.mutation_rate = 0`, as in the smoke |
-| Files to stage | **none**: without `--manifest-dir` the trial uses the preregistration and three smoke manifests compiled into the binary from `src-tauri/tests/fixtures/experiments_esel1/`. A `--manifest-dir`, if given, must hold `esel1-preregistration.json` and the smoke manifests it names |
+| Files to stage | **none** (`ANIMA_WORLD_ARTIFACT` ignored): without `--manifest-dir` the trial uses the preregistration and three smoke manifests compiled into the binary from `src-tauri/tests/fixtures/experiments_esel1/`, and `LiveExperimentAdapter` builds terrain from `MapSettings::default()` via `TerrainSource::Generated` regardless of host env vars or temp artifacts. A `--manifest-dir`, if given, must hold `esel1-preregistration.json` and the smoke manifests it names |
 | Verification file | `<out>/trial/verify_checksums.txt`: three sorted LF lines `seed,arm,final_checksum` (`control`, `drift`, `treatment`) |
 | Exit code | 0 on success, 2 on any refusal or error (as every mode) |
 
@@ -53,13 +53,13 @@ with `--trial`, and any trial flag with `--smoke`, `--ensemble` or `--replay`.
 
 ## What is and is not claimed
 
-- **Deterministic per binary, OS and architecture.** The live adapter installs
-  `DeterministicMode::on()` and a CPU brain (`BrainModel::new_seeded_cpu`) whatever the environment
-  says, so by the code `ANIMA_DETERMINISTIC` and `ANIMA_USE_GPU` are recorded in `provenance.json` but
-  do not change the run. Every run measured here set `ANIMA_DETERMINISTIC=1` and `ANIMA_USE_GPU=0`;
+- **Deterministic per binary, OS and architecture (independent of host env and app terrain artifacts).** The live adapter installs
+  `DeterministicMode::on()`, a CPU brain (`BrainModel::new_seeded_cpu`) and `TerrainSource::Generated` (`MapSettings::default()` — ignoring `ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR` and `<temp_dir>/anima_world_artifact.anmw`) whatever the environment
+  says, and `provenance.json` records both `"terrain_source": "generated"` and the observed `"world_identity"`. So by the code `ANIMA_DETERMINISTIC` and `ANIMA_USE_GPU` are recorded in `provenance.json` but
+  do not change the run, and running the desktop app on a host no longer alters headless trial outputs. Every run measured here set `ANIMA_DETERMINISTIC=1` and `ANIMA_USE_GPU=0`;
   no run with other values was made, and none on a GPU. `final_checksum`
   differs between operating systems and architectures (`macos/aarch64` against `windows/x86_64` on the
-  smoke record), so replicas must run on the same OS and architecture.
+  smoke record) because platform `libm` differs in terrain generation and tick dynamics, so replicas must run on the same OS and architecture.
 - **Body mass stays blind.** A trial requests and writes only the smoke's allow-listed observables
   (`live.agent_count`, `live.standing_crop`, `live.closed_eu_total`, `live.births`, `live.deaths`)
   and refuses to write text naming a `live.trait_mass_*` observable. Body mass is the outcome of the

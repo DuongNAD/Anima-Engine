@@ -842,6 +842,8 @@ pub fn run_branch_tree<M: ExperimentModel>(
             fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
                 &manifest.base_manifest.initial_conditions,
             ),
+            terrain_source: model.terrain_source().map(str::to_owned),
+            world_identity: model.world_identity(),
             model_version: M::model_version().to_string(),
             build_id: build_id(),
         };
