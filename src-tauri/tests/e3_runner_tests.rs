@@ -199,6 +199,7 @@ impl TestWorkspace {
             .unwrap(),
         )
         .unwrap();
+        runner::write_checksums(&smoke_dir, &["provenance.json", "smoke-report.json"]).unwrap();
 
         Self {
             root,
@@ -476,7 +477,9 @@ fn stops_immediately_and_records_stop_when_world_identity_differs() {
 fn short_synthetic_ensemble_and_replay_write_complete_verified_artifacts() {
     let ws = TestWorkspace::new("short-e2e", "commit-e2e", "windows", "x86_64");
     let mut env = ws.base_env("commit-e2e", "windows", "x86_64");
-    env.git_dirty_paths_override = Some(vec!["src-tauri/examples/run_e3_experiment.rs".into()]);
+    env.git_dirty_paths_override = Some(vec![
+        "artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/".into(),
+    ]);
 
     let out = ws.root.join("confirmation");
     runner::run_with_config(
@@ -614,4 +617,96 @@ fn short_synthetic_ensemble_and_replay_write_complete_verified_artifacts() {
 fn runner_self_test_mode_passes() {
     let env = runner::RuntimeEnv::from_process();
     runner::run_with_config(vec!["--self-test".into()], env).unwrap();
+}
+
+#[test]
+fn refuses_host_smoke_with_missing_or_tampered_checksums_sha256() {
+    let ws = TestWorkspace::new("smoke-cksum", "commit-ck", "windows", "x86_64");
+    let env = ws.base_env("commit-ck", "windows", "x86_64");
+
+    // 1. Missing smoke checksums.sha256 -> refused before any tick runs.
+    let cksum_path = ws.smoke_dir.join("checksums.sha256");
+    std::fs::remove_file(&cksum_path).unwrap();
+    let err_missing = runner::run_with_config(
+        vec![
+            "--ensemble".into(),
+            "--manifest-dir".into(),
+            ws.manifest_dir.display().to_string(),
+            "--smoke-dir".into(),
+            ws.smoke_dir.display().to_string(),
+            "--out".into(),
+            ws.root.join("out_no_cksum").display().to_string(),
+        ],
+        env.clone(),
+    )
+    .unwrap_err();
+    assert!(
+        err_missing.contains("checksums.sha256"),
+        "unexpected err: {err_missing}"
+    );
+
+    // 2. Tampered digest inside smoke checksums.sha256 -> refused.
+    std::fs::write(
+        &cksum_path,
+        format!(
+            "{0}  provenance.json\n{0}  smoke-report.json\n",
+            "0".repeat(64)
+        ),
+    )
+    .unwrap();
+    let err_bad = runner::run_with_config(
+        vec![
+            "--ensemble".into(),
+            "--manifest-dir".into(),
+            ws.manifest_dir.display().to_string(),
+            "--smoke-dir".into(),
+            ws.smoke_dir.display().to_string(),
+            "--out".into(),
+            ws.root.join("out_bad_cksum").display().to_string(),
+        ],
+        env,
+    )
+    .unwrap_err();
+    assert!(
+        err_bad.contains("checksum mismatch"),
+        "unexpected err: {err_bad}"
+    );
+}
+
+#[test]
+fn identical_non_integer_deltas_clamp_sd_to_zero_and_classify_below_materiality() {
+    let prereg_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/experiments_e3");
+    let thresholds = runner::load_thresholds(&prereg_dir).unwrap();
+
+    for (ctrl, treat) in [(3.0_f64, 1.1_f64), (1.0_f64, 1.1_f64)] {
+        let rows: Vec<runner::SeedDeltaRow> = (0..12_u64)
+            .map(|i| runner::SeedDeltaRow {
+                seed: 612_001 + i,
+                control: ctrl,
+                treatment: treat,
+                delta: treat - ctrl,
+            })
+            .collect();
+        let report = runner::build_observable_report(
+            "live.trait_mass_var",
+            12,
+            &rows,
+            0,
+            0,
+            0,
+            true,
+            &thresholds,
+            false,
+        )
+        .unwrap();
+        assert_eq!(report.effect.paired_sd, Some(0.0));
+        assert_eq!(report.effect.paired_se, Some(0.0));
+        assert_eq!(report.effect.paired_dz, None);
+        assert_eq!(report.between_seed_variance_of_deltas, Some(0.0));
+        assert_eq!(report.effect.ci95_low, report.effect.ci95_high);
+        assert_eq!(
+            report.decision.as_deref(),
+            Some("between_detectable_below_materiality")
+        );
+    }
 }

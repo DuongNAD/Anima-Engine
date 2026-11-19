@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,29 +76,68 @@ export function studentT95(df) {
   return 1.979930405052777;
 }
 
+const ZERO_SD_TOL = 1e-12;
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
 
-function readCommittedBytes(name) {
+const isSafeGitCommit = (ref) => typeof ref === 'string' && /^[0-9a-fA-F]{7,40}$/.test(ref);
+
+function gitCommitHasBlob(ref, relPath) {
+  if (!isSafeGitCommit(ref)) return false;
   try {
-    return execFileSync('git', ['cat-file', 'blob', `HEAD:${committedManifestDir}/${name}`], {
+    execFileSync('git', ['cat-file', '-e', `${ref}:${relPath}`], {
+      cwd: repoRoot,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readCommittedBytesAt(name, ref = 'HEAD') {
+  if (ref !== 'HEAD' && !isSafeGitCommit(ref)) {
+    return null;
+  }
+  try {
+    return execFileSync('git', ['show', `${ref}:${committedManifestDir}/${name}`], {
       cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
-    const wt = join(repoRoot, committedManifestDir, name);
-    return existsSync(wt) ? readFileSync(wt) : null;
+    if (ref === 'HEAD') {
+      const wt = join(repoRoot, committedManifestDir, name);
+      return existsSync(wt) ? readFileSync(wt) : null;
+    }
+    return null;
   }
 }
 
-export function loadCommittedPrereg(preregOverridePath = null) {
+export function loadCommittedPrereg(preregOverridePath = null, gitRef = 'HEAD') {
   if (preregOverridePath) {
     return JSON.parse(readFileSync(preregOverridePath, 'utf8'));
   }
-  const bytes = readCommittedBytes(PREREG_FILE);
+  const bytes = readCommittedBytesAt(PREREG_FILE, gitRef);
   if (!bytes) {
-    throw new Error(`cannot load ${committedManifestDir}/${PREREG_FILE}`);
+    throw new Error(`cannot load ${committedManifestDir}/${PREREG_FILE} at ${gitRef}`);
   }
   return JSON.parse(bytes.toString('utf8'));
+}
+
+export function isAllowedDirtyPath(entry) {
+  if (typeof entry !== 'string' || entry.trim().length === 0) return false;
+  const parts = entry.includes(' -> ') ? entry.split(' -> ') : [entry];
+  for (const rawPart of parts) {
+    let cleaned = rawPart.trim();
+    if (cleaned.startsWith('"') && cleaned.endsWith('"') && cleaned.length >= 2) {
+      cleaned = cleaned.slice(1, -1);
+    }
+    const posix = cleaned.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!posix || isAbsolute(cleaned) || /^[A-Za-z]:/.test(posix)) return false;
+    const segs = posix.split('/');
+    if (segs[0] !== 'artifacts' || segs.length < 2) return false;
+    if (segs.some((s) => s.length === 0 || s === '.' || s === '..')) return false;
+  }
+  return true;
 }
 
 export function parseCsv(text) {
@@ -156,6 +195,16 @@ export function pairedStats(control, treatment, nRequested = control.length) {
   out.paired_mean_delta = mean(deltas);
   if (n < 2) return out;
   const sd = Math.sqrt(deltas.reduce((acc, d) => acc + (d - out.paired_mean_delta) ** 2, 0) / (n - 1));
+  const sdTol = ZERO_SD_TOL * Math.max(1.0, Math.abs(out.paired_mean_delta));
+  if (sd < sdTol) {
+    out.paired_sd = 0;
+    out.paired_se = 0;
+    out.ci95_low = out.paired_mean_delta;
+    out.ci95_high = out.paired_mean_delta;
+    out.paired_dz = null;
+    out.between_seed_variance_of_deltas = 0;
+    return out;
+  }
   const se = sd / Math.sqrt(n);
   const half = studentT95(n - 1) * se;
   out.paired_sd = sd;
@@ -242,17 +291,21 @@ function summarizeRunRules(runMeta, runSeries, finalRec, prereg) {
     firstExtinctTick = durationTicks;
   }
 
-  let minTailAgents = finalN;
+  let minTailAgents = null;
   let minTailTick = tailHi;
   for (const s of runSeries) {
     const tk = Number(s.tick);
     if (tk >= tailLo && tk <= tailHi) {
       const n = Number(s['live.agent_count']);
-      if (n < minTailAgents) {
+      if (minTailAgents === null || n < minTailAgents) {
         minTailAgents = n;
         minTailTick = tk;
       }
     }
+  }
+  if (minTailAgents === null || finalN < minTailAgents) {
+    minTailAgents = finalN;
+    minTailTick = tailHi;
   }
 
   const mw = Number(fin['live.trait_mass_mean_west'] ?? 0);
@@ -586,11 +639,203 @@ function compareReport(label, observed, expected, fail) {
   }
 }
 
+function resolveManifestGitRef(recordedCommit, notes) {
+  const preregRel = `${committedManifestDir}/${PREREG_FILE}`;
+  if (recordedCommit && gitCommitHasBlob(recordedCommit, preregRel)) {
+    return recordedCommit;
+  }
+  notes.push(
+    `manifest comparison fell back to HEAD because recorded commit '${recordedCommit ?? '<missing>'}' is not available locally with committed E3 manifests`,
+  );
+  return 'HEAD';
+}
+
+function resolveSmokeDirOnDisk(smokeDirField) {
+  if (typeof smokeDirField !== 'string' || smokeDirField.trim().length === 0) {
+    return null;
+  }
+  const basePath = isAbsolute(smokeDirField)
+    ? resolve(smokeDirField)
+    : resolve(repoRoot, smokeDirField);
+  for (const cand of [basePath, join(basePath, 'smoke')]) {
+    if (existsSync(join(cand, 'provenance.json')) && existsSync(join(cand, 'smoke-report.json'))) {
+      return cand;
+    }
+  }
+  return null;
+}
+
+function readSmokeShaInfo(smokeDirField) {
+  const resolved = resolveSmokeDirOnDisk(smokeDirField);
+  if (!resolved) {
+    throw new Error(`cannot resolve host smoke directory: ${smokeDirField}`);
+  }
+  const provBytes = readFileSync(join(resolved, 'provenance.json'));
+  const reportBytes = readFileSync(join(resolved, 'smoke-report.json'));
+  const smokeProv = JSON.parse(provBytes.toString('utf8'));
+  return {
+    resolvedDir: resolved,
+    provenance_sha256: sha256(provBytes),
+    smoke_report_sha256: sha256(reportBytes),
+    git_commit: smokeProv.build?.git_commit ?? null,
+    host_os: smokeProv.host?.os ?? null,
+    host_arch: smokeProv.host?.arch ?? null,
+    profile: smokeProv.build?.profile ?? null,
+    world_identity_observed: smokeProv.world_identity_observed ?? null,
+  };
+}
+
+function verifyChecksumManifest(dir, requiredEntries, fail, labelPrefix) {
+  const checksumPath = join(dir, 'checksums.sha256');
+  const covered = new Map();
+  if (!existsSync(checksumPath)) {
+    fail(`${labelPrefix}: missing checksums.sha256`);
+    return covered;
+  }
+  const lines = readFileSync(checksumPath, 'utf8')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((l) => l.length > 0);
+  if (lines.length === 0) {
+    fail(`${labelPrefix}: checksums.sha256 is empty`);
+    return covered;
+  }
+  for (const line of lines) {
+    const m = /^([0-9a-f]{64}) {2}(.+)$/.exec(line);
+    if (!m) {
+      fail(`${labelPrefix}: malformed checksums.sha256 line: '${line}'`);
+      continue;
+    }
+    const [, expectedHex, rel] = m;
+    covered.set(rel, expectedHex);
+    const target = join(dir, rel);
+    if (!existsSync(target)) {
+      fail(`${labelPrefix}: checksums.sha256 references missing file: ${rel}`);
+    } else {
+      const actualHex = sha256(readFileSync(target));
+      if (actualHex !== expectedHex) {
+        fail(`${labelPrefix}: SHA-256 mismatch for ${rel}: expected ${expectedHex}, got ${actualHex}`);
+      }
+    }
+  }
+  for (const req of requiredEntries) {
+    if (!covered.has(req)) {
+      fail(`${labelPrefix}: checksums.sha256 does not cover required file: ${req}`);
+    }
+  }
+  return covered;
+}
+
+function verifySmokeReferenceOnDisk(prov, hostDiffers, commitDiffers, sameWid, fail) {
+  const sr = prov.smoke_reference;
+  if (!sr || typeof sr !== 'object') {
+    if (hostDiffers || commitDiffers) {
+      const hostTag = `${prov.host?.os}/${prov.host?.arch}`;
+      fail(`provenance.smoke_reference is required when host (${hostTag}) or commit differs from baseline smoke`);
+    }
+    return;
+  }
+  if (sr.wp2_passed !== true) fail('smoke_reference.wp2_passed is not true');
+  if (sr.profile !== 'release') fail(`smoke_reference.profile must be release, got ${sr.profile}`);
+  if (hostDiffers || commitDiffers) {
+    if (sr.host_os !== prov.host?.os || sr.host_arch !== prov.host?.arch) {
+      fail('smoke_reference host disagrees with confirmation provenance.host');
+    }
+    if (sr.git_commit !== prov.build?.git_commit) {
+      fail('smoke_reference.git_commit disagrees with confirmation provenance.build.git_commit');
+    }
+  }
+
+  const smokeDir = resolveSmokeDirOnDisk(sr.smoke_dir);
+  if (!smokeDir) {
+    fail(`smoke_reference.smoke_dir does not contain provenance.json + smoke-report.json: ${sr.smoke_dir}`);
+    return;
+  }
+  const smokeCovered = verifyChecksumManifest(
+    smokeDir,
+    ['provenance.json', 'smoke-report.json'],
+    fail,
+    'smoke_reference',
+  );
+  const actualProvSha = sha256(readFileSync(join(smokeDir, 'provenance.json')));
+  const actualReportSha = sha256(readFileSync(join(smokeDir, 'smoke-report.json')));
+  if (sr.provenance_sha256 !== actualProvSha) {
+    fail(
+      `smoke_reference.provenance_sha256 mismatch: expected ${actualProvSha}, got ${sr.provenance_sha256}`,
+    );
+  }
+  if (sr.smoke_report_sha256 !== actualReportSha) {
+    fail(
+      `smoke_reference.smoke_report_sha256 mismatch: expected ${actualReportSha}, got ${sr.smoke_report_sha256}`,
+    );
+  }
+  if (smokeCovered.has('provenance.json') && sr.provenance_sha256 !== smokeCovered.get('provenance.json')) {
+    fail('smoke_reference.provenance_sha256 disagrees with host smoke checksums.sha256');
+  }
+  if (smokeCovered.has('smoke-report.json') && sr.smoke_report_sha256 !== smokeCovered.get('smoke-report.json')) {
+    fail('smoke_reference.smoke_report_sha256 disagrees with host smoke checksums.sha256');
+  }
+
+  const smokeProv = JSON.parse(readFileSync(join(smokeDir, 'provenance.json'), 'utf8'));
+  const smokeReport = JSON.parse(readFileSync(join(smokeDir, 'smoke-report.json'), 'utf8'));
+  if (smokeProv.build?.profile !== 'release') {
+    fail(`host smoke provenance.build.profile must be 'release', got ${smokeProv.build?.profile}`);
+  }
+  if (smokeProv.host?.os !== sr.host_os || smokeProv.host?.arch !== sr.host_arch) {
+    fail('host smoke provenance.host disagrees with smoke_reference host');
+  }
+  if (smokeProv.build?.git_commit !== sr.git_commit) {
+    fail('host smoke provenance.build.git_commit disagrees with smoke_reference.git_commit');
+  }
+  if (!sameWid(smokeProv.world_identity_observed, sr.world_identity_observed)) {
+    fail('host smoke world_identity_observed disagrees with smoke_reference.world_identity_observed');
+  }
+  if (prov.world_identity && !sameWid(prov.world_identity, smokeProv.world_identity_observed)) {
+    fail('host smoke world_identity_observed disagrees with confirmation provenance.world_identity');
+  }
+
+  const wp2Checks = [
+    ['wp2_a_resource_field.passed', smokeReport.wp2_a_resource_field?.passed === true],
+    ['wp2_b_standing_crop_intervention.passed', smokeReport.wp2_b_standing_crop_intervention?.passed === true],
+    ['wp2_c_detritus_before_3000.passed', smokeReport.wp2_c_detritus_before_3000?.passed === true],
+    ['all_observables_emitted_and_finite', smokeReport.all_observables_emitted_and_finite === true],
+    ['integrity.world_identity_identical', smokeReport.integrity?.world_identity_identical === true],
+    ['wp3_schedule_lock.within_budget', smokeReport.wp3_schedule_lock?.within_budget === true],
+  ];
+  for (const [gateName, passed] of wp2Checks) {
+    if (!passed) {
+      fail(`host smoke smoke-report.json gate failed: ${gateName}`);
+    }
+  }
+}
+
+function verifyArrayTable(label, observed, expected, compareRow, fail) {
+  if (!Array.isArray(observed)) {
+    fail(`${label} must be an array`);
+    return;
+  }
+  if (observed.length !== expected.length) {
+    fail(`${label} length ${observed.length} != ${expected.length}`);
+    return;
+  }
+  for (let i = 0; i < expected.length; i += 1) {
+    if (!compareRow(observed[i], expected[i])) {
+      fail(`${label}[${i}] mismatch: expected ${JSON.stringify(expected[i])}, observed ${JSON.stringify(observed[i])}`);
+    }
+  }
+}
+
+function hasExactArmKeys(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+  const keys = Object.keys(obj).sort();
+  const expected = [...ARM_ORDER].sort();
+  return keys.length === expected.length && keys.every((k, i) => k === expected[i]);
+}
+
 export function verifyArtifactDir(dir, opts = {}) {
   const failures = [];
   const notes = [];
   const fail = (m) => failures.push(m);
-  const prereg = opts.preregOverride ?? loadCommittedPrereg(opts.preregPath ?? null);
 
   if (!existsSync(dir)) {
     fail(`artifact directory does not exist: ${dir}`);
@@ -651,6 +896,20 @@ export function verifyArtifactDir(dir, opts = {}) {
       fail(`file uncovered by checksums.sha256: ${name}`);
     }
   }
+
+  let prov = null;
+  if (existsSync(join(dir, 'provenance.json'))) {
+    try {
+      prov = JSON.parse(readFileSync(join(dir, 'provenance.json'), 'utf8'));
+    } catch (e) {
+      fail(`invalid provenance.json: ${e.message}`);
+    }
+  }
+  const manifestGitRef = opts.preregOverride || opts.preregPath
+    ? 'HEAD'
+    : resolveManifestGitRef(prov?.build?.git_commit, notes);
+  const prereg = opts.preregOverride ?? loadCommittedPrereg(opts.preregPath ?? null, manifestGitRef);
+
   const manifestDir = join(dir, 'manifests');
   if (!existsSync(manifestDir)) {
     fail('missing manifests/ directory');
@@ -671,21 +930,20 @@ export function verifyArtifactDir(dir, opts = {}) {
         fail(`manifest copy not covered by checksums.sha256: manifests/${mf}`);
       }
       if (!opts.skipCommittedManifestCheck) {
-        const committed = readCommittedBytes(mf);
+        const committed = readCommittedBytesAt(mf, manifestGitRef);
         if (!committed) {
-          fail(`cannot read committed manifest ${mf}`);
+          fail(`cannot read committed manifest ${mf} at ${manifestGitRef}`);
         } else if (sha256(readFileSync(copyPath)) !== sha256(committed)) {
-          fail(`manifests/${mf} differs from committed fixture in repo`);
+          fail(`manifests/${mf} differs from committed fixture in repo at ${manifestGitRef}`);
         }
       }
     }
   }
 
-  if (failures.length > 0 && (!existsSync(join(dir, 'provenance.json')) || !existsSync(join(dir, 'effects.json')))) {
+  if (failures.length > 0 && (!prov || !existsSync(join(dir, 'effects.json')))) {
     return { ok: false, failures, notes };
   }
 
-  const prov = JSON.parse(readFileSync(join(dir, 'provenance.json'), 'utf8'));
   const runs = parseCsv(readFileSync(join(dir, 'runs.csv'), 'utf8'));
   const series = parseCsv(readFileSync(join(dir, 'series.csv'), 'utf8'));
   const finals = JSON.parse(readFileSync(join(dir, 'final-observables.json'), 'utf8'));
@@ -696,6 +954,12 @@ export function verifyArtifactDir(dir, opts = {}) {
   if (prov.build?.profile !== 'release') fail(`provenance.build.profile must be 'release', got ${prov.build?.profile}`);
   if (!Array.isArray(prov.build?.git_dirty_paths)) {
     fail('provenance.build.git_dirty_paths must be an array of dirty paths (not missing/bare boolean)');
+  } else {
+    for (const dirtyPath of prov.build.git_dirty_paths) {
+      if (!isAllowedDirtyPath(dirtyPath)) {
+        fail(`disallowed dirty working tree path in provenance.build.git_dirty_paths: ${JSON.stringify(dirtyPath)}`);
+      }
+    }
   }
   if (!prov.build?.git_commit) fail('provenance.build.git_commit is missing');
   if (!prov.build?.rustc) fail('provenance.build.rustc is missing');
@@ -707,25 +971,6 @@ export function verifyArtifactDir(dir, opts = {}) {
   if (prov.world_artifact_prerun_check?.anima_world_artifact_unset !== true ||
       prov.world_artifact_prerun_check?.temp_artifact_absent !== true) {
     fail('provenance.world_artifact_prerun_check did not confirm unset env + absent temp artifact');
-  }
-
-  const hostTag = `${prov.host?.os}/${prov.host?.arch}`;
-  const commitDiffers = prov.build?.git_commit !== prereg.wp2_smoke_calibration?.parent_commit;
-  const hostDiffers = hostTag !== prereg.execution_host_rule?.smoke_host_observed;
-  if (hostDiffers || commitDiffers) {
-    const sr = prov.smoke_reference;
-    if (!sr || typeof sr !== 'object') {
-      fail(`provenance.smoke_reference is required when host (${hostTag}) or commit differs from baseline smoke`);
-    } else {
-      if (sr.wp2_passed !== true) fail('smoke_reference.wp2_passed is not true');
-      if (sr.profile !== 'release') fail(`smoke_reference.profile must be release, got ${sr.profile}`);
-      if (sr.host_os !== prov.host?.os || sr.host_arch !== prov.host?.arch) {
-        fail('smoke_reference host disagrees with confirmation provenance.host');
-      }
-      if (sr.git_commit !== prov.build?.git_commit) {
-        fail('smoke_reference.git_commit disagrees with confirmation provenance.build.git_commit');
-      }
-    }
   }
 
   // World identity uniformity across provenance, smoke reference, runs.csv, and final-observables.json.
@@ -750,6 +995,11 @@ export function verifyArtifactDir(dir, opts = {}) {
       }
     }
   }
+
+  const hostTag = `${prov.host?.os}/${prov.host?.arch}`;
+  const commitDiffers = prov.build?.git_commit !== prereg.wp2_smoke_calibration?.parent_commit;
+  const hostDiffers = hostTag !== prereg.execution_host_rule?.smoke_host_observed;
+  verifySmokeReferenceOnDisk(prov, hostDiffers, commitDiffers, sameWid, fail);
 
   // Verify run coverage (36 runs, exact execution_order, no smoke_seed).
   const expectedOrder = prereg.seeds.execution_order.map(Number);
@@ -819,32 +1069,105 @@ export function verifyArtifactDir(dir, opts = {}) {
       compareReport(`${c.name}.M1_post_warmup`, obsC.M1_standing_crop_post_warmup, expC.M1_standing_crop_post_warmup, fail);
     }
 
-    const obsAdd = effects.additive_decomposition_table_on_all_three_valid_seeds ?? [];
-    const expAdd = recomputed.additive_decomposition_table_on_all_three_valid_seeds;
-    if (obsAdd.length !== expAdd.length) {
-      fail(`additive_decomposition length ${obsAdd.length} != ${expAdd.length}`);
+    if (!hasExactArmKeys(effects.agent_count_at_T_by_arm)) {
+      fail('effects.agent_count_at_T_by_arm missing or has unexpected arm keys');
     } else {
-      for (let i = 0; i < expAdd.length; i += 1) {
-        if (
-          Number(obsAdd[i].seed) !== expAdd[i].seed ||
-          !approxEq(obsAdd[i].delta_t_minus_u, expAdd[i].delta_t_minus_u) ||
-          !approxEq(obsAdd[i].delta_t_minus_s, expAdd[i].delta_t_minus_s) ||
-          !approxEq(obsAdd[i].delta_s_minus_u, expAdd[i].delta_s_minus_u) ||
-          !approxEq(obsAdd[i].residual, expAdd[i].residual)
-        ) {
-          fail(`additive_decomposition[${i}] mismatch`);
+      for (const arm of ARM_ORDER) {
+        verifyArrayTable(
+          `agent_count_at_T_by_arm.${arm}`,
+          effects.agent_count_at_T_by_arm[arm],
+          recomputed.agent_count_at_T_by_arm[arm],
+          (o, e) => o && Number(o.seed) === e.seed && typeof o.agent_count === 'number' && approxEq(o.agent_count, e.agent_count),
+          fail,
+        );
+      }
+    }
+
+    if (!hasExactArmKeys(effects.per_arm_empty_half_counts)) {
+      fail('effects.per_arm_empty_half_counts missing or has unexpected arm keys');
+    } else {
+      for (const arm of ARM_ORDER) {
+        const obsVal = effects.per_arm_empty_half_counts[arm];
+        const expVal = recomputed.per_arm_empty_half_counts[arm];
+        if (typeof obsVal !== 'number' || obsVal !== expVal) {
+          fail(`per_arm_empty_half_counts.${arm}: expected ${expVal}, observed ${JSON.stringify(obsVal)}`);
         }
       }
     }
-    if ((effects.extinction_table_by_arm ?? []).length !== recomputed.extinction_table_by_arm.length) {
-      fail('extinction_table_by_arm count mismatch');
-    }
-    if ((effects.singleton_table_by_arm ?? []).length !== recomputed.singleton_table_by_arm.length) {
-      fail('singleton_table_by_arm count mismatch');
-    }
-    if ((effects.empty_half_table_by_arm ?? []).length !== recomputed.empty_half_table_by_arm.length) {
-      fail('empty_half_table_by_arm count mismatch');
-    }
+
+    verifyArrayTable(
+      'additive_decomposition_table_on_all_three_valid_seeds',
+      effects.additive_decomposition_table_on_all_three_valid_seeds,
+      recomputed.additive_decomposition_table_on_all_three_valid_seeds,
+      (o, e) =>
+        o &&
+        Number(o.seed) === e.seed &&
+        approxEq(o.control_uniform, e.control_uniform) &&
+        approxEq(o.control_uniform_scarcity, e.control_uniform_scarcity) &&
+        approxEq(o.treatment_gradient, e.treatment_gradient) &&
+        approxEq(o.delta_t_minus_u, e.delta_t_minus_u) &&
+        approxEq(o.delta_t_minus_s, e.delta_t_minus_s) &&
+        approxEq(o.delta_s_minus_u, e.delta_s_minus_u) &&
+        approxEq(o.residual, e.residual),
+      fail,
+    );
+
+    verifyArrayTable(
+      'extinction_table_by_arm',
+      effects.extinction_table_by_arm,
+      recomputed.extinction_table_by_arm,
+      (o, e) =>
+        o &&
+        Number(o.seed) === e.seed &&
+        o.arm === e.arm &&
+        typeof o.first_extinct_tick === 'number' &&
+        o.first_extinct_tick === e.first_extinct_tick,
+      fail,
+    );
+
+    verifyArrayTable(
+      'singleton_table_by_arm',
+      effects.singleton_table_by_arm,
+      recomputed.singleton_table_by_arm,
+      (o, e) =>
+        o &&
+        Number(o.seed) === e.seed &&
+        o.arm === e.arm &&
+        typeof o.tick === 'number' &&
+        o.tick === e.tick &&
+        typeof o.agent_count === 'number' &&
+        approxEq(o.agent_count, e.agent_count) &&
+        o.scope === e.scope,
+      fail,
+    );
+
+    verifyArrayTable(
+      'empty_half_table_by_arm',
+      effects.empty_half_table_by_arm,
+      recomputed.empty_half_table_by_arm,
+      (o, e) =>
+        o &&
+        Number(o.seed) === e.seed &&
+        o.arm === e.arm &&
+        typeof o.tick === 'number' &&
+        o.tick === e.tick &&
+        o.empty_half === e.empty_half,
+      fail,
+    );
+
+    verifyArrayTable(
+      'failed_runs',
+      effects.failed_runs,
+      recomputed.failed_runs,
+      (o, e) =>
+        o &&
+        Number(o.seed) === e.seed &&
+        o.arm === e.arm &&
+        typeof o.tick === 'number' &&
+        o.tick === e.tick &&
+        (o.reason ?? '') === (e.reason ?? ''),
+      fail,
+    );
   }
 
   return { ok: failures.length === 0, failures, notes };
@@ -852,7 +1175,44 @@ export function verifyArtifactDir(dir, opts = {}) {
 
 // ---- Synthetic confirmation bundle helper for `--self-test` and tests ------------------------
 
-export function writeRecomputedBundleFiles(dir, prereg, { runs, series, finals, prov }) {
+export function writeSyntheticSmokeDir(dir, opts = {}) {
+  mkdirSync(dir, { recursive: true });
+  const commit = opts.commit ?? 'deadbeef';
+  const hostOs = opts.hostOs ?? 'windows';
+  const hostArch = opts.hostArch ?? 'x86_64';
+  const wid = opts.wid ?? {
+    seed: 1337,
+    generator_version: 1,
+    width: 256,
+    height: 256,
+    checksum: 3152323152,
+  };
+  const wp2 = opts.wp2Passed !== false;
+  const provDoc = {
+    kind: 'e3-smoke-provenance-EXCLUDED-FROM-ANALYSIS',
+    build: { git_commit: commit, profile: opts.profile ?? 'release' },
+    host: { os: hostOs, arch: hostArch },
+    world_identity_observed: wid,
+  };
+  const reportDoc = {
+    kind: 'e3-smoke-report-EXCLUDED-FROM-ANALYSIS',
+    all_observables_emitted_and_finite: wp2,
+    wp2_a_resource_field: { passed: wp2 },
+    wp2_b_standing_crop_intervention: { passed: wp2 },
+    wp2_c_detritus_before_3000: { passed: wp2 },
+    integrity: { world_identity_identical: true },
+    wp3_schedule_lock: { within_budget: true },
+  };
+  writeFileSync(join(dir, 'provenance.json'), `${JSON.stringify(provDoc, null, 2)}\n`);
+  writeFileSync(join(dir, 'smoke-report.json'), `${JSON.stringify(reportDoc, null, 2)}\n`);
+  const lines = ['provenance.json', 'smoke-report.json']
+    .map((n) => `${sha256(readFileSync(join(dir, n)))}  ${n}\n`)
+    .join('');
+  writeFileSync(join(dir, 'checksums.sha256'), lines);
+  return dir;
+}
+
+export function writeRecomputedBundleFiles(dir, prereg, { runs, series, finals, prov }, opts = {}) {
   mkdirSync(join(dir, 'manifests'), { recursive: true });
   const mFiles = [
     PREREG_FILE,
@@ -860,8 +1220,12 @@ export function writeRecomputedBundleFiles(dir, prereg, { runs, series, finals, 
     prereg.manifests.control_uniform_scarcity,
     prereg.manifests.treatment,
   ];
+  const manifestGitRef = opts.manifestGitRef ?? 'HEAD';
   for (const mf of mFiles) {
-    const bytes = readCommittedBytes(mf);
+    const bytes = readCommittedBytesAt(mf, manifestGitRef);
+    if (!bytes) {
+      throw new Error(`cannot read committed manifest ${mf} at ${manifestGitRef}`);
+    }
     writeFileSync(join(dir, 'manifests', mf), bytes);
   }
 
@@ -1030,7 +1394,14 @@ export function buildSyntheticE3Data(prereg, opts = {}) {
     }
   });
 
-  const parentCommit = prereg.wp2_smoke_calibration.parent_commit;
+  const parentCommit = opts.gitCommit ?? prereg.wp2_smoke_calibration.parent_commit;
+  const smokeDirArg = opts.smokeDir ?? 'artifacts/experiments/e3-productivity-gradient-body-mass/smoke';
+  const smokeInfo = readSmokeShaInfo(smokeDirArg);
+  const relSmoke = isAbsolute(smokeDirArg) ? relative(repoRoot, smokeInfo.resolvedDir) : smokeDirArg;
+  const portableSmokeDir = !relSmoke.startsWith('..') && !isAbsolute(relSmoke)
+    ? relSmoke.replace(/\\/g, '/')
+    : smokeInfo.resolvedDir.replace(/\\/g, '/');
+
   const prov = {
     kind: 'e3-confirmation-provenance',
     mode: 'ensemble',
@@ -1045,23 +1416,25 @@ export function buildSyntheticE3Data(prereg, opts = {}) {
       temp_artifact_absent: true,
     },
     smoke_reference: {
-      smoke_dir: 'artifacts/experiments/e3-productivity-gradient-body-mass/smoke',
-      git_commit: parentCommit,
-      host_os: 'windows',
-      host_arch: 'x86_64',
-      profile: 'release',
-      world_identity_observed: wid,
+      smoke_dir: portableSmokeDir,
+      provenance_sha256: smokeInfo.provenance_sha256,
+      smoke_report_sha256: smokeInfo.smoke_report_sha256,
+      git_commit: smokeInfo.git_commit ?? parentCommit,
+      host_os: smokeInfo.host_os ?? 'windows',
+      host_arch: smokeInfo.host_arch ?? 'x86_64',
+      profile: smokeInfo.profile ?? 'release',
+      world_identity_observed: smokeInfo.world_identity_observed ?? wid,
       wp2_passed: true,
     },
     build: {
       git_commit: parentCommit,
-      git_dirty_paths: [],
-      git_tree_dirty: false,
+      git_dirty_paths: opts.gitDirtyPaths ?? [],
+      git_tree_dirty: (opts.gitDirtyPaths?.length ?? 0) > 0,
       profile: 'release',
       rustc: 'rustc 1.98.1',
       binary_sha256: '0'.repeat(64),
     },
-    host: { os: 'windows', arch: 'x86_64' },
+    host: { os: smokeInfo.host_os ?? 'windows', arch: smokeInfo.host_arch ?? 'x86_64' },
   };
   return { runs, series, finals, prov };
 }
@@ -1085,6 +1458,13 @@ function runSelfTest() {
     prereg.manifests.control_uniform_scarcity,
     prereg.manifests.treatment,
   ];
+  const editJsonAndRehash = (dir, filename, mutator) => {
+    const target = join(dir, filename);
+    const doc = JSON.parse(readFileSync(target, 'utf8'));
+    mutator(doc);
+    writeFileSync(target, `${JSON.stringify(doc, null, 2)}\n`);
+    rehashBundle(dir, mFiles);
+  };
 
   try {
     // 1. Positive control: valid 12-seed x 3-arm bundle passes.
@@ -1154,6 +1534,143 @@ function runSelfTest() {
         extEffects.additive_decomposition_table_on_all_three_valid_seeds.length === 9,
       'extinction in control_uniform excludes only contrasts containing U while keeping H1 (T-S) valid',
     );
+
+    // 7a. R1 negative control: re-hashed tampered agent_count_at_T_by_arm, per_arm_empty_half_counts, failed_runs.
+    const r1MediatorDir = join(root, 'r1_mediator');
+    writeRecomputedBundleFiles(r1MediatorDir, prereg, buildSyntheticE3Data(prereg));
+    editJsonAndRehash(r1MediatorDir, 'effects.json', (j) => {
+      j.agent_count_at_T_by_arm.control_uniform_scarcity[0].agent_count = 999;
+      j.per_arm_empty_half_counts.treatment_gradient = 5;
+      j.failed_runs = [{ seed: 1, arm: 'control_uniform', tick: 1, reason: 'injected' }];
+    });
+    const resR1Med = verifyArtifactDir(r1MediatorDir);
+    expect(
+      !resR1Med.ok &&
+        resR1Med.failures.some((m) => m.includes('agent_count_at_T_by_arm.control_uniform_scarcity')) &&
+        resR1Med.failures.some((m) => m.includes('per_arm_empty_half_counts.treatment_gradient')) &&
+        resR1Med.failures.some((m) => m.includes('failed_runs')),
+      'R1: tampered agent_count_at_T_by_arm, per_arm_empty_half_counts, and failed_runs rejected',
+    );
+
+    // 7b. R1 negative control: re-hashed same-length rewritten exclusion tables (extinction, singleton, empty_half).
+    const r1ExclDir = join(root, 'r1_excl_tables');
+    const r1Data = buildSyntheticE3Data(prereg, { extinctControlUniformSeeds: extSeeds });
+    const tailSeed = Number(prereg.seeds.execution_order[4]);
+    const ehSeed = Number(prereg.seeds.execution_order[5]);
+    for (const s of r1Data.series) {
+      if (s.seed === tailSeed && s.arm === 'treatment_gradient' && s.tick === 15000) {
+        s['live.agent_count'] = 1;
+      }
+    }
+    const fEh = r1Data.finals.find((f) => f.seed === ehSeed && f.arm === 'treatment_gradient');
+    fEh.final_observables['live.trait_mass_mean_west'] = 0;
+    writeRecomputedBundleFiles(r1ExclDir, prereg, r1Data);
+    editJsonAndRehash(r1ExclDir, 'effects.json', (j) => {
+      j.extinction_table_by_arm[0] = { seed: 1, arm: 'control_uniform', first_extinct_tick: 1 };
+      j.singleton_table_by_arm[0] = {
+        seed: 1,
+        arm: 'treatment_gradient',
+        tick: 1,
+        agent_count: 1,
+        scope: 'final_T',
+      };
+      j.empty_half_table_by_arm[0] = {
+        seed: 1,
+        arm: 'treatment_gradient',
+        tick: 1,
+        empty_half: 'east',
+      };
+    });
+    const resR1Excl = verifyArtifactDir(r1ExclDir);
+    expect(
+      !resR1Excl.ok &&
+        resR1Excl.failures.some((m) => m.includes('extinction_table_by_arm[0]')) &&
+        resR1Excl.failures.some((m) => m.includes('singleton_table_by_arm[0]')) &&
+        resR1Excl.failures.some((m) => m.includes('empty_half_table_by_arm[0]')),
+      'R1: same-length rewritten extinction, singleton, and empty_half tables rejected',
+    );
+
+    // 8. N1 control: identical non-integer deltas clamp tiny float noise to sd = 0 / dz = null.
+    const identicalStats = pairedStats(Array(12).fill(3.0), Array(12).fill(1.1), 12);
+    const identicalDecision = classifyE3Decision(identicalStats, prereg.thresholds);
+    expect(
+      identicalStats.paired_sd === 0 &&
+        identicalStats.paired_se === 0 &&
+        identicalStats.paired_dz === null &&
+        identicalStats.between_seed_variance_of_deltas === 0 &&
+        identicalDecision.decision === 'between_detectable_below_materiality',
+      'N1: identical non-integer deltas (3.0 -> 1.1) clamp float noise to sd=0 and dz=null',
+    );
+
+    // 9. N2 negative control: mismatched smoke hashes or failed WP-2 gate in host smoke rejected.
+    const smokeHashDir = join(root, 'n2_smoke_hash');
+    writeRecomputedBundleFiles(smokeHashDir, prereg, buildSyntheticE3Data(prereg));
+    editJsonAndRehash(smokeHashDir, 'provenance.json', (j) => {
+      j.smoke_reference.provenance_sha256 = 'f'.repeat(64);
+    });
+    const resSmokeHash = verifyArtifactDir(smokeHashDir);
+    expect(
+      !resSmokeHash.ok && resSmokeHash.failures.some((m) => m.includes('smoke_reference.provenance_sha256')),
+      'N2: tampered smoke_reference SHA-256 rejected',
+    );
+
+    const badHostSmoke = writeSyntheticSmokeDir(join(root, 'host_smoke_fail'), {
+      commit: prereg.wp2_smoke_calibration.parent_commit,
+      wp2Passed: false,
+    });
+    const smokeWp2Dir = join(root, 'n2_smoke_wp2');
+    writeRecomputedBundleFiles(smokeWp2Dir, prereg, buildSyntheticE3Data(prereg, { smokeDir: badHostSmoke }));
+    const resSmokeWp2 = verifyArtifactDir(smokeWp2Dir);
+    expect(
+      !resSmokeWp2.ok && resSmokeWp2.failures.some((m) => m.includes('smoke-report.json gate failed')),
+      'N2: failed WP-2 gate inside host smoke directory rejected',
+    );
+
+    // 10. N3 control: dirty paths under artifacts/ pass while src/ or traversal paths fail.
+    const dirtyOkDir = join(root, 'n3_dirty_ok');
+    writeRecomputedBundleFiles(
+      dirtyOkDir,
+      prereg,
+      buildSyntheticE3Data(prereg, {
+        gitDirtyPaths: ['artifacts/experiments/e3-productivity-gradient-body-mass/host-smoke/'],
+      }),
+    );
+    expect(verifyArtifactDir(dirtyOkDir).ok, 'N3: untracked path under artifacts/ allowed');
+
+    const dirtyBadDir = join(root, 'n3_dirty_bad');
+    writeRecomputedBundleFiles(
+      dirtyBadDir,
+      prereg,
+      buildSyntheticE3Data(prereg, {
+        gitDirtyPaths: ['src-tauri/src/core/live_experiment.rs'],
+      }),
+    );
+    const resDirtyBad = verifyArtifactDir(dirtyBadDir);
+    expect(
+      !resDirtyBad.ok && resDirtyBad.failures.some((m) => m.includes('disallowed dirty working tree path')),
+      'N3: dirty path outside artifacts/ rejected',
+    );
+
+    // 11. N4 control: fallback note when recorded commit unavailable vs exact commit match at HEAD.
+    expect(
+      validRes.notes.some((n) => n.includes('fell back to HEAD')),
+      'N4: unavailable recorded commit falls back to HEAD with explicit note',
+    );
+    const headCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot }).toString('utf8').trim();
+    const headSmokeDir = writeSyntheticSmokeDir(join(root, 'head_smoke'), {
+      commit: headCommit,
+      hostOs: 'windows',
+      hostArch: 'x86_64',
+    });
+    const headBundleDir = join(root, 'n4_head');
+    writeRecomputedBundleFiles(
+      headBundleDir,
+      prereg,
+      buildSyntheticE3Data(prereg, { gitCommit: headCommit, smokeDir: headSmokeDir }),
+      { manifestGitRef: headCommit },
+    );
+    const headRes = verifyArtifactDir(headBundleDir);
+    expect(headRes.ok && headRes.notes.length === 0, 'N4: available recorded HEAD commit verifies without fallback note');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1192,6 +1709,9 @@ function main() {
   }
 
   const res = verifyArtifactDir(targetDir, { preregPath, skipCommittedManifestCheck });
+  for (const n of res.notes) {
+    console.warn(`verify_e3_artifacts NOTE: ${n}`);
+  }
   if (!res.ok) {
     console.error(`verify_e3_artifacts FAILED (${res.failures.length} failure(s)):`);
     for (const f of res.failures) console.error(`  - ${f}`);

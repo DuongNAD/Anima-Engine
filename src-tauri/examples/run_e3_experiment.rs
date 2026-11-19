@@ -123,12 +123,12 @@ struct Args {
     seed: Option<u64>,
 }
 
-struct ThresholdsSpec {
-    min_valid_pairs: usize,
-    dz_min: f64,
-    relative_delta_min: f64,
-    ci_excludes_zero_required: bool,
-    decision_enum: Vec<String>,
+pub struct ThresholdsSpec {
+    pub min_valid_pairs: usize,
+    pub dz_min: f64,
+    pub relative_delta_min: f64,
+    pub ci_excludes_zero_required: bool,
+    pub decision_enum: Vec<String>,
 }
 
 struct PreregSpec {
@@ -239,23 +239,23 @@ struct ExcludedSeedRecord {
     tick: u64,
 }
 
-struct SeedDeltaRow {
-    seed: u64,
-    control: f64,
-    treatment: f64,
-    delta: f64,
+pub struct SeedDeltaRow {
+    pub seed: u64,
+    pub control: f64,
+    pub treatment: f64,
+    pub delta: f64,
 }
 
-struct ObservableContrastReport {
-    effect: PairedEffect,
-    n_extinct_pairs_dropped: usize,
-    n_singleton_pairs_dropped: usize,
-    n_empty_half_pairs_dropped_s3: usize,
-    median_of_per_seed_deltas: Option<f64>,
-    between_seed_variance_of_deltas: Option<f64>,
-    per_seed_delta_table: Vec<SeedDeltaRow>,
-    decision: Option<String>,
-    zero_control_mean_fallback_used: bool,
+pub struct ObservableContrastReport {
+    pub effect: PairedEffect,
+    pub n_extinct_pairs_dropped: usize,
+    pub n_singleton_pairs_dropped: usize,
+    pub n_empty_half_pairs_dropped_s3: usize,
+    pub median_of_per_seed_deltas: Option<f64>,
+    pub between_seed_variance_of_deltas: Option<f64>,
+    pub per_seed_delta_table: Vec<SeedDeltaRow>,
+    pub decision: Option<String>,
+    pub zero_control_mean_fallback_used: bool,
 }
 
 struct ContrastAnalysis {
@@ -732,6 +732,69 @@ fn resolve_smoke_dir(
     })
 }
 
+fn is_lower_hex_64(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn verify_smoke_checksums(dir: &Path) -> Result<(), String> {
+    let checksum_path = dir.join("checksums.sha256");
+    if !checksum_path.exists() {
+        return Err(format!(
+            "refuse: smoke directory {} is missing checksums.sha256",
+            dir.display()
+        ));
+    }
+    let raw = std::fs::read_to_string(&checksum_path)
+        .map_err(|e| format!("read {}: {e}", checksum_path.display()))?;
+    let mut covered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut line_count = 0usize;
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        line_count += 1;
+        let Some((hex, rel)) = line.split_once("  ") else {
+            return Err(format!(
+                "refuse: malformed line in {}: '{line}'",
+                checksum_path.display()
+            ));
+        };
+        if !is_lower_hex_64(hex) || rel.is_empty() {
+            return Err(format!(
+                "refuse: malformed digest/path in {}: '{line}'",
+                checksum_path.display()
+            ));
+        }
+        let target = dir.join(rel);
+        if !target.exists() {
+            return Err(format!(
+                "refuse: {} references missing smoke file '{rel}'",
+                checksum_path.display()
+            ));
+        }
+        let actual = sha256_file(&target)
+            .map_err(|e| format!("hash smoke file {}: {e}", target.display()))?;
+        if actual != hex {
+            return Err(format!(
+                "refuse: smoke checksum mismatch for {rel}: expected {hex}, got {actual}"
+            ));
+        }
+        covered.insert(rel.to_string());
+    }
+    if line_count == 0 {
+        return Err(format!(
+            "refuse: smoke checksum file {} is empty",
+            checksum_path.display()
+        ));
+    }
+    for req in ["provenance.json", "smoke-report.json"] {
+        if !covered.contains(req) {
+            return Err(format!(
+                "refuse: {} does not cover required smoke file '{req}'",
+                checksum_path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn validate_smoke_dir(
     dir: &Path,
     env: &RuntimeEnv,
@@ -746,6 +809,7 @@ fn validate_smoke_dir(
             dir.display()
         ));
     }
+    verify_smoke_checksums(dir)?;
     let prov = read_json(&prov_path)?;
     let report = read_json(&report_path)?;
 
@@ -1337,8 +1401,15 @@ fn sample_variance(xs: &[f64]) -> Option<f64> {
     Some(ss / (xs.len() - 1) as f64)
 }
 
+const ZERO_SD_TOL: f64 = 1e-12;
+
+#[allow(dead_code)]
+pub fn load_thresholds(manifest_dir: &Path) -> Result<ThresholdsSpec, String> {
+    Ok(load_prereg(manifest_dir)?.thresholds)
+}
+
 #[allow(clippy::too_many_arguments)]
-fn build_observable_report(
+pub fn build_observable_report(
     name: &str,
     n_requested: usize,
     rows: &[SeedDeltaRow],
@@ -1352,8 +1423,19 @@ fn build_observable_report(
     let cs: Vec<f64> = rows.iter().map(|r| r.control).collect();
     let ts: Vec<f64> = rows.iter().map(|r| r.treatment).collect();
     let ds: Vec<f64> = rows.iter().map(|r| r.delta).collect();
-    let effect = paired_effect(name, n_requested, &cs, &ts, &ds)
+    let mut effect = paired_effect(name, n_requested, &cs, &ts, &ds)
         .map_err(|e| format!("paired_effect({name}): {e}"))?;
+    let mut between_var = sample_variance(&ds);
+    if let (Some(mean), Some(sd)) = (effect.paired_mean_delta, effect.paired_sd) {
+        if sd.abs() < ZERO_SD_TOL * mean.abs().max(1.0) {
+            effect.paired_sd = Some(0.0);
+            effect.paired_se = Some(0.0);
+            effect.ci95_low = Some(mean);
+            effect.ci95_high = Some(mean);
+            effect.paired_dz = None;
+            between_var = Some(0.0);
+        }
+    }
     let (decision, fallback_used) = if decided {
         let (lbl, fb) = classify_decision(&effect, thresholds, allow_zero_control_fallback);
         (Some(lbl), fb)
@@ -1366,7 +1448,7 @@ fn build_observable_report(
         n_singleton_pairs_dropped,
         n_empty_half_pairs_dropped_s3,
         median_of_per_seed_deltas: median(&ds),
-        between_seed_variance_of_deltas: sample_variance(&ds),
+        between_seed_variance_of_deltas: between_var,
         per_seed_delta_table: rows
             .iter()
             .map(|r| SeedDeltaRow {
@@ -2161,11 +2243,25 @@ fn effects_json_text(prereg: &PreregSpec, analysis: &EnsembleAnalysis) -> Result
     Ok(pretty(&doc)? + "\n")
 }
 
+fn portable_smoke_dir(dir: &Path) -> String {
+    let repo_root = git(&["rev-parse", "--show-toplevel"])
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_dir().ok());
+    if let (Some(root), Ok(canon_dir)) = (repo_root, std::fs::canonicalize(dir)) {
+        if let Ok(canon_root) = std::fs::canonicalize(root) {
+            if let Ok(rel) = canon_dir.strip_prefix(&canon_root) {
+                return rel.display().to_string().replace('\\', "/");
+            }
+        }
+    }
+    dir.display().to_string().replace('\\', "/")
+}
+
 fn smoke_ref_json(smoke: Option<&SmokeVerification>) -> serde_json::Value {
     match smoke {
         None => serde_json::Value::Null,
         Some(s) => serde_json::json!({
-            "smoke_dir": s.dir.display().to_string().replace('\\', "/"),
+            "smoke_dir": portable_smoke_dir(&s.dir),
             "provenance_sha256": s.provenance_sha256,
             "smoke_report_sha256": s.smoke_report_sha256,
             "git_commit": s.smoke_git_commit,
@@ -2616,6 +2712,7 @@ fn run_self_test(base_env: &RuntimeEnv) -> Result<(), String> {
             "wp3_schedule_lock": { "within_budget": true },
         }))? + "\n"),
     )?;
+    write_checksums(&smoke_dir, &["provenance.json", "smoke-report.json"])?;
 
     let ok_env = RuntimeEnv {
         anima_world_artifact: None,
@@ -2742,7 +2839,7 @@ fn resolve_git_dirty_paths(env: &RuntimeEnv) -> Vec<String> {
         .collect()
 }
 
-fn write_checksums(dir: &Path, names: &[&str]) -> Result<(), String> {
+pub fn write_checksums(dir: &Path, names: &[&str]) -> Result<(), String> {
     let mut sorted: Vec<&str> = names.to_vec();
     sorted.sort_unstable();
     let mut lines = String::new();
