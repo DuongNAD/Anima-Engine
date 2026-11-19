@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, act, fireEvent, screen, cleanup } from '@testing-library/react';
 import type { FrameCallback } from '../mocks/r3f-frame-state';
 
@@ -109,6 +110,7 @@ function advanceFrames(state: AutoQualityState, count: number, frameMs: number):
 }
 
 describe('RW-B3 (RW4-4 & RW4-5) — auto quality state machine and capture bypass', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   const originalDpr = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
 
   beforeEach(() => {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
@@ -38,6 +39,7 @@ vi.mock('@tauri-apps/api/core', async (importOriginal) => {
 });
 
 describe('Mock Leakage Demonstration', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   beforeAll(() => {
     const filesToDelete = [
       'src-tauri/check_cmd.log',

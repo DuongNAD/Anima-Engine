@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, act, fireEvent, screen, cleanup } from '@testing-library/react';
 
 const { canvasRenders, setDprCalls, shadowState } = vi.hoisted(() => ({
@@ -81,6 +82,7 @@ import {
 } from '../../src/components/Landscape/utils/captureMode';
 
 describe('RW-B2 (RW4-1) — unified quality tiers & 4-choice HUD', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   const originalDpr = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
 
   beforeEach(() => {
