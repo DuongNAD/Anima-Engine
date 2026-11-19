@@ -990,6 +990,13 @@ export const SUPERCONTINENT = {
   waterfalls: { run: 3, minDrop: 0.01, spacing: 24, max: 400 },
   /** Cave mouths (Pass 4f): the steepest bare-rock / badlands faces, `spacing` cells apart (at 2048²). */
   caves: { minSlope: 0.5, spacing: 40, max: 48 },
+  /**
+   * Land flora aimed for, as a fraction of `maxFlora`; every cell is thinned by the same factor to
+   * meet it (Pass 5). Set by the RW-C4 render budget, not by looks: the canonical `ecosystem` pose
+   * frames the densest stand, and at 0.95 its flora layer at `high` drew 5.28M triangles against
+   * the §4a budget of 5.03M; at 0.82 it draws 4.50M (`tests/e2e/rw_budget.spec.ts`, 2026-11-19).
+   */
+  floraBudget: 0.82,
   /** Superellipse exponent of the edge falloff: high = squarish, so the belt reaches the poles. */
   edgeNorm: 4,
   falloffPow: 5,
@@ -1898,11 +1905,12 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // supercontinent, so the other shapes keep their exact v21 flora.
   let thin = 1;
   if (superC) {
+    const budget = maxFlora * SUPERCONTINENT.floraBudget;
     let expected = 0;
     for (let y = 0; y < size; y += stride) {
       for (let x = 0; x < size; x += stride) expected += Math.max(0, Math.min(1, floraChance(y * size + x)));
     }
-    if (expected > maxFlora * 0.95) thin = (maxFlora * 0.95) / expected;
+    if (expected > budget) thin = budget / expected;
   }
   for (let y = 0; y < size; y += stride) {
     for (let x = 0; x < size; x += stride) {

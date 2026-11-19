@@ -49,46 +49,46 @@
         ]
       },
       "captured": true,
-      "bytes": 1660474,
-      "checksum": "sha256:b5fc987d68702f46bbe5a2de785f187ff39eed8bc31fa320538aa38b4fe30963"
+      "bytes": 1647449,
+      "checksum": "sha256:a8cbdc3864aeab89fadf48abb5c4d8d5bd119eebde33ff78b40b5359ea5eec19"
     },
     {
       "id": "navigation",
       "imagePath": "map-views/navigation.png",
       "camera": {
         "position": [
-          -7.6,
-          73.7,
-          39.9
+          -32.1,
+          76.1,
+          21
         ],
         "target": [
-          -1.8,
-          12.6,
-          10.7
+          -7.3,
+          15,
+          4.4
         ]
       },
       "captured": true,
-      "bytes": 1900207,
-      "checksum": "sha256:e0d225ca863007aee0593d2b88f2e2753211ce60e896c663320812765e30c483"
+      "bytes": 1916179,
+      "checksum": "sha256:61b6e763ccb86c078e4718eb603696931ad083b3daef31b41a7bf0d66ef3f330"
     },
     {
       "id": "collision",
       "imagePath": "map-views/collision.png",
       "camera": {
         "position": [
-          54.1,
+          58.1,
           11.1,
           6.8
         ],
         "target": [
-          46,
+          50,
           5.2,
           6
         ]
       },
       "captured": true,
-      "bytes": 958109,
-      "checksum": "sha256:fde03545df6f87207de2ee1dc017424830acbc722edb26fb841297a86324a366"
+      "bytes": 985162,
+      "checksum": "sha256:352a148653d01652b3bc3dd9f2f4a689e46991231d75a300746abfdc8ef01b95"
     },
     {
       "id": "lighting",
@@ -106,27 +106,27 @@
         ]
       },
       "captured": true,
-      "bytes": 1771425,
-      "checksum": "sha256:6de772bd23ac6c7dbf6478f148b3d476bf86b1f4b303926b10a0070bca0af194"
+      "bytes": 1760156,
+      "checksum": "sha256:38dda2977c49dcf60474126ada3e85284e8e4e92fc1edf231a3fef80e712c3c7"
     },
     {
       "id": "spawn",
       "imagePath": "map-views/spawn.png",
       "camera": {
         "position": [
-          -13.7,
-          23.6,
-          11.6
+          17.7,
+          20.4,
+          14
         ],
         "target": [
-          -6.2,
-          15.9,
-          5.5
+          10.2,
+          12.7,
+          7.9
         ]
       },
       "captured": true,
-      "bytes": 1036871,
-      "checksum": "sha256:efdfbc4448ad3e3d0759a44dfe10fed731e7aebaed4330d9dae6e9492e53630e"
+      "bytes": 1166726,
+      "checksum": "sha256:f3090f6bda549e2a0cedd2b44759b4bf45b078ddb7779dd935f41b8697369ce7"
     },
     {
       "id": "water",
@@ -144,8 +144,8 @@
         ]
       },
       "captured": true,
-      "bytes": 1546179,
-      "checksum": "sha256:1f95df88e58b063d6c5d729969af2a61d03aa052effea7dbfb8852412e8235dd"
+      "bytes": 1526221,
+      "checksum": "sha256:a34fd561b9c7d6d4037d8b30de30e2fcf7e835610452dc70cf1dde2bf9f73f07"
     },
     {
       "id": "biome_transition",
@@ -163,27 +163,27 @@
         ]
       },
       "captured": true,
-      "bytes": 1410713,
-      "checksum": "sha256:72b2e826830f65f6ebc3b3ab78fb8dbc19e4cde0bc32610c498ca814fb0a10b0"
+      "bytes": 1404247,
+      "checksum": "sha256:a30143bc648e96cec5187f4f1d04ee0278b23ca93b0156e84eb7a49e6b6c3e4e"
     },
     {
       "id": "ecosystem",
       "imagePath": "map-views/ecosystem.png",
       "camera": {
         "position": [
-          65.5,
-          16.4,
-          -11.1
+          59.1,
+          16.7,
+          -1.7
         ],
         "target": [
-          51.7,
-          4.7,
-          -8.3
+          45,
+          5,
+          -1.7
         ]
       },
       "captured": true,
-      "bytes": 1305104,
-      "checksum": "sha256:44fa0c0088bdeed77821acf50c6de0ea0f0f90e7e3e4174fa69cc0ee717db41d"
+      "bytes": 1260440,
+      "checksum": "sha256:8390a9e7a1472d41a06453161545661d4a0069ec671cbfeb5a95ea2d9b124c90"
     }
   ]
 }

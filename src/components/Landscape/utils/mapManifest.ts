@@ -86,26 +86,26 @@ export const CANONICAL_VIEW_CAMERAS: Record<CanonicalViewId, CanonicalPoint> = {
   // clearing with seven reachable nodes out of fifty thousand).
   //
   // Further out and much steeper than every other view, because its subject is a *route* and the
-  // frame has to hold the whole of one. See `derive_view_cameras.ts`. Framed inward (azimuth 101°).
-  navigation: { position: [-7.6, 73.7, 39.9], target: [-1.8, 12.6, 10.7] },
-  // 311 solid trunks in one 24-unit bucket, jungle. Framed inward (inwardness 1.00, azimuth 6°).
-  collision: { position: [54.1, 11.1, 6.8], target: [46, 5.2, 6] },
+  // frame has to hold the whole of one. See `derive_view_cameras.ts`. Framed inward (azimuth 146°).
+  navigation: { position: [-32.1, 76.1, 21], target: [-7.3, 15, 4.4] },
+  // 274 solid trunks in one 24-unit bucket, jungle. Framed inward (inwardness 1.00, azimuth 6°).
+  collision: { position: [58.1, 11.1, 6.8], target: [50, 5.2, 6] },
   // Highest relief in the world (elevation 0.87, slope 1.00 — glacier, on the spine range), lit from
   // the side so the shadow pass has something to cast against. Horizon in frame by design: a lighting
   // view has to reach far enough for the sun's direction to read, and at 55° FOV a frame that reaches
   // that far spreads wider than this world. What it shows past the terrain is a mountain against sky.
   lighting: { position: [-40.5, 59.2, -32.7], target: [-10.6, 30.4, -8.2] },
-  // The position `findSpawn` actually returns at the shipped identity: render (-37.2, 33.1), taiga
-  // on the spine's equatorial flank. (An older pose targeted canonical (10, 1, 10), the middle of the
+  // The position `findSpawn` actually returns at the shipped identity: render (61.3, 47.2),
+  // shrubland east of the spine. (An older pose targeted canonical (10, 1, 10), the middle of the
   // map, which on the `continent` world was open ocean.)
-  spawn: { position: [-13.7, 23.6, 11.6], target: [-6.2, 15.9, 5.5] },
+  spawn: { position: [17.7, 20.4, 14], target: [10.2, 12.7, 7.9] },
   // Largest lake basin, 316 cells across. Shot from its shore rather than framed whole: a distance
   // that fits the basin in frame spreads wider than the world.
   water: { position: [-67.4, 26.8, 22.4], target: [-43.2, 5, 15.1] },
   // Six distinct land biomes within ten cells, centred on shrubland.
   biome_transition: { position: [82.4, 23.4, -40.9], target: [62.8, 3.4, -30.4] },
-  // Densest flora of any kind: 232 instances in one 20-unit bucket, jungle.
-  ecosystem: { position: [65.5, 16.4, -11.1], target: [51.7, 4.7, -8.3] },
+  // Densest flora of any kind: 200 instances in one 20-unit bucket, jungle.
+  ecosystem: { position: [59.1, 16.7, -1.7], target: [45, 5, -1.7] },
 };
 
 /**
