@@ -1,5 +1,6 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
+import { warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS } from './helpers/warmSharedWorld';
 import { render, cleanup, act, waitFor } from '@testing-library/react';
 import * as THREE from 'three';
 import type { SimulationTickPayload } from '../../src/types/generated/SimulationTickPayload';
@@ -67,6 +68,7 @@ interface MockInstancedEl extends HTMLElement {
 }
 
 describe('F1 — WorldShowcase simulated-entities HUD label distinguishes synthetic vs real ticks', () => {
+  beforeAll(warmSharedWorld, WARM_SHARED_WORLD_BUDGET_MS);
   beforeEach(() => {
     frameCallbacks.length = 0;
     mockTauriListen.mockReset();
