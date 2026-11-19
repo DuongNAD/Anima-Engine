@@ -944,7 +944,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     unmount();
   });
 
-  it('N3, N4, N6 & radius-width: protects active LRU geometry, keeps sticky slots + top-8 shadows, snaps morphology change, and scales skin width by radius', () => {
+  it('N3, N4, N6 & radius-width: protects active LRU geometry, keeps sticky slots + top-4 shadows, snaps morphology change, and scales skin width by radius', () => {
     // 1. N3: LRU cache never disposes a geometry in `protectedKeys` during eviction overflow.
     const cache = new ArchetypeMeshCache(8);
     const baseSegs: MorphologySegmentInput[] = [
@@ -973,7 +973,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     expect(dispose0).toHaveBeenCalledTimes(1);
     cache.disposeAll();
 
-    // 2. N4 & Radius-width: sticky slots by agentId, closest-8 shadow assignment, and posed width reflects radius.
+    // 2. N4 & Radius-width: sticky slots by agentId, closest-4 shadow assignment, and posed width reflects radius.
     const buf = new TickInterpolationBuffer();
     const segs: SegmentState[] = [];
     for (let id = 1; id <= 12; id++) {
@@ -1056,10 +1056,10 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     for (let r = 0; r < lod1.nearCount; r++) {
       const p = frame1.agents[lod1.nearIndices[r]];
       const s = slots1[r];
-      pool.updateSlot(s, p, 0, scratch, r < 8);
+      pool.updateSlot(s, p, 0, scratch, r < 4);
       const m = group.children[s] as THREE.SkinnedMesh;
       meshById.set(p.agentId, m);
-      expect(m.castShadow).toBe(r < 8);
+      expect(m.castShadow).toBe(r < 4);
       if (p.agentId === 5) {
         slotForAgent5Frame1 = s;
         skeletonAgent5Frame1 = m.skeleton;
@@ -1110,7 +1110,7 @@ describe('B1 continuous SkinnedMesh bodies, 3-tier LOD, and synthetic env', () =
     for (let r = 0; r < lod2.nearCount; r++) {
       const p = frame2.agents[lod2.nearIndices[r]];
       const s = slots2[r];
-      pool.updateSlot(s, p, 0.03, scratch, r < 8);
+      pool.updateSlot(s, p, 0.03, scratch, r < 4);
       const m = group.children[s] as THREE.SkinnedMesh;
       if (p.agentId === 5) {
         expect(s).toBe(slotForAgent5Frame1);

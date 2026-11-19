@@ -38,12 +38,12 @@ import type { SimulationTickPayload } from '../../types/generated/SimulationTick
 //
 // Three-tier LOD with per-creature frustum culling (`creatureLod.ts`):
 //   - Near (`<= creatureFullDetailRadius`, capped at K = 8/12/16): continuous `SkinnedMesh`
-//     capsule-chain bodies (`live-agents-skinned`, cached per morphology archetype; top 8 cast shadows)
+//     capsule-chain bodies (`live-agents-skinned`, cached per morphology archetype; top 4 cast shadows)
 //   - Mid (`<= creatureSimplifiedRadius` + overflow): instanced segment cylinders + joints
 //   - Far (`> creatureSimplifiedRadius`): instanced billboard markers (`live-agents-markers`)
 //   Plus shared instanced head spheres/eyes (`live-agents-spheres`), predator snouts
 //   (`live-agents-snouts`), and contact shadows (`live-agents-shadows`), keeping total
-//   creature draw calls within `5 + K` (<= 13/17/21 + up to 8 shadow casts) across low/medium/high.
+//   creature draw calls within `5 + K` (<= 13/17/21 + up to 4 shadow casts) across low/medium/high.
 //
 // Plus optional single selection ring + payload-only HUD when the user clicks a creature (RW2-7).
 // ---------------------------------------------------------------------------------------
@@ -918,7 +918,7 @@ export const LiveAgents: React.FC<LiveAgentsProps> = ({
       const pIdx = lod.nearIndices[r];
       const pose = agents[pIdx];
       const slotIdx = nearSlots[r];
-      if (slotIdx < 0 || !skinPool.updateSlot(slotIdx, pose, timeSec, scratch, r < 8)) {
+      if (slotIdx < 0 || !skinPool.updateSlot(slotIdx, pose, timeSec, scratch, r < 4)) {
         continue;
       }
 

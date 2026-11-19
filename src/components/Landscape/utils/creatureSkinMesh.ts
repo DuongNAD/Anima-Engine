@@ -720,7 +720,7 @@ export class SkinnedCreaturePool {
       mesh.frustumCulled = false;
       mesh.boundingSphere = raycastSphere;
       mesh.raycast = raycastVisibleSkinnedMesh;
-      mesh.castShadow = i < 8;
+      mesh.castShadow = i < 4;
       mesh.receiveShadow = true;
       mesh.visible = false;
       this.slots.push({

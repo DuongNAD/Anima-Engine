@@ -24,7 +24,7 @@ last_reviewed: 2026-11-19
 
 - **LOD 3 tầng (`CreatureLodSelector`) & Cheap Win #1 (frustum culling):**
   - `WorldShowcase.tsx` truyền trực tiếp `qualityTier={effectiveQuality}` xuống `<LiveAgents>` (`N1`), và `resolveCreatureQualityTier` nhận `QualitySelection` đã phân tích sẵn ngoài `useFrame` (`N2`, 0 lần gọi `new URLSearchParams` mỗi khung).
-  - Mức `near` (`<= creatureFullDetailRadius`): tối đa `K` sinh vật gần nhất mỗi khung sắp xếp gần-trước (`CREATURE_NEAR_SKINNED_CAP = { low: 8, medium: 12, high: 16 }`) dựng bằng `SkinnedMesh` liên tục; đúng 8 sinh vật gần nhất (rank `0..7`) bật `castShadow = true` để tổng số lệnh vẽ toàn cảnh trên `high` (bao gồm cả shadow pass) giữ `<= 70`. (Hysteresis ranh giới để ở bước thay thế sau prototype.)
+  - Mức `near` (`<= creatureFullDetailRadius`): tối đa `K` sinh vật gần nhất mỗi khung sắp xếp gần-trước (`CREATURE_NEAR_SKINNED_CAP = { low: 8, medium: 12, high: 16 }`) dựng bằng `SkinnedMesh` liên tục; đúng `4` sinh vật gần nhất (rank `0..3`) bật `castShadow = true` để tổng số lệnh vẽ toàn cảnh trên `high` sau khi gộp V1 (`LiveEnvironment` thêm 5 draw calls cho hồ/cây/mồi + bóng) giữ `<= 70` (`69`). (Hysteresis ranh giới để ở bước thay thế sau prototype.)
   - Mức `mid` (`<= creatureSimplifiedRadius` hoặc vượt trần `K`): sinh vật dùng pipeline instanced cũ (`live-agents-segments` + `live-agents-spheres`).
   - Mức `far` (`> creatureSimplifiedRadius`): chỉ vẽ billboard theo loài (`live-agents-markers`).
   - **Cheap Win #1 đã làm:** culling từng sinh vật ngoài frustum camera (`THREE.Frustum.intersectsSphere` với camera đã định vị, tránh loại nhầm mock camera mặc định tại gốc trong unit test). **Cheap Win #2** (texture pose GPU cho instanced skinning) giữ lại ở bước thay thế sau prototype.
@@ -38,22 +38,22 @@ last_reviewed: 2026-11-19
 
 - `tests/frontend/rwCreaturesSegmentPose.test.tsx`: thêm camera mid-LOD `(0, 120, 240)` nhìn `(0, 60, 0)` cho `RW2-2`, `RW2-3`, `RW2-7` vì tầng `near` của B1 đưa sinh vật trong bán kính `160` về `SkinnedMesh` thay vì `live-agents-segments`; cập nhật hệ số kỳ vọng `CREATURE_BODY_SCALE` ở `RW2-2` (`0.2/0.45 * 6 * CREATURE_BODY_SCALE`) và `RW2-3` (`> 2 * CREATURE_BODY_SCALE`, `> 0.5 * CREATURE_BODY_SCALE`). Toàn bộ `RW2-1`, `RW2-4`, `RW2-5`, `RW2-6`, `RW2-8` giữ nguyên không đổi.
 - `tests/frontend/rwCreaturesTickSources.test.tsx`: đặt camera mid-LOD `(-140, 250, -40)` nhìn `(-140, 0, -40)` (`fov=120`) trong `advanceFrames()` để `RW0-1`/`RW0-2`/`RW0-3` kiểm tra đúng tầng `mid` (`live-agents-segments`). `RW3-3` (cấm cấp phát trong `useFrame`) giữ nguyên 100%.
-- `scripts/check_bundle_budget.mjs`: nâng trần `WorldShowcase` từ `130 -> 155 KiB` (đo thực tế sau sửa vòng 1 là `145.8 KiB`, chừa dư địa cho V1) với lý do `'prototype'`.
+- `scripts/check_bundle_budget.mjs`: nâng trần `WorldShowcase` từ `130 -> 155 KiB` (gồm V1 + B1; đo thực tế sau gộp V1 là `154.5 KiB`) với lý do `'prototype'`.
 
-## 4. Đo WebGL & Các cổng đã kiểm tra (`RTX 5060 Ti`, Chromium ANGLE D3D11 — sau Fix Round 1)
+## 4. Đo WebGL & Các cổng đã kiểm tra (`RTX 5060 Ti`, Chromium ANGLE D3D11 — sau D1/N3' & gộp V1)
 
 - Chạy `vite preview` (`1280x800`, `?replay=synthetic&agents=200&segments=9&quality=high`):
-  - Pose `spawn`: **60.4 FPS** (73 frame / 1.21s), `total.calls = 68` (đạt chuẩn `<= 70`), `total.triangles = 2,291,726`, `creatures.calls = 28`, `creatures.triangles = 46,090`, `0` console error, `0` page error.
-  - Pose `overview`: `total.calls = 22`, `creatures.calls = 1`, `creatures.triangles = 398`.
-  - Ảnh kiểm chứng lưu tại hub (`test_runs/anima-case_B1_screenshot.png`).
+  - Pose `spawn`: **60.1 FPS** (73 frame / 1.21s), `total.calls = 69` (đạt chuẩn `<= 70` cả khi bật đồng thời V1 `LiveEnvironment`), `total.triangles = 2,290,782`, `creatures.calls = 24`, `creatures.triangles = 43,722`, `other.calls = 14` (gồm V1 hồ/cây/mồi), `0` console error, `0` page error.
+  - Pose `overview`: `total.calls = 27`, `creatures.calls = 1`, `creatures.triangles = 398`.
+  - Ảnh kiểm chứng lưu tại hub (`test_runs/anima-case_B1_screenshot.png`): đã kiểm tra bằng mắt thấy cả V1 (hồ, cây thông lớn, mồi cam, HUD `"Simulated: 3 lakes · 8 trees · 10 food"`) lẫn sinh vật `SkinnedMesh` B1 cùng hiển thị.
 
 | Cổng | Kết quả | Ghi chú |
 |---|---|---|
 | `npm run typecheck:tests` | Đạt (`0`) | 0 lỗi TypeScript trên `src` và `tests` |
 | `npm run lint` & `node scripts/eslint_ratchet.mjs` | Đạt (`0`) | 0 error, 0 warning (baseline `0`) |
-| `npm run test` | Đạt (`0`) | 14/14 file, 109/109 test (chạy đầy đủ sau Fix Round 1) |
-| `npm run test:frontend` | Đạt (`0`) | 69/69 file, 710/710 test (gồm 10 test R1–R4, N1–N6, M4 & raycast trong `b1ContinuousBodies.test.tsx`) |
-| `npm run build` & `npm run check:bundle` | Đạt (`0`) | `WorldShowcase 145.8 / 155 KiB`, tổng `1910.9 / 2000 KiB` |
+| `npm run test` | Đạt (`0`) | 14/14 file, 109/109 test (chạy đầy đủ sau gộp V1 + `r < 4`) |
+| `npm run test:frontend` | Đạt (`0`) | 70/70 file, 716/716 test (gồm V1 + 12 test B1 D1/N3'/R1–R4/N1–N6/M4/raycast) |
+| `npm run build` & `npm run check:bundle` | Đạt (`0`) | `WorldShowcase 154.5 / 155 KiB`, tổng `1919.8 / 2000 KiB` |
 | `npm run check:ipc`, `check:csp`, `check:docs` | Đạt (`0`) | Kiểm tra sau khi ghi tài liệu này |
 
 ## 5. Không khẳng định
