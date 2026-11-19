@@ -2236,6 +2236,15 @@ impl LiveExperimentAdapter {
         }
         self.mirrored_effects = effects.len();
     }
+
+    /// Observed identity (`seed`, `generator_version`, `width x height`, FNV-1a checksum) of the
+    /// `TerrainMap` inside this adapter's ECS `World`.
+    pub fn world_identity(&self) -> crate::core::world_artifact::WorldIdentity {
+        *self
+            .world
+            .borrow()
+            .resource::<crate::core::world_artifact::WorldIdentity>()
+    }
 }
 
 impl ExperimentModel for LiveExperimentAdapter {
@@ -2359,6 +2368,14 @@ impl ExperimentModel for LiveExperimentAdapter {
     fn observables_unsampled(&self) -> Vec<(String, f64)> {
         let mut world = self.world.borrow_mut();
         live_observables_peek(&mut world)
+    }
+
+    fn terrain_source(&self) -> Option<&'static str> {
+        Some("generated")
+    }
+
+    fn world_identity(&self) -> Option<crate::core::world_artifact::WorldIdentity> {
+        Some(LiveExperimentAdapter::world_identity(self))
     }
 }
 
@@ -2493,18 +2510,20 @@ pub fn apply_live_genesis_and_policies(
     genesis(world, config, bounds, seed);
 }
 
-/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
-/// process environment replaced by what the manifest declared.
+/// Build the world the schedule runs on with `TerrainSource::Generated`, and replace every other
+/// process-environment default with what the manifest declared.
 fn build_live_world(
     seed: u64,
     config: &LiveWorldConfig,
     restore: Option<&SavedSimulationState>,
 ) -> Result<World, ExperimentError> {
-    let mut world = crate::core::ecs::init_world();
+    let mut world = crate::core::ecs::init_world_with(crate::core::ecs::TerrainSource::Generated);
 
     // `init_world` resolves these from the environment, which is exactly what a manifest cannot
-    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
-    // silently change the trajectory of a run whose whole point is that its inputs are declared.
+    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS`, `ANIMA_LIFETIME_LEARNING`,
+    // `ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR` and `<temp_dir>/anima_world_artifact.anmw` would
+    // each silently change the trajectory of a run whose whole point is that its inputs are
+    // declared. Terrain is built via `TerrainSource::Generated` (`MapSettings::default()`) above.
     //
     // `evolved` comes from the manifest rather than the environment, and the other two fields stay
     // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
@@ -3037,6 +3056,7 @@ fn live_run_provenance(
     manifest: &crate::core::experiment::ExperimentManifest,
     registry: &crate::core::experiment::ObservableRegistry,
     seed: u64,
+    world_identity: crate::core::world_artifact::WorldIdentity,
 ) -> crate::core::experiment_runner::RunProvenance {
     use crate::core::experiment::fnv1a_64;
     let manifest_fingerprint = manifest.fingerprint();
@@ -3063,6 +3083,8 @@ fn live_run_provenance(
         fitness_rule: crate::core::experiment_runner::declared_fitness_rule(
             &manifest.initial_conditions,
         ),
+        terrain_source: Some("generated".to_owned()),
+        world_identity: Some(world_identity),
     }
 }
 
@@ -3314,8 +3336,9 @@ pub fn run_live_drift_pair(
     )?;
     selected_adapter.install_turnover_recorder(total_ticks);
 
-    let sel_prov = live_run_provenance(selected_manifest, registry, seed);
-    let drf_prov = live_run_provenance(drift_manifest, registry, seed);
+    let world_identity = selected_adapter.world_identity();
+    let sel_prov = live_run_provenance(selected_manifest, registry, seed, world_identity);
+    let drf_prov = live_run_provenance(drift_manifest, registry, seed, world_identity);
     let sel_queue =
         crate::core::intervention::InterventionQueue::new(selected_manifest.interventions.clone());
     let drf_queue =

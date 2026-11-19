@@ -33,26 +33,64 @@ fn load_shared_world_artifact(settings: &MapSettings) -> Option<(TerrainMap, Wor
     }
 }
 
+/// Where `init_world_with` obtains its `TerrainMap` and `WorldIdentity`.
+///
+/// Headless experiment runners (`LiveExperimentAdapter`) must pass [`TerrainSource::Generated`] so
+/// machine environment variables and app artifacts (`ANIMA_WORLD_ARTIFACT`, `ANIMA_CACHE_DIR`, and
+/// `<temp_dir>/anima_world_artifact.anmw`) never silently change an experiment's terrain. The
+/// desktop app keeps [`init_world`] (`AppArtifactOrGenerated`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerrainSource {
+    /// Generate deterministically in-process from `MapSettings::default()`, reading no
+    /// environment variables or artifact/cache files (`OnceLock`-memoized per process).
+    Generated,
+    /// Desktop app behaviour: load `ANIMA_WORLD_ARTIFACT` or
+    /// `<temp_dir>/anima_world_artifact.anmw` when present and valid, else generate+cache.
+    AppArtifactOrGenerated,
+}
+
+static GENERATED_DEFAULT_TERRAIN: std::sync::OnceLock<(TerrainMap, WorldIdentity)> =
+    std::sync::OnceLock::new();
+
 pub fn init_world() -> World {
+    init_world_with(TerrainSource::AppArtifactOrGenerated)
+}
+
+pub fn init_world_with(terrain_source: TerrainSource) -> World {
     let mut world = World::new();
     let map_settings = MapSettings::default();
-    // World unification (direction A→B): if a shared World Artifact is provided, the agents live in
-    // the SAME authoritative world the frontend generated & renders — the backend just downsamples it
-    // into its working TerrainMap. Otherwise fall back to generate-once + on-disk cache so the world
-    // is still produced only once and reloaded on later runs (override cache via ANIMA_CACHE_DIR).
-    let (terrain_map, world_identity) =
-        load_shared_world_artifact(&map_settings).unwrap_or_else(|| {
-            let cache_dir = std::env::var_os("ANIMA_CACHE_DIR")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::env::temp_dir().join("anima_world_cache"));
-            let terrain = TerrainMap::load_or_generate(&map_settings, &cache_dir);
-            let identity = WorldIdentity::from_terrain(
-                &terrain,
-                map_settings.seed,
-                crate::core::terrain::WORLD_CACHE_VERSION,
-            );
-            (terrain, identity)
-        });
+    let (terrain_map, world_identity) = match terrain_source {
+        TerrainSource::Generated => GENERATED_DEFAULT_TERRAIN
+            .get_or_init(|| {
+                let terrain = TerrainMap::generate(&map_settings);
+                let identity = WorldIdentity::from_terrain(
+                    &terrain,
+                    map_settings.seed,
+                    crate::core::terrain::WORLD_CACHE_VERSION,
+                );
+                (terrain, identity)
+            })
+            .clone(),
+        TerrainSource::AppArtifactOrGenerated => {
+            // World unification (direction A→B): if a shared World Artifact is provided, the agents
+            // live in the SAME authoritative world the frontend generated & renders — the backend just
+            // downsamples it into its working TerrainMap. Otherwise fall back to generate-once +
+            // on-disk cache so the world is still produced only once and reloaded on later runs
+            // (override cache via ANIMA_CACHE_DIR).
+            load_shared_world_artifact(&map_settings).unwrap_or_else(|| {
+                let cache_dir = std::env::var_os("ANIMA_CACHE_DIR")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::env::temp_dir().join("anima_world_cache"));
+                let terrain = TerrainMap::load_or_generate(&map_settings, &cache_dir);
+                let identity = WorldIdentity::from_terrain(
+                    &terrain,
+                    map_settings.seed,
+                    crate::core::terrain::WORLD_CACHE_VERSION,
+                );
+                (terrain, identity)
+            })
+        }
+    };
     world.insert_resource(SimulationSettings { target_fps: 60 });
     world.insert_resource(crate::ai::cpg::TimeStep(1.0 / 60.0));
 
