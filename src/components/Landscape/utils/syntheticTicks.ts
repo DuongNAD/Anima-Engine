@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { AgentType } from '../../../types/generated/AgentType';
+import type { EnvironmentalElement } from '../../../types/generated/EnvironmentalElement';
 import type { SegmentState } from '../../../types/generated/SegmentState';
 import type { SimulationTickPayload } from '../../../types/generated/SimulationTickPayload';
 import { SIM_BOUNDS_HALF } from './liveAgentTransform';
@@ -118,6 +119,45 @@ const LAND_ANCHORS: ReadonlyArray<readonly [number, number]> = [
   [-67.3, 64.0], // lake shore
 ];
 
+/**
+ * Deterministically generate clearly-labelled synthetic `environmental_state` elements
+ * (`lake`, `tree`, `food`) near `LAND_ANCHORS` from an independent PRNG stream (`(seed ^ 0x517e0e1e)
+ * >>> 0`), preserving trunk root trajectories and segment PRNG draws while chaining spine
+ * `jointAnchor.z` inside Rust's `mutation.rs` `|z| <= parent.length / 2` clamp.
+ */
+function buildSyntheticEnvironmentalElements(seed: number): EnvironmentalElement[] {
+  const envRand = mulberry32((seed ^ 0x517e0e1e) >>> 0);
+  const elements: EnvironmentalElement[] = [];
+  const bound = Math.min(80, SIM_BOUNDS_HALF - 16);
+
+  const pushSpec = (
+    count: number,
+    type: 'lake' | 'tree' | 'food',
+    minRadius: number,
+    radiusSpan: number,
+    minResources: number,
+    resourcesSpan: number,
+    spread: number,
+    anchorOffset: number,
+  ): void => {
+    for (let i = 0; i < count; i++) {
+      const anchor = LAND_ANCHORS[(i + anchorOffset) % LAND_ANCHORS.length];
+      elements.push({
+        type,
+        x: clamp(anchor[0] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        y: clamp(anchor[1] + (envRand() - 0.5) * spread * 2, -bound, bound),
+        radius: minRadius + envRand() * radiusSpan,
+        resources: minResources + envRand() * resourcesSpan,
+      });
+    }
+  };
+
+  pushSpec(3, 'lake', 2.6, 1.4, 75, 25, 16, 0);
+  pushSpec(8, 'tree', 1.0, 0.5, 65, 35, 18, 1);
+  pushSpec(10, 'food', 0.42, 0.18, 45, 50, 14, 2);
+  return elements;
+}
+
 function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -209,8 +249,8 @@ function buildAgentMorphology(
     jointCycles: 1,
   });
 
-  // Axial body spine (up to 6 segments) followed by paired lateral limbs or tail tips to span
-  // morphologies from 3 to 15 segments cleanly.
+  // Axial body spine (up to 6 segments) chained cleanly forward inside Rust `mutation.rs`
+  // `|z| <= parent.length / 2` (`dynamics.rs`: P_child = P_parent + anchor + R_child * (0,0,+L/2)).
   const spineTarget = Math.min(segmentCount, 1 + Math.max(2, Math.ceil((segmentCount - 1) * 0.45)));
   for (let idx = 1; idx < spineTarget; idx++) {
     const parentIndex = idx - 1;
@@ -224,7 +264,7 @@ function buildAgentMorphology(
       parentSegmentId: parent.segmentId,
       length: segLen,
       radius: segRad,
-      jointAnchor: [0, 0, -parent.length * 0.48],
+      jointAnchor: [0, 0, parent.length * 0.48],
       jointAxis: [0, 1, 0],
       swingAmplitude: 0.24 + rand() * 0.24,
       phaseOffset: agentIndex * 0.47 + idx * 0.75,
@@ -232,7 +272,7 @@ function buildAgentMorphology(
     });
   }
 
-  // Remaining segments attach as lateral limb chains off the root/spine segments.
+  // Remaining segments attach as paired lateral limb chains beside/below torso (`|x|,|y| <= r`).
   for (let idx = spineTarget; idx < segmentCount; idx++) {
     const limbSlot = idx - spineTarget;
     const side = limbSlot % 2 === 0 ? 1 : -1;
@@ -313,6 +353,7 @@ export function createSyntheticTickGenerator(
 ): SyntheticTickGenerator {
   const options = normalizeSyntheticOptions(opts);
   const agents = buildAgentSpecs(options);
+  const syntheticEnvElements = buildSyntheticEnvironmentalElements(options.seed);
 
   // Scratch math objects reused inside synchronous `tickAt` calls.
   const qParent = new THREE.Quaternion();
@@ -462,14 +503,14 @@ export function createSyntheticTickGenerator(
 
     return {
       segments,
-      environmental_state: { elements: [] },
+      environmental_state: { elements: syntheticEnvElements },
       head_directions: headDirections,
     };
   };
 
   return {
     options,
-    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents`,
+    screenLabel: `${SYNTHETIC_SCREEN_LABEL} · ${options.agents} agents · ${syntheticEnvElements.length} synthetic env`,
     tickAt,
   };
 }

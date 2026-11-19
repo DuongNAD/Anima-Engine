@@ -866,3 +866,121 @@ pub fn export_scientific_dataset(
         written_path,
     })
 }
+
+const MAX_MANIFEST_JSON_BYTES: usize = 4 * 1024 * 1024;
+
+/// Parse and run the live experiment runner's preflight validation on a manifest JSON payload
+/// for the desktop viewer (card W2-lite; prototype, to be replaced).
+pub fn parse_and_validate_manifest_for_viewer(
+    manifest_json: &str,
+) -> Result<crate::core::simulation_loop::PendingManifest, String> {
+    if manifest_json.len() > MAX_MANIFEST_JSON_BYTES {
+        return Err(format!(
+            "manifest JSON exceeds the {} byte viewer limit",
+            MAX_MANIFEST_JSON_BYTES
+        ));
+    }
+    let manifest: crate::core::experiment::ExperimentManifest = serde_json::from_str(manifest_json)
+        .map_err(|e| format!("invalid experiment manifest JSON: {e}"))?;
+    let registry = crate::core::experiment::ObservableRegistry::live_default();
+    registry.validate().map_err(|e| e.to_string())?;
+    manifest.validate(&registry).map_err(|e| e.to_string())?;
+    if manifest.laws.exotic_energy.is_some() {
+        return Err(crate::core::experiment::ExperimentError::InvalidLaw {
+            reason: "the live Bevy world has no exotic-energy field: nothing in its schedule \
+                     sources, diffuses or spends MU. A manifest declaring laws.exotic_energy must \
+                     run against the reference world (core::reference_world) — running it here \
+                     would report a baseline as though it were a treatment."
+                .into(),
+        }
+        .to_string());
+    }
+    if let Some(first) = manifest.exotic_interventions.first() {
+        return Err(
+            crate::core::experiment::ExperimentError::InvalidExoticIntervention {
+                id: first.id,
+                reason: "the live Bevy world has no exotic-energy field to force".into(),
+            }
+            .to_string(),
+        );
+    }
+    if !manifest.interventions.is_empty() {
+        return Err("this manifest schedules interventions; the viewer cannot run them".into());
+    }
+    let config = crate::core::live_experiment::LiveWorldConfig::from_initial_conditions(
+        &manifest.initial_conditions,
+    )
+    .map_err(|e| e.to_string())?;
+    if config.drift_control {
+        return Err(crate::core::experiment::ExperimentError::InvalidLaw {
+            reason:
+                "live.drift_control = 1.0 requires a recorded TurnoverSchedule from the paired \
+                     selected run; use LiveExperimentAdapter::from_manifest_with_drift_schedule or \
+                     run_live_drift_pair / run_live_drift_ensemble"
+                    .into(),
+        }
+        .to_string());
+    }
+    config
+        .ensure_observables_supported(&manifest.observable_ids)
+        .map_err(|e| e.to_string())?;
+    let seed = *manifest
+        .seeds
+        .first()
+        .ok_or_else(|| crate::core::experiment::ExperimentError::EmptySeeds.to_string())?;
+    Ok(crate::core::simulation_loop::PendingManifest {
+        name: manifest.name,
+        seed,
+        config,
+    })
+}
+
+/// Validate `manifest_json`, stop any active engine run, queue the validated manifest, and start
+/// `engine` in viewer mode (card W2-lite; prototype, to be replaced).
+pub fn start_from_manifest_with_engine<R: tauri::Runtime>(
+    engine: &crate::core::simulation_loop::SimulationEngine,
+    app_handle: Option<tauri::AppHandle<R>>,
+    evolution_settings: Arc<std::sync::Mutex<crate::commands::EvolutionSettings>>,
+    evolution_running: Arc<std::sync::atomic::AtomicBool>,
+    map_elites_grid: Arc<std::sync::Mutex<crate::commands::MapElitesGridState>>,
+    manifest_json: &str,
+) -> Result<String, String> {
+    let pending = parse_and_validate_manifest_for_viewer(manifest_json)?;
+    let name = pending.name.clone();
+    if engine.running.load(std::sync::atomic::Ordering::SeqCst) {
+        engine.stop();
+    }
+    *engine
+        .pending_load_state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    *engine
+        .pending_manifest
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(pending);
+    engine.start(
+        app_handle,
+        evolution_settings,
+        evolution_running,
+        map_elites_grid,
+    );
+    Ok(name)
+}
+
+/// Validate a manifest JSON string using the live experiment preflight checks and start the
+/// desktop engine from that world as a viewer only (card W2-lite; prototype, to be replaced).
+#[tauri::command]
+pub fn start_from_manifest(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    manifest_json: String,
+) -> Result<String, String> {
+    start_from_manifest_with_engine(
+        &state.engine,
+        Some(app_handle),
+        Arc::clone(&state.evolution_settings),
+        Arc::clone(&state.evolution_running),
+        Arc::clone(&state.map_elites_grid),
+        &manifest_json,
+    )
+}
