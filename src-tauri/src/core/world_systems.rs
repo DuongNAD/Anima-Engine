@@ -230,21 +230,40 @@ pub fn spawn_food_system(
     bounds: Res<MapBounds>,
     settings: Res<FoodSpawnSettings>,
     mut sim_rng: ResMut<crate::core::resources::SimRng>,
+    terrain_nav: Option<Res<crate::core::resources::TerrainNavigation>>,
+    terrain_map: Option<Res<crate::core::terrain::TerrainMap>>,
 ) {
     use rand::Rng;
+    let nav_enabled = terrain_nav.as_deref().is_some_and(|p| p.enabled);
     let current_food_count = food_query.iter().count();
     if current_food_count < settings.max_food_count {
         let to_spawn = settings.max_food_count - current_food_count;
         let rng = sim_rng.rng();
         for _ in 0..to_spawn {
-            let x = rng.gen_range(bounds.min.x..bounds.max.x);
-            let z = rng.gen_range(bounds.min.z..bounds.max.z);
+            let pos = if nav_enabled {
+                let Some(tm) = terrain_map.as_deref() else {
+                    continue;
+                };
+                let Some(walkable) = crate::core::terrain_navigation::sample_walkable_pos(
+                    rng,
+                    tm,
+                    &bounds,
+                    crate::core::terrain_navigation::MAX_WALKABLE_RESAMPLE_TRIES,
+                ) else {
+                    continue;
+                };
+                walkable
+            } else {
+                let x = rng.gen_range(bounds.min.x..bounds.max.x);
+                let z = rng.gen_range(bounds.min.z..bounds.max.z);
+                glam::Vec3::new(x, 0.0, z)
+            };
             commands.spawn((
                 Food {
                     energy_value: settings.default_energy,
                     hydration_value: settings.default_hydration,
                 },
-                Position(glam::Vec3::new(x, 0.0, z)),
+                Position(pos),
                 crate::physics::SpatialCollider { radius: 0.5 },
                 crate::physics::spatial::IndexedInGrid(false),
             ));
