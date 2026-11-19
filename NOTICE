@@ -22,7 +22,7 @@ require to accompany the distribution — are in
 installed versions with a SHA-256 per source file recorded in
 [`licensing/third-party-index.json`](licensing/third-party-index.json).
 
-Coverage: **544 of 545** distributed components
+Coverage: **545 of 545** distributed components
 have their licence text packaged. **51** of those publish no licence file in their artifact
 at all; for them the text is taken from the upstream repository at the immutable commit the release
 was published from, vendored verbatim under [`licensing/upstream/`](licensing/upstream/) and hashed,
@@ -30,7 +30,17 @@ with the evidence tying each commit to each released version in
 [`licensing/upstream/sources.json`](licensing/upstream/sources.json). Text read out of the installed
 artifact is always preferred to a vendored copy.
 
-The remaining **1** are enumerated with the reason, and with what was searched, in
+**1** of those publish no licence file and no notice anywhere, in their artifact or
+upstream, but offer a choice of licences (an SPDX `OR` that includes Apache-2.0). For those the
+distribution **elects Apache-2.0**: its canonical text is the same for every licensee and the work
+has no notices for Apache-2.0 section 4 to retain, whereas MIT would require a holder's notice that
+does not exist.
+The text published is the Apache-2.0 copy other distributed components already ship, byte for byte,
+and each election is recorded with its evidence under `elections` in
+[`licensing/upstream/sources.json`](licensing/upstream/sources.json). This is a record of the
+distribution's choice, not legal advice.
+
+The remaining **0** are enumerated with the reason, and with what was searched, in
 [`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md). No text is invented to cover for that.
 
 ## What is counted, and why
@@ -61,8 +71,10 @@ SPDX expressions each component declares in its own manifest — or, for a compo
 compiles in and never installs, the expression its registry publishes for that exact version, taken
 from [`licensing/upstream/sources.json`](licensing/upstream/sources.json) with the evidence. Where a
 component declares a dual licence (commonly `MIT OR Apache-2.0` in the Rust ecosystem) the choice is
-the distributor's, and this repository makes none on the owner's behalf: every licence file present
-at the pinned release is packaged, not one option out of several.
+the distributor's, and this repository makes none where a text exists: every licence file present at
+the pinned release is packaged, not one option out of several. The one exception is a component that
+publishes no licence file at all, where Apache-2.0 is elected as described above; the expression
+listed below is still the one the component declares.
 
 ## Rust components
 
@@ -758,10 +770,9 @@ assumed.
 
 Every distributed component declares a licence in its own manifest.
 
-1 distributed component(s) declare a licence whose text neither their
-published artifact nor their upstream repository contains at the released revision. They are listed
-with the exact blocker, and with the search that failed, in
-[`licensing/UNRESOLVED.md`](licensing/UNRESOLVED.md) and remain open.
+Every distributed component supplies its licence text, from its own artifact or from a pinned
+upstream revision, except 1 that publish none, for which Apache-2.0 is elected from the
+choice they offer.
 
 ## Art assets (CC0-1.0)
 

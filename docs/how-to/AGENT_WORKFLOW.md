@@ -258,7 +258,18 @@ QD-C2     = utf8-chars 3.0.7 (no licence file; the one row in licensing/UNRESOLV
             and defer, and R1c merges as is. Upstream: A1-Triard/utf8-chars issue #4 and pull request #5
             (licence files). Fallback: if no utf8-chars release with licence texts exists when release
             work starts, the release build drops ml-wgpu (CPU burn-flex learner only) through a separate
-            card; the desktop feature set CI tests keeps it (owner in chat, 2026-11-18: "Bạn đề xuất")
+            card; the desktop feature set CI tests keeps it (owner in chat, 2026-11-18: "Bạn đề xuất").
+            Amended 2026-11-19: resolved by electing Apache-2.0 under the crate's declared
+            MIT OR Apache-2.0; the owner asked for the last release-blocking licence row to be cleared
+            and left the means open (owner in chat, 2026-11-19: "bạn có thể tự nhắn hỏi hoặc làm j
+            tuỳ"). MIT needs the holder's notice and the crate has none; Apache-2.0 needs its canonical
+            text plus the notices the work carries, and it carries none, so nothing is synthesised.
+            Recorded under `elections` in licensing/upstream/sources.json and enforced fail-closed by
+            scripts/lib/upstream_licenses.mjs; licensing/UNRESOLVED.md reports 0 and the ml-wgpu
+            fallback is no longer needed. The upstream issue and pull request stay open; the day the
+            graph moves to a utf8-chars release that ships licence files, the run fails loudly (the
+            3.0.7 election goes unused, and "installed text wins" refuses one moved to the new
+            version) and the election is removed. Not legal advice
 QD-ECO-C1 = yes: live.predator_cost_mult + live.strike_radius, and a water-source key; opt-in; a
             preregistered measurement on at least 20 seeds. Card S7 (owner in chat, 2026-11-17)
 QD-F044   = split the starvation and thirst grace counters, before any new preregistration.

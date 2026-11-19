@@ -95,6 +95,9 @@ function spdxOf(component) {
 
 const undeclared = [...cargo.components, ...npmDistributed].filter((c) => !spdxOf(c));
 const vendored = index.counts.fromVendoredUpstream;
+// Read back rather than recomputed, like the residual gap: NOTICE must not describe an election the
+// licence bundle does not make. `?? 0` only for an index written before elections existed.
+const elected = index.counts.fromElection ?? 0;
 
 const sourcesPath = join(ROOT, 'public', 'assets', 'world', 'SOURCES.json');
 const artAssets = existsSync(sourcesPath)
@@ -141,7 +144,21 @@ at all; for them the text is taken from the upstream repository at the immutable
 was published from, vendored verbatim under [\`licensing/upstream/\`](licensing/upstream/) and hashed,
 with the evidence tying each commit to each released version in
 [\`licensing/upstream/sources.json\`](licensing/upstream/sources.json). Text read out of the installed
-artifact is always preferred to a vendored copy.
+artifact is always preferred to a vendored copy.${
+  elected === 0
+    ? ''
+    : `
+
+**${elected}** of those publish no licence file and no notice anywhere, in their artifact or
+upstream, but offer a choice of licences (an SPDX \`OR\` that includes Apache-2.0). For those the
+distribution **elects Apache-2.0**: its canonical text is the same for every licensee and the work
+has no notices for Apache-2.0 section 4 to retain, whereas MIT would require a holder's notice that
+does not exist.
+The text published is the Apache-2.0 copy other distributed components already ship, byte for byte,
+and each election is recorded with its evidence under \`elections\` in
+[\`licensing/upstream/sources.json\`](licensing/upstream/sources.json). This is a record of the
+distribution's choice, not legal advice.`
+}
 
 The remaining **${unresolved.length}** are enumerated with the reason, and with what was searched, in
 [\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md). No text is invented to cover for that.
@@ -174,8 +191,10 @@ SPDX expressions each component declares in its own manifest — or, for a compo
 compiles in and never installs, the expression its registry publishes for that exact version, taken
 from [\`licensing/upstream/sources.json\`](licensing/upstream/sources.json) with the evidence. Where a
 component declares a dual licence (commonly \`MIT OR Apache-2.0\` in the Rust ecosystem) the choice is
-the distributor's, and this repository makes none on the owner's behalf: every licence file present
-at the pinned release is packaged, not one option out of several.
+the distributor's, and this repository makes none where a text exists: every licence file present at
+the pinned release is packaged, not one option out of several. The one exception is a component that
+publishes no licence file at all, where Apache-2.0 is elected as described above; the expression
+listed below is still the one the component declares.
 
 ## Rust components
 
@@ -205,7 +224,9 @@ ${
 
 ${
   unresolved.length === 0
-    ? 'Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision.'
+    ? elected === 0
+      ? 'Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision.'
+      : `Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision, except ${elected} that publish none, for which Apache-2.0 is elected from the\nchoice they offer.`
     : `${unresolved.length} distributed component(s) declare a licence whose text neither their\npublished artifact nor their upstream repository contains at the released revision. They are listed\nwith the exact blocker, and with the search that failed, in\n[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md) and remain open.`
 }
 

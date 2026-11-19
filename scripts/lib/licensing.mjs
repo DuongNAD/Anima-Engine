@@ -236,6 +236,9 @@ export function cargoInventory(root) {
       declaredLicenseFile: p.license_file ?? null,
       description: p.description ?? null,
       repository: p.repository ?? null,
+      // The manifest's own author strings, verbatim. Read only to check an election's attribution
+      // against (`scripts/lib/upstream_licenses.mjs`); never rendered on their own.
+      authors: Array.isArray(p.authors) ? p.authors : [],
       distributed: true,
       origin: 'cargo-registry',
       // Absolute, machine-specific, and deliberately never emitted into an artifact.

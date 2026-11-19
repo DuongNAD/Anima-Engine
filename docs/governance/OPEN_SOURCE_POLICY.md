@@ -113,6 +113,24 @@ Cấp phép kép permissive **không** nới hàng thứ ba của bảng trên. 
   > `MIT OR Apache-2.0 OR Zlib` nhưng upstream chỉ publish văn bản Zlib — đóng gói **mọi** file có
   > tại bản phát hành, không tự chọn hộ chủ sở hữu.
 
+  *Cập nhật 2026-11-19:* dòng còn nợ cuối cùng — lúc này là `utf8-chars` 3.0.7, vì `hexf-parse` đã
+  rời đồ thị phụ thuộc ở R1c — được đóng bằng cách **chọn Apache-2.0** trong biểu thức
+  `MIT OR Apache-2.0` mà chính crate khai. Crate không có file license, NOTICE hay dòng copyright
+  nào, ở bản đã publish lẫn ở commit phát hành, nên không có gì để vendor. MIT đòi tái hiện thông báo
+  copyright của chủ sở hữu, mà thông báo đó không tồn tại; Apache-2.0 (§4) chỉ đòi kèm văn bản chuẩn
+  của License cùng các thông báo và file NOTICE mà tác phẩm có, ở đây không có gì, nên chọn
+  Apache-2.0 thoả mọi điều kiện mà không bịa ra chữ nào. Văn bản đóng gói là bản Apache-2.0 mà các
+  crate khác trong inventory đã ship nhiều nhất, trùng từng byte, phần phụ lục để trống nên không ghi
+  tên chủ sở hữu nào. Cơ chế hẹp và fail-closed (mục `elections` trong
+  [`upstream/sources.json`](../../licensing/upstream/sources.json), kiểm tra ở
+  `scripts/lib/upstream_licenses.mjs`, chi tiết ở [`licensing/README.md`](../../licensing/README.md)):
+  biểu thức phải là phép `OR` thuần; chỉ được chọn Apache-2.0; không trùng với mapping hay bản ghi
+  `blocked`; artifact đã cài không được có file license nào, vì văn bản đã cài luôn thắng; hash văn
+  bản được ghim. [`licensing/UNRESOLVED.md`](../../licensing/UNRESOLVED.md) còn **0** dòng. Chủ dự án
+  giao việc này ngày 2026-11-19 (QD-C2 trong
+  [`AGENT_WORKFLOW.md`](../how-to/AGENT_WORKFLOW.md)). Đây là bản ghi một lựa chọn kỹ thuật mà
+  license đã khai cho phép, **không phải tư vấn pháp lý**.
+
 - Apache-2.0 chỉ tương thích **một chiều** với GPLv3: hạ nguồn GPLv3 dùng được code Apache-2.0, chiều
   ngược lại thì không. Nhánh MIT là thứ giữ cho hạ nguồn **GPLv2** cũng dùng được.
 

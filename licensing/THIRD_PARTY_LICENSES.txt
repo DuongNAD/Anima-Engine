@@ -20,7 +20,8 @@ Components covered: 545 distributed of 563 inventoried
 Distinct licence texts                       : 296
   read from the installed artifact           : 493 component(s)
   vendored from pinned upstream revisions    : 51 component(s)
-Components with no obtainable text           : 1
+  Apache-2.0 elected from a disjunction      : 1 component(s)
+Components with no obtainable text           : 0
 
 The only transforms applied to a licence text are removal of a UTF-8 byte-order mark and
 normalisation of line endings to LF. No text is paraphrased, summarised or substituted.
@@ -29,6 +30,12 @@ Where a published artifact carries no licence file, the text is taken from the u
 repository at the immutable commit that release was published from, stored verbatim under
 licensing/upstream/ and hashed. Those are enumerated below with their exact revision. A
 licence text read out of the installed artifact is always preferred to a vendored one.
+
+Where a component offers a choice (an SPDX `OR` that includes Apache-2.0) and neither its
+artifact nor its upstream carries any licence file or notice, the distribution elects
+Apache-2.0: its canonical text is the same for every licensee, and the work has no notices
+for Apache-2.0 section 4 to retain. MIT is not used there, because MIT requires the
+holder's notice and none exists to reproduce. Those are enumerated under ELECTED LICENCES.
 
 ================================================================================================
 VENDORED UPSTREAM SOURCES
@@ -525,6 +532,24 @@ pkg:npm/%40react-three/fiber@8.18.0
     provenance : release-tree
     file       : licence-text  LICENSE
                  sha256:ebd6a29bec64bdfcf8795388f2eceaf1479c14d343c0846de347ab8609d66139  1070 bytes
+
+================================================================================================
+ELECTED LICENCES
+================================================================================================
+
+1 component(s) offer a choice of licences and publish no licence file and no
+notice at all. For each, the distribution elects Apache-2.0 and publishes the Apache-2.0
+text that the other distributed components already ship most widely, byte for byte, with
+its appendix placeholder unfilled. Nothing is attributed that the component did not
+declare. The evidence for each is in licensing/upstream/sources.json under `elections`.
+This is a record of what the distribution chose, not legal advice.
+
+pkg:cargo/utf8-chars@3.0.7
+    declared   : MIT OR Apache-2.0
+    elected    : Apache-2.0  (text T0186, shipped by 101 other component(s))
+    attribution: utf8-chars 3.0.7, by warlock <internalmike@gmail.com>, https://github.com/A1-Triard/utf8-chars
+    searched   : https://github.com/A1-Triard/utf8-chars @ 9e35858ccf96914d4eb00c8d31be907e6487cbe4
+                 no release tag at that commit; investigated 2026-11-19
 
 ================================================================================================
 COMPONENT INDEX
@@ -4069,7 +4094,9 @@ pkg:cargo/utf8-chars@3.0.7
     ecosystem  : cargo (cargo-registry)
     SPDX       : MIT OR Apache-2.0
     repository : https://github.com/A1-Triard/utf8-chars
-    text       : UNRESOLVED - see licensing/UNRESOLVED.md
+    licence    : Apache-2.0, elected from MIT OR Apache-2.0; the published crate ships no licence file
+    attribution: utf8-chars 3.0.7, by warlock <internalmike@gmail.com>, https://github.com/A1-Triard/utf8-chars
+    text       : T0186  elected:utf8-chars-3.0.7/Apache-2.0
 
 pkg:cargo/utf8_iter@1.0.4
     name       : utf8_iter 1.0.4
@@ -19114,7 +19141,7 @@ Apache License
 
 ------------------------------------------------------------------------------------------------
 T0186   sha256:a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2
-applies to 106 component file(s):
+applies to 107 component file(s):
   pkg:cargo/ahash@0.8.12  (LICENSE-APACHE)
   pkg:cargo/arrayvec@0.7.8  (LICENSE-APACHE)
   pkg:cargo/async-channel@2.5.0  (LICENSE-APACHE)
@@ -19216,6 +19243,7 @@ applies to 106 component file(s):
   pkg:cargo/unicode-width@0.1.14  (LICENSE-APACHE)
   pkg:cargo/unicode-xid@0.2.6  (LICENSE-APACHE)
   pkg:cargo/url@2.5.8  (LICENSE-APACHE)
+  pkg:cargo/utf8-chars@3.0.7  (elected: Apache-2.0)
   pkg:cargo/uuid@1.29.3  (LICENSE-APACHE)
   pkg:cargo/web_atoms@0.2.5  (LICENSE-APACHE)
   pkg:cargo/weezl@0.1.12  (LICENSE-APACHE)

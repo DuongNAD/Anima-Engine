@@ -25,6 +25,24 @@
 // pinned ref segment must be a 40-hex commit, so `main`, `master`, `trunk` and `HEAD` cannot be
 // spelled at all.
 //
+// # Elections: the one place the distributor chooses
+//
+// `elections` records a component offered under an SPDX disjunction (`MIT OR Apache-2.0`) whose
+// published artifact *and* upstream carry no licence file and no notice at all, for which the
+// distribution elects Apache-2.0. It exists because MIT cannot be honoured for such a component —
+// MIT's condition is reproducing the holder's notice, and there is none to reproduce — while
+// Apache-2.0's conditions (§4) are a copy of the License, which is the same canonical text for every
+// licensee, plus whatever notices and NOTICE file the work itself carries, which here are none. So
+// electing Apache-2.0 discharges the obligation without inventing a word, where packaging an MIT
+// text would invent a copyright holder.
+//
+// That argument holds only under narrow conditions, and each one is checked here or in
+// `resolveElections`, fail-closed: a pure disjunction with Apache-2.0 as a whole operand; Apache-2.0
+// as the only electable licence; one resolution per component; the artifact as installed still
+// carrying no licence file (installed text wins, exactly as for a vendored mapping); the elected
+// bytes being the Apache-2.0 text the inventory already ships most widely, with the appendix
+// placeholder unfilled, pinned by hash; and every election used. None of this is legal advice.
+//
 // # What is deliberately *not* here
 //
 // No network. This module reads the committed store and nothing else, so CI and the release gates
@@ -35,12 +53,48 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { SPDX_IDS } from './licensing.mjs';
 
 export const STORE_REL = 'licensing/upstream';
 export const MANIFEST_REL = 'licensing/upstream/sources.json';
 
-/** The manifest shape this module understands. A newer store must not be read by an older reader. */
-export const SUPPORTED_SCHEMA_VERSION = 1;
+/**
+ * The manifest shape this module understands. A newer store must not be read by an older reader.
+ *
+ * 2 added the required `elections` array. A reader that knew only 1 would ignore it, and report the
+ * elected component as unresolved — safe, but a store that means something its reader cannot see.
+ */
+export const SUPPORTED_SCHEMA_VERSION = 2;
+
+/**
+ * The licences an election may choose. Apache-2.0 alone, because it is the one whose conditions can
+ * be met for a work that ships no notice: its text is the same for every licensee, and §4(c)/(d)
+ * ask only for notices the work contains. Adding a licence here needs that argument made again.
+ */
+export const ELECTABLE_LICENCES = new Set(['Apache-2.0']);
+
+/**
+ * The appendix line of the canonical Apache-2.0 text, as published with its placeholders. A copy
+ * with this line filled in is somebody's applied notice, and electing it would attribute that
+ * somebody's copyright to a different work.
+ */
+export const APACHE_UNFILLED_COPYRIGHT = 'Copyright [yyyy] [name of copyright owner]';
+
+const ELECTION_KEYS = new Set([
+  'purl',
+  'name',
+  'version',
+  'ecosystem',
+  'declaredSpdx',
+  'chosen',
+  'textSha256',
+  'attribution',
+  'commit',
+  'tag',
+  'investigated',
+  'evidence',
+]);
+const ATTRIBUTION_KEYS = new Set(['name', 'version', 'authors', 'repository']);
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
@@ -390,6 +444,392 @@ function checkBlocked(entry, index, problems, seenPurls) {
 }
 
 /**
+ * The operands of an SPDX expression that is a pure disjunction, or `null` for anything else.
+ *
+ * Pure means `A OR B [OR C …]` and nothing more: every operand a whole identifier from the SPDX list,
+ * the operator spelled `OR` exactly, single spaces, no repeats. `AND`, `WITH`, a `+` suffix and any
+ * parenthesis all return `null`, including the harmless-looking `(MIT OR Apache-2.0)`, because the
+ * point of this check is that "Apache-2.0 is on offer by itself" can be read off the string without
+ * an expression parser — and a parser is where a precedence mistake would hide.
+ */
+export function disjunctionOperands(expr) {
+  if (typeof expr !== 'string' || expr === '') return null;
+  const tokens = expr.split(' ');
+  if (tokens.length < 3 || tokens.length % 2 === 0) return null;
+  const operands = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i];
+    if (i % 2 === 1) {
+      if (token !== 'OR') return null;
+      continue;
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(token) || !SPDX_IDS.has(token)) return null;
+    operands.push(token);
+  }
+  return new Set(operands).size === operands.length ? operands : null;
+}
+
+/**
+ * Whether a decoded licence text is the Apache License 2.0: its first two non-blank lines are the
+ * licence's own title lines, and it reaches the end of the terms. Content, not filename, because
+ * crates name the same file `LICENSE`, `LICENSE-APACHE`, `LICENSE-APACHE.md` and more.
+ */
+export function isApache2Text(text) {
+  if (typeof text !== 'string') return false;
+  const lines = text.split('\n').map((l) => l.trim()).filter((l) => l !== '');
+  return (
+    lines[0] === 'Apache License' &&
+    lines[1] === 'Version 2.0, January 2004' &&
+    lines.includes('END OF TERMS AND CONDITIONS')
+  );
+}
+
+function purlFor(ecosystem, name, version) {
+  if (ecosystem === 'cargo') return `pkg:cargo/${name}@${version}`;
+  if (ecosystem === 'npm') return `pkg:npm/${String(name).replace('@', '%40')}@${version}`;
+  return null;
+}
+
+/**
+ * A licence the distribution elects from a disjunction the component offers. The static half of the
+ * rules — everything that can be checked from the manifest alone. `resolveElections` checks the
+ * rest against the inventory: that the component is in the graph, ships, declares exactly this
+ * expression, still carries no licence file, and that the pinned text is the one the inventory
+ * already ships most widely.
+ */
+function checkElection(entry, index, problems, seenPurls) {
+  const where = `elections[${index}]`;
+  const { purl, name, version, ecosystem } = entry ?? {};
+  if (typeof purl !== 'string' || purl === '') {
+    fail(problems, `${where}: purl is required`);
+    return null;
+  }
+  // Shared with mappings and blocked records: a component has exactly one resolution. An election
+  // beside a mapping would let the vendored text and the elected one disagree about the same row.
+  if (seenPurls.has(purl)) {
+    fail(problems, `${where}: ${purl} is already mapped or recorded as blocked; a component has one resolution`);
+    return null;
+  }
+  seenPurls.add(purl);
+
+  // Unknown keys are refused rather than ignored. A misspelt `choosen` would otherwise be silently
+  // dropped, and the entry validated against whatever the reader assumed instead.
+  for (const key of Object.keys(entry)) {
+    if (!ELECTION_KEYS.has(key)) fail(problems, `${where} (${purl}): unknown key ${JSON.stringify(key)}`);
+  }
+  if (ecosystem !== 'cargo') {
+    // The attribution is checked against `cargo metadata`'s `authors`; npm has no equivalent wired
+    // in, so an npm election could not be held to the same standard. Refused until it can be.
+    fail(problems, `${where} (${purl}): only cargo components can be elected; got ${JSON.stringify(ecosystem)}`);
+  }
+  if (purlFor(ecosystem, name, version) !== purl) {
+    fail(problems, `${where} (${purl}): purl does not match ${ecosystem} ${name}@${version}`);
+  }
+
+  const operands = disjunctionOperands(entry.declaredSpdx);
+  if (operands === null) {
+    fail(
+      problems,
+      `${where} (${purl}): declaredSpdx ${JSON.stringify(entry.declaredSpdx)} is not a pure disjunction ` +
+        '(`A OR B [OR C]` of whole SPDX identifiers, with no AND, WITH, + or parentheses)',
+    );
+  } else if (!operands.includes('Apache-2.0')) {
+    fail(problems, `${where} (${purl}): declaredSpdx does not offer Apache-2.0 as a whole operand`);
+  }
+  if (!ELECTABLE_LICENCES.has(entry.chosen)) {
+    fail(
+      problems,
+      `${where} (${purl}): chosen ${JSON.stringify(entry.chosen)} cannot be elected; only ` +
+        `${[...ELECTABLE_LICENCES].join(', ')} is supported`,
+    );
+  }
+  if (operands !== null && !operands.includes(entry.chosen)) {
+    fail(problems, `${where} (${purl}): chosen ${JSON.stringify(entry.chosen)} is not one of the operands of ${entry.declaredSpdx}`);
+  }
+  if (!SHA256_RE.test(entry.textSha256 ?? '')) {
+    fail(problems, `${where} (${purl}): textSha256 must be 64 lowercase hex characters`);
+  }
+
+  const a = entry.attribution;
+  if (!a || typeof a !== 'object' || Array.isArray(a)) {
+    fail(problems, `${where} (${purl}): attribution is required`);
+  } else {
+    for (const key of Object.keys(a)) {
+      if (!ATTRIBUTION_KEYS.has(key)) fail(problems, `${where} (${purl}): attribution has unknown key ${JSON.stringify(key)}`);
+    }
+    if (a.name !== name || a.version !== version) {
+      fail(problems, `${where} (${purl}): attribution must name the component it attributes`);
+    }
+    if (!Array.isArray(a.authors) || a.authors.length === 0 || a.authors.some((s) => typeof s !== 'string' || s.trim() === '')) {
+      fail(problems, `${where} (${purl}): attribution.authors must be the non-empty author list the manifest declares`);
+    }
+    if (typeof a.repository !== 'string' || !a.repository.startsWith('https://')) {
+      fail(problems, `${where} (${purl}): attribution.repository must be an https URL`);
+    }
+  }
+
+  if (!COMMIT_RE.test(entry.commit ?? '')) {
+    fail(problems, `${where} (${purl}): commit must be the 40-hex revision that was searched`);
+  }
+  if (entry.tag !== null && (typeof entry.tag !== 'string' || entry.tag === '')) {
+    fail(problems, `${where} (${purl}): tag must be a non-empty string or null`);
+  }
+  if (typeof entry.tag === 'string' && MUTABLE_REFS.has(entry.tag)) {
+    fail(problems, `${where} (${purl}): tag ${entry.tag} names a moving ref, not a release`);
+  }
+  if (!DATE_RE.test(entry.investigated ?? '')) {
+    fail(problems, `${where} (${purl}): investigated must be an ISO date`);
+  }
+  if (!Array.isArray(entry.evidence) || entry.evidence.length === 0 || entry.evidence.some((e) => typeof e !== 'string' || e.trim() === '')) {
+    fail(problems, `${where} (${purl}): evidence must be a non-empty list of statements`);
+  }
+  return entry;
+}
+
+/**
+ * The inventory-dependent rules for one election against the component as installed. Returns the
+ * problems found, empty when the election applies.
+ *
+ * `licenceFiles` is everything `collectLicenseTexts` found in the installed artifact, including
+ * files that failed to decode: a licence file of any kind means the component speaks for itself,
+ * and "installed text wins" applies to an election exactly as it does to a vendored mapping. A
+ * published version never changes, so in practice this fires when an election is carried over to a
+ * newer release that ships its texts (the old one is then unused, which `resolveElections` refuses
+ * too), and the election is deleted rather than left to shadow them.
+ */
+export function electionProblems(election, component, licenceFiles) {
+  const problems = [];
+  const at = `election for ${election.purl}`;
+  if (!component.distributed) {
+    problems.push(`${at}: the component is installed but not distributed; only what ships carries an obligation`);
+  }
+  if (component.declaredLicense !== election.declaredSpdx) {
+    problems.push(
+      `${at}: the component declares ${JSON.stringify(component.declaredLicense)}, the election ` +
+        `records ${JSON.stringify(election.declaredSpdx)}`,
+    );
+  }
+  if (component.declaredLicenseFile) {
+    problems.push(`${at}: the component declares a licence file (${component.declaredLicenseFile}); its terms are not a plain SPDX choice`);
+  }
+  if (licenceFiles.length > 0) {
+    problems.push(
+      `${at}: the installed artifact now contains ${licenceFiles.map((f) => f.filename).join(', ')}. ` +
+        'Installed text wins; delete the election.',
+    );
+  }
+  const authors = Array.isArray(component.authors) ? component.authors : [];
+  const attributed = election.attribution?.authors ?? [];
+  if (authors.length !== attributed.length || authors.some((s, i) => s !== attributed[i])) {
+    problems.push(
+      `${at}: attribution.authors ${JSON.stringify(attributed)} is not what the manifest declares, ` +
+        `${JSON.stringify(authors)}`,
+    );
+  }
+  if ((component.repository ?? null) !== (election.attribution?.repository ?? null)) {
+    problems.push(
+      `${at}: attribution.repository ${JSON.stringify(election.attribution?.repository)} is not the ` +
+        `manifest's ${JSON.stringify(component.repository)}`,
+    );
+  }
+  return problems;
+}
+
+/**
+ * The text an election publishes, chosen from texts the inventory already ships. Returns
+ * `{ problems, text }`; `text` is set only when there are no problems.
+ *
+ * `pool` holds each distinct decoded text read out of an installed artifact, with the set of
+ * components that carry it. Downloading the Apache-2.0 text, or keeping a private copy, would make
+ * the elected bytes something nobody else ships; taking the most widely shipped Apache-2.0 text in
+ * this very inventory means the elected text is byte-identical to one already published beside it,
+ * pinned by hash so a dependency update that changes which copy is most common fails loudly instead
+ * of silently changing what is attributed.
+ */
+export function electedText(election, pool) {
+  const at = `election for ${election.purl}`;
+  const apache = pool
+    .filter((t) => isApache2Text(t.text))
+    .map((t) => ({ ...t, carriers: t.purls.size }))
+    .sort((a, b) => b.carriers - a.carriers || byteCompare(a.textSha256, b.textSha256));
+  if (apache.length === 0) {
+    return { problems: [`${at}: no installed artifact in the inventory ships an Apache-2.0 text to elect`] };
+  }
+  const [top, second] = apache;
+  const problems = [];
+  if (second && second.carriers === top.carriers) {
+    problems.push(
+      `${at}: two Apache-2.0 texts are equally common (${top.carriers} components each: ` +
+        `${top.textSha256}, ${second.textSha256}); which one is "the" text is ambiguous`,
+    );
+  }
+  if (top.textSha256 !== election.textSha256) {
+    problems.push(
+      `${at}: textSha256 pins ${election.textSha256}, but the Apache-2.0 text the inventory ships most ` +
+        `widely is ${top.textSha256} (${top.carriers} components). Review that text and re-pin, or ` +
+        'leave the component unresolved.',
+    );
+  }
+  if (sha256hex(Buffer.from(top.text, 'utf8')) !== top.textSha256) {
+    problems.push(`${at}: the pooled text does not hash to ${top.textSha256}`);
+  }
+  if (!top.text.split('\n').some((l) => l.trim() === APACHE_UNFILLED_COPYRIGHT)) {
+    problems.push(
+      `${at}: the most widely shipped Apache-2.0 text has its appendix filled in; electing it would ` +
+        "attribute another project's copyright notice to this component",
+    );
+  }
+  return problems.length > 0 ? { problems } : { problems, text: top.text };
+}
+
+/**
+ * Apply every election to the inventory. Returns a Map from purl to `{ election, text, textSha256 }`
+ * and throws with every problem listed when any election does not hold.
+ *
+ * `components` is the whole inventory, distributed or not; `filesByPurl` holds what
+ * `collectLicenseTexts` returned for each component that has an election; `pool` is described at
+ * `electedText`. An election that names a component the graph does not have is an error, for the
+ * same reason an unused mapping is: it is a claim of coverage for something that is not here.
+ */
+export function resolveElections(electionsByPurl, components, filesByPurl, pool) {
+  const problems = [];
+  const resolved = new Map();
+  const byPurl = new Map(components.map((c) => [c.purl, c]));
+  for (const [purl, election] of electionsByPurl) {
+    const component = byPurl.get(purl);
+    if (!component) {
+      problems.push(`election for ${purl}: no such component in the dependency graph; the election is unused`);
+      continue;
+    }
+    const local = electionProblems(election, component, filesByPurl.get(purl) ?? []);
+    if (local.length > 0) {
+      problems.push(...local);
+      continue;
+    }
+    const picked = electedText(election, pool);
+    if (picked.problems.length > 0) {
+      problems.push(...picked.problems);
+      continue;
+    }
+    resolved.set(purl, { election, text: picked.text, textSha256: election.textSha256 });
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `${MANIFEST_REL} elections cannot be applied (${problems.length} problem(s)):\n` +
+        problems.map((p) => `  x ${p}`).join('\n'),
+    );
+  }
+  return resolved;
+}
+
+/**
+ * Negative controls for the election rules, run by the generator before it trusts any election —
+ * the same discipline as `scripts/check_docs_metadata.mjs`. A validator that never rejects anything
+ * is indistinguishable from one that returns true, and an election is the one place this system
+ * chooses a licence, so the generator exits 2 rather than publish one through rules it has not just
+ * watched fire. `tests/frontend/upstreamLicenses.test.ts` breaks the same rules one at a time in CI;
+ * this is the copy that travels with every run of the generator itself.
+ */
+export function electionSelfTest() {
+  const failures = [];
+  const apache = [
+    'Apache License',
+    'Version 2.0, January 2004',
+    'TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION',
+    'END OF TERMS AND CONDITIONS',
+    'APPENDIX: How to apply the Apache License to your work.',
+    `   ${APACHE_UNFILLED_COPYRIGHT}`,
+    '',
+  ].join('\n');
+  const filled = apache.replace(APACHE_UNFILLED_COPYRIGHT, 'Copyright 2020 Somebody');
+  const bare = apache.slice(0, apache.indexOf('APPENDIX'));
+  const purl = 'pkg:cargo/control@0.1.0';
+  const good = {
+    purl,
+    name: 'control',
+    version: '0.1.0',
+    ecosystem: 'cargo',
+    declaredSpdx: 'MIT OR Apache-2.0',
+    chosen: 'Apache-2.0',
+    textSha256: sha256hex(Buffer.from(apache, 'utf8')),
+    attribution: { name: 'control', version: '0.1.0', authors: ['A Person'], repository: 'https://example.com/control' },
+    commit: '0'.repeat(40),
+    tag: null,
+    investigated: '2026-01-01',
+    evidence: ['control'],
+  };
+  const component = {
+    purl,
+    declaredLicense: 'MIT OR Apache-2.0',
+    declaredLicenseFile: null,
+    repository: 'https://example.com/control',
+    authors: ['A Person'],
+    distributed: true,
+  };
+  const pool = (...texts) =>
+    texts.map(([text, n], i) => ({
+      textSha256: sha256hex(Buffer.from(text, 'utf8')),
+      text,
+      purls: new Set(Array.from({ length: n }, (_, k) => `pkg:cargo/t${i}-${k}@1.0.0`)),
+    }));
+  const entryProblems = (entry, seen = []) => {
+    const problems = [];
+    checkElection(entry, 0, problems, new Set(seen));
+    return problems;
+  };
+
+  const mustRejectEntry = [
+    ['AND', { ...good, declaredSpdx: 'MIT AND Apache-2.0' }],
+    ['WITH', { ...good, declaredSpdx: 'Apache-2.0 WITH LLVM-exception OR MIT' }],
+    ['parentheses', { ...good, declaredSpdx: '(MIT OR Apache-2.0)' }],
+    ['Apache-2.0 not offered', { ...good, declaredSpdx: 'MIT OR Zlib' }],
+    ['MIT chosen', { ...good, chosen: 'MIT' }],
+    ['unknown key', { ...good, choosen: 'Apache-2.0' }],
+    ['npm', { ...good, ecosystem: 'npm', purl: 'pkg:npm/control@0.1.0' }],
+    ['bad hash', { ...good, textSha256: 'apache' }],
+    ['no authors', { ...good, attribution: { ...good.attribution, authors: [] } }],
+  ];
+  for (const [label, entry] of mustRejectEntry) {
+    if (entryProblems(entry).length === 0) failures.push(`negative control "${label}" was accepted`);
+  }
+  if (entryProblems(good, [purl]).length === 0) failures.push('negative control "already mapped or blocked" was accepted');
+  if (entryProblems(good).length > 0) failures.push(`positive control was rejected: ${entryProblems(good).join('; ')}`);
+
+  if (electionProblems(good, component, [{ filename: 'LICENSE' }]).length === 0) {
+    failures.push('negative control "installed licence file" was accepted');
+  }
+  if (electionProblems(good, { ...component, distributed: false }, []).length === 0) {
+    failures.push('negative control "not distributed" was accepted');
+  }
+  if (electionProblems(good, { ...component, declaredLicense: 'MIT' }, []).length === 0) {
+    failures.push('negative control "declared expression differs" was accepted');
+  }
+  if (electionProblems(good, component, []).length > 0) failures.push('positive control (inventory) was rejected');
+
+  const mustRejectText = [
+    ['pin is not the most common copy', { ...good, textSha256: sha256hex(Buffer.from(bare, 'utf8')) }, pool([apache, 5], [bare, 2])],
+    ['appendix filled in', { ...good, textSha256: sha256hex(Buffer.from(filled, 'utf8')) }, pool([filled, 5])],
+    ['two copies equally common', good, pool([apache, 3], [bare, 3])],
+    ['no Apache-2.0 text', good, pool(['MIT License\n', 9])],
+  ];
+  for (const [label, election, texts] of mustRejectText) {
+    if (electedText(election, texts).problems.length === 0) failures.push(`negative control "${label}" was accepted`);
+  }
+  if (electedText(good, pool(['MIT License\n', 50], [apache, 5])).text !== apache) {
+    failures.push('positive control (elected text) did not pick the Apache-2.0 copy');
+  }
+  let unusedRejected = false;
+  try {
+    resolveElections(new Map([[purl, good]]), [], new Map(), pool([apache, 5]));
+  } catch {
+    unusedRejected = true;
+  }
+  if (!unusedRejected) failures.push('negative control "unused election" was accepted');
+
+  return { failures, controls: mustRejectEntry.length + 2 + 4 + mustRejectText.length + 2 };
+}
+
+/**
  * Read and validate the store. Throws with every problem listed, rather than the first.
  *
  * `tracked` is injectable so the adversarial tests can build a store in a temp directory without a
@@ -410,8 +850,13 @@ export function loadUpstreamStore(root, { tracked } = {}) {
         `understands ${SUPPORTED_SCHEMA_VERSION}. Refusing to interpret a store it may not understand.`,
     );
   }
-  if (!Array.isArray(doc.sources) || !Array.isArray(doc.components) || !Array.isArray(doc.blocked)) {
-    throw new Error(`${MANIFEST_REL} must carry sources, components and blocked arrays`);
+  if (
+    !Array.isArray(doc.sources) ||
+    !Array.isArray(doc.components) ||
+    !Array.isArray(doc.blocked) ||
+    !Array.isArray(doc.elections)
+  ) {
+    throw new Error(`${MANIFEST_REL} must carry sources, components, blocked and elections arrays`);
   }
 
   const storeDir = join(root, STORE_REL);
@@ -446,6 +891,14 @@ export function loadUpstreamStore(root, { tracked } = {}) {
     if (checked) blockedByPurl.set(checked.purl, checked);
   });
 
+  // Last, and on the same `seenPurls`: an election may only stand where nothing else resolves the
+  // component — not a vendored mapping, and not a blocked record claiming the search found nothing.
+  const electionsByPurl = new Map();
+  doc.elections.forEach((entry, i) => {
+    const checked = checkElection(entry, i, problems, seenPurls);
+    if (checked) electionsByPurl.set(checked.purl, checked);
+  });
+
   // A source nobody maps is not harmless. It is either a component that was dropped from the graph
   // and left its text behind, or a file added to the store that no review ever tied to a component;
   // both are states where the store stops describing what ships.
@@ -463,6 +916,7 @@ export function loadUpstreamStore(root, { tracked } = {}) {
   for (const [label, keys] of [
     ['components', [...byPurl.keys()]],
     ['blocked', [...blockedByPurl.keys()]],
+    ['elections', [...electionsByPurl.keys()]],
   ]) {
     if (keys.some((purl, i) => i > 0 && byteCompare(keys[i - 1], purl) > 0)) {
       fail(problems, `${label}: not in byte order; the manifest would not diff cleanly`);
@@ -475,7 +929,7 @@ export function loadUpstreamStore(root, { tracked } = {}) {
         problems.map((p) => `  x ${p}`).join('\n'),
     );
   }
-  return { sources: sourcesById, byPurl, blockedByPurl };
+  return { sources: sourcesById, byPurl, blockedByPurl, electionsByPurl };
 }
 
 /** Where a vendored file lives, as a repository-relative POSIX path for a committed artifact. */
