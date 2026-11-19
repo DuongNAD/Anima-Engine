@@ -64,7 +64,8 @@ miễn, lý do ở bảng dưới), 2 dùng trạng thái ngoài danh sách, 4 h
 | `kind: agent-goal` và `kind: review-findings` | Bản ghi phiên: `created` thay cho `last_reviewed`; `status` là `proposed`, `active` hoặc `completed`; agent-goal `completed` cần ngày `completed` |
 | `docs/archive/` | `status` là `superseded` hoặc `deprecated`, và `superseded_by` trỏ tới một file có thật |
 | Mọi thư mục trong `docs/` có tài liệu | Có `README.md` làm chỉ mục |
-| Mọi tài liệu | Được link từ `docs/README.md` hoặc một `docs/**/README.md` (điều kiện "Definition of done" bên dưới) |
+| Mọi tài liệu | Được link từ `docs/README.md` hoặc một `docs/**/README.md` (điều kiện "Definition of done" bên dưới), hoặc là tài liệu *chờ* của một [chỉ mục sinh](#chỉ-mục-sinh-2026-11-19) |
+| Mọi khối chỉ mục sinh | Đọc được (hàng đúng dạng), và sinh lại trong bộ nhớ thì không còn tài liệu chờ nào |
 
 Được miễn: template (`docs/ai/*/README.md`, `ADR-0000-template.md`) và bốn file do agent sở hữu ở
 gốc `docs/ai/`. Danh sách miễn nằm trong `NO_FRONT_MATTER` của
@@ -73,6 +74,31 @@ mục không còn đúng (file đã mất, hoặc đã có front matter) làm ga
 lặng lẽ. Tài liệu quá hạn review chỉ được **báo** (`node scripts/check_docs_metadata.mjs --report`),
 không làm gate đỏ — đúng với mục [Nhịp bảo trì](#nhịp-bảo-trì). Đổi quy tắc ở đây thì đổi hằng số
 trong script trong cùng commit.
+
+### Chỉ mục sinh (2026-11-19)
+
+Trước ngày này, mỗi PR thêm một ghi chú dưới `docs/ai/` cũng thêm hàng của nó vào cùng một bảng
+trong `docs/ai/README.md`, nên hai PR mở cùng lúc chèn một dòng vào cùng một chỗ và GitHub báo xung
+đột ở PR thứ hai. `.gitattributes merge=union` không giúp được: GitHub không dùng merge driver của
+repo khi merge PR. Thiết kế và các phương án đã loại:
+[`2026-11-19-feature-generated-docs-index.md`](../ai/design/2026-11-19-feature-generated-docs-index.md).
+
+Một README chỉ mục có thể giữ một **khối chỉ mục sinh**: một bảng
+`| Ngày | Tài liệu | Loại | Trạng thái |` nằm giữa hai dòng `<!-- docs-index:begin … -->` và
+`<!-- docs-index:end … -->`. Hôm nay chỉ `docs/ai/README.md` có khối. Khối phụ trách mọi tài liệu
+mà README đó là chỉ mục gần nhất khi đi ngược lên cây (template không tính là chỉ mục).
+
+| Quy tắc | Nội dung |
+|---|---|
+| Tài liệu *chờ* | Tài liệu trong phạm vi khối mà chưa chỉ mục nào link tới được chấp nhận khi front matter có `title`, `status`, `description`; `title` và `description` không chứa link markdown; và thư mục của nó được link từ một chỉ mục (để danh sách thư mục trên GitHub tới được nó). Thiếu một điều kiện thì đỏ |
+| Sinh lại | `npm run gen:docs-index` giữ nguyên chữ và thứ tự mọi hàng đã có, chỉ cập nhật ô trạng thái theo `status`, bỏ hàng có file đã mất, và thêm một hàng cho mỗi tài liệu chờ, theo (ngày, đường dẫn). Ngày lấy từ tên file, rồi `created`, rồi `last_reviewed`; cột Loại là `kind` nếu có, không thì tên thư mục |
+| Cổng | `npm run check:docs` chạy generator trong bộ nhớ và đỏ nếu chỉ mục sinh ra còn tài liệu chờ hay thêm lỗi; mỗi lần chạy nó in từng tài liệu chờ và từng ô trạng thái lệch, nhưng **không** đỏ vì chúng |
+| Ai sinh lại | Lead, trong một PR tài liệu của mình (thường là PR cập nhật trạng thái sau một đợt merge). PR của agent không sửa README có khối. `node scripts/gen_docs_index.mjs --check` in những gì sẽ đổi mà không ghi |
+| Sửa tay | Được sửa chữ một hàng — lần sinh sau giữ nguyên — miễn hàng giữ dạng bốn ô: ngày, link rồi tóm tắt, loại, trạng thái trong backtick. Hàng sai dạng làm cổng đỏ |
+
+Quy tắc ở đây nằm trong `scripts/lib/docs_index.mjs`, mà cả generator lẫn
+[`scripts/check_docs_metadata.mjs`](../../scripts/check_docs_metadata.mjs) đều dùng; đổi một bên thì
+đổi bên kia và mục này trong cùng commit.
 
 ### `completed` và schema mở rộng cho `docs/ai/` (chuẩn hoá 2026-07-26)
 
@@ -198,7 +224,8 @@ trong đợt quy hoạch này. Migration về sau làm từng nhóm:
 ## Definition of done cho tài liệu
 
 - Có owner, trạng thái và ngày review.
-- Có link vào từ `docs/README.md` hoặc một index con.
+- Có link vào từ `docs/README.md` hoặc một index con — hoặc, trong phạm vi một
+  [chỉ mục sinh](#chỉ-mục-sinh-2026-11-19), có front matter đủ để sinh hàng của nó.
 - Không trùng nguồn sự thật.
 - Code/schema/test được liên kết hai chiều khi cần.
 - Link nội bộ hợp lệ; ví dụ/lệnh đã chạy trên phiên bản hiện tại.
@@ -207,6 +234,7 @@ trong đợt quy hoạch này. Migration về sau làm từng nhóm:
 ## Nhịp bảo trì
 
 - Mỗi PR: `npm run check:docs` (CI chạy sẵn) và kiểm file được ảnh hưởng theo ma trận.
+- Mỗi PR tài liệu của lead: `npm run gen:docs-index`, để các hàng chờ vào bảng.
 - Mỗi release: kiểm tra tutorial/how-to và artifact migration.
 - Hàng quý: review research, dependency, license, ADR proposed lâu ngày, và danh sách
   `node scripts/check_docs_metadata.mjs --report`.

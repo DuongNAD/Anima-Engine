@@ -1,0 +1,296 @@
+{
+  "schema_version": 1,
+  "preregistration_id": "sel2-p-food-scarcity-body-mass",
+  "status": "PROPOSED",
+  "contains_results": false,
+  "model": "core::live_experiment::LiveExperimentAdapter",
+  "model_version": "live-bevy-world/2",
+  "snapshot_schema_version": 8,
+  "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
+  "registry": "core::experiment::ObservableRegistry::live_default",
+  "harness": "core::live_experiment::{run_live_drift_pair, run_live_drift_ensemble} + core::experiment_runner::{run_manifest_seed, paired_effect}",
+  "plan_document": "docs/ai/planning/2026-11-19-sel2-p-preregistration-draft.md",
+  "question": "In the viable 16-spread-lake scarce world (scale = 0.63, prey_cap = 320, 200,000 ticks), does ecological selection shift post-warmup time-integrated genotypic body mass (live.trait_mass_mean) relative to lockstep neutral demographic+mutation drift (scarce_drift, SEL2-D)?",
+  "h1_direction": "two_sided",
+  "manifests": {
+    "selected": "sel2p-selected.json",
+    "scarce_mut0": "sel2p-scarce-mut0.json",
+    "scarce_drift": "sel2p-scarce-drift.json",
+    "baseline_ref": "sel2p-baseline-ref.json",
+    "smoke_selected": "sel2p-smoke-selected.json",
+    "smoke_scarce_mut0": "sel2p-smoke-scarce-mut0.json",
+    "smoke_scarce_drift": "sel2p-smoke-scarce-drift.json"
+  },
+  "common_initial_conditions": {
+    "live.founders": 100,
+    "live.predator_fraction": 0,
+    "live.trees": 8,
+    "live.lakes": 16,
+    "live.lake_layout": 1,
+    "live.resource_capacity_scale": 0.63,
+    "live.plant_reserve": 0,
+    "live.prey_cap": 320,
+    "live.dehydration_ticks": 960,
+    "live.mortality": 1,
+    "live.reproduction": 1,
+    "live.locomotion": 1,
+    "live.drive_floor": 0.5,
+    "live.thirst_steering": 1,
+    "live.evolved_brains": 0
+  },
+  "declared_factors": {
+    "selected_vs_scarce_drift": {
+      "allowed_paths": [
+        "initial_conditions"
+      ],
+      "key": "live.drift_control",
+      "selected_value": 0,
+      "scarce_drift_value": 1,
+      "live_drift_reset_ticks": 0
+    },
+    "selected_vs_scarce_mut0": {
+      "allowed_paths": [
+        "initial_conditions"
+      ],
+      "key": "live.mutation_rate",
+      "selected_value": 0.05,
+      "scarce_mut0_value": 0
+    },
+    "baseline_ref_vs_smoke_selected": {
+      "allowed_paths": [
+        "initial_conditions",
+        "seeds"
+      ],
+      "differing_initial_condition_keys": [
+        "live.prey_cap",
+        "live.resource_capacity_scale"
+      ],
+      "baseline_values": {
+        "live.prey_cap": 80,
+        "live.resource_capacity_scale": 1
+      },
+      "scarce_values": {
+        "live.prey_cap": 320,
+        "live.resource_capacity_scale": 0.63
+      }
+    }
+  },
+  "seeds": {
+    "execution_order": [
+      780001,
+      781001,
+      782001,
+      783001,
+      784001,
+      785001,
+      786001,
+      787001,
+      788001,
+      789001,
+      790001,
+      791001,
+      792001,
+      793001,
+      794001,
+      795001,
+      796001,
+      797001,
+      798001,
+      799001
+    ],
+    "rule": "seed_k = 780001 + 1000*k for k in 0..19",
+    "n_requested": 20,
+    "min_complete_pairs_for_a_decision": 16,
+    "baseline_seeds": [
+      799501,
+      799502,
+      799503,
+      799504,
+      799505,
+      799506
+    ],
+    "min_surviving_baseline_seeds": 3,
+    "smoke_seed": 999961,
+    "excluded_exploration_seeds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "pipeline_check": {
+      "baseline_seeds": [
+        999801,
+        999802,
+        999803,
+        999804,
+        999805,
+        999806
+      ],
+      "smoke_seed": 999811,
+      "pair_seeds": [
+        999821,
+        999822
+      ],
+      "note": "Disjoint 2,000-tick end-to-end pipeline verification seeds only; excluded from smoke and confirmation."
+    }
+  },
+  "duration": {
+    "duration_ticks": 200000,
+    "warmup_ticks": 20000,
+    "confirmation_sample_period": 500,
+    "smoke_sample_period": 50,
+    "pipeline_check_duration_ticks": 2000,
+    "pipeline_check_warmup_ticks": 200,
+    "pipeline_check_smoke_sample_period": 50,
+    "pipeline_check_pair_sample_period": 200
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "role": "primary",
+      "direction": "two_sided",
+      "observable": "live.trait_mass_mean",
+      "statistic": "live.trait_mass_mean@post_warmup_int",
+      "contrast": "selected_vs_scarce_drift",
+      "delta_definition": "selected - scarce_drift over samples with tick in (warmup_ticks, duration_ticks]"
+    },
+    {
+      "id": "H2a",
+      "role": "secondary",
+      "direction": "two_sided",
+      "observable": "live.trait_mass_mean",
+      "statistic": "live.trait_mass_mean@post_warmup_int",
+      "contrast": "selected_vs_scarce_mut0",
+      "delta_definition": "selected - scarce_mut0 over samples with tick in (warmup_ticks, duration_ticks]"
+    },
+    {
+      "id": "H2b",
+      "role": "secondary_diagnostic",
+      "direction": "two_sided",
+      "observable": "live.trait_mass_mean",
+      "statistic": "live.trait_mass_mean@post_warmup_int",
+      "contrast": "scarce_drift_vs_scarce_mut0",
+      "delta_definition": "scarce_drift - scarce_mut0 over samples with tick in (warmup_ticks, duration_ticks]"
+    },
+    {
+      "id": "S2_energy",
+      "role": "secondary_energy",
+      "direction": "two_sided",
+      "observable": "live.mean_energy_integral",
+      "statistic": "live.mean_energy_integral@post_warmup_mean",
+      "contrast": "selected_vs_scarce_drift",
+      "delta_definition": "(I(duration_ticks) - I(warmup_ticks)) / (duration_ticks - warmup_ticks), selected - scarce_drift"
+    }
+  ],
+  "robustness_checks": [
+    {
+      "id": "R1_tail20",
+      "observable": "live.trait_mass_mean",
+      "statistic": "live.trait_mass_mean@tail20",
+      "contrast": "selected_vs_scarce_drift",
+      "window": "tick > 0.8 * duration_ticks (160000)"
+    },
+    {
+      "id": "R2_window_net_selection_delta",
+      "observable": "live.trait_mass_mean",
+      "statistic": "window_net_selection_deltas",
+      "contrast": "selected_vs_scarce_drift"
+    }
+  ],
+  "smoke_gate": {
+    "decision_id": "QD-SEL2g",
+    "reference_method": "option_b_pooled_surviving_prey_cap_80_scale_1",
+    "reference_computed_before_scarce_observables": true,
+    "min_surviving_baseline_seeds": 3,
+    "blind_to_body_mass": true,
+    "forbidden_substring": "trait_mass",
+    "smoke_allowed_non_drift_observables": [
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.standing_crop",
+      "live.births",
+      "live.deaths",
+      "live.mean_lifespan",
+      "live.deaths_starvation",
+      "live.deaths_dehydration"
+    ],
+    "smoke_allowed_drift_observables": [
+      "live.closed_eu_total",
+      "live.agent_count",
+      "live.standing_crop",
+      "live.births",
+      "live.deaths",
+      "live.mean_lifespan"
+    ],
+    "c1_min_agents": 5,
+    "c1_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c2_g_band": [
+      0.4,
+      0.6
+    ],
+    "c2_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c2_diagnostic_only_arms": [
+      "scarce_drift"
+    ],
+    "c3_min_generations": 30,
+    "c3_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c4_min_starvation_share": 0.5,
+    "c4_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c4_excluded_arms": [
+      "scarce_drift"
+    ],
+    "c5_last_quarter_births_and_deaths_gt_zero": true,
+    "c5_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "hard_stop_confirmation_on_fail": true
+  },
+  "thresholds": {
+    "materiality_rule": "all_of",
+    "ci95_excludes_zero": true,
+    "min_abs_paired_dz": 0.66,
+    "min_relative_shift_vs_control_mean": 0.05,
+    "conditions": [
+      "ci95 on paired_mean_delta excludes 0",
+      "abs(paired_dz) >= 0.66",
+      "abs(paired_mean_delta) >= 0.05 * abs(control_mean)"
+    ]
+  },
+  "artifacts": {
+    "root": "artifacts/experiments/sel2-p-food-scarcity/",
+    "files": [
+      "paired-report.json",
+      "effects.json",
+      "per-seed-deltas.csv",
+      "runs.csv",
+      "execution-lock.json",
+      "provenance.json",
+      "summary.md",
+      "checksums.sha256",
+      "manifests/",
+      "smoke/"
+    ]
+  },
+  "commands": {
+    "build_release": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example run_sel2p_experiment",
+    "pipeline_check": "src-tauri/target/release/examples/run_sel2p_experiment --pipeline-check --manifest-dir src-tauri/tests/fixtures/experiments_sel2p --out /tmp/sel2p-pipeline-check",
+    "smoke": "src-tauri/target/release/examples/run_sel2p_experiment --smoke --manifest-dir src-tauri/tests/fixtures/experiments_sel2p --out artifacts/experiments/sel2-p-food-scarcity",
+    "confirm": "src-tauri/target/release/examples/run_sel2p_experiment --confirm --manifest-dir src-tauri/tests/fixtures/experiments_sel2p --out artifacts/experiments/sel2-p-food-scarcity",
+    "verify": "node scripts/verify_sel2p_artifacts.mjs artifacts/experiments/sel2-p-food-scarcity"
+  }
+}

@@ -12,7 +12,9 @@ import { ImprovedNoise2D } from './terrainGenerator';
 //     from. See the note in pass 5 — the old order let a pine chosen in taiga come to rest in
 //     grassland, which the map-review ecology gate reported as three high findings the moment the
 //     manifest was generated from the shipped world instead of a stand-in.
-export const WORLD_GEN_VERSION = 21;
+// 22: the `supercontinent` shape, which the shared world now uses (see `SUPERCONTINENT`). The
+//     `island` and `continent` shapes generate exactly what they did under 21.
+export const WORLD_GEN_VERSION = 22;
 
 export enum Biome {
   Ocean = 0,
@@ -289,6 +291,21 @@ const T_SNOW = 0.125; // seasonal snow cap
 const T_ROCK = 0.19; // above the treeline: bare rock and talus
 const T_ALPINE = 0.26; // alpine meadow band just under the treeline
 
+/** Shape-specific adjustments to `classify`; `null` is the rule set `island`/`continent` use. */
+interface ClassifyTuning {
+  /** Mangrove beyond the beach ribbon, across hot, flat, low coastal plains. */
+  tidalFlats: {
+    /** Shore closeness (0..1, from `computeShore`) mangrove reaches inland to: 1 = the whole band. */
+    reach: number;
+    /** Highest ground above sea level it covers. */
+    top: number;
+    /** Driest air it tolerates (the ribbon rule needs 0.6). */
+    minMoisture: number;
+  };
+  /** Scales the slopes at which hot dry ground counts as badlands (1 = 0.24 / 0.3). */
+  badlandsSlope: number;
+}
+
 function classify(
   elev: number,
   temp: number,
@@ -297,6 +314,7 @@ function classify(
   slope: number,
   coast: number,
   seaLevel: number,
+  tuning: ClassifyTuning | null = null,
 ): Biome {
   if (elev < seaLevel) return Biome.Ocean;
 
@@ -309,6 +327,20 @@ function classify(
     if (temp > 0.62 && moist > 0.6 && slope < 0.18) return Biome.Mangrove;
     return Biome.Beach;
   }
+  // Optionally, mangrove reaches further inland across a hot, flat, low coastal plain (tidal flats
+  // and delta mud), as it does on real tropical coasts — including fairly dry ones (the Red Sea,
+  // Baja California), where the tide rather than the rain waters it.
+  if (
+    tuning &&
+    coast > 1 - tuning.tidalFlats.reach &&
+    elev < seaLevel + tuning.tidalFlats.top &&
+    temp > 0.62 &&
+    moist > tuning.tidalFlats.minMoisture &&
+    slope < 0.18
+  ) {
+    return Biome.Mangrove;
+  }
+  const bk = tuning ? tuning.badlandsSlope : 1;
 
   // Mountain caps by lapsed temperature (+ a height failsafe for the tallest COLD peaks).
   // The lines are NOT ruler-straight contours: wet flanks push the snowline down (more
@@ -353,16 +385,16 @@ function classify(
   }
   if (temp < 0.72) {
     // warm temperate / subtropical — rugged dry country erodes into badlands
-    if (moist < 0.15) return slope > 0.24 ? Biome.Badlands : Biome.Desert;
-    if (moist < 0.24) return slope > 0.3 ? Biome.Badlands : Biome.Steppe;
+    if (moist < 0.15) return slope > 0.24 * bk ? Biome.Badlands : Biome.Desert;
+    if (moist < 0.24) return slope > 0.3 * bk ? Biome.Badlands : Biome.Steppe;
     if (moist < 0.38) return Biome.Chaparral; // Mediterranean scrub
     if (moist < 0.52) return Biome.Grassland;
     if (moist < 0.74) return Biome.Forest;
     return Biome.Jungle;
   }
   // tropical
-  if (moist < 0.18) return slope > 0.24 ? Biome.Badlands : Biome.Desert;
-  if (moist < 0.38) return slope > 0.3 ? Biome.Badlands : Biome.Savanna;
+  if (moist < 0.18) return slope > 0.24 * bk ? Biome.Badlands : Biome.Desert;
+  if (moist < 0.38) return slope > 0.3 * bk ? Biome.Badlands : Biome.Savanna;
   if (moist < 0.52) return Biome.Shrubland; // dry tropical woodland
   if (moist < 0.68) return Biome.Forest; // monsoon forest
   return Biome.Jungle; // rainforest
@@ -863,10 +895,260 @@ function computeShore(elev: Float32Array, water: Float32Array, size: number, sea
   return shore;
 }
 
+/**
+ * Landmass layout.
+ *
+ * - `island`: one finite landmass ringed by ocean.
+ * - `continent`: noise-placed land over ~38% of the map (the v21 shared world).
+ * - `supercontinent`: a deliberately laid-out world for the shared map — see {@link SUPERCONTINENT}.
+ */
+export type WorldShape = 'island' | 'continent' | 'supercontinent';
+
+/**
+ * The layout of the `supercontinent` shape: every number that differs from `continent`, in one place.
+ *
+ * `continent` places land wherever the noise is high, and for the shared seed that put the equator
+ * — the only latitude hot enough for rainforest, savanna and hot desert — under open sea: 62% of the
+ * map was ocean, and desert, jungle, savanna, badlands and mangrove together covered under 1.5%.
+ *
+ * The fix is the separation games use (Minecraft 1.18's "continentalness"): one low-frequency
+ * control decides land vs sea, and only the climate fields decide the biome. Here that control is a
+ * broad belt of land running pole to pole, so every temperature band has ground to form on; the
+ * noise still draws the coasts. Climate stays physical — temperature from latitude minus altitude,
+ * moisture from the wind sweep with its rain shadows — and is retuned rather than painted: a wider
+ * warm zone, coastal rain that reaches further inland, a wetter equator (rainforest) and a drier
+ * subtropical belt (desert). Two ridged ranges are the landmarks: a NW-SE spine whose snow peaks the
+ * peak views look at, which dies out southward into dissected badlands in the desert belt, and an
+ * east-west wall across the cold north that the overview camera sees broadside. Waterfalls are
+ * knickpoints only, and cave mouths the steepest rock faces, both spread across the map.
+ *
+ * Measured on the shared world (seed "seed", 2048²): ocean 45%; desert 4.2%, rainforest 2.7%,
+ * temperate forest 5.0%, savanna 1.7%, alpine + snow + glacier + rock 8.5%, badlands 0.9%, swamp,
+ * bog and mangrove 0.3-0.9% each, every land biome with a connected region of at least ~5,000 cells;
+ * 52 waterfalls; 45 cave mouths.
+ */
+export const SUPERCONTINENT = {
+  /** Fraction of cells above sea level (the shared world was 0.38). */
+  landFraction: 0.55,
+  /** Half-width of the land belt, in map units ([-1, 1] across). */
+  beltWidth: 0.4,
+  /** How strongly the belt lifts the continental base. */
+  beltLift: 0.15,
+  /** Amplitude of the belt axis' east-west meander. */
+  spineAmp: 0.16,
+  /** Mid-frequency relief added to the base so the coast has bays, capes and offshore islands. */
+  coastDetail: 0.1,
+  /**
+   * Mountain ranges, each a meandering segment from `a` to `b` (map units, [-1, 1]; -y is north).
+   * `width`/`height`: the broad uplift (foothills and high valleys above the treeline);
+   * `crestWidth`/`crest`: the narrower zone of ridged arêtes on top, which makes separate summits;
+   * `endHeight`: the uplift at `b` relative to the middle, so a range can die out into low ground;
+   * `rugged`: fine ridges and gullies over that dying end (canyon country, not a smooth ramp).
+   */
+  ranges: [
+    // The spine, NW to SE across the belt: snow peaks in the north, sinking into the southern
+    // desert belt as a rugged low country (badlands) instead of rising out of it.
+    {
+      a: [-0.5, -0.62],
+      b: [0.4, 0.5],
+      width: 0.23,
+      height: 0.6,
+      crestWidth: 0.08,
+      crest: 0.35,
+      endHeight: 0.05,
+      rugged: 0.16,
+    },
+    // A shorter east-west wall in the cold north, broadside to the overview camera.
+    {
+      a: [-0.05, -0.5],
+      b: [0.7, -0.68],
+      width: 0.17,
+      height: 0.7,
+      crestWidth: 0.06,
+      crest: 0.35,
+      endHeight: 1,
+      rugged: 0,
+    },
+  ],
+  /** Frequency of the arêtes inside a range: high enough for separate summits. */
+  peakFreq: 9,
+  /** Exponent bending latitude into temperature (1 = linear, as `continent`): >1 widens the tropics. */
+  tropicsPow: 1.4,
+  /** Rain-out per cell of land crossed (continent: 0.01). Lower lets coastal rain reach further
+   * inland, so a continent this wide still grows forest beyond its coastal strip. */
+  drizzle: 0.005,
+  /** Equatorial (ITCZ) rain: extra moisture from `itczFrom` latitude to the equator. */
+  itczWet: 0.42,
+  itczFrom: 0.78,
+  /** Subtropical (Hadley) drying at latitude 0.62 (continent: 0.16). */
+  hadleyDry: 0.28,
+  /** Classifier adjustments (see `ClassifyTuning`): mangrove across hot, flat, low coastal plains,
+   * and badlands on the dissected (not only the steepest) hot dry ground. */
+  classify: { tidalFlats: { reach: 1, top: 0.06, minMoisture: 0.4 }, badlandsSlope: 0.7 },
+  /** Waterfalls at knickpoints (Pass 4e): a river losing `minDrop` (normalized elevation) within
+   * `run` cells downstream; falls are kept tallest-first, `spacing` cells apart (both at 2048²). */
+  waterfalls: { run: 3, minDrop: 0.01, spacing: 24, max: 400 },
+  /** Cave mouths (Pass 4f): the steepest bare-rock / badlands faces, `spacing` cells apart (at 2048²). */
+  caves: { minSlope: 0.5, spacing: 40, max: 48 },
+  /**
+   * Land flora aimed for, as a fraction of `maxFlora`; every cell is thinned by the same factor to
+   * meet it (Pass 5). Set by the RW-C4 render budget, not by looks: the canonical `ecosystem` pose
+   * frames the densest stand, and at 0.95 its flora layer at `high` drew 5.28M triangles against
+   * the §4a budget of 5.03M (`tests/e2e/rw_budget.spec.ts`, 2026-11-19). 0.78 leaves room at every
+   * tier; the measured numbers are in the PR that set it.
+   */
+  floraBudget: 0.78,
+  falloffPow: 5,
+  falloffRadius: 1.0,
+} as const;
+
+/**
+ * The smooth part of the supercontinent's relief — the land belt and each range's uplift, crest and
+ * badlands weights (see {@link SUPERCONTINENT}) — sampled on a lattice every `step` cells.
+ *
+ * Why a lattice: evaluated per cell, these fields and the coast detail cost ten noise samples and
+ * seven exponentials per cell, and made the 2048² supercontinent ~40% slower to generate than
+ * `continent`. That is not an abstract cost — the jsdom render tests generate the shared world inside
+ * their first render against a 15 s timeout, and on a GitHub runner the extra time was enough to
+ * cross it. Every one of these fields varies over tens of cells (the narrowest, a crest, has a
+ * half-width of ~60 cells at 2048²; the coast detail's finest octave a wavelength of ~40), so
+ * bilinear interpolation from every 4th cell reproduces them closely at 1/16 of the cost. Only the
+ * fine detail — the arêtes and the gullies — is sampled per cell, and only where it has weight.
+ */
+interface ReliefFields {
+  step: number;
+  /** Lattice points per row. */
+  w: number;
+  /**
+   * The five fields interleaved per lattice point: land belt, coast detail (bays, capes, offshore
+   * islands), range uplift, crest weight, badlands weight.
+   */
+  v: Float64Array;
+}
+
+/** Fields per lattice point in `ReliefFields.v`. */
+const RELIEF_FIELDS = 5;
+
+/** Bilinear interpolation in `v` at offset `o` (lattice row stride `s`), cell fractions `tx`, `ty`. */
+function bilerp(v: Float64Array, o: number, s: number, tx: number, ty: number): number {
+  const r = RELIEF_FIELDS;
+  return (
+    v[o] * ((1 - tx) * (1 - ty)) + v[o + r] * (tx * (1 - ty)) + v[o + s] * ((1 - tx) * ty) + v[o + s + r] * (tx * ty)
+  );
+}
+
+function supercontinentFields(
+  size: number,
+  freq: number,
+  elevNoise: ImprovedNoise2D,
+  warpNoise: ImprovedNoise2D,
+  ridgeNoise: ImprovedNoise2D,
+): ReliefFields {
+  const P = SUPERCONTINENT;
+  const step = Math.max(1, Math.round(size / 512));
+  const w = Math.ceil((size - 1) / step) + 2;
+  const v = new Float64Array(w * w * RELIEF_FIELDS);
+  for (let gy = 0; gy < w; gy++) {
+    const ny = ((gy * step) / (size - 1)) * 2 - 1;
+    // Continentalness: a broad meridional belt whose axis meanders east-west.
+    const spineX = P.spineAmp * Math.sin(ny * 2.2 + 0.7) + 0.1 * warpNoise.noise(ny * 1.1 + 21.7, 5.3);
+    for (let gx = 0; gx < w; gx++) {
+      const g = (gy * w + gx) * RELIEF_FIELDS;
+      const nx = ((gx * step) / (size - 1)) * 2 - 1;
+      const ax = nx - spineX;
+      v[g] = P.beltLift * Math.exp(-(ax * ax) / (P.beltWidth * P.beltWidth));
+      // The same domain warp Pass 1 applies to the base, so the coast detail moves with it.
+      const wx = warpNoise.noise(nx * freq * 0.5 + 4.7, ny * freq * 0.5 + 1.3);
+      const wy = warpNoise.noise(nx * freq * 0.5 + 8.9, ny * freq * 0.5 + 6.1);
+      const sx = nx * freq + wx * 0.35;
+      const sy = ny * freq + wy * 0.35;
+      v[g + 1] = P.coastDetail * fbm(elevNoise, sx * 3.1 + 17.3, sy * 3.1 + 5.9, 4, 2.0, 0.5);
+      let up = 0;
+      let cr = 0;
+      let ru = 0;
+      for (let k = 0; k < P.ranges.length; k++) {
+        const r = P.ranges[k];
+        const abx = r.b[0] - r.a[0];
+        const aby = r.b[1] - r.a[1];
+        const t = Math.max(0, Math.min(1, ((nx - r.a[0]) * abx + (ny - r.a[1]) * aby) / (abx * abx + aby * aby)));
+        // Meander the centreline sideways, fray the flanks so the foothills do not end on a ruled
+        // line, taper both ends, and break the crest into massifs along its length.
+        const len = Math.hypot(abx, aby);
+        const wob = 0.07 * warpNoise.noise(t * 4.3 + 2.9 + k * 31.1, 9.7);
+        const dx = nx - (r.a[0] + t * abx) - (wob * -aby) / len;
+        const dy = ny - (r.a[1] + t * aby) - (wob * abx) / len;
+        const fray = 1 + 0.45 * warpNoise.noise(nx * 7.3 + k * 11.9, ny * 7.3 + 3.7);
+        const d2 = (dx * dx + dy * dy) * fray;
+        const taper = smoothstep(0, 0.12, t) * smoothstep(1, 0.88, t);
+        const profile = 1 + (r.endHeight - 1) * smoothstep(0.5, 0.85, t);
+        const massifs = 0.55 + 0.45 * smoothstep(-0.3, 0.3, ridgeNoise.noise(t * 5.1 + 13.3 + k * 17.7, 0.5));
+        up = Math.max(up, Math.exp(-d2 / (r.width * r.width)) * taper * profile * r.height);
+        cr = Math.max(cr, Math.exp(-d2 / (r.crestWidth * r.crestWidth)) * taper * massifs * r.crest);
+        if (r.rugged > 0) {
+          const tail = smoothstep(0.5, 0.85, t) * smoothstep(1.0, 0.95, t);
+          ru = Math.max(ru, Math.exp(-d2 / (r.width * r.width * 1.6)) * tail * r.rugged);
+        }
+      }
+      v[g + 2] = up;
+      v[g + 3] = cr;
+      v[g + 4] = ru;
+    }
+  }
+  return { step, w, v };
+}
+
+/**
+ * Below this weight a crest or badlands term is not sampled. The step it leaves at the edge of the
+ * sampled zone is at most this times the term (≤ 1), i.e. under 0.2 render units before the
+ * elevation curve flattens it further — far below what the terrain mesh resolves.
+ */
+const RELIEF_WEIGHT_EPS = 1e-3;
+
+/**
+ * The deliberate part of the supercontinent's relief at cell (x, y), added to the noise base: the
+ * lattice fields interpolated, plus the per-cell arêtes and gullies. Pre-curve, pre-falloff units,
+ * like the base it is added to.
+ */
+function supercontinentRelief(
+  f: ReliefFields,
+  x: number,
+  y: number,
+  sx: number,
+  sy: number,
+  ridgeNoise: ImprovedNoise2D,
+): number {
+  const P = SUPERCONTINENT;
+  // The lattice cell around (x, y), and where in it the cell sits.
+  const fx = x / f.step;
+  const fy = y / f.step;
+  const gx = Math.floor(fx);
+  const gy = Math.floor(fy);
+  const tx = fx - gx;
+  const ty = fy - gy;
+  const o = (gy * f.w + gx) * RELIEF_FIELDS;
+  const s = f.w * RELIEF_FIELDS;
+  const v = f.v;
+  let e = bilerp(v, o, s, tx, ty) + bilerp(v, o + 1, s, tx, ty) + bilerp(v, o + 2, s, tx, ty);
+  const crest = bilerp(v, o + 3, s, tx, ty);
+  if (crest > RELIEF_WEIGHT_EPS) {
+    // Ridged arêtes, squared so the crests are sharp and the cols between them deep.
+    const peaks = ridged(ridgeNoise, sx * P.peakFreq + 7.1, sy * P.peakFreq + 3.3, 5, 2.0, 0.5);
+    e += crest * peaks * peaks;
+  }
+  const rugged = bilerp(v, o + 4, s, tx, ty);
+  if (rugged > RELIEF_WEIGHT_EPS) {
+    // Badlands: a dense net of gullies (the ridged lines) between flat-topped mesas, lifted rather
+    // than carved, so the gullies drain instead of leaving a closed pit (a lake) in every one.
+    const gullies = ridged(ridgeNoise, sx * 28 + 41.3, sy * 28 + 19.1, 4, 2.0, 0.55);
+    e += rugged * smoothstep(0.3, 0.7, 1 - gullies);
+  }
+  return e;
+}
+
 export interface WorldGenOptions {
   size?: number;
-  /** 'island' = finite landmass ringed by ocean; 'continent' = land fills most of the map. */
-  shape?: 'island' | 'continent';
+  /** Landmass layout; see {@link WorldShape}. */
+  shape?: WorldShape;
   /** Upper bound on flora instances (keeps GPU instancing bounded on huge maps). */
   maxFlora?: number;
   /** Run droplet hydraulic erosion after base elevation (default true). */
@@ -906,14 +1188,22 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // elevation histogram (below), so this target holds regardless of the noise parameters —
   // a broad continent whose deep interior sits far enough from any coast for the
   // rain-shadow sweep to dry it into steppe and true desert.
-  const LAND_FRACTION = 0.38;
+  const superC = shape === 'supercontinent';
+  const LAND_FRACTION = superC ? SUPERCONTINENT.landFraction : 0.38;
+  // Latitude as the temperature field sees it (1 = equator, 0 = pole). The supercontinent bends it
+  // so the warm bands are wider: a hot subtropical belt for the Hadley deserts and a broad equatorial
+  // zone for rainforest and savanna, at the expense of the polar fringe.
+  const thermalLat = superC
+    ? (lat: number) => 1 - Math.pow(1 - lat, SUPERCONTINENT.tropicsPow)
+    : (lat: number) => lat;
 
   // Continental shaping: gentler falloff for a big continent, stronger for an island.
-  const falloffPow = shape === 'island' ? 2.4 : 3.4;
-  const falloffRadius = shape === 'island' ? 1.7 : 1.55;
+  const falloffPow = superC ? SUPERCONTINENT.falloffPow : shape === 'island' ? 2.4 : 3.4;
+  const falloffRadius = superC ? SUPERCONTINENT.falloffRadius : shape === 'island' ? 1.7 : 1.55;
 
   // ---- Pass 1: elevation (domain-warped fBm + ridged mountains + falloff) ----
   const FREQ = 0.95; // very low base frequency -> ONE huge cohesive continent, broad plains
+  const reliefFields = superC ? supercontinentFields(size, FREQ, elevNoise, warpNoise, ridgeNoise) : null;
   let minE = Infinity;
   let maxE = -Infinity;
   for (let y = 0; y < size; y++) {
@@ -937,13 +1227,25 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       // ridge weight gives real arêtes and serrated crests instead of smooth stacked cones.
       const ridge = ridged(ridgeNoise, sx * 1.5, sy * 1.5, 5, 2.0, 0.5);
       const mountainMask = smoothstep(0.58, 0.9, base);
-      let e = base * 0.85 + ridge * mountainMask * 0.58;
+      let e: number;
+      if (superC) {
+        e =
+          base * 0.85 +
+          ridge * mountainMask * 0.3 +
+          supercontinentRelief(reliefFields as ReliefFields, x, y, sx, sy, ridgeNoise);
+      } else {
+        e = base * 0.85 + ridge * mountainMask * 0.58;
+      }
 
       // Elevation curve: strongly flatten the lowlands into broad plains, keep peaks sharp.
       e = Math.pow(Math.max(0, e), 1.7);
 
-      // Continental falloff (island / continent edge).
-      const d = Math.min(1, Math.sqrt(nx * nx + ny * ny) / falloffRadius);
+      // Continental falloff (island / continent edge). The supercontinent uses a squarish
+      // superellipse so its belt runs right up to the polar seas instead of being rounded off.
+      const dn = superC
+        ? Math.sqrt(Math.sqrt(nx * nx * nx * nx + ny * ny * ny * ny)) // superellipse, exponent 4
+        : Math.sqrt(nx * nx + ny * ny);
+      const d = Math.min(1, dn / falloffRadius);
       const fall = Math.max(0, 1 - Math.pow(d, falloffPow));
       e *= fall;
 
@@ -981,6 +1283,45 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     let k = 0;
     while (k < K - 1 && acc + histo[k] < target) acc += histo[k++];
     seaLevel = k / (K - 1);
+  }
+
+  // ---- Pass 1c (supercontinent): inland depressions are lakes, not sea ----
+  // A cell below sea level that no water path joins to the open ocean is a closed depression, not
+  // ocean. Left as ocean it renders as a stray patch of sea and re-wets the wind sweep (Pass 3),
+  // which then draws a horizontal stripe of moisture across the land beside it. Lifting it just
+  // above sea level hands it to the lake pass, which floods it to its spill level instead.
+  if (superC) {
+    const open = new Uint8Array(n);
+    const queue = new Int32Array(n);
+    let qh = 0;
+    let qt = 0;
+    const seed = (i: number) => {
+      if (!open[i] && elevation[i] < seaLevel) {
+        open[i] = 1;
+        queue[qt++] = i;
+      }
+    };
+    for (let k = 0; k < size; k++) {
+      seed(k);
+      seed((size - 1) * size + k);
+      seed(k * size);
+      seed(k * size + size - 1);
+    }
+    while (qh < qt) {
+      const c = queue[qh++];
+      const cx = c % size;
+      const cy = (c / size) | 0;
+      for (let k = 0; k < 4; k++) {
+        const nx = cx + (k === 0 ? -1 : k === 1 ? 1 : 0);
+        const ny = cy + (k === 2 ? -1 : k === 3 ? 1 : 0);
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        const j = ny * size + nx;
+        if (open[j] || elevation[j] >= seaLevel) continue;
+        open[j] = 1;
+        queue[qt++] = j;
+      }
+    }
+    for (let i = 0; i < n; i++) if (!open[i] && elevation[i] < seaLevel) elevation[i] = seaLevel + 1e-4;
   }
 
   // ---- Pass 2: D8 flow accumulation (rivers) — no fluid sim, just graph flow ----
@@ -1047,7 +1388,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     // share almost the same offset, so a channel stays connected).
     const wig = 1.6 * widthScale;
     for (let y = 1; y < size - 1; y++) {
-      const lat = 1 - Math.abs((y / (size - 1)) * 2 - 1);
+      const lat = thermalLat(1 - Math.abs((y / (size - 1)) * 2 - 1));
       for (let x = 1; x < size - 1; x++) {
         const i = y * size + x;
         const f = flow[i];
@@ -1114,7 +1455,7 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
     // how many cells happen to subdivide it (a 2048 map must not dry out twice as fast).
     const rate = 1024 / size;
     const RISE = 2.6; // per unit climb — resolution-independent already
-    const DRIZZLE = 0.01 * rate; // baseline rain-out over land
+    const DRIZZLE = (superC ? SUPERCONTINENT.drizzle : 0.01) * rate; // baseline rain-out over land
     const LAND_ET = 0.0015 * rate; // faint evapotranspiration — deep interiors still dry out
     const OCEAN_WET = 0.055 * rate; // open water re-saturates the air quickly
     for (let y = 0; y < size; y++) {
@@ -1149,26 +1490,63 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
         prev = e;
       }
     }
+    // The sweep runs row by row, so one sharp feature (a spire, a lake) dries or wets its own row
+    // only, and the classifier draws that as a ruler-straight stripe of another biome across the
+    // land downwind. Real air spreads sideways: a short north-south blur removes the stripes and
+    // keeps the large rain shadows. Supercontinent only, so the other shapes stay bit-identical.
+    if (superC) {
+      // Row-major with one running sum per column (a column-major walk strides 8 KB per step).
+      const R = Math.max(1, Math.round(size / 256));
+      const src = new Float32Array(n);
+      const acc = new Float64Array(size);
+      for (const h of [humW, humE]) {
+        src.set(h);
+        acc.fill(0);
+        for (let y = -R; y <= R; y++) {
+          const row = Math.min(size - 1, Math.max(0, y)) * size;
+          for (let x = 0; x < size; x++) acc[x] += src[row + x];
+        }
+        for (let y = 0; y < size; y++) {
+          const add = Math.min(size - 1, y + R + 1) * size;
+          const sub = Math.max(0, y - R) * size;
+          for (let x = 0; x < size; x++) {
+            h[y * size + x] = acc[x] / (2 * R + 1);
+            acc[x] += src[add + x] - src[sub + x];
+          }
+        }
+      }
+    }
   }
 
   for (let y = 0; y < size; y++) {
+    // Everything that depends on latitude alone is evaluated once per row: the same expressions,
+    // so the same values, without ~4M exponentials and smoothsteps per world.
+    const ny = (y / (size - 1)) * 2 - 1;
+    const lat = 1 - Math.abs(ny); // 1 at equator (map centre row), 0 at poles
+    const tLat = thermalLat(lat);
+    // Earth-like wind bands select which sweep feeds this latitude (smoothly blended).
+    const trades = smoothstep(0.62, 0.75, lat); // tropics: air arrives from the east
+    const polar = 1 - smoothstep(0.18, 0.3, lat); // polar fringe: easterlies again
+    const wEast = Math.min(1, trades + polar);
+    // Hadley circulation: descending dry air parks a desert belt over the subtropics
+    // (Earth's Sahara / Arabian / Australian deserts), while the rising equatorial air
+    // (ITCZ) keeps the deep tropics rain-soaked. This guarantees a hot-arid belt and an
+    // equatorial rainforest belt on every seed, right where the real Earth grows them.
+    const dLat = lat - 0.62;
+    const hadleyDry = Math.exp(-(dLat * dLat) / 0.0162) * (superC ? SUPERCONTINENT.hadleyDry : 0.16);
+    const itczWet = superC
+      ? smoothstep(SUPERCONTINENT.itczFrom, 1.0, lat) * SUPERCONTINENT.itczWet
+      : smoothstep(0.85, 1.0, lat) * 0.1;
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const nx = (x / (size - 1)) * 2 - 1;
-      const ny = (y / (size - 1)) * 2 - 1;
       const e = elevation[i];
-
-      const lat = 1 - Math.abs(ny); // 1 at equator (map centre row), 0 at poles
       // Altitude cooling steep enough that the very highest equatorial peaks still freeze
       // (Kilimanjaro-style), while polar lowlands sit below the snow line on their own.
       const lapse = Math.max(0, e - seaLevel) * 1.35;
       const tNoise = (fbm(tempNoise, nx * 2.2, ny * 2.2, 3, 2.0, 0.5) + 1) / 2;
-      temperature[i] = Math.max(0, Math.min(1, lat * 0.82 + tNoise * 0.18 - lapse));
+      temperature[i] = Math.max(0, Math.min(1, tLat * 0.82 + tNoise * 0.18 - lapse));
 
-      // Earth-like wind bands select which sweep feeds this latitude (smoothly blended).
-      const trades = smoothstep(0.62, 0.75, lat); // tropics: air arrives from the east
-      const polar = 1 - smoothstep(0.18, 0.3, lat); // polar fringe: easterlies again
-      const wEast = Math.min(1, trades + polar);
       const hum = humE[i] * wEast + humW[i] * (1 - wEast);
 
       // Low-frequency belts + a little local detail keep region borders organic.
@@ -1177,13 +1555,6 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       const seaProx = smoothstep(seaLevel + 0.12, seaLevel, e) * 0.12; // maritime coasts
       const flowWet = flow[i] * 0.15; // river corridors stay green
       const evaporation = Math.max(0, temperature[i] - 0.55) * 0.22; // hot air dries the soil
-      // Hadley circulation: descending dry air parks a desert belt over the subtropics
-      // (Earth's Sahara / Arabian / Australian deserts), while the rising equatorial air
-      // (ITCZ) keeps the deep tropics rain-soaked. This guarantees a hot-arid belt and an
-      // equatorial rainforest belt on every seed, right where the real Earth grows them.
-      const dLat = lat - 0.62;
-      const hadleyDry = Math.exp(-(dLat * dLat) / 0.0162) * 0.16;
-      const itczWet = smoothstep(0.85, 1.0, lat) * 0.1;
       // Rain shadow dominates; the noise belts only modulate it, so a leeward interior can
       // dry all the way down into desert instead of being floored by the belt average.
       moisture[i] = Math.max(
@@ -1202,10 +1573,11 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // ---- Pass 3c: distance to the OCEAN (closeness 0..1) — keeps the beach a thin ribbon ----
   // Empty water arg => sources are ocean cells only (lakes get their own biome later).
   const coast = computeShore(elevation, new Float32Array(0), size, seaLevel);
+  const tuning: ClassifyTuning | null = superC ? SUPERCONTINENT.classify : null;
 
   // ---- Pass 4: biome classification (climate bands x height x slope x coast) ----
   for (let i = 0; i < n; i++) {
-    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], coast[i], seaLevel);
+    biome[i] = classify(elevation[i], temperature[i], moisture[i], flow[i], slope[i], coast[i], seaLevel, tuning);
   }
   // The widened river ribbon becomes the River biome (so the minimap, colour bake and flora
   // rules all see the same ribbon, not the raw 1-cell channel). Ice stays frozen over.
@@ -1388,40 +1760,58 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
 
   // ---- Pass 4e: waterfalls — steep drops along river channels ----
-  // A river cell whose steepest descent exceeds MIN_DROP reads as a waterfall: keep the lip
-  // position, drop height and downhill bearing so the renderer can hang a foam curtain on the
-  // face. Falls are kept biggest-first with a spacing filter so one long cascade doesn't
-  // spawn a ladder of overlapping curtains.
+  // A river cell whose path downstream drops at least `minDrop` within `run` steps of steepest
+  // descent reads as a waterfall: keep the lip position, drop height and downhill bearing so the
+  // renderer can hang a foam curtain on the face. Falls are kept biggest-first with a spacing filter
+  // so one long cascade doesn't spawn a ladder of overlapping curtains.
+  //
+  // `island` / `continent` use one step (the cell's own steepest drop) at 0.009 per 1024th of the
+  // map, 3 cells apart, up to 450. At 2048² that fires on any river crossing a steep hillside — all
+  // of them 1-2 render units tall, curtains on every slope — so the supercontinent asks for
+  // knickpoints instead (`SUPERCONTINENT.waterfalls`): a real step in the river's long profile,
+  // every qualifying fall kept, so the count follows from the threshold and `max` is a backstop.
   const wfX: number[] = [];
   const wfZ: number[] = [];
   const wfTopE: number[] = [];
   const wfDrop: number[] = [];
   const wfYaw: number[] = [];
   {
-    // Per-CELL drop threshold: halving the cell size halves each step's drop, so scale by
-    // resolution to keep the same physical cliff height qualifying at any WORLD_SIZE.
-    const MIN_DROP = 0.009 * (1024 / size);
-    const MAX_FALLS = 450;
+    const W = superC ? SUPERCONTINENT.waterfalls : { run: 1, minDrop: 0.009 * (1024 / size), spacing: 3, max: 450 };
+    const run = superC ? Math.max(2, Math.round((W.run * size) / 2048)) : 1;
+    const spacing2 = superC ? ((W.spacing * size) / 2048) ** 2 : W.spacing * W.spacing;
     const cand: Array<{ x: number; z: number; e: number; d: number; yaw: number }> = [];
     for (let y = 1; y < size - 1; y++) {
       for (let x = 1; x < size - 1; x++) {
         const i = y * size + x;
         if (biome[i] !== Biome.River || water[i] > 0) continue;
-        let drop = 0;
+        let cur = i;
         let dirX = 0;
         let dirY = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const d = elevation[i] - elevation[(y + dy) * size + (x + dx)];
-            if (d > drop) {
-              drop = d;
-              dirX = dx;
-              dirY = dy;
+        for (let s = 0; s < run; s++) {
+          const cx = cur % size;
+          const cy = (cur / size) | 0;
+          if (cx === 0 || cy === 0 || cx === size - 1 || cy === size - 1) break;
+          let next = -1;
+          let lowest = elevation[cur];
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const j = (cy + dy) * size + (cx + dx);
+              if (elevation[j] < lowest) {
+                lowest = elevation[j];
+                next = j;
+                if (s === 0) {
+                  dirX = dx;
+                  dirY = dy;
+                }
+              }
             }
           }
+          if (next < 0) break;
+          cur = next;
         }
-        if (drop < MIN_DROP) continue;
+        const drop = elevation[i] - elevation[cur];
+        if (drop < W.minDrop) continue;
         cand.push({
           x: x - size / 2 + dirX * 0.5,
           z: y - size / 2 + dirY * 0.5,
@@ -1432,22 +1822,18 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
       }
     }
     cand.sort((a, b) => b.d - a.d);
-    const takenX: number[] = [];
-    const takenZ: number[] = [];
     for (const c of cand) {
-      if (wfX.length >= MAX_FALLS) break;
+      if (wfX.length >= W.max) break;
       let crowded = false;
-      for (let k = 0; k < takenX.length; k++) {
-        const ddx = takenX[k] - c.x;
-        const ddz = takenZ[k] - c.z;
-        if (ddx * ddx + ddz * ddz < 9) {
+      for (let k = 0; k < wfX.length; k++) {
+        const ddx = wfX[k] - c.x;
+        const ddz = wfZ[k] - c.z;
+        if (ddx * ddx + ddz * ddz < spacing2) {
           crowded = true;
           break;
         }
       }
       if (crowded) continue;
-      takenX.push(c.x);
-      takenZ.push(c.z);
       wfX.push(c.x);
       wfZ.push(c.z);
       wfTopE.push(c.e);
@@ -1457,34 +1843,54 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   }
 
   // ---- Pass 4f: cave mouths — dark openings set into steep bare-rock faces ----
+  // Bare rock and eroded badlands host openings; they need a proper face to sink into, and never
+  // sit up in the frozen band — dark mouths against snow-bright rock read as floating black-dot
+  // glitches from any distance. `island` / `continent` take the first 80 lucky cells (1.8% each)
+  // in row order. On a world with as much rock as the supercontinent that put every mouth in the
+  // north, so it keeps the steepest faces instead, `spacing` cells apart (`SUPERCONTINENT.caves`).
   const cvX: number[] = [];
   const cvZ: number[] = [];
   const cvE: number[] = [];
   const cvYaw: number[] = [];
   {
+    const C = superC ? SUPERCONTINENT.caves : { minSlope: 0.45, spacing: 0, max: 80 };
     const caveRng = mulberry32((baseSeed ^ 0x7ac0beef) >>> 0);
-    const MAX_CAVES = 80;
-    outer: for (let y = 2; y < size - 2; y += 2) {
-      const lat = 1 - Math.abs((y / (size - 1)) * 2 - 1);
+    const spacing2 = ((C.spacing * size) / 2048) ** 2;
+    const cand: number[] = [];
+    for (let y = 2; y < size - 2; y += 2) {
+      const lat = thermalLat(1 - Math.abs((y / (size - 1)) * 2 - 1));
       for (let x = 2; x < size - 2; x += 2) {
         const i = y * size + x;
-        // Bare rock and eroded badlands host openings; needs a proper face to sink into.
-        // Sparse and NEVER up in the frozen band — dark mouths against snow-bright rock
-        // read as floating black-dot glitches from any distance.
         if (biome[i] !== Biome.Rock && biome[i] !== Biome.Badlands) continue;
-        if (slope[i] < 0.45) continue;
+        if (slope[i] < C.minSlope) continue;
         if (elevation[i] < seaLevel + 0.02) continue;
         if (lat * 0.82 + 0.09 - Math.max(0, elevation[i] - seaLevel) * 1.35 < 0.135) continue; // not on snow
-        if (caveRng() > 0.018) continue;
-        // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
-        const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
-        const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
-        cvX.push(x - size / 2);
-        cvZ.push(y - size / 2);
-        cvE.push(elevation[i]);
-        cvYaw.push(Math.atan2(-dEdz, -dEdx));
-        if (cvX.length >= MAX_CAVES) break outer;
+        if (!superC && caveRng() > 0.018) continue;
+        cand.push(i);
       }
+    }
+    if (superC) cand.sort((a, b) => slope[b] - slope[a] || a - b);
+    for (const i of cand) {
+      if (cvX.length >= C.max) break;
+      const x = i % size;
+      const y = (i / size) | 0;
+      let crowded = false;
+      for (let k = 0; k < cvX.length; k++) {
+        const ddx = cvX[k] - (x - size / 2);
+        const ddz = cvZ[k] - (y - size / 2);
+        if (ddx * ddx + ddz * ddz < spacing2) {
+          crowded = true;
+          break;
+        }
+      }
+      if (crowded) continue;
+      // Outward (downhill) bearing from the local gradient, so the mouth faces out of the hill.
+      const dEdx = (elevation[i + 1] - elevation[i - 1]) * 0.5;
+      const dEdz = (elevation[i + size] - elevation[i - size]) * 0.5;
+      cvX.push(x - size / 2);
+      cvZ.push(y - size / 2);
+      cvE.push(elevation[i]);
+      cvYaw.push(Math.atan2(-dEdz, -dEdx));
     }
   }
 
@@ -1497,23 +1903,41 @@ export function generateWorld(seed: string | number, opts: WorldGenOptions = {})
   // Sample on a stride so huge maps stay within the flora budget.
   const targetCandidates = size * size;
   const stride = Math.max(1, Math.floor(Math.sqrt(targetCandidates / (maxFlora * 6))));
+  /** Probability a sampled cell spawns flora; -1 where the hard exclusions rule it out. */
+  const floraChance = (i: number): number => {
+    // Hard exclusions — only vegetated dry land, clear of water, cliffs and the waterline:
+    if (elevation[i] <= seaLevel) return -1; // must be above sea level
+    if (water[i] > 0) return -1; // never in a lake
+    if (riverAmt[i] > 100) return -1; // never in a river ribbon
+    if (slope[i] > 0.78) return -1; // never on steep cliffs
+    if (shore[i] > 0.8) return -1; // never right at the water's edge / on the beach
+    // Denser where it's wetter — and MUCH denser along water: shore[] rises toward lakes
+    // and the sea, flow[] rises toward river channels, so gallery forest crowds the banks
+    // and even deserts grow an oasis fringe along their wadis.
+    const waterBoost = 1 + shore[i] * 1.1 + Math.min(1, flow[i] * 1.6) * 0.9;
+    return floraDensity(biome[i] as Biome) * (0.5 + moisture[i]) * waterBoost;
+  };
+  // The scan runs north to south and stops at `maxFlora`, so a world with more vegetated land than
+  // the budget would grow its trees in the north and leave the south bare (the supercontinent
+  // reached the cap at 3/4 of the way down). Thin every cell by the same factor instead, so the
+  // budget is spent evenly. Only where the expected count would overrun, and only for the
+  // supercontinent, so the other shapes keep their exact v21 flora.
+  let thin = 1;
+  if (superC) {
+    const budget = maxFlora * SUPERCONTINENT.floraBudget;
+    let expected = 0;
+    for (let y = 0; y < size; y += stride) {
+      for (let x = 0; x < size; x += stride) expected += Math.max(0, Math.min(1, floraChance(y * size + x)));
+    }
+    if (expected > budget) thin = budget / expected;
+  }
   for (let y = 0; y < size; y += stride) {
     for (let x = 0; x < size; x += stride) {
       if (fX.length >= maxFlora) break;
       const i = y * size + x;
-      // Hard exclusions — only vegetated dry land, clear of water, cliffs and the waterline:
-      if (elevation[i] <= seaLevel) continue; // must be above sea level
-      if (water[i] > 0) continue; // never in a lake
-      if (riverAmt[i] > 100) continue; // never in a river ribbon
-      if (slope[i] > 0.78) continue; // never on steep cliffs
-      if (shore[i] > 0.8) continue; // never right at the water's edge / on the beach
-      const b = biome[i] as Biome;
-      // Denser where it's wetter — and MUCH denser along water: shore[] rises toward lakes
-      // and the sea, flow[] rises toward river channels, so gallery forest crowds the banks
-      // and even deserts grow an oasis fringe along their wadis.
-      const waterBoost = 1 + shore[i] * 1.1 + Math.min(1, flow[i] * 1.6) * 0.9;
-      const density = floraDensity(b) * (0.5 + moisture[i]) * waterBoost;
-      if (rng() > density) continue;
+      const density = floraChance(i);
+      if (density < 0) continue;
+      if (rng() > density * thin) continue;
 
       // World coordinates centred on origin (1 cell = 1 unit).
       //

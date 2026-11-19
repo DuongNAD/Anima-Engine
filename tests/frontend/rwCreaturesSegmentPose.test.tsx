@@ -12,6 +12,7 @@ import { installStubbedProperty, removeStubbedProperties } from '../mocks/r3f-do
 import { segments } from '../mocks/segment_fixtures';
 import { generateWorld, type World } from '../../src/components/Landscape/utils/worldGen';
 import {
+  CREATURE_BODY_SCALE,
   buildAgentPoses,
   computeCreatureColor,
   computeFarMarkerScale,
@@ -102,6 +103,19 @@ function advanceThreeFrame(overrides: Parameters<typeof makeFrameState>[0] = {})
   for (const cb of frameCallbacks) {
     cb(state, 1 / 60);
   }
+}
+
+/**
+ * Position camera in mid-LOD band (`160 < d <= 360` on medium tier) looking at origin so B1's
+ * near SkinnedMesh tier (`<= 160` units) does not empty `live-agents-segments` in instanced checks.
+ */
+function makeMidLodCamera(): THREE.PerspectiveCamera {
+  const cam = new THREE.PerspectiveCamera(90, 16 / 9, 0.5, 2000);
+  cam.position.set(0, 120, 240);
+  cam.lookAt(0, 60, 0);
+  cam.updateMatrixWorld();
+  cam.updateProjectionMatrix();
+  return cam;
 }
 
 function activeInstancedMeshes(container: HTMLElement): MockInstancedEl[] {
@@ -342,15 +356,15 @@ describe('RW-A2 articulated creatures, 2D species/size parity, shadows, markers,
     const radiusView = render(
       <LiveAgents world={world} renderSize={1200} heightRatio={0.14} meshResolution={64} tickSource={radiusSource} />,
     );
-    advanceThreeFrame();
+    advanceThreeFrame({ camera: makeMidLodCamera() });
 
     const segMesh = radiusView.container.querySelector('instancedmesh[name="live-agents-segments"]') as MockInstancedEl;
     expect(segMesh.count).toBe(2);
     const mat0 = segMesh._rwDraws![0].elements;
     const mat1 = segMesh._rwDraws![1].elements;
-    // Scale X / Y encode renderRadius (0.2 * 6 = 1.2 vs 0.45 * 6 = 2.7).
-    expect(mat0[0]).toBeCloseTo(1.2, 5);
-    expect(mat1[0]).toBeCloseTo(2.7, 5);
+    // Scale X / Y encode renderRadius calibrated by CREATURE_BODY_SCALE (0.2/0.45 * 6 * CREATURE_BODY_SCALE).
+    expect(mat0[0]).toBeCloseTo(1.2 * CREATURE_BODY_SCALE, 5);
+    expect(mat1[0]).toBeCloseTo(2.7 * CREATURE_BODY_SCALE, 5);
     expect(mat0).not.toEqual(mat1);
     radiusView.unmount();
 
@@ -390,7 +404,7 @@ describe('RW-A2 articulated creatures, 2D species/size parity, shadows, markers,
     const { container } = render(
       <LiveAgents world={world} renderSize={1200} heightRatio={0.14} meshResolution={64} tickSource={source} />,
     );
-    advanceThreeFrame();
+    advanceThreeFrame({ camera: makeMidLodCamera() });
 
     const snoutMesh = container.querySelector('instancedmesh[name="live-agents-snouts"]') as MockInstancedEl;
     const sphereMesh = container.querySelector('instancedmesh[name="live-agents-spheres"]') as MockInstancedEl;
@@ -399,16 +413,16 @@ describe('RW-A2 articulated creatures, 2D species/size parity, shadows, markers,
     expect(snoutMesh.count).toBe(1);
     expect(sphereMesh.count).toBe(5);
 
-    // Predator snout center projects along +X (`x > 0`, `z ≈ 0`).
+    // Predator snout center projects along +X (`x > 0`, `z ≈ 0`), scaled by CREATURE_BODY_SCALE.
     const snoutMat = snoutMesh._rwDraws![0].elements;
-    expect(snoutMat[12] > 2).toBe(true);
+    expect(snoutMat[12] > 2 * CREATURE_BODY_SCALE).toBe(true);
     expect(Math.abs(snoutMat[14]) < 0.01).toBe(true);
 
     // Predator's two eyes sit symmetrically in Z (`z = ±eyeSide`) looking along +X.
     const eye0Z = sphereMesh._rwDraws![0].elements[14];
     const eye1Z = sphereMesh._rwDraws![1].elements[14];
     expect(eye0Z + eye1Z).toBeCloseTo(0, 5);
-    expect(Math.abs(eye0Z) > 0.5).toBe(true);
+    expect(Math.abs(eye0Z) > 0.5 * CREATURE_BODY_SCALE).toBe(true);
   });
 
   it('RW2-4: hashes agent_id into non-colliding predator/prey colors and preserves energy dimming', () => {
@@ -505,7 +519,7 @@ describe('RW-A2 articulated creatures, 2D species/size parity, shadows, markers,
     const { container } = render(
       <LiveAgents world={world} renderSize={1200} heightRatio={0.14} meshResolution={64} tickSource={source} />,
     );
-    advanceThreeFrame();
+    advanceThreeFrame({ camera: makeMidLodCamera() });
 
     const segMesh = container.querySelector('instancedmesh[name="live-agents-segments"]') as MockInstancedEl;
     expect(segMesh.count).toBe(3);

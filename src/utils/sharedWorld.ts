@@ -1,3 +1,5 @@
+import type { WorldShape } from '../components/Landscape/utils/worldGen';
+
 // ---------------------------------------------------------------------------------------
 // Which world everything means when it says "the world".
 //
@@ -18,8 +20,13 @@ export const SHARED_WORLD_SEED = 'seed';
  * resolution is decoupled from this, and the artifact handed to the simulation is downsampled. */
 export const SHARED_WORLD_SIZE = 2048;
 
-/** Landmass shape. */
-export const SHARED_WORLD_SHAPE: 'island' | 'continent' = 'continent';
+/**
+ * Landmass shape. `supercontinent` (since worldgen 22) is laid out so every environment has ground
+ * to form on: one land belt from pole to pole, two mountain ranges and the climate bands across it.
+ * `continent` put the equator under open sea, which left the hot biomes almost absent. See
+ * `SUPERCONTINENT` in `worldGen.ts`.
+ */
+export const SHARED_WORLD_SHAPE: WorldShape = 'supercontinent';
 
 /** The `WorldGenOptions` the shared world is generated with, ready to pass to `worldCache`. */
 export const SHARED_WORLD_OPTS = {

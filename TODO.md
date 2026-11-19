@@ -14,6 +14,34 @@
 
 ---
 
+# 🌍 Thế giới chung đủ mọi môi trường — worldgen 22, shape `supercontinent` (2026-11-19)
+
+Chỉ dữ liệu thế giới (frontend generator); không đụng `src-tauri/` và không đụng file render. PR
+"world: retune the shared world so every environment is visible".
+
+- **Vì sao:** thế giới chung (`continent`, seed "seed", 2048²) có 62% ocean và xích đạo nằm dưới biển,
+  nên sa mạc, rừng nhiệt đới, xavan, đất cằn và rừng ngập mặn cộng lại dưới 1,5% bản đồ; 450 thác (cap)
+  cao 1–2 đơn vị render rải khắp sườn đồi; 50 hang dồn về phía bắc.
+- **Làm gì:** shape mới `supercontinent` (`SUPERCONTINENT` trong `worldGen.ts`), `sharedWorld.ts` chuyển
+  sang nó. Một dải lục địa chạy từ cực tới cực (kiểu "continentalness"), hai dãy núi (dãy xương sống
+  NW–SE tan thành đất cằn ở vành đai sa mạc; bức tường đông–tây ở phương bắc), khí hậu chỉnh bằng dải
+  trường chứ không tô ô. Thác chỉ ở knickpoint (số lượng theo ngưỡng), hang ở vách dốc nhất, rải đều.
+  `island`/`continent` sinh **y hệt** v21 (so hash toàn bộ mảng ở 5 cặp seed/size/shape).
+- **Số đo (probe, 2048²):** ocean 62,00 → 45,01%; desert 0,34 → 4,23; jungle 0,70 → 2,67; forest 2,10 →
+  5,00; savanna 0,24 → 1,67; núi cao (alpine+snow+glacier+rock) 8,86 → 8,53; badlands 0,12 → 0,88;
+  swamp/bog/mangrove 0,52/0,15/0,10 → 0,93/0,45/0,34; thác 450 → 52 (1,7–5,0 đơn vị); hang 50 → 45.
+- **Hai lần CI đỏ và cách sửa:** (1) ngân sách render RW-C4 ở `high/ecosystem` (5,28M > 5,03M tam giác
+  cây): giảm cây của supercontinent xuống 0,78 × `maxFlora`, không nới ngân sách; (2) ba test render
+  jsdom quá 15 s trên runner: phần quan hệ trơn của địa hình (dải đất, dãy núi, chi tiết bờ) tính trên
+  lưới thưa 4 ô rồi nội suy, nên sinh thế giới 2048² lạnh mất ~3,1 s như `continent` (trước đó ~4,4 s).
+- **Bằng chứng sinh lại bằng script của nó:** poses (`derive_view_cameras.ts`), `map_evidence.json`,
+  tám `map-views/*.png` (`capture:views`, chụp trên Apple M5 qua ANGLE Metal, 8/8 byte-identical hai
+  lần: `capture.config.ts` nay chọn Metal trên darwin vì D3D11 ở đó rơi về SwiftShader),
+  `map_manifest.json` + `world_256.anmw`, `animal-map.manifest.json`. Ảnh chuẩn chụp với renderer
+  hiện tại; khi thẻ W3-lite (renderer) merge thì phải chụp lại.
+
+---
+
 # ⏪ Rà mười tài liệu quá hạn review, giao R1c cho agent-win (2026-11-17 → 2026-11-18)
 
 Chỉ tài liệu; không build, không chạy test nào. Hai PR vào thân cây.

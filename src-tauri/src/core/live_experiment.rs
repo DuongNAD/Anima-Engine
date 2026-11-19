@@ -213,9 +213,13 @@ pub const LIVE_KEY_DRIFT_CONTROL: &str = "live.drift_control";
 /// Card SEL2-D: Channon periodic-reset window length `K` in ticks (`0` = unreset replay from
 /// founders; `K > 0` requires `live.drift_control = 1.0` and `duration_ticks % K == 0`).
 pub const LIVE_KEY_DRIFT_RESET_TICKS: &str = "live.drift_reset_ticks";
+/// Card LAND1: `1.0` enables [`crate::core::resources::TerrainNavigation`] (constrains agent
+/// roots to walkable `TerrainMap` cells, snaps genesis lattice positions to nearest walkable cells,
+/// and gates spawns onto land); `0.0`/absent keeps it disabled, bit-identical to pre-LAND1 runs.
+pub const LIVE_KEY_LAND_MASK: &str = "live.land_mask";
 
 /// Every key [`LiveWorldConfig::from_initial_conditions`] accepts.
-pub const LIVE_KEYS: [&str; 25] = [
+pub const LIVE_KEYS: [&str; 26] = [
     LIVE_KEY_FOUNDERS,
     LIVE_KEY_PREDATOR_FRACTION,
     LIVE_KEY_TREES,
@@ -241,6 +245,7 @@ pub const LIVE_KEYS: [&str; 25] = [
     LIVE_KEY_PLANT_RESERVE,
     LIVE_KEY_DRIFT_CONTROL,
     LIVE_KEY_DRIFT_RESET_TICKS,
+    LIVE_KEY_LAND_MASK,
 ];
 
 /// The genesis the manifest asked for.
@@ -318,6 +323,10 @@ pub struct LiveWorldConfig {
     /// Card S12: genesis lake layout (`0` = row at `z_fraction = 0.8`, `1` = 2-D lattice).
     #[serde(default)]
     pub lake_layout: u8,
+    /// Card LAND1: `1.0` enables `TerrainNavigation` and snaps lattice spawns to walkable cells;
+    /// `0.0`/absent keeps terrain navigation disabled (bit-identical to trunk).
+    #[serde(default)]
+    pub land_mask: bool,
 }
 
 fn default_prey_cap() -> usize {
@@ -380,6 +389,7 @@ impl Default for LiveWorldConfig {
             drift_control: false,
             drift_reset_ticks: 0,
             lake_layout: 0,
+            land_mask: false,
         }
     }
 }
@@ -618,6 +628,18 @@ impl LiveWorldConfig {
                 LIVE_KEY_LAKE_LAYOUT => match *value {
                     0.0 => config.lake_layout = 0,
                     1.0 => config.lake_layout = 1,
+                    other => {
+                        return Err(ExperimentError::OutOfRange {
+                            field: key.clone(),
+                            value: other,
+                            min: 0.0,
+                            max: 1.0,
+                        })
+                    }
+                },
+                LIVE_KEY_LAND_MASK => match *value {
+                    0.0 => config.land_mask = false,
+                    1.0 => config.land_mask = true,
                     other => {
                         return Err(ExperimentError::OutOfRange {
                             field: key.clone(),
@@ -2354,30 +2376,9 @@ impl SaveHandles {
     }
 }
 
-/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
-/// process environment replaced by what the manifest declared.
-fn build_live_world(
-    seed: u64,
-    config: &LiveWorldConfig,
-    restore: Option<&SavedSimulationState>,
-) -> Result<World, ExperimentError> {
-    let mut world = crate::core::ecs::init_world();
-
-    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
-    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
-    // silently change the trajectory of a run whose whole point is that its inputs are declared.
-    //
-    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
-    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
-    // flags answering separate questions, and folding them in here would turn one declared factor
-    // into a bundle no result could attribute.
-    let sim_rng = match restore {
-        Some(state) if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 => {
-            crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
-        }
-        _ => crate::core::resources::SimRng::from_seed(seed),
-    };
-    world.insert_resource(sim_rng);
+/// Insert all manifest-declared world-law policy resources onto `world`, replacing any
+/// environment-resolved defaults installed by `init_world` or `SimulationEngine::start`.
+fn insert_policy_resources(world: &mut World, config: &LiveWorldConfig) {
     world.insert_resource(crate::core::resources::BrainPolicy {
         evolved: config.evolved_brains,
         ..Default::default()
@@ -2416,6 +2417,11 @@ fn build_live_world(
         drive_floor: config.drive_floor,
         thirst_steering: config.thirst_steering,
     });
+    // Card LAND1 (`live.land_mask`): absent/0 keeps land navigation disabled so pre-LAND1
+    // manifests stay bit-identical.
+    world.insert_resource(crate::core::resources::TerrainNavigation {
+        enabled: config.land_mask,
+    });
     // Fitness likewise comes from the manifest, never from `ANIMA_FITNESS`: which rule decides
     // who reproduces is a declared input of the experiment, and absent keys keep the
     // locomotion ranking — bit-identical to every run made before branch F existed.
@@ -2427,7 +2433,57 @@ fn build_live_world(
         },
         w_surplus: config.w_surplus,
     });
+    // Declared food cap and predator-income knobs belong to the manifest, not the save or
+    // environment, so both genesis and restore declare them (F-043).
+    world.insert_resource(LiveFoodCap(config.food_cap));
+    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
+        kill_hydration: config.kill_hydration,
+        kill_efficiency: config.kill_efficiency,
+        target_min_energy: config.target_min_energy,
+    });
+}
 
+/// Apply a manifest's declared world-law policy resources, `SimRng`, food cap, pasture capacity
+/// scale, and deterministic lattice genesis (founders, trees, lakes) to an initialized `World`.
+///
+/// Shared by [`build_live_world`] (the headless [`LiveExperimentAdapter`]) and
+/// [`crate::core::simulation_loop::SimulationEngine::start`] (desktop-app viewer mode, card
+/// W2-lite; prototype, to be replaced when ADR-0010 W1 lands) so both start from identical tick-0
+/// entities and world-law policies. A desktop viewer run still keeps the app's background threads
+/// and therefore does not claim to reproduce a headless experiment's trajectory.
+pub fn apply_live_genesis_and_policies(
+    world: &mut World,
+    seed: u64,
+    config: &LiveWorldConfig,
+    bounds: crate::core::ecs::MapBounds,
+) {
+    world.insert_resource(crate::core::resources::SimRng::from_seed(seed));
+    insert_policy_resources(world, config);
+    world.insert_resource(crate::core::ecs::FoodSpawnSettings {
+        max_food_count: config.food_cap,
+        ..Default::default()
+    });
+    scale_pasture_capacity(world, config.resource_capacity_scale);
+    genesis(world, config, bounds, seed);
+}
+
+/// Build the world the schedule runs on: the app's `init_world`, with everything that reads the
+/// process environment replaced by what the manifest declared.
+fn build_live_world(
+    seed: u64,
+    config: &LiveWorldConfig,
+    restore: Option<&SavedSimulationState>,
+) -> Result<World, ExperimentError> {
+    let mut world = crate::core::ecs::init_world();
+
+    // `init_world` resolves these from the environment, which is exactly what a manifest cannot
+    // tolerate: `ANIMA_SIM_SEED`, `ANIMA_EVOLVED_BRAINS` and `ANIMA_LIFETIME_LEARNING` would each
+    // silently change the trajectory of a run whose whole point is that its inputs are declared.
+    //
+    // `evolved` comes from the manifest rather than the environment, and the other two fields stay
+    // at their defaults on purpose: `lifetime_learning` and `brain_metabolic_cost` are separate
+    // flags answering separate questions, and folding them in here would turn one declared factor
+    // into a bundle no result could attribute.
     let bounds = restore.map(|s| s.map_bounds).unwrap_or_default();
     world.insert_resource(bounds);
     world.insert_resource(crate::physics::SpatialHashGrid::new_prepopulated(
@@ -2436,6 +2492,14 @@ fn build_live_world(
 
     match restore {
         Some(state) => {
+            let sim_rng = if state.sim_rng_seed != 0 || state.sim_rng_pos != 0 {
+                crate::core::resources::SimRng::restore(state.sim_rng_seed, state.sim_rng_pos)
+            } else {
+                crate::core::resources::SimRng::from_seed(seed)
+            };
+            world.insert_resource(sim_rng);
+            insert_policy_resources(&mut world, config);
+
             let pheromone = crate::ai::pheromone::PheromoneGrid {
                 values: state.pheromone_grid.values.clone(),
                 scratch: vec![0.0; crate::ai::pheromone::CELL_COUNT],
@@ -2512,18 +2576,13 @@ fn build_live_world(
         }
         None => {
             world.insert_resource(crate::ai::pheromone::PheromoneGrid::default());
-            world.insert_resource(crate::core::ecs::FoodSpawnSettings {
-                max_food_count: config.food_cap,
-                ..Default::default()
-            });
             world.insert_resource(crate::core::ecs::EpochManager {
                 ticks_per_epoch: 1000,
                 current_epoch_ticks: 0,
                 current_epoch: 0,
             });
             world.insert_resource(crate::core::ecs::ActiveEnvironmentEvent::default());
-            scale_pasture_capacity(&mut world, config.resource_capacity_scale);
-            genesis(&mut world, config, bounds, seed);
+            apply_live_genesis_and_policies(&mut world, seed, config, bounds);
         }
     }
 
@@ -2647,9 +2706,25 @@ fn genesis(
         crate::core::resources::sim_stream::LIVE_GENESIS_BRAINS,
     );
 
+    let terrain_map = if config.land_mask {
+        world
+            .get_resource::<crate::core::terrain::TerrainMap>()
+            .cloned()
+    } else {
+        None
+    };
+    let snap_if_masked = |pos: glam::Vec3| -> glam::Vec3 {
+        if let Some(ref tm) = terrain_map {
+            crate::core::terrain_navigation::snap_to_nearest_walkable(tm, &bounds, pos)
+                .unwrap_or(pos)
+        } else {
+            pos
+        }
+    };
+
     let predators = config.predators();
     for i in 0..config.founders {
-        let pos = lattice_point(i, config.founders.max(1), bounds, 0.35);
+        let pos = snap_if_masked(lattice_point(i, config.founders.max(1), bounds, 0.35));
         let entity = decode_genotype(world, &genotype, pos, glam::Quat::IDENTITY);
         if let Some(brain) = policy.new_brain(&mut brain_rng) {
             world.entity_mut(entity).insert(brain);
@@ -2679,7 +2754,7 @@ fn genesis(
 
     let env = crate::core::ecs::EnvironmentalSpawnSettings::default();
     for i in 0..config.trees {
-        let pos = lattice_point(i, config.trees.max(1), bounds, 0.6);
+        let pos = snap_if_masked(lattice_point(i, config.trees.max(1), bounds, 0.6));
         world.spawn((
             crate::core::ecs::Tree {
                 current_fruit: env.default_tree_fruit,
@@ -2698,11 +2773,11 @@ fn genesis(
         ));
     }
     for i in 0..config.lakes {
-        let pos = if config.lake_layout == 1 {
+        let pos = snap_if_masked(if config.lake_layout == 1 {
             lake_lattice_point(i, config.lakes, bounds)
         } else {
             lattice_point(i, config.lakes.max(1), bounds, 0.8)
-        };
+        });
         world.spawn((
             crate::core::ecs::Lake {
                 current_water: env.default_lake_water,
@@ -2772,17 +2847,6 @@ fn install_runtime_resources(
         InferenceResponseBatch, NextNodeId,
     };
     use crate::core::resources::{EvolutionQueue, EvolutionReceiver, EvolutionSender};
-
-    // On genesis and on restore alike: the declared cap is part of the manifest, not of the saved
-    // state, and `apply_environmental_effects_system` would otherwise reset it to 50 (F-043).
-    world.insert_resource(LiveFoodCap(config.food_cap));
-    // Same reasoning (F-043): the predator-income knobs are part of the manifest, not of the saved
-    // state, so genesis and restore must both declare them. Defaults equal the legacy behaviour.
-    world.insert_resource(crate::core::resources::PredatorIncomePolicy {
-        kill_hydration: config.kill_hydration,
-        kill_efficiency: config.kill_efficiency,
-        target_min_energy: config.target_min_energy,
-    });
 
     let (req_tx, req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();
     let (recycle_req_tx, recycle_req_rx) = crossbeam_channel::unbounded::<InferenceRequestBatch>();

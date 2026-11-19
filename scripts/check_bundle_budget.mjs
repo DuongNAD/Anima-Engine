@@ -69,7 +69,15 @@ const CHUNK_BUDGET_KIB = {
   // Measured at 106.2 KiB when that landed; 130 gives the same kind of headroom the entries above
   // carry. It is lazy behind the same button, so it costs nothing until someone opens the map, and
   // it is not additive: `LandscapeShowcase` left the dashboard's graph in the same change.
-  WorldShowcase: 130,
+  // Raised 130 -> 145 KiB (2026-11-19, reason: 'prototype' — V1 real-world simulation entities
+  // `LiveEnvironment` + `simEnvironment` + decoration legend/toggle grew WorldShowcase from
+  // ~127.5 KiB to ~132.8 KiB; authorized under PROTOTYPE-FIRST MSG_20261119_040227),
+  // 145 -> 155 KiB (2026-11-19, reason: 'prototype' — B1 continuous SkinnedMesh bodies +
+  // 3-tier LOD `creatureSkinMesh.ts` + `creatureLod.ts`; combined V1 + B1 measured at 154.8 KiB),
+  // and 155 -> 175 KiB (2026-11-19, reason: 'prototype' — W3-lite CC0 PBR terrain splatting &
+  // instanced flora wind `terrainPbrMaterial.ts`, `floraWindMaterial.ts`, `worldAssets.ts`;
+  // lazy-loaded only on 3D routes).
+  WorldShowcase: 175,
   Map2Showcase: 130,
   map2: 120,
   // The interactive research dashboard suite (Features 14-19 & DataExportDialog).

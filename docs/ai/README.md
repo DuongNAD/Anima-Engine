@@ -35,11 +35,21 @@ phải tài liệu dự án.
 | **Thí nghiệm E3** — gradient năng suất và khối lượng cơ thể (08-26) | — | — | [`proposed`](planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md) | — | — | — |
 | **Thí nghiệm E-SEL1** — khan hiếm thức ăn và khối lượng cơ thể; tiền đăng ký đóng băng rồi đóng tại smoke, không có thí nghiệm (11-16 → 11-17) | — | — | [`completed`](planning/2026-11-16-experiment-e-sel1-food-scarcity-body-mass.md) | — | — | — |
 | **Thế giới nhìn rõ** — sinh vật và bản đồ đẹp, nhẹ, mượt (11-16; yêu cầu và thiết kế nằm trong §1 và §3 của kế hoạch, không có file riêng) | — | — | [`active`](planning/2026-11-16-feature-readable-world.md) | — | [`completed`](testing/2026-11-16-rw-c3-flora-lod.md) | — |
+| **Thế giới thật và thân sinh vật** — bản đồ là thế giới mô phỏng, bán hiện thực; thân liền mọc từ hình thái (11-19) | — | [`proposed`](design/2026-11-19-feature-real-world-and-bodies.md) | — | — | — | — |
 
 ## Bản giao việc, bản ghi phiên và đo lường
 
 Bản ghi phiên (`kind: agent-goal`, `kind: review-findings`) là kế hoạch **tại thời điểm đó**; thân
 của chúng không được sửa cho khớp hiện tại.
+
+Bảng dưới là **chỉ mục sinh**: `npm run gen:docs-index` giữ nguyên chữ và thứ tự của mọi hàng đã có,
+cập nhật ô trạng thái theo front matter, rồi thêm một hàng cho mỗi tài liệu chưa có hàng (cách làm ở
+[Thêm tài liệu mới](#thêm-tài-liệu-mới)). Một tài liệu chưa có hàng vẫn thấy được trong danh sách thư
+mục của nó: [requirements/](requirements/) · [design/](design/) · [planning/](planning/) ·
+[implementation/](implementation/) · [testing/](testing/) · [deployment/](deployment/) ·
+[monitoring/](monitoring/).
+
+<!-- docs-index:begin: rows are kept and appended by `npm run gen:docs-index`; reword a row freely, keep its shape -->
 
 | Ngày | Tài liệu | Loại | Trạng thái |
 |---|---|---|---|
@@ -81,9 +91,14 @@ của chúng không được sửa cho khớp hiện tại.
 | 2026-11-19 | [Thẻ S15 — đo các mẫu đối chứng ứng viên cho tỉ số `g` tại `16` hồ trải rộng (`scale = 0,63`)](planning/2026-11-19-s15-reference-check.md) — tái lập bit-for-bit `6/6` seed `scale = 0,63` của S14 và đo đối chứng `prey_cap ∈ {80, 120, 160}` (`0/6` tuyệt chủng ở `120` và `160`; `2/6` ở `80`, `pooled80 = 113.430,7`): `VIABLE` (`g_80`) `= no` (`4/6`), chẩn đoán `g_120 = 0,522..0,648` (`3/6`, `no`), `g_160 = 0,612..0,707` (`0/6`, `no`), `g_pooled80 = 0,405..0,559` (`6/6`, `yes`), `g_ungrazed = 0,299..0,413` (`2/6`, `no`); quyền chọn đối chứng thuộc chủ dự án trong `SEL2-P` | đo | `completed` |
 | 2026-11-19 | [Thẻ F047 — cô lập nguyên nhân lệch khôi phục của desktop app sau F046](planning/2026-11-19-f047-restore-divergence.md) — `LiveExperimentAdapter` (`R3-like` & `S12/S13`) khớp 100% ở mọi mốc; cô lập lệch `R2a`/`R3` của desktop app do sibling trùng `AgentLineageId` bị ghi đè trong `entities_by_lineage` (và `pending_by_lineage`), đối chứng theo `(lineage_id, request_id)` khớp mọi mốc | thẻ | `completed` |
 | 2026-11-19 | [Thẻ F048 — sửa va chạm sibling theo `AgentLineageId` khi khôi phục `pending_inference`](planning/2026-11-19-f048-pending-inference-restore.md) — thêm hàm dùng chung `route_restored_pending_inference` và khoá `(lineage_id, request_id)` ở cả `SimulationEngine::start`, `SavedSharedLearningState::validate`, và `snapshot::validate`; chuyển toàn bộ `R2a`/`R3` sang `div == None` (dưới `90s` debug), bổ sung test đĩa 2 sibling `PendingInference` với `shared_learning = Some(...)`, `1523/1523` desktop & mọi gate xanh (`Supersedes #144`) | thẻ | `completed` |
-| 2026-11-19 | [Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2](planning/2026-11-19-sel2-p-preregistration-draft.md) — bản thảo chưa đóng băng (`status: proposed`, mù khối lượng, chưa chạy seed xác nhận): giả thuyết `H1` hai phía trên tích phân thời gian hậu-warmup của `live.trait_mass_mean`, `3` nhánh (`selected` / `scarce_mut0` / `scarce_drift` `SEL2-D`), `N = 20` cặp `200.000` tick (`780001 + 1000*k`), cổng smoke `C1..C5` (`999961`) với ô tham chiếu `g` để trống chờ chủ dự án quyết định | kế hoạch | `proposed` |
+| 2026-11-19 | [Thẻ SEL2-P-draft — bản thảo đăng ký trước thí nghiệm chọn lọc sinh thái SEL2](planning/2026-11-19-sel2-p-preregistration-draft.md) — bản thảo chưa đóng băng (`status: proposed`, mù khối lượng, chưa chạy seed xác nhận): giả thuyết `H1` hai phía trên tích phân thời gian hậu-warmup của `live.trait_mass_mean`, `3` nhánh (`selected` / `scarce_mut0` / `scarce_drift` `SEL2-D`), `N = 20` cặp `200.000` tick (`780001 + 1000*k`), cổng smoke `C1..C5` (`999961`, nền gộp `QĐ-SEL2g` `799501..=799506`), có công bố lượt `--pipeline-check` `2.000` tick tiền-đóng-băng (`999801..999822`) | kế hoạch | `proposed` |
 | 2026-11-19 | [Thẻ S2 — thêm `live.mean_energy_integral` và khối lượng cơ thể theo vùng Đông/Tây](planning/2026-11-19-s2-observables.md) — ba observable mới nối cuối `LIVE_EXTENDED_OBSERVABLE_IDS` (`Aggregation::Instant`, không nhiễu loạn nhịp lấy mẫu, sống qua ngã rẽ checkpoint qua đĩa, giá trị hữu hạn khi quần thể bằng 0) | thẻ | `completed` |
+| 2026-11-19 | [Thẻ V1 — Bản đồ 3D vẽ thực thể mô phỏng và gắn nhãn trang trí (`prototype, to be replaced`)](planning/2026-11-19-v1-real-world-entities.md) — vẽ `lake`/`tree`/`food` từ `environmental_state` và `get_environmental_elements` qua `liveAgentTransform`/`coordinate` và `surfaceHeight`; bỏ qua lớp phủ cỏ vì chưa có IPC `ResourceField`; gắn nhãn + nút ẩn/hiện `WorldFish`/`WorldBirds`/`WorldWildlife`/`WorldCaves`; nâng `WorldShowcase` `130 -> 145 KiB` (`132,9 KiB`) theo `PROTOTYPE-FIRST` | thẻ | `completed` |
+| 2026-11-19 | [Thẻ SEL2-P-impl — bộ máy thực nghiệm SEL2-P](planning/2026-11-19-sel2-p-impl.md) — fixtures (`experiments_sel2p`), runner `run_sel2p_experiment.rs`, `sel2p_smoke_driver.mjs`, `verify_sel2p_artifacts.mjs`, `prereg_sel2p_manifest_tests.rs` (đã gia cố D1–D7, N1, N5, N6, N11 qua `SEL2-P-fix`), giữ `status: proposed`; chỉ chạy kiểm tra đường ống `2.000` tick (không chạy smoke thật hay seed xác nhận) | thẻ | `completed` |
+| 2026-11-19 | [Chỉ mục sinh cho docs/ai — thêm ghi chú mà không sửa file chỉ mục chung](design/2026-11-19-feature-generated-docs-index.md) — So sánh năm cách bỏ xung đột lặp lại trên docs/ai/README.md và chọn chỉ mục sinh từ front matter giữ nguyên hàng cũ; checker chấp nhận ghi chú chờ khi front matter đủ để sinh hàng và thư mục của nó được link, rồi tự chạy generator trong bộ nhớ để chứng minh không còn gì chờ | design | `active` |
+| 2026-11-19 | [Requirements — Đài quan sát tiến hoá trên đảo (đề xuất chủ lực)](requirements/2026-11-19-feature-island-evolution-observatory.md) — Đề xuất chọn một câu hỏi khoa học chủ lực cho Anima, là cơ chế của quy luật đảo (kích thước cơ thể khi bị cô lập), kiểm bằng quần đảo nhiều thế giới sống, đăng ký trước và chạy trên các máy sẵn có | requirements | `accepted` |
 
+<!-- docs-index:end -->
 Bốn file prompt dạng `.txt` trong `planning/` không có front matter và cổng metadata không đọc chúng:
 [`2026-08-25-handoff-prompt.txt`](planning/2026-08-25-handoff-prompt.txt) (thế giới sống),
 [`2026-08-25-handoff-prompt-ecological-selection.txt`](planning/2026-08-25-handoff-prompt-ecological-selection.txt),
@@ -110,7 +125,21 @@ công cụ agent đọc hoặc đồng bộ chúng. Lý do từng file nằm tro
 
 ## Thêm tài liệu mới
 
-Đặt tên `YYYY-MM-DD-feature-<slug>.md` trong đúng thư mục pha, dùng front matter của
-[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md#metadata-tối-thiểu), rồi thêm một ô
-vào bảng trên. `npm run check:docs` đỏ nếu thiếu front matter hoặc nếu tài liệu không có trong chỉ
-mục nào.
+Đặt tên `YYYY-MM-DD-<slug>.md` (tài liệu vòng đời feature: `YYYY-MM-DD-feature-<slug>.md`) trong
+đúng thư mục pha và dùng front matter của
+[chính sách tài liệu](../governance/DOCUMENTATION_POLICY.md#metadata-tối-thiểu), có thêm
+`description:` một dòng. **Không sửa file này**: hàng của tài liệu được sinh từ front matter — ngày
+trong tên file là cột Ngày, `title` và `description` là cột Tài liệu, `kind` (tuỳ chọn, ví dụ
+`kind: thẻ` hay `kind: đo`; không có thì là tên thư mục pha) là cột Loại, `status` là cột Trạng thái.
+`kind: agent-goal` và `kind: review-findings` vẫn đổi bộ trường bắt buộc như chính sách nói.
+
+`npm run check:docs` chấp nhận một tài liệu chưa có hàng khi front matter có `title`, `status` và
+`description` (không chứa link markdown, vì link đó sẽ không còn đúng khi chép vào đây) và thư mục của
+nó được link ở trên; thiếu một điều kiện thì đỏ như trước. Mỗi lần chạy nó in số hàng đang chờ.
+
+Lead gộp các hàng chờ bằng `npm run gen:docs-index` trong một PR tài liệu của lead (thường là PR cập
+nhật trạng thái sau một đợt merge); `node scripts/gen_docs_index.mjs --check` liệt kê những gì lệnh đó
+sẽ đổi mà không ghi. Sửa chữ một hàng đã sinh thì được — generator giữ nguyên chữ và thứ tự, chỉ cập
+nhật ô trạng thái — miễn hàng giữ dạng
+``| YYYY-MM-DD | [tiêu đề](đường dẫn) — tóm tắt | loại | `trạng thái` |``; hàng sai dạng làm
+`check:docs` đỏ. Bảng Feature ở trên vẫn sửa tay.

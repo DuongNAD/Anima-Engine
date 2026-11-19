@@ -96,6 +96,21 @@ function spdxOf(component) {
 const undeclared = [...cargo.components, ...npmDistributed].filter((c) => !spdxOf(c));
 const vendored = index.counts.fromVendoredUpstream;
 
+const sourcesPath = join(ROOT, 'public', 'assets', 'world', 'SOURCES.json');
+const artAssets = existsSync(sourcesPath)
+  ? (JSON.parse(readFileSync(sourcesPath, 'utf8')).assets ?? [])
+  : [];
+const artAssetsSorted = [...artAssets].sort((a, b) => byteCompare(a.file, b.file));
+const artAssetsSection =
+  artAssetsSorted.length === 0
+    ? '_none_'
+    : artAssetsSorted
+        .map(
+          (a) =>
+            `- \`public/assets/world/${a.file}\` — ${a.assetName} (\`${a.assetId}\`), ${a.sourceSite} (${a.sourceUrl}), licence \`${a.license}\`${a.licence_url ? ` (${a.licence_url})` : ''} (${a.bytes} B)`,
+        )
+        .join('\n');
+
 const body = `# NOTICE
 
 Anima-Engine
@@ -193,6 +208,12 @@ ${
     ? 'Every distributed component supplies its licence text, from its own artifact or from a pinned\nupstream revision.'
     : `${unresolved.length} distributed component(s) declare a licence whose text neither their\npublished artifact nor their upstream repository contains at the released revision. They are listed\nwith the exact blocker, and with the search that failed, in\n[\`licensing/UNRESOLVED.md\`](licensing/UNRESOLVED.md) and remain open.`
 }
+
+## Art assets (CC0-1.0)
+
+Self-hosted CC0-1.0 environment textures and low-poly flora models shipped under [\`public/assets/world/\`](public/assets/world/SOURCES.json) (${artAssetsSorted.length} files, zero attribution obligation required under CC0-1.0, recorded here for complete distribution provenance):
+
+${artAssetsSection}
 
 ## What this file does NOT establish
 

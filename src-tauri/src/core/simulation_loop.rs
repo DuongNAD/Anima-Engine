@@ -234,6 +234,15 @@ pub fn compute_loop_fps(compute_elapsed: Duration, target_duration: Duration) ->
     }
 }
 
+/// Validated experiment manifest queued for the next [`SimulationEngine::start`] viewer run
+/// (card W2-lite; prototype, to be replaced).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingManifest {
+    pub name: String,
+    pub seed: u64,
+    pub config: crate::core::live_experiment::LiveWorldConfig,
+}
+
 pub struct SimulationEngine {
     pub running: Arc<AtomicBool>,
     pub status: Arc<Mutex<SimulationStatus>>,
@@ -283,6 +292,8 @@ pub struct SimulationEngine {
     pub save_request_tx: crossbeam_channel::Sender<SaveReplySender>,
     pub save_request_rx: crossbeam_channel::Receiver<SaveReplySender>,
     pub pending_load_state: Arc<Mutex<Option<SavedSimulationState>>>,
+    /// Manifest queued by `start_from_manifest` (card W2-lite; prototype, to be replaced).
+    pub pending_manifest: Arc<Mutex<Option<PendingManifest>>>,
     pub environmental_state: Arc<RwLock<crate::core::ecs::EnvironmentalState>>,
     pub terrain_map: Arc<RwLock<Option<crate::commands::environment::TerrainMapState>>>,
     pub ecosystem_state: Arc<RwLock<crate::commands::environment::EcosystemState>>,
@@ -325,6 +336,7 @@ impl SimulationEngine {
             crate::core::resources::manual_migration_channel();
         let (save_request_tx, save_request_rx) = save_request_channel();
         let pending_load_state = Arc::new(Mutex::new(None));
+        let pending_manifest = Arc::new(Mutex::new(None));
 
         Self {
             supervisor: crate::core::thread_supervisor::ThreadSupervisor::new(),
@@ -357,6 +369,7 @@ impl SimulationEngine {
             save_request_tx,
             save_request_rx,
             pending_load_state,
+            pending_manifest,
             environmental_state: Arc::new(RwLock::new(
                 crate::core::ecs::EnvironmentalState::default(),
             )),
@@ -401,12 +414,24 @@ impl SimulationEngine {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take();
-        let startup_run_seed = crate::core::simulation_state::startup_run_seed(
-            state_to_load.as_ref(),
-            crate::core::resources::resolve_run_seed(
-                crate::core::world_artifact::world_seed_from_disk(),
-            ),
-        );
+        let manifest_to_load = if state_to_load.is_none() {
+            self.pending_manifest
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take()
+        } else {
+            None
+        };
+        let startup_run_seed = if let Some(ref manifest) = manifest_to_load {
+            manifest.seed
+        } else {
+            crate::core::simulation_state::startup_run_seed(
+                state_to_load.as_ref(),
+                crate::core::resources::resolve_run_seed(
+                    crate::core::world_artifact::world_seed_from_disk(),
+                ),
+            )
+        };
         let deterministic_mode = crate::core::determinism::DeterministicMode::from_env();
         let evolution_worker_resume =
             match crate::core::simulation_state::evolution_worker_resume_state(
@@ -1366,6 +1391,9 @@ impl SimulationEngine {
             // Fitness rule likewise (`ANIMA_FITNESS`); unset ⇒ locomotion ⇒ the historical
             // ranking, bit for bit.
             world.insert_resource(crate::evolution::fitness::FitnessRuleSetting::from_env());
+            // Card LAND1: the desktop app constrains agents and spawns to walkable terrain cells by
+            // default; live experiments remain opt-in via `live.land_mask`.
+            world.insert_resource(crate::core::resources::TerrainNavigation { enabled: true });
             // Branch-O turnover bookkeeping: totals only; the observable layer samples windows.
             world.insert_resource(crate::core::resources::VitalStatistics::default());
 
@@ -1504,6 +1532,20 @@ impl SimulationEngine {
                     ));
                 }
                 crate::core::simulation_state::populate_restored_spatial_grid(&mut world, state);
+            } else if let Some(ref manifest) = manifest_to_load {
+                // W2-lite viewer mode (prototype, to be replaced): shares genesis and world-law
+                // policy setup with LiveExperimentAdapter, while keeping the app's background
+                // threads so trajectory equality with headless runs is not claimed.
+                crate::core::live_experiment::apply_live_genesis_and_policies(
+                    &mut world,
+                    manifest.seed,
+                    &manifest.config,
+                    loaded_bounds,
+                );
+                let mut founder_q = world.query::<(&AgentLineageId, &AgentGenotype)>();
+                for (lineage_id, genotype) in founder_q.iter(&world) {
+                    let _ = lineage_tracker_sim.add_root(lineage_id.0.clone(), genotype.0.clone());
+                }
             } else {
                 let mut genotype = MorphologyGenotype::new();
                 genotype.add_node(MorphologyNode {
@@ -1549,9 +1591,72 @@ impl SimulationEngine {
                     .get_resource::<MapBounds>()
                     .copied()
                     .unwrap_or_default();
+                let terrain_map = world
+                    .get_resource::<crate::core::terrain::TerrainMap>()
+                    .cloned();
+                let land_nav = world
+                    .get_resource::<crate::core::resources::TerrainNavigation>()
+                    .copied()
+                    .unwrap_or_default()
+                    .enabled;
+                // Setup code, not a system, so it takes its own reproducible stream. The world
+                // exists by now, so the run seed is read straight off `SimRng` rather than resolved
+                // a second time.
+                let init_seed = world.resource::<crate::core::resources::SimRng>().seed();
+                let mut rng = crate::core::resources::derived_rng(
+                    init_seed,
+                    crate::core::resources::sim_stream::WORLD_INIT,
+                );
+                let mut placed_founders: Vec<glam::Vec3> = Vec::new();
                 let founder_ids = crate::core::determinism::RunIdentity::new(run_seed, "founder");
                 for i in 0..founding.count {
-                    let initial_pos = founding.position(i, &founding_bounds);
+                    let default_pos = founding.position(i, &founding_bounds);
+                    let initial_pos = if land_nav {
+                        if let Some(ref tm) = terrain_map {
+                            let mut chosen = None;
+                            for _ in 0..crate::core::terrain_navigation::MAX_WALKABLE_RESAMPLE_TRIES
+                            {
+                                if let Some(cand) =
+                                    crate::core::terrain_navigation::sample_walkable_pos(
+                                        &mut rng,
+                                        tm,
+                                        &founding_bounds,
+                                        1,
+                                    )
+                                {
+                                    if placed_founders.iter().all(|p| p.distance(cand) >= 4.0) {
+                                        chosen = Some(cand);
+                                        break;
+                                    }
+                                }
+                            }
+                            let pos = chosen
+                                .or_else(|| {
+                                    crate::core::terrain_navigation::sample_walkable_pos(
+                                        &mut rng,
+                                        tm,
+                                        &founding_bounds,
+                                        crate::core::terrain_navigation::MAX_WALKABLE_RESAMPLE_TRIES,
+                                    )
+                                })
+                                .or_else(|| {
+                                    crate::core::terrain_navigation::snap_to_nearest_walkable(
+                                        tm,
+                                        &founding_bounds,
+                                        default_pos,
+                                    )
+                                })
+                                .unwrap_or(default_pos);
+                            if placed_founders.len() < 64 {
+                                placed_founders.push(pos);
+                            }
+                            pos
+                        } else {
+                            default_pos
+                        }
+                    } else {
+                        default_pos
+                    };
                     let initial_rot = glam::Quat::IDENTITY;
                     let agent_entity =
                         decode_genotype(&mut world, &genotype, initial_pos, initial_rot);
@@ -1602,13 +1707,7 @@ impl SimulationEngine {
                     .get_resource::<EnvironmentalSpawnSettings>()
                     .cloned()
                     .unwrap_or_default();
-                let terrain_map = world
-                    .get_resource::<crate::core::terrain::TerrainMap>()
-                    .cloned();
-                let bounds = world
-                    .get_resource::<MapBounds>()
-                    .cloned()
-                    .unwrap_or_default();
+                let bounds = founding_bounds;
 
                 let mut lake_candidates = Vec::new();
                 let mut tree_candidates = Vec::new();
@@ -1618,7 +1717,6 @@ impl SimulationEngine {
                         for col in 0..tm.width {
                             let idx = row * tm.width + col;
                             let biome = tm.biomes[idx];
-                            let elevation = tm.elevations[idx];
 
                             let px = bounds.min.x
                                 + ((col as f32 + 0.5) / tm.width as f32)
@@ -1628,10 +1726,21 @@ impl SimulationEngine {
                                     * (bounds.max.z - bounds.min.z);
                             let pos = glam::Vec3::new(px, 0.0, pz);
 
-                            if (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4 {
+                            let is_lake_candidate = if land_nav {
+                                crate::core::terrain_navigation::is_walkable_cell_next_to_water(
+                                    tm, col, row,
+                                )
+                            } else {
+                                let elevation = tm.elevations[idx];
+                                (biome == 0 || biome == 1 || biome == 3) && elevation < 0.4
+                            };
+                            if is_lake_candidate {
                                 lake_candidates.push(pos);
                             }
-                            if biome == 5 || biome == 6 || biome == 7 {
+                            if (biome == 5 || biome == 6 || biome == 7)
+                                && (!land_nav
+                                    || crate::core::terrain_navigation::is_biome_walkable(biome))
+                            {
                                 tree_candidates.push(pos);
                             }
                         }
@@ -1639,14 +1748,6 @@ impl SimulationEngine {
                 }
 
                 use rand::seq::SliceRandom;
-                // Setup code, not a system, so it takes its own reproducible stream. The world
-                // exists by now, so the run seed is read straight off `SimRng` rather than resolved
-                // a second time.
-                let run_seed = world.resource::<crate::core::resources::SimRng>().seed();
-                let mut rng = crate::core::resources::derived_rng(
-                    run_seed,
-                    crate::core::resources::sim_stream::WORLD_INIT,
-                );
 
                 // Spawn Lakes
                 if !lake_candidates.is_empty() {
@@ -1664,15 +1765,29 @@ impl SimulationEngine {
                         ));
                     }
                 } else {
-                    world.spawn((
-                        Lake {
-                            current_water: env_settings.default_lake_water,
-                            max_water: env_settings.default_lake_water,
-                            replenishment_rate: env_settings.default_lake_replenish,
-                        },
-                        Position(glam::Vec3::new(50.0, 0.0, 50.0)),
-                        crate::physics::SpatialCollider { radius: 30.0 },
-                    ));
+                    let fallback_lake = glam::Vec3::new(50.0, 0.0, 50.0);
+                    let resolved_lake = if land_nav {
+                        terrain_map.as_ref().and_then(|tm| {
+                            crate::core::terrain_navigation::snap_to_nearest_walkable(
+                                tm,
+                                &bounds,
+                                fallback_lake,
+                            )
+                        })
+                    } else {
+                        Some(fallback_lake)
+                    };
+                    if let Some(pos) = resolved_lake {
+                        world.spawn((
+                            Lake {
+                                current_water: env_settings.default_lake_water,
+                                max_water: env_settings.default_lake_water,
+                                replenishment_rate: env_settings.default_lake_replenish,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 30.0 },
+                        ));
+                    }
                 }
 
                 // Spawn Trees
@@ -1694,18 +1809,32 @@ impl SimulationEngine {
                         ));
                     }
                 } else {
-                    world.spawn((
-                        Tree {
-                            current_fruit: env_settings.default_tree_fruit,
-                            max_fruit: env_settings.default_tree_fruit,
-                            fruit_growth_rate: env_settings.default_tree_growth,
-                            time_since_last_drop: 0.0,
-                            seed_drop_cooldown: env_settings.default_seed_cooldown,
-                            seed_spread_radius: env_settings.default_seed_spread,
-                        },
-                        Position(glam::Vec3::new(-50.0, 0.0, -50.0)),
-                        crate::physics::SpatialCollider { radius: 10.0 },
-                    ));
+                    let fallback_tree = glam::Vec3::new(-50.0, 0.0, -50.0);
+                    let resolved_tree = if land_nav {
+                        terrain_map.as_ref().and_then(|tm| {
+                            crate::core::terrain_navigation::snap_to_nearest_walkable(
+                                tm,
+                                &bounds,
+                                fallback_tree,
+                            )
+                        })
+                    } else {
+                        Some(fallback_tree)
+                    };
+                    if let Some(pos) = resolved_tree {
+                        world.spawn((
+                            Tree {
+                                current_fruit: env_settings.default_tree_fruit,
+                                max_fruit: env_settings.default_tree_fruit,
+                                fruit_growth_rate: env_settings.default_tree_growth,
+                                time_since_last_drop: 0.0,
+                                seed_drop_cooldown: env_settings.default_seed_cooldown,
+                                seed_spread_radius: env_settings.default_seed_spread,
+                            },
+                            Position(pos),
+                            crate::physics::SpatialCollider { radius: 10.0 },
+                        ));
+                    }
                 }
             }
 

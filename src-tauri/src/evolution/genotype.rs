@@ -169,6 +169,7 @@ pub fn decode_genotype(
         ParentAgent(root_entity),
         SegmentJointForce(0.0),
         ActionGates::default(),
+        crate::core::components::LastWalkablePosition::new(initial_pos),
     ));
 
     // BFS Queue holds: (current_node, parent_entity, parent_pos, parent_rot)

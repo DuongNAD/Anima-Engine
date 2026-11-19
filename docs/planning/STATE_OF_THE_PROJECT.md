@@ -611,7 +611,7 @@ vì "DONE" một mình không phân biệt được "có hàm thuần đã test"
 | Lab tiến hoá AE1–AE3 | Headless, opt-in | `ReferenceEvolutionWorld` |
 | Adapter thí nghiệm cho thế giới sống | **Headless adapter verified** | `LiveExperimentAdapter` chạy **đúng** lịch trình app dùng, qua runner chung; **17 test** ở `live_experiment_tests.rs` (đếm từ lần chạy 2026-07-27 tại `068a750` trong §1.a). **Chưa** chạy app desktop; adapter từ chối exotic energy; không có quần thể AE3 — xem §3.3. Đừng viết "experiment-ready" |
 | Đo tick trong tiến trình | 🔧 **Instrumentation đã ship — chưa có số** | `core/tick_capture.rs` + 4 lệnh IPC; đo không làm đổi quỹ đạo (có gate ở `tick_capture_tests.rs`). "Đã ship" **không phải** "đã có số đo phần cứng" — xem §1.d và §3.2 |
-| Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world` |
+| Thế giới chung frontend↔backend | Live integrated | `src/utils/sharedWorld.ts` là identity duy nhất; artifact đẩy sang `init_world`. Từ worldgen 22 (2026-11-19) shape là `supercontinent` (`SUPERCONTINENT` trong `worldGen.ts`): ocean 45%, mọi biome đất có vùng liền nhìn thấy được từ overview; `island`/`continent` sinh y hệt v21. Số đo và cách đo ở PR "world: retune the shared world so every environment is visible" |
 
 Các hàng dưới đây được thêm ngày **2026-11-17**, cho những vùng đạt bậc sau tháng 7. Chúng trỏ tới PR, ADR
 và file test có trên thân cây tại `6f14124`; **không test nào được chạy lại để viết chúng**, và chúng không
@@ -722,6 +722,12 @@ Hệ quả cho người và agent:
   Từ #127, cache Rust dùng `Swatinem/rust-cache` và chỉ được **lưu** khi CI chạy trên `main`. PR chỉ khôi phục cache
   đó, vì cache do một PR lưu thì chỉ chính PR ấy thấy. Hệ quả: fast-forward `main` sau mỗi lần đổi `Cargo.lock`,
   nếu không mọi PR sau đó đều build lạnh.
+  **Đổi ngày 2026-11-19:** mọi PR trong ngày đều ghi "No cache found" và mất khoảng 95 phút. Hash môi trường Rust
+  của PR (`e5832507`) khác hash `main` đã lưu (`44e942f4`), dù cùng rustc 1.98.1. Ngoài ra, job determinism lưu một
+  bản 667 MB cho mỗi PR, làm đầy hạn mức 10 GB của repo. Từ PR sửa CI ngày 2026-11-19, cache được lưu từ `main` **và**
+  từ thân cây (`feat/ecological-selection` có thêm trigger `push`; lượt chạy trên thân cây không bị huỷ giữa
+  chừng). Khoá cache theo file `rust-toolchain.toml` thay vì hash môi trường. PR không lưu cache nữa, kể cả job
+  determinism. PR khôi phục cache do nhánh đích của nó lưu.
 - Gỡ hoặc nới: GitHub → Settings → Branches, hoặc `gh api -X DELETE …/branches/<nhánh>/protection`.
 
 Chặng 2 đã đóng từ 2026-11-16 (C5 là §1.g). Theo thứ tự của kế hoạch 13/11, chặng kế là chặng 3: các thẻ G3,

@@ -3,23 +3,19 @@ import type { World } from './worldGen';
 import { sampleMeshHeight } from './worldSample';
 
 // ---------------------------------------------------------------------------------------
-// Real 3D cave-mouth geometry (replaces the old flat unlit decal in WorldCaves).
+// Real 3D cave-mouth geometry (`AMEND W3-lite`).
 //
-// Each cave site (World.cave*) becomes a rocky, noise-displaced FUNNEL: it flares open at the
-// cliff (protruding a little along the outward/downhill bearing) and tapers back to a closed,
-// dark pocket. Vertex colours darken toward the pocket so the interior reads dark while the rim
-// keeps a lit rock tone; per-vertex jitter gives the walls a rough, rocky silhouette. All mouths
-// are merged into ONE BufferGeometry → one draw call.
-//
-// HEIGHTMAP LIMITATION (honest note): the terrain is a single continuous heightmap mesh with no
-// hole, so a fully walk-THROUGH tunnel bored into the hill would just be occluded by the cliff
-// surface. A protruding concave niche is the occlusion-free way to render a believable cave mouth
-// on this terrain representation. Truly enterable tunnels/overhangs need a voxel/SDF terrain
-// (see WORLD_DESIGN.md, roadmap M4+).
+// Each cave site (World.cave*) becomes a prominently framed cliffside rocky arch:
+//   - Uses proper centred UV mapping `(cell + size * 0.5) / size` matching WorldVegetation/terrain
+//     so mouths always seat directly on the exposed bare-rock cliff face.
+//   - Deep pitch-black arched recess + protruding craggy stone collar rim so openings read
+//     clearly from cliffside distances as dark shadowed cave entrances (still decoration only).
+//   - All mouths and stone rims merge into ONE BufferGeometry -> one draw call.
 // ---------------------------------------------------------------------------------------
 
 const RINGS = 8; // rings from the closed pocket (apex) out to the mouth
-const SEG = 12; // radial segments per ring
+const COLLAR_RINGS = 2; // stone rim collar flaring around the entrance lip and tucking into the cliff
+const SEG = 14; // radial segments per ring
 
 /** Deterministic [0,1) hash so a world always rebuilds the exact same caves. */
 function hash(a: number, b: number, c: number): number {
@@ -27,10 +23,51 @@ function hash(a: number, b: number, c: number): number {
   return s - Math.floor(s);
 }
 
+function addArchRing(
+  positions: number[],
+  colors: number[],
+  cxp: number,
+  cyp: number,
+  czp: number,
+  rx: number,
+  ry: number,
+  rz: number,
+  ux: number,
+  uy: number,
+  uz: number,
+  radX: number,
+  radY: number,
+  cr: number,
+  cg: number,
+  cb: number,
+  caveIdx: number,
+  ringIdx: number,
+  jitAmp: number,
+): void {
+  for (let s = 0; s < SEG; s++) {
+    const ang = (s / SEG) * Math.PI * 2;
+    const ca = Math.cos(ang);
+    // Natural cavern arch: full vaulted roof above (sin >= 0), flatter stone sill below (sin < 0).
+    const saRaw = Math.sin(ang);
+    const sa = saRaw >= 0 ? saRaw * 1.05 : saRaw * 0.48;
+    const jit = 1 + (hash(caveIdx, ringIdx * 13 + 5, s * 7 + 3) - 0.5) * jitAmp;
+    const dx = (rx * ca * radX + ux * sa * radY) * jit;
+    const dy = (ry * ca * radX + uy * sa * radY) * jit;
+    const dz = (rz * ca * radX + uz * sa * radY) * jit;
+    positions.push(cxp + dx, cyp + dy, czp + dz);
+    const grain = (hash(caveIdx, ringIdx, s) - 0.5) * 0.05;
+    colors.push(
+      Math.max(0, Math.min(1, cr + grain)),
+      Math.max(0, Math.min(1, cg + grain)),
+      Math.max(0, Math.min(1, cb + grain)),
+    );
+  }
+}
+
 /**
- * Build one merged BufferGeometry holding every cave mouth for this world, or null if there are
- * no caves. `heightUnits` is the world-space height the normalized elevation maps to; `meshRes`
- * is the terrain mesh resolution so caves seat on the SAME surface the player sees.
+ * Build one merged BufferGeometry holding every cave mouth + rocky rim for this world, or null
+ * if there are no caves. `heightUnits` is the world-space height the normalized elevation maps
+ * to; `meshRes` is the terrain mesh resolution so caves seat on the SAME surface the player sees.
  */
 export function buildCavesGeometry(
   world: World,
@@ -40,37 +77,36 @@ export function buildCavesGeometry(
 ): THREE.BufferGeometry | null {
   const count = world.caveCount ?? 0;
   if (count === 0 || !world.caveX) return null;
-  const toWorld = renderSize / world.size;
 
   const positions: number[] = [];
   const colors: number[] = [];
   const indices: number[] = [];
 
-  // Rock tones: lit rim → near-black pocket.
-  const rim = [0.3, 0.26, 0.22];
-  const deep = [0.03, 0.025, 0.02];
+  // Linear cliff-rock tones: weathered slate rim matching the rocky hillside framing a pitch-black throat.
+  const rim = [0.23, 0.215, 0.2];
+  const deep = [0.005, 0.005, 0.008];
 
   for (let c = 0; c < count; c++) {
     const cellX = world.caveX[c];
     const cellZ = world.caveZ[c];
     const yaw = world.caveYaw[c];
-    const depth = 2.2 + hash(c, 1, 0) * 1.9; // how far the mouth protrudes / recedes
-    const mouthR = 1.3 + hash(c, 2, 0) * 0.9; // opening radius
-    const sag = 0.4 + hash(c, 3, 0) * 0.7; // downward droop of the axis
+    const depth = 1.9 + hash(c, 1, 0) * 1.1;
+    const mouthR = 1.65 + hash(c, 2, 0) * 0.85;
+    const sag = 0.22 + hash(c, 3, 0) * 0.25;
 
-    // Outward (downhill) bearing — the mouth faces out of the hill, matching the old decal.
+    // Outward (downhill) bearing — the mouth faces out of the hill.
     const ox = Math.cos(yaw);
     const oz = Math.sin(yaw);
-    // Seat on the actual render-mesh surface (what the player walks/looks at), like the trees do.
-    const u = cellX / (world.size - 1);
-    const v = cellZ / (world.size - 1);
+    // Centred cell coords -> normalized UV [0, 1] matching terrain & flora.
+    const u = Math.min(1, Math.max(0, (cellX + world.size * 0.5) / world.size));
+    const v = Math.min(1, Math.max(0, (cellZ + world.size * 0.5) / world.size));
     const surfY = sampleMeshHeight(world, u, v, meshRes) * heightUnits;
-    const sx = cellX * toWorld;
-    const sz = cellZ * toWorld;
+    const sx = (u - 0.5) * renderSize;
+    const sz = (v - 0.5) * renderSize;
 
-    // Axis: closed pocket sits just INTO the cliff; the flared mouth protrudes outward + a touch up.
-    const tip = [sx - ox * 0.6, surfY + 0.25, sz - oz * 0.6];
-    const mouth = [sx + ox * depth, surfY + 0.9, sz + oz * depth];
+    // Seat pocket downhill/above surfY so uphill terrain never pokes through the dark throat.
+    const tip = [sx + ox * 0.35, surfY + mouthR * 0.45, sz + oz * 0.35];
+    const mouth = [sx + ox * (0.35 + depth * 0.82), surfY + mouthR * 0.56, sz + oz * (0.35 + depth * 0.82)];
     let axx = mouth[0] - tip[0];
     let axy = mouth[1] - tip[1];
     let axz = mouth[2] - tip[2];
@@ -78,7 +114,7 @@ export function buildCavesGeometry(
     axx /= axl;
     axy /= axl;
     axz /= axl;
-    // A stable frame around the axis (right, up2) for placing ring vertices.
+
     let upx = 0;
     let upy = 1;
     const upz = 0;
@@ -86,7 +122,6 @@ export function buildCavesGeometry(
       upx = 1;
       upy = 0;
     }
-    // right = up × axis
     let rx = upy * axz - upz * axy;
     let ry = upz * axx - upx * axz;
     let rz = upx * axy - upy * axx;
@@ -94,53 +129,82 @@ export function buildCavesGeometry(
     rx /= rl;
     ry /= rl;
     rz /= rl;
-    // up2 = axis × right
     const ux = axy * rz - axz * ry;
     const uy = axz * rx - axx * rz;
     const uz = axx * ry - axy * rx;
 
     const base = positions.length / 3;
-    // Apex (closed dark pocket).
+    // Apex (closed pitch-black pocket).
     positions.push(tip[0], tip[1], tip[2]);
     colors.push(deep[0], deep[1], deep[2]);
 
+    // Inner cavern funnel rings (steep darkening keeps throat crisp black against weathered rim).
     for (let k = 1; k <= RINGS; k++) {
       const t = k / RINGS;
-      const r = mouthR * Math.pow(t, 0.65); // rounded flare, wide at the mouth
-      // Centre of this ring: lerp tip→mouth with a downward parabolic droop for a natural hollow.
+      const r = mouthR * Math.pow(t, 0.58);
       const cxp = tip[0] + (mouth[0] - tip[0]) * t;
       const cyp = tip[1] + (mouth[1] - tip[1]) * t - Math.sin(t * Math.PI) * sag;
       const czp = tip[2] + (mouth[2] - tip[2]) * t;
-      const shade = t; // 0 = pocket (dark), 1 = rim (lit)
-      const cr = deep[0] + (rim[0] - deep[0]) * shade;
-      const cg = deep[1] + (rim[1] - deep[1]) * shade;
-      const cb = deep[2] + (rim[2] - deep[2]) * shade;
-      for (let s = 0; s < SEG; s++) {
-        const ang = (s / SEG) * Math.PI * 2;
-        const ca = Math.cos(ang);
-        const sa = Math.sin(ang);
-        // Rocky wall: jitter the radius per vertex (deterministic).
-        const jit = 1 + (hash(c, k * 13 + 5, s * 7 + 3) - 0.5) * 0.5;
-        const rr = r * jit;
-        const dirx = rx * ca + ux * sa;
-        const diry = ry * ca + uy * sa;
-        const dirz = rz * ca + uz * sa;
-        positions.push(cxp + dirx * rr, cyp + diry * rr, czp + dirz * rr);
-        // A little colour grain so the rock isn't a flat tone.
-        const g = (hash(c, k, s) - 0.5) * 0.04;
-        colors.push(cr + g, cg + g, cb + g);
-      }
+      const shade = Math.pow(t, 2.8) * 0.42;
+      addArchRing(
+        positions,
+        colors,
+        cxp,
+        cyp,
+        czp,
+        rx,
+        ry,
+        rz,
+        ux,
+        uy,
+        uz,
+        r * 1.15,
+        r,
+        deep[0] + (rim[0] - deep[0]) * shade,
+        deep[1] + (rim[1] - deep[1]) * shade,
+        deep[2] + (rim[2] - deep[2]) * shade,
+        c,
+        k,
+        0.32,
+      );
     }
 
-    // Fan the apex to the first ring (closes the pocket).
+    // Tight weathered stone collar framing the arch and anchoring cleanly into the cliff.
+    for (let ck = 1; ck <= COLLAR_RINGS; ck++) {
+      const flare = ck === 1 ? 1.14 : 1.26;
+      const setback = ck === 1 ? 0.15 : -(depth + 0.9);
+      const tone = ck === 1 ? 0.92 : 0.72;
+      addArchRing(
+        positions,
+        colors,
+        mouth[0] + axx * setback,
+        mouth[1] + axy * setback - sag * 0.1,
+        mouth[2] + axz * setback,
+        rx,
+        ry,
+        rz,
+        ux,
+        uy,
+        uz,
+        mouthR * 1.15 * flare,
+        mouthR * flare,
+        rim[0] * tone,
+        rim[1] * tone,
+        rim[2] * tone,
+        c,
+        RINGS + ck,
+        0.42,
+      );
+    }
+
+    const totalRings = RINGS + COLLAR_RINGS;
     const ring1 = base + 1;
     for (let s = 0; s < SEG; s++) {
       const a = ring1 + s;
       const b = ring1 + ((s + 1) % SEG);
       indices.push(base, b, a);
     }
-    // Quad strips between successive rings.
-    for (let k = 0; k < RINGS - 1; k++) {
+    for (let k = 0; k < totalRings - 1; k++) {
       const r0 = base + 1 + k * SEG;
       const r1 = base + 1 + (k + 1) * SEG;
       for (let s = 0; s < SEG; s++) {
