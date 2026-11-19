@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "experiment_id": "sel2-p-food-scarcity-body-mass::scarce-mut0",
+  "name": "SEL2-P scarce_mut0 - 16 spread lakes, scale 0.63, mutation 0",
+  "world_identity": {
+    "seed": 0,
+    "generator_version": 0,
+    "width": 0,
+    "height": 0,
+    "checksum": 0
+  },
+  "laws": {
+    "schema_version": 1,
+    "baseline_energy": {
+      "eu_unit": "EU"
+    },
+    "exotic_energy": null
+  },
+  "initial_conditions": {
+    "schema_version": 1,
+    "values": [
+      [
+        "live.founders",
+        100
+      ],
+      [
+        "live.predator_fraction",
+        0
+      ],
+      [
+        "live.trees",
+        8
+      ],
+      [
+        "live.lakes",
+        16
+      ],
+      [
+        "live.lake_layout",
+        1
+      ],
+      [
+        "live.resource_capacity_scale",
+        0.63
+      ],
+      [
+        "live.plant_reserve",
+        0
+      ],
+      [
+        "live.prey_cap",
+        320
+      ],
+      [
+        "live.dehydration_ticks",
+        960
+      ],
+      [
+        "live.mortality",
+        1
+      ],
+      [
+        "live.reproduction",
+        1
+      ],
+      [
+        "live.locomotion",
+        1
+      ],
+      [
+        "live.drive_floor",
+        0.5
+      ],
+      [
+        "live.thirst_steering",
+        1
+      ],
+      [
+        "live.evolved_brains",
+        0
+      ],
+      [
+        "live.mutation_rate",
+        0
+      ],
+      [
+        "live.drift_control",
+        0
+      ],
+      [
+        "live.drift_reset_ticks",
+        0
+      ]
+    ]
+  },
+  "interventions": [],
+  "seeds": [
+    780001,
+    781001,
+    782001,
+    783001,
+    784001,
+    785001,
+    786001,
+    787001,
+    788001,
+    789001,
+    790001,
+    791001,
+    792001,
+    793001,
+    794001,
+    795001,
+    796001,
+    797001,
+    798001,
+    799001
+  ],
+  "duration_ticks": 200000,
+  "sample_period": 500,
+  "observable_ids": [
+    "plants",
+    "detritus",
+    "live.animals_eu",
+    "live.dormant_eu",
+    "live.closed_eu_total",
+    "live.agent_count",
+    "live.herbivore_count",
+    "live.predator_count",
+    "live.food_items",
+    "live.standing_crop",
+    "live.mean_agent_energy",
+    "live.season_phase",
+    "live.trait_mass_mean",
+    "live.trait_mass_var",
+    "live.trait_mass_p10",
+    "live.trait_mass_p90",
+    "live.shannon",
+    "live.simpson",
+    "live.births",
+    "live.deaths",
+    "live.mean_lifespan",
+    "live.archive_coverage",
+    "live.mean_energy_integral",
+    "live.trait_mass_mean_west",
+    "live.trait_mass_mean_east"
+  ],
+  "exotic_interventions": [],
+  "observer": {
+    "mode": "absent"
+  }
+}
