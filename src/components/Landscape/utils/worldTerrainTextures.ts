@@ -21,26 +21,26 @@ import { sampleElevation, sampleMeshHeight } from './worldSample';
 export const BIOME_DISPLAY_RGB: ReadonlyArray<readonly [number, number, number]> = [
   [22, 58, 118], // 0 Ocean
   [242, 228, 184], // 1 Beach — warm bright sand
-  [234, 186, 88], // 2 Desert — golden dune sand
-  [198, 174, 72], // 3 Savanna — warm dry ochre-gold grass
+  [248, 208, 114], // 2 Desert — sun-bleached golden dune sand
+  [188, 174, 58], // 3 Savanna — warm dry olive-ochre grass
   [128, 200, 78], // 4 Grassland — fresh lime-meadow green
   [152, 162, 82], // 5 Shrubland — sage olive scrub
   [56, 138, 56], // 6 Forest — vibrant mid-forest green
-  [14, 86, 40], // 7 Jungle — deep saturated rainforest emerald
-  [34, 96, 88], // 8 Taiga — cool dark blue-spruce teal-green
+  [10, 72, 32], // 7 Jungle — deep dark saturated rainforest emerald
+  [30, 88, 82], // 8 Taiga — cool dark blue-spruce teal-green
   [160, 166, 146], // 9 Tundra — pale frost-lichen grey-green
-  [58, 90, 56], // 10 Swamp — dark mossy wetland green
+  [74, 110, 66], // 10 Swamp — mid-dark mossy wetland olive
   [122, 118, 114], // 11 Rock — slate highland grey
   [246, 250, 255], // 12 Snow — crisp alpine snow white
   [48, 132, 192], // 13 River — river cobalt blue
   [36, 116, 178], // 14 Lake — deep lake azure
-  [38, 118, 98], // 15 Mangrove — coastal teal-olive
+  [44, 132, 108], // 15 Mangrove — coastal teal-olive
   [146, 136, 88], // 16 Chaparral — dry Mediterranean olive-khaki scrub
   [188, 194, 134], // 17 Steppe — pale straw-sage steppe
   [90, 158, 126], // 18 Alpine — cool high-altitude emerald-sage
-  [168, 116, 82], // 19 Badlands — muted earthy sandstone ochre
-  [204, 228, 244], // 20 Glacier — cool pale ice-blue-white
-  [112, 76, 50], // 21 Bog — rich rusty peat-brown
+  [156, 104, 70], // 19 Badlands — deep earthy sandstone ochre
+  [176, 212, 236], // 20 Glacier — cool crystalline glacial ice-blue
+  [136, 94, 62], // 21 Bog — warm rusty peat-brown
 ];
 
 const BIOME_ROUGHNESS: ReadonlyArray<number> = [
@@ -94,6 +94,121 @@ function smoothNoise2D(fx: number, fy: number): number {
   return (a * (1 - ux) + b * ux) * (1 - uy) + (c * (1 - ux) + d * ux) * uy;
 }
 
+/** Height-to-world-width aspect ratio used by large-scale horizon ambient occlusion (`C1`). */
+const HORIZON_HEIGHT_SCALE = 0.14;
+const HORIZON_AZIMUTHS: ReadonlyArray<readonly [number, number, number]> = [
+  [1, 0, 1],
+  [-1, 0, 1],
+  [0, 1, 1],
+  [0, -1, 1],
+  [1, 1, Math.SQRT2],
+  [-1, 1, Math.SQRT2],
+  [1, -1, Math.SQRT2],
+  [-1, -1, Math.SQRT2],
+];
+const HORIZON_STEPS = [1, 2, 4, 8, 16, 32] as const;
+
+export interface HorizonAoMap {
+  readonly size: number;
+  readonly data: Float32Array;
+}
+
+/**
+ * Large-scale horizon ambient occlusion (`C1`): downsamples `world.elevation` to `<= 512^2` and
+ * marches 8 azimuths with geometrically growing step radii (up to 32 coarse cells = ~128 cells at
+ * `2048^2`) to measure how much sky is blocked by surrounding ridges and massif flanks.
+ * Values lie in `[0.64, 1.0]` (flat plains return exact `1.0`; submerged cells halve occlusion).
+ */
+export function computeHorizonAoMap(world: World): HorizonAoMap {
+  const { size, elevation } = world;
+  const aoRes = Math.max(1, Math.min(512, size));
+  const coarse = new Float32Array(aoRes * aoRes);
+
+  if (aoRes === size) {
+    coarse.set(elevation);
+  } else if (size % aoRes === 0) {
+    const block = size / aoRes;
+    const invArea = 1 / (block * block);
+    for (let cy = 0; cy < aoRes; cy++) {
+      const yBase = cy * block;
+      for (let cx = 0; cx < aoRes; cx++) {
+        const xBase = cx * block;
+        let sum = 0;
+        for (let dy = 0; dy < block; dy++) {
+          const rowOff = (yBase + dy) * size + xBase;
+          for (let dx = 0; dx < block; dx++) {
+            sum += elevation[rowOff + dx];
+          }
+        }
+        coarse[cy * aoRes + cx] = sum * invArea;
+      }
+    }
+  } else {
+    for (let cy = 0; cy < aoRes; cy++) {
+      const y0 = Math.floor((cy * size) / aoRes);
+      const y1 = Math.max(y0 + 1, Math.floor(((cy + 1) * size) / aoRes));
+      for (let cx = 0; cx < aoRes; cx++) {
+        const x0 = Math.floor((cx * size) / aoRes);
+        const x1 = Math.max(x0 + 1, Math.floor(((cx + 1) * size) / aoRes));
+        let sum = 0;
+        let count = 0;
+        for (let sy = y0; sy < y1; sy++) {
+          const rowOff = sy * size;
+          for (let sx = x0; sx < x1; sx++) {
+            sum += elevation[rowOff + sx];
+            count++;
+          }
+        }
+        coarse[cy * aoRes + cx] = count > 0 ? sum / count : 0;
+      }
+    }
+  }
+
+  const data = new Float32Array(aoRes * aoRes);
+  const seaLevel = world.seaLevel ?? 0.38;
+  const activeSteps = HORIZON_STEPS.filter((r) => r < aoRes);
+  const maxCoord = aoRes - 1;
+  const scaleInvRes = HORIZON_HEIGHT_SCALE * aoRes;
+
+  for (let y = 0; y < aoRes; y++) {
+    const rowOff = y * aoRes;
+    for (let x = 0; x < aoRes; x++) {
+      const h0 = coarse[rowOff + x];
+      let occSum = 0;
+      for (let a = 0; a < 8; a++) {
+        const az = HORIZON_AZIMUTHS[a];
+        const adx = az[0];
+        const ady = az[1];
+        const invDiag = 1 / az[2];
+        let maxSlope = 0;
+        for (let s = 0; s < activeSteps.length; s++) {
+          const r = activeSteps[s];
+          let sx = x + adx * r;
+          if (sx < 0) sx = 0;
+          else if (sx > maxCoord) sx = maxCoord;
+          let sy = y + ady * r;
+          if (sy < 0) sy = 0;
+          else if (sy > maxCoord) sy = maxCoord;
+          const dh = coarse[sy * aoRes + sx] - h0;
+          if (dh > 0) {
+            const slope = (dh * scaleInvRes * invDiag) / r;
+            if (slope > maxSlope) maxSlope = slope;
+          }
+        }
+        if (maxSlope > 0) {
+          occSum += maxSlope / Math.sqrt(1 + maxSlope * maxSlope);
+        }
+      }
+      const meanOcc = occSum * 0.125;
+      let occ = Math.min(0.36, Math.max(0, meanOcc - 0.03) * 0.85);
+      if (h0 < seaLevel) occ *= 0.5;
+      data[rowOff + x] = 1 - occ;
+    }
+  }
+
+  return { size: aoRes, data };
+}
+
 /**
  * Bakes the world's biome colours into a FULL data-resolution sRGB texture. The mesh only has
  * ~384^2 vertices, but the texture keeps all 2048^2 cells, so biome borders, rivers and beaches
@@ -105,6 +220,11 @@ function smoothNoise2D(fx: number, fy: number): number {
 export function buildColorTexture(world: World): THREE.DataTexture {
   const { size, biome, riverAmt, shore, elevation, slope, water, temperature } = world;
   const data = new Uint8Array(size * size * 4);
+  const horizonAo = computeHorizonAoMap(world);
+  const aoRes = horizonAo.size;
+  const aoData = horizonAo.data;
+  const aoMax = aoRes - 1;
+  const aoScale = aoRes / size;
   const RIVER_RGB = biomeDisplayColor(Biome.River);
   // Curvature AO ring radii (world-space constant regardless of data resolution).
   const R1 = Math.max(2, Math.round(size / 680));
@@ -118,6 +238,12 @@ export function buildColorTexture(world: World): THREE.DataTexture {
     const y1b = Math.min(size - 1, y + R1) * size;
     const y2a = Math.max(0, y - R2) * size;
     const y2b = Math.min(size - 1, y + R2) * size;
+    const gy = Math.max(0, Math.min(aoMax, (y + 0.5) * aoScale - 0.5));
+    const gy0 = Math.floor(gy);
+    const gy1 = gy0 < aoMax ? gy0 + 1 : aoMax;
+    const gty = gy - gy0;
+    const aoRow0 = gy0 * aoRes;
+    const aoRow1 = gy1 * aoRes;
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const bio = biome[i];
@@ -300,7 +426,18 @@ export function buildColorTexture(world: World): THREE.DataTexture {
         let occ = Math.min(0.22, Math.max(0, ring1 - e) * 22 + Math.max(0, ring2 - e) * 10);
         if (e < (world.seaLevel ?? 0.38)) occ *= 0.5; // keep the sunny turquoise shallows
         const lift = Math.min(0.08, Math.max(0, e - ring2) * 8);
-        const shade = 1 - occ + lift;
+        const gx = Math.max(0, Math.min(aoMax, (x + 0.5) * aoScale - 0.5));
+        const gx0 = Math.floor(gx);
+        const gx1 = gx0 < aoMax ? gx0 + 1 : aoMax;
+        const gtx = gx - gx0;
+        const h00 = aoData[aoRow0 + gx0];
+        const h10 = aoData[aoRow0 + gx1];
+        const h01 = aoData[aoRow1 + gx0];
+        const h11 = aoData[aoRow1 + gx1];
+        const hAo = (h00 + (h10 - h00) * gtx) * (1 - gty) + (h01 + (h11 - h01) * gtx) * gty;
+        const hOcc = Math.max(0, 1 - hAo);
+        const combinedOcc = Math.min(0.42, occ + hOcc * (1 - occ * 0.5));
+        const shade = 1 - combinedOcc + lift;
         r *= shade;
         g *= shade;
         b *= shade;
@@ -481,17 +618,165 @@ export function buildDetailTexture(): THREE.DataTexture {
   return tex;
 }
 
+function buildRingOffsets(minRadius: number, maxRadius: number): ReadonlyArray<readonly [number, number, number]> {
+  const out: Array<readonly [number, number, number]> = [];
+  for (let dy = -maxRadius; dy <= maxRadius; dy++) {
+    for (let dx = -maxRadius; dx <= maxRadius; dx++) {
+      const cheb = Math.max(Math.abs(dx), Math.abs(dy));
+      if (cheb >= minRadius && cheb <= maxRadius) {
+        out.push([dx, dy, 1 / Math.hypot(dx, dy)]);
+      }
+    }
+  }
+  return out;
+}
+
+const D8_OFFSETS = buildRingOffsets(1, 1);
+const RING2_OFFSETS = buildRingOffsets(2, 2);
+const RING34_OFFSETS = buildRingOffsets(3, 4);
+
+function findSteepestRingDescent(
+  offsets: ReadonlyArray<readonly [number, number, number]>,
+  x: number,
+  y: number,
+  e0: number,
+  size: number,
+  sLevel: number,
+  elevation: Float32Array,
+  riverAmt: Uint8Array | undefined,
+  water: Float32Array | undefined,
+): readonly [number, number] | null {
+  let bestLandSlope = 0;
+  let bestLandDx = 0;
+  let bestLandDy = 0;
+  let bestWaterSlope = 0;
+  let bestWaterDx = 0;
+  let bestWaterDy = 0;
+
+  for (let k = 0; k < offsets.length; k++) {
+    const off = offsets[k];
+    const nx = x + off[0];
+    const ny = y + off[1];
+    if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+    const nIdx = ny * size + nx;
+    const nElev = elevation[nIdx];
+    const dh = e0 - nElev;
+    if (dh <= 1e-7) continue;
+    const slope = dh * off[2];
+    const isWaterNb = (riverAmt?.[nIdx] ?? 0) > 0 || (water?.[nIdx] ?? 0) > 0 || nElev < sLevel;
+    if (isWaterNb) {
+      if (slope > bestWaterSlope) {
+        bestWaterSlope = slope;
+        bestWaterDx = off[0];
+        bestWaterDy = off[1];
+      }
+    } else if (slope > bestLandSlope) {
+      bestLandSlope = slope;
+      bestLandDx = off[0];
+      bestLandDy = off[1];
+    }
+  }
+
+  if (bestWaterSlope > 0) return [bestWaterDx, bestWaterDy];
+  if (bestLandSlope > 0) return [bestLandDx, bestLandDy];
+  return null;
+}
+
 /**
- * The river-ribbon mask, feathered, so the shader knows where flowing water lies.
+ * The river-ribbon mask plus D8 steepest-descent flow direction (`C2`), encoded in RGBA:
+ *   R = feathered river mask (`world.riverAmt`)
+ *   G, B = normalized 2D grid-space downstream vector `(nx, ny)` mapped via `round(128 + n * 127)`
+ *   A = `255` when a downstream target exists via D8 elevation, ring 2–4 elevation fallback, or
+ *       higher downstream D8 `world.flow` tie-breaker; `0` for dry cells (neutral G/B = `128` to
+ *       prevent bilinear edge bleed) and flat lake junctions.
  *
- * Both terrain renderers built this inline and identically. One copy, because the two must agree:
- * `WorldTerrainLod` is only a partitioning of `WorldTerrain` and is verified to be pixel-identical.
+ * This is a visual cue derived strictly from the elevation gradient and hydrological flow order,
+ * never simulated hydrodynamics. Both renderers share this helper so `WorldTerrain` and
+ * `WorldTerrainLod` remain identical.
  */
 export function buildRiverMaskTexture(world: World): THREE.DataTexture {
-  const { size, riverAmt } = world;
-  const data = new Uint8Array(size * size);
-  if (riverAmt) data.set(riverAmt);
-  const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat, THREE.UnsignedByteType);
+  const { size, riverAmt, elevation, water, flow, seaLevel } = world;
+  const data = new Uint8Array(size * size * 4);
+  const sLevel = seaLevel ?? 0.38;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const o = i * 4;
+      const amt = riverAmt ? riverAmt[i] : 0;
+      data[o] = amt;
+      data[o + 1] = 128;
+      data[o + 2] = 128;
+      data[o + 3] = 0;
+      if (amt === 0) continue;
+
+      const e0 = elevation[i];
+      let bestSlope = 0;
+      let bestDx = 0;
+      let bestDy = 0;
+
+      // Pass 1: D8 immediate neighbours (strictly lower elevation).
+      for (let k = 0; k < D8_OFFSETS.length; k++) {
+        const off = D8_OFFSETS[k];
+        const nx = x + off[0];
+        const ny = y + off[1];
+        if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+        const dh = e0 - elevation[ny * size + nx];
+        if (dh > 1e-7) {
+          const slope = dh * off[2];
+          if (slope > bestSlope) {
+            bestSlope = slope;
+            bestDx = off[0];
+            bestDy = off[1];
+          }
+        }
+      }
+
+      // Pass 2 & Pass 3: ring 2 then rings 3-4 strictly lower elevation fallback for terraced reaches.
+      if (bestSlope <= 0) {
+        const r2 = findSteepestRingDescent(RING2_OFFSETS, x, y, e0, size, sLevel, elevation, riverAmt, water);
+        const dir =
+          r2 ?? findSteepestRingDescent(RING34_OFFSETS, x, y, e0, size, sLevel, elevation, riverAmt, water);
+        if (dir) {
+          bestDx = dir[0];
+          bestDy = dir[1];
+          bestSlope = 1;
+        }
+      }
+
+      // Pass 4: downstream `world.flow` tie-breaker on completely flat mid-channel terraces.
+      if (bestSlope <= 0 && flow) {
+        const f0 = flow[i];
+        let bestFlow = f0 + 1e-7;
+        for (let k = 0; k < D8_OFFSETS.length; k++) {
+          const off = D8_OFFSETS[k];
+          const nx = x + off[0];
+          const ny = y + off[1];
+          if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+          const nIdx = ny * size + nx;
+          if ((riverAmt?.[nIdx] ?? 0) === 0) continue;
+          const nf = flow[nIdx];
+          if (nf > bestFlow) {
+            bestFlow = nf;
+            bestDx = off[0];
+            bestDy = off[1];
+            bestSlope = 1;
+          }
+        }
+      }
+
+      if (bestSlope > 0) {
+        const invLen = 1 / Math.hypot(bestDx, bestDy);
+        const fx = bestDx * invLen;
+        const fy = bestDy * invLen;
+        data[o + 1] = Math.min(255, Math.max(0, Math.round(128 + fx * 127)));
+        data[o + 2] = Math.min(255, Math.max(0, Math.round(128 + fy * 127)));
+        data[o + 3] = 255;
+      }
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.wrapS = THREE.ClampToEdgeWrapping;

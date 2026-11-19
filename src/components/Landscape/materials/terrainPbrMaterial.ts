@@ -169,7 +169,8 @@ void w3ComputeLayerWeights(
           `#include <map_fragment>
           {
             float dtl = texture2D(uDetail, vMapUv * 220.0).r * 2.0;
-            float riv = texture2D(uRiverMask, vMapUv).r;
+            vec4 rivMask = texture2D(uRiverMask, vMapUv);
+            float riv = rivMask.r;
             if (uPbrEnabled > 0.5) {
               float wG, wF, wR, wSa, wSn, wM;
               w3ComputeLayerWeights(vMapUv, wG, wF, wR, wSa, wSn, wM);
@@ -199,9 +200,28 @@ void w3ComputeLayerWeights(
               diffuseColor.rgb *= mix(1.0, dtl, 0.34);
             }
             if (riv > 0.01) {
+              // C2 downstream river advection: visual cue derived strictly from the D8 elevation
+              // gradient (never simulated hydrodynamics), using Vlachos (SIGGRAPH 2010) dual
+              // half-cycle flow-map blending with per-pixel noise phase jitter to eliminate pulse seams.
+              vec2 rawFlow = (rivMask.gb * 255.0 - 128.0) / 127.0;
+              float flowLen = length(rawFlow);
+              float validFlow = smoothstep(0.35, 0.75, rivMask.a) * step(0.2, flowLen);
+              vec2 flowDir = flowLen > 0.2 ? (rawFlow / flowLen) : vec2(0.0);
+
+              float phaseJitter = texture2D(uDetail, vMapUv * 24.0).r;
+              float p0 = fract(uTime * 0.30 + phaseJitter);
+              float p1 = fract(uTime * 0.30 + phaseJitter + 0.5);
+              float blend = abs(2.0 * p0 - 1.0);
+              vec2 advUvBase = vMapUv * 220.0;
+              float adv0 = texture2D(uDetail, advUvBase - flowDir * (p0 * 1.25)).r * 2.0;
+              float adv1 = texture2D(uDetail, advUvBase - flowDir * (p1 * 1.25)).r * 2.0;
+              float advected = mix(adv0, adv1, blend);
+
               float flow1 = texture2D(uDetail, vMapUv * 260.0 + vec2(uTime * 0.025, uTime * 0.045)).r * 2.0;
               float flow2 = texture2D(uDetail, vMapUv * 140.0 - vec2(uTime * 0.018, uTime * 0.03)).r * 2.0;
-              diffuseColor.rgb *= mix(1.0, flow1 * 0.55 + flow2 * 0.45, riv * 0.3);
+              float fallbackFlow = flow1 * 0.55 + flow2 * 0.45;
+              float flowMod = mix(fallbackFlow, advected, validFlow);
+              diffuseColor.rgb *= mix(1.0, flowMod, riv * 0.32);
             }
           }`,
         )
@@ -229,7 +249,7 @@ void w3ComputeLayerWeights(
         );
   };
 
-  material.customProgramCacheKey = () => 'w3-lite-terrain-pbr-v2';
+  material.customProgramCacheKey = () => 'w3-lite-terrain-pbr-v3';
 
   const handle: TerrainPbrShaderHandle = {
     applyPbrArrays(arrays) {
