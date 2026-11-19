@@ -66,6 +66,10 @@
       [
         "live.food_cap",
         50.0
+      ],
+      [
+        "live.resource_capacity_scale",
+        1.0
       ]
     ]
   },

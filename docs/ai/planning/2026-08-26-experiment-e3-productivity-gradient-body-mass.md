@@ -2,7 +2,7 @@
 phase: planning
 feature: experiment-e3-productivity-gradient
 title: Kế hoạch — E3, gradient năng suất theo không gian có làm phân tán khối lượng cơ thể không
-description: Tiền đăng ký đóng băng E3 (WP-1..WP-4, 2026-11-19) — nhân tố, N=12 cặp, T=18.000, metric chính/thứ cấp gồm S2 theo vùng, ngưỡng vật chất, và kết quả smoke WP-2/WP-3
+description: Tiền đăng ký đóng băng E3 fix round 1 (3 arm ghép cặp gồm đối chứng khan hiếm đồng đều tổng ~64k EU, WP-1..WP-4 trên trunk 9958f27, quy tắc loại cặp tuyệt chủng / nửa bản đồ trống, S4/S5 structural zero, ngưỡng vật chất máy đọc)
 status: active
 owner: simulation-architecture
 last_reviewed: 2026-11-19
@@ -10,259 +10,213 @@ last_reviewed: 2026-11-19
 
 # Kế hoạch — E3: gradient năng suất theo không gian và phân tán khối lượng cơ thể
 
-> 🔒 **TIỀN ĐĂNG KÝ ĐÃ ĐÓNG BĂNG (2026-11-19).** Hoàn thành đủ **WP-1 đến WP-4** trước khi chạy
-> bất kỳ hạt giống thí nghiệm nào:
-> - **Parent commit trên `feat/ecological-selection`:** `91def40db1148c4526230704e5f002fe61f77c24` (`91def40`, sau khi PR `#148` Card S2 hợp nhất).
+> 🔒 **TIỀN ĐĂNG KÝ ĐÃ ĐÓNG BĂNG — BẢN FIX ROUND 1 (2026-11-19).** Hoàn thành đủ **WP-1 đến WP-4** trước
+> khi chạy bất kỳ hạt giống thí nghiệm nào:
+> - **Parent commit hiện tại trên `feat/ecological-selection`:** `9958f27bdf5f979f03aeee213c8d0b5304566cf2` (`9958f27`; đóng băng lần đầu ở `91def40db1148c4526230704e5f002fe61f77c24`, bản nháp ở `445c9c8`).
 > - **Phiên bản mô hình:** `LIVE_MODEL_VERSION = "live-bevy-world/2"` (`model_status`: `"headless adapter verified; NOT a live-world experiment-ready claim"`), snapshot schema `8`.
-> - **Fixture máy đọc & test đối chiếu:** `src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json` + các manifest điều khiển/điều trị/smoke, kiểm tra bởi `src-tauri/tests/prereg_e3_manifest_tests.rs`.
+> - **Thiết kế 3 arm (giải quyết nhiễu tổng lượng thức ăn ở Fix Round 1):** `control_uniform` (đồng đều dồi dào ~153.6k EU), **`control_uniform_scarcity` (đối chứng chính mới — đồng đều khan hiếm ~64.5k EU, `live.resource_capacity_scale = 0.42` + `AddNutrient 1.00` toàn bản đồ)**, và `treatment_gradient` (~64.1k EU sau khởi động, Tây chặt 0.30 / Đông bón 1.00). Tổng `36` lượt chạy (`3` arm × `12` seed).
+> - **Fixture máy đọc & test đối chiếu:** `src-tauri/tests/fixtures/experiments_e3/e3-preregistration.json` + 6 manifest, kiểm tra bởi `src-tauri/tests/prereg_e3_manifest_tests.rs`.
 > - **Bằng chứng hiệu chỉnh mù (WP-2/WP-3):** `artifacts/experiments/e3-productivity-gradient-body-mass/smoke/` (`seed = 999979`, profile `--release`, `body_mass_consulted: false`).
 > - **Số hạt giống thí nghiệm đã chạy tính tới lúc đóng băng:** **0** (`730001..741001` chưa từng chạy; `contains_results: false`).
 
-## 1. Câu hỏi và những gì mã thật sự cho phép đo (đã đối chiếu với `91def40`)
+## 1. Câu hỏi, giới hạn cơ chế và lựa chọn giải quyết nhiễu tổng năng suất (Design Confound)
 
-Câu hỏi sinh học gốc (kế hoạch feature §10): **một gradient năng suất sơ cấp theo không gian có sinh ra các loại khối lượng cơ thể khác nhau ở vùng giàu và vùng nghèo không?**
+Câu hỏi sinh học gốc (kế hoạch feature §10): **tại cùng tổng lượng thức ăn thực vật sẵn có, một gradient năng suất sơ cấp theo không gian có làm phân tán khối lượng cơ thể và phân hoá kích thước giữa nửa giàu và nửa nghèo không?**
 
-Đọc mã ở bản nháp `445c9c8` và đối chiếu lại với trunk `91def40` cho thấy phạm vi **nhân tố** và **dụng cụ đo** cụ thể như sau:
+Đối chiếu mã trên trunk `9958f27` cho thấy phạm vi **nhân tố** và **dụng cụ đo**:
 
-| Hạng mục | Bằng chứng trong mã (`91def40`) | Hệ quả cho E3 |
+| Hạng mục | Bằng chứng trong mã (`9958f27`) | Hệ quả cho E3 |
 |---|---|---|
-| **Chưa có núm nào chỉnh `r_max` (NPP) theo biome** | `biome_npp()` (`core/ecology.rs:63`) là hàm hằng của `BiomeType`; `ResourceField::from_biomes` đọc nó ở `core/ecs.rs:65`; bản đồ biome đến từ `TerrainMap::load_or_generate(&MapSettings::default(), …)` với `seed: 1337` cố định (`core/terrain.rs:99`) | Gradient NPP nền theo biome là **hằng số của thế giới**, giống hệt ở mọi arm và mọi seed. Không thể dùng `biome_npp` hay `r_max` làm nhân tố |
-| **Đã có observable khối lượng theo vùng (Card S2, PR `#148`)** | `LIVE_EXTENDED_OBSERVABLE_IDS` (`core/live_experiment.rs:1428`, trước đây là `:857`) đã bổ sung `live.trait_mass_mean_west` (cột `0..=127`) và `live.trait_mass_mean_east` (cột `128..=255`) bên cạnh `live.trait_mass_{mean,var,p10,p90}` toàn quần thể | Ở bản nháp `445c9c8`, mục #1 ở [§10](#10-hai-dụng-cụ-sẽ-mở-khoá-câu-hỏi-gốc) còn thiếu nên E3 chỉ đặt giả thuyết chính trên **độ phân tán toàn cục (`live.trait_mass_var`)**. Trên `91def40`, S2 đã giao bộ đo theo vùng **trước khi có dữ liệu**: E3 giữ `live.trait_mass_var` làm metric chính `H1` cho phân tán và đăng ký trước bộ đôi Tây/Đông làm metric thứ cấp `S3` |
+| **Chưa có núm chỉnh `r_max` theo vùng bằng can thiệp** | `biome_npp()` (`core/ecology.rs:63`) là hằng số theo `BiomeType`; `ResourceField::from_biomes` (`core/ecs.rs:65`) khởi tạo mọi ô **đúng bằng sức chứa `r = r_max`** (`153.587,25 EU`); bản đồ đến từ `MapSettings::default()`, `seed: 1337` (`core/terrain.rs:99`). Hiện chỉ có `live.resource_capacity_scale` nhân đều toàn bản đồ lúc khởi sinh (`core/live_experiment.rs:2568`) | `fertilise_region` (`core/live_experiment.rs:1236-1269`, trần tại `field.r_max[i]`) **không bao giờ đẩy ô vượt quá `r_max`**. Nếu chỉ dùng 2 arm không sửa `src-tauri/src/`, mọi cách giữ tổng năng suất bằng nhau bằng cách "bù Đông cao hơn sức chứa gốc" đều **bất khả thi về mặt cơ học** |
+| **Can thiệp đứng trên standing crop đóng EU** | `InterventionCommand` (`crates/anima-domain/src/intervention.rs:143`), `strip_region` / `fertilise_region` (`core/live_experiment.rs:1214, 1236`), trần `NUTRIENT_FULL_SCALE_FRACTION = 0.10` (`core/live_experiment.rs:80`) | Tây `Deforest 0.30` + Đông `AddNutrient 1.00` làm nửa Đông giữ gần mức sức chứa (`~64,8k EU`), nửa Tây tụt gần `0`, và **tổng `standing_crop` toàn bản đồ giảm `-52,47 %`** so với đối chứng không chặt (`64.099` vs `134.867 EU`) |
+| **Đã có observable khối lượng theo vùng (Card S2, PR `#148`)** | `LIVE_EXTENDED_OBSERVABLE_IDS` (`core/live_experiment.rs:1428`) có đủ `live.trait_mass_mean_{west,east}` (cột `0..=127` vs `128..=255`) cùng `live.trait_mass_{mean,var,p10,p90}` | `H1` đo phân tán toàn cục (`live.trait_mass_var`), còn `S3` đo trực tiếp tương phản không gian `east − west` |
 
-Cái **có sẵn** cho phép áp forcing theo vùng một cách cơ học và khép kín EU:
+### Lựa chọn thiết kế giải quyết nhiễu tổng lượng thức ăn (ghi rõ cho owner duyệt)
 
-- `InterventionCommand` mang `region: Region::Rect{…}`, `duration_ticks` và `curve`
-  (`crates/anima-domain/src/intervention.rs:143`, bản nháp cũ ghi `:105`) — tức là một forcing
-  **theo vùng và kéo dài**, chứ không phải một cú sốc một tick.
-- `InterventionKind::Deforest` gọi `strip_region`, `AddNutrient` gọi `fertilise_region`
-  (`core/live_experiment.rs:1214, 1236`, bản nháp cũ ghi `:597, 627`). Cả hai đi qua `EnergyLedger::transfer`
-  nên **EU vẫn đóng**: deforest chuyển standing crop → detritus, add-nutrient rút từ **chính pool
-  detritus đó** ra trở lại standing crop, trần mỗi lần band sinh thái nổ là
-  `NUTRIENT_FULL_SCALE_FRACTION = 0.10` (`core/live_experiment.rs:80, 1029`).
-- Thế giới headless **có** trường tài nguyên: `build_live_world` gọi `core::ecs::init_world()` ở đầu
-  hàm (`core/live_experiment.rs:2359`, bản nháp cũ ghi `:1410`), và `init_world` gắn `ResourceField`
-  cùng `EcosystemBiomass`. Kết quả chạy smoke WP-2 ở [§5](#5-t-lấy-mẫu-khởi-động-và-hiệu-chỉnh-wp-2--wp-3)
-  xác nhận tận nơi rằng `Deforest` + `AddNutrient` thực sự làm dịch `live.standing_crop` giữa hai arm.
+Trong bản nháp 2 arm ban đầu, một khác biệt ở `live.trait_mass_var` giữa `treatment_gradient` (~64,1k EU) và `control_uniform` (~134,9k EU) bị **lẫn hoàn toàn giữa gradient không gian và khan hiếm thức ăn toàn cục (~−52 %)** (nhân tố của E-SEL1). Vì không thể đẩy nửa Đông vượt quá `r_max` nếu không sửa `src-tauri/src/`, E3 Fix Round 1 **chọn Phương án B: bổ sung arm thứ 3 — `control_uniform_scarcity` (`e3-control-uniform-scarcity.json`) — làm đối chứng chính khớp tổng năng suất**, thay vì chỉ giữ 2 arm bị nhiễu:
 
-**Vì vậy E3 đổi nhân tố nhưng giữ nguyên câu hỏi sinh học.** Thay vì gradient NPP `r_max` theo biome
-(chưa chỉnh được bằng can thiệp), E3 áp một **gradient năng suất hữu dụng theo không gian bằng can thiệp
-lên standing crop**: bỏ rừng nửa Tây (`Deforest`), bón nửa Đông (`AddNutrient`), kéo dài suốt lượt chạy.
-Đó là cùng một loại nhân quả — một nửa thế giới duy trì được lượng thức ăn thực vật sẵn có khác nửa kia —
-chỉ khác đường đặt vào.
+1. **Đặt `live.resource_capacity_scale = 0.42` từ tỉ lệ hình học tiên nghiệm (không hiệu chỉnh theo kết quả):**
+   Trước khi chạy mọi lượt, `East_capacity / Total_capacity = 64.829,50 / 153.587,25 = 0,4221`, làm tròn hai chữ số thành **`0,42`**. Tại khởi sinh (`scale_pasture_capacity`, `core/live_experiment.rs:2568`), `control_uniform_scarcity` giữ đúng **`64.506,64 EU`** thực vật (đồng đều `0,42×` trên cả nửa Tây lẫn nửa Đông) và chuyển phần dư `89.080,61 EU` sang `detritus`, bảo toàn cùng một `closed_eu_total = 153.587,25 EU`.
+2. **Bật `AddNutrient 1.00` đồng đều toàn bản đồ (`Rect{0,0,255,255}`) với `Deforest 0.0`:**
+   Khớp đúng vòng tái nạp detritus→cỏ sau khi gặm của arm điều trị (khác với `control_uniform` có `AddNutrient 0.0`, nơi cỏ gặm cục bộ không được bón lại và dân số smoke tụt xuống `13` ở đối chứng dồi dào vs `99` ở điều trị). Kết quả smoke cho thấy `control_uniform_scarcity` và `treatment_gradient` khớp tổng `live.standing_crop` sau khởi động sai khác chỉ **`−0,44 %`** (`64.379` vs `64.099 EU`), giữ toàn bộ khác biệt không gian thuần tuý ở sự phân cực Tây nghèo / Đông giàu (~`2,38×` mật độ cục bộ ở Đông so với `control_uniform_scarcity`, ~`0×` ở Tây).
+3. **Giữ lại `control_uniform` để phân tích tách thành phần (phân rã cộng tính):**
+   Với cùng bộ `N = 12` seed chạy trên 3 arm (`36` lượt chạy), mỗi seed cho phép phân tích chính xác:
+   `(T − U) = (T − S) + (S − U)`, trong đó `T − S` cô lập **gradient không gian tại cùng tổng ~64k EU**, còn `S − U` đo **hiệu ứng khan hiếm + tái nạp đồng đều**.
 
-> 🔬 **Giới hạn được ghi rõ trước khi có số.** Metric chính `live.trait_mass_var` đo **phân tán toàn cục**
-> (kèm `p90 − p10`), còn metric thứ cấp `S3` (`live.trait_mass_mean_west` / `live.trait_mass_mean_east`,
-> tương phản `east − west`) đo **phân hoá khối lượng trung bình theo hai nửa không gian**. Cả hai được
-> chốt trước khi bất kỳ hạt giống thí nghiệm nào chạy; không có chuyện suy diễn "phân hoá vùng" chỉ từ
-> variance toàn cục, và cũng không thay thế nhân tố còn thiếu #2 (chỉnh `r_max` theo vùng ở [§10](#10-hai-dụng-cụ-sẽ-mở-khoá-câu-hỏi-gốc)).
+> 🔬 **Giới hạn còn lại được ghi rõ trước khi có số:**
+> - Trong `treatment_gradient`, nửa Tây bị kéo xuống bằng `Deforest 0.30` lặp lại mỗi 60 tick trong khi `control_uniform_scarcity` thu hẹp `r_max` ngay lúc khởi sinh bằng `live.resource_capacity_scale = 0.42`. Cho đến khi nhánh mô phỏng có `InterventionKind` chỉnh `r_max` theo vùng (§10 #2), sự khác nhau giữa "áp lực chặt liên tục vs tỷ lệ `r_max` lúc khởi sinh" vẫn là giới hạn cơ chế của thiết kế này và được tuyên bố công khai.
+> - Kết luận `H1` của E3 phải được phát biểu đúng nguyên văn theo nhân tố thực sự can thiệp: *"gradient năng suất tạo bởi Tây chặt 0.30 / Đông bón 1.00 so với đối chứng khan hiếm đồng đều ở cùng tổng ~64k EU"*.
 
 ## 2. Giả thuyết
 
-- **H1 (chính):** dưới cùng luật fitness sinh thái và chu chuyển quần thể, một gradient năng suất theo
-  không gian (Tây `Deforest 0.30`, Đông `AddNutrient 1.00`) làm **tăng** độ phân tán khối lượng cơ thể
-  của quần thể (`live.trait_mass_var` tại `T`, `paired_mean_delta > 0`) so với thế giới có hai lệnh
-  can thiệp đồng nhất ở cường độ `0.0`.
-- **H0:** không tăng — khoảng tin cậy 95 % của `paired_mean_delta` phủ 0, hoặc dịch chuyển tương đối
-  dưới 5 %.
+- **H1 (chính — tương phản `treatment_gradient − control_uniform_scarcity`):** dưới cùng luật fitness, chu chuyển quần thể và **tổng lượng thức ăn thực vật tương đương (~64k EU)**, gradient năng suất theo không gian (Tây `Deforest 0.30`, Đông `AddNutrient 1.00`) làm **tăng** phương sai khối lượng cơ thể (`live.trait_mass_var` tại `T = 18.000`, `paired_mean_delta > 0`) so với đối chứng khan hiếm đồng đều (`live.resource_capacity_scale = 0.42`, `AddNutrient 1.00` toàn bản đồ).
+- **H0:** không tăng trên tương phản chính — khoảng tin cậy 95 % của `paired_mean_delta` phủ 0, hoặc không đạt đồng thời hai ngưỡng vật chất (`|paired_dz| ≥ 0,8` và `|paired_mean_delta| ≥ 0,05 × |control_mean|`).
+- **Tương phản tham chiếu bổ trợ (đăng ký trước trong E3-X):** `treatment_gradient − control_uniform` (tổng tác động) và `control_uniform_scarcity − control_uniform` (tác động khan hiếm đồng đều), bảo toàn đồng nhất thức `(T − U) = (T − S) + (S − U)`.
 
-Hướng của H1 được khai **trước**. Nếu kết quả có ý nghĩa vật chất nhưng **ngược hướng** (`paired_mean_delta < 0`,
-tức gradient làm phân bố khối lượng **hẹp** lại), đó là một kết quả thật, được báo cáo là bác bỏ H1 theo
-hướng ngược, **không** được viết lại thành ủng hộ H1.
+Hướng của H1 được khai **trước**. Nếu `H1` đạt ngưỡng vật chất nhưng **ngược hướng** (`paired_mean_delta < 0`, tức `material_negative_opposite`), kết quả được báo cáo là bác bỏ H1 theo hướng ngược, **không** bao giờ viết lại thành ủng hộ H1.
 
-## 3. Thiết kế: hai arm ghép cặp theo seed
+## 3. Thiết kế: ba arm ghép cặp theo seed
 
-Cùng manifest, cùng seed, khác đúng **một** nhân tố — `interventions` (cường độ can thiệp).
+Cùng luật, cùng cấu hình sinh vật/môi trường, cùng `12` seed, khác đúng một tổ hợp nhân tố khai tường minh (`interventions` và `live.resource_capacity_scale`):
 
-| | Control (`e3-control-uniform.json`) | Treatment (`e3-treatment-gradient.json`) |
+| Hạng mục | `control_uniform` (đối chứng dồi dào) | `control_uniform_scarcity` (đối chứng chính khớp tổng EU) | `treatment_gradient` (điều trị gradient) |
+|---|---|---|---|
+| Manifest | `e3-control-uniform.json` | `e3-control-uniform-scarcity.json` | `e3-treatment-gradient.json` |
+| `live.resource_capacity_scale` | `1.0` | `0.42` (`~64.5k EU` khởi đầu) | `1.0` |
+| Can thiệp 1 (`id=1, cause_id=1`) | `Deforest`, `Rect{0,0,127,255}`, `intensity = 0.0` | `Deforest`, `Rect{0,0,127,255}`, `intensity = 0.0` | `Deforest`, `Rect{0,0,127,255}`, `intensity = 0.30` |
+| Can thiệp 2 (`id=2, cause_id=2`) | `AddNutrient`, `Rect{128,0,255,255}`, `intensity = 0.0` | `AddNutrient`, `Rect{0,0,255,255}` (toàn bản đồ), `intensity = 1.00` | `AddNutrient`, `Rect{128,0,255,255}` (nửa Đông), `intensity = 1.00` |
+| `start_tick` / `duration_ticks` / `curve` | `1` / `18000` / `Step` | giống hệt | giống hệt |
+| `reversible` / `signed_negative` | `false` / `false` | giống hệt | giống hệt |
+
+`control_uniform` và `control_uniform_scarcity` vẫn **giữ nguyên cả hai bản ghi lệnh** (`id=1, 2`) thay vì bỏ lệnh có `intensity = 0.0`: `validate_intervention` (`core/experiment/interventions.rs:16`) chấp nhận `intensity == 0.0`, nên mọi arm đi qua cùng đường mã can thiệp.
+
+**Hằng số của cả ba arm (13 khoá khai tường minh trong `initial_conditions`, đối chiếu `9958f27`):**
+
+Vì `LIVE_KEYS` có 25 khoá (`core/live_experiment.rs:218`), mọi manifest đều khai đủ **13** khoá tường minh giống nhau về cấu trúc (12 khoá chung giống hệt giữa cả 3 arm + `live.resource_capacity_scale` là `1.0` ở hai arm dồi dào/điều trị và `0.42` ở arm khan hiếm đồng đều; lưu ý `scale_pasture_capacity` trả về sớm khi `factor == 1.0`, `core/live_experiment.rs:2569`, nên giữ nguyên bit-identity với lúc vắng mặt):
+
+| Khoá | Giá trị ghim | Ghi chú đối chiếu mã (`9958f27`) |
 |---|---|---|
-| Can thiệp 1 (`id=1, cause_id=1`) | `Deforest`, `Rect{min_x:0, min_y:0, max_x:127, max_y:255}` (nửa Tây), `intensity = 0.0` | như control nhưng `intensity = 0.30` |
-| Can thiệp 2 (`id=2, cause_id=2`) | `AddNutrient`, `Rect{min_x:128, min_y:0, max_x:255, max_y:255}` (nửa Đông), `intensity = 0.0` | như control nhưng `intensity = 1.00` |
-| `start_tick` / `duration_ticks` | `1` / `18000` (suốt lượt chạy) | giống hệt |
-| `curve` | `Step` | giống hệt |
-| `reversible` / `signed_negative` | `false` / `false` | giống hệt |
+| `live.ecological_fitness` | `1.0` | Nhánh F (`autonomous_reproduction_system` trong headless adapter) |
+| `live.mortality` | `1.0` | Bật cái chết (ADR-0005) |
+| `live.reproduction` | `1.0` | Bắt buộc `1.0` vì mặc định là `false` (Card S1) |
+| `live.locomotion` | `1.0` | Bắt buộc `1.0` vì mặc định là `false` (ADR-0006) |
+| `live.drive_floor` | `0.5` | Tránh đứng yên khi tắt não tiến hoá (ADR-0007 mục A) |
+| `live.thirst_steering` | `1.0` | Hướng về hồ nước khi khát (ADR-0007 mục A) |
+| `live.evolved_brains` | `0.0` | Tắt não tiến hoá để cô lập nhân tố sinh thái |
+| `live.founders` | `120.0` | Đủ lớn cho phương sai khối lượng và quần thể ban đầu |
+| `live.predator_fraction` | `0.3` | Khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
+| `live.trees` | `8.0` | Khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
+| `live.lakes` | `2.0` | Khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
+| `live.food_cap` | `50.0` | Khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
+| `live.resource_capacity_scale` | `1.0` (`control_uniform`, `treatment_gradient`) / `0.42` (`control_uniform_scarcity`) | Tỉ lệ sức chứa toàn bản đồ lúc khởi sinh (`scale_pasture_capacity`, `core/live_experiment.rs:2568`) |
 
-Control **giữ nguyên hai lệnh** với `intensity = 0.0` thay vì bỏ chúng đi. `validate_intervention`
-(`core/experiment/interventions.rs:16`) chấp nhận `intensity == 0.0` (chỉ từ chối số âm hoặc phi hữu hạn),
-và giữ lệnh lại nghĩa là hai arm đi qua **cùng một đường mã**, chỉ khác độ lớn. Bỏ lệnh đi sẽ biến
-"cường độ" và "có hay không lệnh can thiệp" thành hai nhân tố lẫn vào nhau.
-
-**Hằng số của cả hai arm (12 khoá khai tường minh trong `initial_conditions`, đối chiếu `91def40`):**
-
-Vì bản đồ `LIVE_KEYS` đã tăng từ 11 lên 25 khoá kể từ `445c9c8` (`core/live_experiment.rs:218`), mọi khoá
-mới quyết định khả năng sống sót, di chuyển và sinh sản của quần thể phải được **ghim tường minh** trước
-khi chạy để hai arm hoàn toàn giống nhau và tránh các mặc định tắt locomotion/reproduction:
-
-| Khoá | Giá trị ghim | Thay đổi so với bản nháp `445c9c8` & lý do |
-|---|---|---|
-| `live.ecological_fitness` | `1.0` | Giữ nguyên từ bản nháp; ghim hợp đồng nhánh F (lưu ý kỹ thuật ở `91def40`: trong `LiveExperimentAdapter`, chu chuyển sinh sản chạy qua `autonomous_reproduction_system`, còn `check_epoch_completion_system` chỉ rút hàng đợi rỗng ở headless) |
-| `live.mortality` | `1.0` | Giữ nguyên từ bản nháp; bật cái chết (ADR-0005) để áp lực chọn lọc có răng |
-| `live.reproduction` | `1.0` | **Mới so với 08-26 (Card S1 / ADR-0005):** mặc định của `LiveWorldConfig` là `false`; bắt buộc `1.0` để có sinh sản và `live.births` thực sự |
-| `live.locomotion` | `1.0` | **Mới so với 08-26 (ADR-0006 / F-042):** mặc định là `false`; bật di chuyển để sinh vật kiếm ăn và đi tìm nước |
-| `live.drive_floor` | `0.5` | **Mới so với 08-26 (ADR-0007 mục A / E-SEL1):** mặc định là `0.0`; tránh sinh vật đứng yên khi chưa dùng não tiến hoá |
-| `live.thirst_steering` | `1.0` | **Mới so với 08-26 (ADR-0007 mục A / E-SEL1):** mặc định là `false`; cần để sinh vật hướng về hồ nước gần nhất thay vì chết khát đồng loạt |
-| `live.evolved_brains` | `0.0` | Ghim tường minh tắt não tiến hoá (`E2` khảo sát riêng) để cách ly nhân tố sinh thái |
-| `live.founders` | `120.0` | Giữ nguyên từ bản nháp: đủ lớn cho phương sai khối lượng, đủ nhỏ cho 24 lượt chạy trong 90 phút |
-| `live.predator_fraction` | `0.3` | Chuyển từ ghi "mặc định" sang ghim tường minh `0.3`, khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
-| `live.trees` | `8.0` | Ghim tường minh, khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
-| `live.lakes` | `2.0` | Ghim tường minh, khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
-| `live.food_cap` | `50.0` | Ghim tường minh, khớp `LiveWorldConfig::default()` (`core/live_experiment.rs:351`) |
-
-**13 khoá `LIVE_KEYS` còn lại giữ nguyên mặc định của `LiveWorldConfig::default()` (vắng mặt trong manifest, đối chiếu `core/live_experiment.rs:351`):**
-`live.w_surplus = 1.0`, `live.starve_ticks = 120`, `live.dehydration_ticks = 120`, `live.mutation_rate = 0.05`,
-`live.prey_cap = 80` (Card S6), `live.resource_capacity_scale = 1.0` (Card S6), `live.plant_reserve = 0.0`
-(Card S10), `live.lake_layout = 0` (Card S12, bố trí hàng ngang ở `z_fraction = 0.8`), `live.kill_hydration = 0.0`,
-`live.kill_efficiency = 0.40`, `live.target_min_energy = 0.0` (ADR-0007 mục B), `live.drift_control = 0.0`,
-`live.drift_reset_ticks = 0` (SEL2-D). Địa hình cố định ở `MapSettings::default()`, `seed: 1337`,
-`world_identity`: `(1337, generator_version=1, 256x256, terrain_checksum=3152323152)`.
+**12 khoá `LIVE_KEYS` còn lại giữ nguyên mặc định của `LiveWorldConfig::default()` (`core/live_experiment.rs:351`):**
+`live.w_surplus = 1.0`, `live.starve_ticks = 120`, `live.dehydration_ticks = 120`, `live.mutation_rate = 0.05`, `live.prey_cap = 80`, `live.plant_reserve = 0.0`, `live.lake_layout = 0`, `live.kill_hydration = 0.0`, `live.kill_efficiency = 0.40`, `live.target_min_energy = 0.0`, `live.drift_control = 0.0`, `live.drift_reset_ticks = 0`. Địa hình cố định ở `MapSettings::default()`, `seed: 1337`; các manifest đặt `world_identity` toàn `0` (quan sát được trên smoke Windows là `seed=1337, generator_version=1, 256x256, terrain_checksum=3152323152` — giá trị quan sát phụ thuộc nền tảng, không phải hằng số ghim cứng).
 
 ## 4. N và các seed
 
-**N = 12 cặp**, seed theo quy tắc số học khai trước — cùng lý do như E2 (`seed_k = 730001 + 1000·k`,
-`k ∈ 0..11`), theo thứ tự thực thi:
+**N = 12 bộ ba (12 seed × 3 arm = 36 lượt chạy)**, seed theo quy tắc số học khai trước (`seed_k = 730001 + 1000·k`, `k ∈ 0..11`), rời hoàn toàn khỏi E2 (`700001..711001`), E2R (`750001..`), E-SEL1 (`760001..771001`), SEL2-P (`780001..799506`), và AE (`1..3`):
 
 ```
 730001  731001  732001  733001  734001  735001
 736001  737001  738001  739001  740001  741001
 ```
 
-**Tối thiểu để ra quyết định: 10 cặp hoàn chỉnh.** Dưới 10 là *bằng chứng không đủ*, không bao giờ là
-một quyết định lấy trên 9.
+**Tối thiểu để ra quyết định: 10 cặp hợp lệ (không Failed, không tuyệt chủng, và đáp ứng ngưỡng `min_agent_count`).** Dưới 10 cặp hợp lệ là `insufficient_evidence`, không bao giờ thay seed và không giảm `N`.
 
-**Seed smoke: `999979`.** Một seed riêng, manifest riêng (`e3-smoke-control-uniform.json`,
-`e3-smoke-treatment-gradient.json`), dùng để hiệu chỉnh harness ở WP-2/WP-3. **Không bao giờ** vào bất kỳ
-bảng, thống kê hay tuyên bố kết quả nào của E3. Việc loại trừ được đảm bảo **cơ học**: `999979` không có
-trong `seeds` của `e3-control-uniform.json` và `e3-treatment-gradient.json`, nên `run_manifest_seed` trả về
-`RunStatus::Failed` (`SeedNotInManifest`) nếu bị gọi nhầm với manifest thí nghiệm.
+**Seed smoke: `999979`.** Chạy riêng qua ba manifest smoke (`e3-smoke-control-uniform.json`, `e3-smoke-control-uniform-scarcity.json`, `e3-smoke-treatment-gradient.json`), **không bao giờ** nhập vào phân tích hay bảng kết quả của E3 (bảo đảm cơ học vì `999979` vắng mặt trong mọi manifest thí nghiệm).
 
 ## 5. T, lấy mẫu, khởi động và hiệu chỉnh WP-2 / WP-3
 
 Lịch chạy mục tiêu và thang dự phòng WP-3 (`duration_ticks_ladder = [18000, 12000, 6000]`):
 
-| tham số | giá trị đã chốt (WP-3) | vì sao |
+| Tham số | Giá trị đã chốt (WP-3) | Vì sao |
 |---|---|---|
-| `duration_ticks` (**T**) | **18.000** | 300 s mô phỏng ở 60 Hz; 300 lần nổ của band sinh thái (chu kỳ 60); 18 biên epoch |
+| `duration_ticks` (**T**) | **18.000** | 300 s mô phỏng ở 60 Hz; 300 chu kỳ nổ band sinh thái (chu kỳ 60); 18 biên epoch |
 | `sample_period` | **600** | 30 mẫu mỗi lượt chạy |
-| khởi động | **3.000 tick đầu (5 mẫu)** | loại khỏi mọi thống kê trung bình theo thời gian |
-| cửa sổ đuôi | tick **14.400–18.000** | dạng thứ cấp của metric chính, để kiểm điểm cuối không phải một lát cắt may mắn |
-| dừng | **chân trời cố định** | không dừng sớm, không ngó trước, không "trông đã hội tụ" |
+| Khởi động (`warmup_ticks`) | **3.000 tick đầu (5 mẫu)** | Loại khỏi mọi thống kê trung bình theo thời gian |
+| Cửa sổ đuôi (`tail_window`) | tick **14.400–18.000** (7 mẫu gộp đầu cuối) | Kiểm tra thứ cấp trung bình số học đều 7 mẫu `14400..=18000` |
+| Dừng | **chân trời cố định** | Không dừng sớm, không ngó kết quả |
 
-### Bằng chứng WP-2 & chốt lịch WP-3 ở seed smoke `999979` (`--release`, parent `91def40`)
+### Bằng chứng WP-2 & chốt lịch WP-3 cho 3 arm ở seed smoke `999979` (`--release`, trunk `9958f27`)
 
-Một lưu ý riêng của E3: `AddNutrient` rút từ pool **detritus**, mà detritus khởi đầu bằng `0.0`
-(`core/ecs.rs:78`). WP-2 đã chạy mù hoàn toàn (`body_mass_consulted: false` — không đọc hay ghi bất kỳ
-giá trị `live.trait_mass_*` nào) qua `src-tauri/examples/e3_smoke.rs` và lưu ở
-`artifacts/experiments/e3-productivity-gradient-body-mass/smoke/`:
+Thực thi mù qua `src-tauri/examples/e3_smoke.rs` và lưu tại `artifacts/experiments/e3-productivity-gradient-body-mass/smoke/`. Trong quá trình chạy smoke, **không ghi, không in, và không dùng bất kỳ giá trị `live.trait_mass_*` nào trong bất kỳ cổng kiểm tra nào ngoại trừ kiểm tra đồng loạt tính hữu hạn `is_finite()` (`body_mass_consulted: false`)**:
 
-- **(a) `ResourceField` có mặt trong thế giới headless — ĐẠT:** lưới `256×256` (`x ∈ [-100.0, 100.0]`,
-  `z ∈ [-100.0, 100.0]`), tổng sinh khối khởi đầu bằng sức chứa = `153587.24986362457 EU` (nửa Tây
-  `col < 128` = `88757.74991834164 EU`, nửa Đông `col >= 128` = `64829.499945282936 EU`),
-  `EcosystemBiomass.detritus = 0.0` trước tick 1.
-- **(b) Hai can thiệp thực sự đổi `live.standing_crop` giữa hai arm — ĐẠT (công tắc huỷ WP-2 KHÔNG kích hoạt):**
-  - Control: `standing_crop` tại `T = 18000` là `123300.83728024106` (trung bình sau khởi động `tick > 3000`
-    là `134866.6595674591`, trung bình đuôi `14400..=18000` là `124085.04243589146`, checksum
-    `1266395716`, `0` mục sổ cái `Deforest`, `0` mục `AddNutrient`).
-  - Treatment: `standing_crop` tại `T = 18000` là `63282.05338941543` (`delta = -60018.78389082563`),
-    trung bình sau khởi động `64098.52086286802` (`delta = -70768.13870459108`, tương đương `-52.47 %`),
-    trung bình đuôi `63381.91691425673` (`delta = -60703.12552163473`), độ lệch tuyệt đối cực đại theo
-    mẫu `86992.33749733593`, checksum `2891653359`. Sổ cái ghi nhận đúng `300` lần `Deforest` chuyển
-    `93891.59735265336 EU` và `300` lần `AddNutrient` bù `33642.28750495448 EU`.
-- **(c) `detritus > 0` trước tick 3.000 — ĐẠT:** mẫu dương đầu tiên xuất hiện ngay ở **tick 600** trong cả hai
-  arm (`1647.807546613461 EU` ở control, `86709.16853561654 EU` ở treatment); tại tick `3000` là
-  `12530.86161665315 EU` (control) và `97795.36642170392 EU` (treatment). Kênh nhân quả mở sớm trong
-  cửa sổ khởi động `3000`.
-- **Bảo toàn & toàn vẹn:** độ trôi EU kín cực đại chỉ `1.076841726899147e-9` (control) và
-  `4.656612873077393e-10` (treatment); toàn bộ 27 observable đều hữu hạn và được phát ra; ở seed smoke
-  `999979`, số cá thể dao động trong khoảng `13..193` (cuối `13`, `375` sinh, `482` chết) ở control và
-  `9..192` (cuối `99`, `370` sinh, `391` chết) ở treatment.
-- **Chốt WP-3 từ đồng hồ `smoke/provenance.json`:** 2 lượt chạy × `18000` tick hết `11.6401228 s`
-  (`323.3367444444445 us/tick`), ngoại suy cho ensemble 24 × `18000` = **`2.32802456 phút`** (`<< 90 phút`).
-  Do đó chốt **`T = 18000`** và **`warmup_ticks = 3000`** (`sample_period = 600`, `tail_window = 14400..18000`)
-  vào `2026-11-19` với **`0` seed thí nghiệm đã chạy**.
+- **(a) `ResourceField` & bảo toàn EU khởi sinh đồng nhất giữa cả 3 arm — ĐẠT:**
+  - Lưới `256×256` (`x, z ∈ [-100,0, 100,0]`), tổng `WorldIdentity` và trạng thái `SimRng` đầu giống hệt nhau cả 3 arm.
+  - Hai arm `scale = 1.0`: sinh khối / sức chứa ban đầu = `153.587,250 EU` (Tây `88.757,750 EU`, Đông `64.829,500 EU`), `detritus = 0,0 EU`.
+  - Arm `control_uniform_scarcity` (`scale = 0.42`): thực vật ban đầu = `64.506,642 EU` (Tây `37.278,253 EU`, Đông `27.228,389 EU`) và `detritus = 89.080,608 EU` → **tổng EU kín lúc khởi sinh giống hệt cả 3 arm (`153.587,250 EU`)**.
+- **(b1 & b2) Thao túng `live.standing_crop` và khớp tổng thức ăn ở đối chứng khan hiếm — ĐẠT:**
+  - `control_uniform`: `standing_crop` tại `T=18000` = `123.300,837`, trung bình sau khởi động (`tick > 3000`) = **`134.866,660`**, trung bình đuôi = `124.085,042`, checksum `1266395716`.
+  - `treatment_gradient`: `standing_crop` tại `T=18000` = `63.282,053`, trung bình sau khởi động = **`64.098,521`** (**`−52,47 %`** hay `−70.768,139 EU` so với `control_uniform`, đạt ngưỡng cổng `|Δ| ≥ 10 %`), trung bình đuôi = `63.381,917`, checksum `2891653359` (`300` lần `Deforest` chuyển `93.891,597 EU`; `300` lần `AddNutrient` bù `33.642,288 EU`).
+  - `control_uniform_scarcity`: `standing_crop` tại `T=18000` = `64.483,464`, trung bình sau khởi động = **`64.379,015`**, trung bình đuôi = `64.467,845`, checksum `2359367161` (`0` lần `Deforest`; `300` lần `AddNutrient` toàn bản đồ bù `8.521,110 EU`). **Chênh lệch tổng `standing_crop` sau khởi động giữa `treatment_gradient` và `control_uniform_scarcity` chỉ là `−280,494 EU` (`−0,44 %`, đạt chặt chẽ ngưỡng `|Δ| ≤ 10 %`)**!
+- **(c) `detritus > 0` trước tick `3000` và tại tick `3000` ở cả 3 arm — ĐẠT:** tick `600` đã dương trong cả 3 arm (`1.647,808` / `90.188,814` / `86.709,169 EU`), và tại tick `3000` lần lượt là `12.530,862` / `95.907,225` / `97.795,366 EU`.
+- **Bảo toàn & dân số smoke:** độ trôi EU kín cực đại chỉ `1,077e-9` / `1,051e-8` / `4,657e-10`; đủ `27` observable hữu hạn; `agent_count` (min / max / final) là `13 / 193 / 13` (`control_uniform`), **`11 / 120 / 12` (`control_uniform_scarcity` — sống sót tốt qua `T=18.000`)**, và `9 / 192 / 99` (`treatment_gradient`).
+- **Chốt WP-3 cho 36 lượt chạy (`smoke/provenance.json`):** `3` arm × `18000` tick hết `17,727 s` (`328,28 us/tick`), ngoại suy cho ensemble **`36 × 18.000`** = **`3,545 phút`** (`<< 90 phút`), nên chốt **`T = 18.000`**, `warmup_ticks = 3000`, `sample_period = 600`, `tail_window = [14400, 18000]` với **`0` seed thí nghiệm**.
+
+### Công khai lịch sử chạy smoke & quy tắc chọn bản ghi (Execution Disclosure)
+
+1. **Lượt đóng băng đầu (`91def40-dirty`, thiết kế 2 arm):** `e3_smoke` chạy **2 lần** tất định và mù trên cùng commit — lần 1 để đo số WP-2/WP-3, lần 2 sau khi chép số đó vào `e3-preregistration.json` để `sha256_as_committed` khớp khớp tệp commit. Vì mô phỏng tất định, mọi chuỗi số đều trùng khít từng bit.
+2. **Fix Round 1 (`9958f27`, thiết kế 3 arm):** vòng hash tuần hoàn đã được cắt bỏ bằng cách **không** đặt `e3-preregistration.json` vào `sha256_as_committed` (thay vào đó băm cả `src-tauri/examples/e3_smoke.rs` và `6` manifest bất biến). Trong đợt chỉnh sửa này: lần gọi 1 dừng ở cổng `guard_no_body_mass` **trước khi ghi bất kỳ tệp nào** do chú thích đầu CSV chứa chuỗi ký tự tên observable; lần gọi 2 ghi bộ artifact 3 arm hoàn chỉnh đầu tiên; lần gọi 3 chạy lại sau khi chạy `cargo fmt` + kiểm tra `clippy` trên `e3_smoke.rs` (`d9df2c29...`) để băm nguồn khớp tệp commit với checksum mô phỏng y hệt (`1266395716 / 2359367161 / 2891653359`).
+3. **Quy tắc chọn bản ghi & chạy lại trên commit mới (`E3-X`):** bản ghi smoke hợp lệ luôn là **lượt chạy `--release` tất định hợp lệ đầu tiên trên các manifest và mã `e3_smoke.rs` đã định dạng cuối cùng**. Nếu card `E3-X` thực thi ensemble trên commit mới hơn `9958f27`, `E3-X` được phép chạy lại `e3_smoke` **1 lần** ở commit thực thi để tái xác nhận các cổng WP-2 và chi phí thời gian mà không thay đổi bất kỳ tham số nào đã tiền đăng ký.
 
 ## 6. Metric
 
-**Chính (`H1`):** `live.trait_mass_var` — phương sai tổng thể của khối lượng cơ thể, tại `T = 18000`
-(kèm kiểm tra thứ cấp trên cửa sổ đuôi `14400..18000`).
+**Chính (`H1`):** `live.trait_mass_var` — phương sai tổng thể của khối lượng cơ thể tại `T = 18.000` trên tương phản `treatment_gradient − control_uniform_scarcity` (kèm kiểm tra thứ cấp trên trung bình cửa sổ đuôi `14400..=18000`, áp dụng quy tắc loại cặp tuyệt chủng và `live.agent_count < 2`).
 
-**Thứ cấp, khai trước (khớp `S1`–`S6` trong `e3-preregistration.json`):**
+**Thứ cấp đã đăng ký (`S1`–`S3`, `S6` — khớp `e3-preregistration.json`):**
 
-1. `S1`: khoảng `live.trait_mass_p90 − live.trait_mass_p10` (độ trải robust, ít nhạy với đuôi hơn phương sai);
-2. `S2`: `live.trait_mass_mean` (để phân biệt "trải rộng" với "dịch cả khối");
-3. `S3` (**khai từ Card S2 PR `#148`, trước mọi dữ liệu**): `live.trait_mass_mean_west` (cột `0..=127`) và
-   `live.trait_mass_mean_east` (cột `128..=255`), cùng hiệu ghép cặp `live.trait_mass_mean_east − live.trait_mass_mean_west`
-   (hai phía, để đo trực tiếp phân hoá khối lượng giữa nửa Tây bị chặt và nửa Đông được bón);
-4. `S4`: `live.shannon` (gradient tạo ổ sinh thái thì đa dạng cũng phải nhúc nhích);
-5. `S5`: `live.archive_coverage` (nhánh Q: gradient có mở thêm ô trong lưới MAP-Elites không);
-6. `S6`: `live.mean_lifespan`, `live.births`, `live.deaths` (bối cảnh dân số — một hiệu ứng trên phương sai
-   khối lượng đi kèm sụp dân số là một câu chuyện khác hẳn).
+1. `S1`: khoảng `live.trait_mass_p90 − live.trait_mass_p10` tại `T = 18.000` (độ trải robust, kèm quy tắc `live.agent_count >= 2`);
+2. `S2`: `live.trait_mass_mean` tại `T = 18.000` (phân biệt trải rộng với dịch chuyển trung bình);
+3. `S3` (**khai từ Card S2 PR `#148`, trước mọi dữ liệu**): `live.trait_mass_mean_east − live.trait_mass_mean_west` tại `T = 18.000` (hai phía, đo trực tiếp phân hoá khối lượng theo vùng Tây `0..=127` / Đông `128..=255`; bắt buộc áp dụng **`empty_half_rule`** trong §8);
+4. `S6`: `live.births` (tổng qua 30 cửa sổ mỗi lượt), `live.deaths` (tổng qua 30 cửa sổ), và `live.mean_lifespan` (bối cảnh dân số).
 
-Ngoài ra, `I1` (`live.closed_eu_total`) kiểm tra bảo toàn EU kín và `M1` (`live.standing_crop`) kiểm tra
-thao túng thực địa.
+**Metric ghi nhận cho đủ bộ nhưng KHÔNG diễn giải (`structural zero`, hạ hạng trước khi có dữ liệu):**
 
-Toàn bộ **27 observable** hiện hành (**12** cốt lõi + **15** mở rộng, tăng từ 22 ở bản nháp `445c9c8` do
-S9 bổ sung `live.deaths_starvation`, `live.deaths_dehydration` và S2 bổ sung `live.mean_energy_integral`,
-`live.trait_mass_mean_west`, `live.trait_mass_mean_east`) vẫn được yêu cầu và báo cáo đầy đủ. Việc chỉ
-định chính/thứ cấp làm **ở đây, trước khi có số**, và không được đổi sau.
+- `S4` (`live.shannon`, `role: reported_not_interpreted_structural_zero`, `decision_effect: none`): trong `core/live_experiment.rs:1611-1612`, hàm gọi `shannon_index(&[herbivores, predators])` — chỉ là **chỉ số cân bằng hai bậc dinh dưỡng ăn cỏ / săn mồi**, hoàn toàn không phải đa dạng kích thước cơ thể hay ổ sinh thái. Trong cả ba arm ở smoke, thú săn mồi đều tuyệt chủng trước tick `3.600`, kéo `live.shannon = 0.0` suốt phần còn lại tới `T`. Vì vậy `S4` **không** kiểm tra được giả thuyết phân niche và **không bao giờ** được diễn giải thành bằng chứng âm sinh học.
+- `S5` (`live.archive_coverage`, `role: reported_not_interpreted_structural_zero`, `decision_effect: none`): đọc `BevyMapElitesArchive.archive.grid.len()` (`core/live_experiment.rs:1630-1633`), nhưng archive chỉ được nạp ở luồng tiến hoá của ứng dụng desktop (`core/simulation_loop.rs:832`), còn `LiveExperimentAdapter` chỉ chèn một archive rỗng (`core/live_experiment.rs:2893`). Toàn bộ `60/60` mẫu round 0 và `90/90` mẫu round 1 đều bằng `0.0`. Công cụ đo cấu trúc bằng `0` trong harness headless — báo cáo cho đủ sổ chứ không diễn giải.
 
-## 7. Thống kê và ngưỡng "khác đủ nhiều"
+Ngoài ra, `I1` (`live.closed_eu_total`) kiểm tra bảo toàn EU kín và `M1` (`live.standing_crop`) kiểm tra đồng thời hai vế thao túng (`T vs U` giảm mạnh và `T vs S` khớp tổng). Toàn bộ **27 observable** hiện hành lúc đăng ký (`all_live_observable_ids()[..27]`) vẫn được yêu cầu và báo cáo đầy đủ.
 
-Thống kê: `PairedEffect` do runner tính, y như E2 — `paired_mean_delta` (treatment − control) là hiệu
-ứng chính, `paired_dz` là Cohen's *d_z*; `None` báo cáo là `None`, không bao giờ báo cáo là 0. Kèm
-theo: **trung vị** của các delta theo seed, **phương sai giữa các seed**, và **bảng delta từng seed**.
+## 7. Thống kê, chi tiết tính toán và ngưỡng "khác đủ nhiều"
 
-Với metric chính, hiệu ứng được coi là **vật chất** chỉ khi **cả ba** cùng đúng:
+**Thống kê từng seed & gộp cặp:** `PairedEffect` tính trên các cặp hợp lệ sau loại trừ (`treatment − control`, trong đó tương phản chính `H1` dùng `treatment_gradient − control_uniform_scarcity`, và hai tương phản bổ trợ so với `control_uniform`). `None` báo cáo là `None`, không bao giờ đổi thành `0`. Kèm theo: **trung vị** các delta theo seed, **phương sai giữa các seed**, và **bảng delta từng seed**.
 
-1. khoảng tin cậy 95 % của `paired_mean_delta` **không chứa 0**;
-2. `|paired_dz| ≥ 0,8`;
-3. `|paired_mean_delta| ≥ 0,05 × |control_mean|`.
+- **Cửa sổ đuôi (`H1_tail_window`):** trung bình số học có trọng số bằng nhau của **7** mẫu nằm trong đoạn đóng `[14400, 18000]` (`14400, 15000, 15600, 16200, 16800, 17400, 18000`) cho mỗi lượt chạy, sau đó mới lấy `PairedEffect` qua các cặp hợp lệ.
+- **S1 & S3 theo seed:** tính trực tiếp tại `T = 18.000` (`final_observables`), `S1 = p90 − p10`, `S3 = mean_east − mean_west`.
 
-**Null:** CI chứa 0, **hoặc** dịch chuyển tương đối dưới 5 %.
-**Ở giữa:** CI không chứa 0 nhưng trượt điều kiện 2 hoặc 3 ⇒ báo cáo là *phát hiện được nhưng dưới
-ngưỡng vật chất đã đăng ký*, và đó **không** phải "khác đủ nhiều". Không nâng hạng khi khiếu nại.
+**Năm nhãn quyết định rời nhau và vét cạn (`decision_enum`, khớp `e3-preregistration.json`):**
 
-**Không đổi metric.** Nếu H1 null mà một observable khác lại vật chất, điều đó được báo cáo đúng bản
-chất: một kết quả thứ cấp đã đăng ký (nếu nằm trong `S1`–`S6`), hoặc một quan sát **chưa đăng ký** sinh
-giả thuyết, không phải thay thế H1.
+Với ngưỡng máy đọc `dz_min = 0,8`, `relative_delta_min = 0,05` (`5 %`), `min_valid_pairs = 10`, CI 95 % ghép cặp (`ci_level = 0,95`):
 
-## 8. Xử lý thất bại và ngân sách
+1. **`insufficient_evidence`:** số cặp hợp lệ `< 10` (chỉ cần hơn `2` cặp bị loại do hỏng/tuyệt chủng/đơn lẻ ở `H1`, hoặc trống nửa bản đồ ở `S3`).
+2. **`null`:** số cặp hợp lệ `≥ 10` **VÀ** khoảng tin cậy 95 % của `paired_mean_delta` **chứa 0** (`ci95_low ≤ 0 ≤ ci95_high`, hoặc `ci95` là `None`).
+3. **`between_detectable_below_materiality`:** số cặp hợp lệ `≥ 10`, CI 95 % **loại 0** (`ci95_low > 0` hoặc `ci95_high < 0`), **NHƯNG** trượt điều kiện `|paired_dz| ≥ 0,8` **HOẶC** trượt điều kiện `|paired_mean_delta| ≥ 0,05 × |control_mean|` (hoặc `paired_dz` là `None`). Báo cáo là *phát hiện được nhưng dưới ngưỡng vật chất* — **không** phải "khác đủ nhiều".
+4. **`material_positive`:** số cặp hợp lệ `≥ 10`, CI 95 % loại 0, `paired_mean_delta > 0`, `|paired_dz| ≥ 0,8`, **VÀ** `|paired_mean_delta| ≥ 0,05 × |control_mean|`.
+5. **`material_negative_opposite`:** số cặp hợp lệ `≥ 10`, CI 95 % loại 0, `paired_mean_delta < 0`, `|paired_dz| ≥ 0,8`, **VÀ** `|paired_mean_delta| ≥ 0,05 × |control_mean|` (bác bỏ H1 theo hướng ngược).
 
-- `drive()` dừng sớm và đánh dấu `Failed` khi một observable thành phi hữu hạn. Đó là **cơ chế dừng
-  sớm duy nhất**, và nó tạo ra một thất bại được lưu lại, không phải một kết quả bị cắt cụt.
-- Cặp nào có một vế `Failed` thì **bỏ cả cặp**, và liệt kê ra. 12 cặp yêu cầu để 2 cặp được phép hỏng.
-- 24 lượt chạy × 18.000 tick. **`--release` là bắt buộc** — cùng lý do E2 §5 (ước tính WP-3: `2.33` phút << `90` phút).
-- Một khuyết tật của harness **không bao giờ** được báo cáo thành "bằng chứng không đủ". Sửa khuyết
-  tật, chạy lại, nói rõ đã chạy lại.
+Các metric thứ cấp `S1, S2, S3, S6` dùng **cùng bộ ngưỡng** (`ci95` loại 0, `|dz| ≥ 0,8`, `|delta| ≥ 0,05 × |control_mean|`; riêng `S3` có dấu nên nếu `control_mean == 0.0` chính xác thì ghi chú rõ kiểm tra theo `ci95` loại 0 và `|dz| ≥ 0,8`). Kết quả ở metric thứ cấp **không bao giờ** nâng hạng thay `H1`.
+
+## 8. Xử lý thất bại, quy tắc tuyệt chủng / đếm tối thiểu / nửa bản đồ trống, và ngân sách
+
+**Tại sao phải có quy tắc loại trừ cơ học (sửa lỗi D1):**
+`mass_statistics(&[])` (`core/live_experiment.rs:1458-1461`) trả về `[0.0; 4]`, và `live.trait_mass_mean_{west,east}` trả về `0.0` khi nửa bản đồ có 0 cá thể (`core/live_experiment.rs:1421-1422, 1605-1606`). Những giá trị này hữu hạn nên `drive()` **không** đánh dấu `RunStatus::Failed`, khiến `ensemble.rs` dễ nuốt số `0.0` giả làm giá trị quan sát thật (nhất là khi arm smoke chỉ còn `9–13` cá thể và nửa Tây ở điều trị bị chặt xuống ~`1 %` sức chứa). Vì mọi cá thể sống luôn có `total_mass() > 0.0` (`decode_genotype` cấm genotype rỗng ở `core/spawn.rs:75-78`), phát hiện `0.0` khi đếm rỗng là **chính xác 100 %** không mất thông tin.
+
+1. **Thất bại kỹ thuật (`RunStatus::Failed`):** `drive()` dừng sớm khi gặp observable phi hữu hạn (cơ chế dừng sớm duy nhất). Gặp vế `Failed` thì **loại cả cặp** ở mọi bảng thống kê ghép cặp và liệt kê đủ `(seed, arm, tick, reason)`.
+2. **Quy tắc tuyệt chủng (`extinction_rule`, khớp tinh thần E-SEL1):**
+   - **Định nghĩa:** `live.agent_count == 0` tại bất kỳ mẫu nào trong `30` mẫu (`600, 1200, ..., 18000`) hoặc ở `final_observables` (`T = 18000`).
+   - **Xử lý:** là một **kết cục thật được ghi nhận** (không gọi là `Failed`), nhưng **loại cả cặp** (cả control lẫn treatment của seed đó) khỏi **mọi** thống kê ghép cặp của `live.trait_mass_*` (`H1`, `H1_tail_window`, `S1`, `S2`, `S3`), không bao giờ đưa `0.0` vào delta, và ghi đầy đủ vào `n_extinct_pairs_dropped` + `extinction_table_by_arm` `(seed, arm, first_extinct_tick)`.
+3. **Quy tắc số cá thể tối thiểu cho độ phân tán (`min_agent_count_rule`, cho `H1`, `H1_tail_window`, `S1`):**
+   - **Định nghĩa:** `live.agent_count < 2` ở `final_observables` tại `T = 18000` (hoặc tại bất kỳ mẫu nào trong `14400..=18000` đối với `H1_tail_window`). Với `1` cá thể sống, `mass_statistics` trả `var = 0.0` và `p90 − p10 = 0.0` suy biến, không đo được độ phân tán.
+   - **Xử lý:** loại cả cặp khỏi `H1` và `S1`, báo cáo vào `n_singleton_pairs_dropped` + `singleton_table_by_arm`.
+4. **Quy tắc nửa bản đồ trống (`empty_half_rule`, cho `S3`):**
+   - **Định nghĩa:** tại `T = 18000` (`final_observables`), một trong hai vế có `live.trait_mass_mean_west == 0.0 || live.trait_mass_mean_east == 0.0`.
+   - **Xử lý:** **loại cả cặp khỏi `S3`** (`east − west`), ghi nhận rõ `(seed, arm, tick = 18000, empty_half = west | east | both)` vào `n_empty_half_pairs_dropped_s3`, `empty_half_table_by_arm`, và `per_arm_empty_half_counts`. Không loại cặp đó khỏi `H1` / `S1` / `S2` toàn cục chừng nào vẫn đạt `extinction_rule` và `min_agent_count_rule`.
+5. **Ngưỡng không đủ bằng chứng (`< 10` cặp hợp lệ):** với `N = 12`, chỉ cần `> 2` cặp bị loại trên một endpoint thì kết luận cho endpoint đó là `insufficient_evidence` (không chạy thêm seed bù, không hạ `N`).
+6. **Ngân sách:** `36` lượt chạy (`3` arm × `12` seed) × `18.000` tick = `648.000` tick. **`--release` là bắt buộc** (ước tính WP-3: **`3,55 phút`** `<< 90 phút`). Một khuyết tật của harness không bao giờ bị viết thành "bằng chứng không đủ" — sửa lỗi, chạy lại và công khai đã chạy lại.
 
 ## 9. Việc phải làm trước khi đây thành tiền đăng ký
 
-| # | Gói việc | Trạng thái (`2026-11-19`) | Bằng chứng / Điều kiện xong |
+| # | Gói việc | Trạng thái (`2026-11-19`, Fix Round 1) | Bằng chứng / Điều kiện xong |
 |---|---|---|---|
-| WP-1 | Fixture JSON máy đọc được & test đối chiếu | **XONG** (`2026-11-19`) | `src-tauri/tests/fixtures/experiments_e3/{e3-preregistration.json, e3-control-uniform.json, e3-treatment-gradient.json, e3-smoke-control-uniform.json, e3-smoke-treatment-gradient.json}` và `src-tauri/tests/prereg_e3_manifest_tests.rs` |
-| WP-2 | **Lượt chạy smoke ở seed 999979** | **XONG** (`2026-11-19`) | `src-tauri/examples/e3_smoke.rs` → `artifacts/experiments/e3-productivity-gradient-body-mass/smoke/`: (a) `ResourceField` `256×256` có mặt, (b) `live.standing_crop` đổi `-52.47 %` sau khởi động, (c) `detritus > 0` từ tick `600` (`< 3000`), `body_mass_consulted: false` |
-| WP-3 | Chốt `T` và cửa sổ khởi động từ WP-2 | **XONG** (`2026-11-19`) | Ghi `wp3_locked_schedule` (`T = 18000`, `warmup_ticks = 3000`) trong `e3-preregistration.json` và `smoke/provenance.json` (`2.33` phút dự kiến << `90` phút) với `0` seed thí nghiệm |
-| WP-4 | Đóng băng tài liệu này, ghi commit cha | **XONG** (`2026-11-19`) | `status: active` hợp lệ chính sách (không dùng `status: frozen` để `check:docs` xanh), ghi commit cha `91def40db1148c4526230704e5f002fe61f77c24`, đồng bộ toàn bộ khoá/ID/mặc định với trunk và không sửa sau khi seed đầu tiên chạy |
-| WP-5 | Chạy ensemble 12 cặp, phân tích theo §7 | **Chưa chạy (`E3-X`)** | `0` seed trong `730001..741001` đã chạy ở card `E3-P`; thực thi ở card riêng `E3-X` |
+| WP-1 | Fixture JSON máy đọc được (3 arm) & test đối chiếu | **XONG** | `src-tauri/tests/fixtures/experiments_e3/{e3-preregistration.json, e3-control-uniform.json, e3-control-uniform-scarcity.json, e3-treatment-gradient.json, e3-smoke-*.json}` và `src-tauri/tests/prereg_e3_manifest_tests.rs` |
+| WP-2 | **Lượt chạy smoke 3 arm ở seed 999979** | **XONG** | `src-tauri/examples/e3_smoke.rs` → `artifacts/experiments/e3-productivity-gradient-body-mass/smoke/`: (a) `ResourceField` `256×256` & đóng EU giống hệt 3 arm; (b1) `standing_crop` `treat − ctrl_u` `−52,47 %`; (b2) `ctrl_s` khớp tổng `treat` sai khác chỉ **`−0,44 %`**; (c) `detritus > 0` từ tick `600` ở cả 3 arm; `body_mass_consulted: false` |
+| WP-3 | Chốt `T` và cửa sổ khởi động từ WP-2 | **XONG** | Ghi `wp3_locked_schedule` (`T = 18000`, `warmup_ticks = 3000`) cho `36` lượt chạy (`3,55` phút dự kiến `<< 90` phút) với `0` seed thí nghiệm |
+| WP-4 | Đóng băng tài liệu này, ghi commit cha `9958f27` | **XONG** | `status: active` (`status: active \| completed` cho E3-X về sau), ghi quy tắc loại trừ D1, hạ hạng S4/S5 D2, giải quyết confound bằng arm thứ 3, và ngưỡng vật chất máy đọc §7 |
+| WP-5 | Chạy ensemble 36 lượt (`3` arm × `12` seed), phân tích theo §7–§8 | **Chưa chạy (`E3-X`)** | `0` seed trong `730001..741001` đã chạy ở card `E3-P`; thực thi ở card riêng `E3-X` |
 
-Thứ tự là bắt buộc. WP-2 có quyền **giết** thiết kế này nếu can thiệp không dịch nổi `live.standing_crop`;
-kết quả WP-2 ở trên cho thấy kênh nhân quả **hoạt động**, nên tiền đăng ký được phép chuyển sang WP-5 (`E3-X`).
+Thứ tự là bắt buộc. Cả WP-2 (b1) và (b2) đều đạt chặt chẽ trên seed smoke `999979`, nên tiền đăng ký đủ điều kiện chuyển sang WP-5 (`E3-X`) sau khi owner duyệt PR này.
 
 ## 10. Hai dụng cụ sẽ mở khoá câu hỏi gốc
 
-Không thay đổi tiền đề rằng nhân tố E3 đánh vào standing crop chứ chưa đánh vào `r_max`:
-
-1. **Observable khối lượng theo vùng — ĐÃ GIAO bởi Card S2 (PR `#148`):** `live.trait_mass_mean_west`
-   (cột `0..=127`) và `live.trait_mass_mean_east` (cột `128..=255`) tại `core/live_experiment.rs:1428`.
-   Được đăng ký làm metric thứ cấp `S3` trong tiền đăng ký đóng băng này trước khi có bất kỳ dữ liệu nào.
-2. **Một can thiệp chạm `r_max`, không chỉ `r` — VẪN CÒN THIẾU:** hiện `strip_region`/`fertilise_region`
-   đổi **standing crop**, còn sức chứa `r_max` (thứ mà `biome_npp` đặt ra) thì bất khả xâm phạm. Một
-   `InterventionKind` đổi sức chứa theo vùng mới là "đổi NPP" đúng nghĩa; cái đang có là "đổi lượng
-   cây đang đứng", và tăng trưởng logistic kéo nó về sức chứa cũ khi forcing tắt (trong E3 forcing
-   kéo dài `1..=18000`).
+1. **Observable khối lượng theo vùng — ĐÃ GIAO bởi Card S2 (PR `#148`):** `live.trait_mass_mean_west` (`0..=127`) và `live.trait_mass_mean_east` (`128..=255`) tại `core/live_experiment.rs:1428`, được đăng ký làm metric thứ cấp `S3` trong E3 kèm `empty_half_rule`.
+2. **Một can thiệp chạm `r_max` theo vùng, không chỉ `r` — VẪN CÒN THIẾU:** `strip_region`/`fertilise_region` đổi standing crop còn `r_max` bất biến theo vùng trong suốt lượt chạy. Hiện tại E3 khắc phục nhiễu tổng thức ăn bằng arm đối chứng `control_uniform_scarcity` (`live.resource_capacity_scale = 0.42` + `AddNutrient 1.00` toàn bản đồ). Một `InterventionKind` chỉnh sức chứa theo vùng về sau vẫn cần thiết nếu muốn đổi NPP thật sự giữa chừng.
 
 ## 11. Ngôn ngữ mà thí nghiệm này bị ràng buộc
 
-- "Không phát hiện được hiệu ứng" ≠ "không có hiệu ứng". Một kết quả null được viết là null.
-- Mỗi con số trong báo cáo phải chỉ ra được file sinh ra nó.
-- Lượt chạy hỏng được liệt kê, không được lặng lẽ bỏ.
-- **Kết quả âm là một kết quả.** "Gradient năng suất không làm phân bố khối lượng rộng ra trong
-  harness này" là một câu trả lời dùng được, và nó phải được viết ra y như một kết quả dương.
+- "Không phát hiện được hiệu ứng" ≠ "không có hiệu ứng". Một kết quả `null` được viết là `null`.
+- Mọi kết luận dương trên `H1` được phát biểu đúng theo thiết kế đã đăng ký: *"gradient năng suất tạo bởi Tây chặt 0.30 / Đông bón 1.00 làm thay đổi phương sai khối lượng cơ thể so với đối chứng khan hiếm đồng đều ở cùng tổng lượng thức ăn (~64k EU)"*, ghi nhận rõ giới hạn chặt liên tục vs tỷ lệ `r_max` lúc khởi sinh (§1).
+- `S4` (`live.shannon`) và `S5` (`live.archive_coverage`) chỉ được ghi nhận với ghi chú *bằng không do cấu trúc trong headless adapter*, không bao giờ trích làm kết quả âm sinh học.
+- Mỗi con số trong báo cáo phải chỉ ra được tệp sinh ra nó.
+- Mọi cặp bị loại (do `Failed`, `live.agent_count == 0`, `< 2`, hoặc nửa bản đồ trống `0.0`) được liệt kê đầy đủ, không bao giờ lặng lẽ bỏ hoặc đưa sentinel `0.0` vào thống kê.
+- **Kết quả âm là một kết quả.** "Gradient năng suất không làm phương sai khối lượng hay trung bình Tây/Đông khác nhau trong harness này" là một câu trả lời dùng được và được viết ra y như một kết quả dương.

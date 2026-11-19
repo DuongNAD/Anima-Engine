@@ -3,52 +3,54 @@
   "preregistration_id": "e3-productivity-gradient-body-mass",
   "status": "FROZEN",
   "registered_on": "2026-11-19",
-  "registered_at_parent_commit": "91def40",
-  "registered_at_parent_commit_full": "91def40db1148c4526230704e5f002fe61f77c24",
+  "registered_at_parent_commit": "9958f27",
+  "registered_at_parent_commit_full": "9958f27bdf5f979f03aeee213c8d0b5304566cf2",
+  "prior_draft_and_initial_freeze_commits": {
+    "draft": "445c9c8",
+    "initial_freeze": "91def40db1148c4526230704e5f002fe61f77c24"
+  },
   "contains_results": false,
-  "question": "Under identical ecological fitness and turnover laws, does a sustained regional productivity gradient (West Deforest 0.30, East AddNutrient 1.00) increase population body-mass variance (live.trait_mass_var) relative to a uniform zero-intensity intervention control?",
+  "question": "Under identical ecological fitness and turnover laws and matched total standing plant food (~64k EU), does a sustained regional productivity gradient (West Deforest 0.30, East AddNutrient 1.00) increase population body-mass variance (live.trait_mass_var) and differentiate West/East regional mean mass relative to a total-matched uniform-scarcity control arm (live.resource_capacity_scale = 0.42 + whole-map AddNutrient 1.00)?",
   "model": "core::live_experiment::LiveExperimentAdapter",
   "model_version": "live-bevy-world/2",
   "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
   "registry": "core::experiment::ObservableRegistry::live_default",
-  "harness": "core::experiment_runner::run_paired_ensemble_with_control",
+  "harness": "core::experiment_runner::{run_paired_ensemble_with_control, run_manifest_seed}",
   "plan_document": "docs/ai/planning/2026-08-26-experiment-e3-productivity-gradient-body-mass.md",
   "manifests": {
     "control": "e3-control-uniform.json",
+    "control_uniform_scarcity": "e3-control-uniform-scarcity.json",
     "treatment": "e3-treatment-gradient.json",
     "smoke_control": "e3-smoke-control-uniform.json",
+    "smoke_control_scarcity": "e3-smoke-control-uniform-scarcity.json",
     "smoke_treatment": "e3-smoke-treatment-gradient.json"
   },
+  "design_confound_resolution": {
+    "chosen_option": "add_uniform_scarcity_control_arm",
+    "why_equal_total_by_east_boost_is_impossible_without_src_edit": "ResourceField::from_biomes initializes every cell at capacity r = r_max (153,587.25 EU total: West 88,757.75 EU, East 64,829.50 EU) and fertilise_region (core/live_experiment.rs:1263) clamps each cell at r_max. Stripping West without editing src-tauri/src necessarily lowers total standing crop (-52.47% post-warmup in smoke).",
+    "scarcity_arm_analytic_derivation": "First-principles geometric ratio East_capacity / Total_capacity = 64829.499945282936 / 153587.24986362457 = 0.422102, rounded to two decimals BEFORE seeing any outcomes: live.resource_capacity_scale = 0.42 (initial biomass/capacity = 64,506.64 EU, initial detritus = 89,080.61 EU, identical closed-EU total = 153,587.25 EU; uniform West/East ratio 0.42x).",
+    "why_uniform_whole_map_add_nutrient": "AddNutrient 1.00 over Rect{0,0,255,255} gives the scarcity control the same detritus->plants grazing-refill loop as treatment_gradient's East AddNutrient 1.00 while maintaining uniform spatial carrying capacity, matching treatment post-warmup standing_crop within 0.44% (-280.49 EU out of 64,098.52 EU) in headless smoke.",
+    "primary_contrast": "treatment_gradient - control_uniform_scarcity (isolates the spatial gradient at matched ~64k EU total standing crop)",
+    "secondary_contrasts": [
+      "treatment_gradient - control_uniform (total effect: gradient + scarcity)",
+      "control_uniform_scarcity - control_uniform (pure uniform scarcity effect at matched AddNutrient)"
+    ],
+    "additive_decomposition": "(T - U) == (T - S) + (S - U) per seed",
+    "residual_limitation_stated_in_advance": "treatment_gradient holds West down via recurring Deforest 0.30 while control_uniform_scarcity scales r_max uniformly at genesis via resource_capacity_scale = 0.42; until a regional r_max intervention kind exists, ongoing West stripping vs genesis r_max scaling remains an acknowledged mechanistic difference."
+  },
   "declared_factor": {
-    "factor_diff_allowed_paths": [
+    "primary_gradient_contrast_paths": [
+      "initial_conditions",
       "interventions"
     ],
-    "exact_intervention_differences": [
-      {
-        "id": 1,
-        "cause_id": 1,
-        "kind": "Deforest",
-        "region": {
-          "Rect": {
-            "min_x": 0,
-            "min_y": 0,
-            "max_x": 127,
-            "max_y": 255
-          }
-        },
-        "start_tick": 1,
-        "duration_ticks": 18000,
-        "curve": "Step",
-        "reversible": false,
-        "signed_negative": false,
-        "control_intensity": 0.0,
-        "treatment_intensity": 0.3
-      },
-      {
-        "id": 2,
-        "cause_id": 2,
-        "kind": "AddNutrient",
-        "region": {
+    "abundant_intervention_contrast_paths": [
+      "interventions"
+    ],
+    "arm_parameterization": {
+      "control_uniform": {
+        "live.resource_capacity_scale": 1.0,
+        "west_deforest_intensity": 0.0,
+        "add_nutrient_region": {
           "Rect": {
             "min_x": 128,
             "min_y": 0,
@@ -56,30 +58,59 @@
             "max_y": 255
           }
         },
-        "start_tick": 1,
-        "duration_ticks": 18000,
-        "curve": "Step",
-        "reversible": false,
-        "signed_negative": false,
-        "control_intensity": 0.0,
-        "treatment_intensity": 1.0
+        "add_nutrient_intensity": 0.0
+      },
+      "control_uniform_scarcity": {
+        "live.resource_capacity_scale": 0.42,
+        "west_deforest_intensity": 0.0,
+        "add_nutrient_region": {
+          "Rect": {
+            "min_x": 0,
+            "min_y": 0,
+            "max_x": 255,
+            "max_y": 255
+          }
+        },
+        "add_nutrient_intensity": 1.0
+      },
+      "treatment_gradient": {
+        "live.resource_capacity_scale": 1.0,
+        "west_deforest_intensity": 0.3,
+        "add_nutrient_region": {
+          "Rect": {
+            "min_x": 128,
+            "min_y": 0,
+            "max_x": 255,
+            "max_y": 255
+          }
+        },
+        "add_nutrient_intensity": 1.0
       }
-    ],
+    },
     "every_other_field_must_match": true
   },
   "common_initial_conditions": {
-    "live.ecological_fitness": 1.0,
-    "live.mortality": 1.0,
-    "live.reproduction": 1.0,
-    "live.locomotion": 1.0,
-    "live.drive_floor": 0.5,
-    "live.thirst_steering": 1.0,
-    "live.evolved_brains": 0.0,
-    "live.founders": 120.0,
-    "live.predator_fraction": 0.3,
-    "live.trees": 8.0,
-    "live.lakes": 2.0,
-    "live.food_cap": 50.0
+    "shared_across_all_arms": {
+      "live.ecological_fitness": 1.0,
+      "live.mortality": 1.0,
+      "live.reproduction": 1.0,
+      "live.locomotion": 1.0,
+      "live.drive_floor": 0.5,
+      "live.thirst_steering": 1.0,
+      "live.evolved_brains": 0.0,
+      "live.founders": 120.0,
+      "live.predator_fraction": 0.3,
+      "live.trees": 8.0,
+      "live.lakes": 2.0,
+      "live.food_cap": 50.0
+    },
+    "per_arm_explicit_key": "live.resource_capacity_scale",
+    "per_arm_values": {
+      "control_uniform": 1.0,
+      "control_uniform_scarcity": 0.42,
+      "treatment_gradient": 1.0
+    },
+    "explicit_key_count_per_manifest": 13
   },
   "default_keys_left_absent": {
     "live.w_surplus": 1.0,
@@ -87,7 +118,6 @@
     "live.dehydration_ticks": 120,
     "live.mutation_rate": 0.05,
     "live.prey_cap": 80,
-    "live.resource_capacity_scale": 1.0,
     "live.plant_reserve": 0.0,
     "live.lake_layout": 0,
     "live.kill_hydration": 0.0,
@@ -101,13 +131,20 @@
       "id": "H1",
       "role": "primary",
       "observable": "live.trait_mass_var",
+      "primary_contrast": "treatment_gradient - control_uniform_scarcity",
+      "reference_contrasts": [
+        "treatment_gradient - control_uniform",
+        "control_uniform_scarcity - control_uniform"
+      ],
       "statistic": "paired_mean_delta",
       "direction": "positive",
+      "evaluated_at": "final_observables_at_T",
       "tail_window_secondary_check": [
         14400,
         18000
       ],
-      "rationale": "Primary dispersion test at T: a spatial productivity gradient widens population body-mass variance (treatment - control > 0) under ecological selection."
+      "requires_min_agent_count_at_T": 2,
+      "rationale": "Primary dispersion test at T: under matched total standing plant food (~64k EU), the spatial productivity gradient increases population body-mass variance (treatment_gradient - control_uniform_scarcity > 0) under ecological selection."
     },
     {
       "id": "S1",
@@ -117,14 +154,17 @@
         "live.trait_mass_p10"
       ],
       "derived_metric": "live.trait_mass_p90 - live.trait_mass_p10",
+      "evaluated_at": "final_observables_at_T",
       "statistic": "paired_mean_delta",
       "direction": "positive",
+      "requires_min_agent_count_at_T": 2,
       "decision_effect": "secondary_registered"
     },
     {
       "id": "S2",
       "role": "secondary",
       "observable": "live.trait_mass_mean",
+      "evaluated_at": "final_observables_at_T",
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
       "decision_effect": "secondary_registered"
@@ -137,26 +177,32 @@
         "live.trait_mass_mean_east"
       ],
       "derived_metric": "live.trait_mass_mean_east - live.trait_mass_mean_west",
+      "evaluated_at": "final_observables_at_T",
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
-      "rationale": "Card S2 regional means (West columns 0..=127 vs East columns 128..=255), registered before any data to detect West/East spatial differentiation alongside global dispersion.",
+      "subject_to_empty_half_exclusion": true,
+      "rationale": "Card S2 regional means (West columns 0..=127 vs East columns 128..=255), registered before any data to test West/East spatial differentiation at matched total plant food; pairs with an empty West or East half at T are excluded under empty_half_rule.",
       "decision_effect": "secondary_registered"
     },
     {
       "id": "S4",
-      "role": "secondary",
+      "role": "reported_not_interpreted_structural_zero",
       "observable": "live.shannon",
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
-      "decision_effect": "secondary_registered"
+      "decision_effect": "none",
+      "structural_status": "expected_zero_after_predator_extinction",
+      "rationale": "Demoted before experimental data: live.shannon computes shannon_index([herbivores, predators]) (core/live_experiment.rs:1611-1612), a two-class trophic composition index rather than body-mass or ecological niche diversity. In smoke across all arms, predators went extinct by tick 3600 leaving live.shannon = 0.0 thereafter; reported for completeness only, never interpreted as biological null evidence."
     },
     {
       "id": "S5",
-      "role": "secondary",
+      "role": "reported_not_interpreted_structural_zero",
       "observable": "live.archive_coverage",
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
-      "decision_effect": "secondary_registered"
+      "decision_effect": "none",
+      "structural_status": "structurally_zero_in_headless_adapter",
+      "rationale": "Demoted before experimental data: BevyMapElitesArchive (core/live_experiment.rs:1630-1633) is populated only in the desktop app evolution thread (core/simulation_loop.rs:832). LiveExperimentAdapter inserts an empty archive (core/live_experiment.rs:2893), so live.archive_coverage is permanently 0.0 in every headless sample (60/60 in round 0, 90/90 in round 1); not measurable in this harness and never interpreted as biological null evidence."
     },
     {
       "id": "S6",
@@ -166,6 +212,7 @@
         "live.births",
         "live.deaths"
       ],
+      "evaluated_at": "sum_of_30_windows_for_births_and_deaths__final_window_or_weighted_for_lifespan",
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
       "decision_effect": "secondary_registered"
@@ -177,7 +224,7 @@
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
       "decision_effect": "none",
-      "rationale": "Closed-EU conservation check across both arms."
+      "rationale": "Closed-EU conservation check across all three arms."
     },
     {
       "id": "M1",
@@ -186,7 +233,7 @@
       "statistic": "paired_mean_delta",
       "direction": "two_sided",
       "decision_effect": "none",
-      "rationale": "Records whether the West/East regional interventions actually move live.standing_crop between arms."
+      "rationale": "Verifies both (a) treatment_gradient reduces total standing crop relative to control_uniform and (b) control_uniform_scarcity matches treatment_gradient's total standing crop."
     }
   ],
   "seeds": {
@@ -206,10 +253,10 @@
       740001,
       741001
     ],
-    "rule": "seed_k = 730001 + 1000*k for k in 0..11, fixed before any run",
+    "rule": "seed_k = 730001 + 1000*k for k in 0..11, fixed before any run; disjoint from E2 (700001..711001), E2R (750001..), E-SEL1 (760001..771001), SEL2-P (780001..799506), and AE (1..3)",
     "smoke_seed": 999979,
     "smoke_seed_is_excluded_from_analysis": true,
-    "smoke_seed_exclusion_is_mechanical": "999979 is absent from both experimental manifests' seed lists, and run_manifest_seed returns RunStatus::Failed{SeedNotInManifest} if asked to run an undeclared seed."
+    "smoke_seed_exclusion_is_mechanical": "999979 is absent from all three experimental manifests' seed lists, and run_manifest_seed returns RunStatus::Failed{SeedNotInManifest} if asked to run an undeclared seed."
   },
   "duration": {
     "duration_ticks": 18000,
@@ -228,21 +275,88 @@
       18000
     ]
   },
+  "extinction_rule": {
+    "definition": "live.agent_count == 0 at any sampled tick (600, 1200, ..., 18000) or in final_observables at T = 18000",
+    "why_sentinel_guard_needed": "mass_statistics(&[]) returns [0.0; 4] (core/live_experiment.rs:1458-1461) and RunStatus stays Completed, so without an explicit exclusion rule an extinct run injects 0.0 instead of a missing value into paired trait_mass_* statistics.",
+    "handling": "Recorded outcome, never Failed; both arms of any pair where either arm hits live.agent_count == 0 are excluded from every live.trait_mass_* paired statistic (H1, H1_tail_window, S1, S2, S3) and logged with seed, arm, and first extinct tick.",
+    "checked_ticks": "all 30 sampled ticks (600..=18000) plus final_observables",
+    "fewer_than_10_complete_pairs": "insufficient_evidence; no replacement seeds and N is never changed (at most 2 pairs may be excluded out of 12)."
+  },
+  "min_agent_count_rule": {
+    "applicable_endpoints": [
+      "H1",
+      "H1_tail_window",
+      "S1"
+    ],
+    "definition": "live.agent_count < 2 in final_observables at T = 18000 (or at any sample in 14400..=18000 for H1_tail_window)",
+    "why_needed": "For a 0- or 1-agent population, mass_statistics yields degenerate zero variance and zero p90 - p10 IQR; even 1 survivor does not measure population dispersion.",
+    "handling": "Excluded from H1 (and S1) paired dispersion statistics and reported in singleton_table_by_arm; if < 10 valid non-extinct, non-singleton pairs remain, H1 verdict is insufficient_evidence."
+  },
+  "empty_half_rule": {
+    "applicable_endpoint": "S3",
+    "definition": "At T = 18000 (final_observables), live.trait_mass_mean_west == 0.0 || live.trait_mass_mean_east == 0.0 on either arm of the pair",
+    "mechanical_validity_proof": "decode_genotype rejects zero-node genotypes (core/spawn.rs:75-78) and every living segment carries positive mass, so AgentGenotype.0.total_mass() is strictly > 0.0; mass_statistics(&[]) returns 0.0 only when a grid half holds 0 living agents (core/live_experiment.rs:1421-1422, 1605-1606).",
+    "handling": "Both arms of the pair are excluded from S3 paired contrast east - west and recorded with seed, arm, tick = 18000, and empty half (west | east | both); global H1/S1/S2 remain unaffected unless extinction or min_agent_count_rule also triggered.",
+    "checked_ticks": "final_observables at T = 18000",
+    "fewer_than_10_valid_s3_pairs": "insufficient_evidence for S3; never replace seeds and never inject 0.0 into S3 deltas."
+  },
   "thresholds": {
     "materiality_rule": "all_of",
+    "ci_level": 0.95,
+    "ci_excludes_zero_required": true,
+    "dz_min": 0.8,
+    "relative_delta_min": 0.05,
+    "min_valid_pairs_for_decision": 10,
     "conditions": [
-      "ci95 on paired_mean_delta excludes 0",
+      "valid non-excluded pairs >= 10",
+      "ci95 on paired_mean_delta strictly excludes 0 (ci95_low > 0.0 or ci95_high < 0.0)",
       "abs(paired_dz) >= 0.8",
       "abs(paired_mean_delta) >= 0.05 * abs(control_mean)"
     ],
-    "null_result_rule": "ci95 includes 0, OR abs(paired_mean_delta) < 0.05 * abs(control_mean)",
-    "between_rule": "ci95 excludes 0 but fails condition 2 or 3; reported as detectable below materiality threshold",
-    "opposite_direction_rule": "material negative paired_mean_delta on live.trait_mass_var is reported as refuting H1 in the opposite direction, never rebranded as H1 support"
+    "decision_enum": [
+      "material_positive",
+      "material_negative_opposite",
+      "between_detectable_below_materiality",
+      "null",
+      "insufficient_evidence"
+    ],
+    "decision_definitions": {
+      "insufficient_evidence": "n_valid_pairs < 10",
+      "null": "n_valid_pairs >= 10 AND (ci95 is None OR ci95_low <= 0.0 <= ci95_high)",
+      "between_detectable_below_materiality": "n_valid_pairs >= 10 AND ci95 excludes 0 AND (paired_dz is None OR abs(paired_dz) < 0.8 OR abs(paired_mean_delta) < 0.05 * abs(control_mean))",
+      "material_positive": "n_valid_pairs >= 10 AND ci95 excludes 0 AND paired_mean_delta > 0.0 AND abs(paired_dz) >= 0.8 AND abs(paired_mean_delta) >= 0.05 * abs(control_mean)",
+      "material_negative_opposite": "n_valid_pairs >= 10 AND ci95 excludes 0 AND paired_mean_delta < 0.0 AND abs(paired_dz) >= 0.8 AND abs(paired_mean_delta) >= 0.05 * abs(control_mean)"
+    },
+    "secondary_endpoints_rule": {
+      "applies_to": [
+        "S1",
+        "S2",
+        "S3",
+        "S6"
+      ],
+      "same_thresholds": true,
+      "dz_min": 0.8,
+      "relative_delta_min": 0.05,
+      "zero_control_mean_note": "For signed contrast S3 (east - west), if control_mean == 0.0 exactly then the relative shift test falls back to ci95 excludes 0 AND abs(paired_dz) >= 0.8 AND abs(paired_mean_delta) > 0.0, annotated explicitly in the report.",
+      "cannot_override_primary_h1": true
+    },
+    "opposite_direction_rule": "material_negative_opposite on H1 is reported as refuting H1 in the opposite direction and is never rebranded as H1 support"
+  },
+  "analysis_details": {
+    "h1_primary": "live.trait_mass_var read from final_observables at T = 18000 for valid non-extinct, n>=2 pairs on contrast treatment_gradient - control_uniform_scarcity",
+    "h1_tail_window_formula": "Equal-weight arithmetic mean of the 7 sampled ticks in [14400, 18000] inclusive (14400, 15000, 15600, 16200, 16800, 17400, 18000) per seed and arm, then PairedEffect across non-extinct/n>=2 pairs",
+    "s1_formula": "live.trait_mass_p90 - live.trait_mass_p10 read from final_observables at T = 18000 per seed and arm",
+    "s2_formula": "live.trait_mass_mean read from final_observables at T = 18000 per seed and arm",
+    "s3_formula": "(live.trait_mass_mean_east - live.trait_mass_mean_west) read from final_observables at T = 18000 per seed and arm, excluding pairs where either arm has mean_west == 0.0 or mean_east == 0.0 under empty_half_rule",
+    "s6_formula": "cumulative per-run sums across all 30 drained sample windows for live.births and live.deaths, plus final-window or sample-weighted mean of live.mean_lifespan"
   },
   "reporting": {
     "per_observable_fields": [
       "n_requested",
       "n_complete_pairs",
+      "n_extinct_pairs_dropped",
+      "n_singleton_pairs_dropped",
+      "n_empty_half_pairs_dropped_s3",
       "control_mean",
       "treatment_mean",
       "paired_mean_delta",
@@ -255,15 +369,21 @@
     "additional_derived": [
       "median_of_per_seed_deltas",
       "between_seed_variance_of_deltas",
-      "per_seed_delta_table"
+      "per_seed_delta_table",
+      "extinction_table_by_arm",
+      "singleton_table_by_arm",
+      "empty_half_table_by_arm",
+      "per_arm_empty_half_counts"
     ],
     "failed_runs": "every failed run is reported with its seed and reason; both arms of a failed pair are dropped from paired statistics and never silently omitted",
     "negative_and_null_results_are_valid_results": true,
     "metric_switching_after_results": "forbidden"
   },
   "cost": {
-    "runs": 24,
-    "total_ticks": 432000,
+    "runs": 36,
+    "arms": 3,
+    "seeds_per_arm": 12,
+    "total_ticks": 648000,
     "max_wall_clock_minutes": 90,
     "build_profile_required": "release",
     "on_budget_exceeded": "step down the duration_ticks_ladder in WP-3 from smoke timing before any experimental seed runs; never reduce N"
@@ -272,49 +392,67 @@
     "root": "artifacts/experiments/e3-productivity-gradient-body-mass/",
     "smoke_dir": "artifacts/experiments/e3-productivity-gradient-body-mass/smoke/"
   },
-  "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 6; then execute src-tauri/target/release/examples/e3_smoke.exe --manifest-dir src-tauri/tests/fixtures/experiments_e3 --out artifacts/experiments/e3-productivity-gradient-body-mass",
+  "smoke_command": "cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 4; then execute src-tauri/target/release/examples/e3_smoke (.exe on Windows) --manifest-dir src-tauri/tests/fixtures/experiments_e3 --out artifacts/experiments/e3-productivity-gradient-body-mass",
   "wp2_smoke_gates": {
-    "a": "ResourceField is present in the headless LiveExperimentAdapter world",
-    "b": "Deforest (West) + AddNutrient (East) genuinely change live.standing_crop between smoke control and smoke treatment arms (WP-2 KILL SWITCH if false)",
-    "c": "detritus > 0 before tick 3000 so AddNutrient's causal pathway opens within warm-up",
-    "blinding_rule": "WP-2 and WP-3 never consult or write any live.trait_mass_* observable value"
+    "a": "ResourceField (256x256) is present in the headless LiveExperimentAdapter world with identical closed EU across all 3 arms",
+    "b1": "West Deforest 0.30 + East AddNutrient 1.00 changes live.standing_crop in treatment_gradient by |rel_shift| >= 0.10 vs control_uniform",
+    "b2": "control_uniform_scarcity (scale = 0.42 + whole-map AddNutrient 1.00) matches treatment_gradient post-warmup mean live.standing_crop within +/- 0.10 with zero Deforest firings",
+    "c": "detritus > 0 before tick 3000 and at tick 3000 in all 3 arms",
+    "blinding_rule": "WP-2 and WP-3 write, print, and gate zero body-mass observable values; only uniform finiteness (is_finite()) is checked over emitted series (body_mass_consulted = false)"
   },
   "wp2_smoke_calibration": {
     "smoke_seed": 999979,
-    "parent_commit": "91def40db1148c4526230704e5f002fe61f77c24",
+    "parent_commit": "9958f27bdf5f979f03aeee213c8d0b5304566cf2",
     "profile": "release",
     "body_mass_consulted": false,
-    "all_27_observables_emitted_and_finite": true,
+    "all_observables_emitted_and_finite": true,
+    "execution_disclosure": "Round 0 (2-arm draft at 91def40-dirty) ran e3_smoke twice (run 1 to measure smoke values, run 2 after writing values into this JSON so provenance sha256 matched; deterministic and blind). Fix Round 1 (3-arm design at 9958f27) broke the circular hash loop by excluding this JSON from sha256_as_committed and hashing e3_smoke.rs plus the 6 immutable manifests: invocation 1 failed before writing any file when guard_no_body_mass rejected a literal substring in a CSV header comment; invocation 2 produced clean 3-arm artifacts; invocation 3 re-ran after formatting/clippy-polishing e3_smoke.rs (d9df2c29...) and is recorded below with bit-identical simulation checksums.",
+    "smoke_selection_rule": "First eligible deterministic --release execution on finalized formatted manifests and e3_smoke.rs matching provenance sha256_as_committed.",
+    "e3x_newer_commit_rule": "If E3-X executes on a trunk commit newer than 9958f27, E3-X re-runs e3_smoke once in --release at that run commit to re-verify WP-2 gates and timing without altering any preregistered parameter.",
     "a_resource_field_present": {
       "passed": true,
       "dimensions": "256x256",
-      "initial_total_biomass_eu": 153587.24986362457,
-      "initial_total_capacity_eu": 153587.24986362457,
-      "initial_west_biomass_eu": 88757.74991834164,
-      "initial_east_biomass_eu": 64829.499945282936
+      "abundant_initial_total_biomass_eu": 153587.24986362457,
+      "abundant_initial_total_capacity_eu": 153587.24986362457,
+      "abundant_initial_west_capacity_eu": 88757.74991834164,
+      "abundant_initial_east_capacity_eu": 64829.499945282936,
+      "scarcity_initial_total_biomass_eu": 64506.642210796475,
+      "scarcity_initial_total_capacity_eu": 64506.642210796475,
+      "scarcity_initial_detritus_eu": 89080.6076528281
     },
     "b_standing_crop_change": {
       "passed": true,
-      "control_standing_crop_final": 123300.83728024106,
-      "treatment_standing_crop_final": 63282.05338941543,
-      "final_delta": -60018.78389082563,
-      "control_standing_crop_post_warmup_mean": 134866.6595674591,
-      "treatment_standing_crop_post_warmup_mean": 64098.52086286802,
-      "post_warmup_mean_delta": -70768.13870459108,
-      "max_abs_sample_diff": 86992.33749733593,
+      "b1_gradient_shifts_vs_abundant_passed": true,
+      "b2_scarcity_matches_treatment_total_passed": true,
+      "control_uniform_standing_crop_final": 123300.83728024106,
+      "control_uniform_scarcity_standing_crop_final": 64483.464424684644,
+      "treatment_gradient_standing_crop_final": 63282.05338941543,
+      "control_uniform_standing_crop_post_warmup_mean": 134866.6595674591,
+      "control_uniform_scarcity_standing_crop_post_warmup_mean": 64379.01477560505,
+      "treatment_gradient_standing_crop_post_warmup_mean": 64098.52086286802,
+      "treat_vs_ctrl_post_warmup_mean_delta": -70768.13870459108,
+      "treat_vs_ctrl_post_warmup_relative_shift": -0.524726711045983,
+      "treat_vs_scarcity_post_warmup_mean_delta": -280.49391273703077,
+      "scarcity_vs_treat_post_warmup_relative_mismatch": -0.004375981051686321,
       "treatment_deforest_ledger_count": 300,
       "treatment_deforest_eu_moved": 93891.59735265336,
       "treatment_add_nutrient_ledger_count": 300,
       "treatment_add_nutrient_eu_added": 33642.28750495448,
-      "control_final_checksum": 1266395716,
-      "treatment_final_checksum": 2891653359
+      "scarcity_deforest_ledger_count": 0,
+      "scarcity_add_nutrient_ledger_count": 300,
+      "scarcity_add_nutrient_eu_added": 8521.110357275924,
+      "control_uniform_final_checksum": 1266395716,
+      "control_uniform_scarcity_final_checksum": 2359367161,
+      "treatment_gradient_final_checksum": 2891653359
     },
     "c_detritus_before_3000": {
       "passed": true,
-      "control_first_positive_before_3000": [600, 1647.807546613461],
-      "treatment_first_positive_before_3000": [600, 86709.16853561654],
-      "control_detritus_at_3000": 12530.86161665315,
-      "treatment_detritus_at_3000": 97795.36642170392
+      "control_uniform_first_positive_before_3000": [600, 1647.807546613461],
+      "control_uniform_scarcity_first_positive_before_3000": [600, 90188.81396238769],
+      "treatment_gradient_first_positive_before_3000": [600, 86709.16853561654],
+      "control_uniform_detritus_at_3000": 12530.86161665315,
+      "control_uniform_scarcity_detritus_at_3000": 95907.22490714605,
+      "treatment_gradient_detritus_at_3000": 97795.36642170392
     },
     "artifact_record": "artifacts/experiments/e3-productivity-gradient-body-mass/smoke/"
   },
@@ -325,6 +463,9 @@
     "warmup_samples_excluded": 5,
     "sample_period": 600,
     "tail_window_ticks": [14400, 18000],
+    "wall_clock_seconds": 17.727377099999998,
+    "us_per_tick": 328.2847611111111,
+    "projected_36_runs_minutes": 3.54547542,
     "within_90_min_budget": true,
     "timing_record": "artifacts/experiments/e3-productivity-gradient-body-mass/smoke/provenance.json",
     "experimental_seeds_run": 0

@@ -1,20 +1,34 @@
 //! The E3 smoke calibration binary (WP-2 / WP-3 of `CARD E3-P`).
 //!
-//! Runs ONLY smoke seed `999979` in `--release` on `e3-smoke-control-uniform.json` and
-//! `e3-smoke-treatment-gradient.json`, proves WP-2 (a) headless `ResourceField` presence, (b) that
-//! West `Deforest` + East `AddNutrient` genuinely change `live.standing_crop` between arms, and (c)
-//! that `detritus > 0` before tick `3000`, and records WP-3's `T` and warm-up timing calibration.
+//! Runs ONLY smoke seed `999979` in `--release` on all three E3 smoke arms:
+//! - `e3-smoke-control-uniform.json` (`control_uniform`)
+//! - `e3-smoke-control-uniform-scarcity.json` (`control_uniform_scarcity`)
+//! - `e3-smoke-treatment-gradient.json` (`treatment_gradient`)
+//!
+//! Proves WP-2:
+//! - (a) headless `ResourceField` presence and identical closed-EU / RNG / `WorldIdentity` at
+//!   genesis (with `control_uniform_scarcity` scaled by `0.42` into detritus);
+//! - (b1) West `Deforest 0.30` + East `AddNutrient 1.00` genuinely shift `live.standing_crop` in
+//!   `treatment_gradient` relative to `control_uniform` (`|relative_shift| >= 0.10`, ledger > 0);
+//! - (b2) `control_uniform_scarcity` (`scale = 0.42` + whole-map `AddNutrient 1.00`) matches
+//!   `treatment_gradient`'s post-warmup mean `live.standing_crop` within `+/- 10%` with zero
+//!   `Deforest` firings;
+//! - (c) `detritus > 0` before tick `3000` and at tick `3000` in every arm.
+//!
+//! Also records WP-3's `T` and warm-up timing calibration projected for `36` runs (`3` arms x `12`
+//! seeds).
 //!
 //! # Blinding
 //!
-//! No `live.trait_mass_*` observable value or string is ever read, printed, or written by this
-//! binary (`guard_no_body_mass`), keeping WP-2 and WP-3 strictly blind to body-mass outcomes.
+//! No `live.trait_mass_*` observable value is ever written, printed, or used in any gate except
+//! the uniform finiteness check (`is_finite()` over every emitted observable), keeping WP-2 and
+//! WP-3 blind to body-mass outcomes (`body_mass_consulted: false`).
 //!
-//! # Build it, then execute the compiled binary — never `cargo run`
+//! # Build first, then execute the compiled binary -- never `cargo run`
 //!
 //! ```text
-//! cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 6
-//! src-tauri/target/release/examples/e3_smoke.exe \
+//! cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 4
+//! src-tauri/target/release/examples/e3_smoke \
 //!   --manifest-dir src-tauri/tests/fixtures/experiments_e3 \
 //!   --out artifacts/experiments/e3-productivity-gradient-body-mass
 //! ```
@@ -26,10 +40,11 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use anima_engine_lib::core::ecology::{EcosystemBiomass, ResourceField};
 use anima_engine_lib::core::experiment::{ExperimentManifest, FactorDiff, ObservableRegistry};
 use anima_engine_lib::core::experiment_runner::{
-    run_paired_ensemble_with_control, ExperimentModel, PairedEnsembleReport, RunResult, RunStatus,
+    run_manifest_seed, run_paired_ensemble_with_control, ExperimentModel, PairedEnsembleReport,
+    RunResult, RunStatus,
 };
 use anima_engine_lib::core::live_experiment::{
-    all_live_observable_ids, LiveExperimentAdapter, LiveWorldConfig, LIVE_MODEL_VERSION,
+    LiveExperimentAdapter, LiveWorldConfig, LIVE_MODEL_VERSION,
 };
 use anima_engine_lib::core::resources::SimRng;
 use anima_engine_lib::core::sha256::sha256_file;
@@ -37,9 +52,16 @@ use anima_engine_lib::core::world_artifact::WorldIdentity;
 use rand::RngCore;
 
 const PREREG_FILE: &str = "e3-preregistration.json";
-const ALLOWED_FACTOR_PATH: &str = "interventions";
+const ALLOWED_INTERVENTION_PATH: &str = "interventions";
+const ALLOWED_SCARCITY_FACTOR_PATHS: [&str; 2] = ["initial_conditions", "interventions"];
 const DEFOREST_CAUSE_ID: u32 = 1;
 const ADD_NUTRIENT_CAUSE_ID: u32 = 2;
+const NUM_ARMS: usize = 3;
+/// WP-2 (b1): minimum post-warmup relative shift in `live.standing_crop` vs uniform control.
+const WP2_B1_MIN_REL_SHIFT: f64 = 0.10;
+/// WP-2 (b2): maximum post-warmup relative total standing-crop mismatch between scarcity control
+/// and gradient treatment.
+const WP2_B2_MAX_REL_MISMATCH: f64 = 0.10;
 
 /// Non-mass observables written to `smoke-series.csv` (strictly blind to `trait_mass_*`).
 const SMOKE_SERIES_OBSERVABLES: [&str; 21] = [
@@ -80,7 +102,11 @@ struct Plan {
     warmup_ticks: u64,
     tail_window: [u64; 2],
     max_wall_clock_minutes: f64,
+    control_file: String,
+    control_scarcity_file: String,
+    treatment_file: String,
     smoke_control_file: String,
+    smoke_control_scarcity_file: String,
     smoke_treatment_file: String,
 }
 
@@ -141,6 +167,45 @@ struct ArmSummary {
     all_finite: bool,
 }
 
+struct SmokeCalibMetrics {
+    wp2_a_passed: bool,
+    wp2_b1_passed: bool,
+    wp2_b2_passed: bool,
+    wp2_b_passed: bool,
+    wp2_c_passed: bool,
+    final_delta_treat_vs_ctrl: f64,
+    post_warmup_delta_treat_vs_ctrl: f64,
+    post_warmup_rel_shift_treat_vs_ctrl: Option<f64>,
+    tail_delta_treat_vs_ctrl: f64,
+    max_abs_sample_diff_treat_vs_ctrl: f64,
+    final_delta_treat_vs_scarcity: f64,
+    post_warmup_delta_treat_vs_scarcity: f64,
+    post_warmup_rel_mismatch_scarcity_vs_treat: Option<f64>,
+    tail_delta_treat_vs_scarcity: f64,
+    max_abs_sample_diff_treat_vs_scarcity: f64,
+}
+
+struct ProvenanceContext<'a> {
+    args: &'a Args,
+    plan: &'a Plan,
+    control: &'a ExperimentManifest,
+    scarcity: &'a ExperimentManifest,
+    treatment: &'a ExperimentManifest,
+    registry: &'a ObservableRegistry,
+    paired_report: &'a PairedEnsembleReport,
+    scarcity_fingerprint: u64,
+    probe: &'a FieldProbe,
+    input_hashes: &'a BTreeMap<String, String>,
+    prereg_hash_at_run: &'a str,
+    rung: u64,
+    started: SystemTime,
+    ended: SystemTime,
+    elapsed_secs: f64,
+    us_per_tick: f64,
+    projected_by_rung: &'a [(u64, f64)],
+    recommended_rung: Option<u64>,
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     if let Err(e) = run_with_args(argv) {
@@ -161,9 +226,10 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
     let plan = Plan::from_prereg(&prereg)?;
 
     let mut control = load_manifest(&args.manifest_dir.join(&plan.smoke_control_file))?;
+    let mut scarcity = load_manifest(&args.manifest_dir.join(&plan.smoke_control_scarcity_file))?;
     let mut treatment = load_manifest(&args.manifest_dir.join(&plan.smoke_treatment_file))?;
 
-    validate_smoke_manifests(&plan, &registry, &control, &treatment)?;
+    validate_smoke_manifests(&plan, &registry, &control, &scarcity, &treatment)?;
 
     let rung = match args.duration_rung {
         Some(t) => {
@@ -173,62 +239,92 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
                     plan.ladder
                 ));
             }
-            control.duration_ticks = t;
-            treatment.duration_ticks = t;
-            for cmd in &mut control.interventions {
-                cmd.duration_ticks = t;
-            }
-            for cmd in &mut treatment.interventions {
-                cmd.duration_ticks = t;
+            for m in [&mut control, &mut scarcity, &mut treatment] {
+                m.duration_ticks = t;
+                for cmd in &mut m.interventions {
+                    cmd.duration_ticks = t;
+                }
             }
             t
         }
         None => control.duration_ticks,
     };
 
+    // Hash the six immutable manifest inputs and this smoke source file (NOT
+    // `e3-preregistration.json`, which records `wp2_smoke_calibration` after this run, avoiding
+    // any circular self-hash).
     let mut input_hashes: BTreeMap<String, String> = BTreeMap::new();
     for file in [
+        plan.control_file.as_str(),
+        plan.control_scarcity_file.as_str(),
+        plan.treatment_file.as_str(),
         plan.smoke_control_file.as_str(),
+        plan.smoke_control_scarcity_file.as_str(),
         plan.smoke_treatment_file.as_str(),
-        PREREG_FILE,
     ] {
         let digest =
             sha256_file(&args.manifest_dir.join(file)).map_err(|e| format!("hash {file}: {e}"))?;
         input_hashes.insert(file.to_string(), digest);
     }
+    let smoke_src_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/e3_smoke.rs");
+    let smoke_src_digest = sha256_file(&smoke_src_path)
+        .map_err(|e| format!("hash {}: {e}", smoke_src_path.display()))?;
+    input_hashes.insert(
+        "src-tauri/examples/e3_smoke.rs".to_string(),
+        smoke_src_digest,
+    );
+    let prereg_hash_at_run =
+        sha256_file(&prereg_path).map_err(|e| format!("hash {PREREG_FILE}: {e}"))?;
 
     let out_dir = args.out.join("smoke");
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("create {}: {e}", out_dir.display()))?;
 
-    // WP-2 (a): direct headless genesis probe before any ticks step.
+    // WP-2 (a): direct headless genesis probe before any ticks step, across all three arms.
     let probe_control = probe_genesis(&control, plan.smoke_seed)?;
+    let probe_scarcity = probe_genesis(&scarcity, plan.smoke_seed)?;
     let probe_treatment = probe_genesis(&treatment, plan.smoke_seed)?;
-    let world_identity_identical = probe_control.world_identity == probe_treatment.world_identity;
+
+    let world_identity_identical = probe_control.world_identity == probe_treatment.world_identity
+        && probe_control.world_identity == probe_scarcity.world_identity;
     let ecology_stream_identical = probe_control.rng_seed == probe_treatment.rng_seed
         && probe_control.rng_stream_pos == probe_treatment.rng_stream_pos
-        && probe_control.rng_next_draws == probe_treatment.rng_next_draws;
+        && probe_control.rng_next_draws == probe_treatment.rng_next_draws
+        && probe_control.rng_seed == probe_scarcity.rng_seed
+        && probe_control.rng_stream_pos == probe_scarcity.rng_stream_pos
+        && probe_control.rng_next_draws == probe_scarcity.rng_next_draws;
+    let total_eu_ctrl = probe_control.total_ecosystem_eu();
+    let total_eu_scarcity = probe_scarcity.total_ecosystem_eu();
+    let total_eu_treat = probe_treatment.total_ecosystem_eu();
+    let genesis_closed_eu_identical = (total_eu_ctrl - total_eu_scarcity).abs() < 1e-6
+        && (total_eu_ctrl - total_eu_treat).abs() < 1e-6;
 
     if !world_identity_identical {
-        return Err(format!(
-            "WP-2 integrity failed: world_identity differs between smoke arms ({:?} vs {:?})",
-            probe_control.world_identity, probe_treatment.world_identity
-        ));
+        return Err("WP-2 integrity failed: world_identity differs among smoke arms".into());
     }
     if !ecology_stream_identical {
         return Err(
-            "WP-2 integrity failed: SimRng state differs between smoke arms at genesis".into(),
+            "WP-2 integrity failed: SimRng state differs among smoke arms at genesis".into(),
         );
+    }
+    if !genesis_closed_eu_identical {
+        return Err(format!(
+            "WP-2 integrity failed: initial closed EU differs across arms (ctrl={total_eu_ctrl}, scarcity={total_eu_scarcity}, treat={total_eu_treat})"
+        ));
     }
 
     let wp2_a_passed = probe_control.resource_field_present
+        && probe_scarcity.resource_field_present
         && probe_treatment.resource_field_present
         && probe_control.width == 256
         && probe_control.height == 256
         && probe_control.initial_total_biomass > 0.0
-        && probe_control.initial_total_capacity > 0.0;
+        && probe_control.initial_total_capacity > 0.0
+        && (probe_scarcity.initial_total_capacity / probe_control.initial_total_capacity - 0.42)
+            .abs()
+            < 1e-4;
 
     say(&format!(
-        "E3 smoke: seed {}, 2 arms x {} ticks (sample period {}), profile {}",
+        "E3 smoke: seed {}, {NUM_ARMS} arms x {} ticks (sample period {}), profile {}",
         plan.smoke_seed,
         rung,
         control.sample_period,
@@ -239,82 +335,124 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         }
     ))?;
     say(&format!(
-        "  WP-2 (a) ResourceField present: {} ({}x{}, initial biomass {:.3} EU, capacity {:.3} EU)",
+        "  WP-2 (a) ResourceField present: {} ({}x{}, abundant cap {:.3} EU, scarcity cap {:.3} EU, detritus_0 {:.3} EU)",
         wp2_a_passed,
         probe_control.width,
         probe_control.height,
-        probe_control.initial_total_biomass,
-        probe_control.initial_total_capacity
+        probe_control.initial_total_capacity,
+        probe_scarcity.initial_total_capacity,
+        probe_scarcity.ecosystem_detritus
     ))?;
 
-    // WP-2 (b) & (c): run the paired smoke arms through the shared runner.
+    // WP-2 (b) & (c): run all three arms under the shared runner/single-seed entry points.
     let started = SystemTime::now();
     let timer = Instant::now();
-    let report = run_paired_ensemble_with_control::<LiveExperimentAdapter>(
+    let paired_report = run_paired_ensemble_with_control::<LiveExperimentAdapter>(
         &control,
         &treatment,
         &registry,
         &FactorDiff {
-            allowed_paths: vec![ALLOWED_FACTOR_PATH.to_string()],
+            allowed_paths: vec![ALLOWED_INTERVENTION_PATH.to_string()],
         },
     )
     .map_err(|e| format!("run_paired_ensemble_with_control failed: {e}"))?;
+    let scarcity_run = run_manifest_seed::<LiveExperimentAdapter>(
+        &scarcity,
+        &registry,
+        plan.smoke_seed,
+        None,
+        None,
+    );
     let elapsed_secs = timer.elapsed().as_secs_f64();
     let ended = SystemTime::now();
 
-    let pair = report
+    let pair = paired_report
         .pairs
         .first()
         .ok_or_else(|| "paired report contains no pairs".to_string())?;
-    let ctrl_summary = summarize_arm("control", &pair.control, &plan)?;
-    let treat_summary = summarize_arm("treatment", &pair.treatment, &plan)?;
-
-    let expected_emitted = all_live_observable_ids().len();
-    if ctrl_summary.emitted_count != expected_emitted
-        || treat_summary.emitted_count != expected_emitted
-    {
+    if !pair.is_complete() || !scarcity_run.status.is_completed() {
         return Err(format!(
-            "expected {expected_emitted} emitted observables, got control={} treatment={}",
-            ctrl_summary.emitted_count, treat_summary.emitted_count
+            "one or more smoke arms failed: control={:?}, scarcity={:?}, treatment={:?}",
+            pair.control.status, scarcity_run.status, pair.treatment.status
         ));
     }
-    if !ctrl_summary.all_finite || !treat_summary.all_finite {
-        return Err("non-finite observable encountered in smoke run".into());
+
+    let ctrl_summary = summarize_arm("control_uniform", &pair.control, &plan)?;
+    let scarcity_summary = summarize_arm("control_uniform_scarcity", &scarcity_run, &plan)?;
+    let treat_summary = summarize_arm("treatment_gradient", &pair.treatment, &plan)?;
+
+    let required_min_emitted = control.observable_ids.len();
+    for a in [&ctrl_summary, &scarcity_summary, &treat_summary] {
+        if a.emitted_count < required_min_emitted {
+            return Err(format!(
+                "{}: expected at least {required_min_emitted} emitted observables, got {}",
+                a.arm, a.emitted_count
+            ));
+        }
+        if !a.all_finite {
+            return Err(format!("{}: non-finite observable in smoke run", a.arm));
+        }
     }
 
-    let max_abs_standing_crop_diff = ctrl_summary
-        .standing_crop_series
-        .iter()
-        .zip(&treat_summary.standing_crop_series)
-        .map(|((tc, vc), (tt, vt))| {
-            assert_eq!(tc, tt);
-            (vt - vc).abs()
-        })
-        .fold(0.0f64, f64::max);
-    let final_standing_crop_diff =
-        treat_summary.standing_crop_final - ctrl_summary.standing_crop_final;
-    let post_warmup_standing_crop_diff =
-        treat_summary.standing_crop_post_warmup_mean - ctrl_summary.standing_crop_post_warmup_mean;
-    let tail_standing_crop_diff =
-        treat_summary.standing_crop_tail_mean - ctrl_summary.standing_crop_tail_mean;
+    let (max_abs_diff_uc, final_delta_uc, post_warmup_delta_uc, tail_delta_uc) =
+        standing_crop_diffs(&ctrl_summary, &treat_summary);
+    let (max_abs_diff_sc, final_delta_sc, post_warmup_delta_sc, tail_delta_sc) =
+        standing_crop_diffs(&scarcity_summary, &treat_summary);
 
-    let wp2_b_passed = pair.is_complete()
-        && ctrl_summary.final_checksum != treat_summary.final_checksum
+    let post_warmup_rel_shift_treat_vs_ctrl = rel_ratio(
+        post_warmup_delta_uc,
+        ctrl_summary.standing_crop_post_warmup_mean,
+    );
+    let post_warmup_rel_mismatch_scarcity_vs_treat = rel_ratio(
+        post_warmup_delta_sc,
+        treat_summary.standing_crop_post_warmup_mean,
+    );
+
+    let wp2_b1_passed = ctrl_summary.final_checksum != treat_summary.final_checksum
         && treat_summary.deforest_ledger_count > 0
         && treat_summary.add_nutrient_ledger_count > 0
-        && (final_standing_crop_diff.abs() > 1e-3 || max_abs_standing_crop_diff > 1e-3);
+        && post_warmup_rel_shift_treat_vs_ctrl.is_some_and(|r| r.abs() >= WP2_B1_MIN_REL_SHIFT);
 
-    let wp2_c_passed = ctrl_summary.first_positive_detritus_before_3000.is_some()
-        && treat_summary.first_positive_detritus_before_3000.is_some()
-        && ctrl_summary.detritus_at_3000.is_some_and(|v| v > 0.0)
-        && treat_summary.detritus_at_3000.is_some_and(|v| v > 0.0);
+    let wp2_b2_passed = scarcity_summary.final_checksum != treat_summary.final_checksum
+        && scarcity_summary.deforest_ledger_count == 0
+        && scarcity_summary.add_nutrient_ledger_count > 0
+        && post_warmup_rel_mismatch_scarcity_vs_treat
+            .is_some_and(|r| r.abs() <= WP2_B2_MAX_REL_MISMATCH);
 
-    let us_per_tick = elapsed_secs * 1e6 / (2.0 * rung as f64);
+    let wp2_b_passed = wp2_b1_passed && wp2_b2_passed;
+
+    let wp2_c_passed = [&ctrl_summary, &scarcity_summary, &treat_summary]
+        .iter()
+        .all(|a| {
+            a.first_positive_detritus_before_3000.is_some()
+                && a.detritus_at_3000.is_some_and(|v| v > 0.0)
+        });
+
+    let metrics = SmokeCalibMetrics {
+        wp2_a_passed,
+        wp2_b1_passed,
+        wp2_b2_passed,
+        wp2_b_passed,
+        wp2_c_passed,
+        final_delta_treat_vs_ctrl: final_delta_uc,
+        post_warmup_delta_treat_vs_ctrl: post_warmup_delta_uc,
+        post_warmup_rel_shift_treat_vs_ctrl,
+        tail_delta_treat_vs_ctrl: tail_delta_uc,
+        max_abs_sample_diff_treat_vs_ctrl: max_abs_diff_uc,
+        final_delta_treat_vs_scarcity: final_delta_sc,
+        post_warmup_delta_treat_vs_scarcity: post_warmup_delta_sc,
+        post_warmup_rel_mismatch_scarcity_vs_treat,
+        tail_delta_treat_vs_scarcity: tail_delta_sc,
+        max_abs_sample_diff_treat_vs_scarcity: max_abs_diff_sc,
+    };
+
+    let planned_ensemble_runs = (NUM_ARMS * plan.seeds.len()) as f64;
+    let us_per_tick = elapsed_secs * 1e6 / ((NUM_ARMS as f64) * (rung as f64));
     let projected_by_rung: Vec<(u64, f64)> = plan
         .ladder
         .iter()
         .map(|&t| {
-            let mins = 24.0 * (t as f64) * us_per_tick / 60_000_000.0;
+            let mins = planned_ensemble_runs * (t as f64) * us_per_tick / 60_000_000.0;
             (t, mins)
         })
         .collect();
@@ -324,24 +462,28 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         .map(|(t, _)| *t);
 
     say(&format!(
-        "  WP-2 (b) standing_crop change: {} (final delta {:+.3} EU, post-warmup delta {:+.3} EU, max sample |delta| {:.3} EU; ledger Deforest {} / AddNutrient {})",
-        wp2_b_passed,
-        final_standing_crop_diff,
-        post_warmup_standing_crop_diff,
-        max_abs_standing_crop_diff,
-        treat_summary.deforest_ledger_count,
-        treat_summary.add_nutrient_ledger_count
+        "  WP-2 (b1) gradient vs abundant standing_crop: {} (post-warmup delta {:+.3} EU / {:+.2}%)",
+        wp2_b1_passed,
+        post_warmup_delta_uc,
+        post_warmup_rel_shift_treat_vs_ctrl.unwrap_or(0.0) * 100.0
     ))?;
     say(&format!(
-        "  WP-2 (c) detritus > 0 before tick 3000: {} (control first {:?}, treatment first {:?})",
-        wp2_c_passed,
-        ctrl_summary.first_positive_detritus_before_3000,
-        treat_summary.first_positive_detritus_before_3000
+        "  WP-2 (b2) scarcity control vs treatment total match: {} (post-warmup delta {:+.3} EU / {:+.2}%, agents min/final ctrl_s={}/{})",
+        wp2_b2_passed,
+        post_warmup_delta_sc,
+        post_warmup_rel_mismatch_scarcity_vs_treat.unwrap_or(0.0) * 100.0,
+        scarcity_summary.agent_count_min,
+        scarcity_summary.agent_count_final
     ))?;
     say(&format!(
-        "  WP-3 timing: {:.2}s ({:.1} us/tick), 24x18000 projection {:.2} min (recommended rung {:?})",
+        "  WP-2 (c) detritus > 0 before tick 3000 (all 3 arms): {}",
+        wp2_c_passed
+    ))?;
+    say(&format!(
+        "  WP-3 timing: {:.2}s ({:.1} us/tick), {}x18000 projection {:.2} min (recommended rung {:?})",
         elapsed_secs,
         us_per_tick,
+        NUM_ARMS * plan.seeds.len(),
         projected_by_rung
             .iter()
             .find(|(t, _)| *t == 18_000)
@@ -350,116 +492,59 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         recommended_rung
     ))?;
 
-    let runs_csv = build_runs_csv(&ctrl_summary, &treat_summary, plan.smoke_seed, us_per_tick);
-    let series_csv = build_series_csv(&pair.control, &pair.treatment, plan.smoke_seed)?;
-    let report_json = pretty(&serde_json::json!({
-        "kind": "e3-smoke-report-EXCLUDED-FROM-ANALYSIS",
-        "smoke_seed": plan.smoke_seed,
-        "duration_ticks": rung,
-        "sample_period": control.sample_period,
-        "warmup_ticks": plan.warmup_ticks,
-        "tail_window_ticks": plan.tail_window,
-        "body_mass_consulted": false,
-        "all_27_observables_emitted_and_finite": true,
-        "integrity": {
-            "world_identity_identical": world_identity_identical,
-            "ecology_stream_identical": ecology_stream_identical,
-            "control_final_checksum": ctrl_summary.final_checksum,
-            "treatment_final_checksum": treat_summary.final_checksum,
-            "checksums_differ": ctrl_summary.final_checksum != treat_summary.final_checksum,
-        },
-        "wp2_a_resource_field": {
-            "passed": wp2_a_passed,
-            "width": probe_control.width,
-            "height": probe_control.height,
-            "bounds_x": [probe_control.min_x, probe_control.max_x],
-            "bounds_z": [probe_control.min_z, probe_control.max_z],
-            "initial_total_biomass_eu": probe_control.initial_total_biomass,
-            "initial_total_capacity_eu": probe_control.initial_total_capacity,
-            "initial_west_biomass_eu": probe_control.initial_west_biomass,
-            "initial_west_capacity_eu": probe_control.initial_west_capacity,
-            "initial_east_biomass_eu": probe_control.initial_east_biomass,
-            "initial_east_capacity_eu": probe_control.initial_east_capacity,
-            "initial_ecosystem_biomass": {
-                "plants": probe_control.ecosystem_plants,
-                "detritus": probe_control.ecosystem_detritus,
-                "animals": probe_control.ecosystem_animals,
-                "dormant": probe_control.ecosystem_dormant,
-            }
-        },
-        "wp2_b_standing_crop_intervention": {
-            "passed": wp2_b_passed,
-            "control_standing_crop_final": ctrl_summary.standing_crop_final,
-            "treatment_standing_crop_final": treat_summary.standing_crop_final,
-            "final_delta_treatment_minus_control": final_standing_crop_diff,
-            "control_standing_crop_post_warmup_mean": ctrl_summary.standing_crop_post_warmup_mean,
-            "treatment_standing_crop_post_warmup_mean": treat_summary.standing_crop_post_warmup_mean,
-            "post_warmup_mean_delta": post_warmup_standing_crop_diff,
-            "post_warmup_relative_shift": if ctrl_summary.standing_crop_post_warmup_mean != 0.0 {
-                Some(post_warmup_standing_crop_diff / ctrl_summary.standing_crop_post_warmup_mean.abs())
-            } else {
-                None
-            },
-            "control_standing_crop_tail_mean": ctrl_summary.standing_crop_tail_mean,
-            "treatment_standing_crop_tail_mean": treat_summary.standing_crop_tail_mean,
-            "tail_mean_delta": tail_standing_crop_diff,
-            "max_abs_sample_diff": max_abs_standing_crop_diff,
-            "control_deforest_ledger_count": ctrl_summary.deforest_ledger_count,
-            "control_deforest_eu_moved": ctrl_summary.deforest_eu_moved,
-            "control_add_nutrient_ledger_count": ctrl_summary.add_nutrient_ledger_count,
-            "control_add_nutrient_eu_added": ctrl_summary.add_nutrient_eu_added,
-            "treatment_deforest_ledger_count": treat_summary.deforest_ledger_count,
-            "treatment_deforest_eu_moved": treat_summary.deforest_eu_moved,
-            "treatment_add_nutrient_ledger_count": treat_summary.add_nutrient_ledger_count,
-            "treatment_add_nutrient_eu_added": treat_summary.add_nutrient_eu_added,
-        },
-        "wp2_c_detritus_before_3000": {
-            "passed": wp2_c_passed,
-            "control_first_positive_before_3000": ctrl_summary.first_positive_detritus_before_3000,
-            "treatment_first_positive_before_3000": treat_summary.first_positive_detritus_before_3000,
-            "control_detritus_at_3000": ctrl_summary.detritus_at_3000,
-            "treatment_detritus_at_3000": treat_summary.detritus_at_3000,
-            "control_early_samples": ctrl_summary.detritus_early_samples,
-            "treatment_early_samples": treat_summary.detritus_early_samples,
-            "control_detritus_final": ctrl_summary.detritus_final,
-            "treatment_detritus_final": treat_summary.detritus_final,
-        },
-        "demographics_and_conservation": {
-            "control": arm_diag_json(&ctrl_summary),
-            "treatment": arm_diag_json(&treat_summary),
-        },
-        "wp3_schedule_lock": {
-            "wall_clock_seconds": elapsed_secs,
-            "us_per_tick": us_per_tick,
-            "projected_24_runs_minutes_by_rung": projected_by_rung
-                .iter()
-                .map(|(t, mins)| serde_json::json!({ "duration_ticks": t, "projected_minutes": mins }))
-                .collect::<Vec<_>>(),
-            "recommended_duration_ticks": recommended_rung,
-            "warmup_ticks": plan.warmup_ticks,
-            "sample_period": control.sample_period,
-            "tail_window_ticks": plan.tail_window,
-            "within_budget": recommended_rung == Some(rung),
-        }
-    }))? + "\n";
+    let arm_summaries = [&ctrl_summary, &scarcity_summary, &treat_summary];
+    let runs_csv = build_runs_csv(&arm_summaries, plan.smoke_seed, us_per_tick);
+    let series_csv = build_series_csv(
+        &[
+            ("control_uniform", &pair.control),
+            ("control_uniform_scarcity", &scarcity_run),
+            ("treatment_gradient", &pair.treatment),
+        ],
+        plan.smoke_seed,
+    )?;
 
-    let provenance_json = pretty(&build_provenance(
-        &args,
+    let report_json = pretty(&build_report_json(
         &plan,
-        &control,
-        &treatment,
-        &registry,
-        &report,
+        rung,
+        control.sample_period,
+        elapsed_secs,
+        us_per_tick,
+        planned_ensemble_runs as usize,
         &probe_control,
-        &input_hashes,
+        &probe_scarcity,
+        &probe_treatment,
+        &ctrl_summary,
+        &scarcity_summary,
+        &treat_summary,
+        &metrics,
+        &projected_by_rung,
+        recommended_rung,
+        world_identity_identical,
+        ecology_stream_identical,
+        genesis_closed_eu_identical,
+    ))? + "\n";
+
+    let prov_ctx = ProvenanceContext {
+        args: &args,
+        plan: &plan,
+        control: &control,
+        scarcity: &scarcity,
+        treatment: &treatment,
+        registry: &registry,
+        paired_report: &paired_report,
+        scarcity_fingerprint: scarcity.fingerprint(),
+        probe: &probe_control,
+        input_hashes: &input_hashes,
+        prereg_hash_at_run: &prereg_hash_at_run,
         rung,
         started,
         ended,
         elapsed_secs,
         us_per_tick,
-        &projected_by_rung,
+        projected_by_rung: &projected_by_rung,
         recommended_rung,
-    ))? + "\n";
+    };
+    let provenance_json = pretty(&build_provenance(&prov_ctx))? + "\n";
 
     let summary_md = build_summary_md(
         &plan,
@@ -467,18 +552,13 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
         control.sample_period,
         elapsed_secs,
         us_per_tick,
+        planned_ensemble_runs as usize,
         &projected_by_rung,
         recommended_rung,
         &probe_control,
-        &ctrl_summary,
-        &treat_summary,
-        wp2_a_passed,
-        wp2_b_passed,
-        wp2_c_passed,
-        max_abs_standing_crop_diff,
-        final_standing_crop_diff,
-        post_warmup_standing_crop_diff,
-        tail_standing_crop_diff,
+        &probe_scarcity,
+        &arm_summaries,
+        &metrics,
     );
 
     for (name, content) in [
@@ -517,52 +597,93 @@ fn run_with_args(argv: Vec<String>) -> Result<(), String> {
     Ok(())
 }
 
+impl FieldProbe {
+    fn total_ecosystem_eu(&self) -> f64 {
+        self.ecosystem_plants
+            + self.ecosystem_detritus
+            + self.ecosystem_animals
+            + self.ecosystem_dormant
+    }
+}
+
+fn rel_ratio(delta: f64, denom: f64) -> Option<f64> {
+    if denom != 0.0 {
+        Some(delta / denom.abs())
+    } else {
+        None
+    }
+}
+
+fn standing_crop_diffs(base: &ArmSummary, other: &ArmSummary) -> (f64, f64, f64, f64) {
+    let max_abs = base
+        .standing_crop_series
+        .iter()
+        .zip(&other.standing_crop_series)
+        .map(|((tb, vb), (to, vo))| {
+            assert_eq!(tb, to);
+            (vo - vb).abs()
+        })
+        .fold(0.0f64, f64::max);
+    let final_delta = other.standing_crop_final - base.standing_crop_final;
+    let post_warmup_delta =
+        other.standing_crop_post_warmup_mean - base.standing_crop_post_warmup_mean;
+    let tail_delta = other.standing_crop_tail_mean - base.standing_crop_tail_mean;
+    (max_abs, final_delta, post_warmup_delta, tail_delta)
+}
+
 fn validate_smoke_manifests(
     plan: &Plan,
     registry: &ObservableRegistry,
     control: &ExperimentManifest,
+    scarcity: &ExperimentManifest,
     treatment: &ExperimentManifest,
 ) -> Result<(), String> {
-    control
-        .validate(registry)
-        .map_err(|e| format!("control manifest invalid: {e}"))?;
-    treatment
-        .validate(registry)
-        .map_err(|e| format!("treatment manifest invalid: {e}"))?;
-
-    let ctrl_cfg = LiveWorldConfig::from_initial_conditions(&control.initial_conditions)
-        .map_err(|e| format!("control LiveWorldConfig invalid: {e}"))?;
-    ctrl_cfg
-        .ensure_observables_supported(&control.observable_ids)
-        .map_err(|e| format!("control observables unsupported: {e}"))?;
-
-    let treat_cfg = LiveWorldConfig::from_initial_conditions(&treatment.initial_conditions)
-        .map_err(|e| format!("treatment LiveWorldConfig invalid: {e}"))?;
-    treat_cfg
-        .ensure_observables_supported(&treatment.observable_ids)
-        .map_err(|e| format!("treatment observables unsupported: {e}"))?;
-
-    if control.sample_period != plan.sample_period || treatment.sample_period != plan.sample_period
-    {
-        return Err(format!(
-            "smoke manifests must declare sample_period={}, got control={} treatment={}",
-            plan.sample_period, control.sample_period, treatment.sample_period
-        ));
+    for (label, m) in [
+        ("control_uniform", control),
+        ("control_uniform_scarcity", scarcity),
+        ("treatment_gradient", treatment),
+    ] {
+        m.validate(registry)
+            .map_err(|e| format!("{label} manifest invalid: {e}"))?;
+        let cfg = LiveWorldConfig::from_initial_conditions(&m.initial_conditions)
+            .map_err(|e| format!("{label} LiveWorldConfig invalid: {e}"))?;
+        cfg.ensure_observables_supported(&m.observable_ids)
+            .map_err(|e| format!("{label} observables unsupported: {e}"))?;
+        if m.sample_period != plan.sample_period {
+            return Err(format!(
+                "{label} must declare sample_period={}, got {}",
+                plan.sample_period, m.sample_period
+            ));
+        }
+        if m.seeds != vec![plan.smoke_seed] {
+            return Err(format!(
+                "{label} must declare only [{}], got {:?}",
+                plan.smoke_seed, m.seeds
+            ));
+        }
+        if m.seeds.iter().any(|s| plan.seeds.contains(s)) {
+            return Err(format!("{label} contains an experimental seed"));
+        }
     }
-    if control.seeds != vec![plan.smoke_seed] || treatment.seeds != vec![plan.smoke_seed] {
-        return Err(format!(
-            "smoke manifests must declare only [{}], got control={:?} treatment={:?}",
-            plan.smoke_seed, control.seeds, treatment.seeds
-        ));
-    }
-    if control.seeds.iter().any(|s| plan.seeds.contains(s)) {
-        return Err("smoke manifest contains an experimental seed".into());
-    }
+
     FactorDiff {
-        allowed_paths: vec![ALLOWED_FACTOR_PATH.to_string()],
+        allowed_paths: vec![ALLOWED_INTERVENTION_PATH.to_string()],
     }
     .validate(control, treatment)
-    .map_err(|e| format!("FactorDiff failed: {e}"))?;
+    .map_err(|e| format!("FactorDiff (control_uniform vs treatment) failed: {e}"))?;
+
+    let scarcity_allowed = FactorDiff {
+        allowed_paths: ALLOWED_SCARCITY_FACTOR_PATHS
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    };
+    scarcity_allowed
+        .validate(control, scarcity)
+        .map_err(|e| format!("FactorDiff (control_uniform vs control_scarcity) failed: {e}"))?;
+    scarcity_allowed
+        .validate(scarcity, treatment)
+        .map_err(|e| format!("FactorDiff (control_scarcity vs treatment) failed: {e}"))?;
     Ok(())
 }
 
@@ -826,10 +947,297 @@ fn summarize_arm(arm: &'static str, run: &RunResult, plan: &Plan) -> Result<ArmS
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+fn build_report_json(
+    plan: &Plan,
+    rung: u64,
+    sample_period: u64,
+    elapsed_secs: f64,
+    us_per_tick: f64,
+    planned_ensemble_runs: usize,
+    probe_control: &FieldProbe,
+    probe_scarcity: &FieldProbe,
+    probe_treatment: &FieldProbe,
+    ctrl: &ArmSummary,
+    scarcity: &ArmSummary,
+    treat: &ArmSummary,
+    metrics: &SmokeCalibMetrics,
+    projected_by_rung: &[(u64, f64)],
+    recommended_rung: Option<u64>,
+    world_identity_identical: bool,
+    ecology_stream_identical: bool,
+    genesis_closed_eu_identical: bool,
+) -> serde_json::Value {
+    let mut root = serde_json::Map::new();
+    root.insert(
+        "kind".into(),
+        serde_json::json!("e3-smoke-report-EXCLUDED-FROM-ANALYSIS"),
+    );
+    root.insert("smoke_seed".into(), serde_json::json!(plan.smoke_seed));
+    root.insert(
+        "arms".into(),
+        serde_json::json!([ctrl.arm, scarcity.arm, treat.arm]),
+    );
+    root.insert("duration_ticks".into(), serde_json::json!(rung));
+    root.insert("sample_period".into(), serde_json::json!(sample_period));
+    root.insert("warmup_ticks".into(), serde_json::json!(plan.warmup_ticks));
+    root.insert(
+        "tail_window_ticks".into(),
+        serde_json::json!(plan.tail_window),
+    );
+    root.insert("body_mass_consulted".into(), serde_json::json!(false));
+    root.insert(
+        "all_observables_emitted_and_finite".into(),
+        serde_json::json!(true),
+    );
+    root.insert(
+        "integrity".into(),
+        serde_json::json!({
+            "world_identity_identical": world_identity_identical,
+            "ecology_stream_identical": ecology_stream_identical,
+            "genesis_closed_eu_identical": genesis_closed_eu_identical,
+            "control_uniform_final_checksum": ctrl.final_checksum,
+            "control_uniform_scarcity_final_checksum": scarcity.final_checksum,
+            "treatment_gradient_final_checksum": treat.final_checksum,
+            "all_three_checksums_distinct": ctrl.final_checksum != treat.final_checksum
+                && scarcity.final_checksum != treat.final_checksum
+                && ctrl.final_checksum != scarcity.final_checksum,
+        }),
+    );
+    root.insert(
+        "wp2_a_resource_field".into(),
+        wp2_a_json(
+            metrics.wp2_a_passed,
+            probe_control,
+            probe_scarcity,
+            probe_treatment,
+        ),
+    );
+    root.insert(
+        "wp2_b_standing_crop_intervention".into(),
+        wp2_b_json(ctrl, scarcity, treat, metrics),
+    );
+    root.insert(
+        "wp2_c_detritus_before_3000".into(),
+        wp2_c_json(metrics.wp2_c_passed, ctrl, scarcity, treat),
+    );
+    root.insert(
+        "demographics_and_conservation".into(),
+        serde_json::json!({
+            "control_uniform": arm_diag_json(ctrl),
+            "control_uniform_scarcity": arm_diag_json(scarcity),
+            "treatment_gradient": arm_diag_json(treat),
+        }),
+    );
+    root.insert(
+        "wp3_schedule_lock".into(),
+        serde_json::json!({
+            "wall_clock_seconds": elapsed_secs,
+            "us_per_tick": us_per_tick,
+            "planned_ensemble_runs": planned_ensemble_runs,
+            "projected_ensemble_minutes_by_rung": projected_by_rung
+                .iter()
+                .map(|(t, mins)| serde_json::json!({ "duration_ticks": t, "projected_minutes": mins }))
+                .collect::<Vec<_>>(),
+            "recommended_duration_ticks": recommended_rung,
+            "warmup_ticks": plan.warmup_ticks,
+            "sample_period": sample_period,
+            "tail_window_ticks": plan.tail_window,
+            "within_budget": recommended_rung == Some(rung),
+        }),
+    );
+    serde_json::Value::Object(root)
+}
+
+fn wp2_a_json(
+    passed: bool,
+    probe_control: &FieldProbe,
+    probe_scarcity: &FieldProbe,
+    probe_treatment: &FieldProbe,
+) -> serde_json::Value {
+    serde_json::json!({
+        "passed": passed,
+        "width": probe_control.width,
+        "height": probe_control.height,
+        "bounds_x": [probe_control.min_x, probe_control.max_x],
+        "bounds_z": [probe_control.min_z, probe_control.max_z],
+        "abundant_initial_total_biomass_eu": probe_control.initial_total_biomass,
+        "abundant_initial_total_capacity_eu": probe_control.initial_total_capacity,
+        "abundant_initial_west_biomass_eu": probe_control.initial_west_biomass,
+        "abundant_initial_west_capacity_eu": probe_control.initial_west_capacity,
+        "abundant_initial_east_biomass_eu": probe_control.initial_east_biomass,
+        "abundant_initial_east_capacity_eu": probe_control.initial_east_capacity,
+        "scarcity_initial_total_biomass_eu": probe_scarcity.initial_total_biomass,
+        "scarcity_initial_total_capacity_eu": probe_scarcity.initial_total_capacity,
+        "scarcity_initial_west_biomass_eu": probe_scarcity.initial_west_biomass,
+        "scarcity_initial_west_capacity_eu": probe_scarcity.initial_west_capacity,
+        "scarcity_initial_east_biomass_eu": probe_scarcity.initial_east_biomass,
+        "scarcity_initial_east_capacity_eu": probe_scarcity.initial_east_capacity,
+        "scarcity_initial_detritus_eu": probe_scarcity.ecosystem_detritus,
+        "treatment_initial_total_biomass_eu": probe_treatment.initial_total_biomass,
+        "abundant_initial_ecosystem_biomass": {
+            "plants": probe_control.ecosystem_plants,
+            "detritus": probe_control.ecosystem_detritus,
+            "animals": probe_control.ecosystem_animals,
+            "dormant": probe_control.ecosystem_dormant,
+        },
+        "scarcity_initial_ecosystem_biomass": {
+            "plants": probe_scarcity.ecosystem_plants,
+            "detritus": probe_scarcity.ecosystem_detritus,
+            "animals": probe_scarcity.ecosystem_animals,
+            "dormant": probe_scarcity.ecosystem_dormant,
+        }
+    })
+}
+
+fn wp2_b_json(
+    ctrl: &ArmSummary,
+    scarcity: &ArmSummary,
+    treat: &ArmSummary,
+    metrics: &SmokeCalibMetrics,
+) -> serde_json::Value {
+    let mut m = serde_json::Map::new();
+    m.insert("passed".into(), serde_json::json!(metrics.wp2_b_passed));
+    m.insert(
+        "b1_gradient_shifts_vs_abundant_passed".into(),
+        serde_json::json!(metrics.wp2_b1_passed),
+    );
+    m.insert(
+        "b2_scarcity_matches_treatment_total_passed".into(),
+        serde_json::json!(metrics.wp2_b2_passed),
+    );
+    m.insert(
+        "b1_min_rel_shift_threshold".into(),
+        serde_json::json!(WP2_B1_MIN_REL_SHIFT),
+    );
+    m.insert(
+        "b2_max_rel_mismatch_threshold".into(),
+        serde_json::json!(WP2_B2_MAX_REL_MISMATCH),
+    );
+    m.insert(
+        "control_uniform_standing_crop_final".into(),
+        serde_json::json!(ctrl.standing_crop_final),
+    );
+    m.insert(
+        "control_uniform_scarcity_standing_crop_final".into(),
+        serde_json::json!(scarcity.standing_crop_final),
+    );
+    m.insert(
+        "treatment_gradient_standing_crop_final".into(),
+        serde_json::json!(treat.standing_crop_final),
+    );
+    m.insert(
+        "control_uniform_standing_crop_post_warmup_mean".into(),
+        serde_json::json!(ctrl.standing_crop_post_warmup_mean),
+    );
+    m.insert(
+        "control_uniform_scarcity_standing_crop_post_warmup_mean".into(),
+        serde_json::json!(scarcity.standing_crop_post_warmup_mean),
+    );
+    m.insert(
+        "treatment_gradient_standing_crop_post_warmup_mean".into(),
+        serde_json::json!(treat.standing_crop_post_warmup_mean),
+    );
+    m.insert(
+        "control_uniform_standing_crop_tail_mean".into(),
+        serde_json::json!(ctrl.standing_crop_tail_mean),
+    );
+    m.insert(
+        "control_uniform_scarcity_standing_crop_tail_mean".into(),
+        serde_json::json!(scarcity.standing_crop_tail_mean),
+    );
+    m.insert(
+        "treatment_gradient_standing_crop_tail_mean".into(),
+        serde_json::json!(treat.standing_crop_tail_mean),
+    );
+    m.insert(
+        "treat_vs_ctrl_final_delta".into(),
+        serde_json::json!(metrics.final_delta_treat_vs_ctrl),
+    );
+    m.insert(
+        "treat_vs_ctrl_post_warmup_mean_delta".into(),
+        serde_json::json!(metrics.post_warmup_delta_treat_vs_ctrl),
+    );
+    m.insert(
+        "treat_vs_ctrl_post_warmup_relative_shift".into(),
+        serde_json::json!(metrics.post_warmup_rel_shift_treat_vs_ctrl),
+    );
+    m.insert(
+        "treat_vs_ctrl_tail_mean_delta".into(),
+        serde_json::json!(metrics.tail_delta_treat_vs_ctrl),
+    );
+    m.insert(
+        "treat_vs_ctrl_max_abs_sample_diff".into(),
+        serde_json::json!(metrics.max_abs_sample_diff_treat_vs_ctrl),
+    );
+    m.insert(
+        "treat_vs_scarcity_final_delta".into(),
+        serde_json::json!(metrics.final_delta_treat_vs_scarcity),
+    );
+    m.insert(
+        "treat_vs_scarcity_post_warmup_mean_delta".into(),
+        serde_json::json!(metrics.post_warmup_delta_treat_vs_scarcity),
+    );
+    m.insert(
+        "scarcity_vs_treat_post_warmup_relative_mismatch".into(),
+        serde_json::json!(metrics.post_warmup_rel_mismatch_scarcity_vs_treat),
+    );
+    m.insert(
+        "treat_vs_scarcity_tail_mean_delta".into(),
+        serde_json::json!(metrics.tail_delta_treat_vs_scarcity),
+    );
+    m.insert(
+        "treat_vs_scarcity_max_abs_sample_diff".into(),
+        serde_json::json!(metrics.max_abs_sample_diff_treat_vs_scarcity),
+    );
+    m.insert(
+        "ledger_by_arm".into(),
+        serde_json::json!({
+            "control_uniform": arm_ledger_json(ctrl),
+            "control_uniform_scarcity": arm_ledger_json(scarcity),
+            "treatment_gradient": arm_ledger_json(treat),
+        }),
+    );
+    serde_json::Value::Object(m)
+}
+
+fn arm_ledger_json(a: &ArmSummary) -> serde_json::Value {
+    serde_json::json!({
+        "deforest_count": a.deforest_ledger_count,
+        "deforest_eu_moved": a.deforest_eu_moved,
+        "add_nutrient_count": a.add_nutrient_ledger_count,
+        "add_nutrient_eu_added": a.add_nutrient_eu_added,
+    })
+}
+
+fn wp2_c_json(
+    passed: bool,
+    ctrl: &ArmSummary,
+    scarcity: &ArmSummary,
+    treat: &ArmSummary,
+) -> serde_json::Value {
+    serde_json::json!({
+        "passed": passed,
+        "control_uniform_first_positive_before_3000": ctrl.first_positive_detritus_before_3000,
+        "control_uniform_scarcity_first_positive_before_3000": scarcity.first_positive_detritus_before_3000,
+        "treatment_gradient_first_positive_before_3000": treat.first_positive_detritus_before_3000,
+        "control_uniform_detritus_at_3000": ctrl.detritus_at_3000,
+        "control_uniform_scarcity_detritus_at_3000": scarcity.detritus_at_3000,
+        "treatment_gradient_detritus_at_3000": treat.detritus_at_3000,
+        "control_uniform_early_samples": ctrl.detritus_early_samples,
+        "control_uniform_scarcity_early_samples": scarcity.detritus_early_samples,
+        "treatment_gradient_early_samples": treat.detritus_early_samples,
+        "control_uniform_detritus_final": ctrl.detritus_final,
+        "control_uniform_scarcity_detritus_final": scarcity.detritus_final,
+        "treatment_gradient_detritus_final": treat.detritus_final,
+    })
+}
+
 fn arm_diag_json(a: &ArmSummary) -> serde_json::Value {
     serde_json::json!({
         "status": a.status,
         "final_checksum": a.final_checksum,
+        "emitted_observable_count": a.emitted_count,
         "closed_eu_first": a.closed_eu_first,
         "closed_eu_min": a.closed_eu_min,
         "closed_eu_max": a.closed_eu_max,
@@ -846,15 +1254,15 @@ fn arm_diag_json(a: &ArmSummary) -> serde_json::Value {
     })
 }
 
-fn build_runs_csv(ctrl: &ArmSummary, treat: &ArmSummary, seed: u64, us_per_tick: f64) -> String {
+fn build_runs_csv(arms: &[&ArmSummary], seed: u64, us_per_tick: f64) -> String {
     let mut s = String::from(
-        "# SMOKE CALIBRATION ONLY (seed 999979); blind to body-mass observables\n\
+        "# SMOKE CALIBRATION ONLY (seed 999979); blind to body-mass values (no body-mass value written or gated beyond finiteness check)\n\
          seed,arm,status,final_checksum,us_per_tick,deforest_ledger_count,deforest_eu_moved,\
          add_nutrient_ledger_count,add_nutrient_eu_added,standing_crop_final,\
          standing_crop_post_warmup_mean,detritus_at_3000,detritus_final,agent_count_min,\
          agent_count_final,births_sum,deaths_sum,closed_eu_max_abs_drift\n",
     );
-    for a in [ctrl, treat] {
+    for a in arms {
         s.push_str(&format!(
             "{seed},{},{},{},{us_per_tick:.3},{},{:.6},{},{:.6},{:.6},{:.6},{},{:.6},{},{},{},{},{:.6e}\n",
             a.arm,
@@ -880,7 +1288,7 @@ fn build_runs_csv(ctrl: &ArmSummary, treat: &ArmSummary, seed: u64, us_per_tick:
     s
 }
 
-fn build_series_csv(ctrl: &RunResult, treat: &RunResult, seed: u64) -> Result<String, String> {
+fn build_series_csv(arms: &[(&'static str, &RunResult)], seed: u64) -> Result<String, String> {
     let mut s = String::from("seed,arm,tick");
     for id in SMOKE_SERIES_OBSERVABLES {
         s.push(',');
@@ -888,7 +1296,7 @@ fn build_series_csv(ctrl: &RunResult, treat: &RunResult, seed: u64) -> Result<St
     }
     s.push('\n');
 
-    for (arm, run) in [("control", ctrl), ("treatment", treat)] {
+    for (arm, run) in arms {
         for sample in &run.series {
             s.push_str(&format!("{seed},{arm},{}", sample.tick));
             for id in SMOKE_SERIES_OBSERVABLES {
@@ -907,32 +1315,16 @@ fn build_series_csv(ctrl: &RunResult, treat: &RunResult, seed: u64) -> Result<St
     Ok(s)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_provenance(
-    args: &Args,
-    plan: &Plan,
-    control: &ExperimentManifest,
-    treatment: &ExperimentManifest,
-    registry: &ObservableRegistry,
-    report: &PairedEnsembleReport,
-    probe: &FieldProbe,
-    input_hashes: &BTreeMap<String, String>,
-    rung: u64,
-    started: SystemTime,
-    ended: SystemTime,
-    elapsed_secs: f64,
-    us_per_tick: f64,
-    projected_by_rung: &[(u64, f64)],
-    recommended_rung: Option<u64>,
-) -> serde_json::Value {
+fn build_provenance(ctx: &ProvenanceContext<'_>) -> serde_json::Value {
     let exe = std::env::current_exe().ok();
+    let planned_ensemble_runs = NUM_ARMS * ctx.plan.seeds.len();
     serde_json::json!({
         "kind": "e3-smoke-provenance-EXCLUDED-FROM-ANALYSIS",
         "mode": "smoke",
         "model": "core::live_experiment::LiveExperimentAdapter",
         "model_version": LIVE_MODEL_VERSION,
         "model_status": "headless adapter verified; NOT a live-world experiment-ready claim",
-        "harness": "core::experiment_runner::run_paired_ensemble_with_control",
+        "harness": "core::experiment_runner::{run_paired_ensemble_with_control, run_manifest_seed}",
         "registry": "core::experiment::ObservableRegistry::live_default",
         "build": {
             "git_commit": git(&["rev-parse", "HEAD"]),
@@ -948,63 +1340,69 @@ fn build_provenance(
             "arch": std::env::consts::ARCH,
         },
         "timing": {
-            "started_utc": iso8601_utc(unix_seconds(started)),
-            "ended_utc": iso8601_utc(unix_seconds(ended)),
-            "wall_clock_seconds": elapsed_secs,
-            "us_per_tick": us_per_tick,
-            "max_wall_clock_minutes_registered": plan.max_wall_clock_minutes,
-            "projected_24_runs_minutes_by_rung": projected_by_rung
+            "started_utc": iso8601_utc(unix_seconds(ctx.started)),
+            "ended_utc": iso8601_utc(unix_seconds(ctx.ended)),
+            "wall_clock_seconds": ctx.elapsed_secs,
+            "us_per_tick": ctx.us_per_tick,
+            "planned_ensemble_runs": planned_ensemble_runs,
+            "max_wall_clock_minutes_registered": ctx.plan.max_wall_clock_minutes,
+            "projected_ensemble_minutes_by_rung": ctx.projected_by_rung
                 .iter()
                 .map(|(t, mins)| serde_json::json!({ "duration_ticks": t, "projected_minutes": mins }))
                 .collect::<Vec<_>>(),
         },
         "wp3_schedule_lock": {
-            "duration_ticks_locked": recommended_rung,
-            "duration_ticks_as_run": rung,
-            "duration_ticks_ladder": plan.ladder,
-            "sample_period": control.sample_period,
-            "warmup_ticks": plan.warmup_ticks,
-            "warmup_samples_excluded": plan.warmup_ticks / control.sample_period.max(1),
-            "tail_window_ticks": plan.tail_window,
+            "duration_ticks_locked": ctx.recommended_rung,
+            "duration_ticks_as_run": ctx.rung,
+            "duration_ticks_ladder": ctx.plan.ladder,
+            "sample_period": ctx.control.sample_period,
+            "warmup_ticks": ctx.plan.warmup_ticks,
+            "warmup_samples_excluded": ctx.plan.warmup_ticks / ctx.control.sample_period.max(1),
+            "tail_window_ticks": ctx.plan.tail_window,
         },
         "manifests": {
-            "manifest_dir": args.manifest_dir.display().to_string().replace('\\', "/"),
-            "sha256_as_committed": input_hashes,
-            "control_fingerprint_as_run": report.control_manifest_fingerprint,
-            "treatment_fingerprint_as_run": report.treatment_manifest_fingerprint,
-            "control_law_fingerprint": report.control_law_fingerprint,
-            "treatment_law_fingerprint": report.treatment_law_fingerprint,
-            "registry_fingerprint": report.registry_fingerprint,
-            "declared_factors": report.declared_factors,
-            "control_initial_conditions": control.initial_conditions.values,
-            "treatment_initial_conditions": treatment.initial_conditions.values,
-            "control_interventions": control.interventions,
-            "treatment_interventions": treatment.interventions,
-            "note": "manifests are referenced by SHA-256 rather than copied here so body-mass observable names stay out of the smoke directory",
+            "manifest_dir": ctx.args.manifest_dir.display().to_string().replace('\\', "/"),
+            "sha256_as_committed": ctx.input_hashes,
+            "preregistration_sha256_at_run": ctx.prereg_hash_at_run,
+            "preregistration_hash_note": "e3-preregistration.json is hashed separately at run time rather than inside sha256_as_committed because wp2_smoke_calibration is copied into it after this single deterministic run.",
+            "control_uniform_fingerprint_as_run": ctx.paired_report.control_manifest_fingerprint,
+            "control_uniform_scarcity_fingerprint_as_run": ctx.scarcity_fingerprint,
+            "treatment_gradient_fingerprint_as_run": ctx.paired_report.treatment_manifest_fingerprint,
+            "control_law_fingerprint": ctx.paired_report.control_law_fingerprint,
+            "treatment_law_fingerprint": ctx.paired_report.treatment_law_fingerprint,
+            "registry_fingerprint": ctx.paired_report.registry_fingerprint,
+            "declared_factors": ["initial_conditions.live.resource_capacity_scale", "interventions"],
+            "control_uniform_initial_conditions": ctx.control.initial_conditions.values,
+            "control_uniform_scarcity_initial_conditions": ctx.scarcity.initial_conditions.values,
+            "treatment_gradient_initial_conditions": ctx.treatment.initial_conditions.values,
+            "control_uniform_interventions": ctx.control.interventions,
+            "control_uniform_scarcity_interventions": ctx.scarcity.interventions,
+            "treatment_gradient_interventions": ctx.treatment.interventions,
+            "note": "manifest IDs and observable lists are verified by SHA-256 above so body-mass observable names stay out of the smoke directory"
         },
         "observables": {
-            "manifests_requested_observable_count": control.observable_ids.len(),
-            "registry_total_count": registry.specs().len(),
+            "manifests_requested_observable_count": ctx.control.observable_ids.len(),
+            "registry_total_count": ctx.registry.specs().len(),
             "observables_written_to_smoke_series": SMOKE_SERIES_OBSERVABLES,
             "body_mass_consulted": false,
         },
         "seeds": {
-            "smoke_seed": plan.smoke_seed,
-            "executed": [plan.smoke_seed],
-            "registered_experimental_seeds": plan.seeds,
+            "smoke_seed": ctx.plan.smoke_seed,
+            "executed": [ctx.plan.smoke_seed],
+            "registered_experimental_seeds": ctx.plan.seeds,
             "experimental_seeds_run": 0,
         },
         "world_identity_observed": {
-            "seed": probe.world_identity.seed,
-            "generator_version": probe.world_identity.generator_version,
-            "width": probe.world_identity.width,
-            "height": probe.world_identity.height,
-            "checksum": probe.world_identity.checksum,
+            "seed": ctx.probe.world_identity.seed,
+            "generator_version": ctx.probe.world_identity.generator_version,
+            "width": ctx.probe.world_identity.width,
+            "height": ctx.probe.world_identity.height,
+            "checksum": ctx.probe.world_identity.checksum,
         },
         "what_this_run_does_not_claim": [
             "No desktop-app run was made; no Tauri handle, window, GPU, learner or evolution thread exists in this process.",
             "Smoke seed 999979 is calibration only and is mechanically excluded from all experimental manifests.",
-            "No body-mass observable was read or written during WP-2/WP-3.",
+            "No body-mass observable value was written, printed, or used in any gate except a finiteness check (is_finite() over every emitted observable).",
         ],
     })
 }
@@ -1016,31 +1414,28 @@ fn build_summary_md(
     sample_period: u64,
     elapsed_secs: f64,
     us_per_tick: f64,
+    planned_ensemble_runs: usize,
     projected_by_rung: &[(u64, f64)],
     recommended_rung: Option<u64>,
-    probe: &FieldProbe,
-    ctrl: &ArmSummary,
-    treat: &ArmSummary,
-    wp2_a_passed: bool,
-    wp2_b_passed: bool,
-    wp2_c_passed: bool,
-    max_abs_standing_crop_diff: f64,
-    final_standing_crop_diff: f64,
-    post_warmup_standing_crop_diff: f64,
-    tail_standing_crop_diff: f64,
+    probe_control: &FieldProbe,
+    probe_scarcity: &FieldProbe,
+    arms: &[&ArmSummary],
+    metrics: &SmokeCalibMetrics,
 ) -> String {
-    let mut s = String::from("# E3 WP-2 / WP-3 Smoke Calibration Report\n\n");
+    let [ctrl, scarcity, treat] = [arms[0], arms[1], arms[2]];
+    let mut s = String::from("# E3 WP-2 / WP-3 Smoke Calibration Report (3-Arm Design)\n\n");
     s.push_str(
         "> Calibration only, smoke seed `999979`, EXCLUDED from every analysis, table, statistic, \
-         and claim. Body-mass observables were never read or written (`body_mass_consulted = false`).\n\n",
+         and claim. No body-mass observable value was written, printed, or used in any gate except \
+         a finiteness check (`is_finite()` over every emitted observable; `body_mass_consulted = false`).\n\n",
     );
     s.push_str(&format!(
-        "Model: `core::live_experiment::LiveExperimentAdapter` (`{LIVE_MODEL_VERSION}`) — \
+        "Model: `core::live_experiment::LiveExperimentAdapter` (`{LIVE_MODEL_VERSION}`) -- \
          **headless adapter verified**.\n\n\
-         - Smoke seed: `{}` (`2` arms x `{rung}` ticks, `sample_period = {sample_period}`)\n\
+         - Smoke seed: `{}` (`{NUM_ARMS}` arms x `{rung}` ticks, `sample_period = {sample_period}`)\n\
          - Profile: `{}`\n\
          - Wall clock: **{elapsed_secs:.3} s** (`{us_per_tick:.2} us/tick`)\n\
-         - Checksums: control `{}`, treatment `{}` (differ: `{}`)\n\n",
+         - Checksums: `control_uniform` `{}`, `control_uniform_scarcity` `{}`, `treatment_gradient` `{}`\n\n",
         plan.smoke_seed,
         if cfg!(debug_assertions) {
             "debug"
@@ -1048,96 +1443,112 @@ fn build_summary_md(
             "release"
         },
         ctrl.final_checksum,
+        scarcity.final_checksum,
         treat.final_checksum,
-        ctrl.final_checksum != treat.final_checksum,
     ));
 
     s.push_str("## WP-2 (a) ResourceField in headless LiveExperimentAdapter\n\n");
     s.push_str(&format!(
         "- Gate result: **{}**\n\
          - Dimensions: `{}x{}` (`x in [{:.1}, {:.1}]`, `z in [{:.1}, {:.1}]`)\n\
-         - Initial field biomass / capacity: `{:.3}` / `{:.3}` EU\n\
-         - Initial West (`col < 128`) biomass / capacity: `{:.3}` / `{:.3}` EU\n\
-         - Initial East (`col >= 128`) biomass / capacity: `{:.3}` / `{:.3}` EU\n\
-         - Initial `EcosystemBiomass`: plants `{:.3}`, detritus `{:.3}`, animals `{:.3}`, dormant `{:.3}`\n\n",
-        if wp2_a_passed { "PASS" } else { "FAIL" },
-        probe.width,
-        probe.height,
-        probe.min_x,
-        probe.max_x,
-        probe.min_z,
-        probe.max_z,
-        probe.initial_total_biomass,
-        probe.initial_total_capacity,
-        probe.initial_west_biomass,
-        probe.initial_west_capacity,
-        probe.initial_east_biomass,
-        probe.initial_east_capacity,
-        probe.ecosystem_plants,
-        probe.ecosystem_detritus,
-        probe.ecosystem_animals,
-        probe.ecosystem_dormant,
+         - Abundant arms (`scale=1.0`) initial plants / capacity: `{:.3}` / `{:.3}` EU (West `{:.3}`, East `{:.3}`, detritus `{:.3}`)\n\
+         - Uniform-scarcity arm (`scale=0.42`) initial plants / capacity: `{:.3}` / `{:.3}` EU (West `{:.3}`, East `{:.3}`, detritus `{:.3}`)\n\
+         - Identical initial closed EU across all 3 arms: `{:.3}` EU\n\n",
+        if metrics.wp2_a_passed { "PASS" } else { "FAIL" },
+        probe_control.width,
+        probe_control.height,
+        probe_control.min_x,
+        probe_control.max_x,
+        probe_control.min_z,
+        probe_control.max_z,
+        probe_control.initial_total_biomass,
+        probe_control.initial_total_capacity,
+        probe_control.initial_west_capacity,
+        probe_control.initial_east_capacity,
+        probe_control.ecosystem_detritus,
+        probe_scarcity.initial_total_biomass,
+        probe_scarcity.initial_total_capacity,
+        probe_scarcity.initial_west_capacity,
+        probe_scarcity.initial_east_capacity,
+        probe_scarcity.ecosystem_detritus,
+        probe_control.total_ecosystem_eu(),
     ));
 
-    s.push_str("## WP-2 (b) Regional interventions change `live.standing_crop`\n\n");
+    s.push_str("## WP-2 (b1 & b2) Standing Crop Manipulation & Total-Scarcity Control Match\n\n");
     s.push_str(&format!(
-        "- Gate result: **{}**\n\n\
-         | Metric | Control | Treatment | Treatment - Control |\n\
-         |---|---:|---:|---:|\n\
-         | `live.standing_crop` at T={rung} | {:.3} | {:.3} | {:+.3} |\n\
-         | Post-warmup mean (`tick > {}`) | {:.3} | {:.3} | {:+.3} |\n\
-         | Tail window mean (`{}..={}`) | {:.3} | {:.3} | {:+.3} |\n\
-         | Max abs sample difference | — | — | {:.3} |\n\
-         | `Deforest` ledger firings / EU moved (`cause_id=1`) | {} / {:.3} | {} / {:.3} | — |\n\
-         | `AddNutrient` ledger firings / EU added (`cause_id=2`) | {} / {:.3} | {} / {:.3} | — |\n\n",
-        if wp2_b_passed { "PASS" } else { "FAIL" },
+        "- Overall WP-2 (b) gate result: **{}** (`b1`: `{}`, `b2`: `{}`)\n\n\
+         | Metric | `control_uniform` | `control_uniform_scarcity` | `treatment_gradient` | `treat - ctrl_u` | `treat - ctrl_s` |\n\
+         |---|---:|---:|---:|---:|---:|\n\
+         | `live.standing_crop` at T={rung} | {:.3} | {:.3} | {:.3} | {:+.3} | {:+.3} |\n\
+         | Post-warmup mean (`tick > {}`) | {:.3} | {:.3} | {:.3} | {:+.3} ({:+.2}%) | {:+.3} ({:+.2}%) |\n\
+         | Tail window mean (`{}..={}`) | {:.3} | {:.3} | {:.3} | {:+.3} | {:+.3} |\n\
+         | Max abs sample difference | -- | -- | -- | {:.3} | {:.3} |\n\
+         | `Deforest` ledger (`cause_id=1`) | {} ({:.1} EU) | {} ({:.1} EU) | {} ({:.1} EU) | -- | -- |\n\
+         | `AddNutrient` ledger (`cause_id=2`) | {} ({:.1} EU) | {} ({:.1} EU) | {} ({:.1} EU) | -- | -- |\n\n",
+        if metrics.wp2_b_passed { "PASS" } else { "FAIL" },
+        if metrics.wp2_b1_passed { "PASS" } else { "FAIL" },
+        if metrics.wp2_b2_passed { "PASS" } else { "FAIL" },
         ctrl.standing_crop_final,
+        scarcity.standing_crop_final,
         treat.standing_crop_final,
-        final_standing_crop_diff,
+        metrics.final_delta_treat_vs_ctrl,
+        metrics.final_delta_treat_vs_scarcity,
         plan.warmup_ticks,
         ctrl.standing_crop_post_warmup_mean,
+        scarcity.standing_crop_post_warmup_mean,
         treat.standing_crop_post_warmup_mean,
-        post_warmup_standing_crop_diff,
+        metrics.post_warmup_delta_treat_vs_ctrl,
+        metrics.post_warmup_rel_shift_treat_vs_ctrl.unwrap_or(0.0) * 100.0,
+        metrics.post_warmup_delta_treat_vs_scarcity,
+        metrics.post_warmup_rel_mismatch_scarcity_vs_treat.unwrap_or(0.0) * 100.0,
         plan.tail_window[0],
         plan.tail_window[1],
         ctrl.standing_crop_tail_mean,
+        scarcity.standing_crop_tail_mean,
         treat.standing_crop_tail_mean,
-        tail_standing_crop_diff,
-        max_abs_standing_crop_diff,
+        metrics.tail_delta_treat_vs_ctrl,
+        metrics.tail_delta_treat_vs_scarcity,
+        metrics.max_abs_sample_diff_treat_vs_ctrl,
+        metrics.max_abs_sample_diff_treat_vs_scarcity,
         ctrl.deforest_ledger_count,
         ctrl.deforest_eu_moved,
+        scarcity.deforest_ledger_count,
+        scarcity.deforest_eu_moved,
         treat.deforest_ledger_count,
         treat.deforest_eu_moved,
         ctrl.add_nutrient_ledger_count,
         ctrl.add_nutrient_eu_added,
+        scarcity.add_nutrient_ledger_count,
+        scarcity.add_nutrient_eu_added,
         treat.add_nutrient_ledger_count,
         treat.add_nutrient_eu_added,
     ));
 
-    s.push_str("## WP-2 (c) `detritus > 0` before tick 3000\n\n");
+    s.push_str("## WP-2 (c) `detritus > 0` before tick 3000 (all 3 arms)\n\n");
     s.push_str(&format!(
         "- Gate result: **{}**\n\
-         - First positive sample `< 3000`: control `{:?}`, treatment `{:?}`\n\n\
-         | Tick | Control `detritus` (EU) | Treatment `detritus` (EU) |\n\
-         |---:|---:|---:|\n",
-        if wp2_c_passed { "PASS" } else { "FAIL" },
+         - First positive `< 3000`: `control_uniform` `{:?}`, `control_uniform_scarcity` `{:?}`, `treatment_gradient` `{:?}`\n\n\
+         | Tick | `control_uniform` detritus | `control_uniform_scarcity` detritus | `treatment_gradient` detritus |\n\
+         |---:|---:|---:|---:|\n",
+        if metrics.wp2_c_passed { "PASS" } else { "FAIL" },
         ctrl.first_positive_detritus_before_3000,
+        scarcity.first_positive_detritus_before_3000,
         treat.first_positive_detritus_before_3000,
     ));
-    for ((tc, vc), (tt, vt)) in ctrl
-        .detritus_early_samples
-        .iter()
-        .zip(&treat.detritus_early_samples)
-    {
-        assert_eq!(tc, tt);
-        s.push_str(&format!("| {tc} | {vc:.3} | {vt:.3} |\n"));
+    for ((tc, vc), ((_, vs), (_, vt))) in ctrl.detritus_early_samples.iter().zip(
+        scarcity
+            .detritus_early_samples
+            .iter()
+            .zip(&treat.detritus_early_samples),
+    ) {
+        s.push_str(&format!("| {tc} | {vc:.3} | {vs:.3} | {vt:.3} |\n"));
     }
     s.push('\n');
 
-    s.push_str("## WP-3 Schedule & Budget Calibration\n\n");
-    s.push_str(
-        "| Ladder rung (`T`) | Projected 24-run minutes | <= 90 min budget |\n|---:|---:|---|\n",
-    );
+    s.push_str("## WP-3 Schedule & Budget Calibration (36 Planned Runs = 3 Arms x 12 Seeds)\n\n");
+    s.push_str(&format!(
+        "| Ladder rung (`T`) | Projected {planned_ensemble_runs}-run minutes | <= 90 min budget |\n|---:|---:|---|\n"
+    ));
     for &(t, mins) in projected_by_rung {
         s.push_str(&format!(
             "| {t} | {mins:.3} | {} |\n",
@@ -1157,30 +1568,25 @@ fn build_summary_md(
     ));
 
     s.push_str("## Demographics & Closed-EU Diagnostics (Smoke Seed Only)\n\n");
-    s.push_str(&format!(
+    s.push_str(
         "| Arm | Status | `agent_count` min / max / final | Sum `births` | Sum `deaths` (starve / dehydrate) | Max `closed_eu_total` abs drift |\n\
-         |---|---|---:|---:|---:|---:|\n\
-         | control | {} | {} / {} / {} | {} | {} ({} / {}) | {:.6e} |\n\
-         | treatment | {} | {} / {} / {} | {} | {} ({} / {}) | {:.6e} |\n",
-        ctrl.status,
-        ctrl.agent_count_min,
-        ctrl.agent_count_max,
-        ctrl.agent_count_final,
-        ctrl.births_sum,
-        ctrl.deaths_sum,
-        ctrl.deaths_starvation_sum,
-        ctrl.deaths_dehydration_sum,
-        ctrl.closed_eu_max_abs_drift,
-        treat.status,
-        treat.agent_count_min,
-        treat.agent_count_max,
-        treat.agent_count_final,
-        treat.births_sum,
-        treat.deaths_sum,
-        treat.deaths_starvation_sum,
-        treat.deaths_dehydration_sum,
-        treat.closed_eu_max_abs_drift,
-    ));
+         |---|---|---:|---:|---:|---:|\n",
+    );
+    for a in arms {
+        s.push_str(&format!(
+            "| {} | {} | {} / {} / {} | {} | {} ({} / {}) | {:.6e} |\n",
+            a.arm,
+            a.status,
+            a.agent_count_min,
+            a.agent_count_max,
+            a.agent_count_final,
+            a.births_sum,
+            a.deaths_sum,
+            a.deaths_starvation_sum,
+            a.deaths_dehydration_sum,
+            a.closed_eu_max_abs_drift,
+        ));
+    }
 
     s
 }
@@ -1228,7 +1634,17 @@ impl Plan {
             max_wall_clock_minutes: p["cost"]["max_wall_clock_minutes"]
                 .as_f64()
                 .ok_or("cost.max_wall_clock_minutes must be a number")?,
+            control_file: s(&p["manifests"]["control"], "manifests.control")?,
+            control_scarcity_file: s(
+                &p["manifests"]["control_uniform_scarcity"],
+                "manifests.control_uniform_scarcity",
+            )?,
+            treatment_file: s(&p["manifests"]["treatment"], "manifests.treatment")?,
             smoke_control_file: s(&p["manifests"]["smoke_control"], "manifests.smoke_control")?,
+            smoke_control_scarcity_file: s(
+                &p["manifests"]["smoke_control_scarcity"],
+                "manifests.smoke_control_scarcity",
+            )?,
             smoke_treatment_file: s(
                 &p["manifests"]["smoke_treatment"],
                 "manifests.smoke_treatment",
@@ -1260,7 +1676,7 @@ fn parse_args(argv: Vec<String>) -> Result<Args, String> {
             "--help" | "-h" => {
                 println!(
                     "e3_smoke --manifest-dir <dir> --out <dir> [--duration-rung <ticks>]\n\
-                     Build with: cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 6"
+                     Build with: cargo build --manifest-path src-tauri/Cargo.toml --release --features desktop --example e3_smoke -j 4"
                 );
                 std::process::exit(0);
             }
