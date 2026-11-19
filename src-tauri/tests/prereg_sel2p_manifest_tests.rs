@@ -590,3 +590,317 @@ fn confirm_mode_refuses_to_run_while_preregistration_is_proposed() {
         "unexpected refusal message: {err}"
     );
 }
+
+#[test]
+fn sel2p_thresholds_and_smoke_arm_scope_constants_match_preregistration() {
+    let p = prereg();
+    let sg = &p["smoke_gate"];
+    let th = &p["thresholds"];
+
+    assert_eq!(sg["c1_min_agents"].as_f64(), Some(runner::C1_MIN_AGENTS));
+    assert_eq!(
+        sg["c2_g_band"]
+            .as_array()
+            .expect("c2_g_band")
+            .iter()
+            .filter_map(|v| v.as_f64())
+            .collect::<Vec<_>>(),
+        vec![runner::C2_G_LOW, runner::C2_G_HIGH]
+    );
+    assert_eq!(
+        sg["c3_min_generations"].as_f64(),
+        Some(runner::C3_MIN_GENERATIONS)
+    );
+    assert_eq!(
+        sg["c4_min_starvation_share"].as_f64(),
+        Some(runner::C4_MIN_STARVATION_SHARE)
+    );
+    assert_eq!(
+        th["min_abs_paired_dz"].as_f64(),
+        Some(runner::MATERIALITY_DZ)
+    );
+    assert_eq!(
+        th["min_relative_shift_vs_control_mean"].as_f64(),
+        Some(runner::MATERIALITY_RELATIVE_SHIFT)
+    );
+
+    let as_strs = |key: &str| -> Vec<String> {
+        sg[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("missing smoke_gate.{key}"))
+            .iter()
+            .map(|v| v.as_str().expect("string arm").to_string())
+            .collect()
+    };
+    let expected_arms =
+        |arr: &[&str]| -> Vec<String> { arr.iter().map(|s| (*s).to_string()).collect() };
+    assert_eq!(
+        as_strs("c1_applies_to_arms"),
+        expected_arms(&runner::C1_APPLIES_TO_ARMS)
+    );
+    assert_eq!(
+        as_strs("c2_applies_to_arms"),
+        expected_arms(&runner::C2_APPLIES_TO_ARMS)
+    );
+    assert_eq!(
+        as_strs("c2_diagnostic_only_arms"),
+        vec!["scarce_drift".to_string()]
+    );
+    assert_eq!(
+        as_strs("c3_applies_to_arms"),
+        expected_arms(&runner::C3_APPLIES_TO_ARMS)
+    );
+    assert_eq!(
+        as_strs("c4_applies_to_arms"),
+        expected_arms(&runner::C4_APPLIES_TO_ARMS)
+    );
+    assert_eq!(
+        as_strs("c5_applies_to_arms"),
+        expected_arms(&runner::C5_APPLIES_TO_ARMS)
+    );
+}
+
+#[test]
+fn sel2p_smoke_and_confirmation_manifest_pairs_share_world_laws_ic_and_durations() {
+    let pairs = [
+        ("sel2p-smoke-selected.json", "sel2p-selected.json"),
+        ("sel2p-smoke-scarce-mut0.json", "sel2p-scarce-mut0.json"),
+        ("sel2p-smoke-scarce-drift.json", "sel2p-scarce-drift.json"),
+    ];
+    for (smoke_name, confirm_name) in pairs {
+        let sm = load_manifest(smoke_name);
+        let cm = load_manifest(confirm_name);
+        assert_eq!(sm.world_identity, cm.world_identity, "{smoke_name}");
+        assert_eq!(sm.laws, cm.laws, "{smoke_name}");
+        assert_eq!(sm.initial_conditions, cm.initial_conditions, "{smoke_name}");
+        assert_eq!(sm.interventions, cm.interventions, "{smoke_name}");
+        assert_eq!(
+            sm.exotic_interventions, cm.exotic_interventions,
+            "{smoke_name}"
+        );
+        assert_eq!(sm.observer, cm.observer, "{smoke_name}");
+        assert_eq!(sm.duration_ticks, cm.duration_ticks, "{smoke_name}");
+    }
+
+    for name in [
+        "sel2p-selected.json",
+        "sel2p-scarce-mut0.json",
+        "sel2p-scarce-drift.json",
+    ] {
+        let m = load_manifest(name);
+        assert_eq!(m.duration_ticks, 200_000, "{name}");
+        assert_eq!(m.sample_period, 500, "{name}");
+    }
+    for name in [
+        "sel2p-baseline-ref.json",
+        "sel2p-smoke-selected.json",
+        "sel2p-smoke-scarce-mut0.json",
+        "sel2p-smoke-scarce-drift.json",
+    ] {
+        let m = load_manifest(name);
+        assert_eq!(m.duration_ticks, 200_000, "{name}");
+        assert_eq!(m.sample_period, 50, "{name}");
+    }
+
+    // D6 runner rejection test: mutating a smoke manifest's initial condition or duration
+    // must be rejected before any simulation starts.
+    let tmp = std::env::temp_dir().join(format!(
+        "sel2p_d6_mismatch_{}_{}",
+        std::process::id(),
+        line!()
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let mdir = tmp.join("manifests");
+    let odir = tmp.join("out");
+    std::fs::create_dir_all(&mdir).expect("create temp manifest dir");
+    for name in [
+        "sel2p-preregistration.json",
+        "sel2p-selected.json",
+        "sel2p-scarce-mut0.json",
+        "sel2p-scarce-drift.json",
+        "sel2p-baseline-ref.json",
+        "sel2p-smoke-selected.json",
+        "sel2p-smoke-scarce-mut0.json",
+        "sel2p-smoke-scarce-drift.json",
+    ] {
+        std::fs::copy(dir_path().join(name), mdir.join(name)).expect("copy fixture");
+    }
+    let mut bad_smoke: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(mdir.join("sel2p-smoke-selected.json")).expect("read smoke"),
+    )
+    .expect("parse smoke");
+    bad_smoke["duration_ticks"] = serde_json::json!(150_000);
+    std::fs::write(
+        mdir.join("sel2p-smoke-selected.json"),
+        serde_json::to_string_pretty(&bad_smoke).unwrap(),
+    )
+    .expect("write drifted smoke");
+
+    let err = runner::run_with_args(vec![
+        "--pipeline-check".to_string(),
+        "--manifest-dir".to_string(),
+        mdir.to_string_lossy().into_owned(),
+        "--out".to_string(),
+        odir.to_string_lossy().into_owned(),
+    ])
+    .expect_err("drifted smoke duration_ticks must fail D6 manifest validation");
+    assert!(err.contains("duration_ticks"), "unexpected D6 error: {err}");
+
+    for smoke_file in [
+        "sel2p-smoke-selected.json",
+        "sel2p-smoke-scarce-mut0.json",
+        "sel2p-smoke-scarce-drift.json",
+    ] {
+        let mut bad_ic: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir_path().join(smoke_file)).expect("read smoke manifest"),
+        )
+        .expect("parse smoke manifest");
+        let mut mutated = false;
+        for entry in bad_ic["initial_conditions"]["values"]
+            .as_array_mut()
+            .expect("initial_conditions.values array")
+        {
+            if entry[0].as_str() == Some("live.prey_cap") {
+                entry[1] = serde_json::json!(321);
+                mutated = true;
+            }
+        }
+        assert!(mutated, "{smoke_file} must contain live.prey_cap entry");
+        std::fs::write(
+            mdir.join(smoke_file),
+            serde_json::to_string_pretty(&bad_ic).unwrap(),
+        )
+        .expect("write drifted smoke ic");
+    }
+    let err_ic = runner::run_with_args(vec![
+        "--pipeline-check".to_string(),
+        "--manifest-dir".to_string(),
+        mdir.to_string_lossy().into_owned(),
+        "--out".to_string(),
+        odir.to_string_lossy().into_owned(),
+    ])
+    .expect_err("drifted smoke initial_conditions must fail D6 manifest validation");
+    assert!(
+        err_ic.contains("D6:") && err_ic.contains("initial_conditions"),
+        "unexpected D6 ic error: {err_ic}"
+    );
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn sel2p_confirm_prerequisite_gate_rejects_missing_or_mismatched_smoke_and_hashes() {
+    let tmp =
+        std::env::temp_dir().join(format!("sel2p_d3_gate_{}_{}", std::process::id(), line!()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let smoke_dir = tmp.join("smoke");
+    std::fs::create_dir_all(&smoke_dir).expect("create temp smoke dir");
+
+    let names = [
+        "sel2p-preregistration.json",
+        "sel2p-selected.json",
+        "sel2p-scarce-mut0.json",
+        "sel2p-scarce-drift.json",
+        "sel2p-baseline-ref.json",
+        "sel2p-smoke-selected.json",
+        "sel2p-smoke-scarce-mut0.json",
+        "sel2p-smoke-scarce-drift.json",
+    ];
+    let mut hashes = BTreeMap::new();
+    for (idx, name) in names.iter().enumerate() {
+        hashes.insert((*name).to_string(), format!("{idx:064x}"));
+    }
+
+    let p = prereg();
+    let base_lock = || {
+        serde_json::json!({
+            "smoke_gate_passed": true,
+            "duration_ticks": 200_000,
+            "warmup_ticks": 20_000,
+            "sample_period": 500,
+            "baseline_surviving_count": 4,
+            "pooled_baseline_crop": 150_000.0,
+            "manifest_sha256": hashes,
+        })
+    };
+    let write_smoke =
+        |mode: &str, duration: u64, period: u64, gate_pass: bool, suf: bool, n: u64, crop: f64| {
+            let rep = serde_json::json!({
+                "mode": mode,
+                "duration_ticks": duration,
+                "sample_period": period,
+                "gate": { "gate_pass": gate_pass },
+                "pooled_baseline": {
+                    "sufficient": suf,
+                    "n_surviving": n,
+                    "pooled_crop_second_half": crop,
+                }
+            });
+            std::fs::write(
+                smoke_dir.join("smoke-report.json"),
+                serde_json::to_string_pretty(&rep).unwrap(),
+            )
+            .expect("write smoke-report.json");
+        };
+
+    // 1. Missing smoke-report.json fails even with complete lock + hashes.
+    let err_no_smoke = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect_err("missing smoke-report.json must fail");
+    assert!(err_no_smoke.contains("smoke-report.json"), "{err_no_smoke}");
+
+    // 2. Write valid smoke report: full gate must pass.
+    write_smoke("smoke", 200_000, 50, true, true, 4, 150_000.0);
+    runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect("valid smoke report and 8 manifest hashes must pass");
+
+    // 3. Missing manifest_sha256 fails.
+    let mut lock_no_hashes = base_lock();
+    lock_no_hashes
+        .as_object_mut()
+        .unwrap()
+        .remove("manifest_sha256");
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &lock_no_hashes, &p, &hashes)
+        .expect_err("missing manifest_sha256 must fail");
+    assert!(err.contains("manifest_sha256"), "{err}");
+
+    // 4. Incomplete 7-of-8 manifest_sha256 fails.
+    let mut lock_partial = base_lock();
+    lock_partial["manifest_sha256"]
+        .as_object_mut()
+        .unwrap()
+        .remove("sel2p-scarce-drift.json");
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &lock_partial, &p, &hashes)
+        .expect_err("incomplete manifest_sha256 must fail");
+    assert!(err.contains("manifest_sha256"), "{err}");
+
+    // 5. Wrong manifest hash fails.
+    let mut lock_bad_hash = base_lock();
+    lock_bad_hash["manifest_sha256"]["sel2p-selected.json"] = serde_json::json!("f".repeat(64));
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &lock_bad_hash, &p, &hashes)
+        .expect_err("wrong manifest sha256 must fail");
+    assert!(err.contains("sha256"), "{err}");
+
+    // 6. pipeline-check smoke report fails.
+    write_smoke("pipeline-check", 200_000, 50, true, true, 4, 150_000.0);
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect_err("pipeline-check smoke report must fail");
+    assert!(err.contains("mode"), "{err}");
+
+    // 7. Failing gate_pass fails.
+    write_smoke("smoke", 200_000, 50, false, true, 4, 150_000.0);
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect_err("gate_pass=false must fail");
+    assert!(err.contains("gate_pass"), "{err}");
+
+    // 8. Mismatched pooled crop and surviving count fail.
+    write_smoke("smoke", 200_000, 50, true, true, 4, 151_000.0);
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect_err("mismatched pooled_crop_second_half must fail");
+    assert!(err.contains("pooled_crop_second_half"), "{err}");
+
+    write_smoke("smoke", 200_000, 50, true, true, 5, 150_000.0);
+    let err = runner::validate_confirm_prerequisites_json(&tmp, &base_lock(), &p, &hashes)
+        .expect_err("mismatched n_surviving must fail");
+    assert!(err.contains("n_surviving"), "{err}");
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}

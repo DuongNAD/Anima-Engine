@@ -540,6 +540,31 @@ fn the_ensemble_fits_the_memory_ceiling_and_valid_sampling_grid() {
     assert!(ladder.windows(2).all(|w| w[0] > w[1]));
 }
 
+fn parse_leading_localized_number(slice: &str) -> Option<f64> {
+    let trimmed = slice.trim_start();
+    let end = trimmed
+        .find(|c: char| !c.is_ascii_digit() && c != ',' && c != '.')
+        .unwrap_or(trimmed.len());
+    let token = trimmed[..end].trim_end_matches([',', '.']);
+    if token.is_empty() {
+        return None;
+    }
+    token.replace(',', ".").parse::<f64>().ok()
+}
+
+fn collect_numbers_after(text: &str, marker: &str) -> Vec<f64> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while let Some(pos) = rest.find(marker) {
+        let after = &rest[pos + marker.len()..];
+        if let Some(v) = parse_leading_localized_number(after) {
+            out.push(v);
+        }
+        rest = after;
+    }
+    out
+}
+
 #[test]
 fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts() {
     let p = prereg();
@@ -550,6 +575,38 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
     assert_eq!(
         p["design_confound_resolution"]["chosen_option"].as_str(),
         Some("add_uniform_scarcity_control_arm")
+    );
+    // R2 & N4 pins.
+    let sec_contrasts = p["design_confound_resolution"]["secondary_contrasts"]
+        .as_array()
+        .expect("secondary_contrasts");
+    let su_label = sec_contrasts
+        .get(1)
+        .and_then(|v| v.as_str())
+        .expect("S-U contrast label");
+    assert!(
+        su_label.contains("whole-map AddNutrient refill; control_uniform has none"),
+        "R2 mismatch in secondary_contrasts[1]: {su_label}"
+    );
+    assert!(
+        !su_label.contains("matched AddNutrient"),
+        "R2 forbids false 'matched AddNutrient' label"
+    );
+    let scarcity_deriv = p["design_confound_resolution"]["scarcity_arm_analytic_derivation"]
+        .as_str()
+        .expect("scarcity_arm_analytic_derivation");
+    assert!(
+        !scarcity_deriv.contains("BEFORE seeing any outcomes"),
+        "N4 forbids overclaiming 'BEFORE seeing any outcomes'"
+    );
+    let nutrient_note = p["design_confound_resolution"]["why_uniform_whole_map_add_nutrient"]
+        .as_str()
+        .expect("why_uniform_whole_map_add_nutrient");
+    assert!(
+        nutrient_note.contains("-0.44%")
+            && nutrient_note.contains("-1.86%")
+            && nutrient_note.contains("-1.68%"),
+        "N3 requires post-warmup (-0.44%), final (-1.86%), and tail (-1.68%) mismatches"
     );
 
     let planned: Vec<u64> = p["seeds"]["execution_order"]
@@ -625,11 +682,32 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         Some(SMOKE_TREATMENT)
     );
 
-    // D1 exclusion rules must be explicitly registered in JSON and reporting.
-    assert!(!p["extinction_rule"]["definition"]
+    // D1 / R1 per-contrast exclusion rules & N5 exact pins.
+    for rule_key in ["extinction_rule", "min_agent_count_rule", "empty_half_rule"] {
+        assert_eq!(
+            p[rule_key]["exclusion_scope"].as_str(),
+            Some("per_contrast"),
+            "R1: {rule_key}.exclusion_scope must be 'per_contrast'"
+        );
+    }
+    let ext_def = p["extinction_rule"]["definition"]
         .as_str()
-        .unwrap_or("")
-        .is_empty());
+        .expect("extinction_rule.definition");
+    assert!(
+        ext_def.contains("live.agent_count == 0")
+            && ext_def.contains("any sampled tick")
+            && ext_def.contains("final_observables at T = 18000"),
+        "N5: extinction_rule.definition weakened: {ext_def}"
+    );
+    let ext_hand = p["extinction_rule"]["handling"]
+        .as_str()
+        .expect("extinction_rule.handling");
+    assert!(
+        ext_hand.contains("per contrast")
+            && ext_hand.contains("counts only S and T runs")
+            && ext_hand.contains("valid in all three arms"),
+        "R1: extinction_rule.handling must specify per-contrast scope and all-three-arms additive table"
+    );
     assert!(!p["empty_half_rule"]["definition"]
         .as_str()
         .unwrap_or("")
@@ -637,6 +715,10 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
     assert_eq!(
         p["min_agent_count_rule"]["definition"].as_str(),
         Some("live.agent_count < 2 in final_observables at T = 18000 (or at any sample in 14400..=18000 for H1_tail_window)")
+    );
+    assert_eq!(
+        p["min_agent_count_rule"]["applicable_endpoints"],
+        serde_json::json!(["H1", "H1_tail_window", "S1"])
     );
     let report_fields: Vec<&str> = p["reporting"]["per_observable_fields"]
         .as_array()
@@ -654,14 +736,102 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
             "reporting.per_observable_fields missing '{req_field}'"
         );
     }
+    let derived_fields: Vec<&str> = p["reporting"]["additional_derived"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    for req_derived in [
+        "h1_bessel_corrected_sensitivity_var_n_over_n_minus_1",
+        "agent_count_at_T_by_arm",
+        "additive_decomposition_table_on_all_three_valid_seeds",
+    ] {
+        assert!(
+            derived_fields.contains(&req_derived),
+            "reporting.additional_derived missing '{req_derived}'"
+        );
+    }
 
-    // Machine-readable materiality thresholds and decision_enum.
-    assert_eq!(p["thresholds"]["dz_min"].as_f64(), Some(0.8));
-    assert_eq!(p["thresholds"]["relative_delta_min"].as_f64(), Some(0.05));
-    assert_eq!(
-        p["thresholds"]["min_valid_pairs_for_decision"].as_u64(),
-        Some(10)
+    // N1, N6, N7, N8, N10 pins.
+    let hypotheses = p["hypotheses"].as_array().unwrap();
+    let h1 = hypotheses.iter().find(|h| h["id"] == "H1").unwrap();
+    let bessel_text = h1["bessel_sensitivity_analysis"].as_str().unwrap_or("");
+    assert!(bessel_text.contains("n / (n - 1)") && bessel_text.contains("live.agent_count"));
+    let s6 = hypotheses.iter().find(|h| h["id"] == "S6").unwrap();
+    let s6_eval = s6["evaluated_at"].as_str().unwrap();
+    assert!(
+        !s6_eval.contains("_or_")
+            && !s6_eval.contains(" or ")
+            && s6_eval.contains("final_window_at_T")
     );
+    let s6_formula = p["analysis_details"]["s6_formula"].as_str().unwrap();
+    assert!(!s6_formula.contains(" or ") && s6_formula.contains("final-window"));
+
+    assert_eq!(
+        p["execution_host_rule"]["single_host_required"],
+        serde_json::json!(true)
+    );
+    assert_eq!(
+        p["execution_host_rule"]["smoke_host_observed"].as_str(),
+        Some("windows/x86_64")
+    );
+    let host_rule = p["execution_host_rule"]["rule"].as_str().unwrap();
+    assert!(host_rule.contains("36 E3-X runs") && host_rule.contains("re-run e3_smoke"));
+
+    // Machine-readable materiality thresholds, decision_definitions, and secondary_endpoints_rule (N5).
+    let dz_min = p["thresholds"]["dz_min"].as_f64().unwrap();
+    let rel_min = p["thresholds"]["relative_delta_min"].as_f64().unwrap();
+    let min_pairs = p["thresholds"]["min_valid_pairs_for_decision"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(dz_min, 0.8);
+    assert_eq!(rel_min, 0.05);
+    assert_eq!(min_pairs, 10);
+    assert_eq!(
+        p["thresholds"]["secondary_endpoints_rule"]["dz_min"].as_f64(),
+        Some(dz_min),
+        "N5: secondary_endpoints_rule.dz_min must equal thresholds.dz_min"
+    );
+    assert_eq!(
+        p["thresholds"]["secondary_endpoints_rule"]["relative_delta_min"].as_f64(),
+        Some(rel_min),
+        "N5: secondary_endpoints_rule.relative_delta_min must equal thresholds.relative_delta_min"
+    );
+    assert_eq!(
+        p["thresholds"]["secondary_endpoints_rule"]["applies_to"],
+        serde_json::json!(["S1", "S2", "S3", "S6"])
+    );
+
+    let defs = &p["thresholds"]["decision_definitions"];
+    let min_lt = format!("< {min_pairs}");
+    let min_ge = format!(">= {min_pairs}");
+    let dz_lt = format!("< {dz_min}");
+    let dz_ge = format!(">= {dz_min}");
+    let rel_lt = format!("< {rel_min}");
+    let rel_ge = format!(">= {rel_min}");
+    assert!(defs["insufficient_evidence"]
+        .as_str()
+        .unwrap()
+        .contains(&min_lt));
+    assert!(defs["null"].as_str().unwrap().contains(&min_ge));
+    let between_def = defs["between_detectable_below_materiality"]
+        .as_str()
+        .unwrap();
+    assert!(
+        between_def.contains(&min_ge)
+            && between_def.contains(&dz_lt)
+            && between_def.contains(&rel_lt),
+        "N5: decision_definitions.between_detectable_below_materiality mismatch: {between_def}"
+    );
+    for key in ["material_positive", "material_negative_opposite"] {
+        let d = defs[key].as_str().unwrap();
+        assert!(
+            d.contains(&min_ge) && d.contains(&dz_ge) && d.contains(&rel_ge),
+            "N5: decision_definitions.{key} disagrees with thresholds: {d}"
+        );
+    }
+
     let conditions_joined = p["thresholds"]["conditions"]
         .as_array()
         .unwrap()
@@ -669,8 +839,8 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         .filter_map(|v| v.as_str())
         .collect::<Vec<_>>()
         .join(" ");
-    assert!(conditions_joined.contains("0.8"));
-    assert!(conditions_joined.contains("0.05"));
+    assert!(conditions_joined.contains(&dz_min.to_string()));
+    assert!(conditions_joined.contains(&rel_min.to_string()));
 
     let smoke_cmd = p["smoke_command"].as_str().expect("smoke_command");
     assert!(!smoke_cmd.contains("cargo run"));
@@ -683,6 +853,15 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         "../artifacts/experiments/e3-productivity-gradient-body-mass/smoke/smoke-report.json",
     );
     let calib = &p["wp2_smoke_calibration"];
+    let newer_rule = calib["e3x_newer_commit_rule"].as_str().unwrap();
+    assert!(
+        newer_rule.contains("stop and report") && newer_rule.contains("never tune"),
+        "N6: e3x_newer_commit_rule must mandate stop-and-report without tuning"
+    );
+    assert_eq!(
+        calib["smoke_build_git_commit"].as_str(),
+        Some("a1229a6b59f1849091d0f2e5c0028769f892c553")
+    );
     assert_eq!(
         calib["a_resource_field_present"]["passed"],
         smoke_report["wp2_a_resource_field"]["passed"]
@@ -702,6 +881,18 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
     );
     for (field_key, sr_key) in [
         (
+            "control_uniform_standing_crop_final",
+            "control_uniform_standing_crop_final",
+        ),
+        (
+            "control_uniform_scarcity_standing_crop_final",
+            "control_uniform_scarcity_standing_crop_final",
+        ),
+        (
+            "treatment_gradient_standing_crop_final",
+            "treatment_gradient_standing_crop_final",
+        ),
+        (
             "control_uniform_standing_crop_post_warmup_mean",
             "control_uniform_standing_crop_post_warmup_mean",
         ),
@@ -714,12 +905,28 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
             "treatment_gradient_standing_crop_post_warmup_mean",
         ),
         (
+            "control_uniform_scarcity_standing_crop_tail_mean",
+            "control_uniform_scarcity_standing_crop_tail_mean",
+        ),
+        (
+            "treatment_gradient_standing_crop_tail_mean",
+            "treatment_gradient_standing_crop_tail_mean",
+        ),
+        (
             "treat_vs_ctrl_post_warmup_relative_shift",
             "treat_vs_ctrl_post_warmup_relative_shift",
         ),
         (
             "scarcity_vs_treat_post_warmup_relative_mismatch",
             "scarcity_vs_treat_post_warmup_relative_mismatch",
+        ),
+        (
+            "treat_vs_scarcity_final_delta",
+            "treat_vs_scarcity_final_delta",
+        ),
+        (
+            "treat_vs_scarcity_tail_mean_delta",
+            "treat_vs_scarcity_tail_mean_delta",
         ),
     ] {
         let a = calib["b_standing_crop_change"][field_key]
@@ -760,8 +967,6 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         .find(|line| line.starts_with("status:"))
         .expect("plan doc front matter must declare status")
         .trim();
-    // D3 fix: allow legitimate post-completion lifecycle transition `active | completed`, while
-    // forbidding `status: frozen`.
     assert_ne!(
         status_line, "status: frozen",
         "front-matter status must stay a policy-valid value, never 'frozen'"
@@ -770,6 +975,81 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         matches!(status_line, "status: active" | "status: completed"),
         "front-matter status must be 'status: active' or 'status: completed', got '{status_line}'"
     );
+
+    // N5: numerically parse §4 and §7 threshold numbers in the plan doc and compare to JSON.
+    let sec4 = doc_norm
+        .split("\n## 4.")
+        .nth(1)
+        .and_then(|s| s.split("\n## 5.").next())
+        .expect("plan doc section 4");
+    let sec4_min_vals = [
+        collect_numbers_after(sec4, "Tối thiểu để ra quyết định:"),
+        collect_numbers_after(sec4, "Dưới "),
+    ];
+    assert!(
+        sec4_min_vals[0].len() == 1 && sec4_min_vals[1].len() == 1,
+        "N5: §4 must state minimum valid pairs twice: {sec4_min_vals:?}"
+    );
+    for v in sec4_min_vals.into_iter().flatten() {
+        assert!(
+            (v - (min_pairs as f64)).abs() < 1e-12,
+            "N5: §4 min_pairs={v} != {min_pairs}"
+        );
+    }
+
+    let sec7 = doc_norm
+        .split("\n## 7.")
+        .nth(1)
+        .and_then(|s| s.split("\n## 8.").next())
+        .expect("plan doc section 7");
+    let sec7_plain = sec7.replace('`', "");
+    let sec7_dz: Vec<f64> = ["dz_min = ", "|paired_dz| ≥ ", "|dz| ≥ "]
+        .into_iter()
+        .flat_map(|m| collect_numbers_after(&sec7_plain, m))
+        .collect();
+    assert!(
+        sec7_dz.len() >= 5,
+        "N5: expected >= 5 dz_min occurrences in §7, got {}",
+        sec7_dz.len()
+    );
+    for v in &sec7_dz {
+        assert!((v - dz_min).abs() < 1e-12, "N5: §7 dz_min={v} != {dz_min}");
+    }
+    let sec7_rel: Vec<f64> = [
+        "relative_delta_min = ",
+        "|paired_mean_delta| ≥ ",
+        "|delta| ≥ ",
+    ]
+    .into_iter()
+    .flat_map(|m| collect_numbers_after(&sec7_plain, m))
+    .collect();
+    assert!(
+        sec7_rel.len() >= 5,
+        "N5: expected >= 5 relative_delta_min occurrences in §7, got {}",
+        sec7_rel.len()
+    );
+    for v in &sec7_rel {
+        assert!(
+            (v - rel_min).abs() < 1e-12,
+            "N5: §7 relative_delta_min={v} != {rel_min}"
+        );
+    }
+    let sec7_min_pairs: Vec<f64> = ["min_valid_pairs = ", "số cặp hợp lệ ≥ ", "số cặp hợp lệ < "]
+        .into_iter()
+        .flat_map(|m| collect_numbers_after(&sec7_plain, m))
+        .collect();
+    assert!(
+        sec7_min_pairs.len() >= 6,
+        "N5: expected >= 6 min_valid_pairs occurrences in §7, got {}",
+        sec7_min_pairs.len()
+    );
+    for v in &sec7_min_pairs {
+        assert!(
+            (v - (min_pairs as f64)).abs() < 1e-12,
+            "N5: §7 min_pairs={v} != {min_pairs}"
+        );
+    }
+
     for needle in [
         "live.trait_mass_var",
         "live.trait_mass_mean_west",
@@ -780,14 +1060,17 @@ fn the_preregistration_json_agrees_with_manifests_plan_doc_and_smoke_artifacts()
         "730001",
         "2026-11-19",
         "9958f27",
+        "a1229a6",
         "91def40",
         "live.reproduction",
         "live.thirst_steering",
         "27 observable",
-        "0,8",
-        "0,05",
         "empty_half_rule",
         "extinction_rule",
+        "per_contrast",
+        "−1,86 %",
+        "−1,68 %",
+        "var · n/(n − 1)",
     ] {
         assert!(
             doc.contains(needle),
@@ -1285,4 +1568,112 @@ fn materiality_threshold_decision_rules_hand_worked_boundaries() {
         classify_e3_decision(&e_mat, min_pairs, dz_min, rel_min),
         E3Decision::MaterialPositive
     );
+}
+
+struct E3TripletReport {
+    t_minus_s: E3EvalReport,
+    t_minus_u: E3EvalReport,
+    s_minus_u: E3EvalReport,
+    additive_h1_all_three_valid: Vec<(u64, f64, f64, f64)>,
+}
+
+fn evaluate_e3_triplets(
+    triplets: &[(SyntheticArmRun, SyntheticArmRun, SyntheticArmRun)],
+) -> E3TripletReport {
+    let pairs_ts: Vec<(SyntheticArmRun, SyntheticArmRun)> = triplets
+        .iter()
+        .map(|(_, s, t)| (s.clone(), t.clone()))
+        .collect();
+    let pairs_tu: Vec<(SyntheticArmRun, SyntheticArmRun)> = triplets
+        .iter()
+        .map(|(u, _, t)| (u.clone(), t.clone()))
+        .collect();
+    let pairs_su: Vec<(SyntheticArmRun, SyntheticArmRun)> = triplets
+        .iter()
+        .map(|(u, s, _)| (u.clone(), s.clone()))
+        .collect();
+
+    let additive_h1_all_three_valid = triplets
+        .iter()
+        .filter(|(u, s, t)| {
+            [u, s, t]
+                .into_iter()
+                .all(|arm| first_extinct_tick(arm).is_none() && arm.final_agent_count >= 2.0)
+        })
+        .map(|(u, s, t)| {
+            (
+                u.seed,
+                t.trait_mass_var - u.trait_mass_var,
+                t.trait_mass_var - s.trait_mass_var,
+                s.trait_mass_var - u.trait_mass_var,
+            )
+        })
+        .collect();
+
+    E3TripletReport {
+        t_minus_s: evaluate_e3_pairs(&pairs_ts),
+        t_minus_u: evaluate_e3_pairs(&pairs_tu),
+        s_minus_u: evaluate_e3_pairs(&pairs_su),
+        additive_h1_all_three_valid,
+    }
+}
+
+#[test]
+fn three_arm_per_contrast_exclusion_keeps_h1_when_control_uniform_extinct() {
+    let p = prereg();
+    let min_pairs = p["thresholds"]["min_valid_pairs_for_decision"]
+        .as_u64()
+        .unwrap() as usize;
+    let dz_min = p["thresholds"]["dz_min"].as_f64().unwrap();
+    let rel_min = p["thresholds"]["relative_delta_min"].as_f64().unwrap();
+
+    // R1 scenario: control_uniform (U) goes extinct in 3 of 12 seeds while S and T stay healthy.
+    // Per contrast: H1 (T - S) retains all 12 pairs -> MaterialPositive; T - U and S - U drop
+    // to 9 pairs -> InsufficientEvidence; additive decomposition uses the 9 seeds valid in all 3.
+    let mut triplets = Vec::new();
+    for i in 0..12u64 {
+        let seed = SEED_BASE + SEED_STEP * i;
+        let mut u = make_clean_run(seed, 3.0, 9.5, 9.5, 9.5);
+        let s = make_clean_run(seed, 4.0 + (i as f64) * 0.03, 10.0, 10.0, 10.0);
+        let t = make_clean_run(seed, 5.5 + (i as f64) * 0.08, 10.5, 9.5, 11.0);
+        if i < 3 {
+            u.agent_counts_by_sample = vec![(600, 120.0), (15_000, 0.0), (18_000, 0.0)];
+            u.final_agent_count = 0.0;
+            u.trait_mass_var = 0.0;
+            u.trait_mass_mean = 0.0;
+            u.trait_mass_mean_west = 0.0;
+            u.trait_mass_mean_east = 0.0;
+        }
+        triplets.push((u, s, t));
+    }
+
+    let rep = evaluate_e3_triplets(&triplets);
+    assert_eq!(rep.t_minus_s.n_extinct_pairs_dropped, 0);
+    assert_eq!(rep.t_minus_s.h1_effect.n_complete_pairs, 12);
+    assert_eq!(
+        classify_e3_decision(&rep.t_minus_s.h1_effect, min_pairs, dz_min, rel_min),
+        E3Decision::MaterialPositive
+    );
+
+    assert_eq!(rep.t_minus_u.n_extinct_pairs_dropped, 3);
+    assert_eq!(rep.t_minus_u.h1_effect.n_complete_pairs, 9);
+    assert_eq!(
+        classify_e3_decision(&rep.t_minus_u.h1_effect, min_pairs, dz_min, rel_min),
+        E3Decision::InsufficientEvidence
+    );
+
+    assert_eq!(rep.s_minus_u.n_extinct_pairs_dropped, 3);
+    assert_eq!(rep.s_minus_u.h1_effect.n_complete_pairs, 9);
+    assert_eq!(
+        classify_e3_decision(&rep.s_minus_u.h1_effect, min_pairs, dz_min, rel_min),
+        E3Decision::InsufficientEvidence
+    );
+
+    assert_eq!(rep.additive_h1_all_three_valid.len(), 9);
+    for (seed, d_tu, d_ts, d_su) in rep.additive_h1_all_three_valid {
+        assert!(
+            (d_tu - (d_ts + d_su)).abs() < 1e-12,
+            "seed {seed}: (T - U)={d_tu} must equal (T - S)={d_ts} + (S - U)={d_su}"
+        );
+    }
 }

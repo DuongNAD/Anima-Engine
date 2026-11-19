@@ -15,6 +15,7 @@ import {
   nodeAt,
   verifyRoute,
   MARKER_DRAW_LIFT,
+  RECORD_PRECISION,
   ROUTE_DRAW_LIFT,
   ROUTE_SAMPLE_STEP,
   WALK_GRAPH_CELL,
@@ -251,10 +252,23 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     // Every published circle is a real trunk at its real collider radius. A ring drawn at the canopy
     // radius instead would be a picture of the wrong footprint — and that exact unit confusion (render
     // units vs canonical) already shipped once in the MCP manifest.
+    //
+    // The trunk is looked up by identity (its position and collider radius, to the record's 3 decimals),
+    // not by asking `floraOverlapAt` what is deepest at its centre: in a stand dense enough that two
+    // trunks nearly coincide, the deepest overlap at one trunk's centre is its larger neighbour, which
+    // says nothing about whether the published circle is real. The supercontinent's jungle has such
+    // pairs; the `continent` world's evidence subject happened not to.
+    const tol = 10 ** -RECORD_PRECISION / 2 + 1e-9;
     for (const c of rec.collision.colliders) {
-      const hit = floraOverlapAt(flora, c.x, c.z, 0, 'collider');
-      expect(hit, `no trunk at (${c.x}, ${c.z})`).not.toBeNull();
-      expect(hit!.radius).toBeCloseTo(c.radius, 3);
+      expect(floraOverlapAt(flora, c.x, c.z, 0, 'collider'), `no trunk at (${c.x}, ${c.z})`).not.toBeNull();
+      let found = false;
+      for (let i = 0; i < flora.count && !found; i++) {
+        found =
+          Math.abs(flora.x[i] - c.x) <= tol &&
+          Math.abs(flora.z[i] - c.z) <= tol &&
+          Math.abs(flora.radius[i] - c.radius) <= tol;
+      }
+      expect(found, `no trunk of collider radius ${c.radius} at (${c.x}, ${c.z})`).toBe(true);
     }
   });
 
@@ -276,6 +290,14 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     const rec = loadRecord();
     const { flora } = scene();
     const byLabel = new Map(rec.collision.pushOutCases.map((c) => [c.label, c]));
+    // The resolver pushes a walker to *exactly* a collider's radius, so a resolved position sits on a
+    // trunk's boundary, and rounding it to the record's 3 decimals (up to half a unit in the last place
+    // on each axis) can put it a fraction of a millimetre inside. Whether it is clear is therefore
+    // asked with the collider shrunk by that rounding — a real failure to resolve is a whole radius,
+    // not 7e-4. The supercontinent's jungle is the first evidence world where the resolved point of
+    // one trunk landed on its neighbour's boundary; `reproduces every push-out case exactly` above
+    // still ties every recorded position to the resolver's output.
+    const roundingSlack = -Math.SQRT2 * (10 ** -RECORD_PRECISION / 2);
 
     // The degenerate case: exactly on a trunk centre. The rig's old inline push-out guarded on
     // `d2 > 1e-6`, so the one position that most needed resolving was the only one never resolved.
@@ -284,12 +306,12 @@ describe('collision evidence — the rig\'s own resolver, recorded', () => {
     expect(centre!.from.x).toBeCloseTo(centre!.trunk.x, 3);
     expect(centre!.from.z).toBeCloseTo(centre!.trunk.z, 3);
     expect(centre!.resolvedDistance).toBeGreaterThanOrEqual(centre!.trunk.radius - 1e-6);
-    expect(floraOverlapAt(flora, centre!.to.x, centre!.to.z, 0, 'collider')).toBeNull();
+    expect(floraOverlapAt(flora, centre!.to.x, centre!.to.z, roundingSlack, 'collider')).toBeNull();
 
     const inside = byLabel.get('inside a trunk, off centre');
     expect(inside).toBeDefined();
     expect(floraOverlapAt(flora, inside!.from.x, inside!.from.z, 0, 'collider')).not.toBeNull();
-    expect(floraOverlapAt(flora, inside!.to.x, inside!.to.z, 0, 'collider')).toBeNull();
+    expect(floraOverlapAt(flora, inside!.to.x, inside!.to.z, roundingSlack, 'collider')).toBeNull();
 
     // And the control: a clear position must not move. A resolver that always nudged would satisfy
     // both cases above and be wrong.

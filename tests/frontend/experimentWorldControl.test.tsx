@@ -298,8 +298,10 @@ describe('ExperimentWorldControl (W2-lite)', () => {
   });
 
   it('bundles the exact byte-for-byte SEL2-P selected fixture JSON (N4)', () => {
+    const norm = (s: string) => s.replace(/\r\n/g, '\n');
+    const normalizedBundled = norm(SEL2P_SELECTED_MANIFEST_JSON);
     const sha256 = createHash('sha256')
-      .update(SEL2P_SELECTED_MANIFEST_JSON, 'utf8')
+      .update(normalizedBundled, 'utf8')
       .digest('hex');
     expect(sha256).toBe('36ba3500d4df6774d96e766bb16fdde9201fd6a0c61597ff29621cf7c8b6ae3d');
 
@@ -307,9 +309,10 @@ describe('ExperimentWorldControl (W2-lite)', () => {
       process.cwd(),
       'src-tauri/tests/fixtures/experiments_sel2p/sel2p-selected.json',
     );
-    if (fs.existsSync(fixturePath)) {
-      expect(SEL2P_SELECTED_MANIFEST_JSON).toBe(fs.readFileSync(fixturePath, 'utf8'));
-    }
+    expect(fs.existsSync(fixturePath)).toBe(true);
+    const fixtureRaw = fs.readFileSync(fixturePath, 'utf8');
+    expect(normalizedBundled).toBe(norm(fixtureRaw));
+    expect(normalizedBundled).toBe(norm(norm(fixtureRaw).replace(/\n/g, '\r\n')));
   });
 
   it('surfaces backend preflight refusals verbatim and re-enables the button', async () => {

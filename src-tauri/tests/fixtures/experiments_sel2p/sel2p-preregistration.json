@@ -225,11 +225,26 @@
       "live.mean_lifespan"
     ],
     "c1_min_agents": 5,
+    "c1_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
     "c2_g_band": [
       0.4,
       0.6
     ],
+    "c2_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
+    "c2_diagnostic_only_arms": [
+      "scarce_drift"
+    ],
     "c3_min_generations": 30,
+    "c3_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
     "c4_min_starvation_share": 0.5,
     "c4_applies_to_arms": [
       "selected",
@@ -239,6 +254,10 @@
       "scarce_drift"
     ],
     "c5_last_quarter_births_and_deaths_gt_zero": true,
+    "c5_applies_to_arms": [
+      "selected",
+      "scarce_mut0"
+    ],
     "hard_stop_confirmation_on_fail": true
   },
   "thresholds": {
