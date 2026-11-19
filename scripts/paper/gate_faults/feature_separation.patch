@@ -1,0 +1,22 @@
+diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
+index 508182f..5b233f3 100644
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -73,7 +73,7 @@ uuid = { version = "1.0", features = ["v4", "serde"] }
+ tokio = { version = "1.36", default-features = false, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+ ureq = { version = "2.9", features = ["json"] }
+ dotenvy = "0.15"
+-tokio-tungstenite = { version = "0.21", optional = true }
++tokio-tungstenite = { version = "0.21" }
+ futures-util = "0.3"
+ noise = "0.8.2"
+ image = "0.24.7"
+@@ -224,7 +224,7 @@ default = []
+ # Neo4j-backed lineage. Off => `FallbackLineageTracker` runs purely in memory.
+ neo4j = ["dep:neo4rs"]
+ # Cross-shard WebSocket migration.
+-networking = ["dep:tokio-tungstenite"]
++networking = []
+ # GPU learner backend. Off => the `burn-flex` CPU backend, which is already the fallback whenever
+ # the GPU probe fails. This is the heaviest gate by far: it drops wgpu, naga, ash, d3d12 and the rest.
+ ml-wgpu = ["burn/wgpu"]

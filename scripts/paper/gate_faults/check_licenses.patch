@@ -1,0 +1,13 @@
+diff --git a/licensing/third-party-index.json b/licensing/third-party-index.json
+index 155d4f3..6f9f0b8 100644
+--- a/licensing/third-party-index.json
++++ b/licensing/third-party-index.json
+@@ -32,7 +32,7 @@
+           "filename": "LICENSE-0BSD",
+           "origin": "installed",
+           "provenance": "cargo-registry:adler2-2.0.1/LICENSE-0BSD",
+-          "sourceSha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17",
++          "sourceSha256": "061399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17",
+           "sourceBytes": 665,
+           "textSha256": "861399f8c21c042b110517e76dc6b63a2b334276c8cf17412fc3c8908ca8dc17"
+         },

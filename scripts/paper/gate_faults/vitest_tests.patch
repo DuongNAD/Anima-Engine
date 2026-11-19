@@ -1,0 +1,13 @@
+diff --git a/tests/frontend/mapManifestEvidence.test.ts b/tests/frontend/mapManifestEvidence.test.ts
+index 6bb8010..d561ea3 100644
+--- a/tests/frontend/mapManifestEvidence.test.ts
++++ b/tests/frontend/mapManifestEvidence.test.ts
+@@ -52,7 +52,7 @@ describe('map manifest — the committed file, not a copy of it', () => {
+   it('passes its own validator', () => {
+     const res = validateMapManifest(loadManifest());
+     expect(res.errors).toEqual([]);
+-    expect(res.ok).toBe(true);
++    expect(res.ok).toBe(false);
+   });
+ 
+   it('points at a World Artifact that exists', () => {

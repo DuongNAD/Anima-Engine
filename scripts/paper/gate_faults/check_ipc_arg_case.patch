@@ -1,0 +1,13 @@
+diff --git a/src/components/Landscape/utils/worldCache.ts b/src/components/Landscape/utils/worldCache.ts
+index 8608135..a406c9d 100644
+--- a/src/components/Landscape/utils/worldCache.ts
++++ b/src/components/Landscape/utils/worldCache.ts
+@@ -207,3 +207,8 @@ export function clearWorldCache(): Promise<void> {
+     req.onblocked = () => resolve();
+   });
+ }
++
++export async function m2IpcArgCaseFault(file_path: string): Promise<boolean> {
++  const { invoke } = await import('@tauri-apps/api/core');
++  return invoke<boolean>('save_simulation_state', { file_path });
++}

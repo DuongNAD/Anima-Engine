@@ -1,0 +1,14 @@
+diff --git a/src-tauri/src/core/experiment_runner/fork.rs b/src-tauri/src/core/experiment_runner/fork.rs
+index ef64c98..6d65e3e 100644
+--- a/src-tauri/src/core/experiment_runner/fork.rs
++++ b/src-tauri/src/core/experiment_runner/fork.rs
+@@ -427,7 +427,8 @@ pub fn checkpoint_fork_with_exotic<M: ExperimentModel>(
+         let mut branch_model = M::from_snapshot(&snapshot)?;
+         // Each branch gets its OWN declared forcing set: the control keeps the base forcings,
+         // the treatment gets base + exotic extras. The snapshot itself is shared and untouched.
+-        branch_model.reconfigure_forcings(forcings, manifest.duration_ticks)?;
++        let _ = forcings;
++        branch_model.reconfigure_forcings(&manifest.interventions, manifest.duration_ticks)?;
+         let mut branch_rng = rng_at_fork.clone();
+         let mut branch_clock = clock_at_fork;
+         let mut branch_ledger = CausalLedger::new();

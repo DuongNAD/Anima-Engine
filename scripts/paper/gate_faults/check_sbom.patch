@@ -1,0 +1,13 @@
+diff --git a/sbom.cdx.json b/sbom.cdx.json
+index 25acb00..28c0bca 100644
+--- a/sbom.cdx.json
++++ b/sbom.cdx.json
+@@ -6,7 +6,7 @@
+     "component": {
+       "type": "application",
+       "bom-ref": "anima-engine",
+-      "name": "anima-engine",
++      "name": "anima-engine-m2-fault",
+       "version": "0.1.0",
+       "description": "Real-time GPU-accelerated Artificial Life & Evolution simulator (Tauri v2 desktop app).",
+       "licenses": [

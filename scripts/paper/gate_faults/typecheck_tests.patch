@@ -1,0 +1,10 @@
+diff --git a/tests/frontend/mapManifestEvidence.test.ts b/tests/frontend/mapManifestEvidence.test.ts
+index 6bb8010..3dc9d50 100644
+--- a/tests/frontend/mapManifestEvidence.test.ts
++++ b/tests/frontend/mapManifestEvidence.test.ts
+@@ -224,3 +224,5 @@ describe('map manifest — the committed file, not a copy of it', () => {
+     expect(capturedCount).toBeGreaterThan(0);
+   });
+ });
++
++export const _m2TypeFault: number = 'bad';

@@ -1,0 +1,17 @@
+diff --git a/dataflow.json b/dataflow.json
+index 1ca5c74..185171b 100644
+--- a/dataflow.json
++++ b/dataflow.json
+@@ -9,6 +9,12 @@
+     "physics"
+   ],
+   "edges": [
++    {
++      "from": "physics",
++      "to": "commands",
++      "via": "src-tauri/src/physics/mod.rs:1",
++      "invariant": "invented edge for m2 negative control"
++    },
+     {
+       "from": "anima_engine_lib",
+       "to": "core",

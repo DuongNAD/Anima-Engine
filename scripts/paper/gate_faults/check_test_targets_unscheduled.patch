@@ -1,0 +1,13 @@
+diff --git a/src-tauri/Cargo.toml b/src-tauri/Cargo.toml
+index 508182f..f2b2502 100644
+--- a/src-tauri/Cargo.toml
++++ b/src-tauri/Cargo.toml
+@@ -173,7 +173,7 @@ required-features = ["networking"]
+ [[test]]
+ name = "migration_tests"
+ path = "tests/migration_tests.rs"
+-required-features = ["networking"]
++required-features = ["networking_m2_typo"]
+ 
+ [[test]]
+ name = "migration_high_throughput_tests"

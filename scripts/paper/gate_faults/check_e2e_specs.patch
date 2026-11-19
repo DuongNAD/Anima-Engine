@@ -1,0 +1,13 @@
+diff --git a/tests/package.json b/tests/package.json
+index 4d19ebb..0a1267f 100644
+--- a/tests/package.json
++++ b/tests/package.json
+@@ -5,7 +5,7 @@
+   "license": "MIT OR Apache-2.0",
+   "scripts": {
+     "test:frontend": "vitest run --config vitest.config.ts",
+-    "test:e2e": "playwright test --config e2e/playwright.config.ts",
++    "test:e2e": "playwright test --config e2e/playwright.config.ts e2e/console_hygiene.spec.ts",
+     "check:e2e-specs": "node ../scripts/check_e2e_specs.mjs",
+     "test:all": "npm run test:frontend && npm run test:e2e",
+     "capture:views": "playwright test --config e2e/capture.config.ts"

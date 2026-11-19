@@ -1,0 +1,12 @@
+diff --git a/docs/README.md b/docs/README.md
+index 62316e8..520234d 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -1,6 +1,6 @@
+ ---
+ title: Trung tâm tài liệu Anima Engine
+-status: active
++status: invalid-m2
+ owner: maintainers
+ last_reviewed: 2026-11-14
+ review_cycle: per-release
